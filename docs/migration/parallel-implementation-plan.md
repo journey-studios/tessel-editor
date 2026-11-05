@@ -81,3 +81,28 @@ D entregue e revisada: 19 testes públicos temporais, comparação de câmera/ga
 oráculo, teste dos limites de tolerância e gerador com proveniência validada. E entregue
 e revisada: gate estrutural/temporal integrado aos lotes e 29 testes públicos via Cargo.
 UI/CLI e animação de nós continuam pendentes.
+
+## Rodada 3 — avaliação completa dos nós e acesso programático
+
+Base integrada `52f3175`: A–E, workspace verde (453 testes, 2 ignorados), release e
+lifecycle 147/147. Sem adapters de cena dirigida ainda.
+
+| Frente | Entrega | Ownership |
+|---|---|---|
+| F — BB03 nós | Validar/evaluar canais de performance, estado de nós e matrizes por frame, com oráculo; completar `evaluate_frame` para esse subconjunto | Internos de `directed_scene/` e novos testes/fixtures; docs próprias |
+| G — Documento/histórico/CLI | Anexar cenas ao projeto canônico de forma aditiva; importar/consultar/editar/salvar/reabrir/undo via handlers compartilhados e JSONL headless | `document`, `state`, `ops`, `headless` e módulo adapter novo; export `lib.rs`, testes/fixtures; docs próprias |
+
+F não altera `lib.rs`, documento, state, ops ou headless; G não altera internos de
+`directed_scene` ou `scene_edit`. APIs públicas existentes permanecem compatíveis.
+G usa `scene_edit::apply` com gates embutidos e não duplica regras de câmera/animação.
+F tem o slot de compilação Rust; G deixa testes preparados para o coordenador, sem
+compilar cópia paralela com rustc. Nenhuma frente usa GPU.
+
+F expõe estado avaliado serializável/consultável, mas não altera runtime. G mantém
+carregamento de projetos antigos e undo/redo existentes, sem segundo histórico.
+Nenhuma delas habilita render de bundle legado, copia mídia privada ou implementa
+famílias visuais M2–M8. Preservar recursos no documento não significa transportá-los
+no pacote: dependências transitivas e ligação ao renderer ficam para BB05/BB06.
+
+IDs reservados: F035 (avaliação dos nós), F036 (cenas no projeto e acesso programático).
+Matriz/índices, commits e revisão do conjunto continuam com o coordenador.
