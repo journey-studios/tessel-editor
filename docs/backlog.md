@@ -171,3 +171,16 @@ Plano e ownership: [H/I/J/K](migration/next-round-plan.md). As quatro tarefas es
 | K | BL018 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A72230e00-998b-473e-aa85-12aacc2a00d7> | Em andamento |
 
 Ambiente: checkout compartilhado por limitação da delegação local; ownership exclusivo no plano. Nenhum agente altera o projeto aberto do usuário. O app foi reconstruído e aberto em release antes da integração desta rodada.
+
+## Correção priorizada durante a rodada — sliders
+
+| ID | Área | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL062 | F005/F024 | Sliders gravam cada microChange no histórico; agrupar por gesto | Em andamento | Coordenar state/mod.rs com J; gate Cargo do conjunto | L / Cursor Sonnet 5.5 | Preview contínuo; um undo no release, cancel/no-op sem entrada; undo/redo início/fim; lib/CLI/UI compartilham regras; testes e limites explícitos |
+
+Tarefa L: <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A6b408492-699c-46af-b4f2-06a6933bd3dc>
+
+Ownership: L possui state/history.rs; J mantém scene_project e ops.rs. Em state/mod.rs,
+J adiciona apenas lifecycle/campo de cena; L altera Command/execute/apply e seu campo de gesto,
+com patches pontuais para preservar trabalho concorrente. Parser de headless e exports novos
+serão integrados pelo coordenador. A janela do usuário não é reiniciada durante a investigação.

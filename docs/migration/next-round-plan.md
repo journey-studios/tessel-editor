@@ -61,3 +61,11 @@ Cada frente entrega teste público, erro com invariância, doc/linha de matriz e
 seus BLs (com provas por lib/headless/UI e limites). Não marcar BB05/BB06/BB07 completos pela
 entrega só desta fatia. H/I entregam o contrato que destrava renderer/package; J não prova gesto
 físico de ponteiro. Depois: gates conjuntos, renderer e prova mínima monitor/headless/pacote/export.
+
+## Adendo de coordenação — frente L / BL062
+
+Bug de slider/undo priorizado pelo usuário. L investiga/corrige sliders existentes no desktop
+com agrupamento no core, distinto do gesto de DirectedScene de J. state/history.rs passa a ser
+exclusivo de L. J mantém scene_project/ops; em state/mod.rs cada frente modifica só seu campo/init
+ou seus comandos, via patch pontual. Nenhum rewrite/formatação global do arquivo compartilhado.
+L propõe ligações de parser/exports ao coordenador. Não altera o projeto aberto do usuário.
