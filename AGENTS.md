@@ -113,3 +113,16 @@ Esta rodada cobre documento/grafo mínimo, corpus de equivalência e robustez da
 Não autoriza portar famílias visuais inteiras nem modificar a origem.
 Commits locais das entregas estão autorizados; nesta rodada somente o coordenador
 faz staging/commits e integração.
+
+## Backlog único obrigatório para todos os agentes
+
+- Leia e atualize [docs/backlog.md](docs/backlog.md) antes de iniciar e ao concluir uma tarefa.
+- Toda pendência encontrada (feature, bug, dívida, decisão, paridade ou validação) recebe um ID
+  nesse arquivo, com status, responsável, dependências, aceite e link para os detalhes.
+- Não mantenha filas de execução independentes em relatórios. Docs por feature mantêm contratos
+  e evidências; `docs/backlog.md` centraliza status e atribuição. Reutilize IDs existentes.
+- Marque em andamento somente tarefas efetivamente iniciadas; registre commit/PR e evidências
+  antes de concluir. Uma implementação sem prova permanece a validar.
+- Em paralelo, cada agente entrega as atualizações de suas linhas ao coordenador, que integra
+  o arquivo comum sem apagar alterações de outros agentes. Nenhuma tarefa é atribuída só por
+  estar descrita no plano; o coordenador registra link da delegação e ownership de arquivos.

@@ -1,0 +1,200 @@
+{
+  "schemaVersion": "1.0",
+  "bundleId": "join-position-ulp-above",
+  "revisionId": "rev-1",
+  "fps": {
+    "numerator": 24,
+    "denominator": 1
+  },
+  "editDurationFrames": 16,
+  "renderProfile": {
+    "width": 320,
+    "height": 180,
+    "fps": {
+      "numerator": 24,
+      "denominator": 1
+    },
+    "colorSpace": "srgb-display",
+    "alphaMode": "straight",
+    "premultiplyOnUpload": false,
+    "videoCodec": "h264-yuv420p",
+    "threeRevision": "0.187.0",
+    "browserChannel": "synthetic-oracle"
+  },
+  "assets": [
+    {
+      "assetId": "backdrop",
+      "revisionId": "rev-1",
+      "contentHash": "synthetic-sha256-backdrop",
+      "relativePath": "assets/backdrop.png",
+      "widthPx": 64,
+      "heightPx": 36,
+      "alphaMode": "opaque",
+      "colorSpace": "srgb"
+    },
+    {
+      "assetId": "figure",
+      "revisionId": "rev-1",
+      "contentHash": "synthetic-sha256-figure",
+      "relativePath": "assets/figure.png",
+      "widthPx": 32,
+      "heightPx": 32,
+      "alphaMode": "straight",
+      "colorSpace": "srgb"
+    }
+  ],
+  "performanceTracks": [],
+  "compositionPasses": [],
+  "sceneDefinitions": [
+    {
+      "id": "scene-a",
+      "schemaVersion": "1.0",
+      "rootNodeId": "root",
+      "nodes": [
+        {
+          "id": "root",
+          "parentId": null,
+          "type": "group",
+          "localPosition": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "backdrop",
+          "parentId": "root",
+          "type": "imagePlane",
+          "assetRef": {
+            "assetId": "backdrop",
+            "revisionId": "rev-1",
+            "contentHash": "synthetic-sha256-backdrop",
+            "relativePath": "assets/backdrop.png"
+          },
+          "widthSceneUnits": 8,
+          "heightSceneUnits": 4.5,
+          "renderOrder": 0,
+          "localPosition": {
+            "x": 0,
+            "y": 0,
+            "z": -2
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "figure",
+          "parentId": "root",
+          "type": "imagePlane",
+          "assetRef": {
+            "assetId": "figure",
+            "revisionId": "rev-1",
+            "contentHash": "synthetic-sha256-figure",
+            "relativePath": "assets/figure.png"
+          },
+          "widthSceneUnits": 2,
+          "heightSceneUnits": 2,
+          "renderOrder": 1,
+          "localPosition": {
+            "x": 0.5,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    }
+  ],
+  "sceneInstances": [
+    {
+      "id": "inst-a",
+      "sceneDefinitionId": "scene-a",
+      "durationFrames": 16,
+      "performanceTrackIds": []
+    }
+  ],
+  "cameraClips": [
+    {
+      "id": "cam-join",
+      "initialPosition": {
+        "x": 0,
+        "y": 1.5,
+        "z": 10
+      },
+      "initialTarget": {
+        "x": 0,
+        "y": 1.5,
+        "z": 0
+      },
+      "initialFovDeg": 45,
+      "segments": [
+        {
+          "recipe": "dollyIn",
+          "durationFrames": 17,
+          "from": "initial",
+          "distanceSceneUnits": 4.000000000000001,
+          "easing": "linear"
+        }
+      ]
+    }
+  ],
+  "shots": [
+    {
+      "id": "shot-a",
+      "sceneInstanceId": "inst-a",
+      "editRange": {
+        "startFrame": 0,
+        "endFrameExclusive": 8
+      },
+      "instanceStartFrame": 0,
+      "cameraClipId": "cam-join",
+      "cameraInFrame": 0,
+      "intent": "synthetic shot shot-a"
+    },
+    {
+      "id": "shot-b",
+      "sceneInstanceId": "inst-a",
+      "editRange": {
+        "startFrame": 8,
+        "endFrameExclusive": 16
+      },
+      "instanceStartFrame": 8,
+      "cameraClipId": "cam-join",
+      "cameraInFrame": 8,
+      "intent": "synthetic shot shot-b",
+      "transitionInto": {
+        "type": "continuous"
+      }
+    }
+  ]
+}

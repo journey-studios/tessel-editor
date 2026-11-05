@@ -788,6 +788,14 @@ fn property_node(state: &EditorState, parent: &str, property: &PropertyDef, visi
             .state("step", step)
             .state("decimals", decimals)
             .state("unit", unit)
+            // True while a drag (or `property.gesture.*`) previews this slider: the value is
+            // applied but its undo entry is only recorded when the gesture ends.
+            .state(
+                "gesture_open",
+                state
+                    .open_property_gesture()
+                    .is_some_and(|open| open.property == property.id),
+            )
             .field(
                 "value",
                 "number",

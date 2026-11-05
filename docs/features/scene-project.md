@@ -29,7 +29,7 @@ adaptador entre três peças que já existem e **não acrescenta regras a nenhum
 
 Fora, de propósito: render/preview/export/playback de cena dirigida; recursos que o bundle nomeia por
 caminho relativo (imagens, mix de áudio) — **não são resolvidos, copiados nem empacotados** até BB05/BB06;
-avaliação de animação de nós por esta feature (a câmera é consultável; o estado dos nós não); UI;
+UI visual e socket não provados;
 paginação de `scene.properties`.
 
 ## Contrato do core / biblioteca
@@ -65,6 +65,7 @@ ordem de anexação. Cada `scene.*` é um `SceneCommand` dentro de `Command::Sce
 | `scene.properties` | `scene`, `prefix?` | cada propriedade aplicável com o valor atual | — |
 | `scene.get` | `scene`, `property` (caminho canônico) | uma propriedade | — |
 | `scene.camera` | `scene`, **um de** `frame` · `time` (`{"num","den"}` exato) · `clip`+`clip_frame` | câmera via `evaluate_camera` / `camera_at_clip_frame` (mapeamento shot→instância→clipe incluso) | — |
+| `scene.tree`, `scene.evaluate`, `scene.select`, `scene.selection`, `scene.gesture.*` | ver [F039](scene-interaction.md) | Árvore/seleção, câmera e nós por frame, gesto com candidato isolado; status e evidências em F039 | Só commit é edição |
 | `scene.capabilities` | — | comandos, limites e o `scope` | — |
 
 O parser (`ops::scene_command`) só traduz forma; nenhuma regra mora nele. As respostas de câmera usam
@@ -188,3 +189,5 @@ formatação passaram. Os 19 testes públicos de cena incluem executável headle
 as 4 guardas de mídia também passaram. UI visual/socket continuam sem prova específica.
 
 O tamanho compacto de cada bundle é contado ao inserir/substituir e mantido em cache no `SceneBook`; consultas de orçamento não reserializam cenas inalteradas. Clone, remoção, substituição e rejeição preservam os contadores (testes de `scene_project::edit_budget_tests`).
+
+F039 adiciona consultas de nós por `scene.evaluate`, árvore/seleção e gestos semânticos; o status e as evidências desses caminhos estão em `scene-interaction.md`. O V de F036 refere-se aos fluxos da F036, não valida automaticamente F039.

@@ -71,10 +71,47 @@ N/A: sem superfície de editor. Nenhum controle, comando `ui`/`headless` ou nó 
 - Idempotência: `generate` duas vezes produz hash idêntico de `expected/` + `manifest.json`.
 - Origem: working tree dos 33 arquivos executados == blobs de `d6adac15…`; árvore
   `packages/scene-engine` == `d5fc9871…` (a do inventário).
-- Não executado: Cargo, Chrome, GPU. O consumidor Rust integrado passou nos 3 testes adicionais; a coluna Lib é parcial
+- A frente B não executou Cargo/Chrome/GPU na entrega inicial. O coordenador executou os consumidores Rust; a coluna Lib é parcial
   porque os demais domínios ainda não são comparados. Performance/matrizes animadas são
   comparadas na F035; a câmera/gates temporais
   têm comparação adicional na F033 (19 testes públicos).
 
 Linha da matriz (a ser consolidada pelo coordenador) e relatório:
 [`docs/migration/foundation-b-report.md`](../migration/foundation-b-report.md).
+
+## Corpus estendido (K / BL018, rodada 2)
+
+Corpus isolado de 47 casos em `docs/migration/fixtures/extended-round2/` (o de 55 casos segue
+intocado), gerado pela mesma regra: funções reais da origem `d6adac15…`, sem reimplementar. Famílias:
+fronteiras de junção (abaixo/igual/acima de `JOIN_POSITION`, `JOIN_FOV`, `JOIN_VELOCITY`,
+`JOIN_FOV_VELOCITY`, diagonal, shots fora de ordem, FPS NTSC), FPS 24000/1001, 30000/1001,
+60000/1001, 25, 30, 60, 48/2 e 2000/1, avaliação fora de ordem (7 ordens) e matrizes mundo (gimbal,
+escalas extremas, sockets encadeados, poses `lookAt` da câmera). Comandos, formato e limites:
+[`scripts/migration-oracle/README.md`](../../scripts/migration-oracle/README.md#corpus-estendido-k--bl018-rodada-2).
+
+- **Consumidor Rust**: `crates/core/tests/directed_scene_oracle_extended.rs` (API pública apenas).
+  Compara veredito e códigos por junção (com as distâncias da origem contra os limites, nas mensagens),
+  poses nos dois lados de cada junção, 468 quadros (estado, nós e `worldMatrices`), as 7 ordens de seek
+  (e que o Rust responde igual a cada vez), `CameraPose::to_world_matrix` (pose da origem e pose do
+  Rust) e `Rate`/`Ratio`/`frame_at_time` contra segundos→frame. Tolerâncias repetidas em constantes e
+  conferidas com `tolerances.json`. Inclui 6 testes de controle negativo (tolerância exata, veredito invertido
+  com distâncias na mensagem, comportamento de câmera alterado, matriz mundo perturbada e minúscula,
+  matriz transposta, taxa errada, regra do artefato não esconde frame errado).
+- **Divergência documentada**: fps acima de 1000 é aceito pela origem; o importador Rust recusa com
+  `FPS_OUT_OF_RANGE` (asserido, não ignorado).
+- **Artefatos da origem**: 14 sondas em que `Math.floor(s·rate)` não é o piso exato; o Rust (racional
+  exato) deve igualar o piso exato nelas e a origem no resto. O número é fixado no teste.
+- **Matriz mundo da câmera**: a origem a calcula no método privado `ThreeSceneRuntime.drawEditFrame`
+  (precisa de WebGL); a fixture usa `PerspectiveCamera.lookAt` do `three` fixo sobre a pose avaliada
+  pela origem (`source: "three-library"`).
+- **Evidência executada (Node, sem Cargo)**: `extended.mjs verify` passa (47 casos, a origem a
+  `d6adac15…`); `oracle-extended.spec.mjs` 28/28 e `oracle.spec.mjs` 21/21 (49/49); o `verify` do corpus
+  base segue passando byte a byte. O teste Rust foi validado depois pelo coordenador (15/15 via Cargo --locked).
+
+F032 permanece parcial pelos limites declarados, com tempo racional e fronteiras de junção comparados.
+A matriz e o backlog registram o estado integrado; não há gate Rust pendente para essa fatia.
+Relatório: [`docs/migration/foundation-k-report.md`](../migration/foundation-k-report.md).
+
+Validação da integração K pelo coordenador: `node --test scripts/migration-oracle/oracle.spec.mjs scripts/migration-oracle/oracle-extended.spec.mjs` 49/49; ambos os verify passaram contra a origem. `directed_scene_oracle_extended` passou 15/15 via Cargo com `--locked`. Mantidas as divergências declaradas e a distinção Three isolado/runtime.
+
+Proteção do corpus base na revisão do PR #2: caminhos canônicos e ancestrais existentes, aliases dos diretórios/arquivos de saída e identidade de metadados por hard link são conferidos antes de escrever. Quatro testes novos usam cópias temporárias do runner/base; 49 testes Node passaram. O manifest estendido foi regenerado só para atualizar hashes do gerador; os 55 casos base ficaram intactos.

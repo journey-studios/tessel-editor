@@ -91,7 +91,7 @@ pub fn scope_json() -> Value {
         "deferred_fields": DEFERRED_FIELDS,
         "deferred_rules": DEFERRED_RULES,
         "not_evaluated": [
-            "`scene.*` answers camera queries only: the state of the nodes at a frame is not exposed through it",
+            "`scene.evaluate` answers camera and nodes; lighting, weather, effects, rigs and paths have no state (the answer lists them in `unevaluated`)",
             "the families listed in `deferred_in_use` (lighting, weather, rigs...) have no state anywhere",
         ],
         "not_enabled": [

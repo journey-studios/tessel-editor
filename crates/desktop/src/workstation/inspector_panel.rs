@@ -16,10 +16,10 @@ use gpui_kit::*;
 
 use super::Workstation;
 use super::controls::{
-    TabSpec, TabStyle, command_tabs, glyph, keys, property_row, quantize, tool_button,
-    value_after_key,
+    TabSpec, TabStyle, command_tabs, glyph, property_row, quantize, tool_button, value_after_key,
 };
 use super::media::demo_image;
+use super::slider_gesture::{slider_key_up, slider_keys, slider_press};
 use super::tokens::Tokens;
 use crate::state::inspector::{
     InspectorTab, PropertyDef, PropertyKind, SECTIONS, SectionDef, Value, section_properties,
@@ -76,23 +76,22 @@ impl Workstation {
                         state.update(cx, |slider, cx| slider.set_value(target, window, cx));
                     }
                     // The Kit slider has no keyboard support, so this wrapper
-                    // keeps arrow, page and home/end stepping.
+                    // keeps arrow, page and home/end stepping. Pointer and keys both
+                    // run as ONE gesture (one undo entry) via `slider_gesture`.
                     div()
                         .id(SharedString::from(format!("slider-{id}")))
                         .relative()
                         .child(self.geometry.probe(format!("control:{id}")))
                         .focusable()
                         .flex_1()
-                        .on_key_down(keys(cx, move |key, shift| {
-                            if !enabled {
-                                return None;
-                            }
-                            value_after_key(key, shift, current, min, max, step).map(|next| {
-                                Command::SetProperty {
-                                    property: id.to_string(),
-                                    value: Raw::Number(quantize(next, min, step)),
-                                }
-                            })
+                        // Capture phase: the Kit thumb stops its own mouse-down.
+                        .capture_any_mouse_down(slider_press(cx))
+                        .on_key_down(slider_keys(cx, id, enabled, move |key, shift| {
+                            value_after_key(key, shift, current, min, max, step)
+                                .map(|next| quantize(next, min, step))
+                        }))
+                        .on_key_up(slider_key_up(cx, id, move |key| {
+                            value_after_key(key, false, current, min, max, step).is_some()
                         }))
                         .child(
                             Slider::new(&state)

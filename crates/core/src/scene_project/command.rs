@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use serde_json::Value;
 
 use crate::scene_edit::{EditOp, PropertyRef};
+use crate::scene_interaction::{FrameAt, GestureCommand, SelectMode};
 use crate::time::Ratio;
 
 /// Where the bytes of a bundle come from. It is read and validated when the command *executes*,
@@ -72,6 +73,29 @@ pub enum SceneCommand {
         scene: String,
         at: CameraAt,
     },
+    /// F039: the entity tree of an attached scene (the whole bundle, or the subtree at `root`).
+    Tree {
+        scene: String,
+        root: Option<String>,
+        depth: Option<usize>,
+    },
+    /// F039: the whole evaluated frame (camera, nodes, what is left unevaluated). With a
+    /// `gesture`, the frame of that gesture's candidate instead of the document's scene.
+    Evaluate {
+        scene: String,
+        at: FrameAt,
+        gesture: Option<String>,
+    },
+    /// F039: selects entities by address. `scene` is only optional for `SelectMode::Clear`.
+    Select {
+        scene: Option<String>,
+        entities: Vec<String>,
+        mode: SelectMode,
+    },
+    /// F039: the current selection (pruned of what no longer exists).
+    Selection,
+    /// F039: the begin/update/commit/cancel cycle.
+    Gesture(GestureCommand),
 }
 
 impl SceneCommand {
@@ -82,6 +106,11 @@ impl SceneCommand {
             Self::Attach { .. } => Some("Attach scene"),
             Self::Detach { .. } => Some("Remove scene"),
             Self::Edit { dry_run: false, .. } => Some("Edit scene"),
+            // The label of a gesture commit is the one of `scene.edit` on purpose: a commit IS
+            // that edit, so the history shows the same entry for either. Every outcome of a
+            // commit carries `changed`, and `EditorState::execute` records nothing when it is
+            // false (empty gesture, net no-op) or when the commit is rejected.
+            Self::Gesture(GestureCommand::Commit { .. }) => Some("Edit scene"),
             _ => None,
         }
     }

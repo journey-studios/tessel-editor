@@ -1,5 +1,9 @@
 # Pendências de otimização de timing e apresentação
 
+> Novas atribuições e mudanças de estado ficam no [backlog compartilhado](backlog.md),
+> BL031–BL035 e BL043–BL045. As tabelas abaixo preservam o histórico técnico de OPT01–OPT10.
+
+
 Estado consolidado em 2026-11-05 (atualizado após a execução de [viewport-performance-next-report.md](viewport-performance-next-report.md)). Este é o índice das próximas melhorias e validações;
 **nenhum item desta lista deve ser tratado como implementado apenas por estar documentado**.
 Plano de execução aprovado: [próximas otimizações](viewport-performance-next-plan.md).

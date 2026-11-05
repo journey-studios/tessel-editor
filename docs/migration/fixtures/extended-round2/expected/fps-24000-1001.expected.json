@@ -1,0 +1,3004 @@
+{
+  "formatVersion": 1,
+  "case": "fps-24000-1001",
+  "family": "fps",
+  "kind": "valid",
+  "bundle": "bundles/fps-24000-1001.bundle.json",
+  "bundleSha256": "d307efce515d7518c25a4e8f008f024e519bd88103d4e24c6e81ff6218e84926",
+  "validation": {
+    "schema": {
+      "success": true,
+      "issues": []
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": [],
+    "editJoins": [],
+    "finalize": {
+      "ok": true
+    },
+    "accepted": true
+  },
+  "probes": {
+    "editFrames": [
+      -1,
+      0,
+      1,
+      22,
+      23,
+      24,
+      25,
+      46,
+      47,
+      48,
+      49
+    ],
+    "clipFrames": {
+      "cam-fps": [
+        -1,
+        0,
+        1,
+        24,
+        48,
+        49,
+        50,
+        54
+      ]
+    }
+  },
+  "evaluation": {
+    "parentLinks": {
+      "scene-a": {
+        "root": {
+          "kind": "root"
+        },
+        "backdrop": {
+          "kind": "parent",
+          "parentId": "root"
+        },
+        "figure": {
+          "kind": "parent",
+          "parentId": "root"
+        }
+      }
+    },
+    "editFrames": [
+      {
+        "editFrame": -1,
+        "ok": false,
+        "error": "editFrame -1 out of range [0, 49)"
+      },
+      {
+        "editFrame": 0,
+        "ok": true,
+        "state": {
+          "editFrame": 0,
+          "instanceId": "inst-a",
+          "instanceFrame": 0,
+          "cameraClipId": "cam-fps",
+          "cameraClipFrame": 0,
+          "camera": {
+            "position": {
+              "x": 0,
+              "y": 1.5,
+              "z": 10
+            },
+            "target": {
+              "x": 0,
+              "y": 1.5,
+              "z": 0
+            },
+            "fovDeg": 45,
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": -0.020833333333333925
+            },
+            "fovVelocityDegPerFrame": 0
+          },
+          "nodes": [
+            {
+              "nodeId": "root",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "backdrop",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": -2
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "figure",
+              "localPosition": {
+                "x": 0.5,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 1
+            }
+          ],
+          "performanceOverrides": [
+            {
+              "nodeId": "figure",
+              "property": "localRotation",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              }
+            },
+            {
+              "nodeId": "backdrop",
+              "property": "localPosition",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              }
+            }
+          ]
+        },
+        "worldMatrices": {
+          "root": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "backdrop": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            -2,
+            1
+          ],
+          "figure": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0.5,
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      {
+        "editFrame": 1,
+        "ok": true,
+        "state": {
+          "editFrame": 1,
+          "instanceId": "inst-a",
+          "instanceFrame": 1,
+          "cameraClipId": "cam-fps",
+          "cameraClipFrame": 1,
+          "camera": {
+            "position": {
+              "x": 0,
+              "y": 1.5,
+              "z": 9.979166666666666
+            },
+            "target": {
+              "x": 0,
+              "y": 1.5,
+              "z": -0.020833333333333332
+            },
+            "fovDeg": 45,
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": -0.02083333333333215
+            },
+            "fovVelocityDegPerFrame": 0
+          },
+          "nodes": [
+            {
+              "nodeId": "root",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "backdrop",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": -2
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "figure",
+              "localPosition": {
+                "x": 0.5,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 3.882285676537811
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 1
+            }
+          ],
+          "performanceOverrides": [
+            {
+              "nodeId": "figure",
+              "property": "localRotation",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 3.882285676537811
+              }
+            },
+            {
+              "nodeId": "backdrop",
+              "property": "localPosition",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              }
+            }
+          ]
+        },
+        "worldMatrices": {
+          "root": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "backdrop": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            -2,
+            1
+          ],
+          "figure": [
+            0.9977052596616622,
+            0.0677068301093402,
+            0,
+            0,
+            -0.0677068301093402,
+            0.9977052596616622,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0.5,
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      {
+        "editFrame": 22,
+        "ok": true,
+        "state": {
+          "editFrame": 22,
+          "instanceId": "inst-a",
+          "instanceFrame": 22,
+          "cameraClipId": "cam-fps",
+          "cameraClipFrame": 22,
+          "camera": {
+            "position": {
+              "x": 0,
+              "y": 1.5,
+              "z": 9.541666666666666
+            },
+            "target": {
+              "x": 0,
+              "y": 1.5,
+              "z": -0.4583333333333333
+            },
+            "fovDeg": 45,
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": -0.02083333333333215
+            },
+            "fovVelocityDegPerFrame": 0
+          },
+          "nodes": [
+            {
+              "nodeId": "root",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "backdrop",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": -2
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "figure",
+              "localPosition": {
+                "x": 0.5,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": -7.500000000000007
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 1
+            }
+          ],
+          "performanceOverrides": [
+            {
+              "nodeId": "figure",
+              "property": "localRotation",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": -7.500000000000007
+              }
+            },
+            {
+              "nodeId": "backdrop",
+              "property": "localPosition",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              }
+            }
+          ]
+        },
+        "worldMatrices": {
+          "root": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "backdrop": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            -2,
+            1
+          ],
+          "figure": [
+            0.9914448613738104,
+            -0.1305261922200517,
+            0,
+            0,
+            0.1305261922200517,
+            0.9914448613738104,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0.5,
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      {
+        "editFrame": 23,
+        "ok": true,
+        "state": {
+          "editFrame": 23,
+          "instanceId": "inst-a",
+          "instanceFrame": 23,
+          "cameraClipId": "cam-fps",
+          "cameraClipFrame": 23,
+          "camera": {
+            "position": {
+              "x": 0,
+              "y": 1.5,
+              "z": 9.520833333333334
+            },
+            "target": {
+              "x": 0,
+              "y": 1.5,
+              "z": -0.4791666666666667
+            },
+            "fovDeg": 45,
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": -0.020833333333333925
+            },
+            "fovVelocityDegPerFrame": 0
+          },
+          "nodes": [
+            {
+              "nodeId": "root",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "backdrop",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": -2
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "figure",
+              "localPosition": {
+                "x": 0.5,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": -3.88228567653781
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 1
+            }
+          ],
+          "performanceOverrides": [
+            {
+              "nodeId": "figure",
+              "property": "localRotation",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": -3.88228567653781
+              }
+            },
+            {
+              "nodeId": "backdrop",
+              "property": "localPosition",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              }
+            }
+          ]
+        },
+        "worldMatrices": {
+          "root": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "backdrop": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            -2,
+            1
+          ],
+          "figure": [
+            0.9977052596616622,
+            -0.06770683010934019,
+            0,
+            0,
+            0.06770683010934019,
+            0.9977052596616622,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0.5,
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      {
+        "editFrame": 24,
+        "ok": true,
+        "state": {
+          "editFrame": 24,
+          "instanceId": "inst-a",
+          "instanceFrame": 24,
+          "cameraClipId": "cam-fps",
+          "cameraClipFrame": 24,
+          "camera": {
+            "position": {
+              "x": 0,
+              "y": 1.5,
+              "z": 9.5
+            },
+            "target": {
+              "x": 0,
+              "y": 1.5,
+              "z": -0.5
+            },
+            "fovDeg": 45,
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": -0.020833333333333925
+            },
+            "fovVelocityDegPerFrame": 0
+          },
+          "nodes": [
+            {
+              "nodeId": "root",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "backdrop",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": -2
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "figure",
+              "localPosition": {
+                "x": 0.5,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 1
+            }
+          ],
+          "performanceOverrides": [
+            {
+              "nodeId": "figure",
+              "property": "localRotation",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              }
+            },
+            {
+              "nodeId": "backdrop",
+              "property": "localPosition",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              }
+            }
+          ]
+        },
+        "worldMatrices": {
+          "root": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "backdrop": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            -2,
+            1
+          ],
+          "figure": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0.5,
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      {
+        "editFrame": 25,
+        "ok": true,
+        "state": {
+          "editFrame": 25,
+          "instanceId": "inst-a",
+          "instanceFrame": 25,
+          "cameraClipId": "cam-fps",
+          "cameraClipFrame": 25,
+          "camera": {
+            "position": {
+              "x": 0,
+              "y": 1.5,
+              "z": 9.479166666666666
+            },
+            "target": {
+              "x": 0,
+              "y": 1.5,
+              "z": -0.5208333333333334
+            },
+            "fovDeg": 45,
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": -0.02083333333333215
+            },
+            "fovVelocityDegPerFrame": 0
+          },
+          "nodes": [
+            {
+              "nodeId": "root",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "backdrop",
+              "localPosition": {
+                "x": 0.020833333333333332,
+                "y": 0,
+                "z": -2
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "figure",
+              "localPosition": {
+                "x": 0.5,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 3.882285676537811
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 1
+            }
+          ],
+          "performanceOverrides": [
+            {
+              "nodeId": "figure",
+              "property": "localRotation",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 3.882285676537811
+              }
+            },
+            {
+              "nodeId": "backdrop",
+              "property": "localPosition",
+              "value": {
+                "x": 0.020833333333333332,
+                "y": 0,
+                "z": 0
+              }
+            }
+          ]
+        },
+        "worldMatrices": {
+          "root": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "backdrop": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0.020833333333333332,
+            0,
+            -2,
+            1
+          ],
+          "figure": [
+            0.9977052596616622,
+            0.0677068301093402,
+            0,
+            0,
+            -0.0677068301093402,
+            0.9977052596616622,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0.5,
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      {
+        "editFrame": 46,
+        "ok": true,
+        "state": {
+          "editFrame": 46,
+          "instanceId": "inst-a",
+          "instanceFrame": 46,
+          "cameraClipId": "cam-fps",
+          "cameraClipFrame": 46,
+          "camera": {
+            "position": {
+              "x": 0,
+              "y": 1.5,
+              "z": 9.041666666666666
+            },
+            "target": {
+              "x": 0,
+              "y": 1.5,
+              "z": -0.9583333333333334
+            },
+            "fovDeg": 45,
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": -0.02083333333333215
+            },
+            "fovVelocityDegPerFrame": 0
+          },
+          "nodes": [
+            {
+              "nodeId": "root",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "backdrop",
+              "localPosition": {
+                "x": 0.4583333333333333,
+                "y": 0,
+                "z": -2
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "figure",
+              "localPosition": {
+                "x": 0.5,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": -7.500000000000007
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 1
+            }
+          ],
+          "performanceOverrides": [
+            {
+              "nodeId": "figure",
+              "property": "localRotation",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": -7.500000000000007
+              }
+            },
+            {
+              "nodeId": "backdrop",
+              "property": "localPosition",
+              "value": {
+                "x": 0.4583333333333333,
+                "y": 0,
+                "z": 0
+              }
+            }
+          ]
+        },
+        "worldMatrices": {
+          "root": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "backdrop": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0.4583333333333333,
+            0,
+            -2,
+            1
+          ],
+          "figure": [
+            0.9914448613738104,
+            -0.1305261922200517,
+            0,
+            0,
+            0.1305261922200517,
+            0.9914448613738104,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0.5,
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      {
+        "editFrame": 47,
+        "ok": true,
+        "state": {
+          "editFrame": 47,
+          "instanceId": "inst-a",
+          "instanceFrame": 47,
+          "cameraClipId": "cam-fps",
+          "cameraClipFrame": 47,
+          "camera": {
+            "position": {
+              "x": 0,
+              "y": 1.5,
+              "z": 9.020833333333334
+            },
+            "target": {
+              "x": 0,
+              "y": 1.5,
+              "z": -0.9791666666666666
+            },
+            "fovDeg": 45,
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": -0.020833333333333925
+            },
+            "fovVelocityDegPerFrame": 0
+          },
+          "nodes": [
+            {
+              "nodeId": "root",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "backdrop",
+              "localPosition": {
+                "x": 0.4791666666666667,
+                "y": 0,
+                "z": -2
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "figure",
+              "localPosition": {
+                "x": 0.5,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": -3.88228567653781
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 1
+            }
+          ],
+          "performanceOverrides": [
+            {
+              "nodeId": "figure",
+              "property": "localRotation",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": -3.88228567653781
+              }
+            },
+            {
+              "nodeId": "backdrop",
+              "property": "localPosition",
+              "value": {
+                "x": 0.4791666666666667,
+                "y": 0,
+                "z": 0
+              }
+            }
+          ]
+        },
+        "worldMatrices": {
+          "root": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "backdrop": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0.4791666666666667,
+            0,
+            -2,
+            1
+          ],
+          "figure": [
+            0.9977052596616622,
+            -0.06770683010934019,
+            0,
+            0,
+            0.06770683010934019,
+            0.9977052596616622,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0.5,
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      {
+        "editFrame": 48,
+        "ok": true,
+        "state": {
+          "editFrame": 48,
+          "instanceId": "inst-a",
+          "instanceFrame": 48,
+          "cameraClipId": "cam-fps",
+          "cameraClipFrame": 48,
+          "camera": {
+            "position": {
+              "x": 0,
+              "y": 1.5,
+              "z": 9
+            },
+            "target": {
+              "x": 0,
+              "y": 1.5,
+              "z": -1
+            },
+            "fovDeg": 45,
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "fovVelocityDegPerFrame": 0
+          },
+          "nodes": [
+            {
+              "nodeId": "root",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "backdrop",
+              "localPosition": {
+                "x": 0.5,
+                "y": 0,
+                "z": -2
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "figure",
+              "localPosition": {
+                "x": 0.5,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 1
+            }
+          ],
+          "performanceOverrides": [
+            {
+              "nodeId": "figure",
+              "property": "localRotation",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              }
+            },
+            {
+              "nodeId": "backdrop",
+              "property": "localPosition",
+              "value": {
+                "x": 0.5,
+                "y": 0,
+                "z": 0
+              }
+            }
+          ]
+        },
+        "worldMatrices": {
+          "root": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "backdrop": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0.5,
+            0,
+            -2,
+            1
+          ],
+          "figure": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0.5,
+            0,
+            0,
+            1
+          ]
+        }
+      },
+      {
+        "editFrame": 49,
+        "ok": false,
+        "error": "editFrame 49 out of range [0, 49)"
+      }
+    ],
+    "cameraClips": [
+      {
+        "clipId": "cam-fps",
+        "durationFrames": 49,
+        "mainTrackPoses": [
+          {
+            "start": {
+              "position": {
+                "x": 0,
+                "y": 1.5,
+                "z": 10
+              },
+              "target": {
+                "x": 0,
+                "y": 1.5,
+                "z": 0
+              },
+              "fovDeg": 45
+            },
+            "end": {
+              "position": {
+                "x": 0,
+                "y": 1.5,
+                "z": 9
+              },
+              "target": {
+                "x": 0,
+                "y": 1.5,
+                "z": -1
+              },
+              "fovDeg": 45
+            }
+          }
+        ],
+        "frames": [
+          {
+            "clipFrame": -1,
+            "ok": false,
+            "error": "clipFrame -1 is before the start of clip cam-fps"
+          },
+          {
+            "clipFrame": 0,
+            "ok": true,
+            "camera": {
+              "position": {
+                "x": 0,
+                "y": 1.5,
+                "z": 10
+              },
+              "target": {
+                "x": 0,
+                "y": 1.5,
+                "z": 0
+              },
+              "fovDeg": 45,
+              "velocity": {
+                "x": 0,
+                "y": 0,
+                "z": -0.020833333333333925
+              },
+              "fovVelocityDegPerFrame": 0
+            }
+          },
+          {
+            "clipFrame": 1,
+            "ok": true,
+            "camera": {
+              "position": {
+                "x": 0,
+                "y": 1.5,
+                "z": 9.979166666666666
+              },
+              "target": {
+                "x": 0,
+                "y": 1.5,
+                "z": -0.020833333333333332
+              },
+              "fovDeg": 45,
+              "velocity": {
+                "x": 0,
+                "y": 0,
+                "z": -0.02083333333333215
+              },
+              "fovVelocityDegPerFrame": 0
+            }
+          },
+          {
+            "clipFrame": 24,
+            "ok": true,
+            "camera": {
+              "position": {
+                "x": 0,
+                "y": 1.5,
+                "z": 9.5
+              },
+              "target": {
+                "x": 0,
+                "y": 1.5,
+                "z": -0.5
+              },
+              "fovDeg": 45,
+              "velocity": {
+                "x": 0,
+                "y": 0,
+                "z": -0.020833333333333925
+              },
+              "fovVelocityDegPerFrame": 0
+            }
+          },
+          {
+            "clipFrame": 48,
+            "ok": true,
+            "camera": {
+              "position": {
+                "x": 0,
+                "y": 1.5,
+                "z": 9
+              },
+              "target": {
+                "x": 0,
+                "y": 1.5,
+                "z": -1
+              },
+              "fovDeg": 45,
+              "velocity": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "fovVelocityDegPerFrame": 0
+            }
+          },
+          {
+            "clipFrame": 49,
+            "ok": true,
+            "camera": {
+              "position": {
+                "x": 0,
+                "y": 1.5,
+                "z": 9
+              },
+              "target": {
+                "x": 0,
+                "y": 1.5,
+                "z": -1
+              },
+              "fovDeg": 45,
+              "velocity": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "fovVelocityDegPerFrame": 0
+            }
+          },
+          {
+            "clipFrame": 50,
+            "ok": true,
+            "camera": {
+              "position": {
+                "x": 0,
+                "y": 1.5,
+                "z": 9
+              },
+              "target": {
+                "x": 0,
+                "y": 1.5,
+                "z": -1
+              },
+              "fovDeg": 45,
+              "velocity": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "fovVelocityDegPerFrame": 0
+            }
+          },
+          {
+            "clipFrame": 54,
+            "ok": true,
+            "camera": {
+              "position": {
+                "x": 0,
+                "y": 1.5,
+                "z": 9
+              },
+              "target": {
+                "x": 0,
+                "y": 1.5,
+                "z": -1
+              },
+              "fovDeg": 45,
+              "velocity": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "fovVelocityDegPerFrame": 0
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "joins": [
+    {
+      "previousShotId": "shot-1",
+      "nextShotId": "shot-2",
+      "cameraClipId": "cam-fps",
+      "end": {
+        "clipFrame": 23,
+        "ok": true,
+        "camera": {
+          "position": {
+            "x": 0,
+            "y": 1.5,
+            "z": 9.520833333333334
+          },
+          "target": {
+            "x": 0,
+            "y": 1.5,
+            "z": -0.4791666666666667
+          },
+          "fovDeg": 45,
+          "velocity": {
+            "x": 0,
+            "y": 0,
+            "z": -0.020833333333333925
+          },
+          "fovVelocityDegPerFrame": 0
+        }
+      },
+      "start": {
+        "clipFrame": 24,
+        "ok": true,
+        "camera": {
+          "position": {
+            "x": 0,
+            "y": 1.5,
+            "z": 9.5
+          },
+          "target": {
+            "x": 0,
+            "y": 1.5,
+            "z": -0.5
+          },
+          "fovDeg": 45,
+          "velocity": {
+            "x": 0,
+            "y": 0,
+            "z": -0.020833333333333925
+          },
+          "fovVelocityDegPerFrame": 0
+        }
+      }
+    }
+  ],
+  "cameraWorld": [
+    {
+      "editFrame": -1,
+      "ok": false
+    },
+    {
+      "editFrame": 0,
+      "ok": true,
+      "source": "three-library",
+      "matrix": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1.5,
+        10,
+        1
+      ]
+    },
+    {
+      "editFrame": 1,
+      "ok": true,
+      "source": "three-library",
+      "matrix": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1.5,
+        9.979166666666666,
+        1
+      ]
+    },
+    {
+      "editFrame": 22,
+      "ok": true,
+      "source": "three-library",
+      "matrix": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1.5,
+        9.541666666666666,
+        1
+      ]
+    },
+    {
+      "editFrame": 23,
+      "ok": true,
+      "source": "three-library",
+      "matrix": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1.5,
+        9.520833333333334,
+        1
+      ]
+    },
+    {
+      "editFrame": 24,
+      "ok": true,
+      "source": "three-library",
+      "matrix": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1.5,
+        9.5,
+        1
+      ]
+    },
+    {
+      "editFrame": 25,
+      "ok": true,
+      "source": "three-library",
+      "matrix": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1.5,
+        9.479166666666666,
+        1
+      ]
+    },
+    {
+      "editFrame": 46,
+      "ok": true,
+      "source": "three-library",
+      "matrix": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1.5,
+        9.041666666666666,
+        1
+      ]
+    },
+    {
+      "editFrame": 47,
+      "ok": true,
+      "source": "three-library",
+      "matrix": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1.5,
+        9.020833333333334,
+        1
+      ]
+    },
+    {
+      "editFrame": 48,
+      "ok": true,
+      "source": "three-library",
+      "matrix": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        1.5,
+        9,
+        1
+      ]
+    },
+    {
+      "editFrame": 49,
+      "ok": false
+    }
+  ],
+  "orders": null,
+  "time": {
+    "fps": {
+      "numerator": 24000,
+      "denominator": 1001
+    },
+    "editDurationFrames": 49,
+    "rate": 23.976023976023978,
+    "timelineDurationSeconds": 2.043708333333333,
+    "maxEditSeconds": 2.002,
+    "frames": [
+      {
+        "frame": 0,
+        "seconds": 0,
+        "editSeconds": 0
+      },
+      {
+        "frame": 1,
+        "seconds": 0.04170833333333333,
+        "editSeconds": 0.04170833333333333
+      },
+      {
+        "frame": 2,
+        "seconds": 0.08341666666666667,
+        "editSeconds": 0.08341666666666667
+      },
+      {
+        "frame": 23,
+        "seconds": 0.9592916666666667,
+        "editSeconds": 0.9592916666666667
+      },
+      {
+        "frame": 24,
+        "seconds": 1.001,
+        "editSeconds": 1.001
+      },
+      {
+        "frame": 25,
+        "seconds": 1.0427083333333333,
+        "editSeconds": 1.0427083333333333
+      },
+      {
+        "frame": 47,
+        "seconds": 1.9602916666666665,
+        "editSeconds": 1.9602916666666665
+      },
+      {
+        "frame": 48,
+        "seconds": 2.002,
+        "editSeconds": 2.002
+      },
+      {
+        "frame": 49,
+        "seconds": 2.043708333333333,
+        "editSeconds": 2.043708333333333
+      },
+      {
+        "frame": 50,
+        "seconds": 2.0854166666666667,
+        "editSeconds": 2.0854166666666667
+      },
+      {
+        "frame": 1000,
+        "seconds": 41.70833333333333,
+        "editSeconds": 41.70833333333333
+      },
+      {
+        "frame": 30000,
+        "seconds": 1251.25,
+        "editSeconds": 1251.25
+      },
+      {
+        "frame": 100000,
+        "seconds": 4170.833333333333,
+        "editSeconds": 4170.833333333333
+      }
+    ],
+    "seconds": [
+      {
+        "label": "boundary",
+        "frame": 0,
+        "exact": {
+          "num": "0",
+          "den": "24000"
+        },
+        "seconds": 0,
+        "floorFrame": 0,
+        "clampedFrame": 0,
+        "clampedSeconds": 0,
+        "exactFloorFrame": 0,
+        "originMatchesExact": true
+      },
+      {
+        "label": "minus-1us",
+        "frame": 0,
+        "exact": {
+          "num": "-24000",
+          "den": "24000000000"
+        },
+        "seconds": -0.000001,
+        "floorFrame": -1,
+        "clampedFrame": 0,
+        "clampedSeconds": 0,
+        "exactFloorFrame": -1,
+        "originMatchesExact": true
+      },
+      {
+        "label": "mid-frame",
+        "frame": 0,
+        "exact": {
+          "num": "1001",
+          "den": "48000"
+        },
+        "seconds": 0.020854166666666667,
+        "floorFrame": 0,
+        "clampedFrame": 0,
+        "clampedSeconds": 0.020854166666666667,
+        "exactFloorFrame": 0,
+        "originMatchesExact": true
+      },
+      {
+        "label": "boundary",
+        "frame": 1,
+        "exact": {
+          "num": "1001",
+          "den": "24000"
+        },
+        "seconds": 0.04170833333333333,
+        "floorFrame": 1,
+        "clampedFrame": 1,
+        "clampedSeconds": 0.04170833333333333,
+        "exactFloorFrame": 1,
+        "originMatchesExact": true
+      },
+      {
+        "label": "minus-1us",
+        "frame": 1,
+        "exact": {
+          "num": "1000976000",
+          "den": "24000000000"
+        },
+        "seconds": 0.04170733333333333,
+        "floorFrame": 0,
+        "clampedFrame": 0,
+        "clampedSeconds": 0.04170733333333333,
+        "exactFloorFrame": 0,
+        "originMatchesExact": true
+      },
+      {
+        "label": "mid-frame",
+        "frame": 1,
+        "exact": {
+          "num": "3003",
+          "den": "48000"
+        },
+        "seconds": 0.0625625,
+        "floorFrame": 1,
+        "clampedFrame": 1,
+        "clampedSeconds": 0.0625625,
+        "exactFloorFrame": 1,
+        "originMatchesExact": true
+      },
+      {
+        "label": "ulp-below",
+        "frame": 1,
+        "exact": {
+          "num": "6010804302663821",
+          "den": "144115188075855872"
+        },
+        "seconds": 0.041708333333333326,
+        "floorFrame": 0,
+        "clampedFrame": 0,
+        "clampedSeconds": 0.041708333333333326,
+        "exactFloorFrame": 0,
+        "originMatchesExact": true
+      },
+      {
+        "label": "ulp-above",
+        "frame": 1,
+        "exact": {
+          "num": "6010804302663823",
+          "den": "144115188075855872"
+        },
+        "seconds": 0.04170833333333334,
+        "floorFrame": 1,
+        "clampedFrame": 1,
+        "clampedSeconds": 0.04170833333333334,
+        "exactFloorFrame": 1,
+        "originMatchesExact": true
+      },
+      {
+        "label": "boundary",
+        "frame": 2,
+        "exact": {
+          "num": "2002",
+          "den": "24000"
+        },
+        "seconds": 0.08341666666666667,
+        "floorFrame": 2,
+        "clampedFrame": 2,
+        "clampedSeconds": 0.08341666666666667,
+        "exactFloorFrame": 2,
+        "originMatchesExact": true
+      },
+      {
+        "label": "minus-1us",
+        "frame": 2,
+        "exact": {
+          "num": "2001976000",
+          "den": "24000000000"
+        },
+        "seconds": 0.08341566666666667,
+        "floorFrame": 1,
+        "clampedFrame": 1,
+        "clampedSeconds": 0.08341566666666667,
+        "exactFloorFrame": 1,
+        "originMatchesExact": true
+      },
+      {
+        "label": "mid-frame",
+        "frame": 2,
+        "exact": {
+          "num": "5005",
+          "den": "48000"
+        },
+        "seconds": 0.10427083333333333,
+        "floorFrame": 2,
+        "clampedFrame": 2,
+        "clampedSeconds": 0.10427083333333333,
+        "exactFloorFrame": 2,
+        "originMatchesExact": true
+      },
+      {
+        "label": "ulp-below",
+        "frame": 2,
+        "exact": {
+          "num": "6010804302663821",
+          "den": "72057594037927936"
+        },
+        "seconds": 0.08341666666666665,
+        "floorFrame": 1,
+        "clampedFrame": 1,
+        "clampedSeconds": 0.08341666666666665,
+        "exactFloorFrame": 1,
+        "originMatchesExact": true
+      },
+      {
+        "label": "ulp-above",
+        "frame": 2,
+        "exact": {
+          "num": "6010804302663823",
+          "den": "72057594037927936"
+        },
+        "seconds": 0.08341666666666668,
+        "floorFrame": 2,
+        "clampedFrame": 2,
+        "clampedSeconds": 0.08341666666666668,
+        "exactFloorFrame": 2,
+        "originMatchesExact": true
+      },
+      {
+        "label": "boundary",
+        "frame": 23,
+        "exact": {
+          "num": "23023",
+          "den": "24000"
+        },
+        "seconds": 0.9592916666666667,
+        "floorFrame": 23,
+        "clampedFrame": 23,
+        "clampedSeconds": 0.9592916666666667,
+        "exactFloorFrame": 23,
+        "originMatchesExact": true
+      },
+      {
+        "label": "minus-1us",
+        "frame": 23,
+        "exact": {
+          "num": "23022976000",
+          "den": "24000000000"
+        },
+        "seconds": 0.9592906666666666,
+        "floorFrame": 22,
+        "clampedFrame": 22,
+        "clampedSeconds": 0.9592906666666666,
+        "exactFloorFrame": 22,
+        "originMatchesExact": true
+      },
+      {
+        "label": "mid-frame",
+        "frame": 23,
+        "exact": {
+          "num": "47047",
+          "den": "48000"
+        },
+        "seconds": 0.9801458333333334,
+        "floorFrame": 23,
+        "clampedFrame": 23,
+        "clampedSeconds": 0.9801458333333334,
+        "exactFloorFrame": 23,
+        "originMatchesExact": true
+      },
+      {
+        "label": "ulp-below",
+        "frame": 23,
+        "exact": {
+          "num": "8640531185079243",
+          "den": "9007199254740992"
+        },
+        "seconds": 0.9592916666666665,
+        "floorFrame": 23,
+        "clampedFrame": 23,
+        "clampedSeconds": 0.9592916666666665,
+        "exactFloorFrame": 22,
+        "originMatchesExact": false
+      },
+      {
+        "label": "ulp-above",
+        "frame": 23,
+        "exact": {
+          "num": "8640531185079245",
+          "den": "9007199254740992"
+        },
+        "seconds": 0.9592916666666668,
+        "floorFrame": 23,
+        "clampedFrame": 23,
+        "clampedSeconds": 0.9592916666666668,
+        "exactFloorFrame": 23,
+        "originMatchesExact": true
+      },
+      {
+        "label": "boundary",
+        "frame": 24,
+        "exact": {
+          "num": "24024",
+          "den": "24000"
+        },
+        "seconds": 1.001,
+        "floorFrame": 24,
+        "clampedFrame": 24,
+        "clampedSeconds": 1.001,
+        "exactFloorFrame": 24,
+        "originMatchesExact": true
+      },
+      {
+        "label": "minus-1us",
+        "frame": 24,
+        "exact": {
+          "num": "24023976000",
+          "den": "24000000000"
+        },
+        "seconds": 1.000999,
+        "floorFrame": 23,
+        "clampedFrame": 23,
+        "clampedSeconds": 1.000999,
+        "exactFloorFrame": 23,
+        "originMatchesExact": true
+      },
+      {
+        "label": "mid-frame",
+        "frame": 24,
+        "exact": {
+          "num": "49049",
+          "den": "48000"
+        },
+        "seconds": 1.0218541666666667,
+        "floorFrame": 24,
+        "clampedFrame": 24,
+        "clampedSeconds": 1.0218541666666667,
+        "exactFloorFrame": 24,
+        "originMatchesExact": true
+      },
+      {
+        "label": "ulp-below",
+        "frame": 24,
+        "exact": {
+          "num": "4508103226997865",
+          "den": "4503599627370496"
+        },
+        "seconds": 1.0009999999999997,
+        "floorFrame": 23,
+        "clampedFrame": 23,
+        "clampedSeconds": 1.0009999999999997,
+        "exactFloorFrame": 23,
+        "originMatchesExact": true
+      },
+      {
+        "label": "ulp-above",
+        "frame": 24,
+        "exact": {
+          "num": "4508103226997867",
+          "den": "4503599627370496"
+        },
+        "seconds": 1.0010000000000001,
+        "floorFrame": 24,
+        "clampedFrame": 24,
+        "clampedSeconds": 1.0010000000000001,
+        "exactFloorFrame": 24,
+        "originMatchesExact": true
+      },
+      {
+        "label": "boundary",
+        "frame": 25,
+        "exact": {
+          "num": "25025",
+          "den": "24000"
+        },
+        "seconds": 1.0427083333333333,
+        "floorFrame": 25,
+        "clampedFrame": 25,
+        "clampedSeconds": 1.0427083333333333,
+        "exactFloorFrame": 25,
+        "originMatchesExact": true
+      },
+      {
+        "label": "minus-1us",
+        "frame": 25,
+        "exact": {
+          "num": "25024976000",
+          "den": "24000000000"
+        },
+        "seconds": 1.0427073333333334,
+        "floorFrame": 24,
+        "clampedFrame": 24,
+        "clampedSeconds": 1.0427073333333334,
+        "exactFloorFrame": 24,
+        "originMatchesExact": true
+      },
+      {
+        "label": "mid-frame",
+        "frame": 25,
+        "exact": {
+          "num": "51051",
+          "den": "48000"
+        },
+        "seconds": 1.0635625,
+        "floorFrame": 25,
+        "clampedFrame": 25,
+        "clampedSeconds": 1.0635625,
+        "exactFloorFrame": 25,
+        "originMatchesExact": true
+      },
+      {
+        "label": "ulp-below",
+        "frame": 25,
+        "exact": {
+          "num": "2347970430728055",
+          "den": "2251799813685248"
+        },
+        "seconds": 1.0427083333333331,
+        "floorFrame": 24,
+        "clampedFrame": 24,
+        "clampedSeconds": 1.0427083333333331,
+        "exactFloorFrame": 24,
+        "originMatchesExact": true
+      },
+      {
+        "label": "ulp-above",
+        "frame": 25,
+        "exact": {
+          "num": "293496303841007",
+          "den": "281474976710656"
+        },
+        "seconds": 1.0427083333333336,
+        "floorFrame": 25,
+        "clampedFrame": 25,
+        "clampedSeconds": 1.0427083333333336,
+        "exactFloorFrame": 25,
+        "originMatchesExact": true
+      },
+      {
+        "label": "boundary",
+        "frame": 47,
+        "exact": {
+          "num": "47047",
+          "den": "24000"
+        },
+        "seconds": 1.9602916666666668,
+        "floorFrame": 47,
+        "clampedFrame": 47,
+        "clampedSeconds": 1.9602916666666668,
+        "exactFloorFrame": 47,
+        "originMatchesExact": true
+      },
+      {
+        "label": "minus-1us",
+        "frame": 47,
+        "exact": {
+          "num": "47046976000",
+          "den": "24000000000"
+        },
+        "seconds": 1.9602906666666666,
+        "floorFrame": 46,
+        "clampedFrame": 46,
+        "clampedSeconds": 1.9602906666666666,
+        "exactFloorFrame": 46,
+        "originMatchesExact": true
+      },
+      {
+        "label": "mid-frame",
+        "frame": 47,
+        "exact": {
+          "num": "95095",
+          "den": "48000"
+        },
+        "seconds": 1.9811458333333334,
+        "floorFrame": 47,
+        "clampedFrame": 47,
+        "clampedSeconds": 1.9811458333333334,
+        "exactFloorFrame": 47,
+        "originMatchesExact": true
+      },
+      {
+        "label": "ulp-below",
+        "frame": 47,
+        "exact": {
+          "num": "551773051221093",
+          "den": "281474976710656"
+        },
+        "seconds": 1.9602916666666665,
+        "floorFrame": 47,
+        "clampedFrame": 47,
+        "clampedSeconds": 1.9602916666666665,
+        "exactFloorFrame": 46,
+        "originMatchesExact": false
+      },
+      {
+        "label": "ulp-above",
+        "frame": 47,
+        "exact": {
+          "num": "4414184409768745",
+          "den": "2251799813685248"
+        },
+        "seconds": 1.960291666666667,
+        "floorFrame": 47,
+        "clampedFrame": 47,
+        "clampedSeconds": 1.960291666666667,
+        "exactFloorFrame": 47,
+        "originMatchesExact": true
+      },
+      {
+        "label": "boundary",
+        "frame": 48,
+        "exact": {
+          "num": "48048",
+          "den": "24000"
+        },
+        "seconds": 2.002,
+        "floorFrame": 48,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.002,
+        "exactFloorFrame": 48,
+        "originMatchesExact": true
+      },
+      {
+        "label": "minus-1us",
+        "frame": 48,
+        "exact": {
+          "num": "48047976000",
+          "den": "24000000000"
+        },
+        "seconds": 2.001999,
+        "floorFrame": 47,
+        "clampedFrame": 47,
+        "clampedSeconds": 2.001999,
+        "exactFloorFrame": 47,
+        "originMatchesExact": true
+      },
+      {
+        "label": "mid-frame",
+        "frame": 48,
+        "exact": {
+          "num": "97097",
+          "den": "48000"
+        },
+        "seconds": 2.022854166666667,
+        "floorFrame": 48,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.022854166666667,
+        "exactFloorFrame": 48,
+        "originMatchesExact": true
+      },
+      {
+        "label": "ulp-below",
+        "frame": 48,
+        "exact": {
+          "num": "4508103226997865",
+          "den": "2251799813685248"
+        },
+        "seconds": 2.0019999999999993,
+        "floorFrame": 47,
+        "clampedFrame": 47,
+        "clampedSeconds": 2.0019999999999993,
+        "exactFloorFrame": 47,
+        "originMatchesExact": true
+      },
+      {
+        "label": "ulp-above",
+        "frame": 48,
+        "exact": {
+          "num": "4508103226997867",
+          "den": "2251799813685248"
+        },
+        "seconds": 2.0020000000000002,
+        "floorFrame": 48,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.0020000000000002,
+        "exactFloorFrame": 48,
+        "originMatchesExact": true
+      },
+      {
+        "label": "boundary",
+        "frame": 49,
+        "exact": {
+          "num": "49049",
+          "den": "24000"
+        },
+        "seconds": 2.0437083333333335,
+        "floorFrame": 49,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 49,
+        "originMatchesExact": true
+      },
+      {
+        "label": "minus-1us",
+        "frame": 49,
+        "exact": {
+          "num": "49048976000",
+          "den": "24000000000"
+        },
+        "seconds": 2.0437073333333333,
+        "floorFrame": 48,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.0437073333333333,
+        "exactFloorFrame": 48,
+        "originMatchesExact": true
+      },
+      {
+        "label": "mid-frame",
+        "frame": 49,
+        "exact": {
+          "num": "99099",
+          "den": "48000"
+        },
+        "seconds": 2.0645625,
+        "floorFrame": 49,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 49,
+        "originMatchesExact": true
+      },
+      {
+        "label": "ulp-below",
+        "frame": 49,
+        "exact": {
+          "num": "1150505511056747",
+          "den": "562949953421312"
+        },
+        "seconds": 2.043708333333333,
+        "floorFrame": 48,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 48,
+        "originMatchesExact": true
+      },
+      {
+        "label": "ulp-above",
+        "frame": 49,
+        "exact": {
+          "num": "2301011022113495",
+          "den": "1125899906842624"
+        },
+        "seconds": 2.043708333333334,
+        "floorFrame": 49,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 49,
+        "originMatchesExact": true
+      },
+      {
+        "label": "boundary",
+        "frame": 50,
+        "exact": {
+          "num": "50050",
+          "den": "24000"
+        },
+        "seconds": 2.0854166666666667,
+        "floorFrame": 50,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 50,
+        "originMatchesExact": true
+      },
+      {
+        "label": "minus-1us",
+        "frame": 50,
+        "exact": {
+          "num": "50049976000",
+          "den": "24000000000"
+        },
+        "seconds": 2.0854156666666666,
+        "floorFrame": 49,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 49,
+        "originMatchesExact": true
+      },
+      {
+        "label": "mid-frame",
+        "frame": 50,
+        "exact": {
+          "num": "101101",
+          "den": "48000"
+        },
+        "seconds": 2.1062708333333333,
+        "floorFrame": 50,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 50,
+        "originMatchesExact": true
+      },
+      {
+        "label": "ulp-below",
+        "frame": 50,
+        "exact": {
+          "num": "2347970430728055",
+          "den": "1125899906842624"
+        },
+        "seconds": 2.0854166666666663,
+        "floorFrame": 49,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 49,
+        "originMatchesExact": true
+      },
+      {
+        "label": "ulp-above",
+        "frame": 50,
+        "exact": {
+          "num": "293496303841007",
+          "den": "140737488355328"
+        },
+        "seconds": 2.085416666666667,
+        "floorFrame": 50,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 50,
+        "originMatchesExact": true
+      },
+      {
+        "label": "boundary",
+        "frame": 1000,
+        "exact": {
+          "num": "1001000",
+          "den": "24000"
+        },
+        "seconds": 41.708333333333336,
+        "floorFrame": 1000,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 1000,
+        "originMatchesExact": true
+      },
+      {
+        "label": "minus-1us",
+        "frame": 1000,
+        "exact": {
+          "num": "1000999976000",
+          "den": "24000000000"
+        },
+        "seconds": 41.70833233333333,
+        "floorFrame": 999,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 999,
+        "originMatchesExact": true
+      },
+      {
+        "label": "mid-frame",
+        "frame": 1000,
+        "exact": {
+          "num": "2003001",
+          "den": "48000"
+        },
+        "seconds": 41.7291875,
+        "floorFrame": 1000,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 1000,
+        "originMatchesExact": true
+      },
+      {
+        "label": "ulp-below",
+        "frame": 1000,
+        "exact": {
+          "num": "2934963038410069",
+          "den": "70368744177664"
+        },
+        "seconds": 41.70833333333333,
+        "floorFrame": 1000,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 999,
+        "originMatchesExact": false
+      },
+      {
+        "label": "ulp-above",
+        "frame": 1000,
+        "exact": {
+          "num": "1467481519205035",
+          "den": "35184372088832"
+        },
+        "seconds": 41.70833333333334,
+        "floorFrame": 1000,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 1000,
+        "originMatchesExact": true
+      },
+      {
+        "label": "boundary",
+        "frame": 30000,
+        "exact": {
+          "num": "30030000",
+          "den": "24000"
+        },
+        "seconds": 1251.25,
+        "floorFrame": 30000,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 30000,
+        "originMatchesExact": true
+      },
+      {
+        "label": "minus-1us",
+        "frame": 30000,
+        "exact": {
+          "num": "30029999976000",
+          "den": "24000000000"
+        },
+        "seconds": 1251.249999,
+        "floorFrame": 29999,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 29999,
+        "originMatchesExact": true
+      },
+      {
+        "label": "mid-frame",
+        "frame": 30000,
+        "exact": {
+          "num": "60061001",
+          "den": "48000"
+        },
+        "seconds": 1251.2708541666666,
+        "floorFrame": 30000,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 30000,
+        "originMatchesExact": true
+      },
+      {
+        "label": "ulp-below",
+        "frame": 30000,
+        "exact": {
+          "num": "5503055697018879",
+          "den": "4398046511104"
+        },
+        "seconds": 1251.2499999999998,
+        "floorFrame": 29999,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 29999,
+        "originMatchesExact": true
+      },
+      {
+        "label": "ulp-above",
+        "frame": 30000,
+        "exact": {
+          "num": "5503055697018881",
+          "den": "4398046511104"
+        },
+        "seconds": 1251.2500000000002,
+        "floorFrame": 30000,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 30000,
+        "originMatchesExact": true
+      },
+      {
+        "label": "boundary",
+        "frame": 100000,
+        "exact": {
+          "num": "100100000",
+          "den": "24000"
+        },
+        "seconds": 4170.833333333333,
+        "floorFrame": 100000,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 100000,
+        "originMatchesExact": true
+      },
+      {
+        "label": "minus-1us",
+        "frame": 100000,
+        "exact": {
+          "num": "100099999976000",
+          "den": "24000000000"
+        },
+        "seconds": 4170.833332333334,
+        "floorFrame": 99999,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 99999,
+        "originMatchesExact": true
+      },
+      {
+        "label": "mid-frame",
+        "frame": 100000,
+        "exact": {
+          "num": "200201001",
+          "den": "48000"
+        },
+        "seconds": 4170.8541875,
+        "floorFrame": 100000,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 100000,
+        "originMatchesExact": true
+      },
+      {
+        "label": "ulp-below",
+        "frame": 100000,
+        "exact": {
+          "num": "1146469936878933",
+          "den": "274877906944"
+        },
+        "seconds": 4170.833333333332,
+        "floorFrame": 99999,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 99999,
+        "originMatchesExact": true
+      },
+      {
+        "label": "ulp-above",
+        "frame": 100000,
+        "exact": {
+          "num": "2292939873757867",
+          "den": "549755813888"
+        },
+        "seconds": 4170.833333333334,
+        "floorFrame": 100000,
+        "clampedFrame": 48,
+        "clampedSeconds": 2.043708333333333,
+        "exactFloorFrame": 100000,
+        "originMatchesExact": true
+      }
+    ],
+    "originFloatArtifacts": 3
+  }
+}

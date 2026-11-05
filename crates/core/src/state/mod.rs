@@ -10,6 +10,7 @@ pub mod inspector;
 pub mod layout;
 pub mod library;
 pub mod project;
+pub mod property_gesture;
 pub mod timeline;
 pub mod tree;
 
@@ -27,6 +28,7 @@ use crate::content::{Camera, TextSpec};
 use crate::id::Id;
 use crate::plan::PreviewIntent;
 use crate::preview::{PreviewMode, PreviewPolicy};
+use crate::scene_interaction::SceneInteraction;
 use crate::scene_project::{SceneBook, SceneCommand};
 use crate::time::Ratio;
 
@@ -89,6 +91,10 @@ pub struct EditorState {
     /// Directed scenes attached to the project (F036). Part of the document and of every undo
     /// snapshot; empty for a project that never attached one.
     pub scenes: SceneBook,
+    /// F039: selection of scene entities and the open scene gesture. Session state, like the
+    /// playhead: not in the document, not in an undo snapshot (so undo/redo never restores it),
+    /// and empty in every project that is created or opened.
+    pub scene_interaction: SceneInteraction,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -254,6 +260,9 @@ pub enum Command {
     },
     /// A `scene.*` operation on the directed scenes of the project (see `scene_project`).
     Scene(SceneCommand),
+    /// One slider drag as a single undoable edit: begin, update (live preview), then commit
+    /// or cancel. Not an edit by itself (no history label): the entry is recorded at commit.
+    PropertyGesture(property_gesture::GestureCommand),
 }
 
 impl Command {
@@ -334,6 +343,7 @@ impl EditorState {
             preview: PreviewIntent::Sequence,
             preview_policy: PreviewPolicy::default(),
             scenes: SceneBook::default(),
+            scene_interaction: SceneInteraction::default(),
         }
     }
 
@@ -364,6 +374,7 @@ impl EditorState {
             preview: PreviewIntent::Sequence,
             preview_policy: PreviewPolicy::default(),
             scenes: SceneBook::default(),
+            scene_interaction: SceneInteraction::default(),
         })
     }
 }
@@ -478,6 +489,15 @@ impl EditorState {
     /// Runs one command. Edits (see [`Command::history_label`]) become one undo entry and bump
     /// the project revision when they changed something; a rejected command changes nothing.
     pub fn execute(&mut self, command: Command) -> Result<Value, CommandError> {
+        // Gesture phases manage their own history entry (see `property_gesture`).
+        let command = match command {
+            Command::PropertyGesture(gesture) => return self.run_property_gesture(gesture),
+            other => other,
+        };
+        // An edit never runs on top of a slider gesture that is still previewing.
+        if command.settles_property_gesture() {
+            self.settle_property_gesture();
+        }
         let Some(label) = command.history_label() else {
             return self.apply(command);
         };
@@ -678,6 +698,7 @@ impl EditorState {
             Command::RemoveSequence { sequence } => self.remove_sequence(&sequence),
             Command::RenameSequence { sequence, name } => self.rename_sequence(&sequence, &name),
             Command::Scene(command) => self.apply_scene(command),
+            Command::PropertyGesture(gesture) => self.run_property_gesture(gesture),
             Command::SetPreviewPolicy {
                 mode,
                 max_height,

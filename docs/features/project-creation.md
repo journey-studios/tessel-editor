@@ -70,3 +70,7 @@ para criar projeto.
 Lib V, CLI headless V (os 8 testes do `proof.rs` incluem erro sem mutação), janela V por
 `live-proof.py` (macOS). Limite: Id internado; o vocabulário de projeto não edita
 `set/invoke/move` (esses seguem `ui set|invoke|move`).
+
+## Continuous property edits
+
+For a slider-like stream, use shared `property.gesture.begin/update/commit/cancel` instead of discrete sets per sample. This preserves live preview while recording one undo at commit. Contract and JSONL example: [properties](properties.md#gesto-de-slider-bl062-preview-ao-vivo-uma-entrada-no-undo) and [UI automation](../ui-automation.md#property-slider-gestures).

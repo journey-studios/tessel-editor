@@ -10,11 +10,17 @@
 //!
 //! Presentation (playhead, zoom, snap, selection, search, tabs) is not undone: those are not
 //! edits, and rewinding the playhead on every undo is hostile.
+//!
+//! A slider drag is ONE transaction, not one per tick: the open gesture (`property_gesture`)
+//! lives in [`History`], applies values live without recording, and records a single entry
+//! when it ends. Every path that records or rewinds (`transaction`, `undo`, `redo`) settles an
+//! open gesture first, so the stack never holds a half-finished one.
 
 use serde_json::{Value, json};
 
 use super::inspector::Overrides;
 use super::library::{Folder, MediaItem};
+use super::property_gesture::OpenGesture;
 use super::timeline::Timeline;
 use super::{CommandError, EditorState};
 use crate::id::Id;
@@ -48,6 +54,12 @@ pub struct History {
     redo: Vec<Entry>,
     /// > 0 while a transaction runs: nested commands do not record their own entry.
     depth: u32,
+    /// The slider gesture that is previewing right now, if any. Not an entry: it becomes one
+    /// (or nothing) when it ends.
+    pub(super) gesture: Option<OpenGesture>,
+    /// Last gesture ID handed out; IDs only grow, so a late event of an old drag cannot
+    /// be mistaken for the current gesture.
+    pub(super) next_gesture: u64,
 }
 
 impl History {
@@ -76,10 +88,17 @@ impl History {
             "can_undo": self.can_undo(), "can_redo": self.can_redo(),
             "undo_label": self.undo_label(), "redo_label": self.redo_label(),
             "undo_depth": self.undo.len(), "redo_depth": self.redo.len(),
+            // `null` unless a slider gesture is previewing: its value is applied but is not
+            // an entry yet.
+            "gesture": self.gesture.as_ref().map(|open| {
+                let info = open.info();
+                json!({ "id": info.id, "clip": format!("clip:{}", info.clip),
+                    "property": format!("property:{}", info.property) })
+            }),
         })
     }
 
-    fn record(&mut self, label: &str, snapshot: Snapshot) {
+    pub(super) fn record(&mut self, label: &str, snapshot: Snapshot) {
         self.undo.push(Entry {
             label: label.to_string(),
             snapshot,
@@ -147,6 +166,8 @@ impl EditorState {
         label: &str,
         body: impl FnOnce(&mut Self) -> Result<R, CommandError>,
     ) -> Result<R, CommandError> {
+        // A gesture settles BEFORE the snapshot, so its entry stays separate from this batch.
+        self.settle_property_gesture();
         let before = self.snapshot();
         self.history.depth += 1;
         let outcome = body(self);
@@ -187,6 +208,8 @@ impl EditorState {
     }
 
     pub fn undo(&mut self) -> Result<Value, CommandError> {
+        // Undo acts on a finished edit: a gesture that is still previewing becomes that edit.
+        self.settle_property_gesture();
         let Some(entry) = self.history.undo.pop() else {
             return Err(CommandError::new(
                 "nothing_to_undo",
@@ -205,6 +228,9 @@ impl EditorState {
     }
 
     pub fn redo(&mut self) -> Result<Value, CommandError> {
+        // Settling a gesture that changed the value records an entry and so clears redo:
+        // pressing redo mid-drag reports `nothing_to_redo`, exactly as after any new edit.
+        self.settle_property_gesture();
         let Some(entry) = self.history.redo.pop() else {
             return Err(CommandError::new(
                 "nothing_to_redo",
@@ -224,7 +250,14 @@ impl EditorState {
 
     /// Forgets undo/redo (a loaded or newly created project starts clean).
     pub fn clear_history(&mut self) {
+        // The preview value stays in the model (it was on screen); only its entry is dropped
+        // with the rest of the history.
+        self.settle_property_gesture();
+        // Gesture IDs keep growing across a reset: a late event of an old drag must not match
+        // the first gesture of the next project.
+        let next_gesture = self.history.next_gesture;
         self.history = History::default();
+        self.history.next_gesture = next_gesture;
     }
 
     /// IDs referenced by clips that no longer resolve: a consistency check used after restore.

@@ -1,0 +1,464 @@
+{
+  "schemaVersion": "1.0",
+  "bundleId": "ooo-shots-instances-layers",
+  "revisionId": "rev-1",
+  "fps": {
+    "numerator": 24,
+    "denominator": 1
+  },
+  "editDurationFrames": 120,
+  "renderProfile": {
+    "width": 320,
+    "height": 180,
+    "fps": {
+      "numerator": 24,
+      "denominator": 1
+    },
+    "colorSpace": "srgb-display",
+    "alphaMode": "straight",
+    "premultiplyOnUpload": false,
+    "videoCodec": "h264-yuv420p",
+    "threeRevision": "0.187.0",
+    "browserChannel": "synthetic-oracle"
+  },
+  "assets": [
+    {
+      "assetId": "backdrop",
+      "revisionId": "rev-1",
+      "contentHash": "synthetic-sha256-backdrop",
+      "relativePath": "assets/backdrop.png",
+      "widthPx": 64,
+      "heightPx": 36,
+      "alphaMode": "opaque",
+      "colorSpace": "srgb"
+    },
+    {
+      "assetId": "figure",
+      "revisionId": "rev-1",
+      "contentHash": "synthetic-sha256-figure",
+      "relativePath": "assets/figure.png",
+      "widthPx": 32,
+      "heightPx": 32,
+      "alphaMode": "straight",
+      "colorSpace": "srgb"
+    }
+  ],
+  "performanceTracks": [
+    {
+      "id": "perf-a",
+      "instanceId": "inst-a",
+      "channels": [
+        {
+          "kind": "cycle",
+          "channelId": "arm-swing",
+          "nodeId": "arm",
+          "property": "localRotation",
+          "periodFrames": 24,
+          "amplitude": 20,
+          "axis": {
+            "x": 0,
+            "y": 0,
+            "z": 1
+          },
+          "phaseOffsetFrames": 3
+        },
+        {
+          "kind": "event",
+          "channelId": "stage-lift",
+          "nodeId": "stage",
+          "property": "localPosition",
+          "startInstanceFrame": 12,
+          "durationFrames": 24,
+          "delta": {
+            "x": 0,
+            "y": 0.5,
+            "z": 0
+          },
+          "holdFinal": true
+        },
+        {
+          "kind": "static",
+          "channelId": "pen-scale",
+          "nodeId": "pen",
+          "property": "localScale",
+          "value": {
+            "x": 1.5,
+            "y": 1.5,
+            "z": 1.5
+          }
+        }
+      ]
+    },
+    {
+      "id": "perf-b",
+      "instanceId": "inst-b",
+      "channels": [
+        {
+          "kind": "cycle",
+          "channelId": "arm-swing",
+          "nodeId": "arm",
+          "property": "localRotation",
+          "periodFrames": 17,
+          "amplitude": 35,
+          "axis": {
+            "x": 1,
+            "y": 0,
+            "z": 0
+          },
+          "phaseOffsetFrames": 0
+        },
+        {
+          "kind": "event",
+          "channelId": "stage-lift",
+          "nodeId": "stage",
+          "property": "localPosition",
+          "startInstanceFrame": 5,
+          "durationFrames": 30,
+          "delta": {
+            "x": 0.25,
+            "y": 0,
+            "z": 0.5
+          },
+          "holdFinal": true
+        }
+      ]
+    }
+  ],
+  "compositionPasses": [],
+  "sceneDefinitions": [
+    {
+      "id": "scene-rig",
+      "schemaVersion": "1.0",
+      "rootNodeId": "root",
+      "nodes": [
+        {
+          "id": "root",
+          "parentId": null,
+          "type": "group",
+          "localPosition": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "backdrop",
+          "parentId": "root",
+          "type": "imagePlane",
+          "assetRef": {
+            "assetId": "backdrop",
+            "revisionId": "rev-1",
+            "contentHash": "synthetic-sha256-backdrop",
+            "relativePath": "assets/backdrop.png"
+          },
+          "widthSceneUnits": 8,
+          "heightSceneUnits": 4.5,
+          "renderOrder": 0,
+          "localPosition": {
+            "x": 0,
+            "y": 0,
+            "z": -3
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "stage",
+          "parentId": "root",
+          "type": "group",
+          "localPosition": {
+            "x": 1,
+            "y": 0,
+            "z": -1
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0.7071067811865476,
+            "z": 0,
+            "w": 0.7071067811865476
+          },
+          "localScale": {
+            "x": 2,
+            "y": 2,
+            "z": 2
+          }
+        },
+        {
+          "id": "arm",
+          "parentId": "stage",
+          "type": "group",
+          "localPosition": {
+            "x": 0,
+            "y": 1,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0.25881904510252074,
+            "w": 0.9659258262890683
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "pen",
+          "parentId": null,
+          "type": "imagePlane",
+          "assetRef": {
+            "assetId": "figure",
+            "revisionId": "rev-1",
+            "contentHash": "synthetic-sha256-figure",
+            "relativePath": "assets/figure.png"
+          },
+          "widthSceneUnits": 0.5,
+          "heightSceneUnits": 0.5,
+          "renderOrder": 2,
+          "localPosition": {
+            "x": 0.1,
+            "y": 0.2,
+            "z": 0.3
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          },
+          "attachToSocket": {
+            "parentNodeId": "arm",
+            "socketName": "hand"
+          }
+        }
+      ],
+      "sockets": [
+        {
+          "nodeId": "arm",
+          "name": "hand",
+          "localPosition": {
+            "x": 0,
+            "y": 0.5,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          }
+        }
+      ]
+    }
+  ],
+  "sceneInstances": [
+    {
+      "id": "inst-a",
+      "sceneDefinitionId": "scene-rig",
+      "durationFrames": 80,
+      "performanceTrackIds": [
+        "perf-a"
+      ]
+    },
+    {
+      "id": "inst-b",
+      "sceneDefinitionId": "scene-rig",
+      "durationFrames": 60,
+      "performanceTrackIds": [
+        "perf-b"
+      ]
+    }
+  ],
+  "cameraClips": [
+    {
+      "id": "cam-rich",
+      "initialPosition": {
+        "x": 2,
+        "y": 1,
+        "z": 9
+      },
+      "initialTarget": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "initialFovDeg": 50,
+      "segments": [
+        {
+          "recipe": "zoomIn",
+          "durationFrames": 20,
+          "from": "initial",
+          "fovDeltaDeg": 10,
+          "easing": "easeOutCubic"
+        },
+        {
+          "recipe": "orbit",
+          "durationFrames": 30,
+          "from": "previousEnd",
+          "yawDeg": 40,
+          "pitchDeg": 10,
+          "easing": "easeInOutCubic"
+        },
+        {
+          "recipe": "keyframes",
+          "durationFrames": 40,
+          "from": "previousEnd",
+          "keys": [
+            {
+              "frame": 10,
+              "position": {
+                "x": 2.5,
+                "y": 1.2,
+                "z": 7
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 40,
+              "easing": "linear"
+            },
+            {
+              "frame": 25,
+              "position": {
+                "x": 1,
+                "y": 2,
+                "z": 6
+              },
+              "target": {
+                "x": 0.2,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 38,
+              "easing": "easeInOutCubic"
+            },
+            {
+              "frame": 39,
+              "position": {
+                "x": -1,
+                "y": 1.5,
+                "z": 6.5
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 42,
+              "easing": "easeOutCubic"
+            }
+          ]
+        },
+        {
+          "recipe": "hold",
+          "durationFrames": 30,
+          "from": "previousEnd"
+        }
+      ],
+      "layers": [
+        {
+          "segments": [
+            {
+              "recipe": "dollyIn",
+              "durationFrames": 60,
+              "from": "previousEnd",
+              "distanceSceneUnits": 1,
+              "easing": "linear"
+            },
+            {
+              "recipe": "hold",
+              "durationFrames": 20,
+              "from": "previousEnd"
+            }
+          ]
+        },
+        {
+          "segments": [
+            {
+              "recipe": "truckLeft",
+              "durationFrames": 40,
+              "from": "previousEnd",
+              "distanceSceneUnits": 0.5,
+              "easing": "easeOutCubic"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "shots": [
+    {
+      "id": "shot-1",
+      "sceneInstanceId": "inst-a",
+      "editRange": {
+        "startFrame": 0,
+        "endFrameExclusive": 40
+      },
+      "instanceStartFrame": 0,
+      "cameraClipId": "cam-rich",
+      "cameraInFrame": 0,
+      "intent": "synthetic shot shot-1"
+    },
+    {
+      "id": "shot-2",
+      "sceneInstanceId": "inst-b",
+      "editRange": {
+        "startFrame": 40,
+        "endFrameExclusive": 80
+      },
+      "instanceStartFrame": 10,
+      "cameraClipId": "cam-rich",
+      "cameraInFrame": 40,
+      "intent": "synthetic shot shot-2",
+      "transitionInto": {
+        "type": "cut",
+        "reason": "synthetic hard cut to the second instance"
+      }
+    },
+    {
+      "id": "shot-3",
+      "sceneInstanceId": "inst-a",
+      "editRange": {
+        "startFrame": 80,
+        "endFrameExclusive": 120
+      },
+      "instanceStartFrame": 40,
+      "cameraClipId": "cam-rich",
+      "cameraInFrame": 80,
+      "intent": "synthetic shot shot-3",
+      "transitionInto": {
+        "type": "cut",
+        "reason": "synthetic hard cut back to the first instance"
+      }
+    }
+  ]
+}

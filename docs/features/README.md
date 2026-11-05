@@ -21,7 +21,7 @@ Lib V significa testes do modelo demo, não um motor real de edição.
 | F002 | [Busca e seleção de mídia](media-selection.md) | I | I | I | V | `SetMediaSearch / SelectMedia` |
 | F003 | [Tabs do workspace e inspetor](tabs.md) | I | I | I | V | `SetWorkspaceTab / SetInspectorTab` |
 | F004 | [Accordions do inspetor](accordions.md) | I | I | I | V | `SetSectionExpanded` |
-| F005 | [Sliders, selects e switches de propriedades](properties.md) | I | I | I | V | `SetProperty` |
+| F005 | [Sliders, selects e switches de propriedades](properties.md) | I | I | I | V | `SetProperty`, `property.gesture.*` (28 core + 13 GPUI + 12 checks de socket/janela; mouse físico não provado) |
 | F006 | [Reset de propriedades e seções](reset.md) | I | I | I | V | `ResetProperty / ResetSection` |
 | F007 | [Tempo, seek e passos por frame](seek.md) | I | I | I | V | `SetPlayhead` |
 | F008 | [Zoom da timeline e snapping](timeline-view.md) | I | I | I | V | `SetTimelineZoom / SetSnap` |
@@ -48,11 +48,14 @@ Lib V significa testes do modelo demo, não um motor real de edição.
 | F029 | [Exportar vídeo com áudio](video-export.md) | V | V | V⁸ | V | `export.preflight|start` |
 | F030 | [Gaussian splats (Spark 2.4.0)](spark.md) | V | V | V | V | cena `tessel-scene@1` + asset `splat` |
 | F031 | [Cena dirigida: importar, consultar e regravar render-bundle 1.0](directed-scene.md) | P | P | P | Parcial¹⁰ | `directed_scene::DirectedScene`; inteiros extremos recusados sem panic; adapters pendentes |
-| F032 | [Oráculo de equivalência da migração (BB10/E0)](migration-oracle.md) | N/A⁹ | N/A⁹ | N/A⁹ | Parcial⁹ | `scripts/migration-oracle/oracle.mjs verify` + `docs/migration/fixtures/` |
+| F032 | [Oráculo de equivalência da migração (BB10/E0)](migration-oracle.md) | N/A⁹ | N/A⁹ | N/A⁹ | Parcial⁹ | `oracle.mjs verify` (55) + `extended.mjs verify` (47); 49 testes Node e 15 testes Rust estendidos passaram |
 | F033 | [Cena dirigida: tempo, câmera e gate temporal (BB03)](scene-temporal.md) | P | P | P | Parcial¹¹ | `Bundle::evaluate_camera`, `evaluate_frame`, `DirectedScene::temporal_issues`; orçamento agregado de FOV; adapters pendentes |
 | F034 | [Catálogo de propriedades e edição atômica de cenas (BB04)](scene-edit.md) | P | P | P | Parcial¹² | `scene_edit::{catalog, apply, dry_run}`; importação e gates compartilhados |
 | F035 | [Animação de nós e matrizes de mundo (BB03)](scene-animation.md) | P | P | P | Parcial¹³ | `Bundle::{evaluate_frame, node_timeline, evaluate_instance_nodes, performance_plan}` |
 | F036 | [Cenas no projeto, histórico e CLI](scene-project.md) | P | P | V | V | `Command::Scene` / `scene.*`; schema 2 com cenas, undo compartilhado, contagem de bytes em cache |
+| F037 | [Plano avaliado de frame de cena dirigida (BB05)](scene-plan.md) | P | P | P | V¹⁴ | `scene_plan::ScenePlan`; 29 testes públicos e doctest passaram; sem renderer |
+| F038 | [Recursos da cena dirigida: manifesto, preflight e materialização (BB06)](scene-resources.md) | P | P | P | Parcial¹⁵ | `scene_resources::ResourceManifest`; `directed_resources::{preflight, materialize}`; sem ligação ao pacote/CLI/UI |
+| F039 | [Interação com cenas dirigidas: seleção, árvore, frame e gestos](scene-interaction.md) | P | P | V | V | `scene.tree`, `scene.evaluate`, `scene.select`, `scene.selection`, `scene.gesture.*`; testes públicos e executável JSONL passaram |
 
 ¹ Dock/tema/janela são capacidades de apresentação. A lib valida layout, mas quem o executa
 é o DockArea vivo; não há execução do Dock no core. UI nativa não é requisito para fluxos
@@ -143,3 +146,7 @@ headless; os testes Chrome cobrem o runtime sem janela nativa.
 - Matriz atualizada na mesma entrega. Não transformar pendências em status validado por inferência.
 
 Veja [arquitetura](../core-architecture.md) e [template](_template.md).
+
+¹⁴ Primeira fatia BB05: câmera, nós/matrizes, ordem, recursos por assetId e capabilities sobre evaluate_frame. Domínios não avaliados são recusados (ou plano parcial explícito). 29 testes públicos e doctest executados; clippy lib limpo. Não é render nem certificação do bundle completo. Ver [contrato](scene-plan.md).
+
+¹⁵ Manifesto por assetId e materialização suportada (PNG/SPZ/mix) com preflight/rollback. 27 testes públicos core, 39 media e integração plano/manifesto passaram. Mapas/profundidade/relevo/narração apenas listados. Raízes precisam de controle exclusivo; PNG só cabeçalho. Guarda de pacote incompleto permanece. [Contrato](scene-resources.md).

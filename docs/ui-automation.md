@@ -249,3 +249,23 @@ For regression tests of the gesture routing itself (rather than direct state
 commands), run `./scripts/cargo test workstation::input_tests --locked` (and `workstation::dock_tests` for the dock). These tests send
 mouse down/movement/release and Escape through GPUI's test platform. The test
 locates handles from measured geometry, without controlling the OS mouse.
+
+## Property slider gestures
+
+Property sliders preview every update but commit one undo entry on release (BL062). Lib,
+headless JSONL and the window use the same `Command::PropertyGesture` handlers. A discrete
+`set` remains one edit. Timeline zoom is presentation state and stays outside undo.
+
+```json
+{"op":"property.gesture.begin","property":"zoom"}
+{"op":"property.gesture.update","value":120}
+{"op":"property.gesture.update","value":140}
+{"op":"property.gesture.commit"}
+```
+
+`begin` locks the selected clip (or explicit `clip`) and returns a numeric `gesture` ID.
+Pass that ID on subsequent requests when driving asynchronous input; omitting it uses the
+current gesture. `property.gesture.cancel` restores the original without an undo entry;
+no change or returning to the original produces no entry. `history.status` exposes the
+open gesture. Native pointer evidence and command evidence remain distinct; see
+[properties](features/properties.md) and the [report](slider-gesture-history-report.md).

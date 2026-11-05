@@ -1,0 +1,966 @@
+{
+  "manifestVersion": 1,
+  "purpose": "Proveniência do oráculo ESTENDIDO (BL018/K): as expectativas em expected/ foram geradas executando as fontes REAIS listadas abaixo, sem alterá-las. Separado do manifest dos 55 casos, que não é lido nem escrito aqui.",
+  "source": {
+    "repository": "tesselapp-image-coverage (somente leitura)",
+    "branch": "feat/image-coverage-r8",
+    "commit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+    "package": "packages/scene-engine",
+    "packageTreeAtCommit": "d5fc98713731c6c0ae201ca1f3ce3bd0c9b17214",
+    "workingTreeMatchesCommit": true,
+    "note": "executedSources[].gitBlob foi cruzado com `git ls-tree` do commit fixado na geração; verify confere pelo sha256 do conteúdo."
+  },
+  "tools": {
+    "node": "v22.23.3",
+    "esbuild": "0.25.12",
+    "three": "0.187.0",
+    "zod": "4.3.6",
+    "pinnedBy": "scripts/migration-oracle/package.json + pnpm-lock.yaml (integridades iguais às do lockfile da origem)"
+  },
+  "harness": {
+    "scripts/migration-oracle/harness/entry.mjs": "c51af423577b0bf0c51438e378e8b70a9a457eafefb71f42c9eade36627e1ec6",
+    "scripts/migration-oracle/harness/scope.json": "e331d101294c43616fff39942a5e261ab6108b20f3694416fca3936ff21c7ff8",
+    "scripts/migration-oracle/lib/probes.mjs": "794cd5a27fc5d73b895e27329a3a8e36db6f55f16a67fee737a6fc0172cc1565",
+    "scripts/migration-oracle/lib/serialize.mjs": "e9ab632fd47afb220fd6e1ac5c8cb534bb81794b238132edb3c3711bb47001f5",
+    "scripts/migration-oracle/package.json": "ffc785b117ce601ec7fb46973b26bb03c54d877c27c5342a0a27d32d8f357921",
+    "scripts/migration-oracle/pnpm-lock.yaml": "4397cb85e62fbf277465be6e904197319db76cc25183fb9983be65dda6637655",
+    "scripts/migration-oracle/extended/config.mjs": "b71af807d0e811b52ee9b58b294c55df9edc9b0973750feb4a2e2e4a00290e89",
+    "scripts/migration-oracle/extended/core.mjs": "9503101851c4d6454e9596ad9304cb55fc124afe434888f816310defea8e4eae",
+    "scripts/migration-oracle/extended/corpus.mjs": "bb5c80e70dc14441c622222eb321055e1c82abff54c777a3401a863fbe695f23",
+    "scripts/migration-oracle/extended/entry.mjs": "7471f071bdec0b3f32cdfec20e29724df4d4719791b856435f3fa93d287b7375",
+    "scripts/migration-oracle/extended/numeric.mjs": "adb9e30e95a2186204d476320a4817088dc6f0d56e61a6485c2aa46a435b101d",
+    "scripts/migration-oracle/extended/scope.json": "a8f2d2dff94bcef44484df5b6727a82fd2c7313b1b3f9e8cbab9c3c4739193ec",
+    "scripts/migration-oracle/extended/tolerances.json": "faf4be273f9f625ae02aeba99417adf8410cbb115abcaa886a3dd2f82c6c1e00",
+    "scripts/migration-oracle/lib/config.mjs": "4ea40e7f5e73e2a881b8f86dfda78e65aab65e23b23836c703e4960c9a69e1f1",
+    "scripts/migration-oracle/lib/harness.mjs": "4882f5fef3284f954e83ac809154a0cc3fa927b0af4c800f1321ad1ef31cdc4a"
+  },
+  "originJoinConstants": {
+    "JOIN_POSITION_TOLERANCE_SCENE_UNITS": 0.25,
+    "JOIN_FOV_TOLERANCE_DEG": 2,
+    "JOIN_VELOCITY_TOLERANCE_SCENE_UNITS_PER_FRAME": 0.08,
+    "JOIN_FOV_VELOCITY_TOLERANCE_DEG_PER_FRAME": 0.5
+  },
+  "executedSources": [
+    {
+      "path": "src/camera/easing.ts",
+      "sha256": "61acdcfbca0f7224696f370a1b77165210e7b36654c2f7ded3f7e82c71ed3abd",
+      "gitBlob": "6d660fc81a3bd6c3adf9fbd6df44735b8f78d56b",
+      "bytes": 952,
+      "bytesInOutput": 723,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/camera/resolve-camera-clip.ts",
+      "sha256": "0241aa815c0b5747872dc4b35e57a6e30846eb2729ba078678f9ef7127a0e1a4",
+      "gitBlob": "04e5eaab05a2f9af1d83f28b300a34eb87f0a8a6",
+      "bytes": 15085,
+      "bytesInOutput": 10483,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/edit/finalize-bundle.ts",
+      "sha256": "f7c7d640baf2cdbb5e1cc382a74120c0f14cfdb442f91805f4ea45fe6d777780",
+      "gitBlob": "e85d7d0b06e1058f706b14a64a3855537e740f4d",
+      "bytes": 1413,
+      "bytesInOutput": 671,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/edit/resolve-shot-at-edit-frame.ts",
+      "sha256": "bc9e72b01b6149b39adf8d062100e5a79956439c4188bee343697a07892c2b28",
+      "gitBlob": "ef8fffa87ab1f31456742c0171ec52a920617194",
+      "bytes": 966,
+      "bytesInOutput": 659,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/effects/catalog.ts",
+      "sha256": "8a6004308b168df319f8b8a88363b8dabb601401ab805683196b73c11eb3c840",
+      "gitBlob": "1b66db2ccb8c5a5e476c056f1a2c654507b068a4",
+      "bytes": 4686,
+      "bytesInOutput": 2806,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/effects/scene-effects.ts",
+      "sha256": "d76e0bce25684d1dda57beb2181380f23188182ea93621893c011352277effa4",
+      "gitBlob": "616d018bb3d50f793376c10c6b911fdc3406a3e3",
+      "bytes": 2507,
+      "bytesInOutput": 312,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/evaluator/evaluate-edit-frame.ts",
+      "sha256": "653513af4ca6c8ee5b775970ce9d7afe63d718d9e8618cfe7aea83867b6cb46d",
+      "gitBlob": "bb178c234c592d3bff261942670d7d249c89acbd",
+      "bytes": 4065,
+      "bytesInOutput": 2576,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/keyframes/keyframe-rules.ts",
+      "sha256": "e1beb696ba477a40b0ff0188acc3e18fee79180aaf8f79f0c2eac2bf14f74ae2",
+      "gitBlob": "aaa7d0c87e7cf54f0f21a937488d2f7867a5fbb0",
+      "bytes": 2433,
+      "bytesInOutput": 717,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/keyframes/resolve-keyframes.ts",
+      "sha256": "66a89d2a935124371af71d31bbaac7d3202ce2cc0d4fe784ca84049348ad8f5f",
+      "gitBlob": "a5127a1bbb7eeca27ee1d4d363a31976d87788ab",
+      "bytes": 2076,
+      "bytesInOutput": 737,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/lighting/light-keys.ts",
+      "sha256": "5df1b807e779c5f36b096e3215cf72e0401b42762f0b6e75e102a4f7ab61da1f",
+      "gitBlob": "240d4a59309b51db4bea4a691b990b4399014119",
+      "bytes": 3609,
+      "bytesInOutput": 65,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/lighting/scene-lighting.ts",
+      "sha256": "78ba61253095cb120003ad56837b6e93c35af4da7c1f1934b76d94814c6aa151",
+      "gitBlob": "a85e0edd3a83e565d518dbbc1b2839be369e1c01",
+      "bytes": 5374,
+      "bytesInOutput": 54,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/narration/mix-plan.ts",
+      "sha256": "aada36516e40aec2f6a185288d7aa0956bd23132d2f83c85f2d542e33fa1560c",
+      "gitBlob": "05fd1c9928ef0e350a19d0fb57c8f54820557c73",
+      "bytes": 4213,
+      "bytesInOutput": 0,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/narration/narration-schema.ts",
+      "sha256": "0af031103fcef0eacb761d14342cebebff976253556a783baeaa2123e6fec461",
+      "gitBlob": "b9aee27cb16ade8599276e71556843e379586357",
+      "bytes": 4093,
+      "bytesInOutput": 3459,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/narration/narration.ts",
+      "sha256": "720b5e33429e17749edc2a7eb4f417a3e81b9e48692d5376fba5d063f744be33",
+      "gitBlob": "3ad156e96bfaa137f4664a818e9f65b9d03fac48",
+      "bytes": 23351,
+      "bytesInOutput": 5557,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/outline/flags.ts",
+      "sha256": "9fe5e22661a0b10eb23ae70ec14b71260c25422402dd2f6961f9d3e6fa2001f6",
+      "gitBlob": "f22f7a87cef847600a54bf94105bd0c1c343c4a5",
+      "bytes": 2387,
+      "bytesInOutput": 0,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/outline/outline-schema.ts",
+      "sha256": "00305d09ef920188fbe47a4f038ea2814b5dc1f7ea48451ae3abb8298b7c57b4",
+      "gitBlob": "eea86648083ebbd7a6f853d950481d9f8f9465f8",
+      "bytes": 2372,
+      "bytesInOutput": 1577,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/outline/outline.ts",
+      "sha256": "30c67516427ea7e8cc6571028328b89e85da6054b38aece7c0178da9a21a5fae",
+      "gitBlob": "45d11a693425c121fd2848ebff3fbec8d76c7c0f",
+      "bytes": 29372,
+      "bytesInOutput": 6479,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/path/path-schema.ts",
+      "sha256": "79b53b9f089a795720ee7789a7a53e72283b847d3522fd7bb3fd724df9d63e15",
+      "gitBlob": "e0780672769dbcba2027391d3f10b651cfe10915",
+      "bytes": 1882,
+      "bytesInOutput": 1508,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/performance/resolve-performance.ts",
+      "sha256": "3e3f2f4f888a48eddf00bae6d712995035f1e7e74dd58f938a003e6fabeedcc7",
+      "gitBlob": "a5212bda7f4c966852584f07e5d048cbc808ee24",
+      "bytes": 3314,
+      "bytesInOutput": 2655,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/rig/follow-schema.ts",
+      "sha256": "b437822b5c62c46d670c626afc136fca934c2eca9ca33aa9617dfdc17d40048c",
+      "gitBlob": "a3f2ffc0dc4fa421dee9d38d02a009add95abcd5",
+      "bytes": 2063,
+      "bytesInOutput": 1311,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/rig/follow-validation.ts",
+      "sha256": "33303d66c7e0776928c1a41095927200d26cf948582e25da11f2155df38c866a",
+      "gitBlob": "630ad8a69405d3368c124e7a6bae44d39744f14a",
+      "bytes": 7713,
+      "bytesInOutput": 5924,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/rig/rig-geometry.ts",
+      "sha256": "f82ddec706fc5e3193e1025fca18bcb0815fc68bac3385edf2771189d5ca1ea6",
+      "gitBlob": "2b6f1e5bbf1c78aab36060f9c27d8680b61da910",
+      "bytes": 4824,
+      "bytesInOutput": 464,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/rig/rig-schema.ts",
+      "sha256": "ea094dccfd1c69bf452672ae4fc11658b06cc37eea9c8493f9675955bb5be834",
+      "gitBlob": "648eccb920752fc9bd0abd39518c29f772193192",
+      "bytes": 4358,
+      "bytesInOutput": 3377,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/rig/rig-validation.ts",
+      "sha256": "e0c6d8e1c009e24df0bc2b766e57f7c93ccab5e925d6c6f934bca2859b15a3c2",
+      "gitBlob": "0f0eea3abe9ec2a1e236ca3452239deface3f372",
+      "bytes": 9107,
+      "bytesInOutput": 7241,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/scene/scene-graph.ts",
+      "sha256": "81ff5856795cb75428ba4e9e3fafb93b186c4996bc4cebf729455f890dba80dd",
+      "gitBlob": "8bcaa84fee9649c70e65d8a974608c9adbfacfbe",
+      "bytes": 10954,
+      "bytesInOutput": 7927,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/schema/render-bundle.schema.ts",
+      "sha256": "953ddfbdfca5dc98a2f3baa29ddbc59f26922131bfa32b998b1f70bc107e0f30",
+      "gitBlob": "d4b10d3617d7baece759c21080d8defb4b2fcc00",
+      "bytes": 21665,
+      "bytesInOutput": 21761,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/transport/audio-window.ts",
+      "sha256": "4d040b149e7fb1f8804671412dd79cf4544e20a1402240b0c5c7278313a40937",
+      "gitBlob": "721554a14a1ffd4ee032d81cbfce87b5b775321d",
+      "bytes": 2349,
+      "bytesInOutput": 1036,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/types/fps.ts",
+      "sha256": "dc36c3d16ec71953d7de1c857681cbb6c535e12dbf18f70faa924fc32e482e5b",
+      "gitBlob": "208245ee6d4aeb793cf455941994fcc4de10bf4a",
+      "bytes": 660,
+      "bytesInOutput": 382,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/types/frame-range.ts",
+      "sha256": "4ab01ce472d3f8fab16a1bcf26a8138f3841535d71e62f8258ed3695f49f8928",
+      "gitBlob": "a48242eeca97116063bcde4bc9711c5a240b08ca",
+      "bytes": 412,
+      "bytesInOutput": 177,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/validate/bundle-integrity.ts",
+      "sha256": "ddb33e6fca2ede35a7a3eaa3d060629558c7b8351cff29aa9aaf838676dd2b56",
+      "gitBlob": "d45b0e302abcac5fb480c3734b6ba0dc7b1d5b57",
+      "bytes": 28517,
+      "bytesInOutput": 24720,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/validate/edit-joins.ts",
+      "sha256": "14a5c2486820b1dd361a34180e0ca1bee5b0deefef4792aabe7207905396bedd",
+      "gitBlob": "32985a9140c4d9f8b14e9724ad70c6d8459e66cf",
+      "bytes": 6940,
+      "bytesInOutput": 5885,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/weather/weather-ground.ts",
+      "sha256": "197e9b81b27dd177589f529842efad37cf5e4bf20adea428c6337fafae8b9945",
+      "gitBlob": "623b33595b2c767f16784dff4a25c6dc1fbda772",
+      "bytes": 2218,
+      "bytesInOutput": 53,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/weather/weather-model.ts",
+      "sha256": "1596f8a8e3b48d9eefad4691fcc7a761bae64ade4d8615a57713fad63fcfbd87",
+      "gitBlob": "f37233fb4786ce8eba99760bde494bf98d794704",
+      "bytes": 10388,
+      "bytesInOutput": 194,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/weather/weather-spec.ts",
+      "sha256": "089c8a23acb100c9879d8a496f83c707b1a4899ffd7131190cc43a9f5a294248",
+      "gitBlob": "c81d29dc8f60de712eaac8bafcd82027606a4a71",
+      "bytes": 6901,
+      "bytesInOutput": 3139,
+      "role": "loaded-transitively"
+    }
+  ],
+  "fixtureFiles": [
+    {
+      "path": "bundles/fps-24000-1001.bundle.json",
+      "sha256": "d307efce515d7518c25a4e8f008f024e519bd88103d4e24c6e81ff6218e84926",
+      "bytes": 5640
+    },
+    {
+      "path": "bundles/fps-25.bundle.json",
+      "sha256": "06486c84ef636922d26ee8a1f02694682a7ccac9868c73a1a07ccf92b9af7c86",
+      "bytes": 5620
+    },
+    {
+      "path": "bundles/fps-30.bundle.json",
+      "sha256": "e043e90186187b77fbd4c5eef0efc2d8e61fdaa522a73f997ac01581fbaeaac3",
+      "bytes": 5620
+    },
+    {
+      "path": "bundles/fps-30000-1001.bundle.json",
+      "sha256": "7d4032e0259ee9f29af582c1b3450ef50c5b3e1f38254027cd8bc9789558a0e1",
+      "bytes": 5640
+    },
+    {
+      "path": "bundles/fps-60.bundle.json",
+      "sha256": "356b61fc4e8b6206c0692e2fa24319bb97833848ed5d3f898d3567c7222674d1",
+      "bytes": 5628
+    },
+    {
+      "path": "bundles/fps-60000-1001.bundle.json",
+      "sha256": "5cb31522a61e649a61305826011adb22c4141b91cce347b84cdd26c6ed62502d",
+      "bytes": 5648
+    },
+    {
+      "path": "bundles/fps-above-1000.bundle.json",
+      "sha256": "14371f3cb4e35502fe0d6598b5cc61c5e1d0d898bb2a88a32afc57c29bbeb23e",
+      "bytes": 5617
+    },
+    {
+      "path": "bundles/fps-profile-mismatch-ntsc.bundle.json",
+      "sha256": "2f7256c872b8e815994dde5d07abadc79474abb3d8765f7ea6fa0d5661776083",
+      "bytes": 5651
+    },
+    {
+      "path": "bundles/fps-profile-unreduced-equivalent.bundle.json",
+      "sha256": "ff1db2258c89cdbc78a5d7a55ddd0697ee2ae20f33cef0698595d005992722a2",
+      "bytes": 5646
+    },
+    {
+      "path": "bundles/fps-unreduced-48-2.bundle.json",
+      "sha256": "16756fcb513fec82b7a47d336cdb705808064efd1edc3d32f1a8986c6f080ef6",
+      "bytes": 5632
+    },
+    {
+      "path": "bundles/fps-zero-denominator.bundle.json",
+      "sha256": "8eb31725410999cb8b6344b6f1738a7a2c8035d73c50bb8c53f8194142ab4c45",
+      "bytes": 5634
+    },
+    {
+      "path": "bundles/join-diagonal-above.bundle.json",
+      "sha256": "66a63dbfd24069d1edb1dbc484d930bb75a95e9b433933644121c4347526dc17",
+      "bytes": 4421
+    },
+    {
+      "path": "bundles/join-diagonal-below.bundle.json",
+      "sha256": "8f8d934a2b1c8dfa3bc4c3c13734036b4167b7066ee5fbd1e79379183014b3ea",
+      "bytes": 4421
+    },
+    {
+      "path": "bundles/join-diagonal-equal.bundle.json",
+      "sha256": "9b805dda142488f381a4e40c9e7aa23d87f17349e5327635ce9f20f3b7e08796",
+      "bytes": 4419
+    },
+    {
+      "path": "bundles/join-fov-above.bundle.json",
+      "sha256": "558cf712539d3cbe891e26fc6008fceba3744d1b7e6bba441d10cead26f09ff2",
+      "bytes": 4405
+    },
+    {
+      "path": "bundles/join-fov-below.bundle.json",
+      "sha256": "bf3c6a91ad9e220d523256c4cceffd929efdc6df85c89df49daa9c13fd31abff",
+      "bytes": 4405
+    },
+    {
+      "path": "bundles/join-fov-equal.bundle.json",
+      "sha256": "a1a02c59e4cdd03e5c73c6712fe77b3655bc4e40b9b676ed62422796b2406705",
+      "bytes": 4405
+    },
+    {
+      "path": "bundles/join-fov-ulp-above.bundle.json",
+      "sha256": "3212a5d30357293ad031253e7558969baa5fbd1ec04cf6c4cce44c3655cadc39",
+      "bytes": 4424
+    },
+    {
+      "path": "bundles/join-fov-velocity-above.bundle.json",
+      "sha256": "65448301303dc0d40ff7055bfc64328385675fbc814200854939746ce876ba82",
+      "bytes": 4526
+    },
+    {
+      "path": "bundles/join-fov-velocity-below.bundle.json",
+      "sha256": "4abe21e0f166bd476d59e7802395386f37e9c50eeb8401d3d93fa0bcc5378a32",
+      "bytes": 4526
+    },
+    {
+      "path": "bundles/join-fov-velocity-equal.bundle.json",
+      "sha256": "c49eacf10520f54605d0dc1b8493c894c90c7a5f4a57853f0d7ef894cd965d86",
+      "bytes": 4528
+    },
+    {
+      "path": "bundles/join-position-above-24000-1001.bundle.json",
+      "sha256": "aa25e368b25e792a6c04603a6caf25f2bd4b4b97dd39e50411d46f0c6b7ef1dc",
+      "bytes": 4442
+    },
+    {
+      "path": "bundles/join-position-above-30000-1001.bundle.json",
+      "sha256": "8e406c5f31f9d818928be0d88369177eecf8882eaa9df37db55fd51e0f5448fe",
+      "bytes": 4442
+    },
+    {
+      "path": "bundles/join-position-above.bundle.json",
+      "sha256": "93b9d844f6cf003250cd63bd116bcfb769e802a797b96329a7fc45943713260c",
+      "bytes": 4419
+    },
+    {
+      "path": "bundles/join-position-below-24000-1001.bundle.json",
+      "sha256": "7385b7acd3a7d0aade49cb102769bb6926f0a829d103206645c97f260d499fc6",
+      "bytes": 4442
+    },
+    {
+      "path": "bundles/join-position-below-30000-1001.bundle.json",
+      "sha256": "794c0aa03e656c2fbb693f60853f3b5f9e0680ecb63b4fc9f88ba679a8e2ef9b",
+      "bytes": 4442
+    },
+    {
+      "path": "bundles/join-position-below.bundle.json",
+      "sha256": "be2c6601814ec90ebc7906acd2afafb8284a40f4d184b8078ac78bc1da72dc73",
+      "bytes": 4419
+    },
+    {
+      "path": "bundles/join-position-equal.bundle.json",
+      "sha256": "4e83be66af4ad6ff6b0daa76fc839b8d6320102aaf9f205d4f91cf15113db1aa",
+      "bytes": 4417
+    },
+    {
+      "path": "bundles/join-position-only-above.bundle.json",
+      "sha256": "5b27c159a27529f81564556df8c3ec7d588f26fcfa3ad2d7aacb567a6519f715",
+      "bytes": 4748
+    },
+    {
+      "path": "bundles/join-position-only-below.bundle.json",
+      "sha256": "2e3c29fddde51e89cdd800c4a6d3f4a8aa46d24adb84db33b0f29e80a7385b4b",
+      "bytes": 4748
+    },
+    {
+      "path": "bundles/join-position-only-equal.bundle.json",
+      "sha256": "e05f5491ce71317c3beb0ef1c250ee0ad65d2dc787111eada4bf9f6d91195db2",
+      "bytes": 4746
+    },
+    {
+      "path": "bundles/join-position-ulp-above.bundle.json",
+      "sha256": "62a7e0e2942682e6a7ded50483acfa2e7f9a2fdad92168138a88eec00030bc6f",
+      "bytes": 4437
+    },
+    {
+      "path": "bundles/join-position-ulp-below.bundle.json",
+      "sha256": "1598dca9bb136b6b7ec464de0ced3e337c7339ab634ccfe7bb388c4ce8a317ee",
+      "bytes": 4438
+    },
+    {
+      "path": "bundles/join-second-join-only-jumps.bundle.json",
+      "sha256": "5ff58758bf584796dce0ccf228e836894f81b56f68581c7962b89301f7c6345f",
+      "bytes": 4969
+    },
+    {
+      "path": "bundles/join-shots-listed-in-reverse-above.bundle.json",
+      "sha256": "96d435f9fd1db6841efb6ffe119c9f53ad7603c1eac48141a1b9d814843047d0",
+      "bytes": 4434
+    },
+    {
+      "path": "bundles/join-shots-listed-in-reverse-below.bundle.json",
+      "sha256": "e38210ac60346e8c51756c3f632542adea63a5e6797c77ccdcd7affc361619a7",
+      "bytes": 4434
+    },
+    {
+      "path": "bundles/join-target-above.bundle.json",
+      "sha256": "c0823aae6abd21160337f053f169e8c56269fae602b33efe694d00dabed5b115",
+      "bytes": 4743
+    },
+    {
+      "path": "bundles/join-target-below.bundle.json",
+      "sha256": "a62540bb310c2d258da463cecfef503f14ce4f5d56daa29f8281dde1d725d314",
+      "bytes": 4743
+    },
+    {
+      "path": "bundles/join-target-equal.bundle.json",
+      "sha256": "c52d920fed5d2d0fed52368f6925072d77065cbb0f84c53234d4db6808b73b1e",
+      "bytes": 4741
+    },
+    {
+      "path": "bundles/join-velocity-above.bundle.json",
+      "sha256": "3155f28dbbe27653cc0f65de308438c009e499c397d3c1222e97cd8165f0284a",
+      "bytes": 4531
+    },
+    {
+      "path": "bundles/join-velocity-below.bundle.json",
+      "sha256": "dd7d4eeed76246a983ad46de05678ccc8c4898c8e727e0dc69517807e883cc1a",
+      "bytes": 4531
+    },
+    {
+      "path": "bundles/join-velocity-equal.bundle.json",
+      "sha256": "ecfb9a554aaba4400ae91433875a24e13b35a9bf047eee826bd0c1bec52d047a",
+      "bytes": 4529
+    },
+    {
+      "path": "bundles/ooo-shots-instances-layers.bundle.json",
+      "sha256": "3ee2cec725fb0a62da2b25111512db554f8670fe0fdfd9a91dbfb4806b1b5811",
+      "bytes": 10449
+    },
+    {
+      "path": "bundles/world-camera-lookat-poses.bundle.json",
+      "sha256": "c28e942063cd9aa87bc16007f1ba959ddd55c850611de3b546fe99e890bab002",
+      "bytes": 6501
+    },
+    {
+      "path": "bundles/world-extreme-scales-and-chain.bundle.json",
+      "sha256": "5560af58efb2fa6d11eef44884d52cf2727ed285bc540c0d51a8f3efdb0f3f05",
+      "bytes": 11890
+    },
+    {
+      "path": "bundles/world-gimbal-threshold.bundle.json",
+      "sha256": "cb7882bcdc0bdd1f53c36887d9e71c375f11a9d538d623d485936848d741f676",
+      "bytes": 10301
+    },
+    {
+      "path": "bundles/world-sockets-chain-animated.bundle.json",
+      "sha256": "e1f619655962f942dced4e84cc2a6f6c0a3592c601e2385d4d9c60f8a1d44095",
+      "bytes": 6000
+    },
+    {
+      "path": "cases.json",
+      "sha256": "f842a33d449afe111f6d9dc91286487b06d90502cd242d592f34932a8803d80c",
+      "bytes": 36807
+    },
+    {
+      "path": "expected/fps-24000-1001.expected.json",
+      "sha256": "5878e1c23266e06f53d434bb499a3f4f29f9580c2c677d8b6e0c54e62b712b32",
+      "bytes": 66627
+    },
+    {
+      "path": "expected/fps-25.expected.json",
+      "sha256": "d7b638392cab989ec261795cdcfda7a251ff51772eba606fef607c89b288ba89",
+      "bytes": 64742
+    },
+    {
+      "path": "expected/fps-30.expected.json",
+      "sha256": "a3b90e63c8fb2bb5f02c094d20470fcfe29b86ae0818658bef8c4b3ff7315aac",
+      "bytes": 66281
+    },
+    {
+      "path": "expected/fps-30000-1001.expected.json",
+      "sha256": "692c6b1347ade555de77b0ae07477b4c5e6038addb5f897faa98d773b019a58a",
+      "bytes": 66707
+    },
+    {
+      "path": "expected/fps-60.expected.json",
+      "sha256": "6349bbff31bf1503e114b3b70093eacf68224e1e1443e7978e94821ded0d7a09",
+      "bytes": 66510
+    },
+    {
+      "path": "expected/fps-60000-1001.expected.json",
+      "sha256": "a36e5c966bae11932c5a26e388bf604925ce1041ad6226359e7feaf49252562d",
+      "bytes": 66889
+    },
+    {
+      "path": "expected/fps-above-1000.expected.json",
+      "sha256": "be6d7806f23ae49d660012c072118964a79bc32a58c04ca7bbc8d7e91777835e",
+      "bytes": 47060
+    },
+    {
+      "path": "expected/fps-profile-mismatch-ntsc.expected.json",
+      "sha256": "44611da6eafb376269a870b87239ade4709c7bd16aeed9594fcf9c8cc9cca375",
+      "bytes": 857
+    },
+    {
+      "path": "expected/fps-profile-unreduced-equivalent.expected.json",
+      "sha256": "a6d67cfff82e22bac4d31091cb1096977f9670a4878d55c54f6773870e7289c6",
+      "bytes": 871
+    },
+    {
+      "path": "expected/fps-unreduced-48-2.expected.json",
+      "sha256": "24e11027d9e7f06bbdd3352f29d2244897ce9dcfd7d6cc9204d1ec0cb6284400",
+      "bytes": 66350
+    },
+    {
+      "path": "expected/fps-zero-denominator.expected.json",
+      "sha256": "a589e456b35e52fa6e79465ff67b630f0d39bb8879ae848cce5d42c6e1bfbb5d",
+      "bytes": 1028
+    },
+    {
+      "path": "expected/join-diagonal-above.expected.json",
+      "sha256": "888603e30c9c8fb62b3c8e9747888de5ab303a405fe68985b34e0f7ac268e861",
+      "bytes": 37785
+    },
+    {
+      "path": "expected/join-diagonal-below.expected.json",
+      "sha256": "a773178f4807ecb6192f91dce72f73e312d08bc23f1e1c5a04f1ec08d173f4ce",
+      "bytes": 37214
+    },
+    {
+      "path": "expected/join-diagonal-equal.expected.json",
+      "sha256": "8ff3e25db7abb66c2723da1be320d9c5203162b908a887614274d5652b6d6450",
+      "bytes": 37785
+    },
+    {
+      "path": "expected/join-fov-above.expected.json",
+      "sha256": "36d5580e68ddcbc7b391ecb81c59bd6f909bdac3760845b8bd84c8ab28b265da",
+      "bytes": 33736
+    },
+    {
+      "path": "expected/join-fov-below.expected.json",
+      "sha256": "a0a004eb6248984a2c3f8af024625d3d6a6914d5c8f9faedf2c38bca31d4be51",
+      "bytes": 33498
+    },
+    {
+      "path": "expected/join-fov-equal.expected.json",
+      "sha256": "2a5bbe2e6b4caaa3201ae286dc906c09e66f340ced750a7a3e207e494c1dee50",
+      "bytes": 33389
+    },
+    {
+      "path": "expected/join-fov-ulp-above.expected.json",
+      "sha256": "bd393d48c701e12b32ad35748bf2ca7ad09445a896793ab10dfedb543ac5bd5e",
+      "bytes": 33579
+    },
+    {
+      "path": "expected/join-fov-velocity-above.expected.json",
+      "sha256": "ec049de8269c4631af0a030777256025b83b33eec5b084cab68887e4913b5a38",
+      "bytes": 36639
+    },
+    {
+      "path": "expected/join-fov-velocity-below.expected.json",
+      "sha256": "19a0609e82ec3f8dc5109ae27631eededec662f72555d9231cd7dac51acfe71f",
+      "bytes": 36362
+    },
+    {
+      "path": "expected/join-fov-velocity-equal.expected.json",
+      "sha256": "acb5cb9dae6beacfc892da40d2ee507307589678195157405465543b7594a31f",
+      "bytes": 36251
+    },
+    {
+      "path": "expected/join-position-above-24000-1001.expected.json",
+      "sha256": "01452bbeb9a444bb9161e5c6758da523f8798329663a3778a33160daee1f8c3d",
+      "bytes": 34408
+    },
+    {
+      "path": "expected/join-position-above-30000-1001.expected.json",
+      "sha256": "fcfdbcb1e12cfcd4e741734d578446f66e39de9696a676902e2f772480ecd6e7",
+      "bytes": 34408
+    },
+    {
+      "path": "expected/join-position-above.expected.json",
+      "sha256": "3f97bfdad815417878be98f830c4adbd0aa55c574e3e4b71e51ebabfcbff38e4",
+      "bytes": 34386
+    },
+    {
+      "path": "expected/join-position-below-24000-1001.expected.json",
+      "sha256": "0f1970482a3bb0c22b74615466dd9e2a92490bfe6acafaeed4315d94f8d7354a",
+      "bytes": 33839
+    },
+    {
+      "path": "expected/join-position-below-30000-1001.expected.json",
+      "sha256": "6dc53e8f211820ad0f5b342b3921871e764670de7350289ae064f655044e574f",
+      "bytes": 33839
+    },
+    {
+      "path": "expected/join-position-below.expected.json",
+      "sha256": "bf4a453b3a438ce7d3d02e77ef5b4d88493206c04b34e8d34cb2f2777666417e",
+      "bytes": 33817
+    },
+    {
+      "path": "expected/join-position-equal.expected.json",
+      "sha256": "03ce5f30253dbb09c2f3a4d4df345c8226a5b55a2de0e4e4f55754a7aae341b2",
+      "bytes": 33491
+    },
+    {
+      "path": "expected/join-position-only-above.expected.json",
+      "sha256": "994997a3951569553e318961140c06c51d08ebf7269b287fb4a803d6a3cf1fbb",
+      "bytes": 34027
+    },
+    {
+      "path": "expected/join-position-only-below.expected.json",
+      "sha256": "13604d2880f5b50dc557e6e6eca262fbca7283e83550c9b7e4c3ca9a6ce7ca2e",
+      "bytes": 33746
+    },
+    {
+      "path": "expected/join-position-only-equal.expected.json",
+      "sha256": "10138d1023d09cf1853a83ad34a06d5fb8b22845cd723c78a82d3c402771955f",
+      "bytes": 33463
+    },
+    {
+      "path": "expected/join-position-ulp-above.expected.json",
+      "sha256": "71a0248881e0f5ebd3fca2bd270b58600454550e9a4df9efc51977f2b4a3fd3a",
+      "bytes": 33881
+    },
+    {
+      "path": "expected/join-position-ulp-below.expected.json",
+      "sha256": "33639c7b5c7206f84d1a23cce21db8a0d5fbdc947e1c463814cbe08b8ee5f8a9",
+      "bytes": 33754
+    },
+    {
+      "path": "expected/join-second-join-only-jumps.expected.json",
+      "sha256": "4185f2c3387d040d97925146ef6d9715a6855672b193862adc083507c3b4ecae",
+      "bytes": 51653
+    },
+    {
+      "path": "expected/join-shots-listed-in-reverse-above.expected.json",
+      "sha256": "b752d91aefae94f46b5c581c71119b27f1095703862ad0dc468538b1082e29bd",
+      "bytes": 34416
+    },
+    {
+      "path": "expected/join-shots-listed-in-reverse-below.expected.json",
+      "sha256": "5823593cbacf7caf09e829851abb4aa85da307f6aba2405b536483c3b058ac24",
+      "bytes": 33847
+    },
+    {
+      "path": "expected/join-target-above.expected.json",
+      "sha256": "bce756594e7cb2f454bd31717e855dc1ad191942184c491741dfda0808f9cfd4",
+      "bytes": 33797
+    },
+    {
+      "path": "expected/join-target-below.expected.json",
+      "sha256": "ab8c0fb38639b995f287cdf53de389ced9c6189f44a5e9520395795edeece819",
+      "bytes": 33463
+    },
+    {
+      "path": "expected/join-target-equal.expected.json",
+      "sha256": "42084ba1a0248dcc23dfc3ffe4ec1db351c924e1d4f17865a7224a19f8289227",
+      "bytes": 33420
+    },
+    {
+      "path": "expected/join-velocity-above.expected.json",
+      "sha256": "72b77b0efd16c2144b84096fea9491a7a26b396b84ce3c05bdc9d97362f882e0",
+      "bytes": 36726
+    },
+    {
+      "path": "expected/join-velocity-below.expected.json",
+      "sha256": "413f5c039ed756a293a9143fbb86b47eeb7d2c7c7f3fd8ebe110fd54db918fd1",
+      "bytes": 36433
+    },
+    {
+      "path": "expected/join-velocity-equal.expected.json",
+      "sha256": "68293e450b050c3670265a69802598449a2fa60f179de97d374851334e725d08",
+      "bytes": 36682
+    },
+    {
+      "path": "expected/ooo-shots-instances-layers.expected.json",
+      "sha256": "7f9dab7d1c8516cc1a2d3645e9ddf827e80a39166ba007f521056d1967a97bd5",
+      "bytes": 155810
+    },
+    {
+      "path": "expected/world-camera-lookat-poses.expected.json",
+      "sha256": "84c7e68800ebd9255c8e5a7363975ec56bcdcf0f781bd8ba3e229d83c9f79242",
+      "bytes": 43921
+    },
+    {
+      "path": "expected/world-extreme-scales-and-chain.expected.json",
+      "sha256": "a144dbd58cb39741a17b6434051c7dc2831be151bb940d2e733bc5b908df6d5e",
+      "bytes": 105756
+    },
+    {
+      "path": "expected/world-gimbal-threshold.expected.json",
+      "sha256": "f61be62af9e9c426309e1f306fbaf634701b7a93a87a135ace255abcfae3cbb1",
+      "bytes": 159280
+    },
+    {
+      "path": "expected/world-sockets-chain-animated.expected.json",
+      "sha256": "b461fe5165b20c83f949c7d024850846e809525f9345ca3d7b409568306747c1",
+      "bytes": 66187
+    },
+    {
+      "path": "tolerances.json",
+      "sha256": "faf4be273f9f625ae02aeba99417adf8410cbb115abcaa886a3dd2f82c6c1e00",
+      "bytes": 3710
+    }
+  ],
+  "summary": {
+    "cases": 47,
+    "families": {
+      "join-boundary": 31,
+      "fps": 11,
+      "out-of-order": 1,
+      "world-matrix": 4
+    },
+    "editFramesEvaluated": 468,
+    "joinSamples": 39,
+    "timeProbes": 459,
+    "originFloatArtifacts": 14,
+    "originFloatArtifactsByCase": {
+      "fps-24000-1001": 3,
+      "fps-30000-1001": 4,
+      "fps-60000-1001": 6,
+      "fps-unreduced-48-2": 1
+    },
+    "originDecidedBoundaries": [
+      {
+        "case": "join-position-ulp-below",
+        "accepted": true,
+        "joinCodes": []
+      },
+      {
+        "case": "join-position-ulp-above",
+        "accepted": true,
+        "joinCodes": []
+      },
+      {
+        "case": "join-fov-ulp-above",
+        "accepted": true,
+        "joinCodes": []
+      },
+      {
+        "case": "join-velocity-equal",
+        "accepted": false,
+        "joinCodes": [
+          "CONTINUOUS_VELOCITY_JUMP"
+        ]
+      },
+      {
+        "case": "join-fov-velocity-equal",
+        "accepted": true,
+        "joinCodes": []
+      },
+      {
+        "case": "join-diagonal-equal",
+        "accepted": false,
+        "joinCodes": [
+          "CONTINUOUS_CAMERA_JUMP",
+          "CONTINUOUS_TARGET_JUMP"
+        ]
+      }
+    ]
+  },
+  "scope": {
+    "claim": "O corpus estendido (BL018/K) executa funções REAIS de packages/scene-engine empacotadas SEM modificação (esbuild + zod 4.3.6 + three 0.187.0, sem GPU/DOM/rede), no mesmo snapshot d6adac15… do corpus base. Cobertura por linha NÃO foi medida: 'executado' = chamado pelo harness ou exercitado por essas chamadas nas entradas do corpus.",
+    "executedFunctions": [
+      {
+        "module": "src/validate/edit-joins.ts",
+        "symbols": [
+          "validateEditJoins (via inspectBundle/finalizeBundle)",
+          "JOIN_POSITION_TOLERANCE_SCENE_UNITS",
+          "JOIN_FOV_TOLERANCE_DEG",
+          "JOIN_VELOCITY_TOLERANCE_SCENE_UNITS_PER_FRAME",
+          "JOIN_FOV_VELOCITY_TOLERANCE_DEG_PER_FRAME"
+        ],
+        "how": "validateEditJoins via o harness base; as quatro constantes são importadas direto do módulo real e conferidas com tolerances.json",
+        "publicIndex": "validateEditJoins sim (core.ts); JOIN_* NÃO são exportadas pelo índice do pacote, só pelo módulo"
+      },
+      {
+        "module": "src/camera/resolve-camera-clip.ts",
+        "symbols": [
+          "resolveCameraAtClipFrame (poses dos dois lados de cada junção)",
+          "getCameraClipDurationFrames",
+          "mainTrackPoses"
+        ],
+        "how": "chamada direta nos frames de medida de cada junção contínua (último frame do shot anterior e primeiro do seguinte)"
+      },
+      {
+        "module": "src/types/fps.ts",
+        "symbols": [
+          "fpsToRate",
+          "secondsToEditFrame",
+          "editFrameToSeconds"
+        ],
+        "how": "chamada direta com FPS 24000/1001, 30000/1001, 60000/1001, 25, 30, 60, 48/2 (não reduzido) e 2000/1",
+        "publicIndex": "sim (core.ts)"
+      },
+      {
+        "module": "src/transport/audio-window.ts",
+        "symbols": [
+          "editSecondsToFrame",
+          "editFrameToEditSeconds",
+          "maxEditSeconds",
+          "editTimelineDurationSeconds",
+          "clampEditSeconds"
+        ],
+        "how": "chamada direta",
+        "publicIndex": "sim (transport/index.ts reexportado por core.ts)"
+      },
+      {
+        "module": "src/evaluator/evaluate-edit-frame.ts + src/scene/scene-graph.ts",
+        "symbols": [
+          "evaluateEditFrame",
+          "computeWorldMatrices",
+          "resolveParentLinks"
+        ],
+        "how": "via evaluateBundle do harness base, agora em hierarquias profundas, gimbal, escalas extremas, sockets encadeados e canais cycle/event/static; e em 7 ordens de avaliação por caso de 'out-of-order'"
+      }
+    ],
+    "dependsOnNonExportedMethod": [
+      {
+        "what": "Matriz mundo da câmera (o equivalente ao `CameraPose::to_world_matrix` do Rust)",
+        "where": "src/runtime/three-scene-runtime.ts: ThreeSceneRuntime.drawEditFrame (método privado) — position.set, lookAt(Vector3), updateMatrixWorld",
+        "why": "A classe exige WebGLRenderer; o método é privado e não há função exportada e pura. Sem GPU/Chrome não há como executá-lo.",
+        "what_is_recorded": "A MESMA sequência de chamadas com a biblioteca Three.js 0.187.0 fixada (PerspectiveCamera), sobre a pose que a origem avaliou. Marcado `source: three-library` em cada matriz; é prova da biblioteca real, não do método da origem. Se o runtime mudar a sequência, este caso não percebe (limite aceito)."
+      },
+      {
+        "what": "compareContinuousPose, cameraStateAtJoinEnd/Start (cálculo das distâncias da junção)",
+        "where": "src/validate/edit-joins.ts (funções não exportadas)",
+        "why": "Não exportadas. O oráculo grava os CÓDIGOS que validateEditJoins devolve e as poses reais dos dois lados (resolveCameraAtClipFrame); as distâncias são conferidas no Rust a partir dessas poses, com os limites exportados.",
+        "what_is_recorded": "Códigos e poses; a escolha dos frames de medida espelha onde a origem mede (seleção de ponto, como probes.mjs)."
+      },
+      {
+        "what": "Mensagens `toFixed(4)` das junções (distância formatada)",
+        "where": "src/validate/edit-joins.ts",
+        "why": "São texto de diagnóstico; o consumidor compara códigos, não mensagens.",
+        "what_is_recorded": "Mensagens gravadas em validation.editJoins[].message, sem comparação obrigatória."
+      }
+    ],
+    "loadedButNotExercised": [
+      {
+        "modules": [
+          "src/narration/*",
+          "src/outline/*",
+          "src/rig/*",
+          "src/path/*",
+          "src/effects/*",
+          "src/weather/*",
+          "src/lighting/*"
+        ],
+        "why": "Importados pelo schema, mas o corpus estendido também não tem narração, outline, clima, luz por keys, efeitos, rigs ou paths."
+      }
+    ],
+    "corpusGaps": [
+      "Fronteiras de junção são medidas em movimentos lineares (passo exato) e em uma diagonal; easings não lineares não têm caso 'exatamente igual' porque o passo por frame não é controlável sem ajustar a distância por tentativa.",
+      "As fronteiras de velocidade e de velocidade de FOV (0,08 e 0,5) não são exatas em binário: o caso 'igual' é decidido pela origem e gravado (kind=boundary).",
+      "Seek aleatório cobre a ORDEM de avaliação de frames de edição de um caso, não um fuzz de bundles.",
+      "Tempo racional foi comparado em 9 frames por FPS (até o frame 100000), não em todos os frames.",
+      "O oráculo registra a resposta em ponto flutuante da origem para segundos→frame; quando ela difere do piso exato o probe é marcado originMatchesExact=false (ver tolerances.json).",
+      "Sem áudio, narração, GPU, pixel ou performance; sem o branch piloto."
+    ],
+    "notExecuted": [
+      {
+        "area": "Tudo que o corpus base já declara como não executado (comandos de câmera, edição em lote, narração, rig, luz por keys, clima, runtime Three.js/Spark, I/O)",
+        "reason": "fora do escopo de K; ver harness/scope.json"
+      }
+    ]
+  },
+  "regeneration": [
+    "node scripts/migration-oracle/oracle.mjs setup",
+    "node scripts/migration-oracle/extended.mjs corpus   # só se o corpus mudar",
+    "node scripts/migration-oracle/extended.mjs generate",
+    "node scripts/migration-oracle/extended.mjs verify"
+  ]
+}

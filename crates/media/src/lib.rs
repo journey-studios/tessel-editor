@@ -4,6 +4,7 @@
 //! UI thread and reports through jobs. No GPUI, no window.
 
 pub mod derive;
+pub mod directed_resources;
 pub mod export;
 pub mod fsx;
 pub mod host;

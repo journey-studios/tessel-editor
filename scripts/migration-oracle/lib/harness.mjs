@@ -61,9 +61,11 @@ const originPlugin = (sourceRoot, depsDir) => ({
 })
 
 /**
+ * @param {string} [entry] arquivo de entrada do harness; o padrão é o harness do corpus base. O
+ *   harness estendido (`extended/entry.mjs`) passa o seu, que importa o base sem alterá-lo.
  * @returns {Promise<{ module: any, sources: SourceFile[], sourceRoot: string }>}
  */
-export const buildHarness = async (config) => {
+export const buildHarness = async (config, entry = ENTRY) => {
   if (!existsSync(path.join(config.sourceRoot, "src"))) {
     throw new EnvironmentError(
       `Origem indisponível: ${path.join(config.sourceRoot, "src")} não existe (use --source-root ou ORACLE_SOURCE_ROOT)`,
@@ -80,7 +82,7 @@ export const buildHarness = async (config) => {
   const depsDir = realpathSync(config.depsDir)
   const esbuild = requireFromDeps(depsDir)("esbuild")
   const result = await esbuild.build({
-    entryPoints: [ENTRY],
+    entryPoints: [entry],
     absWorkingDir: depsDir,
     bundle: true,
     write: false,
@@ -113,13 +115,14 @@ export const buildHarness = async (config) => {
  * @typedef {{ path: string, sha256: string, gitBlob: string, bytes: number, bytesInOutput: number, role: "called-directly" | "loaded-transitively" }} SourceFile
  */
 const collectSources = (metafile, sourceRoot, depsDir) => {
-  const entryKey = Object.keys(metafile.inputs).find(
-    (key) => path.resolve(depsDir, key) === ENTRY,
-  )
+  // "Chamada direta" = importada por qualquer arquivo do harness (a pasta deste runner). Com o
+  // harness base só há `harness/entry.mjs`; o estendido importa o base e acrescenta o seu.
+  const harnessPrefix = `${realpathSync(ORACLE_DIR)}${path.sep}`
   const directImports = new Set(
-    (metafile.inputs[entryKey]?.imports ?? []).map((imported) =>
-      path.resolve(depsDir, imported.path),
-    ),
+    Object.entries(metafile.inputs)
+      .filter(([key]) => path.resolve(depsDir, key).startsWith(harnessPrefix))
+      .flatMap(([, input]) => input.imports)
+      .map((imported) => path.resolve(depsDir, imported.path)),
   )
   const outputInputs = Object.values(metafile.outputs)[0].inputs
   const prefix = `${sourceRoot}${path.sep}`

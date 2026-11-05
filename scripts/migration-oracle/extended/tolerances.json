@@ -1,0 +1,59 @@
+{
+  "formatVersion": 1,
+  "declaration": "Fixadas ANTES de qualquer comparação do Rust com o corpus estendido (BL018 / K, rodada 2). Mudar um número aqui muda o hash do manifest e o consumidor Rust (que repete estas constantes e confere este arquivo) falha. Os números são os mesmos de BB02/BB03 já adotados; nenhum foi afrouxado para o corpus novo.",
+  "numeric": {
+    "worldMatrix": {
+      "absolute": 1e-10,
+      "relative": 1e-12,
+      "rule": "abs(actual - expected) <= absolute + relative * abs(expected)",
+      "applies": "worldMatrices de nós (computeWorldMatrices) em quadros estáticos e animados",
+      "why": "Mesma regra de directed_scene_oracle.rs: Three.js e o Rust multiplicam em ordens que arredondam diferente; hierarquias profundas e translações de 1e6 são cobertas pelo termo relativo."
+    },
+    "nodeLocal": {
+      "absolute": 1e-9,
+      "relative": 1e-12,
+      "rule": "abs(actual - expected) <= absolute + relative * abs(expected)",
+      "applies": "localPosition, localRotation (graus de Euler XYZ), localScale, valores de performanceOverrides",
+      "why": "Quaternion -> Euler usa asin/atan2; V8 e a libm do host podem divergir em 1 ulp. Perto do limiar de gimbal (|m13| = 0,9999999) a conversão é bem condicionada, então a mesma regra vale."
+    },
+    "camera": {
+      "absolute": 1e-9,
+      "relative": 1e-12,
+      "rule": "abs(actual - expected) <= absolute + relative * abs(expected)",
+      "applies": "position, target, fovDeg, velocity, fovVelocityDegPerFrame, poses de movimento",
+      "why": "Mesma regra de directed_scene_temporal.rs."
+    },
+    "cameraWorldMatrix": {
+      "absolute": 1e-9,
+      "relative": 1e-12,
+      "rule": "abs(actual - expected) <= absolute + relative * abs(expected)",
+      "applies": "matrixWorld de PerspectiveCamera.lookAt (three 0.187.0) sobre a pose avaliada pela origem",
+      "why": "O Three.js passa por quaternion (setFromRotationMatrix) e recompõe a matriz; o Rust monta a base direto. A diferença honesta é de ~1e-16 por elemento."
+    },
+    "timeSeconds": {
+      "absolute": 1e-12,
+      "relative": 1e-12,
+      "rule": "abs(actual - expected) <= absolute + relative * abs(expected)",
+      "applies": "editFrameToSeconds, maxEditSeconds, editTimelineDurationSeconds, clampEditSeconds",
+      "why": "A origem divide doubles (frame / (num/den)); o Rust calcula a fração exata e converte para f64 na borda. Diferem por <= 2 ulp."
+    }
+  },
+  "exact": [
+    "números de frame (editFrame, instanceFrame, cameraClipFrame, floorFrame, clampedFrame)",
+    "ids, contagens, ok, accepted",
+    "códigos de erro da origem (sourceCode e editJoins[].code), como CONJUNTO por shotId",
+    "os dois textos de erro de frame fora do intervalo"
+  ],
+  "joinRules": {
+    "origin": "packages/scene-engine/src/validate/edit-joins.ts",
+    "JOIN_POSITION_TOLERANCE_SCENE_UNITS": 0.25,
+    "JOIN_FOV_TOLERANCE_DEG": 2,
+    "JOIN_VELOCITY_TOLERANCE_SCENE_UNITS_PER_FRAME": 0.08,
+    "JOIN_FOV_VELOCITY_TOLERANCE_DEG_PER_FRAME": 0.5,
+    "comparison": "estritamente maior (`>`): exatamente igual ao limite NÃO é um salto",
+    "note": "São regras de domínio da origem, não tolerâncias de comparação. O gerador confere estes valores com os exportados pelo módulo real; o oráculo grava o que a origem responde nas fronteiras."
+  },
+  "timeClassification": {
+    "rule": "Um probe de segundos cuja resposta da origem (Math.floor(seconds * rate), em ponto flutuante) difere do piso exato é marcado originMatchesExact=false. O consumidor Rust deve igualar a origem; nos marcados, aceita o piso exato e CONTA a divergência (número fixado no manifest). Nada é reclassificado depois de ver o Rust."
+  }
+}

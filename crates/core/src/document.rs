@@ -415,6 +415,7 @@ impl EditorState {
             preview: crate::plan::PreviewIntent::Sequence,
             preview_policy: crate::preview::PreviewPolicy::default(),
             scenes,
+            scene_interaction: Default::default(),
         })
     }
 }

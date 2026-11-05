@@ -1,0 +1,1395 @@
+{
+  "formatVersion": 1,
+  "note": "Entradas do oráculo ESTENDIDO (BL018/K). `intent` e `probes` são declarados antes da execução e conferidos na geração; os resultados esperados ficam em expected/ e vêm da origem.",
+  "tolerances": "tolerances.json",
+  "cases": [
+    {
+      "id": "join-position-below",
+      "family": "join-boundary",
+      "kind": "valid",
+      "description": "Passo de posição por frame (dolly): 0,24375 / 0,25 exato / 0,25625 contra JOIN_POSITION_TOLERANCE_SCENE_UNITS = 0,25 (posição e alvo andam juntos): below do limite (valor 3.9).",
+      "bundle": "bundles/join-position-below.bundle.json",
+      "expected": "expected/join-position-below.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-position-equal",
+      "family": "join-boundary",
+      "kind": "valid",
+      "description": "Passo de posição por frame (dolly): 0,24375 / 0,25 exato / 0,25625 contra JOIN_POSITION_TOLERANCE_SCENE_UNITS = 0,25 (posição e alvo andam juntos): equal do limite (valor 4).",
+      "bundle": "bundles/join-position-equal.bundle.json",
+      "expected": "expected/join-position-equal.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-position-above",
+      "family": "join-boundary",
+      "kind": "invalid",
+      "description": "Passo de posição por frame (dolly): 0,24375 / 0,25 exato / 0,25625 contra JOIN_POSITION_TOLERANCE_SCENE_UNITS = 0,25 (posição e alvo andam juntos): above do limite (valor 4.1).",
+      "bundle": "bundles/join-position-above.bundle.json",
+      "expected": "expected/join-position-above.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": false,
+        "joinCodes": [
+          "CONTINUOUS_CAMERA_JUMP",
+          "CONTINUOUS_TARGET_JUMP"
+        ]
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-position-ulp-below",
+      "family": "join-boundary",
+      "kind": "boundary",
+      "description": "Dolly com distância um double abaixo de 4 (3.9999999999999996): passo a 1 ulp de 0,25; a aritmética da origem decide.",
+      "bundle": "bundles/join-position-ulp-below.bundle.json",
+      "expected": "expected/join-position-ulp-below.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "originDecides": true
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-position-ulp-above",
+      "family": "join-boundary",
+      "kind": "boundary",
+      "description": "Dolly com distância um double acima de 4 (4.000000000000001): passo a 1 ulp de 0,25; a aritmética da origem decide.",
+      "bundle": "bundles/join-position-ulp-above.bundle.json",
+      "expected": "expected/join-position-ulp-above.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "originDecides": true
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-target-below",
+      "family": "join-boundary",
+      "kind": "valid",
+      "description": "Só o alvo anda 0,24375 / 0,25 / 0,25625 por frame (posição parada): below do limite (valor 3.9).",
+      "bundle": "bundles/join-target-below.bundle.json",
+      "expected": "expected/join-target-below.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-target-equal",
+      "family": "join-boundary",
+      "kind": "valid",
+      "description": "Só o alvo anda 0,24375 / 0,25 / 0,25625 por frame (posição parada): equal do limite (valor 4).",
+      "bundle": "bundles/join-target-equal.bundle.json",
+      "expected": "expected/join-target-equal.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-target-above",
+      "family": "join-boundary",
+      "kind": "invalid",
+      "description": "Só o alvo anda 0,24375 / 0,25 / 0,25625 por frame (posição parada): above do limite (valor 4.1).",
+      "bundle": "bundles/join-target-above.bundle.json",
+      "expected": "expected/join-target-above.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": false,
+        "joinCodes": [
+          "CONTINUOUS_TARGET_JUMP"
+        ]
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-position-only-below",
+      "family": "join-boundary",
+      "kind": "valid",
+      "description": "Só a posição anda 0,24375 / 0,25 / 0,25625 por frame (alvo parado): below do limite (valor 3.9).",
+      "bundle": "bundles/join-position-only-below.bundle.json",
+      "expected": "expected/join-position-only-below.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-position-only-equal",
+      "family": "join-boundary",
+      "kind": "valid",
+      "description": "Só a posição anda 0,24375 / 0,25 / 0,25625 por frame (alvo parado): equal do limite (valor 4).",
+      "bundle": "bundles/join-position-only-equal.bundle.json",
+      "expected": "expected/join-position-only-equal.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-position-only-above",
+      "family": "join-boundary",
+      "kind": "invalid",
+      "description": "Só a posição anda 0,24375 / 0,25 / 0,25625 por frame (alvo parado): above do limite (valor 4.1).",
+      "bundle": "bundles/join-position-only-above.bundle.json",
+      "expected": "expected/join-position-only-above.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": false,
+        "joinCodes": [
+          "CONTINUOUS_CAMERA_JUMP"
+        ]
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-fov-below",
+      "family": "join-boundary",
+      "kind": "valid",
+      "description": "FOV muda 1,9375 / 2 / 2,0625 graus por frame contra JOIN_FOV_TOLERANCE_DEG = 2: below do limite (valor 31).",
+      "bundle": "bundles/join-fov-below.bundle.json",
+      "expected": "expected/join-fov-below.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-fov-equal",
+      "family": "join-boundary",
+      "kind": "valid",
+      "description": "FOV muda 1,9375 / 2 / 2,0625 graus por frame contra JOIN_FOV_TOLERANCE_DEG = 2: equal do limite (valor 32).",
+      "bundle": "bundles/join-fov-equal.bundle.json",
+      "expected": "expected/join-fov-equal.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-fov-above",
+      "family": "join-boundary",
+      "kind": "invalid",
+      "description": "FOV muda 1,9375 / 2 / 2,0625 graus por frame contra JOIN_FOV_TOLERANCE_DEG = 2: above do limite (valor 33).",
+      "bundle": "bundles/join-fov-above.bundle.json",
+      "expected": "expected/join-fov-above.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": false,
+        "joinCodes": [
+          "CONTINUOUS_FOV_JUMP"
+        ]
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-fov-ulp-above",
+      "family": "join-boundary",
+      "kind": "boundary",
+      "description": "FOV com delta um double acima de 32 (32.00000000000001): 1 ulp acima do limite de 2 graus por frame.",
+      "bundle": "bundles/join-fov-ulp-above.bundle.json",
+      "expected": "expected/join-fov-ulp-above.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "originDecides": true
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-velocity-below",
+      "family": "join-boundary",
+      "kind": "valid",
+      "description": "Salto de velocidade na emenda hold→dolly: 0,076 / 0,08 / 0,084 contra JOIN_VELOCITY_TOLERANCE_SCENE_UNITS_PER_FRAME = 0,08: below do limite (valor 1.9).",
+      "bundle": "bundles/join-velocity-below.bundle.json",
+      "expected": "expected/join-velocity-below.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-velocity-equal",
+      "family": "join-boundary",
+      "kind": "boundary",
+      "description": "Salto de velocidade na emenda hold→dolly: 0,076 / 0,08 / 0,084 contra JOIN_VELOCITY_TOLERANCE_SCENE_UNITS_PER_FRAME = 0,08: equal do limite (valor 2).",
+      "bundle": "bundles/join-velocity-equal.bundle.json",
+      "expected": "expected/join-velocity-equal.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "originDecides": true
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-velocity-above",
+      "family": "join-boundary",
+      "kind": "invalid",
+      "description": "Salto de velocidade na emenda hold→dolly: 0,076 / 0,08 / 0,084 contra JOIN_VELOCITY_TOLERANCE_SCENE_UNITS_PER_FRAME = 0,08: above do limite (valor 2.1).",
+      "bundle": "bundles/join-velocity-above.bundle.json",
+      "expected": "expected/join-velocity-above.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": false,
+        "joinCodes": [
+          "CONTINUOUS_VELOCITY_JUMP"
+        ]
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-fov-velocity-below",
+      "family": "join-boundary",
+      "kind": "valid",
+      "description": "Salto de velocidade de FOV na emenda hold→zoom: 0,48 / 0,5 / 0,52 contra JOIN_FOV_VELOCITY_TOLERANCE_DEG_PER_FRAME = 0,5: below do limite (valor 12).",
+      "bundle": "bundles/join-fov-velocity-below.bundle.json",
+      "expected": "expected/join-fov-velocity-below.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-fov-velocity-equal",
+      "family": "join-boundary",
+      "kind": "boundary",
+      "description": "Salto de velocidade de FOV na emenda hold→zoom: 0,48 / 0,5 / 0,52 contra JOIN_FOV_VELOCITY_TOLERANCE_DEG_PER_FRAME = 0,5: equal do limite (valor 12.5).",
+      "bundle": "bundles/join-fov-velocity-equal.bundle.json",
+      "expected": "expected/join-fov-velocity-equal.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "originDecides": true
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-fov-velocity-above",
+      "family": "join-boundary",
+      "kind": "invalid",
+      "description": "Salto de velocidade de FOV na emenda hold→zoom: 0,48 / 0,5 / 0,52 contra JOIN_FOV_VELOCITY_TOLERANCE_DEG_PER_FRAME = 0,5: above do limite (valor 13).",
+      "bundle": "bundles/join-fov-velocity-above.bundle.json",
+      "expected": "expected/join-fov-velocity-above.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": false,
+        "joinCodes": [
+          "CONTINUOUS_FOV_VELOCITY_JUMP"
+        ]
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-diagonal-below",
+      "family": "join-boundary",
+      "kind": "valid",
+      "description": "Dolly na diagonal (1,1,1)/√3: o passo é D/16 só em teoria; a igualdade passa por hypot e raiz: below do limite (valor 3.9).",
+      "bundle": "bundles/join-diagonal-below.bundle.json",
+      "expected": "expected/join-diagonal-below.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-diagonal-equal",
+      "family": "join-boundary",
+      "kind": "boundary",
+      "description": "Dolly na diagonal (1,1,1)/√3: o passo é D/16 só em teoria; a igualdade passa por hypot e raiz: equal do limite (valor 4).",
+      "bundle": "bundles/join-diagonal-equal.bundle.json",
+      "expected": "expected/join-diagonal-equal.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "originDecides": true
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-diagonal-above",
+      "family": "join-boundary",
+      "kind": "invalid",
+      "description": "Dolly na diagonal (1,1,1)/√3: o passo é D/16 só em teoria; a igualdade passa por hypot e raiz: above do limite (valor 4.1).",
+      "bundle": "bundles/join-diagonal-above.bundle.json",
+      "expected": "expected/join-diagonal-above.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": false,
+        "joinCodes": [
+          "CONTINUOUS_CAMERA_JUMP",
+          "CONTINUOUS_TARGET_JUMP"
+        ]
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-second-join-only-jumps",
+      "family": "join-boundary",
+      "kind": "invalid",
+      "description": "Três shots contínuos; o clipe tem dois dollies (passo 0,2 e depois 0,35). A junção A|B é suave e B|C salta; o código aponta shot-c.",
+      "bundle": "bundles/join-second-join-only-jumps.bundle.json",
+      "expected": "expected/join-second-join-only-jumps.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": false,
+        "joinCodes": [
+          "CONTINUOUS_CAMERA_JUMP",
+          "CONTINUOUS_TARGET_JUMP"
+        ]
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          9,
+          10,
+          19,
+          20
+        ]
+      }
+    },
+    {
+      "id": "join-shots-listed-in-reverse-below",
+      "family": "join-boundary",
+      "kind": "valid",
+      "description": "Mesmo caso de join-position-below, mas com o array de shots em ordem inversa: a origem ordena por startFrame.",
+      "bundle": "bundles/join-shots-listed-in-reverse-below.bundle.json",
+      "expected": "expected/join-shots-listed-in-reverse-below.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-shots-listed-in-reverse-above",
+      "family": "join-boundary",
+      "kind": "invalid",
+      "description": "Mesmo caso de join-position-above, mas com o array de shots em ordem inversa: a origem ordena por startFrame.",
+      "bundle": "bundles/join-shots-listed-in-reverse-above.bundle.json",
+      "expected": "expected/join-shots-listed-in-reverse-above.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": false,
+        "joinCodes": [
+          "CONTINUOUS_CAMERA_JUMP",
+          "CONTINUOUS_TARGET_JUMP"
+        ]
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-position-above-24000-1001",
+      "family": "join-boundary",
+      "kind": "invalid",
+      "description": "Salto de posição de 0,25625 por frame a 24000/1001 fps: a regra é por frame, não por segundo.",
+      "bundle": "bundles/join-position-above-24000-1001.bundle.json",
+      "expected": "expected/join-position-above-24000-1001.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": false,
+        "joinCodes": [
+          "CONTINUOUS_CAMERA_JUMP",
+          "CONTINUOUS_TARGET_JUMP"
+        ]
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-position-below-24000-1001",
+      "family": "join-boundary",
+      "kind": "valid",
+      "description": "Passo de 0,24375 por frame a 24000/1001 fps: aceito.",
+      "bundle": "bundles/join-position-below-24000-1001.bundle.json",
+      "expected": "expected/join-position-below-24000-1001.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-position-above-30000-1001",
+      "family": "join-boundary",
+      "kind": "invalid",
+      "description": "Salto de posição de 0,25625 por frame a 30000/1001 fps: a regra é por frame, não por segundo.",
+      "bundle": "bundles/join-position-above-30000-1001.bundle.json",
+      "expected": "expected/join-position-above-30000-1001.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": false,
+        "joinCodes": [
+          "CONTINUOUS_CAMERA_JUMP",
+          "CONTINUOUS_TARGET_JUMP"
+        ]
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "join-position-below-30000-1001",
+      "family": "join-boundary",
+      "kind": "valid",
+      "description": "Passo de 0,24375 por frame a 30000/1001 fps: aceito.",
+      "bundle": "bundles/join-position-below-30000-1001.bundle.json",
+      "expected": "expected/join-position-below-30000-1001.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "joinSamples": true,
+        "extraEditFrames": [
+          6,
+          7,
+          8,
+          9
+        ]
+      }
+    },
+    {
+      "id": "fps-24000-1001",
+      "family": "fps",
+      "kind": "valid",
+      "description": "Bundle a 24000/1001 fps com 3 shots nas bordas dos segundos, canais cycle/event e câmera contínua; mais sondas de tempo (frame↔segundos) em torno de cada início de frame.",
+      "bundle": "bundles/fps-24000-1001.bundle.json",
+      "expected": "expected/fps-24000-1001.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "extraEditFrames": [
+          23,
+          24,
+          25,
+          47,
+          48
+        ],
+        "joinSamples": true,
+        "time": {
+          "frames": [
+            0,
+            1,
+            2,
+            23,
+            24,
+            25,
+            47,
+            48,
+            49,
+            50,
+            1000,
+            30000,
+            100000
+          ]
+        }
+      }
+    },
+    {
+      "id": "fps-30000-1001",
+      "family": "fps",
+      "kind": "valid",
+      "description": "Bundle a 30000/1001 fps com 3 shots nas bordas dos segundos, canais cycle/event e câmera contínua; mais sondas de tempo (frame↔segundos) em torno de cada início de frame.",
+      "bundle": "bundles/fps-30000-1001.bundle.json",
+      "expected": "expected/fps-30000-1001.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "extraEditFrames": [
+          29,
+          30,
+          31,
+          59,
+          60
+        ],
+        "joinSamples": true,
+        "time": {
+          "frames": [
+            0,
+            1,
+            2,
+            29,
+            30,
+            31,
+            59,
+            60,
+            61,
+            62,
+            1000,
+            30000,
+            100000
+          ]
+        }
+      }
+    },
+    {
+      "id": "fps-60000-1001",
+      "family": "fps",
+      "kind": "valid",
+      "description": "Bundle a 60000/1001 fps com 3 shots nas bordas dos segundos, canais cycle/event e câmera contínua; mais sondas de tempo (frame↔segundos) em torno de cada início de frame.",
+      "bundle": "bundles/fps-60000-1001.bundle.json",
+      "expected": "expected/fps-60000-1001.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "extraEditFrames": [
+          59,
+          60,
+          61,
+          119,
+          120
+        ],
+        "joinSamples": true,
+        "time": {
+          "frames": [
+            0,
+            1,
+            2,
+            59,
+            60,
+            61,
+            119,
+            120,
+            121,
+            122,
+            1000,
+            30000,
+            100000
+          ]
+        }
+      }
+    },
+    {
+      "id": "fps-25",
+      "family": "fps",
+      "kind": "valid",
+      "description": "Bundle a 25/1 fps com 3 shots nas bordas dos segundos, canais cycle/event e câmera contínua; mais sondas de tempo (frame↔segundos) em torno de cada início de frame.",
+      "bundle": "bundles/fps-25.bundle.json",
+      "expected": "expected/fps-25.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "extraEditFrames": [
+          24,
+          25,
+          26,
+          49,
+          50
+        ],
+        "joinSamples": true,
+        "time": {
+          "frames": [
+            0,
+            1,
+            2,
+            24,
+            25,
+            26,
+            49,
+            50,
+            51,
+            52,
+            1000,
+            30000,
+            100000
+          ]
+        }
+      }
+    },
+    {
+      "id": "fps-30",
+      "family": "fps",
+      "kind": "valid",
+      "description": "Bundle a 30/1 fps com 3 shots nas bordas dos segundos, canais cycle/event e câmera contínua; mais sondas de tempo (frame↔segundos) em torno de cada início de frame.",
+      "bundle": "bundles/fps-30.bundle.json",
+      "expected": "expected/fps-30.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "extraEditFrames": [
+          29,
+          30,
+          31,
+          59,
+          60
+        ],
+        "joinSamples": true,
+        "time": {
+          "frames": [
+            0,
+            1,
+            2,
+            29,
+            30,
+            31,
+            59,
+            60,
+            61,
+            62,
+            1000,
+            30000,
+            100000
+          ]
+        }
+      }
+    },
+    {
+      "id": "fps-60",
+      "family": "fps",
+      "kind": "valid",
+      "description": "Bundle a 60/1 fps com 3 shots nas bordas dos segundos, canais cycle/event e câmera contínua; mais sondas de tempo (frame↔segundos) em torno de cada início de frame.",
+      "bundle": "bundles/fps-60.bundle.json",
+      "expected": "expected/fps-60.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "extraEditFrames": [
+          59,
+          60,
+          61,
+          119,
+          120
+        ],
+        "joinSamples": true,
+        "time": {
+          "frames": [
+            0,
+            1,
+            2,
+            59,
+            60,
+            61,
+            119,
+            120,
+            121,
+            122,
+            1000,
+            30000,
+            100000
+          ]
+        }
+      }
+    },
+    {
+      "id": "fps-unreduced-48-2",
+      "family": "fps",
+      "kind": "valid",
+      "description": "Bundle a 48/2 fps com 3 shots nas bordas dos segundos, canais cycle/event e câmera contínua; mais sondas de tempo (frame↔segundos) em torno de cada início de frame.",
+      "bundle": "bundles/fps-unreduced-48-2.bundle.json",
+      "expected": "expected/fps-unreduced-48-2.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "extraEditFrames": [
+          23,
+          24,
+          25,
+          47,
+          48
+        ],
+        "joinSamples": true,
+        "time": {
+          "frames": [
+            0,
+            1,
+            2,
+            23,
+            24,
+            25,
+            47,
+            48,
+            49,
+            50,
+            1000,
+            30000,
+            100000
+          ]
+        }
+      }
+    },
+    {
+      "id": "fps-above-1000",
+      "family": "fps",
+      "kind": "valid",
+      "description": "2000/1 fps: a origem aceita (o schema só pede inteiros positivos). O importador Rust declara um teto de 1000 fps (FPS_OUT_OF_RANGE): a divergência documentada fica no consumidor, não aqui.",
+      "bundle": "bundles/fps-above-1000.bundle.json",
+      "expected": "expected/fps-above-1000.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "time": {
+          "frames": [
+            0,
+            1,
+            2000,
+            2001
+          ]
+        }
+      }
+    },
+    {
+      "id": "fps-profile-mismatch-ntsc",
+      "family": "fps",
+      "kind": "invalid",
+      "description": "fps do bundle 30000/1001 e do renderProfile 30000/1000: FPS_MISMATCH (a igualdade é por numerador e denominador, não por valor).",
+      "bundle": "bundles/fps-profile-mismatch-ntsc.bundle.json",
+      "expected": "expected/fps-profile-mismatch-ntsc.expected.json",
+      "intent": {
+        "schemaOk": false,
+        "accepted": false,
+        "sourceCodes": [
+          "FPS_MISMATCH"
+        ]
+      },
+      "probes": {}
+    },
+    {
+      "id": "fps-profile-unreduced-equivalent",
+      "family": "fps",
+      "kind": "invalid",
+      "description": "bundle.fps 24/1 e renderProfile.fps 48/2: mesmo valor, frações diferentes → FPS_MISMATCH na origem (comparação literal).",
+      "bundle": "bundles/fps-profile-unreduced-equivalent.bundle.json",
+      "expected": "expected/fps-profile-unreduced-equivalent.expected.json",
+      "intent": {
+        "schemaOk": false,
+        "accepted": false,
+        "sourceCodes": [
+          "FPS_MISMATCH"
+        ]
+      },
+      "probes": {}
+    },
+    {
+      "id": "fps-zero-denominator",
+      "family": "fps",
+      "kind": "invalid",
+      "description": "Denominador 0: o schema recusa (inteiro positivo).",
+      "bundle": "bundles/fps-zero-denominator.bundle.json",
+      "expected": "expected/fps-zero-denominator.expected.json",
+      "intent": {
+        "schemaOk": false,
+        "accepted": false
+      },
+      "probes": {}
+    },
+    {
+      "id": "ooo-shots-instances-layers",
+      "family": "out-of-order",
+      "kind": "valid",
+      "description": "Três shots em duas instâncias (cortes), canais cycle/event/static com períodos diferentes, clipe com keyframes e 2 camadas. A mesma lista de frames é avaliada em 7 ordens (inclusive repetida); cada resposta tem de ser idêntica à canônica.",
+      "bundle": "bundles/ooo-shots-instances-layers.bundle.json",
+      "expected": "expected/ooo-shots-instances-layers.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "extraEditFrames": [
+          0,
+          1,
+          2,
+          19,
+          20,
+          21,
+          38,
+          39,
+          40,
+          41,
+          42,
+          59,
+          60,
+          79,
+          80,
+          81,
+          82,
+          100,
+          118,
+          119
+        ],
+        "orders": [
+          {
+            "name": "forward",
+            "frames": [
+              -1,
+              0,
+              1,
+              2,
+              19,
+              20,
+              21,
+              38,
+              39,
+              40,
+              41,
+              42,
+              59,
+              60,
+              79,
+              80,
+              81,
+              82,
+              100,
+              118,
+              119,
+              120
+            ]
+          },
+          {
+            "name": "reverse",
+            "frames": [
+              120,
+              119,
+              118,
+              100,
+              82,
+              81,
+              80,
+              79,
+              60,
+              59,
+              42,
+              41,
+              40,
+              39,
+              38,
+              21,
+              20,
+              19,
+              2,
+              1,
+              0,
+              -1
+            ]
+          },
+          {
+            "name": "ends-inward",
+            "frames": [
+              -1,
+              120,
+              0,
+              119,
+              1,
+              118,
+              2,
+              100,
+              19,
+              82,
+              20,
+              81,
+              21,
+              80,
+              38,
+              79,
+              39,
+              60,
+              40,
+              59,
+              41,
+              42
+            ]
+          },
+          {
+            "name": "shuffle-seed-1",
+            "frames": [
+              79,
+              40,
+              120,
+              80,
+              38,
+              19,
+              118,
+              39,
+              20,
+              1,
+              81,
+              60,
+              21,
+              2,
+              -1,
+              119,
+              100,
+              82,
+              59,
+              0,
+              41,
+              42
+            ]
+          },
+          {
+            "name": "shuffle-seed-2024",
+            "frames": [
+              59,
+              82,
+              41,
+              2,
+              79,
+              40,
+              80,
+              38,
+              20,
+              21,
+              81,
+              60,
+              19,
+              0,
+              118,
+              1,
+              120,
+              100,
+              42,
+              -1,
+              39,
+              119
+            ]
+          },
+          {
+            "name": "forward-then-reverse-repeated",
+            "frames": [
+              -1,
+              0,
+              1,
+              2,
+              19,
+              20,
+              21,
+              38,
+              39,
+              40,
+              41,
+              42,
+              59,
+              60,
+              79,
+              80,
+              81,
+              82,
+              100,
+              118,
+              119,
+              120,
+              120,
+              119,
+              118,
+              100,
+              82,
+              81,
+              80,
+              79,
+              60,
+              59,
+              42,
+              41,
+              40,
+              39,
+              38,
+              21,
+              20,
+              19,
+              2,
+              1,
+              0,
+              -1
+            ]
+          },
+          {
+            "name": "cut-hopping",
+            "frames": [
+              80,
+              0,
+              119,
+              40,
+              39,
+              81,
+              1,
+              118,
+              41,
+              79,
+              40,
+              40,
+              80
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "world-gimbal-threshold",
+      "family": "world-matrix",
+      "kind": "valid",
+      "description": "Oito nós com Euler XYZ (20°, y, 30°) para y de 89,9° a 90° e negativos, cercando o limiar de gimbal do Three.js; um canal cycle de rotação soma graus de Euler em um deles.",
+      "bundle": "bundles/world-gimbal-threshold.bundle.json",
+      "expected": "expected/world-gimbal-threshold.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "extraEditFrames": [
+          0,
+          3,
+          6,
+          9,
+          12,
+          18,
+          23
+        ]
+      }
+    },
+    {
+      "id": "world-extreme-scales-and-chain",
+      "family": "world-matrix",
+      "kind": "valid",
+      "description": "Cadeia de 12 níveis (15° alternados, escala 1,1), escala anisotrópica, espelhada, translação de 1e6, escala 1e3/1e-3 e escala zero (matriz singular): acúmulo de arredondamento e valores extremos.",
+      "bundle": "bundles/world-extreme-scales-and-chain.bundle.json",
+      "expected": "expected/world-extreme-scales-and-chain.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "extraEditFrames": [
+          0,
+          12,
+          23
+        ]
+      }
+    },
+    {
+      "id": "world-sockets-chain-animated",
+      "family": "world-matrix",
+      "kind": "valid",
+      "description": "Dois sockets encadeados (a→b→c) com rotações de socket não triviais e um filho; canais cycle (rotação de a) e event (posição de b) deslocam a cadeia ao longo do tempo.",
+      "bundle": "bundles/world-sockets-chain-animated.bundle.json",
+      "expected": "expected/world-sockets-chain-animated.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "extraEditFrames": [
+          0,
+          2,
+          4,
+          8,
+          10,
+          16,
+          20,
+          23
+        ]
+      }
+    },
+    {
+      "id": "world-camera-lookat-poses",
+      "family": "world-matrix",
+      "kind": "valid",
+      "description": "Câmera por keyframes cobrindo pose comum, olhando reto para baixo e para cima (cross zero → Three.js empurra z em 1e-4), quase vertical (1e-7 de desvio, SEM empurrão), muito longe (1e5) e para -Z; a matriz mundo da câmera vem do lookAt do Three.js fixado.",
+      "bundle": "bundles/world-camera-lookat-poses.bundle.json",
+      "expected": "expected/world-camera-lookat-poses.expected.json",
+      "intent": {
+        "schemaOk": true,
+        "accepted": true,
+        "joinCodes": []
+      },
+      "probes": {
+        "extraEditFrames": [
+          0,
+          5,
+          10,
+          15,
+          20,
+          25,
+          30,
+          35,
+          39
+        ]
+      }
+    }
+  ]
+}
