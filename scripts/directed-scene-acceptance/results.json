@@ -1,0 +1,6349 @@
+{
+  "harness": {
+    "name": "directed-scene-acceptance",
+    "version": 1,
+    "files": {
+      "proof.py": "1ed6914fb028094c7231588c1e74fdec80d6c10c9865f8ff2dcb600762db6d02",
+      "oracle.py": "59240b24db0523a0a14518198550112d3f30e433a0135e6126b8ea82f8537ffb",
+      "corpus.py": "4681351226d9790937ead9c06d5e6e1c7c623662b703588d6f25449f9672621a",
+      "verify.py": "2aea5a286de6441a5201e725295861aeaf4785890fc5f3afffa9347d2ecc16b9",
+      "controls.py": "cabd701b64bae7783e6113451bddc5adbfd76172bb5a6aed694bf48171296f0f",
+      "tolerances.json": "696c3cd112dbfbefecd23e2849162be8df3a783d512a6f407b1369fe2ed1c722"
+    }
+  },
+  "git": {
+    "head": "1b5953efaef532763168228bee9c0ce63531715e",
+    "branch": "t3/s10-independent-oracle-harness",
+    "dirty_files": 1
+  },
+  "tolerances": {
+    "sha256": "696c3cd112dbfbefecd23e2849162be8df3a783d512a6f407b1369fe2ed1c722",
+    "introduced_in": "da0b59328687622831cc54efdaba4b28178edf28",
+    "amendments": []
+  },
+  "corpus": {
+    "version": 1,
+    "dir": "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-9c5c82e5/scripts/directed-scene-acceptance/corpus",
+    "files": {
+      "assets/bg.png": {
+        "bytes": 332,
+        "sha256": "558fc8a856d83df60ce44899c0e5213d8453090fa387d491a90dec3003118ed5"
+      },
+      "assets/mk-blue.png": {
+        "bytes": 332,
+        "sha256": "7aed8931a61a3892f3ae2801a53b30079ce0bd6aeabb77fc7a14c9be48137032"
+      },
+      "assets/mk-green.png": {
+        "bytes": 332,
+        "sha256": "dee88d164efad7fa8e8088196e50ad72504e37679632de90a2baa34071e5daf2"
+      },
+      "assets/mk-red.png": {
+        "bytes": 332,
+        "sha256": "4e54755af584a124f801dfffef09c5f2130fcdce75decd93584cc8e364951f0a"
+      },
+      "assets/mk-yellow.png": {
+        "bytes": 332,
+        "sha256": "b41a584e38e01466fa107e540495416b5fff13001fe3b5cce61d3358d998877d"
+      },
+      "audio/mix.wav": {
+        "bytes": 705644,
+        "sha256": "cc252a2b0f8ec9695772e0ef51b01b7700d242b72af9a1e77ca10f0eeaffba75"
+      },
+      "bundle.audio-ntsc.json": {
+        "bytes": 7689,
+        "sha256": "3919bb6238c633aef31e696506a043b8aac444fb3a2b0a926699363b2618c767"
+      },
+      "bundle.audio24.json": {
+        "bytes": 7674,
+        "sha256": "1b181b3f080526ef8b9cb99453a2a03060fdbb013ebfbe7e542b8af6229439b6"
+      },
+      "bundle.camera-portrait.json": {
+        "bytes": 9261,
+        "sha256": "d26dd58c9f01b85688e4ddb534bba4dc22f70630330740d482aca15ae47c84d0"
+      },
+      "bundle.camera.json": {
+        "bytes": 9252,
+        "sha256": "fa6087745736309c0852387a13557f7864c9bb6a9245b509c01631ba7bc95f3f"
+      },
+      "bundle.full.json": {
+        "bytes": 9243,
+        "sha256": "32ef214b974c93b2cab3f121c41a075981b5309eb7ab30f9d1618f9e9838cede"
+      },
+      "bundle.splat.json": {
+        "bytes": 9027,
+        "sha256": "be2c4f08a8773bc2ad9b195947df18d77f7691cbdbdc5a337ce08027d75ffec5"
+      },
+      "expected.json": {
+        "bytes": 57063,
+        "sha256": "71c9508b16d46ecb338b3e707f47d26235511fc986adf46e0b89381a91f4bad2"
+      },
+      "splat/sp-green.spz": {
+        "bytes": 45,
+        "sha256": "9aa9a3cda6a8803dd9aa5bdb74a756e7bf5fb5ca5a17bf21939484dfb55d1902"
+      },
+      "splat/sp-order.spz": {
+        "bytes": 62,
+        "sha256": "46a03d6e062c2c2d31f9cb0bd967b99fd4bd193b39c1658535fd4dda2378d51f"
+      },
+      "splat/sp-pair.spz": {
+        "bytes": 57,
+        "sha256": "fa122ab2a8e2ddaaa011863d96640bcb82cb14b6ec029d8b3f5db58b025e176d"
+      },
+      "splat/sp-purple.spz": {
+        "bytes": 45,
+        "sha256": "18dc77abd318264f74518a6d0f2f99856dd7fc2525c92c195b7ea04fc6c5b635"
+      },
+      "splat/sp-red.spz": {
+        "bytes": 45,
+        "sha256": "362517d47323e6330671874431fdbfa36f745ba382e862b8dd4dae33e7b9cd8d"
+      }
+    },
+    "expected_sha256": "71c9508b16d46ecb338b3e707f47d26235511fc986adf46e0b89381a91f4bad2"
+  },
+  "binaries": {
+    "render": {
+      "path": "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-9c5c82e5/target/debug/tessel-render",
+      "present": true,
+      "sha256": "ba5d0e03b49bbd2157b7266b4187d978b6566eb11f871bdc574a14b3ca6b4b05",
+      "bytes": 19608912,
+      "mtime_utc": "2026-11-05T23:34:36Z",
+      "older_than_sources": false
+    }
+  },
+  "runtime_bundle": {
+    "dist": {
+      "runtime.js": "19861fd276202ed7bc92d1a208dec46c7844f016d2c6f888bddd141d2f047b12",
+      "index.html": "707fd90fac224637b486d78a74babbd274e749e02e60aa95da8a314644c484a6"
+    },
+    "node": "v22.23.3",
+    "package_json_sha256": "d6617084d3cc6116102fd22f22b8c2237eb96dabcf79418c82c726e2c90bf2d7"
+  },
+  "environment": {
+    "python": "3.14.3",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "ffmpeg": "ffmpeg version 7.1.1 Copyright (c) 2000-2025 the FFmpeg developers",
+    "ffprobe": "ffprobe version 7.1.1 Copyright (c) 2007-2025 the FFmpeg developers",
+    "free_gib_tmp": 32.1
+  },
+  "gl": "swiftshader",
+  "seams": {
+    "S7": {
+      "backlog": "BL025",
+      "signal": "scene.plan on a bundle with `splat` nodes answers `unsupported` with details.domains containing `splat`",
+      "needs": "ScenePlan carries the approved splat reference, generation, evaluated matrix and camera; the runtime draws it; preview, headless and export coincide (docs/migration/wave-s1-s10-plan.md, S7)"
+    },
+    "S9": {
+      "backlog": "BL016",
+      "signal": "scene.export with the default `audio` answers `unsupported` with details.domains containing `audio`",
+      "needs": "mix of the bundle's WAV into the exported file with rational frame/sample mapping, offset and rate conversion; `audio:false` omits with a warning (S9)"
+    }
+  },
+  "seconds": 125.7,
+  "work_budget_respected": true,
+  "work_bytes_at_end": 12324685,
+  "phases": [
+    {
+      "phase": "tolerances_frozen",
+      "surface": "data (tolerances committed before any result)",
+      "status": "PASS",
+      "seconds": 0.06,
+      "checks_total": 5,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "tolerances.json declares itself frozen before results",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the corpus was generated against exactly these tolerances (hash recorded in expected.json)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "git knows the commit that introduced tolerances.json",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "tolerances.json is unchanged since it was committed (no silent tuning)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every later change to tolerances.json is a recorded amendment",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "introduced_in": "da0b59328687622831cc54efdaba4b28178edf28",
+        "amendments": [],
+        "tolerances_sha256": "696c3cd112dbfbefecd23e2849162be8df3a783d512a6f407b1369fe2ed1c722"
+      }
+    },
+    {
+      "phase": "corpus",
+      "surface": "data (corpus determinism, provenance, pinned hashes)",
+      "status": "PASS",
+      "seconds": 4.48,
+      "checks_total": 32,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "committed corpus is byte-identical to what corpus.py writes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "provenance declares no private media",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "assets/bg.png: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "assets/mk-blue.png: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "assets/mk-green.png: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "assets/mk-red.png: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "assets/mk-yellow.png: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio/mix.wav: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle.audio-ntsc.json: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle.audio24.json: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle.camera-portrait.json: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle.camera.json: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle.full.json: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle.splat.json: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "expected.json: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "splat/sp-green.spz: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "splat/sp-order.spz: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "splat/sp-pair.spz: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "splat/sp-purple.spz: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "splat/sp-red.spz: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle audio24: expected.json pins its bytes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle audio24: sourcePcmHashSha256 is the hash of the whole WAV file (the rule the resource gate enforces)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle audio_ntsc: expected.json pins its bytes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle audio_ntsc: sourcePcmHashSha256 is the hash of the whole WAV file (the rule the resource gate enforces)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle camera: expected.json pins its bytes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle camera_portrait: expected.json pins its bytes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle full: expected.json pins its bytes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle full: sourcePcmHashSha256 is the hash of the whole WAV file (the rule the resource gate enforces)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle splat: expected.json pins its bytes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the NTSC audio bundle carries the rational rate 30000/1001",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the corpus has camera frames in three shots (fov 30/50/75), both orientations, and splats in two shots",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every splat has at least 6 px of sigma and is isolated (asserted when the corpus is generated)",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "corpus": {
+          "version": 1,
+          "bundles": {
+            "audio24": "1b181b3f080526ef8b9cb99453a2a03060fdbb013ebfbe7e542b8af6229439b6",
+            "audio_ntsc": "3919bb6238c633aef31e696506a043b8aac444fb3a2b0a926699363b2618c767",
+            "camera": "fa6087745736309c0852387a13557f7864c9bb6a9245b509c01631ba7bc95f3f",
+            "camera_portrait": "d26dd58c9f01b85688e4ddb534bba4dc22f70630330740d482aca15ae47c84d0",
+            "full": "32ef214b974c93b2cab3f121c41a075981b5309eb7ab30f9d1618f9e9838cede",
+            "splat": "be2c4f08a8773bc2ad9b195947df18d77f7691cbdbdc5a337ce08027d75ffec5"
+          }
+        }
+      }
+    },
+    {
+      "phase": "models",
+      "surface": "data (models vs origin oracle and analytic identities)",
+      "status": "PASS",
+      "seconds": 0.16,
+      "checks_total": 16,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "the camera model agrees with the origin oracle (scripts/directed-scene-proof/model.spec.py, read-only)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the target projects to the exact centre of the picture",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "a point at the vertical half-fov projects to the top edge (the fov is vertical)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "a point behind the camera does not project",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "+x in the world is to the right of the picture",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "a gaussian of sigma 0.3 at depth 8 has the closed-form screen sigma",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the splat centre uses pixel-index coordinates (the picture centre is (319.5, 179.5))",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the SPZ writer's header is NGSP, version 2, one point, SH degree 0, 12 fractional bits",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "positions decode from the 24-bit fixed point within one step",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "alpha 1.0 is stored as 255",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "scale is stored as (ln sigma + 10) * 16 and decodes within one quantisation step",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the mix WAV is 8 s of mono 16-bit at 44.1 kHz",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the WAV samples equal the analytic tone table to one 16-bit step (first 0.1 s)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "tone table: 440 Hz at 1 s, silence at 2.2 s, 1320 Hz at 4.5 s",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 150 at 30000/1001 is exactly 5.005 s",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "rational window: frame 18 at 24 fps with a 1 s mix offset is mix time -1/4 s",
+          "ok": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "phase": "controls_camera",
+      "surface": "harness (camera verifier on right and wrong pictures)",
+      "status": "PASS",
+      "seconds": 5.12,
+      "checks_total": 11,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "positive: the model's own rasterised picture",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: fov +5 deg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: dolly direction reversed",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: mirrored x",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: camera one frame late",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: vertical fov used as horizontal",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `fov +5 deg` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `dolly direction reversed` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `mirrored x` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `camera one frame late` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `vertical fov used as horizontal` is exercised",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "controls": [
+          {
+            "control": "positive: the model's own rasterised picture",
+            "should_pass": true,
+            "ok": true
+          },
+          {
+            "control": "negative: fov +5 deg",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: dolly direction reversed",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: mirrored x",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: camera one frame late",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: vertical fov used as horizontal",
+            "should_pass": false,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "phase": "controls_splat",
+      "surface": "harness (splat verifier on right and wrong pictures)",
+      "status": "PASS",
+      "seconds": 0.68,
+      "checks_total": 13,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "positive: the model's own gaussians composited over the flat background",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: centroid shifted 4 px",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: colour channels swapped",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: front and back order swapped",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: size x1.5",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: splat missing",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: node transform ignored",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `centroid shifted 4 px` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `colour channels swapped` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `front and back order swapped` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `size x1.5` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `splat missing` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `node transform ignored` is exercised",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "controls": [
+          {
+            "control": "positive: the model's own gaussians composited over the flat background",
+            "should_pass": true,
+            "ok": true
+          },
+          {
+            "control": "negative: centroid shifted 4 px",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: colour channels swapped",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: front and back order swapped",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: size x1.5",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: splat missing",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: node transform ignored",
+            "should_pass": false,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "phase": "controls_audio",
+      "surface": "harness (audio verifier on right and wrong files; ffmpeg only)",
+      "status": "PASS",
+      "seconds": 35.64,
+      "checks_total": 26,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "positive: analytic window of audio24_window_a, AAC",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "positive: analytic window of audio24_window_b, AAC",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "positive: analytic window of audio_ntsc_window, AAC",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "positive: stereo with the same signal on both channels",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: shifted 5 ms",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: shifted one frame",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: rate bug (44.1 kHz read as 48 kHz)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: silent stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: gain -6 dB",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: mix offset ignored",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: export range ignored",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: tone swapped",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: truncated audio",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: no audio stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: NTSC treated as 30 fps",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `shifted 5 ms` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `shifted one frame` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `rate bug (44.1 kHz read as 48 kHz)` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `silent stream` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `gain -6 dB` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `mix offset ignored` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `export range ignored` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `tone swapped` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `no audio stream` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `truncated audio` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `NTSC treated as 30 fps` is exercised",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "controls": [
+          {
+            "control": "positive: analytic window of audio24_window_a, AAC",
+            "should_pass": true,
+            "ok": true
+          },
+          {
+            "control": "positive: analytic window of audio24_window_b, AAC",
+            "should_pass": true,
+            "ok": true
+          },
+          {
+            "control": "positive: analytic window of audio_ntsc_window, AAC",
+            "should_pass": true,
+            "ok": true
+          },
+          {
+            "control": "positive: stereo with the same signal on both channels",
+            "should_pass": true,
+            "ok": true
+          },
+          {
+            "control": "negative: shifted 5 ms",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: shifted one frame",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: rate bug (44.1 kHz read as 48 kHz)",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: silent stream",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: gain -6 dB",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: mix offset ignored",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: export range ignored",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: tone swapped",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: truncated audio",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: no audio stream",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: NTSC treated as 30 fps",
+            "should_pass": false,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "phase": "controls_package",
+      "surface": "harness (package reader on right and tampered archives)",
+      "status": "PASS",
+      "seconds": 0.22,
+      "checks_total": 8,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "positive: a package with every asset",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: asset byte flipped inside the package",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: asset removed from the package",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: wrong hash declared in the bundle",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "positive: a directory package is read by the same independent reader",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `asset byte flipped inside the package` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `asset removed from the package` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `wrong hash declared in the bundle` is exercised",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "controls": [
+          {
+            "control": "positive: a package with every asset",
+            "should_pass": true,
+            "ok": true
+          },
+          {
+            "control": "negative: asset byte flipped inside the package",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: asset removed from the package",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: wrong hash declared in the bundle",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "positive: a directory package is read by the same independent reader",
+            "should_pass": true,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "phase": "camera_plan",
+      "surface": "tessel-render CLI: scene.plan poses and matrices vs the model",
+      "status": "PASS",
+      "seconds": 5.5,
+      "checks_total": 45,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "frame 0 (shot-a): camera position, target and fov equal the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 0: world matrix of mk_blue equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 0: world matrix of mk_green equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 0: world matrix of mk_red equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 0: world matrix of mk_yellow equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 15 (shot-a): camera position, target and fov equal the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 15: world matrix of mk_blue equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 15: world matrix of mk_green equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 15: world matrix of mk_red equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 15: world matrix of mk_yellow equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 16 (shot-b): camera position, target and fov equal the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 16: world matrix of mk_blue equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 16: world matrix of mk_green equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 16: world matrix of mk_red equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 16: world matrix of mk_yellow equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 24 (shot-b): camera position, target and fov equal the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 24: world matrix of mk_blue equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 24: world matrix of mk_green equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 24: world matrix of mk_red equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 24: world matrix of mk_yellow equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 31 (shot-b): camera position, target and fov equal the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 31: world matrix of mk_blue equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 31: world matrix of mk_green equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 31: world matrix of mk_red equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 31: world matrix of mk_yellow equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 32 (shot-c): camera position, target and fov equal the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 32: world matrix of mk_blue equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 32: world matrix of mk_green equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 32: world matrix of mk_red equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 32: world matrix of mk_yellow equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 40 (shot-c): camera position, target and fov equal the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 40: world matrix of mk_blue equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 40: world matrix of mk_green equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 40: world matrix of mk_red equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 40: world matrix of mk_yellow equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 47 (shot-c): camera position, target and fov equal the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 47: world matrix of mk_blue equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 47: world matrix of mk_green equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 47: world matrix of mk_red equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 47: world matrix of mk_yellow equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 8 (shot-a): camera position, target and fov equal the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 8: world matrix of mk_blue equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 8: world matrix of mk_green equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 8: world matrix of mk_red equals the model",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 8: world matrix of mk_yellow equals the model",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "worst_pose_error": 8.881784197001252e-16,
+        "worst_matrix_error": 3.5005331966431186e-13
+      }
+    },
+    {
+      "phase": "camera_render",
+      "surface": "tessel-render CLI + Chrome: scene.render masks vs the model, both orientations",
+      "status": "PASS",
+      "seconds": 16.76,
+      "checks_total": 252,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "640x360@0 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@0 mk_blue: centroid within 0.75 px of the model (0.017)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@0 mk_blue: mask IoU >= 0.9 against the model's ray-cast mask (0.994)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@0 mk_blue: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@0 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@0 mk_green: centroid within 0.75 px of the model (0.036)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@0 mk_green: mask IoU >= 0.9 against the model's ray-cast mask (0.995)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@0 mk_green: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@0 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@0 mk_red: centroid within 0.75 px of the model (0.011)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@0 mk_red: mask IoU >= 0.9 against the model's ray-cast mask (1.000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@0 mk_red: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@0 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@0 mk_yellow: centroid within 0.75 px of the model (0.078)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@0 mk_yellow: mask IoU >= 0.9 against the model's ray-cast mask (0.996)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@0 mk_yellow: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@15 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@15 mk_blue: centroid within 0.75 px of the model (0.104)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@15 mk_blue: mask IoU >= 0.9 against the model's ray-cast mask (0.995)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@15 mk_blue: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@15 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@15 mk_green: centroid within 0.75 px of the model (0.519)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@15 mk_green: mask IoU >= 0.9 against the model's ray-cast mask (0.988)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@15 mk_green: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@15 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@15 mk_red: centroid within 0.75 px of the model (0.437)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@15 mk_red: mask IoU >= 0.9 against the model's ray-cast mask (0.982)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@15 mk_red: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@15 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@15 mk_yellow: centroid within 0.75 px of the model (0.024)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@15 mk_yellow: mask IoU >= 0.9 against the model's ray-cast mask (0.969)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@15 mk_yellow: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@16 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@16 mk_blue: centroid within 0.75 px of the model (0.326)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@16 mk_blue: mask IoU >= 0.9 against the model's ray-cast mask (0.977)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@16 mk_blue: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@16 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@16 mk_green: centroid within 0.75 px of the model (0.526)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@16 mk_green: mask IoU >= 0.9 against the model's ray-cast mask (0.973)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@16 mk_green: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@16 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@16 mk_red: centroid within 0.75 px of the model (0.067)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@16 mk_red: mask IoU >= 0.9 against the model's ray-cast mask (0.998)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@16 mk_red: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@16 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@16 mk_yellow: centroid within 0.75 px of the model (0.515)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@16 mk_yellow: mask IoU >= 0.9 against the model's ray-cast mask (0.966)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@16 mk_yellow: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@24 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@24 mk_blue: centroid within 0.75 px of the model (0.139)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@24 mk_blue: mask IoU >= 0.9 against the model's ray-cast mask (0.979)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@24 mk_blue: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@24 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@24 mk_green: centroid within 0.75 px of the model (0.695)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@24 mk_green: mask IoU >= 0.9 against the model's ray-cast mask (0.973)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@24 mk_green: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@24 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@24 mk_red: centroid within 0.75 px of the model (0.092)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@24 mk_red: mask IoU >= 0.9 against the model's ray-cast mask (0.997)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@24 mk_red: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@24 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@24 mk_yellow: centroid within 0.75 px of the model (0.521)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@24 mk_yellow: mask IoU >= 0.9 against the model's ray-cast mask (0.969)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@24 mk_yellow: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@31 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@31 mk_blue: centroid within 0.75 px of the model (0.045)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@31 mk_blue: mask IoU >= 0.9 against the model's ray-cast mask (0.984)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@31 mk_blue: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@31 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@31 mk_green: centroid within 0.75 px of the model (0.692)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@31 mk_green: mask IoU >= 0.9 against the model's ray-cast mask (0.958)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@31 mk_green: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@31 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@31 mk_red: centroid within 0.75 px of the model (0.032)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@31 mk_red: mask IoU >= 0.9 against the model's ray-cast mask (0.993)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@31 mk_red: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@31 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@31 mk_yellow: centroid within 0.75 px of the model (0.500)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@31 mk_yellow: mask IoU >= 0.9 against the model's ray-cast mask (0.972)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@31 mk_yellow: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@32 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@32 mk_blue: centroid within 0.75 px of the model (0.066)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@32 mk_blue: mask IoU >= 0.9 against the model's ray-cast mask (0.976)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@32 mk_blue: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@32 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@32 mk_green: centroid within 0.75 px of the model (0.036)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@32 mk_green: mask IoU >= 0.9 against the model's ray-cast mask (0.979)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@32 mk_green: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@32 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@32 mk_red: centroid within 0.75 px of the model (0.043)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@32 mk_red: mask IoU >= 0.9 against the model's ray-cast mask (0.989)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@32 mk_red: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@32 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@32 mk_yellow: centroid within 0.75 px of the model (0.152)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@32 mk_yellow: mask IoU >= 0.9 against the model's ray-cast mask (0.983)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@32 mk_yellow: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@40 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@40 mk_blue: centroid within 0.75 px of the model (0.216)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@40 mk_blue: mask IoU >= 0.9 against the model's ray-cast mask (0.970)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@40 mk_blue: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@40 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@40 mk_green: centroid within 0.75 px of the model (0.016)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@40 mk_green: mask IoU >= 0.9 against the model's ray-cast mask (0.986)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@40 mk_green: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@40 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@40 mk_red: centroid within 0.75 px of the model (0.057)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@40 mk_red: mask IoU >= 0.9 against the model's ray-cast mask (0.992)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@40 mk_red: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@40 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@40 mk_yellow: centroid within 0.75 px of the model (0.170)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@40 mk_yellow: mask IoU >= 0.9 against the model's ray-cast mask (0.976)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@40 mk_yellow: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@47 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@47 mk_blue: centroid within 0.75 px of the model (0.216)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@47 mk_blue: mask IoU >= 0.9 against the model's ray-cast mask (0.970)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@47 mk_blue: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@47 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@47 mk_green: centroid within 0.75 px of the model (0.016)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@47 mk_green: mask IoU >= 0.9 against the model's ray-cast mask (0.986)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@47 mk_green: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@47 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@47 mk_red: centroid within 0.75 px of the model (0.057)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@47 mk_red: mask IoU >= 0.9 against the model's ray-cast mask (0.992)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@47 mk_red: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@47 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@47 mk_yellow: centroid within 0.75 px of the model (0.170)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@47 mk_yellow: mask IoU >= 0.9 against the model's ray-cast mask (0.976)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@47 mk_yellow: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@8 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@8 mk_blue: centroid within 0.75 px of the model (0.262)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@8 mk_blue: mask IoU >= 0.9 against the model's ray-cast mask (0.988)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@8 mk_blue: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@8 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@8 mk_green: centroid within 0.75 px of the model (0.072)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@8 mk_green: mask IoU >= 0.9 against the model's ray-cast mask (0.996)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@8 mk_green: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@8 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@8 mk_red: centroid within 0.75 px of the model (0.058)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@8 mk_red: mask IoU >= 0.9 against the model's ray-cast mask (0.999)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@8 mk_red: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@8 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@8 mk_yellow: centroid within 0.75 px of the model (0.054)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@8 mk_yellow: mask IoU >= 0.9 against the model's ray-cast mask (0.997)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360@8 mk_yellow: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@0 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@0 mk_blue: centroid within 0.75 px of the model (0.191)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@0 mk_blue: mask IoU >= 0.9 against the model's ray-cast mask (0.993)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@0 mk_blue: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@0 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@0 mk_green: centroid within 0.75 px of the model (0.589)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@0 mk_green: mask IoU >= 0.9 against the model's ray-cast mask (0.989)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@0 mk_green: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@0 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@0 mk_red: centroid within 0.75 px of the model (0.271)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@0 mk_red: mask IoU >= 0.9 against the model's ray-cast mask (0.974)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@0 mk_red: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@15 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@15 mk_blue: centroid within 0.75 px of the model (0.319)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@15 mk_blue: mask IoU >= 0.9 against the model's ray-cast mask (0.994)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@15 mk_blue: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@16 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@16 mk_blue: centroid within 0.75 px of the model (0.115)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@16 mk_blue: mask IoU >= 0.9 against the model's ray-cast mask (0.992)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@16 mk_blue: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@16 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@16 mk_green: centroid within 0.75 px of the model (0.476)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@16 mk_green: mask IoU >= 0.9 against the model's ray-cast mask (0.986)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@16 mk_green: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@16 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@16 mk_red: centroid within 0.75 px of the model (0.010)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@16 mk_red: mask IoU >= 0.9 against the model's ray-cast mask (1.000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@16 mk_red: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@16 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@16 mk_yellow: centroid within 0.75 px of the model (0.000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@16 mk_yellow: mask IoU >= 0.9 against the model's ray-cast mask (1.000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@16 mk_yellow: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@24 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@24 mk_blue: centroid within 0.75 px of the model (0.088)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@24 mk_blue: mask IoU >= 0.9 against the model's ray-cast mask (0.992)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@24 mk_blue: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@24 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@24 mk_green: centroid within 0.75 px of the model (0.527)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@24 mk_green: mask IoU >= 0.9 against the model's ray-cast mask (0.990)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@24 mk_green: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@24 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@24 mk_yellow: centroid within 0.75 px of the model (0.133)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@24 mk_yellow: mask IoU >= 0.9 against the model's ray-cast mask (0.995)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@24 mk_yellow: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@31 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@31 mk_blue: centroid within 0.75 px of the model (0.094)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@31 mk_blue: mask IoU >= 0.9 against the model's ray-cast mask (0.989)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@31 mk_blue: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@31 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@31 mk_green: centroid within 0.75 px of the model (0.486)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@31 mk_green: mask IoU >= 0.9 against the model's ray-cast mask (0.991)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@31 mk_green: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@31 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@31 mk_yellow: centroid within 0.75 px of the model (0.090)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@31 mk_yellow: mask IoU >= 0.9 against the model's ray-cast mask (0.998)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@31 mk_yellow: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@32 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@32 mk_blue: centroid within 0.75 px of the model (0.069)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@32 mk_blue: mask IoU >= 0.9 against the model's ray-cast mask (0.983)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@32 mk_blue: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@32 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@32 mk_green: centroid within 0.75 px of the model (0.008)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@32 mk_green: mask IoU >= 0.9 against the model's ray-cast mask (0.990)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@32 mk_green: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@32 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@32 mk_red: centroid within 0.75 px of the model (0.038)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@32 mk_red: mask IoU >= 0.9 against the model's ray-cast mask (0.992)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@32 mk_red: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@32 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@32 mk_yellow: centroid within 0.75 px of the model (0.065)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@32 mk_yellow: mask IoU >= 0.9 against the model's ray-cast mask (0.993)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@32 mk_yellow: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@40 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@40 mk_blue: centroid within 0.75 px of the model (0.037)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@40 mk_blue: mask IoU >= 0.9 against the model's ray-cast mask (0.986)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@40 mk_blue: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@40 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@40 mk_green: centroid within 0.75 px of the model (0.035)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@40 mk_green: mask IoU >= 0.9 against the model's ray-cast mask (0.990)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@40 mk_green: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@40 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@40 mk_red: centroid within 0.75 px of the model (0.064)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@40 mk_red: mask IoU >= 0.9 against the model's ray-cast mask (0.988)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@40 mk_red: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@40 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@40 mk_yellow: centroid within 0.75 px of the model (0.100)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@40 mk_yellow: mask IoU >= 0.9 against the model's ray-cast mask (0.992)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@40 mk_yellow: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@47 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@47 mk_blue: centroid within 0.75 px of the model (0.037)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@47 mk_blue: mask IoU >= 0.9 against the model's ray-cast mask (0.986)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@47 mk_blue: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@47 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@47 mk_green: centroid within 0.75 px of the model (0.035)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@47 mk_green: mask IoU >= 0.9 against the model's ray-cast mask (0.990)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@47 mk_green: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@47 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@47 mk_red: centroid within 0.75 px of the model (0.064)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@47 mk_red: mask IoU >= 0.9 against the model's ray-cast mask (0.988)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@47 mk_red: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@47 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@47 mk_yellow: centroid within 0.75 px of the model (0.100)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@47 mk_yellow: mask IoU >= 0.9 against the model's ray-cast mask (0.992)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@47 mk_yellow: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@8 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@8 mk_blue: centroid within 0.75 px of the model (0.174)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@8 mk_blue: mask IoU >= 0.9 against the model's ray-cast mask (0.995)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640@8 mk_blue: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "frames": {
+          "640x360@0": {
+            "mk_blue": {
+              "offsetPx": 0.017,
+              "iou": 0.9938,
+              "judged": true
+            },
+            "mk_green": {
+              "offsetPx": 0.036,
+              "iou": 0.9955,
+              "judged": true
+            },
+            "mk_red": {
+              "offsetPx": 0.011,
+              "iou": 0.9998,
+              "judged": true
+            },
+            "mk_yellow": {
+              "offsetPx": 0.078,
+              "iou": 0.9962,
+              "judged": true
+            }
+          },
+          "640x360@15": {
+            "mk_blue": {
+              "offsetPx": 0.104,
+              "iou": 0.9952,
+              "judged": true
+            },
+            "mk_green": {
+              "offsetPx": 0.519,
+              "iou": 0.9884,
+              "judged": true
+            },
+            "mk_red": {
+              "offsetPx": 0.437,
+              "iou": 0.9821,
+              "judged": true
+            },
+            "mk_yellow": {
+              "offsetPx": 0.024,
+              "iou": 0.9693,
+              "judged": true
+            }
+          },
+          "640x360@16": {
+            "mk_blue": {
+              "offsetPx": 0.326,
+              "iou": 0.9773,
+              "judged": true
+            },
+            "mk_green": {
+              "offsetPx": 0.526,
+              "iou": 0.9732,
+              "judged": true
+            },
+            "mk_red": {
+              "offsetPx": 0.067,
+              "iou": 0.9977,
+              "judged": true
+            },
+            "mk_yellow": {
+              "offsetPx": 0.515,
+              "iou": 0.9657,
+              "judged": true
+            }
+          },
+          "640x360@24": {
+            "mk_blue": {
+              "offsetPx": 0.139,
+              "iou": 0.9792,
+              "judged": true
+            },
+            "mk_green": {
+              "offsetPx": 0.695,
+              "iou": 0.973,
+              "judged": true
+            },
+            "mk_red": {
+              "offsetPx": 0.092,
+              "iou": 0.9966,
+              "judged": true
+            },
+            "mk_yellow": {
+              "offsetPx": 0.521,
+              "iou": 0.9691,
+              "judged": true
+            }
+          },
+          "640x360@31": {
+            "mk_blue": {
+              "offsetPx": 0.045,
+              "iou": 0.9839,
+              "judged": true
+            },
+            "mk_green": {
+              "offsetPx": 0.692,
+              "iou": 0.958,
+              "judged": true
+            },
+            "mk_red": {
+              "offsetPx": 0.032,
+              "iou": 0.9932,
+              "judged": true
+            },
+            "mk_yellow": {
+              "offsetPx": 0.5,
+              "iou": 0.9722,
+              "judged": true
+            }
+          },
+          "640x360@32": {
+            "mk_blue": {
+              "offsetPx": 0.066,
+              "iou": 0.9757,
+              "judged": true
+            },
+            "mk_green": {
+              "offsetPx": 0.036,
+              "iou": 0.979,
+              "judged": true
+            },
+            "mk_red": {
+              "offsetPx": 0.043,
+              "iou": 0.9887,
+              "judged": true
+            },
+            "mk_yellow": {
+              "offsetPx": 0.152,
+              "iou": 0.9827,
+              "judged": true
+            }
+          },
+          "640x360@40": {
+            "mk_blue": {
+              "offsetPx": 0.216,
+              "iou": 0.9704,
+              "judged": true
+            },
+            "mk_green": {
+              "offsetPx": 0.016,
+              "iou": 0.9859,
+              "judged": true
+            },
+            "mk_red": {
+              "offsetPx": 0.057,
+              "iou": 0.9916,
+              "judged": true
+            },
+            "mk_yellow": {
+              "offsetPx": 0.17,
+              "iou": 0.976,
+              "judged": true
+            }
+          },
+          "640x360@47": {
+            "mk_blue": {
+              "offsetPx": 0.216,
+              "iou": 0.9704,
+              "judged": true
+            },
+            "mk_green": {
+              "offsetPx": 0.016,
+              "iou": 0.9859,
+              "judged": true
+            },
+            "mk_red": {
+              "offsetPx": 0.057,
+              "iou": 0.9916,
+              "judged": true
+            },
+            "mk_yellow": {
+              "offsetPx": 0.17,
+              "iou": 0.976,
+              "judged": true
+            }
+          },
+          "640x360@8": {
+            "mk_blue": {
+              "offsetPx": 0.262,
+              "iou": 0.9882,
+              "judged": true
+            },
+            "mk_green": {
+              "offsetPx": 0.072,
+              "iou": 0.9963,
+              "judged": true
+            },
+            "mk_red": {
+              "offsetPx": 0.058,
+              "iou": 0.9987,
+              "judged": true
+            },
+            "mk_yellow": {
+              "offsetPx": 0.054,
+              "iou": 0.9974,
+              "judged": true
+            }
+          },
+          "360x640@0": {
+            "mk_blue": {
+              "offsetPx": 0.191,
+              "iou": 0.9934,
+              "judged": true
+            },
+            "mk_green": {
+              "offsetPx": 0.589,
+              "iou": 0.9894,
+              "judged": true
+            },
+            "mk_red": {
+              "offsetPx": 0.271,
+              "iou": 0.9739,
+              "judged": true
+            },
+            "mk_yellow": {
+              "expectedArea": 0,
+              "judged": false
+            }
+          },
+          "360x640@15": {
+            "mk_blue": {
+              "offsetPx": 0.319,
+              "iou": 0.994,
+              "judged": true
+            },
+            "mk_green": {
+              "expectedArea": 0,
+              "judged": false
+            },
+            "mk_red": {
+              "expectedArea": 0,
+              "judged": false
+            },
+            "mk_yellow": {
+              "expectedArea": 0,
+              "judged": false
+            }
+          },
+          "360x640@16": {
+            "mk_blue": {
+              "offsetPx": 0.115,
+              "iou": 0.9915,
+              "judged": true
+            },
+            "mk_green": {
+              "offsetPx": 0.476,
+              "iou": 0.9863,
+              "judged": true
+            },
+            "mk_red": {
+              "offsetPx": 0.01,
+              "iou": 0.9998,
+              "judged": true
+            },
+            "mk_yellow": {
+              "offsetPx": 0.0,
+              "iou": 1.0,
+              "judged": true
+            }
+          },
+          "360x640@24": {
+            "mk_blue": {
+              "offsetPx": 0.088,
+              "iou": 0.9923,
+              "judged": true
+            },
+            "mk_green": {
+              "offsetPx": 0.527,
+              "iou": 0.9897,
+              "judged": true
+            },
+            "mk_red": {
+              "expectedArea": 0,
+              "judged": false
+            },
+            "mk_yellow": {
+              "offsetPx": 0.133,
+              "iou": 0.995,
+              "judged": true
+            }
+          },
+          "360x640@31": {
+            "mk_blue": {
+              "offsetPx": 0.094,
+              "iou": 0.9887,
+              "judged": true
+            },
+            "mk_green": {
+              "offsetPx": 0.486,
+              "iou": 0.9906,
+              "judged": true
+            },
+            "mk_red": {
+              "expectedArea": 0,
+              "judged": false
+            },
+            "mk_yellow": {
+              "offsetPx": 0.09,
+              "iou": 0.9983,
+              "judged": true
+            }
+          },
+          "360x640@32": {
+            "mk_blue": {
+              "offsetPx": 0.069,
+              "iou": 0.9831,
+              "judged": true
+            },
+            "mk_green": {
+              "offsetPx": 0.008,
+              "iou": 0.9903,
+              "judged": true
+            },
+            "mk_red": {
+              "offsetPx": 0.038,
+              "iou": 0.992,
+              "judged": true
+            },
+            "mk_yellow": {
+              "offsetPx": 0.065,
+              "iou": 0.993,
+              "judged": true
+            }
+          },
+          "360x640@40": {
+            "mk_blue": {
+              "offsetPx": 0.037,
+              "iou": 0.9864,
+              "judged": true
+            },
+            "mk_green": {
+              "offsetPx": 0.035,
+              "iou": 0.9904,
+              "judged": true
+            },
+            "mk_red": {
+              "offsetPx": 0.064,
+              "iou": 0.9884,
+              "judged": true
+            },
+            "mk_yellow": {
+              "offsetPx": 0.1,
+              "iou": 0.992,
+              "judged": true
+            }
+          },
+          "360x640@47": {
+            "mk_blue": {
+              "offsetPx": 0.037,
+              "iou": 0.9864,
+              "judged": true
+            },
+            "mk_green": {
+              "offsetPx": 0.035,
+              "iou": 0.9904,
+              "judged": true
+            },
+            "mk_red": {
+              "offsetPx": 0.064,
+              "iou": 0.9884,
+              "judged": true
+            },
+            "mk_yellow": {
+              "offsetPx": 0.1,
+              "iou": 0.992,
+              "judged": true
+            }
+          },
+          "360x640@8": {
+            "mk_blue": {
+              "offsetPx": 0.174,
+              "iou": 0.9947,
+              "judged": true
+            },
+            "mk_green": {
+              "expectedArea": 0,
+              "judged": false
+            },
+            "mk_red": {
+              "expectedArea": 0,
+              "judged": false
+            },
+            "mk_yellow": {
+              "expectedArea": 0,
+              "judged": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "phase": "camera_export",
+      "surface": "tessel-render CLI: scene.export video frames vs the model",
+      "status": "PASS",
+      "seconds": 13.16,
+      "checks_total": 292,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 640x360",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 48 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 2 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result reports the frame count the file holds",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result reports the exact rational rate of the file",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result reports the output size of the file",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result says audio included = False, and the file has no audio stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result lists exactly the bundle's image/splat resources with the bundle's own hashes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file has exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f0 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f0 mk_red: centroid within 1.25 px of the model (0.551)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f0 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.980)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f0 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f0 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f0 mk_green: centroid within 1.25 px of the model (0.036)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f0 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.995)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f0 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f0 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f0 mk_blue: centroid within 1.25 px of the model (0.027)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f0 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.987)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f0 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f0 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f0 mk_yellow: centroid within 1.25 px of the model (0.408)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f0 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.976)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f0 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f8 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f8 mk_red: centroid within 1.25 px of the model (0.585)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f8 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.975)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f8 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f8 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f8 mk_green: centroid within 1.25 px of the model (0.195)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f8 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.993)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f8 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f8 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f8 mk_blue: centroid within 1.25 px of the model (0.501)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f8 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.977)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f8 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f8 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f8 mk_yellow: centroid within 1.25 px of the model (0.077)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f8 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.965)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f8 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f15 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f15 mk_red: centroid within 1.25 px of the model (0.364)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f15 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.974)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f15 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f15 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f15 mk_green: centroid within 1.25 px of the model (0.524)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f15 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.988)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f15 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f15 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f15 mk_blue: centroid within 1.25 px of the model (0.172)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f15 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.987)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f15 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f15 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f15 mk_yellow: centroid within 1.25 px of the model (0.055)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f15 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.965)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f15 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f16 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f16 mk_red: centroid within 1.25 px of the model (0.458)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f16 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.969)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f16 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f16 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f16 mk_green: centroid within 1.25 px of the model (0.526)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f16 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.973)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f16 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f16 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f16 mk_blue: centroid within 1.25 px of the model (0.143)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f16 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.959)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f16 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f16 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f16 mk_yellow: centroid within 1.25 px of the model (0.412)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f16 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.953)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f16 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f24 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f24 mk_red: centroid within 1.25 px of the model (0.417)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f24 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.964)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f24 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f24 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f24 mk_green: centroid within 1.25 px of the model (0.695)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f24 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.973)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f24 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f24 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f24 mk_blue: centroid within 1.25 px of the model (0.365)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f24 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.959)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f24 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f24 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f24 mk_yellow: centroid within 1.25 px of the model (0.552)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f24 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.967)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f24 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f31 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f31 mk_red: centroid within 1.25 px of the model (0.600)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f31 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.954)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f31 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f31 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f31 mk_green: centroid within 1.25 px of the model (0.692)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f31 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.958)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f31 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f31 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f31 mk_blue: centroid within 1.25 px of the model (0.209)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f31 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.953)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f31 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f31 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f31 mk_yellow: centroid within 1.25 px of the model (0.470)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f31 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.947)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f31 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f32 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f32 mk_red: centroid within 1.25 px of the model (0.137)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f32 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.961)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f32 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f32 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f32 mk_green: centroid within 1.25 px of the model (0.026)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f32 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.977)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f32 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f32 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f32 mk_blue: centroid within 1.25 px of the model (0.017)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f32 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.961)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f32 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f32 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f32 mk_yellow: centroid within 1.25 px of the model (0.349)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f32 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.957)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f32 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f40 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f40 mk_red: centroid within 1.25 px of the model (0.249)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f40 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.960)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f40 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f40 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f40 mk_green: centroid within 1.25 px of the model (0.026)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f40 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.983)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f40 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f40 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f40 mk_blue: centroid within 1.25 px of the model (0.185)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f40 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.944)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f40 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f40 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f40 mk_yellow: centroid within 1.25 px of the model (0.458)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f40 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.948)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f40 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f47 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f47 mk_red: centroid within 1.25 px of the model (0.249)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f47 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.960)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f47 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f47 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f47 mk_green: centroid within 1.25 px of the model (0.026)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f47 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.983)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f47 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f47 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f47 mk_blue: centroid within 1.25 px of the model (0.185)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f47 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.944)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f47 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f47 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f47 mk_yellow: centroid within 1.25 px of the model (0.458)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f47 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.948)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360 f47 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360: no audio stream, as asked (`audio:false`)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "640x360: scene.export of the camera scene succeeds",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 360x640",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 48 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 2 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result reports the frame count the file holds",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result reports the exact rational rate of the file",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result reports the output size of the file",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result says audio included = False, and the file has no audio stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result lists exactly the bundle's image/splat resources with the bundle's own hashes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file has exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f0 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f0 mk_red: centroid within 1.25 px of the model (0.810)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f0 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.948)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f0 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f0 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f0 mk_green: centroid within 1.25 px of the model (0.589)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f0 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.989)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f0 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f0 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f0 mk_blue: centroid within 1.25 px of the model (0.512)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f0 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.985)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f0 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f8 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f8 mk_blue: centroid within 1.25 px of the model (0.171)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f8 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.987)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f8 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f15 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f15 mk_blue: centroid within 1.25 px of the model (0.341)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f15 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.992)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f15 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f16 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f16 mk_red: centroid within 1.25 px of the model (0.192)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f16 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.995)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f16 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f16 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f16 mk_green: centroid within 1.25 px of the model (0.467)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f16 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.986)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f16 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f16 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f16 mk_blue: centroid within 1.25 px of the model (0.018)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f16 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.966)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f16 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f16 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f16 mk_yellow: centroid within 1.25 px of the model (0.028)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f16 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.999)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f16 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f24 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f24 mk_green: centroid within 1.25 px of the model (0.527)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f24 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.990)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f24 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f24 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f24 mk_blue: centroid within 1.25 px of the model (0.268)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f24 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.983)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f24 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f24 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f24 mk_yellow: centroid within 1.25 px of the model (0.104)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f24 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.993)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f24 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f31 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f31 mk_green: centroid within 1.25 px of the model (0.486)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f31 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.991)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f31 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f31 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f31 mk_blue: centroid within 1.25 px of the model (0.055)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f31 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.979)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f31 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f31 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f31 mk_yellow: centroid within 1.25 px of the model (0.129)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f31 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.993)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f31 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f32 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f32 mk_red: centroid within 1.25 px of the model (0.113)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f32 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.975)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f32 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f32 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f32 mk_green: centroid within 1.25 px of the model (0.008)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f32 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.990)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f32 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f32 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f32 mk_blue: centroid within 1.25 px of the model (0.243)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f32 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.973)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f32 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f32 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f32 mk_yellow: centroid within 1.25 px of the model (0.101)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f32 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.981)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f32 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f40 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f40 mk_red: centroid within 1.25 px of the model (0.137)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f40 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.981)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f40 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f40 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f40 mk_green: centroid within 1.25 px of the model (0.034)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f40 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.990)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f40 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f40 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f40 mk_blue: centroid within 1.25 px of the model (0.043)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f40 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.975)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f40 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f40 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f40 mk_yellow: centroid within 1.25 px of the model (0.149)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f40 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.984)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f40 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f47 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f47 mk_red: centroid within 1.25 px of the model (0.137)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f47 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.981)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f47 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f47 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f47 mk_green: centroid within 1.25 px of the model (0.034)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f47 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.990)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f47 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f47 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f47 mk_blue: centroid within 1.25 px of the model (0.043)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f47 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.975)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f47 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f47 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f47 mk_yellow: centroid within 1.25 px of the model (0.149)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f47 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.984)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640 f47 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640: no audio stream, as asked (`audio:false`)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "360x640: scene.export of the camera scene succeeds",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "export_640x360": {
+          "duration_seconds": 2.0,
+          "tick": "1/12288",
+          "bytes": 20669,
+          "audio_streams": 0,
+          "seconds": 3.61,
+          "pictures": {
+            "0": {
+              "mk_red": {
+                "offsetPx": 0.551,
+                "iou": 0.9796,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.036,
+                "iou": 0.9955,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.027,
+                "iou": 0.9874,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.408,
+                "iou": 0.9759,
+                "judged": true
+              }
+            },
+            "8": {
+              "mk_red": {
+                "offsetPx": 0.585,
+                "iou": 0.975,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.195,
+                "iou": 0.9931,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.501,
+                "iou": 0.977,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.077,
+                "iou": 0.9647,
+                "judged": true
+              }
+            },
+            "15": {
+              "mk_red": {
+                "offsetPx": 0.364,
+                "iou": 0.9745,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.524,
+                "iou": 0.9881,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.172,
+                "iou": 0.9866,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.055,
+                "iou": 0.9648,
+                "judged": true
+              }
+            },
+            "16": {
+              "mk_red": {
+                "offsetPx": 0.458,
+                "iou": 0.9687,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.526,
+                "iou": 0.9732,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.143,
+                "iou": 0.9592,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.412,
+                "iou": 0.953,
+                "judged": true
+              }
+            },
+            "24": {
+              "mk_red": {
+                "offsetPx": 0.417,
+                "iou": 0.9638,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.695,
+                "iou": 0.973,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.365,
+                "iou": 0.9593,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.552,
+                "iou": 0.9673,
+                "judged": true
+              }
+            },
+            "31": {
+              "mk_red": {
+                "offsetPx": 0.6,
+                "iou": 0.9542,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.692,
+                "iou": 0.958,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.209,
+                "iou": 0.9531,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.47,
+                "iou": 0.9473,
+                "judged": true
+              }
+            },
+            "32": {
+              "mk_red": {
+                "offsetPx": 0.137,
+                "iou": 0.961,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.026,
+                "iou": 0.9767,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.017,
+                "iou": 0.9605,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.349,
+                "iou": 0.9568,
+                "judged": true
+              }
+            },
+            "40": {
+              "mk_red": {
+                "offsetPx": 0.249,
+                "iou": 0.9599,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.026,
+                "iou": 0.9833,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.185,
+                "iou": 0.9435,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.458,
+                "iou": 0.9477,
+                "judged": true
+              }
+            },
+            "47": {
+              "mk_red": {
+                "offsetPx": 0.249,
+                "iou": 0.9599,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.026,
+                "iou": 0.9833,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.185,
+                "iou": 0.9435,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.458,
+                "iou": 0.9477,
+                "judged": true
+              }
+            }
+          }
+        },
+        "export_360x640": {
+          "duration_seconds": 2.0,
+          "tick": "1/12288",
+          "bytes": 19211,
+          "audio_streams": 0,
+          "seconds": 3.28,
+          "pictures": {
+            "0": {
+              "mk_red": {
+                "offsetPx": 0.81,
+                "iou": 0.9476,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.589,
+                "iou": 0.9894,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.512,
+                "iou": 0.9846,
+                "judged": true
+              },
+              "mk_yellow": {
+                "expectedArea": 0,
+                "judged": false
+              }
+            },
+            "8": {
+              "mk_red": {
+                "expectedArea": 0,
+                "judged": false
+              },
+              "mk_green": {
+                "expectedArea": 0,
+                "judged": false
+              },
+              "mk_blue": {
+                "offsetPx": 0.171,
+                "iou": 0.9873,
+                "judged": true
+              },
+              "mk_yellow": {
+                "expectedArea": 0,
+                "judged": false
+              }
+            },
+            "15": {
+              "mk_red": {
+                "expectedArea": 0,
+                "judged": false
+              },
+              "mk_green": {
+                "expectedArea": 0,
+                "judged": false
+              },
+              "mk_blue": {
+                "offsetPx": 0.341,
+                "iou": 0.9919,
+                "judged": true
+              },
+              "mk_yellow": {
+                "expectedArea": 0,
+                "judged": false
+              }
+            },
+            "16": {
+              "mk_red": {
+                "offsetPx": 0.192,
+                "iou": 0.9952,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.467,
+                "iou": 0.9858,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.018,
+                "iou": 0.966,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.028,
+                "iou": 0.9992,
+                "judged": true
+              }
+            },
+            "24": {
+              "mk_red": {
+                "expectedArea": 0,
+                "judged": false
+              },
+              "mk_green": {
+                "offsetPx": 0.527,
+                "iou": 0.9897,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.268,
+                "iou": 0.9829,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.104,
+                "iou": 0.9929,
+                "judged": true
+              }
+            },
+            "31": {
+              "mk_red": {
+                "expectedArea": 0,
+                "judged": false
+              },
+              "mk_green": {
+                "offsetPx": 0.486,
+                "iou": 0.9906,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.055,
+                "iou": 0.9791,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.129,
+                "iou": 0.9932,
+                "judged": true
+              }
+            },
+            "32": {
+              "mk_red": {
+                "offsetPx": 0.113,
+                "iou": 0.9752,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.008,
+                "iou": 0.9903,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.243,
+                "iou": 0.9732,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.101,
+                "iou": 0.9814,
+                "judged": true
+              }
+            },
+            "40": {
+              "mk_red": {
+                "offsetPx": 0.137,
+                "iou": 0.981,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.034,
+                "iou": 0.9899,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.043,
+                "iou": 0.9747,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.149,
+                "iou": 0.9845,
+                "judged": true
+              }
+            },
+            "47": {
+              "mk_red": {
+                "offsetPx": 0.137,
+                "iou": 0.981,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.034,
+                "iou": 0.9899,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.043,
+                "iou": 0.9747,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.149,
+                "iou": 0.9845,
+                "judged": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "phase": "baseline_splat_geometry",
+      "surface": "tessel-render CLI + Chrome: existing project-scene splat path, geometry vs the splat model",
+      "status": "PASS",
+      "seconds": 2.18,
+      "checks_total": 13,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "background at (12,12) is the flat background within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "background at (627,12) is the flat background within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "background at (12,347) is the flat background within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "background at (627,347) is the flat background within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "s-red[0]: a splat is drawn near (150.6,145.7)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "s-red[0]: centroid within 1.5 px of the projected centre (0.01)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "s-red[0]: half-intensity radius 18.8 px vs model 17.3 (+-6.7)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "s-green[0]: a splat is drawn near (443.0,237.4)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "s-green[0]: centroid within 1.5 px of the projected centre (0.05)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "s-green[0]: half-intensity radius 11.5 px vs model 11.5 (+-4.9)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "s-purple[0]: a splat is drawn near (396.7,111.9)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "s-purple[0]: centroid within 1.5 px of the projected centre (0.01)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "s-purple[0]: half-intensity radius 18.2 px vs model 16.8 (+-6.5)",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "geometry": {
+          "s-red[0]": {
+            "offsetPx": 0.013,
+            "r50": 18.75,
+            "r50Expected": 17.3266
+          },
+          "s-green[0]": {
+            "offsetPx": 0.049,
+            "r50": 11.5,
+            "r50Expected": 11.4914
+          },
+          "s-purple[0]": {
+            "offsetPx": 0.009,
+            "r50": 18.25,
+            "r50Expected": 16.7803
+          }
+        }
+      }
+    },
+    {
+      "phase": "baseline_splat_colour",
+      "surface": "tessel-render CLI + Chrome: existing project-scene splat path, colour vs the stored colour",
+      "status": "FAIL",
+      "seconds": 0.01,
+      "checks_total": 7,
+      "checks_failed": 5,
+      "checks": [
+        {
+          "check": "s-red[0]: centre colour within 24 of the splat colour",
+          "ok": false,
+          "detail": "(203, 7, 7) vs [229.99, 49.45, 49.45]"
+        },
+        {
+          "check": "s-green[0]: centre colour within 24 of the splat colour",
+          "ok": false,
+          "detail": "(7, 149, 15) vs [49.45, 199.9, 70.14]"
+        },
+        {
+          "check": "s-purple[0]: centre colour within 24 of the splat colour",
+          "ok": false,
+          "detail": "(104, 11, 149) vs [169.81, 60.74, 199.9]"
+        },
+        {
+          "check": "s-order front centre: the front splat's colour wins within 40",
+          "ok": false,
+          "detail": "(223, 79, 2) vs front [239.4, 149.13, 30.65]"
+        },
+        {
+          "check": "s-order front centre: far (>= 80) from the back splat's colour",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "s-order back centre: the front splat's colour wins within 40",
+          "ok": false,
+          "detail": "(206, 86, 17) vs front [239.4, 149.13, 30.65]"
+        },
+        {
+          "check": "s-order back centre: far (>= 80) from the back splat's colour",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "diagnosis": {
+          "s-red": {
+            "measured": [
+              203,
+              7,
+              7
+            ],
+            "stored": [
+              229.99,
+              49.45,
+              49.45
+            ],
+            "stored_decoded_as_srgb_to_linear": [
+              203.2,
+              6.9,
+              6.9
+            ],
+            "matches_decode_without_reencode": true
+          },
+          "s-green": {
+            "measured": [
+              7,
+              149,
+              15
+            ],
+            "stored": [
+              49.45,
+              199.9,
+              70.14
+            ],
+            "stored_decoded_as_srgb_to_linear": [
+              6.9,
+              149.3,
+              14.9
+            ],
+            "matches_decode_without_reencode": true
+          },
+          "s-purple": {
+            "measured": [
+              104,
+              11,
+              149
+            ],
+            "stored": [
+              169.81,
+              60.74,
+              199.9
+            ],
+            "stored_decoded_as_srgb_to_linear": [
+              104.2,
+              10.9,
+              149.3
+            ],
+            "matches_decode_without_reencode": true
+          }
+        }
+      }
+    },
+    {
+      "phase": "baseline_audio",
+      "surface": "tessel-render CLI: existing offline mixer vs the analytic oracle",
+      "status": "PASS",
+      "seconds": 5.37,
+      "checks_total": 46,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "audio24_window_a: the mixer reports 144000 frames at 48000 Hz",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio: exactly 1 audio stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio: 2 channel(s) are accepted",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio: sample rate 48000",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio: start_time within 0.025 s of zero (0.0000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio: duration 3.0000 s within 0.0225 s of 3.0000 s",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch0: at least 142920 samples",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch0: sample-level correlation with the analytic signal >= 0.97 (1.0000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch0: envelope lag +0 samples within 48",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch0: 20 tone window(s) judged, each dominated by its expected frequency (ratio >= 25)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch0: gain -3.01 dB within +-1.0 dB of the expected -3.01 dB",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch0: 2 silent range(s) stay below RMS 0.004 (worst 0.00000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch0: on edge at 0.2500s vs 0.2500s (error +0.00 ms, limit 3 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch0: off edge at 2.2500s vs 2.2500s (error +0.00 ms, limit 3 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch0: on edge at 2.7500s vs 2.7500s (error +0.00 ms, limit 3 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch1: at least 142920 samples",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch1: sample-level correlation with the analytic signal >= 0.97 (1.0000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch1: envelope lag +0 samples within 48",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch1: 20 tone window(s) judged, each dominated by its expected frequency (ratio >= 25)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch1: gain -3.01 dB within +-1.0 dB of the expected -3.01 dB",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch1: 2 silent range(s) stay below RMS 0.004 (worst 0.00000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch1: on edge at 0.2500s vs 0.2500s (error +0.00 ms, limit 3 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch1: off edge at 2.2500s vs 2.2500s (error +0.00 ms, limit 3 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch1: on edge at 2.7500s vs 2.7500s (error +0.00 ms, limit 3 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b: the mixer reports 192000 frames at 48000 Hz",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio: exactly 1 audio stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio: 2 channel(s) are accepted",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio: sample rate 48000",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio: start_time within 0.025 s of zero (0.0000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio: duration 4.0000 s within 0.0225 s of 4.0000 s",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch0: at least 190920 samples",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch0: sample-level correlation with the analytic signal >= 0.97 (1.0000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch0: envelope lag +0 samples within 48",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch0: 32 tone window(s) judged, each dominated by its expected frequency (ratio >= 25)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch0: gain -3.02 dB within +-1.0 dB of the expected -3.01 dB",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch0: 1 silent range(s) stay below RMS 0.004 (worst 0.00000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch0: off edge at 2.5000s vs 2.5000s (error +0.00 ms, limit 3 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch0: on edge at 3.0000s vs 3.0000s (error +0.00 ms, limit 3 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch1: at least 190920 samples",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch1: sample-level correlation with the analytic signal >= 0.97 (1.0000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch1: envelope lag +0 samples within 48",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch1: 32 tone window(s) judged, each dominated by its expected frequency (ratio >= 25)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch1: gain -3.02 dB within +-1.0 dB of the expected -3.01 dB",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch1: 1 silent range(s) stay below RMS 0.004 (worst 0.00000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch1: off edge at 2.5000s vs 2.5000s (error +0.00 ms, limit 3 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch1: on edge at 3.0000s vs 3.0000s (error +0.00 ms, limit 3 ms)",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "audio24_window_a": {
+          "channels": [
+            {
+              "correlation": 1.0,
+              "lagSamples": 0,
+              "gainDb": -3.014,
+              "silentWorstRms": 0.0,
+              "onsetErrorsMs": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            {
+              "correlation": 1.0,
+              "lagSamples": 0,
+              "gainDb": -3.014,
+              "silentWorstRms": 0.0,
+              "onsetErrorsMs": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            }
+          ]
+        },
+        "audio24_window_b": {
+          "channels": [
+            {
+              "correlation": 1.0,
+              "lagSamples": 0,
+              "gainDb": -3.021,
+              "silentWorstRms": 0.0,
+              "onsetErrorsMs": [
+                0.0,
+                0.0
+              ]
+            },
+            {
+              "correlation": 1.0,
+              "lagSamples": 0,
+              "gainDb": -3.021,
+              "silentWorstRms": 0.0,
+              "onsetErrorsMs": [
+                0.0,
+                0.0
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "phase": "audio_off",
+      "surface": "tessel-render CLI: scene.export audio:false preserved",
+      "status": "PASS",
+      "seconds": 6.93,
+      "checks_total": 70,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 640x360",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 72 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 3 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result reports the frame count the file holds",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result reports the exact rational rate of the file",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result reports the output size of the file",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result says audio included = False, and the file has no audio stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result lists exactly the bundle's image/splat resources with the bundle's own hashes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file has exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_red: centroid within 1.25 px of the model (0.462)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.970)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_green: centroid within 1.25 px of the model (0.526)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.973)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_blue: centroid within 1.25 px of the model (0.113)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.949)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_yellow: centroid within 1.25 px of the model (0.524)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.959)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_red: centroid within 1.25 px of the model (0.462)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.970)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_green: centroid within 1.25 px of the model (0.526)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.973)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_blue: centroid within 1.25 px of the model (0.112)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.949)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_yellow: centroid within 1.25 px of the model (0.524)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.959)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_red: centroid within 1.25 px of the model (0.462)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.970)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_green: centroid within 1.25 px of the model (0.526)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.973)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_blue: centroid within 1.25 px of the model (0.112)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.949)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_yellow: centroid within 1.25 px of the model (0.524)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.959)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false: no audio stream, as asked (`audio:false`)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "scene.export with audio:false succeeds",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result lists the declared audio as omitted and says why",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "a typed `audio_omitted` warning is present",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "export": {
+          "duration_seconds": 3.0,
+          "tick": "1/12288",
+          "bytes": 5281,
+          "audio_streams": 0,
+          "seconds": 3.92,
+          "pictures": {
+            "18": {
+              "mk_red": {
+                "offsetPx": 0.462,
+                "iou": 0.9698,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.526,
+                "iou": 0.9732,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.113,
+                "iou": 0.9487,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.524,
+                "iou": 0.9591,
+                "judged": true
+              }
+            },
+            "40": {
+              "mk_red": {
+                "offsetPx": 0.462,
+                "iou": 0.9698,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.526,
+                "iou": 0.9732,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.112,
+                "iou": 0.9492,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.524,
+                "iou": 0.9591,
+                "judged": true
+              }
+            },
+            "89": {
+              "mk_red": {
+                "offsetPx": 0.462,
+                "iou": 0.9698,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.526,
+                "iou": 0.9732,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.112,
+                "iou": 0.9492,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.524,
+                "iou": 0.9591,
+                "judged": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "phase": "package_portability",
+      "surface": "tessel-render CLI: package, independent read, delete origin, restore, render and export",
+      "status": "PASS",
+      "seconds": 9.04,
+      "checks_total": 95,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "pkg-audio24: the origin copy is gone",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "package: the package opens with an independent reader (zipfile / directory walk)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "package: all 6 asset(s) are inside, byte-identical (SHA-256)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the package manifest's declared hashes equal the hashes this harness computed from the entries (an independent reader)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored folder carries assets/bg.png byte-identical to the corpus",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored folder carries assets/mk-blue.png byte-identical to the corpus",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored folder carries assets/mk-green.png byte-identical to the corpus",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored folder carries assets/mk-red.png byte-identical to the corpus",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored folder carries assets/mk-yellow.png byte-identical to the corpus",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored folder carries audio/mix.wav byte-identical to the corpus",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the restored folder holds a project document",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f8 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f8 mk_red: centroid within 0.75 px of the model (0.067)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f8 mk_red: mask IoU >= 0.9 against the model's ray-cast mask (0.998)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f8 mk_red: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f8 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f8 mk_green: centroid within 0.75 px of the model (0.526)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f8 mk_green: mask IoU >= 0.9 against the model's ray-cast mask (0.973)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f8 mk_green: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f8 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f8 mk_blue: centroid within 0.75 px of the model (0.326)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f8 mk_blue: mask IoU >= 0.9 against the model's ray-cast mask (0.977)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f8 mk_blue: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f8 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f8 mk_yellow: centroid within 0.75 px of the model (0.515)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f8 mk_yellow: mask IoU >= 0.9 against the model's ray-cast mask (0.966)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f8 mk_yellow: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f100 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f100 mk_red: centroid within 0.75 px of the model (0.067)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f100 mk_red: mask IoU >= 0.9 against the model's ray-cast mask (0.998)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f100 mk_red: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f100 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f100 mk_green: centroid within 0.75 px of the model (0.526)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f100 mk_green: mask IoU >= 0.9 against the model's ray-cast mask (0.973)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f100 mk_green: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f100 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f100 mk_blue: centroid within 0.75 px of the model (0.326)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f100 mk_blue: mask IoU >= 0.9 against the model's ray-cast mask (0.977)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f100 mk_blue: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f100 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f100 mk_yellow: centroid within 0.75 px of the model (0.515)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f100 mk_yellow: mask IoU >= 0.9 against the model's ray-cast mask (0.966)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored f100 mk_yellow: interior colour at the model centroid within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 640x360",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 24 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 1 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result reports the frame count the file holds",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result reports the exact rational rate of the file",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result reports the output size of the file",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result says audio included = False, and the file has no audio stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result lists exactly the bundle's image/splat resources with the bundle's own hashes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file has exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f18 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f18 mk_red: centroid within 1.25 px of the model (0.462)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f18 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.970)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f18 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f18 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f18 mk_green: centroid within 1.25 px of the model (0.526)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f18 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.973)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f18 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f18 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f18 mk_blue: centroid within 1.25 px of the model (0.301)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f18 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.963)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f18 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f18 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f18 mk_yellow: centroid within 1.25 px of the model (0.439)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f18 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.960)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f18 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f30 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f30 mk_red: centroid within 1.25 px of the model (0.462)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f30 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.970)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f30 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f30 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f30 mk_green: centroid within 1.25 px of the model (0.526)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f30 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.973)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f30 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f30 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f30 mk_blue: centroid within 1.25 px of the model (0.301)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f30 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.963)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f30 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f30 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f30 mk_yellow: centroid within 1.25 px of the model (0.439)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f30 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.960)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export f30 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored export: no audio stream, as asked (`audio:false`)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "scene.export from the restored project (audio:false) succeeds",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "package": {
+          "entries": 8,
+          "missing": []
+        }
+      }
+    },
+    {
+      "phase": "package_tamper",
+      "surface": "tessel-render CLI: tampered packages are refused, nothing restored",
+      "status": "PASS",
+      "seconds": 5.31,
+      "checks_total": 13,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "pkg-tamper: the origin copy is gone",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "control: the untouched package restores (so a refusal below is caused by the tampering)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "a byte flipped inside an asset: project.verify is refused with a typed error",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "a byte flipped inside an asset: project.restore is refused with a typed error",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "a byte flipped inside an asset: the refused restore leaves no project folder behind",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "an asset removed: project.verify is refused with a typed error",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "an asset removed: project.restore is refused with a typed error",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "an asset removed: the refused restore leaves no project folder behind",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the mix replaced by another file of the same name: project.verify is refused with a typed error",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the mix replaced by another file of the same name: project.restore is refused with a typed error",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the mix replaced by another file of the same name: the refused restore leaves no project folder behind",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "a bundle declaring a wrong asset hash is refused with a typed error before any resource is approved",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "and the scene cannot be rendered from the unapproved bundle",
+          "ok": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "phase": "splat_plan",
+      "surface": "S7 seam: scene.plan with splat nodes vs the model",
+      "status": "BLOCKED",
+      "seconds": 1.88,
+      "checks_total": 0,
+      "checks_failed": 0,
+      "checks": [],
+      "blocked": {
+        "reason": "scene.plan refuses the splat domain (the frame declares splat on s-green, splat on s-order, splat on s-pair, splat on s-purple, splat on s-red that the scene plan does not evaluate)",
+        "needs": "ScenePlan carries the approved splat reference, generation, evaluated matrix and camera; the runtime draws it; preview, headless and export coincide (docs/migration/wave-s1-s10-plan.md, S7)",
+        "backlog": "BL025/S7"
+      }
+    },
+    {
+      "phase": "splat_render",
+      "surface": "S7 seam: scene.render splat pictures vs the model",
+      "status": "BLOCKED",
+      "seconds": 3.2,
+      "checks_total": 0,
+      "checks_failed": 0,
+      "checks": [],
+      "blocked": {
+        "reason": "scene.plan refuses the splat domain (the frame declares splat on s-green, splat on s-order, splat on s-pair, splat on s-purple, splat on s-red that the scene plan does not evaluate)",
+        "needs": "ScenePlan carries the approved splat reference, generation, evaluated matrix and camera; the runtime draws it; preview, headless and export coincide (docs/migration/wave-s1-s10-plan.md, S7)",
+        "backlog": "BL025/S7"
+      }
+    },
+    {
+      "phase": "splat_export",
+      "surface": "S7 seam: scene.export splat video vs the model",
+      "status": "BLOCKED",
+      "seconds": 3.0,
+      "checks_total": 0,
+      "checks_failed": 0,
+      "checks": [],
+      "blocked": {
+        "reason": "scene.plan refuses the splat domain (the frame declares splat on s-green, splat on s-order, splat on s-pair, splat on s-purple, splat on s-red that the scene plan does not evaluate)",
+        "needs": "ScenePlan carries the approved splat reference, generation, evaluated matrix and camera; the runtime draws it; preview, headless and export coincide (docs/migration/wave-s1-s10-plan.md, S7)",
+        "backlog": "BL025/S7"
+      }
+    },
+    {
+      "phase": "splat_package",
+      "surface": "S7 seam: package/restore with splat assets",
+      "status": "BLOCKED",
+      "seconds": 2.1,
+      "checks_total": 0,
+      "checks_failed": 0,
+      "checks": [],
+      "blocked": {
+        "reason": "scene.plan refuses the splat domain (the frame declares splat on s-green, splat on s-order, splat on s-pair, splat on s-purple, splat on s-red that the scene plan does not evaluate)",
+        "needs": "ScenePlan carries the approved splat reference, generation, evaluated matrix and camera; the runtime draws it; preview, headless and export coincide (docs/migration/wave-s1-s10-plan.md, S7)",
+        "backlog": "BL025/S7"
+      }
+    },
+    {
+      "phase": "audio_export",
+      "surface": "S9 seam: scene.export mixed audio vs the analytic oracle (24 fps and 30000/1001)",
+      "status": "BLOCKED",
+      "seconds": 1.45,
+      "checks_total": 0,
+      "checks_failed": 0,
+      "checks": [],
+      "blocked": {
+        "reason": "scene.export refuses a scene with an audio mix (This scene declares audio and directed-scene audio is not exported yet; pass `audio: false` to export the picture only)",
+        "needs": "mix of the bundle's WAV into the exported file with rational frame/sample mapping, offset and rate conversion; `audio:false` omits with a warning (S9)",
+        "backlog": "BL016/S9"
+      }
+    },
+    {
+      "phase": "audio_package_export",
+      "surface": "S9 seam: export with the mix from a restored project",
+      "status": "BLOCKED",
+      "seconds": 1.51,
+      "checks_total": 0,
+      "checks_failed": 0,
+      "checks": [],
+      "blocked": {
+        "reason": "scene.export refuses a scene with an audio mix (This scene declares audio and directed-scene audio is not exported yet; pass `audio: false` to export the picture only)",
+        "needs": "mix of the bundle's WAV into the exported file with rational frame/sample mapping, offset and rate conversion; `audio:false` omits with a warning (S9)",
+        "backlog": "BL016/S9"
+      }
+    },
+    {
+      "phase": "full_av",
+      "surface": "S7+S9 seams: splat and audio together, export and package",
+      "status": "BLOCKED",
+      "seconds": 1.62,
+      "checks_total": 0,
+      "checks_failed": 0,
+      "checks": [],
+      "blocked": {
+        "reason": "scene.plan refuses the splat domain (the frame declares splat on s-green, splat on s-order, splat on s-pair, splat on s-purple, splat on s-red that the scene plan does not evaluate)",
+        "needs": "ScenePlan carries the approved splat reference, generation, evaluated matrix and camera; the runtime draws it; preview, headless and export coincide (docs/migration/wave-s1-s10-plan.md, S7)",
+        "backlog": "BL025/S7"
+      }
+    }
+  ],
+  "not_run": [],
+  "not_claimed": [
+    "heard audio: audio is measured on decoded samples; nothing was listened to and no device is involved",
+    "photons, seek-to-photon and physical pointer input: no coordinate clicks, no display measurement",
+    "the native window: socket and UI flows of scene.export are R10's (scripts/directed-scene-export-proof); this harness drives the tessel-render process only",
+    "other GPUs, platforms and codecs: one machine, SwiftShader GL unless --gl gpu, libx264/aac as found by ffmpeg",
+    "partial opacity blending, anisotropic splat scales, spherical harmonics, splat lighting/weather/effects (BL025 beyond the subset), splats occluded by planes",
+    "bit-exact frames or samples: pictures are judged by masks, centroids and tolerances fixed beforehand; audio by correlation, edges and spectra",
+    "the editor's own clock/seek behaviour and playback in a device (BL046)"
+  ],
+  "exit_code": 1
+}
