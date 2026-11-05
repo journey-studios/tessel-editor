@@ -60,7 +60,7 @@ import verify  # noqa: E402
 harness = _load("tsp_harness", P_DIR / "harness.py")  # read-only reuse: sessions, Phase, binary identity, GPU lock
 Phase, Blocked, Abort = harness.Phase, harness.Blocked, harness.Abort
 HARNESS_VERSION = 1
-MIN_FREE_GIB = 10
+MIN_FREE_GIB = 12
 WORK_BUDGET_BYTES = 2 * 1024 ** 3
 TOL = verify.TOLERANCES
 PRESET_H = {"id": "s10-360p", "name": "S10 640x360", "width": 640, "height": 360}
@@ -92,7 +92,7 @@ def free_gib(path="/tmp"):
 
 
 class Workspace:
-    """Own temporary directory (`s10-acc-*`): budget 2 GiB, refuses under 10 GiB free, removes only itself."""
+    """Own temporary directory (`s10-acc-*`): budget 2 GiB, refuses under 12 GiB free, removes only itself."""
 
     def __init__(self, keep=False, base=None):
         if free_gib() < MIN_FREE_GIB:

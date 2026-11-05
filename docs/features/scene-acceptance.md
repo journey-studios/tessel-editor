@@ -77,7 +77,7 @@ em `proof.spec.py`). Se o seam responder por outro motivo, a fase é FAIL, não 
 - Pixel e áudio nunca são substituídos por schema/ffprobe: ffprobe só confere forma (fps, duração, streams); a imagem
   é decodificada (BT.709 limitado) e comparada com a máscara exata; o áudio é decodificado para float PCM e comparado
   com o sinal analítico.
-- Orçamento: diretório `s10-acc-*` próprio, 2 GiB, recusa início com menos de 10 GiB livres, remove só a si mesmo.
+- Orçamento: diretório `s10-acc-*` próprio, 2 GiB, recusa início com menos de 12 GiB livres, remove só a si mesmo.
 
 ## O que não é afirmado
 
@@ -128,3 +128,5 @@ para o splat) **ou** o contrato de cor muda por decisão explícita (emenda nas 
 As fases do S7 e do S9 saem **BLOCKED** (código 3 se forem as únicas pendentes). O PR permanece **draft** enquanto
 `splat_*`, `audio_*` e `full_av` não rodarem e passarem com o merge de S7/S9. Nenhuma cena com splat ou áudio mixado foi
 julgada por este harness: a cobertura dessas duas famílias hoje é o baseline do caminho existente e a cola testada com fakes.
+
+Conferência do coordenador: 16/16 testes de `proof.spec.py` reconferidos. Guarda operacional corrigida para 12 GiB; prova de limite recusa 11,99 GiB e aceita 12 GiB. As tolerâncias de pixel/áudio permanecem intactas. O relatório vivo acima preserva o fingerprint da execução anterior; não foi reclassificado após esta correção operacional.
