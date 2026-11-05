@@ -2,7 +2,7 @@
 
 Registro único de execução das pendências: building blocks, migração, produto, decisões e provas.
 Atualizado em 2026-11-05, após o merge `6cc4392` (PR #1). A rodada A–G terminou;
-**nenhuma próxima frente está em execução neste registro**. Responsável `—` significa não atribuído.
+A próxima rodada H/I/J/K foi autorizada; atribuições e links constam abaixo após o despacho. Responsável `—` significa não atribuído.
 
 ## Como todo agente deve usar
 
@@ -158,3 +158,7 @@ não é uma afirmação de bug presente. Não reabrir B1–B8, proxy ou lifecycl
 
 Não reabrir como pendência: prefetch genérico, trocar Three.js/Spark, grafo incremental ou
 reuso isolado de objetos sem hipótese nova. Experimentos refutados ficam descartados nos relatórios OPT.
+
+## Rodada atual
+
+Plano e ownership: [H/I/J/K](migration/next-round-plan.md). Status de execução e links serão registrados pelo coordenador ao despachar; ainda não são entregas concluídas.
