@@ -1,0 +1,758 @@
+[
+{
+"engine": "webkit",
+"name": "vp9:videofix:off0",
+"mismatches": 40,
+"verified": 40,
+"samples": [
+[
+57,
+0
+],
+[
+219,
+0
+],
+[
+146,
+0
+],
+[
+222,
+0
+]
+]
+},
+{
+"engine": "webkit",
+"name": "vp9:videofix:off0.5",
+"mismatches": 40,
+"verified": 40,
+"samples": [
+[
+57,
+0
+],
+[
+219,
+0
+],
+[
+146,
+0
+],
+[
+222,
+0
+]
+]
+},
+{
+"engine": "webkit",
+"name": "vp9:videofix-rvfc:off0",
+"mismatches": 40,
+"verified": 40,
+"samples": [
+[
+57,
+0
+],
+[
+219,
+0
+],
+[
+146,
+0
+],
+[
+222,
+0
+]
+]
+},
+{
+"engine": "webkit",
+"name": "vp9:videofix-rvfc:off0.5",
+"mismatches": 40,
+"verified": 40,
+"samples": [
+[
+57,
+0
+],
+[
+219,
+0
+],
+[
+146,
+0
+],
+[
+222,
+0
+]
+]
+},
+{
+"engine": "webkit",
+"name": "vp8:videofix:off0",
+"mismatches": 40,
+"verified": 40,
+"samples": [
+[
+57,
+0
+],
+[
+219,
+0
+],
+[
+146,
+0
+],
+[
+222,
+0
+]
+]
+},
+{
+"engine": "webkit",
+"name": "vp8:videofix:off0.5",
+"mismatches": 40,
+"verified": 40,
+"samples": [
+[
+57,
+0
+],
+[
+219,
+0
+],
+[
+146,
+0
+],
+[
+222,
+0
+]
+]
+},
+{
+"engine": "webkit",
+"name": "vp8:videofix-rvfc:off0",
+"mismatches": 40,
+"verified": 40,
+"samples": [
+[
+57,
+0
+],
+[
+219,
+0
+],
+[
+146,
+0
+],
+[
+222,
+0
+]
+]
+},
+{
+"engine": "webkit",
+"name": "vp8:videofix-rvfc:off0.5",
+"mismatches": 40,
+"verified": 40,
+"samples": [
+[
+57,
+0
+],
+[
+219,
+0
+],
+[
+146,
+0
+],
+[
+222,
+0
+]
+]
+},
+{
+"engine": "webkit",
+"name": "h264:videofix:off0",
+"mismatches": 28,
+"verified": 40,
+"samples": [
+[
+146,
+145
+],
+[
+11,
+10
+],
+[
+205,
+204
+],
+[
+86,
+85
+]
+]
+},
+{
+"engine": "webkit",
+"name": "h264:videofix:off0.5",
+"mismatches": 0,
+"verified": 40,
+"samples": []
+},
+{
+"engine": "webkit",
+"name": "h264:videofix-rvfc:off0",
+"mismatches": 28,
+"verified": 40,
+"samples": [
+[
+146,
+145
+],
+[
+11,
+10
+],
+[
+205,
+204
+],
+[
+86,
+85
+]
+]
+},
+{
+"engine": "webkit",
+"name": "h264:videofix-rvfc:off0.5",
+"mismatches": 0,
+"verified": 40,
+"samples": []
+},
+{
+"engine": "webkit",
+"name": "av1:videofix:off0",
+"mismatches": 40,
+"verified": 40,
+"samples": [
+[
+57,
+0
+],
+[
+219,
+0
+],
+[
+146,
+145
+],
+[
+222,
+145
+]
+]
+},
+{
+"engine": "webkit",
+"name": "av1:videofix:off0.5",
+"mismatches": 37,
+"verified": 40,
+"samples": [
+[
+57,
+0
+],
+[
+219,
+0
+],
+[
+146,
+0
+],
+[
+222,
+0
+]
+]
+},
+{
+"engine": "webkit",
+"name": "av1:videofix-rvfc:off0",
+"mismatches": 40,
+"verified": 40,
+"samples": [
+[
+57,
+0
+],
+[
+219,
+0
+],
+[
+146,
+145
+],
+[
+222,
+145
+]
+]
+},
+{
+"engine": "webkit",
+"name": "av1:videofix-rvfc:off0.5",
+"mismatches": 37,
+"verified": 40,
+"samples": [
+[
+57,
+0
+],
+[
+219,
+0
+],
+[
+146,
+0
+],
+[
+222,
+0
+]
+]
+},
+{
+"engine": "webkit",
+"name": "hevc:videofix:off0",
+"mismatches": 28,
+"verified": 40,
+"samples": [
+[
+146,
+145
+],
+[
+11,
+10
+],
+[
+205,
+204
+],
+[
+86,
+85
+]
+]
+},
+{
+"engine": "webkit",
+"name": "hevc:videofix:off0.5",
+"mismatches": 0,
+"verified": 40,
+"samples": []
+},
+{
+"engine": "webkit",
+"name": "hevc:videofix-rvfc:off0",
+"mismatches": 28,
+"verified": 40,
+"samples": [
+[
+146,
+145
+],
+[
+11,
+10
+],
+[
+205,
+204
+],
+[
+86,
+85
+]
+]
+},
+{
+"engine": "webkit",
+"name": "hevc:videofix-rvfc:off0.5",
+"mismatches": 0,
+"verified": 40,
+"samples": []
+},
+{
+"engine": "chrome-metal",
+"name": "vp9:videofix:off0",
+"mismatches": 14,
+"verified": 40,
+"samples": [
+[
+205,
+204
+],
+[
+16,
+15
+],
+[
+127,
+126
+],
+[
+145,
+144
+]
+]
+},
+{
+"engine": "chrome-metal",
+"name": "vp9:videofix:off0.5",
+"mismatches": 0,
+"verified": 40,
+"samples": []
+},
+{
+"engine": "chrome-metal",
+"name": "vp9:videofix-rvfc:off0",
+"mismatches": 14,
+"verified": 40,
+"samples": [
+[
+205,
+204
+],
+[
+16,
+15
+],
+[
+127,
+126
+],
+[
+145,
+144
+]
+]
+},
+{
+"engine": "chrome-metal",
+"name": "vp9:videofix-rvfc:off0.5",
+"mismatches": 0,
+"verified": 40,
+"samples": []
+},
+{
+"engine": "chrome-metal",
+"name": "vp8:videofix:off0",
+"mismatches": 14,
+"verified": 40,
+"samples": [
+[
+205,
+204
+],
+[
+16,
+15
+],
+[
+127,
+126
+],
+[
+145,
+144
+]
+]
+},
+{
+"engine": "chrome-metal",
+"name": "vp8:videofix:off0.5",
+"mismatches": 0,
+"verified": 40,
+"samples": []
+},
+{
+"engine": "chrome-metal",
+"name": "vp8:videofix-rvfc:off0",
+"mismatches": 14,
+"verified": 40,
+"samples": [
+[
+205,
+204
+],
+[
+16,
+15
+],
+[
+127,
+126
+],
+[
+145,
+144
+]
+]
+},
+{
+"engine": "chrome-metal",
+"name": "vp8:videofix-rvfc:off0.5",
+"mismatches": 0,
+"verified": 40,
+"samples": []
+},
+{
+"engine": "chrome-metal",
+"name": "h264:videofix:off0",
+"mismatches": 13,
+"verified": 40,
+"samples": [
+[
+205,
+204
+],
+[
+16,
+15
+],
+[
+127,
+126
+],
+[
+145,
+144
+]
+]
+},
+{
+"engine": "chrome-metal",
+"name": "h264:videofix:off0.5",
+"mismatches": 0,
+"verified": 40,
+"samples": []
+},
+{
+"engine": "chrome-metal",
+"name": "h264:videofix-rvfc:off0",
+"mismatches": 13,
+"verified": 40,
+"samples": [
+[
+205,
+204
+],
+[
+16,
+15
+],
+[
+127,
+126
+],
+[
+145,
+144
+]
+]
+},
+{
+"engine": "chrome-metal",
+"name": "h264:videofix-rvfc:off0.5",
+"mismatches": 0,
+"verified": 40,
+"samples": []
+},
+{
+"engine": "chrome-metal",
+"name": "av1:videofix:off0",
+"mismatches": 25,
+"verified": 40,
+"samples": [
+[
+11,
+9
+],
+[
+205,
+200
+],
+[
+86,
+22
+],
+[
+16,
+1
+]
+]
+},
+{
+"engine": "chrome-metal",
+"name": "av1:videofix:off0.5",
+"mismatches": 19,
+"verified": 40,
+"samples": [
+[
+11,
+9
+],
+[
+205,
+201
+],
+[
+86,
+22
+],
+[
+127,
+1
+]
+]
+},
+{
+"engine": "chrome-metal",
+"name": "av1:videofix-rvfc:off0",
+"mismatches": 25,
+"verified": 40,
+"samples": [
+[
+11,
+9
+],
+[
+205,
+200
+],
+[
+86,
+22
+],
+[
+16,
+1
+]
+]
+},
+{
+"engine": "chrome-metal",
+"name": "av1:videofix-rvfc:off0.5",
+"mismatches": 19,
+"verified": 40,
+"samples": [
+[
+11,
+9
+],
+[
+205,
+201
+],
+[
+86,
+22
+],
+[
+127,
+1
+]
+]
+},
+{
+"engine": "chrome-metal",
+"name": "hevc:videofix:off0",
+"mismatches": 14,
+"verified": 40,
+"samples": [
+[
+205,
+204
+],
+[
+16,
+15
+],
+[
+127,
+126
+],
+[
+145,
+144
+]
+]
+},
+{
+"engine": "chrome-metal",
+"name": "hevc:videofix:off0.5",
+"mismatches": 0,
+"verified": 40,
+"samples": []
+},
+{
+"engine": "chrome-metal",
+"name": "hevc:videofix-rvfc:off0",
+"mismatches": 14,
+"verified": 40,
+"samples": [
+[
+205,
+204
+],
+[
+16,
+15
+],
+[
+127,
+126
+],
+[
+145,
+144
+]
+]
+},
+{
+"engine": "chrome-metal",
+"name": "hevc:videofix-rvfc:off0.5",
+"mismatches": 0,
+"verified": 40,
+"samples": []
+}
+]

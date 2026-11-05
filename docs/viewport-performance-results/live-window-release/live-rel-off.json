@@ -1,0 +1,321 @@
+{
+  "failures": [],
+  "checks": [
+    {
+      "check": "viewport phase is ready",
+      "ok": true,
+      "detail": "ready"
+    },
+    {
+      "check": "capabilities report the runtime",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'backend': 'tessel-three', 'bridge_version': 1, 'runtime_version': '0.1.0', 'renderer': 'Apple GPU', 'layers': ['image', 'video', 'text', 'scene', 'waveform'], 'for"
+    },
+    {
+      "check": "project.create Viewport proof",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'action': 'project.create', 'project': 'Viewport proof', 'sequence': 'main', 'rate': {'num': 24, 'den': 1, 'fps': 24.0}, 'width': 320, 'height': 180, 'length': 48, "
+    },
+    {
+      "check": "asset.add img",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'media:img', 'action': 'create', 'kind': 'still', 'folder': 'folder:project', 'asset': {'kind': 'still', 'source': {'type': 'file', 'path': '/tmp/tessel-f"
+    },
+    {
+      "check": "asset.add vid",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'media:vid', 'action': 'create', 'kind': 'video', 'folder': 'folder:project', 'asset': {'kind': 'video', 'source': {'type': 'frame_sequence', 'pattern': '"
+    },
+    {
+      "check": "asset.add tone",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'media:tone', 'action': 'create', 'kind': 'audio', 'folder': 'folder:project', 'asset': {'kind': 'audio', 'source': {'type': 'file', 'path': '/tmp/tessel-"
+    },
+    {
+      "check": "asset.add cloud",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'media:cloud', 'action': 'create', 'kind': 'splat', 'folder': 'folder:project', 'asset': {'kind': 'splat', 'source': {'type': 'file', 'path': '/tmp/tessel"
+    },
+    {
+      "check": "asset.add scn",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'media:scn', 'action': 'create', 'kind': 'scene', 'folder': 'folder:project', 'asset': {'kind': 'scene', 'source': {'type': 'file', 'path': '/tmp/tessel-f"
+    },
+    {
+      "check": "asset.add label",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'media:label', 'action': 'create', 'kind': 'text', 'folder': 'folder:project', 'asset': {'kind': 'text', 'source': {'type': 'inline'}, 'format': 'text', '"
+    },
+    {
+      "check": "track.add scene-track",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'track:scene-track', 'action': 'create', 'kind': 'video', 'labels': ['V1'], 'order': ['track:scene-track'], 'changed': True}, '_ms': 0.6556249572895467}"
+    },
+    {
+      "check": "track.add media-track",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'track:media-track', 'action': 'create', 'kind': 'video', 'labels': ['V2', 'V1'], 'order': ['track:media-track', 'track:scene-track'], 'changed': True}, '"
+    },
+    {
+      "check": "track.add title-track",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'track:title-track', 'action': 'create', 'kind': 'video', 'labels': ['V3', 'V2', 'V1'], 'order': ['track:title-track', 'track:media-track', 'track:scene-t"
+    },
+    {
+      "check": "track.add music",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'track:music', 'action': 'create', 'kind': 'audio', 'labels': ['V3', 'V2', 'V1', 'A1'], 'order': ['track:title-track', 'track:media-track', 'track:scene-t"
+    },
+    {
+      "check": "clip.add c-scene",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'clip:c-scene', 'action': 'create', 'track': 'track:scene-track', 'kind': 'scene', 'frame': 0, 'end': 48, 'duration': 48, 'asset': 'scn', 'changed': True,"
+    },
+    {
+      "check": "clip.add c-img",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'clip:c-img', 'action': 'create', 'track': 'track:media-track', 'kind': 'video', 'frame': 0, 'end': 24, 'duration': 24, 'asset': 'img', 'changed': True, '"
+    },
+    {
+      "check": "clip.add c-vid",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'clip:c-vid', 'action': 'create', 'track': 'track:media-track', 'kind': 'video', 'frame': 24, 'end': 48, 'duration': 24, 'asset': 'vid', 'changed': True, "
+    },
+    {
+      "check": "clip.add c-title",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'clip:c-title', 'action': 'create', 'track': 'track:title-track', 'kind': 'title', 'frame': 0, 'end': 48, 'duration': 48, 'asset': 'label', 'changed': Tru"
+    },
+    {
+      "check": "clip.add c-tone",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'clip:c-tone', 'action': 'create', 'track': 'track:music', 'kind': 'audio', 'frame': 0, 'end': 48, 'duration': 48, 'asset': 'tone', 'changed': True, 'prop"
+    },
+    {
+      "check": "project has the proof sequence",
+      "ok": true,
+      "detail": "Viewport proof"
+    },
+    {
+      "check": "frame 0 renders",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'action': 'render.frame', 'plan': {'frame': 0, 'time': {'num': 0, 'den': 1, 'seconds': 0.0}, 'layers': [{'id': 'layer:c-scene', 'kind': 'scene'}, {'id': 'layer:c-img', 'kind': 'image'}, {'id': 'layer:c-title', 'kind': 'text'}], 'warnings': []}, 'frame': {'request'"
+    },
+    {
+      "check": "image quadrant 0",
+      "ok": true,
+      "detail": "[220, 40, 40, 255]"
+    },
+    {
+      "check": "image quadrant 1",
+      "ok": true,
+      "detail": "[40, 200, 60, 255]"
+    },
+    {
+      "check": "image quadrant 2",
+      "ok": true,
+      "detail": "[40, 80, 220, 255]"
+    },
+    {
+      "check": "image quadrant 3",
+      "ok": true,
+      "detail": "[230, 210, 40, 255]"
+    },
+    {
+      "check": "plan alternates scene, image and text",
+      "ok": true,
+      "detail": "['scene', 'image', 'text']"
+    },
+    {
+      "check": "title text pixels present",
+      "ok": true,
+      "detail": "107"
+    },
+    {
+      "check": "video frame at sequence frame 30",
+      "ok": true,
+      "detail": "[80, 160, 80, 255]"
+    },
+    {
+      "check": "video frame at sequence frame 47",
+      "ok": true,
+      "detail": "[205, 60, 130, 255]"
+    },
+    {
+      "check": "image and video frames differ",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "seek is accepted",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'timeline.playhead', 'field': 'frame', 'value': 5, 'timecode': '00:00:00:05', 'fps': 24, 'max': 48, 'time': {'num': 5, 'den': 24, 'seconds': 0.20833333333"
+    },
+    {
+      "check": "monitor redrew after the seek",
+      "ok": true,
+      "detail": "ready"
+    },
+    {
+      "check": "playhead follows the seek",
+      "ok": true,
+      "detail": "{'frame': 5, 'timecode': '00:00:00:05', 'fps': 24, 'min': 0, 'max': 48}"
+    },
+    {
+      "check": "scene changes with time",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "splat sphere is drawn at the center",
+      "ok": true,
+      "detail": "[56, 87, 248, 255]"
+    },
+    {
+      "check": "camera edit accepted",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'clip:c-scene', 'field': 'camera', 'value': {'position': [4.0, 3.0, 6.0], 'target': [0.0, 0.0, 0.0], 'fov': 35.0, 'orbit': 0.0}, 'changed': True}, '_ms': "
+    },
+    {
+      "check": "camera change alters the picture",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "source preview: top-left quadrant",
+      "ok": true,
+      "detail": "[220, 40, 40, 255]"
+    },
+    {
+      "check": "source preview: bottom-right quadrant",
+      "ok": true,
+      "detail": "[230, 210, 40, 255]"
+    },
+    {
+      "check": "source preview has one layer",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "audio source is a waveform layer",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "waveform playhead column",
+      "ok": true,
+      "detail": "[255, 255, 255, 255]"
+    },
+    {
+      "check": "offline audio mix is reported as processed",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'action': 'render.audio', 'kind': 'processed', 'note': 'offline mix; not played through an output device', 'sample_rate': 48000, 'frames': 48000, 'channels': 2, 'se"
+    },
+    {
+      "check": "tone is audible in the mix (peak)",
+      "ok": true,
+      "detail": "0.3535533845424652"
+    },
+    {
+      "check": "missing asset file is rejected",
+      "ok": true,
+      "detail": "{'ok': False, 'version': 1, 'error': {'code': 'asset_unreadable', 'message': 'Cannot read `/nonexistent/ghost.png`: No such file or directory (os error 2)', 'target': '/nonexistent/ghost.png'}, '_ms':"
+    },
+    {
+      "check": "clip on an unknown track is rejected",
+      "ok": true,
+      "detail": "{'ok': False, 'version': 1, 'error': {'code': 'unknown_element', 'message': 'No track with ID `no-such-track`', 'target': 'no-such-track'}, '_ms': 0.12824998702853918}"
+    },
+    {
+      "check": "rejected operations leave the project unchanged",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "unsupported blend fails the frame with its code",
+      "ok": true,
+      "detail": "{'ok': False, 'version': 1, 'error': {'code': 'unsupported_format', 'message': 'Blend mode `overlay` is not supported by the runtime', 'details': {'backend_code': 'unsupported_format', 'backend_details': {'layer': 'layer:c-img', 'supported': ['normal', 'multiply', 'screen', 'darken', 'lighten']}}}, "
+    },
+    {
+      "check": "failure is visible in the viewport state",
+      "ok": true,
+      "detail": "{'code': 'unsupported_format', 'message': 'Blend mode `overlay` is not supported by the runtime', 'details': {'layer': 'layer:c-img', 'supported': ['normal', 'multiply', 'screen', 'darken', 'lighten']}}"
+    },
+    {
+      "check": "the viewport recovers after the failure",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'action': 'render.frame', 'plan': {'frame': 0, 'time': {'num': 0, 'den': 1, 'seconds': 0.0}, 'layers': [{'id': 'layer:c-scene', 'kind': 'scene'}, {'id': 'layer:c-im"
+    },
+    {
+      "check": "monitor panel hides",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'panel:monitor', 'visible': False}, '_ms': 0.5929579492658377}"
+    },
+    {
+      "check": "viewport reports off-screen while hidden",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "monitor panel shows again",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'panel:monitor', 'visible': True}, '_ms': 1.5369579778052866}"
+    },
+    {
+      "check": "viewport reports on-screen when shown",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "reload is accepted",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'monitor.reload', 'action': 'reload', 'changed': True}, '_ms': 0.7179160020314157}"
+    },
+    {
+      "check": "viewport is ready and drew a frame after the reload",
+      "ok": true,
+      "detail": "ready"
+    },
+    {
+      "check": "burst of seeks ends on the last frame",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "metrics": {
+    "memory_before": {
+      "editor_mb": 169.4,
+      "webkit_helpers_mb": 152.8
+    },
+    "renderer": "Apple GPU",
+    "frame0": {
+      "render_ms": 69.0,
+      "total_ms": 69.0,
+      "wall_ms": 84.7
+    },
+    "explicit_frames": [
+      {
+        "frame": 30,
+        "wall_ms": 33.4,
+        "render_ms": 28.0
+      },
+      {
+        "frame": 47,
+        "wall_ms": 29.7,
+        "render_ms": 28.0
+      }
+    ],
+    "seek_to_displayed_ms": 16.4,
+    "burst": {
+      "seeks": 14,
+      "requests": 2,
+      "accepted": 2,
+      "cancelled": 0,
+      "dropped_stale": 0
+    },
+    "memory_after": {
+      "editor_mb": 171.5,
+      "webkit_helpers_mb": 240.4
+    }
+  }
+}

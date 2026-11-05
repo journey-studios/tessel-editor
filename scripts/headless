@@ -1,0 +1,5 @@
+#!/bin/sh
+# JSON Lines on stdin; no desktop process or socket required.
+set -eu
+cd "$(dirname "$0")/.."
+exec ./scripts/cargo run --quiet --locked -p tessel-editor-core --bin tessel-headless

@@ -1,0 +1,113 @@
+webkit h:box:1920 frames 10 identical repeat-stable ms 393 382 distinct 7
+webkit h:box:3840 frames 10 identical repeat-stable ms 1592 1516 distinct 7
+webkit h:box:960 frames 10 identical repeat-stable ms 103 95 distinct 7
+webkit h:gauss1m_orbit:1920 frames 10 identical repeat-stable ms 506 517 distinct 7
+webkit h:gauss1m_orbit:3840 frames 7 identical repeat-stable ms 1834 1835 distinct 5
+webkit h:gauss1m_orbit:960 frames 10 identical repeat-stable ms 159 164 distinct 7
+webkit h:gauss3m_orbit:1920 frames 10 identical repeat-stable ms 717 719 distinct 7
+webkit h:gauss3m_orbit:3840 frames 7 identical repeat-stable ms 2382 2294 distinct 5
+webkit h:gauss3m_orbit:960 frames 10 identical repeat-stable ms 273 274 distinct 7
+webkit h:image2:1920 frames 10 identical repeat-stable ms 423 382 distinct 1
+webkit h:image2:3840 frames 10 identical repeat-stable ms 1570 1515 distinct 1
+webkit h:image2:960 frames 10 identical repeat-stable ms 138 98 distinct 1
+webkit h:image4k:1920 frames 10 identical repeat-stable ms 429 387 distinct 1
+webkit h:image4k:3840 frames 10 identical repeat-stable ms 1556 1529 distinct 1
+webkit h:image4k:960 frames 10 identical repeat-stable ms 131 99 distinct 1
+webkit h:image:1920 frames 10 identical repeat-stable ms 389 383 distinct 1
+webkit h:image:3840 frames 10 identical repeat-stable ms 1565 1551 distinct 1
+webkit h:image:960 frames 10 identical repeat-stable ms 107 96 distinct 1
+webkit h:room1m_room:1920 frames 10 identical repeat-stable ms 421 410 distinct 7
+webkit h:room1m_room:3840 frames 7 identical repeat-stable ms 1565 1542 distinct 5
+webkit h:room1m_room:960 frames 10 identical repeat-stable ms 127 125 distinct 7
+webkit h:room3m_room:1920 frames 10 identical repeat-stable ms 425 428 distinct 7
+webkit h:room3m_room:3840 frames 7 identical repeat-stable ms 1608 1607 distinct 5
+webkit h:room3m_room:960 frames 10 identical repeat-stable ms 154 138 distinct 7
+webkit h:text:1920 frames 10 identical repeat-stable ms 387 382 distinct 1
+webkit h:text:3840 frames 10 identical repeat-stable ms 1522 1514 distinct 1
+webkit h:text:960 frames 10 identical repeat-stable ms 99 96 distinct 1
+webkit h:textchange:1920 frames 10 identical repeat-stable ms 394 382 distinct 7
+webkit h:textchange:3840 frames 10 identical repeat-stable ms 1553 1556 distinct 7
+webkit h:textchange:960 frames 10 identical repeat-stable ms 101 101 distinct 7
+webkit h:twin incomplete {'baseline': 'ok'}
+identical: 30 different: 0
+chrome-me h:box:1920 frames 10 identical repeat-stable ms 137 107 distinct 7
+chrome-me h:box:3840 frames 10 identical repeat-stable ms 450 448 distinct 7
+chrome-me h:box:960 frames 10 identical repeat-stable ms 40 32 distinct 7
+chrome-me h:gauss1m_orbit:1920 frames 10 identical repeat-stable ms 228 229 distinct 7
+chrome-me h:gauss1m_orbit:3840 frames 7 identical repeat-stable ms 732 702 distinct 5
+chrome-me h:gauss1m_orbit:960 frames 10 identical repeat-stable ms 94 92 distinct 7
+chrome-me h:gauss3m_orbit:1920 frames 10 identical repeat-stable ms 450 452 distinct 7
+chrome-me h:gauss3m_orbit:3840 frames 7 identical repeat-stable ms 1333 1291 distinct 5
+chrome-me h:gauss3m_orbit:960 frames 10 identical repeat-stable ms 204 205 distinct 7
+chrome-metal h:image2:1920 FATAL Error: asset {"v":1,"type":"asset.state","id":"b","state":"failed","error":{"code":"asset_unreadable","message":"Failed to fetch"}}
+    at l Error: asset {"v":1,"type":"asset.state","id":"b","state":"failed","error":{"code":"asset_unreadable","message":"Failed to fetch"}}
+    at l
+chrome-metal h:image2:3840 FATAL Error: asset {"v":1,"type":"asset.state","id":"b","state":"failed","error":{"code":"asset_unreadable","message":"Failed to fetch"}}
+    at l Error: asset {"v":1,"type":"asset.state","id":"b","state":"failed","error":{"code":"asset_unreadable","message":"Failed to fetch"}}
+    at l
+chrome-metal h:image2:960 FATAL Error: asset {"v":1,"type":"asset.state","id":"b","state":"failed","error":{"code":"asset_unreadable","message":"Failed to fetch"}}
+    at l Error: asset {"v":1,"type":"asset.state","id":"b","state":"failed","error":{"code":"asset_unreadable","message":"Failed to fetch"}}
+    at l
+chrome-metal h:image4k:1920 FATAL Error: asset {"v":1,"type":"asset.state","id":"a","state":"failed","error":{"code":"asset_unreadable","message":"Failed to fetch"}}
+    at l Error: asset {"v":1,"type":"asset.state","id":"a","state":"failed","error":{"code":"asset_unreadable","message":"Failed to fetch"}}
+    at l
+chrome-metal h:image4k:3840 FATAL Error: asset {"v":1,"type":"asset.state","id":"a","state":"failed","error":{"code":"asset_unreadable","message":"Failed to fetch"}}
+    at l Error: asset {"v":1,"type":"asset.state","id":"a","state":"failed","error":{"code":"asset_unreadable","message":"Failed to fetch"}}
+    at l
+chrome-metal h:image4k:960 FATAL Error: asset {"v":1,"type":"asset.state","id":"a","state":"failed","error":{"code":"asset_unreadable","message":"Failed to fetch"}}
+    at l Error: asset {"v":1,"type":"asset.state","id":"a","state":"failed","error":{"code":"asset_unreadable","message":"Failed to fetch"}}
+    at l
+chrome-me h:image:1920 frames 10 identical repeat-stable ms 129 113 distinct 1
+chrome-me h:image:3840 frames 10 identical repeat-stable ms 454 444 distinct 1
+chrome-me h:image:960 frames 10 identical repeat-stable ms 39 37 distinct 1
+chrome-me h:room1m_room:1920 frames 10 identical repeat-stable ms 153 147 distinct 7
+chrome-me h:room1m_room:3840 frames 7 identical repeat-stable ms 442 505 distinct 5
+chrome-me h:room1m_room:960 frames 10 identical repeat-stable ms 62 60 distinct 7
+chrome-me h:room3m_room:1920 frames 10 identical repeat-stable ms 147 147 distinct 7
+chrome-me h:room3m_room:3840 frames 7 identical repeat-stable ms 484 498 distinct 5
+chrome-me h:room3m_room:960 frames 10 identical repeat-stable ms 68 70 distinct 7
+chrome-me h:text:1920 frames 10 identical repeat-stable ms 128 121 distinct 1
+chrome-me h:text:3840 frames 10 identical repeat-stable ms 485 566 distinct 1
+chrome-me h:text:960 frames 10 identical repeat-stable ms 29 26 distinct 1
+chrome-me h:textchange:1920 frames 10 identical repeat-stable ms 144 134 distinct 7
+chrome-me h:textchange:3840 frames 10 identical repeat-stable ms 510 426 distinct 7
+chrome-me h:textchange:960 frames 10 identical repeat-stable ms 40 36 distinct 7
+chrome-metal h:twin incomplete {'baseline': 'ok'}
+identical: 24 different: 0
+chrome-sw h:box:1920 frames 10 identical repeat-stable ms 227 117 distinct 7
+chrome-sw h:box:960 frames 10 identical repeat-stable ms 131 31 distinct 7
+chrome-sw h:gauss1m_orbit:1920 frames 10 identical repeat-stable ms 11321 11789 distinct 7
+chrome-sw h:gauss1m_orbit:960 frames 10 identical repeat-stable ms 11229 10668 distinct 7
+chrome-swiftshader h:image2:1920 FATAL Error: asset {"v":1,"type":"asset.state","id":"b","state":"failed","error":{"code":"asset_unreadable","message":"Failed to fetch"}}
+    at l Error: asset {"v":1,"type":"asset.state","id":"b","state":"failed","error":{"code":"asset_unreadable","message":"Failed to fetch"}}
+    at l
+chrome-swiftshader h:image2:960 FATAL Error: asset {"v":1,"type":"asset.state","id":"b","state":"failed","error":{"code":"asset_unreadable","message":"Failed to fetch"}}
+    at l Error: asset {"v":1,"type":"asset.state","id":"b","state":"failed","error":{"code":"asset_unreadable","message":"Failed to fetch"}}
+    at l
+chrome-swiftshader h:image4k:1920 FATAL Error: asset {"v":1,"type":"asset.state","id":"a","state":"failed","error":{"code":"asset_unreadable","message":"Failed to fetch"}}
+    at l Error: asset {"v":1,"type":"asset.state","id":"a","state":"failed","error":{"code":"asset_unreadable","message":"Failed to fetch"}}
+    at l
+chrome-swiftshader h:image4k:960 FATAL Error: asset {"v":1,"type":"asset.state","id":"a","state":"failed","error":{"code":"asset_unreadable","message":"Failed to fetch"}}
+    at l Error: asset {"v":1,"type":"asset.state","id":"a","state":"failed","error":{"code":"asset_unreadable","message":"Failed to fetch"}}
+    at l
+chrome-sw h:image:1920 frames 10 identical repeat-stable ms 156 112 distinct 1
+chrome-sw h:image:960 frames 10 identical repeat-stable ms 78 34 distinct 1
+chrome-sw h:room1m_room:1920 frames 10 identical repeat-stable ms 8105 7643 distinct 7
+chrome-sw h:room1m_room:960 frames 10 identical repeat-stable ms 7541 7807 distinct 7
+chrome-sw h:text:1920 frames 10 identical repeat-stable ms 156 104 distinct 1
+chrome-sw h:text:960 frames 10 identical repeat-stable ms 71 27 distinct 1
+chrome-sw h:textchange:1920 frames 10 identical repeat-stable ms 170 113 distinct 7
+chrome-sw h:textchange:960 frames 10 identical repeat-stable ms 70 28 distinct 7
+chrome-swiftshader h:twin incomplete {'baseline': 'ok'}
+identical: 12 different: 0
+chrome-me h:image2:1920 frames 10 identical repeat-stable ms 139 127 distinct 1
+chrome-me h:image2:3840 frames 10 identical repeat-stable ms 483 498 distinct 1
+chrome-me h:image2:960 frames 10 identical repeat-stable ms 42 33 distinct 1
+chrome-me h:image4k:1920 frames 10 identical repeat-stable ms 139 127 distinct 1
+chrome-me h:image4k:3840 frames 10 identical repeat-stable ms 492 470 distinct 1
+chrome-me h:image4k:960 frames 10 identical repeat-stable ms 44 33 distinct 1
+chrome-sw h:image2:1920 frames 10 identical repeat-stable ms 215 139 distinct 1
+chrome-sw h:image2:960 frames 10 identical repeat-stable ms 119 36 distinct 1
+chrome-sw h:image4k:1920 frames 10 identical repeat-stable ms 203 135 distinct 1
+chrome-sw h:image4k:960 frames 10 identical repeat-stable ms 104 35 distinct 1
+identical: 10 different: 0

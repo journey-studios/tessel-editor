@@ -1,0 +1,1596 @@
+{
+ "environment": {
+  "engine": "webkit",
+  "suite": "bench",
+  "runs": 45,
+  "renderer": "Apple GPU",
+  "browser": null
+ },
+ "rows": [
+  {
+   "case": "image",
+   "variant": "current",
+   "passes": 3,
+   "failed": 0,
+   "frames": 300,
+   "quantum_ms": 1,
+   "load_1m": [
+    4.4,
+    6.3,
+    8.1
+   ],
+   "cold_first_render_ms": 18,
+   "cold_second_render_ms": 0,
+   "fps": 60,
+   "errors": 0,
+   "raf_fallbacks": 0,
+   "wall": {
+    "mean_per_pass": [
+     0.74,
+     0.56,
+     0.38
+    ],
+    "mean": 0.56,
+    "p50": 0,
+    "p95": 1,
+    "p99": 2,
+    "spread": 0.36
+   },
+   "render": {
+    "mean_per_pass": [
+     0.61,
+     0.45,
+     0.33
+    ],
+    "mean": 0.45,
+    "p50": 0,
+    "p95": 1,
+    "p99": 1,
+    "spread": 0.28
+   },
+   "prepare": {
+    "mean_per_pass": [
+     0.03,
+     0.01,
+     0
+    ],
+    "mean": 0.01,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "spread": 0.03
+   },
+   "draw": {
+    "mean_per_pass": [
+     0.33,
+     0.24,
+     0.24
+    ],
+    "mean": 0.24,
+    "p50": 0,
+    "p95": 1,
+    "p99": 1,
+    "spread": 0.09
+   },
+   "flush": {
+    "mean_per_pass": [
+     0,
+     0,
+     0
+    ],
+    "mean": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "spread": 0
+   },
+   "drain": {
+    "mean_per_pass": [
+     1.1,
+     0.94,
+     0.76
+    ],
+    "mean": 0.94,
+    "p50": 1,
+    "p95": 2,
+    "p99": 2,
+    "spread": 0.34
+   },
+   "complete": {
+    "mean_per_pass": [
+     1.84,
+     1.5,
+     1.14
+    ],
+    "mean": 1.5,
+    "p50": 1,
+    "p95": 3,
+    "p99": 3,
+    "spread": 0.7
+   },
+   "cache_events": {
+    "target_created": 0,
+    "text_created": 0,
+    "material_reused": 300,
+    "material_evicted": 0,
+    "text_reused": 0,
+    "rig_evicted": 0,
+    "rig_built": 0,
+    "texture_evicted": 0,
+    "target_reused": 0,
+    "text_evicted": 0,
+    "target_evicted": 0,
+    "texture_reused": 300,
+    "rig_reused": 0,
+    "texture_created": 0,
+    "material_created": 0
+   }
+  },
+  {
+   "case": "image",
+   "variant": "legacy",
+   "passes": 3,
+   "failed": 0,
+   "frames": 300,
+   "quantum_ms": 1,
+   "load_1m": [
+    4.7,
+    6.2,
+    8.3
+   ],
+   "cold_first_render_ms": 19,
+   "cold_second_render_ms": 9,
+   "fps": 60,
+   "errors": 0,
+   "raf_fallbacks": 0,
+   "wall": {
+    "mean_per_pass": [
+     8.29,
+     7.76,
+     8.23
+    ],
+    "mean": 8.23,
+    "p50": 8,
+    "p95": 9,
+    "p99": 10,
+    "spread": 0.53
+   },
+   "render": {
+    "mean_per_pass": [
+     8.24,
+     7.72,
+     8.18
+    ],
+    "mean": 8.18,
+    "p50": 8,
+    "p95": 9,
+    "p99": 10,
+    "spread": 0.52
+   },
+   "prepare": {
+    "mean_per_pass": [
+     0.03,
+     0.01,
+     0.01
+    ],
+    "mean": 0.01,
+    "p50": 0,
+    "p95": 0,
+    "p99": 1,
+    "spread": 0.02
+   },
+   "draw": {
+    "mean_per_pass": [
+     7.96,
+     7.58,
+     8.06
+    ],
+    "mean": 7.96,
+    "p50": 8,
+    "p95": 9,
+    "p99": 10,
+    "spread": 0.48
+   },
+   "flush": {
+    "mean_per_pass": [
+     0,
+     0,
+     0
+    ],
+    "mean": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "spread": 0
+   },
+   "drain": {
+    "mean_per_pass": [
+     2.86,
+     2.71,
+     2.71
+    ],
+    "mean": 2.71,
+    "p50": 3,
+    "p95": 3,
+    "p99": 4,
+    "spread": 0.15
+   },
+   "complete": {
+    "mean_per_pass": [
+     11.15,
+     10.47,
+     10.94
+    ],
+    "mean": 10.94,
+    "p50": 11,
+    "p95": 12,
+    "p99": 14,
+    "spread": 0.68
+   },
+   "cache_events": {
+    "target_created": 0,
+    "text_created": 0,
+    "material_reused": 0,
+    "material_evicted": 0,
+    "text_reused": 0,
+    "rig_evicted": 0,
+    "rig_built": 0,
+    "texture_evicted": 0,
+    "target_reused": 0,
+    "text_evicted": 0,
+    "target_evicted": 0,
+    "texture_reused": 0,
+    "rig_reused": 0,
+    "texture_created": 0,
+    "material_created": 0
+   }
+  },
+  {
+   "case": "image",
+   "variant": "baseline",
+   "passes": 3,
+   "failed": 0,
+   "frames": 300,
+   "quantum_ms": 1,
+   "load_1m": [
+    4.7,
+    5.3,
+    8.2
+   ],
+   "cold_first_render_ms": 18,
+   "cold_second_render_ms": 9,
+   "fps": 60,
+   "errors": 0,
+   "raf_fallbacks": 0,
+   "wall": {
+    "mean_per_pass": [
+     7.32,
+     7.72,
+     7.8
+    ],
+    "mean": 7.72,
+    "p50": 8,
+    "p95": 9,
+    "p99": 10,
+    "spread": 0.48
+   },
+   "render": {
+    "mean_per_pass": [
+     7.28,
+     7.68,
+     7.76
+    ],
+    "mean": 7.68,
+    "p50": 8,
+    "p95": 9,
+    "p99": 10,
+    "spread": 0.48
+   },
+   "flush": {
+    "mean_per_pass": [
+     0,
+     0,
+     0
+    ],
+    "mean": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "spread": 0
+   },
+   "drain": {
+    "mean_per_pass": [
+     2.67,
+     2.7,
+     2.68
+    ],
+    "mean": 2.68,
+    "p50": 3,
+    "p95": 3,
+    "p99": 3,
+    "spread": 0.03
+   },
+   "complete": {
+    "mean_per_pass": [
+     9.99,
+     10.42,
+     10.49
+    ],
+    "mean": 10.42,
+    "p50": 10,
+    "p95": 12,
+    "p99": 13,
+    "spread": 0.5
+   },
+   "cache_events": null
+  },
+  {
+   "case": "image-2layers",
+   "variant": "current",
+   "passes": 3,
+   "failed": 0,
+   "frames": 300,
+   "quantum_ms": 1,
+   "load_1m": [
+    4.5,
+    7.4,
+    7.8
+   ],
+   "cold_first_render_ms": 65,
+   "cold_second_render_ms": 0,
+   "fps": 60,
+   "errors": 0,
+   "raf_fallbacks": 0,
+   "wall": {
+    "mean_per_pass": [
+     1.05,
+     0.41,
+     0.46
+    ],
+    "mean": 0.46,
+    "p50": 0,
+    "p95": 1,
+    "p99": 1,
+    "spread": 0.64
+   },
+   "render": {
+    "mean_per_pass": [
+     0.85,
+     0.33,
+     0.34
+    ],
+    "mean": 0.34,
+    "p50": 0,
+    "p95": 1,
+    "p99": 1,
+    "spread": 0.52
+   },
+   "prepare": {
+    "mean_per_pass": [
+     0.02,
+     0.01,
+     0.01
+    ],
+    "mean": 0.01,
+    "p50": 0,
+    "p95": 0,
+    "p99": 1,
+    "spread": 0.01
+   },
+   "draw": {
+    "mean_per_pass": [
+     0.55,
+     0.19,
+     0.22
+    ],
+    "mean": 0.22,
+    "p50": 0,
+    "p95": 1,
+    "p99": 1,
+    "spread": 0.36
+   },
+   "flush": {
+    "mean_per_pass": [
+     0,
+     0,
+     0
+    ],
+    "mean": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "spread": 0
+   },
+   "drain": {
+    "mean_per_pass": [
+     1.65,
+     1.09,
+     1.23
+    ],
+    "mean": 1.23,
+    "p50": 1,
+    "p95": 2,
+    "p99": 2,
+    "spread": 0.56
+   },
+   "complete": {
+    "mean_per_pass": [
+     2.7,
+     1.51,
+     1.69
+    ],
+    "mean": 1.69,
+    "p50": 2,
+    "p95": 3,
+    "p99": 3,
+    "spread": 1.19
+   },
+   "cache_events": {
+    "target_created": 0,
+    "text_created": 0,
+    "material_reused": 600,
+    "material_evicted": 0,
+    "text_reused": 0,
+    "rig_evicted": 0,
+    "rig_built": 0,
+    "texture_evicted": 0,
+    "target_reused": 0,
+    "text_evicted": 0,
+    "target_evicted": 0,
+    "texture_reused": 600,
+    "rig_reused": 0,
+    "texture_created": 0,
+    "material_created": 0
+   }
+  },
+  {
+   "case": "image-2layers",
+   "variant": "legacy",
+   "passes": 3,
+   "failed": 0,
+   "frames": 300,
+   "quantum_ms": 1,
+   "load_1m": [
+    4.1,
+    7.1,
+    7
+   ],
+   "cold_first_render_ms": 65,
+   "cold_second_render_ms": 42,
+   "fps": 21.8,
+   "errors": 0,
+   "raf_fallbacks": 0,
+   "wall": {
+    "mean_per_pass": [
+     34.31,
+     36.65,
+     35.06
+    ],
+    "mean": 35.06,
+    "p50": 35,
+    "p95": 38,
+    "p99": 39,
+    "spread": 2.34
+   },
+   "render": {
+    "mean_per_pass": [
+     34.25,
+     36.54,
+     34.99
+    ],
+    "mean": 34.99,
+    "p50": 35,
+    "p95": 38,
+    "p99": 39,
+    "spread": 2.29
+   },
+   "prepare": {
+    "mean_per_pass": [
+     0.01,
+     0,
+     0.02
+    ],
+    "mean": 0.01,
+    "p50": 0,
+    "p95": 0,
+    "p99": 1,
+    "spread": 0.02
+   },
+   "draw": {
+    "mean_per_pass": [
+     34.1,
+     36.4,
+     34.81
+    ],
+    "mean": 34.81,
+    "p50": 35,
+    "p95": 38,
+    "p99": 39,
+    "spread": 2.3
+   },
+   "flush": {
+    "mean_per_pass": [
+     0,
+     0,
+     0
+    ],
+    "mean": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "spread": 0
+   },
+   "drain": {
+    "mean_per_pass": [
+     9.86,
+     10.12,
+     9.86
+    ],
+    "mean": 9.86,
+    "p50": 10,
+    "p95": 11,
+    "p99": 11,
+    "spread": 0.26
+   },
+   "complete": {
+    "mean_per_pass": [
+     44.17,
+     46.77,
+     44.92
+    ],
+    "mean": 44.92,
+    "p50": 45,
+    "p95": 48,
+    "p99": 50,
+    "spread": 2.6
+   },
+   "cache_events": {
+    "target_created": 0,
+    "text_created": 0,
+    "material_reused": 0,
+    "material_evicted": 0,
+    "text_reused": 0,
+    "rig_evicted": 0,
+    "rig_built": 0,
+    "texture_evicted": 0,
+    "target_reused": 0,
+    "text_evicted": 0,
+    "target_evicted": 0,
+    "texture_reused": 0,
+    "rig_reused": 0,
+    "texture_created": 0,
+    "material_created": 0
+   }
+  },
+  {
+   "case": "image-2layers",
+   "variant": "baseline",
+   "passes": 3,
+   "failed": 0,
+   "frames": 300,
+   "quantum_ms": 1,
+   "load_1m": [
+    3.9,
+    6.1,
+    6.6
+   ],
+   "cold_first_render_ms": 64,
+   "cold_second_render_ms": 43,
+   "fps": 22,
+   "errors": 0,
+   "raf_fallbacks": 0,
+   "wall": {
+    "mean_per_pass": [
+     34.38,
+     35.95,
+     34.52
+    ],
+    "mean": 34.52,
+    "p50": 34,
+    "p95": 37,
+    "p99": 39,
+    "spread": 1.57
+   },
+   "render": {
+    "mean_per_pass": [
+     34.32,
+     35.9,
+     34.48
+    ],
+    "mean": 34.48,
+    "p50": 34,
+    "p95": 37,
+    "p99": 39,
+    "spread": 1.58
+   },
+   "flush": {
+    "mean_per_pass": [
+     0,
+     0,
+     0
+    ],
+    "mean": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "spread": 0
+   },
+   "drain": {
+    "mean_per_pass": [
+     9.98,
+     10.19,
+     9.88
+    ],
+    "mean": 9.98,
+    "p50": 10,
+    "p95": 11,
+    "p99": 11,
+    "spread": 0.31
+   },
+   "complete": {
+    "mean_per_pass": [
+     44.37,
+     46.14,
+     44.4
+    ],
+    "mean": 44.4,
+    "p50": 44,
+    "p95": 47,
+    "p99": 49,
+    "spread": 1.77
+   },
+   "cache_events": null
+  },
+  {
+   "case": "text",
+   "variant": "current",
+   "passes": 3,
+   "failed": 0,
+   "frames": 300,
+   "quantum_ms": 1,
+   "load_1m": [
+    3.9,
+    8,
+    6.4
+   ],
+   "cold_first_render_ms": 10,
+   "cold_second_render_ms": 0,
+   "fps": 60,
+   "errors": 0,
+   "raf_fallbacks": 0,
+   "wall": {
+    "mean_per_pass": [
+     0.52,
+     0.4,
+     0.36
+    ],
+    "mean": 0.4,
+    "p50": 0,
+    "p95": 1,
+    "p99": 1,
+    "spread": 0.16
+   },
+   "render": {
+    "mean_per_pass": [
+     0.42,
+     0.35,
+     0.3
+    ],
+    "mean": 0.35,
+    "p50": 0,
+    "p95": 1,
+    "p99": 1,
+    "spread": 0.12
+   },
+   "prepare": {
+    "mean_per_pass": [
+     0.01,
+     0.01,
+     0.01
+    ],
+    "mean": 0.01,
+    "p50": 0,
+    "p95": 0,
+    "p99": 1,
+    "spread": 0
+   },
+   "draw": {
+    "mean_per_pass": [
+     0.29,
+     0.18,
+     0.16
+    ],
+    "mean": 0.18,
+    "p50": 0,
+    "p95": 1,
+    "p99": 1,
+    "spread": 0.13
+   },
+   "flush": {
+    "mean_per_pass": [
+     0,
+     0,
+     0
+    ],
+    "mean": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "spread": 0
+   },
+   "drain": {
+    "mean_per_pass": [
+     0.78,
+     0.7,
+     0.72
+    ],
+    "mean": 0.72,
+    "p50": 1,
+    "p95": 1,
+    "p99": 1,
+    "spread": 0.08
+   },
+   "complete": {
+    "mean_per_pass": [
+     1.29,
+     1.1,
+     1.08
+    ],
+    "mean": 1.1,
+    "p50": 1,
+    "p95": 2,
+    "p99": 2,
+    "spread": 0.21
+   },
+   "cache_events": {
+    "target_created": 0,
+    "text_created": 0,
+    "material_reused": 300,
+    "material_evicted": 0,
+    "text_reused": 300,
+    "rig_evicted": 0,
+    "rig_built": 0,
+    "texture_evicted": 0,
+    "target_reused": 0,
+    "text_evicted": 0,
+    "target_evicted": 0,
+    "texture_reused": 0,
+    "rig_reused": 0,
+    "texture_created": 0,
+    "material_created": 0
+   }
+  },
+  {
+   "case": "text",
+   "variant": "legacy",
+   "passes": 3,
+   "failed": 0,
+   "frames": 300,
+   "quantum_ms": 1,
+   "load_1m": [
+    3.7,
+    8.3,
+    6.1
+   ],
+   "cold_first_render_ms": 9,
+   "cold_second_render_ms": 4,
+   "fps": 60,
+   "errors": 0,
+   "raf_fallbacks": 0,
+   "wall": {
+    "mean_per_pass": [
+     4.24,
+     4.15,
+     3.15
+    ],
+    "mean": 4.15,
+    "p50": 4,
+    "p95": 5,
+    "p99": 7,
+    "spread": 1.09
+   },
+   "render": {
+    "mean_per_pass": [
+     4.17,
+     4.08,
+     3.07
+    ],
+    "mean": 4.08,
+    "p50": 4,
+    "p95": 5,
+    "p99": 7,
+    "spread": 1.1
+   },
+   "prepare": {
+    "mean_per_pass": [
+     0.1,
+     0.05,
+     0.07
+    ],
+    "mean": 0.07,
+    "p50": 0,
+    "p95": 1,
+    "p99": 1,
+    "spread": 0.05
+   },
+   "draw": {
+    "mean_per_pass": [
+     3.89,
+     3.9,
+     2.86
+    ],
+    "mean": 3.89,
+    "p50": 4,
+    "p95": 5,
+    "p99": 7,
+    "spread": 1.04
+   },
+   "flush": {
+    "mean_per_pass": [
+     0,
+     0,
+     0
+    ],
+    "mean": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "spread": 0
+   },
+   "drain": {
+    "mean_per_pass": [
+     0.78,
+     0.62,
+     0.55
+    ],
+    "mean": 0.62,
+    "p50": 1,
+    "p95": 1,
+    "p99": 1,
+    "spread": 0.23
+   },
+   "complete": {
+    "mean_per_pass": [
+     5.02,
+     4.77,
+     3.7
+    ],
+    "mean": 4.77,
+    "p50": 5,
+    "p95": 6,
+    "p99": 8,
+    "spread": 1.32
+   },
+   "cache_events": {
+    "target_created": 0,
+    "text_created": 0,
+    "material_reused": 0,
+    "material_evicted": 0,
+    "text_reused": 0,
+    "rig_evicted": 0,
+    "rig_built": 0,
+    "texture_evicted": 0,
+    "target_reused": 0,
+    "text_evicted": 0,
+    "target_evicted": 0,
+    "texture_reused": 0,
+    "rig_reused": 0,
+    "texture_created": 0,
+    "material_created": 0
+   }
+  },
+  {
+   "case": "text",
+   "variant": "baseline",
+   "passes": 3,
+   "failed": 0,
+   "frames": 300,
+   "quantum_ms": 1,
+   "load_1m": [
+    3.7,
+    7.7,
+    5.8
+   ],
+   "cold_first_render_ms": 11,
+   "cold_second_render_ms": 3,
+   "fps": 60,
+   "errors": 0,
+   "raf_fallbacks": 0,
+   "wall": {
+    "mean_per_pass": [
+     5.6,
+     4.33,
+     3.19
+    ],
+    "mean": 4.33,
+    "p50": 4,
+    "p95": 6,
+    "p99": 7,
+    "spread": 2.41
+   },
+   "render": {
+    "mean_per_pass": [
+     5.52,
+     4.26,
+     3.1
+    ],
+    "mean": 4.26,
+    "p50": 4,
+    "p95": 6,
+    "p99": 7,
+    "spread": 2.42
+   },
+   "flush": {
+    "mean_per_pass": [
+     0,
+     0,
+     0
+    ],
+    "mean": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "spread": 0
+   },
+   "drain": {
+    "mean_per_pass": [
+     1.14,
+     0.73,
+     0.59
+    ],
+    "mean": 0.73,
+    "p50": 1,
+    "p95": 1,
+    "p99": 1,
+    "spread": 0.55
+   },
+   "complete": {
+    "mean_per_pass": [
+     6.74,
+     5.06,
+     3.78
+    ],
+    "mean": 5.06,
+    "p50": 5,
+    "p95": 6,
+    "p99": 8,
+    "spread": 2.96
+   },
+   "cache_events": null
+  },
+  {
+   "case": "scene",
+   "variant": "current",
+   "passes": 3,
+   "failed": 0,
+   "frames": 300,
+   "quantum_ms": 1,
+   "load_1m": [
+    3.8,
+    8.5,
+    5.8
+   ],
+   "cold_first_render_ms": 15,
+   "cold_second_render_ms": 1,
+   "fps": 60,
+   "errors": 0,
+   "raf_fallbacks": 0,
+   "wall": {
+    "mean_per_pass": [
+     1.56,
+     0.48,
+     0.44
+    ],
+    "mean": 0.48,
+    "p50": 0,
+    "p95": 1,
+    "p99": 1,
+    "spread": 1.12
+   },
+   "render": {
+    "mean_per_pass": [
+     1.34,
+     0.4,
+     0.4
+    ],
+    "mean": 0.4,
+    "p50": 0,
+    "p95": 1,
+    "p99": 1,
+    "spread": 0.94
+   },
+   "prepare": {
+    "mean_per_pass": [
+     0.59,
+     0.19,
+     0.26
+    ],
+    "mean": 0.26,
+    "p50": 0,
+    "p95": 1,
+    "p99": 1,
+    "spread": 0.4
+   },
+   "draw": {
+    "mean_per_pass": [
+     0.39,
+     0.07,
+     0.06
+    ],
+    "mean": 0.07,
+    "p50": 0,
+    "p95": 1,
+    "p99": 1,
+    "spread": 0.33
+   },
+   "flush": {
+    "mean_per_pass": [
+     0,
+     0,
+     0
+    ],
+    "mean": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "spread": 0
+   },
+   "drain": {
+    "mean_per_pass": [
+     1.66,
+     1.04,
+     1.01
+    ],
+    "mean": 1.04,
+    "p50": 1,
+    "p95": 1,
+    "p99": 2,
+    "spread": 0.65
+   },
+   "complete": {
+    "mean_per_pass": [
+     3.22,
+     1.52,
+     1.45
+    ],
+    "mean": 1.52,
+    "p50": 2,
+    "p95": 2,
+    "p99": 2,
+    "spread": 1.77
+   },
+   "cache_events": {
+    "target_created": 0,
+    "text_created": 0,
+    "material_reused": 300,
+    "material_evicted": 0,
+    "text_reused": 0,
+    "rig_evicted": 0,
+    "rig_built": 0,
+    "texture_evicted": 0,
+    "target_reused": 300,
+    "text_evicted": 0,
+    "target_evicted": 0,
+    "texture_reused": 0,
+    "rig_reused": 300,
+    "texture_created": 0,
+    "material_created": 0
+   }
+  },
+  {
+   "case": "scene",
+   "variant": "legacy",
+   "passes": 3,
+   "failed": 0,
+   "frames": 300,
+   "quantum_ms": 1,
+   "load_1m": [
+    3.9,
+    8.3,
+    5.7
+   ],
+   "cold_first_render_ms": 13,
+   "cold_second_render_ms": 6,
+   "fps": 60,
+   "errors": 0,
+   "raf_fallbacks": 0,
+   "wall": {
+    "mean_per_pass": [
+     5.58,
+     7.77,
+     5.5
+    ],
+    "mean": 5.58,
+    "p50": 6,
+    "p95": 7,
+    "p99": 7,
+    "spread": 2.27
+   },
+   "render": {
+    "mean_per_pass": [
+     5.5,
+     7.71,
+     5.44
+    ],
+    "mean": 5.5,
+    "p50": 5,
+    "p95": 7,
+    "p99": 7,
+    "spread": 2.27
+   },
+   "prepare": {
+    "mean_per_pass": [
+     3.18,
+     4.47,
+     3.16
+    ],
+    "mean": 3.18,
+    "p50": 3,
+    "p95": 4,
+    "p99": 4,
+    "spread": 1.31
+   },
+   "draw": {
+    "mean_per_pass": [
+     2.21,
+     3.08,
+     2.19
+    ],
+    "mean": 2.21,
+    "p50": 2,
+    "p95": 3,
+    "p99": 3,
+    "spread": 0.89
+   },
+   "flush": {
+    "mean_per_pass": [
+     0,
+     0,
+     0
+    ],
+    "mean": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "spread": 0
+   },
+   "drain": {
+    "mean_per_pass": [
+     1.85,
+     1.75,
+     1.67
+    ],
+    "mean": 1.75,
+    "p50": 2,
+    "p95": 2,
+    "p99": 2,
+    "spread": 0.18
+   },
+   "complete": {
+    "mean_per_pass": [
+     7.43,
+     9.52,
+     7.17
+    ],
+    "mean": 7.43,
+    "p50": 7,
+    "p95": 9,
+    "p99": 9,
+    "spread": 2.35
+   },
+   "cache_events": {
+    "target_created": 0,
+    "text_created": 0,
+    "material_reused": 0,
+    "material_evicted": 0,
+    "text_reused": 0,
+    "rig_evicted": 0,
+    "rig_built": 0,
+    "texture_evicted": 0,
+    "target_reused": 0,
+    "text_evicted": 0,
+    "target_evicted": 0,
+    "texture_reused": 0,
+    "rig_reused": 0,
+    "texture_created": 0,
+    "material_created": 0
+   }
+  },
+  {
+   "case": "scene",
+   "variant": "baseline",
+   "passes": 3,
+   "failed": 0,
+   "frames": 300,
+   "quantum_ms": 1,
+   "load_1m": [
+    3.9,
+    8.1,
+    6
+   ],
+   "cold_first_render_ms": 14,
+   "cold_second_render_ms": 6,
+   "fps": 60,
+   "errors": 0,
+   "raf_fallbacks": 0,
+   "wall": {
+    "mean_per_pass": [
+     5.79,
+     7.95,
+     5.85
+    ],
+    "mean": 5.85,
+    "p50": 6,
+    "p95": 7,
+    "p99": 9,
+    "spread": 2.16
+   },
+   "render": {
+    "mean_per_pass": [
+     5.73,
+     7.86,
+     5.74
+    ],
+    "mean": 5.74,
+    "p50": 6,
+    "p95": 7,
+    "p99": 9,
+    "spread": 2.13
+   },
+   "flush": {
+    "mean_per_pass": [
+     0,
+     0,
+     0
+    ],
+    "mean": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "spread": 0
+   },
+   "drain": {
+    "mean_per_pass": [
+     1.91,
+     1.89,
+     1.83
+    ],
+    "mean": 1.89,
+    "p50": 2,
+    "p95": 2,
+    "p99": 3,
+    "spread": 0.08
+   },
+   "complete": {
+    "mean_per_pass": [
+     7.7,
+     9.84,
+     7.69
+    ],
+    "mean": 7.7,
+    "p50": 8,
+    "p95": 9,
+    "p99": 10,
+    "spread": 2.15
+   },
+   "cache_events": null
+  },
+  {
+   "case": "video-hit",
+   "variant": "current",
+   "passes": 3,
+   "failed": 0,
+   "frames": 300,
+   "quantum_ms": 1,
+   "load_1m": [
+    4.8,
+    8.3,
+    6.1
+   ],
+   "cold_first_render_ms": 12,
+   "cold_second_render_ms": 13,
+   "fps": 60,
+   "errors": 0,
+   "raf_fallbacks": 0,
+   "wall": {
+    "mean_per_pass": [
+     0.42,
+     0.4,
+     0.37
+    ],
+    "mean": 0.4,
+    "p50": 0,
+    "p95": 1,
+    "p99": 1,
+    "spread": 0.05
+   },
+   "render": {
+    "mean_per_pass": [
+     0.38,
+     0.33,
+     0.23
+    ],
+    "mean": 0.33,
+    "p50": 0,
+    "p95": 1,
+    "p99": 1,
+    "spread": 0.15
+   },
+   "prepare": {
+    "mean_per_pass": [
+     0.02,
+     0.01,
+     0.01
+    ],
+    "mean": 0.01,
+    "p50": 0,
+    "p95": 0,
+    "p99": 1,
+    "spread": 0.01
+   },
+   "draw": {
+    "mean_per_pass": [
+     0.23,
+     0.18,
+     0.11
+    ],
+    "mean": 0.18,
+    "p50": 0,
+    "p95": 1,
+    "p99": 1,
+    "spread": 0.12
+   },
+   "flush": {
+    "mean_per_pass": [
+     0,
+     0,
+     0
+    ],
+    "mean": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "spread": 0
+   },
+   "drain": {
+    "mean_per_pass": [
+     0.8,
+     0.75,
+     0.68
+    ],
+    "mean": 0.75,
+    "p50": 1,
+    "p95": 1,
+    "p99": 1,
+    "spread": 0.12
+   },
+   "complete": {
+    "mean_per_pass": [
+     1.23,
+     1.16,
+     1.05
+    ],
+    "mean": 1.16,
+    "p50": 1,
+    "p95": 2,
+    "p99": 2,
+    "spread": 0.18
+   },
+   "cache_events": {
+    "target_created": 0,
+    "text_created": 0,
+    "material_reused": 300,
+    "material_evicted": 0,
+    "text_reused": 0,
+    "rig_evicted": 0,
+    "rig_built": 0,
+    "texture_evicted": 0,
+    "target_reused": 0,
+    "text_evicted": 0,
+    "target_evicted": 0,
+    "texture_reused": 300,
+    "rig_reused": 0,
+    "texture_created": 0,
+    "material_created": 0
+   }
+  },
+  {
+   "case": "video-hit",
+   "variant": "legacy",
+   "passes": 3,
+   "failed": 0,
+   "frames": 300,
+   "quantum_ms": 1,
+   "load_1m": [
+    5.1,
+    8,
+    5.8
+   ],
+   "cold_first_render_ms": 12,
+   "cold_second_render_ms": 14,
+   "fps": 60,
+   "errors": 0,
+   "raf_fallbacks": 0,
+   "wall": {
+    "mean_per_pass": [
+     2.41,
+     2.68,
+     1.97
+    ],
+    "mean": 2.41,
+    "p50": 2,
+    "p95": 4,
+    "p99": 4,
+    "spread": 0.71
+   },
+   "render": {
+    "mean_per_pass": [
+     2.31,
+     2.54,
+     1.88
+    ],
+    "mean": 2.31,
+    "p50": 2,
+    "p95": 3,
+    "p99": 4,
+    "spread": 0.66
+   },
+   "prepare": {
+    "mean_per_pass": [
+     0.01,
+     0.01,
+     0.01
+    ],
+    "mean": 0.01,
+    "p50": 0,
+    "p95": 0,
+    "p99": 1,
+    "spread": 0
+   },
+   "draw": {
+    "mean_per_pass": [
+     2.19,
+     2.36,
+     1.79
+    ],
+    "mean": 2.19,
+    "p50": 2,
+    "p95": 3,
+    "p99": 4,
+    "spread": 0.57
+   },
+   "flush": {
+    "mean_per_pass": [
+     0,
+     0,
+     0
+    ],
+    "mean": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "spread": 0
+   },
+   "drain": {
+    "mean_per_pass": [
+     1.06,
+     0.96,
+     0.93
+    ],
+    "mean": 0.96,
+    "p50": 1,
+    "p95": 1,
+    "p99": 1,
+    "spread": 0.13
+   },
+   "complete": {
+    "mean_per_pass": [
+     3.47,
+     3.64,
+     2.9
+    ],
+    "mean": 3.47,
+    "p50": 3,
+    "p95": 5,
+    "p99": 5,
+    "spread": 0.74
+   },
+   "cache_events": {
+    "target_created": 0,
+    "text_created": 0,
+    "material_reused": 0,
+    "material_evicted": 0,
+    "text_reused": 0,
+    "rig_evicted": 0,
+    "rig_built": 0,
+    "texture_evicted": 0,
+    "target_reused": 0,
+    "text_evicted": 0,
+    "target_evicted": 0,
+    "texture_reused": 300,
+    "rig_reused": 0,
+    "texture_created": 0,
+    "material_created": 0
+   }
+  },
+  {
+   "case": "video-hit",
+   "variant": "baseline",
+   "passes": 3,
+   "failed": 0,
+   "frames": 300,
+   "quantum_ms": 1,
+   "load_1m": [
+    5.4,
+    8.3,
+    6.1
+   ],
+   "cold_first_render_ms": 12,
+   "cold_second_render_ms": 15,
+   "fps": 60,
+   "errors": 0,
+   "raf_fallbacks": 0,
+   "wall": {
+    "mean_per_pass": [
+     2.55,
+     2.59,
+     2.14
+    ],
+    "mean": 2.55,
+    "p50": 2,
+    "p95": 4,
+    "p99": 4,
+    "spread": 0.45
+   },
+   "render": {
+    "mean_per_pass": [
+     2.46,
+     2.56,
+     2.11
+    ],
+    "mean": 2.46,
+    "p50": 2,
+    "p95": 4,
+    "p99": 4,
+    "spread": 0.45
+   },
+   "flush": {
+    "mean_per_pass": [
+     0,
+     0,
+     0
+    ],
+    "mean": 0,
+    "p50": 0,
+    "p95": 0,
+    "p99": 0,
+    "spread": 0
+   },
+   "drain": {
+    "mean_per_pass": [
+     1.15,
+     0.99,
+     0.96
+    ],
+    "mean": 0.99,
+    "p50": 1,
+    "p95": 1,
+    "p99": 2,
+    "spread": 0.19
+   },
+   "complete": {
+    "mean_per_pass": [
+     3.7,
+     3.59,
+     3.1
+    ],
+    "mean": 3.59,
+    "p50": 4,
+    "p95": 5,
+    "p99": 5,
+    "spread": 0.6
+   },
+   "cache_events": null
+  }
+ ]
+}

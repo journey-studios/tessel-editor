@@ -1,0 +1,24 @@
+[package]
+name = "tessel-editor"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+tessel-editor-core = { path = "../core" }
+tessel-editor-render = { path = "../render" }
+tessel-editor-media = { path = "../media" }
+tessel-editor-audio = { path = "../audio" }
+gpui-kit.workspace = true
+gpui-webview = "=0.9.0"
+# gpui-webview does not re-export wry; the builder (custom protocol, IPC handler) comes from here.
+wry = { package = "lb-wry", version = "0.53.3" }
+
+async-channel.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+gpui-kit = { workspace = true, features = ["test-support"] }

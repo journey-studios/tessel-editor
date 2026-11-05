@@ -1,0 +1,688 @@
+[
+{
+"frame": "h:box:1920:baseline-1-3",
+"pair": "wk~chrome-metal",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:box:1920:baseline-1-3",
+"pair": "wk~chrome-swiftshader",
+"psnr_db": 63.48,
+"mean_abs": 0.001,
+"max_diff": 49
+},
+{
+"frame": "h:box:1920:baseline-1-3",
+"pair": "chrome-metal~chrome-swiftshader",
+"psnr_db": 63.48,
+"mean_abs": 0.001,
+"max_diff": 49
+},
+{
+"frame": "h:box:1920:baseline-1-3",
+"pair": "chrome-metal:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:box:1920:baseline-1-3",
+"pair": "wk:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:box:1920:baseline-1-3",
+"pair": "chrome-swiftshader:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:box:1920:retained-1-3",
+"pair": "wk~chrome-metal",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:box:1920:retained-1-3",
+"pair": "wk~chrome-swiftshader",
+"psnr_db": 63.48,
+"mean_abs": 0.001,
+"max_diff": 49
+},
+{
+"frame": "h:box:1920:retained-1-3",
+"pair": "chrome-metal~chrome-swiftshader",
+"psnr_db": 63.48,
+"mean_abs": 0.001,
+"max_diff": 49
+},
+{
+"frame": "h:box:3840:baseline-1-3",
+"pair": "wk~chrome-metal",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:box:3840:baseline-1-3",
+"pair": "chrome-metal:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:box:3840:baseline-1-3",
+"pair": "wk:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:box:3840:retained-1-3",
+"pair": "wk~chrome-metal",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:gauss1m_orbit:1920:baseline-1-37",
+"pair": "wk~chrome-metal",
+"psnr_db": 89.52,
+"mean_abs": 0.0,
+"max_diff": 2
+},
+{
+"frame": "h:gauss1m_orbit:1920:baseline-1-37",
+"pair": "wk~chrome-swiftshader",
+"psnr_db": 57.83,
+"mean_abs": 0.105,
+"max_diff": 5
+},
+{
+"frame": "h:gauss1m_orbit:1920:baseline-1-37",
+"pair": "chrome-metal~chrome-swiftshader",
+"psnr_db": 57.83,
+"mean_abs": 0.105,
+"max_diff": 5
+},
+{
+"frame": "h:gauss1m_orbit:1920:baseline-1-37",
+"pair": "chrome-metal:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:gauss1m_orbit:1920:baseline-1-37",
+"pair": "chrome-swiftshader:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:gauss1m_orbit:1920:baseline-1-37",
+"pair": "wk:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:gauss1m_orbit:1920:retained-1-37",
+"pair": "wk~chrome-metal",
+"psnr_db": 89.52,
+"mean_abs": 0.0,
+"max_diff": 2
+},
+{
+"frame": "h:gauss1m_orbit:1920:retained-1-37",
+"pair": "wk~chrome-swiftshader",
+"psnr_db": 57.83,
+"mean_abs": 0.105,
+"max_diff": 5
+},
+{
+"frame": "h:gauss1m_orbit:1920:retained-1-37",
+"pair": "chrome-metal~chrome-swiftshader",
+"psnr_db": 57.83,
+"mean_abs": 0.105,
+"max_diff": 5
+},
+{
+"frame": "h:gauss1m_orbit:3840:baseline-1-37",
+"pair": "wk~chrome-metal",
+"psnr_db": 91.09,
+"mean_abs": 0.0,
+"max_diff": 3
+},
+{
+"frame": "h:gauss1m_orbit:3840:baseline-1-37",
+"pair": "wk:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:gauss1m_orbit:3840:baseline-1-37",
+"pair": "chrome-metal:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:gauss1m_orbit:3840:retained-1-37",
+"pair": "wk~chrome-metal",
+"psnr_db": 91.09,
+"mean_abs": 0.0,
+"max_diff": 3
+},
+{
+"frame": "h:gauss3m_orbit:1920:baseline-1-37",
+"pair": "wk~chrome-metal",
+"psnr_db": 89.32,
+"mean_abs": 0.0,
+"max_diff": 3
+},
+{
+"frame": "h:gauss3m_orbit:1920:baseline-1-37",
+"pair": "wk:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:gauss3m_orbit:1920:baseline-1-37",
+"pair": "chrome-metal:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:gauss3m_orbit:1920:retained-1-37",
+"pair": "wk~chrome-metal",
+"psnr_db": 89.32,
+"mean_abs": 0.0,
+"max_diff": 3
+},
+{
+"frame": "h:gauss3m_orbit:3840:baseline-1-37",
+"pair": "wk~chrome-metal",
+"psnr_db": 90.24,
+"mean_abs": 0.0,
+"max_diff": 3
+},
+{
+"frame": "h:gauss3m_orbit:3840:baseline-1-37",
+"pair": "chrome-metal:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:gauss3m_orbit:3840:baseline-1-37",
+"pair": "wk:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:gauss3m_orbit:3840:retained-1-37",
+"pair": "wk~chrome-metal",
+"psnr_db": 90.24,
+"mean_abs": 0.0,
+"max_diff": 3
+},
+{
+"frame": "h:image2:1920:baseline-1-3",
+"pair": "wk:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:image2:3840:baseline-1-3",
+"pair": "wk:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:image4k:1920:baseline-1-3",
+"pair": "wk:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:image4k:3840:baseline-1-3",
+"pair": "wk:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:image:1920:baseline-1-3",
+"pair": "wk~chrome-metal",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:image:1920:baseline-1-3",
+"pair": "wk~chrome-swiftshader",
+"psnr_db": 43.18,
+"mean_abs": 0.083,
+"max_diff": 182
+},
+{
+"frame": "h:image:1920:baseline-1-3",
+"pair": "chrome-metal~chrome-swiftshader",
+"psnr_db": 43.18,
+"mean_abs": 0.083,
+"max_diff": 182
+},
+{
+"frame": "h:image:1920:baseline-1-3",
+"pair": "chrome-swiftshader:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:image:1920:baseline-1-3",
+"pair": "chrome-metal:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:image:1920:baseline-1-3",
+"pair": "wk:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:image:1920:retained-1-3",
+"pair": "wk~chrome-metal",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:image:1920:retained-1-3",
+"pair": "wk~chrome-swiftshader",
+"psnr_db": 43.18,
+"mean_abs": 0.083,
+"max_diff": 182
+},
+{
+"frame": "h:image:1920:retained-1-3",
+"pair": "chrome-metal~chrome-swiftshader",
+"psnr_db": 43.18,
+"mean_abs": 0.083,
+"max_diff": 182
+},
+{
+"frame": "h:image:3840:baseline-1-3",
+"pair": "wk~chrome-metal",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:image:3840:baseline-1-3",
+"pair": "wk:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:image:3840:baseline-1-3",
+"pair": "chrome-metal:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:image:3840:retained-1-3",
+"pair": "wk~chrome-metal",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:room1m_room:1920:baseline-1-37",
+"pair": "wk~chrome-metal",
+"psnr_db": 97.44,
+"mean_abs": 0.0,
+"max_diff": 1
+},
+{
+"frame": "h:room1m_room:1920:baseline-1-37",
+"pair": "wk~chrome-swiftshader",
+"psnr_db": 56.18,
+"mean_abs": 0.141,
+"max_diff": 6
+},
+{
+"frame": "h:room1m_room:1920:baseline-1-37",
+"pair": "chrome-metal~chrome-swiftshader",
+"psnr_db": 56.18,
+"mean_abs": 0.141,
+"max_diff": 6
+},
+{
+"frame": "h:room1m_room:1920:baseline-1-37",
+"pair": "wk:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:room1m_room:1920:baseline-1-37",
+"pair": "chrome-metal:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:room1m_room:1920:baseline-1-37",
+"pair": "chrome-swiftshader:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:room1m_room:1920:retained-1-37",
+"pair": "wk~chrome-metal",
+"psnr_db": 97.44,
+"mean_abs": 0.0,
+"max_diff": 1
+},
+{
+"frame": "h:room1m_room:1920:retained-1-37",
+"pair": "wk~chrome-swiftshader",
+"psnr_db": 56.18,
+"mean_abs": 0.141,
+"max_diff": 6
+},
+{
+"frame": "h:room1m_room:1920:retained-1-37",
+"pair": "chrome-metal~chrome-swiftshader",
+"psnr_db": 56.18,
+"mean_abs": 0.141,
+"max_diff": 6
+},
+{
+"frame": "h:room1m_room:3840:baseline-1-37",
+"pair": "wk~chrome-metal",
+"psnr_db": 97.01,
+"mean_abs": 0.0,
+"max_diff": 2
+},
+{
+"frame": "h:room1m_room:3840:baseline-1-37",
+"pair": "chrome-metal:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:room1m_room:3840:baseline-1-37",
+"pair": "wk:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:room1m_room:3840:retained-1-37",
+"pair": "wk~chrome-metal",
+"psnr_db": 97.01,
+"mean_abs": 0.0,
+"max_diff": 2
+},
+{
+"frame": "h:room3m_room:1920:baseline-1-37",
+"pair": "wk~chrome-metal",
+"psnr_db": 97.87,
+"mean_abs": 0.0,
+"max_diff": 2
+},
+{
+"frame": "h:room3m_room:1920:baseline-1-37",
+"pair": "chrome-metal:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:room3m_room:1920:baseline-1-37",
+"pair": "wk:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:room3m_room:1920:retained-1-37",
+"pair": "wk~chrome-metal",
+"psnr_db": 97.87,
+"mean_abs": 0.0,
+"max_diff": 2
+},
+{
+"frame": "h:room3m_room:3840:baseline-1-37",
+"pair": "wk~chrome-metal",
+"psnr_db": 97.2,
+"mean_abs": 0.0,
+"max_diff": 3
+},
+{
+"frame": "h:room3m_room:3840:baseline-1-37",
+"pair": "wk:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:room3m_room:3840:baseline-1-37",
+"pair": "chrome-metal:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:room3m_room:3840:retained-1-37",
+"pair": "wk~chrome-metal",
+"psnr_db": 97.2,
+"mean_abs": 0.0,
+"max_diff": 3
+},
+{
+"frame": "h:text:1920:baseline-1-3",
+"pair": "wk~chrome-metal",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:text:1920:baseline-1-3",
+"pair": "wk~chrome-swiftshader",
+"psnr_db": 69.42,
+"mean_abs": 0.003,
+"max_diff": 6
+},
+{
+"frame": "h:text:1920:baseline-1-3",
+"pair": "chrome-metal~chrome-swiftshader",
+"psnr_db": 69.42,
+"mean_abs": 0.003,
+"max_diff": 6
+},
+{
+"frame": "h:text:1920:baseline-1-3",
+"pair": "chrome-swiftshader:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:text:1920:baseline-1-3",
+"pair": "chrome-metal:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:text:1920:baseline-1-3",
+"pair": "wk:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:text:1920:retained-1-3",
+"pair": "wk~chrome-metal",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:text:1920:retained-1-3",
+"pair": "wk~chrome-swiftshader",
+"psnr_db": 69.42,
+"mean_abs": 0.003,
+"max_diff": 6
+},
+{
+"frame": "h:text:1920:retained-1-3",
+"pair": "chrome-metal~chrome-swiftshader",
+"psnr_db": 69.42,
+"mean_abs": 0.003,
+"max_diff": 6
+},
+{
+"frame": "h:text:3840:baseline-1-3",
+"pair": "wk~chrome-metal",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:text:3840:baseline-1-3",
+"pair": "wk:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:text:3840:baseline-1-3",
+"pair": "chrome-metal:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:text:3840:retained-1-3",
+"pair": "wk~chrome-metal",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:textchange:1920:baseline-1-3",
+"pair": "wk~chrome-metal",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:textchange:1920:baseline-1-3",
+"pair": "wk~chrome-swiftshader",
+"psnr_db": 77.62,
+"mean_abs": 0.001,
+"max_diff": 3
+},
+{
+"frame": "h:textchange:1920:baseline-1-3",
+"pair": "chrome-metal~chrome-swiftshader",
+"psnr_db": 77.62,
+"mean_abs": 0.001,
+"max_diff": 3
+},
+{
+"frame": "h:textchange:1920:baseline-1-3",
+"pair": "chrome-swiftshader:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:textchange:1920:baseline-1-3",
+"pair": "wk:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:textchange:1920:baseline-1-3",
+"pair": "chrome-metal:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:textchange:1920:retained-1-3",
+"pair": "wk~chrome-metal",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:textchange:1920:retained-1-3",
+"pair": "wk~chrome-swiftshader",
+"psnr_db": 77.62,
+"mean_abs": 0.001,
+"max_diff": 3
+},
+{
+"frame": "h:textchange:1920:retained-1-3",
+"pair": "chrome-metal~chrome-swiftshader",
+"psnr_db": 77.62,
+"mean_abs": 0.001,
+"max_diff": 3
+},
+{
+"frame": "h:textchange:3840:baseline-1-3",
+"pair": "wk~chrome-metal",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:textchange:3840:baseline-1-3",
+"pair": "wk:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:textchange:3840:baseline-1-3",
+"pair": "chrome-metal:baseline~retained",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+},
+{
+"frame": "h:textchange:3840:retained-1-3",
+"pair": "wk~chrome-metal",
+"psnr_db": 99.0,
+"mean_abs": 0.0,
+"max_diff": 0
+}
+]

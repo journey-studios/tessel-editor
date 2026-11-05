@@ -1,0 +1,3 @@
+interface:
+  display_name: "Tessel Feature Contract"
+  short_description: "Core compartilhado, paridade de acesso e docs por feature"

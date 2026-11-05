@@ -1,0 +1,126 @@
+== ('chrome-metal', 'box', '') fatal: {} errors: {}
+   retained-trace steps 10 different: {} info {'textures': 1, 'geometries': 2, 'programs': 2, 'retained_text': 0, 'retained_targets': 1, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 8}
+   retained-rtc steps 10 different: {} info {'textures': 1, 'geometries': 2, 'programs': 2, 'retained_text': 0, 'retained_targets': 1, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 8}
+   baseline self-checks: {}
+== ('chrome-metal', 'cancel', '') fatal: {} errors: {}
+   retained-trace steps 18 different: {} info {'textures': 6, 'geometries': 2, 'programs': 3, 'retained_text': 0, 'retained_targets': 1, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 13}
+   retained-rtc steps 18 different: {} info {'textures': 6, 'geometries': 2, 'programs': 3, 'retained_text': 0, 'retained_targets': 1, 'retained_materials': 1, 'rt_hits': 1, 'rt_misses': 12}
+   baseline self-checks: {'cancel_then_new': ['FAILED:cancelled', '72023d7863f7f1c2'], 'supersede': ['FAILED:cancelled', 'a1bbd7168a172e6f'], 'supersede_during_sort': ['FAILED:cancelled', '72023d7863f7f1c2'], 'abort_multilayer': ['FAILED:cancelled', '2e602fb94f194942'], 'c0_after_cancels': '72023d7863f7f1c2', 'c1_after_cancels': 'a1bbd7168a172e6f', 'release_during_frame': 'aca66f375000b4f5', 'release_during_load': 'failed:asset_unreadable', 'double_load_old_result': 'ready:,failed:cancelled', 'lose_during_frame': 'FAILED:render_failed', 'frame_while_lost': 'FAILED:context_lost'}
+== ('chrome-metal', 'image', '') fatal: {} errors: {}
+   retained-trace steps 11 different: {} info {'textures': 1, 'geometries': 0, 'programs': 1, 'retained_text': 0, 'retained_targets': 0, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 0}
+   retained-rtc steps 11 different: {} info {'textures': 1, 'geometries': 0, 'programs': 1, 'retained_text': 0, 'retained_targets': 0, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 0}
+   baseline self-checks: {'f_released': 'FAILED:asset_unreadable'}
+== ('chrome-metal', 'limits', '') fatal: {} errors: {}
+   retained-trace steps 9 different: {} info {'textures': 66, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 5, 'rt_hits': 0, 'rt_misses': 360}
+   retained-rtc steps 9 different: {} info {'textures': 66, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 5, 'rt_hits': 0, 'rt_misses': 360}
+   baseline self-checks: {}
+   baseline-trace
+      start {'textures': 0, 'geometries': 0, 'programs': 0} {'js_heap_mb': 5.590412139892578}
+      after 600 distinct texts {'textures': 0, 'geometries': 0, 'programs': 0} {'js_heap_mb': 23.577369689941406}
+      after 1200 distinct texts {'textures': 0, 'geometries': 0, 'programs': 0} {'js_heap_mb': 36.6284065246582}
+      after 240 video frames {'textures': 16, 'geometries': 0, 'programs': 0} {'js_heap_mb': 20.24736785888672}
+      after 300 scene frames {'textures': 16, 'geometries': 0, 'programs': 0} {'js_heap_mb': 39.727901458740234}
+      after blend cycle {'textures': 16, 'geometries': 0, 'programs': 0} {'js_heap_mb': 39.7765007019043}
+      after 60 size changes {'textures': 16, 'geometries': 0, 'programs': 0} {'js_heap_mb': 39.667423248291016}
+      after 40 stills, 16 kept (RETAINED_ASSETS) {'textures': 16, 'geometries': 0, 'programs': 0} {'js_heap_mb': 8.448230743408203}
+   retained-trace
+      start {'textures': 0, 'geometries': 0, 'programs': 0, 'retained_text': 0, 'retained_targets': 0, 'retained_materials': 0, 'rt_hits': 0, 'rt_misses': 0} {'js_heap_mb': 5.564579010009766}
+      after 600 distinct texts {'textures': 32, 'geometries': 0, 'programs': 1, 'retained_text': 32, 'retained_targets': 0, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 0} {'js_heap_mb': 15.315849304199219}
+      after 1200 distinct texts {'textures': 32, 'geometries': 0, 'programs': 1, 'retained_text': 32, 'retained_targets': 0, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 0} {'js_heap_mb': 20.55701446533203}
+      after 240 video frames {'textures': 48, 'geometries': 0, 'programs': 1, 'retained_text': 32, 'retained_targets': 0, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 0} {'js_heap_mb': 12.911712646484375}
+      after 300 scene frames {'textures': 49, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 300} {'js_heap_mb': 12.921150207519531}
+      after blend cycle {'textures': 50, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 5, 'rt_hits': 0, 'rt_misses': 300} {'js_heap_mb': 16.97867202758789}
+      after 60 size changes {'textures': 50, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 5, 'rt_hits': 0, 'rt_misses': 360} {'js_heap_mb': 18.852020263671875}
+      after 40 stills, 16 kept (RETAINED_ASSETS) {'textures': 66, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 5, 'rt_hits': 0, 'rt_misses': 360} {'js_heap_mb': 8.242332458496094}
+   retained-rtc
+      start {'textures': 0, 'geometries': 0, 'programs': 0, 'retained_text': 0, 'retained_targets': 0, 'retained_materials': 0, 'rt_hits': 0, 'rt_misses': 0} {'js_heap_mb': 5.571941375732422}
+      after 600 distinct texts {'textures': 32, 'geometries': 0, 'programs': 1, 'retained_text': 32, 'retained_targets': 0, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 0} {'js_heap_mb': 15.435733795166016}
+      after 1200 distinct texts {'textures': 32, 'geometries': 0, 'programs': 1, 'retained_text': 32, 'retained_targets': 0, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 0} {'js_heap_mb': 20.585880279541016}
+      after 240 video frames {'textures': 48, 'geometries': 0, 'programs': 1, 'retained_text': 32, 'retained_targets': 0, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 0} {'js_heap_mb': 12.911602020263672}
+      after 300 scene frames {'textures': 49, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 300} {'js_heap_mb': 12.888145446777344}
+      after blend cycle {'textures': 50, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 5, 'rt_hits': 0, 'rt_misses': 300} {'js_heap_mb': 16.948200225830078}
+      after 60 size changes {'textures': 50, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 5, 'rt_hits': 0, 'rt_misses': 360} {'js_heap_mb': 18.820457458496094}
+      after 40 stills, 16 kept (RETAINED_ASSETS) {'textures': 66, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 5, 'rt_hits': 0, 'rt_misses': 360} {'js_heap_mb': 8.24191665649414}
+== ('chrome-metal', 'rtc', '') fatal: {} errors: {}
+   retained-trace steps 27 different: {} info {'textures': 11, 'geometries': 2, 'programs': 3, 'retained_text': 0, 'retained_targets': 2, 'retained_materials': 2, 'rt_hits': 0, 'rt_misses': 24}
+   retained-rtc steps 27 different: {} info {'textures': 11, 'geometries': 2, 'programs': 3, 'retained_text': 0, 'retained_targets': 2, 'retained_materials': 2, 'rt_hits': 9, 'rt_misses': 15}
+   baseline self-checks: {}
+== ('chrome-metal', 'splat', '') fatal: {} errors: {}
+   retained-trace steps 17 different: {} info {'textures': 8, 'geometries': 2, 'programs': 3, 'retained_text': 0, 'retained_targets': 1, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 11}
+   retained-rtc steps 17 different: {} info {'textures': 8, 'geometries': 2, 'programs': 3, 'retained_text': 0, 'retained_targets': 1, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 11}
+   baseline self-checks: {'released': 'FAILED:asset_unreadable', 'released_splat': 'FAILED:asset_unreadable'}
+== ('chrome-metal', 'splat', 'gauss1m') fatal: {} errors: {}
+   retained-trace steps 17 different: {} info {'textures': 8, 'geometries': 2, 'programs': 3, 'retained_text': 0, 'retained_targets': 1, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 11}
+   retained-rtc steps 17 different: {} info {'textures': 8, 'geometries': 2, 'programs': 3, 'retained_text': 0, 'retained_targets': 1, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 11}
+   baseline self-checks: {'released': 'FAILED:asset_unreadable', 'released_splat': 'FAILED:asset_unreadable'}
+== ('chrome-metal', 'two', '') fatal: {} errors: {}
+   retained-trace steps 6 different: {} info {'textures': 10, 'geometries': 7, 'programs': 4, 'retained_text': 0, 'retained_targets': 2, 'retained_materials': 2, 'rt_hits': 0, 'rt_misses': 10}
+   retained-rtc steps 6 different: {} info {'textures': 10, 'geometries': 7, 'programs': 4, 'retained_text': 0, 'retained_targets': 2, 'retained_materials': 2, 'rt_hits': 5, 'rt_misses': 5}
+   retained-singlert steps 6 different: {"two_boxes": ["664c0f48612c9a7b", "e2091587093f8b65"], "same_scene_twice": ["350350d3b32f7a0a", "91748367d9be1bf1"], "two_splat_layers": ["57084a63df83dfbd", "67159037c8fd2321"], "two_splat_again": ["57084a63df83dfbd", "67159037c8fd2321"]} info {'textures': 9, 'geometries': 7, 'programs': 4, 'retained_text': 0, 'retained_targets': 1, 'retained_materials': 2, 'rt_hits': 0, 'rt_misses': 10}
+   baseline self-checks: {}
+== ('webkit', 'box', '') fatal: {} errors: {}
+   retained-trace steps 10 different: {} info {'textures': 1, 'geometries': 2, 'programs': 2, 'retained_text': 0, 'retained_targets': 1, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 8}
+   retained-rtc steps 10 different: {} info {'textures': 1, 'geometries': 2, 'programs': 2, 'retained_text': 0, 'retained_targets': 1, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 8}
+   baseline self-checks: {}
+== ('webkit', 'cancel', '') fatal: {} errors: {}
+   retained-trace steps 18 different: {} info {'textures': 6, 'geometries': 2, 'programs': 3, 'retained_text': 0, 'retained_targets': 1, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 13}
+   retained-rtc steps 18 different: {} info {'textures': 6, 'geometries': 2, 'programs': 3, 'retained_text': 0, 'retained_targets': 1, 'retained_materials': 1, 'rt_hits': 1, 'rt_misses': 12}
+   baseline self-checks: {'cancel_then_new': ['FAILED:cancelled', 'b097c2257293992b'], 'supersede': ['FAILED:cancelled', '74a71931dae377dd'], 'supersede_during_sort': ['FAILED:cancelled', 'b097c2257293992b'], 'abort_multilayer': ['FAILED:cancelled', '2e602fb94f194942'], 'c0_after_cancels': 'b097c2257293992b', 'c1_after_cancels': '74a71931dae377dd', 'release_during_frame': '463b8cf87b67e039', 'release_during_load': 'failed:cancelled', 'double_load_old_result': 'failed:cancelled,ready:', 'lose_during_frame': 'FAILED:render_failed', 'frame_while_lost': 'FAILED:context_lost'}
+== ('webkit', 'image', '') fatal: {} errors: {}
+   retained-trace steps 11 different: {} info {'textures': 1, 'geometries': 0, 'programs': 1, 'retained_text': 0, 'retained_targets': 0, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 0}
+   retained-rtc steps 11 different: {} info {'textures': 1, 'geometries': 0, 'programs': 1, 'retained_text': 0, 'retained_targets': 0, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 0}
+   baseline self-checks: {'f_released': 'FAILED:asset_unreadable'}
+== ('webkit', 'limits', '') fatal: {} errors: {}
+   retained-trace steps 9 different: {} info {'textures': 66, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 5, 'rt_hits': 0, 'rt_misses': 360}
+   retained-rtc steps 9 different: {} info {'textures': 66, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 5, 'rt_hits': 0, 'rt_misses': 360}
+   baseline self-checks: {}
+   baseline-trace
+      start {'textures': 0, 'geometries': 0, 'programs': 0} {'web_mb': 77.0632553100586, 'gpu_mb': 506.750732421875}
+      after 600 distinct texts {'textures': 0, 'geometries': 0, 'programs': 0} {'web_mb': 185.17276763916016, 'gpu_mb': 457.4695510864258}
+      after 1200 distinct texts {'textures': 0, 'geometries': 0, 'programs': 0} {'web_mb': 218.65721130371094, 'gpu_mb': 460.56334686279297}
+      after 240 video frames {'textures': 16, 'geometries': 0, 'programs': 0} {'web_mb': 196.89154052734375, 'gpu_mb': 499.0792007446289}
+      after 300 scene frames {'textures': 16, 'geometries': 0, 'programs': 0} {'web_mb': 344.5791549682617, 'gpu_mb': 549.0167007446289}
+      after blend cycle {'textures': 16, 'geometries': 0, 'programs': 0} {'web_mb': 300.5322799682617, 'gpu_mb': 495.5792465209961}
+      after 60 size changes {'textures': 16, 'geometries': 0, 'programs': 0} {'web_mb': 282.3916549682617, 'gpu_mb': 564.0948486328125}
+      after 40 stills, 16 kept (RETAINED_ASSETS) {'textures': 16, 'geometries': 0, 'programs': 0} {'web_mb': 309.7822799682617, 'gpu_mb': 606.8450546264648}
+      16 4K stills drawn and retained {'textures': 16, 'geometries': 0, 'programs': 0} {'web_mb': 929.6104736328125, 'gpu_mb': 1132.5489807128906}
+      16 4K stills released {'textures': 16, 'geometries': 0, 'programs': 0} {'web_mb': 676.7198486328125, 'gpu_mb': 596.2358856201172}
+   retained-trace
+      start {'textures': 0, 'geometries': 0, 'programs': 0, 'retained_text': 0, 'retained_targets': 0, 'retained_materials': 0, 'rt_hits': 0, 'rt_misses': 0} {'web_mb': 77.2820053100586, 'gpu_mb': 495.531982421875}
+      after 600 distinct texts {'textures': 32, 'geometries': 0, 'programs': 1, 'retained_text': 32, 'retained_targets': 0, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 0} {'web_mb': 169.79772186279297, 'gpu_mb': 541.6101989746094}
+      after 1200 distinct texts {'textures': 32, 'geometries': 0, 'programs': 1, 'retained_text': 32, 'retained_targets': 0, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 0} {'web_mb': 192.46966552734375, 'gpu_mb': 249.90711975097656}
+      after 240 video frames {'textures': 48, 'geometries': 0, 'programs': 1, 'retained_text': 32, 'retained_targets': 0, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 0} {'web_mb': 203.75086975097656, 'gpu_mb': 186.7354736328125}
+      after 300 scene frames {'textures': 49, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 300} {'web_mb': 236.68836975097656, 'gpu_mb': 245.2979736328125}
+      after blend cycle {'textures': 50, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 5, 'rt_hits': 0, 'rt_misses': 300} {'web_mb': 247.79774475097656, 'gpu_mb': 248.0011215209961}
+      after 60 size changes {'textures': 50, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 5, 'rt_hits': 0, 'rt_misses': 360} {'web_mb': 227.73524475097656, 'gpu_mb': 260.6886444091797}
+      after 40 stills, 16 kept (RETAINED_ASSETS) {'textures': 66, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 5, 'rt_hits': 0, 'rt_misses': 360} {'web_mb': 438.31336975097656, 'gpu_mb': 364.4859085083008}
+      16 4K stills drawn and retained {'textures': 82, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 5, 'rt_hits': 0, 'rt_misses': 360} {'web_mb': 1524.8290176391602, 'gpu_mb': 830.3306884765625}
+      16 4K stills released {'textures': 66, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 5, 'rt_hits': 0, 'rt_misses': 360} {'web_mb': 1175.1883926391602, 'gpu_mb': 452.39263916015625}
+   retained-rtc
+      start {'textures': 0, 'geometries': 0, 'programs': 0, 'retained_text': 0, 'retained_targets': 0, 'retained_materials': 0, 'rt_hits': 0, 'rt_misses': 0} {'web_mb': 75.0163345336914, 'gpu_mb': 188.5632553100586}
+      after 600 distinct texts {'textures': 32, 'geometries': 0, 'programs': 1, 'retained_text': 32, 'retained_targets': 0, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 0} {'web_mb': 162.98517608642578, 'gpu_mb': 229.86024475097656}
+      after 1200 distinct texts {'textures': 32, 'geometries': 0, 'programs': 1, 'retained_text': 32, 'retained_targets': 0, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 0} {'web_mb': 204.29772186279297, 'gpu_mb': 254.25086975097656}
+      after 240 video frames {'textures': 48, 'geometries': 0, 'programs': 1, 'retained_text': 32, 'retained_targets': 0, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 0} {'web_mb': 207.7664031982422, 'gpu_mb': 189.4854736328125}
+      after 300 scene frames {'textures': 49, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 300} {'web_mb': 239.79767608642578, 'gpu_mb': 248.0948486328125}
+      after blend cycle {'textures': 50, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 5, 'rt_hits': 0, 'rt_misses': 300} {'web_mb': 250.95392608642578, 'gpu_mb': 250.7979965209961}
+      after 60 size changes {'textures': 50, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 5, 'rt_hits': 0, 'rt_misses': 360} {'web_mb': 228.51642608642578, 'gpu_mb': 263.3292694091797}
+      after 40 stills, 16 kept (RETAINED_ASSETS) {'textures': 66, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 5, 'rt_hits': 0, 'rt_misses': 360} {'web_mb': 442.8133010864258, 'gpu_mb': 297.3609085083008}
+      16 4K stills drawn and retained {'textures': 82, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 5, 'rt_hits': 0, 'rt_misses': 360} {'web_mb': 1519.188346862793, 'gpu_mb': 820.0806884765625}
+      16 4K stills released {'textures': 66, 'geometries': 2, 'programs': 2, 'retained_text': 32, 'retained_targets': 1, 'retained_materials': 5, 'rt_hits': 0, 'rt_misses': 360} {'web_mb': 1455.672721862793, 'gpu_mb': 735.5024490356445}
+== ('webkit', 'rtc', '') fatal: {} errors: {}
+   retained-trace steps 27 different: {} info {'textures': 11, 'geometries': 2, 'programs': 3, 'retained_text': 0, 'retained_targets': 2, 'retained_materials': 2, 'rt_hits': 0, 'rt_misses': 24}
+   retained-rtc steps 27 different: {} info {'textures': 11, 'geometries': 2, 'programs': 3, 'retained_text': 0, 'retained_targets': 2, 'retained_materials': 2, 'rt_hits': 9, 'rt_misses': 15}
+   baseline self-checks: {}
+== ('webkit', 'splat', '') fatal: {} errors: {}
+   retained-trace steps 17 different: {} info {'textures': 8, 'geometries': 2, 'programs': 3, 'retained_text': 0, 'retained_targets': 1, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 11}
+   retained-rtc steps 17 different: {} info {'textures': 8, 'geometries': 2, 'programs': 3, 'retained_text': 0, 'retained_targets': 1, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 11}
+   baseline self-checks: {'released': 'FAILED:asset_unreadable', 'released_splat': 'FAILED:asset_unreadable'}
+== ('webkit', 'splat', 'gauss1m') fatal: {} errors: {}
+   retained-trace steps 17 different: {} info {'textures': 8, 'geometries': 2, 'programs': 3, 'retained_text': 0, 'retained_targets': 1, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 11}
+   retained-rtc steps 17 different: {} info {'textures': 8, 'geometries': 2, 'programs': 3, 'retained_text': 0, 'retained_targets': 1, 'retained_materials': 1, 'rt_hits': 0, 'rt_misses': 11}
+   baseline self-checks: {'released': 'FAILED:asset_unreadable', 'released_splat': 'FAILED:asset_unreadable'}
+== ('webkit', 'two', '') fatal: {} errors: {}
+   retained-trace steps 6 different: {} info {'textures': 10, 'geometries': 7, 'programs': 4, 'retained_text': 0, 'retained_targets': 2, 'retained_materials': 2, 'rt_hits': 0, 'rt_misses': 10}
+   retained-rtc steps 6 different: {} info {'textures': 10, 'geometries': 7, 'programs': 4, 'retained_text': 0, 'retained_targets': 2, 'retained_materials': 2, 'rt_hits': 5, 'rt_misses': 5}
+   retained-singlert steps 6 different: {"two_boxes": ["664c0f48612c9a7b", "e2091587093f8b65"], "same_scene_twice": ["350350d3b32f7a0a", "91748367d9be1bf1"], "two_splat_layers": ["4be2ebe0171fa54f", "73941810b82100b9"], "two_splat_again": ["4be2ebe0171fa54f", "73941810b82100b9"]} info {'textures': 9, 'geometries': 7, 'programs': 4, 'retained_text': 0, 'retained_targets': 1, 'retained_materials': 2, 'rt_hits': 0, 'rt_misses': 10}
+   baseline self-checks: {}

@@ -1,0 +1,6 @@
+#!/bin/sh
+# Thin wrapper over the CLI of the running editor; builds through the cached
+# Cargo wrapper (docs/cargo-worktrees.md) so worktrees share artefacts.
+set -eu
+cd "$(dirname "$0")/.."
+exec ./scripts/cargo run --quiet --locked -p tessel-editor -- ui "$@"

@@ -1,0 +1,37 @@
+{
+ "snapshot": "6cd4c0aa97c1fb54",
+ "snapshot_time": "20261104T200439",
+ "commit": null,
+ "commit_note": "repository has no commits",
+ "snapshot_binaries": {
+  "bin/index.html": "707fd90fac224637b486d78a74babbd274e749e02e60aa95da8a314644c484a6",
+  "bin/runtime.js": "a8bb9ce24ca9feb8741e9c8be1e9616eff6c4b4e2b74e7ce9920beb1a24362fc",
+  "bin/tessel-editor": "acc707733a1fc7459e7708a9ad84e86ad3e145858592ca5f189f682e17386c64",
+  "bin/tessel-fixtures": "333c1f91ad2b161c58c4cc3e682f45eb6313c371567a8487b7fdc5dea2697aed",
+  "bin/tessel-media": "31be89daa8630b71305c21a95c7d92901e60ac355e84e97599611bdc53583102",
+  "bin/tessel-render": "b13336874876da044c3c0a2e37ac79593780daca8130e8ba8967bdbd40c11837"
+ },
+ "instrumented": {
+  "debug/tessel-editor": "f1b1794c7166b5ac6631b9ef5247a1856032fec14575a8017b50bb669cfc3f22",
+  "release/tessel-editor": "1a218eee893910c74805bbfff02211997bacac43c925a4a612ff6dd26ec2167a"
+ },
+ "runtime_variants": {
+  "baseline-videofix-rvfc": "d4d80300748c5055f19078cae6e2a727b4694ae83e7e4d84bdaf45d8e67563c0",
+  "retained-trace": "ab7e96fa860f5cf0af8a420721f62283ca2ae2914c6cd9dabeb37563ef14ed88",
+  "baseline-trace": "cccd350c06271f1ebe124823935ed2eb081c9c33c8774acf685e6ca13163bb78",
+  "retained-singlert": "031165681f6790adb39fdaf4ad4eec90b9160c7bcb86152e5b1133d45f0bcaae",
+  "baseline": "679dcc15baab5045ed507a1d339c54c9790bb35961560be05525a1404529782b",
+  "retained-rtc": "254cc6b69ad16226718aa429a46aca24f528963bc02722122e6891b6ffd46c74",
+  "baseline-videofix": "42b448c489f3dccf5bbe51837a9dab09d37d701d46be27187d2533ecd97a75e4",
+  "retained": "2ab86f7cadbee12fbd0a983581d652e7a966629883c8ebeec82648a4085cdc3a"
+ },
+ "machine": "Mac15,6 Apple M3 Pro 18 GiB, Darwin 25.6.0",
+ "webkit_ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)",
+ "chrome_ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36",
+ "three": "187",
+ "spark": "2.4.0",
+ "rust": "1.99.1 (pin)",
+ "ffmpeg": "7.1.1",
+ "window": "20:02-22:25 -03 2026-11-04",
+ "load_note": "concurrent agent active; 232 samples of 1-min load during bench chains: p50 5.4, p95 15.5, max 17.8"
+}

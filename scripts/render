@@ -1,0 +1,6 @@
+#!/bin/sh
+# JSON Lines on stdin with a real renderer (Node + Chrome + Three.js); no window needed.
+# Setup once: ./scripts/runtime setup.  Options: --demo, --gl swiftshader|gpu.
+set -eu
+cd "$(dirname "$0")/.."
+exec ./scripts/cargo run --quiet --locked -p tessel-editor-render --bin tessel-render -- "$@"

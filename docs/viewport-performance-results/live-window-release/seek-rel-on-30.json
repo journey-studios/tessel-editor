@@ -1,0 +1,99 @@
+{
+  "inspect": false,
+  "drag": {
+    "seconds": 1.974,
+    "ticks": 60,
+    "from": 0,
+    "to": 48
+  },
+  "set_ms": {
+    "median": 0.7,
+    "max": 1.97
+  },
+  "presentations_in_window": 48,
+  "presentations_during_drag": 47,
+  "first_present_ms": 15.7,
+  "clock": "host",
+  "present_gap_ms": {
+    "median": 36.1,
+    "p95": 68.8,
+    "max": 74.2
+  },
+  "lag_frames": {
+    "median": 0,
+    "p95": 0,
+    "max": 0
+  },
+  "converged": true,
+  "release_to_final_ms": 6,
+  "stats_delta": {
+    "requests": 48,
+    "accepted": 48,
+    "cancelled": 0,
+    "dropped_stale": 0,
+    "coalesced": 0
+  },
+  "presented_frame": 48,
+  "last_frame": {
+    "render_ms": 0.0,
+    "total_ms": 0.0,
+    "inspected": false
+  },
+  "clock_uncertainty_ms": 0.8,
+  "host_spans_ms": {
+    "prepare_ms": {
+      "median": 0.002,
+      "p95": 0.002,
+      "max": 0.003
+    },
+    "serialize_ms": {
+      "median": 0.016,
+      "p95": 0.017,
+      "max": 0.021
+    },
+    "dispatch_ms": {
+      "median": 0.009,
+      "p95": 0.01,
+      "max": 0.011
+    },
+    "transit_ms": {
+      "median": 0.472,
+      "p95": 2.024,
+      "max": 4.871
+    },
+    "runtime_total_ms": {
+      "median": 11.0,
+      "p95": 14.0,
+      "max": 14.0
+    },
+    "runtime_render_ms": {
+      "median": 11.0,
+      "p95": 14.0,
+      "max": 14.0
+    },
+    "accept_ms": {
+      "median": 0.003,
+      "p95": 0.004,
+      "max": 0.005
+    },
+    "submit_to_done_ms": {
+      "median": 11.621,
+      "p95": 14.62,
+      "max": 15.437
+    }
+  },
+  "renderer": "Apple GPU",
+  "output": {
+    "width": 320,
+    "height": 180
+  },
+  "restored_playhead": true,
+  "checks": {
+    "at least 5 pictures in 2s": true,
+    "converged on the last position": true,
+    "no render was left cancelled-starved (accepted > 0)": true,
+    "pixel proof needs TESSEL_VIEWPORT_INSPECT=1 (the monitor did not report hashes)": false,
+    "the playhead is back where it was": true
+  },
+  "pass": false
+}

@@ -1,0 +1,458 @@
+{
+ "checks": [
+  {
+   "check": "fixture h264 1080p",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "original: project with the 1080p clip",
+   "ok": true,
+   "detail": "None"
+  },
+  {
+   "check": "original: policy original accepted",
+   "ok": true,
+   "detail": "{'ok': True, 'version': 1, 'data': {'target': 'monitor.preview_policy', 'field': 'value', 'value': {'mode': 'original', 'max_height': 540, 'format': 'jpeg'}, 'changed': True}, '_ms': 4.824291972909123}"
+  },
+  {
+   "check": "original: decode finished (explicit frame answers)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "original: original policy keeps proxies out (reason policy_original)",
+   "ok": true,
+   "detail": "policy_original"
+  },
+  {
+   "check": "original: scrub intent accepted",
+   "ok": true,
+   "detail": "{'ok': True, 'version': 1, 'data': {'target': 'timeline.playhead', 'field': 'frame', 'value': 120, 'timecode': '00:00:05:00', 'fps': 24, 'max': 240, 'time': {'num': 5, 'den': 1, 'seconds': 5.0}, 'previous': 0, 'clamped': False, 'changed': True}, '_ms': 1.616917026694864}"
+  },
+  {
+   "check": "original: scrub picture converges on the original",
+   "ok": true,
+   "detail": "no convergence"
+  },
+  {
+   "check": "original: no proxy picture under the original policy",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "original: explicit render.frame shows the frame asked for",
+   "ok": true,
+   "detail": "code=77"
+  },
+  {
+   "check": "original: explicit render.frame is original quality",
+   "ok": true,
+   "detail": "{'quality': 'original', 'proxy_layers': 0, 'original_layers': 1, 'result_hits': 0}"
+  },
+  {
+   "check": "original: export of 24 frames succeeds",
+   "ok": true,
+   "detail": "{'id': 'job-3', 'kind': 'video-export', 'label': 'Export video', 'state': 'succeeded', 'stage': 'done', 'done': 1, 'total': 1, 'progress': 1.0, 'eta_seconds': None, 'warnings': [], 'error': None, 'result': {'destination': '/tmp/tpp-57kr4zvg/export-original.mp4', 'preset': 'fullhd', 'bytes': 3849294,"
+  },
+  {
+   "check": "original: scrub runs converged on the last position",
+   "ok": true,
+   "detail": "[True, True, True, True, True]"
+  },
+  {
+   "check": "original: scrub kept the monitor updating",
+   "ok": true,
+   "detail": "[64, 67, 68, 67, 68]"
+  },
+  {
+   "check": "auto: project with the 1080p clip",
+   "ok": true,
+   "detail": "None"
+  },
+  {
+   "check": "auto: policy auto accepted",
+   "ok": true,
+   "detail": "{'ok': True, 'version': 1, 'data': {'target': 'monitor.preview_policy', 'field': 'value', 'value': {'mode': 'auto', 'max_height': 540, 'format': 'jpeg'}, 'changed': False}, '_ms': 6.721290992572904}"
+  },
+  {
+   "check": "auto: decode finished (explicit frame answers)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "auto: media job built the proxy (`preview.policy` reason proxy_ready)",
+   "ok": true,
+   "detail": "proxy_ready"
+  },
+  {
+   "check": "auto: scrub intent accepted",
+   "ok": true,
+   "detail": "{'ok': True, 'version': 1, 'data': {'target': 'timeline.playhead', 'field': 'frame', 'value': 120, 'timecode': '00:00:05:00', 'fps': 24, 'max': 240, 'time': {'num': 5, 'den': 1, 'seconds': 5.0}, 'previous': 0, 'clamped': False, 'changed': True}, '_ms': 0.7599999662488699}"
+  },
+  {
+   "check": "auto: scrub picture converges on the original",
+   "ok": true,
+   "detail": "no convergence"
+  },
+  {
+   "check": "auto: the scrub picture came from the proxy",
+   "ok": true,
+   "detail": "no frame reported proxy layers"
+  },
+  {
+   "check": "auto: a refine frame replaced the proxy picture",
+   "ok": true,
+   "detail": "{'requests': 8, 'accepted': 8, 'cancelled': 0, 'dropped_stale': 0, 'coalesced': 0, 'proxy_attached': 1, 'proxy_failed': 0, 'refined': 2}"
+  },
+  {
+   "check": "auto: explicit render.frame shows the frame asked for",
+   "ok": true,
+   "detail": "code=77"
+  },
+  {
+   "check": "auto: explicit render.frame is original quality",
+   "ok": true,
+   "detail": "{'quality': 'original', 'proxy_layers': 0, 'original_layers': 1, 'result_hits': 0}"
+  },
+  {
+   "check": "auto: export of 24 frames succeeds",
+   "ok": true,
+   "detail": "{'id': 'job-4', 'kind': 'video-export', 'label': 'Export video', 'state': 'succeeded', 'stage': 'done', 'done': 1, 'total': 1, 'progress': 1.0, 'eta_seconds': None, 'warnings': [], 'error': None, 'result': {'destination': '/tmp/tpp-57kr4zvg/export-auto.mp4', 'preset': 'fullhd', 'bytes': 3849294, 'fr"
+  },
+  {
+   "check": "auto: every drag ended on a proxy picture and then on the original",
+   "ok": true,
+   "detail": "[{'proxy_picture_ms': 2, 'original_picture_ms': 327}, {'proxy_picture_ms': 2, 'original_picture_ms': 340}, {'proxy_picture_ms': 2, 'original_picture_ms': 345}, {'proxy_picture_ms': 2, 'original_picture_ms': 340}, {'proxy_picture_ms': 2, 'original_picture_ms': 332}]"
+  },
+  {
+   "check": "auto: scrub runs converged on the last position",
+   "ok": true,
+   "detail": "[True, True, True, True, True]"
+  },
+  {
+   "check": "auto: scrub kept the monitor updating",
+   "ok": true,
+   "detail": "[120, 120, 120, 120, 120]"
+  },
+  {
+   "check": "export: 24 frames in both",
+   "ok": true,
+   "detail": "(24, 24)"
+  },
+  {
+   "check": "export: the proxy-enabled editor exports the same frames as the original policy",
+   "ok": true,
+   "detail": "framemd5 differs"
+  },
+  {
+   "check": "export: 1920x1080 at 24 fps",
+   "ok": true,
+   "detail": "{'index': 0, 'codec_name': 'h264', 'codec_long_name': 'H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10', 'profile': 'High', 'codec_type': 'video', 'codec_tag_string': 'avc1', 'codec_tag': '0x31637661', 'width': 1920, 'height': 1080, 'coded_width': 1920, 'coded_height': 1080, 'closed_captions': 0, 'film_gr"
+  },
+  {
+   "check": "pixel: project",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "pixel: after the drag the screen matches an explicit original render",
+   "ok": true,
+   "detail": "[{'pictures_seen': 20, 'distinct_hashes': 20, 'on_screen_hash': '798929f674751b12', 'explicit_hash': '798929f674751b12'}, {'pictures_seen': 20, 'distinct_hashes': 20, 'on_screen_hash': '798929f674751b12', 'explicit_hash': '798929f674751b12'}]"
+  }
+ ],
+ "variants": {
+  "original": {
+   "policy": "original",
+   "env": {
+    "TESSEL_VIEWPORT_TRACE": "1"
+   },
+   "scrub": {
+    "runs": 5,
+    "exit_codes": [
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "presentations_in_window": [
+     64,
+     67,
+     68,
+     67,
+     68
+    ],
+    "present_gap_ms_median": 29.1,
+    "present_gap_ms_p95": 33.3,
+    "lag_frames_median": 3.0,
+    "release_to_picture_ms": [
+     30,
+     27,
+     41,
+     31,
+     15
+    ],
+    "release_to_final_ms": [
+     17,
+     22,
+     30,
+     25,
+     5
+    ],
+    "release_to_original_polled_ms": [
+     30,
+     27,
+     41,
+     31,
+     15
+    ],
+    "render_ms_median": 0.0,
+    "stats_delta": [
+     {
+      "requests": 66,
+      "accepted": 66,
+      "cancelled": 0,
+      "dropped_stale": 0,
+      "coalesced": 118,
+      "proxy_attached": 0,
+      "proxy_failed": 0,
+      "refined": 0
+     },
+     {
+      "requests": 69,
+      "accepted": 69,
+      "cancelled": 0,
+      "dropped_stale": 0,
+      "coalesced": 119,
+      "proxy_attached": 0,
+      "proxy_failed": 0,
+      "refined": 0
+     },
+     {
+      "requests": 70,
+      "accepted": 70,
+      "cancelled": 0,
+      "dropped_stale": 0,
+      "coalesced": 119,
+      "proxy_attached": 0,
+      "proxy_failed": 0,
+      "refined": 0
+     },
+     {
+      "requests": 69,
+      "accepted": 69,
+      "cancelled": 0,
+      "dropped_stale": 0,
+      "coalesced": 119,
+      "proxy_attached": 0,
+      "proxy_failed": 0,
+      "refined": 0
+     },
+     {
+      "requests": 68,
+      "accepted": 68,
+      "cancelled": 0,
+      "dropped_stale": 0,
+      "coalesced": 119,
+      "proxy_attached": 0,
+      "proxy_failed": 0,
+      "refined": 0
+     }
+    ]
+   },
+   "ui": {
+    "repaints": 24,
+    "skipped": 694
+   },
+   "session": {
+    "requests": 356,
+    "accepted": 355,
+    "cancelled": 1,
+    "dropped_stale": 0,
+    "coalesced": 594,
+    "proxy_attached": 0,
+    "proxy_failed": 0,
+    "refined": 0
+   }
+  },
+  "auto": {
+   "policy": "auto",
+   "env": {
+    "TESSEL_VIEWPORT_TRACE": "1"
+   },
+   "refine_latency": [
+    {
+     "proxy_picture_ms": 2,
+     "original_picture_ms": 327
+    },
+    {
+     "proxy_picture_ms": 2,
+     "original_picture_ms": 340
+    },
+    {
+     "proxy_picture_ms": 2,
+     "original_picture_ms": 345
+    },
+    {
+     "proxy_picture_ms": 2,
+     "original_picture_ms": 340
+    },
+    {
+     "proxy_picture_ms": 2,
+     "original_picture_ms": 332
+    }
+   ],
+   "scrub": {
+    "runs": 5,
+    "exit_codes": [
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "presentations_in_window": [
+     120,
+     120,
+     120,
+     120,
+     120
+    ],
+    "present_gap_ms_median": 16.7,
+    "present_gap_ms_p95": 17.1,
+    "lag_frames_median": 0,
+    "release_to_picture_ms": [
+     16,
+     16,
+     14,
+     14,
+     16
+    ],
+    "release_to_final_ms": [
+     3,
+     5,
+     5,
+     5,
+     9
+    ],
+    "release_to_original_polled_ms": [
+     16,
+     16,
+     14,
+     14,
+     16
+    ],
+    "render_ms_median": 0.0,
+    "stats_delta": [
+     {
+      "requests": 120,
+      "accepted": 120,
+      "cancelled": 0,
+      "dropped_stale": 0,
+      "coalesced": 1,
+      "proxy_attached": 0,
+      "proxy_failed": 0,
+      "refined": 0
+     },
+     {
+      "requests": 120,
+      "accepted": 120,
+      "cancelled": 0,
+      "dropped_stale": 0,
+      "coalesced": 0,
+      "proxy_attached": 0,
+      "proxy_failed": 0,
+      "refined": 0
+     },
+     {
+      "requests": 120,
+      "accepted": 120,
+      "cancelled": 0,
+      "dropped_stale": 0,
+      "coalesced": 0,
+      "proxy_attached": 0,
+      "proxy_failed": 0,
+      "refined": 0
+     },
+     {
+      "requests": 120,
+      "accepted": 120,
+      "cancelled": 0,
+      "dropped_stale": 0,
+      "coalesced": 0,
+      "proxy_attached": 0,
+      "proxy_failed": 0,
+      "refined": 0
+     },
+     {
+      "requests": 120,
+      "accepted": 120,
+      "cancelled": 0,
+      "dropped_stale": 0,
+      "coalesced": 0,
+      "proxy_attached": 0,
+      "proxy_failed": 0,
+      "refined": 0
+     }
+    ]
+   },
+   "ui": {
+    "repaints": 670,
+    "skipped": 671
+   },
+   "session": {
+    "requests": 666,
+    "accepted": 666,
+    "cancelled": 0,
+    "dropped_stale": 0,
+    "coalesced": 1,
+    "proxy_attached": 1,
+    "proxy_failed": 0,
+    "refined": 13
+   }
+  }
+ },
+ "export": {
+  "psnr_auto_vs_source": 25.088298,
+  "psnr_original_policy_vs_source": 25.088298,
+  "frames": 24,
+  "identical_to_original_policy": true
+ },
+ "pixel": [
+  {
+   "exit": 0,
+   "pixels": {
+    "pictures_seen": 20,
+    "distinct_hashes": 20,
+    "on_screen_hash": "798929f674751b12",
+    "explicit_hash": "798929f674751b12"
+   },
+   "checks": {
+    "at least 5 pictures in 2s": true,
+    "converged on the last position": true,
+    "no render was left cancelled-starved (accepted > 0)": true,
+    "the pictures shown during the drag differ from each other (not a counter alone)": true,
+    "the picture on screen at release is the explicit render of the last position": true,
+    "the playhead is back where it was": true
+   }
+  },
+  {
+   "exit": 0,
+   "pixels": {
+    "pictures_seen": 20,
+    "distinct_hashes": 20,
+    "on_screen_hash": "798929f674751b12",
+    "explicit_hash": "798929f674751b12"
+   },
+   "checks": {
+    "at least 5 pictures in 2s": true,
+    "converged on the last position": true,
+    "no render was left cancelled-starved (accepted > 0)": true,
+    "the pictures shown during the drag differ from each other (not a counter alone)": true,
+    "the picture on screen at release is the explicit render of the last position": true,
+    "the playhead is back where it was": true
+   }
+  }
+ ]
+}

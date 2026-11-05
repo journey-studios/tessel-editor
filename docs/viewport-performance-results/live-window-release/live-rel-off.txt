@@ -1,0 +1,93 @@
+PASS viewport phase is ready
+PASS capabilities report the runtime
+PASS project.create Viewport proof
+PASS asset.add img
+PASS asset.add vid
+PASS asset.add tone
+PASS asset.add cloud
+PASS asset.add scn
+PASS asset.add label
+PASS track.add scene-track
+PASS track.add media-track
+PASS track.add title-track
+PASS track.add music
+PASS clip.add c-scene
+PASS clip.add c-img
+PASS clip.add c-vid
+PASS clip.add c-title
+PASS clip.add c-tone
+PASS project has the proof sequence
+PASS frame 0 renders
+PASS image quadrant 0
+PASS image quadrant 1
+PASS image quadrant 2
+PASS image quadrant 3
+PASS plan alternates scene, image and text
+PASS title text pixels present
+PASS video frame at sequence frame 30
+PASS video frame at sequence frame 47
+PASS image and video frames differ
+PASS seek is accepted
+PASS monitor redrew after the seek
+PASS playhead follows the seek
+PASS scene changes with time
+PASS splat sphere is drawn at the center
+PASS camera edit accepted
+PASS camera change alters the picture
+PASS source preview: top-left quadrant
+PASS source preview: bottom-right quadrant
+PASS source preview has one layer
+PASS audio source is a waveform layer
+PASS waveform playhead column
+PASS offline audio mix is reported as processed
+PASS tone is audible in the mix (peak)
+PASS missing asset file is rejected
+PASS clip on an unknown track is rejected
+PASS rejected operations leave the project unchanged
+PASS unsupported blend fails the frame with its code
+PASS failure is visible in the viewport state
+PASS the viewport recovers after the failure
+PASS monitor panel hides
+PASS viewport reports off-screen while hidden
+PASS monitor panel shows again
+PASS viewport reports on-screen when shown
+PASS reload is accepted
+PASS viewport is ready and drew a frame after the reload
+PASS burst of seeks ends on the last frame
+{
+  "memory_before": {
+    "editor_mb": 169.4,
+    "webkit_helpers_mb": 152.8
+  },
+  "renderer": "Apple GPU",
+  "frame0": {
+    "render_ms": 69.0,
+    "total_ms": 69.0,
+    "wall_ms": 84.7
+  },
+  "explicit_frames": [
+    {
+      "frame": 30,
+      "wall_ms": 33.4,
+      "render_ms": 28.0
+    },
+    {
+      "frame": 47,
+      "wall_ms": 29.7,
+      "render_ms": 28.0
+    }
+  ],
+  "seek_to_displayed_ms": 16.4,
+  "burst": {
+    "seeks": 14,
+    "requests": 2,
+    "accepted": 2,
+    "cancelled": 0,
+    "dropped_stale": 0
+  },
+  "memory_after": {
+    "editor_mb": 171.5,
+    "webkit_helpers_mb": 240.4
+  }
+}
+56/56 checks passed

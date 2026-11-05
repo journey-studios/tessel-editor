@@ -1,0 +1,106 @@
+{
+  "inspect": true,
+  "drag": {
+    "seconds": 0.494,
+    "ticks": 60,
+    "from": 0,
+    "to": 48
+  },
+  "set_ms": {
+    "median": 0.58,
+    "max": 2.03
+  },
+  "presentations_in_window": 19,
+  "presentations_during_drag": 19,
+  "first_present_ms": 29.7,
+  "clock": "host",
+  "present_gap_ms": {
+    "median": 25.3,
+    "p95": 27.0,
+    "max": 28.5
+  },
+  "lag_frames": {
+    "median": 3,
+    "p95": 4,
+    "max": 4
+  },
+  "converged": true,
+  "release_to_final_ms": 26,
+  "stats_delta": {
+    "requests": 21,
+    "accepted": 21,
+    "cancelled": 0,
+    "dropped_stale": 0,
+    "coalesced": 47
+  },
+  "presented_frame": 48,
+  "last_frame": {
+    "render_ms": 12.0,
+    "total_ms": 12.0,
+    "inspected": true
+  },
+  "clock_uncertainty_ms": 3.1,
+  "host_spans_ms": {
+    "prepare_ms": {
+      "median": 0.002,
+      "p95": 0.002,
+      "max": 0.002
+    },
+    "serialize_ms": {
+      "median": 0.024,
+      "p95": 0.029,
+      "max": 0.03
+    },
+    "dispatch_ms": {
+      "median": 0.009,
+      "p95": 0.011,
+      "max": 0.012
+    },
+    "transit_ms": {
+      "median": 1.409,
+      "p95": 2.013,
+      "max": 2.666
+    },
+    "runtime_total_ms": {
+      "median": 24.0,
+      "p95": 25.0,
+      "max": 27.0
+    },
+    "runtime_render_ms": {
+      "median": 24.0,
+      "p95": 25.0,
+      "max": 27.0
+    },
+    "accept_ms": {
+      "median": 0.003,
+      "p95": 0.003,
+      "max": 0.004
+    },
+    "submit_to_done_ms": {
+      "median": 24.882,
+      "p95": 26.932,
+      "max": 28.409
+    }
+  },
+  "renderer": "Apple GPU",
+  "output": {
+    "width": 320,
+    "height": 180
+  },
+  "pixels": {
+    "pictures_seen": 20,
+    "distinct_hashes": 8,
+    "on_screen_hash": "84d3a925378a4b25",
+    "explicit_hash": "84d3a925378a4b25"
+  },
+  "restored_playhead": true,
+  "checks": {
+    "at least 5 pictures in 0.5s": true,
+    "converged on the last position": true,
+    "no render was left cancelled-starved (accepted > 0)": true,
+    "the pictures shown during the drag differ from each other (not a counter alone)": true,
+    "the picture on screen at release is the explicit render of the last position": true,
+    "the playhead is back where it was": true
+  },
+  "pass": true
+}

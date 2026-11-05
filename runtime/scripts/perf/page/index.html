@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Tessel viewport performance page</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+      }
+      #viewport {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+        object-fit: contain;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="viewport" width="16" height="9"></canvas>
+    <!-- order matters: the preamble installs the bridge tap and GL counters before the runtime
+         creates its context; the driver runs after TesselRuntime exists -->
+    <script src="/perf/preamble.js"></script>
+    <script src="/runtime.js"></script>
+    <script src="/perf/driver.js"></script>
+  </body>
+</html>

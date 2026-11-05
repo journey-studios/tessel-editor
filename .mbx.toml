@@ -1,0 +1,7 @@
+# Share eligible compiler work while retaining checkout-specific source paths.
+share_workspace_root = false
+
+[scheduler]
+# Keep capacity for the desktop UI and other agent work.
+reserve_cpus = 2
+memory = "10GiB"

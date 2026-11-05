@@ -1,0 +1,40 @@
+#!/bin/sh
+# Project-scoped Cargo cache; does not install a global Cargo shim.
+set -eu
+project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$project_root"
+
+if [ -n "${TESSEL_MBX_BIN:-}" ]; then
+    mbx_binary=$TESSEL_MBX_BIN
+elif command -v mbx >/dev/null 2>&1; then
+    mbx_binary=$(command -v mbx)
+elif [ -x "$HOME/.cargo/bin/mbx" ]; then
+    mbx_binary="$HOME/.cargo/bin/mbx"
+else
+    echo 'mbx is required. Install with: cargo install mbx --version 1.29.2 --locked' >&2
+    exit 127
+fi
+
+# These settings are machine-local policy: mbx forbids GC settings in .mbx.toml.
+export MBX_DISPLAY="${MBX_DISPLAY:-plain}"
+export MBX_SAVINGS="${MBX_SAVINGS:-plain}"
+export MBX_GC_MAX_TOTAL_SIZE="${MBX_GC_MAX_TOTAL_SIZE:-8GiB}"
+export MBX_GC_MIN_FREE_SIZE="${MBX_GC_MIN_FREE_SIZE:-4GiB}"
+
+# Separate two concurrent builds in the same checkout; check/clippy get a native
+# check lane when no explicit target directory is supplied.
+if [ -n "${TESSEL_CARGO_LANE:-}" ]; then
+    case "$TESSEL_CARGO_LANE" in
+        *[!a-zA-Z0-9_-]*)
+            echo 'TESSEL_CARGO_LANE accepts letters, digits, underscores and hyphens.' >&2
+            exit 2
+            ;;
+    esac
+    if [ -n "${CARGO_TARGET_DIR:-}" ]; then
+        echo 'Use either TESSEL_CARGO_LANE or CARGO_TARGET_DIR, not both.' >&2
+        exit 2
+    fi
+    export CARGO_TARGET_DIR="$project_root/target/lanes/$TESSEL_CARGO_LANE"
+fi
+
+exec "$mbx_binary" "$@"

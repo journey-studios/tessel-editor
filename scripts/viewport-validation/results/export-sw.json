@@ -1,0 +1,484 @@
+[
+{
+"kind": "export",
+"variant": "baseline",
+"preset": "fullhd",
+"gl": "swiftshader",
+"rep": 0,
+"heavy": "",
+"ok": true,
+"seconds": 32.3,
+"error": null,
+"file_sha": "f74c8dbefc38a359e2e78218bf59dcd3f8d144173f48599a10e4c3304f3df0a1",
+"size": 253468,
+"probe": {
+"streams": [
+{
+"codec_name": "h264",
+"codec_type": "video",
+"width": 1920,
+"height": 1080,
+"pix_fmt": "yuv420p",
+"r_frame_rate": "24/1",
+"duration": "2.000000",
+"nb_read_frames": "48"
+},
+{
+"codec_name": "aac",
+"codec_type": "audio",
+"sample_rate": "48000",
+"channels": 2,
+"r_frame_rate": "0/0",
+"duration": "2.000000",
+"nb_read_frames": "94"
+}
+],
+"pts_first_last": [
+"0.000000",
+"1.958333"
+],
+"pts_monotonic": true
+},
+"frames": 48,
+"frames_sha": "440944cf3bf11cb2",
+"audio_md5": "MD5=079ad087a29cbd32bc965209ecbd80be",
+"tones": {
+"330_first": 0.0,
+"330_second": 0.0882,
+"440_first": 0.3526,
+"440_second": 0.3541
+},
+"vs_ref": {
+"ref": "baseline#0",
+"identical_frames": 48,
+"of": 48
+}
+},
+{
+"kind": "export",
+"variant": "baseline",
+"preset": "fullhd",
+"gl": "swiftshader",
+"rep": 1,
+"heavy": "",
+"ok": true,
+"seconds": 53.19,
+"error": null,
+"file_sha": "f74c8dbefc38a359e2e78218bf59dcd3f8d144173f48599a10e4c3304f3df0a1",
+"size": 253468,
+"probe": {
+"streams": [
+{
+"codec_name": "h264",
+"codec_type": "video",
+"width": 1920,
+"height": 1080,
+"pix_fmt": "yuv420p",
+"r_frame_rate": "24/1",
+"duration": "2.000000",
+"nb_read_frames": "48"
+},
+{
+"codec_name": "aac",
+"codec_type": "audio",
+"sample_rate": "48000",
+"channels": 2,
+"r_frame_rate": "0/0",
+"duration": "2.000000",
+"nb_read_frames": "94"
+}
+],
+"pts_first_last": [
+"0.000000",
+"1.958333"
+],
+"pts_monotonic": true
+},
+"frames": 48,
+"frames_sha": "440944cf3bf11cb2",
+"audio_md5": "MD5=079ad087a29cbd32bc965209ecbd80be",
+"tones": {
+"330_first": 0.0,
+"330_second": 0.0882,
+"440_first": 0.3526,
+"440_second": 0.3541
+},
+"vs_ref": {
+"ref": "baseline#0",
+"identical_frames": 48,
+"of": 48
+}
+},
+{
+"kind": "export",
+"variant": "retained",
+"preset": "fullhd",
+"gl": "swiftshader",
+"rep": 0,
+"heavy": "",
+"ok": true,
+"seconds": 22.23,
+"error": null,
+"file_sha": "f74c8dbefc38a359e2e78218bf59dcd3f8d144173f48599a10e4c3304f3df0a1",
+"size": 253468,
+"probe": {
+"streams": [
+{
+"codec_name": "h264",
+"codec_type": "video",
+"width": 1920,
+"height": 1080,
+"pix_fmt": "yuv420p",
+"r_frame_rate": "24/1",
+"duration": "2.000000",
+"nb_read_frames": "48"
+},
+{
+"codec_name": "aac",
+"codec_type": "audio",
+"sample_rate": "48000",
+"channels": 2,
+"r_frame_rate": "0/0",
+"duration": "2.000000",
+"nb_read_frames": "94"
+}
+],
+"pts_first_last": [
+"0.000000",
+"1.958333"
+],
+"pts_monotonic": true
+},
+"frames": 48,
+"frames_sha": "440944cf3bf11cb2",
+"audio_md5": "MD5=079ad087a29cbd32bc965209ecbd80be",
+"tones": {
+"330_first": 0.0,
+"330_second": 0.0882,
+"440_first": 0.3526,
+"440_second": 0.3541
+},
+"vs_ref": {
+"ref": "baseline#0",
+"identical_frames": 48,
+"of": 48
+}
+},
+{
+"kind": "export",
+"variant": "retained",
+"preset": "fullhd",
+"gl": "swiftshader",
+"rep": 1,
+"heavy": "",
+"ok": true,
+"seconds": 29.43,
+"error": null,
+"file_sha": "f74c8dbefc38a359e2e78218bf59dcd3f8d144173f48599a10e4c3304f3df0a1",
+"size": 253468,
+"probe": {
+"streams": [
+{
+"codec_name": "h264",
+"codec_type": "video",
+"width": 1920,
+"height": 1080,
+"pix_fmt": "yuv420p",
+"r_frame_rate": "24/1",
+"duration": "2.000000",
+"nb_read_frames": "48"
+},
+{
+"codec_name": "aac",
+"codec_type": "audio",
+"sample_rate": "48000",
+"channels": 2,
+"r_frame_rate": "0/0",
+"duration": "2.000000",
+"nb_read_frames": "94"
+}
+],
+"pts_first_last": [
+"0.000000",
+"1.958333"
+],
+"pts_monotonic": true
+},
+"frames": 48,
+"frames_sha": "440944cf3bf11cb2",
+"audio_md5": "MD5=079ad087a29cbd32bc965209ecbd80be",
+"tones": {
+"330_first": 0.0,
+"330_second": 0.0882,
+"440_first": 0.3526,
+"440_second": 0.3541
+},
+"vs_ref": {
+"ref": "baseline#0",
+"identical_frames": 48,
+"of": 48
+}
+},
+{
+"kind": "export",
+"variant": "baseline",
+"preset": "uhd4k",
+"gl": "swiftshader",
+"rep": 0,
+"heavy": "",
+"ok": true,
+"seconds": 75.34,
+"error": null,
+"file_sha": "db943893e6e9b7667aa3e8e8d9505bdb43147fad27790f83471b391881c01d52",
+"size": 522382,
+"probe": {
+"streams": [
+{
+"codec_name": "h264",
+"codec_type": "video",
+"width": 3840,
+"height": 2160,
+"pix_fmt": "yuv420p",
+"r_frame_rate": "24/1",
+"duration": "2.000000",
+"nb_read_frames": "48"
+},
+{
+"codec_name": "aac",
+"codec_type": "audio",
+"sample_rate": "48000",
+"channels": 2,
+"r_frame_rate": "0/0",
+"duration": "2.000000",
+"nb_read_frames": "94"
+}
+],
+"pts_first_last": [
+"0.000000",
+"1.958333"
+],
+"pts_monotonic": true
+},
+"frames": 48,
+"frames_sha": "a32a710cdcaaf644",
+"audio_md5": "MD5=079ad087a29cbd32bc965209ecbd80be",
+"tones": {
+"330_first": 0.0,
+"330_second": 0.0882,
+"440_first": 0.3526,
+"440_second": 0.3541
+},
+"vs_ref": {
+"ref": "baseline#0",
+"identical_frames": 48,
+"of": 48
+}
+},
+{
+"kind": "export",
+"variant": "baseline",
+"preset": "uhd4k",
+"gl": "swiftshader",
+"rep": 1,
+"heavy": "",
+"ok": true,
+"seconds": 82.61,
+"error": null,
+"file_sha": "db943893e6e9b7667aa3e8e8d9505bdb43147fad27790f83471b391881c01d52",
+"size": 522382,
+"probe": {
+"streams": [
+{
+"codec_name": "h264",
+"codec_type": "video",
+"width": 3840,
+"height": 2160,
+"pix_fmt": "yuv420p",
+"r_frame_rate": "24/1",
+"duration": "2.000000",
+"nb_read_frames": "48"
+},
+{
+"codec_name": "aac",
+"codec_type": "audio",
+"sample_rate": "48000",
+"channels": 2,
+"r_frame_rate": "0/0",
+"duration": "2.000000",
+"nb_read_frames": "94"
+}
+],
+"pts_first_last": [
+"0.000000",
+"1.958333"
+],
+"pts_monotonic": true
+},
+"frames": 48,
+"frames_sha": "a32a710cdcaaf644",
+"audio_md5": "MD5=079ad087a29cbd32bc965209ecbd80be",
+"tones": {
+"330_first": 0.0,
+"330_second": 0.0882,
+"440_first": 0.3526,
+"440_second": 0.3541
+},
+"vs_ref": {
+"ref": "baseline#0",
+"identical_frames": 48,
+"of": 48
+}
+},
+{
+"kind": "export",
+"variant": "retained",
+"preset": "uhd4k",
+"gl": "swiftshader",
+"rep": 0,
+"heavy": "",
+"ok": true,
+"seconds": 68.48,
+"error": null,
+"file_sha": "db943893e6e9b7667aa3e8e8d9505bdb43147fad27790f83471b391881c01d52",
+"size": 522382,
+"probe": {
+"streams": [
+{
+"codec_name": "h264",
+"codec_type": "video",
+"width": 3840,
+"height": 2160,
+"pix_fmt": "yuv420p",
+"r_frame_rate": "24/1",
+"duration": "2.000000",
+"nb_read_frames": "48"
+},
+{
+"codec_name": "aac",
+"codec_type": "audio",
+"sample_rate": "48000",
+"channels": 2,
+"r_frame_rate": "0/0",
+"duration": "2.000000",
+"nb_read_frames": "94"
+}
+],
+"pts_first_last": [
+"0.000000",
+"1.958333"
+],
+"pts_monotonic": true
+},
+"frames": 48,
+"frames_sha": "a32a710cdcaaf644",
+"audio_md5": "MD5=079ad087a29cbd32bc965209ecbd80be",
+"tones": {
+"330_first": 0.0,
+"330_second": 0.0882,
+"440_first": 0.3526,
+"440_second": 0.3541
+},
+"vs_ref": {
+"ref": "baseline#0",
+"identical_frames": 48,
+"of": 48
+}
+},
+{
+"kind": "export",
+"variant": "retained",
+"preset": "uhd4k",
+"gl": "swiftshader",
+"rep": 1,
+"heavy": "",
+"ok": true,
+"seconds": 64.13,
+"error": null,
+"file_sha": "db943893e6e9b7667aa3e8e8d9505bdb43147fad27790f83471b391881c01d52",
+"size": 522382,
+"probe": {
+"streams": [
+{
+"codec_name": "h264",
+"codec_type": "video",
+"width": 3840,
+"height": 2160,
+"pix_fmt": "yuv420p",
+"r_frame_rate": "24/1",
+"duration": "2.000000",
+"nb_read_frames": "48"
+},
+{
+"codec_name": "aac",
+"codec_type": "audio",
+"sample_rate": "48000",
+"channels": 2,
+"r_frame_rate": "0/0",
+"duration": "2.000000",
+"nb_read_frames": "94"
+}
+],
+"pts_first_last": [
+"0.000000",
+"1.958333"
+],
+"pts_monotonic": true
+},
+"frames": 48,
+"frames_sha": "a32a710cdcaaf644",
+"audio_md5": "MD5=079ad087a29cbd32bc965209ecbd80be",
+"tones": {
+"330_first": 0.0,
+"330_second": 0.0882,
+"440_first": 0.3526,
+"440_second": 0.3541
+},
+"vs_ref": {
+"ref": "baseline#0",
+"identical_frames": 48,
+"of": 48
+}
+},
+{
+"kind": "cancel",
+"variant": "baseline",
+"gl": "swiftshader",
+"done_at_cancel": 3,
+"final": "cancelled",
+"dest_exists": false,
+"leftovers": [],
+"cancel_ok": true,
+"recover_ok": true,
+"recover_identical": 48,
+"of": 48,
+"edit_ok": [
+true,
+true
+],
+"snap_state": "succeeded",
+"snap_identical": 48,
+"snap_of": 48,
+"after_edit_differs": 48
+},
+{
+"kind": "cancel",
+"variant": "retained",
+"gl": "swiftshader",
+"done_at_cancel": 3,
+"final": "cancelled",
+"dest_exists": false,
+"leftovers": [],
+"cancel_ok": true,
+"recover_ok": true,
+"recover_identical": 48,
+"of": 48,
+"edit_ok": [
+true,
+true
+],
+"snap_state": "succeeded",
+"snap_identical": 48,
+"snap_of": 48,
+"after_edit_differs": 48
+}
+]

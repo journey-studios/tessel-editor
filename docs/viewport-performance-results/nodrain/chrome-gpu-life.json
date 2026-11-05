@@ -1,0 +1,341 @@
+{
+ "environment": {
+  "engine": "chrome-gpu",
+  "suite": "life",
+  "runs": 30,
+  "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3 Pro, Unspecified Version)",
+  "browser": "Chrome/156.0.8078.80"
+ },
+ "rows": [
+  {
+   "case": "image",
+   "variant": "current",
+   "pass": 1,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "{\"retain\":true,\"presented\":false,\"text_entries\":0,\"text_bytes\":0,\"material_entries\":1,\"rig_entries\":0,\"target_entries\":0,\"target_bytes\":0,\"texture_entries\":0,\"texture_bytes\":0,\"asset_generation\":7,\"context_generation\":1,\"counters\":{\"texture_created\":4,\"texture_reused\":2,\"texture_evicted\":0,\"text_created\":0,\"text_reused\":0,\"text_evicted\":0,\"material_created\":2,\"material_reused\":4,\"material_evicted\":0,\"rig_built\":0,\"rig_reused\":0,\"rig_evicted\":0,\"target_created\":0,\"target_reused\":0,\"target_evicted\":0}}"
+  },
+  {
+   "case": "image",
+   "variant": "legacy",
+   "pass": 1,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "{\"retain\":false,\"presented\":false,\"text_entries\":0,\"text_bytes\":0,\"material_entries\":0,\"rig_entries\":0,\"target_entries\":0,\"target_bytes\":0,\"texture_entries\":0,\"texture_bytes\":0,\"asset_generation\":7,\"context_generation\":1,\"counters\":{\"texture_created\":0,\"texture_reused\":0,\"texture_evicted\":0,\"text_created\":0,\"text_reused\":0,\"text_evicted\":0,\"material_created\":0,\"material_reused\":0,\"material_evicted\":0,\"rig_built\":0,\"rig_reused\":0,\"rig_evicted\":0,\"target_created\":0,\"target_reused\":0,\"target_evicted\":0}}"
+  },
+  {
+   "case": "image",
+   "variant": "baseline",
+   "pass": 1,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "null"
+  },
+  {
+   "case": "image-2layers",
+   "variant": "current",
+   "pass": 1,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "{\"retain\":true,\"presented\":false,\"text_entries\":0,\"text_bytes\":0,\"material_entries\":2,\"rig_entries\":0,\"target_entries\":0,\"target_bytes\":0,\"texture_entries\":0,\"texture_bytes\":0,\"asset_generation\":9,\"context_generation\":1,\"counters\":{\"texture_created\":6,\"texture_reused\":6,\"texture_evicted\":0,\"text_created\":0,\"text_reused\":0,\"text_evicted\":0,\"material_created\":4,\"material_reused\":8,\"material_evicted\":0,\"rig_built\":0,\"rig_reused\":0,\"rig_evicted\":0,\"target_created\":0,\"target_reused\":0,\"target_evicted\":0}}"
+  },
+  {
+   "case": "image-2layers",
+   "variant": "legacy",
+   "pass": 1,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "{\"retain\":false,\"presented\":false,\"text_entries\":0,\"text_bytes\":0,\"material_entries\":0,\"rig_entries\":0,\"target_entries\":0,\"target_bytes\":0,\"texture_entries\":0,\"texture_bytes\":0,\"asset_generation\":9,\"context_generation\":1,\"counters\":{\"texture_created\":0,\"texture_reused\":0,\"texture_evicted\":0,\"text_created\":0,\"text_reused\":0,\"text_evicted\":0,\"material_created\":0,\"material_reused\":0,\"material_evicted\":0,\"rig_built\":0,\"rig_reused\":0,\"rig_evicted\":0,\"target_created\":0,\"target_reused\":0,\"target_evicted\":0}}"
+  },
+  {
+   "case": "image-2layers",
+   "variant": "baseline",
+   "pass": 1,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "null"
+  },
+  {
+   "case": "image+text",
+   "variant": "current",
+   "pass": 1,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "{\"retain\":true,\"presented\":false,\"text_entries\":1,\"text_bytes\":105644,\"material_entries\":2,\"rig_entries\":0,\"target_entries\":0,\"target_bytes\":0,\"texture_entries\":0,\"texture_bytes\":0,\"asset_generation\":7,\"context_generation\":1,\"counters\":{\"texture_created\":4,\"texture_reused\":2,\"texture_evicted\":0,\"text_created\":2,\"text_reused\":4,\"text_evicted\":0,\"material_created\":4,\"material_reused\":8,\"material_evicted\":0,\"rig_built\":0,\"rig_reused\":0,\"rig_evicted\":0,\"target_created\":0,\"target_reused\":0,\"target_evicted\":0}}"
+  },
+  {
+   "case": "image+text",
+   "variant": "legacy",
+   "pass": 1,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "{\"retain\":false,\"presented\":false,\"text_entries\":0,\"text_bytes\":0,\"material_entries\":0,\"rig_entries\":0,\"target_entries\":0,\"target_bytes\":0,\"texture_entries\":0,\"texture_bytes\":0,\"asset_generation\":7,\"context_generation\":1,\"counters\":{\"texture_created\":0,\"texture_reused\":0,\"texture_evicted\":0,\"text_created\":0,\"text_reused\":0,\"text_evicted\":0,\"material_created\":0,\"material_reused\":0,\"material_evicted\":0,\"rig_built\":0,\"rig_reused\":0,\"rig_evicted\":0,\"target_created\":0,\"target_reused\":0,\"target_evicted\":0}}"
+  },
+  {
+   "case": "image+text",
+   "variant": "baseline",
+   "pass": 1,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "null"
+  },
+  {
+   "case": "video-hit",
+   "variant": "current",
+   "pass": 1,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "{\"retain\":true,\"presented\":false,\"text_entries\":0,\"text_bytes\":0,\"material_entries\":1,\"rig_entries\":0,\"target_entries\":0,\"target_bytes\":0,\"texture_entries\":0,\"texture_bytes\":0,\"asset_generation\":7,\"context_generation\":1,\"counters\":{\"texture_created\":6,\"texture_reused\":0,\"texture_evicted\":0,\"text_created\":0,\"text_reused\":0,\"text_evicted\":0,\"material_created\":2,\"material_reused\":4,\"material_evicted\":0,\"rig_built\":0,\"rig_reused\":0,\"rig_evicted\":0,\"target_created\":0,\"target_reused\":0,\"target_evicted\":0}}"
+  },
+  {
+   "case": "video-hit",
+   "variant": "legacy",
+   "pass": 1,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "{\"retain\":false,\"presented\":false,\"text_entries\":0,\"text_bytes\":0,\"material_entries\":0,\"rig_entries\":0,\"target_entries\":0,\"target_bytes\":0,\"texture_entries\":0,\"texture_bytes\":0,\"asset_generation\":7,\"context_generation\":1,\"counters\":{\"texture_created\":6,\"texture_reused\":0,\"texture_evicted\":0,\"text_created\":0,\"text_reused\":0,\"text_evicted\":0,\"material_created\":0,\"material_reused\":0,\"material_evicted\":0,\"rig_built\":0,\"rig_reused\":0,\"rig_evicted\":0,\"target_created\":0,\"target_reused\":0,\"target_evicted\":0}}"
+  },
+  {
+   "case": "video-hit",
+   "variant": "baseline",
+   "pass": 1,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "null"
+  },
+  {
+   "case": "scene",
+   "variant": "current",
+   "pass": 1,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "{\"retain\":true,\"presented\":false,\"text_entries\":0,\"text_bytes\":0,\"material_entries\":1,\"rig_entries\":0,\"target_entries\":1,\"target_bytes\":18662400,\"texture_entries\":0,\"texture_bytes\":0,\"asset_generation\":7,\"context_generation\":1,\"counters\":{\"texture_created\":0,\"texture_reused\":0,\"texture_evicted\":0,\"text_created\":0,\"text_reused\":0,\"text_evicted\":0,\"material_created\":2,\"material_reused\":4,\"material_evicted\":0,\"rig_built\":4,\"rig_reused\":2,\"rig_evicted\":0,\"target_created\":2,\"target_reused\":4,\"target_evicted\":0}}"
+  },
+  {
+   "case": "scene",
+   "variant": "legacy",
+   "pass": 1,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "{\"retain\":false,\"presented\":false,\"text_entries\":0,\"text_bytes\":0,\"material_entries\":0,\"rig_entries\":0,\"target_entries\":0,\"target_bytes\":0,\"texture_entries\":0,\"texture_bytes\":0,\"asset_generation\":7,\"context_generation\":1,\"counters\":{\"texture_created\":0,\"texture_reused\":0,\"texture_evicted\":0,\"text_created\":0,\"text_reused\":0,\"text_evicted\":0,\"material_created\":0,\"material_reused\":0,\"material_evicted\":0,\"rig_built\":0,\"rig_reused\":0,\"rig_evicted\":0,\"target_created\":0,\"target_reused\":0,\"target_evicted\":0}}"
+  },
+  {
+   "case": "scene",
+   "variant": "baseline",
+   "pass": 1,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "null"
+  },
+  {
+   "case": "image",
+   "variant": "baseline",
+   "pass": 2,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "null"
+  },
+  {
+   "case": "image",
+   "variant": "legacy",
+   "pass": 2,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "{\"retain\":false,\"presented\":false,\"text_entries\":0,\"text_bytes\":0,\"material_entries\":0,\"rig_entries\":0,\"target_entries\":0,\"target_bytes\":0,\"texture_entries\":0,\"texture_bytes\":0,\"asset_generation\":7,\"context_generation\":1,\"counters\":{\"texture_created\":0,\"texture_reused\":0,\"texture_evicted\":0,\"text_created\":0,\"text_reused\":0,\"text_evicted\":0,\"material_created\":0,\"material_reused\":0,\"material_evicted\":0,\"rig_built\":0,\"rig_reused\":0,\"rig_evicted\":0,\"target_created\":0,\"target_reused\":0,\"target_evicted\":0}}"
+  },
+  {
+   "case": "image",
+   "variant": "current",
+   "pass": 2,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "{\"retain\":true,\"presented\":false,\"text_entries\":0,\"text_bytes\":0,\"material_entries\":1,\"rig_entries\":0,\"target_entries\":0,\"target_bytes\":0,\"texture_entries\":0,\"texture_bytes\":0,\"asset_generation\":7,\"context_generation\":1,\"counters\":{\"texture_created\":4,\"texture_reused\":2,\"texture_evicted\":0,\"text_created\":0,\"text_reused\":0,\"text_evicted\":0,\"material_created\":2,\"material_reused\":4,\"material_evicted\":0,\"rig_built\":0,\"rig_reused\":0,\"rig_evicted\":0,\"target_created\":0,\"target_reused\":0,\"target_evicted\":0}}"
+  },
+  {
+   "case": "image-2layers",
+   "variant": "baseline",
+   "pass": 2,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "null"
+  },
+  {
+   "case": "image-2layers",
+   "variant": "legacy",
+   "pass": 2,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "{\"retain\":false,\"presented\":false,\"text_entries\":0,\"text_bytes\":0,\"material_entries\":0,\"rig_entries\":0,\"target_entries\":0,\"target_bytes\":0,\"texture_entries\":0,\"texture_bytes\":0,\"asset_generation\":9,\"context_generation\":1,\"counters\":{\"texture_created\":0,\"texture_reused\":0,\"texture_evicted\":0,\"text_created\":0,\"text_reused\":0,\"text_evicted\":0,\"material_created\":0,\"material_reused\":0,\"material_evicted\":0,\"rig_built\":0,\"rig_reused\":0,\"rig_evicted\":0,\"target_created\":0,\"target_reused\":0,\"target_evicted\":0}}"
+  },
+  {
+   "case": "image-2layers",
+   "variant": "current",
+   "pass": 2,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "{\"retain\":true,\"presented\":false,\"text_entries\":0,\"text_bytes\":0,\"material_entries\":2,\"rig_entries\":0,\"target_entries\":0,\"target_bytes\":0,\"texture_entries\":0,\"texture_bytes\":0,\"asset_generation\":9,\"context_generation\":1,\"counters\":{\"texture_created\":6,\"texture_reused\":6,\"texture_evicted\":0,\"text_created\":0,\"text_reused\":0,\"text_evicted\":0,\"material_created\":4,\"material_reused\":8,\"material_evicted\":0,\"rig_built\":0,\"rig_reused\":0,\"rig_evicted\":0,\"target_created\":0,\"target_reused\":0,\"target_evicted\":0}}"
+  },
+  {
+   "case": "image+text",
+   "variant": "baseline",
+   "pass": 2,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "null"
+  },
+  {
+   "case": "image+text",
+   "variant": "legacy",
+   "pass": 2,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "{\"retain\":false,\"presented\":false,\"text_entries\":0,\"text_bytes\":0,\"material_entries\":0,\"rig_entries\":0,\"target_entries\":0,\"target_bytes\":0,\"texture_entries\":0,\"texture_bytes\":0,\"asset_generation\":7,\"context_generation\":1,\"counters\":{\"texture_created\":0,\"texture_reused\":0,\"texture_evicted\":0,\"text_created\":0,\"text_reused\":0,\"text_evicted\":0,\"material_created\":0,\"material_reused\":0,\"material_evicted\":0,\"rig_built\":0,\"rig_reused\":0,\"rig_evicted\":0,\"target_created\":0,\"target_reused\":0,\"target_evicted\":0}}"
+  },
+  {
+   "case": "image+text",
+   "variant": "current",
+   "pass": 2,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "{\"retain\":true,\"presented\":false,\"text_entries\":1,\"text_bytes\":105644,\"material_entries\":2,\"rig_entries\":0,\"target_entries\":0,\"target_bytes\":0,\"texture_entries\":0,\"texture_bytes\":0,\"asset_generation\":7,\"context_generation\":1,\"counters\":{\"texture_created\":4,\"texture_reused\":2,\"texture_evicted\":0,\"text_created\":2,\"text_reused\":4,\"text_evicted\":0,\"material_created\":4,\"material_reused\":8,\"material_evicted\":0,\"rig_built\":0,\"rig_reused\":0,\"rig_evicted\":0,\"target_created\":0,\"target_reused\":0,\"target_evicted\":0}}"
+  },
+  {
+   "case": "video-hit",
+   "variant": "baseline",
+   "pass": 2,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "null"
+  },
+  {
+   "case": "video-hit",
+   "variant": "legacy",
+   "pass": 2,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "{\"retain\":false,\"presented\":false,\"text_entries\":0,\"text_bytes\":0,\"material_entries\":0,\"rig_entries\":0,\"target_entries\":0,\"target_bytes\":0,\"texture_entries\":0,\"texture_bytes\":0,\"asset_generation\":7,\"context_generation\":1,\"counters\":{\"texture_created\":6,\"texture_reused\":0,\"texture_evicted\":0,\"text_created\":0,\"text_reused\":0,\"text_evicted\":0,\"material_created\":0,\"material_reused\":0,\"material_evicted\":0,\"rig_built\":0,\"rig_reused\":0,\"rig_evicted\":0,\"target_created\":0,\"target_reused\":0,\"target_evicted\":0}}"
+  },
+  {
+   "case": "video-hit",
+   "variant": "current",
+   "pass": 2,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "{\"retain\":true,\"presented\":false,\"text_entries\":0,\"text_bytes\":0,\"material_entries\":1,\"rig_entries\":0,\"target_entries\":0,\"target_bytes\":0,\"texture_entries\":0,\"texture_bytes\":0,\"asset_generation\":7,\"context_generation\":1,\"counters\":{\"texture_created\":6,\"texture_reused\":0,\"texture_evicted\":0,\"text_created\":0,\"text_reused\":0,\"text_evicted\":0,\"material_created\":2,\"material_reused\":4,\"material_evicted\":0,\"rig_built\":0,\"rig_reused\":0,\"rig_evicted\":0,\"target_created\":0,\"target_reused\":0,\"target_evicted\":0}}"
+  },
+  {
+   "case": "scene",
+   "variant": "baseline",
+   "pass": 2,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "null"
+  },
+  {
+   "case": "scene",
+   "variant": "legacy",
+   "pass": 2,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "{\"retain\":false,\"presented\":false,\"text_entries\":0,\"text_bytes\":0,\"material_entries\":0,\"rig_entries\":0,\"target_entries\":0,\"target_bytes\":0,\"texture_entries\":0,\"texture_bytes\":0,\"asset_generation\":7,\"context_generation\":1,\"counters\":{\"texture_created\":0,\"texture_reused\":0,\"texture_evicted\":0,\"text_created\":0,\"text_reused\":0,\"text_evicted\":0,\"material_created\":0,\"material_reused\":0,\"material_evicted\":0,\"rig_built\":0,\"rig_reused\":0,\"rig_evicted\":0,\"target_created\":0,\"target_reused\":0,\"target_evicted\":0}}"
+  },
+  {
+   "case": "scene",
+   "variant": "current",
+   "pass": 2,
+   "fatal": null,
+   "errors": [],
+   "swap_changed_pixels": true,
+   "restore_exact": true,
+   "context_exact": true,
+   "retention_after_release": "{\"retain\":true,\"presented\":false,\"text_entries\":0,\"text_bytes\":0,\"material_entries\":1,\"rig_entries\":0,\"target_entries\":1,\"target_bytes\":18662400,\"texture_entries\":0,\"texture_bytes\":0,\"asset_generation\":7,\"context_generation\":1,\"counters\":{\"texture_created\":0,\"texture_reused\":0,\"texture_evicted\":0,\"text_created\":0,\"text_reused\":0,\"text_evicted\":0,\"material_created\":2,\"material_reused\":4,\"material_evicted\":0,\"rig_built\":4,\"rig_reused\":2,\"rig_evicted\":0,\"target_created\":2,\"target_reused\":4,\"target_evicted\":0}}"
+  }
+ ]
+}

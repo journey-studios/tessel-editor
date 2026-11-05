@@ -1,0 +1,6 @@
+#!/bin/sh
+# JSON Lines on stdin with the media operations (import, relink, packages, interchange, jobs)
+# and no renderer. Needs FFmpeg/FFprobe (docs/media-setup.md).
+set -eu
+cd "$(dirname "$0")/.."
+exec ./scripts/cargo run --quiet --locked -p tessel-editor-media --bin tessel-media -- "$@"

@@ -1,0 +1,95 @@
+{
+ "environment": {
+  "engine": "chrome-swiftshader",
+  "suite": "hash",
+  "runs": 54,
+  "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+  "browser": "Chrome/156.0.8078.80"
+ },
+ "rows": [
+  {
+   "case": "image",
+   "runs": 9,
+   "failed": 0,
+   "variants": [
+    "current",
+    "legacy",
+    "baseline"
+   ],
+   "frames_compared": 7,
+   "identical": true,
+   "mismatches": [],
+   "png": 1
+  },
+  {
+   "case": "image+text",
+   "runs": 9,
+   "failed": 0,
+   "variants": [
+    "current",
+    "legacy",
+    "baseline"
+   ],
+   "frames_compared": 8,
+   "identical": true,
+   "mismatches": [],
+   "png": 1
+  },
+  {
+   "case": "text-changing",
+   "runs": 9,
+   "failed": 0,
+   "variants": [
+    "current",
+    "legacy",
+    "baseline"
+   ],
+   "frames_compared": 9,
+   "identical": true,
+   "mismatches": [],
+   "png": 3
+  },
+  {
+   "case": "video-miss",
+   "runs": 9,
+   "failed": 0,
+   "variants": [
+    "current",
+    "legacy",
+    "baseline"
+   ],
+   "frames_compared": 8,
+   "identical": true,
+   "mismatches": [],
+   "png": 2
+  },
+  {
+   "case": "scene",
+   "runs": 9,
+   "failed": 0,
+   "variants": [
+    "current",
+    "legacy",
+    "baseline"
+   ],
+   "frames_compared": 7,
+   "identical": true,
+   "mismatches": [],
+   "png": 1
+  },
+  {
+   "case": "spark-100k-orbit",
+   "runs": 9,
+   "failed": 0,
+   "variants": [
+    "current",
+    "legacy",
+    "baseline"
+   ],
+   "frames_compared": 8,
+   "identical": true,
+   "mismatches": [],
+   "png": 2
+  }
+ ]
+}

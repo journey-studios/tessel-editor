@@ -1,0 +1,14 @@
+[package]
+name = "tessel-editor-core"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+# SPZ is gzip: the probe inflates its 16-byte header to tell it from a random gzip.
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+
+[lints]
+workspace = true

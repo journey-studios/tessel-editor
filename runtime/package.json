@@ -1,0 +1,19 @@
+{
+  "name": "tessel-viewport-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local Three.js viewport runtime shared by the headless worker and the desktop WebView",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@sparkjsdev/spark": "2.4.0",
+    "three": "0.187.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "puppeteer-core": "25.16.0"
+  }
+}

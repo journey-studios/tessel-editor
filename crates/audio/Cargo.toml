@@ -1,0 +1,15 @@
+[package]
+name = "tessel-editor-audio"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+description = "Device audio output for playback: a sample clock, pause/seek/stop and latency/underrun reporting."
+
+[dependencies]
+# CoreAudio on macOS, WASAPI/ALSA elsewhere. The one place with a device dependency, so the core
+# stays free of it and `unsafe_code = "forbid"` still holds for every crate of ours.
+cpal = "0.17"
+serde_json.workspace = true
+
+[lints]
+workspace = true

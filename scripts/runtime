@@ -1,0 +1,13 @@
+#!/bin/sh
+# The Three.js runtime (runtime/): setup, build and test. Always pnpm, never npm.
+#   ./scripts/runtime setup   install dependencies and build runtime/dist
+#   ./scripts/runtime build   rebuild runtime/dist after editing runtime/src
+#   ./scripts/runtime test    unit + browser tests (needs Chrome; set TESSEL_CHROME if not found)
+set -eu
+cd "$(dirname "$0")/../runtime"
+case "${1:-}" in
+    setup) pnpm install --frozen-lockfile && pnpm run build ;;
+    build) pnpm run build ;;
+    test) pnpm test ;;
+    *) echo "Usage: ./scripts/runtime setup|build|test" >&2; exit 2 ;;
+esac

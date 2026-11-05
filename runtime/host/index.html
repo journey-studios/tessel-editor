@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Tessel viewport</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #000;
+        overflow: hidden;
+      }
+      /* The buffer has the sequence resolution; CSS only letterboxes it into the window. */
+      #viewport {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+        object-fit: contain;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="viewport" width="16" height="9"></canvas>
+    <script src="/runtime.js"></script>
+  </body>
+</html>

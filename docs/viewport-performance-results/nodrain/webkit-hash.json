@@ -1,0 +1,95 @@
+{
+ "environment": {
+  "engine": "webkit",
+  "suite": "hash",
+  "runs": 54,
+  "renderer": "Apple GPU",
+  "browser": null
+ },
+ "rows": [
+  {
+   "case": "image",
+   "runs": 9,
+   "failed": 0,
+   "variants": [
+    "current",
+    "legacy",
+    "baseline"
+   ],
+   "frames_compared": 7,
+   "identical": true,
+   "mismatches": [],
+   "png": 1
+  },
+  {
+   "case": "image+text",
+   "runs": 9,
+   "failed": 0,
+   "variants": [
+    "current",
+    "legacy",
+    "baseline"
+   ],
+   "frames_compared": 8,
+   "identical": true,
+   "mismatches": [],
+   "png": 1
+  },
+  {
+   "case": "text-changing",
+   "runs": 9,
+   "failed": 0,
+   "variants": [
+    "current",
+    "legacy",
+    "baseline"
+   ],
+   "frames_compared": 9,
+   "identical": true,
+   "mismatches": [],
+   "png": 3
+  },
+  {
+   "case": "video-miss",
+   "runs": 9,
+   "failed": 0,
+   "variants": [
+    "current",
+    "legacy",
+    "baseline"
+   ],
+   "frames_compared": 8,
+   "identical": true,
+   "mismatches": [],
+   "png": 2
+  },
+  {
+   "case": "scene",
+   "runs": 9,
+   "failed": 0,
+   "variants": [
+    "current",
+    "legacy",
+    "baseline"
+   ],
+   "frames_compared": 7,
+   "identical": true,
+   "mismatches": [],
+   "png": 1
+  },
+  {
+   "case": "spark-100k-orbit",
+   "runs": 9,
+   "failed": 0,
+   "variants": [
+    "current",
+    "legacy",
+    "baseline"
+   ],
+   "frames_compared": 8,
+   "identical": true,
+   "mismatches": [],
+   "png": 2
+  }
+ ]
+}

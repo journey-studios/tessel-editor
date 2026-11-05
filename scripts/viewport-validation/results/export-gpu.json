@@ -1,0 +1,484 @@
+[
+{
+"kind": "export",
+"variant": "baseline",
+"preset": "fullhd",
+"gl": "gpu",
+"rep": 0,
+"heavy": "",
+"ok": true,
+"seconds": 8.84,
+"error": null,
+"file_sha": "ec468763fe5d91709bbfcea04a506ec6772bb882b91e2537625d9cba71021cc7",
+"size": 252771,
+"probe": {
+"streams": [
+{
+"codec_name": "h264",
+"codec_type": "video",
+"width": 1920,
+"height": 1080,
+"pix_fmt": "yuv420p",
+"r_frame_rate": "24/1",
+"duration": "2.000000",
+"nb_read_frames": "48"
+},
+{
+"codec_name": "aac",
+"codec_type": "audio",
+"sample_rate": "48000",
+"channels": 2,
+"r_frame_rate": "0/0",
+"duration": "2.000000",
+"nb_read_frames": "94"
+}
+],
+"pts_first_last": [
+"0.000000",
+"1.958333"
+],
+"pts_monotonic": true
+},
+"frames": 48,
+"frames_sha": "7823d164b9238a62",
+"audio_md5": "MD5=079ad087a29cbd32bc965209ecbd80be",
+"tones": {
+"330_first": 0.0,
+"330_second": 0.0882,
+"440_first": 0.3526,
+"440_second": 0.3541
+},
+"vs_ref": {
+"ref": "baseline#0",
+"identical_frames": 48,
+"of": 48
+}
+},
+{
+"kind": "export",
+"variant": "baseline",
+"preset": "fullhd",
+"gl": "gpu",
+"rep": 1,
+"heavy": "",
+"ok": true,
+"seconds": 8.53,
+"error": null,
+"file_sha": "ec468763fe5d91709bbfcea04a506ec6772bb882b91e2537625d9cba71021cc7",
+"size": 252771,
+"probe": {
+"streams": [
+{
+"codec_name": "h264",
+"codec_type": "video",
+"width": 1920,
+"height": 1080,
+"pix_fmt": "yuv420p",
+"r_frame_rate": "24/1",
+"duration": "2.000000",
+"nb_read_frames": "48"
+},
+{
+"codec_name": "aac",
+"codec_type": "audio",
+"sample_rate": "48000",
+"channels": 2,
+"r_frame_rate": "0/0",
+"duration": "2.000000",
+"nb_read_frames": "94"
+}
+],
+"pts_first_last": [
+"0.000000",
+"1.958333"
+],
+"pts_monotonic": true
+},
+"frames": 48,
+"frames_sha": "7823d164b9238a62",
+"audio_md5": "MD5=079ad087a29cbd32bc965209ecbd80be",
+"tones": {
+"330_first": 0.0,
+"330_second": 0.0882,
+"440_first": 0.3526,
+"440_second": 0.3541
+},
+"vs_ref": {
+"ref": "baseline#0",
+"identical_frames": 48,
+"of": 48
+}
+},
+{
+"kind": "export",
+"variant": "retained",
+"preset": "fullhd",
+"gl": "gpu",
+"rep": 0,
+"heavy": "",
+"ok": true,
+"seconds": 8.33,
+"error": null,
+"file_sha": "ec468763fe5d91709bbfcea04a506ec6772bb882b91e2537625d9cba71021cc7",
+"size": 252771,
+"probe": {
+"streams": [
+{
+"codec_name": "h264",
+"codec_type": "video",
+"width": 1920,
+"height": 1080,
+"pix_fmt": "yuv420p",
+"r_frame_rate": "24/1",
+"duration": "2.000000",
+"nb_read_frames": "48"
+},
+{
+"codec_name": "aac",
+"codec_type": "audio",
+"sample_rate": "48000",
+"channels": 2,
+"r_frame_rate": "0/0",
+"duration": "2.000000",
+"nb_read_frames": "94"
+}
+],
+"pts_first_last": [
+"0.000000",
+"1.958333"
+],
+"pts_monotonic": true
+},
+"frames": 48,
+"frames_sha": "7823d164b9238a62",
+"audio_md5": "MD5=079ad087a29cbd32bc965209ecbd80be",
+"tones": {
+"330_first": 0.0,
+"330_second": 0.0882,
+"440_first": 0.3526,
+"440_second": 0.3541
+},
+"vs_ref": {
+"ref": "baseline#0",
+"identical_frames": 48,
+"of": 48
+}
+},
+{
+"kind": "export",
+"variant": "retained",
+"preset": "fullhd",
+"gl": "gpu",
+"rep": 1,
+"heavy": "",
+"ok": true,
+"seconds": 8.29,
+"error": null,
+"file_sha": "ec468763fe5d91709bbfcea04a506ec6772bb882b91e2537625d9cba71021cc7",
+"size": 252771,
+"probe": {
+"streams": [
+{
+"codec_name": "h264",
+"codec_type": "video",
+"width": 1920,
+"height": 1080,
+"pix_fmt": "yuv420p",
+"r_frame_rate": "24/1",
+"duration": "2.000000",
+"nb_read_frames": "48"
+},
+{
+"codec_name": "aac",
+"codec_type": "audio",
+"sample_rate": "48000",
+"channels": 2,
+"r_frame_rate": "0/0",
+"duration": "2.000000",
+"nb_read_frames": "94"
+}
+],
+"pts_first_last": [
+"0.000000",
+"1.958333"
+],
+"pts_monotonic": true
+},
+"frames": 48,
+"frames_sha": "7823d164b9238a62",
+"audio_md5": "MD5=079ad087a29cbd32bc965209ecbd80be",
+"tones": {
+"330_first": 0.0,
+"330_second": 0.0882,
+"440_first": 0.3526,
+"440_second": 0.3541
+},
+"vs_ref": {
+"ref": "baseline#0",
+"identical_frames": 48,
+"of": 48
+}
+},
+{
+"kind": "export",
+"variant": "baseline",
+"preset": "uhd4k",
+"gl": "gpu",
+"rep": 0,
+"heavy": "",
+"ok": true,
+"seconds": 27.76,
+"error": null,
+"file_sha": "82b0cc87edcbb10322823e7f4ecb8d9bec2f78bee072696a575cb2fecd9fce31",
+"size": 524895,
+"probe": {
+"streams": [
+{
+"codec_name": "h264",
+"codec_type": "video",
+"width": 3840,
+"height": 2160,
+"pix_fmt": "yuv420p",
+"r_frame_rate": "24/1",
+"duration": "2.000000",
+"nb_read_frames": "48"
+},
+{
+"codec_name": "aac",
+"codec_type": "audio",
+"sample_rate": "48000",
+"channels": 2,
+"r_frame_rate": "0/0",
+"duration": "2.000000",
+"nb_read_frames": "94"
+}
+],
+"pts_first_last": [
+"0.000000",
+"1.958333"
+],
+"pts_monotonic": true
+},
+"frames": 48,
+"frames_sha": "40b3cbefe1e6f8d3",
+"audio_md5": "MD5=079ad087a29cbd32bc965209ecbd80be",
+"tones": {
+"330_first": 0.0,
+"330_second": 0.0882,
+"440_first": 0.3526,
+"440_second": 0.3541
+},
+"vs_ref": {
+"ref": "baseline#0",
+"identical_frames": 48,
+"of": 48
+}
+},
+{
+"kind": "export",
+"variant": "baseline",
+"preset": "uhd4k",
+"gl": "gpu",
+"rep": 1,
+"heavy": "",
+"ok": true,
+"seconds": 29.09,
+"error": null,
+"file_sha": "82b0cc87edcbb10322823e7f4ecb8d9bec2f78bee072696a575cb2fecd9fce31",
+"size": 524895,
+"probe": {
+"streams": [
+{
+"codec_name": "h264",
+"codec_type": "video",
+"width": 3840,
+"height": 2160,
+"pix_fmt": "yuv420p",
+"r_frame_rate": "24/1",
+"duration": "2.000000",
+"nb_read_frames": "48"
+},
+{
+"codec_name": "aac",
+"codec_type": "audio",
+"sample_rate": "48000",
+"channels": 2,
+"r_frame_rate": "0/0",
+"duration": "2.000000",
+"nb_read_frames": "94"
+}
+],
+"pts_first_last": [
+"0.000000",
+"1.958333"
+],
+"pts_monotonic": true
+},
+"frames": 48,
+"frames_sha": "40b3cbefe1e6f8d3",
+"audio_md5": "MD5=079ad087a29cbd32bc965209ecbd80be",
+"tones": {
+"330_first": 0.0,
+"330_second": 0.0882,
+"440_first": 0.3526,
+"440_second": 0.3541
+},
+"vs_ref": {
+"ref": "baseline#0",
+"identical_frames": 48,
+"of": 48
+}
+},
+{
+"kind": "export",
+"variant": "retained",
+"preset": "uhd4k",
+"gl": "gpu",
+"rep": 0,
+"heavy": "",
+"ok": true,
+"seconds": 30.51,
+"error": null,
+"file_sha": "82b0cc87edcbb10322823e7f4ecb8d9bec2f78bee072696a575cb2fecd9fce31",
+"size": 524895,
+"probe": {
+"streams": [
+{
+"codec_name": "h264",
+"codec_type": "video",
+"width": 3840,
+"height": 2160,
+"pix_fmt": "yuv420p",
+"r_frame_rate": "24/1",
+"duration": "2.000000",
+"nb_read_frames": "48"
+},
+{
+"codec_name": "aac",
+"codec_type": "audio",
+"sample_rate": "48000",
+"channels": 2,
+"r_frame_rate": "0/0",
+"duration": "2.000000",
+"nb_read_frames": "94"
+}
+],
+"pts_first_last": [
+"0.000000",
+"1.958333"
+],
+"pts_monotonic": true
+},
+"frames": 48,
+"frames_sha": "40b3cbefe1e6f8d3",
+"audio_md5": "MD5=079ad087a29cbd32bc965209ecbd80be",
+"tones": {
+"330_first": 0.0,
+"330_second": 0.0882,
+"440_first": 0.3526,
+"440_second": 0.3541
+},
+"vs_ref": {
+"ref": "baseline#0",
+"identical_frames": 48,
+"of": 48
+}
+},
+{
+"kind": "export",
+"variant": "retained",
+"preset": "uhd4k",
+"gl": "gpu",
+"rep": 1,
+"heavy": "",
+"ok": true,
+"seconds": 28.91,
+"error": null,
+"file_sha": "82b0cc87edcbb10322823e7f4ecb8d9bec2f78bee072696a575cb2fecd9fce31",
+"size": 524895,
+"probe": {
+"streams": [
+{
+"codec_name": "h264",
+"codec_type": "video",
+"width": 3840,
+"height": 2160,
+"pix_fmt": "yuv420p",
+"r_frame_rate": "24/1",
+"duration": "2.000000",
+"nb_read_frames": "48"
+},
+{
+"codec_name": "aac",
+"codec_type": "audio",
+"sample_rate": "48000",
+"channels": 2,
+"r_frame_rate": "0/0",
+"duration": "2.000000",
+"nb_read_frames": "94"
+}
+],
+"pts_first_last": [
+"0.000000",
+"1.958333"
+],
+"pts_monotonic": true
+},
+"frames": 48,
+"frames_sha": "40b3cbefe1e6f8d3",
+"audio_md5": "MD5=079ad087a29cbd32bc965209ecbd80be",
+"tones": {
+"330_first": 0.0,
+"330_second": 0.0882,
+"440_first": 0.3526,
+"440_second": 0.3541
+},
+"vs_ref": {
+"ref": "baseline#0",
+"identical_frames": 48,
+"of": 48
+}
+},
+{
+"kind": "cancel",
+"variant": "baseline",
+"gl": "gpu",
+"done_at_cancel": 3,
+"final": "cancelled",
+"dest_exists": false,
+"leftovers": [],
+"cancel_ok": true,
+"recover_ok": true,
+"recover_identical": 48,
+"of": 48,
+"edit_ok": [
+true,
+true
+],
+"snap_state": "succeeded",
+"snap_identical": 48,
+"snap_of": 48,
+"after_edit_differs": 48
+},
+{
+"kind": "cancel",
+"variant": "retained",
+"gl": "gpu",
+"done_at_cancel": 3,
+"final": "cancelled",
+"dest_exists": false,
+"leftovers": [],
+"cancel_ok": true,
+"recover_ok": true,
+"recover_identical": 48,
+"of": 48,
+"edit_ok": [
+true,
+true
+],
+"snap_state": "succeeded",
+"snap_identical": 48,
+"snap_of": 48,
+"after_edit_differs": 48
+}
+]

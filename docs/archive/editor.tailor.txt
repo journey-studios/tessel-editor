@@ -1,0 +1,396 @@
+{
+  "format": 1,
+  "name": "Tessel Editor",
+  "docs": [
+    {
+      "id": "main",
+      "name": "MainScreen",
+      "kind": "screen",
+      "root": 1,
+      "nodes": {
+        "1": {
+          "id": 1,
+          "kind": "frame",
+          "style": {
+            "gap": 0.0,
+            "width": {
+              "kind": "full"
+            },
+            "height": {
+              "kind": "px",
+              "value": 40.0
+            }
+          },
+          "slots": {
+            "children": [
+              2
+            ]
+          }
+        },
+        "2": {
+          "id": 2,
+          "kind": "frame",
+          "style": {
+            "gap": 0.0,
+            "align": "Stretch",
+            "width": {
+              "kind": "full"
+            },
+            "height": {
+              "kind": "px",
+              "value": 40.0
+            },
+            "min_width": 0.0,
+            "min_height": 0.0,
+            "padding": {
+              "right": 8.0
+            }
+          },
+          "slots": {
+            "children": [
+              3
+            ]
+          }
+        },
+        "3": {
+          "id": 3,
+          "kind": "frame",
+          "style": {
+            "direction": "row",
+            "gap": 8.0,
+            "align": "Center",
+            "justify": "Between",
+            "width": {
+              "kind": "full"
+            },
+            "height": {
+              "kind": "px",
+              "value": 40.0
+            },
+            "min_width": 0.0,
+            "min_height": 0.0,
+            "padding": {
+              "left": 80.0
+            }
+          },
+          "slots": {
+            "children": [
+              4,
+              13,
+              8
+            ]
+          }
+        },
+        "4": {
+          "id": 4,
+          "kind": "frame",
+          "style": {
+            "direction": "row",
+            "gap": 8.0,
+            "align": "Center",
+            "min_width": 0.0,
+            "min_height": 0.0
+          },
+          "slots": {
+            "children": [
+              5,
+              6,
+              7
+            ]
+          }
+        },
+        "5": {
+          "id": 5,
+          "kind": "text",
+          "props": {
+            "content": {
+              "t": "text",
+              "v": "Tessel Editor"
+            },
+            "dimmed": {
+              "t": "bool",
+              "v": false
+            },
+            "size": {
+              "t": "size",
+              "v": "Lg"
+            }
+          }
+        },
+        "6": {
+          "id": 6,
+          "kind": "badge",
+          "props": {
+            "color": {
+              "t": "color",
+              "v": {
+                "kind": "named",
+                "value": "Blue"
+              }
+            },
+            "label": {
+              "t": "text",
+              "v": "Estúdio de cena"
+            },
+            "size": {
+              "t": "size",
+              "v": "Sm"
+            },
+            "variant": {
+              "t": "variant",
+              "v": "Light"
+            }
+          },
+          "hidden": true
+        },
+        "7": {
+          "id": 7,
+          "kind": "badge",
+          "props": {
+            "color": {
+              "t": "color",
+              "v": {
+                "kind": "named",
+                "value": "Gray"
+              }
+            },
+            "label": {
+              "t": "text",
+              "v": "Estado demonstrativo"
+            },
+            "size": {
+              "t": "size",
+              "v": "Sm"
+            },
+            "variant": {
+              "t": "variant",
+              "v": "Light"
+            }
+          },
+          "hidden": true
+        },
+        "8": {
+          "id": 8,
+          "kind": "frame",
+          "style": {
+            "direction": "row",
+            "gap": 8.0,
+            "align": "Center",
+            "min_width": 0.0,
+            "min_height": 0.0
+          },
+          "slots": {
+            "children": [
+              14,
+              9,
+              11,
+              16
+            ]
+          }
+        },
+        "9": {
+          "id": 9,
+          "kind": "button",
+          "props": {
+            "disabled": {
+              "t": "bool",
+              "v": true
+            },
+            "label": {
+              "t": "text",
+              "v": "Desfazer"
+            },
+            "size": {
+              "t": "size",
+              "v": "Xs"
+            },
+            "variant": {
+              "t": "variant",
+              "v": "Default"
+            }
+          },
+          "slots": {
+            "left": [
+              10
+            ]
+          }
+        },
+        "10": {
+          "id": 10,
+          "kind": "icon",
+          "props": {
+            "icon": {
+              "t": "icon",
+              "v": "undo-2"
+            },
+            "size": {
+              "t": "size",
+              "v": "Xs"
+            }
+          }
+        },
+        "11": {
+          "id": 11,
+          "kind": "button",
+          "props": {
+            "disabled": {
+              "t": "bool",
+              "v": true
+            },
+            "label": {
+              "t": "text",
+              "v": "Refazer"
+            },
+            "size": {
+              "t": "size",
+              "v": "Xs"
+            },
+            "variant": {
+              "t": "variant",
+              "v": "Default"
+            }
+          },
+          "slots": {
+            "left": [
+              12
+            ]
+          }
+        },
+        "12": {
+          "id": 12,
+          "kind": "icon",
+          "props": {
+            "icon": {
+              "t": "icon",
+              "v": "redo-2"
+            },
+            "size": {
+              "t": "size",
+              "v": "Xs"
+            }
+          }
+        },
+        "13": {
+          "id": 13,
+          "kind": "text",
+          "name": "Título da sequência",
+          "props": {
+            "content": {
+              "t": "text",
+              "v": "North / Master"
+            },
+            "dimmed": {
+              "t": "bool",
+              "v": true
+            },
+            "size": {
+              "t": "size",
+              "v": "Sm"
+            }
+          }
+        },
+        "14": {
+          "id": 14,
+          "kind": "button",
+          "props": {
+            "disabled": {
+              "t": "bool",
+              "v": true
+            },
+            "label": {
+              "t": "text",
+              "v": "Importar"
+            },
+            "size": {
+              "t": "size",
+              "v": "Xs"
+            },
+            "variant": {
+              "t": "variant",
+              "v": "Default"
+            }
+          },
+          "slots": {
+            "left": [
+              15
+            ]
+          }
+        },
+        "15": {
+          "id": 15,
+          "kind": "icon",
+          "props": {
+            "icon": {
+              "t": "icon",
+              "v": "folder-input"
+            },
+            "size": {
+              "t": "size",
+              "v": "Xs"
+            }
+          }
+        },
+        "16": {
+          "id": 16,
+          "kind": "button",
+          "props": {
+            "disabled": {
+              "t": "bool",
+              "v": true
+            },
+            "label": {
+              "t": "text",
+              "v": "Exportar"
+            },
+            "size": {
+              "t": "size",
+              "v": "Xs"
+            },
+            "variant": {
+              "t": "variant",
+              "v": "Default"
+            }
+          },
+          "slots": {
+            "left": [
+              17
+            ]
+          }
+        },
+        "17": {
+          "id": 17,
+          "kind": "icon",
+          "props": {
+            "icon": {
+              "t": "icon",
+              "v": "download"
+            },
+            "size": {
+              "t": "size",
+              "v": "Xs"
+            }
+          }
+        }
+      },
+      "ids": {
+        "next": 18
+      },
+      "canvas": {
+        "width": 1440.0,
+        "height": 900.0
+      }
+    }
+  ],
+  "theme": {
+    "scheme": "dark",
+    "primary": "Blue",
+    "radius": "Sm",
+    "font": ".AppleSystemUIFont"
+  },
+  "gen": {
+    "flavor": "plain",
+    "module": "ui",
+    "emit_app": true,
+    "export_dir": "target/tailor-export"
+  }
+}

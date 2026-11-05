@@ -1,0 +1,62 @@
+{
+ "written_at": "2026-11-05T12:38:53.836Z",
+ "runtime_sources": {
+  "assets.js": "b62573b1bbea603bbd9e20545fb3ea5965c61c00d0739d1eaa90bb38aa438802",
+  "boot.js": "9161d02d01411f20b3d449fee9dbc1ef53a889b41412ceacdc18f3b8437197e7",
+  "compositor.js": "370b71f787e32e54d6f320634e739cd0bb8a4ee7e45d8aaee4ec7424724a22fc",
+  "font.js": "3fb874ab11dd25f6c451d220918fd942ab16344fd77c0e2e0918722e2c51f1db",
+  "hash.js": "a20dc36f0321b9f2d8c026c787a43a530f317b86d6fd9f5d27e1ad845ef1d325",
+  "index.js": "0724d5c514a6cdc2f9875e8803b3dcfbbb53ca1ecc9e8a512f5fb4ed212bfb17",
+  "native-video.js": "0591a7f51b8f14dc9a1bf6298211a10a898ad3e3f46bcd9335cf9247ad234b3f",
+  "protocol.js": "2106a7124bfb1db021bc53c2362b730e6e5bc6fb11779462633e19bd6a39aba6",
+  "retention.js": "46e7ad5837043f2a6ab0df336a63b3c2fa0e1e645000c785fdea46ea9f2a961b",
+  "scene.js": "5d6fa1f684c7e572b933b55f98f8f343753dc07719957356872d0375856be31d",
+  "splat-format.js": "8a99f5c8520b68dcfde5b36a599cdccd602f82315ebcc11f1d9c0a0c2cec42f8",
+  "splat-stage.js": "26a5d1f6972e3cf2dece1c4872443e30fce90f4e769b8050ac511cc73243e5a4"
+ },
+ "perf_harness": {
+  "assets.mjs": "d39c214972d17b672276c67f18cc34080bea6a731f15127d6e588b72684d699a",
+  "chrome.mjs": "dd1ba05a1a73ed1f8ed54ba8ce442d47b8d5d8e2ada9c96b91a3d46cdda14f6c",
+  "png.mjs": "e6b4dd70487a46c87c6b18ca4961ebb4c7e5e3bf713f506a9afdfb3ec55f1046",
+  "provenance.mjs": "a11879570ace1668e7e096aad0307475115f1300b0a429a991cd11e3820fdb19",
+  "report.mjs": "230ec05ff328af7d9bf765ab319c515052b14dc63d957e37912546fd3f49105b",
+  "run.mjs": "55d0effbb9f76df1469dae09a43ec0a77177c7a09ccae11d828661b0eefb92bc",
+  "webkit.mjs": "8048e5fbdbfeffe4c6f734bbda66bf77754cbf1f72923c3bc111ddfcc4932b8d",
+  "wk-host.swift": "c83fe7779bae06fccc63c769b8438ee39b4975c98e3dc6cfab801cdf1e834476",
+  "page/driver.js": "95926aaca6bdd155c19f1f0d57728c9df43b15b115378c8da0e86c8c113fb2c3",
+  "page/preamble.js": "ac946ab193accc2c2292569bb21e6a8ebb55fd97932f22cbad92df8aaf60011c"
+ },
+ "bundles": {
+  "current": "779f6f990b616bb2cc79f75a028da52ac52122b66c4f49d55305a83b1c88752b",
+  "baseline": "03b1d6cdaa3cf35ddde27027d04298f49c04782816f8d3cbc38c4b77820b20de"
+ },
+ "dependencies": {
+  "three": "0.187.0",
+  "spark": "2.4.0"
+ },
+ "machine": {
+  "model": "Mac15,6",
+  "cpu": "Apple M3 Pro",
+  "cores": 11,
+  "memory_gib": 18,
+  "os": "26.6.2",
+  "node": "v22.23.3",
+  "load_now": [
+   2.65,
+   2.87,
+   3.31
+  ]
+ },
+ "raw_runs": {
+  "count": 75,
+  "browsers": [],
+  "renderers": [
+   "Apple GPU"
+  ],
+  "load_1m": {
+   "p50": 3.09,
+   "p95": 9.38,
+   "max": 10.64
+  }
+ }
+}

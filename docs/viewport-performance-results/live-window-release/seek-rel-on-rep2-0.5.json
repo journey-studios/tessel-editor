@@ -1,0 +1,98 @@
+{
+  "inspect": false,
+  "drag": {
+    "seconds": 0.496,
+    "ticks": 60,
+    "from": 0,
+    "to": 48
+  },
+  "set_ms": {
+    "median": 1.95,
+    "max": 3.73
+  },
+  "presentations_in_window": 40,
+  "presentations_during_drag": 40,
+  "first_present_ms": 15.9,
+  "clock": "host",
+  "present_gap_ms": {
+    "median": 10.9,
+    "p95": 16.8,
+    "max": 18.0
+  },
+  "lag_frames": {
+    "median": 1.0,
+    "p95": 2,
+    "max": 2
+  },
+  "converged": true,
+  "release_to_final_ms": 6,
+  "stats_delta": {
+    "requests": 42,
+    "accepted": 42,
+    "cancelled": 0,
+    "dropped_stale": 0,
+    "coalesced": 42
+  },
+  "presented_frame": 48,
+  "last_frame": {
+    "render_ms": 0.0,
+    "total_ms": 0.0,
+    "inspected": false
+  },
+  "clock_uncertainty_ms": 3.5,
+  "host_spans_ms": {
+    "prepare_ms": {
+      "median": 0.002,
+      "p95": 0.002,
+      "max": 0.002
+    },
+    "serialize_ms": {
+      "median": 0.021,
+      "p95": 0.031,
+      "max": 0.032
+    },
+    "dispatch_ms": {
+      "median": 0.009,
+      "p95": 0.012,
+      "max": 0.012
+    },
+    "transit_ms": {
+      "median": 0.484,
+      "p95": 2.651,
+      "max": 4.274
+    },
+    "runtime_total_ms": {
+      "median": 10.0,
+      "p95": 13.0,
+      "max": 17.0
+    },
+    "runtime_render_ms": {
+      "median": 10.0,
+      "p95": 13.0,
+      "max": 17.0
+    },
+    "accept_ms": {
+      "median": 0.003,
+      "p95": 0.004,
+      "max": 0.005
+    },
+    "submit_to_done_ms": {
+      "median": 10.806,
+      "p95": 14.651,
+      "max": 16.952
+    }
+  },
+  "renderer": "Apple GPU",
+  "output": {
+    "width": 320,
+    "height": 180
+  },
+  "restored_playhead": true,
+  "checks": {
+    "at least 5 pictures in 0.5s": true,
+    "converged on the last position": true,
+    "no render was left cancelled-starved (accepted > 0)": true,
+    "the playhead is back where it was": true
+  },
+  "pass": true
+}

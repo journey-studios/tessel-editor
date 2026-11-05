@@ -1,0 +1,580 @@
+//! Semantic project operations: the JSON vocabulary for creating projects, assets, tracks and
+//! clips, configuring cameras, seeking, planning and rendering.
+//!
+//! [`parse_op`] only translates a request into an [`Op`]; adapters execute it. The headless
+//! CLI runs `Op::Run` through `EditorState::execute`, and the desktop runs the same command
+//! through its workstation handler, so a request has one meaning on every surface.
+
+use std::path::PathBuf;
+
+use serde_json::{Value, json};
+
+use crate::assets::{Asset, Declared, MediaKind, ProxyFormat};
+use crate::content::{Camera, TextSpec};
+use crate::id::Id;
+use crate::plan::{PlanRequest, PlanTime, PreviewIntent};
+use crate::preview::PreviewMode;
+use crate::state::timeline::{SequenceSettings, TrackKind};
+use crate::state::{Command, CommandError, EditorState, ProjectSettings, Raw};
+use crate::time::{Rate, Ratio};
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RenderFrame {
+    pub plan: PlanRequest,
+    pub out: Option<PathBuf>,
+    /// Output size; defaults to the canvas of the plan.
+    pub size: Option<(u32, u32)>,
+    pub probes: Vec<(u32, u32)>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RenderAudio {
+    pub from: i64,
+    pub frames: i64,
+    pub out: Option<PathBuf>,
+    /// `(output sample frame, channel)` values to report.
+    pub samples: Vec<(u64, usize)>,
+}
+
+/// Project-level operations that touch the filesystem (document, autosave, recovery).
+#[derive(Debug, Clone, PartialEq)]
+pub enum ProjectOp {
+    /// `path: None` saves to the document the project was opened from.
+    Save {
+        path: Option<PathBuf>,
+    },
+    Open {
+        path: PathBuf,
+    },
+    Autosave,
+    /// Lists (`apply: false`) or loads the newest/chosen autosave of a document.
+    Recover {
+        path: PathBuf,
+        revision: Option<u64>,
+        apply: bool,
+    },
+    DiscardRecovery {
+        path: PathBuf,
+    },
+    Describe {
+        path: PathBuf,
+    },
+    History,
+    /// Built-in and project presets, and the selected one.
+    Presets,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Op {
+    Run(Command),
+    Project(ProjectOp),
+    CreateProject(ProjectSettings),
+    Plan(PlanRequest),
+    /// The preview quality policy and, per video, why it is or is not drawn from a proxy.
+    PreviewPolicy,
+    RenderFrame(RenderFrame),
+    RenderAudio(RenderAudio),
+    Capabilities,
+    RenderStatus,
+    Status,
+}
+
+fn invalid(message: impl Into<String>) -> CommandError {
+    CommandError::new("invalid_request", message)
+}
+
+fn string<'a>(request: &'a Value, key: &str) -> Result<&'a str, CommandError> {
+    request
+        .get(key)
+        .and_then(Value::as_str)
+        .ok_or_else(|| invalid(format!("Expected string field `{key}`")))
+}
+
+fn optional_string(request: &Value, key: &str) -> Result<Option<String>, CommandError> {
+    match request.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(text)) => Ok(Some(text.clone())),
+        Some(_) => Err(invalid(format!("Field `{key}` must be a string"))),
+    }
+}
+
+fn integer(request: &Value, key: &str) -> Result<i64, CommandError> {
+    request
+        .get(key)
+        .and_then(Value::as_i64)
+        .ok_or_else(|| invalid(format!("Expected integer field `{key}`")))
+}
+
+fn optional_u32(request: &Value, key: &str) -> Result<Option<u32>, CommandError> {
+    match request.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(raw) => raw
+            .as_u64()
+            .and_then(|value| u32::try_from(value).ok())
+            .map(Some)
+            .ok_or_else(|| invalid(format!("Field `{key}` must be a non-negative integer"))),
+    }
+}
+
+fn time_field(request: &Value, key: &str) -> Result<Option<Ratio>, CommandError> {
+    let Some(raw) = request.get(key).filter(|raw| !raw.is_null()) else {
+        return Ok(None);
+    };
+    // A bare number is whole seconds; fractional seconds need the exact {num, den} form so
+    // a caller cannot lose precision to a float by accident.
+    Ratio::from_json(raw).map(Some).ok_or_else(|| {
+        CommandError::invalid_value(
+            format!("`{key}` is seconds: an integer or {{\"num\":1,\"den\":24}}"),
+            json!({ "format": {"num": 1, "den": 24} }),
+        )
+    })
+}
+
+fn rate_field(request: &Value, key: &str) -> Result<Option<Rate>, CommandError> {
+    let Some(raw) = request.get(key).filter(|raw| !raw.is_null()) else {
+        return Ok(None);
+    };
+    Rate::from_json(raw).map(Some).ok_or_else(|| {
+        CommandError::invalid_value(
+            format!("`{key}` is frames per second: an integer or {{\"num\":24000,\"den\":1001}}"),
+            json!({ "max_fps": 1000 }),
+        )
+    })
+}
+
+fn id_field(request: &Value, key: &str) -> Result<Id, CommandError> {
+    let raw = string(request, key)?;
+    Id::new(raw).map_err(|error| CommandError::new("invalid_id", error.to_string()).target(raw))
+}
+
+fn kind_field(request: &Value) -> Result<MediaKind, CommandError> {
+    let raw = string(request, "kind")?;
+    MediaKind::parse(raw)
+        .filter(|kind| MediaKind::ASSETS.contains(kind) || *kind == MediaKind::Timeline)
+        .ok_or_else(|| {
+            CommandError::invalid_value(
+                format!("`{raw}` is not an asset kind"),
+                json!({ "options": ["image", "video", "audio", "text", "scene", "splat"] }),
+            )
+        })
+}
+
+fn track_kind(request: &Value) -> Result<TrackKind, CommandError> {
+    match string(request, "kind")? {
+        "video" => Ok(TrackKind::Video),
+        "audio" => Ok(TrackKind::Audio),
+        other => Err(CommandError::invalid_value(
+            format!("`{other}` is not a track kind"),
+            json!({ "options": ["video", "audio"] }),
+        )),
+    }
+}
+
+fn plan_time(request: &Value) -> Result<PlanTime, CommandError> {
+    match (request.get("frame"), time_field(request, "time")?) {
+        (Some(_), Some(_)) => Err(invalid("Use either `frame` or `time`, not both")),
+        (Some(frame), None) => frame
+            .as_i64()
+            .map(PlanTime::Frame)
+            .ok_or_else(|| invalid("`frame` must be an integer")),
+        (None, Some(time)) => Ok(PlanTime::Time(time)),
+        (None, None) => Ok(PlanTime::Playhead),
+    }
+}
+
+fn plan_request(state: &EditorState, request: &Value) -> Result<PlanRequest, CommandError> {
+    let intent = match request.get("intent").filter(|intent| !intent.is_null()) {
+        Some(intent) => PreviewIntent::from_json(intent)?,
+        None => state.preview.clone(),
+    };
+    Ok(PlanRequest {
+        intent,
+        at: plan_time(request)?,
+    })
+}
+
+fn probes(request: &Value) -> Result<Vec<(u32, u32)>, CommandError> {
+    let Some(items) = request.get("probes") else {
+        return Ok(Vec::new());
+    };
+    let bad = || invalid("`probes` is a list of [x, y] pixel coordinates");
+    items
+        .as_array()
+        .ok_or_else(bad)?
+        .iter()
+        .map(|item| {
+            let pair = item
+                .as_array()
+                .filter(|pair| pair.len() == 2)
+                .ok_or_else(bad)?;
+            let coordinate = |value: &Value| {
+                value
+                    .as_u64()
+                    .and_then(|n| u32::try_from(n).ok())
+                    .ok_or_else(bad)
+            };
+            Ok((coordinate(&pair[0])?, coordinate(&pair[1])?))
+        })
+        .collect()
+}
+
+fn asset_add(request: &Value) -> Result<Command, CommandError> {
+    let kind = kind_field(request)?;
+    let name = string(request, "name")?.to_string();
+    let declared = Declared {
+        width: optional_u32(request, "width")?,
+        height: optional_u32(request, "height")?,
+        rate: rate_field(request, "rate")?,
+        duration: time_field(request, "duration")?,
+        text: None,
+        frames: request.get("frames").and_then(Value::as_i64),
+        first: request.get("first").and_then(Value::as_i64),
+    };
+    let asset = if kind == MediaKind::Text {
+        let spec = request
+            .get("text")
+            .ok_or_else(|| invalid("A text asset needs `text`"))?;
+        Asset::text(TextSpec::from_json(spec)?)?
+    } else if kind == MediaKind::Video && request.get("pattern").is_some() {
+        Asset::probe_frame_sequence(string(request, "pattern")?, &declared)?
+    } else {
+        Asset::probe(kind, string(request, "path")?, &declared)?
+    };
+    Ok(Command::AddAsset {
+        id: optional_string(request, "id")?,
+        name,
+        kind,
+        asset: Box::new(asset),
+        folder: optional_string(request, "folder")?,
+    })
+}
+
+fn clip_add(request: &Value) -> Result<Command, CommandError> {
+    let properties = match request.get("properties") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(Value::Object(map)) => map
+            .iter()
+            .map(|(name, value)| {
+                Raw::from_json(value)
+                    .map(|raw| (name.clone(), raw))
+                    .ok_or_else(|| {
+                        invalid(format!(
+                            "Property `{name}` must be a string, number or boolean"
+                        ))
+                    })
+            })
+            .collect::<Result<_, _>>()?,
+        Some(_) => return Err(invalid("`properties` is an object of inspector values")),
+    };
+    Ok(Command::AddClip {
+        id: optional_string(request, "id")?,
+        name: optional_string(request, "name")?,
+        track: string(request, "track")?.to_string(),
+        asset: optional_string(request, "asset")?,
+        start: integer(request, "start")?,
+        duration: integer(request, "duration")?,
+        source_start: time_field(request, "source_start")?,
+        text: request
+            .get("text")
+            .filter(|t| !t.is_null())
+            .map(TextSpec::from_json)
+            .transpose()?,
+        camera: request
+            .get("camera")
+            .filter(|c| !c.is_null())
+            .map(Camera::from_json)
+            .transpose()?,
+        properties,
+    })
+}
+
+fn project_create(request: &Value) -> Result<ProjectSettings, CommandError> {
+    let base = SequenceSettings::default();
+    let rate = rate_field(request, "rate")?.unwrap_or(base.rate);
+    let length = match (request.get("length"), time_field(request, "seconds")?) {
+        (Some(_), Some(_)) => return Err(invalid("Use either `length` (frames) or `seconds`")),
+        (Some(frames), None) => frames
+            .as_i64()
+            .ok_or_else(|| invalid("`length` must be an integer number of frames"))?,
+        (None, Some(seconds)) => seconds
+            .mul(Ratio::new(i64::from(rate.num()), i64::from(rate.den())).unwrap_or(Ratio::ZERO))
+            .map_or(0, Ratio::round),
+        (None, None) => base.length,
+    };
+    Ok(ProjectSettings {
+        workspace: optional_string(request, "dir")?.map(PathBuf::from),
+        name: optional_string(request, "name")?.unwrap_or_else(|| "Untitled".to_string()),
+        sequence: SequenceSettings {
+            id: match request.get("sequence") {
+                Some(Value::String(_)) => id_field(request, "sequence")?,
+                _ => base.id,
+            },
+            rate,
+            length,
+            width: optional_u32(request, "width")?.unwrap_or(base.width),
+            height: optional_u32(request, "height")?.unwrap_or(base.height),
+        },
+    })
+}
+
+/// Translates one operation request. Operations on `target`s (`set`, `invoke`, `move`) are
+/// handled by `headless::execute`; this vocabulary is the project-level one.
+pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, CommandError> {
+    let op = string(request, "op")?;
+    let command = match op {
+        "status" => return Ok(Some(Op::Status)),
+        "capabilities" => return Ok(Some(Op::Capabilities)),
+        "render.status" => return Ok(Some(Op::RenderStatus)),
+        "project.create" => return Ok(Some(Op::CreateProject(project_create(request)?))),
+        "asset.add" => asset_add(request)?,
+        "track.add" => Command::CreateTrack {
+            id: optional_string(request, "id")?,
+            name: string(request, "name")?.to_string(),
+            kind: track_kind(request)?,
+        },
+        "clip.add" => clip_add(request)?,
+        "clip.text" => Command::SetClipText {
+            clip: string(request, "clip")?.to_string(),
+            text: TextSpec::from_json(
+                request
+                    .get("text")
+                    .ok_or_else(|| invalid("Expected object field `text`"))?,
+            )?,
+        },
+        "clip.camera" => Command::SetClipCamera {
+            clip: string(request, "clip")?.to_string(),
+            camera: Camera::from_json(request)?,
+        },
+        "clip.property" => Command::SetClipProperty {
+            clip: string(request, "clip")?.to_string(),
+            property: string(request, "property")?.to_string(),
+            value: request
+                .get("value")
+                .and_then(Raw::from_json)
+                .ok_or_else(|| invalid("Expected scalar field `value`"))?,
+        },
+        "sequence.length" => Command::SetSequenceLength {
+            frames: integer(request, "frames")?,
+        },
+        "history.undo" => Command::Undo,
+        "history.redo" => Command::Redo,
+        "history.status" => return Ok(Some(Op::Project(ProjectOp::History))),
+        "sequence.add" => {
+            let base = SequenceSettings::default();
+            let any_format = ["rate", "width", "height", "length"]
+                .iter()
+                .any(|key| request.get(key).is_some());
+            let settings = if any_format {
+                let rate = rate_field(request, "rate")?.unwrap_or(state.timeline.rate);
+                Some(SequenceSettings {
+                    id: base.id,
+                    rate,
+                    length: request
+                        .get("length")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(state.timeline.length),
+                    width: optional_u32(request, "width")?.unwrap_or(state.timeline.width),
+                    height: optional_u32(request, "height")?.unwrap_or(state.timeline.height),
+                })
+            } else {
+                None
+            };
+            Command::AddSequence {
+                id: optional_string(request, "id")?,
+                name: optional_string(request, "name")?,
+                settings,
+                activate: request
+                    .get("activate")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+            }
+        }
+        "sequence.activate" => Command::ActivateSequence {
+            sequence: string(request, "sequence")?.to_string(),
+        },
+        "sequence.remove" => Command::RemoveSequence {
+            sequence: string(request, "sequence")?.to_string(),
+        },
+        "sequence.rename" => Command::RenameSequence {
+            sequence: string(request, "sequence")?.to_string(),
+            name: string(request, "name")?.to_string(),
+        },
+        "preset.save" => Command::SavePreset {
+            preset: request.get("preset").cloned().ok_or_else(|| {
+                CommandError::new("invalid_request", "Expected object field `preset`")
+            })?,
+        },
+        "preset.delete" => Command::DeletePreset {
+            id: string(request, "id")?.to_string(),
+        },
+        "preset.select" => Command::SelectPreset {
+            id: string(request, "id")?.to_string(),
+        },
+        "preset.list" => return Ok(Some(Op::Project(ProjectOp::Presets))),
+        "project.save" => {
+            return Ok(Some(Op::Project(ProjectOp::Save {
+                path: optional_string(request, "path")?.map(PathBuf::from),
+            })));
+        }
+        "project.open" => {
+            return Ok(Some(Op::Project(ProjectOp::Open {
+                path: PathBuf::from(string(request, "path")?),
+            })));
+        }
+        "project.autosave" => return Ok(Some(Op::Project(ProjectOp::Autosave))),
+        "project.recover" => {
+            return Ok(Some(Op::Project(ProjectOp::Recover {
+                path: PathBuf::from(string(request, "path")?),
+                revision: request.get("revision").and_then(Value::as_u64),
+                apply: request
+                    .get("apply")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(true),
+            })));
+        }
+        "project.discard_recovery" => {
+            return Ok(Some(Op::Project(ProjectOp::DiscardRecovery {
+                path: PathBuf::from(string(request, "path")?),
+            })));
+        }
+        "project.describe" => {
+            return Ok(Some(Op::Project(ProjectOp::Describe {
+                path: PathBuf::from(string(request, "path")?),
+            })));
+        }
+        "preview.policy" => {
+            let mode = optional_string(request, "mode")?
+                .map(|label| {
+                    PreviewMode::from_label(&label)
+                        .ok_or_else(|| invalid("`mode` is `original` or `auto`"))
+                })
+                .transpose()?;
+            let format = optional_string(request, "format")?
+                .map(|label| {
+                    ProxyFormat::from_label(&label)
+                        .ok_or_else(|| invalid("`format` is `jpeg` or `png`"))
+                })
+                .transpose()?;
+            let max_height = optional_u32(request, "max_height")?;
+            if mode.is_none() && format.is_none() && max_height.is_none() {
+                return Ok(Some(Op::PreviewPolicy));
+            }
+            Command::SetPreviewPolicy {
+                mode,
+                max_height,
+                format,
+            }
+        }
+        "preview.set" => Command::SetPreview {
+            intent: PreviewIntent::from_json(request)?,
+        },
+        "seek" => {
+            let frame = match plan_time(request)? {
+                PlanTime::Frame(frame) => frame,
+                PlanTime::Time(time) => state.timeline.rate.time_to_frame_floor(time),
+                PlanTime::Playhead => return Err(invalid("`seek` needs `frame` or `time`")),
+            };
+            Command::SetPlayhead {
+                frame: Raw::Number(frame as f64),
+            }
+        }
+        "plan" => return Ok(Some(Op::Plan(plan_request(state, request)?))),
+        "render.frame" => {
+            let size = match (
+                optional_u32(request, "width")?,
+                optional_u32(request, "height")?,
+            ) {
+                (Some(width), Some(height)) => Some((width, height)),
+                (None, None) => None,
+                _ => return Err(invalid("Give both `width` and `height`, or neither")),
+            };
+            return Ok(Some(Op::RenderFrame(RenderFrame {
+                plan: plan_request(state, request)?,
+                out: optional_string(request, "out")?.map(PathBuf::from),
+                size,
+                probes: probes(request)?,
+            })));
+        }
+        "render.audio" => {
+            let from = request.get("from").and_then(Value::as_i64).unwrap_or(0);
+            let frames = match request.get("frames") {
+                Some(frames) => frames
+                    .as_i64()
+                    .ok_or_else(|| invalid("`frames` must be an integer"))?,
+                None => state.timeline.length - from,
+            };
+            let samples = match request.get("samples").and_then(Value::as_array) {
+                None => Vec::new(),
+                Some(items) => items
+                    .iter()
+                    .map(|item| {
+                        let pair = item.as_array().filter(|pair| pair.len() == 2);
+                        let frame = pair.and_then(|pair| pair[0].as_u64());
+                        let channel = pair.and_then(|pair| pair[1].as_u64());
+                        frame
+                            .zip(channel)
+                            .filter(|(_, channel)| *channel < 2)
+                            .map(|(frame, channel)| (frame, channel as usize))
+                            .ok_or_else(|| {
+                                invalid("`samples` is a list of [output_frame, channel 0|1]")
+                            })
+                    })
+                    .collect::<Result<_, _>>()?,
+            };
+            return Ok(Some(Op::RenderAudio(RenderAudio {
+                from,
+                frames,
+                out: optional_string(request, "out")?.map(PathBuf::from),
+                samples,
+            })));
+        }
+        _ => return Ok(None),
+    };
+    Ok(Some(Op::Run(command)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn project_create_accepts_rate_forms_and_seconds() {
+        let ntsc = project_create(
+            &json!({"rate":{"num":24000,"den":1001},"seconds":2,"width":640,"height":360}),
+        )
+        .unwrap();
+        assert_eq!(ntsc.sequence.rate, Rate::new(24000, 1001).unwrap());
+        assert_eq!(ntsc.sequence.length, 48);
+        let plain = project_create(&json!({"rate":30,"length":90,"name":"X"})).unwrap();
+        assert_eq!((plain.sequence.rate.num(), plain.sequence.length), (30, 90));
+        assert!(project_create(&json!({"length":1,"seconds":1})).is_err());
+        assert!(project_create(&json!({"rate":0})).is_err());
+    }
+
+    #[test]
+    fn unknown_ops_are_not_claimed_and_bad_fields_are_typed_errors() {
+        let state = EditorState::demo();
+        assert_eq!(parse_op(&state, &json!({"op":"set"})).unwrap(), None);
+        assert_eq!(
+            parse_op(&state, &json!({"op":"track.add","name":"V","kind":"film"}))
+                .unwrap_err()
+                .code,
+            "invalid_value"
+        );
+        assert_eq!(
+            parse_op(
+                &state,
+                &json!({"op":"clip.add","track":"t","start":"x","duration":1})
+            )
+            .unwrap_err()
+            .code,
+            "invalid_request"
+        );
+        assert_eq!(
+            parse_op(&state, &json!({"op":"seek","frame":1,"time":1}))
+                .unwrap_err()
+                .code,
+            "invalid_request"
+        );
+    }
+}

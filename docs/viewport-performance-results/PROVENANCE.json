@@ -1,0 +1,65 @@
+{
+ "written_at": "2026-11-05T03:13:11.101Z",
+ "runtime_sources": {
+  "assets.js": "17931a49d2a548b4515a830c2b3f7e9821de8fedbe5cced87bafd519b816f560",
+  "boot.js": "9161d02d01411f20b3d449fee9dbc1ef53a889b41412ceacdc18f3b8437197e7",
+  "compositor.js": "ecac547bf826e74b496ac44fb62c1e704c6c3bcd34187a200d46d2c599e11d68",
+  "font.js": "3fb874ab11dd25f6c451d220918fd942ab16344fd77c0e2e0918722e2c51f1db",
+  "hash.js": "a20dc36f0321b9f2d8c026c787a43a530f317b86d6fd9f5d27e1ad845ef1d325",
+  "index.js": "a9ec2fc685d9ccd50d8c294565d75342412ad967adaabba0e4f361be2bd485e7",
+  "protocol.js": "2106a7124bfb1db021bc53c2362b730e6e5bc6fb11779462633e19bd6a39aba6",
+  "retention.js": "8dde5c0ff8d977e19a294e774a6a5c380c0a73fa0f62d19037f8a6acedd77102",
+  "scene.js": "5d6fa1f684c7e572b933b55f98f8f343753dc07719957356872d0375856be31d",
+  "splat-format.js": "8a99f5c8520b68dcfde5b36a599cdccd602f82315ebcc11f1d9c0a0c2cec42f8",
+  "splat-stage.js": "26a5d1f6972e3cf2dece1c4872443e30fce90f4e769b8050ac511cc73243e5a4"
+ },
+ "perf_harness": {
+  "assets.mjs": "6ebf3ca519556ca7f2226e5adee4573208ecf5af4381c531f58eeec8cf322be8",
+  "chrome.mjs": "dd1ba05a1a73ed1f8ed54ba8ce442d47b8d5d8e2ada9c96b91a3d46cdda14f6c",
+  "png.mjs": "e6b4dd70487a46c87c6b18ca4961ebb4c7e5e3bf713f506a9afdfb3ec55f1046",
+  "provenance.mjs": "a11879570ace1668e7e096aad0307475115f1300b0a429a991cd11e3820fdb19",
+  "report.mjs": "230ec05ff328af7d9bf765ab319c515052b14dc63d957e37912546fd3f49105b",
+  "run.mjs": "bd3a4e29523c1697e0e657c6b7f9a204bcd4cb46e42aced2c0f610391adbf6a7",
+  "webkit.mjs": "8048e5fbdbfeffe4c6f734bbda66bf77754cbf1f72923c3bc111ddfcc4932b8d",
+  "wk-host.swift": "c83fe7779bae06fccc63c769b8438ee39b4975c98e3dc6cfab801cdf1e834476",
+  "page/driver.js": "eb992230929eef0f8f5136507bfdd2183818d3abc4aaba93e51ff8fdef83ae52",
+  "page/preamble.js": "ac946ab193accc2c2292569bb21e6a8ebb55fd97932f22cbad92df8aaf60011c"
+ },
+ "bundles": {
+  "current": "c63a8092f0ef7a7f5739397cab9965864af0e8718f97c7c778f10beaca242558",
+  "baseline": "a8bb9ce24ca9feb8741e9c8be1e9616eff6c4b4e2b74e7ce9920beb1a24362fc"
+ },
+ "dependencies": {
+  "three": "0.187.0",
+  "spark": "2.4.0"
+ },
+ "machine": {
+  "model": "Mac15,6",
+  "cpu": "Apple M3 Pro",
+  "cores": 11,
+  "memory_gib": 18,
+  "os": "26.6.2",
+  "node": "v22.23.3",
+  "load_now": [
+   5.81,
+   6.24,
+   7.4
+  ]
+ },
+ "raw_runs": {
+  "count": 1095,
+  "browsers": [
+   "Chrome/156.0.8078.80"
+  ],
+  "renderers": [
+   "ANGLE (Apple, ANGLE Metal Renderer: Apple M3 Pro, Unspecified Version)",
+   "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+   "Apple GPU"
+  ],
+  "load_1m": {
+   "p50": 6.36,
+   "p95": 15.91,
+   "max": 22.72
+  }
+ }
+}
