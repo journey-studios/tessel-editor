@@ -686,8 +686,9 @@ fn frame_at(request: &Value) -> Result<FrameAt, CommandError> {
     }
 }
 
-/// Exactly one of `bundle` (a JSON object), `text` (the bundle as a string) or `path`.
-fn scene_source(request: &Value) -> Result<SceneSource, CommandError> {
+/// Exactly one of `bundle` (a JSON object), `text` (the bundle as a string) or `path`. Public so
+/// an adapter that attaches off-thread reads the same request shape as `scene.attach`.
+pub fn scene_source(request: &Value) -> Result<SceneSource, CommandError> {
     let given: Vec<&str> = ["bundle", "text", "path"]
         .into_iter()
         .filter(|key| request.get(key).is_some_and(|value| !value.is_null()))

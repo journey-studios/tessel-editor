@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""F043/BL086 — attach a directed scene through the *dialog* of a private native window.
+"""F043/BL086/BL100 — attach a directed scene through the *dialog* of a private native window.
 
     python3 scripts/directed-scene-proof/with-gpu-lock.py \
         python3 scripts/scene-import-proof.py [--binary target/debug/tessel-editor] [--out report.json]
@@ -10,10 +10,12 @@ coordinates: `invoke flow.attach_scene`, `set dialog.field.*`, `invoke dialog.su
 are the synthetic corpus of `scripts/directed-scene-proof/corpus` (drawn from scratch, no private
 media), copied into a throwaway folder so the proof can break them.
 
-Proves, in the live window: the dialog opens and hides the WebView (`Workflow::has_dialog`); a
-bundle that is not valid (or not there) is refused with the dialog still open and no scene, history
-entry or folder created; a valid bundle + folder attaches, adopts and loads through the background
-jobs and the window applies them; a missing and an altered resource fail with the host's own code
+Proves, in the live window: the dialog opens and hides the WebView (`Workflow::has_dialog`); the
+bundle is read and validated by a background job (BL100), so a bundle that is not valid (or not
+there) closes the dialog and fails the `scene_import` node on the `attach` step with its typed code,
+with no scene, history entry or folder created; a request the host refuses before any job (a
+malformed ID) keeps the dialog open; a valid bundle + folder attaches (one undo entry, when the job
+is applied), adopts and loads through the background jobs and the window applies them; a missing and an altered resource fail with the host's own code
 and leave the workspace clean; the scene is selected in the inspector and the monitor draws it.
 
 It does NOT prove the native file picker (a macOS panel needs a human) nor aesthetics.
@@ -132,30 +134,42 @@ def main():
               visible_before is not False and get('monitor.viewport')['data']['visible'] is False,
               (visible_before, get('monitor.viewport')))
 
-        # --- invalid bundle: refused, dialog stays, nothing created -----------------------------
+        # --- invalid bundle: the attach job fails, nothing created ------------------------------
         broken = work / 'broken.json'
         broken.write_text('{"bundleVersion": 99}')
         undo_before = undo_depth()
         fill(bundle=str(broken), id='street', source=str(good))
+        malformed = send({'command': 'set', 'target': 'dialog.field.id', 'field': 'value', 'value': 'bad id!'})
+        check('a field accepts the typed ID', malformed['ok'], malformed)
         refused = send({'command': 'invoke', 'target': 'dialog.submit'})
-        check('an invalid bundle is refused with its typed code', not refused['ok'] and refused['error']['code'] == 'invalid_bundle', refused)
-        dialog = state('dialog')
-        check('the dialog stays open and says why', dialog['flow'] == 'attach_scene' and dialog['error'], dialog)
-        check('no scene, no history entry, no resource folder, no chain',
+        check('an ID the host refuses before any job stays in the dialog with its code',
+              not refused['ok'] and refused['error']['code'] == 'invalid_id' and state('dialog')['flow'] == 'attach_scene', refused)
+        fill(id='street')
+        ok({'command': 'invoke', 'target': 'dialog.submit'})
+        check('the dialog closes: the bundle is read by a job', not get('dialog').get('ok'), get('dialog'))
+        failed_read = wait_chain({'failed'})
+        check('an invalid bundle fails the attach step with its typed code',
+              failed_read['error']['step'] == 'attach' and failed_read['error']['code'] == 'invalid_bundle'
+              and failed_read['scene'] is None, failed_read)
+        check('no scene, no history entry, no resource folder',
               op({'op': 'scene.list'})['scenes'] == [] and undo_depth() == undo_before
-              and not (project_dir / 'scenes').exists() and state('scene_import')['state'] == 'idle',
-              op({'op': 'scene.list'}))
+              and not (project_dir / 'scenes').exists(), op({'op': 'scene.list'}))
+        ok({'command': 'invoke', 'target': 'flow.attach_scene', 'action': 'open'})
         fill(bundle=str(work / 'nowhere.json'))
-        missing = send({'command': 'invoke', 'target': 'dialog.submit'})
-        check('a path that is not there is bundle_unreadable', not missing['ok'] and missing['error']['code'] == 'bundle_unreadable', missing)
+        ok({'command': 'invoke', 'target': 'dialog.submit'})
+        missing = wait_chain({'failed'})
+        check('a path that is not there is bundle_unreadable',
+              missing['error']['step'] == 'attach' and missing['error']['code'] == 'bundle_unreadable', missing)
 
         # --- valid file: attach, adopt, load, select, show --------------------------------------
-        fill(bundle=str(good / 'bundle.json'), source=str(good), show='yes')
+        ok({'command': 'invoke', 'target': 'flow.attach_scene', 'action': 'open'})
+        fill(bundle=str(good / 'bundle.json'), id='street', source=str(good), show='yes')
         submitted = ok({'command': 'invoke', 'target': 'dialog.submit'})
-        check('a valid bundle is submitted', submitted['action'] == 'scene.import' and submitted['attach']['scene'] == 'street', submitted)
+        check('a valid bundle starts the chain at the attach job',
+              submitted['action'] == 'scene.import' and submitted['import']['step'] in ('attach', 'adopt', 'resolve'), submitted)
         check('the dialog closed', not get('dialog').get('ok'), get('dialog'))
-        check('attach is one undo entry', undo_depth() == undo_before + 1, undo_depth())
         done = wait_chain({'loaded', 'failed'})
+        check('attach is one undo entry', undo_depth() == undo_before + 1, undo_depth())
         check('the background jobs adopted and loaded the scene', done['state'] == 'loaded' and done['error'] is None, done)
         check('steps ran in order', done['done'][:4] == ['attach', 'adopt', 'resolve', 'select'], done['done'])
         for asset in ('sky.png', 'mid.png', 'hero.png'):
@@ -165,7 +179,8 @@ def main():
         check('the host says the scene is loaded and current', street['loaded'] and street['current'], street)
         jobs = state('jobs')['recent']
         actions = [event['result']['action'] for event in reversed(jobs) if event.get('result')]
-        check('adopt then resolve are in the shared job history', actions[:2] == ['scene.resources.adopt', 'scene.resources.resolve'], actions)
+        check('attach, adopt then resolve are in the shared job history',
+              actions[:3] == ['scene.attach.start', 'scene.resources.adopt', 'scene.resources.resolve'], actions)
         check('the inspector is in scene mode on the new scene',
               get('inspector.mode')['data']['value'] == 'scene' and state('scene.panel')['scene'] == 'street',
               (get('inspector.mode'), get('scene.panel')))

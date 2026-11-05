@@ -3,8 +3,11 @@
 //! here decides whether a bundle or an edit is valid.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use serde_json::Value;
+
+use crate::directed_scene::DirectedScene;
 
 use crate::scene_edit::{EditOp, PropertyRef};
 use crate::scene_interaction::{FrameAt, GestureCommand, SelectMode};
@@ -20,6 +23,29 @@ pub enum SceneSource {
     /// A `render-bundle.json` on disk. Only the file is read: the resources it names by relative
     /// path are not opened.
     Path(PathBuf),
+    /// A scene that was already read, imported and admitted (see [`AdmittedScene`]): attaching
+    /// it only checks ID, room and budget, so the heavy work can run on a job thread.
+    Admitted(AdmittedScene),
+}
+
+/// A bundle that passed the importer and the structural and temporal gates of `admit`, held
+/// ready to attach. WHY opaque: the only way to make one is [`AdmittedScene::prepare`], so
+/// `SceneSource::Admitted` can skip validation without letting a caller skip the rules.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AdmittedScene(Arc<DirectedScene>);
+
+impl AdmittedScene {
+    pub(super) fn new(scene: DirectedScene) -> Self {
+        Self(Arc::new(scene))
+    }
+
+    pub fn scene(&self) -> &DirectedScene {
+        &self.0
+    }
+
+    pub(crate) fn into_shared(self) -> Arc<DirectedScene> {
+        self.0
+    }
 }
 
 /// The frame a camera query asks about.

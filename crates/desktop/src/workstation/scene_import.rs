@@ -2,11 +2,13 @@
 //!
 //! A dialog (`FlowKind::AttachScene` / `FlowKind::SceneResources`) collects strings and nothing
 //! else: the picked file is only a path, and the chain it starts is the one a script sends —
-//! `scene.attach` (core, synchronous), then `scene.resources.adopt` and `scene.resources.resolve`
-//! (media host, background jobs), then the presentation (`scene_choose`, `monitor.show_scene`).
-//! No rule lives here: the bundle is validated by the importer inside `scene.attach`, the files by
-//! the host's preflight/hash/containment, and nothing in this module hashes, copies or decodes.
-//! The UI thread only starts jobs and, on the workflow tick, reacts to the ones that finished.
+//! `scene.attach.start` (media host job: read, parse and validate the bundle off the UI thread;
+//! the core's `scene.attach` then attaches the admitted scene as one undo step), then
+//! `scene.resources.adopt` and `scene.resources.resolve` (more jobs), then the presentation
+//! (`scene_choose`, `monitor.show_scene`). No rule lives here: the bundle is validated by the
+//! importer inside the attach job, the files by the host's preflight/hash/containment, and nothing
+//! in this module reads, parses, hashes, copies or decodes. The UI thread only starts jobs and, on
+//! the workflow tick, reacts to the ones that finished (BL100).
 //!
 //! [`SceneImport`] is the pure state of that chain (no GPUI, no window): it says which request
 //! comes next and what a finished job means. [`Workstation`]'s methods below run it and expose it
@@ -17,7 +19,7 @@ use tessel_editor_core::CommandError;
 
 use super::flows::{self, FlowKind};
 use super::scene_ui::InspectorMode;
-use super::{Activity, OpReply, Source, Workstation};
+use super::{Activity, Source, Workstation};
 
 /// What a scene dialog asks for once its own operation is done.
 #[derive(Clone, Debug, PartialEq)]
@@ -46,6 +48,8 @@ fn first_step(plan: &ImportPlan) -> Step {
 
 fn step_request(plan: &ImportPlan, step: Step) -> Value {
     match step {
+        // Never asked of a plan: the attach request is the dialog's own (`SceneImport::request`).
+        Step::Attach => Value::Null,
         Step::Adopt => {
             json!({ "op": "scene.resources.adopt", "scene": plan.scene, "source": plan.source })
         }
@@ -55,6 +59,8 @@ fn step_request(plan: &ImportPlan, step: Step) -> Value {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Step {
+    /// `scene.attach.start`: the bundle is read, validated and attached by the host.
+    Attach,
     Adopt,
     Resolve,
 }
@@ -62,6 +68,7 @@ pub enum Step {
 impl Step {
     fn label(self) -> &'static str {
         match self {
+            Self::Attach => "attach",
             Self::Adopt => "adopt",
             Self::Resolve => "resolve",
         }
@@ -151,6 +158,8 @@ pub enum Received {
     Ignored,
     /// The step succeeded and [`SceneImport::request`] is the next one to start.
     Next,
+    /// The scene was attached and nothing more was asked or needed: select it, load nothing.
+    Attached,
     Loaded,
     Failed,
 }
@@ -158,12 +167,16 @@ pub enum Received {
 #[derive(Clone, Debug)]
 pub struct SceneImport {
     plan: ImportPlan,
+    /// The dialog's `scene.attach.start` while the chain still has to attach the scene.
+    attach: Option<Value>,
     step: Step,
     job: Option<String>,
     state: State,
     /// Steps that completed, in order (`attach` first when this chain attached the scene).
     done: Vec<&'static str>,
     adopted: Option<Value>,
+    /// What the core answered when the host attached the scene (ID, counts, `resources`).
+    attached: Option<Value>,
     /// Presentation (select/show) is separate from loading: the resources can be fine while the
     /// monitor refuses, and that must not read as "the load failed".
     presentation: Option<Failure>,
@@ -179,11 +192,24 @@ impl SceneImport {
         Self {
             step: first_step(&plan),
             plan,
+            attach: None,
             job: None,
             state,
             done: if attached { vec!["attach"] } else { Vec::new() },
             adopted: None,
+            attached: None,
             presentation: None,
+        }
+    }
+
+    /// A chain that starts by attaching the scene: `request` is `scene.attach.start`. The scene's
+    /// ID is the one the dialog typed, or the one the core gives when the job is applied.
+    pub fn attaching(plan: ImportPlan, request: Value) -> Self {
+        Self {
+            step: Step::Attach,
+            attach: Some(request),
+            state: State::Running,
+            ..Self::new(plan, false)
         }
     }
 
@@ -205,7 +231,10 @@ impl SceneImport {
 
     /// The request of the step the chain is on.
     pub fn request(&self) -> Value {
-        step_request(&self.plan, self.step)
+        match (&self.step, &self.attach) {
+            (Step::Attach, Some(request)) => request.clone(),
+            _ => step_request(&self.plan, self.step),
+        }
     }
 
     pub fn bind(&mut self, job: String) {
@@ -241,6 +270,7 @@ impl SceneImport {
             return Received::Failed;
         }
         match self.step {
+            Step::Attach => self.receive_attached(event),
             Step::Adopt => {
                 self.done.push("adopt");
                 self.adopted = Some(event["result"]["report"].clone());
@@ -266,9 +296,39 @@ impl SceneImport {
         }
     }
 
+    /// The attach job finished and was applied: the core's answer names the scene. A scene that
+    /// names no files can load without a folder (`resources.needs_folder == false`, BL101), so
+    /// the load is implied even though the dialog gave none; an old host that does not say keeps
+    /// the dialog's own request (attach alone).
+    fn receive_attached(&mut self, event: &Value) -> Received {
+        let applied = &event["applied"];
+        let Some(scene) = applied["scene"].as_str() else {
+            self.state = State::Failed(Failure {
+                step: Step::Attach.label(),
+                code: "internal_error".into(),
+                message: "A cena foi lida, mas o host não informou o ID anexado".into(),
+                details: None,
+            });
+            return Received::Failed;
+        };
+        self.plan.scene = scene.to_string();
+        self.attach = None;
+        self.attached = Some(applied.clone());
+        self.done.push("attach");
+        if !self.plan.load && applied["resources"]["needs_folder"] != false {
+            self.state = State::Attached;
+            return Received::Attached;
+        }
+        self.plan.load = true;
+        self.step = first_step(&self.plan);
+        Received::Next
+    }
+
     pub fn to_json(&self) -> Value {
         json!({
-            "scene": self.plan.scene,
+            // Until the attach job is applied there is no scene, whatever ID was typed.
+            "scene": Some(&self.plan.scene).filter(|scene| !scene.is_empty() && self.attach.is_none()),
+            "attached": self.attached,
             "state": self.state.label(),
             "step": self.step.label(),
             "job": self.job,
@@ -289,6 +349,7 @@ impl SceneImport {
     fn summary(&self) -> String {
         let scene = &self.plan.scene;
         match &self.state {
+            State::Running if self.step == Step::Attach => "Anexando cena…".to_string(),
             State::Running => format!("Cena «{scene}»: carregando recursos…"),
             State::Attached => format!("Cena «{scene}» anexada; recursos não carregados"),
             State::Failed(failure) => format!(
@@ -311,10 +372,12 @@ impl SceneImport {
 
 impl Workstation {
     /// The dialog's submit for the scene flows. An error leaves the dialog open and the project
-    /// exactly as it was: the bundle is refused by `scene.attach` before anything is attached,
-    /// and a missing field before any operation. After a successful attach the dialog closes even
-    /// if loading fails; that failure is the `scene_import` node's `error`, because answering
-    /// `Err` here would invite a second attach of the same bundle.
+    /// exactly as it was: a missing field is refused before any operation and a request the host
+    /// refuses before it becomes a job (a malformed ID) comes back here. The bundle itself is
+    /// read and validated by a job (BL100), so an unreadable or invalid bundle is no longer an
+    /// answer of the submit: the dialog closes and the failure is the `scene_import` node's
+    /// `error` (step `attach`, typed code), with nothing attached. After the scene is attached the
+    /// chain keeps that failure semantics: loading can fail without undoing the attach.
     pub(super) fn scene_import_submit(
         &mut self,
         kind: FlowKind,
@@ -336,40 +399,33 @@ impl Workstation {
         }
         if kind == FlowKind::SceneResources {
             let plan = flows::import_plan(kind, values, &flows::field_value(values, "scene"));
-            self.scene_import_begin(plan, false, cx)?;
-            return Ok(self.scene_import_answer(None));
+            self.scene_import_begin(SceneImport::new(plan, false), false, cx)?;
+            return Ok(self.scene_import_answer(true));
         }
-        let OpReply::Done(attached) = self.run_op(&request, cx)? else {
-            return Err(CommandError::new(
-                "internal_error",
-                "scene.attach answered with a pending frame",
-            ));
-        };
-        let scene = attached["scene"].as_str().ok_or_else(|| {
-            CommandError::new("internal_error", "scene.attach answered without a scene id")
-        })?;
-        let plan = flows::import_plan(kind, values, scene);
-        self.scene_import_begin(plan, true, cx)?;
-        Ok(self.scene_import_answer(Some(attached)))
+        let typed_id = flows::field_value(values, "id");
+        let plan = flows::import_plan(kind, values, &typed_id);
+        self.scene_import_begin(SceneImport::attaching(plan, request), false, cx)?;
+        Ok(self.scene_import_answer(false))
     }
 
-    fn scene_import_answer(&self, attached: Option<Value>) -> Value {
+    /// `changed` is whether the project changed by the time of the answer: a scene dialog that
+    /// only starts jobs changed nothing yet; the node says what happens next.
+    fn scene_import_answer(&self, changed: bool) -> Value {
         json!({
-            "action": "scene.import", "changed": true, "attach": attached,
+            "action": "scene.import", "changed": changed,
             "import": self.workflow.scene_import.as_ref().map(SceneImport::to_json),
         })
     }
 
-    /// Starts the chain for `plan`. `attached`: this chain just attached the scene, so a step
-    /// that cannot start is recorded on the node instead of returned (the attach already happened
-    /// and must not be repeated); otherwise it is returned and nothing was started.
+    /// Starts `import`'s first step. `attached`: the scene is already attached, so a step that
+    /// cannot start is recorded on the node instead of returned (the attach already happened and
+    /// must not be repeated); otherwise it is returned and nothing was started.
     pub(super) fn scene_import_begin(
         &mut self,
-        plan: ImportPlan,
+        mut import: SceneImport,
         attached: bool,
         cx: &mut gpui_kit::Context<Self>,
     ) -> Result<(), CommandError> {
-        let mut import = SceneImport::new(plan, attached);
         if !import.is_running() {
             self.scene_import_present(&mut import, cx);
             self.scene_import_settle(import, cx);
@@ -419,7 +475,7 @@ impl Workstation {
                 Ok(job) => import.bind(job),
                 Err(error) => import.fail(&error),
             },
-            Received::Loaded => self.scene_import_present(&mut import, cx),
+            Received::Loaded | Received::Attached => self.scene_import_present(&mut import, cx),
             Received::Failed => {}
         }
         if received == Received::Ignored || import.is_running() {

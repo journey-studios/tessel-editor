@@ -57,6 +57,7 @@ ordem de anexação. Cada `scene.*` é um `SceneCommand` dentro de `Command::Sce
 | `op` | Campos | Efeito | Histórico |
 |---|---|---|---|
 | `scene.attach` | `id?`, `name?`, **um de** `bundle` (objeto) · `text` (string JSON) · `path` (arquivo) | importa, roda os gates estrutural e temporal, anexa | "Attach scene" |
+| `scene.attach.start` (host de mídia, [F043](scene-import-ui.md)) | os mesmos campos + `wait?` | o mesmo attach, mas ler/importar/validar roda num job (`AdmittedScene::prepare`) e o resultado só é aplicado se projeto e revisão forem os da partida | "Attach scene" |
 | `scene.detach` | `scene` | remove | "Remove scene" |
 | `scene.edit` | `scene`, `ops[]` (`{"set","value"}`/`{"reset"}` da F034), `dry_run?` | lote atômico via `scene_edit::apply`/`dry_run` | "Edit scene" (uma entrada por lote) |
 | `scene.list` | — | `id`, `name`, `bundle_id`, `revision_id`, contagens | — |

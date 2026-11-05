@@ -47,7 +47,7 @@ mod run;
 mod scope;
 mod store;
 
-pub use command::{CameraAt, SceneCommand, SceneSource};
+pub use command::{AdmittedScene, CameraAt, SceneCommand, SceneSource};
 pub use run::admit;
 pub use scope::{deferred_in_use, scope_json};
 pub use store::STORE_VERSION;
@@ -179,6 +179,27 @@ impl SceneBook {
                 (!paths.is_empty()).then_some((entry.id.as_str(), paths))
             })
             .collect()
+    }
+
+    /// The gate `scene.attach` runs before it reads anything: a well-formed, free ID (or room for a
+    /// generated one) and a name that is not blank. Public so an adapter that reads the bundle on a
+    /// job thread can refuse these without first spending that work (the command checks again when
+    /// the result is applied, because the project may have changed meanwhile).
+    pub fn check_attach(&self, id: Option<&str>, name: Option<&str>) -> Result<(), CommandError> {
+        match id {
+            Some(raw) => {
+                check_scene_id(raw)?;
+                self.check_room(raw)?;
+            }
+            None => self.check_room(&self.fresh_id())?,
+        }
+        if name.is_some_and(|raw| raw.trim().is_empty()) {
+            return Err(CommandError::invalid_value(
+                "A scene name cannot be blank",
+                serde_json::json!("a non-empty string"),
+            ));
+        }
+        Ok(())
     }
 
     /// Whether `id` can be added now: free and under [`MAX_SCENES`]. Checked before the (costly)

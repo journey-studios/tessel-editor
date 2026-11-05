@@ -398,8 +398,10 @@ A correção R7 não altera runtime/src nem substitui provas de WKWebView ou GPU
 
 | ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
 |---|---|---|---|---|---|---|
-| BL100 | F043/latência | Mover leitura/parse/validação pesada do attach para job sem bloquear UI | Pendente | BL086/core/media | Coordenador | Arquivo grande não congela UI; resultado aplica somente no projeto/revisão apropriados, com cancelamento/erro tipado; não duplicar validação no adapter |
-| BL101 | F040/recursos vazios | Carregar cena sem arquivos externos sem exigir diretório inexistente | Pendente | BL010/BL086 | Coordenador | Manifesto sem dependências resolve sem root_unavailable; cenas que nomeiam arquivos continuam exigindo raiz e verificação; teste lib/headless/monitor |
+| BL100 | F043/latência | Mover leitura/parse/validação pesada do attach para job sem bloquear UI | A validar | BL086/core/media | S5 | `scene.attach.start` (host) + `AdmittedScene::prepare` (core): leitura em blocos, parse, importação e gates fora da UI; aplicado pelo `scene.attach` do core só se projeto e revisão forem os da partida (`stale_result`), `cancelled`/`invalid_bundle`/`bundle_unreadable`/`bundle_too_large` tipados, diálogo sem regra duplicada. Testes: core `scene_attach_prepared` (5), media `scene_attach_job` (15), desktop `scene_import` (23). Prova viva `scripts/scene-import-proof.py`: 35 checks passaram em janela própria (GPU lock); gates fmt/check/clippy/test workspace/build verdes; limites e novos itens BL113–BL114. Detalhes: [F043](features/scene-import-ui.md) |
+| BL101 | F040/recursos vazios | Carregar cena sem arquivos externos sem exigir diretório inexistente | A validar | BL010/BL086 | S5 | Manifesto sem arquivo no plano de transporte: `preflight`/`resolve` não abrem raiz nem exigem workspace (`ResourceBase::unbound`, `needs_files`); cena com arquivos mantém `root_unavailable`/`resources_invalid`/`no_workspace`/contenção. Testes lib/headless em `scene_attach_job` e janela em `scene_import` (com e sem workspace); monitor real a validar na prova viva. Detalhes: [F040](features/scene-resource-integration.md), [F043](features/scene-import-ui.md) |
+| BL113 | F043/revisão | Guarda de revisão do attach por job é estrita (qualquer edição registrada durante a leitura torna o resultado `stale_result`); avaliar reaplicar o attach quando só mudou outra parte do projeto | Pendente | BL100 | Coordenador | Decisão registrada: manter estrito ou reaplicar com o mesmo ID/sala; teste do caminho escolhido; sem anexar em projeto trocado |
+| BL114 | F043/cancelamento | Cancelamento é verificado entre blocos e fases do attach, não dentro do parse de um JSON de até 32 MiB já em memória | Pendente | BL100 | Coordenador | Medir o tempo de parse do bundle máximo na UI real e, se relevante, tornar o importador cancelável; prova com arquivo grande e `job.cancel` durante o parse |
 
 R2 não faz attach+carga atômicos: em falha de recursos a cena anexada permanece para reparo/undo; isso é comportamento explícito, não fluxo completo bem-sucedido. A prova do painel nativo de arquivos e aparência fica pendente em BL087/BL043.
 Falha observada em teste de slider/layout (arquivo R9 ainda WIP) foi encaminhada à frente responsável; não considerar crate desktop inteiro verde enquanto persistir. [Relatório R2](migration/next-r2-report.md).
@@ -460,7 +462,7 @@ Plano e contratos: [wave-s1-s10-plan.md](migration/wave-s1-s10-plan.md). R1–R1
 | S2 | BL111 | Preparada para delegação | claims persistentes e dois processos reais |
 | S3 | BL109 | Preparada para delegação | bytes imutáveis em export e cancelamento |
 | S4 | BL102 | Preparada para delegação | ack antigo de slot reutilizado recusado |
-| S5 | BL100/BL101 | Preparada para delegação | attach off-thread e recursos vazios |
+| S5 | BL100/BL101 | Entregue em PR; a validar | attach off-thread e recursos vazios; ver BL100/BL101 |
 | S6 | BL004/BL005 | Preparada para delegação | catálogo e pose inicial equivalentes à origem |
 | S7 | BL025 (subconjunto) | Preparada para delegação | Spark dirigido em preview/pacote/export |
 | S8 | BL015/BL042 | Preparada para delegação | gizmo de translação e comando semântico equivalentes |

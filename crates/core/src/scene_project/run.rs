@@ -6,21 +6,23 @@
 //! entry itself is not made here: `EditorState::execute` snapshots before and records after when
 //! the outcome says `changed`, so there is one history and one transaction per command.
 
-use std::fs;
+use std::fs::{self, File};
+use std::io::Read;
 use std::path::Path;
 use std::sync::Arc;
 
 use serde_json::{Map, Value, json};
 
 use crate::directed_scene::{DirectedScene, ImportError, Limits};
+use crate::jobs::CancelToken;
 use crate::scene_edit::{self, EditOp, EditSummary};
 use crate::scene_interaction::Dropped;
 use crate::state::{CommandError, EditorState};
 
-use super::command::{SceneCommand, SceneSource};
+use super::AttachedScene;
+use super::command::{AdmittedScene, SceneCommand, SceneSource};
 use super::query;
 use super::scope::{deferred_in_use, scope_json};
-use super::{AttachedScene, check_scene_id};
 
 /// The gates a scene must pass to live in a project: the importer already ran (that is how a
 /// `DirectedScene` exists), and the structural and temporal gates run here, the same ones
@@ -50,25 +52,76 @@ fn unreadable(path: &Path, error: &std::io::Error) -> CommandError {
 }
 
 /// Reads a bundle file, refusing a file larger than the importer's limit before reading it: the
-/// importer enforces the same bound, but only after the text is already in memory.
-fn read_bundle_file(path: &Path) -> Result<String, CommandError> {
+/// importer enforces the same bound, but only after the text is already in memory. Reads in
+/// blocks so a job can be cancelled while a large file is still coming in.
+fn read_bundle_file(path: &Path, token: &CancelToken) -> Result<String, CommandError> {
+    const BLOCK: usize = 1 << 20;
     let max = Limits::default().max_bytes;
     let meta = fs::metadata(path).map_err(|error| unreadable(path, &error))?;
     let bytes = usize::try_from(meta.len()).unwrap_or(usize::MAX);
     if bytes > max {
         return Err(ImportError::TooLarge { bytes, max }.into());
     }
-    fs::read_to_string(path).map_err(|error| unreadable(path, &error))
+    let mut file = File::open(path).map_err(|error| unreadable(path, &error))?;
+    let mut data = Vec::with_capacity(bytes.min(max));
+    let mut block = vec![0_u8; BLOCK];
+    loop {
+        token.check().map_err(CommandError::from)?;
+        let read = file
+            .read(&mut block)
+            .map_err(|error| unreadable(path, &error))?;
+        if read == 0 {
+            break;
+        }
+        data.extend_from_slice(&block[..read]);
+        // The file may have grown after the size check.
+        if data.len() > max {
+            return Err(ImportError::TooLarge {
+                bytes: data.len(),
+                max,
+            }
+            .into());
+        }
+    }
+    String::from_utf8(data).map_err(|error| {
+        unreadable(
+            path,
+            &std::io::Error::new(std::io::ErrorKind::InvalidData, error),
+        )
+    })
 }
 
 impl SceneSource {
-    fn import(self) -> Result<DirectedScene, CommandError> {
+    /// Reads and imports the bundle. `token` only matters for a file: it is checked between
+    /// blocks, so a cancelled job stops reading instead of finishing a large file.
+    fn import(self, token: &CancelToken) -> Result<DirectedScene, CommandError> {
         let scene = match self {
             Self::Bundle(value) => DirectedScene::import_value(value),
             Self::Text(text) => DirectedScene::import_str(&text),
-            Self::Path(path) => DirectedScene::import_str(&read_bundle_file(&path)?),
+            Self::Path(path) => DirectedScene::import_str(&read_bundle_file(&path, token)?),
+            Self::Admitted(admitted) => return Ok(admitted.scene().clone()),
         };
         Ok(scene?)
+    }
+}
+
+impl AdmittedScene {
+    /// Everything attach does that costs time: read, parse, import, then the structural and
+    /// temporal gates. It touches no project, so it may run on a job thread; attaching the result
+    /// (`SceneSource::Admitted`) is cheap. `token` is checked between phases (and between blocks
+    /// of a file): a cancelled preparation fails with the `cancelled` code and holds no scene.
+    /// Errors are the ones `scene.attach` answers (`bundle_unreadable`, `invalid_bundle`, ...).
+    pub fn prepare(source: SceneSource, token: &CancelToken) -> Result<Self, CommandError> {
+        let cancelled = || token.check().map_err(CommandError::from);
+        if let SceneSource::Admitted(admitted) = source {
+            return Ok(admitted);
+        }
+        cancelled()?;
+        let scene = source.import(token)?;
+        cancelled()?;
+        let scene = admit(scene)?;
+        cancelled()?;
+        Ok(Self::new(scene))
     }
 }
 
@@ -128,24 +181,16 @@ impl EditorState {
         name: Option<String>,
         source: SceneSource,
     ) -> Result<Value, CommandError> {
-        let id = match id {
-            Some(raw) => {
-                check_scene_id(&raw)?;
-                raw
+        self.scenes.check_attach(id.as_deref(), name.as_deref())?;
+        let id = id.unwrap_or_else(|| self.scenes.fresh_id());
+        let name = name.map(|raw| raw.trim().to_string());
+        let scene = match source {
+            SceneSource::Admitted(admitted) => admitted.into_shared(),
+            source => {
+                let imported = source.import(&CancelToken::new())?;
+                Arc::new(admit(imported)?)
             }
-            None => self.scenes.fresh_id(),
         };
-        self.scenes.check_room(&id)?;
-        let name = match name.map(|raw| raw.trim().to_string()) {
-            Some(trimmed) if trimmed.is_empty() => {
-                return Err(CommandError::invalid_value(
-                    "A scene name cannot be blank",
-                    json!("a non-empty string"),
-                ));
-            }
-            other => other,
-        };
-        let scene = admit(source.import()?)?;
         let name = name.unwrap_or_else(|| scene.bundle().bundle_id.clone());
         let report = json!({
             "action": "scene.attach", "scene": id, "name": name,
@@ -159,7 +204,7 @@ impl EditorState {
         self.scenes.insert(AttachedScene {
             id,
             name,
-            scene: Arc::new(scene),
+            scene,
             extra: Map::new(),
         })?;
         Ok(report)
