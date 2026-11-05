@@ -27,6 +27,7 @@ use crate::content::{Camera, TextSpec};
 use crate::id::Id;
 use crate::plan::PreviewIntent;
 use crate::preview::{PreviewMode, PreviewPolicy};
+use crate::scene_project::{SceneBook, SceneCommand};
 use crate::time::Ratio;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,6 +86,9 @@ pub struct EditorState {
     /// Which quality the monitor's interactive frames may use (see `preview.rs`). A viewing
     /// preference like [`preview`](Self::preview): not saved, not an edit.
     pub preview_policy: PreviewPolicy,
+    /// Directed scenes attached to the project (F036). Part of the document and of every undo
+    /// snapshot; empty for a project that never attached one.
+    pub scenes: SceneBook,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -248,6 +252,8 @@ pub enum Command {
         sequence: String,
         name: String,
     },
+    /// A `scene.*` operation on the directed scenes of the project (see `scene_project`).
+    Scene(SceneCommand),
 }
 
 impl Command {
@@ -274,6 +280,7 @@ impl Command {
             Self::RenameSequence { .. } => "Rename sequence",
             Self::SavePreset { .. } | Self::DeletePreset { .. } => "Export preset",
             Self::SelectPreset { .. } => "Select export preset",
+            Self::Scene(scene) => return scene.history_label(),
             _ => return None,
         })
     }
@@ -326,6 +333,7 @@ impl EditorState {
             subject: Subject::Clip,
             preview: PreviewIntent::Sequence,
             preview_policy: PreviewPolicy::default(),
+            scenes: SceneBook::default(),
         }
     }
 
@@ -355,6 +363,7 @@ impl EditorState {
             subject: Subject::Media,
             preview: PreviewIntent::Sequence,
             preview_policy: PreviewPolicy::default(),
+            scenes: SceneBook::default(),
         })
     }
 }
@@ -415,7 +424,7 @@ impl EditorState {
     /// Compact live summary for `ui status`.
     pub fn summary(&self) -> Value {
         let timeline = &self.timeline;
-        json!({
+        let mut summary = json!({
             "demonstration": self.demonstration,
             "project": self.project_name,
             // What an editor needs to show "saved / unsaved" without reading the files.
@@ -458,7 +467,12 @@ impl EditorState {
                 })).collect::<Vec<_>>(),
             },
             "summary": self.status_summary(),
-        })
+        });
+        // Only when there is one, so the status of a project without scenes is what it always was.
+        if !self.scenes.is_empty() {
+            summary["scenes"] = json!(self.scenes.ids());
+        }
+        summary
     }
 
     /// Runs one command. Edits (see [`Command::history_label`]) become one undo entry and bump
@@ -663,6 +677,7 @@ impl EditorState {
             Command::ActivateSequence { sequence } => self.activate_sequence(&sequence),
             Command::RemoveSequence { sequence } => self.remove_sequence(&sequence),
             Command::RenameSequence { sequence, name } => self.rename_sequence(&sequence, &name),
+            Command::Scene(command) => self.apply_scene(command),
             Command::SetPreviewPolicy {
                 mode,
                 max_height,

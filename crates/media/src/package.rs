@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tessel_editor_core::assets::{Source, expand_pattern};
-use tessel_editor_core::document::{SCHEMA_VERSION, SPARK_VERSION, THREE_VERSION, canonical_bytes};
+use tessel_editor_core::document::{SPARK_VERSION, THREE_VERSION, checked_canonical_bytes};
 use tessel_editor_core::jobs::{JobContext, JobError};
 use tessel_editor_core::state::Command;
 use tessel_editor_core::{CommandError, EditorState, persist};
@@ -243,6 +243,13 @@ fn plan(state: &EditorState, options: &PackageOptions) -> Result<Plan, JobError>
             Source::Demo(_) | Source::Inline => {}
         }
     }
+    // Directed scenes travel inside the document, but the files they name by relative path are
+    // not resolved, hashed or copied yet (BB05/BB06). Reported like any other missing media, so
+    // a package is never called complete while a scene points at files it does not hold.
+    for (scene, paths) in selected.scenes.resource_paths() {
+        missing.push(json!({ "asset": format!("scene:{scene}"), "paths": paths,
+            "state": SCENE_RESOURCES_STATE }));
+    }
     Ok(Plan {
         state: selected,
         files,
@@ -250,6 +257,16 @@ fn plan(state: &EditorState, options: &PackageOptions) -> Result<Plan, JobError>
         warnings,
         rewrites,
     })
+}
+
+/// `state` of a `missing` entry that stands for the resources of a directed scene.
+const SCENE_RESOURCES_STATE: &str = "not_packaged";
+
+fn has_scene_resources(planned: &Plan) -> bool {
+    planned
+        .missing
+        .iter()
+        .any(|entry| entry["state"] == SCENE_RESOURCES_STATE)
 }
 
 /// What `create` would do, without writing anything: files, bytes, missing dependencies.
@@ -266,7 +283,10 @@ pub fn preflight(
         .unwrap_or_else(|| Path::new("."));
     let free = fsx::free_bytes(parent);
     let mut blockers = Vec::new();
-    if !planned.missing.is_empty() && !options.allow_partial {
+    if has_scene_resources(&planned) && !options.allow_partial {
+        blockers.push(json!({ "code": "unsupported", "message": "A directed scene names resource files that packages do not carry yet; the document and its scenes can be packed as a partial package",
+            "assets": planned.missing }));
+    } else if !planned.missing.is_empty() && !options.allow_partial {
         blockers.push(json!({ "code": "missing_media", "message": "Some media files are missing or changed; relink them or allow a partial package",
             "assets": planned.missing }));
     }
@@ -365,7 +385,8 @@ fn rewrite_document(
     // Autosave/recovery state and the machine's workspace are not part of the document anyway;
     // the restored project gets its own.
     doc["package"] = json!({ "created_from": planned.state.project.id });
-    Ok(canonical_bytes(&doc))
+    checked_canonical_bytes(&doc, tessel_editor_core::persist::MAX_DOCUMENT_BYTES)
+        .map_err(JobError::from)
 }
 
 fn manifest(
@@ -382,7 +403,7 @@ fn manifest(
     listed.sort_by(|a, b| a["path"].as_str().cmp(&b["path"].as_str()));
     json!({
         "format": MANIFEST_FORMAT, "version": MANIFEST_VERSION,
-        "document": DOCUMENT_NAME, "schema_version": SCHEMA_VERSION,
+        "document": DOCUMENT_NAME, "schema_version": planned.state.document_schema_version(),
         "project": { "id": planned.state.project.id, "name": planned.state.project_name,
             "revision": planned.state.project.revision },
         "requires": { "spark": SPARK_VERSION, "three": THREE_VERSION },
@@ -401,6 +422,14 @@ pub fn create(
     ctx: &JobContext,
 ) -> Result<Value, JobError> {
     let mut planned = plan(state, options)?;
+    if has_scene_resources(&planned) && !options.allow_partial {
+        return Err(JobError::new(
+            "unsupported",
+            "A directed scene names resource files that packages do not carry yet; \
+             allow a partial package to keep the document and its scenes",
+        )
+        .with_details(json!({ "missing": planned.missing })));
+    }
     if !planned.missing.is_empty() && !options.allow_partial {
         return Err(JobError::new(
             "preflight_failed",
@@ -443,6 +472,9 @@ pub fn create(
         PackageFormat::Directory => None,
     };
     let content_root = staging.path().join("content");
+    if matches!(options.format, PackageFormat::Directory) {
+        fs::create_dir_all(&content_root).map_err(|error| io_error(&content_root, &error))?;
+    }
     for file in &planned.files {
         ctx.check()?;
         let (sha, size) = match &mut zip {

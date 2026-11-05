@@ -1,9 +1,10 @@
 //! Undo/redo over domain transactions.
 //!
 //! WHY snapshots instead of inverse commands: every edit (move, trim, property, import,
-//! project-import) would need a hand-written inverse, and a missed one silently corrupts the
-//! undo chain. A snapshot of the *model* (library items, every sequence, clip properties) is
-//! small compared to the media it points at, and it makes undo exact by construction. The
+//! project-import, directed scenes) would need a hand-written inverse, and a missed one
+//! silently corrupts the undo chain. A snapshot of the *model* (library items, every sequence,
+//! clip properties, attached scenes) is small compared to the media it points at, and it makes
+//! undo exact by construction. The
 //! cost is memory proportional to project metadata × `HISTORY_LIMIT`; media bytes are never
 //! part of a snapshot, so undo cannot delete a file (see `docs/features/history.md`).
 //!
@@ -17,6 +18,7 @@ use super::library::{Folder, MediaItem};
 use super::timeline::Timeline;
 use super::{CommandError, EditorState};
 use crate::id::Id;
+use crate::scene_project::SceneBook;
 
 /// Entries kept per direction. Older edits are forgotten, newest first.
 pub const HISTORY_LIMIT: usize = 200;
@@ -30,6 +32,8 @@ pub struct Snapshot {
     active: Timeline,
     others: Vec<Timeline>,
     overrides: Overrides,
+    /// Shares each attached bundle (`Arc`), so a snapshot costs pointers, not documents.
+    scenes: SceneBook,
 }
 
 #[derive(Debug, Clone)]
@@ -96,6 +100,7 @@ impl EditorState {
             active: self.timeline.clone(),
             others: self.sequences.clone(),
             overrides: self.inspector.overrides_snapshot(),
+            scenes: self.scenes.clone(),
         }
     }
 
@@ -124,6 +129,7 @@ impl EditorState {
         self.timeline = active;
         self.sequences = others;
         self.inspector.restore_overrides(snapshot.overrides);
+        self.scenes = snapshot.scenes;
         self.library.selected_folder = self
             .library
             .selected_folder

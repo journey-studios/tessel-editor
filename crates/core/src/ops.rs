@@ -14,6 +14,8 @@ use crate::content::{Camera, TextSpec};
 use crate::id::Id;
 use crate::plan::{PlanRequest, PlanTime, PreviewIntent};
 use crate::preview::PreviewMode;
+use crate::scene_edit::{PropertyRef, parse_batch};
+use crate::scene_project::{CameraAt, SceneCommand, SceneSource};
 use crate::state::timeline::{SequenceSettings, TrackKind};
 use crate::state::{Command, CommandError, EditorState, ProjectSettings, Raw};
 use crate::time::{Rate, Ratio};
@@ -528,9 +530,98 @@ pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, Comm
                 samples,
             })));
         }
+        scene if scene.starts_with("scene.") => Command::Scene(scene_command(scene, request)?),
         _ => return Ok(None),
     };
     Ok(Some(Op::Run(command)))
+}
+
+/// The `scene.*` vocabulary of F036. Shape only: every rule (IDs, bundle validity, edit gates)
+/// belongs to `scene_project`, `directed_scene` and `scene_edit`, so a request means the same
+/// through the CLI, a script, the socket and the library.
+fn scene_command(op: &str, request: &Value) -> Result<SceneCommand, CommandError> {
+    let scene = || string(request, "scene").map(str::to_string);
+    Ok(match op {
+        "scene.attach" => SceneCommand::Attach {
+            id: optional_string(request, "id")?,
+            name: optional_string(request, "name")?,
+            source: scene_source(request)?,
+        },
+        "scene.detach" => SceneCommand::Detach { scene: scene()? },
+        "scene.edit" => SceneCommand::Edit {
+            scene: scene()?,
+            ops: parse_batch(
+                request
+                    .get("ops")
+                    .ok_or_else(|| invalid("Expected array field `ops`"))?,
+            )?,
+            dry_run: optional_bool(request, "dry_run")?.unwrap_or(false),
+        },
+        "scene.list" => SceneCommand::List,
+        "scene.capabilities" => SceneCommand::Capabilities,
+        "scene.catalog" => SceneCommand::Catalog,
+        "scene.describe" => SceneCommand::Describe { scene: scene()? },
+        "scene.properties" => SceneCommand::Properties {
+            scene: scene()?,
+            path_prefix: optional_string(request, "prefix")?,
+        },
+        "scene.get" => SceneCommand::Get {
+            scene: scene()?,
+            property: PropertyRef::parse(string(request, "property")?)?,
+        },
+        "scene.camera" => SceneCommand::Camera {
+            scene: scene()?,
+            at: camera_at(request)?,
+        },
+        other => {
+            return Err(CommandError::new(
+                "unknown_operation",
+                format!("Unknown operation `{other}`"),
+            ));
+        }
+    })
+}
+
+fn optional_bool(request: &Value, key: &str) -> Result<Option<bool>, CommandError> {
+    match request.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Bool(flag)) => Ok(Some(*flag)),
+        Some(_) => Err(invalid(format!("Field `{key}` must be true or false"))),
+    }
+}
+
+/// Exactly one of `bundle` (a JSON object), `text` (the bundle as a string) or `path`.
+fn scene_source(request: &Value) -> Result<SceneSource, CommandError> {
+    let given: Vec<&str> = ["bundle", "text", "path"]
+        .into_iter()
+        .filter(|key| request.get(key).is_some_and(|value| !value.is_null()))
+        .collect();
+    match given.as_slice() {
+        ["bundle"] => Ok(SceneSource::Bundle(request["bundle"].clone())),
+        ["text"] => Ok(SceneSource::Text(string(request, "text")?.to_string())),
+        ["path"] => Ok(SceneSource::Path(PathBuf::from(string(request, "path")?))),
+        _ => Err(invalid(
+            "Give exactly one of `bundle` (object), `text` (JSON string) or `path` (file)",
+        )),
+    }
+}
+
+/// Exactly one of `frame`, `time` (exact seconds) or `clip` + `clip_frame`.
+fn camera_at(request: &Value) -> Result<CameraAt, CommandError> {
+    let frame = request.get("frame").filter(|raw| !raw.is_null());
+    let time = time_field(request, "time")?;
+    let clip = optional_string(request, "clip")?;
+    match (frame, time, clip) {
+        (Some(_), None, None) => Ok(CameraAt::EditFrame(integer(request, "frame")?)),
+        (None, Some(time), None) => Ok(CameraAt::EditTime(time)),
+        (None, None, Some(clip)) => Ok(CameraAt::ClipFrame {
+            clip,
+            frame: integer(request, "clip_frame")?,
+        }),
+        _ => Err(invalid(
+            "Give exactly one of `frame`, `time`, or `clip` with `clip_frame`",
+        )),
+    }
 }
 
 #[cfg(test)]

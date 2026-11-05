@@ -12,7 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
-use crate::document::{self, canonical_bytes};
+use crate::document::{self, checked_canonical_bytes};
 use crate::state::{CommandError, EditorState};
 
 pub const DOCUMENT_SUFFIX: &str = ".tessel.json";
@@ -75,6 +75,14 @@ pub fn document_folder(path: &Path) -> PathBuf {
 
 /// Saves the project to `path`. The folder becomes the workspace when none is set.
 pub fn save(state: &mut EditorState, path: &Path) -> Result<Value, CommandError> {
+    save_bounded(state, path, MAX_DOCUMENT_BYTES)
+}
+
+fn save_bounded(
+    state: &mut EditorState,
+    path: &Path,
+    max_bytes: u64,
+) -> Result<Value, CommandError> {
     let path = absolute(path);
     if !path.to_string_lossy().ends_with(DOCUMENT_SUFFIX) {
         return Err(CommandError::new(
@@ -85,7 +93,7 @@ pub fn save(state: &mut EditorState, path: &Path) -> Result<Value, CommandError>
     }
     let folder = document_folder(&path);
     let document = state.to_document(Some(&folder));
-    let bytes = canonical_bytes(&document);
+    let bytes = checked_canonical_bytes(&document, max_bytes)?;
     atomic_write(&path, &bytes)?;
     state.project.document = Some(path.clone());
     if state.project.workspace.is_none() {
@@ -178,7 +186,10 @@ pub fn autosave(state: &EditorState) -> Result<Value, CommandError> {
         "written_ms": now_ms(),
         "document": state.to_document(Some(&workspace)),
     });
-    atomic_write(&target, &canonical_bytes(&envelope))?;
+    atomic_write(
+        &target,
+        &checked_canonical_bytes(&envelope, MAX_DOCUMENT_BYTES)?,
+    )?;
     prune(&directory);
     Ok(json!({ "action": "project.autosave", "path": target,
         "revision": state.project.revision, "changed": true }))
@@ -286,10 +297,31 @@ pub fn discard_recovery(workspace: &Path, project_id: &str) {
 pub fn describe(path: &Path) -> Result<Value, CommandError> {
     let state = load(path)?;
     Ok(json!({
-        "format": document::FORMAT, "schema_version": document::SCHEMA_VERSION,
+        "format": document::FORMAT, "schema_version": state.document_schema_version(),
         "project": state.project_name, "id": state.project.id,
         "sequences": state.all_sequences().map(|t| t.id.as_str()).collect::<Vec<_>>(),
         "assets": state.library.items.len(),
         "recoveries": recoveries_for_document(path).iter().map(Recovery::to_json).collect::<Vec<_>>(),
     }))
+}
+
+#[cfg(test)]
+mod size_tests {
+    use super::*;
+
+    #[test]
+    fn serialization_limit_preserves_the_previous_file_and_save_state() {
+        let dir = std::env::temp_dir().join(format!("tessel-save-size-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("project.tessel.json");
+        fs::write(&path, b"previous bytes").unwrap();
+        let mut state = EditorState::demo();
+        let before = state.project.clone();
+        let error = save_bounded(&mut state, &path, 32).unwrap_err();
+        assert_eq!(error.code, "document_too_large");
+        assert_eq!(fs::read(&path).unwrap(), b"previous bytes");
+        assert_eq!(state.project, before);
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
+        fs::remove_dir_all(dir).unwrap();
+    }
 }

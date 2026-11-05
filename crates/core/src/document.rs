@@ -1,4 +1,4 @@
-//! The persistent project document (`*.tessel.json`), schema v1.
+//! The persistent project document (`*.tessel.json`), schemas v1 and v2.
 //!
 //! The document is a projection of the editor model, never a dump of its structs: IDs are
 //! strings (the interner is not serialized), time and rates are rationals, paths of managed
@@ -14,6 +14,7 @@ use serde_json::{Map, Value, json};
 use crate::assets::{Asset, AudioStream, DemoImage, Identity, MediaKind, Meta, Source, Storage};
 use crate::content::{Camera, TextSpec};
 use crate::id::Id;
+use crate::scene_project::SceneBook;
 use crate::state::history::History;
 use crate::state::inspector::Inspector;
 use crate::state::library::{Folder, FolderIcon, Library, MediaItem};
@@ -24,7 +25,10 @@ use crate::state::{CommandError, EditorState, ProjectMeta, Subject, WorkspaceTab
 use crate::time::{Rate, Ratio};
 
 pub const FORMAT: &str = "tessel-project";
-pub const SCHEMA_VERSION: u64 = 1;
+/// Latest document version this reader supports.
+pub const SCHEMA_VERSION: u64 = 2;
+/// Projects without directed-scene data keep the legacy encoding.
+pub const LEGACY_SCHEMA_VERSION: u64 = 1;
 /// Renderer versions a document was written against, checked by the export preflight.
 pub const SPARK_VERSION: &str = "2.4.0";
 pub const THREE_VERSION: &str = "0.187.0";
@@ -189,6 +193,15 @@ fn sequence_json(timeline: &Timeline) -> Value {
 }
 
 impl EditorState {
+    /// Smallest schema that can preserve this project's data when it is saved.
+    pub fn document_schema_version(&self) -> u64 {
+        if self.scenes.has_document_data() {
+            SCHEMA_VERSION
+        } else {
+            LEGACY_SCHEMA_VERSION
+        }
+    }
+
     /// The document of the project. `base` is the folder that will hold it: managed paths
     /// inside it are stored relative, everything else stays absolute (reference media).
     pub fn to_document(&self, base: Option<&Path>) -> Value {
@@ -249,9 +262,9 @@ impl EditorState {
                 )
             })
             .collect();
-        json!({
+        let mut document = json!({
             "format": FORMAT,
-            "schema_version": SCHEMA_VERSION,
+            "schema_version": self.document_schema_version(),
             "project": {
                 "id": self.project.id,
                 "name": self.project_name,
@@ -267,7 +280,13 @@ impl EditorState {
                 "user_presets": self.project.user_presets,
             },
             "presentation": Value::Object(presentation),
-        })
+        });
+        // Additive block (see `scene_project::store`): absent unless the project has scenes, so
+        // a project without any is byte-identical to what earlier editors wrote.
+        if let Some(scenes) = self.scenes.to_json() {
+            document["scenes"] = scenes;
+        }
+        document
     }
 
     /// Builds a candidate project from a document. Nothing is returned half built: the caller
@@ -372,6 +391,14 @@ impl EditorState {
             .transpose()?
             .unwrap_or_default();
 
+        // Validated like everything else here: a bad stored scene fails the whole open, so the
+        // project in memory never holds a scene the editor would have refused to attach.
+        let scenes = doc
+            .get("scenes")
+            .map(SceneBook::from_json)
+            .transpose()?
+            .unwrap_or_default();
+
         let selected_media = library.items.first().map(|item| item.id);
         Ok(Self {
             project_name: name.trim().to_string(),
@@ -387,6 +414,7 @@ impl EditorState {
             subject: Subject::Media,
             preview: crate::plan::PreviewIntent::Sequence,
             preview_policy: crate::preview::PreviewPolicy::default(),
+            scenes,
         })
     }
 }
@@ -746,10 +774,9 @@ fn parse_sequence(value: &Value, library: &Library) -> Result<Timeline, CommandE
     Ok(timeline)
 }
 
-/// Brings an older document to [`SCHEMA_VERSION`]. The chain is empty today because v1 is the
-/// first persisted schema; the guard rails are real: a newer version or a foreign file is
-/// refused with a message, and the caller's bytes are never modified (the migrated value is a
-/// copy, written only by an explicit save).
+/// Validates the supported document versions. V1 has no scene storage; v2 protects it from
+/// legacy readers, which reject versions above 1 instead of silently dropping the block.
+/// The input is never rewritten here; ordinary projects may still be saved as v1.
 pub fn migrate(doc: Value) -> Result<Value, CommandError> {
     if doc["format"] != FORMAT {
         return Err(CommandError::new(
@@ -770,6 +797,11 @@ pub fn migrate(doc: Value) -> Result<Value, CommandError> {
         )
         .details(json!({ "found": version, "supported": SCHEMA_VERSION })));
     }
+    if version == LEGACY_SCHEMA_VERSION && doc.get("scenes").is_some() {
+        return Err(invalid(
+            "Directed scenes require project schema 2; schema 1 readers would discard them",
+        ));
+    }
     if version == 0 {
         return Err(CommandError::new(
             "unsupported_schema",
@@ -777,6 +809,53 @@ pub fn migrate(doc: Value) -> Result<Value, CommandError> {
         ));
     }
     Ok(doc)
+}
+
+/// Serializes canonical JSON without allocating or returning bytes beyond the loader's budget.
+/// The limit includes the trailing newline; failure happens before any file is written.
+pub fn checked_canonical_bytes(doc: &Value, max_bytes: u64) -> Result<Vec<u8>, CommandError> {
+    struct Bounded {
+        bytes: Vec<u8>,
+        limit: usize,
+        exceeded: bool,
+    }
+    impl std::io::Write for Bounded {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            if bytes.len() > self.limit.saturating_sub(self.bytes.len()) {
+                self.exceeded = true;
+                return Err(std::io::Error::other(
+                    "document serialization limit exceeded",
+                ));
+            }
+            self.bytes.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut out = Bounded {
+        bytes: Vec::new(),
+        limit: usize::try_from(max_bytes).unwrap_or(usize::MAX),
+        exceeded: false,
+    };
+    let encoded = serde_json::to_writer_pretty(&mut out, doc)
+        .map_err(|error| error.to_string())
+        .and_then(|()| {
+            std::io::Write::write_all(&mut out, b"\n").map_err(|error| error.to_string())
+        });
+    if let Err(message) = encoded {
+        if out.exceeded {
+            return Err(CommandError::new(
+                "document_too_large",
+                format!("The serialized document exceeds {max_bytes} bytes"),
+            ));
+        }
+        return Err(invalid(format!(
+            "The document could not be serialized: {message}"
+        )));
+    }
+    Ok(out.bytes)
 }
 
 /// Canonical bytes of a document: sorted keys, two-space indent, trailing newline.
@@ -800,5 +879,25 @@ pub fn asset_files(asset: &Asset) -> Vec<PathBuf> {
             .map(PathBuf::from)
             .collect(),
         _ => Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod serialization_tests {
+    use super::*;
+
+    #[test]
+    fn canonical_serialization_checks_the_actual_pretty_printed_size() {
+        let doc = json!({"unknown": [[[[[1,2,3,4,5,6,7,8]]]]]});
+        let expected = canonical_bytes(&doc);
+        let limit = u64::try_from(expected.len()).unwrap();
+        assert_eq!(checked_canonical_bytes(&doc, limit).unwrap(), expected);
+        assert_eq!(
+            checked_canonical_bytes(&doc, limit - 1).unwrap_err().code,
+            "document_too_large"
+        );
+        let compact_size = u64::try_from(doc.to_string().len()).unwrap();
+        assert!(compact_size < limit);
+        assert!(checked_canonical_bytes(&doc, compact_size).is_err());
     }
 }

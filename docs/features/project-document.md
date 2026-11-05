@@ -52,3 +52,10 @@ a cada 20 s quando há alterações (`workflow_tick`) e oferece recuperar. IDs e
 
 `presentation` é preservada mas não afeta render. Só existe schema v1 (sem migrações). O desktop não impede
 fechar a janela com alterações não salvas: o autosave é a rede de segurança, não um aviso.
+
+## Projetos com cenas dirigidas
+
+F036 adiciona o bloco `scenes` e escreve schema 2 somente quando esse bloco é necessário.
+Projetos comuns permanecem em schema 1. Leitores antigos recusam schema 2, protegendo as
+cenas contra perda silenciosa. Save/autosave e pacote conferem os bytes serializados reais
+contra o limite do loader (256 MiB), antes de escrever ou substituir o arquivo.

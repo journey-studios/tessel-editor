@@ -5,6 +5,8 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 
 - [Inventário de migração do Scene Studio](migration/README.md): 121 itens classificados,
   evidências na origem, diferenças do branch piloto, matriz de migração e fatias sugeridas.
+- [Cenas no projeto e CLI](features/scene-project.md): attach, lotes, histórico, save/reopen
+  e JSONL sem janela; UI visual e render dirigido pendentes.
 - [Animação de nós](features/scene-animation.md): performance por frame, hierarquia e matrizes
   animadas comparadas à origem; renderer/adapters ainda pendentes.
 - [Propriedades e lotes de cenas](features/scene-edit.md): catálogo tipado, operações por ID,

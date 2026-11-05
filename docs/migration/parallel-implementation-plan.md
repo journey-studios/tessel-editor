@@ -112,3 +112,8 @@ Matriz/índices, commits e revisão do conjunto continuam com o coordenador.
 F entregue e revalidada pelo coordenador: 29 testes públicos de animação, gerador verificável
 e round-trip JSON de binary64 sem perda. G segue com documento/histórico/CLI em andamento.
 Nenhuma dessas provas equivale ainda a render dirigido na UI.
+
+G integrada pelo coordenador, com schema 2 protetor de cenas, limites de serialização
+e edição, guardas de pacote/intercâmbio e fluxo headless/histórico. Workspace: 522
+testes passaram, 2 ignorados. O destino ativo agora é journey-studios/tessel-editor,
+público/MIT; o histórico privado anterior foi arquivado. Render dirigido e UI seguem pendentes.
