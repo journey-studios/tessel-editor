@@ -158,3 +158,5 @@ Veja [arquitetura](../core-architecture.md) e [template](_template.md).
 Integração R9/F039: 11 testes visuais GPUI reconferidos pelo coordenador após ligar Anexar ao diálogo F043. O agente reporta 50 capturas nativas e 188 testes desktop; captura do novo cabeçalho e gate global pendentes ([relatório](../migration/next-r9-report.md), BL104).
 
 Rodada integrada R1–R10: [relatório](../migration/round-r1-r10-report.md) com gate local, hashes, 23 fases de export, 218 checks de lifecycle, 33 de import e 50 capturas. Limites de cleanup: processo local (BL111), custo de hash no descarte (BL112). CI/revisão/merge são etapas separadas.
+
+Entrega R1–R10 mergeada na [PR #4](https://github.com/journey-studios/tessel-editor/pull/4), `c099f10`. Os estados V/Parcial da matriz descrevem cobertura por superfície; o encerramento dos itens está no backlog. CodeRabbit pulou a revisão, e o usuário autorizou o merge. Limites BL094/BL111/BL112 e domínios ainda não migrados permanecem abertos.
