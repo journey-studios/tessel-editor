@@ -449,7 +449,7 @@ Concluído localmente: fmt/check/clippy, workspace 1027 testes verdes (8 ignorad
 
 16 itens concluídos no escopo documentado: BL008, BL014, BL064, BL066–BL069, BL086–BL088, BL091–BL092, BL095–BL097 e BL104. Merge `c099f102d230271923684bc4e27a970a2bdfbe2a`. O CodeRabbit pulou a revisão e o usuário autorizou o merge; isso não foi aprovação do serviço.
 
-BL089 continua parcial: claims são locais ao processo e hashing no descarte pode bloquear UI; BL094/BL111/BL112 continuam pendentes. Blocos amplos de domínios, recursos e migração continuam parciais conforme seus critérios. Relatórios de recebimento e registros de prova preservam o estado histórico anterior ao merge.
+No merge da PR #4, BL089 continuava parcial: claims eram locais ao processo e hashing no descarte podia bloquear UI. S2 implementa o ledger compartilhado entre processos; BL111 permanece A validar. BL094/BL112 seguem sujeitos ao aceite da S1. Blocos amplos de domínios, recursos e migração continuam parciais conforme seus critérios. Relatórios de recebimento e registros de prova preservam o estado histórico anterior ao merge.
 
 ## Rodada S1–S10 autorizada — PR por frente
 

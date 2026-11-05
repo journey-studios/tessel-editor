@@ -288,6 +288,9 @@ impl Created {
     }
 
     pub(super) fn join_dir(&mut self, path: PathBuf, key: PathBuf) -> Result<(), JobError> {
+        if self.has(&self.dirs, &key) {
+            return Ok(());
+        }
         let Some(ledger) = self.ledger().cloned() else {
             return Ok(());
         };
