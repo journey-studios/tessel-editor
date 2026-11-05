@@ -81,12 +81,18 @@ fn street() -> EditorState {
 }
 
 /// Everything a rejected, read-only, cancelled or stale command must leave exactly as it was.
+///
+/// The summary leaves out its `scene_interaction` block (BL068): selecting or beginning a gesture
+/// is *meant* to show up there, and `scene_session.rs` tests that block. Everything else in the
+/// summary (the project, the playhead, the timeline) must stay.
 fn observable(state: &EditorState) -> (Value, Value, u64, Value) {
+    let mut summary = state.summary();
+    summary.as_object_mut().unwrap().remove("scene_interaction");
     (
         state.to_document(None),
         state.history.to_json(),
         state.project.revision,
-        state.summary(),
+        summary,
     )
 }
 
@@ -400,13 +406,20 @@ fn the_selection_drops_what_disappears_and_says_so() {
     assert_eq!(selection["entities"][0]["path"], FIGURE);
     assert_eq!(selection["dropped"][0]["reason"], "scene_detached");
 
-    // An undo that removes the scene reports the same way when the selection is read.
-    ok(&mut state, json!({"op":"history.undo"}));
-    ok(&mut state, json!({"op":"history.undo"}));
+    // An undo that removes the scene prunes the selection right then (BL069) and says so in its
+    // own answer; reading the selection afterwards has nothing left to prune but still tells
+    // the whole story.
+    let first = ok(&mut state, json!({"op":"history.undo"}));
+    assert!(
+        first.get("selection_dropped").is_none(),
+        "the figure is still there"
+    );
+    let undone = ok(&mut state, json!({"op":"history.undo"}));
+    assert_eq!(undone["selection_dropped"][0]["path"], FIGURE);
     assert!(state.scenes.is_empty());
     let emptied = ok(&mut state, json!({"op":"scene.selection"}));
     assert_eq!(emptied["count"], 0);
-    assert_eq!(emptied["changed"], true);
+    assert_eq!(emptied["changed"], false, "the undo already pruned it");
     assert_eq!(emptied["dropped"].as_array().unwrap().len(), 2);
 
     // Setting a selection again starts a clean report.
@@ -576,14 +589,16 @@ fn a_gesture_previews_apart_and_commits_as_one_undo_entry() {
         &mut state,
         json!({"op":"scene.gesture.begin","scene":"street","targets":[FIGURE],"label":"drag figure"}),
     );
-    assert_eq!(begun["gesture"], "gesture-1");
+    // IDs are opaque (BL066): read it from the answer, never spell it.
+    let id = begun["gesture"].as_str().unwrap().to_string();
+    assert!(id.starts_with("gesture-"));
     assert_eq!(begun["targets"], json!([FIGURE]));
     assert_eq!(begun["document_changed"], false);
 
     // Two properties in one update: both move together in the commit.
     let first = update(
         &mut state,
-        "gesture-1",
+        &id,
         vec![
             move_figure(2.0),
             json!({"set": "scene/scene-a/node/figure/scale", "value": {"x": 2, "y": 2, "z": 2}}),
@@ -596,7 +611,7 @@ fn a_gesture_previews_apart_and_commits_as_one_undo_entry() {
     assert_eq!(first["document_changed"], false);
 
     // Absolute, not cumulative: the second update starts again from the base.
-    let second = update(&mut state, "gesture-1", vec![move_figure(3.0)]);
+    let second = update(&mut state, &id, vec![move_figure(3.0)]);
     assert_eq!(second["updates"], 2);
     assert_eq!(second["changed_ops"], 1);
     assert_eq!(
@@ -611,7 +626,7 @@ fn a_gesture_previews_apart_and_commits_as_one_undo_entry() {
     assert_eq!(figure_x(&mut state), 0.5);
     let preview = ok(
         &mut state,
-        json!({"op":"scene.evaluate","scene":"street","frame":10,"gesture":"gesture-1"}),
+        json!({"op":"scene.evaluate","scene":"street","frame":10,"gesture":id}),
     );
     assert_eq!(preview["source"], "gesture");
     assert_eq!(preview["has_candidate"], true);
@@ -632,7 +647,7 @@ fn a_gesture_previews_apart_and_commits_as_one_undo_entry() {
 
     let committed = ok(
         &mut state,
-        json!({"op":"scene.gesture.commit","gesture":"gesture-1"}),
+        json!({"op":"scene.gesture.commit","gesture":id}),
     );
     assert_eq!(committed["action"], "scene.gesture.commit");
     assert_eq!(committed["changed"], true);
@@ -1093,6 +1108,8 @@ fn the_library_drives_the_same_cycle_without_json() {
 
 // ---- one vocabulary, in a JSON Lines session ----------------------------------------------
 
+/// Requests spell the gesture as `$gesture`: an ID is opaque (BL066) and only known once `begin`
+/// answered, so the driver below fills in the latest one before it writes each line.
 fn session_requests() -> Vec<String> {
     [
         json!({"op":"scene.attach","id":"street","bundle":bundle(MINIMAL)}),
@@ -1101,17 +1118,17 @@ fn session_requests() -> Vec<String> {
         json!({"op":"scene.selection"}),
         json!({"op":"scene.evaluate","scene":"street","frame":10}),
         json!({"op":"scene.gesture.begin","scene":"street","targets":[FIGURE]}),
-        json!({"op":"scene.gesture.update","gesture":"gesture-1","ops":[move_figure(2.0)]}),
-        json!({"op":"scene.evaluate","scene":"street","frame":10,"gesture":"gesture-1"}),
-        json!({"op":"scene.gesture.update","gesture":"gesture-1","ops":[
+        json!({"op":"scene.gesture.update","gesture":"$gesture","ops":[move_figure(2.0)]}),
+        json!({"op":"scene.evaluate","scene":"street","frame":10,"gesture":"$gesture"}),
+        json!({"op":"scene.gesture.update","gesture":"$gesture","ops":[
             {"set":"scene/scene-a/node/ghost/position","value":{"x":1,"y":1,"z":1}}]}),
-        json!({"op":"scene.gesture.commit","gesture":"gesture-1"}),
+        json!({"op":"scene.gesture.commit","gesture":"$gesture"}),
         json!({"op":"scene.get","scene":"street","property":FIGURE_POSITION}),
         json!({"op":"history.undo"}),
         json!({"op":"scene.get","scene":"street","property":FIGURE_POSITION}),
         json!({"op":"scene.gesture.begin","scene":"street"}),
-        json!({"op":"scene.gesture.cancel","gesture":"gesture-2"}),
-        json!({"op":"scene.gesture.commit","gesture":"gesture-2"}),
+        json!({"op":"scene.gesture.cancel","gesture":"$gesture"}),
+        json!({"op":"scene.gesture.commit","gesture":"$gesture"}),
         json!({"op":"scene.select","scene":"street","mode":"add","entities":["camera/ghost"]}),
         json!({"op":"scene.gesture.status"}),
     ]
@@ -1124,9 +1141,28 @@ fn session_requests() -> Vec<String> {
 #[test]
 fn a_json_lines_session_runs_the_whole_interaction_flow_in_process() {
     let mut state = EditorState::empty(&ProjectSettings::default()).unwrap();
-    let input = session_requests().join("\n");
+    // One `run_session` call per line over the same state: the same executor and answers as a
+    // single call with every line, with the chance to read the gesture ID in between.
+    let mut gesture = String::new();
     let mut output = Vec::new();
-    let failed = headless::run_session(&mut state, None, input.as_bytes(), &mut output).unwrap();
+    let mut failed = false;
+    for line in session_requests() {
+        let line = line.replace("$gesture", &gesture);
+        failed |= headless::run_session(&mut state, None, line.as_bytes(), &mut output).unwrap();
+        let answer: Value = serde_json::from_str(
+            String::from_utf8_lossy(&output)
+                .lines()
+                .last()
+                .expect("one answer per line"),
+        )
+        .unwrap();
+        if let Some(id) = answer["result"]["gesture"]
+            .as_str()
+            .filter(|_| answer["result"]["action"] == "scene.gesture.begin")
+        {
+            gesture = id.to_string();
+        }
+    }
     assert!(failed, "the session reports that some requests failed");
 
     let responses: Vec<Value> = String::from_utf8(output)
@@ -1155,7 +1191,7 @@ fn a_json_lines_session_runs_the_whole_interaction_flow_in_process() {
         0.5,
         "the document's own frame"
     );
-    assert_eq!(result(5)["gesture"], "gesture-1");
+    let first_gesture = result(5)["gesture"].as_str().unwrap().to_string();
     assert_eq!(result(6)["would_change"], true);
     assert_eq!(result(7)["source"], "gesture");
     assert_eq!(
@@ -1173,7 +1209,8 @@ fn a_json_lines_session_runs_the_whole_interaction_flow_in_process() {
         0.5,
         "one undo reverted the whole gesture"
     );
-    assert_eq!(result(13)["gesture"], "gesture-2");
+    let second_gesture = result(13)["gesture"].as_str().unwrap();
+    assert_ne!(second_gesture, first_gesture, "an ID is never reused");
     assert_eq!(result(14)["action"], "scene.gesture.cancel");
     assert_eq!(error_code(15), "no_gesture");
     assert_eq!(error_code(16), "unknown_entity");

@@ -501,6 +501,7 @@ fn segment_offset(segment: &CameraSegment, t: f64) -> Option<LayerOffset> {
 }
 
 /// A layer's movements laid out once: where each ends and what the earlier ones added up to.
+#[derive(Clone)]
 struct LayerTrack<'a> {
     segments: &'a [CameraSegment],
     ends: Vec<u64>,
@@ -577,6 +578,7 @@ fn apply_layers(pose: &CameraPose, offset: LayerOffset) -> Result<CameraPose, Te
 // ---- timeline -------------------------------------------------------------------------------
 
 /// The main track laid out once.
+#[derive(Clone)]
 struct MainTrack<'a> {
     segments: &'a [CameraSegment],
     ends: Vec<u64>,
@@ -692,6 +694,7 @@ fn state_of(pose: CameraPose, velocity: Vec3, fov_velocity: f64) -> CameraState 
 /// A camera clip laid out for evaluation: build it once, ask for as many frames as you like in
 /// any order. Every answer is a pure function of the clip and the frame, so asking twice, or
 /// out of order, gives the same bits.
+#[derive(Clone)]
 pub struct CameraTimeline<'a> {
     clip: &'a CameraClip,
     main: MainTrack<'a>,

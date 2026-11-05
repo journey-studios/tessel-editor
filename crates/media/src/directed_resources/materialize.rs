@@ -119,6 +119,38 @@ impl MaterializeReport {
     }
 }
 
+/// A [`Journal`] that rolls itself back if the run unwinds (BL095): an observer that panics while
+/// publishing (`on_published`) would otherwise leave every file published so far in the root.
+/// It lives inside `run`, so it unwinds before the caller's lease is released and the rollback
+/// still happens under the lease. `rollback` drains the journal, so the explicit rollback of an
+/// error and this one never repeat work; a successful run disarms it.
+struct ArmedJournal(Option<Journal>);
+
+impl ArmedJournal {
+    fn new(journal: Journal) -> Self {
+        Self(Some(journal))
+    }
+
+    fn get(&mut self) -> &mut Journal {
+        self.0
+            .as_mut()
+            .expect("a journal is armed until `disarm` ends the run")
+    }
+
+    /// The files are published for good: nothing to take back.
+    fn disarm(&mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for ArmedJournal {
+    fn drop(&mut self) {
+        if let Some(journal) = self.0.as_mut() {
+            let _ = journal.rollback();
+        }
+    }
+}
+
 /// What pass 1 decided for one file.
 struct Work<'a> {
     item: &'a TransportItem,
@@ -279,17 +311,18 @@ fn run(
         });
     }
 
-    let mut journal = Journal::new(destination.path());
+    let mut journal = ArmedJournal::new(Journal::new(destination.path()));
     if let Err(error) = publish(
         &staged,
         destination.path(),
         token,
-        &mut journal,
+        journal.get(),
         on_published,
     ) {
-        let leftovers = journal.rollback();
+        let leftovers = journal.get().rollback();
         return Err(with_leftovers(error, leftovers));
     }
+    journal.disarm();
     // Dropping the staging folder removes the staged names; the published files keep their data.
     drop(staging);
 

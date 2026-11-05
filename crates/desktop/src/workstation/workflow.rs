@@ -28,6 +28,7 @@ use tessel_editor_media::host::MediaHost;
 use tessel_editor_render::{RuntimeConfig, session};
 
 use super::flows::{self, FieldSpec, FlowKind, Picker};
+use super::scene_import::SceneImport;
 use super::{Activity, Source, Workstation};
 
 /// How often finished jobs are applied and autosave is considered.
@@ -68,6 +69,8 @@ pub struct Workflow {
     history: Vec<Value>,
     last_autosave: Instant,
     autosaved_revision: Option<u64>,
+    /// The last scene attach/load chain (F043, `scene_import.rs`); its jobs finish on the tick.
+    pub(super) scene_import: Option<SceneImport>,
 }
 
 impl Workflow {
@@ -80,13 +83,26 @@ impl Workflow {
             let renderer: Box<dyn Renderer> = Box::new(session(&config));
             Ok(renderer)
         });
+        let scene_renderer: Arc<tessel_editor_media::scene_encoder::SceneRendererFactory> =
+            Arc::new(|| {
+                let config = RuntimeConfig::discover()
+                    .map_err(|setup| JobError::new("backend_unavailable", setup.message()))?;
+                Ok(
+                    Box::new(tessel_editor_render::scene_export::ProcessSceneRenderer::new(config))
+                        as Box<dyn tessel_editor_media::scene_encoder::SceneFrameRenderer>,
+                )
+            });
         Self {
-            host: MediaHost::new().with_renderer(renderer).interactive(),
+            host: MediaHost::new()
+                .with_renderer(renderer)
+                .with_scene_renderer(scene_renderer)
+                .interactive(),
             flow: None,
             jobs_open: false,
             history: Vec::new(),
             last_autosave: Instant::now(),
             autosaved_revision: None,
+            scene_import: None,
         }
     }
 
@@ -192,6 +208,8 @@ impl Workstation {
                     text,
                     error,
                 });
+                // After the generic line above: a chain that finished says its own, more specific one.
+                self.scene_import_receive(&event, cx);
                 self.workflow.history.insert(0, event);
                 self.workflow.history.truncate(20);
             }
@@ -353,6 +371,23 @@ impl Workstation {
                 window,
                 cx,
             ),
+            // The scene a resources dialog most likely means: the one the inspector follows.
+            FlowKind::ExportScene => {
+                if let Some(scene) = self.scene_active_id() {
+                    self.flow_prefill("scene", &scene, window, cx);
+                    self.flow_prefill(
+                        "destination",
+                        &base.join(format!("{scene}.mp4")).to_string_lossy(),
+                        window,
+                        cx,
+                    );
+                }
+            }
+            FlowKind::SceneResources => {
+                if let Some(scene) = self.scene_active_id() {
+                    self.flow_prefill("scene", &scene, window, cx);
+                }
+            }
             _ => {}
         }
         if let Some(document) = self.state.project.document.clone()
@@ -569,8 +604,14 @@ impl Workstation {
             .as_ref()
             .map(|flow| flow.kind)
             .ok_or_else(|| CommandError::new("no_dialog", "No dialog is open"))?;
-        let outcome = flows::build_request(kind, &self.flow_values(cx))
-            .and_then(|request| self.run_flow_request(&request, window, cx));
+        let values = self.flow_values(cx);
+        let outcome = if kind.is_scene_import() {
+            // A chain of jobs rather than one operation: see `scene_import.rs`.
+            self.scene_import_submit(kind, &values, cx)
+        } else {
+            flows::build_request(kind, &values)
+                .and_then(|request| self.run_flow_request(&request, window, cx))
+        };
         match &outcome {
             Ok(_) => {
                 self.workflow.flow = None;
@@ -650,8 +691,11 @@ impl Workstation {
         };
         match picker {
             Picker::None => {}
-            Picker::File | Picker::Files => {
-                let receiver = cx.prompt_for_paths(options(true, false, picker == Picker::Files));
+            Picker::File | Picker::Files | Picker::Directory => {
+                let receiver = cx.prompt_for_paths(match picker {
+                    Picker::Directory => options(false, true, false),
+                    _ => options(true, false, picker == Picker::Files),
+                });
                 cx.spawn_in(window, async move |this, cx| {
                     let Some(paths) = receiver.await.ok().and_then(Result::ok).flatten() else {
                         return;
@@ -735,6 +779,7 @@ impl Workstation {
             "children": [], "enabled": true, "visible": true, "fields": [], "actions": [],
             "state": self.jobs_report(),
         }));
+        nodes.extend(self.scene_import_nodes());
         let Some(flow) = &self.workflow.flow else {
             return nodes;
         };
@@ -805,9 +850,17 @@ impl Workstation {
             ("node:9", _) => self.undo(cx),
             ("node:11", _) => self.redo(cx),
             ("node:14", _) => self.open_flow(FlowKind::Import, window, cx),
-            ("node:16", _) => self.open_flow(FlowKind::Export, window, cx),
+            ("node:16", _) => {
+                let kind = if self.scene_ui.mode == super::scene_ui::InspectorMode::Scene {
+                    FlowKind::ExportScene
+                } else {
+                    FlowKind::Export
+                };
+                self.open_flow(kind, window, cx)
+            }
             ("node:18", _) => self.open_flow(FlowKind::Open, window, cx),
             ("node:20", _) => self.open_flow(FlowKind::Package, window, cx),
+            ("node:26", _) => self.open_flow(FlowKind::AttachScene, window, cx),
             ("dialog.submit", _) => self
                 .flow_submit(window, cx)
                 .inspect(|_| window.close_dialog(cx)),

@@ -10,8 +10,8 @@
 //! Operations: `media.import|relink|search|status|prepare|thumbnail|waveform|proxy`,
 //! `project.package_preflight|package|verify|restore|import|import_scenes`,
 //! `scene.resources.status|preflight|resolve|adopt|release|invalidate` (F040),
-//! `export.preflight|start`, `job.list|get|wait|cancel|commit`. Presets (`preset.*`) belong to
-//! the core.
+//! `export.preflight|start`, `scene.export[.preflight]` (F042: a directed scene as video, same jobs),
+//! `job.list|get|wait|cancel|commit`. Presets (`preset.*`) belong to the core.
 //!
 //! Anything that reads files, runs a tool or builds a renderer (probe, decode, verify, restore,
 //! preflight) is a job; the caller's thread only snapshots the project and later applies the
@@ -40,6 +40,7 @@ use tessel_editor_core::jobs::{
 };
 use tessel_editor_core::preset::{self, Preset};
 use tessel_editor_core::preview::{PreviewPolicy, Reason};
+use tessel_editor_core::scene_export::{SceneExportSnapshot, SceneExportSpec};
 use tessel_editor_core::scene_resources::ResourceManifest;
 use tessel_editor_core::session::Renderer;
 use tessel_editor_core::state::Command;
@@ -51,9 +52,11 @@ use crate::export::{self, ExportRequest};
 use crate::import::{self, ImportMode, ImportRequest, PreparedItem};
 use crate::interchange::{self, PreparedProjectImport};
 use crate::package::{self, DOCUMENT_NAME, PackageFormat, PackageInputs, PackageOptions};
+use crate::scene_encoder::{self, SceneExport, SceneRendererFactory};
 use crate::scene_resources::import::{self as scene_import, PreparedSceneImport};
 use crate::scene_resources::{
-    Invalidation, LoadRequest, ResolvedResourceMap, ResourceBase, SceneResourceSession,
+    AdoptionTarget, Invalidation, LoadRequest, PendingAdoption, ResolvedResourceMap, ResourceBase,
+    SceneResourceSession,
 };
 use crate::tools::Tools;
 
@@ -90,6 +93,11 @@ enum Pending {
     },
     /// Scenes whose files are already in the workspace, attached as one undo step.
     SceneImport(Box<PreparedSceneImport>),
+    /// Files an adoption copied, kept only while the project, its workspace and the scene's
+    /// bundle are still the ones the job was started for; otherwise removed (BL089). Changes no
+    /// project data. Dropped unapplied (host gone, job never committed) it removes them too,
+    /// except what another pending or accepted result relies on (BL096).
+    SceneAdopt(Box<PendingAdoption>),
     /// A restored project, already loaded and validated off the caller's thread, that replaces the
     /// open project only if that one is still at `(project, revision)`.
     Open {
@@ -132,6 +140,9 @@ pub struct MediaHost {
     tools: ToolCell,
     registry: JobRegistry,
     renderer: Option<Arc<RendererFactory>>,
+    /// Builds the renderer a directed-scene export drives (`scene.export`); `None` answers
+    /// `backend_unavailable`.
+    scene_renderer: Option<Arc<SceneRendererFactory>>,
     pending: HashMap<JobId, Slot>,
     /// A host that serves a window: no operation blocks its caller (the UI thread), and
     /// finished jobs are applied by [`MediaHost::poll`] instead of `wait`/`job.commit`.
@@ -233,6 +244,7 @@ impl MediaHost {
             tools: ToolCell::default(),
             registry: JobRegistry::new(2),
             renderer: None,
+            scene_renderer: None,
             pending: HashMap::new(),
             interactive: false,
             auto_prepare: None,
@@ -260,6 +272,13 @@ impl MediaHost {
     /// Lets `export.start` build a renderer; without one exports answer `backend_unavailable`.
     pub fn with_renderer(mut self, factory: Arc<RendererFactory>) -> Self {
         self.renderer = Some(factory);
+        self
+    }
+
+    /// Lets `scene.export` build a renderer for directed scenes; without one it answers
+    /// `backend_unavailable`. Like `with_renderer`, each export builds its own on its own thread.
+    pub fn with_scene_renderer(mut self, factory: Arc<SceneRendererFactory>) -> Self {
+        self.scene_renderer = Some(factory);
         self
     }
 
@@ -590,6 +609,8 @@ impl MediaHost {
             "scene.resources.invalidate" => self.scene_invalidate(request),
             "export.preflight" => self.export_preflight(state, request),
             "export.start" => self.export_start(state, request),
+            "scene.export" => self.scene_export(state, request),
+            "scene.export.preflight" => self.scene_export_preflight(state, request),
             "job.list" => Ok(self.registry.to_json()),
             "job.get" => self.job_get(request),
             "job.wait" => self.job_wait(request),
@@ -1038,9 +1059,10 @@ impl MediaHost {
         let (id, scene) = Self::scene_of(state, request)?;
         let workspace = workspace(state)?;
         let source = ResourceBase::explicit(text(request, "source")?)?;
+        let target = AdoptionTarget::of(state, &id);
         let (id_job, slot) = self.start(JobKind::Import, "Adopt scene resources", move |ctx| {
             ctx.stage("copy", scene_file_total(&scene));
-            let adoption = crate::scene_resources::adopt(
+            let mut adoption = crate::scene_resources::adopt(
                 &scene,
                 &id,
                 &workspace,
@@ -1050,11 +1072,10 @@ impl MediaHost {
                 &mut |progress| ctx.progress(progress.done as u64),
                 &mut |_| {},
             )?;
-            Ok((
-                None,
-                json!({ "action": "scene.resources.adopt", "scene": id,
-                    "base": adoption.base.to_json(), "report": adoption.report.to_json() }),
-            ))
+            let report = json!({ "action": "scene.resources.adopt", "scene": id,
+                "base": adoption.base.to_json(), "report": adoption.report.to_json() });
+            let pending = PendingAdoption::new(target, &mut adoption);
+            Ok((Some(Pending::SceneAdopt(Box::new(pending))), report))
         });
         self.finish(state, request, id_job, slot)
     }
@@ -1206,6 +1227,67 @@ impl MediaHost {
             Ok((None, report?))
         });
         self.finish(state, request, id, slot)
+    }
+
+    /// `scene.export {scene, preset, destination, from?, frames?, replace?, audio?, wait?}`: a
+    /// directed scene as an H.264 MP4 (F042). Everything that can be refused without touching a
+    /// file is refused here, before a job exists: shape, scene, range, preset, audio, resources.
+    /// The rest (FFmpeg, destination, disk) is the job's preflight. The result changes no project
+    /// state, so there is nothing to commit.
+    fn scene_export(
+        &mut self,
+        state: &mut EditorState,
+        request: &Value,
+    ) -> Result<Value, CommandError> {
+        let factory = self.scene_renderer.clone().ok_or_else(|| {
+            CommandError::new(
+                "backend_unavailable",
+                "No scene renderer is attached: scene exports need `./scripts/render`",
+            )
+        })?;
+        let export = self.freeze_scene_export(state, request)?;
+        let tools = self.tools.clone();
+        let (id, slot) = self.start(JobKind::VideoExport, "Export scene", move |ctx| {
+            let tools = tools.get()?;
+            let mut renderer = factory()?;
+            let report = scene_encoder::run(&export, &tools, renderer.as_mut(), ctx);
+            renderer.finish();
+            Ok((None, report?))
+        });
+        self.finish(state, request, id, slot)
+    }
+
+    /// `scene.export.preflight`: the same request as `scene.export`, answered with what would stop
+    /// it (FFmpeg, destination, resources, disk) and the plan summary, without starting a job or
+    /// touching the destination. It does not need a renderer, so the renderer's own size limit is
+    /// the one thing it cannot check (the job's preflight does).
+    fn scene_export_preflight(
+        &mut self,
+        state: &mut EditorState,
+        request: &Value,
+    ) -> Result<Value, CommandError> {
+        let export = self.freeze_scene_export(state, request)?;
+        let tools = self.tools.get()?;
+        Ok(scene_encoder::preflight(&export, &tools, None))
+    }
+
+    /// The part of `scene.export` that is refused without a job: request shape, scene, range,
+    /// preset, audio and the frozen, verified resources.
+    fn freeze_scene_export(
+        &mut self,
+        state: &EditorState,
+        request: &Value,
+    ) -> Result<SceneExport, CommandError> {
+        let spec = SceneExportSpec::from_json(state, request)?;
+        let destination = PathBuf::from(text(request, "destination")?);
+        let snapshot = SceneExportSnapshot::capture(state, &spec)?;
+        self.scene_resources.observe_project(&state.project.id);
+        SceneExport::freeze(
+            snapshot,
+            &self.scene_resources,
+            destination,
+            flag(request, "replace", false),
+        )
     }
 
     fn job_get(&mut self, request: &Value) -> Result<Value, CommandError> {
@@ -1546,6 +1628,10 @@ fn apply(
             ))
         }
         Pending::SceneImport(prepared) => Ok(Some(scene_import::apply(state, *prepared)?)),
+        Pending::SceneAdopt(pending) => {
+            pending.apply(state)?;
+            Ok(None)
+        }
         Pending::Open {
             project,
             revision,
@@ -1590,6 +1676,8 @@ impl Extension for MediaHost {
             || op.starts_with("job.")
             || op.starts_with("export.")
             || op.starts_with("scene.resources.")
+            || op == "scene.export"
+            || op == "scene.export.preflight"
             || matches!(
                 op,
                 "project.package_preflight"

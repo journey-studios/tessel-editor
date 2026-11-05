@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gzipSync } from 'node:zlib';
 
 import { png } from '../scripts/perf/png.mjs';
 import { AllowList, startAssetServer } from '../worker/assets.mjs';
@@ -38,6 +39,210 @@ export const picture = (seed, width = 48, height = 27) =>
     ((x + y) * 3 + seed * 100) % 256,
     255,
   ]);
+
+// ---- Splat containers -------------------------------------------------------------------
+// Encoders for the three Gaussian splat containers, shared by splat.test.mjs, the concurrency
+// tests and scripts/splat-concurrency.mjs so every one of them draws the same bytes.
+
+const SH_C0 = 0.28209479177387814;
+const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
+
+/** `splat`: position, scale (std dev), color 0..255 RGB, alpha 0..255. Identity rotation. */
+export const encodeSplat = (splats) => {
+  const out = Buffer.alloc(splats.length * 32);
+  splats.forEach((s, i) => {
+    const base = i * 32;
+    [...s.position, ...s.scale].forEach((v, k) => out.writeFloatLE(v, base + k * 4));
+    out.set([...s.color, s.alpha], base + 24);
+    out.set([255, 128, 128, 128], base + 28);
+  });
+  return out;
+};
+
+export const encodePly = (splats) => {
+  const names = ['x', 'y', 'z', 'f_dc_0', 'f_dc_1', 'f_dc_2', 'opacity', 'scale_0', 'scale_1', 'scale_2', 'rot_0', 'rot_1', 'rot_2', 'rot_3'];
+  const header = `ply\nformat binary_little_endian 1.0\nelement vertex ${splats.length}\n${names
+    .map((name) => `property float ${name}`)
+    .join('\n')}\nend_header\n`;
+  const body = Buffer.alloc(splats.length * names.length * 4);
+  splats.forEach((s, i) => {
+    const alpha = clamp(s.alpha / 255, 0.001, 0.999);
+    const row = [
+      ...s.position,
+      ...s.color.map((c) => (c / 255 - 0.5) / SH_C0),
+      Math.log(alpha / (1 - alpha)),
+      ...s.scale.map(Math.log),
+      1, 0, 0, 0,
+    ];
+    row.forEach((v, k) => body.writeFloatLE(v, (i * names.length + k) * 4));
+  });
+  return Buffer.concat([Buffer.from(header), body]);
+};
+
+/** SPZ v2 (gzip of: header, 24-bit fixed positions, alphas, colors, scales, rotations). */
+export const encodeSpz = (splats) => {
+  const count = splats.length;
+  const fractionalBits = 12;
+  const header = Buffer.alloc(16);
+  header.writeUInt32LE(0x5053474e, 0);
+  header.writeUInt32LE(2, 4);
+  header.writeUInt32LE(count, 8);
+  header.set([0, fractionalBits, 0, 0], 12);
+  const positions = Buffer.alloc(count * 9);
+  const alphas = Buffer.alloc(count);
+  const colors = Buffer.alloc(count * 3);
+  const scales = Buffer.alloc(count * 3);
+  const rotations = Buffer.alloc(count * 3, 128);
+  splats.forEach((s, i) => {
+    s.position.forEach((v, k) => {
+      const fixed = Math.round(v * (1 << fractionalBits)) & 0xffffff;
+      positions.set([fixed & 0xff, (fixed >> 8) & 0xff, (fixed >> 16) & 0xff], i * 9 + k * 3);
+    });
+    alphas[i] = s.alpha;
+    s.color.forEach((c, k) => {
+      colors[i * 3 + k] = clamp(Math.round(((c / 255 - 0.5) / SH_C0 * 0.15 + 0.5) * 255), 0, 255);
+    });
+    s.scale.forEach((v, k) => {
+      scales[i * 3 + k] = clamp(Math.round((Math.log(v) + 10) * 16), 0, 255);
+    });
+  });
+  return gzipSync(Buffer.concat([header, positions, alphas, colors, scales, rotations]));
+};
+
+export const SPLAT_ENCODERS = { splat: encodeSplat, ply: encodePly, spz: encodeSpz };
+
+// ---- Holding a fetch in flight ----------------------------------------------------------
+
+/**
+ * Holds the page's fetches of the files `match(url)` accepts, so a test can prove a load is in
+ * flight instead of betting that it has not finished yet. A load of one splat over loopback
+ * finishes in milliseconds; two separate `page.evaluate` calls (one CDP round trip each) take
+ * longer than that as soon as the machine is busy, which is how a "release while loading" test
+ * that only raced the two calls turned into "release after ready" (BL091). Everything else the
+ * page requests goes through untouched. Armed on creation; `open()` lets the held fetches (and
+ * later ones) through, `arm()` holds the next matching fetch again.
+ */
+export const holdFetches = async (page, match) => {
+  await page.setRequestInterception(true);
+  const held = [];
+  let holding = true;
+  let wake = () => {};
+  const onRequest = (request) => {
+    if (!holding || !match(request.url())) {
+      request.continue().catch(() => {});
+      return;
+    }
+    held.push(request);
+    wake();
+  };
+  page.on('request', onRequest);
+  return {
+    /** Resolves once a matching fetch is being held (so the runtime is awaiting its bytes). */
+    held: async (timeoutMs = 15000) => {
+      const deadline = Date.now() + timeoutMs;
+      while (held.length === 0) {
+        if (Date.now() > deadline) throw new Error('no fetch was held: the load never reached its fetch');
+        await new Promise((resolve) => {
+          wake = resolve;
+          setTimeout(resolve, 25);
+        });
+      }
+      return held.length;
+    },
+    open: async () => {
+      holding = false;
+      await Promise.all(held.splice(0).map((request) => request.continue().catch(() => {})));
+    },
+    arm: () => {
+      holding = true;
+    },
+    /** Opens, then stops intercepting this page's requests altogether. */
+    close: async () => {
+      holding = false;
+      await Promise.all(held.splice(0).map((request) => request.continue().catch(() => {})));
+      page.off('request', onRequest);
+      await page.setRequestInterception(false);
+    },
+  };
+};
+
+// ---- A page for splat scenes ------------------------------------------------------------
+
+export const splatScenePlan = (camera, time = 0) => ({
+  version: 1,
+  canvas: { width: 160, height: 90 },
+  intent: { mode: 'sequence' },
+  frame: 0,
+  layers: [
+    {
+      id: 'layer:scene',
+      kind: 'scene',
+      asset: 'scene',
+      opacity: 1,
+      blend: 'normal',
+      transform: { x: 0, y: 0, scale: 1, rotation: 0, crop: [0, 0, 0, 0] },
+      camera,
+      scene_time: { seconds: time },
+    },
+  ],
+  requires: [],
+  warnings: [],
+});
+
+export const FRONT = { position: [0, 0, 5], target: [0, 0, 0], fov: 50 };
+export const BACK = { position: [0, 0, -5], target: [0, 0, 0], fov: 50 };
+export const CENTER = [[80, 45]];
+
+/**
+ * One page of `browser` running the built runtime against the asset server on `port`, with
+ * helpers to talk bridge v1 to it. Messages are kept in `messages` (never consumed), so
+ * `waitFor(predicate, label, from)` can look from an index and an id may be reloaded many times.
+ */
+export const openSplatPage = async (browser, port) => {
+  const page = await browser.newPage();
+  const messages = [];
+  await page.exposeFunction('__tesselPost', (raw) => messages.push(JSON.parse(raw)));
+  await page.goto(`http://127.0.0.1:${port}/`);
+  const waitFor = async (predicate, label = 'message', from = 0) => {
+    for (let attempt = 0; attempt < 600; attempt += 1) {
+      const found = messages.slice(from).find(predicate);
+      if (found) return found;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error(`${label} not seen; got ${messages.map((m) => `${m.type}:${m.state ?? m.error?.code ?? ''}`).join(',')}`);
+  };
+  const send = (message) => page.evaluate((payload) => window.TesselRuntime.receive(payload), { v: 1, ...message });
+  let frameId = 100;
+  return {
+    page,
+    messages,
+    waitFor,
+    send,
+    hello: async () => {
+      await send({ type: 'hello' });
+      return waitFor((m) => m.type === 'ready');
+    },
+    load: async (asset) => {
+      // Only messages after this request count: an id is reloaded many times in one session.
+      const from = messages.length;
+      await send({ type: 'asset.load', asset });
+      return waitFor((m) => m.type === 'asset.state' && m.id === asset.id && (m.state === 'ready' || m.state === 'failed'), `asset ${asset.id}`, from);
+    },
+    frame: async (camera, probes = CENTER, time = 0) => {
+      frameId += 1;
+      const id = frameId;
+      await send({
+        type: 'frame.render',
+        id,
+        revision: id,
+        plan: splatScenePlan(camera, time),
+        output: { width: 160, height: 90 },
+        probes,
+      });
+      return waitFor((m) => (m.type === 'frame.done' || m.type === 'frame.failed') && m.id === id, `frame ${id}`);
+    },
+  };
+};
 
 /** Deterministic shuffle (mulberry32), so a failing order can be replayed. */
 export const shuffled = (items, seed) => {

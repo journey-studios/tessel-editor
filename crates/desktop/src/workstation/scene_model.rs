@@ -11,7 +11,7 @@
 //! `EditorState::execute` takes `&mut self` (and `scene.selection` prunes), so running the
 //! commands there would force a mutable borrow inside `render`.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use serde_json::Value;
@@ -115,6 +115,29 @@ impl TreeEntry {
         None
     }
 
+    /// Paths of the entries above `path`, outermost first (empty for a top-level entry or an
+    /// unknown path). Selecting a collapsed entity has to open these to show the row.
+    pub fn ancestors<'a>(entries: &'a [Self], path: &str) -> Vec<&'a str> {
+        fn walk<'a>(entries: &'a [TreeEntry], path: &str, trail: &mut Vec<&'a str>) -> bool {
+            for entry in entries {
+                if entry.path == path {
+                    return true;
+                }
+                trail.push(entry.path.as_str());
+                if walk(&entry.children, path, trail) {
+                    return true;
+                }
+                trail.pop();
+            }
+            false
+        }
+        let mut trail = Vec::new();
+        if walk(entries, path, &mut trail) {
+            return trail;
+        }
+        Vec::new()
+    }
+
     /// Pre-order walk of the entries a user can see: a collapsed entry hides its children.
     /// `expanded` is the adapter's expansion state.
     pub fn visible<'a>(
@@ -129,6 +152,65 @@ impl TreeEntry {
                 Self::visible(&entry.children, expanded, depth + 1, out);
             }
         }
+    }
+}
+
+// ---- panel fit ----
+
+/// Height of one tree row (the Kit's default list item).
+pub const TREE_ROW_HEIGHT: f32 = 28.0;
+/// Narrowest inspector that still fits a one-line slider row: gutters, dot, a component label,
+/// a track a person can still drag (`MIN_TRACK`), and the widest value the row shows
+/// (`MAX_VALUE`), with the gaps between them.
+pub const REGULAR_MIN_WIDTH: f32 = 232.0;
+pub const MIN_TRACK: f32 = 64.0;
+pub const MAX_VALUE: f32 = 64.0;
+/// Below this the pill mode bar (`Clipe | Cena`) no longer fits and the equal-width one is used.
+pub const PILL_MIN_WIDTH: f32 = 160.0;
+/// The tree takes at most this share of the inspector's height, so a short window still leaves
+/// the properties of the selection on screen.
+const TREE_SHARE: f32 = 0.42;
+const TREE_MIN_ROWS: usize = 5;
+const TREE_MAX_ROWS: usize = 16;
+/// The tree before the inspector has been measured (the first frame).
+const TREE_FIRST_FRAME_ROWS: usize = 8;
+
+/// How the scene inspector lays itself out for the size it was given. The dock lets a person
+/// make the inspector anywhere from 100 to 628 px wide and the window as small as 960x640, so
+/// the layout is chosen from the measured size instead of assuming the default dock. Pure, so
+/// the thresholds are tested without a window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PanelFit {
+    /// Slider rows stack the slider under its label and value (the inspector is too narrow for
+    /// a track beside them).
+    pub compact: bool,
+    /// The mode bar uses equal-width tabs because the pills do not fit.
+    pub equal_tabs: bool,
+    /// Whole rows the tree shows before it scrolls inside itself.
+    pub tree_rows: usize,
+}
+
+impl PanelFit {
+    /// What the first frame uses, before any bounds exist.
+    pub const UNMEASURED: Self = Self {
+        compact: false,
+        equal_tabs: false,
+        tree_rows: TREE_FIRST_FRAME_ROWS,
+    };
+
+    pub fn of(width: f32, height: f32) -> Self {
+        let rows = (height * TREE_SHARE / TREE_ROW_HEIGHT).floor();
+        Self {
+            compact: width < REGULAR_MIN_WIDTH,
+            equal_tabs: width < PILL_MIN_WIDTH,
+            tree_rows: (rows.max(0.0) as usize).clamp(TREE_MIN_ROWS, TREE_MAX_ROWS),
+        }
+    }
+
+    /// Height of a tree with `rows` visible entries: whole rows, so no row is cut in half, and
+    /// never more than the share this size allows (a taller tree scrolls inside itself).
+    pub fn tree_height(&self, rows: usize) -> f32 {
+        rows.clamp(1, self.tree_rows) as f32 * TREE_ROW_HEIGHT
     }
 }
 
@@ -443,9 +525,27 @@ pub struct Snapshot {
     pub selection: Vec<String>,
     pub target: Target,
     pub gesture: Option<GestureView>,
+    /// The selection differs from the previous snapshot's: the panel shows the selected row
+    /// once (opens its ancestors, scrolls the tree to it) and clears this with
+    /// [`Snapshot::take_reveal`]. WHY once: revealing on every repaint would pull the tree back
+    /// every time the person scrolls it away to look at another entity.
+    reveal: Cell<bool>,
 }
 
 impl Snapshot {
+    /// `true` the first time it is asked after the selection changed, `false` afterwards.
+    pub fn take_reveal(&self) -> bool {
+        self.reveal.replace(false)
+    }
+
+    /// The one selected entity's address, when the selection is exactly one.
+    pub fn single_selection(&self) -> Option<&str> {
+        match self.selection.as_slice() {
+            [only] => Some(only.as_str()),
+            _ => None,
+        }
+    }
+
     /// A gesture of this scene is open and still applicable. A reset would invalidate it.
     pub fn gesture_open(&self) -> bool {
         self.gesture
@@ -564,7 +664,12 @@ impl PartialEq for Signature {
 impl Eq for Signature {}
 
 /// Builds the snapshot of attached scene `scene_id`, or `None` when it is not attached.
-fn build(state: &EditorState, scene_id: &str, selection: Vec<String>) -> Option<Snapshot> {
+fn build(
+    state: &EditorState,
+    scene_id: &str,
+    selection: Vec<String>,
+    reveal: bool,
+) -> Option<Snapshot> {
     let attached = state.scenes.get(scene_id)?;
     let selected_entities: Vec<_> = state
         .scene_interaction
@@ -602,6 +707,7 @@ fn build(state: &EditorState, scene_id: &str, selection: Vec<String>) -> Option<
         selection,
         target,
         gesture,
+        reveal: Cell::new(reveal),
     })
 }
 
@@ -644,7 +750,15 @@ impl SnapshotCache {
         {
             return Some(snapshot.clone());
         }
-        let snapshot = Rc::new(build(state, scene_id, selection)?);
+        // A new selection is shown once. The first snapshot of a scene counts as new too, so a
+        // selection made before the panel was ever painted is revealed when it first is.
+        // A reveal nobody has taken yet (the inspector was not showing) survives a rebuild that
+        // only changed a candidate, so the selection is still shown when the panel is.
+        let reveal = !selection.is_empty()
+            && self.0.borrow().as_ref().is_none_or(|(cached, previous)| {
+                cached.scene != scene_id || cached.selection != selection || previous.reveal.get()
+            });
+        let snapshot = Rc::new(build(state, scene_id, selection, reveal)?);
         *self.0.borrow_mut() = Some((signature, snapshot.clone()));
         Some(snapshot)
     }
@@ -986,5 +1100,149 @@ mod tests {
         );
         assert_eq!(entry("camera_clip", "cam", None).label(), "Câmera cam");
         assert_eq!(entry("unheard_of", "x", None).label(), "x");
+    }
+
+    fn named(path: &str, children: Vec<TreeEntry>) -> TreeEntry {
+        TreeEntry {
+            path: path.into(),
+            kind: "node".into(),
+            id: path.into(),
+            node_kind: None,
+            selected: false,
+            children_count: children.len(),
+            editable: Vec::new(),
+            children,
+        }
+    }
+
+    #[test]
+    fn ancestors_are_listed_outermost_first_and_empty_for_a_top_level_or_unknown_path() {
+        let entries = vec![named(
+            "a",
+            vec![named("b", vec![named("c", vec![])]), named("d", vec![])],
+        )];
+        assert_eq!(TreeEntry::ancestors(&entries, "c"), ["a", "b"]);
+        assert_eq!(TreeEntry::ancestors(&entries, "d"), ["a"]);
+        assert!(TreeEntry::ancestors(&entries, "a").is_empty());
+        assert!(TreeEntry::ancestors(&entries, "missing").is_empty());
+    }
+
+    #[test]
+    fn the_panel_fit_switches_layout_at_the_documented_widths() {
+        let at = |width| PanelFit::of(width, 546.0);
+        assert!(
+            !at(REGULAR_MIN_WIDTH).compact,
+            "232 px is the first one-line width"
+        );
+        assert!(at(REGULAR_MIN_WIDTH - 1.0).compact);
+        assert!(
+            !at(272.0).compact,
+            "the default dock width keeps one-line rows"
+        );
+        assert!(at(100.0).compact, "the dock's floor is compact");
+        assert!(at(100.0).equal_tabs && at(PILL_MIN_WIDTH - 1.0).equal_tabs);
+        assert!(!at(PILL_MIN_WIDTH).equal_tabs);
+        // One-line rows never get a track below the floor, even with the widest value.
+        let fixed = 10.0 * 2.0 + 5.0 + 22.0 + MAX_VALUE + 14.0 + 5.0 * 6.0;
+        assert!(
+            REGULAR_MIN_WIDTH - fixed >= MIN_TRACK,
+            "{}",
+            REGULAR_MIN_WIDTH - fixed
+        );
+    }
+
+    #[test]
+    fn the_tree_gets_whole_rows_from_the_height_it_is_given() {
+        let small = PanelFit::of(272.0, 546.0);
+        assert_eq!(small.tree_rows, 8, "the 960x640 window's inspector");
+        let tall = PanelFit::of(272.0, 783.0);
+        assert!(
+            tall.tree_rows > small.tree_rows,
+            "a taller window shows more rows"
+        );
+        assert_eq!(
+            PanelFit::of(272.0, 10.0).tree_rows,
+            5,
+            "never fewer than five rows"
+        );
+        assert_eq!(
+            PanelFit::of(272.0, 100_000.0).tree_rows,
+            16,
+            "never more than sixteen"
+        );
+        // Whole rows: never a half row, never more than the rows that exist, at least one.
+        assert_eq!(small.tree_height(3), 3.0 * TREE_ROW_HEIGHT);
+        assert_eq!(small.tree_height(500), 8.0 * TREE_ROW_HEIGHT);
+        assert_eq!(small.tree_height(0), TREE_ROW_HEIGHT);
+        assert_eq!(PanelFit::UNMEASURED.tree_rows, small.tree_rows);
+    }
+
+    #[test]
+    fn a_new_selection_is_revealed_once_and_a_candidate_does_not_reveal_again() {
+        let mut state = state_with_scene();
+        let cache = SnapshotCache::default();
+        assert!(
+            !cache.get(&state, "street").unwrap().take_reveal(),
+            "nothing selected, nothing to show"
+        );
+        select(
+            &mut state,
+            &["scene/scene-a/node/figure"],
+            SelectMode::Replace,
+        );
+        let selected = cache.get(&state, "street").unwrap();
+        assert_eq!(
+            selected.single_selection(),
+            Some("scene/scene-a/node/figure")
+        );
+        assert!(selected.take_reveal());
+        assert!(!selected.take_reveal(), "asked twice, answered once");
+        // A rebuild for another reason (a gesture) keeps a reveal that was already taken taken.
+        state
+            .execute(Command::Scene(SceneCommand::Gesture(
+                tessel_editor_core::scene_interaction::GestureCommand::Begin {
+                    scene: "street".into(),
+                    targets: vec!["scene/scene-a/node/figure".into()],
+                    label: None,
+                },
+            )))
+            .unwrap();
+        let rebuilt = cache.get(&state, "street").unwrap();
+        assert!(!Rc::ptr_eq(&selected, &rebuilt));
+        assert!(!rebuilt.take_reveal());
+        // A different selection reveals again.
+        select(
+            &mut state,
+            &["scene/scene-a/node/root"],
+            SelectMode::Replace,
+        );
+        assert!(cache.get(&state, "street").unwrap().take_reveal());
+    }
+
+    #[test]
+    fn a_reveal_nobody_took_survives_a_rebuild_for_another_reason() {
+        let mut state = state_with_scene();
+        let cache = SnapshotCache::default();
+        select(
+            &mut state,
+            &["scene/scene-a/node/figure"],
+            SelectMode::Replace,
+        );
+        let untaken = cache.get(&state, "street").unwrap();
+        state
+            .execute(Command::Scene(SceneCommand::Gesture(
+                tessel_editor_core::scene_interaction::GestureCommand::Begin {
+                    scene: "street".into(),
+                    targets: vec!["scene/scene-a/node/figure".into()],
+                    label: None,
+                },
+            )))
+            .unwrap();
+        let rebuilt = cache.get(&state, "street").unwrap();
+        assert!(!Rc::ptr_eq(&untaken, &rebuilt));
+        assert!(
+            rebuilt.take_reveal(),
+            "the inspector was not showing when the selection was made"
+        );
     }
 }

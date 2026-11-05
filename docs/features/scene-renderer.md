@@ -10,6 +10,7 @@
 | Frames reais contra o oráculo independente | **V** | 6 testes em Chrome real (`scene_frames`); 12 frames fora de ordem, 12 sondas por frame, diferença máxima de canal **0** (tolerância 6) |
 | Socket do app | **V no corpus** | `scene.plan` e `scene.render`; 40 checks de pixels no WKWebView, com recursos verificados por F040 |
 | UI / monitor desktop | **Parcial** | Botão Ver no monitor e `monitor.show_scene`; WebView provada por pixels. Inspeção visual e ponteiro físico pendentes |
+| Ciclo de vida do monitor dirigido no WKWebView (BL092) | **V no corpus** | 13 testes de host (`scene_lifecycle_tests`) + prova nativa `scripts/scene-lifecycle-proof.py`: cenários S0–S10 (13 blocos), 218 checks, 0 falhas em 2 execuções seguidas (Apple GPU). Ver "Ciclo de vida no WKWebView" |
 | Exportação dirigida (BL008) | **P** | **não** é alegada. O caminho de export original segue compatível (`export` 2, `frames` 7, `video` 5 testes passam) |
 
 Nada aqui prova pixels contra o **runtime da origem** (BL018/BL071); o oráculo é o modelo
@@ -128,6 +129,57 @@ O monitor não precisa de `SceneRenderer` (ele é síncrono); usa as mesmas peç
 `ProcessTransport` (headless) e a WebView (`host.rs`, que registra os caminhos de `asset.load` para servir
 arquivos) carregam as mesmas mensagens. A integração posterior foi exercitada no WKWebView pelo harness `socket_render_pixels` (40/40).
 
+## Ciclo de vida no WKWebView (BL092)
+
+O monitor dirigido (`DirectedViewport`, em `scene_monitor_host.rs`) responde a cada pedido explícito
+(`scene.render`) com **um** resultado tipado, e o monitor mostra sempre o frame atual com o hash do seu render original.
+
+| Evento | O que acontece | Resposta ao pedido explícito |
+|---|---|---|
+| Monitor oculto | só os frames do próprio monitor ficam parados; o pedido explícito desenha mesmo oculto | frame normal |
+| Ocultar com frame em voo / reabrir | o frame termina; ao reabrir, um seek parado desenha mesmo com a mesma chave | frame normal |
+| Runtime ainda subindo / indisponível | recusa na hora (não estaciona) | `backend_unavailable` |
+| Perda de contexto | cancela o frame em voo, **mantém o livro de slots** (o runtime guarda os bitmaps, só as texturas morrem), suspende até `context.restored` e redesenha o monitor sem recarregar nada | `context_lost`; pedido novo durante a perda também recebe `context_lost` |
+| Respostas velhas (`frame.done`/`frame.failed` de id que não é o ativo) | recusadas e contadas em `directed.refused.stale_frames` | nenhuma (já respondido) |
+| `monitor.reload` (página some) | responde o pedido em voo, esquece o livro (`reset`) e descarta toda mensagem da página velha até `page.ready` | `cancelled` ("The viewport is reloading") |
+| Timeout / erro de cena (a página continua viva) | responde o pedido, **libera** cada slot na página (`asset.release`) e redesenha | `timeout` / erro do core |
+| Troca de projeto / fechar o monitor | `release_all` dos slots, `loads`/`shown` zerados; frame em voo respondido | `cancelled` |
+| Troca de recurso com frame em voo | o frame é refeito com a identidade nova; um `asset.state failed cancelled` de load substituído, ou `resource_stale` de outra geração/recurso, é ignorado e contado em `refused.stale_asset_states`; uma falha real continua falhando o frame | frame ou erro tipado |
+
+**Por que liberar numa e esquecer na outra:** os nomes dos slots (`scene-res-N`) saem do LRU. Esquecer o livro numa
+página viva deixa as imagens no runtime e o próximo pedido usa outros nomes: a prova nativa mostrou o runtime
+chegando a 21 recursos contra 3 no livro após seis perdas de contexto, até o limite de 64 recusar tudo. A correção separa
+os três casos em `reset_directed_runtime_for` (libera), `forget_directed_runtime` (página sumiu) e `suspend_directed`
+(contexto perdido, livro mantido).
+
+`directed` no relatório do viewport (com `TESSEL_VIEWPORT_INSPECT=1`; a chave `directed_scene` segue igual):
+`scene`, `suspended`, `active{id,sent,waiting,explicit}`, `queued{explicit}`, `slots{occupied,generation,tracked_loads}`,
+`refused{stale_frames,stale_asset_states}`, `context_losses`, `shown{request_id,edit_frame}`.
+
+### Evidência
+
+- Host (sem WebView): `cargo test -p tessel-editor scene_lifecycle`, 13 testes com página roteirizada. Os testes de
+  vazamento (`repeated_context_losses_...`, `a_timeout_releases_...`) e o do restore falham com o comportamento antigo
+  (mutação verificada: 3 falham).
+- Nativo: `python3 scripts/directed-scene-proof/with-gpu-lock.py python3 scripts/scene-lifecycle-proof.py --binary <editor> --out <json>`.
+  Uma instância própria (HOME/socket curtos), só operações semânticas do socket, página de teste que **não altera o
+  `runtime.js`**: embrulha `TesselRuntime.receive` para `debug.loseContext()`/`restoreContext()` num frame escolhido e atrasa
+  `fetch('/asset?p=...')` de cópias do corpus (`slow-a/`, `slow-b/`) para manter cargas em voo. Cenários S0–S10: perda no
+  meio do frame, monitor oculto com pedido explícito, ocultar/reabrir com pedido pendente, `monitor.reload` com pedido
+  esperando assets lentos, troca de recurso (sem frame e com frame em voo), troca de projeto com loads substituídos,
+  perda seguida de troca de projeto, perda nunca restaurada, perda seguida de reload e seis perdas seguidas. Cada
+  cenário confere o frame atual contra o modelo independente e contra o **hash do render explícito original**, que toda
+  resposta pendente chega tipada (nunca pendurada) e que o livro, o runtime (`scene_resources`) e o orçamento (≤ 32 slots) concordam.
+
+### Limites do BL092
+
+- A perda de contexto é **forçada** (`WEBGL_lose_context`); reset real de driver não foi provado.
+- Resta uma janela estreita: um `asset.state ready` atrasado de um load substituído **para o mesmo slot** não carrega a
+  identidade da cena, então o host não consegue distingui-lo de um `ready` novo. O runtime hoje responde `cancelled` para
+  loads substituídos (ignorado pelo host); fechar a janela por completo pede eco da identidade em `asset.state` no
+  runtime (patch aditivo sugerido no relatório R8, `index.js` não foi editado).
+- Medido só em macOS / Apple GPU com o corpus de 3 recursos; orçamento com muitos recursos não foi exercitado nativamente.
+
 ## Retenção e invalidação (sem regressão do preview comum)
 
 Reaproveita o que o runtime já tem: texturas do `AssetStore`, materiais/alvos no `LruCache`, a checagem
@@ -149,8 +201,9 @@ em execução serializada.
   como domínio não avaliado.
 - **O hash do conteúdo não é verificado aqui.** O runtime compara o que o mapa declara com o que o plano exige;
   provar que os bytes têm aquele hash é do adaptador que materializa/verifica (N/`media`).
-- **Perda de contexto**: provada no runtime (testes Node, que forçam `WEBGL_lose_context`); pelo bridge não há
-  mensagem para provocá-la, então do lado Rust só a lógica de reenvio foi provada, com transporte roteirizado.
+- **Perda de contexto**: provada no runtime (testes Node, que forçam `WEBGL_lose_context`) e no WKWebView nativo
+  (BL092, perda **forçada** por `debug.loseContext()` numa página de teste; ver "Ciclo de vida no WKWebView").
+  Reset real de driver/GPU não foi provado; pelo bridge não há mensagem para provocá-lo.
 - **Troca de recurso no meio do frame** é coberta pela checagem existente (`used`/`isCurrent`), sem teste
   determinístico próprio.
 - **Concorrência**: `node --test` com concorrência padrão falhou **uma** vez o teste de splat (`splat.test.mjs`);
@@ -180,7 +233,7 @@ O helper versionado aplica `fcntl.flock` ao comando inteiro; os comandos partem 
 - Headless: `SceneHost` reúne MediaHost e SceneRenderer. `resources_root` opcional pede verificação de arquivos pelo MediaHost antes do frame. Sem raiz explícita, exige mapa previamente carregado.
 - Desktop: carregar por `scene.resources.resolve {scene,base}` (job), aguardar/aplicar o resultado. `scene.render` e o monitor só usam o mapa aprovado, sem hash/IO pesado no thread gráfico.
 - `scene_operation::approved_map` converte ResourceResolver para SceneResourceMap. O plano confere revisão/hash; o media verifica os bytes.
-- Monitor: `SceneSlots` e mensagens idênticas ao headless, IDs separados, confirmação de assets, seek interativo coalescido, resposta explícita após frame.done, cancelamento no reset e invalidação na perda de contexto. A apresentação da cena é local à janela; não altera histórico/documento.
+- Monitor: `SceneSlots` e mensagens idênticas ao headless, IDs separados, confirmação de assets, seek interativo coalescido, resposta explícita após frame.done, cancelamento no reset e, na perda de contexto, cancelamento do frame em voo mantendo o livro de slots (ver "Ciclo de vida no WKWebView"). A apresentação da cena é local à janela; não altera histórico/documento.
 - Voltar a Sequência/Fonte encerra o preview dirigido. Projeto substituído cancela pedidos; reload reconstrói os slots.
 
 Provas finais e limites em [round-mnop-report.md](../migration/round-mnop-report.md). Export dirigido BL008 ainda não implementado.

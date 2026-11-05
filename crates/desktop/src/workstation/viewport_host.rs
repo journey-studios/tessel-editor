@@ -290,7 +290,7 @@ impl ViewportHost {
         let Some(_) = &self.dist else {
             return false;
         };
-        self.reset_directed_runtime();
+        self.forget_directed_runtime(&BackendError::new("cancelled", "The viewport is reloading"));
         self.session.reset_project();
         self.access.borrow_mut().clear();
         self.inbox.borrow_mut().clear();
@@ -544,6 +544,12 @@ impl ViewportHost {
             ));
             return;
         };
+        // WHY: after a reload the old document may still have messages queued; until the new page
+        // announces itself, everything else belongs to the page that is gone (its frames, asset
+        // states and `ready`) and must not touch the new session.
+        if matches!(self.phase, Phase::Booting(_)) && message["type"] != "page.ready" {
+            return;
+        }
         match message["type"].as_str() {
             Some("page.ready") => {
                 if matches!(self.phase, Phase::Booting(_)) {
@@ -736,7 +742,7 @@ impl ViewportHost {
                     "timeout",
                     format!("No frame within {FRAME_TIMEOUT:?}; the request was cancelled"),
                 );
-                self.reset_directed_runtime();
+                self.reset_directed_runtime_for(&error);
                 self.report_failure(error);
                 true
             }
@@ -813,6 +819,7 @@ impl ViewportHost {
         }
         json!({
             "directed_scene": self.directed_scene(),
+            "directed": self.directed_report(),
             "phase": phase,
             "headline": self.headline(),
             "on_screen": self.on_screen,

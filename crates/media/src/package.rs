@@ -13,7 +13,9 @@
 //! package is complete only when nothing a scene names is left out.
 //!
 //! Creation copies and verifies in a staging area and publishes only when everything checked
-//! out; a failure or cancellation leaves the sources and any previous package untouched.
+//! out; a failure or cancellation leaves the sources and any previous package untouched. That
+//! includes `replace`: the previous package is taken out of the way, not deleted, until the new
+//! one is in place (see `publish`).
 //! Restore validates every path and hash *before* publishing, and the result opens with no
 //! access to the original files.
 
@@ -21,6 +23,7 @@ use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -483,6 +486,23 @@ pub fn create(
     create_with(state, destination, options, &PackageInputs::default(), ctx)
 }
 
+/// The one filesystem call of the publish phase, as a seam: the default is `std::fs::rename`,
+/// tests substitute one that fails at a chosen call to prove what survives. Everything else
+/// (staging, hashing, verification) runs for real.
+#[doc(hidden)]
+pub trait PublishFs {
+    fn rename(&self, from: &Path, to: &Path) -> std::io::Result<()>;
+}
+
+#[doc(hidden)]
+pub struct StdFs;
+
+impl PublishFs for StdFs {
+    fn rename(&self, from: &Path, to: &Path) -> std::io::Result<()> {
+        fs::rename(from, to)
+    }
+}
+
 /// [`create`] with the extra inputs of a package (`PackageInputs`).
 pub fn create_with(
     state: &EditorState,
@@ -490,6 +510,20 @@ pub fn create_with(
     options: &PackageOptions,
     inputs: &PackageInputs,
     ctx: &JobContext,
+) -> Result<Value, JobError> {
+    create_with_fs(state, destination, options, inputs, ctx, &StdFs)
+}
+
+/// [`create_with`] over an explicit [`PublishFs`]; public only so the integration tests can
+/// inject a failing rename. Production code calls [`create_with`].
+#[doc(hidden)]
+pub fn create_with_fs(
+    state: &EditorState,
+    destination: &Path,
+    options: &PackageOptions,
+    inputs: &PackageInputs,
+    ctx: &JobContext,
+    fs_ops: &dyn PublishFs,
 ) -> Result<Value, JobError> {
     // Scene files are verified while they are copied, which already makes any failure abort a
     // package that may not be partial. Only a partial package needs to know *beforehand* which
@@ -656,32 +690,123 @@ pub fn create_with(
         PackageFormat::Directory => content_root.clone(),
     };
     let verified = verify_package(&staged, ctx)?;
-    if destination.exists() {
-        if destination.is_dir() {
-            fs::remove_dir_all(destination)
-        } else {
-            fs::remove_file(destination)
-        }
-        .map_err(|error| io_error(destination, &error))?;
-    }
-    match options.format {
-        PackageFormat::Archive => {
-            fsx::publish_file(&archive_path, destination, false)?;
-            drop(staging);
-        }
-        PackageFormat::Directory => {
-            fs::rename(&content_root, destination)
-                .map_err(|error| io_error(destination, &error))?;
-            drop(staging);
-        }
-    }
+    // Last cancellation point. Past it the swap is a handful of renames that either complete or
+    // are undone, so observing the token in the middle would only create a state to recover from.
+    ctx.check()?;
+    let leftover = publish(&staged, destination, parent, options.replace, fs_ops)?;
+    drop(staging);
+    let mut warnings = planned.warnings.clone();
+    warnings.extend(leftover);
     Ok(
         json!({ "action": "project.package", "path": destination, "format": match options.format {
             PackageFormat::Archive => "archive", PackageFormat::Directory => "directory" },
         "files": verified["files"], "scene_files": scene_written.len(), "bytes": total,
         "complete": planned.missing.is_empty(),
-        "missing": planned.missing, "warnings": planned.warnings, "manifest": manifest_json["project"] }),
+        "missing": planned.missing, "warnings": warnings, "manifest": manifest_json["project"] }),
     )
+}
+
+/// Prefix of the sibling where a package being replaced waits until the new one is in place.
+/// Deliberately not `.tessel-staging-`: that is scratch space and may be swept, this holds the
+/// user's previous package and is only ever removed after the replacement succeeded.
+const PREVIOUS_PREFIX: &str = ".tessel-previous-";
+
+static PREVIOUS_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// A free sibling name for the previous package. Checked with `symlink_metadata` so a dangling
+/// link or a file never counts as free; only names this process generated are ever used.
+fn previous_path(parent: &Path) -> PathBuf {
+    loop {
+        let unique = PREVIOUS_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let path = parent.join(format!("{PREVIOUS_PREFIX}{}-{unique}", std::process::id()));
+        if fs::symlink_metadata(&path).is_err() {
+            return path;
+        }
+    }
+}
+
+fn rename_into_place(
+    fs_ops: &dyn PublishFs,
+    staged: &Path,
+    destination: &Path,
+) -> Result<(), JobError> {
+    fs_ops
+        .rename(staged, destination)
+        .map_err(|error| io_error(destination, &error))
+}
+
+/// Puts the finished `staged` package at `destination` so that a failure leaves the previous
+/// package there, readable and verifiable. Returns a warning when the replaced package could not
+/// be fully deleted afterwards (the new package is published regardless).
+///
+/// - Nothing at the destination: one rename.
+/// - A previous *file* replaced by a staged *file* (archive over archive): one rename, which the
+///   filesystem swaps in a single step, so there is no moment without a package and nothing to undo.
+/// - Anything else (a folder, or the kind of entry changes): the previous package is renamed to a
+///   hidden sibling, the new one is renamed in, and only then is the old one deleted. If the second
+///   rename fails the first is undone; if that fails too the old package stays at the sibling
+///   and the error names it. Between the two renames the destination does not exist: a reader
+///   sees "missing", never a half-written package. This is not atomic against a writer that
+///   changes the destination meanwhile (cooperative, like the root lease).
+fn publish(
+    staged: &Path,
+    destination: &Path,
+    parent: &Path,
+    replace: bool,
+    fs_ops: &dyn PublishFs,
+) -> Result<Option<String>, JobError> {
+    let Ok(existing) = fs::symlink_metadata(destination) else {
+        rename_into_place(fs_ops, staged, destination)?;
+        return Ok(None);
+    };
+    if !replace {
+        return Err(JobError::new(
+            "destination_exists",
+            format!(
+                "`{}` already exists; nothing was overwritten",
+                destination.display()
+            ),
+        ));
+    }
+    let staged_is_file = fs::symlink_metadata(staged).is_ok_and(|meta| meta.is_file());
+    if existing.is_file() && staged_is_file {
+        rename_into_place(fs_ops, staged, destination)?;
+        return Ok(None);
+    }
+    let previous = previous_path(parent);
+    // Nothing has changed yet if this fails.
+    fs_ops
+        .rename(destination, &previous)
+        .map_err(|error| io_error(destination, &error))?;
+    if let Err(failure) = rename_into_place(fs_ops, staged, destination) {
+        return Err(match fs_ops.rename(&previous, destination) {
+            Ok(()) => failure.with_details(
+                json!({ "previous_package": destination, "previous_restored": true }),
+            ),
+            Err(restore) => JobError::new(
+                failure.code.clone(),
+                format!(
+                    "{}; the previous package could not be put back and is kept at `{}`",
+                    failure.message,
+                    previous.display()
+                ),
+            )
+            .with_details(
+                json!({ "previous_package": previous, "previous_restored": false,
+                "restore_error": restore.to_string() }),
+            ),
+        });
+    }
+    let removed = match fs::symlink_metadata(&previous) {
+        Ok(meta) if meta.is_dir() => fs::remove_dir_all(&previous),
+        _ => fs::remove_file(&previous),
+    };
+    Ok(removed.err().map(|error| {
+        format!(
+            "the package that was replaced could not be fully deleted and is kept at `{}`: {error}",
+            previous.display()
+        )
+    }))
 }
 
 /// A package on disk, either form, behind one interface.

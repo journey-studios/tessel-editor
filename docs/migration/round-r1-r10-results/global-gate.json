@@ -1,0 +1,37 @@
+[
+  {
+    "step": "fmt",
+    "exit_code": 0,
+    "seconds": 0.64
+  },
+  {
+    "step": "check",
+    "exit_code": 0,
+    "seconds": 0.53
+  },
+  {
+    "step": "clippy",
+    "exit_code": 0,
+    "seconds": 0.6
+  },
+  {
+    "step": "tests",
+    "exit_code": 0,
+    "seconds": 264.33
+  },
+  {
+    "step": "runtime",
+    "exit_code": 0,
+    "seconds": 66.73
+  },
+  {
+    "step": "build",
+    "exit_code": 0,
+    "seconds": 6.55
+  },
+  {
+    "step": "release",
+    "exit_code": 0,
+    "seconds": 19.13
+  }
+]

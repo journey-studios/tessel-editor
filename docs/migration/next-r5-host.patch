@@ -1,0 +1,41 @@
+--- a/crates/media/src/host.rs
++++ b/crates/media/src/host.rs
+@@ -57,3 +57,4 @@
+ use crate::scene_resources::{
+-    Invalidation, LoadRequest, ResolvedResourceMap, ResourceBase, SceneResourceSession,
++    AdoptionTarget, Invalidation, LoadRequest, PendingAdoption, ResolvedResourceMap, ResourceBase,
++    SceneResourceSession,
+ };
+@@ -94,2 +95,5 @@
+     SceneImport(Box<PreparedSceneImport>),
++    /// Files an adoption copied, kept only while the project and the scene's bundle are still the
++    /// ones the job was started for; otherwise removed (BL089). Changes no project data.
++    SceneAdopt(Box<PendingAdoption>),
+     /// A restored project, already loaded and validated off the caller's thread, that replaces the
+@@ -1054,5 +1058,6 @@
+         let source = ResourceBase::explicit(text(request, "source")?)?;
++        let target = AdoptionTarget::of(state, &id);
+         let (id_job, slot) = self.start(JobKind::Import, "Adopt scene resources", move |ctx| {
+             ctx.stage("copy", scene_file_total(&scene));
+-            let adoption = crate::scene_resources::adopt(
++            let mut adoption = crate::scene_resources::adopt(
+                 &scene,
+@@ -1066,7 +1071,6 @@
+             )?;
+-            Ok((
+-                None,
+-                json!({ "action": "scene.resources.adopt", "scene": id,
+-                    "base": adoption.base.to_json(), "report": adoption.report.to_json() }),
+-            ))
++            let report = json!({ "action": "scene.resources.adopt", "scene": id,
++                "base": adoption.base.to_json(), "report": adoption.report.to_json() });
++            let pending = PendingAdoption::new(target, &mut adoption);
++            Ok((Some(Pending::SceneAdopt(Box::new(pending))), report))
+         });
+@@ -1599,2 +1603,6 @@
+         Pending::SceneImport(prepared) => Ok(Some(scene_import::apply(state, *prepared)?)),
++        Pending::SceneAdopt(pending) => {
++            pending.apply(state)?;
++            Ok(None)
++        }
+         Pending::Open {

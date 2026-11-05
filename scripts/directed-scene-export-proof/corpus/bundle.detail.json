@@ -1,0 +1,143 @@
+{
+  "schemaVersion": "1.0",
+  "bundleId": "r10-detail",
+  "revisionId": "rev-1",
+  "fps": {
+    "numerator": 24,
+    "denominator": 1
+  },
+  "editDurationFrames": 12,
+  "renderProfile": {
+    "width": 3840,
+    "height": 2160,
+    "fps": {
+      "numerator": 24,
+      "denominator": 1
+    },
+    "colorSpace": "srgb-display",
+    "alphaMode": "straight",
+    "premultiplyOnUpload": false,
+    "videoCodec": "h264-yuv420p",
+    "threeRevision": "0.187.0",
+    "browserChannel": "synthetic-export-proof-r10"
+  },
+  "assets": [
+    {
+      "assetId": "detail",
+      "revisionId": "rev-1",
+      "contentHash": "2d5d406458c9fa99b492cfbce34e983a9ebdd983f9d9b1b16232c8ab38f0ce40",
+      "relativePath": "assets/detail.png",
+      "widthPx": 3840,
+      "heightPx": 2160,
+      "alphaMode": "opaque",
+      "colorSpace": "srgb"
+    }
+  ],
+  "performanceTracks": [],
+  "compositionPasses": [],
+  "sceneDefinitions": [
+    {
+      "id": "scene-d",
+      "schemaVersion": "1.0",
+      "rootNodeId": "root",
+      "nodes": [
+        {
+          "id": "root",
+          "parentId": null,
+          "type": "group",
+          "localPosition": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "detail",
+          "parentId": "root",
+          "type": "imagePlane",
+          "localPosition": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          },
+          "assetRef": {
+            "assetId": "detail",
+            "revisionId": "rev-1",
+            "contentHash": "2d5d406458c9fa99b492cfbce34e983a9ebdd983f9d9b1b16232c8ab38f0ce40",
+            "relativePath": "assets/detail.png"
+          },
+          "widthSceneUnits": 7.764698331012316,
+          "heightSceneUnits": 4.367642811194428,
+          "renderOrder": 0
+        }
+      ]
+    }
+  ],
+  "sceneInstances": [
+    {
+      "id": "inst-d",
+      "sceneDefinitionId": "scene-d",
+      "durationFrames": 12,
+      "performanceTrackIds": []
+    }
+  ],
+  "cameraClips": [
+    {
+      "id": "cam-d",
+      "initialPosition": {
+        "x": 0,
+        "y": 0,
+        "z": 6
+      },
+      "initialTarget": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "initialFovDeg": 40,
+      "segments": [
+        {
+          "recipe": "hold",
+          "durationFrames": 12,
+          "from": "initial"
+        }
+      ]
+    }
+  ],
+  "shots": [
+    {
+      "id": "shot-d",
+      "sceneInstanceId": "inst-d",
+      "editRange": {
+        "startFrame": 0,
+        "endFrameExclusive": 12
+      },
+      "instanceStartFrame": 0,
+      "cameraClipId": "cam-d",
+      "cameraInFrame": 0,
+      "intent": "detail 1:1"
+    }
+  ]
+}

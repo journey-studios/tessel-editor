@@ -1,5 +1,5 @@
 //! The unified window header: title, sequence name, the file actions (open, save, import,
-//! undo/redo, package, export, jobs) and the live controls for panels and theme.
+//! attach scene, undo/redo, package, export, jobs) and the live controls for panels and theme.
 //!
 //! It replaces the header the Tailor design used to generate. The static part
 //! is declared once in [`NODES`], which drives both the rendering and the
@@ -10,6 +10,7 @@ use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::toolbar::Toolbar;
 use gpui_kit::component::{ActiveTheme, Selectable, Sizable, h_flex};
+use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use serde_json::{Value, json};
 
@@ -27,7 +28,7 @@ type StaticNode = (u32, &'static str, Option<&'static str>, Option<u32>, bool);
 
 /// Declaration of the header's static elements. `None` parent means the
 /// element hangs directly from `region:header`.
-const NODES: [StaticNode; 25] = [
+const NODES: [StaticNode; 27] = [
     (1, "frame", None, None, false),
     (2, "frame", None, Some(1), false),
     (3, "frame", None, Some(2), false),
@@ -53,14 +54,17 @@ const NODES: [StaticNode; 25] = [
     (23, "icon", None, Some(19), false),
     (24, "icon", None, Some(20), false),
     (25, "icon", None, Some(21), false),
+    (26, "button", Some("Anexar cena"), Some(8), false),
+    (27, "icon", None, Some(26), false),
 ];
 
 /// The file actions, in on-screen order, with their node numbers. Each is a gesture on the
 /// workstation (`Workstation::workflow_invoke`) so a click and `ui invoke node:<N>` are one path.
-const ACTIONS: [(u32, &str, IconName); 8] = [
+const ACTIONS: [(u32, &str, IconName); 9] = [
     (18, "Abrir", IconName::FolderOpen),
     (19, "Salvar", IconName::Save),
     (14, "Importar", IconName::FolderInput),
+    (26, "Anexar cena", IconName::Clapperboard),
     (9, "Desfazer", IconName::Undo2),
     (11, "Refazer", IconName::Redo2),
     (20, "Empacotar", IconName::Package),
@@ -133,11 +137,12 @@ impl Header {
 }
 
 impl Render for Header {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let layout = self.workstation.read(cx).layout_snapshot(cx);
         let dark = theme::is_dark(cx);
         let colors = cx.theme().colors;
 
+        let compact = window.viewport_size().width < px(1040.);
         let actions = ACTIONS.iter().fold(
             Toolbar::new("header-actions").xsmall(),
             |toolbar, (number, label, icon)| {
@@ -146,7 +151,7 @@ impl Render for Header {
                     Button::new(format!("node-{number}"))
                         .ghost()
                         .icon(*icon)
-                        .label(*label)
+                        .when(!compact, |button| button.label(*label))
                         .tooltip(*label)
                         .accessibility_label(*label)
                         .on_click(cx.listener(move |this, _, window, cx| {
@@ -231,7 +236,8 @@ impl Render for Header {
                     .items_center()
                     .child(
                         div()
-                            .flex_shrink_0()
+                            .min_w(px(0.))
+                            .truncate()
                             .text_size(px(14.))
                             .child("Tessel Editor"),
                     )

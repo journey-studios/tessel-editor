@@ -14,10 +14,18 @@
 //! undo or a re-attach all change) and the project revision at `begin`. When either moved, the
 //! gesture is *invalidated*: `update`, `commit` and preview reads fail with a typed
 //! `gesture_invalidated` error and nothing is applied. Invalidation is checked when a gesture
-//! is used, not pushed, because the project has no hook that observes undo/redo; the check is
-//! cheap (a pointer comparison and an integer).
+//! is used, not pushed; the check is cheap (a pointer comparison and an integer).
+//!
+//! WHY it stays lazy although `history.rs` now prunes the *selection* at every undo/redo (BL069):
+//! a dead gesture is kept in the slot on purpose, so a UI can read `state: "invalidated"` and
+//! cancel it, and a late commit gets the typed `gesture_invalidated` instead of `no_gesture`.
+//! Dropping it at undo would trade that signal for nothing, and redo can never revive it anyway
+//! (the scene `Arc` and the revision both differ).
 
-use std::sync::Arc;
+use std::collections::hash_map::RandomState;
+use std::hash::BuildHasher;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
 
 use serde_json::{Value, json};
 
@@ -207,13 +215,70 @@ impl Gesture {
     }
 }
 
+/// Prefix of every gesture ID. What follows is opaque (see [`SessionTag`]).
+const ID_PREFIX: &str = "gesture-";
+
+/// Names the interaction session an `EditorState` was built in, so that a gesture ID is only
+/// ever valid for the session that issued it.
+///
+/// WHY: a project that is created or opened is a brand new `EditorState` with a fresh gesture
+/// counter and `project.revision` back at 0. With a plain `gesture-<n>` an ID that a client kept
+/// from the previous project (a slow drag handler, a replayed script line) names the first
+/// gesture of the next one, and nothing else told them apart: the new gesture is bound to the new
+/// scene `Arc` and revision, so the stale request looked live. The tag makes that request an
+/// `unknown_gesture` instead.
+///
+/// `salt` makes tags differ between processes (an ID kept by a client of a previous
+/// `tessel-headless`/window run); `epoch` guarantees they differ between sessions of one process
+/// even if two salts were ever equal. Neither is meant to be parsed by clients: IDs are opaque.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SessionTag(String);
+
+impl SessionTag {
+    fn fresh() -> Self {
+        static EPOCH: AtomicU64 = AtomicU64::new(0);
+        static SALT: OnceLock<u32> = OnceLock::new();
+        // `RandomState` is seeded by the OS per process: randomness without a new dependency.
+        let salt = *SALT.get_or_init(|| {
+            let hashed = RandomState::new().hash_one(std::process::id());
+            // Keeping only the low 32 bits is the point: plenty for a per-process tag.
+            u32::try_from(hashed & u64::from(u32::MAX)).unwrap_or_default()
+        });
+        let epoch = EPOCH.fetch_add(1, Ordering::Relaxed) + 1;
+        Self(format!("{salt:08x}-{epoch}"))
+    }
+
+    /// The session part of `id` when it has the shape this module issues.
+    fn of(id: &str) -> Option<&str> {
+        let rest = id.strip_prefix(ID_PREFIX)?;
+        let (session, issued) = rest.rsplit_once('-')?;
+        let well_formed = !issued.is_empty()
+            && issued.bytes().all(|byte| byte.is_ascii_digit())
+            && session.contains('-');
+        well_formed.then_some(session)
+    }
+}
+
 /// The gesture slot of a project session, plus the counter that names gestures.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct GestureSlot {
     current: Option<Gesture>,
     /// Only ever grows: IDs are never reused inside a session, so a late `commit` of a gesture
     /// that was cancelled cannot hit the next one.
     issued: u64,
+    session: SessionTag,
+}
+
+/// A new slot is a new session, never a reset of the old one: `Default` is what `EditorState`
+/// uses when a project is created or opened.
+impl Default for GestureSlot {
+    fn default() -> Self {
+        Self {
+            current: None,
+            issued: 0,
+            session: SessionTag::fresh(),
+        }
+    }
 }
 
 impl GestureSlot {
@@ -223,7 +288,31 @@ impl GestureSlot {
 
     pub(crate) fn next_id(&mut self) -> String {
         self.issued += 1;
-        format!("gesture-{}", self.issued)
+        format!("{ID_PREFIX}{}-{}", self.session.0, self.issued)
+    }
+
+    /// Why `id` is not the open gesture. A well-formed ID of another session is told apart so a
+    /// client learns that its gesture died with the project it belonged to, not that it typed
+    /// the ID wrong.
+    fn missing(&self, id: &str, code: &'static str, message: String) -> CommandError {
+        let other_session = SessionTag::of(id).is_some_and(|session| session != self.session.0);
+        let reason = if other_session {
+            "other_session"
+        } else {
+            "not_current"
+        };
+        let message = if other_session {
+            format!(
+                "Gesture `{id}` belongs to a previous session (a project was created or opened \
+                 since); nothing was applied"
+            )
+        } else {
+            message
+        };
+        CommandError::new(code, message).target(id).details(json!({
+            "gesture": id, "reason": reason,
+            "current": self.current.as_ref().map(|gesture| gesture.id.as_str()),
+        }))
     }
 
     pub(crate) fn open(&mut self, gesture: Gesture) {
@@ -237,13 +326,13 @@ impl GestureSlot {
     /// The gesture called `id`; `no_gesture` or `unknown_gesture` when there is none such.
     pub fn find(&self, id: &str) -> Result<&Gesture, CommandError> {
         match &self.current {
-            None => Err(CommandError::new("no_gesture", "No gesture is in progress").target(id)),
+            None => Err(self.missing(id, "no_gesture", "No gesture is in progress".to_string())),
             Some(gesture) if gesture.id == id => Ok(gesture),
-            Some(gesture) => Err(CommandError::new(
+            Some(gesture) => Err(self.missing(
+                id,
                 "unknown_gesture",
                 format!("`{id}` is not the gesture in progress (`{}`)", gesture.id),
-            )
-            .target(id)),
+            )),
         }
     }
 

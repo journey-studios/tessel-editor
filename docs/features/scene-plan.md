@@ -49,6 +49,29 @@ let same = ScenePlan::from_json_str(&wire)?;          // valida; == plan
 | `scene_plan::capabilities()` | O que esta versão do plano carrega (`supported`) e recusa (`unsupported`: todos os `Domain`) |
 | `PLAN_KIND` = `"tessel-scene-plan"`, `PLAN_VERSION` = 1, `OUTPUT_COLOR_SPACE` = `"srgb-display"` | Constantes |
 
+### Muitos frames: `PlanTimeline` (BL064, aditivo)
+
+```rust
+use tessel_editor_core::scene_plan::{PlanOptions, PlanTimeline};
+
+let timeline = PlanTimeline::new(&scene);          // empresta a cena; não calcula nada ainda
+let plan = timeline.build(frame)?;                 // == ScenePlan::build(&scene, frame)
+let plan = timeline.build_with(frame, PlanOptions { allow_partial: true })?;
+```
+
+| Item | Contrato |
+|---|---|
+| Resposta | **A mesma** de `ScenePlan::build_with(&scene, frame, options)`: mesmo `ScenePlan` (valor e JSON canônico, byte a byte), mesmos erros na mesma ordem (erro de frame antes de domínio/documento; recusa de `unsupported` antes dos erros estáticos) e mesmas capacidades. Nenhum domínio recusado passa a ser aceito |
+| Ordem | Qualquer: para frente, para trás, embaralhada, repetida. A resposta depende só do frame, nunca da ordem das perguntas |
+| Unidade de reuso | O **plano**: instância, clipe de câmera e plano da cena que um *shot* fixa são preparados uma vez (sob demanda, `OnceLock`) e reutilizados; por frame só se reavalia o que depende do frame (câmera, matrizes locais/de mundo dos nós, `frame`). O molde é validado uma vez; `at_frame` escreve o que varia e erra tipado (`PlanError::Unresolved`) se a lista de nós não alinhar |
+| Memória | Limitada pelo bundle, não pelos frames perguntados: `prepared_layouts()` nunca passa de `instâncias + clipes + shots` (teste). Nenhum plano é guardado |
+| Geração | A linha do tempo **empresta** a cena: nova geração da cena = nova `PlanTimeline` (o empréstimo impede usar a antiga). Cena de outra geração nunca responde por esta |
+| Threads | `Sync`; vários chamadores perguntam frames diferentes ao mesmo tempo e recebem as respostas sequenciais (teste) |
+| Falha de preparo | Uma instância/clipe que não prepara falha igual para todo frame que o precisa, com o mesmo erro (guardado como resultado) |
+| Consumidor atual | `ScenePlan::build`/`build_with` seguem como estão (mesma assinatura, refatorados sobre o mesmo núcleo `Prepared`). A adoção na exportação/monitor é um patch do coordenador (ver [relatório R6](../migration/next-r6-report.md)) |
+
+Evidência de custo e tamanho (medida, não suposta): ver "BL064 — medição" em Evidências.
+
 ### Campos do plano (`ScenePlan`)
 
 | Campo | Conteúdo |
@@ -126,10 +149,36 @@ plano que carregasse dados ignorados não faria round-trip), tempos só reduzido
 | Contra a origem | Nenhuma comparação nova. O plano é comparado com `evaluate_frame` (que as suítes F033/F035 comparam com a origem); a ordem de pintura vem de `paint_order` (BB01/BB02) |
 | CLI headless / socket / UI | **V no corpus** para consulta; monitor **Parcial** em F041 (aparência/ponteiro pendentes) |
 
-Limites: a biblioteca de plano não é um render nem faz I/O (consumidor F041, recursos F040); domínios listados acima são recusados; o custo por frame refaz a linha do tempo de nós
-(`NodeTimeline::new`) a cada chamada, o que importa para exportar muitos frames (BL064);
-cada nó leva duas matrizes de 16 números no JSON.
+Limites: a biblioteca de plano não é um render nem faz I/O (consumidor F041, recursos F040); domínios listados acima são recusados; cada nó leva duas matrizes de 16 números no JSON (o tamanho por frame é o custo dominante da exportação, ver abaixo).
+
+### BL064 — medição (R6)
+
+Release (`cargo test --release`), 3 repetições do processo × 5 passadas × 120 frames amostrados por cena, mediana; árvore pristina (main `914c830`) contra a árvore com `PlanTimeline`; sintéticas sem mídia privada (`crates/core/tests/scene_plan_performance_support`). Reproduzir: `python3 scripts/scene-plan-performance/run.py --tree . --base <árvore pristina>` (ver o [relatório](../migration/next-r6-report.md) para a tabela completa e as faixas).
+
+| Cena (nós) | `build` (µs) pristino → direto depois | `PlanTimeline` quente (µs) | Ganho do plano | `to_json_string` (µs) | JSON/frame | Laço de exportação (plano + JSON) |
+|---|---|---|---|---|---|---|
+| small (11) | 18,1 → 19,2 | 5,4 | 3,6× | 86 | 8,3 KiB | 1,14× |
+| medium (111) | 147,6 → 148,2 | 42,5 | 3,5× | 754 | 65,4 KiB | 1,17× |
+| large (1051) | 1394 → 1502 | 374 | 4,0× | 6892 | 598 KiB | 1,09× |
+| channel-heavy (25) | 43,7 → 45,3 | 15,0 | 3,0× | 193 | 20,7 KiB | 1,24× |
+| wide-flat (4001) | 5561 → 5626 | 1108 | 5,1× | 27647 | 2223 KiB | 1,14× |
+| camera-heavy (6; 10 000 movimentos) | 100,7 → 104,0 | 3,7 | 28× | 49 | 4,9 KiB | 2,7× |
+
+Leitura honesta:
+
+- **O ganho no plano é real e medido** (3–5× em cenas com nós; 28× com muita câmera), porque o custo de `build` é montagem independente do frame + `validate`, e isso agora é feito uma vez por *shot*. Refazer só `NodeTimeline::new`/`CameraTimeline::new` por frame (a hipótese original) vale ~3% do `build`, exceto em cena com milhares de movimentos de câmera (~90%).
+- **No laço de exportação o ganho é pequeno (1,1–1,2×)**, exceto em cena de câmera pesada (2,7×): `to_json_string` custa ~4–5× o `build` e domina. O próximo ganho vem do escritor JSON, não do plano (proposta de BL à parte; escritor direto, byte a byte igual, não implementado aqui).
+- O caminho direto `ScenePlan::build_with` não regrediu: diferenças dentro do ruído da máquina (faixas sobrepostas; ±10%, com um ponto isolado de +40% em `medium` que não se repete numa segunda medição).
+- Tamanho: as matrizes dos nós (`nodes.matrices`) são ~19% (small) a ~27% (medium, large, wide-flat) do JSON; uma edição inteira de `large` são ~4,1 GiB (4205 MiB) de JSON. Reduzir exige mudar o formato (`PLAN_VERSION`): fora desta entrega.
+- Memória: 20 000 frames seguidos, direto e pela linha do tempo: RSS de pico igual dentro de 1 MiB (4,8–7,1 MiB); sem crescimento por frame.
+- Descartado: um índice mais leve em `NodeFrame` (~10% do caminho quente, cirurgia em struct pública).
+
+Testes (R6): `crates/core/tests/scene_plan_performance.rs` (equivalência com o corpus 55+47 em 4 ordens × 2 modos, linha do tempo nova por frame, sintéticas, trocas de geração, instância quebrada, ordem de erro, threads, memória limitada), `scene_plan_performance_golden.rs` (saída do planejador fixada na main pristina por perfil `debug`/`release`: a main sem alteração já difere 1 ulp entre perfis), unit test em `scene_plan/timeline.rs`, e `scripts/scene-plan-performance/run.spec.py`.
 
 ## Adapter integrado de consulta
 
 `scene.plan {scene,frame|time,partial?,gesture?}` executa SceneCommand::Plan pelo mesmo parser da lib, JSONL e socket. Aplica admissão estrutural/temporal antes do plano. `partial:false` é o padrão. `gesture` usa candidato vivo do mesmo projeto/cena, com erro tipado em invalidação, sem histórico. O teste de operação em `scene_flow` deixou de ser ignorado; 60 checks do plano passaram no processo headless. Consumo real: [F041](scene-renderer.md).
+
+### Gate integrado e ordem de chaves JSON
+
+A execução do workspace unifica `serde_json/preserve_order` vindo de GPUI. O golden da R6 originalmente passava isolado e falhava no workspace apenas pela ordem das chaves. O comparador agora ordena objetos recursivamente antes do digest, mantendo valores, números, arrays e erros exatos. Os digests de referência não foram regenerados nem as tolerâncias afrouxadas.

@@ -483,6 +483,15 @@ impl EditorState {
         if !self.scenes.is_empty() {
             summary["scenes"] = json!(self.scenes.ids());
         }
+        // BL068: the selection and gesture of the scene tools are session state, not document, but
+        // a client polling the summary needs to see them (and that they went stale). Only present
+        // when there is something to show.
+        if let Some(interaction) = self
+            .scene_interaction
+            .summary_json(&self.scenes, self.project.revision)
+        {
+            summary["scene_interaction"] = interaction;
+        }
         summary
     }
 

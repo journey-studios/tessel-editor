@@ -24,6 +24,7 @@ use super::property_gesture::OpenGesture;
 use super::timeline::Timeline;
 use super::{CommandError, EditorState};
 use crate::id::Id;
+use crate::scene_interaction::Dropped;
 use crate::scene_project::SceneBook;
 
 /// Entries kept per direction. Older edits are forgotten, newest first.
@@ -60,6 +61,16 @@ pub struct History {
     /// Last gesture ID handed out; IDs only grow, so a late event of an old drag cannot
     /// be mistaken for the current gesture.
     pub(super) next_gesture: u64,
+}
+
+/// Adds `selection_dropped` (same shape as `scene.detach`'s) to an undo/redo answer, only when
+/// the restore took something out of the scene selection, so the answer of a project that never
+/// selected a scene entity is what it always was.
+fn note_dropped(answer: &mut Value, dropped: &[Dropped]) {
+    if dropped.is_empty() {
+        return;
+    }
+    answer["selection_dropped"] = Value::Array(dropped.iter().map(Dropped::to_json).collect());
 }
 
 impl History {
@@ -124,7 +135,15 @@ impl EditorState {
     }
 
     /// Puts `snapshot` back, keeping what is presentation (playhead, zoom, snap, selection).
-    fn restore(&mut self, snapshot: Snapshot) {
+    ///
+    /// Returns what the scene selection lost (BL069). WHY here and not lazily in
+    /// `scene.selection`: a selected entity that a restore takes away and a later redo brings
+    /// back would otherwise be selected again *or not* depending on whether anyone queried the
+    /// selection in between. Pruning at the restore makes the answer the same either way, and
+    /// redo never resurrects it: the selection is presentation and is never restored, only
+    /// pruned. An open scene gesture is left alone on purpose: it reports `gesture_invalidated`
+    /// when used and a UI reads that state (see `scene_interaction::gesture`).
+    fn restore(&mut self, snapshot: Snapshot) -> Vec<Dropped> {
         let presentation = |old: &Timeline, new: &mut Timeline| {
             new.zoom = old.zoom;
             new.snap = old.snap;
@@ -149,6 +168,7 @@ impl EditorState {
         self.sequences = others;
         self.inspector.restore_overrides(snapshot.overrides);
         self.scenes = snapshot.scenes;
+        let dropped = self.scene_interaction.selection.prune(&self.scenes);
         self.library.selected_folder = self
             .library
             .selected_folder
@@ -157,6 +177,7 @@ impl EditorState {
             .selected_media
             .filter(|media| self.library.item(media).is_some());
         self.library.search.clear();
+        dropped
     }
 
     /// Runs `body` as ONE undoable edit that either fully applies or leaves the project
@@ -217,14 +238,16 @@ impl EditorState {
             ));
         };
         let current = self.snapshot();
-        self.restore(entry.snapshot);
+        let dropped = self.restore(entry.snapshot);
         self.history.redo.push(Entry {
             label: entry.label.clone(),
             snapshot: current,
         });
         self.project.revision += 1;
-        Ok(json!({ "action": "history.undo", "label": entry.label,
-            "history": self.history.to_json(), "changed": true }))
+        let mut answer = json!({ "action": "history.undo", "label": entry.label,
+            "history": self.history.to_json(), "changed": true });
+        note_dropped(&mut answer, &dropped);
+        Ok(answer)
     }
 
     pub fn redo(&mut self) -> Result<Value, CommandError> {
@@ -238,14 +261,16 @@ impl EditorState {
             ));
         };
         let current = self.snapshot();
-        self.restore(entry.snapshot);
+        let dropped = self.restore(entry.snapshot);
         self.history.undo.push(Entry {
             label: entry.label.clone(),
             snapshot: current,
         });
         self.project.revision += 1;
-        Ok(json!({ "action": "history.redo", "label": entry.label,
-            "history": self.history.to_json(), "changed": true }))
+        let mut answer = json!({ "action": "history.redo", "label": entry.label,
+            "history": self.history.to_json(), "changed": true });
+        note_dropped(&mut answer, &dropped);
+        Ok(answer)
     }
 
     /// Forgets undo/redo (a loaded or newly created project starts clean).

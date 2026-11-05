@@ -1,0 +1,179 @@
+{
+  "checks": [
+    {
+      "name": "the scene flows are nodes of the live tree",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "before any chain the node is idle",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "invoking flow.attach_scene opens the dialog",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the dialog reports the scene flow",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "every field is a semantic node",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "\"show\" offers yes/no and defaults to yes",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "an open dialog takes the monitor WebView off screen",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "an invalid bundle is refused with its typed code",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the dialog stays open and says why",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "no scene, no history entry, no resource folder, no chain",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a path that is not there is bundle_unreadable",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a valid bundle is submitted",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the dialog closed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "attach is one undo entry",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the background jobs adopted and loaded the scene",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "steps ran in order",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "sky.png is a verified copy inside the project",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "mid.png is a verified copy inside the project",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "hero.png is a verified copy inside the project",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the host says the scene is loaded and current",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "adopt then resolve are in the shared job history",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the inspector is in scene mode on the new scene",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the monitor shows the attached scene and has drawn a frame",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "what the monitor drew is the explicit render of the same frame (same hash)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the WebView is back on screen after the dialog closed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a missing resource fails the adopt with the host code",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the host names the missing file",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the valid bundle stays attached",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "nothing was copied and nothing is loaded for it",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the scene_import node keeps the failure for a client that missed the dialog",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "an altered file is refused by hash and never copied",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the resources dialog opens",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the same scene loads once its folder is repaired, with no second attach",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "input": "semantic IPC (socket), no pointer, no coordinates",
+  "not_proven": [
+    "native file picker panel",
+    "visual appearance"
+  ],
+  "monitor_frame": {
+    "request": 281474976710656,
+    "hash": "0382ef5ffef9668d"
+  },
+  "ok": true
+}

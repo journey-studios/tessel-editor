@@ -270,24 +270,29 @@ fn uninterpreted_fields(
         .collect()
 }
 
-impl ScenePlan {
-    /// The plan of an edit frame, complete or refused: a frame that declares domains the plan does
-    /// not evaluate is `PlanError::Unsupported`, never a quietly reduced picture.
-    pub fn build(scene: &DirectedScene, edit_frame: i64) -> Result<Self, PlanError> {
-        Self::build_with(scene, edit_frame, PlanOptions::default())
-    }
+/// What every frame of one shot shares, found once: the scene definition the shot plays and the
+/// domains it declares without evaluating. `ScenePlan::build_with` prepares this for each call;
+/// `PlanTimeline` keeps it for the shot.
+///
+/// WHY a shot is the unit: a shot fixes the instance, the camera clip and the scene definition, and
+/// everything below is a function of those, never of the frame (the performance channels move a
+/// node's transform, not its kind, parent, asset, size or `renderOrder`).
+pub(super) struct Prepared<'a> {
+    definition_id: String,
+    definition_index: usize,
+    definition: &'a Value,
+    graph: &'a SceneGraph,
+    unsupported: Vec<UnsupportedDomain>,
+}
 
-    /// `build` with explicit options. The scene is only read: a refusal changes nothing.
-    ///
-    /// The errors come in the evaluator's order: first the frame (range, shot, channels, camera,
-    /// node overflow: `PlanError::Frame`), then the declared domains.
-    pub fn build_with(
-        scene: &DirectedScene,
-        edit_frame: i64,
-        options: PlanOptions,
+impl<'a> Prepared<'a> {
+    /// The evaluator's own error comes first (the caller evaluated the frame already); what fails
+    /// here is the document or the graph not matching what the importer guarantees.
+    pub(super) fn new(
+        scene: &'a DirectedScene,
+        frame: &FrameEvaluation<'_>,
     ) -> Result<Self, PlanError> {
         let bundle = scene.bundle();
-        let frame = bundle.evaluate_frame(edit_frame)?;
         let definition_id = frame.nodes.scene_definition_id().to_string();
         let graph = bundle
             .scene(&definition_id)
@@ -302,35 +307,56 @@ impl ScenePlan {
             .ok_or_else(|| PlanError::MalformedDocument {
                 pointer: format!("/sceneDefinitions/{definition_index}/nodes"),
             })?;
-
         let unsupported = unsupported_domains(&frame.unevaluated, graph, raw_nodes);
-        if !options.allow_partial && !unsupported.is_empty() {
-            return Err(PlanError::Unsupported {
-                domains: unsupported,
-            });
-        }
+        Ok(Self {
+            definition_id,
+            definition_index,
+            definition,
+            graph,
+            unsupported,
+        })
+    }
 
-        let nodes = plan_nodes(&frame, graph)?;
-        let layers = plan_layers(bundle, &frame, &definition_id)?;
+    /// A complete plan of a frame that declares domains the plan does not evaluate is refused.
+    pub(super) fn refuse_unsupported(&self, options: PlanOptions) -> Result<(), PlanError> {
+        if options.allow_partial || self.unsupported.is_empty() {
+            return Ok(());
+        }
+        Err(PlanError::Unsupported {
+            domains: self.unsupported.clone(),
+        })
+    }
+
+    /// The validated plan of the frame. Its parts that do not depend on the frame (`source`,
+    /// `output`, kinds, parents, assets, `layers`, `resources`, `requires`, `unsupported`,
+    /// `uninterpreted`) are what `ScenePlan::at_frame` reuses.
+    pub(super) fn assemble(
+        &self,
+        scene: &DirectedScene,
+        frame: &FrameEvaluation<'_>,
+    ) -> Result<ScenePlan, PlanError> {
+        let bundle = scene.bundle();
+        let nodes = plan_nodes(frame, self.graph)?;
+        let layers = plan_layers(bundle, frame, &self.definition_id)?;
         let resources = plan_resources(bundle, &nodes)?;
         let uninterpreted = uninterpreted_fields(
             scene,
-            definition_index,
-            &frame,
+            self.definition_index,
+            frame,
             &layers,
             &resources,
-            definition,
+            self.definition,
         );
         let requires = derive_requires(&nodes, &layers, &frame.node_animation);
 
         let profile = &bundle.render_profile;
         let mapping = &frame.mapping;
-        let plan = Self {
+        let plan = ScenePlan {
             version: PLAN_VERSION,
             source: PlanSource {
                 bundle_id: bundle.bundle_id.clone(),
                 revision_id: bundle.revision_id.clone(),
-                scene_definition_id: definition_id,
+                scene_definition_id: self.definition_id.clone(),
                 scene_instance_id: mapping.instance.id.clone(),
             },
             output: PlanOutput {
@@ -339,29 +365,90 @@ impl ScenePlan {
                 fps: profile.fps,
                 alpha_mode: output_alpha(scene.document())?,
             },
-            frame: PlanFrame {
-                edit_frame: mapping.edit_frame,
-                edit_time: mapping.edit_time,
-                shot_id: mapping.shot.id.clone(),
-                instance_frame: mapping.instance_frame,
-                instance_time: mapping.instance_time,
-                camera_clip_id: mapping.shot.camera_clip_id.clone(),
-                camera_clip_frame: mapping.camera_clip_frame,
-                camera_clip_time: mapping.camera_clip_time,
-            },
+            frame: plan_frame(frame),
             camera: frame.camera,
             animation: frame.node_animation.clone(),
             nodes,
             layers,
             resources,
             requires,
-            unsupported,
+            unsupported: self.unsupported.clone(),
             uninterpreted,
         };
         // WHY validate what was just built: the invariants (draw order, resource list, requires)
         // are what a runtime relies on, so a build that would break them fails here, loudly,
         // instead of shipping a plan that `from_json_str` would later refuse.
         plan.validate()?;
+        Ok(plan)
+    }
+}
+
+fn plan_frame(frame: &FrameEvaluation<'_>) -> PlanFrame {
+    let mapping = &frame.mapping;
+    PlanFrame {
+        edit_frame: mapping.edit_frame,
+        edit_time: mapping.edit_time,
+        shot_id: mapping.shot.id.clone(),
+        instance_frame: mapping.instance_frame,
+        instance_time: mapping.instance_time,
+        camera_clip_id: mapping.shot.camera_clip_id.clone(),
+        camera_clip_frame: mapping.camera_clip_frame,
+        camera_clip_time: mapping.camera_clip_time,
+    }
+}
+
+impl ScenePlan {
+    /// The plan of an edit frame, complete or refused: a frame that declares domains the plan does
+    /// not evaluate is `PlanError::Unsupported`, never a quietly reduced picture.
+    pub fn build(scene: &DirectedScene, edit_frame: i64) -> Result<Self, PlanError> {
+        Self::build_with(scene, edit_frame, PlanOptions::default())
+    }
+
+    /// `build` with explicit options. The scene is only read: a refusal changes nothing.
+    ///
+    /// The errors come in the evaluator's order: first the frame (range, shot, channels, camera,
+    /// node overflow: `PlanError::Frame`), then the declared domains.
+    ///
+    /// Each call lays the scene out again. To plan many frames of one scene use `PlanTimeline`,
+    /// which returns the same plan or error for every frame.
+    pub fn build_with(
+        scene: &DirectedScene,
+        edit_frame: i64,
+        options: PlanOptions,
+    ) -> Result<Self, PlanError> {
+        let frame = scene.bundle().evaluate_frame(edit_frame)?;
+        let prepared = Prepared::new(scene, &frame)?;
+        prepared.refuse_unsupported(options)?;
+        prepared.assemble(scene, &frame)
+    }
+
+    /// This plan moved to another frame of the same shot: what the frame changes (times, camera,
+    /// the nodes' transforms and matrices) is taken from `frame`; everything else is this plan's.
+    ///
+    /// The nodes of a shot's frames are the same list in the same order (they come from one scene
+    /// definition), so a frame that does not line up with this plan is a bug, reported as the node
+    /// that does not resolve instead of a plan with some other frame's nodes in it.
+    pub(super) fn at_frame(&self, frame: &FrameEvaluation<'_>) -> Result<Self, PlanError> {
+        let states = frame.nodes.nodes();
+        // The first position where the two lists stop agreeing (one list may simply be longer).
+        let misaligned = (0..states.len().max(self.nodes.len())).find_map(|at| {
+            let planned = self.nodes.get(at).map(|node| node.id.as_str());
+            let evaluated = states.get(at).map(|state| state.node_id.as_str());
+            (planned != evaluated).then(|| planned.or(evaluated).unwrap_or_default().to_string())
+        });
+        if let Some(id) = misaligned {
+            return Err(PlanError::Unresolved { kind: "node", id });
+        }
+        let mut plan = self.clone();
+        plan.frame = plan_frame(frame);
+        plan.camera = frame.camera;
+        for (node, state) in plan.nodes.iter_mut().zip(states) {
+            node.local_position = state.local_position;
+            node.local_rotation_deg = state.local_rotation_deg;
+            node.local_scale = state.local_scale;
+            node.local_matrix = state.local_matrix;
+            node.world_matrix = state.world_matrix;
+        }
         Ok(plan)
     }
 }

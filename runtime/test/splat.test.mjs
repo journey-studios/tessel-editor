@@ -10,93 +10,23 @@
 //  - several splats of one asset draw; a malformed file is decode_failed; a load that is
 //    released while in flight is cancelled; a lost WebGL context is recovered from.
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { gzipSync } from 'node:zlib';
+import { join } from 'node:path';
 import { test } from 'node:test';
 
 import { findChrome } from '../worker/chrome.mjs';
-
-const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-
-const unavailable = () => {
-  if (!existsSync(join(root, 'dist/runtime.js'))) return 'dist/runtime.js is not built (pnpm run build)';
-  try {
-    findChrome();
-  } catch (error) {
-    return error.message;
-  }
-  return null;
-};
-
-const SH_C0 = 0.28209479177387814;
-const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
-
-/** `splat`: position, scale (std dev), color 0..255 RGB, alpha 0..255. Identity rotation. */
-const encodeSplat = (splats) => {
-  const out = Buffer.alloc(splats.length * 32);
-  splats.forEach((s, i) => {
-    const base = i * 32;
-    [...s.position, ...s.scale].forEach((v, k) => out.writeFloatLE(v, base + k * 4));
-    out.set([...s.color, s.alpha], base + 24);
-    out.set([255, 128, 128, 128], base + 28);
-  });
-  return out;
-};
-
-const encodePly = (splats) => {
-  const names = ['x', 'y', 'z', 'f_dc_0', 'f_dc_1', 'f_dc_2', 'opacity', 'scale_0', 'scale_1', 'scale_2', 'rot_0', 'rot_1', 'rot_2', 'rot_3'];
-  const header = `ply\nformat binary_little_endian 1.0\nelement vertex ${splats.length}\n${names
-    .map((name) => `property float ${name}`)
-    .join('\n')}\nend_header\n`;
-  const body = Buffer.alloc(splats.length * names.length * 4);
-  splats.forEach((s, i) => {
-    const alpha = clamp(s.alpha / 255, 0.001, 0.999);
-    const row = [
-      ...s.position,
-      ...s.color.map((c) => (c / 255 - 0.5) / SH_C0),
-      Math.log(alpha / (1 - alpha)),
-      ...s.scale.map(Math.log),
-      1, 0, 0, 0,
-    ];
-    row.forEach((v, k) => body.writeFloatLE(v, (i * names.length + k) * 4));
-  });
-  return Buffer.concat([Buffer.from(header), body]);
-};
-
-/** SPZ v2 (gzip of: header, 24-bit fixed positions, alphas, colors, scales, rotations). */
-const encodeSpz = (splats) => {
-  const count = splats.length;
-  const fractionalBits = 12;
-  const header = Buffer.alloc(16);
-  header.writeUInt32LE(0x5053474e, 0);
-  header.writeUInt32LE(2, 4);
-  header.writeUInt32LE(count, 8);
-  header.set([0, fractionalBits, 0, 0], 12);
-  const positions = Buffer.alloc(count * 9);
-  const alphas = Buffer.alloc(count);
-  const colors = Buffer.alloc(count * 3);
-  const scales = Buffer.alloc(count * 3);
-  const rotations = Buffer.alloc(count * 3, 128);
-  splats.forEach((s, i) => {
-    s.position.forEach((v, k) => {
-      const fixed = Math.round(v * (1 << fractionalBits)) & 0xffffff;
-      positions.set([fixed & 0xff, (fixed >> 8) & 0xff, (fixed >> 16) & 0xff], i * 9 + k * 3);
-    });
-    alphas[i] = s.alpha;
-    s.color.forEach((c, k) => {
-      colors[i * 3 + k] = clamp(Math.round(((c / 255 - 0.5) / SH_C0 * 0.15 + 0.5) * 255), 0, 255);
-    });
-    s.scale.forEach((v, k) => {
-      scales[i * 3 + k] = clamp(Math.round((Math.log(v) + 10) * 16), 0, 255);
-    });
-  });
-  return gzipSync(Buffer.concat([header, positions, alphas, colors, scales, rotations]));
-};
-
-const ENCODERS = { splat: encodeSplat, ply: encodePly, spz: encodeSpz };
+import {
+  BACK,
+  CENTER,
+  FRONT,
+  SPLAT_ENCODERS as ENCODERS,
+  encodeSplat,
+  holdFetches,
+  openSplatPage as openPage,
+  root,
+  unavailable,
+} from './support.mjs';
 
 const blob = (position, color, alpha = 255, scale = 0.6) => ({
   position,
@@ -106,78 +36,6 @@ const blob = (position, color, alpha = 255, scale = 0.6) => ({
 });
 
 const dominant = ([r, g, b]) => (r > g + 60 && r > b + 60 ? 'red' : g > r + 60 && g > b + 60 ? 'green' : b > r + 60 && b > g + 60 ? 'blue' : 'other');
-
-const scenePlan = (camera, time = 0) => ({
-  version: 1,
-  canvas: { width: 160, height: 90 },
-  intent: { mode: 'sequence' },
-  frame: 0,
-  layers: [
-    {
-      id: 'layer:scene',
-      kind: 'scene',
-      asset: 'scene',
-      opacity: 1,
-      blend: 'normal',
-      transform: { x: 0, y: 0, scale: 1, rotation: 0, crop: [0, 0, 0, 0] },
-      camera,
-      scene_time: { seconds: time },
-    },
-  ],
-  requires: [],
-  warnings: [],
-});
-
-const FRONT = { position: [0, 0, 5], target: [0, 0, 0], fov: 50 };
-const BACK = { position: [0, 0, -5], target: [0, 0, 0], fov: 50 };
-const CENTER = [[80, 45]];
-
-const openPage = async (browser, port) => {
-  const page = await browser.newPage();
-  const messages = [];
-  await page.exposeFunction('__tesselPost', (raw) => messages.push(JSON.parse(raw)));
-  await page.goto(`http://127.0.0.1:${port}/`);
-  const waitFor = async (predicate, label = 'message', from = 0) => {
-    for (let attempt = 0; attempt < 600; attempt += 1) {
-      const found = messages.slice(from).find(predicate);
-      if (found) return found;
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    throw new Error(`${label} not seen; got ${messages.map((m) => `${m.type}:${m.state ?? m.error?.code ?? ''}`).join(',')}`);
-  };
-  const send = (message) => page.evaluate((payload) => window.TesselRuntime.receive(payload), { v: 1, ...message });
-  let frameId = 100;
-  const api = {
-    page,
-    messages,
-    waitFor,
-    send,
-    hello: async () => {
-      await send({ type: 'hello' });
-      return waitFor((m) => m.type === 'ready');
-    },
-    load: async (asset) => {
-      // Only messages after this request count: an id is reloaded many times in one session.
-      const from = messages.length;
-      await send({ type: 'asset.load', asset });
-      return waitFor((m) => m.type === 'asset.state' && m.id === asset.id && (m.state === 'ready' || m.state === 'failed'), `asset ${asset.id}`, from);
-    },
-    frame: async (camera, probes = CENTER, time = 0) => {
-      frameId += 1;
-      const id = frameId;
-      await send({
-        type: 'frame.render',
-        id,
-        revision: id,
-        plan: scenePlan(camera, time),
-        output: { width: 160, height: 90 },
-        probes,
-      });
-      return waitFor((m) => (m.type === 'frame.done' || m.type === 'frame.failed') && m.id === id, `frame ${id}`);
-    },
-  };
-  return api;
-};
 
 test('spark: splat formats, sort, composition, failures and context loss in real Chrome', async (t) => {
   const reason = unavailable();
@@ -334,9 +192,16 @@ test('spark: splat formats, sort, composition, failures and context loss in real
     assert.equal(malformed.state, 'failed');
     assert.equal(malformed.error.code, 'decode_failed', JSON.stringify(malformed.error));
 
-    // 6. Releasing an asset while its load is in flight cancels the load.
+    // 6. Releasing an asset while its load is in flight cancels the load. The asset's fetch is
+    // held, so the load provably is in flight when the release arrives: racing two `evaluate`
+    // calls against a load that takes ~2 ms made this step fail in about a third of the runs of
+    // the default concurrent suite (BL091, docs/features/spark-concurrency.md). The outcome
+    // when the load wins is also covered, on purpose, in splat-concurrency.test.mjs.
+    const gate = await holdFetches(rig.page, (url) => decodeURIComponent(url).includes(formatPaths.ply));
     await rig.send({ type: 'asset.load', asset: asset('slow', 'splat', formatPaths.ply, 'ply') });
+    await gate.held();
     await rig.send({ type: 'asset.release', id: 'slow' });
+    await gate.close();
     const cancelled = await rig.waitFor((m) => m.type === 'asset.state' && m.id === 'slow' && m.state !== 'loading');
     assert.equal(cancelled.state, 'failed');
     assert.equal(cancelled.error.code, 'cancelled', JSON.stringify(cancelled.error));
@@ -360,5 +225,6 @@ test('spark: splat formats, sort, composition, failures and context loss in real
   } finally {
     await browser.close();
     server.close();
+    rmSync(directory, { recursive: true, force: true });
   }
 });

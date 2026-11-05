@@ -7,6 +7,8 @@ reviews:
     - "!crates/core/tests/**/*_fixtures/**/*.json"
     - "!crates/core/tests/*_fixtures/*.json"
     - "!docs/viewport-performance-results/**"
+    - "!docs/migration/round-r1-r10-results/**"
+    - "!scripts/directed-scene-export-proof/results.json"
     - "!licenses/**"
     - "!LICENSE"
   auto_review:

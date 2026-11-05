@@ -1,0 +1,56 @@
+{
+  "base": "914c830ed7e247b40e6915a527278031f4d0ee6f",
+  "branch": "feat/directed-scene-next-delivery",
+  "verified_at": "2026-11-05T21:11:53.673613+00:00",
+  "source_sha256": "e136e3e7fa808111ab5f7bd8afdf503f7af47174df1499a7410d98cddfeed551",
+  "source_digest_scope": "git tracked and untracked nonignored .rs/.js/.mjs/.toml and Cargo.lock; docs excluded",
+  "rust": {
+    "groups": 64,
+    "passed": 1027,
+    "ignored": 8
+  },
+  "runtime": {
+    "passed": 85,
+    "failed": 0
+  },
+  "native": [
+    {
+      "step": "export",
+      "exit_code": 0,
+      "seconds": 189.96
+    },
+    {
+      "step": "lifecycle",
+      "exit_code": 0,
+      "seconds": 25.96
+    },
+    {
+      "step": "import",
+      "exit_code": 0,
+      "seconds": 2.33
+    },
+    {
+      "step": "visual",
+      "exit_code": 0,
+      "seconds": 61.32
+    }
+  ],
+  "binaries": {
+    "render": {
+      "path": "/Users/wallyssonnunes/www/tessel-editor/target/debug/tessel-render",
+      "present": true,
+      "sha256": "5aa444d15b8fb45cf05893a57e5a91078508ff468e5bdd6ab756e291a70cc2f6",
+      "bytes": 19786864,
+      "mtime_utc": "2026-11-05T20:58:17Z",
+      "older_than_sources": false
+    },
+    "editor": {
+      "path": "/Users/wallyssonnunes/www/tessel-editor/target/release/tessel-editor",
+      "present": true,
+      "sha256": "8547e46f765866ef630d01deaba6a221c22d07caa58c18612c04fb9817f05bb3",
+      "bytes": 35895760,
+      "mtime_utc": "2026-11-05T21:06:00Z",
+      "older_than_sources": false
+    }
+  }
+}

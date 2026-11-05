@@ -1,0 +1,131 @@
+R1 / F042 — proposed desktop wiring for `scene.export`. NOT APPLIED and NOT COMPILED: R1 does not own
+`crates/desktop`. It follows the shape of the existing `Export` dialog (`flows.rs`) and of the scene
+dialogs F043, so the coordinator (or R2) can apply it and run the desktop proof. Everything the dialog
+does is "collect strings, send the same JSON a script sends": the editor rules live in the core/media.
+
+What already exists on the other side of the seam (tested, see docs/features/scene-export.md):
+  * `scene.export {scene, preset, destination, from?, frames?, replace?, audio?, wait?}`
+  * `scene.export.preflight` — same request, answers `{ok, blockers[], warnings[], summary, estimate}`
+    without a job or a file (this is the dialog's report)
+  * jobs: `job.get|cancel|wait` on the id returned by `scene.export` (kind `video-export`)
+  * `MediaHost::with_scene_renderer(factory)` — MUST be called by the desktop host (see 3)
+
+--- a/crates/desktop/src/workstation/flows.rs
++++ b/crates/desktop/src/workstation/flows.rs
+@@ pub enum FlowKind {
+     Export,
++    /// F042: a directed scene as an MP4 (`scene.export`); same preset, destination and job as
++    /// `Export`, plus the scene and the edit-frame range.
++    ExportScene,
+     /// F043: `scene.attach` ...
+@@ impl FlowKind {
+-    pub const ALL: [FlowKind; 9] = [
++    pub const ALL: [FlowKind; 10] = [
+@@
+         Self::Export,
++        Self::ExportScene,
+         Self::AttachScene,
+@@ pub fn id(self)
+             Self::Export => "export",
++            Self::ExportScene => "export_scene",
+@@ pub fn title(self)
+             Self::Export => "Exportar vídeo",
++            Self::ExportScene => "Exportar cena",
+@@ pub fn submit_label(self)
+             Self::Export => "Exportar",
++            Self::ExportScene => "Exportar cena",
+@@ pub fn fields(self)
+             Self::Export => &[PRESET, DESTINATION],
++            Self::ExportScene => &[SCENE, PRESET, FROM_FRAME, FRAME_COUNT, DESTINATION],
+@@ pub fn has_report(self)
+-        matches!(self, Self::Export | Self::Package | Self::Recover)
++        matches!(self, Self::Export | Self::ExportScene | Self::Package | Self::Recover)
+@@ field specs
++const FROM_FRAME: FieldSpec = FieldSpec {
++    name: "from",
++    label: "Primeiro frame (opcional)",
++    placeholder: "0",
++    picker: Picker::None,
++    options: &[],
++};
++const FRAME_COUNT: FieldSpec = FieldSpec {
++    name: "frames",
++    label: "Quantidade de frames (opcional, até o fim)",
++    placeholder: "96",
++    picker: Picker::None,
++    options: &[],
++};
+@@ pub fn build_request
++        FlowKind::ExportScene => {
++            let mut request = json!({
++                "op": "scene.export",
++                "scene": required("scene")?,
++                "preset": required("preset")?,
++                "destination": required("destination")?,
++            });
++            // Empty means "from the start" / "to the end"; anything else must be a whole number,
++            // and the core still validates the range against the scene.
++            for name in ["from", "frames"] {
++                let text = value(name);
++                if text.is_empty() {
++                    continue;
++                }
++                let number = text.parse::<i64>().map_err(|_| {
++                    CommandError::new("invalid_value", format!("«{name}» deve ser um número inteiro"))
++                })?;
++                request[name] = json!(number);
++            }
++            request
++        }
+@@ pub fn report_request
+-        FlowKind::Export => build_request(kind, values).ok().map(|mut request| {
+-            request["op"] = json!("export.preflight");
+-            request
+-        }),
++        FlowKind::Export => build_request(kind, values).ok().map(|mut request| {
++            request["op"] = json!("export.preflight");
++            request
++        }),
++        FlowKind::ExportScene => build_request(kind, values).ok().map(|mut request| {
++            request["op"] = json!("scene.export.preflight");
++            request
++        }),
+
+--- a/crates/desktop/src/workstation/workflow.rs
++++ b/crates/desktop/src/workstation/workflow.rs
+@@ open_flow prefill (next to `FlowKind::Export => self.flow_prefill("destination", ...)`)
++            FlowKind::ExportScene => {
++                // The scene the inspector follows, like the resources dialog.
++                if let Some(scene) = self.scene_active_id() {
++                    self.flow_prefill("scene", &scene, window, cx);
++                    self.flow_prefill(
++                        "destination",
++                        &base.join(format!("{scene}.mp4")).to_string_lossy(),
++                        window,
++                        cx,
++                    );
++                }
++            }
+@@ automation tree / menu nodes: one entry that opens `FlowKind::ExportScene`, id prefix
+@@ `scene.export` (what scripts/directed-scene-export-proof/adapters.json looks for), e.g.
++            ("node:NN", _) => self.open_flow(FlowKind::ExportScene, window, cx),
+@@ the flow's job: reuse the Export dialog's job following (report_job + "video-export" label
+@@ already map to "Exportação 42%" in the status bar; `scene.export` jobs are `video-export`).
+
+--- a/crates/desktop/src/workstation/scene_monitor_host.rs (or wherever the window builds MediaHost)
+@@ 3. The window's MediaHost needs the scene renderer, otherwise `scene.export` answers
+@@    `backend_unavailable` ("No scene renderer is attached"). The render crate builds it from the
+@@    same runtime config the monitor already uses; it is a factory, so each export owns its renderer
+@@    (its own Chrome) and never shares GPU state with the live monitor.
++        let host = host.with_scene_renderer(
++            tessel_editor_render::scene_export::scene_renderer_factory(runtime_config.clone()),
++        );
+@@ In the interactive host `wait` is ignored (the window never blocks): `scene.export` answers
+@@ `{job, state: "queued"}` and the dialog follows `job.get`, exactly as for `export.start`.
+@@ Also pass `resources_root`-less requests: the window's `SceneResourceSession` already holds the
+@@ approved map from F043 (`scene.resources.resolve`), which `scene.export` freezes.
+
+Tests to add on the desktop side (not written by R1): `flow.export_scene` builds `scene.export` with
+integers, refuses `from=abc` with `invalid_value`, `report_request` uses `scene.export.preflight`;
+the automation tree exposes `flow.export_scene`; an isolated instance exports 4 frames of the corpus
+through the dialog and `ffprobe` confirms 4 frames, no audio stream, no `.tessel-*` leftovers.

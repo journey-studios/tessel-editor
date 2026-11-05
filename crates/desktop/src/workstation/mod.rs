@@ -19,6 +19,7 @@ mod monitor;
 mod ops;
 mod playback;
 mod scene_gesture;
+mod scene_import;
 mod scene_model;
 mod scene_monitor;
 mod scene_panel;

@@ -7,8 +7,9 @@
 | Lib / modelo (`workstation/scene_model.rs`, sem GPUI) | **V (lib)** — 13 testes unitários: árvore igual à de `scene.tree`, propriedades por tipo de entidade, indisponibilidade com motivo, reset, candidato sem tocar o documento, cache, janela do slider, Euler | `cargo test -p tessel-editor scene_model` (13/13) |
 | Headless | **N/A** — o inspector é apresentação; o headless já prova os mesmos comandos em [F039](scene-interaction.md) (`scene.select`, `scene.gesture.*`, `scene.edit`) | — |
 | Socket / `ui op` / `ui get\|set\|invoke` da janela | **V (socket, instância própria)** — mesmo executor da UI; ver "Prova de socket" | `/tmp/tso-proof.py` (receita abaixo), binário `target/debug/tessel-editor` com `HOME=/tmp/tso` |
-| UI GPUI (entrada injetada) | **V (UI, input injetado)** — 16 testes com `simulate_mouse_*`, `simulate_keystrokes`, `simulate_event` e `deactivate_window` | `cargo test -p tessel-editor scene_tests` (16/16) |
-| Ponteiro físico / pixels | **P — não provado.** Os testes injetam eventos pela janela de teste do GPUI; nada aqui prova mouse real (BL043) nem aparência. Nenhuma captura de tela foi tirada | — |
+| UI GPUI (entrada injetada) | **V (UI, input injetado)** — testes com `simulate_mouse_*`, `simulate_keystrokes`, `simulate_event` (clique, arrastar, roda) e `deactivate_window`; os de layout medem as sondas de geometria em 100…628 px | `cargo test -p tessel-editor scene_tests` (inclui `scene_tests::visual`, 11 testes) |
+| Aparência (pixels) | **V (captura nativa da instância própria, inspecionada)** — 50 capturas do SO em janela larga e 960x640, tema escuro e claro, docks de 100/180/272/628 px; defeitos achados e corrigidos (BL087). Ver "Inspeção visual nativa" | `scripts/scene-visual-proof.py` sob `with-gpu-lock.py`; relatório [next-r9-report.md](../migration/next-r9-report.md) |
+| Ponteiro físico | **P — não provado.** Os testes injetam eventos pela janela de teste do GPUI e a captura é de estado preparado por comandos semânticos; nada aqui prova mouse real nem a roda de um trackpad (BL043) | — |
 | Monitor da cena dirigida | **Parcial** — renderer integrado; recursos precisam estar carregados em F040. Botão e comando semântico usam o mesmo host | `scene_monitor.rs`, `scene_monitor_host.rs`, F041 |
 
 Não confundir: um **comando** (`scene.gesture.update`) não é um **ponteiro** (arrastar o slider). O
@@ -113,7 +114,7 @@ não tocado, encerrada e removida ao fim. Resultado (build com as fontes desta f
 - `set … width value -1` → `invalid_value` tipado e o mesmo erro em `scene.panel.state.notice`;
 - `get monitor.scene` → `enabled:false` com `disabled_reason`; `invoke monitor.scene` → `disabled_element`.
 
-Não houve captura de pixels. A prova de ponteiro físico segue em BL043.
+A prova do socket não captura pixels; a aparência está em "Inspeção visual nativa". A prova de ponteiro físico segue em BL043.
 
 ## Cobertura de testes
 
@@ -129,18 +130,74 @@ Não houve captura de pixels. A prova de ponteiro físico segue em BL043.
 - nós por ID (selecionar, recolher, filhos ocultos), propriedade de grupo desabilitada com motivo, monitor
   indisponível, sem cena anexada, seletor de cena, limites do nó = limites do slider.
 
-`scene_model.rs`: 13 testes sem janela (listados no status).
+`scene_visual_tests.rs` (módulo `scene_tests::visual`, BL087; layout em janela de teste 960x640):
+
+- a árvore mostra linhas inteiras (altura múltipla de 28 px) e cresce com a janela;
+- em todo largura de dock (100, 150, 180, 231, 232, 272, 400, 628) cada slider tem trilha ≥ 64 px e
+  fica dentro do inspector;
+- um valor longo (`12345.678`) nunca cobre a trilha, nas duas disposições (uma linha / empilhada);
+- a disposição troca no limite documentado (232 px); a seleção por ID de uma entidade escondida abre
+  os ancestrais e rola a árvore até a linha, e o passo real das linhas é `TREE_ROW_HEIGHT`;
+- a revelação acontece **uma vez** por seleção: editar a entidade selecionada não puxa a árvore de volta;
+- a roda rola a árvore sobre a árvore e o inspector fora dela, inclusive sobre um slider;
+- o motivo de um controle desabilitado está na tela (monitor e "Anexar"), dentro do inspector, e o botão
+  "Anexar" cabe no dock de 100 px;
+- `attach_availability`: sem diálogo ligado, desabilitado com motivo; com ele, o mesmo ponteiro;
+- arrastar um slider **empilhado** (inspector de 120 px, depois de rolar até ele) é um gesto e **uma**
+  entrada de undo, e o undo volta ao valor original.
+
+`scene_model.rs`: 19 testes sem janela (13 anteriores + `ancestors`, `PanelFit`, altura da árvore, revelar uma vez e
+revelação que sobrevive a rebuild).
 
 ## Limites conhecidos
 
-- **Aparência não verificada visualmente**; só estrutura, estado e entrada injetada.
+- **Aparência**: verificada por captura nativa só nos estados e tamanhos da seção "Inspeção visual nativa".
+  Não há captura do estado com a roda rolando (sem comando semântico de rolagem) nem de escala de
+  tela diferente; o scroll é provado por evento injetado, não por dispositivo.
 - Trocar de modo (Clipe | Cena) é estado da janela, não um `Command` do core (como o dock antes do
   `execute_layout`); está nos nós `inspector.mode`. Proposta no relatório O.
-- Ainda não há diálogo "Anexar cena" na janela: o painel explica e aponta `scene.attach`.
+- O botão "Anexar" do painel abre o diálogo F043, integrado pelo coordenador após a R9.
 - Increment/Decrement de acessibilidade do Kit não emitem evento (BL074): igual aos sliders de clipe.
 - Salto do thumb ao cancelar (BL075): mesma mecânica do BL062; **não medido** nos sliders de cena.
+- Cabeçalho em 960 px: a integração mostra só ícones de ação abaixo de 1040 px e permite truncar o título; nova captura pendente em BL104.
 - A árvore lista no máximo 256 linhas visíveis nos nós semânticos (`truncated`); o Kit `Tree` rola.
+
+## Inspeção visual nativa (BL087)
+
+`scripts/scene-visual-proof.py` (sob `scripts/directed-scene-proof/with-gpu-lock.py`) sobe o binário direto com `HOME` curto
+próprio, prepara cada estado só por pedidos semânticos (sem coordenadas, sem ponteiro) e captura a **janela dessa instância**
+com `screencapture -l <id da janela do PID>`. Estados: árvore expandida de uma cena funda e larga, entidade selecionada,
+candidato de gesto, erro tipado, vetor, valor extremo, última linha. Combinações: janela larga e 960x640 × escuro/claro, e
+no mínimo docks de 100/180/628 px. Relatório com `captured`/`limit` por captura; `visual_validated` só vira verdadeiro depois
+de uma revisão humana ou de agente das imagens.
+
+Defeitos vistos nas capturas **antes** e corrigidos (todos com regressão em `scene_visual_tests.rs` ou `scene_model.rs`):
+
+| # | Defeito | Correção |
+|---|---|---|
+| D1 | árvore fixa em 240 px: linhas cortadas pela metade e, em janela alta, espaço desperdiçado | altura = linhas inteiras (`PanelFit::tree_height`, 5…16 linhas, ≤ 42 % do painel); altura de linha fixa em `TREE_ROW_HEIGHT` (28 px), porque a do texto dependia da fonte |
+| D2 | seleção por ID (socket/headless) de entidade fora da janela da árvore ou sob ancestral recolhido não aparecia | revela uma vez: abre os ancestrais (mesmo `expand`) e rola até a linha (`Nearest`) |
+| D3 | valor impresso por cima da trilha do slider | coluna de valor com teto de 64 px; abaixo de 232 px a linha empilha (rótulo+valor, trilha embaixo) |
+| D4 | trilha do slider espremida a quase zero em dock estreito | trilha ≥ 64 px em 100…628 px |
+| D5 | barra de modos cortada em 100 px | abas de largura igual (sublinhado) no dock estreito |
+| D6 | motivos só em tooltip (invisíveis sem hover) | motivo impresso sob o monitor e sob "Anexar" |
+| D7 | texto do gesto truncado | quebra de linha; "Cancelar gesto" desce de linha |
+| D8 | sem separação entre árvore e propriedades | título `scene-target` com `border_t_1` |
+| D9 | coluna de rótulo de 76 px desperdiçada | rótulo ocupa o que precisa; slider por linha |
+| D10 | ícone da árvore: câmera/take/trilha caíam no genérico | mapeamento `camera_clip`/`shot`/`performance_track` |
+| D11 | (2ª rodada) botão "Anexar cena" passava da borda em 100 px; recuo de 12 px/nível deixava só ícones | rótulo curto "Anexar" (tooltip e rótulo de acessibilidade completos) e recuo de 6 px/nível no layout compacto |
+
+Probes novas (leitura por `geometry`): `scene:tree`, `scene:monitor-reason`, `scene:attach`, `scene:attach-reason`,
+`value:<elemento>`, além das `control:<elemento>` que já existiam.
+
+## Integração do botão "Anexar cena"
+
+O abridor `ATTACH_SCENE_OPENER` chama `open_flow(FlowKind::AttachScene, ...)`, o mesmo diálogo F043 do cabeçalho. O botão está habilitado e conserva nome acessível e tooltip completos no layout compacto. O texto abaixo orienta a escolher o bundle e a pasta de recursos. `NO_SCENE_REASON` também aponta para o diálogo disponível.
+
+Na integração o coordenador reconferiu os 11 testes visuais GPUI depois de ligar o diálogo e compactar o cabeçalho. As capturas R9 precedem esses dois ajustes; a nova captura do cabeçalho fica em BL104. Eventos injetados não provam ponteiro físico.
 
 ## Correção de identidade do cache (revisão PR #3)
 
 A assinatura retém Arc do documento e candidato e compara Arc::ptr_eq. Isso impede reutilização de endereço após limpar/limitar o histórico, sem mudar as regras de edição. Regressão mantém o documento vivo enquanto a assinatura existe e o libera ao descartar o cache.
+
+A captura final BL104 foi concluída: 50/50 capturas pelo SO, com selected-min-dark/light e selected-panel100-light-inspector abertas pelo coordenador. Cabeçalho sem sobreposição após compactar ações e Anexar habilitado dentro do dock de 100 px; [prova final](../migration/round-r1-r10-results/visual.json). Não é prova de ponteiro físico.

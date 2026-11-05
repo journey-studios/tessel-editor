@@ -14,6 +14,10 @@
 //!   paths, reveal, data maps, splats), refused with a typed error, or listed when the caller
 //!   explicitly accepts a partial plan; and the fields the importer kept without interpreting.
 //!
+//! `ScenePlan::build` lays the scene out again for every frame. For many frames of one scene (an
+//! export, a scrub) use `PlanTimeline`: it returns the same plan or error for every frame, in any
+//! order, preparing what does not depend on the frame once per shot (BL064).
+//!
 //! There is no IO and no renderer here: this is the contract between the core and a runtime, not
 //! a render. The wire form is JSON (`to_json`/`from_json_str`), written by hand like the rest of
 //! the core's serialization (the crate does not enable serde derive). Contract, policies and
@@ -38,6 +42,7 @@ mod build;
 mod error;
 mod json;
 mod model;
+mod timeline;
 mod validate;
 
 pub use build::PlanOptions;
@@ -47,6 +52,7 @@ pub use model::{
     PlanResource, PlanSource, ScenePlan, UninterpretedField, UninterpretedReason,
     UnsupportedDomain, capabilities,
 };
+pub use timeline::PlanTimeline;
 
 /// `kind` of the serialized plan, so a runtime can tell it from any other JSON it is handed.
 pub const PLAN_KIND: &str = "tessel-scene-plan";

@@ -1,0 +1,3867 @@
+{
+  "harness": {
+    "name": "directed-scene-export-proof",
+    "version": 1,
+    "files": {
+      "proof.py": "c506c4981ebb0fbd854378fca9057788c965f13bff81f7812935a499cff86edc",
+      "export_corpus.py": "20bbed3797586800f729269c826fd376deea1466c85d697bbcb2dccfc47dc00e",
+      "export_verify.py": "6f0432c0c96231093724d912c01de629e0c5b1a2540fd852e0101a429d8e55a4",
+      "export_controls.py": "275f9c6973f07d465c5c422a81f70daa7f7c31b7cab5a12eef311e3aa6b96a48",
+      "adapters.json": "0f39203e14b7912fb09e667a8dda9e856f7988383adf9e52a09f72227f9d980c"
+    }
+  },
+  "git": {
+    "head": "914c830ed7e247b40e6915a527278031f4d0ee6f",
+    "branch": "feat/directed-scene-next-delivery",
+    "dirty_files": 88
+  },
+  "corpus": {
+    "version": 1,
+    "dir": "scripts/directed-scene-export-proof/corpus",
+    "files": {
+      "assets/hero.png": {
+        "sha256": "7bacab4e0dd6aff8d146e6f208c06a63f58b26dbfc5fee54b1c32a712f356ef6",
+        "bytes": 4196
+      },
+      "assets/mid.png": {
+        "sha256": "205942c4e79e910b10ea184d1368b7c6436427e1e45d9db8c1639bf56946bd08",
+        "bytes": 9332
+      },
+      "assets/sky.png": {
+        "sha256": "e32d40ae8c87cde266bf73a58cb2fe800e12221b76aaa5ce4028ad126346964a",
+        "bytes": 9320
+      },
+      "audio/mix.wav": {
+        "sha256": "bf33df3662cb6c025044ff76a6f2b4135ae1f402d0f4d58942575e1fe68413e7",
+        "bytes": 384044
+      },
+      "bundle.audio.json": {
+        "sha256": "be3c166896d9e2dabb3deff6a086171e0fa78203591930e44ac8b1ba90d18c38",
+        "bytes": 8383
+      },
+      "bundle.detail.json": {
+        "sha256": "ef11120eab86ff4424242109de58fcd77dc79bddb770d5bad7511a2dfffc2653",
+        "bytes": 3089
+      },
+      "bundle.main.json": {
+        "sha256": "ffc0ac8f2057e70386aaa5b81cc0fdd77b97a84cfefdd789532c8013a06b1a76",
+        "bytes": 8167
+      },
+      "bundle.ntsc.json": {
+        "sha256": "fab20e742dc340454ef817412c914a2e966eb2ebb82c09a6de3db71ac3dc9ffb",
+        "bytes": 8179
+      },
+      "expected.json": {
+        "sha256": "3fd0c377ec38980e86420be0ca31cc6b8c2d129b2ea25c32a66de20743712fe9",
+        "bytes": 330988
+      }
+    },
+    "not_committed": {
+      "assets/detail.png": {
+        "sha256": "2d5d406458c9fa99b492cfbce34e983a9ebdd983f9d9b1b16232c8ab38f0ce40",
+        "bytes": 33182358,
+        "why": "33 MB; regenerated deterministically by --materialize"
+      }
+    },
+    "expected_sha256": "3fd0c377ec38980e86420be0ca31cc6b8c2d129b2ea25c32a66de20743712fe9"
+  },
+  "tolerances": {
+    "framePixel": {
+      "maxChannelDelta": 6,
+      "rule": "max channel delta of a rendered PNG (no codec) against the model, 8-bit sRGB, flat blocks only",
+      "why": "same tolerance as scripts/directed-scene-proof (texture filtering / sRGB round trips), used by the baseline phases"
+    },
+    "videoPixel": {
+      "maxChannelDelta": 12,
+      "maxFailedProbeFraction": 0.0,
+      "rule": "max(|r-r'|,|g-g'|,|b-b'|) <= maxChannelDelta on every probe, decoded as BT.709 limited range",
+      "why": "h264 crf<=18 + 4:2:0 at flat interiors; a BT.601/BT.709 mix-up moves saturated colours by >20 (negative control)"
+    },
+    "timing": {
+      "frameCount": "decoded frames (`-count_frames`) == requested frames, container nb_frames agrees when present",
+      "fps": "r_frame_rate and avg_frame_rate equal the bundle fps as an exact fraction",
+      "duration": "last pts + one frame period == frames * den/num within 1 ms; every pts delta is one exact frame period",
+      "startOffsetFrames": 1
+    },
+    "identity": {
+      "rule": "a decoded frame is closer (mean abs probe delta) to the model's frame at the same index than to any other exported frame, applied only where the model itself keeps them apart by more than 3x maxChannelDelta"
+    },
+    "detail": {
+      "minRetention1px": 0.6,
+      "minRetention2px": 0.8,
+      "minRetention4px": 0.9,
+      "maxBlockDelta": 12,
+      "rule": "contrast = (mean Y of the columns that should be white - mean Y of the columns that should be black) / 255 over each stripe band of the decoded frame (1, 2 and 4 px stripes); a proxy (<= 3/4 resolution) drops 1 px contrast below 0.2"
+    },
+    "budget": {
+      "rule": "wall clock of the export op, SwiftShader GL, one run on an idle machine; per case in `cases`",
+      "note": "initial budget, not a promise of speed: the coordinator revises it explicitly, never silently"
+    }
+  },
+  "binaries": {
+    "render": {
+      "path": "target/debug/tessel-render",
+      "present": true,
+      "sha256": "111e7edc9613541d825c1266ec486d4c0702924d3ba2ff9f14c17949da59ecfc",
+      "bytes": 19547616,
+      "mtime_utc": "2026-11-05T20:22:26Z",
+      "older_than_sources": true
+    },
+    "editor": {
+      "path": "target/release/tessel-editor",
+      "present": true,
+      "sha256": "aee07e76ad5bedf4cc78e43a17ee60189a9a269bcf9ca424b7927118574ff8df",
+      "bytes": 35833456,
+      "mtime_utc": "2026-11-05T20:27:32Z",
+      "older_than_sources": true
+    }
+  },
+  "runtime_bundle": {
+    "dist": {
+      "runtime.js": "125c678f3c64c17f0803fd0bf8fcfaa5952b931352d97bcc24b510ddc1b9c10e",
+      "index.html": "707fd90fac224637b486d78a74babbd274e749e02e60aa95da8a314644c484a6"
+    },
+    "node": "v22.23.3",
+    "package_json_sha256": "d6617084d3cc6116102fd22f22b8c2237eb96dabcf79418c82c726e2c90bf2d7"
+  },
+  "environment": {
+    "python": "3.14.3",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "ffmpeg": "ffmpeg version 7.1.1 Copyright (c) 2000-2025 the FFmpeg developers",
+    "ffprobe": "ffprobe version 7.1.1 Copyright (c) 2007-2025 the FFmpeg developers",
+    "free_gib_tmp": 66.2
+  },
+  "gl": "swiftshader",
+  "adapters": {
+    "file": "scripts/directed-scene-export-proof/adapters.json",
+    "sha256": "0f39203e14b7912fb09e667a8dda9e856f7988383adf9e52a09f72227f9d980c"
+  },
+  "seconds": 178.1,
+  "work_budget_respected": true,
+  "work_bytes_at_end": 35895073,
+  "phases": [
+    {
+      "phase": "corpus",
+      "surface": "data (corpus, expectations, provenance)",
+      "status": "PASS",
+      "seconds": 5.51,
+      "checks_total": 20,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "committed corpus is byte-identical to what export_corpus.py writes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "provenance declares no private media",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "assets/hero.png: hash and size match provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "assets/mid.png: hash and size match provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "assets/sky.png: hash and size match provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio/mix.wav: hash and size match provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle.audio.json: hash and size match provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle.detail.json: hash and size match provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle.main.json: hash and size match provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle.ntsc.json: hash and size match provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "expected.json: hash and size match provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle main: expected.json pins its bytes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle ntsc: expected.json pins its bytes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle audio: expected.json pins its bytes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle detail: expected.json pins its bytes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the 4K detail PNG is regenerated byte-for-byte and matches its recorded SHA-256 (not committed: 33 MB)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main, ntsc and audio bundles share one geometry (one set of probes serves them)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "NTSC bundle carries the rational rate 30000/1001",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every scene frame of every case has probes on all four layers",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the cases cross the shot cut (48) and the event boundary (12) and the 4K case straddles the cut",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "corpus": {
+          "version": 1,
+          "probe_frames": 60,
+          "cases": [
+            "main_1080_event",
+            "main_1080_cut",
+            "main_4k_cut",
+            "ntsc_1080",
+            "detail_4k",
+            "restored_1080",
+            "snapshot_1080",
+            "audio_1080"
+          ],
+          "bundles": {
+            "main": "ffc0ac8f2057e70386aaa5b81cc0fdd77b97a84cfefdd789532c8013a06b1a76",
+            "ntsc": "fab20e742dc340454ef817412c914a2e966eb2ebb82c09a6de3db71ac3dc9ffb",
+            "audio": "be3c166896d9e2dabb3deff6a086171e0fa78203591930e44ac8b1ba90d18c38",
+            "detail": "ef11120eab86ff4424242109de58fcd77dc79bddb770d5bad7511a2dfffc2653"
+          }
+        }
+      }
+    },
+    {
+      "phase": "model_vs_origin",
+      "surface": "data (reference model vs origin oracle)",
+      "status": "PASS",
+      "seconds": 0.05,
+      "checks_total": 1,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "the reference model agrees with the origin oracle (scripts/directed-scene-proof/model.spec.py, read-only)",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "model_spec": "OK"
+      }
+    },
+    {
+      "phase": "verifier_controls_scene",
+      "surface": "harness (reference + defective scene videos; ffmpeg only)",
+      "status": "PASS",
+      "seconds": 7.58,
+      "checks_total": 13,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "positive control: reference 24/1 passes every check",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "positive control: reference 30000/1001 (NTSC) passes: exact rational fps, duration and pts",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative control: a file with 7 of 8 frames fails the frame count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative control: 25 fps against a 24 fps contract fails",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative control: 24 fps against a 30000/1001 contract fails (integer rounding of NTSC is caught)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative control: a duplicated frame (frame 4 shows frame 3) fails identity",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative control: two swapped frames fail identity",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative control: a black frame fails the probes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative control: decoding the reference as BT.601 fails the probes (the colour contract is discriminated)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative control: a 160x90 file against a 320x180 contract fails the resolution",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative control: a file without BT.709/limited tags fails the colour declaration",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative control: a truncated file does not pass",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative control: an unrequested audio stream fails the no-audio policy",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "controls": [
+          {
+            "control": "reference 24/1 passes every check",
+            "should_pass": true,
+            "ok": true,
+            "failed_checks": [],
+            "expected_failure_markers": []
+          },
+          {
+            "control": "reference 30000/1001 (NTSC) passes: exact rational fps, duration and pts",
+            "should_pass": true,
+            "ok": true,
+            "failed_checks": [],
+            "expected_failure_markers": []
+          },
+          {
+            "control": "a file with 7 of 8 frames fails the frame count",
+            "should_pass": false,
+            "ok": true,
+            "failed_checks": [
+              "frame count: 8 frames decoded (not just declared)",
+              "one video packet pts per frame",
+              "8 frames decoded for the pixel probes",
+              "all 168 flat-interior probes within 12 of the independent model (BT.709)"
+            ],
+            "expected_failure_markers": [
+              "frame count"
+            ]
+          },
+          {
+            "control": "25 fps against a 24 fps contract fails",
+            "should_pass": false,
+            "ok": true,
+            "failed_checks": [
+              "r_frame_rate is exactly 24",
+              "avg_frame_rate is exactly 24",
+              "every pts sits on the exact frame grid i/fps (to one container tick)",
+              "duration 1/3 s = frames * den/num (to 1 ms)"
+            ],
+            "expected_failure_markers": [
+              "r_frame_rate",
+              "duration"
+            ]
+          },
+          {
+            "control": "24 fps against a 30000/1001 contract fails (integer rounding of NTSC is caught)",
+            "should_pass": false,
+            "ok": true,
+            "failed_checks": [
+              "r_frame_rate is exactly 30000/1001",
+              "avg_frame_rate is exactly 30000/1001",
+              "every pts sits on the exact frame grid i/fps (to one container tick)",
+              "duration 1001/3750 s = frames * den/num (to 1 ms)"
+            ],
+            "expected_failure_markers": [
+              "r_frame_rate"
+            ]
+          },
+          {
+            "control": "a duplicated frame (frame 4 shows frame 3) fails identity",
+            "should_pass": false,
+            "ok": true,
+            "failed_checks": [
+              "all 192 flat-interior probes within 12 of the independent model (BT.709)",
+              "every frame is the model's frame at its index where the model tells neighbours apart (order, no duplicate, no skip)"
+            ],
+            "expected_failure_markers": [
+              "tells neighbours apart"
+            ]
+          },
+          {
+            "control": "two swapped frames fail identity",
+            "should_pass": false,
+            "ok": true,
+            "failed_checks": [
+              "all 192 flat-interior probes within 12 of the independent model (BT.709)",
+              "every frame is the model's frame at its index where the model tells neighbours apart (order, no duplicate, no skip)"
+            ],
+            "expected_failure_markers": [
+              "tells neighbours apart"
+            ]
+          },
+          {
+            "control": "a black frame fails the probes",
+            "should_pass": false,
+            "ok": true,
+            "failed_checks": [
+              "all 192 flat-interior probes within 12 of the independent model (BT.709)",
+              "every frame is the model's frame at its index where the model tells neighbours apart (order, no duplicate, no skip)"
+            ],
+            "expected_failure_markers": [
+              "flat-interior probes"
+            ]
+          },
+          {
+            "control": "decoding the reference as BT.601 fails the probes (the colour contract is discriminated)",
+            "should_pass": false,
+            "ok": true,
+            "failed_checks": [
+              "all 192 flat-interior probes within 12 of the independent model (BT.709)"
+            ],
+            "expected_failure_markers": [
+              "flat-interior probes"
+            ]
+          },
+          {
+            "control": "a 160x90 file against a 320x180 contract fails the resolution",
+            "should_pass": false,
+            "ok": true,
+            "failed_checks": [
+              "resolution 320x180",
+              "8 frames decoded for the pixel probes",
+              "all 48 flat-interior probes within 12 of the independent model (BT.709)",
+              "every frame is the model's frame at its index where the model tells neighbours apart (order, no duplicate, no skip)"
+            ],
+            "expected_failure_markers": [
+              "resolution"
+            ]
+          },
+          {
+            "control": "a file without BT.709/limited tags fails the colour declaration",
+            "should_pass": false,
+            "ok": true,
+            "failed_checks": [
+              "colour declared: BT.709, limited range"
+            ],
+            "expected_failure_markers": [
+              "colour declared"
+            ]
+          },
+          {
+            "control": "a truncated file does not pass",
+            "should_pass": false,
+            "ok": true,
+            "failed_checks": [
+              "frame count: 8 frames decoded (not just declared)",
+              "container nb_frames agrees with the decoded count",
+              "one video packet pts per frame",
+              "8 frames decoded for the pixel probes"
+            ],
+            "expected_failure_markers": [
+              "readable",
+              "frame count",
+              "pts",
+              "decoded"
+            ]
+          },
+          {
+            "control": "an unrequested audio stream fails the no-audio policy",
+            "should_pass": false,
+            "ok": true,
+            "failed_checks": [
+              "no audio stream: this directed scene names no audio mix"
+            ],
+            "expected_failure_markers": [
+              "no audio stream"
+            ]
+          }
+        ],
+        "extra": {
+          "frames_rendered": 8
+        }
+      }
+    },
+    {
+      "phase": "verifier_controls_audio",
+      "surface": "harness (audio policy controls; ffmpeg only)",
+      "status": "PASS",
+      "seconds": 1.31,
+      "checks_total": 5,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "positive control: the 1.5-2.5 s window of the mix (440 then 880 Hz) passes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative control: the 0-1 s window (440 Hz only) fails: the window offset is checked",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative control: the 3-4 s window (880 Hz only) fails the first half",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative control: a silent audio stream fails: promising audio without the mix is caught",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative control: a file with no audio stream fails the mix check",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "controls": [
+          {
+            "control": "the 1.5-2.5 s window of the mix (440 then 880 Hz) passes",
+            "should_pass": true,
+            "ok": true,
+            "failed_checks": [],
+            "expected_failure_markers": []
+          },
+          {
+            "control": "the 0-1 s window (440 Hz only) fails: the window offset is checked",
+            "should_pass": false,
+            "ok": true,
+            "failed_checks": [
+              "second half holds the 880 Hz part, not the 440 Hz part"
+            ],
+            "expected_failure_markers": [
+              "second half"
+            ]
+          },
+          {
+            "control": "the 3-4 s window (880 Hz only) fails the first half",
+            "should_pass": false,
+            "ok": true,
+            "failed_checks": [
+              "first half of the file holds the 440 Hz part of the mix, not the 880 Hz part"
+            ],
+            "expected_failure_markers": [
+              "first half"
+            ]
+          },
+          {
+            "control": "a silent audio stream fails: promising audio without the mix is caught",
+            "should_pass": false,
+            "ok": true,
+            "failed_checks": [
+              "first half of the file holds the 440 Hz part of the mix, not the 880 Hz part",
+              "second half holds the 880 Hz part, not the 440 Hz part"
+            ],
+            "expected_failure_markers": [
+              "first half",
+              "second half"
+            ]
+          },
+          {
+            "control": "a file with no audio stream fails the mix check",
+            "should_pass": false,
+            "ok": true,
+            "failed_checks": [
+              "one audio stream carries the directed mix"
+            ],
+            "expected_failure_markers": [
+              "one audio stream"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "phase": "verifier_controls_detail",
+      "surface": "harness (4K original vs proxy controls; ffmpeg only)",
+      "status": "PASS",
+      "seconds": 3.78,
+      "checks_total": 6,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "positive control: reference encode of the original 3840x2160 PNG passes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative control: a proxy (1920x1080 and back up) fails the 1 px stripes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative control: a 3/4-scale proxy fails the 1 px stripes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative control: a horizontally flipped picture fails the markers",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative control: a picture shifted by 64 px fails the markers",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative control: decoding the reference as BT.601 fails the colour blocks",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "controls": [
+          {
+            "control": "reference encode of the original 3840x2160 PNG passes",
+            "should_pass": true,
+            "ok": true,
+            "failed_checks": [],
+            "expected_failure_markers": []
+          },
+          {
+            "control": "a proxy (1920x1080 and back up) fails the 1 px stripes",
+            "should_pass": false,
+            "ok": true,
+            "failed_checks": [
+              "1 px stripes survive: contrast >= 0.6 of the original (a proxy would not reach 0.2)",
+              "2 px stripes survive: contrast >= 0.8",
+              "4 px stripes survive: contrast >= 0.9"
+            ],
+            "expected_failure_markers": [
+              "1 px stripes"
+            ]
+          },
+          {
+            "control": "a 3/4-scale proxy fails the 1 px stripes",
+            "should_pass": false,
+            "ok": true,
+            "failed_checks": [
+              "1 px stripes survive: contrast >= 0.6 of the original (a proxy would not reach 0.2)",
+              "2 px stripes survive: contrast >= 0.8",
+              "4 px stripes survive: contrast >= 0.9"
+            ],
+            "expected_failure_markers": [
+              "1 px stripes"
+            ]
+          },
+          {
+            "control": "a horizontally flipped picture fails the markers",
+            "should_pass": false,
+            "ok": true,
+            "failed_checks": [
+              "1 px stripes survive: contrast >= 0.6 of the original (a proxy would not reach 0.2)",
+              "2 px stripes survive: contrast >= 0.8",
+              "4 px stripes survive: contrast >= 0.9",
+              "the 8 colour blocks of the original PNG are within 12 (BT.709)",
+              "orientation/offset markers (red top-left, blue bottom-right) are where the original has them"
+            ],
+            "expected_failure_markers": [
+              "markers"
+            ]
+          },
+          {
+            "control": "a picture shifted by 64 px fails the markers",
+            "should_pass": false,
+            "ok": true,
+            "failed_checks": [
+              "orientation/offset markers (red top-left, blue bottom-right) are where the original has them"
+            ],
+            "expected_failure_markers": [
+              "markers"
+            ]
+          },
+          {
+            "control": "decoding the reference as BT.601 fails the colour blocks",
+            "should_pass": false,
+            "ok": true,
+            "failed_checks": [
+              "the 8 colour blocks of the original PNG are within 12 (BT.709)",
+              "orientation/offset markers (red top-left, blue bottom-right) are where the original has them"
+            ],
+            "expected_failure_markers": [
+              "colour blocks"
+            ]
+          }
+        ],
+        "extra": {
+          "reference encode of the original 3840x2160 PNG passes": {
+            "contrast": {
+              "1px": 1.0,
+              "2px": 0.9882,
+              "4px": 1.0
+            },
+            "block_delta": 1,
+            "marker_delta": 1
+          },
+          "a proxy (1920x1080 and back up) fails the 1 px stripes": {
+            "contrast": {
+              "1px": 0.0,
+              "2px": 0.4608,
+              "4px": 0.751
+            },
+            "block_delta": 1,
+            "marker_delta": 1
+          },
+          "a 3/4-scale proxy fails the 1 px stripes": {
+            "contrast": {
+              "1px": 0.0431,
+              "2px": 0.7024,
+              "4px": 0.8789
+            },
+            "block_delta": 1,
+            "marker_delta": 1
+          },
+          "a horizontally flipped picture fails the markers": {
+            "contrast": {
+              "1px": -1.0,
+              "2px": -0.9882,
+              "4px": -1.0
+            },
+            "block_delta": 210,
+            "marker_delta": 128
+          },
+          "a picture shifted by 64 px fails the markers": {
+            "contrast": {
+              "1px": 1.0,
+              "2px": 0.9882,
+              "4px": 1.0
+            },
+            "block_delta": 1,
+            "marker_delta": 255
+          },
+          "decoding the reference as BT.601 fails the colour blocks": {
+            "contrast": {
+              "1px": 1.0,
+              "2px": 0.9882,
+              "4px": 1.0
+            },
+            "block_delta": 29,
+            "marker_delta": 22
+          }
+        }
+      }
+    },
+    {
+      "phase": "identity_coverage",
+      "surface": "data (the model tells neighbouring frames apart)",
+      "status": "PASS",
+      "seconds": 8.41,
+      "checks_total": 14,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "main_1080_event: the model tells neighbours apart on 24 of 24 frames (>= 50%)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_event: the model agrees with itself (no self-contradiction)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_cut: the model tells neighbours apart on 16 of 16 frames (>= 50%)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_cut: the model agrees with itself (no self-contradiction)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_4k_cut: the model tells neighbours apart on 8 of 8 frames (>= 50%)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_4k_cut: the model agrees with itself (no self-contradiction)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ntsc_1080: the model tells neighbours apart on 12 of 12 frames (>= 50%)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ntsc_1080: the model agrees with itself (no self-contradiction)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored_1080: the model tells neighbours apart on 8 of 8 frames (>= 50%)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored_1080: the model agrees with itself (no self-contradiction)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "snapshot_1080: the model tells neighbours apart on 46 of 48 frames (>= 50%)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "snapshot_1080: the model agrees with itself (no self-contradiction)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio_1080: the model tells neighbours apart on 23 of 24 frames (>= 50%)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio_1080: the model agrees with itself (no self-contradiction)",
+          "ok": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "phase": "baseline_render",
+      "surface": "tessel-render CLI + Chrome/GPU: scene.render vs corpus (existing renderer)",
+      "status": "PASS",
+      "seconds": 5.68,
+      "checks_total": 20,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "proof frame 0: pixels were read back (inspected)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "proof frame 0: 24 probes match the independent model within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "proof frame 12: pixels were read back (inspected)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "proof frame 12: 24 probes match the independent model within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "proof frame 20: pixels were read back (inspected)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "proof frame 20: 24 probes match the independent model within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "proof frame 36: pixels were read back (inspected)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "proof frame 36: 24 probes match the independent model within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "proof frame 47: pixels were read back (inspected)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "proof frame 47: 24 probes match the independent model within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "proof frame 48: pixels were read back (inspected)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "proof frame 48: 24 probes match the independent model within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "proof frame 55: pixels were read back (inspected)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "proof frame 55: 24 probes match the independent model within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ntsc frame 20: pixels were read back (inspected)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ntsc frame 20: 24 probes match the independent model within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ntsc frame 31: pixels were read back (inspected)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ntsc frame 31: 24 probes match the independent model within 6",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio frame 40: pixels were read back (inspected)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio frame 40: 24 probes match the independent model within 6",
+          "ok": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "phase": "baseline_detail",
+      "surface": "tessel-render CLI + Chrome/GPU: original 4K PNG drawn 1:1 (existing renderer)",
+      "status": "PASS",
+      "seconds": 7.84,
+      "checks_total": 3,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "the renderer answers a 3840x2160 frame for the detail scene",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "1/2/4 px stripes are drawn 1:1 by the renderer (contrast >= 0.98): no proxy, no resampling",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour blocks and markers of the original PNG are where and what they should be",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "detail_render": {
+          "1px": 1.0,
+          "2px": 1.0,
+          "4px": 1.0
+        }
+      }
+    },
+    {
+      "phase": "baseline_encode",
+      "surface": "tessel-render CLI + Chrome/GPU + ffmpeg by the harness (verifier on real pixels)",
+      "status": "PASS",
+      "seconds": 7.97,
+      "checks_total": 36,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 8 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 1/3 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "8 frames decoded for the pixel probes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "all 192 flat-interior probes within 12 of the independent model (BT.709)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every frame is the model's frame at its index where the model tells neighbours apart (order, no duplicate, no skip)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "identity is not vacuous: at least 50% of the frames were judged against a neighbour",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "no audio stream: this directed scene names no audio mix",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result does not claim audio either",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 12 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 30000/1001",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 30000/1001",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 1001/2500 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "12 frames decoded for the pixel probes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "all 288 flat-interior probes within 12 of the independent model (BT.709)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every frame is the model's frame at its index where the model tells neighbours apart (order, no duplicate, no skip)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "identity is not vacuous: at least 50% of the frames were judged against a neighbour",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "no audio stream: this directed scene names no audio mix",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result does not claim audio either",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "baseline_proof": {
+          "duration_seconds": 0.3333333333333333,
+          "tick": "1/12288",
+          "bytes": 48028,
+          "audio_streams": 0,
+          "pixels": {
+            "probes": 192,
+            "failed_probes": 0,
+            "max_probe_delta": 1,
+            "identity_frames_without_a_judgeable_neighbour": 0
+          }
+        },
+        "baseline_ntsc": {
+          "duration_seconds": 0.4004,
+          "tick": "1/30000",
+          "bytes": 59784,
+          "audio_streams": 0,
+          "pixels": {
+            "probes": 288,
+            "failed_probes": 0,
+            "max_probe_delta": 1,
+            "identity_frames_without_a_judgeable_neighbour": 0
+          }
+        }
+      }
+    },
+    {
+      "phase": "export_main_1080_event",
+      "surface": "tessel-render CLI: scene.export 1080p, event + sway",
+      "status": "PASS",
+      "seconds": 10.41,
+      "checks_total": 29,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "main_1080_event: the export answers ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_event: the file exists at the destination",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_event: wall clock 6.0s within the 240s budget",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 24 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 1 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "24 frames decoded for the pixel probes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "all 576 flat-interior probes within 12 of the independent model (BT.709)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every frame is the model's frame at its index where the model tells neighbours apart (order, no duplicate, no skip)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "identity is not vacuous: at least 50% of the frames were judged against a neighbour",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "no audio stream: this directed scene names no audio mix",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result does not claim audio either",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_event: result.destination is the file that exists",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_event: result.frames equals the measured count (24)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_event: result.fps equals the file's exact rate (24/1)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_event: result.duration_seconds equals frames*den/num",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_event: result.output is 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_event: the export's own verification reports ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_event: result.resources names exactly the bundle's assets",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_event: each resource carries the bundle's content hash and revision",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "main_1080_event": {
+          "duration_seconds": 1.0,
+          "tick": "1/12288",
+          "bytes": 119076,
+          "audio_streams": 0,
+          "pixels": {
+            "probes": 576,
+            "failed_probes": 0,
+            "max_probe_delta": 3,
+            "identity_frames_without_a_judgeable_neighbour": 0
+          },
+          "seconds": 6.01,
+          "unreported_result_fields": []
+        },
+        "surface": "tessel-render JSONL (CLI)"
+      }
+    },
+    {
+      "phase": "export_main_1080_cut",
+      "surface": "tessel-render CLI: scene.export 1080p across the shot cut",
+      "status": "PASS",
+      "seconds": 7.16,
+      "checks_total": 29,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "main_1080_cut: the export answers ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_cut: the file exists at the destination",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_cut: wall clock 4.7s within the 240s budget",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 16 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 2/3 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "16 frames decoded for the pixel probes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "all 384 flat-interior probes within 12 of the independent model (BT.709)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every frame is the model's frame at its index where the model tells neighbours apart (order, no duplicate, no skip)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "identity is not vacuous: at least 50% of the frames were judged against a neighbour",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "no audio stream: this directed scene names no audio mix",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result does not claim audio either",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_cut: result.destination is the file that exists",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_cut: result.frames equals the measured count (16)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_cut: result.fps equals the file's exact rate (24/1)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_cut: result.duration_seconds equals frames*den/num",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_cut: result.output is 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_cut: the export's own verification reports ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_cut: result.resources names exactly the bundle's assets",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_1080_cut: each resource carries the bundle's content hash and revision",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "main_1080_cut": {
+          "duration_seconds": 0.6666666666666666,
+          "tick": "1/12288",
+          "bytes": 79679,
+          "audio_streams": 0,
+          "pixels": {
+            "probes": 384,
+            "failed_probes": 0,
+            "max_probe_delta": 1,
+            "identity_frames_without_a_judgeable_neighbour": 0
+          },
+          "seconds": 4.67,
+          "unreported_result_fields": []
+        },
+        "surface": "tessel-render JSONL (CLI)"
+      }
+    },
+    {
+      "phase": "export_main_4k_cut",
+      "surface": "tessel-render CLI: scene.export UHD across the shot cut",
+      "status": "PASS",
+      "seconds": 9.54,
+      "checks_total": 29,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "main_4k_cut: the export answers ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_4k_cut: the file exists at the destination",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_4k_cut: wall clock 7.3s within the 600s budget",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 3840x2160",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 8 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 1/3 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "8 frames decoded for the pixel probes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "all 192 flat-interior probes within 12 of the independent model (BT.709)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every frame is the model's frame at its index where the model tells neighbours apart (order, no duplicate, no skip)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "identity is not vacuous: at least 50% of the frames were judged against a neighbour",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "no audio stream: this directed scene names no audio mix",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result does not claim audio either",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_4k_cut: result.destination is the file that exists",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_4k_cut: result.frames equals the measured count (8)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_4k_cut: result.fps equals the file's exact rate (24/1)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_4k_cut: result.duration_seconds equals frames*den/num",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_4k_cut: result.output is 3840x2160",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_4k_cut: the export's own verification reports ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_4k_cut: result.resources names exactly the bundle's assets",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "main_4k_cut: each resource carries the bundle's content hash and revision",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "main_4k_cut": {
+          "duration_seconds": 0.3333333333333333,
+          "tick": "1/12288",
+          "bytes": 96363,
+          "audio_streams": 0,
+          "pixels": {
+            "probes": 192,
+            "failed_probes": 0,
+            "max_probe_delta": 1,
+            "identity_frames_without_a_judgeable_neighbour": 0
+          },
+          "seconds": 7.33,
+          "unreported_result_fields": []
+        },
+        "surface": "tessel-render JSONL (CLI)"
+      }
+    },
+    {
+      "phase": "export_ntsc_1080",
+      "surface": "tessel-render CLI: scene.export 30000/1001",
+      "status": "PASS",
+      "seconds": 6.37,
+      "checks_total": 29,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "ntsc_1080: the export answers ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ntsc_1080: the file exists at the destination",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ntsc_1080: wall clock 4.0s within the 240s budget",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 12 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 30000/1001",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 30000/1001",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 1001/2500 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "12 frames decoded for the pixel probes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "all 288 flat-interior probes within 12 of the independent model (BT.709)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every frame is the model's frame at its index where the model tells neighbours apart (order, no duplicate, no skip)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "identity is not vacuous: at least 50% of the frames were judged against a neighbour",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "no audio stream: this directed scene names no audio mix",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result does not claim audio either",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ntsc_1080: result.destination is the file that exists",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ntsc_1080: result.frames equals the measured count (12)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ntsc_1080: result.fps equals the file's exact rate (30000/1001)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ntsc_1080: result.duration_seconds equals frames*den/num",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ntsc_1080: result.output is 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ntsc_1080: the export's own verification reports ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ntsc_1080: result.resources names exactly the bundle's assets",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ntsc_1080: each resource carries the bundle's content hash and revision",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "ntsc_1080": {
+          "duration_seconds": 0.4004,
+          "tick": "1/30000",
+          "bytes": 54903,
+          "audio_streams": 0,
+          "pixels": {
+            "probes": 288,
+            "failed_probes": 0,
+            "max_probe_delta": 1,
+            "identity_frames_without_a_judgeable_neighbour": 0
+          },
+          "seconds": 4.01,
+          "unreported_result_fields": []
+        },
+        "surface": "tessel-render JSONL (CLI)"
+      }
+    },
+    {
+      "phase": "export_detail_4k",
+      "surface": "tessel-render CLI: scene.export original 4K PNG, no proxy",
+      "status": "PASS",
+      "seconds": 9.27,
+      "checks_total": 31,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "detail_4k: the export answers ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "detail_4k: the file exists at the destination",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "detail_4k: wall clock 6.2s within the 600s budget",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 3840x2160",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 6 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 1/4 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every frame of the detail export was decoded",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "1 px stripes survive: contrast >= 0.6 of the original (a proxy would not reach 0.2)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "2 px stripes survive: contrast >= 0.8",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "4 px stripes survive: contrast >= 0.9",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the 8 colour blocks of the original PNG are within 12 (BT.709)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "orientation/offset markers (red top-left, blue bottom-right) are where the original has them",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "no audio stream: this directed scene names no audio mix",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result does not claim audio either",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "detail_4k: result.destination is the file that exists",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "detail_4k: result.frames equals the measured count (6)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "detail_4k: result.fps equals the file's exact rate (24/1)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "detail_4k: result.duration_seconds equals frames*den/num",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "detail_4k: result.output is 3840x2160",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "detail_4k: the export's own verification reports ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "detail_4k: result.resources names exactly the bundle's assets",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "detail_4k: each resource carries the bundle's content hash and revision",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "detail_4k": {
+          "duration_seconds": 0.25,
+          "tick": "1/12288",
+          "bytes": 10124,
+          "audio_streams": 0,
+          "detail": {
+            "contrast": {
+              "1px": 1.0,
+              "2px": 0.9882,
+              "4px": 1.0
+            },
+            "block_delta": 1,
+            "marker_delta": 1
+          },
+          "seconds": 6.17,
+          "unreported_result_fields": []
+        },
+        "surface": "tessel-render JSONL (CLI)"
+      }
+    },
+    {
+      "phase": "export_invalid_requests",
+      "surface": "tessel-render CLI: typed refusals, no file, no mutation",
+      "status": "PASS",
+      "seconds": 1.5,
+      "checks_total": 15,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "the corpus scene has 96 frames (the range cases are written for it)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frames_zero: refused with a typed error",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frames_zero: no file was created",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "from_negative: refused with a typed error",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "from_negative: no file was created",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "past_the_end: refused with a typed error",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "past_the_end: no file was created",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "from_at_the_end: refused with a typed error",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "from_at_the_end: no file was created",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frames_fractional: refused with a typed error",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frames_fractional: no file was created",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "an unknown scene is refused with a typed error",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "an unknown preset is refused with a typed error",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every rejection left the destination folder as it was",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every rejection left history and revision untouched",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "accepted_code_names": {
+          "range": [
+            "invalid_range",
+            "frame_out_of_range",
+            "invalid_value",
+            "invalid_request",
+            "range_out_of_bounds"
+          ],
+          "unknown_preset": [
+            "invalid_preset",
+            "unknown_preset"
+          ]
+        }
+      }
+    },
+    {
+      "phase": "export_destination_exists",
+      "surface": "tessel-render CLI: existing destination survives",
+      "status": "PASS",
+      "seconds": 6.32,
+      "checks_total": 18,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "an existing destination is refused",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the refusal is typed",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the code is the one the media exporter uses (destination_exists)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file that was there is byte-identical",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the folder holds nothing else (no staging left)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "replace=true publishes the new file over the old one",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 4 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 1/6 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "phase": "export_cancel",
+      "surface": "tessel-render CLI: cancel leaves no partial file",
+      "status": "PASS",
+      "seconds": 8.52,
+      "checks_total": 9,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "an async export is accepted",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the job reports progress while running (done >= 1) before it is cancelled",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the job ends as cancelled (not succeeded, not failed)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the job did not reach the end of the interval before the cancel",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "no file at the destination",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the destination folder holds exactly what it held before: no staging, no partial file",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file the harness put there is untouched",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the session still answers and nothing was added to the history",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the same destination is reusable right after the cancel (nothing left locked)",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "cancel_seconds_to_final": 2.4
+      }
+    },
+    {
+      "phase": "export_snapshot",
+      "surface": "tessel-render CLI: immutable snapshot during edit",
+      "status": "PASS",
+      "seconds": 17.82,
+      "checks_total": 26,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "an async export is accepted",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the export job is running (frames already produced) when the scene is edited",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the edit is in the live scene",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the job had not finished when the edit landed (the test is not vacuous)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the export finishes ok after the edit",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 48 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 2 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "48 frames decoded for the pixel probes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "all 1152 flat-interior probes within 12 of the independent model (BT.709)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every frame is the model's frame at its index where the model tells neighbours apart (order, no duplicate, no skip)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "identity is not vacuous: at least 50% of the frames were judged against a neighbour",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "no audio stream: this directed scene names no audio mix",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result does not claim audio either",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the edit would change 930 probes: enough to tell a snapshot from a live read",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "none of those probes shows the edited scene: the file holds the snapshot taken at the request",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "a render of the live scene after the job does show the edit (control)",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "unedited_scene_checks": {
+          "duration_seconds": 2.0,
+          "tick": "1/12288",
+          "bytes": 202946,
+          "audio_streams": 0,
+          "pixels": {
+            "probes": 1152,
+            "failed_probes": 0,
+            "max_probe_delta": 1,
+            "identity_frames_without_a_judgeable_neighbour": 2
+          }
+        }
+      }
+    },
+    {
+      "phase": "export_audio_policy",
+      "surface": "tessel-render CLI: directed audio mixed, refused or explicit limit",
+      "status": "PASS",
+      "seconds": 8.64,
+      "checks_total": 35,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "the default request on a scene that declares audio is refused with a typed code",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "refused: no file and no staging left",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "`audio: false` exports the picture of the same scene",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the video-only result states that the audio is not in the file",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the video-only result names what the scene declared and left out",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the video-only result carries the typed warning that the declared audio was left out",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio video-only: the export answers ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio video-only: the file exists at the destination",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio video-only: wall clock 5.8s within the 240s budget",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 24 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 1 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "24 frames decoded for the pixel probes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "all 576 flat-interior probes within 12 of the independent model (BT.709)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every frame is the model's frame at its index where the model tells neighbours apart (order, no duplicate, no skip)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "identity is not vacuous: at least 50% of the frames were judged against a neighbour",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "no audio stream: this directed scene names no audio mix",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result does not claim audio either",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio video-only: result.destination is the file that exists",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio video-only: result.frames equals the measured count (24)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio video-only: result.fps equals the file's exact rate (24/1)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio video-only: result.duration_seconds equals frames*den/num",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio video-only: result.output is 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio video-only: the export's own verification reports ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio video-only: result.resources names exactly the bundle's assets",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio video-only: each resource carries the bundle's content hash and revision",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "policy_observed": {
+          "outcome": "refused",
+          "code": "unsupported",
+          "video_only": true
+        }
+      }
+    },
+    {
+      "phase": "export_restored_package",
+      "surface": "tessel-render CLI: package restore, origin deleted",
+      "status": "PASS",
+      "seconds": 17.95,
+      "checks_total": 67,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "the origin copy is gone",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored root carries sky byte-identical to the corpus",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored root carries mid byte-identical to the corpus",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored root carries hero byte-identical to the corpus",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored-from-package: the scene is back by its id",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored-from-package: a render without the origin matches the independent pixels",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored-from-package: the export answers ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored-from-package: the file exists at the destination",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored-from-package: wall clock 4.2s within the 240s budget",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 8 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 1/3 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "8 frames decoded for the pixel probes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "all 192 flat-interior probes within 12 of the independent model (BT.709)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every frame is the model's frame at its index where the model tells neighbours apart (order, no duplicate, no skip)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "identity is not vacuous: at least 50% of the frames were judged against a neighbour",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "no audio stream: this directed scene names no audio mix",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result does not claim audio either",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored-from-package: result.destination is the file that exists",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored-from-package: result.frames equals the measured count (8)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored-from-package: result.fps equals the file's exact rate (24/1)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored-from-package: result.duration_seconds equals frames*den/num",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored-from-package: result.output is 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored-from-package: the export's own verification reports ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored-from-package: result.resources names exactly the bundle's assets",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "restored-from-package: each resource carries the bundle's content hash and revision",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the restored folder holds a project document to reopen in a new process",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "reopened-after-restore: the scene is back by its id",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "reopened-after-restore: a render without the origin matches the independent pixels",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "reopened-after-restore: the export answers ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "reopened-after-restore: the file exists at the destination",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "reopened-after-restore: wall clock 3.5s within the 240s budget",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 8 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 1/3 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "8 frames decoded for the pixel probes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "all 192 flat-interior probes within 12 of the independent model (BT.709)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every frame is the model's frame at its index where the model tells neighbours apart (order, no duplicate, no skip)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "identity is not vacuous: at least 50% of the frames were judged against a neighbour",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "no audio stream: this directed scene names no audio mix",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result does not claim audio either",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "reopened-after-restore: result.destination is the file that exists",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "reopened-after-restore: result.frames equals the measured count (8)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "reopened-after-restore: result.fps equals the file's exact rate (24/1)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "reopened-after-restore: result.duration_seconds equals frames*den/num",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "reopened-after-restore: result.output is 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "reopened-after-restore: the export's own verification reports ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "reopened-after-restore: result.resources names exactly the bundle's assets",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "reopened-after-restore: each resource carries the bundle's content hash and revision",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "restored-from-package": {
+          "duration_seconds": 0.3333333333333333,
+          "tick": "1/12288",
+          "bytes": 45902,
+          "audio_streams": 0,
+          "pixels": {
+            "probes": 192,
+            "failed_probes": 0,
+            "max_probe_delta": 2,
+            "identity_frames_without_a_judgeable_neighbour": 0
+          },
+          "seconds": 4.17,
+          "unreported_result_fields": []
+        },
+        "reopened-after-restore": {
+          "duration_seconds": 0.3333333333333333,
+          "tick": "1/12288",
+          "bytes": 45902,
+          "audio_streams": 0,
+          "pixels": {
+            "probes": 192,
+            "failed_probes": 0,
+            "max_probe_delta": 2,
+            "identity_frames_without_a_judgeable_neighbour": 0
+          },
+          "seconds": 3.53,
+          "unreported_result_fields": []
+        }
+      }
+    },
+    {
+      "phase": "export_restored_managed",
+      "surface": "tessel-render CLI: reopen with managed base, origin deleted",
+      "status": "PASS",
+      "seconds": 9.46,
+      "checks_total": 32,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "the origin copy is gone",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "opened-with-managed-base: the scene is back by its id",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "opened-with-managed-base: a render without the origin matches the independent pixels",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "opened-with-managed-base: the export answers ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "opened-with-managed-base: the file exists at the destination",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "opened-with-managed-base: wall clock 3.9s within the 240s budget",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 8 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 1/3 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "8 frames decoded for the pixel probes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "all 192 flat-interior probes within 12 of the independent model (BT.709)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every frame is the model's frame at its index where the model tells neighbours apart (order, no duplicate, no skip)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "identity is not vacuous: at least 50% of the frames were judged against a neighbour",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "no audio stream: this directed scene names no audio mix",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result does not claim audio either",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "opened-with-managed-base: result.destination is the file that exists",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "opened-with-managed-base: result.frames equals the measured count (8)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "opened-with-managed-base: result.fps equals the file's exact rate (24/1)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "opened-with-managed-base: result.duration_seconds equals frames*den/num",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "opened-with-managed-base: result.output is 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "opened-with-managed-base: the export's own verification reports ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "opened-with-managed-base: result.resources names exactly the bundle's assets",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "opened-with-managed-base: each resource carries the bundle's content hash and revision",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "opened-with-managed-base": {
+          "duration_seconds": 0.3333333333333333,
+          "tick": "1/12288",
+          "bytes": 45902,
+          "audio_streams": 0,
+          "pixels": {
+            "probes": 192,
+            "failed_probes": 0,
+            "max_probe_delta": 2,
+            "identity_frames_without_a_judgeable_neighbour": 0
+          },
+          "seconds": 3.93,
+          "unreported_result_fields": []
+        }
+      }
+    },
+    {
+      "phase": "socket_export",
+      "surface": "native window socket (isolated instance): scene.export",
+      "status": "PASS",
+      "seconds": 5.05,
+      "checks_total": 29,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "socket: the export answers ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "socket: the file exists at the destination",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "socket: wall clock 3.9s within the 240s budget",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 8 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 1/3 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "8 frames decoded for the pixel probes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "all 192 flat-interior probes within 12 of the independent model (BT.709)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every frame is the model's frame at its index where the model tells neighbours apart (order, no duplicate, no skip)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "identity is not vacuous: at least 50% of the frames were judged against a neighbour",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "no audio stream: this directed scene names no audio mix",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result does not claim audio either",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "socket: result.destination is the file that exists",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "socket: result.frames equals the measured count (8)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "socket: result.fps equals the file's exact rate (24/1)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "socket: result.duration_seconds equals frames*den/num",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "socket: result.output is 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "socket: the export's own verification reports ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "socket: result.resources names exactly the bundle's assets",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "socket: each resource carries the bundle's content hash and revision",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "socket": {
+          "duration_seconds": 0.3333333333333333,
+          "tick": "1/12288",
+          "bytes": 45902,
+          "audio_streams": 0,
+          "pixels": {
+            "probes": 192,
+            "failed_probes": 0,
+            "max_probe_delta": 2,
+            "identity_frames_without_a_judgeable_neighbour": 0
+          },
+          "seconds": 3.87,
+          "unreported_result_fields": []
+        },
+        "note": "the window exports through the same shared operation; this is not evidence of a visible export dialog"
+      }
+    },
+    {
+      "phase": "ui_export_flow",
+      "surface": "native UI semantic flow (flow.export_scene dialog; get/set/invoke only)",
+      "status": "PASS",
+      "seconds": 11.73,
+      "checks_total": 74,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "the live tree exposes the export control by its semantic id",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "invoking flow.export_scene opens the dialog",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the dialog is the scene export dialog",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every field is a semantic node",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio offers yes/no and defaults to yes (the omission is the user's explicit choice)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "a non-numeric frame count is refused with a typed code",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the dialog stays open and says why",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "a refused submit started no job and left no file",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "a valid submit starts the export",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the dialog closed",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the submit created exactly one job",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export: the export answers ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export: the file exists at the destination",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export: wall clock 3.3s within the 240s budget",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 8 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 1/3 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "8 frames decoded for the pixel probes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "all 192 flat-interior probes within 12 of the independent model (BT.709)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every frame is the model's frame at its index where the model tells neighbours apart (order, no duplicate, no skip)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "identity is not vacuous: at least 50% of the frames were judged against a neighbour",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "no audio stream: this directed scene names no audio mix",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result does not claim audio either",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export: result.destination is the file that exists",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export: result.frames equals the measured count (8)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export: result.fps equals the file's exact rate (24/1)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export: result.duration_seconds equals frames*den/num",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export: result.output is 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export: the export's own verification reports ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export: result.resources names exactly the bundle's assets",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export: each resource carries the bundle's content hash and revision",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio yes on a scene that declares a mix is refused with a typed code (never exported silently)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the refusal keeps the dialog open, starts no job and writes no file",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio no is accepted: the user chose to leave the mix out",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one job was started",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export (audio no): the export answers ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export (audio no): the file exists at the destination",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export (audio no): wall clock 6.2s within the 240s budget",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 24 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 1 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "24 frames decoded for the pixel probes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "all 576 flat-interior probes within 12 of the independent model (BT.709)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every frame is the model's frame at its index where the model tells neighbours apart (order, no duplicate, no skip)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "identity is not vacuous: at least 50% of the frames were judged against a neighbour",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "no audio stream: this directed scene names no audio mix",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result does not claim audio either",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export (audio no): result.destination is the file that exists",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export (audio no): result.frames equals the measured count (24)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export (audio no): result.fps equals the file's exact rate (24/1)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export (audio no): result.duration_seconds equals frames*den/num",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export (audio no): result.output is 1920x1080",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export (audio no): the export's own verification reports ok",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export (audio no): result.resources names exactly the bundle's assets",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "ui export (audio no): each resource carries the bundle's content hash and revision",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file's result carries the typed omission warning",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "ui_export": {
+          "duration_seconds": 0.3333333333333333,
+          "tick": "1/12288",
+          "bytes": 45902,
+          "audio_streams": 0,
+          "pixels": {
+            "probes": 192,
+            "failed_probes": 0,
+            "max_probe_delta": 2,
+            "identity_frames_without_a_judgeable_neighbour": 0
+          },
+          "seconds": 3.34,
+          "unreported_result_fields": []
+        },
+        "ui_export_audio_no": {
+          "duration_seconds": 1.0,
+          "tick": "1/12288",
+          "bytes": 104041,
+          "audio_streams": 0,
+          "pixels": {
+            "probes": 576,
+            "failed_probes": 0,
+            "max_probe_delta": 1,
+            "identity_frames_without_a_judgeable_neighbour": 1
+          },
+          "seconds": 6.18,
+          "unreported_result_fields": []
+        },
+        "note": "semantic protocol only (get/set/invoke): proves the dialog reaches scene.export and its refusals, not that a person can see or reach the control; header node:16 and the preflight report are not driven here"
+      }
+    }
+  ],
+  "not_run": [],
+  "not_claimed": [
+    "heard audio (BL046): audio is measured spectrally on decoded samples; nothing was listened to and no device is involved",
+    "photons / seek-to-photon (BL032) and physical pointer input (BL043): no coordinate clicks, no display measurement",
+    "other GPUs, platforms and codecs (BL054): one machine, SwiftShader GL unless --gl gpu, libx264 as found by ffmpeg",
+    "BL052 colour contract beyond what the file declares (BT.709 limited) and what flat interiors decode to",
+    "lossless or bit-exact frame equality: the codec is lossy; pixels are judged by probes, dense picture agreement and tolerances fixed in the corpus",
+    "domains the plan refuses (light, weather, effects, rigs, paths, data maps, splat): the corpus does not use them",
+    "that a lib/CLI result proves the window, or that the window's socket proves a visible dialog (BL086 UI is separate)"
+  ],
+  "exit_code": 0
+}

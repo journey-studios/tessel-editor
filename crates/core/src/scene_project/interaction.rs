@@ -388,3 +388,130 @@ impl EditorState {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! White-box on purpose. The public API cannot reach the commit-time budget refusal: every
+    //! operation that changes the size of the book also bumps `project.revision`, which
+    //! invalidates the open gesture first. The branch is still live code (the gesture leaves the
+    //! slot before the edit and must come back), so these tests make the book grow *without* a
+    //! revision bump, the way only a bug elsewhere could, and check that nothing is lost.
+    use serde_json::{Value, json};
+
+    use super::*;
+    use crate::scene_interaction::GestureCommand;
+    use crate::scene_project::{MAX_SCENE_BYTES, SceneCommand, SceneSource};
+    use crate::state::{Command, ProjectSettings};
+
+    const FIGURE: &str = "scene/scene-a/node/figure";
+
+    fn bundle() -> Value {
+        serde_json::from_str(include_str!(
+            "../../../../docs/migration/fixtures/bundles/valid-minimal-continuous.bundle.json"
+        ))
+        .unwrap()
+    }
+
+    fn scene_command(command: SceneCommand) -> Command {
+        Command::Scene(command)
+    }
+
+    fn two_scenes() -> EditorState {
+        let mut state = EditorState::empty(&ProjectSettings::default()).unwrap();
+        for id in ["street", "other"] {
+            state
+                .execute(scene_command(SceneCommand::Attach {
+                    id: Some(id.to_string()),
+                    name: None,
+                    source: SceneSource::Bundle(bundle()),
+                }))
+                .unwrap();
+        }
+        state
+    }
+
+    fn gesture_command(command: GestureCommand) -> Command {
+        scene_command(SceneCommand::Gesture(command))
+    }
+
+    fn move_figure(x: f64) -> Vec<EditOp> {
+        let ops = json!([{"set": format!("{FIGURE}/position"), "value": {"x": x, "y": 0, "z": 0}}]);
+        crate::scene_edit::parse_batch(&ops).unwrap()
+    }
+
+    #[test]
+    fn a_commit_that_busts_the_byte_budget_is_refused_and_the_gesture_comes_back_whole() {
+        let mut state = two_scenes();
+        let begun = state
+            .execute(gesture_command(GestureCommand::Begin {
+                scene: "street".to_string(),
+                targets: vec![FIGURE.to_string()],
+                label: None,
+            }))
+            .unwrap();
+        let id = begun["gesture"].as_str().unwrap().to_string();
+        state
+            .execute(gesture_command(GestureCommand::Update {
+                gesture: id.clone(),
+                ops: move_figure(2.0),
+            }))
+            .unwrap();
+
+        // The other scene "grows" to fill the whole budget behind the gesture's back.
+        let other = state
+            .scenes
+            .iter()
+            .position(|entry| entry.id == "other")
+            .unwrap();
+        let honest = state.scenes.scene_bytes[other];
+        state.scenes.scene_bytes[other] = MAX_SCENE_BYTES;
+
+        let document = state.to_document(None);
+        let history = state.history.to_json();
+        let revision = state.project.revision;
+        let street = Arc::clone(&state.scenes.get("street").unwrap().scene);
+        let ops = state.scene_interaction.gesture().unwrap().ops().to_vec();
+
+        let error = state
+            .execute(gesture_command(GestureCommand::Commit {
+                gesture: id.clone(),
+            }))
+            .unwrap_err();
+        assert_eq!(error.code, "scenes_too_large");
+        assert_eq!(error.target.as_deref(), Some("street"));
+
+        // Scene, history, revision and document are what they were; the gesture is back in the
+        // slot with its candidate and ops, so the caller can update, cancel or retry.
+        assert!(Arc::ptr_eq(
+            &street,
+            &state.scenes.get("street").unwrap().scene
+        ));
+        assert_eq!(state.to_document(None), document);
+        assert_eq!(state.history.to_json(), history);
+        assert_eq!(state.project.revision, revision);
+        let gesture = state.scene_interaction.gesture().expect("gesture is back");
+        assert_eq!(gesture.id(), id);
+        assert!(gesture.has_candidate());
+        assert_eq!(gesture.ops(), ops.as_slice());
+        assert_eq!(gesture.updates(), 1);
+        assert!(
+            gesture
+                .invalidation(&state.scenes, state.project.revision)
+                .is_none(),
+            "a refusal does not invalidate"
+        );
+
+        // Once the budget is honest again the very same gesture commits as ONE entry.
+        state.scenes.scene_bytes[other] = honest;
+        let depth = state.history.to_json()["undo_depth"].as_u64().unwrap();
+        let committed = state
+            .execute(gesture_command(GestureCommand::Commit { gesture: id }))
+            .unwrap();
+        assert_eq!(committed["changed"], true);
+        assert_eq!(
+            state.history.to_json()["undo_depth"].as_u64().unwrap(),
+            depth + 1
+        );
+        assert!(state.scene_interaction.gesture().is_none());
+    }
+}

@@ -3,19 +3,22 @@
 Comece pela [matriz de features](features/README.md): ela registra o contrato e o estado de
 cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 
+- [Integração da rodada R1–R10](migration/round-r1-r10-report.md): export dirigido, inspector, planos e robustez; evidências e limites do gate final.
+- [Próxima entrega — dez frentes](migration/next-delivery-ten-agents.md): contratos e ownership; status e delegações no backlog comum.
 - [Integração M/N/O/P](migration/round-mnop-report.md): renderer, recursos portáteis, inspector e provas do fluxo dirigido.
 - [Renderer de cenas dirigidas](features/scene-renderer.md): scene.plan/scene.render, lib/JSONL e monitor com mapas verificados.
 - [Integração H/I/J/K + sliders](migration/round-hijkl-report.md): 718 testes Rust, provas por superfície e limites atuais da base.
-- [Inspector e árvore de cena](features/scene-inspector.md): controles recebidos, input GPUI e socket reportados; gate integrado e inspeção visual pendentes.
-- [Integração de recursos de cena](features/scene-resource-integration.md): host, geração, pacote/restauração e intercâmbio; 22 testes direcionados reconferidos, renderer/UI pendentes.
+- [Inspector e árvore de cena](features/scene-inspector.md): controles recebidos, input GPUI e socket reportados; layout R9 inspecionado, captura final do cabeçalho em validação.
+- [Integração de recursos de cena](features/scene-resource-integration.md): host, geração, pacote/restauração e intercâmbio; 22 testes direcionados reconferidos, renderer integrado; UI dedicada de recursos parcial.
+- [Spark sob concorrência](features/spark-concurrency.md): diagnóstico da corrida do harness e gate determinístico de cancelamento; runtime intocado.
 - [Backlog compartilhado](backlog.md): registro único de pendências, responsáveis, dependências e aceite; obrigatório para todos os agentes.
 - [Inventário de migração do Scene Studio](migration/README.md): 121 itens classificados,
   evidências na origem, diferenças do branch piloto, matriz de migração e fatias sugeridas.
 - [Recursos da cena dirigida](features/scene-resources.md): manifesto, preflight e materialização inicial; identidade por assetId, transporte parcial e pacote ainda protegido pelas guardas.
-- [Interação de cenas dirigidas](features/scene-interaction.md): seleção, árvore, avaliação e gestos via comandos; gate local da rodada passou; UI visual pendente.
-- [Plano avaliado de cena dirigida](features/scene-plan.md): contrato core → runtime e recursos por assetId; gate local da rodada passou; sem renderer.
+- [Interação de cenas dirigidas](features/scene-interaction.md): seleção, árvore, avaliação e gestos via comandos; gate local da rodada passou; inspector parcial em F039-UI.
+- [Plano avaliado de cena dirigida](features/scene-plan.md): contrato core → runtime e recursos por assetId; gate local da rodada passou; consumido pelo renderer F041.
 - [Cenas no projeto e CLI](features/scene-project.md): attach, lotes, histórico, save/reopen
-  e JSONL sem janela; UI visual e render dirigido pendentes.
+  e JSONL sem janela; inspector e render dirigido integrados; diálogo de anexar pendente.
 - [Animação de nós](features/scene-animation.md): performance por frame, hierarquia e matrizes
   animadas comparadas à origem; renderer/adapters ainda pendentes.
 - [Propriedades e lotes de cenas](features/scene-edit.md): catálogo tipado, operações por ID,

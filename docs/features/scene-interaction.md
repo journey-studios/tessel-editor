@@ -9,6 +9,10 @@
 | Socket / `ui op` da janela | **V no corpus** — comandos reais na janela e seleção por nó semântico | `scripts/directed-scene-proof/proof.py`, F039-UI |
 | UI (árvore, inspector e Escape) | **Parcial** — controles e 16 testes de input GPUI; aparência, ponteiro físico e handles não provados | [Inspector](scene-inspector.md) |
 
+**Rodada R3 (BL066–BL069):** IDs de gesto por sessão, seleção/gesto no summary, poda imediata no undo e prova do
+orçamento de bytes. Implementado e testado em lib e no executável JSONL público
+(`crates/core/tests/scene_session.rs`); socket/UI não foram reexecutados pela frente — ver [relatório](../migration/next-r3-report.md).
+
 Esta feature é **semântica**: não existe gesto físico de ponteiro aqui. O "gesto" é um ciclo de
 comandos (begin → update* → commit | cancel) que a UI futura deve apenas chamar.
 
@@ -42,7 +46,7 @@ let begun = state.execute(Command::Scene(SceneCommand::Gesture(GestureCommand::B
     targets: vec!["scene/scene-a/node/figure".into()],
     label: None,
 })))?;
-let gesture = begun["gesture"].as_str().unwrap().to_string();   // "gesture-1"
+let gesture = begun["gesture"].as_str().unwrap().to_string();   // opaco: `gesture-<sessão>-<n>`
 
 state.execute(Command::Scene(SceneCommand::Gesture(GestureCommand::Update {
     gesture: gesture.clone(),
@@ -55,7 +59,19 @@ state.execute(Command::Scene(SceneCommand::Gesture(GestureCommand::Commit { gest
 
 `state.scene_interaction: SceneInteraction` guarda o estado **efêmero** (`selection()`, `gesture()`).
 Ele **não** está em `Snapshot` nem no documento: não é desfeito, não é salvo, é zerado ao abrir/criar
-projeto.
+projeto. Fica visível no `summary()` compartilhado (`status`/`ui status`), ver "Summary" abaixo.
+
+### IDs de gesto são opacos e pertencem à sessão (BL066)
+
+`begin` devolve `gesture-<sal>-<época>-<n>`. O cliente **só repassa** o ID que recebeu; não o monta nem o
+interpreta. Cada `EditorState` novo (projeto criado, aberto ou recuperado) é uma **sessão nova**: a
+época é um contador do processo e o sal é aleatório por processo, então nenhum ID emitido por uma
+sessão é emitido por outra, nem com o mesmo arquivo reaberto, a mesma cena e a mesma revisão.
+Um pedido guardado de uma sessão antiga (`update`, `commit`, `cancel`, `evaluate`/`plan` com `gesture`)
+falha com `unknown_gesture` (ou `no_gesture`) e `details.reason = "other_session"`, sem tocar o gesto
+novo, o documento, o histórico nem a revisão. Um ID desta sessão que não é o aberto (cancelado, digitado
+errado) tem `details.reason = "not_current"`; `details.current` traz o ID aberto (ou `null`).
+Scripts que gravam `gesture-1` à mão deixam de funcionar: leia o ID da resposta de `begin`.
 
 ### Endereço de entidade
 
@@ -90,6 +106,9 @@ O `scene` (ID de anexação) acompanha a seleção; o endereço não o repete.
 | `scene.gesture.cancel` | `gesture` | descarta o candidato | — |
 | `scene.gesture.status` | — | gesto aberto/invalidado ou `active:false` | — |
 
+`history.undo`/`history.redo` acrescentam `selection_dropped[]` à resposta (mesmo formato de `scene.detach`) quando
+a restauração tirou algo da seleção; sem nada podado, a resposta é a de sempre.
+
 As respostas trazem `changed` (o **estado de sessão** mudou) e `document_changed` (o projeto mudou;
 só o commit pode torná-lo verdadeiro). `scene.capabilities` lista os novos comandos.
 
@@ -111,8 +130,19 @@ só o commit pode torná-lo verdadeiro). `scene.capabilities` lista os novos com
 - **Alvos validados.** `targets` e `entities` são checados contra a cena; um `update` fora dos alvos
   declarados falha com `gesture_target_mismatch` (`details.index`). Sem `targets`, qualquer
   propriedade do catálogo é aceita.
-- **Seleção que perde a entidade** é podada ao desanexar a cena (resposta com `selection_dropped`) e,
-  de forma preguiçosa, em `scene.selection` (por exemplo depois de um undo).
+- **Seleção que perde a entidade** é podada **na hora** ao desanexar a cena e em todo `undo`/`redo`
+  (resposta com `selection_dropped`; BL069). `scene.selection` continua podando por garantia e lista
+  tudo o que saiu (`dropped[]`). A seleção é apresentação: o undo **só poda**, nunca restaura, e o redo
+  não traz de volta a entidade podada.
+- **Gesto aberto não é tocado pelo undo/redo**: continua invalidado de forma preguiçosa
+  (`gesture_invalidated`), de modo que a UI vê `state: "invalidated"` e pode cancelá-lo. Nunca reabilita:
+  undo seguido de redo não revive o gesto.
+- **Orçamento de bytes** (`MAX_SCENE_BYTES`, 128 MiB de JSON compacto somando as cenas): `update`
+  acima do orçamento é recusado com `scenes_too_large` e preserva o último candidato bom, o documento, o
+  histórico e a revisão; o mesmo lote como `scene.edit` dá o mesmo erro. O commit repete a checagem
+  (`edit_scene`): se falhar, o gesto **volta ao slot inteiro** (candidato, ops, contagem). Esse ramo
+  não é alcançável pela API pública, porque qualquer operação que muda o tamanho do livro também sobe
+  a revisão e invalida o gesto antes; a prova dele é um teste unitário que cresce o livro sem subir a revisão.
 - **Consultas, seleção e dry-run não criam undo** (sem `history_label`).
 
 ### Erros tipados
@@ -122,24 +152,58 @@ só o commit pode torná-lo verdadeiro). `scene.capabilities` lista os novos com
 já existentes: `unknown_element` (cena), `invalid_value`, `invalid_request`, `unknown_node`,
 `unknown_path`, `frame_out_of_range`, `invalid_bundle`.
 
-## CLI headless
+## Summary compartilhado (BL068)
 
-```bash
-printf '%s\n' \
-  '{"op":"scene.attach","id":"street","path":"docs/migration/fixtures/bundles/valid-minimal-continuous.bundle.json"}' \
-  '{"op":"scene.tree","scene":"street","depth":2}' \
-  '{"op":"scene.select","scene":"street","entities":["scene/scene-a/node/figure"]}' \
-  '{"op":"scene.evaluate","scene":"street","frame":10}' \
-  '{"op":"scene.gesture.begin","scene":"street","targets":["scene/scene-a/node/figure"]}' \
-  '{"op":"scene.gesture.update","gesture":"gesture-1","ops":[{"set":"scene/scene-a/node/figure/position","value":{"x":2,"y":0,"z":0}}]}' \
-  '{"op":"scene.evaluate","scene":"street","frame":10,"gesture":"gesture-1"}' \
-  '{"op":"scene.gesture.commit","gesture":"gesture-1"}' \
-  '{"op":"history.undo"}' \
-  | ./scripts/cargo run -q -p tessel-editor-core --bin tessel-headless -- --empty
+`EditorState::summary()` (op `status`, `ui status`, `tessel-headless`) ganha o bloco `scene_interaction`
+**somente** quando há algo a mostrar (seleção, entidades podadas ou gesto); um projeto que nunca usou
+as ferramentas tem o summary de sempre. Ler o summary não poda, não encerra gesto e não cria histórico.
+
+```json
+"scene_interaction": {
+  "selection": { "count": 1, "truncated": false, "dropped_count": 0, "dropped": [],
+                 "entities": [{ "path": "scene/scene-a/node/figure", "scene": "street", "kind": "node", "id": "figure" }] },
+  "gesture": { "id": "gesture-…", "scene": "street", "label": null, "targets": ["scene/scene-a/node/figure"],
+               "state": "open", "invalidation": null, "updates": 1, "has_candidate": true,
+               "would_change": true, "changed_ops": 1, "revision": 1 }
+}
 ```
 
-Mesmo envelope `{ok, version, result|error}` das demais. O coordenador executou uma sessão equivalente
-no executável `tessel-headless` (ver a evidência de integração ao final).
+- `entities` lista até `SUMMARY_LIMIT` (64) entradas; `count` é sempre o total; `truncated` avisa o corte.
+- Uma entrada cuja cena/entidade sumiu sem poda (não ocorre pelos caminhos atuais; defesa) aparece com
+  `stale: "scene_detached" | "entity_missing"`.
+- `gesture.state` é `open` ou `invalidated` (com `invalidation` = `scene_detached | scene_changed |
+  project_revision`); `gesture` é `null` sem gesto.
+
+## CLI headless
+
+O ID do gesto só existe depois do `begin`, então a sessão é conduzida linha a linha (um `printf` fixo
+não consegue citá-lo). Exemplo executado contra `target/debug/tessel-headless` (`./scripts/cargo build -p
+tessel-editor-core --bin tessel-headless`):
+
+```python
+import json, subprocess
+
+hl = subprocess.Popen(["target/debug/tessel-headless", "--empty"], text=True,
+                      stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+
+def ask(request):
+    hl.stdin.write(json.dumps(request) + "\n"); hl.stdin.flush()
+    return json.loads(hl.stdout.readline())
+
+street = "docs/migration/fixtures/bundles/valid-minimal-continuous.bundle.json"
+figure = "scene/scene-a/node/figure"
+ask({"op": "scene.attach", "id": "street", "path": street})
+ask({"op": "scene.select", "scene": "street", "entities": [figure]})
+gesture = ask({"op": "scene.gesture.begin", "scene": "street", "targets": [figure]})["result"]["gesture"]
+ask({"op": "scene.gesture.update", "gesture": gesture,
+     "ops": [{"set": figure + "/position", "value": {"x": 2, "y": 0, "z": 0}}]})
+print(ask({"op": "status"})["result"]["scene_interaction"])   # seleção + gesto aberto, histórico intocado
+print(ask({"op": "scene.gesture.commit", "gesture": gesture})["result"]["changed"])   # True: uma entrada
+print(ask({"op": "history.undo"})["result"]["label"])         # "Edit scene"
+```
+
+Mesmo envelope `{ok, version, result|error}` das demais. O exemplo acima foi executado pela frente R3 no
+binário de debug; o teste `the_executable_keeps_gesture_ids_apart_…` automatiza o mesmo caminho.
 
 ## UI e CLI da janela
 
@@ -166,11 +230,28 @@ biblioteca, não equivalência com a origem. Para o coordenador, depois do gate:
 Limitações conhecidas:
 
 - A invalidação é **conservadora**: qualquer edição ou undo do projeto (não só da cena) invalida o gesto.
-- Sem gancho em `history.rs` (reservado à frente L), a seleção é podada **na leitura**, não no undo.
-- IDs de gesto reiniciam quando o projeto é aberto/criado; um cliente que guardou `gesture-1` de antes
-  poderia colidir com o do novo projeto.
-- Rejeição do commit por orçamento de bytes não tem teste (o orçamento é inalcançável com fixtures).
+- A invalidação do gesto continua **preguiçosa** (checada ao usar). Decisão R3/BL069: um gesto
+  invalidado fica no slot de propósito, para a UI mostrar `invalidated` e cancelá-lo; podá-lo no undo
+  tiraria esse estado e transformaria um erro tipado em `no_gesture`.
+- IDs de gesto são válidos só na sessão que os emitiu. Um cliente não pode montá-los, reaproveitá-los
+  entre projetos nem depender do formato.
+- `MAX_SCENE_BYTES` conta JSON compacto do projeto inteiro; o teste público do orçamento aloca ~128 MiB
+  (~3 s em build debug). A checagem repetida no commit não é alcançável pela API pública (ver "Garantias").
+- O summary lista no máximo 64 entidades selecionadas; `scene.selection` tem a lista completa.
 - Nós semânticos e controles em F039-UI; aparência, ponteiro físico e handles ainda não provados.
-- `summary()` não expõe seleção nem gesto.
+
+### Evidência da rodada R3 (BL066–BL069)
+
+`crates/core/tests/scene_session.rs` (15 testes) e testes unitários em `scene_interaction/selection.rs`
+e `scene_project/interaction.rs`:
+
+| Superfície | O que prova |
+|---|---|
+| Lib | IDs de projeto antigo/reaberto/40 sessões não colidem e o pedido velho não toca o gesto novo; `reason` `other_session`/`not_current`; summary (bloco, limite, leitura sem efeito, gesto invalidado); undo/redo podam a seleção na hora, redo não restaura, resultado independente de consulta intermediária; gesto morto após undo+redo; orçamento (update recusado preservando candidato; commit recusado devolve o gesto inteiro); no-op, cancel e update rejeitado sem rastro |
+| Executável `tessel-headless` (JSONL, processo real) | no-op commit, cancel, commit/undo/redo com gesto invalidado, troca de projeto na mesma sessão com ID antigo recusado (`other_session`) e summary do processo com seleção/gesto |
+| Socket / UI | **não reexecutado por R3.** O adaptador desktop usa o mesmo core; nenhuma prova nova de janela |
+
+Antes da correção os testes de BL066 (mesmo ID em dois projetos) e BL069 (seleção volta num redo
+conforme alguém consultou ou não) **falharam** contra o código anterior; ver o relatório.
 
 Integração pelo coordenador: testes públicos 21/21, unitários no gate core (197/197 no conjunto) e clippy lib limpo. Corrigidas duas expectativas: alvo fora do gesto é recusado antes de validar nó inexistente (`gesture_target_mismatch`). O executável headless passou uma sessão real de 13 requests (attach, árvore, seleção, evaluate, begin/update/commit, get, undo/redo). A integração posterior da janela está em F039-UI; testes e CLI sem janela não provam ponteiro físico.

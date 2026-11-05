@@ -16,11 +16,30 @@
 //!   both declare `assets/backdrop.png` with different content never meet (the collision the
 //!   manifest would otherwise report inside one folder).
 //! * **Files.** Copied by `adopt`: verified against the bundle hash, staged, rolled back on any
-//!   failure, resumable (reused when already there). If a later scene fails, the folders this
-//!   import already created are removed again.
+//!   failure, resumable (reused when already there). If a later scene fails, what this import
+//!   already copied is removed again.
 //!
 //! The project change is one transaction of `scene.attach` commands (one undo step); the files
 //! are prepared on a job thread first, like every other import.
+//!
+//! # Whose files are they (BL089)
+//!
+//! Between [`prepare`] and [`apply`] the copied files belong to the [`PreparedSceneImport`], which
+//! owns a [`Provisional`] record of exactly what `adopt` created (files it copied, folders it
+//! made; never a reused file nor a folder that was already there). The result is accepted only by
+//! [`apply`]; every other end removes the record, through the destructor so no path can forget:
+//!
+//! * `prepare` fails or is cancelled (during a copy, between scenes, or after the last scene);
+//! * the job finishes but its slot is never applied (job cancelled or failed late, host dropped,
+//!   a panic unwinding);
+//! * `apply` finds the result obsolete (another project, or the same project opened from another
+//!   workspace) or the project refuses the attach (ID taken meanwhile, scene limit, byte budget).
+//!
+//! The result is not `Clone`: a copy would delete the files of the consumer that kept the
+//! original when it dropped.
+//!
+//! Files two pending results share (BL096) are held by both: a discard removes a file only when
+//! it is the last pending result relying on a file one of them created; see `cleanup`.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -36,7 +55,8 @@ use tessel_editor_core::{CommandError, EditorState};
 
 use super::adopt::adopt;
 use super::base::{self, MANAGED_DIR, ResourceBase};
-use crate::directed_resources::{Options, Progress};
+use super::cleanup::{CleanupReport, Provisional, same_folder};
+use crate::directed_resources::{Options, Progress, Published};
 
 /// One scene of the import and where it will live.
 #[derive(Debug, Clone, PartialEq)]
@@ -63,16 +83,19 @@ pub struct PreparedScene {
     pub reused: usize,
     /// Declared files that stay behind (preserved sections, unreferenced assets).
     pub not_carried: usize,
-    /// Set when this import created the folder (and so may remove it again).
-    created_root: Option<PathBuf>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+/// The scenes whose files are already in the destination workspace. It owns those files until
+/// [`apply`] accepts it; see the module docs. Not `Clone`.
+#[derive(Debug)]
 pub struct PreparedSceneImport {
     pub project: String,
+    /// The workspace the files were copied into: the import is only valid for a project that
+    /// still lives there (the same project ID can be opened from a copy elsewhere).
+    pub workspace: PathBuf,
     pub scenes: Vec<PreparedScene>,
     pub warnings: Vec<String>,
-    scenes_dir_created: Option<PathBuf>,
+    owned: Provisional,
 }
 
 impl PreparedSceneImport {
@@ -88,9 +111,15 @@ impl PreparedSceneImport {
         })
     }
 
-    /// Removes the folders this import created. For a result that will not be applied.
-    pub fn discard(self) {
-        remove_created(&self);
+    /// Removes what this import copied (and only that). For a result that will not be applied;
+    /// dropping it does the same without the report.
+    pub fn discard(self) -> CleanupReport {
+        self.owned.discard()
+    }
+
+    /// Files and folders this import would remove if it were discarded now.
+    pub fn owned(&self) -> &Provisional {
+        &self.owned
     }
 }
 
@@ -189,36 +218,67 @@ pub fn prepare(
     token: &CancelToken,
     on_progress: &mut dyn FnMut(Progress),
 ) -> Result<PreparedSceneImport, JobError> {
+    prepare_observed(
+        destination,
+        source,
+        workspace,
+        wanted,
+        source_bases,
+        token,
+        on_progress,
+        &mut |_, _| {},
+    )
+}
+
+/// [`prepare`] that also reports every file as it becomes visible, with the destination scene ID
+/// it belongs to. What makes a cancellation right after the last file testable without threads.
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_observed(
+    destination: &EditorState,
+    source: &EditorState,
+    workspace: &Path,
+    wanted: &[String],
+    source_bases: &BTreeMap<String, PathBuf>,
+    token: &CancelToken,
+    on_progress: &mut dyn FnMut(Progress),
+    on_published: &mut dyn FnMut(&str, Published<'_>),
+) -> Result<PreparedSceneImport, JobError> {
     let planned = plan(destination, source, wanted)?;
-    let scenes_dir = workspace.join(MANAGED_DIR);
-    let scenes_dir_created = (!scenes_dir.exists()).then_some(scenes_dir);
+    // From here every `?` drops `prepared`, whose destructor removes what earlier scenes copied.
     let mut prepared = PreparedSceneImport {
         project: destination.project.id.clone(),
+        workspace: workspace.to_path_buf(),
         scenes: Vec::new(),
         warnings: Vec::new(),
-        scenes_dir_created,
+        owned: Provisional::default(),
     };
     for scene in planned {
-        token.check().inspect_err(|_| remove_created(&prepared))?;
-        match prepare_scene(source, workspace, &scene, source_bases, token, on_progress) {
-            Ok(done) => {
-                if done.not_carried > 0 {
-                    prepared.warnings.push(format!(
-                        "scene `{}` names {} file(s) that no version carries yet (preserved sections, unreferenced assets); the scene arrives with them listed, not copied",
-                        done.planned.from, done.not_carried
-                    ));
-                }
-                prepared.scenes.push(done);
-            }
-            Err(error) => {
-                remove_created(&prepared);
-                return Err(error);
-            }
+        token.check()?;
+        let done = prepare_scene(
+            source,
+            workspace,
+            &scene,
+            source_bases,
+            token,
+            on_progress,
+            on_published,
+            &mut prepared.owned,
+        )?;
+        if done.not_carried > 0 {
+            prepared.warnings.push(format!(
+                "scene `{}` names {} file(s) that no version carries yet (preserved sections, unreferenced assets); the scene arrives with them listed, not copied",
+                done.planned.from, done.not_carried
+            ));
         }
+        prepared.scenes.push(done);
     }
+    // A cancellation that arrives while the last file is published is still a cancellation: the
+    // job would otherwise end as succeeded and its result would be applied.
+    token.check()?;
     Ok(prepared)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn prepare_scene(
     source: &EditorState,
     workspace: &Path,
@@ -226,6 +286,8 @@ fn prepare_scene(
     source_bases: &BTreeMap<String, PathBuf>,
     token: &CancelToken,
     on_progress: &mut dyn FnMut(Progress),
+    on_published: &mut dyn FnMut(&str, Published<'_>),
+    owned: &mut Provisional,
 ) -> Result<PreparedScene, JobError> {
     let attached = source
         .scenes
@@ -253,7 +315,6 @@ fn prepare_scene(
             copied: 0,
             reused: 0,
             not_carried,
-            created_root: None,
         });
     }
     let base = match source_bases.get(&planned.from) {
@@ -277,9 +338,7 @@ fn prepare_scene(
             ),
         ));
     }
-    let target = ResourceBase::managed(workspace, &planned.to)?;
-    let existed = target.root().exists();
-    let adopted = adopt(
+    let mut adopted = adopt(
         scene,
         &planned.to,
         workspace,
@@ -287,8 +346,11 @@ fn prepare_scene(
         &Options::default(),
         token,
         on_progress,
-        &mut |_| {},
+        &mut |published| on_published(&planned.to, published),
     )?;
+    // Ownership comes from what `adopt` itself created, not from a look at the disk beforehand:
+    // a folder that another operation made in between is not ours to remove.
+    owned.absorb(adopted.provisional().release());
     Ok(PreparedScene {
         planned: planned.clone(),
         bundle,
@@ -296,7 +358,6 @@ fn prepare_scene(
         copied: adopted.report.bytes_copied,
         reused: adopted.report.reused(),
         not_carried,
-        created_root: (!existed).then(|| adopted.base.root().to_path_buf()),
     })
 }
 
@@ -308,28 +369,25 @@ fn unavailable(scene: &str, why: &str) -> JobError {
     .with_details(json!({ "scenes": [scene] }))
 }
 
-fn remove_created(prepared: &PreparedSceneImport) {
-    for scene in &prepared.scenes {
-        if let Some(root) = &scene.created_root {
-            let _ = fs::remove_dir_all(root);
-        }
-    }
-    if let Some(dir) = &prepared.scenes_dir_created {
-        let _ = fs::remove_dir(dir);
-    }
-}
-
-/// Attaches the prepared scenes as one undo step. A rejection (scene limit, byte budget) leaves
-/// the project as it was and removes the folders [`prepare`] created.
+/// Attaches the prepared scenes as one undo step. A result that no longer fits the project (a
+/// different project or workspace is open) or that the project refuses (scene limit, byte budget,
+/// an ID taken meanwhile) leaves the project as it was and removes what [`prepare`] copied.
 pub fn apply(
     state: &mut EditorState,
-    prepared: PreparedSceneImport,
+    mut prepared: PreparedSceneImport,
 ) -> Result<Value, CommandError> {
     if state.project.id != prepared.project {
-        prepared.discard();
+        drop(prepared);
         return Err(CommandError::new(
             "stale_result",
             "The open project changed while the scenes were imported; nothing was attached",
+        ));
+    }
+    if !same_folder(state.project.workspace.as_deref(), &prepared.workspace) {
+        drop(prepared);
+        return Err(CommandError::new(
+            "stale_result",
+            "The open project lives in another workspace than the one the scenes were imported into; nothing was attached",
         ));
     }
     let outcome = state.transaction("Import scenes", |state| {
@@ -342,14 +400,13 @@ pub fn apply(
         }
         Ok(())
     });
-    if let Err(error) = outcome {
-        remove_created(&prepared);
-        return Err(error);
-    }
-    Ok(
-        json!({ "action": "project.import_scenes", "changed": !prepared.scenes.is_empty(),
-        "result": prepared.to_json() }),
-    )
+    // A rejection returns here, and `prepared` drops with the copied files still owned.
+    outcome?;
+    let report = json!({ "action": "project.import_scenes", "changed": !prepared.scenes.is_empty(),
+        "result": prepared.to_json() });
+    // Accepted: the files belong to the project now.
+    prepared.owned.release();
+    Ok(report)
 }
 
 #[cfg(test)]
