@@ -53,6 +53,7 @@ Lib V significa testes do modelo demo, não um motor real de edição.
 | F034 | [Catálogo de propriedades e edição atômica de cenas (BB04)](scene-edit.md) | P | P | P | Parcial¹² | `scene_edit::{catalog, apply, dry_run}`; importação e gates compartilhados |
 | F035 | [Animação de nós e matrizes de mundo (BB03)](scene-animation.md) | P | P | P | Parcial¹³ | `Bundle::{evaluate_frame, node_timeline, evaluate_instance_nodes, performance_plan}` |
 | F036 | [Cenas no projeto, histórico e CLI](scene-project.md) | P | P | V | V | `Command::Scene` / `scene.*`; schema 2 com cenas, undo compartilhado, contagem de bytes em cache |
+| F037 | [Plano avaliado de frame de cena dirigida (BB05)](scene-plan.md) | P | P | P | I¹⁴ | `scene_plan::ScenePlan`; plano tipado e serializável, gate Cargo pendente; sem renderer |
 
 ¹ Dock/tema/janela são capacidades de apresentação. A lib valida layout, mas quem o executa
 é o DockArea vivo; não há execução do Dock no core. UI nativa não é requisito para fluxos
@@ -143,3 +144,5 @@ headless; os testes Chrome cobrem o runtime sem janela nativa.
 - Matriz atualizada na mesma entrega. Não transformar pendências em status validado por inferência.
 
 Veja [arquitetura](../core-architecture.md) e [template](_template.md).
+
+¹⁴ Primeira fatia BB05: câmera, nós/matrizes, ordem, recursos por assetId e capabilities sobre evaluate_frame. Domínios não avaliados são recusados (ou plano parcial explícito). 29 testes escritos, ainda não executados; não é render nem certificação do bundle completo. Ver [contrato](scene-plan.md).

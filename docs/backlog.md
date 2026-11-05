@@ -49,7 +49,7 @@ Fontes: [roadmap](migration/phased-roadmap.md), [matriz](features/README.md),
 | BL003 | BB03 | Avaliar domínios ainda em `unevaluated`: luz, clima, efeitos, rig, paths, bind/reveal | Parcial | Domínio escolhido | — | Estado por frame equivalente; nada omitido como se estivesse avaliado |
 | BL004 | BB04 | Ampliar catálogo: componentes, renderOrder, keys/segmentos e propriedades dos novos domínios | Parcial | BL001–BL003 aplicáveis | — | Tipo/unidade/faixa/default compartilhados; rollback e undo por lote |
 | BL005 | BB04 | Compatibilizar escrita de pose inicial com a conversão de movimentos/keys da origem | Pendente | BL004 | — | Semântica escolhida documentada e comparada com a origem |
-| BL006 | BB05 | Definir plano avaliado de cena e contrato core → runtime, versão/capabilities | Em andamento | BB02/BB03 existentes | H / Cursor Sonnet 5.5 (ver rodada) | Core resolve o frame; runtime só executa estado explícito, com erros tipados |
+| BL006 | BB05 | Definir plano avaliado de cena e contrato core → runtime, versão/capabilities | A validar | BB02/BB03 existentes | H / F037 ([relatório](migration/foundation-h-report.md)) | Implementação recebida; 29 testes escritos, nenhum executado. Falta gate Cargo; renderer BL007 e recursos BL009 continuam pendentes |
 | BL007 | BB05 | Renderer da cena dirigida em preview e headless; geração/cancelamento/invalidação | Pendente | BL006, BL010 | — | Mesmo conteúdo em seek fora de ordem, troca de projeto e recuperação de contexto |
 | BL008 | BB05 | Exportar cenas dirigidas pelo mesmo plano e original | Pendente | BL007 | — | Comparação de frames preview/headless/export e export curto reproduzível |
 | BL009 | BB06 | Resolver dependências transitivas: imagens/mapas/splats/fontes e base de caminhos | Em andamento | Modelo BB01/BB02 | I / Cursor Sonnet 5.5 (ver rodada) | Closure de recursos explícita, validação de caminhos e diagnóstico de ausentes |
@@ -165,7 +165,7 @@ Plano e ownership: [H/I/J/K](migration/next-round-plan.md). As quatro tarefas es
 
 | Frente | Itens | Responsável/tarefa | Estado |
 |---|---|---|---|
-| H | BL006 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3Aa6ff05b3-f726-4031-ab83-3f9cc3045ebf> | Em andamento |
+| H | BL006 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3Aa6ff05b3-f726-4031-ab83-3f9cc3045ebf> | A validar — código recebido, sem Cargo |
 | I | BL009/BL010/BL011 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A9cb28c3e-6589-4f90-840f-b43f21c534ca> | Em andamento |
 | J | BL012/BL013/BL020 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A975cf39a-05f7-40c5-a224-811495f83404> | Em andamento |
 | K | BL018 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A72230e00-998b-473e-aa85-12aacc2a00d7> | Em andamento |
@@ -184,3 +184,16 @@ Ownership: L possui state/history.rs; J mantém scene_project e ops.rs. Em state
 J adiciona apenas lifecycle/campo de cena; L altera Command/execute/apply e seu campo de gesto,
 com patches pontuais para preservar trabalho concorrente. Parser de headless e exports novos
 serão integrados pelo coordenador. A janela do usuário não é reiniciada durante a investigação.
+
+## Pendências adicionais identificadas por H
+
+| ID | Área | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL063 | BB05/Adapters | Expor scene.plan por lib/JSONL e depois UI; integração plano × manifesto | Pendente | BL006, BL009 | — | Mesmo parser/erros compartilhados; required_asset_ids do plano contidos no manifesto; domínios recusados explícitos |
+| BL064 | BB05/performance | Avaliação de muitos frames sem reconstruir NodeTimeline; medir tamanho/custo do plano | Pendente | BL006, consumidor BL007/BL008 | — | Hipótese medida antes de otimizar; mesma saída e budget explícito no export curto |
+| BL065 | BB05/domínios | Expandir plano aos domínios recusados e ao desempate por profundidade | Pendente | BL003, BL023–BL027 | — | Capabilities/versão e estado completo por domínio, com provas; não remover unsupported sem implementação |
+
+H recebida: plano não executa gates de admissão temporal/estrutural; o adapter consumidor deve
+executá-los antes de habilitar render. Unsupported inclui mapas de dados e splat dirigido,
+independentemente do Spark básico já entregue. BL062 permanece exclusivamente o bug de sliders;
+os novos IDs de H foram reconciliados como BL063–BL065.
