@@ -476,7 +476,7 @@ fn an_original_rewritten_during_the_job_cannot_reach_a_frame() {
             "{frame:?}: the bytes drawn are the approved bytes"
         );
         assert!(
-            !frame.path.starts_with(&lab.base),
+            !frame.path.starts_with(lab.base.canonicalize().unwrap()),
             "{frame:?}: the renderer reads the private copy, not the original"
         );
         assert!(
