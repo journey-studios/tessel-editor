@@ -161,13 +161,13 @@ reuso isolado de objetos sem hipótese nova. Experimentos refutados ficam descar
 
 ## Rodada atual
 
-Plano e ownership: [H/I/J/K](migration/next-round-plan.md). H/J/K foram recebidas e passaram nos gates direcionados registrados acima; I recebida com gates direcionados de recursos passando; o gate completo está em andamento. L foi adicionada para BL062 e está concluída. Cargo e integração final são do coordenador.
+Plano e ownership: [H/I/J/K](migration/next-round-plan.md). H/J/K foram recebidas e passaram nos gates direcionados registrados acima; I recebida; gate local completo passou (718 testes Rust, 2 ignorados, clippy/fmt/check/release). Revisão do PR ainda é separada. L foi adicionada para BL062 e está concluída. Cargo e integração final são do coordenador.
 
 | Frente | Itens | Responsável/tarefa | Estado |
 |---|---|---|---|
-| H | BL006 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3Aa6ff05b3-f726-4031-ab83-3f9cc3045ebf> | Recebido — gates direcionados passaram, integração total pendente |
-| I | BL009/BL010/BL011 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A9cb28c3e-6589-4f90-840f-b43f21c534ca> | Recebida — gates direcionados passaram, integração total em validação |
-| J | BL012/BL013/BL020 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A975cf39a-05f7-40c5-a224-811495f83404> | Recebido — gates direcionados passaram, integração total pendente |
+| H | BL006 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3Aa6ff05b3-f726-4031-ab83-3f9cc3045ebf> | Recebido — gate local conjunto passou; escopo restante explícito |
+| I | BL009/BL010/BL011 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A9cb28c3e-6589-4f90-840f-b43f21c534ca> | Recebida — gate local conjunto passou; BB06 permanece parcial |
+| J | BL012/BL013/BL020 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A975cf39a-05f7-40c5-a224-811495f83404> | Recebido — gate local conjunto passou; escopo restante explícito |
 | K | BL018 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A72230e00-998b-473e-aa85-12aacc2a00d7> | Recebido — Node e 15 testes Rust validados |
 
 Ambiente: checkout compartilhado por limitação da delegação local; ownership exclusivo no plano. Nenhum agente altera o projeto aberto do usuário. O app foi reconstruído e aberto em release antes da integração desta rodada.
@@ -248,3 +248,17 @@ A proposta de I para ligar materialize ao pacote reutiliza BL011, sem duplicaç�
 BL070–BL072 foram reconciliados como BL011/BL077/BL078; BL079/BL080 explicitam os limites de
 concorrência/cancelamento. O fallback check-then-rename foi removido pelo coordenador com
 regressão falhando antes e passando depois; não permanece como alternativa de publicação.
+
+## Paridade de produto já pendente na matriz
+
+| ID | Área | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL081 | F017 | Dividir clipe/corte interno no core, CLI e UI | Pendente | Modelo de timeline existente | — | Operação real com tempo racional, undo único e erro atômico; não confundir com edição de shots do piloto |
+| BL082 | F016 | Efeitos de clipe e regras compartilhadas de processamento | Pendente | BL004/BL006 aplicáveis | — | Contrato por efeito, mesma avaliação offline/preview/export e controles só quando funcionais; alinhar BL024/BL028 sem duplicar migração |
+| BL083 | F015 | Completar controles visuais de criação de tracks/clipes dinâmicos | Parcial | Comandos core existentes | — | Mesmos handlers lib/headless; UI habilitada só para operações reais, com prova de interação |
+| BL084 | BB10/CI | Automatizar gates no PR além do CodeRabbit | Pendente | Ambiente de build/runtime reprodutível | — | Separar teste local de CI; instalar ferramentas/licenças intencionalmente; não alegar fonte-oráculo reexecutada sem acesso à origem |
+
+Integração local H–L: [relatório consolidado](migration/round-hijkl-report.md). 718 testes
+Rust passaram, 2 ZIP64 ignorados; 45 Node passaram, 55+47 casos verificados contra origem.
+BL061 recebeu correções pontuais de README/índices e rótulo histórico A–E; ainda pede revisão
+das descrições antigas restantes. Não há agente de implementação em andamento nesta rodada.

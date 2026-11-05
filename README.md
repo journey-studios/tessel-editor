@@ -89,7 +89,7 @@ References: [GPUI Kit](https://gpui-kit.com/docs/installation/),
 ```
 
 See [docs/ui-automation.md](docs/ui-automation.md) for commands, IDs, value policies,
-the dock commands and the local IPC contract. Playback and header file actions stay
+the dock commands and the local IPC contract. Playback and header file actions use the shared workflows. Unimplemented controls stay
 disabled and report why.
 
 ## Core and feature documentation
@@ -107,4 +107,6 @@ JSONL
 
 This runs without GPUI or a desktop socket. See [the core API and remaining limits](docs/core-architecture.md)
 and the project skill [tessel-feature-contract](.agents/skills/tessel-feature-contract/SKILL.md).
-The model is still demonstrative; dynamic project/track creation and media processing remain pending.
+The default project is demonstrative; dynamic project/track creation and media processing
+are implemented as listed in the feature matrix. Directed-scene rendering and its visual
+editing surface remain pending; see [the shared backlog](docs/backlog.md).

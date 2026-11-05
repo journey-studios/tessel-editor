@@ -1,5 +1,9 @@
 # Integração da base — frentes A–E
 
+> Relatório histórico da rodada A–E. F/G e H–L ampliaram o estado abaixo; consulte a
+> [integração atual](round-hijkl-report.md) e o [backlog](../backlog.md) antes de atribuir pendências.
+
+
 Estado: biblioteca de cena dirigida integrada; adapters e render dirigido ainda pendentes.
 O documento canônico e o runtime existentes continuam com seus fluxos anteriores.
 A–E não equivalem à migração completa do Scene Studio.

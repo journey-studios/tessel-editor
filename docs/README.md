@@ -3,6 +3,7 @@
 Comece pela [matriz de features](features/README.md): ela registra o contrato e o estado de
 cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 
+- [Integração H/I/J/K + sliders](migration/round-hijkl-report.md): 718 testes Rust, provas por superfície e limites atuais da base.
 - [Backlog compartilhado](backlog.md): registro único de pendências, responsáveis, dependências e aceite; obrigatório para todos os agentes.
 - [Inventário de migração do Scene Studio](migration/README.md): 121 itens classificados,
   evidências na origem, diferenças do branch piloto, matriz de migração e fatias sugeridas.
@@ -14,9 +15,9 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 - [Animação de nós](features/scene-animation.md): performance por frame, hierarquia e matrizes
   animadas comparadas à origem; renderer/adapters ainda pendentes.
 - [Propriedades e lotes de cenas](features/scene-edit.md): catálogo tipado, operações por ID,
-  dry-run e validação atômica compartilhada; adapters/histórico pendentes.
+  dry-run e validação atômica compartilhada; F036 liga projeto/histórico/headless; UI de cena pendente.
 - [Tempo e câmera de cenas dirigidas](features/scene-temporal.md): avaliação pura, mapeamento racional
-  e gate temporal; animação de nós e adapters ainda pendentes.
+  e gate temporal; F035 avalia nós e F039 expõe avaliação headless; runtime/UI de cena pendentes.
 - [Oráculo de migração](../scripts/migration-oracle/README.md): 55 bundles sintéticos, expectativas
   executadas na origem fixada e runner de integridade/equivalência; consumidor Rust parcial.
 - [Integração da base A–E](migration/foundation-integration-report.md): resultados conjuntos,
