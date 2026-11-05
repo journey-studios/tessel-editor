@@ -406,7 +406,8 @@ Falha observada em teste de slider/layout (arquivo R9 ainda WIP) foi encaminhada
 
 | ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
 |---|---|---|---|---|---|---|
-| BL102 | F041/identidade IPC | Ecoar identidade de carga em asset.state e recusar ready atrasado de slot reutilizado | Pendente | BL092/runtime/host | Coordenador | Contrato aditivo compatível; teste injeta ready antigo após substituir carga no mesmo slot e prova que não desbloqueia o frame novo; ver next-r8-report.md |
+| BL102 | F041/identidade IPC | Ecoar identidade de carga em asset.state e recusar ready atrasado de slot reutilizado | A validar (S4) | BL092/runtime/host | S4 / coordenador | Contrato aditivo compatível; teste injeta ready antigo após substituir carga no mesmo slot e prova que não desbloqueia o frame novo; ver next-r8-report.md |
+| BL102b | F041/identidade headless | Carimbar `asset.request` e conferir o eco também no `SceneRenderer` (CLI headless) | Pendente | BL102 | Coordenador | `BackendEvent::Asset` carrega a identidade (campo aditivo) e `SceneRenderer::absorb` recusa eco de outro pedido; teste com transporte roteirizado e runtime real. Hoje o headless espera cada `ready` de forma síncrona e não confere o eco |
 | BL103 | F041/orçamento nativo | Exercitar mais de 32 recursos distintos com LRU e perda de contexto | Pendente | BL092 | Coordenador | Prova WKWebView com recursos acima do teto, contadores host/runtime coerentes e pixels atuais após evicção e restauração; corpus atual tem só 3 recursos |
 
 | ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
@@ -459,7 +460,7 @@ Plano e contratos: [wave-s1-s10-plan.md](migration/wave-s1-s10-plan.md). R1–R1
 | S1 | BL094/BL112 | Preparada para delegação | descarte assíncrono, sem hashing na UI |
 | S2 | BL111 | Preparada para delegação | claims persistentes e dois processos reais |
 | S3 | BL109 | Preparada para delegação | bytes imutáveis em export e cancelamento |
-| S4 | BL102 | Preparada para delegação | ack antigo de slot reutilizado recusado |
+| S4 | BL102 | Implementada, PR aberta (a validar) | ack antigo de slot reutilizado recusado com `asset.identity`; headless sem eco em BL102b |
 | S5 | BL100/BL101 | Preparada para delegação | attach off-thread e recursos vazios |
 | S6 | BL004/BL005 | Preparada para delegação | catálogo e pose inicial equivalentes à origem |
 | S7 | BL025 (subconjunto) | Preparada para delegação | Spark dirigido em preview/pacote/export |

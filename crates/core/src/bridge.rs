@@ -69,6 +69,71 @@ pub fn asset_load(descriptor: &AssetDescriptor) -> Value {
     json!({ "v": BRIDGE_VERSION, "type": "asset.load", "asset": descriptor.to_json() })
 }
 
+/// `capabilities.features` entry of a runtime whose `asset.state` repeats the identity of the
+/// `asset.load` it answers (additive field `request`, and `scene` for a directed-scene resource).
+/// A host sends the identity only to a runtime that lists it, and trusts the echo only then.
+pub const FEATURE_ASSET_IDENTITY: &str = "asset.identity";
+
+/// Resource identity of a directed-scene load (`asset.scene`), as the host sent it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SceneLoadIdentity {
+    pub asset_id: String,
+    pub revision_id: String,
+    pub content_hash: String,
+    pub generation: u64,
+}
+
+/// What a host asked in one `asset.load`, kept to recognise the answer of exactly that request.
+///
+/// A slot name is reused (release, LRU, project switch) and the page answers loads in its own
+/// order, so an old `ready` can arrive after the slot was given to a newer load. `request` is one
+/// number per message sent and never reused by a host, so even the same picture loaded twice into
+/// one slot cannot be confused (BL102).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoadIdentity {
+    pub request: u64,
+    pub scene: Option<SceneLoadIdentity>,
+}
+
+impl LoadIdentity {
+    /// Whether an `asset.state` message is the answer of this request: the `request` it echoes is
+    /// this one, and a scene identity, if the load had one, is echoed whole and equal. A message
+    /// without the echo does not answer anything: a runtime that announced the feature repeats it.
+    pub fn answered_by(&self, state: &Value) -> bool {
+        if state["request"].as_u64() != Some(self.request) {
+            return false;
+        }
+        let Some(scene) = &self.scene else {
+            return true;
+        };
+        let echoed = &state["scene"];
+        echoed["asset_id"].as_str() == Some(scene.asset_id.as_str())
+            && echoed["revision_id"].as_str() == Some(scene.revision_id.as_str())
+            && echoed["content_hash"].as_str() == Some(scene.content_hash.as_str())
+            && echoed["generation"].as_u64() == Some(scene.generation)
+    }
+}
+
+/// Stamps `request` on an `asset.load` message (field `asset.request`) and returns the identity
+/// the answer has to repeat. Only for a runtime that lists [`FEATURE_ASSET_IDENTITY`]: an older
+/// one would ignore the field, but the host would then wait for an echo that never comes.
+pub fn stamp_asset_load(message: &mut Value, request: u64) -> LoadIdentity {
+    message["asset"]["request"] = json!(request);
+    let scene = &message["asset"]["scene"];
+    let identity = (|| {
+        Some(SceneLoadIdentity {
+            asset_id: scene["asset_id"].as_str()?.to_owned(),
+            revision_id: scene["revision_id"].as_str()?.to_owned(),
+            content_hash: scene["content_hash"].as_str()?.to_owned(),
+            generation: scene["generation"].as_u64()?,
+        })
+    })();
+    LoadIdentity {
+        request,
+        scene: identity,
+    }
+}
+
 pub fn asset_release(id: Id) -> Value {
     json!({ "v": BRIDGE_VERSION, "type": "asset.release", "id": id })
 }
@@ -440,6 +505,93 @@ mod tests {
             decode_event(&json!({"v":1,"type":"asset.state","id":"bad id","state":"ready"}))
                 .is_err()
         );
+    }
+
+    fn scene_load(slot: &str, asset: &str, generation: u64) -> Value {
+        json!({"v":1,"type":"asset.load","asset":{"id":slot,"kind":"still",
+            "source":{"type":"file","path":"/a.png"},"meta":{},
+            "scene":{"asset_id":asset,"revision_id":format!("{asset}-r1"),
+                     "content_hash":format!("h-{asset}"),"generation":generation}}})
+    }
+
+    fn echo(slot: &str, state: &str, request: u64, asset: &str, generation: u64) -> Value {
+        json!({"v":1,"type":"asset.state","id":slot,"state":state,"request":request,
+            "scene":{"asset_id":asset,"revision_id":format!("{asset}-r1"),
+                     "content_hash":format!("h-{asset}"),"generation":generation}})
+    }
+
+    #[test]
+    fn a_stamped_load_is_answered_only_by_the_echo_of_its_own_request() {
+        let mut old = scene_load("slot", "red", 1);
+        let old_identity = stamp_asset_load(&mut old, 7);
+        let mut new = scene_load("slot", "green", 1);
+        let new_identity = stamp_asset_load(&mut new, 8);
+        assert_eq!(old["asset"]["request"], 7);
+        assert_eq!(new_identity.request, 8);
+
+        let old_ready = echo("slot", "ready", 7, "red", 1);
+        assert!(old_identity.answered_by(&old_ready));
+        assert!(
+            !new_identity.answered_by(&old_ready),
+            "the late answer of the load that held the slot never confirms the load that replaced it"
+        );
+        assert!(new_identity.answered_by(&echo("slot", "ready", 8, "green", 1)));
+    }
+
+    #[test]
+    fn the_same_picture_loaded_again_into_a_slot_is_a_different_request() {
+        let mut first = scene_load("slot", "red", 1);
+        let first_identity = stamp_asset_load(&mut first, 1);
+        let mut again = scene_load("slot", "red", 1);
+        let again_identity = stamp_asset_load(&mut again, 2);
+        let first_ready = echo("slot", "ready", 1, "red", 1);
+        assert!(first_identity.answered_by(&first_ready));
+        assert!(!again_identity.answered_by(&first_ready));
+    }
+
+    #[test]
+    fn a_missing_or_partial_echo_answers_nothing_once_the_feature_is_negotiated() {
+        let mut load = scene_load("slot", "red", 1);
+        let identity = stamp_asset_load(&mut load, 3);
+        assert!(!identity.answered_by(&json!({"type":"asset.state","id":"slot","state":"ready"})));
+        assert!(
+            !identity.answered_by(
+                &json!({"type":"asset.state","id":"slot","state":"ready","request":3})
+            )
+        );
+        assert!(!identity.answered_by(&echo("slot", "ready", 3, "red", 2)));
+        assert!(!identity.answered_by(&echo("slot", "ready", 3, "blue", 1)));
+        let mut changed = echo("slot", "ready", 3, "red", 1);
+        changed["scene"]["content_hash"] = json!("another");
+        assert!(!identity.answered_by(&changed));
+    }
+
+    #[test]
+    fn a_load_without_a_scene_identity_is_matched_on_the_request_alone() {
+        let mut load = json!({"v":1,"type":"asset.load","asset":{"id":"a","kind":"still",
+            "source":{"type":"file","path":"/a.png"},"meta":{}}});
+        let identity = stamp_asset_load(&mut load, 5);
+        assert_eq!(identity.scene, None);
+        assert!(identity.answered_by(&json!({"type":"asset.state","id":"a","request":5})));
+        assert!(!identity.answered_by(&json!({"type":"asset.state","id":"a","request":6})));
+    }
+
+    #[test]
+    fn the_identity_field_is_additive_to_the_plain_load_message() {
+        let plain = scene_load("slot", "red", 1);
+        let mut stamped = plain.clone();
+        stamp_asset_load(&mut stamped, 9);
+        let mut without = stamped.clone();
+        without["asset"].as_object_mut().unwrap().remove("request");
+        assert_eq!(without, plain, "only `asset.request` was added");
+        // The decoder of the ordinary session ignores the echo: the same event as without it.
+        assert!(matches!(
+            decode_event(&echo("slot", "ready", 9, "red", 1)).unwrap(),
+            BackendEvent::Asset {
+                status: AssetStatus::Ready(_),
+                ..
+            }
+        ));
     }
 
     #[test]

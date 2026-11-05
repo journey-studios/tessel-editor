@@ -174,11 +174,42 @@ os três casos em `reset_directed_runtime_for` (libera), `forget_directed_runtim
 ### Limites do BL092
 
 - A perda de contexto é **forçada** (`WEBGL_lose_context`); reset real de driver não foi provado.
-- Resta uma janela estreita: um `asset.state ready` atrasado de um load substituído **para o mesmo slot** não carrega a
-  identidade da cena, então o host não consegue distingui-lo de um `ready` novo. O runtime hoje responde `cancelled` para
-  loads substituídos (ignorado pelo host); fechar a janela por completo pede eco da identidade em `asset.state` no
-  runtime (patch aditivo sugerido no relatório R8, `index.js` não foi editado).
+- A janela de um `asset.state ready` atrasado de um load substituído **para o mesmo slot** foi fechada por BL102
+  (seção abaixo) para runtimes que anunciam `asset.identity`; com um runtime antigo continua valendo a heurística por slot
+  e por detalhes do erro, sem garantia contra esse `ready`.
 - Medido só em macOS / Apple GPU com o corpus de 3 recursos; orçamento com muitos recursos não foi exercitado nativamente.
+
+## Identidade de carga em `asset.load`/`asset.state` (BL102)
+
+Antes, o host só sabia o **nome do slot** (`scene-res-N`) de um `asset.state`. O nome é reaproveitado (LRU, troca de
+projeto, timeout) e a página responde as cargas na sua ordem: um `ready` velho que chegasse depois de o slot ser dado a
+uma carga nova era indistinguível do `ready` novo e destravava o frame antes da hora (desenhava com a imagem errada ou
+sem ela). Agora a identidade do pedido viaja e volta. Bridge continua v1; tudo é aditivo e negociado.
+
+| Peça | Contrato |
+|---|---|
+| Capability | `ready.capabilities.features` lista `asset.identity`; `capabilities.asset_identity = { echo: ["request","scene"], scene_fields: [...] }` |
+| Pedido | `asset.load.asset.request`: inteiro não negativo opcional, um por mensagem enviada, nunca reutilizado pelo host (nem após reload da página). O host só o envia se o runtime anunciou `asset.identity` |
+| Eco | todo `asset.state` (`loading`, `ready`, `failed`, inclusive o `cancelled` de uma carga que um release ultrapassou) repete `request` e, se o descritor tinha `scene` completo, `scene{asset_id,revision_id,content_hash,generation}`. Só esses campos; nunca o caminho. Descritor sem identidade recebe as mensagens de sempre |
+| `request` inválido | `asset.state failed` com `error.code = invalid_request`, sem eco; a carga não acontece |
+| Regra do host | `bridge::LoadIdentity::answered_by` (core, puro): só vale a resposta cujo `request` é o da carga **atual** do slot e cuja `scene` volta inteira e igual. Sem eco, eco parcial ou de outro pedido: recusado e contado em `directed.refused.stale_asset_states`, sem tocar o livro. Com o eco certo, uma falha é real (inclusive `cancelled`) e falha o frame |
+| Runtime antigo / sem a feature | nenhum campo novo é enviado; vale a heurística anterior (`superseded_load`) |
+
+O mesmo `request` não se repete nem para a mesma imagem no mesmo slot: um `ready` do primeiro load de `red` no slot não
+confirma o segundo load de `red` (teste `the_same_picture_loaded_again_into_a_slot_is_a_different_request`).
+`render.status`/`monitor.viewport` ganham `directed.asset_identity` (negociado) e `directed.slots.identified_loads`.
+
+Superfícies: **lib** (`stamp_asset_load`, `LoadIdentity`, `FEATURE_ASSET_IDENTITY` em `tessel_editor_core::bridge`, 6 testes
+puros) · **runtime** (`runtime/src/asset-identity.js`, 6 testes Node + 2 testes em Chrome) · **host dirigido/janela**
+(`scene_monitor_host.rs`, 4 testes novos de `scene_lifecycle_tests.rs`, mutação verificada: sem a comparação 2 falham; prova
+nativa S0/S6). Evidência executada nesta rodada: `cargo test -p tessel-editor scene_lifecycle` 17/17; `cargo test -p tessel-editor-core
+--lib bridge` 11/11; `node --test` do runtime 93/93 em Chrome real (SwiftShader); prova nativa
+`scene-lifecycle-proof.py` completa S0–S10 com **221/221 checks** num WKWebView real (o host negocia `asset.identity`, 3/3 cargas
+carimbadas, `refused.stale_asset_states` ≥ 1 na troca de projeto). **Limite da prova nativa:** a página real não
+injeta um `ready` velho de propósito; a corrida do mesmo slot é provada no host com página roteirizada e no runtime
+real em Chrome (ordem de eco), não reproduzida deterministicamente no WKWebView. **CLI headless:** `SceneRenderer` (`ProcessTransport`) não carimba nem confere o eco: ele espera cada
+`ready` de forma síncrona numa mesma submissão e `BackendEvent::Asset` ainda não carrega a identidade. Esse é um gap
+registrado (BL102b), não paridade inventada.
 
 ## Retenção e invalidação (sem regressão do preview comum)
 
