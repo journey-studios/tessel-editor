@@ -1,0 +1,88 @@
+{
+  "schema": "s10-tolerances/1",
+  "frozenBeforeResults": true,
+  "rule": "Every number below was fixed before the first result of this harness existed (the commit that introduced this file precedes every commit that holds a harness run). A change after a result is an amendment: it is appended to `amendments` with the reason and the result that motivated it, the file hash changes, and the report prints both. Nothing is tuned silently to make a phase pass.",
+  "amendments": [],
+  "units": "pixels are 8-bit sRGB; positions are output pixels of the stated render size; audio is float PCM in [-1, 1]; times are seconds",
+
+  "camera": {
+    "about": "Markers are flat coloured quads (image planes) at known world positions. The model ray-casts the exact projected mask of each marker; the verifier measures the mask in the real picture from colour distance to the flat background. Position and shape are judged, never a probe lookup alone.",
+    "renderSizes": [[640, 360], [360, 640]],
+    "markerMask": {"channelDistanceFromBackgroundMin": 60, "why": "marker and background colours differ by >= 120 on at least one channel; half of that is the edge threshold"},
+    "maskCentroidPx": 0.75,
+    "maskIouMin": 0.90,
+    "interiorColorDelta": 6,
+    "videoMaskCentroidPx": 1.25,
+    "videoMaskIouMin": 0.85,
+    "videoInteriorColorDelta": 12,
+    "fovsDeg": [30, 50, 75],
+    "poseAbsolute": 1e-9,
+    "poseRelative": 1e-12,
+    "negativeControlsMustFail": ["fov +5 deg", "dolly direction reversed", "mirrored x", "camera one frame late", "vertical fov used as horizontal"]
+  },
+
+  "splat": {
+    "about": "Gaussian splats written by this corpus (SPZ v2) at known positions, colours, scales and opacities, drawn over a flat background plane. The model projects centre and size through the evaluated camera; the verifier measures centroid, centre colour, half-intensity radius and overlap order in the picture. Blending laws of the renderer are NOT modelled, only monotone quantities.",
+    "renderSize": [640, 360],
+    "minScreenSigmaPx": 6,
+    "centroidPx": 1.5,
+    "centerColorDelta": 24,
+    "backgroundDelta": 6,
+    "backgroundClearanceSigmas": 6,
+    "halfIntensityRadius": {"relative": 0.30, "absolutePx": 1.5, "law": "r50 = sigma * sqrt(2 ln 2) for an isotropic gaussian"},
+    "coverageChannelDistanceFromBackgroundMin": 30,
+    "overlapFrontColorDelta": 40,
+    "overlapBackColorMinDistance": 80,
+    "videoCentroidPx": 2.0,
+    "videoCenterColorDelta": 36,
+    "videoHalfIntensityRadius": {"relative": 0.35, "absolutePx": 2.0},
+    "opacityUnit": "SPZ alpha byte / 255, applied once; an opaque (255) splat shows its colour at the centre",
+    "nodeTransformCoversTranslationRotationUniformScale": true,
+    "negativeControlsMustFail": ["centroid shifted 4 px", "colour channels swapped", "front and back order swapped", "size x1.5", "splat missing", "node transform ignored"]
+  },
+
+  "audio": {
+    "about": "The oracle is analytic: a tone table, an exact rational frame-to-time mapping and a rate conversion that is the identity on the continuous signal. The exported file is decoded by ffmpeg to float PCM and compared with the analytic signal, never with a copy of the editor's mix.",
+    "outputSampleRate": 48000,
+    "mixSampleRate": 44100,
+    "amplitude": 0.5,
+    "onsetToleranceSeconds": 0.003,
+    "lagToleranceSamples": 48,
+    "lagSearchSeconds": 0.15,
+    "correlationMin": 0.97,
+    "gainDbTolerance": 1.0,
+    "silenceRmsMax": 0.004,
+    "transitionGuardSeconds": 0.04,
+    "toneWindowSeconds": 0.1,
+    "toneDominanceRatioMin": 25,
+    "durationVsVideoSeconds": 0.0225,
+    "startTimeAbsSeconds": 0.025,
+    "streamCountExact": 1,
+    "channelsAccepted": [1, 2],
+    "negativeControlsMustFail": ["shifted 5 ms", "shifted one frame", "rate bug (44.1 kHz read as 48 kHz)", "silent stream", "gain -6 dB", "mix offset ignored", "export range ignored", "tone swapped", "no audio stream", "truncated audio", "NTSC treated as 30 fps"]
+  },
+
+  "package": {
+    "about": "A package is judged by reading it with a reader that is not the editor's (Python zipfile / plain directory walk) and by what a restore recovers once the origin is deleted.",
+    "assetSha256": "exact equality with the corpus hash, every asset, zero tolerance",
+    "restoredRenderMaskCentroidPx": 0.75,
+    "tamperedPackageMustBeRefused": true,
+    "missingAssetMustBeRefused": true,
+    "negativeControlsMustFail": ["asset byte flipped inside the package", "asset removed from the package", "wrong hash declared in the bundle"]
+  },
+
+  "export": {
+    "about": "Video timing and picture rules are inherited unchanged from scripts/directed-scene-export-proof (expected.json tolerances, fixed before any export existed); this harness adds no looser value.",
+    "inherits": "scripts/directed-scene-export-proof/export_corpus.py TOLERANCES",
+    "fpsExactFraction": true,
+    "ptsDeltaExact": true,
+    "durationToleranceSeconds": 0.001,
+    "videoProbeChannelDelta": 12,
+    "audioDeclaredButAbsentIsFailure": true
+  },
+
+  "blockedPolicy": {
+    "rule": "A phase whose dependency is absent (front S7 for splat in the directed scene, front S9 for mixed audio in the export) exits BLOCKED, the process exits 3 and the PR stays draft. BLOCKED is never counted as pass and never silently skipped.",
+    "exit": {"0": "every selected phase ran and passed", "1": "at least one FAIL", "2": "harness usage error", "3": "no FAIL but at least one BLOCKED"}
+  }
+}
