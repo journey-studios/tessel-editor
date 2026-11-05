@@ -340,3 +340,11 @@ Isso não fecha BL008 (export dirigido), BL087 (inspeção visual) ou BL092 (lif
 Runtime final: 79/79 reconferidos pelo coordenador em execução serializada; sem skips. BL091 continua aberto para concorrência padrão.
 
 Entrega de implementação: commit `6a8b030`; revisão em [PR #3](https://github.com/journey-studios/tessel-editor/pull/3). Gates descritos são locais; revisão/merge são estados separados.
+
+### Revisão da PR #3
+
+| ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
+|---|---|---|---|---|---|---|
+| BL093 | Revisão/robustez | Corrigir 10 apontamentos e nit de admissão por referência da PR #3 | Concluído local | PR #3 | Coordenador | Arc retido no cache, import obsoleto recusado na lib, CLI relativa, orçamento concorrente, corpus portátil, JSONL com timeout/stderr drenado e docs reproduzíveis; 68 Rust + 19 runtime + 19 Python direcionados passaram; prova integrada repetida 408/408; revisão incremental da PR #3 pendente |
+
+BL089: troca de projeto agora é recusada por `scene_resources::import::apply` com stale_result e descarte das pastas próprias; regressão via job.commit passou. Outros caminhos de descarte/cancelamento ainda precisam de auditoria antes de encerrar o item inteiro.

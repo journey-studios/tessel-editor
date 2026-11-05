@@ -6,7 +6,7 @@
 |---|---|---|
 | Lib / modelo (`workstation/scene_model.rs`, sem GPUI) | **V (lib)** — 13 testes unitários: árvore igual à de `scene.tree`, propriedades por tipo de entidade, indisponibilidade com motivo, reset, candidato sem tocar o documento, cache, janela do slider, Euler | `cargo test -p tessel-editor scene_model` (13/13) |
 | Headless | **N/A** — o inspector é apresentação; o headless já prova os mesmos comandos em [F039](scene-interaction.md) (`scene.select`, `scene.gesture.*`, `scene.edit`) | — |
-| Socket / `ui op` / `ui get|set|invoke` da janela | **V (socket, instância própria)** — mesmo executor da UI; ver "Prova de socket" | `/tmp/tso-proof.py` (receita abaixo), binário `target/debug/tessel-editor` com `HOME=/tmp/tso` |
+| Socket / `ui op` / `ui get\|set\|invoke` da janela | **V (socket, instância própria)** — mesmo executor da UI; ver "Prova de socket" | `/tmp/tso-proof.py` (receita abaixo), binário `target/debug/tessel-editor` com `HOME=/tmp/tso` |
 | UI GPUI (entrada injetada) | **V (UI, input injetado)** — 16 testes com `simulate_mouse_*`, `simulate_keystrokes`, `simulate_event` e `deactivate_window` | `cargo test -p tessel-editor scene_tests` (16/16) |
 | Ponteiro físico / pixels | **P — não provado.** Os testes injetam eventos pela janela de teste do GPUI; nada aqui prova mouse real (BL043) nem aparência. Nenhuma captura de tela foi tirada | — |
 | Monitor da cena dirigida | **Parcial** — renderer integrado; recursos precisam estar carregados em F040. Botão e comando semântico usam o mesmo host | `scene_monitor.rs`, `scene_monitor_host.rs`, F041 |
@@ -140,3 +140,7 @@ Não houve captura de pixels. A prova de ponteiro físico segue em BL043.
 - Increment/Decrement de acessibilidade do Kit não emitem evento (BL074): igual aos sliders de clipe.
 - Salto do thumb ao cancelar (BL075): mesma mecânica do BL062; **não medido** nos sliders de cena.
 - A árvore lista no máximo 256 linhas visíveis nos nós semânticos (`truncated`); o Kit `Tree` rola.
+
+## Correção de identidade do cache (revisão PR #3)
+
+A assinatura retém Arc do documento e candidato e compara Arc::ptr_eq. Isso impede reutilização de endereço após limpar/limitar o histórico, sem mudar as regras de edição. Regressão mantém o documento vivo enquanto a assinatura existe e o libera ao descartar o cache.

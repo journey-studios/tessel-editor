@@ -15,7 +15,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use serde_json::Value;
-use tessel_editor_core::directed_scene::{Quat, Vec3};
+use tessel_editor_core::directed_scene::{DirectedScene, Quat, Vec3};
 use tessel_editor_core::scene_edit::{
     Applicability, Limit, PropertyRef, PropertySpec, PropertyValue, ValueKind, catalog,
     read_property,
@@ -539,14 +539,29 @@ fn target_view(
 
 /// What a cached snapshot was built from. A frame that changes none of these reuses it, so
 /// repainting a 100 000-node bundle does not walk it again.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 struct Signature {
     scene: String,
-    document: usize,
+    document: std::sync::Arc<DirectedScene>,
     selection: Vec<String>,
-    preview: Option<usize>,
+    preview: Option<std::sync::Arc<DirectedScene>>,
     gesture: Option<(String, u64, Option<&'static str>)>,
 }
+
+impl PartialEq for Signature {
+    fn eq(&self, other: &Self) -> bool {
+        self.scene == other.scene
+            && std::sync::Arc::ptr_eq(&self.document, &other.document)
+            && match (&self.preview, &other.preview) {
+                (Some(a), Some(b)) => std::sync::Arc::ptr_eq(a, b),
+                (None, None) => true,
+                _ => false,
+            }
+            && self.selection == other.selection
+            && self.gesture == other.gesture
+    }
+}
+impl Eq for Signature {}
 
 /// Builds the snapshot of attached scene `scene_id`, or `None` when it is not attached.
 fn build(state: &EditorState, scene_id: &str, selection: Vec<String>) -> Option<Snapshot> {
@@ -610,11 +625,11 @@ impl SnapshotCache {
             .filter(|open| open.scene() == scene_id);
         let signature = Signature {
             scene: scene_id.to_string(),
-            document: std::sync::Arc::as_ptr(&attached.scene) as usize,
+            document: std::sync::Arc::clone(&attached.scene),
             selection: selection.clone(),
             preview: open
                 .filter(|open| open.has_candidate())
-                .map(|open| std::sync::Arc::as_ptr(open.preview_scene()) as usize),
+                .map(|open| std::sync::Arc::clone(open.preview_scene())),
             gesture: open.map(|open| {
                 (
                     open.id().to_string(),
@@ -828,6 +843,24 @@ mod tests {
         assert!(snapshot.gesture_open());
         // A reset while a gesture previews would invalidate it, so the panel refuses it.
         assert!(width.reset_state(true).is_err());
+    }
+
+    #[test]
+    fn the_cache_keeps_its_document_identity_alive_until_replaced() {
+        let state = state_with_scene();
+        let weak = std::sync::Arc::downgrade(&state.scenes.get("street").unwrap().scene);
+        let cache = SnapshotCache::default();
+        cache.get(&state, "street").unwrap();
+        drop(state);
+        assert!(
+            weak.upgrade().is_some(),
+            "cache identity must prevent address reuse"
+        );
+        drop(cache);
+        assert!(
+            weak.upgrade().is_none(),
+            "releasing the cache releases its document"
+        );
     }
 
     #[test]

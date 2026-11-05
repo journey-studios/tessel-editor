@@ -153,3 +153,7 @@ pixels/renderer, FFmpeg real além da suíte existente do crate.
 ## Consumidor integrado e prova de restauração
 
 F041 consome `SceneResourceSession` por `ResourceResolver`; não resolve caminhos nem confia só no assetId. O harness integrado usa o projeto restaurado para avaliar e renderizar sem a origem, comparando sondas de pixel independentes. Comandos de carga continuam jobs na janela; job concluído precisa estar aplicado antes do monitor. Sem diálogo de anexar/carregar dedicado ainda (BL086).
+
+## Import descartado após troca de projeto (revisão PR #3)
+
+PreparedSceneImport captura o ID de destino. A função compartilhada `scene_resources::import::apply` recusa outro projeto com stale_result antes da transação e descarta somente as pastas criadas pela preparação. MediaHost usa essa mesma função em poll/job.commit, portanto a guarda vale também pela biblioteca direta. Uma regressão conclui o job, troca o projeto e tenta commit, conferindo cena/histórico intactos e limpeza dos arquivos próprios.

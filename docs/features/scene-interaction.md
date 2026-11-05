@@ -143,11 +143,7 @@ no executável `tessel-headless` (ver a evidência de integração ao final).
 
 ## UI e CLI da janela
 
-`./scripts/ui op '{"op":"scene.tree","scene":"street"}'` chega a `Op::Run(Command::Scene(..))`, que o
-desktop já executa por `EditorState::execute`; nenhuma variante nova de `Op`, nenhum arquivo do
-desktop alterado. **Não exercitado.** Apresentação visual **P**: sem controle (árvore, handle,
-Escape), portanto sem equivalente `ui click`. Quando existir, Escape = `scene.gesture.cancel` e o
-soltar do ponteiro = `scene.gesture.commit`; handle e comando devem dar o mesmo resultado (BL015).
+A janela executa os mesmos `scene.*` por `Op::Run(Command::Scene(..))`. Árvore/seleção/propriedades, Escape e confirmação por release estão em [F039-UI](scene-inspector.md). Socket e pixels foram exercitados no corpus da rodada M/N/O/P; testes GPUI injetam entrada, sem prova de ponteiro físico. Aparência e handles seguem pendentes (BL087/BL015).
 
 ## Evidências e status
 
@@ -174,7 +170,7 @@ Limitações conhecidas:
 - IDs de gesto reiniciam quando o projeto é aberto/criado; um cliente que guardou `gesture-1` de antes
   poderia colidir com o do novo projeto.
 - Rejeição do commit por orçamento de bytes não tem teste (o orçamento é inalcançável com fixtures).
-- Sem nó em `state/tree.rs`, sem prova de socket, sem UI.
+- Nós semânticos e controles em F039-UI; aparência, ponteiro físico e handles ainda não provados.
 - `summary()` não expõe seleção nem gesto.
 
 Integração pelo coordenador: testes públicos 21/21, unitários no gate core (197/197 no conjunto) e clippy lib limpo. Corrigidas duas expectativas: alvo fora do gesto é recusado antes de validar nó inexistente (`gesture_target_mismatch`). O executável headless passou uma sessão real de 13 requests (attach, árvore, seleção, evaluate, begin/update/commit, get, undo/redo). A integração posterior da janela está em F039-UI; testes e CLI sem janela não provam ponteiro físico.

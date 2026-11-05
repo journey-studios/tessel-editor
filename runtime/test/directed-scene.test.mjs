@@ -194,3 +194,26 @@ test('the picture of a plan fits the canvas like any layer and is exact at the p
   assert.deepEqual(containSize(output, 640, 180), { width: 320, height: 180 }, 'pillarboxed');
   assert.deepEqual(containSize({ width: 1, height: 1 }, 1, 1), { width: 1, height: 1 });
 });
+
+test('concurrent scene resource loads cannot exceed the entry budget at registration', async () => {
+  const { AssetStore } = await import('../src/assets.js');
+  const { LIMITS } = await import('../src/retention.js');
+  const store = new AssetStore({ assetUrl: () => '', limits: { ...LIMITS, sceneResourceEntries: 1 } });
+  let finishA, finishB;
+  const closes = [];
+  store.loadStill = (descriptor) => new Promise((resolve) => {
+    const finish = () => resolve({ entry: { width: 1, height: 1, bitmap: { close: () => closes.push(descriptor.id) } }, meta: {} });
+    if (descriptor.id === 'a') finishA = finish; else finishB = finish;
+  });
+  const descriptor = (id) => ({ id, kind: 'still', source: { type: 'file', path: id },
+    scene: reference(id, id) });
+  const a = store.load(descriptor('a'));
+  const b = store.load(descriptor('b'));
+  finishA();
+  await a;
+  finishB();
+  await assert.rejects(b, (error) => error.code === 'resource_budget');
+  assert.equal(store.sceneEntries().length, 1);
+  assert.deepEqual(closes, ['b'], 'the refused decoded bitmap is released');
+  store.release('a');
+});

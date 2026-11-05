@@ -2,12 +2,12 @@
   "corpusVersion": 1,
   "generator": {
     "file": "scripts/directed-scene-proof/corpus.py",
-    "sha256": "891d0320e4a174c447c4e6023d5385a575684b1f30d1f56b3074402a560f65bf",
+    "sha256": "025c0e260c9158b30ee45a09070bb092f963ecab254ca99ed6d5c239d8ad8337",
     "model": {
       "file": "scripts/directed-scene-proof/model.py",
       "sha256": "322af021aceb5ae45d8b99992c126c5360faa243c571e5bf5db73c6c7991e9bd"
     },
-    "python": "3.14"
+    "python": ">=3.10"
   },
   "origin": "none: drawn from scratch; expected values from model.py validated against docs/migration/fixtures/expected (origin oracle, packages/scene-engine@d6adac15)",
   "private_media": false,

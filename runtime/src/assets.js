@@ -201,13 +201,19 @@ export class AssetStore {
       );
     }
     if (identity.generation > this.sceneGeneration) this.advanceSceneGeneration(identity.generation);
+    const refusal = this.sceneEntryRefusal(id, identity);
+    if (refusal) throw refusal;
+  }
+
+  sceneEntryRefusal(id, identity) {
     if (this.sceneEntries(id).length >= this.limits.sceneResourceEntries) {
-      throw new RuntimeError(
+      return new RuntimeError(
         'resource_budget',
         `${this.limits.sceneResourceEntries} directed-scene resources are loaded; release some before loading \`${identity.assetId}\``,
         { asset_id: identity.assetId, limit: this.limits.sceneResourceEntries },
       );
     }
+    return null;
   }
 
   advanceSceneGeneration(generation) {
@@ -227,6 +233,8 @@ export class AssetStore {
         current: this.sceneGeneration,
       });
     }
+    const countRefusal = this.sceneEntryRefusal(id, identity);
+    if (countRefusal) return countRefusal;
     const bytes = this.sceneResourceBytes(id) + rgbaBytes(entry.width, entry.height);
     if (bytes > this.limits.sceneResourceBytes) {
       return new RuntimeError(

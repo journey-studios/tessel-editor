@@ -59,3 +59,15 @@ TESSEL_VIEWPORT_INSPECT=1 python3 scripts/directed-scene-proof/proof.py \
 Runtime final reexecutado pelo coordenador: **79/79**, TESSEL_REQUIRE_RUNTIME=1, execução serializada sob lock da bancada, sem skips. A falha intermitente com concorrência padrão continua BL091; não foi mascarada como resolvida.
 
 Entrega de implementação: commit `6a8b030`; revisão em [PR #3](https://github.com/journey-studios/tessel-editor/pull/3). Gates descritos são locais; revisão/merge são estados separados.
+
+## Correções da revisão PR #3
+
+Dez apontamentos e o nit de desempenho foram conferidos e corrigidos. Quatro regressões foram executadas antes e falharam: assinatura do cache sem Arc retido, commit de import no projeto errado, cargas concorrentes acima do limite e proveniência que variava pela versão do Python.
+
+A guarda de projeto foi colocada na função compartilhada de aplicação da lib de mídia, cobrindo também poll/job.commit sem duplicar regra no host. O cache compara Arc::ptr_eq e mantém documento/candidato vivos. scene.plan valida admissão por referência, sem copiar o documento inteiro. O teste CLI executa bundle.json a partir da pasta do corpus.
+
+O harness usa arquivo temporário para stderr, prazo de resposta inclusive em linha parcial, coleta o processo em timeout e preserva o fim do log no EOF. A execução continua sem shell; avisos genéricos de shell injection/jsonify não se aplicam a esse protocolo CLI. O helper GPU agora é versionado.
+
+Checks direcionados posteriores: 68 Rust (27 core, 14 desktop/modelo, 19 media e 8 renderer/Chrome), 19 runtime (cena pura/browser), 19 Python (15 harness/proveniência e 4 modelo). Clippy workspace/all-targets com -D warnings e fmt limpos; bundle runtime reconstruído. O workspace completo 827/2 acima é a evidência anterior da integração, não uma nova execução completa destas correções.
+
+Após as correções, a prova integrada foi repetida no build debug e passou novamente **408/408**. Hashes e métricas dessa execução em [scene-review-results.json](scene-review-results.json); não substituem nem reclassificam a evidência release anterior.

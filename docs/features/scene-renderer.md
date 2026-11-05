@@ -160,15 +160,17 @@ em execução serializada.
 
 ## Como reproduzir
 
-```text
+```sh
 pnpm --dir runtime run build
-cd runtime && python3 /tmp/m-gpu-lock.py node --test --test-concurrency=1 test/*.test.mjs   # lock fcntl em /tmp/tessel-scene-gpu.lock
-cd .. && python3 ~/.cache/tessel-editor/cargo-serial.py test -p tessel-editor-render --test scene_seam --locked
-TESSEL_REQUIRE_RUNTIME=1 python3 /tmp/m-gpu-lock.py python3 ~/.cache/tessel-editor/cargo-serial.py \
+TESSEL_REQUIRE_RUNTIME=1 python3 scripts/directed-scene-proof/with-gpu-lock.py \
+  node --test --test-concurrency=1 runtime/test/*.test.mjs
+MBX_GC_MAX_TOTAL_SIZE=64GiB ./scripts/cargo test -p tessel-editor-render --test scene_seam --locked
+TESSEL_REQUIRE_RUNTIME=1 MBX_GC_MAX_TOTAL_SIZE=64GiB \
+  python3 scripts/directed-scene-proof/with-gpu-lock.py ./scripts/cargo \
   test -p tessel-editor-render --test scene_frames --locked -- --test-threads=1
 ```
 
-`/tmp/m-gpu-lock.py` só aplica `fcntl.flock` em `/tmp/tessel-scene-gpu.lock` ao comando inteiro.
+O helper versionado aplica `fcntl.flock` ao comando inteiro; os comandos partem da raiz do repositório. Em sessões paralelas, coordene também o slot Cargo; o lock GPU não substitui essa coordenação.
 
 ## Integração M/N/O/P
 
@@ -182,3 +184,7 @@ TESSEL_REQUIRE_RUNTIME=1 python3 /tmp/m-gpu-lock.py python3 ~/.cache/tessel-edit
 - Voltar a Sequência/Fonte encerra o preview dirigido. Projeto substituído cancela pedidos; reload reconstrói os slots.
 
 Provas finais e limites em [round-mnop-report.md](../migration/round-mnop-report.md). Export dirigido BL008 ainda não implementado.
+
+## Correções da revisão PR #3
+
+`--bundle bundle.json` sem pai usa a pasta atual como raiz de recursos. O runtime revalida o número de recursos imediatamente antes do registro, além de geração e bytes; cargas concorrentes não ultrapassam sceneResourceEntries. `scene.plan` aplica admissão por referência, evitando cópia profunda do bundle por frame, com os mesmos gates.

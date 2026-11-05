@@ -123,7 +123,7 @@ impl EditorState {
             FrameAt::Time(time) => directed.bundle().frame_at_time(*time)?,
         };
         // Admission also protects callers that construct EditorState directly.
-        super::run::admit((**directed).clone())?;
+        super::run::check_admission(directed)?;
         let plan = crate::scene_plan::ScenePlan::build_with(
             directed,
             frame,

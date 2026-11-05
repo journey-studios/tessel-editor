@@ -22,7 +22,6 @@ import hashlib
 import importlib.util
 import json
 import pathlib
-import platform
 import shutil
 import struct
 import sys
@@ -387,7 +386,7 @@ def generate():
         "corpusVersion": CORPUS_VERSION,
         "generator": {"file": "scripts/directed-scene-proof/corpus.py", "sha256": sha256((HERE / "corpus.py").read_bytes()),
                       "model": {"file": "scripts/directed-scene-proof/model.py", "sha256": sha256((HERE / "model.py").read_bytes())},
-                      "python": platform.python_version_tuple()[0] + "." + platform.python_version_tuple()[1]},
+                      "python": ">=3.10"},
         "origin": "none: drawn from scratch; expected values from model.py validated against docs/migration/fixtures/expected "
                   "(origin oracle, packages/scene-engine@d6adac15)",
         "private_media": False,

@@ -104,5 +104,42 @@ class Corpus(unittest.TestCase):
             self.assertIn("unexpected stray.txt", problems)
 
 
+class PortableProvenance(unittest.TestCase):
+    def test_python_minor_version_does_not_change_corpus_bytes(self):
+        from unittest.mock import patch
+        with patch("platform.python_version_tuple", return_value=("3", "12", "0")):
+            first = corpus_gen.generate()
+        with patch("platform.python_version_tuple", return_value=("3", "99", "8")):
+            second = corpus_gen.generate()
+        self.assertEqual(first, second)
+
+
+class JsonlProcesses(unittest.TestCase):
+    def session(self, code, timeout=2):
+        session = h.JsonlSession(sys.executable, ["-u", "-c", code], timeout=timeout)
+        self.addCleanup(session.close)
+        return session
+
+    def test_stderr_larger_than_a_pipe_does_not_block_the_answer(self):
+        session = self.session("import sys,json;sys.stdin.readline();sys.stderr.write('x'*262144);sys.stderr.flush();print(json.dumps({'ok':True,'result':42}))")
+        self.assertEqual(session({"op":"test"}), (True,42))
+
+    def test_closed_process_reports_the_tail_of_stderr(self):
+        session = self.session("import sys;sys.stdin.readline();sys.stderr.write('x'*262144+'TAIL-MARKER');sys.stderr.flush()")
+        with self.assertRaisesRegex(h.Abort,"TAIL-MARKER"):
+            session({"op":"closed"})
+
+    def test_silent_process_times_out_and_is_reaped(self):
+        session = self.session("import sys,time;sys.stdin.readline();time.sleep(30)", timeout=0.15)
+        with self.assertRaisesRegex(h.Abort,"timeout waiting for silent"):
+            session({"op":"silent"})
+        self.assertIsNotNone(session.process.poll())
+
+    def test_partial_line_also_times_out(self):
+        session = self.session("import sys,time;sys.stdin.readline();sys.stdout.write('{');sys.stdout.flush();time.sleep(30)",timeout=0.15)
+        with self.assertRaisesRegex(h.Abort,"timeout"):
+            session({"op":"partial"})
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

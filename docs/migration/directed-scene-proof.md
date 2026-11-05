@@ -92,13 +92,11 @@ python3 scripts/directed-scene-proof/corpus.py --check  # corpus is what the gen
 python3 scripts/directed-scene-proof/proof.py --list
 python3 scripts/directed-scene-proof/proof.py --report /tmp/proof.json
 python3 scripts/directed-scene-proof/proof.py --phases headless_flow,socket_flow
-# binaries: --bin-headless/--bin-render/--bin-editor; GPU: --gl swiftshader|angle-metal
+# binaries: --bin-headless/--bin-render/--bin-editor; GPU: --gl swiftshader|gpu
 # Rust (serialized; never run cargo directly):
-python3 /Users/wallyssonnunes/.cache/tessel-editor/cargo-serial.py test -p tessel-editor-core --locked --test scene_flow
-python3 /Users/wallyssonnunes/.cache/tessel-editor/cargo-serial.py test -p tessel-editor-render --locked --test scene_flow_resources
-# Show the blocked Rust phases (fail on purpose until the API exists):
-... test -p tessel-editor-core --locked --test scene_flow -- --ignored
-... test -p tessel-editor-render --locked --test scene_flow_resources -- --ignored
+MBX_GC_MAX_TOTAL_SIZE=64GiB ./scripts/cargo test -p tessel-editor-core --locked --test scene_flow
+MBX_GC_MAX_TOTAL_SIZE=64GiB ./scripts/cargo test -p tessel-editor-render --locked --test scene_flow_resources
+
 ```
 
 Exit codes of `proof.py`: 0 every selected phase PASS; 1 some FAIL; **3 some BLOCKED and none FAIL
@@ -154,3 +152,8 @@ the middle of a sequence. They compare against `expected.json` probes with the t
   the pixel/package/export phases wait for BL007/BL011/BL008/BL063.
 - BL063, BL007, BL011, BL008, BL014: add "unblocks `proof.py` phase X; edit `interfaces.json`".
 - BL021 (socket evidence): `socket_flow` 80/80 on an isolated native instance (not a pixel claim).
+
+## Portabilidade e processo JSONL (revisão PR #3)
+
+A versão mínima de Python na proveniência é constante (>=3.10), não a versão instalada. A geração/check mantém igualdade byte a byte em versões menores distintas; o relatório de execução pode registrar ambiente separadamente.
+`JsonlSession` envia stderr a arquivo temporário e lê stdout com prazo por resposta, inclusive linha parcial; timeout encerra e coleta o processo. Recusa/EOF preserva os últimos 300 caracteres do log. Testes simulam log acima da capacidade de um pipe, EOF, silêncio e linha parcial.

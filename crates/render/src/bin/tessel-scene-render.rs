@@ -143,6 +143,7 @@ fn resource_map(args: &Args, plan: &ScenePlan) -> Result<SceneResourceMap, Backe
         None => args
             .bundle
             .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
             .map(Path::to_path_buf)
             .unwrap_or_else(|| PathBuf::from(".")),
     };

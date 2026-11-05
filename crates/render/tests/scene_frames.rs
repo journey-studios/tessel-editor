@@ -491,3 +491,24 @@ fn the_cli_renders_frames_in_the_order_given_and_reports_failures_per_frame() {
     let _ = std::fs::remove_dir_all(out);
     let _ = std::fs::remove_dir_all(empty);
 }
+
+#[test]
+fn the_cli_uses_the_current_directory_for_a_bundle_filename_without_a_parent() {
+    if RuntimeConfig::discover().is_err() {
+        drop(skip("runtime unavailable"));
+        return;
+    }
+    let output = Command::new(env!("CARGO_BIN_EXE_tessel-scene-render"))
+        .current_dir(corpus())
+        .args(["--bundle", "bundle.json", "--frame", "0"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let result: Value =
+        serde_json::from_slice(output.stdout.split(|b| *b == b'\n').next().unwrap()).unwrap();
+    assert_eq!(result["ok"], true);
+}

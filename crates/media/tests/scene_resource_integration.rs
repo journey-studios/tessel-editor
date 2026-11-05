@@ -685,3 +685,26 @@ fn an_import_whose_files_are_broken_changes_neither_the_project_nor_the_disk() {
     assert_eq!(tree(&world.workspace), before, "no scenes/ folder either");
     assert_eq!(world.state.scenes.ids(), ["street"]);
 }
+
+#[test]
+fn a_scene_import_prepared_for_another_project_is_discarded_without_attaching() {
+    let mut world = world("import-project-switch");
+    let (other, document) = other_project("import-project-switch-source");
+    let prepared = world.ok(json!({"op":"project.import_scenes","source":document,
+        "scene_bases":{"street":other.src},"wait":false}));
+    let job = prepared["job"].clone();
+    world.ok(json!({"op":"job.wait","job":job}));
+    let staged = world.workspace.join("scenes/street-2");
+    assert!(staged.is_dir());
+    let keep = world.workspace.join("keep.txt");
+    fs::write(&keep, b"untouched").unwrap();
+    let new_workspace = world.sandbox.root.join("next-project");
+    world.ok(json!({"op":"project.create","name":"next","dir":new_workspace}));
+    let before = world.state.summary();
+    let error = world.run(json!({"op":"job.commit","job":job})).unwrap_err();
+    assert_eq!(error.code, "stale_result");
+    assert_eq!(world.state.summary(), before);
+    assert!(world.state.scenes.is_empty());
+    assert!(!staged.exists(), "discard removes only the imported folder");
+    assert_eq!(fs::read(keep).unwrap(), b"untouched");
+}

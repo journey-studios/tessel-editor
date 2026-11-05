@@ -69,6 +69,7 @@ pub struct PreparedScene {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PreparedSceneImport {
+    pub project: String,
     pub scenes: Vec<PreparedScene>,
     pub warnings: Vec<String>,
     scenes_dir_created: Option<PathBuf>,
@@ -192,6 +193,7 @@ pub fn prepare(
     let scenes_dir = workspace.join(MANAGED_DIR);
     let scenes_dir_created = (!scenes_dir.exists()).then_some(scenes_dir);
     let mut prepared = PreparedSceneImport {
+        project: destination.project.id.clone(),
         scenes: Vec::new(),
         warnings: Vec::new(),
         scenes_dir_created,
@@ -323,6 +325,13 @@ pub fn apply(
     state: &mut EditorState,
     prepared: PreparedSceneImport,
 ) -> Result<Value, CommandError> {
+    if state.project.id != prepared.project {
+        prepared.discard();
+        return Err(CommandError::new(
+            "stale_result",
+            "The open project changed while the scenes were imported; nothing was attached",
+        ));
+    }
     let outcome = state.transaction("Import scenes", |state| {
         for scene in &prepared.scenes {
             state.execute(Command::Scene(SceneCommand::Attach {

@@ -1,0 +1,188 @@
+{
+  "harness": {
+    "name": "directed-scene-proof",
+    "version": 1
+  },
+  "git": {
+    "head": "edc02f142779020a7736d9a2bf231ec33545cf0a",
+    "branch": "feat/directed-scene-end-to-end",
+    "dirty_files": 21
+  },
+  "corpus": {
+    "version": 1,
+    "bundle": {
+      "file": "bundle.json",
+      "bundleId": "proof-p-corpus",
+      "revisionId": "rev-1",
+      "sha256": "6f2086eb2ffa919c93f74531145c2e3601ee91bd4c948b1965b67f5effc4c93b"
+    },
+    "swap_bundle": {
+      "file": "bundle.swap.json",
+      "bundleId": "proof-p-corpus",
+      "revisionId": "rev-2",
+      "sha256": "f7fefb010b92a5e489c4251447f5984e21ef4aced02670e6e81ae40b9b325b21"
+    }
+  },
+  "tolerances": {
+    "camera": {
+      "absolute": 1e-09,
+      "relative": 1e-12,
+      "rule": "abs(a-e) <= absolute + relative*abs(e)"
+    },
+    "worldMatrix": {
+      "absolute": 1e-10,
+      "relative": 1e-12,
+      "rule": "abs(a-e) <= absolute + relative*abs(e)"
+    },
+    "pixel": {
+      "maxChannelDelta": 6,
+      "rule": "max(|r-r'|,|g-g'|,|b-b'|) <= maxChannelDelta, sRGB 8-bit",
+      "why": "flat blocks only (screen neighbours \u00b12 px agree), so texture filtering and sRGB/linear round trips can move a channel by a few units, never change the layer"
+    },
+    "gestureEdit": {
+      "absolute": 1e-12,
+      "relative": 0.0,
+      "rule": "an edited value is stored as sent: exact to binary64 round trip"
+    }
+  },
+  "binaries": {
+    "headless": {
+      "path": "target/debug/tessel-headless",
+      "present": true,
+      "sha256": "89491fc971435bcde8726b7e80bb4c05aacdbbb0fac55f66ac8773c0f38d440f",
+      "bytes": 10242528,
+      "mtime_utc": "2026-11-05T19:05:29Z",
+      "older_than_sources": false
+    },
+    "render": {
+      "path": "target/debug/tessel-render",
+      "present": true,
+      "sha256": "2a0d56803656f0dbb36c054048e21de0beb5fea6933021b4c19530308a1b1227",
+      "bytes": 18837552,
+      "mtime_utc": "2026-11-05T19:07:52Z",
+      "older_than_sources": false
+    },
+    "editor": {
+      "path": "target/debug/tessel-editor",
+      "present": true,
+      "sha256": "cf9ecda187c783227bbaafd4f5f041a5256429dd9a148b6bbe4b0a4eae1e310e",
+      "bytes": 140205408,
+      "mtime_utc": "2026-11-05T19:07:56Z",
+      "older_than_sources": false
+    }
+  },
+  "gl": "swiftshader",
+  "seconds": 36.2,
+  "work_budget_respected": true,
+  "not_run": [
+    "context_loss",
+    "export_directed"
+  ],
+  "not_claimed": [
+    "physical pointer input (BL043): no coordinate clicks anywhere; gestures are semantic commands",
+    "seek-to-photon latency (BL032): rAF/hash timing is not a photon; nothing here measures one",
+    "heard audio (BL046): no audio device is involved",
+    "other GPUs, platforms, WKWebView-vs-Chrome pixel identity (BL054): pixels are compared to the model with a fixed tolerance, per surface",
+    "domains the plan refuses (light, weather, effects, rigs, paths, data maps, splat): the corpus does not use them"
+  ],
+  "exit_code": 0,
+  "phases": [
+    {
+      "phase": "corpus",
+      "surface": "data (synthetic corpus, no destination)",
+      "status": "PASS",
+      "checks_total": 13,
+      "checks_failed": 0,
+      "seconds": 3.81
+    },
+    {
+      "phase": "model_vs_origin",
+      "surface": "data (reference model vs origin oracle)",
+      "status": "PASS",
+      "checks_total": 1,
+      "checks_failed": 0,
+      "seconds": 0.05
+    },
+    {
+      "phase": "headless_flow",
+      "surface": "headless process (tessel-headless, JSONL)",
+      "status": "PASS",
+      "checks_total": 80,
+      "checks_failed": 0,
+      "seconds": 0.05
+    },
+    {
+      "phase": "scene_plan",
+      "surface": "headless process: scene.plan",
+      "status": "PASS",
+      "checks_total": 60,
+      "checks_failed": 0,
+      "seconds": 0.02
+    },
+    {
+      "phase": "package_restore_no_origin",
+      "surface": "headless process (tessel-render, no GPU): package/restore",
+      "status": "PASS",
+      "checks_total": 7,
+      "checks_failed": 0,
+      "seconds": 4.29
+    },
+    {
+      "phase": "render_headless_pixels",
+      "surface": "headless + Chrome/GPU: scene render pixels",
+      "status": "PASS",
+      "checks_total": 40,
+      "checks_failed": 0,
+      "seconds": 6.24
+    },
+    {
+      "phase": "render_seek_out_of_order",
+      "surface": "headless + Chrome/GPU: out-of-order seek",
+      "status": "PASS",
+      "checks_total": 48,
+      "checks_failed": 0,
+      "seconds": 6.9
+    },
+    {
+      "phase": "resource_swap",
+      "surface": "headless + Chrome/GPU: resource swap by assetId revision",
+      "status": "PASS",
+      "checks_total": 36,
+      "checks_failed": 0,
+      "seconds": 7.66
+    },
+    {
+      "phase": "socket_flow",
+      "surface": "native window socket (scene.* flow)",
+      "status": "PASS",
+      "checks_total": 80,
+      "checks_failed": 0,
+      "seconds": 2.3
+    },
+    {
+      "phase": "socket_render_pixels",
+      "surface": "native window socket + GPU: scene render pixels",
+      "status": "PASS",
+      "checks_total": 41,
+      "checks_failed": 0,
+      "seconds": 4.63
+    },
+    {
+      "phase": "ui_semantic",
+      "surface": "native UI semantic tree/selection (inspector)",
+      "status": "PASS",
+      "checks_total": 2,
+      "checks_failed": 0,
+      "seconds": 0.15
+    }
+  ],
+  "total_checks": 408,
+  "targeted_tests": {
+    "rust": 68,
+    "runtime": 19,
+    "python": 19,
+    "workspace_clippy": "passed",
+    "fmt": "passed"
+  },
+  "note": "Post-review correction proof uses debug binaries. Original release/integration evidence remains in scene-integration-results.json."
+}

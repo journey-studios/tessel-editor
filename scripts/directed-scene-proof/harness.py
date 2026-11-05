@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import pathlib
+import select
 import shutil
 import socket
 import subprocess
@@ -198,17 +199,38 @@ def acquire_gpu_lock():
 class JsonlSession:
     """One `tessel-headless` / `tessel-render` process; one JSON request per line, one answer per line."""
 
-    def __init__(self, binary, args=(), env=None, cwd=None):
-        self.process = subprocess.Popen([str(binary), *args], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                        stderr=subprocess.PIPE, text=True, bufsize=1, env=env, cwd=cwd)
+    def __init__(self, binary, args=(), env=None, cwd=None, timeout=60):
+        self.timeout = timeout
+        self.stderr = tempfile.TemporaryFile(mode="w+b")
+        try:
+            self.process = subprocess.Popen([str(binary), *args], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                            stderr=self.stderr, env=env, cwd=cwd)
+        except BaseException:
+            self.stderr.close()
+            raise
+        self.pending = bytearray()
+        os.set_blocking(self.process.stdout.fileno(), False)
 
     def __call__(self, request):
-        """Returns (ok, body): body is `result` on success and the `error` object otherwise."""
-        self.process.stdin.write(json.dumps(request) + "\n")
+        """One bounded response; stderr is drained by the OS to a file, including during decode."""
+        self.process.stdin.write((json.dumps(request) + "\n").encode())
         self.process.stdin.flush()
-        line = self.process.stdout.readline()
-        if not line:
-            raise Abort(f"the process closed before answering {request.get('op')}: {self.process.stderr.read()[-300:]}")
+        deadline = time.monotonic() + self.timeout
+        while b"\n" not in self.pending:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not select.select([self.process.stdout], [], [], remaining)[0]:
+                self.process.kill()
+                self.process.wait(timeout=5)
+                raise Abort(f"timeout waiting for {request.get('op')} after {self.timeout}s")
+            chunk = os.read(self.process.stdout.fileno(), 65536)
+            if not chunk:
+                self.stderr.seek(0, os.SEEK_END)
+                self.stderr.seek(max(0, self.stderr.tell() - 1200))
+                tail = self.stderr.read().decode(errors="replace")[-300:]
+                raise Abort(f"the process closed before answering {request.get('op')}: {tail}")
+            self.pending.extend(chunk)
+        line, _, remaining = self.pending.partition(b"\n")
+        self.pending = bytearray(remaining)
         answer = json.loads(line)
         return answer["ok"], answer["result"] if answer["ok"] else answer["error"]
 
@@ -216,9 +238,12 @@ class JsonlSession:
         with contextlib.suppress(Exception):
             self.process.stdin.close()
         try:
-            self.process.wait(timeout=60)
+            self.process.wait(timeout=5)
         except subprocess.TimeoutExpired:
             self.process.kill()
+            self.process.wait(timeout=5)
+        self.process.stdout.close()
+        self.stderr.close()
 
 
 class EditorLab:
