@@ -5,10 +5,14 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 
 - [Inventário de migração do Scene Studio](migration/README.md): 121 itens classificados,
   evidências na origem, diferenças do branch piloto, matriz de migração e fatias sugeridas.
+- [Propriedades e lotes de cenas](features/scene-edit.md): catálogo tipado, operações por ID,
+  dry-run e validação atômica compartilhada; adapters/histórico pendentes.
 - [Tempo e câmera de cenas dirigidas](features/scene-temporal.md): avaliação pura, mapeamento racional
   e gate temporal; animação de nós e adapters ainda pendentes.
 - [Oráculo de migração](../scripts/migration-oracle/README.md): 55 bundles sintéticos, expectativas
   executadas na origem fixada e runner de integridade/equivalência; consumidor Rust parcial.
+- [Integração da base A–E](migration/foundation-integration-report.md): resultados conjuntos,
+  release e fronteiras do que ainda não está migrado.
 - [Rodada paralela da base](migration/parallel-implementation-plan.md): ownership, dependências e gates.
 - [Migração por building blocks e fases](migration/phased-roadmap.md): base atual reaproveitável,
   módulos compartilhados que faltam, etapas E0–E3 e fases funcionais M1–M8.

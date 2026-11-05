@@ -22,6 +22,7 @@ pub mod persist;
 pub mod plan;
 pub mod preset;
 pub mod preview;
+pub mod scene_edit;
 pub mod session;
 pub mod splat;
 pub mod state;

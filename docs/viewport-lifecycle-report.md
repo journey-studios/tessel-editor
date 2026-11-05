@@ -138,3 +138,11 @@ o teste falhar, e fechamento do runtime se o setup do asset lançar erro. Depois
 ajuste foram repetidos os 8 testes de lifecycle; o runtime de produto não mudou.
 A liberação observada é a dos contadores Three.js/cache, não uma medida da memória física
 da GPU ou do driver. Nenhum processo preexistente foi encerrado pelo coordenador.
+
+### Release integrado da base A–E
+
+Depois do build release da base, o harness completo foi repetido: **147/147**,
+com export de 12 frames idêntico antes/depois. Este resultado substitui a limitação
+de binário antigo para a base A–E: [dados](viewport-performance-results/lifecycle/foundation-window-proof.json)
+e [fingerprint de fontes/binário](viewport-performance-results/lifecycle/foundation-PROVENANCE.json).
+A prova anterior permanece no diretório como evidência histórica.

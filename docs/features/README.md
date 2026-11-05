@@ -50,6 +50,7 @@ Lib V significa testes do modelo demo, não um motor real de edição.
 | F031 | [Cena dirigida: importar, consultar e regravar render-bundle 1.0](directed-scene.md) | P | P | P | Parcial¹⁰ | `directed_scene::DirectedScene`; adapters pendentes |
 | F032 | [Oráculo de equivalência da migração (BB10/E0)](migration-oracle.md) | N/A⁹ | N/A⁹ | N/A⁹ | Parcial⁹ | `scripts/migration-oracle/oracle.mjs verify` + `docs/migration/fixtures/` |
 | F033 | [Cena dirigida: tempo, câmera e gate temporal (BB03)](scene-temporal.md) | P | P | P | Parcial¹¹ | `Bundle::evaluate_camera`, `evaluate_frame`, `DirectedScene::temporal_issues`; adapters pendentes |
+| F034 | [Catálogo de propriedades e edição atômica de cenas (BB04)](scene-edit.md) | P | P | P | Parcial¹² | `scene_edit::{catalog, apply, dry_run}`; importação e gates compartilhados |
 
 ¹ Dock/tema/janela são capacidades de apresentação. A lib valida layout, mas quem o executa
 é o DockArea vivo; não há execução do Dock no core. UI nativa não é requisito para fluxos
@@ -110,6 +111,12 @@ nos 55 casos. Tolerância numérica `1e-9 + 1e-12·|x|`; frames/IDs/códigos sã
 unitário adicional cobre abaixo/no/acima dos cinco limiares de junção (não é corpus da origem).
 Animação de nós retorna `Unsupported`; UI/CLI permanecem pendentes. Não é `finalizeBundle`
 completo para domínios adiados. [Contrato](scene-temporal.md).
+
+¹² 8 propriedades tipadas de nó/câmera, edição por ID, lote atômico e dry-run, validados
+por 29 testes públicos e 1 doctest via Cargo. `apply` e `dry_run` executam importador e
+gates estruturais/temporais da F033; falhas não alteram a entrada. Ainda sem integração
+com histórico/documento, CLI ou UI; não certifica render/domínios adiados.
+[Contrato e divergências de escrita da câmera](scene-edit.md).
 
 Ciclo de vida de F021: perda forçada de contexto com proxy, ocultar/reabrir monitor, diálogo,
 reload/troca de projeto com quadro em voo e export intacto têm prova específica no

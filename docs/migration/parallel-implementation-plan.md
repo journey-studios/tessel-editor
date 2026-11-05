@@ -78,6 +78,6 @@ validação temporal antes de consumir o gate D; o coordenador integra esse gate
 ### Status da rodada 2
 
 D entregue e revisada: 19 testes públicos temporais, comparação de câmera/gates com o
-oráculo, teste dos limites de tolerância e gerador com proveniência validada. E segue
-com ownership próprio; integração do gate temporal aos lotes ainda depende dessa entrega.
+oráculo, teste dos limites de tolerância e gerador com proveniência validada. E entregue
+e revisada: gate estrutural/temporal integrado aos lotes e 29 testes públicos via Cargo.
 UI/CLI e animação de nós continuam pendentes.

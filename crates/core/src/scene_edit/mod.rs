@@ -1,0 +1,55 @@
+//! BB04 (minimal): a catalog of editable properties and atomic, ID-addressed edit batches over a
+//! [`DirectedScene`](crate::directed_scene::DirectedScene).
+//!
+//! * [`catalog`] lists what can be edited: node `position`/`rotation`/`scale`, image-plane
+//!   `width`/`height`, and the start pose of a camera clip, each with a stable path, kind, unit,
+//!   default, range and applicability.
+//! * [`EditOp`] sets or resets one property of one node or clip by ID. No selection is involved
+//!   and no op takes free-form JSON that skips the catalog.
+//! * [`apply`] / [`dry_run`] take an immutable scene and a batch. Either every op is valid and
+//!   the result is a candidate scene plus a summary, or the error names the op (index, path, ID)
+//!   or the importer finding (JSON Pointer) that stopped it. The input scene never changes.
+//!
+//! Integrity rules are not duplicated: the candidate goes back through the importer
+//! (`DirectedScene::import_value_with`) and its structural/temporal camera gates. A candidate
+//! passes this shared subset; deferred domains and render certification remain outside it.
+//!
+//! ```
+//! use tessel_editor_core::directed_scene::{DirectedScene, Vec3};
+//! use tessel_editor_core::scene_edit::{
+//!     EditOp, NodeProperty, PropertyRef, PropertyValue, apply,
+//! };
+//!
+//! # fn demo(text: &str) -> Result<(), Box<dyn std::error::Error>> {
+//! let scene = DirectedScene::import_str(text)?;
+//! let ops = [EditOp::set(
+//!     PropertyRef::node("street", "hero-plane", NodeProperty::Position),
+//!     PropertyValue::Vec3(Vec3 { x: 4.0, y: 1.0, z: 0.0 }),
+//! )];
+//! let outcome = apply(&scene, &ops)?; // Err leaves `scene` exactly as it was
+//! assert!(outcome.summary.modified);
+//! # Ok(()) }
+//! ```
+
+mod batch;
+mod catalog;
+mod error;
+mod op;
+mod reference;
+mod value;
+
+pub use batch::{
+    EditOutcome, EditSummary, PropertyChange, PropertyInfo, apply, apply_with, dry_run,
+    dry_run_with, properties_of, read_property,
+};
+pub use catalog::{
+    Applicability, CameraProperty, Limit, NodeProperty, NumberRange, OriginRelation, PropertyId,
+    PropertySpec, Unit, catalog,
+};
+pub use error::{
+    CANDIDATE_REJECTED, DOCUMENT_MISMATCH, EditError, INVALID_OP, LocalizedIssue, NO_DEFAULT,
+    NOT_APPLICABLE, UNKNOWN_CLIP, UNKNOWN_NODE, UNKNOWN_PATH, UNKNOWN_SCENE,
+};
+pub use op::{EditOp, parse_batch};
+pub use reference::PropertyRef;
+pub use value::{PropertyValue, ValueKind};
