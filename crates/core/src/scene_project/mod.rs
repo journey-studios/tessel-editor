@@ -22,7 +22,10 @@
 //!   it; it is never a `tessel-scene@1` asset (F030) and never reaches the viewport runtime.
 //! * Resources the bundle names by relative path are not resolved, copied or packaged (BB05/BB06).
 //!   Package and project-import therefore refuse to pretend otherwise (`crates/media` guards).
-//! * `scene.*` answers camera queries; the state of the nodes at a frame is not exposed through it.
+//! * `scene.camera` answers the camera only; `scene.evaluate` (F039) answers the whole frame,
+//!   nodes included, and says what the scene declares and nothing evaluates.
+//! * Selection, the entity tree and the begin/update/commit/cancel gesture cycle (F039) live in
+//!   `scene_interaction` and run in `interaction.rs`. Their state is session state, not document.
 //!
 //! Mutation goes through `EditorState::execute(Command::Scene(..))`, the same door as every other
 //! edit, so one command is one undo entry and a rejected, dry-run or no-op command leaves the
@@ -38,6 +41,7 @@ use crate::id::MAX_ID_LEN;
 use crate::state::CommandError;
 
 mod command;
+mod interaction;
 mod query;
 mod run;
 mod scope;

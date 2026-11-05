@@ -14,6 +14,7 @@ use serde_json::{Map, Value, json};
 
 use crate::directed_scene::{DirectedScene, ImportError, Limits};
 use crate::scene_edit::{self, EditOp, EditSummary};
+use crate::scene_interaction::Dropped;
 use crate::state::{CommandError, EditorState};
 
 use super::command::{SceneCommand, SceneSource};
@@ -66,7 +67,7 @@ impl SceneSource {
     }
 }
 
-fn changes_json(summary: &EditSummary) -> Vec<Value> {
+pub(super) fn changes_json(summary: &EditSummary) -> Vec<Value> {
     summary
         .changes
         .iter()
@@ -93,6 +94,19 @@ impl EditorState {
                 ops,
                 dry_run,
             } => self.edit_scene(&scene, &ops, dry_run),
+            SceneCommand::Tree { scene, root, depth } => {
+                self.scene_tree(&scene, root.as_deref(), depth)
+            }
+            SceneCommand::Evaluate { scene, at, gesture } => {
+                self.scene_evaluate(&scene, &at, gesture.as_deref())
+            }
+            SceneCommand::Select {
+                scene,
+                entities,
+                mode,
+            } => self.scene_select(scene.as_deref(), &entities, mode),
+            SceneCommand::Selection => Ok(self.scene_selection()),
+            SceneCommand::Gesture(gesture) => self.apply_gesture(gesture),
             read => query::run(&self.scenes, read),
         }
     }
@@ -144,12 +158,21 @@ impl EditorState {
         self.scenes
             .remove(id)
             .ok_or_else(|| CommandError::unknown_element("scene", id))?;
-        Ok(json!({ "action": "scene.detach", "scene": id, "changed": true }))
+        let mut outcome = json!({ "action": "scene.detach", "scene": id, "changed": true });
+        // Only when something was selected there, so the answer of a project that never
+        // selected is what it always was. An open gesture on this scene is not touched: it
+        // reports `scene_detached` the next time it is used.
+        let dropped = self.scene_interaction.selection.prune(&self.scenes);
+        if !dropped.is_empty() {
+            outcome["selection_dropped"] =
+                Value::Array(dropped.iter().map(Dropped::to_json).collect());
+        }
+        Ok(outcome)
     }
 
     /// `scene_edit` owns every rule here (catalog, IDs, importer, joins, temporal gates). This
     /// only decides what the project does with the answer.
-    fn edit_scene(
+    pub(super) fn edit_scene(
         &mut self,
         id: &str,
         ops: &[EditOp],

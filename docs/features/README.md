@@ -54,6 +54,7 @@ Lib V significa testes do modelo demo, não um motor real de edição.
 | F035 | [Animação de nós e matrizes de mundo (BB03)](scene-animation.md) | P | P | P | Parcial¹³ | `Bundle::{evaluate_frame, node_timeline, evaluate_instance_nodes, performance_plan}` |
 | F036 | [Cenas no projeto, histórico e CLI](scene-project.md) | P | P | V | V | `Command::Scene` / `scene.*`; schema 2 com cenas, undo compartilhado, contagem de bytes em cache |
 | F037 | [Plano avaliado de frame de cena dirigida (BB05)](scene-plan.md) | P | P | P | I¹⁴ | `scene_plan::ScenePlan`; plano tipado e serializável, gate Cargo pendente; sem renderer |
+| F039 | [Interação com cenas dirigidas: seleção, árvore, frame e gestos](scene-interaction.md) | P | P | I | I | `scene.tree`, `scene.evaluate`, `scene.select`, `scene.selection`, `scene.gesture.*`; gate Cargo pendente |
 
 ¹ Dock/tema/janela são capacidades de apresentação. A lib valida layout, mas quem o executa
 é o DockArea vivo; não há execução do Dock no core. UI nativa não é requisito para fluxos

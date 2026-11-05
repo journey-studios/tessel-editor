@@ -15,6 +15,7 @@ use crate::id::Id;
 use crate::plan::{PlanRequest, PlanTime, PreviewIntent};
 use crate::preview::PreviewMode;
 use crate::scene_edit::{PropertyRef, parse_batch};
+use crate::scene_interaction::{FrameAt, GestureCommand, SelectMode};
 use crate::scene_project::{CameraAt, SceneCommand, SceneSource};
 use crate::state::timeline::{SequenceSettings, TrackKind};
 use crate::state::{Command, CommandError, EditorState, ProjectSettings, Raw};
@@ -573,6 +574,43 @@ fn scene_command(op: &str, request: &Value) -> Result<SceneCommand, CommandError
             scene: scene()?,
             at: camera_at(request)?,
         },
+        // F039: tree, frame evaluation, selection and the gesture cycle.
+        "scene.tree" => SceneCommand::Tree {
+            scene: scene()?,
+            root: optional_string(request, "root")?,
+            depth: optional_usize(request, "depth")?,
+        },
+        "scene.evaluate" => SceneCommand::Evaluate {
+            scene: scene()?,
+            at: frame_at(request)?,
+            gesture: optional_string(request, "gesture")?,
+        },
+        "scene.select" => SceneCommand::Select {
+            scene: optional_string(request, "scene")?,
+            entities: string_list(request, "entities")?,
+            mode: select_mode(request)?,
+        },
+        "scene.selection" => SceneCommand::Selection,
+        "scene.gesture.begin" => SceneCommand::Gesture(GestureCommand::Begin {
+            scene: scene()?,
+            targets: string_list(request, "targets")?,
+            label: optional_string(request, "label")?,
+        }),
+        "scene.gesture.update" => SceneCommand::Gesture(GestureCommand::Update {
+            gesture: string(request, "gesture")?.to_string(),
+            ops: parse_batch(
+                request
+                    .get("ops")
+                    .ok_or_else(|| invalid("Expected array field `ops`"))?,
+            )?,
+        }),
+        "scene.gesture.commit" => SceneCommand::Gesture(GestureCommand::Commit {
+            gesture: string(request, "gesture")?.to_string(),
+        }),
+        "scene.gesture.cancel" => SceneCommand::Gesture(GestureCommand::Cancel {
+            gesture: string(request, "gesture")?.to_string(),
+        }),
+        "scene.gesture.status" => SceneCommand::Gesture(GestureCommand::Status),
         other => {
             return Err(CommandError::new(
                 "unknown_operation",
@@ -587,6 +625,53 @@ fn optional_bool(request: &Value, key: &str) -> Result<Option<bool>, CommandErro
         None | Some(Value::Null) => Ok(None),
         Some(Value::Bool(flag)) => Ok(Some(*flag)),
         Some(_) => Err(invalid(format!("Field `{key}` must be true or false"))),
+    }
+}
+
+fn optional_usize(request: &Value, key: &str) -> Result<Option<usize>, CommandError> {
+    match request.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(raw) => raw
+            .as_u64()
+            .and_then(|value| usize::try_from(value).ok())
+            .map(Some)
+            .ok_or_else(|| invalid(format!("Field `{key}` must be a non-negative integer"))),
+    }
+}
+
+/// A list of strings; absent or `null` is the empty list.
+fn string_list(request: &Value, key: &str) -> Result<Vec<String>, CommandError> {
+    let bad = || invalid(format!("Field `{key}` must be a list of strings"));
+    match request.get(key) {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|item| item.as_str().map(str::to_string).ok_or_else(bad))
+            .collect(),
+        Some(_) => Err(bad()),
+    }
+}
+
+/// `replace` unless the request says otherwise.
+fn select_mode(request: &Value) -> Result<SelectMode, CommandError> {
+    let Some(raw) = optional_string(request, "mode")? else {
+        return Ok(SelectMode::Replace);
+    };
+    SelectMode::parse(&raw).ok_or_else(|| {
+        CommandError::invalid_value(
+            format!("`{raw}` is not a selection mode"),
+            json!({ "options": ["replace", "add", "remove", "toggle", "clear"] }),
+        )
+    })
+}
+
+/// Exactly one of `frame` or `time` (exact seconds).
+fn frame_at(request: &Value) -> Result<FrameAt, CommandError> {
+    let frame = request.get("frame").filter(|raw| !raw.is_null());
+    match (frame, time_field(request, "time")?) {
+        (Some(_), None) => Ok(FrameAt::Frame(integer(request, "frame")?)),
+        (None, Some(time)) => Ok(FrameAt::Time(time)),
+        _ => Err(invalid("Give exactly one of `frame` or `time`")),
     }
 }
 

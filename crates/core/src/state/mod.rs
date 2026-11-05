@@ -27,6 +27,7 @@ use crate::content::{Camera, TextSpec};
 use crate::id::Id;
 use crate::plan::PreviewIntent;
 use crate::preview::{PreviewMode, PreviewPolicy};
+use crate::scene_interaction::SceneInteraction;
 use crate::scene_project::{SceneBook, SceneCommand};
 use crate::time::Ratio;
 
@@ -89,6 +90,8 @@ pub struct EditorState {
     /// Directed scenes attached to the project (F036). Part of the document and of every undo
     /// snapshot; empty for a project that never attached one.
     pub scenes: SceneBook,
+    /// Session selection and scene gesture, outside the document and undo snapshots.
+    pub scene_interaction: SceneInteraction,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -334,6 +337,7 @@ impl EditorState {
             preview: PreviewIntent::Sequence,
             preview_policy: PreviewPolicy::default(),
             scenes: SceneBook::default(),
+            scene_interaction: SceneInteraction::default(),
         }
     }
 
@@ -364,6 +368,7 @@ impl EditorState {
             preview: PreviewIntent::Sequence,
             preview_policy: PreviewPolicy::default(),
             scenes: SceneBook::default(),
+            scene_interaction: SceneInteraction::default(),
         })
     }
 }

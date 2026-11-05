@@ -205,6 +205,10 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
                 "scene.attach", "scene.detach", "scene.edit", "scene.list", "scene.describe",
                 "scene.catalog", "scene.properties", "scene.get", "scene.camera",
                 "scene.capabilities",
+                // F039 (docs/features/scene-interaction.md).
+                "scene.tree", "scene.evaluate", "scene.select", "scene.selection",
+                "scene.gesture.begin", "scene.gesture.update", "scene.gesture.commit",
+                "scene.gesture.cancel", "scene.gesture.status",
             ],
             "max_scenes": MAX_SCENES,
             "scope": scope_json(),
@@ -259,11 +263,18 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
             answer["scene"] = json!(scene);
             Ok(answer)
         }
-        SceneCommand::Attach { .. } | SceneCommand::Detach { .. } | SceneCommand::Edit { .. } => {
-            Err(CommandError::new(
-                "internal",
-                "a writing scene command reached the read path",
-            ))
-        }
+        // The F039 commands also need the session state (selection, gesture), which this
+        // function does not get: they run in `interaction.rs`.
+        SceneCommand::Attach { .. }
+        | SceneCommand::Detach { .. }
+        | SceneCommand::Edit { .. }
+        | SceneCommand::Tree { .. }
+        | SceneCommand::Evaluate { .. }
+        | SceneCommand::Select { .. }
+        | SceneCommand::Selection
+        | SceneCommand::Gesture(_) => Err(CommandError::new(
+            "internal",
+            "a scene command reached the read path that does not serve it",
+        )),
     }
 }
