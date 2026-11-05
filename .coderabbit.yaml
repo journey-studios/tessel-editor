@@ -1,6 +1,14 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 language: pt-BR
 reviews:
+  # Review executable tests/generators; their generated numeric output is verified by tests.
+  path_filters:
+    - "!docs/migration/fixtures/**"
+    - "!crates/core/tests/**/*_fixtures/**/*.json"
+    - "!crates/core/tests/*_fixtures/*.json"
+    - "!docs/viewport-performance-results/**"
+    - "!licenses/**"
+    - "!LICENSE"
   auto_review:
     enabled: true
     auto_incremental_review: true
