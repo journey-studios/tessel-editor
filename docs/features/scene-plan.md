@@ -2,8 +2,8 @@
 
 ## Status
 
-Lib **I** (implementada, **ainda não compilada nem executada**: a frente H não rodou Cargo; o gate
-conjunto é do coordenador). CLI headless **P** (nenhum comando). UI **P** (nenhum controle).
+Lib **V no subconjunto documentado** (29 testes públicos e o doctest passaram via Cargo;
+clippy lib limpo na integração do coordenador). CLI headless **P** (nenhum comando). UI **P** (nenhum controle).
 BB05 continua **parcial**: esta fatia entrega o **contrato e o plano**; não existe renderer que o
 consuma (BL007) e nenhum recurso é resolvido em disco (BL009/BL010). Nada aqui é render real.
 

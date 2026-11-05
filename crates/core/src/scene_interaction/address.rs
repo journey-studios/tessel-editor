@@ -121,19 +121,19 @@ pub fn parse_entity(path: &str) -> Result<Entity, CommandError> {
         Ok(Entity::new(kind, id))
     };
     match parts.as_slice() {
-        ["scene", id] => single(EntityKind::SceneDefinition, *id),
+        ["scene", id] => single(EntityKind::SceneDefinition, id),
         ["scene", scene, "node", node] => {
             if scene.is_empty() || node.is_empty() {
                 return Err(invalid("has an empty ID"));
             }
             Ok(Entity::node(scene, node))
         }
-        ["instance", id] => single(EntityKind::SceneInstance, *id),
-        ["track", id] => single(EntityKind::PerformanceTrack, *id),
-        ["camera", id] => single(EntityKind::CameraClip, *id),
-        ["shot", id] => single(EntityKind::Shot, *id),
-        ["asset", id] => single(EntityKind::Asset, *id),
-        ["pass", id] => single(EntityKind::CompositionPass, *id),
+        ["instance", id] => single(EntityKind::SceneInstance, id),
+        ["track", id] => single(EntityKind::PerformanceTrack, id),
+        ["camera", id] => single(EntityKind::CameraClip, id),
+        ["shot", id] => single(EntityKind::Shot, id),
+        ["asset", id] => single(EntityKind::Asset, id),
+        ["pass", id] => single(EntityKind::CompositionPass, id),
         _ => Err(invalid("is not an entity address")),
     }
 }

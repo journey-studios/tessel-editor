@@ -754,7 +754,8 @@ fn a_rejected_update_keeps_the_last_good_candidate_and_changes_nothing() {
         json!({"op":"scene.gesture.update","gesture":gesture,"ops":[
             {"set":"scene/scene-a/node/ghost/position","value":{"x":1,"y":1,"z":1}}]}),
     );
-    assert_eq!(ghost.code, "unknown_node");
+    // Gesture target authorization runs before validating the edit payload.
+    assert_eq!(ghost.code, "gesture_target_mismatch");
     let wrong_field = err(
         &mut state,
         json!({"op":"scene.gesture.update","gesture":gesture,"ops":[
@@ -1162,7 +1163,7 @@ fn a_json_lines_session_runs_the_whole_interaction_flow_in_process() {
         2.0,
         "the candidate's frame"
     );
-    assert_eq!(error_code(8), "unknown_node");
+    assert_eq!(error_code(8), "gesture_target_mismatch");
     assert_eq!(responses[8]["error"]["details"]["index"], 0);
     assert_eq!(result(9)["changed"], true);
     assert_eq!(result(10)["value"]["x"], 2.0);

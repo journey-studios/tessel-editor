@@ -144,3 +144,5 @@ Novas pendências (linhas para o backlog comum, sem fila paralela):
 ## Recebimento pelo coordenador
 
 Export scene_interaction e inicialização no loader adicionados. F039 fica I em lib/headless; BL012/BL013/BL020 A validar. Socket continua A validar/sem prova e UI P. BL066–BL069 registram os limites novos sem duplicar BL012/BL014/BL021; documentação F036 reconciliada. Cargo aguarda os módulos compartilhados de L/I/K terminarem.
+
+Validação posterior: 21 testes públicos e unitários do módulo passaram; clippy lib limpo. Sessão do executável headless com 13 requests confirmou attach, queries/seleção/avaliação, gesto, undo e redo. Duas expectativas corrigidas para gesture_target_mismatch (autorização do alvo precede validação do nó). F039 lib/headless V no subconjunto, socket/UI P.

@@ -4,8 +4,8 @@
 
 | Superfície | Estado | Evidência |
 |---|---|---|
-| Lib (`tessel_editor_core::scene_interaction`, `SceneCommand::{Tree,Evaluate,Select,Selection,Gesture}`) | **I** — escrita e revisada; **nenhum Cargo foi executado** (a frente J não compila) | `crates/core/tests/scene_interaction.rs` (escrito, não executado) e testes unitários em `scene_interaction/{address,selection,tree}.rs` |
-| CLI headless (JSON Lines) | **I** — mesmo parser/executor (`ops::parse_op`, `headless::execute`); sessão JSONL de 19 linhas escrita, **não executada**; o executável `tessel-headless` não foi exercitado | `a_json_lines_session_runs_the_whole_flow_in_process` |
+| Lib (`tessel_editor_core::scene_interaction`, `SceneCommand::{Tree,Evaluate,Select,Selection,Gesture}`) | **V (lib)** — 21 testes públicos e testes unitários do módulo passaram no gate direcionado do coordenador | `crates/core/tests/scene_interaction.rs` (21/21 executados) e testes unitários em `scene_interaction/{address,selection,tree}.rs` |
+| CLI headless (JSON Lines) | **V (headless)** — mesmo parser/executor (`ops::parse_op`, `headless::execute`); sessão JSONL de 19 linhas executada em processo; o executável `tessel-headless` passou uma sessão real de 13 requests | `a_json_lines_session_runs_the_whole_flow_in_process` |
 | Socket / `ui op` da janela | **P** — roteia por `Op::Run(Command::Scene)` sem tocar o desktop; **não provado** | — |
 | UI visual (árvore, inspetor, handles, Escape) | **P** — sem controle, sem nó em `tree.rs`, sem apresentação, sem gesto de ponteiro | — |
 
@@ -176,3 +176,5 @@ Limitações conhecidas:
 - Rejeição do commit por orçamento de bytes não tem teste (o orçamento é inalcançável com fixtures).
 - Sem nó em `state/tree.rs`, sem prova de socket, sem UI.
 - `summary()` não expõe seleção nem gesto.
+
+Integração pelo coordenador: testes públicos 21/21, unitários no gate core (197/197 no conjunto) e clippy lib limpo. Corrigidas duas expectativas: alvo fora do gesto é recusado antes de validar nó inexistente (`gesture_target_mismatch`). O executável headless passou uma sessão real de 13 requests (attach, árvore, seleção, evaluate, begin/update/commit, get, undo/redo). Socket/UI ainda pendentes; testes e CLI sem janela não provam ponteiro físico.

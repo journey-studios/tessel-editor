@@ -18,6 +18,7 @@ mod media;
 mod monitor;
 mod ops;
 mod playback;
+mod slider_gesture;
 mod status_bar;
 mod timeline_panel;
 mod tokens;
@@ -43,6 +44,7 @@ use self::drag::{ClipPreview, Preview, TrackPreview, frame_at, insertion_at, row
 pub use self::geometry::Geometry;
 pub use self::ops::OpReply;
 use self::playback::PlaybackState;
+use self::slider_gesture::SliderGesture;
 pub use self::tokens::Tokens;
 pub use self::viewport_host::FrameWaiter;
 use self::viewport_host::ViewportHost;
@@ -101,6 +103,9 @@ pub struct Workstation {
     workflow: Workflow,
     /// The play clock and its device audio (see `playback.rs`).
     playback: PlaybackState,
+    /// The property-slider interaction in progress (see `slider_gesture.rs`). Input state of
+    /// the adapter only: the gesture and its history entry live in `EditorState`.
+    slider_gesture: SliderGesture,
     focus: FocusHandle,
 }
 
@@ -127,16 +132,11 @@ impl Workstation {
                             .max(max as f32)
                             .step(step as f32)
                     });
+                    // WHY not `SetProperty` per `Change`: a drag emits dozens of values and
+                    // each one used to become an undo entry. The adapter turns the drag into
+                    // one gesture (live preview, one entry on release); see `slider_gesture`.
                     cx.subscribe(&slider, move |this, _, event: &SliderEvent, cx| {
-                        if let SliderEvent::Change(value) = event {
-                            this.dispatch(
-                                Command::SetProperty {
-                                    property: id.to_string(),
-                                    value: Raw::Number(value.end().into()),
-                                },
-                                cx,
-                            );
-                        }
+                        this.slider_event(id, event, cx);
                     })
                     .detach();
                     sliders.insert(id, slider);
@@ -245,6 +245,15 @@ impl Workstation {
         })
         .detach();
 
+        // A window that loses the focus mid-drag may never see the MouseUp (BL043): the slider
+        // gesture is committed then, never left open.
+        cx.observe_window_activation(window, |this, window, cx| {
+            if !window.is_window_active() {
+                this.slider_focus_lost(cx);
+            }
+        })
+        .detach();
+
         // GPUI's test windows have no native view to attach to, so tests exercise the host
         // through its own unit tests and see the viewport as unavailable here.
         let page = if cfg!(test) {
@@ -283,6 +292,7 @@ impl Workstation {
             viewport_refine_armed: false,
             workflow: Workflow::new(),
             playback: PlaybackState::default(),
+            slider_gesture: SliderGesture::default(),
             focus: cx.focus_handle(),
         }
     }
@@ -708,6 +718,8 @@ impl Render for Workstation {
                 if event.keystroke.key == "escape" {
                     cx.stop_active_drag(window);
                     this.cancel_drag(cx);
+                    // A slider drag is a gesture too: Escape puts the original value back.
+                    this.cancel_slider_gesture(cx);
                 }
             }))
             // A release over no drop target ends the drag with no change. A
@@ -731,6 +743,8 @@ impl Render for Workstation {
 mod dock_tests;
 #[cfg(test)]
 mod input_tests;
+#[cfg(test)]
+mod slider_gesture_tests;
 #[cfg(test)]
 mod viewport_host_tests;
 #[cfg(test)]

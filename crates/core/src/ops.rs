@@ -532,6 +532,11 @@ pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, Comm
             })));
         }
         scene if scene.starts_with("scene.") => Command::Scene(scene_command(scene, request)?),
+        // BL062: the slider gesture cycle (`property.gesture.begin|update|commit|cancel`). Its
+        // shape rules live next to the state machine, like the scene gesture's do.
+        gesture if gesture.starts_with("property.gesture.") => {
+            crate::state::property_gesture::parse_op(gesture, request)?
+        }
         _ => return Ok(None),
     };
     Ok(Some(Op::Run(command)))

@@ -121,3 +121,5 @@ BL007 (renderer) passa a ter o contrato: "consome `ScenePlan`, confere `require_
 ## Recebimento pelo coordenador
 
 Export scene_plan e F037 adicionados; BL006 permanece A validar até o gate conjunto. Nenhum teste Cargo executado neste recebimento porque os módulos compartilhados J/L ainda estão em edição. BL063–BL065 são os IDs reconciliados no backlog; BL062 é o bug de undo dos sliders.
+
+Validação posterior: 29 testes públicos e doctest passaram; clippy lib limpo. F037 Lib V para o subconjunto documentado, sem consumidor renderer/CLI/UI.
