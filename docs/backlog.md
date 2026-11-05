@@ -433,7 +433,8 @@ Follow-up de integração BL089/BL096/BL097 delegado ao Cursor Sonnet 5.5: <t3-t
 
 | ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
 |---|---|---|---|---|---|---|
-| BL111 | F040/multiprocesso | Coordenar ownership de recursos pendentes entre editores/processos | Pendente | BL096/BL079 | Coordenador | Registro atual é só em memória do processo; dois editores/CLI sobre o mesmo workspace não podem ter garantia de cleanup compartilhado. Persistir claims sob lease e provar com dois processos reais antes de declarar suporte |
+| BL111 | F040/multiprocesso | Coordenar ownership de recursos pendentes entre editores/processos | A validar | BL096/BL079 | S2 (Cursor Sonnet 5.5) | Implementado: ledger por workspace `.tessel-claims/` com claim por recurso+identidade+titular, lease `flock` por processo (PID não decide vivacidade), reap, órfãos, `recover` e falha fechada; 10 testes de unidade e 11 testes com dois processos reais (SIGKILL incluído) em `scene_claims_processes.rs`. Sem prova de Windows/NFS; PR/commit registrados na entrega; vira Concluído após revisão e gate do coordenador. [Contrato](features/scene-resource-integration.md) |
+| BL111.1 | F040/multiprocesso | Expor `recover` e `claims_status` em `scene.resources.*` (JSONL/UI) com job fora da UI | Pendente | BL111, BL112, S1 | Coordenador | Hoje só na lib; precisa Command + nó em tree + parser + teste, e o hash do recover em job (mesma regra do BL112) |
 | BL112 | F040/responsividade | Mover hash e descarte de resultados grandes para job fora da UI | Pendente — prioridade alta | BL094/BL097 | Coordenador | Medição debug: descartar 256 MiB levou 8,7 s; não executar leitura pesada no destrutor da UI. job.discard/limpeza assíncrona deve preservar ownership até terminar; medir release e garantir encerramento seguro |
 
 ### Gate integrado da rodada R1–R10
@@ -457,7 +458,7 @@ Plano e contratos: [wave-s1-s10-plan.md](migration/wave-s1-s10-plan.md). R1–R1
 | Frente | Itens | Estado | Gate de entrega |
 |---|---|---|---|
 | S1 | BL094/BL112 | Preparada para delegação | descarte assíncrono, sem hashing na UI |
-| S2 | BL111 | Preparada para delegação | claims persistentes e dois processos reais |
+| S2 | BL111 | Entregue para revisão (a validar) | claims persistentes e dois processos reais; BL111.1 (exposição JSONL/UI) pendente |
 | S3 | BL109 | Preparada para delegação | bytes imutáveis em export e cancelamento |
 | S4 | BL102 | Preparada para delegação | ack antigo de slot reutilizado recusado |
 | S5 | BL100/BL101 | Preparada para delegação | attach off-thread e recursos vazios |

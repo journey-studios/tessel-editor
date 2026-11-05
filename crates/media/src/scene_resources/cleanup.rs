@@ -63,10 +63,10 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use serde_json::{Value, json};
-use tessel_editor_core::jobs::CancelToken;
+use tessel_editor_core::jobs::{CancelToken, JobError};
 use tessel_editor_core::scene_resources::ResourcePath;
 
-use super::claims::{self, HolderId, Item, Leave, Stamp, Tracker};
+use super::claims::{self, HolderId, Item, Leave, Ledger, Stamp, Tracker};
 use crate::directed_resources::RootLease;
 use crate::fsx::hash_file;
 
@@ -158,6 +158,8 @@ impl Observed {
 struct Owned {
     path: PathBuf,
     key: PathBuf,
+    /// The ledger of the workspace this belongs to: where its claim lives.
+    ledger: Ledger,
     /// `false` for something the record only relies on (reused from another pending result).
     created: bool,
 }
@@ -169,6 +171,9 @@ struct Owned {
 #[derive(Debug)]
 pub struct Created {
     holder: HolderId,
+    /// Where new claims go: the ledger of the workspace this record writes into, set by
+    /// [`Created::bind`] before the first one.
+    ledger: Option<Ledger>,
     /// Roots whose lease removal takes first: where `files` were published or reused.
     roots: Vec<PathBuf>,
     files: Vec<Owned>,
@@ -179,6 +184,7 @@ impl Default for Created {
     fn default() -> Self {
         Self {
             holder: claims::next_holder(),
+            ledger: None,
             roots: Vec::new(),
             files: Vec::new(),
             dirs: Vec::new(),
@@ -212,9 +218,26 @@ impl Created {
             .map(|owned| owned.path.as_path())
     }
 
-    /// Records a folder this operation made, under the registry lock the caller already holds
+    /// Binds this record to the claims ledger of `workspace`, where its claims are kept (BL111).
+    /// Every record that creates or joins something is bound first; a record that is not has
+    /// nothing to claim. A second call with another workspace is ignored: one record writes into
+    /// one workspace.
+    pub(super) fn bind(&mut self, workspace: &Path) -> Ledger {
+        self.ledger
+            .get_or_insert_with(|| Ledger::of(workspace))
+            .clone()
+    }
+
+    fn ledger(&self) -> Option<&Ledger> {
+        self.ledger.as_ref()
+    }
+
+    /// Records a folder this operation made, under the ledger lock the caller already holds
     /// (so the folder and its entry appear together).
     pub(super) fn dir_with(&mut self, tracker: &mut Tracker, path: PathBuf, key: PathBuf) {
+        let Some(ledger) = self.ledger().cloned() else {
+            return;
+        };
         if self.has(&self.dirs, &key) {
             return;
         }
@@ -222,31 +245,54 @@ impl Created {
         self.dirs.push(Owned {
             path,
             key,
+            ledger,
             created: true,
         });
     }
 
     /// Relies on a folder some pending result created, if one did. A folder nobody created is
     /// not recorded: nobody will remove it.
-    pub(super) fn join_dir_with(&mut self, tracker: &mut Tracker, path: PathBuf, key: PathBuf) {
-        if self.has(&self.dirs, &key) || !tracker.join(self.holder, &key) {
-            return;
+    pub(super) fn join_dir_with(
+        &mut self,
+        tracker: &mut Tracker,
+        path: PathBuf,
+        key: PathBuf,
+    ) -> Result<(), JobError> {
+        let Some(ledger) = self.ledger().cloned() else {
+            return Ok(());
+        };
+        if self.has(&self.dirs, &key) {
+            return Ok(());
         }
-        self.dirs.push(Owned {
-            path,
-            key,
-            created: false,
-        });
+        let joined = tracker.join(self.holder, &key);
+        if let Some(why) = tracker.fault() {
+            return Err(claims_unavailable(why));
+        }
+        if joined {
+            self.dirs.push(Owned {
+                path,
+                key,
+                ledger,
+                created: false,
+            });
+        }
+        Ok(())
     }
 
     pub(super) fn dir(&mut self, path: PathBuf, key: PathBuf) {
-        let mut tracker = claims::lock();
+        let Some(ledger) = self.ledger().cloned() else {
+            return;
+        };
+        let mut tracker = ledger.lock_creating();
         self.dir_with(&mut tracker, path, key);
     }
 
-    pub(super) fn join_dir(&mut self, path: PathBuf, key: PathBuf) {
-        let mut tracker = claims::lock();
-        self.join_dir_with(&mut tracker, path, key);
+    pub(super) fn join_dir(&mut self, path: PathBuf, key: PathBuf) -> Result<(), JobError> {
+        let Some(ledger) = self.ledger().cloned() else {
+            return Ok(());
+        };
+        let mut tracker = ledger.lock();
+        self.join_dir_with(&mut tracker, path, key)
     }
 
     /// Records a file published at `relative` under `root` (`canonical_root` is the same folder
@@ -258,37 +304,60 @@ impl Created {
         relative: &ResourcePath,
         sha256: &str,
     ) {
+        let Some(ledger) = self.ledger().cloned() else {
+            return;
+        };
         let (path, key) = locate(root, canonical_root, relative);
         if self.has(&self.files, &key) {
             return;
         }
         self.note_root(root);
         let stamp = Stamp::of(&path, sha256);
-        claims::lock().create_file(self.holder, key.clone(), stamp);
+        // Recorded or not (a ledger that cannot be written), the file is this record's: a
+        // discard that finds no claim keeps it, never removes it.
+        ledger
+            .lock_creating()
+            .create_file(self.holder, key.clone(), canonical_root, stamp);
         self.files.push(Owned {
             path,
             key,
+            ledger,
             created: true,
         });
     }
 
     /// Relies on the file at `relative` if a pending result created it (the file was reused).
+    /// Refuses (`claims_unavailable`) when the ledger cannot say, because then a discard of the
+    /// other result could remove what this one relies on.
     pub(crate) fn join_file(
         &mut self,
         root: &Path,
         canonical_root: &Path,
         relative: &ResourcePath,
-    ) {
+    ) -> Result<(), JobError> {
+        let Some(ledger) = self.ledger().cloned() else {
+            return Ok(());
+        };
         let (path, key) = locate(root, canonical_root, relative);
-        if self.has(&self.files, &key) || !claims::lock().join(self.holder, &key) {
-            return;
+        if self.has(&self.files, &key) {
+            return Ok(());
         }
-        self.note_root(root);
-        self.files.push(Owned {
-            path,
-            key,
-            created: false,
-        });
+        let mut tracker = ledger.lock();
+        let joined = tracker.join(self.holder, &key);
+        if let Some(why) = tracker.fault() {
+            return Err(claims_unavailable(why));
+        }
+        drop(tracker);
+        if joined {
+            self.note_root(root);
+            self.files.push(Owned {
+                path,
+                key,
+                ledger,
+                created: false,
+            });
+        }
+        Ok(())
     }
 
     fn has(&self, list: &[Owned], key: &Path) -> bool {
@@ -307,11 +376,16 @@ impl Created {
         let files = std::mem::take(&mut other.files);
         let dirs = std::mem::take(&mut other.dirs);
         let roots = std::mem::take(&mut other.roots);
-        claims::lock().transfer(
-            other.holder,
-            self.holder,
-            files.iter().chain(&dirs).map(|owned| owned.key.as_path()),
-        );
+        if self.ledger.is_none() {
+            self.ledger = other.ledger.take();
+        }
+        for (ledger, keys) in by_ledger(files.iter().chain(&dirs)) {
+            ledger.lock().transfer(
+                other.holder,
+                self.holder,
+                keys.iter().map(|key| key.as_path()),
+            );
+        }
         for root in roots {
             self.note_root(&root);
         }
@@ -334,7 +408,13 @@ impl Created {
         for file in files.iter().rev() {
             // Decided under the root lease: whoever reuses a file claims it holding that same
             // lease, so a claim cannot slip in between this answer and the unlink below.
-            let verdict = claims::lock().leave(holder, &file.key);
+            // A root that stayed busy cannot be touched: the claim stays (as an orphan) so that
+            // `recover` takes the file back later, instead of forgetting a file left behind.
+            let verdict = if leases.blocked(&file.path) {
+                file.ledger.lock().abandon(holder, &file.key)
+            } else {
+                file.ledger.lock().leave(holder, &file.key)
+            };
             match verdict {
                 Leave::Untracked => {
                     if file.created {
@@ -348,34 +428,74 @@ impl Created {
                     "`{}`: another result still relies on it",
                     file.path.display()
                 )),
+                Leave::Unverifiable(why) => report.kept.push(format!(
+                    "`{}`: the claims ledger cannot vouch for it ({why})",
+                    file.path.display()
+                )),
+                Leave::Abandoned => report.kept.push(format!(
+                    "`{}`: its root is busy; it stays claimed for recovery",
+                    file.path.display()
+                )),
                 Leave::Last(Item::Dir) => {}
                 Leave::Last(Item::File(stamp)) => {
-                    if leases.blocked(&file.path) {
-                        report
-                            .kept
-                            .push(format!("`{}`: its root is busy", file.path.display()));
-                        continue;
-                    }
                     remove_file(&file.path, stamp.as_ref(), &mut report);
                 }
             }
         }
+        // A folder below a root this call leases goes while the lease is still held: an
+        // adoption that took the lease after ours has not looked at the folder yet, and one
+        // that took it before is finished (its claims are in place), so nobody publishes into a
+        // folder that is about to disappear.
+        let inside: Vec<&Owned> = dirs
+            .iter()
+            .rev()
+            .filter(|dir| {
+                leases
+                    .held
+                    .iter()
+                    .any(|lease| dir.key != lease.root() && dir.key.starts_with(lease.root()))
+            })
+            .collect();
+        for dir in &inside {
+            leave_dir(dir, holder, &mut report);
+        }
         // The lock file lives in the root being cleaned: release before removing folders.
         drop(leases);
-        // A folder is removed while its entry is locked: another result creating or joining the
-        // same folder waits, so it never finds a folder that is about to disappear.
-        let mut tracker = claims::lock();
         for dir in dirs.iter().rev() {
-            match tracker.leave(holder, &dir.key) {
-                Leave::Untracked | Leave::Last(Item::File(_)) => {}
-                Leave::Shared => report.shared.push(format!(
-                    "`{}`: another result still relies on it",
-                    dir.path.display()
-                )),
-                Leave::Last(Item::Dir) => remove_dir(&dir.path, &mut report),
+            if !inside.iter().any(|done| done.key == dir.key) {
+                leave_dir(dir, holder, &mut report);
             }
         }
         report
+    }
+}
+
+/// Gives up a folder this record made or relied on, and removes it when it was the last holder
+/// and it is empty. Done while the folder's entry is locked: another result creating or joining
+/// the same folder waits, so it never finds a folder that is about to disappear. A folder with
+/// claims still below it (an orphan, or another holder's file) stays claimed.
+fn leave_dir(dir: &Owned, holder: HolderId, report: &mut CleanupReport) {
+    let mut tracker = dir.ledger.lock();
+    let verdict = if tracker.has_below(&dir.key) {
+        tracker.abandon(holder, &dir.key)
+    } else {
+        tracker.leave(holder, &dir.key)
+    };
+    match verdict {
+        Leave::Untracked | Leave::Last(Item::File(_)) => {}
+        Leave::Shared => report.shared.push(format!(
+            "`{}`: another result still relies on it",
+            dir.path.display()
+        )),
+        Leave::Abandoned => report.shared.push(format!(
+            "`{}`: claims remain below it, so it stays claimed",
+            dir.path.display()
+        )),
+        Leave::Unverifiable(why) => report.kept.push(format!(
+            "`{}`: the claims ledger cannot vouch for it ({why})",
+            dir.path.display()
+        )),
+        Leave::Last(Item::Dir) => remove_dir(&dir.path, report),
     }
 }
 
@@ -387,13 +507,34 @@ impl Drop for Created {
         if self.files.is_empty() && self.dirs.is_empty() {
             return;
         }
-        claims::lock().accept(
-            self.files
-                .iter()
-                .chain(&self.dirs)
-                .map(|owned| owned.key.as_path()),
-        );
+        for (ledger, keys) in by_ledger(self.files.iter().chain(&self.dirs)) {
+            ledger.lock().accept(keys.iter().map(|key| key.as_path()));
+        }
     }
+}
+
+/// `keys` of the entries grouped by the ledger they live in (one per workspace in practice).
+fn by_ledger<'a>(owned: impl Iterator<Item = &'a Owned>) -> Vec<(Ledger, Vec<PathBuf>)> {
+    let mut groups: Vec<(Ledger, Vec<PathBuf>)> = Vec::new();
+    for item in owned {
+        match groups
+            .iter_mut()
+            .find(|(ledger, _)| ledger.dir() == item.ledger.dir())
+        {
+            Some((_, keys)) => keys.push(item.key.clone()),
+            None => groups.push((item.ledger.clone(), vec![item.key.clone()])),
+        }
+    }
+    groups
+}
+
+fn claims_unavailable(why: &str) -> JobError {
+    JobError::new(
+        "claims_unavailable",
+        format!(
+            "the claims ledger of this workspace cannot be used, so nothing was shared or removed: {why}"
+        ),
+    )
 }
 
 fn created(list: &[Owned]) -> impl Iterator<Item = &Path> {
@@ -424,18 +565,18 @@ fn merge(into: &mut Vec<Owned>, incoming: Vec<Owned>) {
 
 /// Leases held while removing, and the roots that could not be taken.
 #[derive(Default)]
-struct Leases {
-    held: Vec<RootLease>,
+pub(super) struct Leases {
+    pub(super) held: Vec<RootLease>,
     busy: Vec<PathBuf>,
 }
 
 impl Leases {
-    fn blocked(&self, path: &Path) -> bool {
+    pub(super) fn blocked(&self, path: &Path) -> bool {
         self.busy.iter().any(|root| path.starts_with(root))
     }
 }
 
-fn take_leases(roots: &[PathBuf], report: &mut CleanupReport) -> Leases {
+pub(super) fn take_leases(roots: &[PathBuf], report: &mut CleanupReport) -> Leases {
     let mut leases = Leases::default();
     for root in roots {
         if !root.is_dir() {
@@ -469,7 +610,7 @@ fn acquire(root: &Path) -> Result<RootLease, tessel_editor_core::jobs::JobError>
 
 /// Removes the file at `path` if, and only if, it is still what was published (BL097): same
 /// identity, same content, and nothing wrote to it while it was being read.
-fn remove_file(path: &Path, stamp: Option<&Stamp>, report: &mut CleanupReport) {
+pub(super) fn remove_file(path: &Path, stamp: Option<&Stamp>, report: &mut CleanupReport) {
     let keep = |report: &mut CleanupReport, why: &str| {
         report.kept.push(format!("`{}`: {why}", path.display()));
     };
@@ -524,7 +665,7 @@ fn remove_file(path: &Path, stamp: Option<&Stamp>, report: &mut CleanupReport) {
     }
 }
 
-fn remove_dir(dir: &Path, report: &mut CleanupReport) {
+pub(super) fn remove_dir(dir: &Path, report: &mut CleanupReport) {
     match fs::remove_dir(dir) {
         Ok(()) => report.removed_dirs += 1,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}

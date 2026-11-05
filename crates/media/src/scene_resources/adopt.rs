@@ -36,7 +36,7 @@ use tessel_editor_core::scene_resources::{ResourceManifest, ResourcePath};
 use tessel_editor_core::{CommandError, EditorState};
 
 use super::base::{self, MANAGED_DIR, ResourceBase};
-use super::claims;
+use super::claims::Ledger;
 use super::cleanup::{CleanupReport, Created, Provisional, same_folder};
 use crate::directed_resources::{
     MaterializeReport, Options, Outcome, Progress, Published, RootLease, blocked_by_manifest,
@@ -103,7 +103,8 @@ pub fn adopt(
     // lease is released first and then this owner removes what the call created, which takes the
     // lease again. A success moves the record out with `release`.
     let mut owned = Provisional::default();
-    create_folders(workspace, &managed, owned.created_mut())?;
+    let ledger = owned.created_mut().bind(workspace);
+    create_folders(workspace, &managed, &ledger, owned.created_mut())?;
     let lease = RootLease::acquire(managed.root())?;
     let canonical = lease.root().to_path_buf();
     let hashes: HashMap<&ResourcePath, &str> = plan
@@ -145,10 +146,10 @@ pub fn adopt(
         if item.outcome == Outcome::Reused {
             owned
                 .created_mut()
-                .join_file(managed.root(), &canonical, &item.path);
+                .join_file(managed.root(), &canonical, &item.path)?;
         }
         for (folder, key) in folders_of(managed.root(), &canonical, &item.path) {
-            owned.created_mut().join_dir(folder, key);
+            owned.created_mut().join_dir(folder, key)?;
         }
     }
     Ok(Adoption {
@@ -321,9 +322,20 @@ fn record_published(
 fn create_folders(
     workspace: &Path,
     managed: &ResourceBase,
+    ledger: &Ledger,
     created: &mut Created,
 ) -> Result<(), JobError> {
-    let mut tracker = claims::lock();
+    let mut tracker = ledger.lock_creating();
+    // A ledger that cannot be used cannot tell this adoption whom a reused file belongs to:
+    // refuse before anything is created.
+    if let Some(why) = tracker.fault() {
+        return Err(JobError::new(
+            "claims_unavailable",
+            format!(
+                "the claims ledger of this workspace cannot be used; nothing was changed: {why}"
+            ),
+        ));
+    }
     for folder in [workspace.join(MANAGED_DIR), managed.root().to_path_buf()] {
         match fs::create_dir(&folder) {
             Ok(()) => {
@@ -332,7 +344,7 @@ fn create_folders(
             }
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
                 let key = canonical_or_spelled(&folder);
-                created.join_dir_with(&mut tracker, folder, key);
+                created.join_dir_with(&mut tracker, folder, key)?;
             }
             // What was made so far is removed by the caller's owner when it drops.
             Err(error) => return Err(io_error(&folder, &error)),

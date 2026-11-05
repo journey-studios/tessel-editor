@@ -170,7 +170,7 @@ Peças (`scene_resources::cleanup`):
 
 ### Arquivos compartilhados (BL096)
 
-Cada registro é um *titular* no registro de reivindicações do processo (`scene_resources/claims.rs`),
+Cada registro é um *titular* no registro de reivindicações do workspace (`scene_resources/claims/`, em disco desde o BL111, ver abaixo),
 com chave por **caminho canônico** (`ws/../ws` e `ws` são o mesmo dono). Regras:
 
 - `adopt` registra o que **criou** (arquivo/pasta) e o que **reaproveitou** (`Outcome::Reused`), o
@@ -183,9 +183,56 @@ com chave por **caminho canônico** (`ws/../ws` e `ws` são o mesmo dono). Regra
   projeto. Daí em diante nenhum descarte, em nenhuma ordem, os toca.
 - Uma raiz que já existia antes (sem entrada) nunca é removida por ninguém. `absorb` (import de
   várias cenas) transfere as reivindicações ao registro que absorve.
-- Ordem de travas: lease da raiz → mutex do registro. `create_folders` só toma o mutex.
-- Fora da garantia: **outro processo**. O registro vive na memória; dois editores sobre o mesmo
-  workspace só têm o `RootLease` (que serializa, não conta referências); item proposto em `docs/migration/integration-cleanup-report.md`.
+- Ordem de travas: lease da raiz → trava do registro. `create_folders` só toma a trava do registro.
+- Entre processos: ver "Ownership entre processos (BL111)".
+
+### Ownership entre processos (BL111)
+
+O registro deixou de viver só na memória: é um **ledger por workspace** em
+`<workspace>/.tessel-claims/` (`scene_resources/claims/ledger.rs`), compartilhado por qualquer
+editor, CLI ou job que abra o mesmo workspace.
+
+```text
+.tessel-claims/
+  ledger.lock     flock exclusivo durante uma leitura-modificação-escrita
+  claims.json     versão 1: owners + entries, trocado por rename atômico
+  live/<token>    um por processo dono, com flock mantido enquanto o processo vive
+```
+
+- **Claim** = recurso (caminho canônico) + identidade (tamanho, dispositivo/inode e SHA-256 do
+  arquivo publicado) + **titular** (token aleatório do processo + sequência do resultado). O
+  token é sorteado a cada início de processo; o PID é só texto de mensagem.
+- **Lease**: o processo dono mantém `flock` exclusivo em `live/<token>` enquanto tem titulares
+  no ledger. O kernel solta a trava quando o processo termina, inclusive `kill -9`; vivacidade é
+  "a trava está tomada", **nunca** o PID, então PID reaproveitado não faz um morto parecer vivo
+  nem o contrário. Se não dá para saber (erro que não seja "ocupado"), o titular conta como vivo.
+- Quem abre o ledger primeiro faz o **reap** dos titulares cujo lease sumiu. Uma entrada sem
+  titular é **órfã**: um resultado pendente que não existe mais. Ela fica até alguém decidir:
+  um novo resultado que reaproveita o arquivo entra como titular (e decide se fica ou sai) ou
+  `recover` remove após a mesma prova de conteúdo de qualquer cleanup (BL097).
+- Um processo nunca remove arquivo aceito (sem entrada), nem entrada que outro titular vivo usa,
+  nem arquivo que não é mais o publicado (identidade/hash diferente → `kept` com motivo).
+- Falha fechada: ledger ilegível, de versão mais nova ou não gravável → `adopt` recusa com
+  `claims_unavailable` **antes de copiar**; descarte mantém o arquivo e informa.
+- Sem entradas nem owners o ledger inteiro é removido: workspace sem resultado pendente fica
+  idêntico a um que nunca teve ledger.
+- `recover(workspace, token)` (lib) devolve `Recovery { reaped_holders, orphans, report }`:
+  remove só órfãos, sob o `RootLease` de cada raiz, arquivos primeiro e pastas vazias depois,
+  com hash fora da trava do ledger e cancelamento (`cancelled`). `claims_status(workspace)`
+  devolve o JSON `scene.resources.claims` (owners, reaped, orphans, entradas) sem alterar nada além do reap.
+- Ordem de travas: lease da raiz → `ledger.lock`; nada espera lease de raiz com o ledger travado.
+
+Superfícies: **lib** (`adopt`, `Provisional`, `recover`, `claims_status`, `tracked_under`) e
+testes com dois processos reais. **CLI JSONL / UI**: sem comando novo nesta entrega; `recover`
+e `claims_status` não têm tradução em `scene.resources.*` (BL111.1). Hashing do `recover` não deve rodar na thread de UI
+(mesma restrição do BL112).
+
+Achado na prova: no macOS um `open` que corre contra o `unlink` do `ledger.lock` pelo processo que esvaziou o ledger responde `EINVAL` (visto em 2 de 5 execuções do teste de ciclos concorrentes antes da correção); a abertura é refeita (30/30 execuções seguidas passaram depois).
+
+Limites: o lease é `flock` advisory de **filesystem local** (NFS/SMB podem não oferecer);
+escritor hostil do mesmo usuário está fora de escopo (BL079); queda do SO não é sincronizada
+(rename atômico, sem `fsync`); processo que morre depois de o projeto aceitar mas antes de soltar
+os claims deixa um órfão que o `recover` verifica e pode remover; Windows não foi provado.
 
 ### Identidade por conteúdo (BL097)
 
@@ -246,12 +293,12 @@ Comandos (todos pelo helper `cargo-serial.py`):
 | lib + host (BL089/BL096) | `crates/media/tests/scene_import_cleanup.rs` (29) | adopt registra só o que criou; adopt em pasta existente e cancelado preservam o do usuário; dono remove ao cair e `release` mantém; import cancelado na 2ª cena, logo após o último arquivo, falho na 2ª cena e descartado sem apply deixam o workspace idêntico; apply mantém e `undo` não toca arquivos; projeto trocado e workspace trocado tornam stale e limpam; attach recusado tarde limpa e preserva a cena do usuário; destino pré-existente e arquivo reaproveitado ficam; arquivo trocado fica; raiz ocupada fica; host descartado sem commit limpa; `job.commit` após `project.open` de cópia é stale; `PendingAdoption` aceito/projeto trocado/workspace trocado/cena destacada/revisão trocada/não aplicado; import e adopt para a mesma cena nas duas ordens, dois imports (`street-2`) e nenhuma reivindicação vazada |
 | lib (BL096/BL097/BL095) | `crates/media/tests/scene_cleanup_ownership.rs` (23 + 1 medição ignorada) | aceitar/descartar em ordens opostas, três titulares, raiz pré-existente, grafia `ws/../ws`, outra cena, relatório `shared`, arquivo acrescentado na pasta do primeiro, segundo cancelado, estresse com threads; reescrita no lugar de mesmo tamanho, mtime restaurado, 1 byte, acréscimo, mesmos bytes, arquivo ilegível; `panic` em `materialize` e em `adopt` |
 | host (R5) | `crates/media/tests/scene_adopt_host.rs` (13) | adopt imediato como antes; `job.commit` no mesmo projeto; projeto trocado, cópia aberta de outro workspace, cena destacada e bundle trocado são stale e limpam; host descartado limpa; pasta existente preservada; dois jobs para a mesma cena; janela interativa aplica no `poll` e reporta falha |
-| lib (unidade) | `scene_resources::claims` (4) | registro de reivindicações |
+| lib (unidade) | `scene_resources::claims` (10) | ledger em disco: sobrevive a trackers e some vazio; lease preso mantém titular vivo mesmo com PID inventado; lease solto remove titular mesmo com PID vivo; último a sair; transferência; órfão reaproveitado; ledger ilegível ou de versão nova recusa |
+| **dois processos reais (BL111)** | `crates/media/tests/scene_claims_processes.rs` (11 + papel filho) | o binário de teste é reexecutado como segundo processo (`TESSEL_CLAIMS_ROLE`) e usa `adopt` de verdade: arquivo compartilhado sobrevive ao descarte de qualquer um, nos dois sentidos; último titular leva tudo; aceito nunca é removido pelo outro; ledger inconfiável recusa antes de copiar; ciclos de adopt/discard concorrentes deixam o workspace como estava; `SIGKILL` do titular vira órfão sem remover nada; reaproveitar o órfão (aceitar/descartar); `recover` remove só o órfão; arquivo reescrito depois da morte fica; titular vivo não é recuperado |
 | lib (unidade) | `scene_resources::*` e `directed_resources::lease` | bases, colisão de caixa, sessão/orçamento, lease |
 | regressão | `scene_project_guards`, `directed_resources*`, `package`, `interchange`, `import` | as guardas de pacote incompleto continuam valendo para o que não é transportado |
 
-Sem prova (não executado): Windows, escritor hostil concorrente, **dois processos** sobre o mesmo
-workspace, disco cheio real, janela/UI, pixels/renderer, FFmpeg real além da suíte existente do
+Sem prova (não executado): Windows, escritor hostil concorrente, filesystem de rede, disco cheio real, janela/UI, pixels/renderer, FFmpeg real além da suíte existente do
 crate, o custo do hash em build de release e a limpeza com raiz ocupada além de 200 ms.
 
 ## Consumidor integrado e prova de restauração
