@@ -1,7 +1,10 @@
 # Próxima rodada da base — H/I/J/K
 
 Base: `6cc4392` + backlog comum. Rodada autorizada em 2026-11-05.
-Quatro agentes Cursor `claude-sonnet-5-5`, worktrees preparados pelo T3, sem criar worktree no shell.
+Quatro agentes Cursor `claude-sonnet-5-5`, checkout compartilhado com ownership exclusivo.
+A tentativa de `isolation: worktree` com target.projectId do tessel-editor foi recusada pelo T3:
+“A local task runs in this thread's project.” Esta conversa pertence ao projeto tesselapp.
+Não criar worktrees no shell, não mudar o projeto pai nem editar tesselapp como contorno.
 Cada agente lê AGENTS, a skill de contrato e `docs/backlog.md`. Sem source edit na origem.
 
 ## Ownership e integração
@@ -13,10 +16,14 @@ Cada agente lê AGENTS, a skill de contrato e `docs/backlog.md`. Sem source edit
 | J | BL012/BL013/BL020/BL021 (BB07 inicial) | Árvore/seleção por ID, avaliação consultável e ciclo semântico de gesto com preview isolado/commit único/cancel; lib e JSONL, sem UI visual | `crates/core/src/scene_interaction/`, `scene_project/`, `ops.rs`, `state/mod.rs`, `state/history.rs` se necessários, testes próprios, `docs/features/scene-interaction.md`, relatório J | F039 |
 | K | BL018 (BB10) | Oráculo ampliado com fronteiras JOIN, FPS racionais e matrizes mundo; consumidores Rust e controles negativos | `scripts/migration-oracle/`, novas fixtures/testes específicos sem editar módulos de produção, `docs/features/migration-oracle.md`, relatório K | F032 existente |
 
-A linha `pub mod ...` em `core/src/lib.rs` é alteração aditiva compartilhada, reconciliada pelo coordenador.
+Exports de módulos em `core/src/lib.rs` e `media/src/lib.rs` são exclusivos do coordenador.
 Não alterar Cargo.toml/lock sem necessidade demonstrada e mensagem ao coordenador. Não tocar runtime,
 desktop ou projeto do usuário. Nenhuma frente habilita scene bundle como `tessel-scene@1` por atalho.
-Sem commits/push/PR pelos agentes: entregam alterações no worktree e relatório, coordenador integra numa entrega.
+Sem commits/push/PR pelos agentes: entregam alterações no checkout compartilhado e relatório, coordenador integra numa entrega.
+O coordenador é o único dono de core/lib.rs e media/lib.rs; agentes propõem exports no relatório.
+Agentes não rodam Cargo nesta rodada compartilhada: o coordenador compila e valida o conjunto
+após os módulos estarem completos. Formatação por arquivo e testes Node independentes podem rodar.
+Não declarar Rust validado sem o gate posterior.
 Matriz/índices/backlog são integrados pelo coordenador a partir das linhas propostas nos relatórios.
 
 ## Contratos entre H e I
