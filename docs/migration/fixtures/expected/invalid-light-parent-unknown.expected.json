@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-light-parent-unknown",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-light-parent-unknown.bundle.json",
+  "bundleSha256": "bc0b933191600b2fb92398feb1c02c2d814f1df9390c8bb00196a36d4513ea5a",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "LIGHT_PARENT_UNKNOWN",
+          "message": "LIGHT_PARENT_UNKNOWN: Light lamp-1 of scene-a follows ghost-node, which is not a layer of the scene"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

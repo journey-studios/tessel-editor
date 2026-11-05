@@ -1,0 +1,50 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-camera-fov-out-of-range",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-camera-fov-out-of-range.bundle.json",
+  "bundleSha256": "f43827b709e3bfed4f1c4eace0834da928c4f9a893ece4a680cda930cb94b494",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "FOV_OUT_OF_RANGE",
+          "message": "FOV_OUT_OF_RANGE: Clip cam-main initialFovDeg must be in (0, 180)"
+        },
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "FOV_OUT_OF_RANGE",
+          "message": "FOV_OUT_OF_RANGE: Clip cam-main segment 0 produces invalid FOV"
+        },
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "FOV_OUT_OF_RANGE",
+          "message": "FOV_OUT_OF_RANGE: Clip cam-main segment 1 produces invalid FOV"
+        },
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "FOV_OUT_OF_RANGE",
+          "message": "FOV_OUT_OF_RANGE: Clip cam-main segment 2 produces invalid FOV"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

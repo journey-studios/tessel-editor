@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-duplicate-node-id",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-duplicate-node-id.bundle.json",
+  "bundleSha256": "64064cf86fcca3478a8a1fcf7db2a1905cfffb3b831068b3e6f7b1897c623a1d",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "sceneDefinitions.scene-a",
+          "zodCode": "custom",
+          "sourceCode": "DUPLICATE_NODE_ID",
+          "message": "DUPLICATE_NODE_ID: Duplicate node id figure"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": [
+          {
+            "code": "DUPLICATE_NODE_ID",
+            "message": "Duplicate node id figure"
+          }
+        ]
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

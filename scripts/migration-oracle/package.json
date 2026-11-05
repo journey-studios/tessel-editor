@@ -1,0 +1,14 @@
+{
+  "name": "tessel-migration-oracle",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Oráculo de equivalência BB10/E0: expectativas geradas por funções puras REAIS do packages/scene-engine (snapshot fixo). Dependências instaladas FORA do repositório (ver README).",
+  "packageManager": "pnpm@10.34.7",
+  "engines": { "node": ">=22.12" },
+  "dependencies": {
+    "esbuild": "0.25.12",
+    "three": "0.187.0",
+    "zod": "4.3.6"
+  }
+}

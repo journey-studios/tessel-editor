@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-schema-version",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-schema-version.bundle.json",
+  "bundleSha256": "cef374ebffe97f6b7899642e7d05991df381a0636d6cd8fbf39c7f3eadc6fdad",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "schemaVersion",
+          "zodCode": "invalid_value",
+          "sourceCode": null,
+          "message": "Invalid input: expected \"1.0\""
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

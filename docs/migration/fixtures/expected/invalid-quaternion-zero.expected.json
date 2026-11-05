@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-quaternion-zero",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-quaternion-zero.bundle.json",
+  "bundleSha256": "8798d84dbee896fb65f0cd19beaa6e983ffd1f6a25475b09ae1faedcb92dee36",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "DEGENERATE_QUATERNION",
+          "message": "DEGENERATE_QUATERNION: Node figure localRotation is zero-length"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

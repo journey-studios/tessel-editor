@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-rec709-video",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-rec709-video.bundle.json",
+  "bundleSha256": "fcf0d4f5ab94c68ffe3febfc8eaa96e351df90490a66095ca731655539b86f33",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "REC709_VIDEO_UNSUPPORTED",
+          "message": "REC709_VIDEO_UNSUPPORTED: rec709-video is not implemented; use srgb-display (canvas is display-referred sRGB)"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-missing-bundle-id",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-missing-bundle-id.bundle.json",
+  "bundleSha256": "251171e9d31928627cea45d2d5e4346d8e408d8c72bd5c7cc83a91d3b063cde1",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "bundleId",
+          "zodCode": "invalid_type",
+          "sourceCode": null,
+          "message": "Invalid input: expected string, received undefined"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

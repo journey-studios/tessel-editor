@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-unknown-recipe",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-unknown-recipe.bundle.json",
+  "bundleSha256": "a95e9357d39d732c3ad61f6463f0352d807761bda917c9be2c61acae0001c6e6",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "cameraClips.0.segments.0.recipe",
+          "zodCode": "invalid_union",
+          "sourceCode": null,
+          "message": "Invalid input"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

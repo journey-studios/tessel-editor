@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-camera-keys-end-short",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-camera-keys-end-short.bundle.json",
+  "bundleSha256": "c2d9f5c5e8d96a51580e9e3043cb29afcb4eb010c8b4da82d61d5a8a00788343",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "CAMERA_KEYS_END_SHORT",
+          "message": "CAMERA_KEYS_END_SHORT: Clip cam-rich segment 2 ends at frame 39 but its last key is at frame 30; the last key must be on the movement's last frame"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

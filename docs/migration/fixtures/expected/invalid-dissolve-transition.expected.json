@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-dissolve-transition",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-dissolve-transition.bundle.json",
+  "bundleSha256": "8ab1dcd8210a41f5e77eca06116a8e1daa334ef8af84096b9dd127c78e7c40c5",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "shots",
+          "zodCode": "custom",
+          "sourceCode": null,
+          "message": "Dissolve transitions are not supported in pilot MVP"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

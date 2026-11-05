@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-camera-key-frame-order",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-camera-key-frame-order.bundle.json",
+  "bundleSha256": "15a8c940c0b0de3bfe2f1195a0fa693df04ff9d47ce34fda5857d8c5654c3a0d",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "CAMERA_KEY_FRAME_ORDER",
+          "message": "CAMERA_KEY_FRAME_ORDER: Clip cam-rich segment 2 key 1 is at frame 10; keys must be strictly increasing, from frame 1 to frame 39 of the movement"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

@@ -1,0 +1,47 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-missing-root-node",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-missing-root-node.bundle.json",
+  "bundleSha256": "97fc4e8060c1a64c8e48ef3d46d7f0269332691fd8cc81bdfdf13d574def8e7f",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "sceneDefinitions.scene-a",
+          "zodCode": "custom",
+          "sourceCode": "MISSING_ROOT_NODE",
+          "message": "MISSING_ROOT_NODE: rootNodeId absent-root not found in nodes"
+        },
+        {
+          "path": "sceneDefinitions.scene-a",
+          "zodCode": "custom",
+          "sourceCode": "ORPHAN_NODE",
+          "message": "ORPHAN_NODE: Node root has null parentId but is not root"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": [
+          {
+            "code": "MISSING_ROOT_NODE",
+            "message": "rootNodeId absent-root not found in nodes"
+          },
+          {
+            "code": "ORPHAN_NODE",
+            "message": "Node root has null parentId but is not root"
+          }
+        ]
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

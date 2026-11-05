@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-composition-node-missing",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-composition-node-missing.bundle.json",
+  "bundleSha256": "b92a482f5a3ddbccb75f48b537135538f7b0ed68b2dcaaeffab1634a01a7118a",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "COMPOSITION_NODE_MISSING",
+          "message": "COMPOSITION_NODE_MISSING: compositionPasses references unknown node ghost-node"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

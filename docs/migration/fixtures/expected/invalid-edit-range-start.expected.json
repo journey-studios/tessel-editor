@@ -1,0 +1,38 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-edit-range-start",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-edit-range-start.bundle.json",
+  "bundleSha256": "7a594fe3f0c9393048606298a6d6414b4908390b7c38016985e6a6bbbde35661",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "EDIT_RANGE_START",
+          "message": "EDIT_RANGE_START: First shot must start at edit frame 0"
+        },
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "EDIT_GAP_OR_OVERLAP",
+          "message": "EDIT_GAP_OR_OVERLAP: Shot shot-1 starts at 4, expected 0"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

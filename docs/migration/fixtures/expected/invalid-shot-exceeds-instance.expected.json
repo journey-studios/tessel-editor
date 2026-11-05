@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-shot-exceeds-instance",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-shot-exceeds-instance.bundle.json",
+  "bundleSha256": "a60c4ac51e3294f2472436f9db15389ccbb903df5eeacd0867a8ad6739e4bfd3",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "SHOT_EXCEEDS_INSTANCE_DURATION",
+          "message": "SHOT_EXCEEDS_INSTANCE_DURATION: Shot shot-2 instance mapping exceeds instance inst-a duration"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

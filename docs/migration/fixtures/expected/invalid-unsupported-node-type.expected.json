@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-unsupported-node-type",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-unsupported-node-type.bundle.json",
+  "bundleSha256": "13c79909b5b73254f5f275a96a1d4b4ddd39d23034514e48d2c08f140f7319a9",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "sceneDefinitions.scene-a",
+          "zodCode": "custom",
+          "sourceCode": "UNSUPPORTED_NODE_TYPE",
+          "message": "UNSUPPORTED_NODE_TYPE: Node type overlay is not supported in pilot (figure)"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": [
+          {
+            "code": "UNSUPPORTED_NODE_TYPE",
+            "message": "Node type overlay is not supported in pilot (figure)"
+          }
+        ]
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

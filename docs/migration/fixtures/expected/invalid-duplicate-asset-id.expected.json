@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-duplicate-asset-id",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-duplicate-asset-id.bundle.json",
+  "bundleSha256": "0c3967161a05be8c332ccc71318be4208d25d3bbe936ccbe2915bc41264443fa",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "DUPLICATE_ASSET_ID",
+          "message": "DUPLICATE_ASSET_ID: Duplicate assets[].assetId backdrop"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

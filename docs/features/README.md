@@ -47,6 +47,7 @@ Lib V significa testes do modelo demo, não um motor real de edição.
 | F028 | [Presets de exportação](presets.md) | V | V | V | V | `preset.list|save|delete|select` |
 | F029 | [Exportar vídeo com áudio](video-export.md) | V | V | V⁸ | V | `export.preflight|start` |
 | F030 | [Gaussian splats (Spark 2.4.0)](spark.md) | V | V | V | V | cena `tessel-scene@1` + asset `splat` |
+| F032 | [Oráculo de equivalência da migração (BB10/E0)](migration-oracle.md) | N/A⁹ | N/A⁹ | N/A⁹ | P⁹ | `scripts/migration-oracle/oracle.mjs verify` + `docs/migration/fixtures/` |
 
 ¹ Dock/tema/janela são capacidades de apresentação. A lib valida layout, mas quem o executa
 é o DockArea vivo; não há execução do Dock no core. UI nativa não é requisito para fluxos
@@ -86,6 +87,13 @@ GPU diferente da testada, foco por teclado sobre a WebView. Detalhes no
 [relatório](../viewport-foundation-report.md). Vídeo em contêiner (contrato de tempo, `webm` não prometido), sequências
 PNG/JPEG, `context_lost` no meio do quadro e scrub do ruler: [relatório de correções](../viewport-bugfix-report.md),
 provados por barcode em Chrome, WKWebView e na janela real (`scripts/video-live-proof.py`).
+
+⁹ Ferramenta de desenvolvimento, não uma capacidade do editor: UI, CLI da janela e CLI headless são
+N/A (o runner é Node, não é o `tessel-headless`). Lib é P: não há consumidor Rust ainda. O contrato de
+dados tem 55 bundles e expectativas geradas por funções reais de `packages/scene-engine@d6adac15`,
+manifest com hashes e validação Node (21/21 testes, repetidos pelo coordenador). Cobre validação,
+grafo, avaliação e câmera; não cobre narração, clima, luz por keys, efeitos, rig, splat, I/O,
+runtime nem pixel/áudio. Ver [relatório](../migration/foundation-b-report.md).
 
 ## Critério de conclusão
 

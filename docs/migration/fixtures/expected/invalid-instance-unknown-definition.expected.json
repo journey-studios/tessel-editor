@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-instance-unknown-definition",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-instance-unknown-definition.bundle.json",
+  "bundleSha256": "6b57aae7bc28f1006798620dded0f8fa5a8222379b6830e637ceb007c5cf30b9",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "UNKNOWN_SCENE_DEFINITION",
+          "message": "UNKNOWN_SCENE_DEFINITION: Instance inst-a references unknown sceneDefinitionId no-such-scene"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

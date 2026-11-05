@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-asset-premultiplied",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-asset-premultiplied.bundle.json",
+  "bundleSha256": "39b855c657ecd77a0f24c503b092760b87678650142440584a9c58ac61c18480",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "ASSET_PREMULTIPLIED_UNSUPPORTED",
+          "message": "ASSET_PREMULTIPLIED_UNSUPPORTED: Asset figure premultiplied alpha is not implemented"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

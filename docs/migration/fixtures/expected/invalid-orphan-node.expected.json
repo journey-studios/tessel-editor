@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-orphan-node",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-orphan-node.bundle.json",
+  "bundleSha256": "64cbeae90c0b4c242e3b729b1b9ccfddf0f8495c6fb17b4c3d2f83320e891c73",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "sceneDefinitions.scene-a",
+          "zodCode": "custom",
+          "sourceCode": "ORPHAN_NODE",
+          "message": "ORPHAN_NODE: Node figure has null parentId but is not root"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": [
+          {
+            "code": "ORPHAN_NODE",
+            "message": "Node figure has null parentId but is not root"
+          }
+        ]
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

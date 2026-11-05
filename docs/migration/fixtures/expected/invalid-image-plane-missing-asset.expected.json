@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-image-plane-missing-asset",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-image-plane-missing-asset.bundle.json",
+  "bundleSha256": "1e10bbd7d95cb2216c669415c49ba84fff41ed1d6db4c862b234ff8a11bf421d",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "IMAGE_PLANE_MISSING_ASSET",
+          "message": "IMAGE_PLANE_MISSING_ASSET: imagePlane figure missing assetRef"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

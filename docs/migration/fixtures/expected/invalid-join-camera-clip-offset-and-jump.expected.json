@@ -1,0 +1,44 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-join-camera-clip-offset-and-jump",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-join-camera-clip-offset-and-jump.bundle.json",
+  "bundleSha256": "840c2cbe789b6747d9b0d46a4af40c56433590d01635de509018049e9e4124ac",
+  "validation": {
+    "schema": {
+      "success": true,
+      "issues": []
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": [],
+    "editJoins": [
+      {
+        "code": "CAMERA_CLIP_OFFSET_BREAK",
+        "message": "Continuous same-clip join: shot-2 cameraInFrame should be 48, got 0",
+        "shotId": "shot-2"
+      },
+      {
+        "code": "CONTINUOUS_CAMERA_JUMP",
+        "message": "Camera position jump at join shot-1|shot-2: 1.5000 scene units",
+        "shotId": "shot-2"
+      },
+      {
+        "code": "CONTINUOUS_TARGET_JUMP",
+        "message": "Camera target jump at join shot-1|shot-2: 1.5000 scene units",
+        "shotId": "shot-2"
+      }
+    ],
+    "finalize": {
+      "ok": false,
+      "message": "Edit joins broken: Continuous same-clip join: shot-2 cameraInFrame should be 48, got 0; Camera position jump at join shot-1|shot-2: 1.5000 scene units; Camera target jump at join shot-1|shot-2: 1.5000 scene units"
+    },
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

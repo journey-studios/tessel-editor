@@ -1,6 +1,8 @@
 # Rodada paralela da base de migração
 
-Status: plano autorizado; execução inicia após o primeiro commit do repositório.
+Status: execução em andamento após o primeiro commit `59d618a`. Frente B entregue e
+verificada pelo coordenador: 55 casos contra a origem e 21 testes do runner; consumidor Rust
+ainda pendente. Frentes A e C seguem com ownership separado.
 Referência: [building blocks e fases](phased-roadmap.md).
 
 ## Contrato de integração

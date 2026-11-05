@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-asset-ref-mismatch",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-asset-ref-mismatch.bundle.json",
+  "bundleSha256": "c2cd7fc6c22aa32bd75790750d13aa972cffeb6ce68d57d27f51e7c09b572472",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "ASSET_REF_MISMATCH",
+          "message": "ASSET_REF_MISMATCH: Node figure assetRef does not match assets[] record for figure"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

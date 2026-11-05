@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-shot-unknown-camera-clip",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-shot-unknown-camera-clip.bundle.json",
+  "bundleSha256": "080b73652fc395753d141ce5bd55c8f408d20e0ee3fc02f7f746696edfd040aa",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "SHOT_UNKNOWN_CAMERA_CLIP",
+          "message": "SHOT_UNKNOWN_CAMERA_CLIP: Shot shot-1 references unknown cameraClipId no-such-clip"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

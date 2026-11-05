@@ -1,0 +1,1120 @@
+{
+  "manifestVersion": 1,
+  "purpose": "Proveniência do oráculo BB10/E0: as expectativas em expected/ foram geradas executando as fontes REAIS listadas abaixo, sem alterá-las.",
+  "source": {
+    "repository": "tesselapp-image-coverage (somente leitura)",
+    "branch": "feat/image-coverage-r8",
+    "commit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+    "package": "packages/scene-engine",
+    "packageTreeAtCommit": "d5fc98713731c6c0ae201ca1f3ce3bd0c9b17214",
+    "workingTreeMatchesCommit": true,
+    "note": "executedSources[].gitBlob foi cruzado com `git ls-tree` do commit fixado na geração; verify confere pelo sha256 do conteúdo."
+  },
+  "tools": {
+    "node": "v22.23.3",
+    "esbuild": "0.25.12",
+    "three": "0.187.0",
+    "zod": "4.3.6",
+    "pinnedBy": "scripts/migration-oracle/package.json + pnpm-lock.yaml (integridades iguais às do lockfile da origem)"
+  },
+  "harness": {
+    "scripts/migration-oracle/harness/entry.mjs": "c51af423577b0bf0c51438e378e8b70a9a457eafefb71f42c9eade36627e1ec6",
+    "scripts/migration-oracle/harness/scope.json": "e331d101294c43616fff39942a5e261ab6108b20f3694416fca3936ff21c7ff8",
+    "scripts/migration-oracle/lib/probes.mjs": "794cd5a27fc5d73b895e27329a3a8e36db6f55f16a67fee737a6fc0172cc1565",
+    "scripts/migration-oracle/lib/serialize.mjs": "e9ab632fd47afb220fd6e1ac5c8cb534bb81794b238132edb3c3711bb47001f5",
+    "scripts/migration-oracle/package.json": "ffc785b117ce601ec7fb46973b26bb03c54d877c27c5342a0a27d32d8f357921",
+    "scripts/migration-oracle/pnpm-lock.yaml": "4397cb85e62fbf277465be6e904197319db76cc25183fb9983be65dda6637655"
+  },
+  "executedSources": [
+    {
+      "path": "src/camera/easing.ts",
+      "sha256": "61acdcfbca0f7224696f370a1b77165210e7b36654c2f7ded3f7e82c71ed3abd",
+      "gitBlob": "6d660fc81a3bd6c3adf9fbd6df44735b8f78d56b",
+      "bytes": 952,
+      "bytesInOutput": 723,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/camera/resolve-camera-clip.ts",
+      "sha256": "0241aa815c0b5747872dc4b35e57a6e30846eb2729ba078678f9ef7127a0e1a4",
+      "gitBlob": "04e5eaab05a2f9af1d83f28b300a34eb87f0a8a6",
+      "bytes": 15085,
+      "bytesInOutput": 10484,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/edit/finalize-bundle.ts",
+      "sha256": "f7c7d640baf2cdbb5e1cc382a74120c0f14cfdb442f91805f4ea45fe6d777780",
+      "gitBlob": "e85d7d0b06e1058f706b14a64a3855537e740f4d",
+      "bytes": 1413,
+      "bytesInOutput": 671,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/edit/resolve-shot-at-edit-frame.ts",
+      "sha256": "bc9e72b01b6149b39adf8d062100e5a79956439c4188bee343697a07892c2b28",
+      "gitBlob": "ef8fffa87ab1f31456742c0171ec52a920617194",
+      "bytes": 966,
+      "bytesInOutput": 659,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/effects/catalog.ts",
+      "sha256": "8a6004308b168df319f8b8a88363b8dabb601401ab805683196b73c11eb3c840",
+      "gitBlob": "1b66db2ccb8c5a5e476c056f1a2c654507b068a4",
+      "bytes": 4686,
+      "bytesInOutput": 2806,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/effects/scene-effects.ts",
+      "sha256": "d76e0bce25684d1dda57beb2181380f23188182ea93621893c011352277effa4",
+      "gitBlob": "616d018bb3d50f793376c10c6b911fdc3406a3e3",
+      "bytes": 2507,
+      "bytesInOutput": 312,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/evaluator/evaluate-edit-frame.ts",
+      "sha256": "653513af4ca6c8ee5b775970ce9d7afe63d718d9e8618cfe7aea83867b6cb46d",
+      "gitBlob": "bb178c234c592d3bff261942670d7d249c89acbd",
+      "bytes": 4065,
+      "bytesInOutput": 2576,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/keyframes/keyframe-rules.ts",
+      "sha256": "e1beb696ba477a40b0ff0188acc3e18fee79180aaf8f79f0c2eac2bf14f74ae2",
+      "gitBlob": "aaa7d0c87e7cf54f0f21a937488d2f7867a5fbb0",
+      "bytes": 2433,
+      "bytesInOutput": 717,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/keyframes/resolve-keyframes.ts",
+      "sha256": "66a89d2a935124371af71d31bbaac7d3202ce2cc0d4fe784ca84049348ad8f5f",
+      "gitBlob": "a5127a1bbb7eeca27ee1d4d363a31976d87788ab",
+      "bytes": 2076,
+      "bytesInOutput": 737,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/lighting/light-keys.ts",
+      "sha256": "5df1b807e779c5f36b096e3215cf72e0401b42762f0b6e75e102a4f7ab61da1f",
+      "gitBlob": "240d4a59309b51db4bea4a691b990b4399014119",
+      "bytes": 3609,
+      "bytesInOutput": 65,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/lighting/scene-lighting.ts",
+      "sha256": "78ba61253095cb120003ad56837b6e93c35af4da7c1f1934b76d94814c6aa151",
+      "gitBlob": "a85e0edd3a83e565d518dbbc1b2839be369e1c01",
+      "bytes": 5374,
+      "bytesInOutput": 54,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/narration/mix-plan.ts",
+      "sha256": "aada36516e40aec2f6a185288d7aa0956bd23132d2f83c85f2d542e33fa1560c",
+      "gitBlob": "05fd1c9928ef0e350a19d0fb57c8f54820557c73",
+      "bytes": 4213,
+      "bytesInOutput": 0,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/narration/narration-schema.ts",
+      "sha256": "0af031103fcef0eacb761d14342cebebff976253556a783baeaa2123e6fec461",
+      "gitBlob": "b9aee27cb16ade8599276e71556843e379586357",
+      "bytes": 4093,
+      "bytesInOutput": 3459,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/narration/narration.ts",
+      "sha256": "720b5e33429e17749edc2a7eb4f417a3e81b9e48692d5376fba5d063f744be33",
+      "gitBlob": "3ad156e96bfaa137f4664a818e9f65b9d03fac48",
+      "bytes": 23351,
+      "bytesInOutput": 5557,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/outline/flags.ts",
+      "sha256": "9fe5e22661a0b10eb23ae70ec14b71260c25422402dd2f6961f9d3e6fa2001f6",
+      "gitBlob": "f22f7a87cef847600a54bf94105bd0c1c343c4a5",
+      "bytes": 2387,
+      "bytesInOutput": 0,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/outline/outline-schema.ts",
+      "sha256": "00305d09ef920188fbe47a4f038ea2814b5dc1f7ea48451ae3abb8298b7c57b4",
+      "gitBlob": "eea86648083ebbd7a6f853d950481d9f8f9465f8",
+      "bytes": 2372,
+      "bytesInOutput": 1577,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/outline/outline.ts",
+      "sha256": "30c67516427ea7e8cc6571028328b89e85da6054b38aece7c0178da9a21a5fae",
+      "gitBlob": "45d11a693425c121fd2848ebff3fbec8d76c7c0f",
+      "bytes": 29372,
+      "bytesInOutput": 6479,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/path/path-schema.ts",
+      "sha256": "79b53b9f089a795720ee7789a7a53e72283b847d3522fd7bb3fd724df9d63e15",
+      "gitBlob": "e0780672769dbcba2027391d3f10b651cfe10915",
+      "bytes": 1882,
+      "bytesInOutput": 1508,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/performance/resolve-performance.ts",
+      "sha256": "3e3f2f4f888a48eddf00bae6d712995035f1e7e74dd58f938a003e6fabeedcc7",
+      "gitBlob": "a5212bda7f4c966852584f07e5d048cbc808ee24",
+      "bytes": 3314,
+      "bytesInOutput": 2655,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/rig/follow-schema.ts",
+      "sha256": "b437822b5c62c46d670c626afc136fca934c2eca9ca33aa9617dfdc17d40048c",
+      "gitBlob": "a3f2ffc0dc4fa421dee9d38d02a009add95abcd5",
+      "bytes": 2063,
+      "bytesInOutput": 1311,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/rig/follow-validation.ts",
+      "sha256": "33303d66c7e0776928c1a41095927200d26cf948582e25da11f2155df38c866a",
+      "gitBlob": "630ad8a69405d3368c124e7a6bae44d39744f14a",
+      "bytes": 7713,
+      "bytesInOutput": 5924,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/rig/rig-geometry.ts",
+      "sha256": "f82ddec706fc5e3193e1025fca18bcb0815fc68bac3385edf2771189d5ca1ea6",
+      "gitBlob": "2b6f1e5bbf1c78aab36060f9c27d8680b61da910",
+      "bytes": 4824,
+      "bytesInOutput": 463,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/rig/rig-schema.ts",
+      "sha256": "ea094dccfd1c69bf452672ae4fc11658b06cc37eea9c8493f9675955bb5be834",
+      "gitBlob": "648eccb920752fc9bd0abd39518c29f772193192",
+      "bytes": 4358,
+      "bytesInOutput": 3377,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/rig/rig-validation.ts",
+      "sha256": "e0c6d8e1c009e24df0bc2b766e57f7c93ccab5e925d6c6f934bca2859b15a3c2",
+      "gitBlob": "0f0eea3abe9ec2a1e236ca3452239deface3f372",
+      "bytes": 9107,
+      "bytesInOutput": 7241,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/scene/scene-graph.ts",
+      "sha256": "81ff5856795cb75428ba4e9e3fafb93b186c4996bc4cebf729455f890dba80dd",
+      "gitBlob": "8bcaa84fee9649c70e65d8a974608c9adbfacfbe",
+      "bytes": 10954,
+      "bytesInOutput": 7927,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/schema/render-bundle.schema.ts",
+      "sha256": "953ddfbdfca5dc98a2f3baa29ddbc59f26922131bfa32b998b1f70bc107e0f30",
+      "gitBlob": "d4b10d3617d7baece759c21080d8defb4b2fcc00",
+      "bytes": 21665,
+      "bytesInOutput": 21761,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/types/fps.ts",
+      "sha256": "dc36c3d16ec71953d7de1c857681cbb6c535e12dbf18f70faa924fc32e482e5b",
+      "gitBlob": "208245ee6d4aeb793cf455941994fcc4de10bf4a",
+      "bytes": 660,
+      "bytesInOutput": 172,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/types/frame-range.ts",
+      "sha256": "4ab01ce472d3f8fab16a1bcf26a8138f3841535d71e62f8258ed3695f49f8928",
+      "gitBlob": "a48242eeca97116063bcde4bc9711c5a240b08ca",
+      "bytes": 412,
+      "bytesInOutput": 177,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/validate/bundle-integrity.ts",
+      "sha256": "ddb33e6fca2ede35a7a3eaa3d060629558c7b8351cff29aa9aaf838676dd2b56",
+      "gitBlob": "d45b0e302abcac5fb480c3734b6ba0dc7b1d5b57",
+      "bytes": 28517,
+      "bytesInOutput": 24720,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/validate/edit-joins.ts",
+      "sha256": "14a5c2486820b1dd361a34180e0ca1bee5b0deefef4792aabe7207905396bedd",
+      "gitBlob": "32985a9140c4d9f8b14e9724ad70c6d8459e66cf",
+      "bytes": 6940,
+      "bytesInOutput": 5885,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/weather/weather-ground.ts",
+      "sha256": "197e9b81b27dd177589f529842efad37cf5e4bf20adea428c6337fafae8b9945",
+      "gitBlob": "623b33595b2c767f16784dff4a25c6dc1fbda772",
+      "bytes": 2218,
+      "bytesInOutput": 53,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/weather/weather-model.ts",
+      "sha256": "1596f8a8e3b48d9eefad4691fcc7a761bae64ade4d8615a57713fad63fcfbd87",
+      "gitBlob": "f37233fb4786ce8eba99760bde494bf98d794704",
+      "bytes": 10388,
+      "bytesInOutput": 194,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/weather/weather-spec.ts",
+      "sha256": "089c8a23acb100c9879d8a496f83c707b1a4899ffd7131190cc43a9f5a294248",
+      "gitBlob": "c81d29dc8f60de712eaac8bafcd82027606a4a71",
+      "bytes": 6901,
+      "bytesInOutput": 3139,
+      "role": "loaded-transitively"
+    }
+  ],
+  "fixtureFiles": [
+    {
+      "path": "bundles/invalid-asset-premultiplied.bundle.json",
+      "sha256": "39b855c657ecd77a0f24c503b092760b87678650142440584a9c58ac61c18480",
+      "bytes": 4731
+    },
+    {
+      "path": "bundles/invalid-asset-ref-mismatch.bundle.json",
+      "sha256": "c2cd7fc6c22aa32bd75790750d13aa972cffeb6ce68d57d27f51e7c09b572472",
+      "bytes": 4723
+    },
+    {
+      "path": "bundles/invalid-asset-ref-unknown.bundle.json",
+      "sha256": "28bb20a7e881185dd431f319257a65702d886c1f1010bac86bf44d1ac8a778fe",
+      "bytes": 4731
+    },
+    {
+      "path": "bundles/invalid-audio-hash-required.bundle.json",
+      "sha256": "646e35959dd6aa728b094b4ca34b8f49055c37fb15ab402c1947db6193073b5a",
+      "bytes": 4844
+    },
+    {
+      "path": "bundles/invalid-camera-direction-degenerate.bundle.json",
+      "sha256": "f590f44db4fabf541d7c86fc03400b0cb2d9d98e6080e6f6fc9eaad46a2f7f3b",
+      "bytes": 4728
+    },
+    {
+      "path": "bundles/invalid-camera-fov-out-of-range.bundle.json",
+      "sha256": "f43827b709e3bfed4f1c4eace0834da928c4f9a893ece4a680cda930cb94b494",
+      "bytes": 4727
+    },
+    {
+      "path": "bundles/invalid-camera-key-frame-order.bundle.json",
+      "sha256": "15a8c940c0b0de3bfe2f1195a0fa693df04ff9d47ce34fda5857d8c5654c3a0d",
+      "bytes": 6298
+    },
+    {
+      "path": "bundles/invalid-camera-keys-end-short.bundle.json",
+      "sha256": "c2d9f5c5e8d96a51580e9e3043cb29afcb4eb010c8b4da82d61d5a8a00788343",
+      "bytes": 6298
+    },
+    {
+      "path": "bundles/invalid-camera-layer-from-initial.bundle.json",
+      "sha256": "d40dbfeab59e95766f9dd0a1fdc82b6040b02539f1f123c34af7326a6553e1cf",
+      "bytes": 6294
+    },
+    {
+      "path": "bundles/invalid-camera-layer-keyframes.bundle.json",
+      "sha256": "fe32dd4ad53f76fc64a683c024a7eea4ef581125243e0ca998222327f988c126",
+      "bytes": 6882
+    },
+    {
+      "path": "bundles/invalid-camera-segment-too-short.bundle.json",
+      "sha256": "5487cc3f6368acf4f717176d7928c6692b9588f1020f7f2489337aebea62866e",
+      "bytes": 4725
+    },
+    {
+      "path": "bundles/invalid-camera-unknown-easing.bundle.json",
+      "sha256": "3b9e9e2fe52a0dce58a7ae95c47400f5f14a29f1fac73261e18338e114b70e16",
+      "bytes": 4718
+    },
+    {
+      "path": "bundles/invalid-composition-node-missing.bundle.json",
+      "sha256": "b92a482f5a3ddbccb75f48b537135538f7b0ed68b2dcaaeffab1634a01a7118a",
+      "bytes": 4844
+    },
+    {
+      "path": "bundles/invalid-dissolve-transition.bundle.json",
+      "sha256": "8ab1dcd8210a41f5e77eca06116a8e1daa334ef8af84096b9dd127c78e7c40c5",
+      "bytes": 4753
+    },
+    {
+      "path": "bundles/invalid-duplicate-asset-id.bundle.json",
+      "sha256": "0c3967161a05be8c332ccc71318be4208d25d3bbe936ccbe2915bc41264443fa",
+      "bytes": 4991
+    },
+    {
+      "path": "bundles/invalid-duplicate-node-id.bundle.json",
+      "sha256": "64064cf86fcca3478a8a1fcf7db2a1905cfffb3b831068b3e6f7b1897c623a1d",
+      "bytes": 5456
+    },
+    {
+      "path": "bundles/invalid-duplicate-shot-id.bundle.json",
+      "sha256": "716bf1088fef1d6bcfcebefa6c9d85d045a6ace102d13259e76834578968f425",
+      "bytes": 4726
+    },
+    {
+      "path": "bundles/invalid-edit-duration-mismatch.bundle.json",
+      "sha256": "309723ec8eec1cff21dab323841cc45055375c36075be040bb822ad565602070",
+      "bytes": 4727
+    },
+    {
+      "path": "bundles/invalid-edit-gap.bundle.json",
+      "sha256": "7732535a969effc72fca5ad8b24eebc1edcbbe238f0e8739cb67fed13715d11b",
+      "bytes": 4726
+    },
+    {
+      "path": "bundles/invalid-edit-range-start.bundle.json",
+      "sha256": "7a594fe3f0c9393048606298a6d6414b4908390b7c38016985e6a6bbbde35661",
+      "bytes": 4726
+    },
+    {
+      "path": "bundles/invalid-fps-mismatch.bundle.json",
+      "sha256": "82ecd92c2bb02d3643f7fa16aefc00a5b7536378c3969cbbf6f5e61df8a3b969",
+      "bytes": 4726
+    },
+    {
+      "path": "bundles/invalid-fps-zero-numerator.bundle.json",
+      "sha256": "6e69745ebeb0abf2ef0c6920066eda273313445e84bbd97d9f123c082b959d2f",
+      "bytes": 4725
+    },
+    {
+      "path": "bundles/invalid-image-plane-missing-asset.bundle.json",
+      "sha256": "1e10bbd7d95cb2216c669415c49ba84fff41ed1d6db4c862b234ff8a11bf421d",
+      "bytes": 4519
+    },
+    {
+      "path": "bundles/invalid-instance-unknown-definition.bundle.json",
+      "sha256": "6b57aae7bc28f1006798620dded0f8fa5a8222379b6830e637ceb007c5cf30b9",
+      "bytes": 4732
+    },
+    {
+      "path": "bundles/invalid-join-camera-clip-offset-and-jump.bundle.json",
+      "sha256": "840c2cbe789b6747d9b0d46a4af40c56433590d01635de509018049e9e4124ac",
+      "bytes": 4725
+    },
+    {
+      "path": "bundles/invalid-join-continuous-across-instances.bundle.json",
+      "sha256": "c1ff8f58f7324f7559ce2d0b5f8662b62e011c952f5b050f1d0b41cf42f369ce",
+      "bytes": 6978
+    },
+    {
+      "path": "bundles/invalid-join-cut-without-reason.bundle.json",
+      "sha256": "cfcee4801d4743ea53649833cf8f74171fd6a47941767d80af0042163cf1fd5c",
+      "bytes": 6996
+    },
+    {
+      "path": "bundles/invalid-join-instance-frame-discontinuity.bundle.json",
+      "sha256": "f2d6c604b562952f895ed32efae4040fb4e622aaf4ce72b9b4f65ed97a289052",
+      "bytes": 4726
+    },
+    {
+      "path": "bundles/invalid-join-missing-transition.bundle.json",
+      "sha256": "00f2750b51dff59ea59d3a1e71d3c918041a78367c915b77fef84a77f082c848",
+      "bytes": 4662
+    },
+    {
+      "path": "bundles/invalid-join-segment-reset.bundle.json",
+      "sha256": "8e1dffedb1698a787e7f4c8b9f3276a7b129f27fc2ad9f3575af825c14396d68",
+      "bytes": 4722
+    },
+    {
+      "path": "bundles/invalid-light-parent-unknown.bundle.json",
+      "sha256": "bc0b933191600b2fb92398feb1c02c2d814f1df9390c8bb00196a36d4513ea5a",
+      "bytes": 5186
+    },
+    {
+      "path": "bundles/invalid-missing-bundle-id.bundle.json",
+      "sha256": "251171e9d31928627cea45d2d5e4346d8e408d8c72bd5c7cc83a91d3b063cde1",
+      "bytes": 4694
+    },
+    {
+      "path": "bundles/invalid-missing-root-node.bundle.json",
+      "sha256": "97fc4e8060c1a64c8e48ef3d46d7f0269332691fd8cc81bdfdf13d574def8e7f",
+      "bytes": 4733
+    },
+    {
+      "path": "bundles/invalid-node-missing-parent.bundle.json",
+      "sha256": "2e81eb7e7f52c93b9e62fbb90c664652a76e676ff5e6b48225c2547c5130e517",
+      "bytes": 4729
+    },
+    {
+      "path": "bundles/invalid-node-parent-cycle.bundle.json",
+      "sha256": "974f72528b654ab98985e0848d9a4a3140564d6a694e99d5637ea80f1daab0fd",
+      "bytes": 4732
+    },
+    {
+      "path": "bundles/invalid-orphan-node.bundle.json",
+      "sha256": "64cbeae90c0b4c242e3b729b1b9ccfddf0f8495c6fb17b4c3d2f83320e891c73",
+      "bytes": 4724
+    },
+    {
+      "path": "bundles/invalid-performance-duplicate-channel-id.bundle.json",
+      "sha256": "7ccc4b1823121b041da445facf46b3869ca41f75c21734080d5a998953e83a3d",
+      "bytes": 6394
+    },
+    {
+      "path": "bundles/invalid-performance-node-missing.bundle.json",
+      "sha256": "369652609afabd896849da24f397f390e5ed86b81bd48aa27637c4ee172270ab",
+      "bytes": 6402
+    },
+    {
+      "path": "bundles/invalid-performance-track-missing.bundle.json",
+      "sha256": "7ce9e9a83c543b3b0dbfae3a98038db851b9af36e3a6fe794cc70678a603787e",
+      "bytes": 6400
+    },
+    {
+      "path": "bundles/invalid-premultiply-on-upload.bundle.json",
+      "sha256": "cb1d73a966148539af7d1685bc67beeb92b790d3102a0db9a157b95461d1c5d4",
+      "bytes": 4725
+    },
+    {
+      "path": "bundles/invalid-quaternion-not-normalized.bundle.json",
+      "sha256": "bdb64fbace2c3a383f60e5f8739f2f8aa95a3cb84018fc6c9e109ca41d4b4cc0",
+      "bytes": 4726
+    },
+    {
+      "path": "bundles/invalid-quaternion-zero.bundle.json",
+      "sha256": "8798d84dbee896fb65f0cd19beaa6e983ffd1f6a25475b09ae1faedcb92dee36",
+      "bytes": 4726
+    },
+    {
+      "path": "bundles/invalid-rec709-video.bundle.json",
+      "sha256": "fcf0d4f5ab94c68ffe3febfc8eaa96e351df90490a66095ca731655539b86f33",
+      "bytes": 4726
+    },
+    {
+      "path": "bundles/invalid-schema-version.bundle.json",
+      "sha256": "cef374ebffe97f6b7899642e7d05991df381a0636d6cd8fbf39c7f3eadc6fdad",
+      "bytes": 4726
+    },
+    {
+      "path": "bundles/invalid-shot-exceeds-instance.bundle.json",
+      "sha256": "a60c4ac51e3294f2472436f9db15389ccbb903df5eeacd0867a8ad6739e4bfd3",
+      "bytes": 4726
+    },
+    {
+      "path": "bundles/invalid-shot-unknown-camera-clip.bundle.json",
+      "sha256": "080b73652fc395753d141ce5bd55c8f408d20e0ee3fc02f7f746696edfd040aa",
+      "bytes": 4730
+    },
+    {
+      "path": "bundles/invalid-shot-unknown-instance.bundle.json",
+      "sha256": "e8f3273d13ccd0f9f3633ad42cc67183c3977eb8fb087b4ee3e538aba37d7c59",
+      "bytes": 4736
+    },
+    {
+      "path": "bundles/invalid-socket-and-parent-conflict.bundle.json",
+      "sha256": "855325b520445d44225ceb9c65ab73fd409d588da28c6eb007199e88c3c31e5a",
+      "bytes": 6398
+    },
+    {
+      "path": "bundles/invalid-socket-missing.bundle.json",
+      "sha256": "8fc0d89da61840df62d3d95025167d2fe26848d2712e15025585b0755e3a4bfd",
+      "bytes": 6403
+    },
+    {
+      "path": "bundles/invalid-unknown-recipe.bundle.json",
+      "sha256": "a95e9357d39d732c3ad61f6463f0352d807761bda917c9be2c61acae0001c6e6",
+      "bytes": 4724
+    },
+    {
+      "path": "bundles/invalid-unsupported-node-type.bundle.json",
+      "sha256": "13c79909b5b73254f5f275a96a1d4b4ddd39d23034514e48d2c08f140f7319a9",
+      "bytes": 4723
+    },
+    {
+      "path": "bundles/valid-camera-recipes-layers.bundle.json",
+      "sha256": "b936fa1763f21f700ffc1bfed2a1f103515e6281e46fd9bdc53e3d7a9fa10f1c",
+      "bytes": 6298
+    },
+    {
+      "path": "bundles/valid-cut-instance-offsets.bundle.json",
+      "sha256": "43fd1a5568a63745c1043eab45cae028fa03a772eea11c9d0bac43e808718e2b",
+      "bytes": 7031
+    },
+    {
+      "path": "bundles/valid-graph-sockets-performance.bundle.json",
+      "sha256": "7535eae3b066e0de618ee10bbb8bd82a8fa23f2dd799cf43130125cca5511f87",
+      "bytes": 6395
+    },
+    {
+      "path": "bundles/valid-minimal-continuous.bundle.json",
+      "sha256": "3e0050a42c6e642f3e2e7187883a0651c806a76175e4db92152404ecb70f0fde",
+      "bytes": 4726
+    },
+    {
+      "path": "cases.json",
+      "sha256": "55189138ba973bd39a28e1e260c4c8d0193e3c325df4c6da4c49ed356b924c50",
+      "bytes": 21875
+    },
+    {
+      "path": "expected/invalid-asset-premultiplied.expected.json",
+      "sha256": "4f56012b1c07236d3f20a35b8aafd48c70dea3dadc0926f413c6eaa3bcca2642",
+      "bytes": 818
+    },
+    {
+      "path": "expected/invalid-asset-ref-mismatch.expected.json",
+      "sha256": "8ed3ab8f0be8519f74f7567cff5808bde6f205b83e48a51fac49bf39163dc9ee",
+      "bytes": 801
+    },
+    {
+      "path": "expected/invalid-asset-ref-unknown.expected.json",
+      "sha256": "7c2a56eb6e53d370258b98aeacf2dbc861ea34c930a34dc362125a5f02f1214e",
+      "bytes": 783
+    },
+    {
+      "path": "expected/invalid-audio-hash-required.expected.json",
+      "sha256": "7c5a346767499ea56654e522c0221a8b6ff5d5bca5ed7738eb899843551ffe42",
+      "bytes": 814
+    },
+    {
+      "path": "expected/invalid-camera-direction-degenerate.expected.json",
+      "sha256": "c3bf6da0ade132ba4975dcba78b8bcc5369994a764183e540281155da43c220e",
+      "bytes": 811
+    },
+    {
+      "path": "expected/invalid-camera-fov-out-of-range.expected.json",
+      "sha256": "581b73ea09ed500c9b9481004839ac2c923e21899dc22ad87f2b2a23171d8cb7",
+      "bytes": 1404
+    },
+    {
+      "path": "expected/invalid-camera-key-frame-order.expected.json",
+      "sha256": "2621c349d37048421bc52432938998b8ad59694693d8bf73938a0c7fc63513a9",
+      "bytes": 875
+    },
+    {
+      "path": "expected/invalid-camera-keys-end-short.expected.json",
+      "sha256": "48655f0b0d930da62484a61100764d36046d7248cb4cdfc12247fb5ad5eb92a1",
+      "bytes": 874
+    },
+    {
+      "path": "expected/invalid-camera-layer-from-initial.expected.json",
+      "sha256": "5f2441eb81d2c2efe70fd2a1af26874e157b32344bce48f4262be226cca2aa6b",
+      "bytes": 860
+    },
+    {
+      "path": "expected/invalid-camera-layer-keyframes.expected.json",
+      "sha256": "289387f4fb266597eef5d1c10c764c504f705400b0c0c50657379ea397a50883",
+      "bytes": 862
+    },
+    {
+      "path": "expected/invalid-camera-segment-too-short.expected.json",
+      "sha256": "23b4f4dcb545debdcfc53b52eb2a8f7fef56dcf737cf254e6c0d4c3684fd5817",
+      "bytes": 809
+    },
+    {
+      "path": "expected/invalid-camera-unknown-easing.expected.json",
+      "sha256": "95d4bcd9cd19b8f3e2e8e1db9905b19d72a0c51ace7b06b56b6bae78120c6fb3",
+      "bytes": 805
+    },
+    {
+      "path": "expected/invalid-composition-node-missing.expected.json",
+      "sha256": "4f0f453a2e330a36e080a89e67f977eb3ceba060239098f8f5bfdf4a9bc0abce",
+      "bytes": 815
+    },
+    {
+      "path": "expected/invalid-dissolve-transition.expected.json",
+      "sha256": "b9eae80ff9a4da3272fc128fe4be214491db2d3d71b48dc60339b19e08c6b25f",
+      "bytes": 761
+    },
+    {
+      "path": "expected/invalid-duplicate-asset-id.expected.json",
+      "sha256": "abbab77781b3fea52d021aba3cdcd3b8e0905fea051d42f49d962bb1a08f71e1",
+      "bytes": 774
+    },
+    {
+      "path": "expected/invalid-duplicate-node-id.expected.json",
+      "sha256": "cff98c1f5b69471828761412c4c8e792ce3649c8810291a17e33f0566e536a6a",
+      "bytes": 907
+    },
+    {
+      "path": "expected/invalid-duplicate-shot-id.expected.json",
+      "sha256": "a3bda5d722d34c1694de9b9fd625dc63e0041b65fdcaa427caeefbb6eb55a443",
+      "bytes": 750
+    },
+    {
+      "path": "expected/invalid-edit-duration-mismatch.expected.json",
+      "sha256": "144a99ef89f466268eb00743b56995c8aa30f243472e801fda9d0b6283988021",
+      "bytes": 806
+    },
+    {
+      "path": "expected/invalid-edit-gap.expected.json",
+      "sha256": "dad39a80f953e04351cea4bbe95cc7bf95145b9490ba0a7300dae9a66750b073",
+      "bytes": 758
+    },
+    {
+      "path": "expected/invalid-edit-range-start.expected.json",
+      "sha256": "0d4076fee51b0c638826598707e67252ede4eb13f965b11af9ba79ef47ced589",
+      "bytes": 969
+    },
+    {
+      "path": "expected/invalid-fps-mismatch.expected.json",
+      "sha256": "056923686238ad83ae6239095f07526d54a473ad07858a5bfdea0b0648c865a4",
+      "bytes": 754
+    },
+    {
+      "path": "expected/invalid-fps-zero-numerator.expected.json",
+      "sha256": "f6bf6883841f9ba2c1c9d983f6438880ea7afaa99278c64971cbcfa1556852e8",
+      "bytes": 945
+    },
+    {
+      "path": "expected/invalid-image-plane-missing-asset.expected.json",
+      "sha256": "df703c606f269d1acb1f64cb20a644d049c94a892bc123b5b40b3b76255507c7",
+      "bytes": 801
+    },
+    {
+      "path": "expected/invalid-instance-unknown-definition.expected.json",
+      "sha256": "78c5c1b60a0829c9815d543280110ca044369fbe44138d6d6df818d1f0d3cc0b",
+      "bytes": 835
+    },
+    {
+      "path": "expected/invalid-join-camera-clip-offset-and-jump.expected.json",
+      "sha256": "e5e93b23e76003a15bf8dd8cf918a8e592c2d7dc2415c67e0c8716b878c1002f",
+      "bytes": 1368
+    },
+    {
+      "path": "expected/invalid-join-continuous-across-instances.expected.json",
+      "sha256": "b4e64b901c16d7eac213dfaeb54e31d84ac1c27acc3cce2ac977e8940353f11f",
+      "bytes": 1490
+    },
+    {
+      "path": "expected/invalid-join-cut-without-reason.expected.json",
+      "sha256": "14886af81d71f46904e0a0d35eede750d2b09e8cbe311cf58bdf571ac966a829",
+      "bytes": 879
+    },
+    {
+      "path": "expected/invalid-join-instance-frame-discontinuity.expected.json",
+      "sha256": "72c02029baa84bffb8890e7dbec633950b0c6a38aca41e8c3af7f3b416825ae7",
+      "bytes": 894
+    },
+    {
+      "path": "expected/invalid-join-missing-transition.expected.json",
+      "sha256": "3eea66a7006455869b56c8f1e62dc7b18b1582a1aa50f858955a7526b6a1039b",
+      "bytes": 812
+    },
+    {
+      "path": "expected/invalid-join-segment-reset.expected.json",
+      "sha256": "2efd1cc18debb394e7e4f620e4126f46461b2f87257fe6cf3a0dccbe2dad93ee",
+      "bytes": 836
+    },
+    {
+      "path": "expected/invalid-light-parent-unknown.expected.json",
+      "sha256": "4c1e29961dc7657c4d4c0d20450965340846d90fa6496f1d685297d6abc1d40a",
+      "bytes": 824
+    },
+    {
+      "path": "expected/invalid-missing-bundle-id.expected.json",
+      "sha256": "ce9392d570b6c012f4359907cf3ad94c0fa56a4bf7e6e7684a40488edbd9679b",
+      "bytes": 765
+    },
+    {
+      "path": "expected/invalid-missing-root-node.expected.json",
+      "sha256": "097666dee8db08b3dd40c05d216a2cf45285961ff79eab39c5748cd27a93e2ef",
+      "bytes": 1287
+    },
+    {
+      "path": "expected/invalid-node-missing-parent.expected.json",
+      "sha256": "1b67bcf1121ef65249d945b66d440ca5bd0635602dd7d2c5f7d81b17cac6f08a",
+      "bytes": 940
+    },
+    {
+      "path": "expected/invalid-node-parent-cycle.expected.json",
+      "sha256": "82261a5dc317fcdbe2d41919446754dce81411e7c131f0465db5d4803c93c801",
+      "bytes": 1308
+    },
+    {
+      "path": "expected/invalid-orphan-node.expected.json",
+      "sha256": "865d592d70e8b9dc89d8014a8bd7977a62506e8f00df31183babf9d9c1be6806",
+      "bytes": 919
+    },
+    {
+      "path": "expected/invalid-performance-duplicate-channel-id.expected.json",
+      "sha256": "b1cca0d108e56512ad9a44a9448459379ab95367afd7e92d9ea46001313be674",
+      "bytes": 792
+    },
+    {
+      "path": "expected/invalid-performance-node-missing.expected.json",
+      "sha256": "755950c722c7f4d1687067ef4972fe51d57b906400422939f1a4b970700b360d",
+      "bytes": 833
+    },
+    {
+      "path": "expected/invalid-performance-track-missing.expected.json",
+      "sha256": "c0055007bdabb19b2444f01ed212ad02a567492a53585028702ea6dd9ca9792f",
+      "bytes": 840
+    },
+    {
+      "path": "expected/invalid-premultiply-on-upload.expected.json",
+      "sha256": "4aed16ac100a3727101f209de6968e15be52ef67a56d07b6743f77b353ae1900",
+      "bytes": 839
+    },
+    {
+      "path": "expected/invalid-quaternion-not-normalized.expected.json",
+      "sha256": "5d0099e6b21d200fd0fd5f9b337b9cf30342601b3c90afcc53d2121856249fc8",
+      "bytes": 820
+    },
+    {
+      "path": "expected/invalid-quaternion-zero.expected.json",
+      "sha256": "c778af74362fce33c4668bd9215088f24b4d91dc311336cf272d2fe10fe31949",
+      "bytes": 779
+    },
+    {
+      "path": "expected/invalid-rec709-video.expected.json",
+      "sha256": "653f848934e723fdcd1fb15c6d79da5a9df5a0c6532234a858238ee41a381c68",
+      "bytes": 822
+    },
+    {
+      "path": "expected/invalid-schema-version.expected.json",
+      "sha256": "ba015b7646d5c87b5d5ecf05bcae49431faeabf17c2f76b21ce3cae5046fb37a",
+      "bytes": 746
+    },
+    {
+      "path": "expected/invalid-shot-exceeds-instance.expected.json",
+      "sha256": "1cff34a4febf5dcaeed56960fee25361e31e067929358738310473ed4f037e90",
+      "bytes": 830
+    },
+    {
+      "path": "expected/invalid-shot-unknown-camera-clip.expected.json",
+      "sha256": "52a3f2debc41b3776c0d4fea5151e327992b13a5e08c299cba5db0218001874d",
+      "bytes": 819
+    },
+    {
+      "path": "expected/invalid-shot-unknown-instance.expected.json",
+      "sha256": "a6b8c7f245cae250c69898ab00a1c1c9fa0c5ae44faf2b348c1442623ceb6dfc",
+      "bytes": 814
+    },
+    {
+      "path": "expected/invalid-socket-and-parent-conflict.expected.json",
+      "sha256": "a5551f5f5a532609fbd4ef73dfb0a3b4015d417cc79b45f5b15d9533af9355e0",
+      "bytes": 1038
+    },
+    {
+      "path": "expected/invalid-socket-missing.expected.json",
+      "sha256": "c148c016f380d832448cdf156cdfd86df8713631abaeb6752362c5782ef31644",
+      "bytes": 1156
+    },
+    {
+      "path": "expected/invalid-unknown-recipe.expected.json",
+      "sha256": "06e790bcd7500d41ca17e494c35bd175560b0a35dcb05cf3bb9ee6c863edd3aa",
+      "bytes": 746
+    },
+    {
+      "path": "expected/invalid-unsupported-node-type.expected.json",
+      "sha256": "53fa696b4ddc9b2d84ba3a527f3e307374a5bd642e3d84f2573650340bf28897",
+      "bytes": 983
+    },
+    {
+      "path": "expected/valid-camera-recipes-layers.expected.json",
+      "sha256": "b99e5a00ee8419a9375511b71b0e87d41f54bd637247df0cd15f5d3ea2d90335",
+      "bytes": 36440
+    },
+    {
+      "path": "expected/valid-cut-instance-offsets.expected.json",
+      "sha256": "2bd5f7e9f9537fe438147f8fa4736e890ea3e3a12d6a630fdca16ccd5d2e36bd",
+      "bytes": 35228
+    },
+    {
+      "path": "expected/valid-graph-sockets-performance.expected.json",
+      "sha256": "ea3d707932cd2b3569524ff1084f5ec290776c753e371ae8b09e251c24fc1247",
+      "bytes": 61032
+    },
+    {
+      "path": "expected/valid-minimal-continuous.expected.json",
+      "sha256": "105a3124ce9049c35e1778ad001cd17db3b1ccb9947e23d6feabd3781229c81e",
+      "bytes": 37639
+    }
+  ],
+  "scope": {
+    "claim": "O oráculo executa funções puras REAIS de packages/scene-engine empacotadas SEM modificação (esbuild + zod 4.3.6 + three 0.187.0, sem GPU/DOM/rede). Não é a engine completa, nem o runtime Three.js, nem o editor. Cobertura por linha NÃO foi medida: 'executed' abaixo significa chamado pelo harness (direto) ou exercitado por essas chamadas para as entradas do corpus.",
+    "executedFunctions": [
+      {
+        "module": "src/schema/render-bundle.schema.ts",
+        "symbols": [
+          "renderBundleSchema.safeParse (schema zod + superRefine do bundle)"
+        ],
+        "how": "chamada direta",
+        "mig": [
+          "MIG001",
+          "MIG019"
+        ]
+      },
+      {
+        "module": "src/validate/bundle-integrity.ts",
+        "symbols": [
+          "validateBundleIntegrity"
+        ],
+        "how": "direta (sobre o bundle parseado) e dentro do schema (todos os casos que chegam ao refinamento)",
+        "mig": [
+          "MIG002"
+        ]
+      },
+      {
+        "module": "src/validate/edit-joins.ts",
+        "symbols": [
+          "validateEditJoins"
+        ],
+        "how": "chamada direta e dentro de finalizeBundle",
+        "mig": [
+          "MIG002"
+        ]
+      },
+      {
+        "module": "src/edit/finalize-bundle.ts",
+        "symbols": [
+          "finalizeBundle"
+        ],
+        "how": "chamada direta: é o veredito que a CLI `scene validate` usa (schema + junções), menos a checagem de arquivos em disco",
+        "mig": [
+          "MIG002",
+          "MIG003"
+        ]
+      },
+      {
+        "module": "src/scene/scene-graph.ts",
+        "symbols": [
+          "validateSceneGraphStructure",
+          "resolveParentLinks",
+          "computeWorldMatrices",
+          "quatSchemaToEulerDegrees (via evaluateEditFrame)"
+        ],
+        "how": "chamada direta (estrutura também sobre o JSON cru, mesmo quando o schema recusa)",
+        "mig": [
+          "MIG012"
+        ]
+      },
+      {
+        "module": "src/evaluator/evaluate-edit-frame.ts",
+        "symbols": [
+          "evaluateEditFrame"
+        ],
+        "how": "chamada direta nos frames de borda",
+        "mig": [
+          "MIG016"
+        ]
+      },
+      {
+        "module": "src/edit/resolve-shot-at-edit-frame.ts",
+        "symbols": [
+          "resolveShotAtEditFrame"
+        ],
+        "how": "via evaluateEditFrame",
+        "mig": [
+          "MIG016",
+          "MIG018"
+        ]
+      },
+      {
+        "module": "src/performance/resolve-performance.ts",
+        "symbols": [
+          "resolvePerformanceOverrides",
+          "mergeTransformWithOverride"
+        ],
+        "how": "via evaluateEditFrame (cycle, event e static no caso valid-graph-sockets-performance)",
+        "mig": [
+          "MIG017"
+        ]
+      },
+      {
+        "module": "src/camera/resolve-camera-clip.ts",
+        "symbols": [
+          "resolveCameraAtClipFrame",
+          "mainTrackPoses",
+          "getCameraClipDurationFrames",
+          "resolveClipFrame (via validação das camadas)"
+        ],
+        "how": "chamada direta nos frames de borda de cada movimento; recipes: dollyIn, truckRight, truckLeft, zoomIn, zoomOut, orbit, keyframes, hold; 2 camadas aditivas",
+        "mig": [
+          "MIG031",
+          "MIG032"
+        ]
+      },
+      {
+        "module": "src/camera/easing.ts",
+        "symbols": [
+          "applyEasing: linear, easeInOutCubic, easeOutCubic"
+        ],
+        "how": "via resolveCameraAtClipFrame",
+        "mig": [
+          "MIG032"
+        ]
+      },
+      {
+        "module": "src/keyframes/resolve-keyframes.ts",
+        "symbols": [
+          "resolveKeyframes"
+        ],
+        "how": "via movimento `keyframes` da câmera",
+        "mig": [
+          "MIG032",
+          "MIG047"
+        ]
+      }
+    ],
+    "loadedButNotExercised": [
+      {
+        "modules": [
+          "src/narration/*",
+          "src/outline/*",
+          "src/rig/*",
+          "src/path/*",
+          "src/effects/*",
+          "src/weather/*",
+          "src/lighting/*"
+        ],
+        "why": "São importados pelo schema do bundle, então o esbuild os inclui e seus validadores existem em tempo de execução, mas o corpus NÃO tem narração, outline, rigs, paths, efeitos, clima, frameAudit, surface/sceneDepth/normalMap/relief nem nós splat. Apenas a luz com `parent` desconhecido (invalid-light-parent-unknown) toca lighting. Qualquer paridade desses domínios exige casos novos."
+      }
+    ],
+    "corpusGaps": [
+      "Tolerâncias de junção (JOIN_* em validate/edit-joins.ts) não têm caso de fronteira: num clipe único a junção contínua é suave, então um salto isolado só aparece junto de CAMERA_CLIP_OFFSET_BREAK (caso invalid-join-camera-clip-offset-and-jump). Um par aceito/recusado em torno de 0,25 unidades precisa de dois clipes ou de um recurso novo no corpus.",
+      "FPS sempre 24/1: sem FPS racional não inteiro (30000/1001) e sem conversão de tempo.",
+      "Nenhum bundle tem narração, outline, clima, efeitos, rigs, paths, frameAudit, splat, surface, normalMap, relief ou áudio válido; só falhas pontuais de áudio e de luz.",
+      "Poses de câmera medidas até 5 frames após o fim do clipe e em frame -1; nenhum seek aleatório nem FPS diferente."
+    ],
+    "notExecuted": [
+      {
+        "area": "Comandos de câmera (applyCameraCommands, analyzeCameraClip, explainCameraClip) e property paths de câmera",
+        "mig": [
+          "MIG033",
+          "MIG034",
+          "MIG035"
+        ],
+        "reason": "fora do E0 (edição por comando é BB04); precisa de corpus de ops"
+      },
+      {
+        "area": "editBundle / edição em lote / properties (applyPropertyChange, setProperties, listBundleProperties)",
+        "mig": [
+          "MIG046",
+          "MIG050",
+          "MIG094"
+        ],
+        "reason": "BB04; sem casos de lote/rollback no E0"
+      },
+      {
+        "area": "Comandos de outline e narração, plano de mix, legendas, SRT",
+        "mig": [
+          "MIG042",
+          "MIG043",
+          "MIG081",
+          "MIG082",
+          "MIG083",
+          "MIG086",
+          "MIG087"
+        ],
+        "reason": "domínios M5 fora do E0"
+      },
+      {
+        "area": "Rig, IK (CCDIKSolver do Three.js), follow, paths",
+        "mig": [
+          "MIG069",
+          "MIG070",
+          "MIG071",
+          "MIG072",
+          "MIG075",
+          "MIG077",
+          "MIG078"
+        ],
+        "reason": "M6; IK depende do solver do Three.js e exige oráculo numérico próprio"
+      },
+      {
+        "area": "Luzes por keys (resolveLightAt, resolveSceneLightingAtEditFrame, packLights), clima (weatherLevelAt, surfaces, splat-weather), efeitos",
+        "mig": [
+          "MIG054",
+          "MIG055",
+          "MIG056",
+          "MIG061",
+          "MIG063",
+          "MIG065",
+          "MIG066",
+          "MIG067"
+        ],
+        "reason": "M2/M3; funções puras existem na origem mas não foram chamadas pelo harness"
+      },
+      {
+        "area": "Limites de câmera sobre splat (auditSplatCamera, classifySplatPose)",
+        "mig": [
+          "MIG015"
+        ],
+        "reason": "M4; corpus sem nós splat"
+      },
+      {
+        "area": "projectLocalAnchorToPixels e auditoria de projeção/frameAudit",
+        "mig": [
+          "MIG020"
+        ],
+        "reason": "exigem matrizes de projeção do runtime; o runtime Three.js não é puro"
+      },
+      {
+        "area": "Tempo racional (secondsToEditFrame, editFrameToSeconds) como API própria",
+        "mig": [
+          "MIG030"
+        ],
+        "reason": "só roda dentro do schema quando há narração; sem casos de FPS não inteiro (ex.: 30000/1001)"
+      },
+      {
+        "area": "Leitura/escrita do arquivo do bundle, preflight de assets (sharp), checagem de arquivos em disco",
+        "mig": [
+          "MIG003",
+          "MIG004",
+          "MIG005"
+        ],
+        "reason": "I/O e decode de PNG; sem mídia no corpus (assets são só referências sintéticas)"
+      },
+      {
+        "area": "Runtime Three.js/Spark (three-scene-runtime, planos, splats, clima, pós), transporte/áudio, render offline, ffmpeg",
+        "mig": [
+          "MIG013",
+          "MIG014",
+          "MIG022",
+          "MIG023",
+          "MIG025",
+          "MIG026",
+          "MIG090",
+          "MIG091",
+          "MIG092"
+        ],
+        "reason": "exigem GPU/Chrome/ffmpeg; provas de pixel/áudio ficam para E2 com harness próprio"
+      },
+      {
+        "area": "Camadas de efeitos, edição de shots e gestos do branch piloto",
+        "mig": [
+          "MIG100",
+          "MIG101",
+          "MIG102",
+          "MIG103",
+          "MIG104"
+        ],
+        "reason": "o snapshot fixado é o baseline, não o piloto (decisão D1 do inventário)"
+      }
+    ]
+  },
+  "regeneration": [
+    "node scripts/migration-oracle/oracle.mjs setup",
+    "node scripts/migration-oracle/oracle.mjs corpus   # só se o corpus mudar",
+    "node scripts/migration-oracle/oracle.mjs generate",
+    "node scripts/migration-oracle/oracle.mjs verify"
+  ]
+}

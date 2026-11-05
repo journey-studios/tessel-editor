@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-camera-layer-from-initial",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-camera-layer-from-initial.bundle.json",
+  "bundleSha256": "d40dbfeab59e95766f9dd0a1fdc82b6040b02539f1f123c34af7326a6553e1cf",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "CAMERA_LAYER_FROM_INITIAL",
+          "message": "CAMERA_LAYER_FROM_INITIAL: Clip cam-rich track 2 segment 0 starts from \"initial\"; a layer has no start pose of its own"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

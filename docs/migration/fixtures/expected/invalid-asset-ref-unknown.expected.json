@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-asset-ref-unknown",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-asset-ref-unknown.bundle.json",
+  "bundleSha256": "28bb20a7e881185dd431f319257a65702d886c1f1010bac86bf44d1ac8a778fe",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "ASSET_REF_UNKNOWN",
+          "message": "ASSET_REF_UNKNOWN: Node figure references missing asset ghost-asset"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

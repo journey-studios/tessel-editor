@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-edit-gap",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-edit-gap.bundle.json",
+  "bundleSha256": "7732535a969effc72fca5ad8b24eebc1edcbbe238f0e8739cb67fed13715d11b",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "EDIT_GAP_OR_OVERLAP",
+          "message": "EDIT_GAP_OR_OVERLAP: Shot shot-2 starts at 52, expected 48"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}
