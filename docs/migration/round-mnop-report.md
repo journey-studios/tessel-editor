@@ -57,3 +57,5 @@ TESSEL_VIEWPORT_INSPECT=1 python3 scripts/directed-scene-proof/proof.py \
 `context_loss` e `export_directed` foram explicitamente não executados. O conjunto selecionado verde não fecha essas pendências.
 
 Runtime final reexecutado pelo coordenador: **79/79**, TESSEL_REQUIRE_RUNTIME=1, execução serializada sob lock da bancada, sem skips. A falha intermitente com concorrência padrão continua BL091; não foi mascarada como resolvida.
+
+Entrega de implementação: commit `6a8b030`; revisão em [PR #3](https://github.com/journey-studios/tessel-editor/pull/3). Gates descritos são locais; revisão/merge são estados separados.

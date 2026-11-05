@@ -338,3 +338,5 @@ Entregas integradas na branch feat/directed-scene-end-to-end: workspace 827 test
 Isso não fecha BL008 (export dirigido), BL087 (inspeção visual) ou BL092 (lifecycle dirigido nativo forçado). App/projeto do usuário preservados.
 
 Runtime final: 79/79 reconferidos pelo coordenador em execução serializada; sem skips. BL091 continua aberto para concorrência padrão.
+
+Entrega de implementação: commit `6a8b030`; revisão em [PR #3](https://github.com/journey-studios/tessel-editor/pull/3). Gates descritos são locais; revisão/merge são estados separados.
