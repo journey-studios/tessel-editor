@@ -3,6 +3,8 @@ name = "tessel-editor-audio"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Device audio output for playback: a sample clock, pause/seek/stop and latency/underrun reporting."
 
 [dependencies]

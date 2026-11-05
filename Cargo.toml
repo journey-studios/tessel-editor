@@ -6,6 +6,8 @@ resolver = "3"
 version = "0.1.0"
 edition = "2024"
 publish = false
+license = "MIT"
+repository = "https://github.com/journey-studios/tessel-editor"
 
 [workspace.dependencies]
 gpui-kit = "=0.9.0"

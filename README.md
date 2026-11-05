@@ -1,5 +1,9 @@
 # Tessel Editor
 
+Open-source desktop editor by [Journey Studios](https://github.com/journey-studios/tessel-editor),
+licensed under [MIT](LICENSE). Third-party components retain their
+[own notices](THIRD_PARTY_NOTICES.md).
+
 Independent Rust desktop editor workstation built on [GPUI Kit](https://gpui-kit.com)
 0.9.0 (GPUI snapshot `gpui-pre` 0.3.11). Library, single monitor, timeline and
 inspector are panels of the Kit's real `DockArea`: headers drag, tabs and splits
@@ -8,7 +12,8 @@ demonstration by default, but the editor can now create, save, open, undo, packa
 projects, import real media, preview it with Spark splats, play it with a clock and export H.264/AAC MP4
 up to UHD 4K. See [docs/media-project-export-report.md](docs/media-project-export-report.md) for what is
 proven and what is not (notably: nothing was ever *heard* by a person, and the player adapter has a
-large start-up latency). **The old Tessel engine has not been ported.**
+large start-up latency). The original scene-engine migration is in progress; see [the capability matrix](docs/features/README.md)
+for the implemented surfaces and remaining work.
 
 ## Run
 
@@ -27,8 +32,8 @@ xcodebuild -downloadComponent MetalToolchain
 Rust 1.99.1 is pinned in `rust-toolchain.toml`: `gpui-pre` 0.3.11 uses
 `std::hint::cold_path`, which does not compile on the previous 1.94.1 pin (E0658).
 Only `gpui-kit` is declared; GPUI comes through it (`gpui_kit::*`), so there is a
-single GPUI family in `Cargo.lock`. The default backend is used; `gpui-fast` and
-WebView are not enabled (see the report). Linux and Windows have not been validated.
+single GPUI family in `Cargo.lock`. The default backend is `gpui-pre` with a persistent native WebView; `gpui-fast` is experimental
+(see the viewport reports). Linux and Windows have not been validated.
 
 ## Validate
 
