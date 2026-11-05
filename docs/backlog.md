@@ -439,3 +439,7 @@ Follow-up de integração BL089/BL096/BL097 delegado ao Cursor Sonnet 5.5: <t3-t
 ### Gate integrado da rodada R1–R10
 
 Concluído localmente: fmt/check/clippy, workspace 1027 testes verdes (8 ignorados), runtime85, builds debug/release. Repetição final: export23 fases/570 checks, lifecycle218, import33 e capturas50, com binários atuais. [Relatório e limites](migration/round-r1-r10-report.md). Validação local não significa CI, revisão ou merge. BL089 segue parcial por BL111/BL112; nenhuma pendência desses limites foi apagada.
+
+### PR da entrega e bloqueio de revisão
+
+[PR #4](https://github.com/journey-studios/tessel-editor/pull/4), implementação `f6311d2`, gate local acima. CodeRabbit pulou a revisão: 121 arquivos selecionados, teto de 100 e capacidade/créditos indisponíveis ([comentário](https://github.com/journey-studios/tessel-editor/pull/4#issuecomment-6669704948)). PR aberta, sem merge ou aprovação do serviço. Os limites BL111/BL112 permanecem pendentes. A configuração nova de filtros de evidências só entra para futuras execuções que a usem; a execução atual leu a base.

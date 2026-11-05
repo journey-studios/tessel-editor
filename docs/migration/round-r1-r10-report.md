@@ -45,3 +45,7 @@ A evidência precede o commit, por isso os registros incluem base e árvore suja
 - Não há garantia de câmera/splat em movimento a 1–4 ms, seek-to-photon, driver reset real, Linux/Windows ou benchmark final do ganho de PlanTimeline no export.
 - Resposta tardia de asset de slot reutilizado e prova nativa acima de 32 recursos continuam em BL102/BL103.
 - Export longo, bytes de recursos alterados após aprovação e comparação com o runtime da origem têm pendências próprias. O corpus é sintético e a referência de pixels é independente.
+
+## Publicação e revisão
+
+Implementação e evidências publicadas na [PR #4](https://github.com/journey-studios/tessel-editor/pull/4), commit `f6311d20bcdc6768b39756f5531e5f44850f983a`. CodeRabbit pulou a revisão por selecionar 121 arquivos, acima do teto de 100; o comentário também cita capacidade/créditos indisponíveis. [Status do serviço](https://github.com/journey-studios/tessel-editor/pull/4#issuecomment-6669704948). Não houve aprovação do CodeRabbit nem merge. A configuração dessa execução veio da base `914c830`, sem os filtros novos de artefatos adicionados nesta PR. A entrega permanece em uma PR, conforme a regra do projeto; não foi dividida ou ocultada para contornar a revisão.
