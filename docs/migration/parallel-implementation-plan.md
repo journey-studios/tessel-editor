@@ -24,13 +24,19 @@ Referência: [building blocks e fases](phased-roadmap.md).
 
 A matriz `docs/features/README.md` e índices gerais serão consolidados pelo coordenador
 na integração; cada frente fornece a linha exata em seu relatório, com status honesto.
-Cada frente usa uma branch/worktree própria, faz commit local e informa SHA, arquivos,
-comandos executados, limitações e dependências. Sem push, PR ou merge pelos agentes.
+O T3 desta conversa está vinculado ao tesselapp e recusou `target.projectId` local
+para worktrees de outro projeto (`invalid_request`). Nesta rodada, os agentes trabalham
+no checkout existente do tessel-editor, com ownership exclusivo dos arquivos acima.
+Somente o coordenador faz staging/commits; agentes não alteram branches, index ou remotes.
+Cada frente informa arquivos, comandos, resultados, limitações e dependências.
+Sem push, PR ou merge pelos agentes.
 
 ## Recursos e coordenação
 
 - A e B fazem validação sem GPU; C tem exclusividade de benchmark GPU nesta rodada.
-- Usar `./scripts/cargo`, targets separados por worktree e cache mbx compartilhado.
+- Usar `./scripts/cargo` e cache mbx compartilhado; serializar Cargo no checkout compartilhado.
+  A é dona da compilação Rust enquanto C começa pelos testes JS; C deixa checks Rust
+  para o coordenador integrar, evitando contenção com A.
   Em builds usar `MBX_GC_MAX_TOTAL_SIZE=64GiB`; não executar clean/gc.
 - Manter pelo menos 6 GiB livres, limitar artefatos temporários a 2 GiB por frente e
   limpar apenas os próprios temporários. Não reinstalar toolchain por trocar HOME.
