@@ -132,3 +132,5 @@ Removido fallback check-then-rename: hard-link failure agora falha sem mover/pub
 objeto. Regressão unitária falhou antes e passou depois. Precondição explícita: raízes sob
 controle exclusivo; checagem de symlink não é garantia contra troca hostil concorrente de pais.
 F038 e BB06 continuam parciais. BL011/BL077–BL080 são os IDs consolidados; BL070–BL072 já são K.
+
+Gate completo final: 718 testes Rust passaram, 2 ignorados; fmt/check/clippy workspace e release passaram. Guardas de pacote mantidas. Ver [relatório consolidado](round-hijkl-report.md).
