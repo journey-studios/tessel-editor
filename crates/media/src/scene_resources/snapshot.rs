@@ -27,7 +27,7 @@ use serde_json::json;
 use tessel_editor_core::jobs::{CancelToken, JobError};
 use tessel_editor_core::scene_resources::ResourceKey;
 
-use crate::fsx::{copy_file_hashed, io_error, safe_file_name};
+use crate::fsx::{copy_file_hashed, hash_file, io_error, safe_file_name};
 
 use super::map::{ApprovedResource, ResolveError, ResourceResolver};
 
@@ -106,7 +106,27 @@ impl ResourceSnapshot {
         let mut total = 0u64;
         for (key, resource) in approved {
             let path = match by_hash.get(&resource.content_hash) {
-                Some(path) => path.clone(),
+                Some(path) => {
+                    // Deduplicate storage, never approval: each origin must still match.
+                    let (hash, size) =
+                        hash_file(&resource.path, token, |_| {}).map_err(|error| {
+                            if error.code == "asset_unreadable" {
+                                JobError::new("resource_missing", error.message)
+                                    .with_details(json!({ "resource": key.label() }))
+                            } else {
+                                error
+                            }
+                        })?;
+                    if hash != resource.content_hash || size != resource.bytes {
+                        return Err(changed(
+                            &key,
+                            format!("The duplicate origin of `{}` changed", key.label()),
+                            &resource,
+                            json!({ "sha256": hash, "bytes": size }),
+                        ));
+                    }
+                    path.clone()
+                }
                 None => {
                     let path = copy_one(&key, &resource, dir, token, &mut progress)?;
                     let modified = fs::metadata(&path).and_then(|meta| meta.modified()).ok();
@@ -350,6 +370,32 @@ mod tests {
             "resource_unknown"
         );
         fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn changed_duplicate_origin_is_rejected_even_when_content_was_already_copied() {
+        let dir = scratch("duplicate-changed");
+        let a = dir.join("a.png");
+        let b = dir.join("b.png");
+        fs::write(&a, b"AAAA").unwrap();
+        fs::write(&b, b"AAAA").unwrap();
+        let resolver = Fixed([approve("a", &a, b"AAAA"), approve("b", &b, b"AAAA")].into());
+        fs::write(&b, b"BBBB").unwrap();
+        let error = ResourceSnapshot::take(
+            &resolver,
+            "s",
+            &[ResourceKey::asset("a"), ResourceKey::asset("b")],
+            &dir.join("snap"),
+            &CancelToken::new(),
+            |_| {},
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "resource_changed");
+        let details = error.details.unwrap();
+        assert_eq!(details["resource"], "asset:b");
+        assert_eq!(details["got"]["bytes"], 4);
+        assert_ne!(details["expected"]["sha256"], details["got"]["sha256"]);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

@@ -166,12 +166,12 @@ Compilação e 190 testes desktop passaram após a integração, incluindo dois 
 | Superfície | Estado | Evidência |
 |---|---|---|
 | Core (cronograma, snapshot, política de áudio, sem mutação, `plan_with`≡`plan`) | **V** | `crates/core/tests/scene_export.rs`: 15/15 após revisão do coordenador |
-| Pipeline FFmpeg/job sem navegador (injeção de falha) | **V** | `crates/media/tests/scene_export.rs`: 7/7 + 1 unitário (`args`). **Não** prova pixels |
-| Lib + host headless com Chrome real | **V no corpus** | `crates/render/tests/scene_export.rs`: 10/10 |
+| Pipeline FFmpeg/job sem navegador (injeção de falha) | **V** | `crates/media/tests/scene_export.rs`: 11/11 (S3) + 1 unitário (`args`). **Não** prova pixels |
+| Lib + host headless com Chrome real | **V no corpus** | `crates/render/tests/scene_export.rs`: 11/11 (S3) |
 | CLI headless (`tessel-render`) | **V no corpus** | mesmo arquivo: sessão JSONL exporta 4 frames 1080p, 2º pedido recusa o destino |
 | Socket do app / UI | **Implementado, prova viva pendente** | Integração do coordenador: desktop 190/190, dois testes novos do diálogo; R10 valida export real |
 | Áudio dirigido | **Recusado de forma explícita** | `declared_audio_and_unevaluated_domains…` |
-| Bytes congelados (BL109) | **V (lib/host, headless, corpus)** | `media/tests/scene_export.rs`: troca de mesmo tamanho recusada antes do 1º frame (`resource_changed`, staging alheio preservado), original reescrito no frame 2 não chega ao renderer (hash do que foi aberto = aprovado, caminho dentro do staging), cleanup em falha/cancelamento; 4 unitários em `scene_resources::snapshot`; `render/tests/scene_export.rs`: troca de mesmo tamanho recusada pelo `tessel-render` com Chrome. UI: N/A além de `job.get` (o diálogo F042 apresenta o código do job) |
+| Bytes congelados (BL109) | **V (lib/host, headless, corpus)** | `media/tests/scene_export.rs`: troca de mesmo tamanho recusada antes do 1º frame (`resource_changed`, staging alheio preservado), original reescrito no frame 2 não chega ao renderer (hash do que foi aberto = aprovado, caminho dentro do staging), cleanup em falha/cancelamento; 5 unitários em `scene_resources::snapshot`; `render/tests/scene_export.rs`: troca de mesmo tamanho recusada pelo `tessel-render` com Chrome. UI: N/A além de `job.get` (o diálogo F042 apresenta o código do job) |
 
 O que cada teste de Chrome prova (SwiftShader, rodado sob `with-gpu-lock.py`):
 
@@ -226,3 +226,5 @@ Tempo medido (SwiftShader, máquina de desenvolvimento, único dado de uma execu
 A R10 reporta 23/23 fases em `scripts/directed-scene-export-proof/results.json` (exit 0), incluindo export CLI, socket e diálogo semântico, política de áudio e restauração sem origem. Fonte e binários têm proveniência no relatório `docs/migration/next-r10-report.md`. Como houve edições após o build, repetir com a árvore final antes do aceite integrado. Não prova node:16, preflight do diálogo ou ponteiro físico.
 
 Gate final do coordenador: [R1–R10](../migration/round-r1-r10-report.md) e [prova final](../migration/round-r1-r10-results/export.json), 23/23 fases, 570 checks, binários atuais (`older_than_sources:false`), incluindo CLI, socket e diálogo. A prova anterior da R10 permanece histórica. Header node:16, preflight do diálogo e ponteiro físico continuam sem prova específica.
+
+Revisão S3: origens com hash aprovado idêntico são verificadas individualmente antes de reutilizar a cópia única. Regressão `changed_duplicate_origin_is_rejected_even_when_content_was_already_copied` cobre troca de mesmo tamanho na segunda origem.
