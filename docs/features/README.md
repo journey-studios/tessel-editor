@@ -47,7 +47,8 @@ Lib V significa testes do modelo demo, não um motor real de edição.
 | F028 | [Presets de exportação](presets.md) | V | V | V | V | `preset.list|save|delete|select` |
 | F029 | [Exportar vídeo com áudio](video-export.md) | V | V | V⁸ | V | `export.preflight|start` |
 | F030 | [Gaussian splats (Spark 2.4.0)](spark.md) | V | V | V | V | cena `tessel-scene@1` + asset `splat` |
-| F032 | [Oráculo de equivalência da migração (BB10/E0)](migration-oracle.md) | N/A⁹ | N/A⁹ | N/A⁹ | P⁹ | `scripts/migration-oracle/oracle.mjs verify` + `docs/migration/fixtures/` |
+| F031 | [Cena dirigida: importar, consultar e regravar render-bundle 1.0](directed-scene.md) | P | P | P | Parcial¹⁰ | `directed_scene::DirectedScene`; adapters pendentes |
+| F032 | [Oráculo de equivalência da migração (BB10/E0)](migration-oracle.md) | N/A⁹ | N/A⁹ | N/A⁹ | Parcial⁹ | `scripts/migration-oracle/oracle.mjs verify` + `docs/migration/fixtures/` |
 
 ¹ Dock/tema/janela são capacidades de apresentação. A lib valida layout, mas quem o executa
 é o DockArea vivo; não há execução do Dock no core. UI nativa não é requisito para fluxos
@@ -89,11 +90,17 @@ PNG/JPEG, `context_lost` no meio do quadro e scrub do ruler: [relatório de corr
 provados por barcode em Chrome, WKWebView e na janela real (`scripts/video-live-proof.py`).
 
 ⁹ Ferramenta de desenvolvimento, não uma capacidade do editor: UI, CLI da janela e CLI headless são
-N/A (o runner é Node, não é o `tessel-headless`). Lib é P: não há consumidor Rust ainda. O contrato de
-dados tem 55 bundles e expectativas geradas por funções reais de `packages/scene-engine@d6adac15`,
+N/A (o runner é Node, não é o `tessel-headless`). Lib é Parcial: o consumidor `directed_scene_oracle.rs` compara os 55 vereditos,
+referências pai/socket e matrizes estáticas; avaliação temporal ainda pendente. O contrato de dados tem 55 bundles e expectativas geradas por funções reais de `packages/scene-engine@d6adac15`,
 manifest com hashes e validação Node (21/21 testes, repetidos pelo coordenador). Cobre validação,
 grafo, avaliação e câmera; não cobre narração, clima, luz por keys, efeitos, rig, splat, I/O,
 runtime nem pixel/áudio. Ver [relatório](../migration/foundation-b-report.md).
+
+¹⁰ Importador BB01/BB02 puro, sem adapters CLI/UI. 29 testes próprios e 3 testes do oráculo
+passam; a suíte do core tem 219 testes incluindo doctest. Somente um subconjunto do schema
+é validado; as famílias adiadas e junções temporais podem conter erros aceitos na importação.
+`edit_join_issues()` verifica apenas junções estruturais. Não equivale a `finalizeBundle`
+completo nem habilita render/export. [Contrato e limites](directed-scene.md).
 
 ## Critério de conclusão
 

@@ -10,6 +10,7 @@ pub mod backend;
 pub mod bridge;
 pub mod commands;
 pub mod content;
+pub mod directed_scene;
 pub mod document;
 pub mod fixtures;
 pub mod headless;

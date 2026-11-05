@@ -23,8 +23,9 @@ Limites honestos:
 
 ## Contrato do core / biblioteca
 
-Não há API Rust nesta entrega (**Lib: pendente**). O que existe é um contrato de dados estável em
-caminho, consumível por testes Rust futuros:
+O consumidor Rust `crates/core/tests/directed_scene_oracle.rs` está integrado (**Lib: Parcial**):
+55 vereditos de importação + junções estruturais, referências pai/socket dos casos válidos,
+round-trip e matrizes estáticas; não compara câmera temporal/performance. O contrato de dados é:
 
 - `docs/migration/fixtures/bundles/<id>.bundle.json` — entrada.
 - `docs/migration/fixtures/expected/<id>.expected.json` — veredito (`validation.accepted`, issues com
@@ -33,8 +34,8 @@ caminho, consumível por testes Rust futuros:
 - `docs/migration/fixtures/cases.json` — índice (`kind`, `bundle`, `expected`, `intent`).
 - `docs/migration/fixtures/manifest.json` — proveniência (commit, hashes, versões).
 
-Pré-condições de consumo e política numérica (nenhuma tolerância é definida pelo oráculo; as únicas
-são constantes da origem) estão no [README do runner](../../scripts/migration-oracle/README.md).
+Pré-condições de consumo e política numérica (o oráculo grava doubles exatos; o consumidor Rust compara
+matrizes com tolerância absoluta `1e-10` + relativa `1e-12`) estão no [README do runner](../../scripts/migration-oracle/README.md).
 Rejeição: um bundle recusado tem `evaluation: null`; um Rust equivalente não deve avaliá-lo.
 
 ## CLI headless
@@ -67,7 +68,8 @@ N/A: sem superfície de editor. Nenhum controle, comando `ui`/`headless` ou nó 
 - Idempotência: `generate` duas vezes produz hash idêntico de `expected/` + `manifest.json`.
 - Origem: working tree dos 33 arquivos executados == blobs de `d6adac15…`; árvore
   `packages/scene-engine` == `d5fc9871…` (a do inventário).
-- Não executado: Cargo, Chrome, GPU. Não há consumidor Rust ainda, por isso a coluna Lib é pendente.
+- Não executado: Cargo, Chrome, GPU. O consumidor Rust integrado passou nos 3 testes adicionais; a coluna Lib é parcial
+  porque avaliação temporal e demais domínios não são comparados.
 
 Linha da matriz (a ser consolidada pelo coordenador) e relatório:
 [`docs/migration/foundation-b-report.md`](../migration/foundation-b-report.md).
