@@ -54,6 +54,7 @@ Lib V significa testes do modelo demo, não um motor real de edição.
 | F035 | [Animação de nós e matrizes de mundo (BB03)](scene-animation.md) | P | P | P | Parcial¹³ | `Bundle::{evaluate_frame, node_timeline, evaluate_instance_nodes, performance_plan}` |
 | F036 | [Cenas no projeto, histórico e CLI](scene-project.md) | P | P | V | V | `Command::Scene` / `scene.*`; schema 2 com cenas, undo compartilhado, contagem de bytes em cache |
 | F037 | [Plano avaliado de frame de cena dirigida (BB05)](scene-plan.md) | P | P | P | V¹⁴ | `scene_plan::ScenePlan`; 29 testes públicos e doctest passaram; sem renderer |
+| F038 | [Recursos da cena dirigida: manifesto, preflight e materialização (BB06)](scene-resources.md) | P | P | P | Parcial¹⁵ | `scene_resources::ResourceManifest`; `directed_resources::{preflight, materialize}`; sem ligação ao pacote/CLI/UI |
 | F039 | [Interação com cenas dirigidas: seleção, árvore, frame e gestos](scene-interaction.md) | P | P | V | V | `scene.tree`, `scene.evaluate`, `scene.select`, `scene.selection`, `scene.gesture.*`; testes públicos e executável JSONL passaram |
 
 ¹ Dock/tema/janela são capacidades de apresentação. A lib valida layout, mas quem o executa
@@ -147,3 +148,5 @@ headless; os testes Chrome cobrem o runtime sem janela nativa.
 Veja [arquitetura](../core-architecture.md) e [template](_template.md).
 
 ¹⁴ Primeira fatia BB05: câmera, nós/matrizes, ordem, recursos por assetId e capabilities sobre evaluate_frame. Domínios não avaliados são recusados (ou plano parcial explícito). 29 testes públicos e doctest executados; clippy lib limpo. Não é render nem certificação do bundle completo. Ver [contrato](scene-plan.md).
+
+¹⁵ Manifesto por assetId e materialização suportada (PNG/SPZ/mix) com preflight/rollback. 27 testes públicos core, 39 media e integração plano/manifesto passaram. Mapas/profundidade/relevo/narração apenas listados. Raízes precisam de controle exclusivo; PNG só cabeçalho. Guarda de pacote incompleto permanece. [Contrato](scene-resources.md).

@@ -6,6 +6,7 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 - [Backlog compartilhado](backlog.md): registro único de pendências, responsáveis, dependências e aceite; obrigatório para todos os agentes.
 - [Inventário de migração do Scene Studio](migration/README.md): 121 itens classificados,
   evidências na origem, diferenças do branch piloto, matriz de migração e fatias sugeridas.
+- [Recursos da cena dirigida](features/scene-resources.md): manifesto, preflight e materialização inicial; identidade por assetId, transporte parcial e pacote ainda protegido pelas guardas.
 - [Interação de cenas dirigidas](features/scene-interaction.md): seleção, árvore, avaliação e gestos via comandos; implementação recebida, gate conjunto pendente.
 - [Plano avaliado de cena dirigida](features/scene-plan.md): contrato core → runtime e recursos por assetId; implementação recebida, gate Cargo pendente, sem renderer.
 - [Cenas no projeto e CLI](features/scene-project.md): attach, lotes, histórico, save/reopen

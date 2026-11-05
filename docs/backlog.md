@@ -52,9 +52,9 @@ Fontes: [roadmap](migration/phased-roadmap.md), [matriz](features/README.md),
 | BL006 | BB05 | Definir plano avaliado de cena e contrato core → runtime, versão/capabilities | A validar | BB02/BB03 existentes | H / F037 ([relatório](migration/foundation-h-report.md)) | 29 testes públicos, doctest e clippy lib passaram. Renderer BL007 e recursos BL009 continuam pendentes; gate completo da rodada ainda será executado |
 | BL007 | BB05 | Renderer da cena dirigida em preview e headless; geração/cancelamento/invalidação | Pendente | BL006, BL010 | — | Mesmo conteúdo em seek fora de ordem, troca de projeto e recuperação de contexto |
 | BL008 | BB05 | Exportar cenas dirigidas pelo mesmo plano e original | Pendente | BL007 | — | Comparação de frames preview/headless/export e export curto reproduzível |
-| BL009 | BB06 | Resolver dependências transitivas: imagens/mapas/splats/fontes e base de caminhos | Em andamento | Modelo BB01/BB02 | I / Cursor Sonnet 5.5 (ver rodada) | Closure de recursos explícita, validação de caminhos e diagnóstico de ausentes |
-| BL010 | BB06 | Jobs/load/cache/release por geração e dependentes da cena | Em andamento | BL009 | I / Cursor Sonnet 5.5 (ver rodada) | Troca/release invalida dependentes; orçamento de memória e cancelamento |
-| BL011 | BB06 | Save/package/restore/relink/interchange de recursos de cena | Em andamento | BL009, BL010 | I / Cursor Sonnet 5.5 (ver rodada) | Pacote abre sem arquivos originais; só então retirar a guarda de pacote incompleto |
+| BL009 | BB06 | Resolver dependências transitivas: imagens/mapas/splats/fontes e base de caminhos | Parcial | Modelo BB01/BB02 | I / F038 ([relatório](migration/foundation-i-report.md)) | Manifesto/closure/preflight implementados; 27 core + 39 media e plano × manifesto passaram. Mapas/f32/narração só listados; fontes fora da fatia |
+| BL010 | BB06 | Jobs/load/cache/release por geração e dependentes da cena | Parcial | BL009 | — (fatia I recebida) | Materialização tem limites/cancelamento de cópia/rollback; faltam geração, invalidação e release no fluxo real |
+| BL011 | BB06 | Save/package/restore/relink/interchange de recursos de cena | Parcial | BL009, BL010 | — (fatia I recebida) | Helper de materialização disponível; ainda sem host/package/interchange. Guarda só cai após prova de abrir sem origem |
 | BL012 | BB07 | Seleção por entidade, árvore de cena e tool state | A validar | BB02, BL004 | J / F039 ([relatório](migration/foundation-j-report.md)) | 21 testes públicos e unidade core passaram; executável headless real (13 requests) validou queries/seleção/gestos/undo; UI/socket e gesto físico pendentes |
 | BL013 | BB07 | Gestos com preview/commit/cancel e histórico agrupado | A validar | BL012 | J / F039 ([relatório](migration/foundation-j-report.md)) | 21 testes públicos e unidade core passaram; executável headless real (13 requests) validou queries/seleção/gestos/undo; UI/socket e gesto físico pendentes |
 | BL014 | BB08 | Inspector ligado ao catálogo e às propriedades vivas | Pendente | BL004, BL012 | — | UI/CLI/lib compartilham comandos e valores; controle indisponível explica motivo |
@@ -161,12 +161,12 @@ reuso isolado de objetos sem hipótese nova. Experimentos refutados ficam descar
 
 ## Rodada atual
 
-Plano e ownership: [H/I/J/K](migration/next-round-plan.md). H/J/K foram recebidas e passaram nos gates direcionados registrados acima; a entrega de I aguarda recebimento. L foi adicionada para BL062 e está concluída. Cargo e integração final são do coordenador.
+Plano e ownership: [H/I/J/K](migration/next-round-plan.md). H/J/K foram recebidas e passaram nos gates direcionados registrados acima; I recebida com gates direcionados de recursos passando; o gate completo está em andamento. L foi adicionada para BL062 e está concluída. Cargo e integração final são do coordenador.
 
 | Frente | Itens | Responsável/tarefa | Estado |
 |---|---|---|---|
 | H | BL006 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3Aa6ff05b3-f726-4031-ab83-3f9cc3045ebf> | Recebido — gates direcionados passaram, integração total pendente |
-| I | BL009/BL010/BL011 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A9cb28c3e-6589-4f90-840f-b43f21c534ca> | Em andamento |
+| I | BL009/BL010/BL011 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A9cb28c3e-6589-4f90-840f-b43f21c534ca> | Recebida — gates direcionados passaram, integração total em validação |
 | J | BL012/BL013/BL020 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A975cf39a-05f7-40c5-a224-811495f83404> | Recebido — gates direcionados passaram, integração total pendente |
 | K | BL018 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A72230e00-998b-473e-aa85-12aacc2a00d7> | Recebido — Node e 15 testes Rust validados |
 
@@ -189,7 +189,7 @@ serão integrados pelo coordenador. A janela do usuário não é reiniciada dura
 
 | ID | Área | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL063 | BB05/Adapters | Expor scene.plan por lib/JSONL e depois UI; integração plano × manifesto | Pendente | BL006, BL009 | — | Mesmo parser/erros compartilhados; required_asset_ids do plano contidos no manifesto; domínios recusados explícitos |
+| BL063 | BB05/Adapters | Expor scene.plan por lib/JSONL/UI e integrar plano × manifesto | Parcial | BL006, BL009 | Coordenador | Identidade H/I provada em 4 bundles × 4 frames; recursos requeridos conhecidos no manifesto. Ainda faltam adapter scene.plan e consumo no runtime |
 | BL064 | BB05/performance | Avaliação de muitos frames sem reconstruir NodeTimeline; medir tamanho/custo do plano | Pendente | BL006, consumidor BL007/BL008 | — | Hipótese medida antes de otimizar; mesma saída e budget explícito no export curto |
 | BL065 | BB05/domínios | Expandir plano aos domínios recusados e ao desempate por profundidade | Pendente | BL003, BL023–BL027 | — | Capabilities/versão e estado completo por domínio, com provas; não remover unsupported sem implementação |
 
@@ -234,3 +234,17 @@ não bugs corrigidos nem equivalência integral. A câmera em Three isolado não
 
 As propostas de L para mouse físico reutilizam BL043/BL062, sem novo ID. BL070–BL073
 pertencem ao corpus K; pendências adicionais de L foram reconciliadas como BL074–BL076.
+
+## Limites adicionais do transporte de recursos
+
+| ID | Área | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL077 | BB06/formatos | Interpretar/transportar mapas, grades f32, profundidade/relevo e narração | Pendente | BL001/BL003, BL009 | — | Capabilities/versão e verificação por formato (pixels/alpha, tamanho e endianness), sem omitir dependências |
+| BL078 | BB06/portabilidade | Identidade de arquivo fora de Unix e colisões Unicode NFC/NFD | Pendente | BL009 | — | Equivalente Windows a dev/ino e política de normalização, com testes reais |
+| BL079 | BB06/concorrência | Garantir controle exclusivo das raízes ou usar operações ancoradas em diretórios | Pendente | BL011 | — | Não prometer contenção contra troca concorrente de pais; integrar lease/isolamento ou handles seguros antes de liberar fluxo compartilhado |
+| BL080 | BB06/cancelamento | Observar cancelamento durante publicação e provar rollback parcial dessa fase | Pendente | BL010 | — | Cancel por arquivo publicado; rollback só dos arquivos próprios; teste determinístico sem corrida de threads |
+
+A proposta de I para ligar materialize ao pacote reutiliza BL011, sem duplicação. IDs sugeridos
+BL070–BL072 foram reconciliados como BL011/BL077/BL078; BL079/BL080 explicitam os limites de
+concorrência/cancelamento. O fallback check-then-rename foi removido pelo coordenador com
+regressão falhando antes e passando depois; não permanece como alternativa de publicação.

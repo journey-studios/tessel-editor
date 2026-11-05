@@ -26,6 +26,7 @@ pub mod scene_edit;
 pub mod scene_interaction;
 pub mod scene_plan;
 pub mod scene_project;
+pub mod scene_resources;
 pub mod session;
 pub mod splat;
 pub mod state;
