@@ -1,0 +1,1064 @@
+{
+  "checks": [
+    {
+      "check": "fixture: clip A (barcode = frame)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "fixture: clip B (barcode = frame + 100)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the editor runs the scratch page (chaos installed)",
+      "ok": true,
+      "detail": "/tmp/tvl-fvwmyevf/runtime/dist"
+    },
+    {
+      "check": "setup: project A with its clip",
+      "ok": true,
+      "detail": "None"
+    },
+    {
+      "check": "setup: project B with its clip",
+      "ok": true,
+      "detail": "None"
+    },
+    {
+      "check": "setup: project A is open",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'action': 'project.open', 'project': 'A', 'id': 'p-c8acd51d8dd5d022', 'sequences': ['main'], 'assets': 1, 'recoveries': [], 'changed': True}}"
+    },
+    {
+      "check": "setup: A decoded (explicit frame answers)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "setup: the preview proxy is built",
+      "ok": true,
+      "detail": "proxy_ready"
+    },
+    {
+      "check": "baseline: a scrub frame is drawn from the proxy and the refine replaces it with the original",
+      "ok": true,
+      "detail": "proxy_seen=True"
+    },
+    {
+      "check": "baseline: the refine ran",
+      "ok": true,
+      "detail": "{'requests': 10, 'accepted': 8, 'cancelled': 2, 'dropped_stale': 0, 'coalesced': 2, 'proxy_attached': 1, 'proxy_failed': 0, 'refined': 1}"
+    },
+    {
+      "check": "baseline: the picture on screen has the hash of an explicit original render of frame 10",
+      "ok": true,
+      "detail": "screen=58ffadfa731a652b explicit=58ffadfa731a652b"
+    },
+    {
+      "check": "baseline: the picture: the barcode decodes to frame 10",
+      "ok": true,
+      "detail": "code=10 reply={'ok': True, 'version': 1, 'data': {'action': 'render.frame', 'plan': {'frame': 10, 'time': {'num': 5, 'den': 12, 'seconds': 0.4166666666666667}, 'layers': [{'i"
+    },
+    {
+      "check": "export before: the editor's export of 12 frames succeeds",
+      "ok": true,
+      "detail": "{'id': 'job-8', 'kind': 'video-export', 'label': 'Export video', 'state': 'succeeded', 'stage': 'done', 'done': 1, 'total': 1, 'progress': 1.0, 'eta_seconds': None, 'warnings': [], 'error': None, 'result': {'destination': '/tmp/tvl-fvwmyevf/export-before.mp4', 'preset': 'fullhd', 'bytes': 586710, 'frames': 12, 'fps': {'num': 24, 'den': 1, 'fps': 24.0}, 'duration_seconds': 0.5, 'render': {'width': "
+    },
+    {
+      "check": "loss mid scrub frame: the last position converges on the original (ready, nothing pending/refine, presented == playhead)",
+      "ok": true,
+      "detail": "no convergence: {\"backend\": \"three-webview\", \"status\": \"ready\", \"revision\": 16, \"loaded_assets\": [\"a\"], \"stats\": {\"requests\": 16, \"accepted\": 13, \"cancelled\": 2, \"dropped_stale\": 1, \"coalesced\": 2, \"proxy_attached\": 2, \"proxy_failed\": 0, \"refined\": 3}, \"preview_policy\": {\"mode\": \"auto\", \"max_height\": 180, \"format\": \"jpeg\"}, \"refine_pending\": false, \"proxy_error\": null, \"proxies\": [\"a\"], \"pending\":"
+    },
+    {
+      "check": "loss mid scrub frame: no failure is left on the monitor",
+      "ok": true,
+      "detail": "None"
+    },
+    {
+      "check": "loss mid scrub frame: the runtime saw exactly 1 context loss(es)",
+      "ok": true,
+      "detail": "generation 0 -> 1"
+    },
+    {
+      "check": "loss mid scrub frame: the picture on screen has the hash of an explicit original render of frame 21",
+      "ok": true,
+      "detail": "screen=3875561a15b3f8f5 explicit=3875561a15b3f8f5"
+    },
+    {
+      "check": "loss mid scrub frame: the picture: the barcode decodes to frame 21",
+      "ok": true,
+      "detail": "code=21 reply={'ok': True, 'version': 1, 'data': {'action': 'render.frame', 'plan': {'frame': 21, 'time': {'num': 7, 'den': 8, 'seconds': 0.875}, 'layers': [{'id': 'layer:c',"
+    },
+    {
+      "check": "loss mid refine frame: the last position converges on the original (ready, nothing pending/refine, presented == playhead)",
+      "ok": true,
+      "detail": "no convergence: {\"backend\": \"three-webview\", \"status\": \"ready\", \"revision\": 21, \"loaded_assets\": [\"a\"], \"stats\": {\"requests\": 21, \"accepted\": 17, \"cancelled\": 2, \"dropped_stale\": 2, \"coalesced\": 2, \"proxy_attached\": 3, \"proxy_failed\": 0, \"refined\": 5}, \"preview_policy\": {\"mode\": \"auto\", \"max_height\": 180, \"format\": \"jpeg\"}, \"refine_pending\": false, \"proxy_error\": null, \"proxies\": [\"a\"], \"pending\":"
+    },
+    {
+      "check": "loss mid refine frame: no failure is left on the monitor",
+      "ok": true,
+      "detail": "None"
+    },
+    {
+      "check": "loss mid refine frame: the runtime saw exactly 1 context loss(es)",
+      "ok": true,
+      "detail": "generation 1 -> 2"
+    },
+    {
+      "check": "loss mid refine frame: the picture on screen has the hash of an explicit original render of frame 22",
+      "ok": true,
+      "detail": "screen=f5acfd7b5d4bc2ae explicit=f5acfd7b5d4bc2ae"
+    },
+    {
+      "check": "loss mid refine frame: the picture: the barcode decodes to frame 22",
+      "ok": true,
+      "detail": "code=22 reply={'ok': True, 'version': 1, 'data': {'action': 'render.frame', 'plan': {'frame': 22, 'time': {'num': 11, 'den': 12, 'seconds': 0.9166666666666666}, 'layers': [{'"
+    },
+    {
+      "check": "loss while the refine timer waits (still lost when it fires): the last position converges on the original (ready, nothing pending/refine, presented == playhead)",
+      "ok": true,
+      "detail": "no convergence: {\"backend\": \"three-webview\", \"status\": \"ready\", \"revision\": 26, \"loaded_assets\": [\"a\"], \"stats\": {\"requests\": 26, \"accepted\": 21, \"cancelled\": 2, \"dropped_stale\": 2, \"coalesced\": 2, \"proxy_attached\": 4, \"proxy_failed\": 0, \"refined\": 7}, \"preview_policy\": {\"mode\": \"auto\", \"max_height\": 180, \"format\": \"jpeg\"}, \"refine_pending\": false, \"proxy_error\": null, \"proxies\": [\"a\"], \"pending\":"
+    },
+    {
+      "check": "loss while the refine timer waits (still lost when it fires): no failure is left on the monitor",
+      "ok": true,
+      "detail": "None"
+    },
+    {
+      "check": "loss while the refine timer waits (still lost when it fires): the runtime saw exactly 1 context loss(es)",
+      "ok": true,
+      "detail": "generation 2 -> 3"
+    },
+    {
+      "check": "loss while the refine timer waits (still lost when it fires): the picture on screen has the hash of an explicit original render of frame 23",
+      "ok": true,
+      "detail": "screen=7f969568da717f62 explicit=7f969568da717f62"
+    },
+    {
+      "check": "loss while the refine timer waits (still lost when it fires): the picture: the barcode decodes to frame 23",
+      "ok": true,
+      "detail": "code=23 reply={'ok': True, 'version': 1, 'data': {'action': 'render.frame', 'plan': {'frame': 23, 'time': {'num': 23, 'den': 24, 'seconds': 0.9583333333333334}, 'layers': [{'"
+    },
+    {
+      "check": "loss while the playhead keeps moving: the last position converges on the original (ready, nothing pending/refine, presented == playhead)",
+      "ok": true,
+      "detail": "no convergence: {\"backend\": \"three-webview\", \"status\": \"ready\", \"revision\": 37, \"loaded_assets\": [\"a\"], \"stats\": {\"requests\": 37, \"accepted\": 24, \"cancelled\": 2, \"dropped_stale\": 3, \"coalesced\": 2, \"proxy_attached\": 5, \"proxy_failed\": 0, \"refined\": 8}, \"preview_policy\": {\"mode\": \"auto\", \"max_height\": 180, \"format\": \"jpeg\"}, \"refine_pending\": false, \"proxy_error\": null, \"proxies\": [\"a\"], \"pending\":"
+    },
+    {
+      "check": "loss while the playhead keeps moving: no failure is left on the monitor",
+      "ok": true,
+      "detail": "None"
+    },
+    {
+      "check": "loss while the playhead keeps moving: the runtime saw exactly 1 context loss(es)",
+      "ok": true,
+      "detail": "generation 3 -> 4"
+    },
+    {
+      "check": "loss while the playhead keeps moving: the picture on screen has the hash of an explicit original render of frame 31",
+      "ok": true,
+      "detail": "screen=4c261f10c52e6546 explicit=4c261f10c52e6546"
+    },
+    {
+      "check": "loss while the playhead keeps moving: the picture: the barcode decodes to frame 31",
+      "ok": true,
+      "detail": "code=31 reply={'ok': True, 'version': 1, 'data': {'action': 'render.frame', 'plan': {'frame': 31, 'time': {'num': 31, 'den': 24, 'seconds': 1.2916666666666667}, 'layers': [{'"
+    },
+    {
+      "check": "context lost while the monitor is hidden: the monitor hides",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'panel:monitor', 'visible': False}}"
+    },
+    {
+      "check": "context lost while the monitor is hidden: the viewport reports off-screen",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "context lost while the monitor is hidden: the monitor shows again",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'panel:monitor', 'visible': True}}"
+    },
+    {
+      "check": "context lost while the monitor is hidden: the last position converges on the original (ready, nothing pending/refine, presented == playhead)",
+      "ok": true,
+      "detail": "no convergence: {\"backend\": \"three-webview\", \"status\": \"ready\", \"revision\": 41, \"loaded_assets\": [\"a\"], \"stats\": {\"requests\": 41, \"accepted\": 27, \"cancelled\": 2, \"dropped_stale\": 4, \"coalesced\": 2, \"proxy_attached\": 6, \"proxy_failed\": 0, \"refined\": 9}, \"preview_policy\": {\"mode\": \"auto\", \"max_height\": 180, \"format\": \"jpeg\"}, \"refine_pending\": false, \"proxy_error\": null, \"proxies\": [\"a\"], \"pending\":"
+    },
+    {
+      "check": "context lost while the monitor is hidden: no failure is left on the monitor",
+      "ok": true,
+      "detail": "None"
+    },
+    {
+      "check": "context lost while the monitor is hidden: the runtime saw exactly 1 context loss(es)",
+      "ok": true,
+      "detail": "generation 4 -> 5"
+    },
+    {
+      "check": "context lost while the monitor is hidden: the picture on screen has the hash of an explicit original render of frame 33",
+      "ok": true,
+      "detail": "screen=38cd65018bc12e9d explicit=38cd65018bc12e9d"
+    },
+    {
+      "check": "context lost while the monitor is hidden: the picture: the barcode decodes to frame 33",
+      "ok": true,
+      "detail": "code=33 reply={'ok': True, 'version': 1, 'data': {'action': 'render.frame', 'plan': {'frame': 33, 'time': {'num': 11, 'den': 8, 'seconds': 1.375}, 'layers': [{'id': 'layer:c'"
+    },
+    {
+      "check": "export before: the viewport reports on-screen again",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "six losses in a row: frame 34 converged after its loss",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "six losses in a row: frame 35 converged after its loss",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "six losses in a row: frame 36 converged after its loss",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "six losses in a row: frame 37 converged after its loss",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "six losses in a row: frame 38 converged after its loss",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "six losses in a row: frame 39 converged after its loss",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "six losses in a row: exactly six losses happened",
+      "ok": true,
+      "detail": "5 -> 11"
+    },
+    {
+      "check": "six losses in a row: the picture on screen has the hash of an explicit original render of frame 39",
+      "ok": true,
+      "detail": "screen=037fa5e93f4d9646 explicit=037fa5e93f4d9646"
+    },
+    {
+      "check": "six losses in a row: the picture: the barcode decodes to frame 39",
+      "ok": true,
+      "detail": "code=39 reply={'ok': True, 'version': 1, 'data': {'action': 'render.frame', 'plan': {'frame': 39, 'time': {'num': 13, 'den': 8, 'seconds': 1.625}, 'layers': [{'id': 'layer:c'"
+    },
+    {
+      "check": "six losses in a row: gl_textures did not grow across the losses (2 <= 6)",
+      "ok": true,
+      "detail": "baseline=4 now=2"
+    },
+    {
+      "check": "six losses in a row: gl_geometries did not grow across the losses (0 <= 2)",
+      "ok": true,
+      "detail": "baseline=0 now=0"
+    },
+    {
+      "check": "six losses in a row: gl_programs did not grow across the losses (1 <= 3)",
+      "ok": true,
+      "detail": "baseline=1 now=1"
+    },
+    {
+      "check": "six losses in a row: texture_entries did not grow across the losses (2 <= 5)",
+      "ok": true,
+      "detail": "baseline=3 now=2"
+    },
+    {
+      "check": "six losses in a row: text_entries did not grow across the losses (0 <= 3)",
+      "ok": true,
+      "detail": "baseline=1 now=0"
+    },
+    {
+      "check": "six losses in a row: material_entries did not grow across the losses (1 <= 4)",
+      "ok": true,
+      "detail": "baseline=2 now=1"
+    },
+    {
+      "check": "six losses in a row: target_entries did not grow across the losses (0 <= 2)",
+      "ok": true,
+      "detail": "baseline=0 now=0"
+    },
+    {
+      "check": "six losses in a row: the editor's own resident memory did not balloon (< +100 MB)",
+      "ok": true,
+      "detail": "175.9 -> 175.9"
+    },
+    {
+      "check": "hide/show with a proxy picture and a moving playhead: the monitor hides in the middle of the scrub",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'panel:monitor', 'visible': False}}"
+    },
+    {
+      "check": "hide/show with a proxy picture and a moving playhead: the viewport reports off-screen while hidden",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "hide/show with a proxy picture and a moving playhead: the monitor shows again",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'panel:monitor', 'visible': True}}"
+    },
+    {
+      "check": "hide/show with a proxy picture and a moving playhead: the last position converges on the original (ready, nothing pending/refine, presented == playhead)",
+      "ok": true,
+      "detail": "no convergence: {\"backend\": \"three-webview\", \"status\": \"ready\", \"revision\": 69, \"loaded_assets\": [\"a\"], \"stats\": {\"requests\": 69, \"accepted\": 49, \"cancelled\": 2, \"dropped_stale\": 10, \"coalesced\": 5, \"proxy_attached\": 12, \"proxy_failed\": 0, \"refined\": 16}, \"preview_policy\": {\"mode\": \"auto\", \"max_height\": 180, \"format\": \"jpeg\"}, \"refine_pending\": false, \"proxy_error\": null, \"proxies\": [\"a\"], \"pendin"
+    },
+    {
+      "check": "hide/show with a proxy picture and a moving playhead: no failure is left on the monitor",
+      "ok": true,
+      "detail": "None"
+    },
+    {
+      "check": "hide/show with a proxy picture and a moving playhead: the runtime saw exactly 0 context loss(es)",
+      "ok": true,
+      "detail": "generation 11 -> 11"
+    },
+    {
+      "check": "hide/show with a proxy picture and a moving playhead: the picture on screen has the hash of an explicit original render of frame 47",
+      "ok": true,
+      "detail": "screen=01eccd18dea64258 explicit=01eccd18dea64258"
+    },
+    {
+      "check": "hide/show with a proxy picture and a moving playhead: the picture: the barcode decodes to frame 47",
+      "ok": true,
+      "detail": "code=47 reply={'ok': True, 'version': 1, 'data': {'action': 'render.frame', 'plan': {'frame': 47, 'time': {'num': 47, 'den': 24, 'seconds': 1.9583333333333333}, 'layers': [{'"
+    },
+    {
+      "check": "hide/show with a proxy picture and a moving playhead: on-screen again after the show",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the monitor flaps (8 hide/show toggles) while scrubbing: the last position converges on the original (ready, nothing pending/refine, presented == playhead)",
+      "ok": true,
+      "detail": "no convergence: {\"backend\": \"three-webview\", \"status\": \"ready\", \"revision\": 79, \"loaded_assets\": [\"a\"], \"stats\": {\"requests\": 79, \"accepted\": 59, \"cancelled\": 2, \"dropped_stale\": 10, \"coalesced\": 12, \"proxy_attached\": 12, \"proxy_failed\": 0, \"refined\": 17}, \"preview_policy\": {\"mode\": \"auto\", \"max_height\": 180, \"format\": \"jpeg\"}, \"refine_pending\": false, \"proxy_error\": null, \"proxies\": [\"a\"], \"pendi"
+    },
+    {
+      "check": "the monitor flaps (8 hide/show toggles) while scrubbing: no failure is left on the monitor",
+      "ok": true,
+      "detail": "None"
+    },
+    {
+      "check": "the monitor flaps (8 hide/show toggles) while scrubbing: the runtime saw exactly 0 context loss(es)",
+      "ok": true,
+      "detail": "generation 11 -> 11"
+    },
+    {
+      "check": "the monitor flaps (8 hide/show toggles) while scrubbing: the picture on screen has the hash of an explicit original render of frame 46",
+      "ok": true,
+      "detail": "screen=0caa6b742dd4e56f explicit=0caa6b742dd4e56f"
+    },
+    {
+      "check": "the monitor flaps (8 hide/show toggles) while scrubbing: the picture: the barcode decodes to frame 46",
+      "ok": true,
+      "detail": "code=46 reply={'ok': True, 'version': 1, 'data': {'action': 'render.frame', 'plan': {'frame': 46, 'time': {'num': 23, 'den': 12, 'seconds': 1.9166666666666667}, 'layers': [{'"
+    },
+    {
+      "check": "hide/show with a proxy picture and a moving playhead: on-screen at the end of the flapping",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "dialog over the monitor while scrubbing: a dialog opens over the monitor",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'action': 'flow.open', 'flow': 'import', 'changed': True}}"
+    },
+    {
+      "check": "dialog over the monitor while scrubbing: the viewport reports off-screen while the dialog is open",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "dialog over the monitor while scrubbing: the dialog closes",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'action': 'dialog.cancel', 'changed': True}}"
+    },
+    {
+      "check": "dialog over the monitor while scrubbing: the last position converges on the original (ready, nothing pending/refine, presented == playhead)",
+      "ok": true,
+      "detail": "no convergence: {\"backend\": \"three-webview\", \"status\": \"ready\", \"revision\": 84, \"loaded_assets\": [\"a\"], \"stats\": {\"requests\": 84, \"accepted\": 64, \"cancelled\": 2, \"dropped_stale\": 10, \"coalesced\": 12, \"proxy_attached\": 12, \"proxy_failed\": 0, \"refined\": 18}, \"preview_policy\": {\"mode\": \"auto\", \"max_height\": 180, \"format\": \"jpeg\"}, \"refine_pending\": false, \"proxy_error\": null, \"proxies\": [\"a\"], \"pendi"
+    },
+    {
+      "check": "dialog over the monitor while scrubbing: no failure is left on the monitor",
+      "ok": true,
+      "detail": "None"
+    },
+    {
+      "check": "dialog over the monitor while scrubbing: the runtime saw exactly 0 context loss(es)",
+      "ok": true,
+      "detail": "generation 11 -> 11"
+    },
+    {
+      "check": "dialog over the monitor while scrubbing: the picture on screen has the hash of an explicit original render of frame 32",
+      "ok": true,
+      "detail": "screen=ecf7cb5ce94b56f0 explicit=ecf7cb5ce94b56f0"
+    },
+    {
+      "check": "dialog over the monitor while scrubbing: the picture: the barcode decodes to frame 32",
+      "ok": true,
+      "detail": "code=32 reply={'ok': True, 'version': 1, 'data': {'action': 'render.frame', 'plan': {'frame': 32, 'time': {'num': 4, 'den': 3, 'seconds': 1.3333333333333333}, 'layers': [{'id"
+    },
+    {
+      "check": "hide/show with a proxy picture and a moving playhead: on-screen again after the dialog",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "window minimized and activated: the window minimizes",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'action': 'window.minimize', 'dispatched': True, 'theme': 'dark'}}"
+    },
+    {
+      "check": "window minimized and activated: the window activates",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'action': 'window.activate', 'dispatched': True, 'theme': 'dark'}}"
+    },
+    {
+      "check": "window minimized and activated: the last position converges on the original (ready, nothing pending/refine, presented == playhead)",
+      "ok": true,
+      "detail": "no convergence: {\"backend\": \"three-webview\", \"status\": \"ready\", \"revision\": 87, \"loaded_assets\": [\"a\"], \"stats\": {\"requests\": 87, \"accepted\": 67, \"cancelled\": 2, \"dropped_stale\": 10, \"coalesced\": 12, \"proxy_attached\": 12, \"proxy_failed\": 0, \"refined\": 19}, \"preview_policy\": {\"mode\": \"auto\", \"max_height\": 180, \"format\": \"jpeg\"}, \"refine_pending\": false, \"proxy_error\": null, \"proxies\": [\"a\"], \"pendi"
+    },
+    {
+      "check": "window minimized and activated: no failure is left on the monitor",
+      "ok": true,
+      "detail": "None"
+    },
+    {
+      "check": "window minimized and activated: the runtime saw exactly 0 context loss(es)",
+      "ok": true,
+      "detail": "generation 11 -> 11"
+    },
+    {
+      "check": "window minimized and activated: the picture on screen has the hash of an explicit original render of frame 5",
+      "ok": true,
+      "detail": "screen=61fc2c2a33703033 explicit=61fc2c2a33703033"
+    },
+    {
+      "check": "window minimized and activated: the picture: the barcode decodes to frame 5",
+      "ok": true,
+      "detail": "code=5 reply={'ok': True, 'version': 1, 'data': {'action': 'render.frame', 'plan': {'frame': 5, 'time': {'num': 5, 'den': 24, 'seconds': 0.20833333333333334}, 'layers': [{'i"
+    },
+    {
+      "check": "context lost, then the project is replaced before the restore: the second project opens while the context is lost",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'action': 'project.open', 'project': 'B', 'id': 'p-51bcf37aa6b851f4', 'sequences': ['main'], 'assets': 1, 'recoveries': [], 'changed': True}}"
+    },
+    {
+      "check": "context lost, then the project is replaced before the restore: the proxy of the second project is built",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "context lost, then the project is replaced before the restore: the second project converges after the restore",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "context lost, then the project is replaced before the restore: the runtime saw the loss",
+      "ok": true,
+      "detail": "11 -> 12"
+    },
+    {
+      "check": "context lost, then the project is replaced before the restore: the scrub came from the second project's proxy",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "context lost, then the project is replaced before the restore: the second project's picture on screen has the hash of an explicit original render of frame 30",
+      "ok": true,
+      "detail": "screen=e545c3367b04cebc explicit=e545c3367b04cebc"
+    },
+    {
+      "check": "context lost, then the project is replaced before the restore: the second project's picture: the barcode decodes to frame 130",
+      "ok": true,
+      "detail": "code=130 reply={'ok': True, 'version': 1, 'data': {'action': 'render.frame', 'plan': {'frame': 30, 'time': {'num': 5, 'den': 4, 'seconds': 1.25}, 'layers': [{'id': 'layer:c', "
+    },
+    {
+      "check": "context lost, then the project is replaced before the restore: the session holds nothing of the first project",
+      "ok": true,
+      "detail": "['b']"
+    },
+    {
+      "check": "context lost, then the project is replaced before the restore: the first project opens again",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "project replaced with a frame in flight: the second project opens while frames of the first are in flight",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'action': 'project.open', 'project': 'B', 'id': 'p-51bcf37aa6b851f4', 'sequences': ['main'], 'assets': 1, 'recoveries': [], 'changed': True}}"
+    },
+    {
+      "check": "project replaced with a frame in flight: the explicit frame in flight across the switch is a typed error, not a hang",
+      "ok": true,
+      "detail": "{'ok': False, 'version': 1, 'error': {'code': 'cancelled', 'message': 'The project was replaced', 'details': {'backend_code': 'cancelled', 'backend_details': None}}}"
+    },
+    {
+      "check": "project replaced with a frame in flight: the second project decodes and answers frames",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "project replaced with a frame in flight: the second project has its own asset",
+      "ok": true,
+      "detail": "['b']"
+    },
+    {
+      "check": "project replaced with a frame in flight: the first project's asset is not in the project any more",
+      "ok": true,
+      "detail": "['b']"
+    },
+    {
+      "check": "project replaced with a frame in flight: the proxy of the second project is built",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "project replaced with a frame in flight: the second project scrubs from its own proxy and converges",
+      "ok": true,
+      "detail": "proxy_seen=True"
+    },
+    {
+      "check": "project replaced with a frame in flight: the session holds only the second project's assets",
+      "ok": true,
+      "detail": "['b']"
+    },
+    {
+      "check": "project replaced with a frame in flight: and attached proxies belong to it",
+      "ok": true,
+      "detail": "['b']"
+    },
+    {
+      "check": "project replaced with a frame in flight: the second project's picture on screen has the hash of an explicit original render of frame 15",
+      "ok": true,
+      "detail": "screen=80a4b0e95b92877d explicit=80a4b0e95b92877d"
+    },
+    {
+      "check": "project replaced with a frame in flight: the second project's picture: the barcode decodes to frame 115",
+      "ok": true,
+      "detail": "code=115 reply={'ok': True, 'version': 1, 'data': {'action': 'render.frame', 'plan': {'frame': 15, 'time': {'num': 5, 'den': 8, 'seconds': 0.625}, 'layers': [{'id': 'layer:c',"
+    },
+    {
+      "check": "project replaced with a frame in flight: the first project opens again",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'action': 'project.open', 'project': 'A', 'id': 'p-c8acd51d8dd5d022', 'sequences': ['main'], 'assets': 1, 'recoveries': [], 'changed': True}}"
+    },
+    {
+      "check": "project replaced with a frame in flight: the first project scrubs again from its proxy and converges",
+      "ok": true,
+      "detail": "proxy_seen=True"
+    },
+    {
+      "check": "project replaced with a frame in flight: the first project's picture on screen has the hash of an explicit original render of frame 18",
+      "ok": true,
+      "detail": "screen=2e5ef5d4fdf02cae explicit=2e5ef5d4fdf02cae"
+    },
+    {
+      "check": "project replaced with a frame in flight: the first project's picture: the barcode decodes to frame 18",
+      "ok": true,
+      "detail": "code=18 reply={'ok': True, 'version': 1, 'data': {'action': 'render.frame', 'plan': {'frame': 18, 'time': {'num': 3, 'den': 4, 'seconds': 0.75}, 'layers': [{'id': 'layer:c', "
+    },
+    {
+      "check": "project replaced with a frame in flight: no loaded asset or proxy of the second project is left",
+      "ok": true,
+      "detail": "['a']"
+    },
+    {
+      "check": "context lost and never restored: the monitor reports the failure",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "context lost and never restored: it is a context_lost, said as such",
+      "ok": true,
+      "detail": "{'code': 'context_lost', 'message': 'The graphics context was lost'}"
+    },
+    {
+      "check": "context lost and never restored: the header says it (`Falha: context_lost`)",
+      "ok": true,
+      "detail": "Falha: context_lost"
+    },
+    {
+      "check": "context lost and never restored: a new intent does not hang the host (it answers, still failed, phase ready)",
+      "ok": true,
+      "detail": "failed"
+    },
+    {
+      "check": "context lost and never restored: and the failure is still context_lost",
+      "ok": true,
+      "detail": "{'code': 'context_lost', 'message': 'The graphics context is lost'}"
+    },
+    {
+      "check": "context lost and never restored: monitor.reload is accepted",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'monitor.reload', 'action': 'reload', 'changed': True}}"
+    },
+    {
+      "check": "context lost and never restored: the reload recovers: the playhead position converges on a fresh context",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "context lost and never restored: the fresh page counts no loss",
+      "ok": true,
+      "detail": "0"
+    },
+    {
+      "check": "context lost and never restored: the picture on screen has the hash of an explicit original render of frame 25",
+      "ok": true,
+      "detail": "screen=d2f8094e5f9277d4 explicit=d2f8094e5f9277d4"
+    },
+    {
+      "check": "context lost and never restored: the picture: the barcode decodes to frame 25",
+      "ok": true,
+      "detail": "code=25 reply={'ok': True, 'version': 1, 'data': {'action': 'render.frame', 'plan': {'frame': 25, 'time': {'num': 25, 'den': 24, 'seconds': 1.0416666666666667}, 'layers': [{'"
+    },
+    {
+      "check": "context lost, then the page is reloaded before the restore: monitor.reload is accepted while the context is lost",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'monitor.reload', 'action': 'reload', 'changed': True}}"
+    },
+    {
+      "check": "context lost, then the page is reloaded before the restore: the viewport is ready again",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "context lost, then the page is reloaded before the restore: the fresh page scrubs from the proxy and converges",
+      "ok": true,
+      "detail": "proxy_seen=True"
+    },
+    {
+      "check": "context lost, then the page is reloaded before the restore: no failure survived the reload",
+      "ok": true,
+      "detail": "None"
+    },
+    {
+      "check": "context lost, then the page is reloaded before the restore: the picture on screen has the hash of an explicit original render of frame 29",
+      "ok": true,
+      "detail": "screen=1c437651ac6a2bb3 explicit=1c437651ac6a2bb3"
+    },
+    {
+      "check": "context lost, then the page is reloaded before the restore: the picture: the barcode decodes to frame 29",
+      "ok": true,
+      "detail": "code=29 reply={'ok': True, 'version': 1, 'data': {'action': 'render.frame', 'plan': {'frame': 29, 'time': {'num': 29, 'den': 24, 'seconds': 1.2083333333333333}, 'layers': [{'"
+    },
+    {
+      "check": "monitor.reload with a frame in flight: attempt 0: the reload is accepted",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'monitor.reload', 'action': 'reload', 'changed': True}}"
+    },
+    {
+      "check": "monitor.reload with a frame in flight: attempt 0: the explicit frame waiting during the reload is answered (not left hanging)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "monitor.reload with a frame in flight: attempt 0: it is a real frame or a typed error",
+      "ok": true,
+      "detail": "{'ok': False, 'version': 1, 'error': {'code': 'cancelled', 'message': 'The viewport is reloading', 'details': {'backend_code': 'cancelled', 'backend_details': None}}}"
+    },
+    {
+      "check": "monitor.reload with a frame in flight: attempt 0: the viewport is ready and drew a frame again",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "after the reload: the playhead position converges: the last position converges on the original (ready, nothing pending/refine, presented == playhead)",
+      "ok": true,
+      "detail": "no convergence: {\"backend\": \"three-webview\", \"status\": \"ready\", \"revision\": 132, \"loaded_assets\": [\"a\"], \"stats\": {\"requests\": 132, \"accepted\": 99, \"cancelled\": 7, \"dropped_stale\": 19, \"coalesced\": 14, \"proxy_attached\": 21, \"proxy_failed\": 0, \"refined\": 26}, \"preview_policy\": {\"mode\": \"auto\", \"max_height\": 180, \"format\": \"jpeg\"}, \"refine_pending\": false, \"proxy_error\": null, \"proxies\": [\"a\"], \"pen"
+    },
+    {
+      "check": "after the reload: the playhead position converges: no failure is left on the monitor",
+      "ok": true,
+      "detail": "None"
+    },
+    {
+      "check": "after the reload: the playhead position converges: the runtime saw exactly 0 context loss(es)",
+      "ok": true,
+      "detail": "generation 0 -> 0"
+    },
+    {
+      "check": "after the reload: the playhead position converges: the picture on screen has the hash of an explicit original render of frame 8",
+      "ok": true,
+      "detail": "screen=f6853ab873510d4d explicit=f6853ab873510d4d"
+    },
+    {
+      "check": "after the reload: the playhead position converges: the picture: the barcode decodes to frame 8",
+      "ok": true,
+      "detail": "code=8 reply={'ok': True, 'version': 1, 'data': {'action': 'render.frame', 'plan': {'frame': 8, 'time': {'num': 1, 'den': 3, 'seconds': 0.3333333333333333}, 'layers': [{'id'"
+    },
+    {
+      "check": "monitor.reload with a frame in flight: after the reload the scrub is drawn from the proxy again and refined",
+      "ok": true,
+      "detail": "proxy_seen=True"
+    },
+    {
+      "check": "monitor.reload with a frame in flight: the picture on screen has the hash of an explicit original render of frame 12",
+      "ok": true,
+      "detail": "screen=9cabae4ce6d09d18 explicit=9cabae4ce6d09d18"
+    },
+    {
+      "check": "monitor.reload with a frame in flight: the picture: the barcode decodes to frame 12",
+      "ok": true,
+      "detail": "code=12 reply={'ok': True, 'version': 1, 'data': {'action': 'render.frame', 'plan': {'frame': 12, 'time': {'num': 1, 'den': 2, 'seconds': 0.5}, 'layers': [{'id': 'layer:c', '"
+    },
+    {
+      "check": "export after: the editor's export of 12 frames succeeds",
+      "ok": true,
+      "detail": "{'id': 'job-17', 'kind': 'video-export', 'label': 'Export video', 'state': 'succeeded', 'stage': 'done', 'done': 1, 'total': 1, 'progress': 1.0, 'eta_seconds': None, 'warnings': [], 'error': None, 'result': {'destination': '/tmp/tvl-fvwmyevf/export-after.mp4', 'preset': 'fullhd', 'bytes': 586710, 'frames': 12, 'fps': {'num': 24, 'den': 1, 'fps': 24.0}, 'duration_seconds': 0.5, 'render': {'width': "
+    },
+    {
+      "check": "export after the incidents: the export after every incident is frame-for-frame identical to the one before (the original never changed)",
+      "ok": true,
+      "detail": "framemd5 differs"
+    },
+    {
+      "check": "end: the editor is still ready and unfailed at the end",
+      "ok": true,
+      "detail": "None"
+    },
+    {
+      "check": "end: own artifacts stayed under 2 GiB (0.03)",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "scenarios": {
+    "baseline": {
+      "renderer": "Apple GPU",
+      "footprint": {
+        "gl_textures": 4,
+        "gl_geometries": 0,
+        "gl_programs": 1,
+        "texture_entries": 3,
+        "text_entries": 1,
+        "material_entries": 2,
+        "target_entries": 0,
+        "context_generation": 0
+      }
+    },
+    "loss mid scrub frame": {
+      "stats_delta": {
+        "requests": 4,
+        "accepted": 3,
+        "cancelled": 0,
+        "dropped_stale": 1,
+        "coalesced": 0,
+        "proxy_attached": 1,
+        "proxy_failed": 0,
+        "refined": 1
+      },
+      "footprint": {
+        "gl_textures": 2,
+        "gl_geometries": 0,
+        "gl_programs": 1,
+        "texture_entries": 2,
+        "text_entries": 0,
+        "material_entries": 1,
+        "target_entries": 0,
+        "context_generation": 1
+      }
+    },
+    "loss mid refine frame": {
+      "stats_delta": {
+        "requests": 5,
+        "accepted": 4,
+        "cancelled": 0,
+        "dropped_stale": 1,
+        "coalesced": 0,
+        "proxy_attached": 1,
+        "proxy_failed": 0,
+        "refined": 2
+      },
+      "footprint": {
+        "gl_textures": 2,
+        "gl_geometries": 0,
+        "gl_programs": 1,
+        "texture_entries": 2,
+        "text_entries": 0,
+        "material_entries": 1,
+        "target_entries": 0,
+        "context_generation": 2
+      }
+    },
+    "loss while the refine timer waits (still lost when it fires)": {
+      "stats_delta": {
+        "requests": 5,
+        "accepted": 4,
+        "cancelled": 0,
+        "dropped_stale": 0,
+        "coalesced": 0,
+        "proxy_attached": 1,
+        "proxy_failed": 0,
+        "refined": 2
+      },
+      "footprint": {
+        "gl_textures": 2,
+        "gl_geometries": 0,
+        "gl_programs": 1,
+        "texture_entries": 2,
+        "text_entries": 0,
+        "material_entries": 1,
+        "target_entries": 0,
+        "context_generation": 3
+      }
+    },
+    "loss while the playhead keeps moving": {
+      "stats_delta": {
+        "requests": 11,
+        "accepted": 3,
+        "cancelled": 0,
+        "dropped_stale": 1,
+        "coalesced": 0,
+        "proxy_attached": 1,
+        "proxy_failed": 0,
+        "refined": 1
+      },
+      "footprint": {
+        "gl_textures": 2,
+        "gl_geometries": 0,
+        "gl_programs": 1,
+        "texture_entries": 2,
+        "text_entries": 0,
+        "material_entries": 1,
+        "target_entries": 0,
+        "context_generation": 4
+      }
+    },
+    "context lost while the monitor is hidden": {
+      "stats_delta": {
+        "requests": 4,
+        "accepted": 3,
+        "cancelled": 0,
+        "dropped_stale": 1,
+        "coalesced": 0,
+        "proxy_attached": 1,
+        "proxy_failed": 0,
+        "refined": 1
+      },
+      "footprint": {
+        "gl_textures": 2,
+        "gl_geometries": 0,
+        "gl_programs": 1,
+        "texture_entries": 2,
+        "text_entries": 0,
+        "material_entries": 1,
+        "target_entries": 0,
+        "context_generation": 5
+      }
+    },
+    "six losses in a row": {
+      "footprint_before": {
+        "gl_textures": 2,
+        "gl_geometries": 0,
+        "gl_programs": 1,
+        "texture_entries": 2,
+        "text_entries": 0,
+        "material_entries": 1,
+        "target_entries": 0,
+        "context_generation": 5
+      },
+      "footprint_after": {
+        "gl_textures": 2,
+        "gl_geometries": 0,
+        "gl_programs": 1,
+        "texture_entries": 2,
+        "text_entries": 0,
+        "material_entries": 1,
+        "target_entries": 0,
+        "context_generation": 11
+      },
+      "editor_rss_mb": {
+        "before": 175.9,
+        "after": 175.9,
+        "note": "the editor process only; the WebKit helper processes are not its children and are not measured"
+      }
+    },
+    "hide/show with a proxy picture and a moving playhead": {
+      "while_hidden": {
+        "status": "ready",
+        "refine_pending": false,
+        "presented": {
+          "request": 69,
+          "frame": 47
+        }
+      },
+      "stats_delta": {
+        "requests": 9,
+        "accepted": 9,
+        "cancelled": 0,
+        "dropped_stale": 0,
+        "coalesced": 3,
+        "proxy_attached": 0,
+        "proxy_failed": 0,
+        "refined": 1
+      },
+      "footprint": {
+        "gl_textures": 10,
+        "gl_geometries": 0,
+        "gl_programs": 1,
+        "texture_entries": 10,
+        "text_entries": 0,
+        "material_entries": 1,
+        "target_entries": 0,
+        "context_generation": 11
+      }
+    },
+    "the monitor flaps (8 hide/show toggles) while scrubbing": {
+      "stats_delta": {
+        "requests": 10,
+        "accepted": 10,
+        "cancelled": 0,
+        "dropped_stale": 0,
+        "coalesced": 7,
+        "proxy_attached": 0,
+        "proxy_failed": 0,
+        "refined": 1
+      },
+      "footprint": {
+        "gl_textures": 11,
+        "gl_geometries": 0,
+        "gl_programs": 1,
+        "texture_entries": 11,
+        "text_entries": 0,
+        "material_entries": 1,
+        "target_entries": 0,
+        "context_generation": 11
+      }
+    },
+    "dialog over the monitor while scrubbing": {
+      "stats_delta": {
+        "requests": 5,
+        "accepted": 5,
+        "cancelled": 0,
+        "dropped_stale": 0,
+        "coalesced": 0,
+        "proxy_attached": 0,
+        "proxy_failed": 0,
+        "refined": 1
+      },
+      "footprint": {
+        "gl_textures": 15,
+        "gl_geometries": 0,
+        "gl_programs": 1,
+        "texture_entries": 15,
+        "text_entries": 0,
+        "material_entries": 1,
+        "target_entries": 0,
+        "context_generation": 11
+      }
+    },
+    "window minimized and activated": {
+      "on_screen_while_minimized": true,
+      "stats_delta": {
+        "requests": 3,
+        "accepted": 3,
+        "cancelled": 0,
+        "dropped_stale": 0,
+        "coalesced": 0,
+        "proxy_attached": 0,
+        "proxy_failed": 0,
+        "refined": 1
+      },
+      "footprint": {
+        "gl_textures": 17,
+        "gl_geometries": 0,
+        "gl_programs": 1,
+        "texture_entries": 17,
+        "text_entries": 0,
+        "material_entries": 1,
+        "target_entries": 0,
+        "context_generation": 11
+      },
+      "on_screen_after_activate": true
+    },
+    "project replaced with a frame in flight": {
+      "explicit_across_switch": {
+        "ok": false,
+        "error": "cancelled"
+      }
+    },
+    "context lost and never restored": {
+      "seconds_to_answer_intent_while_lost": 1.02
+    },
+    "monitor.reload with a frame in flight": {
+      "explicit_during_reload": [
+        {
+          "ok": false,
+          "error": "cancelled",
+          "seconds": 0.0
+        }
+      ],
+      "race_hit_cancelled": true,
+      "stats_delta": {
+        "requests": 8,
+        "accepted": 6,
+        "cancelled": 2,
+        "dropped_stale": 2,
+        "coalesced": 0,
+        "proxy_attached": 1,
+        "proxy_failed": 0,
+        "refined": 2
+      }
+    },
+    "after the reload: the playhead position converges": {
+      "stats_delta": {
+        "requests": 2,
+        "accepted": 2,
+        "cancelled": 0,
+        "dropped_stale": 0,
+        "coalesced": 0,
+        "proxy_attached": 0,
+        "proxy_failed": 0,
+        "refined": 1
+      },
+      "footprint": {
+        "gl_textures": 2,
+        "gl_geometries": 0,
+        "gl_programs": 1,
+        "texture_entries": 2,
+        "text_entries": 0,
+        "material_entries": 1,
+        "target_entries": 0,
+        "context_generation": 0
+      }
+    }
+  },
+  "binary": "target/release/tessel-editor",
+  "page": "/tmp/tvl-fvwmyevf/runtime/dist",
+  "export": {
+    "frames": 12,
+    "identical": true
+  },
+  "final": {
+    "stats": {
+      "requests": 138,
+      "accepted": 105,
+      "cancelled": 7,
+      "dropped_stale": 19,
+      "coalesced": 14,
+      "proxy_attached": 21,
+      "proxy_failed": 0,
+      "refined": 28
+    },
+    "ui": {
+      "repaints": 170,
+      "skipped": 188
+    },
+    "capabilities_renderer": "Apple GPU"
+  },
+  "artifacts_gib": 0.03
+}

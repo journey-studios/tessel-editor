@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-edit-duration-mismatch",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-edit-duration-mismatch.bundle.json",
+  "bundleSha256": "309723ec8eec1cff21dab323841cc45055375c36075be040bb822ad565602070",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "EDIT_DURATION_MISMATCH",
+          "message": "EDIT_DURATION_MISMATCH: Shots cover 96 frames but editDurationFrames is 100"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

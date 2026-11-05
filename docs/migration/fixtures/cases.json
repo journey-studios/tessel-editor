@@ -1,0 +1,667 @@
+{
+  "formatVersion": 1,
+  "note": "Índice das entradas do oráculo. `intent` é só a intenção do caso, conferida na geração; os resultados esperados ficam em expected/ e vêm da origem.",
+  "cases": [
+    {
+      "id": "valid-minimal-continuous",
+      "kind": "valid",
+      "description": "Dois planos, dois shots contínuos no mesmo clipe: dolly, hold e truck com 2 easings.",
+      "bundle": "bundles/valid-minimal-continuous.bundle.json",
+      "expected": "expected/valid-minimal-continuous.expected.json",
+      "intent": {
+        "extraEditFrames": []
+      }
+    },
+    {
+      "id": "valid-camera-recipes-layers",
+      "kind": "valid",
+      "description": "Zoom, orbit, keyframes e hold na trilha principal, mais 2 camadas aditivas (dolly+hold, truck).",
+      "bundle": "bundles/valid-camera-recipes-layers.bundle.json",
+      "expected": "expected/valid-camera-recipes-layers.expected.json",
+      "intent": {
+        "extraEditFrames": []
+      }
+    },
+    {
+      "id": "valid-graph-sockets-performance",
+      "kind": "valid",
+      "description": "Hierarquia com quaternions/escala, socket e canais cycle/event/static; amostra o meio dos canais.",
+      "bundle": "bundles/valid-graph-sockets-performance.bundle.json",
+      "expected": "expected/valid-graph-sockets-performance.expected.json",
+      "intent": {
+        "extraEditFrames": [
+          6,
+          12,
+          18,
+          24,
+          30,
+          36
+        ]
+      }
+    },
+    {
+      "id": "valid-cut-instance-offsets",
+      "kind": "valid",
+      "description": "Duas instâncias, instanceStartFrame/cameraInFrame não nulos e corte com motivo entre shots.",
+      "bundle": "bundles/valid-cut-instance-offsets.bundle.json",
+      "expected": "expected/valid-cut-instance-offsets.expected.json",
+      "intent": {
+        "extraEditFrames": []
+      }
+    },
+    {
+      "id": "invalid-schema-version",
+      "kind": "invalid",
+      "description": "schemaVersion diferente de 1.0 (literal).",
+      "bundle": "bundles/invalid-schema-version.bundle.json",
+      "expected": "expected/invalid-schema-version.expected.json",
+      "intent": {
+        "zodPaths": [
+          "schemaVersion"
+        ]
+      }
+    },
+    {
+      "id": "invalid-missing-bundle-id",
+      "kind": "invalid",
+      "description": "Campo obrigatório ausente.",
+      "bundle": "bundles/invalid-missing-bundle-id.bundle.json",
+      "expected": "expected/invalid-missing-bundle-id.expected.json",
+      "intent": {
+        "zodPaths": [
+          "bundleId"
+        ]
+      }
+    },
+    {
+      "id": "invalid-fps-zero-numerator",
+      "kind": "invalid",
+      "description": "FPS racional com numerador 0 (deve ser inteiro positivo).",
+      "bundle": "bundles/invalid-fps-zero-numerator.bundle.json",
+      "expected": "expected/invalid-fps-zero-numerator.expected.json",
+      "intent": {
+        "zodPaths": [
+          "fps.numerator"
+        ]
+      }
+    },
+    {
+      "id": "invalid-unknown-recipe",
+      "kind": "invalid",
+      "description": "Receita de câmera fora das 9 conhecidas (união discriminada).",
+      "bundle": "bundles/invalid-unknown-recipe.bundle.json",
+      "expected": "expected/invalid-unknown-recipe.expected.json",
+      "intent": {
+        "zodPaths": [
+          "cameraClips.0.segments.0.recipe"
+        ]
+      }
+    },
+    {
+      "id": "invalid-dissolve-transition",
+      "kind": "invalid",
+      "description": "Transição dissolve: o schema aceita o formato, o refinamento da origem recusa.",
+      "bundle": "bundles/invalid-dissolve-transition.bundle.json",
+      "expected": "expected/invalid-dissolve-transition.expected.json",
+      "intent": {
+        "messageIncludes": [
+          "Dissolve transitions are not supported"
+        ]
+      }
+    },
+    {
+      "id": "invalid-fps-mismatch",
+      "kind": "invalid",
+      "description": "renderProfile.fps diferente de fps.",
+      "bundle": "bundles/invalid-fps-mismatch.bundle.json",
+      "expected": "expected/invalid-fps-mismatch.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "FPS_MISMATCH"
+        ]
+      }
+    },
+    {
+      "id": "invalid-premultiply-on-upload",
+      "kind": "invalid",
+      "description": "premultiplyOnUpload declarado e não implementado.",
+      "bundle": "bundles/invalid-premultiply-on-upload.bundle.json",
+      "expected": "expected/invalid-premultiply-on-upload.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "PREMULTIPLY_UNSUPPORTED"
+        ]
+      }
+    },
+    {
+      "id": "invalid-rec709-video",
+      "kind": "invalid",
+      "description": "colorSpace rec709-video aceito pelo schema, recusado pela integridade.",
+      "bundle": "bundles/invalid-rec709-video.bundle.json",
+      "expected": "expected/invalid-rec709-video.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "REC709_VIDEO_UNSUPPORTED"
+        ]
+      }
+    },
+    {
+      "id": "invalid-asset-premultiplied",
+      "kind": "invalid",
+      "description": "Asset com alpha premultiplicado.",
+      "bundle": "bundles/invalid-asset-premultiplied.bundle.json",
+      "expected": "expected/invalid-asset-premultiplied.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "ASSET_PREMULTIPLIED_UNSUPPORTED"
+        ]
+      }
+    },
+    {
+      "id": "invalid-duplicate-asset-id",
+      "kind": "invalid",
+      "description": "assetId repetido em assets[].",
+      "bundle": "bundles/invalid-duplicate-asset-id.bundle.json",
+      "expected": "expected/invalid-duplicate-asset-id.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "DUPLICATE_ASSET_ID"
+        ]
+      }
+    },
+    {
+      "id": "invalid-asset-ref-unknown",
+      "kind": "invalid",
+      "description": "assetRef de nó aponta para asset inexistente.",
+      "bundle": "bundles/invalid-asset-ref-unknown.bundle.json",
+      "expected": "expected/invalid-asset-ref-unknown.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "ASSET_REF_UNKNOWN"
+        ]
+      }
+    },
+    {
+      "id": "invalid-asset-ref-mismatch",
+      "kind": "invalid",
+      "description": "assetRef com contentHash diferente do registro em assets[].",
+      "bundle": "bundles/invalid-asset-ref-mismatch.bundle.json",
+      "expected": "expected/invalid-asset-ref-mismatch.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "ASSET_REF_MISMATCH"
+        ]
+      }
+    },
+    {
+      "id": "invalid-image-plane-missing-asset",
+      "kind": "invalid",
+      "description": "imagePlane sem assetRef.",
+      "bundle": "bundles/invalid-image-plane-missing-asset.bundle.json",
+      "expected": "expected/invalid-image-plane-missing-asset.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "IMAGE_PLANE_MISSING_ASSET"
+        ]
+      }
+    },
+    {
+      "id": "invalid-node-missing-parent",
+      "kind": "invalid",
+      "description": "parentId referencia nó inexistente.",
+      "bundle": "bundles/invalid-node-missing-parent.bundle.json",
+      "expected": "expected/invalid-node-missing-parent.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "MISSING_PARENT"
+        ]
+      }
+    },
+    {
+      "id": "invalid-node-parent-cycle",
+      "kind": "invalid",
+      "description": "Ciclo de pais entre dois planos.",
+      "bundle": "bundles/invalid-node-parent-cycle.bundle.json",
+      "expected": "expected/invalid-node-parent-cycle.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "PARENT_CYCLE"
+        ]
+      }
+    },
+    {
+      "id": "invalid-missing-root-node",
+      "kind": "invalid",
+      "description": "rootNodeId não existe em nodes.",
+      "bundle": "bundles/invalid-missing-root-node.bundle.json",
+      "expected": "expected/invalid-missing-root-node.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "MISSING_ROOT_NODE"
+        ]
+      }
+    },
+    {
+      "id": "invalid-duplicate-node-id",
+      "kind": "invalid",
+      "description": "Dois nós com o mesmo id.",
+      "bundle": "bundles/invalid-duplicate-node-id.bundle.json",
+      "expected": "expected/invalid-duplicate-node-id.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "DUPLICATE_NODE_ID"
+        ]
+      }
+    },
+    {
+      "id": "invalid-orphan-node",
+      "kind": "invalid",
+      "description": "Nó não-raiz com parentId nulo e sem socket.",
+      "bundle": "bundles/invalid-orphan-node.bundle.json",
+      "expected": "expected/invalid-orphan-node.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "ORPHAN_NODE"
+        ]
+      }
+    },
+    {
+      "id": "invalid-unsupported-node-type",
+      "kind": "invalid",
+      "description": "Tipo de nó aceito pelo schema (overlay) e recusado pela estrutura do grafo.",
+      "bundle": "bundles/invalid-unsupported-node-type.bundle.json",
+      "expected": "expected/invalid-unsupported-node-type.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "UNSUPPORTED_NODE_TYPE"
+        ]
+      }
+    },
+    {
+      "id": "invalid-quaternion-zero",
+      "kind": "invalid",
+      "description": "Quaternion de comprimento zero.",
+      "bundle": "bundles/invalid-quaternion-zero.bundle.json",
+      "expected": "expected/invalid-quaternion-zero.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "DEGENERATE_QUATERNION"
+        ]
+      }
+    },
+    {
+      "id": "invalid-quaternion-not-normalized",
+      "kind": "invalid",
+      "description": "Quaternion com comprimento 2.",
+      "bundle": "bundles/invalid-quaternion-not-normalized.bundle.json",
+      "expected": "expected/invalid-quaternion-not-normalized.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "QUATERNION_NOT_NORMALIZED"
+        ]
+      }
+    },
+    {
+      "id": "invalid-socket-missing",
+      "kind": "invalid",
+      "description": "attachToSocket com nome de socket inexistente.",
+      "bundle": "bundles/invalid-socket-missing.bundle.json",
+      "expected": "expected/invalid-socket-missing.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "MISSING_SOCKET"
+        ]
+      }
+    },
+    {
+      "id": "invalid-socket-and-parent-conflict",
+      "kind": "invalid",
+      "description": "Nó com parentId (não raiz) e attachToSocket ao mesmo tempo.",
+      "bundle": "bundles/invalid-socket-and-parent-conflict.bundle.json",
+      "expected": "expected/invalid-socket-and-parent-conflict.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "SOCKET_AND_PARENT_CONFLICT"
+        ]
+      }
+    },
+    {
+      "id": "invalid-instance-unknown-definition",
+      "kind": "invalid",
+      "description": "Instância referencia definição de cena inexistente.",
+      "bundle": "bundles/invalid-instance-unknown-definition.bundle.json",
+      "expected": "expected/invalid-instance-unknown-definition.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "UNKNOWN_SCENE_DEFINITION"
+        ]
+      }
+    },
+    {
+      "id": "invalid-performance-track-missing",
+      "kind": "invalid",
+      "description": "Instância lista uma performanceTrack inexistente.",
+      "bundle": "bundles/invalid-performance-track-missing.bundle.json",
+      "expected": "expected/invalid-performance-track-missing.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "PERFORMANCE_TRACK_REF_MISSING"
+        ]
+      }
+    },
+    {
+      "id": "invalid-performance-node-missing",
+      "kind": "invalid",
+      "description": "Canal de performance mira um nó inexistente.",
+      "bundle": "bundles/invalid-performance-node-missing.bundle.json",
+      "expected": "expected/invalid-performance-node-missing.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "PERFORMANCE_NODE_MISSING"
+        ]
+      }
+    },
+    {
+      "id": "invalid-performance-duplicate-channel-id",
+      "kind": "invalid",
+      "description": "channelId repetido na mesma trilha (mensagem sem código estável).",
+      "bundle": "bundles/invalid-performance-duplicate-channel-id.bundle.json",
+      "expected": "expected/invalid-performance-duplicate-channel-id.expected.json",
+      "intent": {
+        "messageIncludes": [
+          "Duplicate performance channelId"
+        ]
+      }
+    },
+    {
+      "id": "invalid-shot-unknown-instance",
+      "kind": "invalid",
+      "description": "Shot referencia instância inexistente.",
+      "bundle": "bundles/invalid-shot-unknown-instance.bundle.json",
+      "expected": "expected/invalid-shot-unknown-instance.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "SHOT_UNKNOWN_INSTANCE"
+        ]
+      }
+    },
+    {
+      "id": "invalid-shot-unknown-camera-clip",
+      "kind": "invalid",
+      "description": "Shot referencia clipe de câmera inexistente.",
+      "bundle": "bundles/invalid-shot-unknown-camera-clip.bundle.json",
+      "expected": "expected/invalid-shot-unknown-camera-clip.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "SHOT_UNKNOWN_CAMERA_CLIP"
+        ]
+      }
+    },
+    {
+      "id": "invalid-shot-exceeds-instance",
+      "kind": "invalid",
+      "description": "Mapeamento do shot passa da duração da instância.",
+      "bundle": "bundles/invalid-shot-exceeds-instance.bundle.json",
+      "expected": "expected/invalid-shot-exceeds-instance.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "SHOT_EXCEEDS_INSTANCE_DURATION"
+        ]
+      }
+    },
+    {
+      "id": "invalid-edit-range-start",
+      "kind": "invalid",
+      "description": "Primeiro shot não começa no frame 0.",
+      "bundle": "bundles/invalid-edit-range-start.bundle.json",
+      "expected": "expected/invalid-edit-range-start.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "EDIT_RANGE_START"
+        ]
+      }
+    },
+    {
+      "id": "invalid-edit-gap",
+      "kind": "invalid",
+      "description": "Buraco de 4 frames entre os dois shots.",
+      "bundle": "bundles/invalid-edit-gap.bundle.json",
+      "expected": "expected/invalid-edit-gap.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "EDIT_GAP_OR_OVERLAP"
+        ]
+      }
+    },
+    {
+      "id": "invalid-edit-duration-mismatch",
+      "kind": "invalid",
+      "description": "Shots cobrem 96 frames mas editDurationFrames diz 100.",
+      "bundle": "bundles/invalid-edit-duration-mismatch.bundle.json",
+      "expected": "expected/invalid-edit-duration-mismatch.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "EDIT_DURATION_MISMATCH"
+        ]
+      }
+    },
+    {
+      "id": "invalid-duplicate-shot-id",
+      "kind": "invalid",
+      "description": "Dois shots com o mesmo id.",
+      "bundle": "bundles/invalid-duplicate-shot-id.bundle.json",
+      "expected": "expected/invalid-duplicate-shot-id.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "DUPLICATE_ID"
+        ]
+      }
+    },
+    {
+      "id": "invalid-composition-node-missing",
+      "kind": "invalid",
+      "description": "compositionPasses referencia nó inexistente.",
+      "bundle": "bundles/invalid-composition-node-missing.bundle.json",
+      "expected": "expected/invalid-composition-node-missing.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "COMPOSITION_NODE_MISSING"
+        ]
+      }
+    },
+    {
+      "id": "invalid-audio-hash-required",
+      "kind": "invalid",
+      "description": "audio.mixRelativePath sem sourcePcmHashSha256.",
+      "bundle": "bundles/invalid-audio-hash-required.bundle.json",
+      "expected": "expected/invalid-audio-hash-required.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "AUDIO_HASH_REQUIRED"
+        ]
+      }
+    },
+    {
+      "id": "invalid-light-parent-unknown",
+      "kind": "invalid",
+      "description": "Luz segue um nó que não existe na cena.",
+      "bundle": "bundles/invalid-light-parent-unknown.bundle.json",
+      "expected": "expected/invalid-light-parent-unknown.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "LIGHT_PARENT_UNKNOWN"
+        ]
+      }
+    },
+    {
+      "id": "invalid-camera-fov-out-of-range",
+      "kind": "invalid",
+      "description": "FOV inicial fora de (0, 180).",
+      "bundle": "bundles/invalid-camera-fov-out-of-range.bundle.json",
+      "expected": "expected/invalid-camera-fov-out-of-range.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "FOV_OUT_OF_RANGE"
+        ]
+      }
+    },
+    {
+      "id": "invalid-camera-direction-degenerate",
+      "kind": "invalid",
+      "description": "Alvo igual à posição: câmera sem direção.",
+      "bundle": "bundles/invalid-camera-direction-degenerate.bundle.json",
+      "expected": "expected/invalid-camera-direction-degenerate.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "CAMERA_DIRECTION_DEGENERATE"
+        ]
+      }
+    },
+    {
+      "id": "invalid-camera-unknown-easing",
+      "kind": "invalid",
+      "description": "Easing que a origem não conhece.",
+      "bundle": "bundles/invalid-camera-unknown-easing.bundle.json",
+      "expected": "expected/invalid-camera-unknown-easing.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "UNKNOWN_CAMERA_EASING"
+        ]
+      }
+    },
+    {
+      "id": "invalid-camera-segment-too-short",
+      "kind": "invalid",
+      "description": "Movimento (não hold) de 1 frame.",
+      "bundle": "bundles/invalid-camera-segment-too-short.bundle.json",
+      "expected": "expected/invalid-camera-segment-too-short.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "CAMERA_SEGMENT_TOO_SHORT"
+        ]
+      }
+    },
+    {
+      "id": "invalid-camera-key-frame-order",
+      "kind": "invalid",
+      "description": "Keyframes fora de ordem crescente.",
+      "bundle": "bundles/invalid-camera-key-frame-order.bundle.json",
+      "expected": "expected/invalid-camera-key-frame-order.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "CAMERA_KEY_FRAME_ORDER"
+        ]
+      }
+    },
+    {
+      "id": "invalid-camera-keys-end-short",
+      "kind": "invalid",
+      "description": "Última key antes do último frame do movimento.",
+      "bundle": "bundles/invalid-camera-keys-end-short.bundle.json",
+      "expected": "expected/invalid-camera-keys-end-short.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "CAMERA_KEYS_END_SHORT"
+        ]
+      }
+    },
+    {
+      "id": "invalid-camera-layer-keyframes",
+      "kind": "invalid",
+      "description": "Camada aditiva contendo keyframes (proibido).",
+      "bundle": "bundles/invalid-camera-layer-keyframes.bundle.json",
+      "expected": "expected/invalid-camera-layer-keyframes.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "CAMERA_LAYER_KEYFRAMES"
+        ]
+      }
+    },
+    {
+      "id": "invalid-camera-layer-from-initial",
+      "kind": "invalid",
+      "description": "Camada aditiva com movimento partindo de initial.",
+      "bundle": "bundles/invalid-camera-layer-from-initial.bundle.json",
+      "expected": "expected/invalid-camera-layer-from-initial.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "CAMERA_LAYER_FROM_INITIAL"
+        ]
+      }
+    },
+    {
+      "id": "invalid-join-missing-transition",
+      "kind": "invalid",
+      "description": "Segundo shot sem transitionInto.",
+      "bundle": "bundles/invalid-join-missing-transition.bundle.json",
+      "expected": "expected/invalid-join-missing-transition.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "MISSING_TRANSITION"
+        ]
+      }
+    },
+    {
+      "id": "invalid-join-cut-without-reason",
+      "kind": "invalid",
+      "description": "Corte cujo motivo é só espaço em branco.",
+      "bundle": "bundles/invalid-join-cut-without-reason.bundle.json",
+      "expected": "expected/invalid-join-cut-without-reason.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "CUT_WITHOUT_REASON"
+        ]
+      }
+    },
+    {
+      "id": "invalid-join-instance-frame-discontinuity",
+      "kind": "invalid",
+      "description": "Junção contínua em que instanceStartFrame não continua o shot anterior.",
+      "bundle": "bundles/invalid-join-instance-frame-discontinuity.bundle.json",
+      "expected": "expected/invalid-join-instance-frame-discontinuity.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "INSTANCE_FRAME_DISCONTINUITY"
+        ]
+      }
+    },
+    {
+      "id": "invalid-join-camera-clip-offset-and-jump",
+      "kind": "invalid",
+      "description": "Junção contínua que volta ao frame 0 do clipe: quebra de offset e saltos de pose.",
+      "bundle": "bundles/invalid-join-camera-clip-offset-and-jump.bundle.json",
+      "expected": "expected/invalid-join-camera-clip-offset-and-jump.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "CAMERA_CLIP_OFFSET_BREAK",
+          "CONTINUOUS_CAMERA_JUMP"
+        ]
+      }
+    },
+    {
+      "id": "invalid-join-continuous-across-instances",
+      "kind": "invalid",
+      "description": "Junção contínua entre instâncias e clipes diferentes.",
+      "bundle": "bundles/invalid-join-continuous-across-instances.bundle.json",
+      "expected": "expected/invalid-join-continuous-across-instances.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "CONTINUOUS_INSTANCE_MISMATCH",
+          "CONTINUOUS_CROSS_CLIP_UNSUPPORTED"
+        ]
+      }
+    },
+    {
+      "id": "invalid-join-segment-reset",
+      "kind": "invalid",
+      "description": "Segmento no meio do clipe voltando para a pose initial.",
+      "bundle": "bundles/invalid-join-segment-reset.bundle.json",
+      "expected": "expected/invalid-join-segment-reset.expected.json",
+      "intent": {
+        "sourceCodes": [
+          "CAMERA_SEGMENT_RESET"
+        ]
+      }
+    }
+  ]
+}

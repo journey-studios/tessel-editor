@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-camera-segment-too-short",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-camera-segment-too-short.bundle.json",
+  "bundleSha256": "5487cc3f6368acf4f717176d7928c6692b9588f1020f7f2489337aebea62866e",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "CAMERA_SEGMENT_TOO_SHORT",
+          "message": "CAMERA_SEGMENT_TOO_SHORT: Clip cam-main motion needs at least two frames"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

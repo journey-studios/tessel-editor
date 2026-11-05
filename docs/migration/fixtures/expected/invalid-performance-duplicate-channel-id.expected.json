@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-performance-duplicate-channel-id",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-performance-duplicate-channel-id.bundle.json",
+  "bundleSha256": "7ccc4b1823121b041da445facf46b3869ca41f75c21734080d5a998953e83a3d",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "performanceTracks",
+          "zodCode": "custom",
+          "sourceCode": null,
+          "message": "Duplicate performance channelId: arm-swing"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-rig",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

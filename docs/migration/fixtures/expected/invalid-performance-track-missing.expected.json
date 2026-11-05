@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-performance-track-missing",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-performance-track-missing.bundle.json",
+  "bundleSha256": "7ce9e9a83c543b3b0dbfae3a98038db851b9af36e3a6fe794cc70678a603787e",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "PERFORMANCE_TRACK_REF_MISSING",
+          "message": "PERFORMANCE_TRACK_REF_MISSING: Instance inst-a references unknown performanceTrack ghost-track"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-rig",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

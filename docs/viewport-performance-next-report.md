@@ -123,6 +123,7 @@ runtime (contado, não reenviado), troca de política no meio de um quadro (a fu
 reload reanexa, runtime sem a feature `asset.proxy` (nada é enviado), quadro explícito/edição descartam o refino.
 **Não cobertos como teste automatizado:** perda de contexto da GPU *com proxy* e ocultar/reabrir a janela com proxy
 (a perda de contexto sem proxy e o reload têm testes; o recarregamento por perda reutiliza o mesmo caminho do reload).
+*Atualização:* os dois casos agora têm teste e prova na janela real, ver o [relatório de ciclo de vida](viewport-lifecycle-report.md).
 
 ## OPT02: resultado de cena Spark parada
 

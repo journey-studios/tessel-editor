@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-node-missing-parent",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-node-missing-parent.bundle.json",
+  "bundleSha256": "2e81eb7e7f52c93b9e62fbb90c664652a76e676ff5e6b48225c2547c5130e517",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "sceneDefinitions.scene-a",
+          "zodCode": "custom",
+          "sourceCode": "MISSING_PARENT",
+          "message": "MISSING_PARENT: Node figure parentId nowhere does not exist"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": [
+          {
+            "code": "MISSING_PARENT",
+            "message": "Node figure parentId nowhere does not exist"
+          }
+        ]
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

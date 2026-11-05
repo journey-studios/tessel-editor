@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-premultiply-on-upload",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-premultiply-on-upload.bundle.json",
+  "bundleSha256": "cb1d73a966148539af7d1685bc67beeb92b790d3102a0db9a157b95461d1c5d4",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "PREMULTIPLY_UNSUPPORTED",
+          "message": "PREMULTIPLY_UNSUPPORTED: premultiplyOnUpload is declared but not implemented; set false or use straight alpha"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

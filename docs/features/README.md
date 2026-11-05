@@ -47,6 +47,12 @@ Lib V significa testes do modelo demo, não um motor real de edição.
 | F028 | [Presets de exportação](presets.md) | V | V | V | V | `preset.list|save|delete|select` |
 | F029 | [Exportar vídeo com áudio](video-export.md) | V | V | V⁸ | V | `export.preflight|start` |
 | F030 | [Gaussian splats (Spark 2.4.0)](spark.md) | V | V | V | V | cena `tessel-scene@1` + asset `splat` |
+| F031 | [Cena dirigida: importar, consultar e regravar render-bundle 1.0](directed-scene.md) | P | P | P | Parcial¹⁰ | `directed_scene::DirectedScene`; inteiros extremos recusados sem panic; adapters pendentes |
+| F032 | [Oráculo de equivalência da migração (BB10/E0)](migration-oracle.md) | N/A⁹ | N/A⁹ | N/A⁹ | Parcial⁹ | `scripts/migration-oracle/oracle.mjs verify` + `docs/migration/fixtures/` |
+| F033 | [Cena dirigida: tempo, câmera e gate temporal (BB03)](scene-temporal.md) | P | P | P | Parcial¹¹ | `Bundle::evaluate_camera`, `evaluate_frame`, `DirectedScene::temporal_issues`; orçamento agregado de FOV; adapters pendentes |
+| F034 | [Catálogo de propriedades e edição atômica de cenas (BB04)](scene-edit.md) | P | P | P | Parcial¹² | `scene_edit::{catalog, apply, dry_run}`; importação e gates compartilhados |
+| F035 | [Animação de nós e matrizes de mundo (BB03)](scene-animation.md) | P | P | P | Parcial¹³ | `Bundle::{evaluate_frame, node_timeline, evaluate_instance_nodes, performance_plan}` |
+| F036 | [Cenas no projeto, histórico e CLI](scene-project.md) | P | P | V | V | `Command::Scene` / `scene.*`; schema 2 com cenas, undo compartilhado, contagem de bytes em cache |
 
 ¹ Dock/tema/janela são capacidades de apresentação. A lib valida layout, mas quem o executa
 é o DockArea vivo; não há execução do Dock no core. UI nativa não é requisito para fluxos
@@ -86,6 +92,47 @@ GPU diferente da testada, foco por teclado sobre a WebView. Detalhes no
 [relatório](../viewport-foundation-report.md). Vídeo em contêiner (contrato de tempo, `webm` não prometido), sequências
 PNG/JPEG, `context_lost` no meio do quadro e scrub do ruler: [relatório de correções](../viewport-bugfix-report.md),
 provados por barcode em Chrome, WKWebView e na janela real (`scripts/video-live-proof.py`).
+
+⁹ Ferramenta de desenvolvimento, não uma capacidade do editor: UI, CLI da janela e CLI headless são
+N/A (o runner é Node, não é o `tessel-headless`). Lib é Parcial: o consumidor `directed_scene_oracle.rs` compara os 55 vereditos,
+referências pai/socket e matrizes estáticas. O consumidor temporal F033 também compara câmera
+e gates; o consumidor F035 acrescenta animação de nós e matrizes. O contrato de dados tem 55 bundles e expectativas geradas por funções reais de `packages/scene-engine@d6adac15`,
+manifest com hashes e validação Node (21/21 testes, repetidos pelo coordenador). Cobre validação,
+grafo, avaliação e câmera; não cobre narração, clima, luz por keys, efeitos, rig, splat, I/O,
+runtime nem pixel/áudio. Ver [relatório](../migration/foundation-b-report.md).
+
+¹⁰ Importador BB01/BB02 puro, sem adapters CLI/UI. 29 testes próprios e 3 testes do oráculo
+passam (baseline desta integração: 219 testes do core incluindo doctest). Somente um subconjunto do schema
+é validado; as famílias adiadas e junções temporais podem conter erros aceitos na importação.
+`edit_join_issues()` verifica apenas junções estruturais. Não equivale a `finalizeBundle`
+completo nem habilita render/export. [Contrato e limites](directed-scene.md).
+
+¹¹ Avaliação pura de câmera e tempo com 19 testes públicos, comparada ao oráculo nos 4 casos
+válidos e em 9 variantes geradas pelo código fixado da origem. Gates combinados conferidos
+nos 55 casos. Tolerância numérica `1e-9 + 1e-12·|x|`; frames/IDs/códigos são exatos. O teste
+unitário adicional cobre abaixo/no/acima dos cinco limiares de junção (não é corpus da origem).
+Animação de nós está integrada na F035; UI/CLI permanecem pendentes. Não é `finalizeBundle`
+completo para domínios adiados. [Contrato](scene-temporal.md).
+
+¹² 8 propriedades tipadas de nó/câmera, edição por ID, lote atômico e dry-run, validados
+por 29 testes públicos e 1 doctest via Cargo. `apply` e `dry_run` executam importador e
+gates estruturais/temporais da F033; falhas não alteram a entrada. Ainda sem integração
+com histórico/documento, CLI ou UI; não certifica render/domínios adiados.
+[Contrato e divergências de escrita da câmera](scene-edit.md).
+
+¹³ Avaliação de `cycle`/`event`/`static`, hierarquia e matrizes animadas, com 29 testes
+públicos. Comparação com 4 casos válidos, 11 variantes e 20 payloads recusados gerados na
+origem (tolerância `1e-9 + 1e-12·|x|`). JSON preserva bits de binary64 com
+`serde_json/float_roundtrip`, conferido por regressão. Luz/clima/rig/pós e render continuam
+fora da avaliação; `unevaluated` informa as seções adiadas. [Contrato](scene-animation.md).
+
+Ciclo de vida de F021: perda forçada de contexto com proxy, ocultar/reabrir monitor, diálogo,
+reload/troca de projeto com quadro em voo e export intacto têm prova específica no
+[relatório](../viewport-lifecycle-report.md) e em `runtime/test/lifecycle.test.mjs`. A evidência
+de janela usa macOS, uma tela e binário release existente, sem rebuild nesta frente.
+`WEBGL_lose_context` não equivale a reset do driver; métricas Three.js não medem memória
+física da GPU. Esses cenários não acrescentam comandos de domínio nem mudam o contrato
+headless; os testes Chrome cobrem o runtime sem janela nativa.
 
 ## Critério de conclusão
 

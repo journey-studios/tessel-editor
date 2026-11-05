@@ -1,0 +1,96 @@
+{
+  "claim": "O oráculo executa funções puras REAIS de packages/scene-engine empacotadas SEM modificação (esbuild + zod 4.3.6 + three 0.187.0, sem GPU/DOM/rede). Não é a engine completa, nem o runtime Three.js, nem o editor. Cobertura por linha NÃO foi medida: 'executed' abaixo significa chamado pelo harness (direto) ou exercitado por essas chamadas para as entradas do corpus.",
+  "executedFunctions": [
+    {
+      "module": "src/schema/render-bundle.schema.ts",
+      "symbols": ["renderBundleSchema.safeParse (schema zod + superRefine do bundle)"],
+      "how": "chamada direta",
+      "mig": ["MIG001", "MIG019"]
+    },
+    {
+      "module": "src/validate/bundle-integrity.ts",
+      "symbols": ["validateBundleIntegrity"],
+      "how": "direta (sobre o bundle parseado) e dentro do schema (todos os casos que chegam ao refinamento)",
+      "mig": ["MIG002"]
+    },
+    {
+      "module": "src/validate/edit-joins.ts",
+      "symbols": ["validateEditJoins"],
+      "how": "chamada direta e dentro de finalizeBundle",
+      "mig": ["MIG002"]
+    },
+    {
+      "module": "src/edit/finalize-bundle.ts",
+      "symbols": ["finalizeBundle"],
+      "how": "chamada direta: é o veredito que a CLI `scene validate` usa (schema + junções), menos a checagem de arquivos em disco",
+      "mig": ["MIG002", "MIG003"]
+    },
+    {
+      "module": "src/scene/scene-graph.ts",
+      "symbols": ["validateSceneGraphStructure", "resolveParentLinks", "computeWorldMatrices", "quatSchemaToEulerDegrees (via evaluateEditFrame)"],
+      "how": "chamada direta (estrutura também sobre o JSON cru, mesmo quando o schema recusa)",
+      "mig": ["MIG012"]
+    },
+    {
+      "module": "src/evaluator/evaluate-edit-frame.ts",
+      "symbols": ["evaluateEditFrame"],
+      "how": "chamada direta nos frames de borda",
+      "mig": ["MIG016"]
+    },
+    {
+      "module": "src/edit/resolve-shot-at-edit-frame.ts",
+      "symbols": ["resolveShotAtEditFrame"],
+      "how": "via evaluateEditFrame",
+      "mig": ["MIG016", "MIG018"]
+    },
+    {
+      "module": "src/performance/resolve-performance.ts",
+      "symbols": ["resolvePerformanceOverrides", "mergeTransformWithOverride"],
+      "how": "via evaluateEditFrame (cycle, event e static no caso valid-graph-sockets-performance)",
+      "mig": ["MIG017"]
+    },
+    {
+      "module": "src/camera/resolve-camera-clip.ts",
+      "symbols": ["resolveCameraAtClipFrame", "mainTrackPoses", "getCameraClipDurationFrames", "resolveClipFrame (via validação das camadas)"],
+      "how": "chamada direta nos frames de borda de cada movimento; recipes: dollyIn, truckRight, truckLeft, zoomIn, zoomOut, orbit, keyframes, hold; 2 camadas aditivas",
+      "mig": ["MIG031", "MIG032"]
+    },
+    {
+      "module": "src/camera/easing.ts",
+      "symbols": ["applyEasing: linear, easeInOutCubic, easeOutCubic"],
+      "how": "via resolveCameraAtClipFrame",
+      "mig": ["MIG032"]
+    },
+    {
+      "module": "src/keyframes/resolve-keyframes.ts",
+      "symbols": ["resolveKeyframes"],
+      "how": "via movimento `keyframes` da câmera",
+      "mig": ["MIG032", "MIG047"]
+    }
+  ],
+  "loadedButNotExercised": [
+    {
+      "modules": ["src/narration/*", "src/outline/*", "src/rig/*", "src/path/*", "src/effects/*", "src/weather/*", "src/lighting/*"],
+      "why": "São importados pelo schema do bundle, então o esbuild os inclui e seus validadores existem em tempo de execução, mas o corpus NÃO tem narração, outline, rigs, paths, efeitos, clima, frameAudit, surface/sceneDepth/normalMap/relief nem nós splat. Apenas a luz com `parent` desconhecido (invalid-light-parent-unknown) toca lighting. Qualquer paridade desses domínios exige casos novos."
+    }
+  ],
+  "corpusGaps": [
+    "Tolerâncias de junção (JOIN_* em validate/edit-joins.ts) não têm caso de fronteira: num clipe único a junção contínua é suave, então um salto isolado só aparece junto de CAMERA_CLIP_OFFSET_BREAK (caso invalid-join-camera-clip-offset-and-jump). Um par aceito/recusado em torno de 0,25 unidades precisa de dois clipes ou de um recurso novo no corpus.",
+    "FPS sempre 24/1: sem FPS racional não inteiro (30000/1001) e sem conversão de tempo.",
+    "Nenhum bundle tem narração, outline, clima, efeitos, rigs, paths, frameAudit, splat, surface, normalMap, relief ou áudio válido; só falhas pontuais de áudio e de luz.",
+    "Poses de câmera medidas até 5 frames após o fim do clipe e em frame -1; nenhum seek aleatório nem FPS diferente."
+  ],
+  "notExecuted": [
+    { "area": "Comandos de câmera (applyCameraCommands, analyzeCameraClip, explainCameraClip) e property paths de câmera", "mig": ["MIG033", "MIG034", "MIG035"], "reason": "fora do E0 (edição por comando é BB04); precisa de corpus de ops" },
+    { "area": "editBundle / edição em lote / properties (applyPropertyChange, setProperties, listBundleProperties)", "mig": ["MIG046", "MIG050", "MIG094"], "reason": "BB04; sem casos de lote/rollback no E0" },
+    { "area": "Comandos de outline e narração, plano de mix, legendas, SRT", "mig": ["MIG042", "MIG043", "MIG081", "MIG082", "MIG083", "MIG086", "MIG087"], "reason": "domínios M5 fora do E0" },
+    { "area": "Rig, IK (CCDIKSolver do Three.js), follow, paths", "mig": ["MIG069", "MIG070", "MIG071", "MIG072", "MIG075", "MIG077", "MIG078"], "reason": "M6; IK depende do solver do Three.js e exige oráculo numérico próprio" },
+    { "area": "Luzes por keys (resolveLightAt, resolveSceneLightingAtEditFrame, packLights), clima (weatherLevelAt, surfaces, splat-weather), efeitos", "mig": ["MIG054", "MIG055", "MIG056", "MIG061", "MIG063", "MIG065", "MIG066", "MIG067"], "reason": "M2/M3; funções puras existem na origem mas não foram chamadas pelo harness" },
+    { "area": "Limites de câmera sobre splat (auditSplatCamera, classifySplatPose)", "mig": ["MIG015"], "reason": "M4; corpus sem nós splat" },
+    { "area": "projectLocalAnchorToPixels e auditoria de projeção/frameAudit", "mig": ["MIG020"], "reason": "exigem matrizes de projeção do runtime; o runtime Three.js não é puro" },
+    { "area": "Tempo racional (secondsToEditFrame, editFrameToSeconds) como API própria", "mig": ["MIG030"], "reason": "só roda dentro do schema quando há narração; sem casos de FPS não inteiro (ex.: 30000/1001)" },
+    { "area": "Leitura/escrita do arquivo do bundle, preflight de assets (sharp), checagem de arquivos em disco", "mig": ["MIG003", "MIG004", "MIG005"], "reason": "I/O e decode de PNG; sem mídia no corpus (assets são só referências sintéticas)" },
+    { "area": "Runtime Three.js/Spark (three-scene-runtime, planos, splats, clima, pós), transporte/áudio, render offline, ffmpeg", "mig": ["MIG013", "MIG014", "MIG022", "MIG023", "MIG025", "MIG026", "MIG090", "MIG091", "MIG092"], "reason": "exigem GPU/Chrome/ffmpeg; provas de pixel/áudio ficam para E2 com harness próprio" },
+    { "area": "Camadas de efeitos, edição de shots e gestos do branch piloto", "mig": ["MIG100", "MIG101", "MIG102", "MIG103", "MIG104"], "reason": "o snapshot fixado é o baseline, não o piloto (decisão D1 do inventário)" }
+  ]
+}

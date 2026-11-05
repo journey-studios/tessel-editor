@@ -1,0 +1,2775 @@
+{
+  "formatVersion": 1,
+  "case": "valid-graph-sockets-performance",
+  "kind": "valid",
+  "bundle": "bundles/valid-graph-sockets-performance.bundle.json",
+  "bundleSha256": "7535eae3b066e0de618ee10bbb8bd82a8fa23f2dd799cf43130125cca5511f87",
+  "validation": {
+    "schema": {
+      "success": true,
+      "issues": []
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-rig",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": [],
+    "editJoins": [],
+    "finalize": {
+      "ok": true
+    },
+    "accepted": true
+  },
+  "probes": {
+    "editFrames": [
+      -1,
+      0,
+      1,
+      6,
+      12,
+      18,
+      24,
+      30,
+      36,
+      46,
+      47,
+      48
+    ],
+    "clipFrames": {
+      "cam-rig": [
+        -1,
+        0,
+        1,
+        24,
+        47,
+        48,
+        49,
+        53
+      ]
+    }
+  },
+  "evaluation": {
+    "parentLinks": {
+      "scene-rig": {
+        "root": {
+          "kind": "root"
+        },
+        "backdrop": {
+          "kind": "parent",
+          "parentId": "root"
+        },
+        "stage": {
+          "kind": "parent",
+          "parentId": "root"
+        },
+        "arm": {
+          "kind": "parent",
+          "parentId": "stage"
+        },
+        "pen": {
+          "kind": "socket",
+          "parentNodeId": "arm",
+          "socketName": "hand"
+        }
+      }
+    },
+    "editFrames": [
+      {
+        "editFrame": -1,
+        "ok": false,
+        "error": "editFrame -1 out of range [0, 48)"
+      },
+      {
+        "editFrame": 0,
+        "ok": true,
+        "state": {
+          "editFrame": 0,
+          "instanceId": "inst-a",
+          "instanceFrame": 0,
+          "cameraClipId": "cam-rig",
+          "cameraClipFrame": 0,
+          "camera": {
+            "position": {
+              "x": 0,
+              "y": 1,
+              "z": 7
+            },
+            "target": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            },
+            "fovDeg": 40,
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "fovVelocityDegPerFrame": 0
+          },
+          "nodes": [
+            {
+              "nodeId": "root",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "backdrop",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": -3
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "stage",
+              "localPosition": {
+                "x": 1,
+                "y": 0,
+                "z": -1
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 90,
+                "z": 0
+              },
+              "localScale": {
+                "x": 2,
+                "y": 2,
+                "z": 2
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "arm",
+              "localPosition": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 44.142135623730944
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "pen",
+              "localPosition": {
+                "x": 0.1,
+                "y": 0.2,
+                "z": 0.3
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1.5,
+                "y": 1.5,
+                "z": 1.5
+              },
+              "renderOrder": 2
+            }
+          ],
+          "performanceOverrides": [
+            {
+              "nodeId": "arm",
+              "property": "localRotation",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 14.14213562373095
+              }
+            },
+            {
+              "nodeId": "stage",
+              "property": "localPosition",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              }
+            },
+            {
+              "nodeId": "pen",
+              "property": "localScale",
+              "value": {
+                "x": 1.5,
+                "y": 1.5,
+                "z": 1.5
+              }
+            }
+          ]
+        },
+        "worldMatrices": {
+          "root": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "backdrop": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            -3,
+            1
+          ],
+          "stage": [
+            4.440892098500626e-16,
+            0,
+            -2,
+            0,
+            0,
+            2,
+            0,
+            0,
+            2,
+            0,
+            4.440892098500626e-16,
+            0,
+            1,
+            0,
+            -1,
+            1
+          ],
+          "arm": [
+            3.186847788395383e-16,
+            1.3928814445915294,
+            -1.4352286512303936,
+            0,
+            -3.0928181007173303e-16,
+            1.4352286512303936,
+            1.3928814445915294,
+            0,
+            2,
+            0,
+            4.440892098500626e-16,
+            0,
+            1,
+            2,
+            -1,
+            1
+          ],
+          "pen": [
+            4.780271682593074e-16,
+            2.0893221668872943,
+            -2.1528429768455903,
+            0,
+            -4.639227151075996e-16,
+            2.1528429768455903,
+            2.0893221668872943,
+            0,
+            3,
+            0,
+            6.661338147750939e-16,
+            0,
+            1.5999999999999999,
+            3.1439482003204287,
+            -0.16850585390896863,
+            1
+          ]
+        }
+      },
+      {
+        "editFrame": 1,
+        "ok": true,
+        "state": {
+          "editFrame": 1,
+          "instanceId": "inst-a",
+          "instanceFrame": 1,
+          "cameraClipId": "cam-rig",
+          "cameraClipFrame": 1,
+          "camera": {
+            "position": {
+              "x": 0,
+              "y": 1,
+              "z": 7
+            },
+            "target": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            },
+            "fovDeg": 40,
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "fovVelocityDegPerFrame": 0
+          },
+          "nodes": [
+            {
+              "nodeId": "root",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "backdrop",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": -3
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "stage",
+              "localPosition": {
+                "x": 1,
+                "y": 0,
+                "z": -1
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 90,
+                "z": 0
+              },
+              "localScale": {
+                "x": 2,
+                "y": 2,
+                "z": 2
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "arm",
+              "localPosition": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 47.320508075688764
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "pen",
+              "localPosition": {
+                "x": 0.1,
+                "y": 0.2,
+                "z": 0.3
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1.5,
+                "y": 1.5,
+                "z": 1.5
+              },
+              "renderOrder": 2
+            }
+          ],
+          "performanceOverrides": [
+            {
+              "nodeId": "arm",
+              "property": "localRotation",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 17.32050807568877
+              }
+            },
+            {
+              "nodeId": "stage",
+              "property": "localPosition",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              }
+            },
+            {
+              "nodeId": "pen",
+              "property": "localScale",
+              "value": {
+                "x": 1.5,
+                "y": 1.5,
+                "z": 1.5
+              }
+            }
+          ]
+        },
+        "worldMatrices": {
+          "root": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "backdrop": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            -3,
+            1
+          ],
+          "stage": [
+            4.440892098500626e-16,
+            0,
+            -2,
+            0,
+            0,
+            2,
+            0,
+            0,
+            2,
+            0,
+            4.440892098500626e-16,
+            0,
+            1,
+            0,
+            -1,
+            1
+          ],
+          "arm": [
+            3.010465547603387e-16,
+            1.4703145681874377,
+            -1.355793151839833,
+            0,
+            -3.264754174086976e-16,
+            1.355793151839833,
+            1.4703145681874377,
+            0,
+            2,
+            0,
+            4.440892098500626e-16,
+            0,
+            1,
+            2,
+            -1,
+            1
+          ],
+          "pen": [
+            4.51569832140508e-16,
+            2.2054718522811565,
+            -2.033689727759749,
+            0,
+            -4.897131261130464e-16,
+            2.033689727759749,
+            2.2054718522811565,
+            0,
+            3,
+            0,
+            6.661338147750939e-16,
+            0,
+            1.5999999999999999,
+            3.096086663106627,
+            -0.10635911745277679,
+            1
+          ]
+        }
+      },
+      {
+        "editFrame": 6,
+        "ok": true,
+        "state": {
+          "editFrame": 6,
+          "instanceId": "inst-a",
+          "instanceFrame": 6,
+          "cameraClipId": "cam-rig",
+          "cameraClipFrame": 6,
+          "camera": {
+            "position": {
+              "x": 0,
+              "y": 1,
+              "z": 7
+            },
+            "target": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            },
+            "fovDeg": 40,
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "fovVelocityDegPerFrame": 0
+          },
+          "nodes": [
+            {
+              "nodeId": "root",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "backdrop",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": -3
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "stage",
+              "localPosition": {
+                "x": 1,
+                "y": 0,
+                "z": -1
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 90,
+                "z": 0
+              },
+              "localScale": {
+                "x": 2,
+                "y": 2,
+                "z": 2
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "arm",
+              "localPosition": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 44.142135623730944
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "pen",
+              "localPosition": {
+                "x": 0.1,
+                "y": 0.2,
+                "z": 0.3
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1.5,
+                "y": 1.5,
+                "z": 1.5
+              },
+              "renderOrder": 2
+            }
+          ],
+          "performanceOverrides": [
+            {
+              "nodeId": "arm",
+              "property": "localRotation",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 14.142135623730951
+              }
+            },
+            {
+              "nodeId": "stage",
+              "property": "localPosition",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              }
+            },
+            {
+              "nodeId": "pen",
+              "property": "localScale",
+              "value": {
+                "x": 1.5,
+                "y": 1.5,
+                "z": 1.5
+              }
+            }
+          ]
+        },
+        "worldMatrices": {
+          "root": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "backdrop": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            -3,
+            1
+          ],
+          "stage": [
+            4.440892098500626e-16,
+            0,
+            -2,
+            0,
+            0,
+            2,
+            0,
+            0,
+            2,
+            0,
+            4.440892098500626e-16,
+            0,
+            1,
+            0,
+            -1,
+            1
+          ],
+          "arm": [
+            3.186847788395383e-16,
+            1.3928814445915294,
+            -1.4352286512303936,
+            0,
+            -3.0928181007173303e-16,
+            1.4352286512303936,
+            1.3928814445915294,
+            0,
+            2,
+            0,
+            4.440892098500626e-16,
+            0,
+            1,
+            2,
+            -1,
+            1
+          ],
+          "pen": [
+            4.780271682593074e-16,
+            2.0893221668872943,
+            -2.1528429768455903,
+            0,
+            -4.639227151075996e-16,
+            2.1528429768455903,
+            2.0893221668872943,
+            0,
+            3,
+            0,
+            6.661338147750939e-16,
+            0,
+            1.5999999999999999,
+            3.1439482003204287,
+            -0.16850585390896863,
+            1
+          ]
+        }
+      },
+      {
+        "editFrame": 12,
+        "ok": true,
+        "state": {
+          "editFrame": 12,
+          "instanceId": "inst-a",
+          "instanceFrame": 12,
+          "cameraClipId": "cam-rig",
+          "cameraClipFrame": 12,
+          "camera": {
+            "position": {
+              "x": 0,
+              "y": 1,
+              "z": 7
+            },
+            "target": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            },
+            "fovDeg": 40,
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "fovVelocityDegPerFrame": 0
+          },
+          "nodes": [
+            {
+              "nodeId": "root",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "backdrop",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": -3
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "stage",
+              "localPosition": {
+                "x": 1,
+                "y": 0,
+                "z": -1
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 90,
+                "z": 0
+              },
+              "localScale": {
+                "x": 2,
+                "y": 2,
+                "z": 2
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "arm",
+              "localPosition": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 15.857864376269044
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "pen",
+              "localPosition": {
+                "x": 0.1,
+                "y": 0.2,
+                "z": 0.3
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1.5,
+                "y": 1.5,
+                "z": 1.5
+              },
+              "renderOrder": 2
+            }
+          ],
+          "performanceOverrides": [
+            {
+              "nodeId": "arm",
+              "property": "localRotation",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": -14.14213562373095
+              }
+            },
+            {
+              "nodeId": "stage",
+              "property": "localPosition",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              }
+            },
+            {
+              "nodeId": "pen",
+              "property": "localScale",
+              "value": {
+                "x": 1.5,
+                "y": 1.5,
+                "z": 1.5
+              }
+            }
+          ]
+        },
+        "worldMatrices": {
+          "root": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "backdrop": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            -3,
+            1
+          ],
+          "stage": [
+            4.440892098500626e-16,
+            0,
+            -2,
+            0,
+            0,
+            2,
+            0,
+            0,
+            2,
+            0,
+            4.440892098500626e-16,
+            0,
+            1,
+            0,
+            -1,
+            1
+          ],
+          "arm": [
+            4.2718829387032383e-16,
+            0.5465037499090317,
+            -1.9238850410914283,
+            0,
+            -1.2134820923859906e-16,
+            1.9238850410914283,
+            0.5465037499090317,
+            0,
+            2,
+            0,
+            4.440892098500626e-16,
+            0,
+            1,
+            2,
+            -1,
+            1
+          ],
+          "pen": [
+            6.407824408054857e-16,
+            0.8197556248635476,
+            -2.8858275616371425,
+            0,
+            -1.820223138578986e-16,
+            2.8858275616371425,
+            0.8197556248635476,
+            0,
+            3,
+            0,
+            6.661338147750939e-16,
+            0,
+            1.5999999999999999,
+            3.4013699037549032,
+            -0.8098358791728205,
+            1
+          ]
+        }
+      },
+      {
+        "editFrame": 18,
+        "ok": true,
+        "state": {
+          "editFrame": 18,
+          "instanceId": "inst-a",
+          "instanceFrame": 18,
+          "cameraClipId": "cam-rig",
+          "cameraClipFrame": 18,
+          "camera": {
+            "position": {
+              "x": 0,
+              "y": 1,
+              "z": 7
+            },
+            "target": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            },
+            "fovDeg": 40,
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "fovVelocityDegPerFrame": 0
+          },
+          "nodes": [
+            {
+              "nodeId": "root",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "backdrop",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": -3
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "stage",
+              "localPosition": {
+                "x": 1,
+                "y": 0.125,
+                "z": -1
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 90,
+                "z": 0
+              },
+              "localScale": {
+                "x": 2,
+                "y": 2,
+                "z": 2
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "arm",
+              "localPosition": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 15.857864376269038
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "pen",
+              "localPosition": {
+                "x": 0.1,
+                "y": 0.2,
+                "z": 0.3
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1.5,
+                "y": 1.5,
+                "z": 1.5
+              },
+              "renderOrder": 2
+            }
+          ],
+          "performanceOverrides": [
+            {
+              "nodeId": "arm",
+              "property": "localRotation",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": -14.142135623730955
+              }
+            },
+            {
+              "nodeId": "stage",
+              "property": "localPosition",
+              "value": {
+                "x": 0,
+                "y": 0.125,
+                "z": 0
+              }
+            },
+            {
+              "nodeId": "pen",
+              "property": "localScale",
+              "value": {
+                "x": 1.5,
+                "y": 1.5,
+                "z": 1.5
+              }
+            }
+          ]
+        },
+        "worldMatrices": {
+          "root": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "backdrop": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            -3,
+            1
+          ],
+          "stage": [
+            4.440892098500626e-16,
+            0,
+            -2,
+            0,
+            0,
+            2,
+            0,
+            0,
+            2,
+            0,
+            4.440892098500626e-16,
+            0,
+            1,
+            0.125,
+            -1,
+            1
+          ],
+          "arm": [
+            4.2718829387032383e-16,
+            0.5465037499090315,
+            -1.9238850410914283,
+            0,
+            -1.2134820923859901e-16,
+            1.9238850410914283,
+            0.5465037499090315,
+            0,
+            2,
+            0,
+            4.440892098500626e-16,
+            0,
+            1,
+            2.125,
+            -1,
+            1
+          ],
+          "pen": [
+            6.407824408054857e-16,
+            0.8197556248635472,
+            -2.8858275616371425,
+            0,
+            -1.8202231385789852e-16,
+            2.8858275616371425,
+            0.8197556248635472,
+            0,
+            3,
+            0,
+            6.661338147750939e-16,
+            0,
+            1.5999999999999999,
+            3.526369903754903,
+            -0.8098358791728206,
+            1
+          ]
+        }
+      },
+      {
+        "editFrame": 24,
+        "ok": true,
+        "state": {
+          "editFrame": 24,
+          "instanceId": "inst-a",
+          "instanceFrame": 24,
+          "cameraClipId": "cam-rig",
+          "cameraClipFrame": 24,
+          "camera": {
+            "position": {
+              "x": 0,
+              "y": 1,
+              "z": 7
+            },
+            "target": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            },
+            "fovDeg": 40,
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "fovVelocityDegPerFrame": 0
+          },
+          "nodes": [
+            {
+              "nodeId": "root",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "backdrop",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": -3
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "stage",
+              "localPosition": {
+                "x": 1,
+                "y": 0.25,
+                "z": -1
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 90,
+                "z": 0
+              },
+              "localScale": {
+                "x": 2,
+                "y": 2,
+                "z": 2
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "arm",
+              "localPosition": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 44.142135623730944
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "pen",
+              "localPosition": {
+                "x": 0.1,
+                "y": 0.2,
+                "z": 0.3
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1.5,
+                "y": 1.5,
+                "z": 1.5
+              },
+              "renderOrder": 2
+            }
+          ],
+          "performanceOverrides": [
+            {
+              "nodeId": "arm",
+              "property": "localRotation",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 14.14213562373095
+              }
+            },
+            {
+              "nodeId": "stage",
+              "property": "localPosition",
+              "value": {
+                "x": 0,
+                "y": 0.25,
+                "z": 0
+              }
+            },
+            {
+              "nodeId": "pen",
+              "property": "localScale",
+              "value": {
+                "x": 1.5,
+                "y": 1.5,
+                "z": 1.5
+              }
+            }
+          ]
+        },
+        "worldMatrices": {
+          "root": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "backdrop": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            -3,
+            1
+          ],
+          "stage": [
+            4.440892098500626e-16,
+            0,
+            -2,
+            0,
+            0,
+            2,
+            0,
+            0,
+            2,
+            0,
+            4.440892098500626e-16,
+            0,
+            1,
+            0.25,
+            -1,
+            1
+          ],
+          "arm": [
+            3.186847788395383e-16,
+            1.3928814445915294,
+            -1.4352286512303936,
+            0,
+            -3.0928181007173303e-16,
+            1.4352286512303936,
+            1.3928814445915294,
+            0,
+            2,
+            0,
+            4.440892098500626e-16,
+            0,
+            1,
+            2.25,
+            -1,
+            1
+          ],
+          "pen": [
+            4.780271682593074e-16,
+            2.0893221668872943,
+            -2.1528429768455903,
+            0,
+            -4.639227151075996e-16,
+            2.1528429768455903,
+            2.0893221668872943,
+            0,
+            3,
+            0,
+            6.661338147750939e-16,
+            0,
+            1.5999999999999999,
+            3.3939482003204287,
+            -0.16850585390896863,
+            1
+          ]
+        }
+      },
+      {
+        "editFrame": 30,
+        "ok": true,
+        "state": {
+          "editFrame": 30,
+          "instanceId": "inst-a",
+          "instanceFrame": 30,
+          "cameraClipId": "cam-rig",
+          "cameraClipFrame": 30,
+          "camera": {
+            "position": {
+              "x": 0,
+              "y": 1,
+              "z": 7
+            },
+            "target": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            },
+            "fovDeg": 40,
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "fovVelocityDegPerFrame": 0
+          },
+          "nodes": [
+            {
+              "nodeId": "root",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "backdrop",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": -3
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "stage",
+              "localPosition": {
+                "x": 1,
+                "y": 0.375,
+                "z": -1
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 90,
+                "z": 0
+              },
+              "localScale": {
+                "x": 2,
+                "y": 2,
+                "z": 2
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "arm",
+              "localPosition": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 44.142135623730944
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "pen",
+              "localPosition": {
+                "x": 0.1,
+                "y": 0.2,
+                "z": 0.3
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1.5,
+                "y": 1.5,
+                "z": 1.5
+              },
+              "renderOrder": 2
+            }
+          ],
+          "performanceOverrides": [
+            {
+              "nodeId": "arm",
+              "property": "localRotation",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 14.142135623730951
+              }
+            },
+            {
+              "nodeId": "stage",
+              "property": "localPosition",
+              "value": {
+                "x": 0,
+                "y": 0.375,
+                "z": 0
+              }
+            },
+            {
+              "nodeId": "pen",
+              "property": "localScale",
+              "value": {
+                "x": 1.5,
+                "y": 1.5,
+                "z": 1.5
+              }
+            }
+          ]
+        },
+        "worldMatrices": {
+          "root": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "backdrop": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            -3,
+            1
+          ],
+          "stage": [
+            4.440892098500626e-16,
+            0,
+            -2,
+            0,
+            0,
+            2,
+            0,
+            0,
+            2,
+            0,
+            4.440892098500626e-16,
+            0,
+            1,
+            0.375,
+            -1,
+            1
+          ],
+          "arm": [
+            3.186847788395383e-16,
+            1.3928814445915294,
+            -1.4352286512303936,
+            0,
+            -3.0928181007173303e-16,
+            1.4352286512303936,
+            1.3928814445915294,
+            0,
+            2,
+            0,
+            4.440892098500626e-16,
+            0,
+            1,
+            2.375,
+            -1,
+            1
+          ],
+          "pen": [
+            4.780271682593074e-16,
+            2.0893221668872943,
+            -2.1528429768455903,
+            0,
+            -4.639227151075996e-16,
+            2.1528429768455903,
+            2.0893221668872943,
+            0,
+            3,
+            0,
+            6.661338147750939e-16,
+            0,
+            1.5999999999999999,
+            3.5189482003204287,
+            -0.16850585390896863,
+            1
+          ]
+        }
+      },
+      {
+        "editFrame": 36,
+        "ok": true,
+        "state": {
+          "editFrame": 36,
+          "instanceId": "inst-a",
+          "instanceFrame": 36,
+          "cameraClipId": "cam-rig",
+          "cameraClipFrame": 36,
+          "camera": {
+            "position": {
+              "x": 0,
+              "y": 1,
+              "z": 7
+            },
+            "target": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            },
+            "fovDeg": 40,
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "fovVelocityDegPerFrame": 0
+          },
+          "nodes": [
+            {
+              "nodeId": "root",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "backdrop",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": -3
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "stage",
+              "localPosition": {
+                "x": 1,
+                "y": 0.5,
+                "z": -1
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 90,
+                "z": 0
+              },
+              "localScale": {
+                "x": 2,
+                "y": 2,
+                "z": 2
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "arm",
+              "localPosition": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 15.857864376269044
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "pen",
+              "localPosition": {
+                "x": 0.1,
+                "y": 0.2,
+                "z": 0.3
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1.5,
+                "y": 1.5,
+                "z": 1.5
+              },
+              "renderOrder": 2
+            }
+          ],
+          "performanceOverrides": [
+            {
+              "nodeId": "arm",
+              "property": "localRotation",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": -14.14213562373095
+              }
+            },
+            {
+              "nodeId": "stage",
+              "property": "localPosition",
+              "value": {
+                "x": 0,
+                "y": 0.5,
+                "z": 0
+              }
+            },
+            {
+              "nodeId": "pen",
+              "property": "localScale",
+              "value": {
+                "x": 1.5,
+                "y": 1.5,
+                "z": 1.5
+              }
+            }
+          ]
+        },
+        "worldMatrices": {
+          "root": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "backdrop": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            -3,
+            1
+          ],
+          "stage": [
+            4.440892098500626e-16,
+            0,
+            -2,
+            0,
+            0,
+            2,
+            0,
+            0,
+            2,
+            0,
+            4.440892098500626e-16,
+            0,
+            1,
+            0.5,
+            -1,
+            1
+          ],
+          "arm": [
+            4.2718829387032383e-16,
+            0.5465037499090317,
+            -1.9238850410914283,
+            0,
+            -1.2134820923859906e-16,
+            1.9238850410914283,
+            0.5465037499090317,
+            0,
+            2,
+            0,
+            4.440892098500626e-16,
+            0,
+            1,
+            2.5,
+            -1,
+            1
+          ],
+          "pen": [
+            6.407824408054857e-16,
+            0.8197556248635476,
+            -2.8858275616371425,
+            0,
+            -1.820223138578986e-16,
+            2.8858275616371425,
+            0.8197556248635476,
+            0,
+            3,
+            0,
+            6.661338147750939e-16,
+            0,
+            1.5999999999999999,
+            3.9013699037549032,
+            -0.8098358791728205,
+            1
+          ]
+        }
+      },
+      {
+        "editFrame": 46,
+        "ok": true,
+        "state": {
+          "editFrame": 46,
+          "instanceId": "inst-a",
+          "instanceFrame": 46,
+          "cameraClipId": "cam-rig",
+          "cameraClipFrame": 46,
+          "camera": {
+            "position": {
+              "x": 0,
+              "y": 1,
+              "z": 7
+            },
+            "target": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            },
+            "fovDeg": 40,
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "fovVelocityDegPerFrame": 0
+          },
+          "nodes": [
+            {
+              "nodeId": "root",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "backdrop",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": -3
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "stage",
+              "localPosition": {
+                "x": 1,
+                "y": 0.5,
+                "z": -1
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 90,
+                "z": 0
+              },
+              "localScale": {
+                "x": 2,
+                "y": 2,
+                "z": 2
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "arm",
+              "localPosition": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 35.17638090205041
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "pen",
+              "localPosition": {
+                "x": 0.1,
+                "y": 0.2,
+                "z": 0.3
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1.5,
+                "y": 1.5,
+                "z": 1.5
+              },
+              "renderOrder": 2
+            }
+          ],
+          "performanceOverrides": [
+            {
+              "nodeId": "arm",
+              "property": "localRotation",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 5.176380902050415
+              }
+            },
+            {
+              "nodeId": "stage",
+              "property": "localPosition",
+              "value": {
+                "x": 0,
+                "y": 0.5,
+                "z": 0
+              }
+            },
+            {
+              "nodeId": "pen",
+              "property": "localScale",
+              "value": {
+                "x": 1.5,
+                "y": 1.5,
+                "z": 1.5
+              }
+            }
+          ]
+        },
+        "worldMatrices": {
+          "root": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "backdrop": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            -3,
+            1
+          ],
+          "stage": [
+            4.440892098500626e-16,
+            0,
+            -2,
+            0,
+            0,
+            2,
+            0,
+            0,
+            2,
+            0,
+            4.440892098500626e-16,
+            0,
+            1,
+            0.5,
+            -1,
+            1
+          ],
+          "arm": [
+            3.6299072733514185e-16,
+            1.1521908294440162,
+            -1.6347649043654902,
+            0,
+            -2.558377575221407e-16,
+            1.6347649043654902,
+            1.1521908294440162,
+            0,
+            2,
+            0,
+            4.440892098500626e-16,
+            0,
+            1,
+            2.5,
+            -1,
+            1
+          ],
+          "pen": [
+            5.444860910027128e-16,
+            1.7282862441660243,
+            -2.4521473565482355,
+            0,
+            -3.8375663628321106e-16,
+            2.4521473565482355,
+            1.7282862441660243,
+            0,
+            3,
+            0,
+            6.661338147750939e-16,
+            0,
+            1.5999999999999999,
+            3.7595545160002444,
+            -0.3569429098257375,
+            1
+          ]
+        }
+      },
+      {
+        "editFrame": 47,
+        "ok": true,
+        "state": {
+          "editFrame": 47,
+          "instanceId": "inst-a",
+          "instanceFrame": 47,
+          "cameraClipId": "cam-rig",
+          "cameraClipFrame": 47,
+          "camera": {
+            "position": {
+              "x": 0,
+              "y": 1,
+              "z": 7
+            },
+            "target": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            },
+            "fovDeg": 40,
+            "velocity": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            },
+            "fovVelocityDegPerFrame": 0
+          },
+          "nodes": [
+            {
+              "nodeId": "root",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "backdrop",
+              "localPosition": {
+                "x": 0,
+                "y": 0,
+                "z": -3
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "stage",
+              "localPosition": {
+                "x": 1,
+                "y": 0.5,
+                "z": -1
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 90,
+                "z": 0
+              },
+              "localScale": {
+                "x": 2,
+                "y": 2,
+                "z": 2
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "arm",
+              "localPosition": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 39.99999999999999
+              },
+              "localScale": {
+                "x": 1,
+                "y": 1,
+                "z": 1
+              },
+              "renderOrder": 0
+            },
+            {
+              "nodeId": "pen",
+              "localPosition": {
+                "x": 0.1,
+                "y": 0.2,
+                "z": 0.3
+              },
+              "localRotation": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "localScale": {
+                "x": 1.5,
+                "y": 1.5,
+                "z": 1.5
+              },
+              "renderOrder": 2
+            }
+          ],
+          "performanceOverrides": [
+            {
+              "nodeId": "arm",
+              "property": "localRotation",
+              "value": {
+                "x": 0,
+                "y": 0,
+                "z": 9.999999999999998
+              }
+            },
+            {
+              "nodeId": "stage",
+              "property": "localPosition",
+              "value": {
+                "x": 0,
+                "y": 0.5,
+                "z": 0
+              }
+            },
+            {
+              "nodeId": "pen",
+              "property": "localScale",
+              "value": {
+                "x": 1.5,
+                "y": 1.5,
+                "z": 1.5
+              }
+            }
+          ]
+        },
+        "worldMatrices": {
+          "root": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1
+          ],
+          "backdrop": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            -3,
+            1
+          ],
+          "stage": [
+            4.440892098500626e-16,
+            0,
+            -2,
+            0,
+            0,
+            2,
+            0,
+            0,
+            2,
+            0,
+            4.440892098500626e-16,
+            0,
+            1,
+            0.5,
+            -1,
+            1
+          ],
+          "arm": [
+            3.4019207145473823e-16,
+            1.2855752193730785,
+            -1.5320888862379562,
+            0,
+            -2.8545504168710567e-16,
+            1.5320888862379562,
+            1.2855752193730785,
+            0,
+            2,
+            0,
+            4.440892098500626e-16,
+            0,
+            1,
+            2.5,
+            -1,
+            1
+          ],
+          "pen": [
+            5.102881071821074e-16,
+            1.9283628290596178,
+            -2.2981333293569346,
+            0,
+            -4.281825625306585e-16,
+            2.2981333293569346,
+            1.9283628290596178,
+            0,
+            3,
+            0,
+            6.661338147750939e-16,
+            0,
+            1.5999999999999999,
+            3.701019742303877,
+            -0.25330623506264055,
+            1
+          ]
+        }
+      },
+      {
+        "editFrame": 48,
+        "ok": false,
+        "error": "editFrame 48 out of range [0, 48)"
+      }
+    ],
+    "cameraClips": [
+      {
+        "clipId": "cam-rig",
+        "durationFrames": 48,
+        "mainTrackPoses": [
+          {
+            "start": {
+              "position": {
+                "x": 0,
+                "y": 1,
+                "z": 7
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 40
+            },
+            "end": {
+              "position": {
+                "x": 0,
+                "y": 1,
+                "z": 7
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 40
+            }
+          }
+        ],
+        "frames": [
+          {
+            "clipFrame": -1,
+            "ok": false,
+            "error": "clipFrame -1 is before the start of clip cam-rig"
+          },
+          {
+            "clipFrame": 0,
+            "ok": true,
+            "camera": {
+              "position": {
+                "x": 0,
+                "y": 1,
+                "z": 7
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 40,
+              "velocity": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "fovVelocityDegPerFrame": 0
+            }
+          },
+          {
+            "clipFrame": 1,
+            "ok": true,
+            "camera": {
+              "position": {
+                "x": 0,
+                "y": 1,
+                "z": 7
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 40,
+              "velocity": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "fovVelocityDegPerFrame": 0
+            }
+          },
+          {
+            "clipFrame": 24,
+            "ok": true,
+            "camera": {
+              "position": {
+                "x": 0,
+                "y": 1,
+                "z": 7
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 40,
+              "velocity": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "fovVelocityDegPerFrame": 0
+            }
+          },
+          {
+            "clipFrame": 47,
+            "ok": true,
+            "camera": {
+              "position": {
+                "x": 0,
+                "y": 1,
+                "z": 7
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 40,
+              "velocity": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "fovVelocityDegPerFrame": 0
+            }
+          },
+          {
+            "clipFrame": 48,
+            "ok": true,
+            "camera": {
+              "position": {
+                "x": 0,
+                "y": 1,
+                "z": 7
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 40,
+              "velocity": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "fovVelocityDegPerFrame": 0
+            }
+          },
+          {
+            "clipFrame": 49,
+            "ok": true,
+            "camera": {
+              "position": {
+                "x": 0,
+                "y": 1,
+                "z": 7
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 40,
+              "velocity": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "fovVelocityDegPerFrame": 0
+            }
+          },
+          {
+            "clipFrame": 53,
+            "ok": true,
+            "camera": {
+              "position": {
+                "x": 0,
+                "y": 1,
+                "z": 7
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 40,
+              "velocity": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "fovVelocityDegPerFrame": 0
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

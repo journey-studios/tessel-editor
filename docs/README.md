@@ -5,6 +5,18 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 
 - [Inventário de migração do Scene Studio](migration/README.md): 121 itens classificados,
   evidências na origem, diferenças do branch piloto, matriz de migração e fatias sugeridas.
+- [Cenas no projeto e CLI](features/scene-project.md): attach, lotes, histórico, save/reopen
+  e JSONL sem janela; UI visual e render dirigido pendentes.
+- [Animação de nós](features/scene-animation.md): performance por frame, hierarquia e matrizes
+  animadas comparadas à origem; renderer/adapters ainda pendentes.
+- [Propriedades e lotes de cenas](features/scene-edit.md): catálogo tipado, operações por ID,
+  dry-run e validação atômica compartilhada; adapters/histórico pendentes.
+- [Tempo e câmera de cenas dirigidas](features/scene-temporal.md): avaliação pura, mapeamento racional
+  e gate temporal; animação de nós e adapters ainda pendentes.
+- [Oráculo de migração](../scripts/migration-oracle/README.md): 55 bundles sintéticos, expectativas
+  executadas na origem fixada e runner de integridade/equivalência; consumidor Rust parcial.
+- [Integração da base A–E](migration/foundation-integration-report.md): resultados conjuntos,
+  release e fronteiras do que ainda não está migrado.
 - [Rodada paralela da base](migration/parallel-implementation-plan.md): ownership, dependências e gates.
 - [Migração por building blocks e fases](migration/phased-roadmap.md): base atual reaproveitável,
   módulos compartilhados que faltam, etapas E0–E3 e fases funcionais M1–M8.
@@ -17,6 +29,8 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
   vídeo, áudio (processado), texto e Three.js/splat.
 - [Relatório da fundação da viewport](viewport-foundation-report.md): arquivos, APIs, comandos, métricas e lacunas.
 - [Plano da viewport](viewport-foundation-plan.md): fatias e critérios (histórico).
+- [Ciclo de vida do preview](viewport-lifecycle-report.md): testes de contexto perdido com proxy,
+  ocultar/reabrir, cancelamento, troca de projeto e preservação do export.
 - [Desempenho do preview: relatório de implementação](viewport-performance-implementation-report.md): retenção de GPU,
   spans do host e harness; comandos, arquivos, riscos, provas, lacunas e builds. Parecer e validação independentes:
   [revisão](viewport-performance-opus-review.md) e [validação](viewport-performance-opus-validation.md) (do Opus, sobre

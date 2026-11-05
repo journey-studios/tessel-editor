@@ -1,0 +1,7020 @@
+{
+  "formatVersion": 1,
+  "note": "Answers of the origin's real functions (finalizeBundle, validateEditJoins, validateBundleIntegrity, evaluateEditFrame) for the synthetic variants in this directory. Regenerate with generate.mjs.",
+  "originCommit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+  "pinnedCommit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+  "node": "v22.23.3",
+  "executedSources": 33,
+  "sourceFiles": [
+    {
+      "path": "src/camera/easing.ts",
+      "sha256": "61acdcfbca0f7224696f370a1b77165210e7b36654c2f7ded3f7e82c71ed3abd",
+      "gitBlob": "6d660fc81a3bd6c3adf9fbd6df44735b8f78d56b",
+      "bytes": 952,
+      "bytesInOutput": 723,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/camera/resolve-camera-clip.ts",
+      "sha256": "0241aa815c0b5747872dc4b35e57a6e30846eb2729ba078678f9ef7127a0e1a4",
+      "gitBlob": "04e5eaab05a2f9af1d83f28b300a34eb87f0a8a6",
+      "bytes": 15085,
+      "bytesInOutput": 10484,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/edit/finalize-bundle.ts",
+      "sha256": "f7c7d640baf2cdbb5e1cc382a74120c0f14cfdb442f91805f4ea45fe6d777780",
+      "gitBlob": "e85d7d0b06e1058f706b14a64a3855537e740f4d",
+      "bytes": 1413,
+      "bytesInOutput": 671,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/edit/resolve-shot-at-edit-frame.ts",
+      "sha256": "bc9e72b01b6149b39adf8d062100e5a79956439c4188bee343697a07892c2b28",
+      "gitBlob": "ef8fffa87ab1f31456742c0171ec52a920617194",
+      "bytes": 966,
+      "bytesInOutput": 659,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/effects/catalog.ts",
+      "sha256": "8a6004308b168df319f8b8a88363b8dabb601401ab805683196b73c11eb3c840",
+      "gitBlob": "1b66db2ccb8c5a5e476c056f1a2c654507b068a4",
+      "bytes": 4686,
+      "bytesInOutput": 2806,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/effects/scene-effects.ts",
+      "sha256": "d76e0bce25684d1dda57beb2181380f23188182ea93621893c011352277effa4",
+      "gitBlob": "616d018bb3d50f793376c10c6b911fdc3406a3e3",
+      "bytes": 2507,
+      "bytesInOutput": 312,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/evaluator/evaluate-edit-frame.ts",
+      "sha256": "653513af4ca6c8ee5b775970ce9d7afe63d718d9e8618cfe7aea83867b6cb46d",
+      "gitBlob": "bb178c234c592d3bff261942670d7d249c89acbd",
+      "bytes": 4065,
+      "bytesInOutput": 2576,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/keyframes/keyframe-rules.ts",
+      "sha256": "e1beb696ba477a40b0ff0188acc3e18fee79180aaf8f79f0c2eac2bf14f74ae2",
+      "gitBlob": "aaa7d0c87e7cf54f0f21a937488d2f7867a5fbb0",
+      "bytes": 2433,
+      "bytesInOutput": 717,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/keyframes/resolve-keyframes.ts",
+      "sha256": "66a89d2a935124371af71d31bbaac7d3202ce2cc0d4fe784ca84049348ad8f5f",
+      "gitBlob": "a5127a1bbb7eeca27ee1d4d363a31976d87788ab",
+      "bytes": 2076,
+      "bytesInOutput": 737,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/lighting/light-keys.ts",
+      "sha256": "5df1b807e779c5f36b096e3215cf72e0401b42762f0b6e75e102a4f7ab61da1f",
+      "gitBlob": "240d4a59309b51db4bea4a691b990b4399014119",
+      "bytes": 3609,
+      "bytesInOutput": 65,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/lighting/scene-lighting.ts",
+      "sha256": "78ba61253095cb120003ad56837b6e93c35af4da7c1f1934b76d94814c6aa151",
+      "gitBlob": "a85e0edd3a83e565d518dbbc1b2839be369e1c01",
+      "bytes": 5374,
+      "bytesInOutput": 54,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/narration/mix-plan.ts",
+      "sha256": "aada36516e40aec2f6a185288d7aa0956bd23132d2f83c85f2d542e33fa1560c",
+      "gitBlob": "05fd1c9928ef0e350a19d0fb57c8f54820557c73",
+      "bytes": 4213,
+      "bytesInOutput": 0,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/narration/narration-schema.ts",
+      "sha256": "0af031103fcef0eacb761d14342cebebff976253556a783baeaa2123e6fec461",
+      "gitBlob": "b9aee27cb16ade8599276e71556843e379586357",
+      "bytes": 4093,
+      "bytesInOutput": 3459,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/narration/narration.ts",
+      "sha256": "720b5e33429e17749edc2a7eb4f417a3e81b9e48692d5376fba5d063f744be33",
+      "gitBlob": "3ad156e96bfaa137f4664a818e9f65b9d03fac48",
+      "bytes": 23351,
+      "bytesInOutput": 5557,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/outline/flags.ts",
+      "sha256": "9fe5e22661a0b10eb23ae70ec14b71260c25422402dd2f6961f9d3e6fa2001f6",
+      "gitBlob": "f22f7a87cef847600a54bf94105bd0c1c343c4a5",
+      "bytes": 2387,
+      "bytesInOutput": 0,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/outline/outline-schema.ts",
+      "sha256": "00305d09ef920188fbe47a4f038ea2814b5dc1f7ea48451ae3abb8298b7c57b4",
+      "gitBlob": "eea86648083ebbd7a6f853d950481d9f8f9465f8",
+      "bytes": 2372,
+      "bytesInOutput": 1577,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/outline/outline.ts",
+      "sha256": "30c67516427ea7e8cc6571028328b89e85da6054b38aece7c0178da9a21a5fae",
+      "gitBlob": "45d11a693425c121fd2848ebff3fbec8d76c7c0f",
+      "bytes": 29372,
+      "bytesInOutput": 6479,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/path/path-schema.ts",
+      "sha256": "79b53b9f089a795720ee7789a7a53e72283b847d3522fd7bb3fd724df9d63e15",
+      "gitBlob": "e0780672769dbcba2027391d3f10b651cfe10915",
+      "bytes": 1882,
+      "bytesInOutput": 1508,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/performance/resolve-performance.ts",
+      "sha256": "3e3f2f4f888a48eddf00bae6d712995035f1e7e74dd58f938a003e6fabeedcc7",
+      "gitBlob": "a5212bda7f4c966852584f07e5d048cbc808ee24",
+      "bytes": 3314,
+      "bytesInOutput": 2655,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/rig/follow-schema.ts",
+      "sha256": "b437822b5c62c46d670c626afc136fca934c2eca9ca33aa9617dfdc17d40048c",
+      "gitBlob": "a3f2ffc0dc4fa421dee9d38d02a009add95abcd5",
+      "bytes": 2063,
+      "bytesInOutput": 1311,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/rig/follow-validation.ts",
+      "sha256": "33303d66c7e0776928c1a41095927200d26cf948582e25da11f2155df38c866a",
+      "gitBlob": "630ad8a69405d3368c124e7a6bae44d39744f14a",
+      "bytes": 7713,
+      "bytesInOutput": 5924,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/rig/rig-geometry.ts",
+      "sha256": "f82ddec706fc5e3193e1025fca18bcb0815fc68bac3385edf2771189d5ca1ea6",
+      "gitBlob": "2b6f1e5bbf1c78aab36060f9c27d8680b61da910",
+      "bytes": 4824,
+      "bytesInOutput": 463,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/rig/rig-schema.ts",
+      "sha256": "ea094dccfd1c69bf452672ae4fc11658b06cc37eea9c8493f9675955bb5be834",
+      "gitBlob": "648eccb920752fc9bd0abd39518c29f772193192",
+      "bytes": 4358,
+      "bytesInOutput": 3377,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/rig/rig-validation.ts",
+      "sha256": "e0c6d8e1c009e24df0bc2b766e57f7c93ccab5e925d6c6f934bca2859b15a3c2",
+      "gitBlob": "0f0eea3abe9ec2a1e236ca3452239deface3f372",
+      "bytes": 9107,
+      "bytesInOutput": 7241,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/scene/scene-graph.ts",
+      "sha256": "81ff5856795cb75428ba4e9e3fafb93b186c4996bc4cebf729455f890dba80dd",
+      "gitBlob": "8bcaa84fee9649c70e65d8a974608c9adbfacfbe",
+      "bytes": 10954,
+      "bytesInOutput": 7927,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/schema/render-bundle.schema.ts",
+      "sha256": "953ddfbdfca5dc98a2f3baa29ddbc59f26922131bfa32b998b1f70bc107e0f30",
+      "gitBlob": "d4b10d3617d7baece759c21080d8defb4b2fcc00",
+      "bytes": 21665,
+      "bytesInOutput": 21761,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/types/fps.ts",
+      "sha256": "dc36c3d16ec71953d7de1c857681cbb6c535e12dbf18f70faa924fc32e482e5b",
+      "gitBlob": "208245ee6d4aeb793cf455941994fcc4de10bf4a",
+      "bytes": 660,
+      "bytesInOutput": 172,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/types/frame-range.ts",
+      "sha256": "4ab01ce472d3f8fab16a1bcf26a8138f3841535d71e62f8258ed3695f49f8928",
+      "gitBlob": "a48242eeca97116063bcde4bc9711c5a240b08ca",
+      "bytes": 412,
+      "bytesInOutput": 177,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/validate/bundle-integrity.ts",
+      "sha256": "ddb33e6fca2ede35a7a3eaa3d060629558c7b8351cff29aa9aaf838676dd2b56",
+      "gitBlob": "d45b0e302abcac5fb480c3734b6ba0dc7b1d5b57",
+      "bytes": 28517,
+      "bytesInOutput": 24720,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/validate/edit-joins.ts",
+      "sha256": "14a5c2486820b1dd361a34180e0ca1bee5b0deefef4792aabe7207905396bedd",
+      "gitBlob": "32985a9140c4d9f8b14e9724ad70c6d8459e66cf",
+      "bytes": 6940,
+      "bytesInOutput": 5885,
+      "role": "called-directly"
+    },
+    {
+      "path": "src/weather/weather-ground.ts",
+      "sha256": "197e9b81b27dd177589f529842efad37cf5e4bf20adea428c6337fafae8b9945",
+      "gitBlob": "623b33595b2c767f16784dff4a25c6dc1fbda772",
+      "bytes": 2218,
+      "bytesInOutput": 53,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/weather/weather-model.ts",
+      "sha256": "1596f8a8e3b48d9eefad4691fcc7a761bae64ade4d8615a57713fad63fcfbd87",
+      "gitBlob": "f37233fb4786ce8eba99760bde494bf98d794704",
+      "bytes": 10388,
+      "bytesInOutput": 194,
+      "role": "loaded-transitively"
+    },
+    {
+      "path": "src/weather/weather-spec.ts",
+      "sha256": "089c8a23acb100c9879d8a496f83c707b1a4899ffd7131190cc43a9f5a294248",
+      "gitBlob": "c81d29dc8f60de712eaac8bafcd82027606a4a71",
+      "bytes": 6901,
+      "bytesInOutput": 3139,
+      "role": "loaded-transitively"
+    }
+  ],
+  "packageTreeAtPinnedCommit": "d5fc98713731c6c0ae201ca1f3ce3bd0c9b17214",
+  "toolVersions": {
+    "esbuild": "0.25.12",
+    "three": "0.187.0",
+    "zod": "4.3.6"
+  },
+  "generatorSha256": "c209bdc0a1a10c5400dbe07a434372c5d96dbcec4b03fb5b299b3bb7069b5f03",
+  "baseFixtureSha256": "584a92b9bb34f9228e72331d6a6d97eb65e09937b2cc5a35fa58a0b8198a9832",
+  "bundleHashes": {
+    "layered-as-is.bundle.json": "d180d9d7920607a3f4601ea5db0df04cd144f6b217d98a3ca2dab5860c5c06c5",
+    "smooth-single-dolly.bundle.json": "ed14d8ea3e6027c2a40b75a06c03b1893e99a28e18eeed6abd38ebe8e7af380e",
+    "resting-hold.bundle.json": "c8b2b1891b66d89fbcdfd7ba882a0493ccd06cd0d6ae14a2beb61cdaf2f75cc8",
+    "velocity-jump.bundle.json": "0e50875fa1782bed137f59f0e6ff362be45057c3b1d650f8c5c815622aa4d269",
+    "fov-velocity-jump.bundle.json": "bf745e8d5c763b67b11e9902df87b1f612c0806d96cac2c081eef214633efde5",
+    "reset-position-target-jump.bundle.json": "72042c5774411b8bff48fc87c29c77e036ae61efb3970cbbd1eee5b3ebd1a3e1",
+    "reset-fov-jump.bundle.json": "e4d193e700b7b7d02f724ef81230d4dbb7311cb63144f95b9cd19d360e7f402a",
+    "stacked-fov-out-of-range.bundle.json": "6bb3d4efe1886a5d9b143f784d542f0673f9c0d48d83aa14a92f747a4df202e6",
+    "cut-after-jumping-clip.bundle.json": "d300fabda6ed27193366f71ad0022c03c91f0acd918d10df51e9e5a35dce99ac"
+  },
+  "variants": {
+    "layered-as-is": {
+      "schemaAccepted": true,
+      "schemaIssueCodes": [],
+      "accepted": false,
+      "editJoinCodes": [
+        "CONTINUOUS_VELOCITY_JUMP"
+      ],
+      "integrityCodes": [],
+      "finalizeMessage": "Edit joins broken: Camera velocity jump at join s1|s2: 0.0880 scene units/frame",
+      "editFrames": [
+        {
+          "editFrame": -1,
+          "ok": false,
+          "error": "editFrame -1 out of range [0, 48)"
+        },
+        {
+          "editFrame": 0,
+          "ok": true,
+          "state": {
+            "editFrame": 0,
+            "instanceId": "street-a",
+            "instanceFrame": 0,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 0,
+            "camera": {
+              "position": {
+                "x": 0,
+                "y": 2,
+                "z": 10
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.037134579589301275,
+                "y": -0.00006542531044373412,
+                "z": -0.0007232021921979026
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 1,
+          "ok": true,
+          "state": {
+            "editFrame": 1,
+            "instanceId": "street-a",
+            "instanceFrame": 1,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 1,
+            "camera": {
+              "position": {
+                "x": 0.037134579589301275,
+                "y": 1.9999345746895563,
+                "z": 9.999276797807802
+              },
+              "target": {
+                "x": 0,
+                "y": 0.9999345746895564,
+                "z": -0.0006542531044365836
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.037134067510223856,
+                "y": -0.00045797717310569475,
+                "z": -0.004786618043551627
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0.049999999999999996,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0.049999999999999996,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 2,
+          "ok": true,
+          "state": {
+            "editFrame": 2,
+            "instanceId": "street-a",
+            "instanceFrame": 2,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 2,
+            "camera": {
+              "position": {
+                "x": 0.07426864709952513,
+                "y": 1.9994765975164506,
+                "z": 9.99449017976425
+              },
+              "target": {
+                "x": 0,
+                "y": 0.9994765975164507,
+                "z": -0.005234024835492668
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.03713304335913045,
+                "y": -0.001243080898429394,
+                "z": -0.012775549669143516
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0.08660254037844387,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0.08660254037844387,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 3,
+          "ok": true,
+          "state": {
+            "editFrame": 3,
+            "instanceId": "street-a",
+            "instanceFrame": 3,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 3,
+            "camera": {
+              "position": {
+                "x": 0.11140169045865558,
+                "y": 1.9982335166180212,
+                "z": 9.981714630095107
+              },
+              "target": {
+                "x": 0,
+                "y": 0.9982335166180212,
+                "z": -0.017664833819787756
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.037131507150144044,
+                "y": -0.002420736486415276,
+                "z": -0.02468999516744752
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0.1,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0.1,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 4,
+          "ok": true,
+          "state": {
+            "editFrame": 4,
+            "instanceId": "street-a",
+            "instanceFrame": 4,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 4,
+            "camera": {
+              "position": {
+                "x": 0.14853319760879963,
+                "y": 1.995812780131606,
+                "z": 9.95702463492766
+              },
+              "target": {
+                "x": 0,
+                "y": 0.9958127801316059,
+                "z": -0.04187219868394135
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.037129458904448465,
+                "y": -0.003990943937063118,
+                "z": -0.04052995263698733
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0.08660254037844388,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0.08660254037844388,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 5,
+          "ok": true,
+          "state": {
+            "editFrame": 5,
+            "instanceId": "street-a",
+            "instanceFrame": 5,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 5,
+            "camera": {
+              "position": {
+                "x": 0.1856626565132481,
+                "y": 1.9918218361945428,
+                "z": 9.916494682290672
+              },
+              "target": {
+                "x": 0,
+                "y": 0.9918218361945427,
+                "z": -0.08178163805457296
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.03712689865028887,
+                "y": -0.0059537032503729215,
+                "z": -0.06029542017638434
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0.049999999999999996,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0.049999999999999996,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 6,
+          "ok": true,
+          "state": {
+            "editFrame": 6,
+            "instanceId": "street-a",
+            "instanceFrame": 6,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 6,
+            "camera": {
+              "position": {
+                "x": 0.22278955516353696,
+                "y": 1.9858681329441699,
+                "z": 9.856199262114288
+              },
+              "target": {
+                "x": 0,
+                "y": 0.9858681329441698,
+                "z": -0.14131867055830205
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.037123826422970546,
+                "y": -0.008309014426344685,
+                "z": -0.08398639588436829
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 1.2246467991473533e-17,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 1.2246467991473533e-17,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 7,
+          "ok": true,
+          "state": {
+            "editFrame": 7,
+            "instanceId": "street-a",
+            "instanceFrame": 7,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 7,
+            "camera": {
+              "position": {
+                "x": 0.2599133815865075,
+                "y": 1.9775591185178252,
+                "z": 9.77221286622992
+              },
+              "target": {
+                "x": 0,
+                "y": 0.9775591185178252,
+                "z": -0.2244088148217482
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.03712024226485905,
+                "y": -0.01105687746497841,
+                "z": -0.11160287785982881
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": -0.05000000000000002,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": -0.05000000000000002,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 8,
+          "ok": true,
+          "state": {
+            "editFrame": 8,
+            "instanceId": "street-a",
+            "instanceFrame": 8,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 8,
+            "camera": {
+              "position": {
+                "x": 0.29703362385136656,
+                "y": 1.9665022410528468,
+                "z": 9.66060998837009
+              },
+              "target": {
+                "x": 0,
+                "y": 0.9665022410528469,
+                "z": -0.3349775894715308
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.03711614622537912,
+                "y": -0.01419729236627365,
+                "z": -0.1431448642018136
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": -0.08660254037844385,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": -0.08660254037844385,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 9,
+          "ok": true,
+          "state": {
+            "editFrame": 9,
+            "instanceId": "street-a",
+            "instanceFrame": 9,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 9,
+            "camera": {
+              "position": {
+                "x": 0.3341497700767457,
+                "y": 1.9523049486865731,
+                "z": 9.517465124168277
+              },
+              "target": {
+                "x": 0,
+                "y": 0.952304948686573,
+                "z": -0.47695051313426956
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.03711153836101461,
+                "y": -0.017730259130231518,
+                "z": -0.1786123530095729
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": -0.1,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": -0.1,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 10,
+          "ok": true,
+          "state": {
+            "editFrame": 10,
+            "instanceId": "street-a",
+            "instanceFrame": 10,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 10,
+            "camera": {
+              "position": {
+                "x": 0.3712613084377603,
+                "y": 1.9345746895563416,
+                "z": 9.338852771158704
+              },
+              "target": {
+                "x": 0,
+                "y": 0.9345746895563416,
+                "z": -0.6542531044365837
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.037106418735306956,
+                "y": -0.021655777756850902,
+                "z": -0.21800534238257363
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": -0.08660254037844387,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": -0.08660254037844387,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 11,
+          "ok": true,
+          "state": {
+            "editFrame": 11,
+            "instanceId": "street-a",
+            "instanceFrame": 11,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 11,
+            "camera": {
+              "position": {
+                "x": 0.40836772717306724,
+                "y": 1.9129189117994907,
+                "z": 9.12084742877613
+              },
+              "target": {
+                "x": 0,
+                "y": 0.9129189117994907,
+                "z": -0.8708108820050929
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.0371007874188547,
+                "y": -0.024845261640979333,
+                "z": -0.25003796436901027
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": -0.050000000000000044,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": -0.050000000000000044,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 12,
+          "ok": true,
+          "state": {
+            "editFrame": 12,
+            "instanceId": "street-a",
+            "instanceFrame": 12,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 12,
+            "camera": {
+              "position": {
+                "x": 0.44546851459192194,
+                "y": 1.8880736501585114,
+                "z": 8.87080946440712
+              },
+              "target": {
+                "x": 0,
+                "y": 0.8880736501585115,
+                "z": -1.1192634984148855
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.03709464448931343,
+                "y": -0.021655777756850902,
+                "z": -0.21828088681121827
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 13,
+          "ok": true,
+          "state": {
+            "editFrame": 13,
+            "instanceId": "street-a",
+            "instanceFrame": 13,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 13,
+            "camera": {
+              "position": {
+                "x": 0.48256315908123537,
+                "y": 1.8664178724016605,
+                "z": 8.652528577595902
+              },
+              "target": {
+                "x": 0,
+                "y": 0.8664178724016606,
+                "z": -1.3358212759833945
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.03708799003139185,
+                "y": -0.017730259130231296,
+                "z": -0.17916343806715673
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0.049999999999999996,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0.049999999999999996,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 14,
+          "ok": true,
+          "state": {
+            "editFrame": 14,
+            "instanceId": "street-a",
+            "instanceFrame": 14,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 14,
+            "camera": {
+              "position": {
+                "x": 0.5196511491126272,
+                "y": 1.8486876132714292,
+                "z": 8.473365139528745
+              },
+              "target": {
+                "x": 0,
+                "y": 0.8486876132714292,
+                "z": -1.513123867285709
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.03708082413685476,
+                "y": -0.014197292366273873,
+                "z": -0.1439714822889755
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0.08660254037844387,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0.08660254037844387,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 15,
+          "ok": true,
+          "state": {
+            "editFrame": 15,
+            "instanceId": "street-a",
+            "instanceFrame": 15,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 15,
+            "camera": {
+              "position": {
+                "x": 0.556731973249482,
+                "y": 1.8344903209051553,
+                "z": 8.32939365723977
+              },
+              "target": {
+                "x": 0,
+                "y": 0.8344903209051553,
+                "z": -1.6550967909484475
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.03707314690451802,
+                "y": -0.011056877464978188,
+                "z": -0.11270501757765494
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0.1,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0.1,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 16,
+          "ok": true,
+          "state": {
+            "editFrame": 16,
+            "instanceId": "street-a",
+            "instanceFrame": 16,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 16,
+            "camera": {
+              "position": {
+                "x": 0.593805120154,
+                "y": 1.823433443440177,
+                "z": 8.216688639662115
+              },
+              "target": {
+                "x": 0,
+                "y": 0.823433443440177,
+                "z": -1.76566556559823
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.037064958440249485,
+                "y": -0.008309014426344685,
+                "z": -0.08536404203455206
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0.08660254037844388,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0.08660254037844388,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 17,
+          "ok": true,
+          "state": {
+            "editFrame": 17,
+            "instanceId": "street-a",
+            "instanceFrame": 17,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 17,
+            "camera": {
+              "position": {
+                "x": 0.6308700785942495,
+                "y": 1.8151244290138324,
+                "z": 8.131324597627563
+              },
+              "target": {
+                "x": 0,
+                "y": 0.8151244290138324,
+                "z": -1.8487557098616763
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.03705625885696606,
+                "y": -0.0059537032503729215,
+                "z": -0.06194855376143771
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0.049999999999999996,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0.049999999999999996,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 18,
+          "ok": true,
+          "state": {
+            "editFrame": 18,
+            "instanceId": "street-a",
+            "instanceFrame": 18,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 18,
+            "camera": {
+              "position": {
+                "x": 0.6679263374512155,
+                "y": 1.8091707257634595,
+                "z": 8.069376043866125
+              },
+              "target": {
+                "x": 0,
+                "y": 0.8091707257634595,
+                "z": -1.9082927423654055
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.03704704827463401,
+                "y": -0.003990943937063118,
+                "z": -0.042458550860498434
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 1.2246467991473533e-17,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 1.2246467991473533e-17,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 19,
+          "ok": true,
+          "state": {
+            "editFrame": 19,
+            "instanceId": "street-a",
+            "instanceFrame": 19,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 19,
+            "camera": {
+              "position": {
+                "x": 0.7049733857258496,
+                "y": 1.8051797818263964,
+                "z": 8.026917493005627
+              },
+              "target": {
+                "x": 0,
+                "y": 0.8051797818263963,
+                "z": -1.948202181736037
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.037037326820265726,
+                "y": -0.002420736486415276,
+                "z": -0.02689403143440039
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": -0.05000000000000002,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": -0.05000000000000002,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 20,
+          "ok": true,
+          "state": {
+            "editFrame": 20,
+            "instanceId": "street-a",
+            "instanceFrame": 20,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 20,
+            "camera": {
+              "position": {
+                "x": 0.7420107125461153,
+                "y": 1.802759045339981,
+                "z": 8.000023461571226
+              },
+              "target": {
+                "x": 0,
+                "y": 0.8027590453399809,
+                "z": -1.9724095466001905
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.03702709462791787,
+                "y": -0.001243080898429616,
+                "z": -0.015254993586279575
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": -0.08660254037844385,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": -0.08660254037844385,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 21,
+          "ok": true,
+          "state": {
+            "editFrame": 21,
+            "instanceId": "street-a",
+            "instanceFrame": 21,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 21,
+            "camera": {
+              "position": {
+                "x": 0.7790378071740331,
+                "y": 1.8015159644415515,
+                "z": 7.984768467984947
+              },
+              "target": {
+                "x": 0,
+                "y": 0.8015159644415515,
+                "z": -1.9848403555844856
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.03701635183869023,
+                "y": -0.0004579771731054727,
+                "z": -0.007541435419788023
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": -0.1,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": -0.1,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 22,
+          "ok": true,
+          "state": {
+            "editFrame": 22,
+            "instanceId": "street-a",
+            "instanceFrame": 22,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 22,
+            "camera": {
+              "position": {
+                "x": 0.8160541590127234,
+                "y": 1.801057987268446,
+                "z": 7.977227032565159
+              },
+              "target": {
+                "x": 0,
+                "y": 0.8010579872684458,
+                "z": -1.9894201273155416
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.03700509860072432,
+                "y": -0.00006542531044373412,
+                "z": -0.0037533550391124493
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": -0.08660254037844387,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": -0.08660254037844387,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 23,
+          "ok": true,
+          "state": {
+            "editFrame": 23,
+            "instanceId": "street-a",
+            "instanceFrame": 23,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 23,
+            "camera": {
+              "position": {
+                "x": 0.8530592576134477,
+                "y": 1.8009925619580023,
+                "z": 7.973473677526046
+              },
+              "target": {
+                "x": 0,
+                "y": 0.8009925619580022,
+                "z": -1.9900743804199783
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.03699333506920033,
+                "y": 0,
+                "z": -0.003236497444570219
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": -0.050000000000000044,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": -0.050000000000000044,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 24,
+          "ok": true,
+          "state": {
+            "editFrame": 24,
+            "instanceId": "street-a",
+            "instanceFrame": 24,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 24,
+            "camera": {
+              "position": {
+                "x": 0.890052592682648,
+                "y": 1.8009925619580023,
+                "z": 7.970237180081476
+              },
+              "target": {
+                "x": 0,
+                "y": 0.8009925619580022,
+                "z": -1.9900743804199783
+              },
+              "fovDeg": 50,
+              "velocity": {
+                "x": 0.01380522005411089,
+                "y": 0.016583953170166588,
+                "z": -0.08645775942653522
+              },
+              "fovVelocityDegPerFrame": -0.25
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 25,
+          "ok": true,
+          "state": {
+            "editFrame": 25,
+            "instanceId": "street-a",
+            "instanceFrame": 25,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 25,
+            "camera": {
+              "position": {
+                "x": 0.9038578127367589,
+                "y": 1.8175765151281689,
+                "z": 7.883779420654941
+              },
+              "target": {
+                "x": 0,
+                "y": 0.8175765151281686,
+                "z": -1.8242348487183135
+              },
+              "fovDeg": 49.75,
+              "velocity": {
+                "x": 0.011944022540086863,
+                "y": 0.016583953170166144,
+                "z": -0.08641950614705607
+              },
+              "fovVelocityDegPerFrame": -0.25
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0.049999999999999996,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0.049999999999999996,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 26,
+          "ok": true,
+          "state": {
+            "editFrame": 26,
+            "instanceId": "street-a",
+            "instanceFrame": 26,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 26,
+            "camera": {
+              "position": {
+                "x": 0.9158018352768458,
+                "y": 1.834160468298335,
+                "z": 7.797359914507885
+              },
+              "target": {
+                "x": 0,
+                "y": 0.8341604682983351,
+                "z": -1.6583953170166486
+              },
+              "fovDeg": 49.5,
+              "velocity": {
+                "x": 0.010083312246063847,
+                "y": 0.016583953170166588,
+                "z": -0.08637091025420673
+              },
+              "fovVelocityDegPerFrame": -0.25
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0.08660254037844387,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0.08660254037844387,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 27,
+          "ok": true,
+          "state": {
+            "editFrame": 27,
+            "instanceId": "street-a",
+            "instanceFrame": 27,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 27,
+            "camera": {
+              "position": {
+                "x": 0.9258851475229096,
+                "y": 1.8507444214685016,
+                "z": 7.710989004253678
+              },
+              "target": {
+                "x": 0,
+                "y": 0.8507444214685016,
+                "z": -1.4925557853149838
+              },
+              "fovDeg": 49.25,
+              "velocity": {
+                "x": 0.008223140315605337,
+                "y": 0.016583953170166588,
+                "z": -0.08631197488633102
+              },
+              "fovVelocityDegPerFrame": -0.25
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0.1,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0.1,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 28,
+          "ok": true,
+          "state": {
+            "editFrame": 28,
+            "instanceId": "street-a",
+            "instanceFrame": 28,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 28,
+            "camera": {
+              "position": {
+                "x": 0.934108287838515,
+                "y": 1.8673283746386682,
+                "z": 7.624677029367347
+              },
+              "target": {
+                "x": 0,
+                "y": 0.8673283746386681,
+                "z": -1.326716253613319
+              },
+              "fovDeg": 49,
+              "velocity": {
+                "x": 0.006363557875508796,
+                "y": 0.016583953170166588,
+                "z": -0.08624270341898832
+              },
+              "fovVelocityDegPerFrame": -0.25
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0.08660254037844388,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0.08660254037844388,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 29,
+          "ok": true,
+          "state": {
+            "editFrame": 29,
+            "instanceId": "street-a",
+            "instanceFrame": 29,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 29,
+            "camera": {
+              "position": {
+                "x": 0.9404718457140238,
+                "y": 1.8839123278088348,
+                "z": 7.538434325948359
+              },
+              "target": {
+                "x": 0,
+                "y": 0.8839123278088346,
+                "z": -1.160876721911654
+              },
+              "fovDeg": 48.75,
+              "velocity": {
+                "x": 0.004504616034749609,
+                "y": 0.016583953170166366,
+                "z": -0.08616309946485234
+              },
+              "fovVelocityDegPerFrame": -0.25
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0.049999999999999996,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0.049999999999999996,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 30,
+          "ok": true,
+          "state": {
+            "editFrame": 30,
+            "instanceId": "street-a",
+            "instanceFrame": 30,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 30,
+            "camera": {
+              "position": {
+                "x": 0.9449764617487734,
+                "y": 1.9004962809790011,
+                "z": 7.452271226483506
+              },
+              "target": {
+                "x": 0,
+                "y": 0.9004962809790011,
+                "z": -0.9950371902099892
+              },
+              "fovDeg": 48.5,
+              "velocity": {
+                "x": 0.0026463658834264825,
+                "y": 0.016583953170166366,
+                "z": -0.08607316687361699
+              },
+              "fovVelocityDegPerFrame": -0.25
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 1.2246467991473533e-17,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 1.2246467991473533e-17,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 31,
+          "ok": true,
+          "state": {
+            "editFrame": 31,
+            "instanceId": "street-a",
+            "instanceFrame": 31,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 31,
+            "camera": {
+              "position": {
+                "x": 0.9476228276321998,
+                "y": 1.9170802341491675,
+                "z": 7.366198059609889
+              },
+              "target": {
+                "x": 0,
+                "y": 0.9170802341491676,
+                "z": -0.8291976585083243
+              },
+              "fovDeg": 48.25,
+              "velocity": {
+                "x": 0.00078885849170518,
+                "y": 0.016583953170166588,
+                "z": -0.08597290973192706
+              },
+              "fovVelocityDegPerFrame": -0.25
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": -0.05000000000000002,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": -0.05000000000000002,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 32,
+          "ok": true,
+          "state": {
+            "editFrame": 32,
+            "instanceId": "street-a",
+            "instanceFrame": 32,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 32,
+            "camera": {
+              "position": {
+                "x": 0.948411686123905,
+                "y": 1.933664187319334,
+                "z": 7.280225149877962
+              },
+              "target": {
+                "x": 0,
+                "y": 0.9336641873193341,
+                "z": -0.6633581268066595
+              },
+              "fovDeg": 48,
+              "velocity": {
+                "x": -0.001067855091238079,
+                "y": 0.016583953170166588,
+                "z": -0.0858623323632628
+              },
+              "fovVelocityDegPerFrame": -0.25
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": -0.08660254037844385,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": -0.08660254037844385,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 33,
+          "ok": true,
+          "state": {
+            "editFrame": 33,
+            "instanceId": "street-a",
+            "instanceFrame": 33,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 33,
+            "camera": {
+              "position": {
+                "x": 0.947343831032667,
+                "y": 1.9502481404895007,
+                "z": 7.194362817514699
+              },
+              "target": {
+                "x": 0,
+                "y": 0.9502481404895006,
+                "z": -0.4975185951049945
+              },
+              "fovDeg": 47.75,
+              "velocity": {
+                "x": -0.002923723838268555,
+                "y": 0.016583953170166144,
+                "z": -0.08574143932785727
+              },
+              "fovVelocityDegPerFrame": -0.25
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": -0.1,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": -0.1,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 34,
+          "ok": true,
+          "state": {
+            "editFrame": 34,
+            "instanceId": "street-a",
+            "instanceFrame": 34,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 34,
+            "camera": {
+              "position": {
+                "x": 0.9444201071943984,
+                "y": 1.9668320936596668,
+                "z": 7.108621378186842
+              },
+              "target": {
+                "x": 0,
+                "y": 0.966832093659667,
+                "z": -0.33167906340332975
+              },
+              "fovDeg": 47.5,
+              "velocity": {
+                "x": -0.004778696745350142,
+                "y": 0.016583953170166588,
+                "z": -0.08561023542257296
+              },
+              "fovVelocityDegPerFrame": -0.25
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": -0.08660254037844387,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": -0.08660254037844387,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 35,
+          "ok": true,
+          "state": {
+            "editFrame": 35,
+            "instanceId": "street-a",
+            "instanceFrame": 35,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 35,
+            "camera": {
+              "position": {
+                "x": 0.9396414104490483,
+                "y": 1.9834160468298334,
+                "z": 7.023011142764269
+              },
+              "target": {
+                "x": 0,
+                "y": 0.9834160468298335,
+                "z": -0.165839531701665
+              },
+              "fovDeg": 47.25,
+              "velocity": {
+                "x": -0.006632722832596305,
+                "y": 0.016583953170166588,
+                "z": -0.08546872568080754
+              },
+              "fovVelocityDegPerFrame": -0.25
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": -0.050000000000000044,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": -0.050000000000000044,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 36,
+          "ok": true,
+          "state": {
+            "editFrame": 36,
+            "instanceId": "street-a",
+            "instanceFrame": 36,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 36,
+            "camera": {
+              "position": {
+                "x": 0.933008687616452,
+                "y": 2,
+                "z": 6.937542417083462
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 47,
+              "velocity": {
+                "x": -0.008305667650451598,
+                "y": 0,
+                "z": -0.2498540372515734
+              },
+              "fovVelocityDegPerFrame": -0.4973703981968427
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 37,
+          "ok": true,
+          "state": {
+            "editFrame": 37,
+            "instanceId": "street-a",
+            "instanceFrame": 37,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 37,
+            "camera": {
+              "position": {
+                "x": 0.9247030199660004,
+                "y": 2,
+                "z": 6.687688379831888
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 46.50262960180316,
+              "velocity": {
+                "x": -0.0038079072323656815,
+                "y": 0,
+                "z": -0.20506247210807338
+              },
+              "fovVelocityDegPerFrame": -0.4072126220886574
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0.049999999999999996,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0.049999999999999996,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 38,
+          "ok": true,
+          "state": {
+            "editFrame": 38,
+            "instanceId": "street-a",
+            "instanceFrame": 38,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 38,
+            "camera": {
+              "position": {
+                "x": 0.9208951127336347,
+                "y": 2,
+                "z": 6.482625907723815
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 46.0954169797145,
+              "velocity": {
+                "x": 0.0005374419084692716,
+                "y": 0,
+                "z": -0.16479292180965466
+              },
+              "fovVelocityDegPerFrame": -0.3260706235912849
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0.08660254037844387,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0.08660254037844387,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 39,
+          "ok": true,
+          "state": {
+            "editFrame": 39,
+            "instanceId": "street-a",
+            "instanceFrame": 39,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 39,
+            "camera": {
+              "position": {
+                "x": 0.9214325546421039,
+                "y": 2,
+                "z": 6.31783298591416
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 45.769346356123215,
+              "velocity": {
+                "x": 0.004663651607348163,
+                "y": 0,
+                "z": -0.12903929645591639
+              },
+              "fovVelocityDegPerFrame": -0.2539444027047324
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0.1,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0.1,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 40,
+          "ok": true,
+          "state": {
+            "editFrame": 40,
+            "instanceId": "street-a",
+            "instanceFrame": 40,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 40,
+            "camera": {
+              "position": {
+                "x": 0.9260962062494521,
+                "y": 2,
+                "z": 6.188793689458244
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 45.51540195341848,
+              "velocity": {
+                "x": 0.008504062831090398,
+                "y": 0,
+                "z": -0.09779488822276505
+              },
+              "fovVelocityDegPerFrame": -0.19083395942899983
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0.08660254037844388,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0.08660254037844388,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 41,
+          "ok": true,
+          "state": {
+            "editFrame": 41,
+            "instanceId": "street-a",
+            "instanceFrame": 41,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 41,
+            "camera": {
+              "position": {
+                "x": 0.9346002690805425,
+                "y": 2,
+                "z": 6.090998801235479
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 45.32456799398948,
+              "velocity": {
+                "x": 0.011992090260708577,
+                "y": 0,
+                "z": -0.07105237192680836
+              },
+              "fovVelocityDegPerFrame": -0.13673929376408722
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 0.049999999999999996,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 0.049999999999999996,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 42,
+          "ok": true,
+          "state": {
+            "editFrame": 42,
+            "instanceId": "street-a",
+            "instanceFrame": 42,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 42,
+            "camera": {
+              "position": {
+                "x": 0.9465923593412511,
+                "y": 2,
+                "z": 6.01994642930867
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 45.187828700225396,
+              "velocity": {
+                "x": 0.015061226870184519,
+                "y": 0,
+                "z": -0.04880380561958386
+              },
+              "fovVelocityDegPerFrame": -0.09166040570999456
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": 1.2246467991473533e-17,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": 1.2246467991473533e-17,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 43,
+          "ok": true,
+          "state": {
+            "editFrame": 43,
+            "instanceId": "street-a",
+            "instanceFrame": 43,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 43,
+            "camera": {
+              "position": {
+                "x": 0.9616535862114356,
+                "y": 2,
+                "z": 5.9711426236890865
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 45.0961682945154,
+              "velocity": {
+                "x": 0.017645048501185978,
+                "y": 0,
+                "z": -0.031040631211422642
+              },
+              "fovVelocityDegPerFrame": -0.05559729526671475
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": -0.05000000000000002,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": -0.05000000000000002,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 44,
+          "ok": true,
+          "state": {
+            "editFrame": 44,
+            "instanceId": "street-a",
+            "instanceFrame": 44,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 44,
+            "camera": {
+              "position": {
+                "x": 0.9792986347126216,
+                "y": 2,
+                "z": 5.940101992477664
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 45.040570999248686,
+              "velocity": {
+                "x": 0.0196772184335402,
+                "y": 0,
+                "z": -0.01775367512508108
+              },
+              "fovVelocityDegPerFrame": -0.028549962434262
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": -0.08660254037844385,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": -0.08660254037844385,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 45,
+          "ok": true,
+          "state": {
+            "editFrame": 45,
+            "instanceId": "street-a",
+            "instanceFrame": 45,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 45,
+            "camera": {
+              "position": {
+                "x": 0.9989758531461618,
+                "y": 2,
+                "z": 5.922348317352583
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 45.012021036814424,
+              "velocity": {
+                "x": 0.021091491951286234,
+                "y": 0,
+                "z": -0.00893314897901476
+              },
+              "fovVelocityDegPerFrame": -0.010518407212622094
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": -0.1,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": -0.1,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 46,
+          "ok": true,
+          "state": {
+            "editFrame": 46,
+            "instanceId": "street-a",
+            "instanceFrame": 46,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 46,
+            "camera": {
+              "position": {
+                "x": 1.020067345097448,
+                "y": 2,
+                "z": 5.913415168373568
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 45.0015026296018,
+              "velocity": {
+                "x": 0.021821720904133812,
+                "y": 0,
+                "z": -0.004568650300321053
+              },
+              "fovVelocityDegPerFrame": -0.0015026296018021412
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": -0.08660254037844387,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": -0.08660254037844387,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 47,
+          "ok": true,
+          "state": {
+            "editFrame": 47,
+            "instanceId": "street-a",
+            "instanceFrame": 47,
+            "cameraClipId": "wide",
+            "cameraClipFrame": 47,
+            "camera": {
+              "position": {
+                "x": 1.0418890660015818,
+                "y": 2,
+                "z": 5.908846518073247
+              },
+              "target": {
+                "x": 0,
+                "y": 1,
+                "z": 0
+              },
+              "fovDeg": 45,
+              "velocity": {
+                "x": 0,
+                "y": 0,
+                "z": 0
+              },
+              "fovVelocityDegPerFrame": 0
+            },
+            "nodes": [
+              {
+                "nodeId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "stage",
+                "localPosition": {
+                  "x": 1,
+                  "y": 2,
+                  "z": 3
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 2,
+                  "y": 2,
+                  "z": 2
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "bg-plane",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": -5
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              },
+              {
+                "nodeId": "hero-plane",
+                "localPosition": {
+                  "x": 3,
+                  "y": -0.050000000000000044,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 90,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 1
+              },
+              {
+                "nodeId": "prop-plane",
+                "localPosition": {
+                  "x": 0.5,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "renderOrder": 0
+              }
+            ],
+            "performanceOverrides": [
+              {
+                "nodeId": "hero-plane",
+                "property": "localPosition",
+                "value": {
+                  "x": 0,
+                  "y": -0.050000000000000044,
+                  "z": 0
+                }
+              }
+            ]
+          }
+        },
+        {
+          "editFrame": 48,
+          "ok": false,
+          "error": "editFrame 48 out of range [0, 48)"
+        }
+      ]
+    },
+    "smooth-single-dolly": {
+      "schemaAccepted": true,
+      "schemaIssueCodes": [],
+      "accepted": true,
+      "editJoinCodes": [],
+      "integrityCodes": [],
+      "finalizeMessage": null
+    },
+    "resting-hold": {
+      "schemaAccepted": true,
+      "schemaIssueCodes": [],
+      "accepted": true,
+      "editJoinCodes": [],
+      "integrityCodes": [],
+      "finalizeMessage": null
+    },
+    "velocity-jump": {
+      "schemaAccepted": true,
+      "schemaIssueCodes": [],
+      "accepted": false,
+      "editJoinCodes": [
+        "CONTINUOUS_VELOCITY_JUMP"
+      ],
+      "integrityCodes": [],
+      "finalizeMessage": "Edit joins broken: Camera velocity jump at join s1|s2: 0.2174 scene units/frame"
+    },
+    "fov-velocity-jump": {
+      "schemaAccepted": true,
+      "schemaIssueCodes": [],
+      "accepted": false,
+      "editJoinCodes": [
+        "CONTINUOUS_FOV_VELOCITY_JUMP"
+      ],
+      "integrityCodes": [],
+      "finalizeMessage": "Edit joins broken: FOV velocity jump at join s1|s2: 0.8696 deg/frame"
+    },
+    "reset-position-target-jump": {
+      "schemaAccepted": true,
+      "schemaIssueCodes": [],
+      "accepted": false,
+      "editJoinCodes": [
+        "CAMERA_SEGMENT_RESET",
+        "CONTINUOUS_CAMERA_JUMP",
+        "CONTINUOUS_TARGET_JUMP"
+      ],
+      "integrityCodes": [],
+      "finalizeMessage": "Edit joins broken: Clip wide segment 1 uses from:initial mid-clip (resets pose); Camera position jump at join s1|s2: 5.0000 scene units; Camera target jump at join s1|s2: 5.0000 scene units"
+    },
+    "reset-fov-jump": {
+      "schemaAccepted": true,
+      "schemaIssueCodes": [],
+      "accepted": false,
+      "editJoinCodes": [
+        "CAMERA_SEGMENT_RESET",
+        "CONTINUOUS_FOV_JUMP"
+      ],
+      "integrityCodes": [],
+      "finalizeMessage": "Edit joins broken: Clip wide segment 1 uses from:initial mid-clip (resets pose); FOV jump at join s1|s2: 20.0000 deg"
+    },
+    "stacked-fov-out-of-range": {
+      "schemaAccepted": false,
+      "schemaIssueCodes": [
+        "FOV_OUT_OF_RANGE"
+      ],
+      "accepted": false,
+      "editJoinCodes": [],
+      "integrityCodes": [],
+      "finalizeMessage": null
+    },
+    "cut-after-jumping-clip": {
+      "schemaAccepted": true,
+      "schemaIssueCodes": [],
+      "accepted": false,
+      "editJoinCodes": [
+        "CAMERA_SEGMENT_RESET"
+      ],
+      "integrityCodes": [],
+      "finalizeMessage": "Edit joins broken: Clip wide segment 1 uses from:initial mid-clip (resets pose)"
+    }
+  }
+}

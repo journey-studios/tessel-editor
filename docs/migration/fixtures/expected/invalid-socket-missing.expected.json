@@ -1,0 +1,43 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-socket-missing",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-socket-missing.bundle.json",
+  "bundleSha256": "8fc0d89da61840df62d3d95025167d2fe26848d2712e15025585b0755e3a4bfd",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "sceneDefinitions.scene-rig",
+          "zodCode": "custom",
+          "sourceCode": "MISSING_SOCKET",
+          "message": "MISSING_SOCKET: Node pen attachToSocket ghost-socket on arm not found"
+        },
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "MISSING_SOCKET",
+          "message": "MISSING_SOCKET: Node pen attachToSocket not found on scene-rig"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-rig",
+        "issues": [
+          {
+            "code": "MISSING_SOCKET",
+            "message": "Node pen attachToSocket ghost-socket on arm not found"
+          }
+        ]
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

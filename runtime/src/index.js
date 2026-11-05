@@ -322,6 +322,13 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
       context_generation: compositor?.contextGeneration ?? 0,
       counters: counters.snapshot(),
     }),
+    // GL objects three.js believes alive on the current context: what a lifecycle test compares to
+    // prove a lost context, a replaced project or a cancelled frame left nothing behind.
+    glMemory: () => {
+      const info = compositor?.renderer.info;
+      if (!info) return null;
+      return { textures: info.memory.textures, geometries: info.memory.geometries, programs: info.programs?.length ?? 0 };
+    },
     idle: () => renderQueue,
     // The store itself and the bounds, so a test can hold a frame at an await or shrink a budget.
     assets,

@@ -1,0 +1,48 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-join-continuous-across-instances",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-join-continuous-across-instances.bundle.json",
+  "bundleSha256": "c1ff8f58f7324f7559ce2d0b5f8662b62e011c952f5b050f1d0b41cf42f369ce",
+  "validation": {
+    "schema": {
+      "success": true,
+      "issues": []
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      },
+      {
+        "definitionId": "scene-b",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": [],
+    "editJoins": [
+      {
+        "code": "CONTINUOUS_INSTANCE_MISMATCH",
+        "message": "Continuous join requires same instance between shot-a and shot-b",
+        "shotId": "shot-b"
+      },
+      {
+        "code": "INSTANCE_FRAME_DISCONTINUITY",
+        "message": "Instance mapping breaks at shot-b: expected start 50, got 0",
+        "shotId": "shot-b"
+      },
+      {
+        "code": "CONTINUOUS_CROSS_CLIP_UNSUPPORTED",
+        "message": "Pilot MVP rejects continuous joins across different camera clips (shot-a|shot-b)",
+        "shotId": "shot-b"
+      }
+    ],
+    "finalize": {
+      "ok": false,
+      "message": "Edit joins broken: Continuous join requires same instance between shot-a and shot-b; Instance mapping breaks at shot-b: expected start 50, got 0; Pilot MVP rejects continuous joins across different camera clips (shot-a|shot-b)"
+    },
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

@@ -12,11 +12,12 @@ Salvar, estado "salvo/não salvo" na barra; `scripts/live-flow-proof.py`).
 inalterado produz os mesmos bytes. Limite de leitura: 256 MiB (`document_too_large`).
 
 ```text
-format "tessel-project", schema_version 1
+format "tessel-project", schema_version 1 (sem cenas) ou 2 (com bloco scenes)
 project      { id, name, revision, requires { spark "2.4.0", three "0.187.0" } }
 library      { folders[], assets[] }       identidade (id) e conteúdo (hash) separados
 sequences[]  { id, name, rate {num,den}, length, width, height, tracks[], clips[] }
 active_sequence
+scenes       { version, items[], ... }     opcional, exige schema_version 2
 export       { preset, user_presets[] }    presets do usuário vivem no documento
 presentation { playhead, zoom, snap, ... } opcional; um loader pode ignorar
 ```
@@ -50,5 +51,12 @@ a cada 20 s quando há alterações (`workflow_tick`) e oferece recuperar. IDs e
 
 ## Limites
 
-`presentation` é preservada mas não afeta render. Só existe schema v1 (sem migrações). O desktop não impede
+`presentation` é preservada mas não afeta render. Projetos sem dados de cena usam schema 1; com bloco `scenes`, schema 2. Leitores legados recusam schema 2 para evitar perda silenciosa das cenas. O desktop não impede
 fechar a janela com alterações não salvas: o autosave é a rede de segurança, não um aviso.
+
+## Projetos com cenas dirigidas
+
+F036 adiciona o bloco `scenes` e escreve schema 2 somente quando esse bloco é necessário.
+Projetos comuns permanecem em schema 1. Leitores antigos recusam schema 2, protegendo as
+cenas contra perda silenciosa. Save/autosave e pacote conferem os bytes serializados reais
+contra o limite do loader (256 MiB), antes de escrever ou substituir o arquivo.

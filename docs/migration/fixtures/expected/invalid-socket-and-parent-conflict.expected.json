@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-socket-and-parent-conflict",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-socket-and-parent-conflict.bundle.json",
+  "bundleSha256": "855325b520445d44225ceb9c65ab73fd409d588da28c6eb007199e88c3c31e5a",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "sceneDefinitions.scene-rig",
+          "zodCode": "custom",
+          "sourceCode": "SOCKET_AND_PARENT_CONFLICT",
+          "message": "SOCKET_AND_PARENT_CONFLICT: Node pen cannot set parentId and attachToSocket together in pilot"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-rig",
+        "issues": [
+          {
+            "code": "SOCKET_AND_PARENT_CONFLICT",
+            "message": "Node pen cannot set parentId and attachToSocket together in pilot"
+          }
+        ]
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

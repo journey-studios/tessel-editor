@@ -1,6 +1,10 @@
 # Rodada paralela da base de migração
 
-Status: plano autorizado; execução inicia após o primeiro commit do repositório.
+Status: execução em andamento após o primeiro commit `59d618a`. Frente B entregue e
+verificada pelo coordenador: 55 casos contra a origem e 21 testes do runner; consumidor Rust
+integrado parcialmente na frente A (55 vereditos, grafo e matrizes estáticas). A entregue e
+revisada, com validação temporal/adapters pendentes. C entregue: suíte runtime 61/61
+e prova de janela real 147/147, repetidas pelo coordenador contra release existente.
 Referência: [building blocks e fases](phased-roadmap.md).
 
 ## Contrato de integração
@@ -24,13 +28,19 @@ Referência: [building blocks e fases](phased-roadmap.md).
 
 A matriz `docs/features/README.md` e índices gerais serão consolidados pelo coordenador
 na integração; cada frente fornece a linha exata em seu relatório, com status honesto.
-Cada frente usa uma branch/worktree própria, faz commit local e informa SHA, arquivos,
-comandos executados, limitações e dependências. Sem push, PR ou merge pelos agentes.
+O T3 desta conversa está vinculado ao tesselapp e recusou `target.projectId` local
+para worktrees de outro projeto (`invalid_request`). Nesta rodada, os agentes trabalham
+no checkout existente do tessel-editor, com ownership exclusivo dos arquivos acima.
+Somente o coordenador faz staging/commits; agentes não alteram branches, index ou remotes.
+Cada frente informa arquivos, comandos, resultados, limitações e dependências.
+Sem push, PR ou merge pelos agentes.
 
 ## Recursos e coordenação
 
 - A e B fazem validação sem GPU; C tem exclusividade de benchmark GPU nesta rodada.
-- Usar `./scripts/cargo`, targets separados por worktree e cache mbx compartilhado.
+- Usar `./scripts/cargo` e cache mbx compartilhado; serializar Cargo no checkout compartilhado.
+  A é dona da compilação Rust enquanto C começa pelos testes JS; C deixa checks Rust
+  para o coordenador integrar, evitando contenção com A.
   Em builds usar `MBX_GC_MAX_TOTAL_SIZE=64GiB`; não executar clean/gc.
 - Manter pelo menos 6 GiB livres, limitar artefatos temporários a 2 GiB por frente e
   limpar apenas os próprios temporários. Não reinstalar toolchain por trocar HOME.
@@ -46,3 +56,64 @@ comandos executados, limitações e dependências. Sem push, PR ou merge pelos a
 3. B gera expectativas a partir do código da origem, com commit e hashes verificáveis.
 4. C demonstra recuperação com frames reais; limitações de hardware ficam pendentes.
 5. Cada relatório distingue lib, CLI sem janela, socket e UI; não declarar a migração completa.
+
+## Rodada 2 — após integrar A/B (`72fa715`)
+
+A base de documento/grafo está integrada. Seguem em paralelo, sem mudar APIs existentes:
+
+| Frente | Responsabilidade | Ownership |
+|---|---|---|
+| D — BB03 | Avaliação pura de tempo de shot/instância/clipe de câmera; recipes, keys, easing, camadas; gates de junção temporal; comparação com oráculo | `directed_scene/temporal/`, `directed_scene/mod.rs`, `joins.rs`; ajustes aditivos em `model.rs`/`parse.rs` somente se necessários; testes e docs próprios |
+| E — BB04 | Catálogo mínimo de propriedades de nó/câmera e edição por IDs em lote/dry-run com rollback; usa importador existente, sem regras exclusivas da UI | `crates/core/src/scene_edit/`, export em `lib.rs`, testes e docs próprios |
+
+D não altera `lib.rs`; E não altera módulos internos de `directed_scene`. Ambos consomem
+a API pública existente sem a quebrar. D executa os checks Cargo; E implementa e informa
+checks Rust para o coordenador executar na integração, evitando concorrência pesada.
+C continua com GPU/runtime exclusivamente. Matriz/índices e commits ficam com coordenador.
+
+Esta rodada ainda é biblioteca de base: adapters, ligação ao documento/estado do editor e
+render dirigido serão etapas seguintes, com status pendente explícito. E não certifica
+validação temporal antes de consumir o gate D; o coordenador integra esse gate após ambas.
+
+### Status da rodada 2
+
+D entregue e revisada: 19 testes públicos temporais, comparação de câmera/gates com o
+oráculo, teste dos limites de tolerância e gerador com proveniência validada. E entregue
+e revisada: gate estrutural/temporal integrado aos lotes e 29 testes públicos via Cargo.
+UI/CLI e animação de nós continuam pendentes.
+
+## Rodada 3 — avaliação completa dos nós e acesso programático
+
+Base integrada `52f3175`: A–E, workspace verde (453 testes, 2 ignorados), release e
+lifecycle 147/147. Sem adapters de cena dirigida ainda.
+
+| Frente | Entrega | Ownership |
+|---|---|---|
+| F — BB03 nós | Validar/evaluar canais de performance, estado de nós e matrizes por frame, com oráculo; completar `evaluate_frame` para esse subconjunto | Internos de `directed_scene/` e novos testes/fixtures; docs próprias |
+| G — Documento/histórico/CLI | Anexar cenas ao projeto canônico de forma aditiva; importar/consultar/editar/salvar/reabrir/undo via handlers compartilhados e JSONL headless | `document`, `state`, `ops`, `headless` e módulo adapter novo; export `lib.rs`, testes/fixtures; docs próprias |
+
+F não altera `lib.rs`, documento, state, ops ou headless; G não altera internos de
+`directed_scene` ou `scene_edit`. APIs públicas existentes permanecem compatíveis.
+G usa `scene_edit::apply` com gates embutidos e não duplica regras de câmera/animação.
+F tem o slot de compilação Rust; G deixa testes preparados para o coordenador, sem
+compilar cópia paralela com rustc. Nenhuma frente usa GPU.
+
+F expõe estado avaliado serializável/consultável, mas não altera runtime. G mantém
+carregamento de projetos antigos e undo/redo existentes, sem segundo histórico.
+Nenhuma delas habilita render de bundle legado, copia mídia privada ou implementa
+famílias visuais M2–M8. Preservar recursos no documento não significa transportá-los
+no pacote: dependências transitivas e ligação ao renderer ficam para BB05/BB06.
+
+IDs reservados: F035 (avaliação dos nós), F036 (cenas no projeto e acesso programático).
+Matriz/índices, commits e revisão do conjunto continuam com o coordenador.
+
+### Status da rodada 3
+
+F entregue e revalidada pelo coordenador: 29 testes públicos de animação, gerador verificável
+e round-trip JSON de binary64 sem perda. G segue com documento/histórico/CLI em andamento.
+Nenhuma dessas provas equivale ainda a render dirigido na UI.
+
+G integrada pelo coordenador, com schema 2 protetor de cenas, limites de serialização
+e edição, guardas de pacote/intercâmbio e fluxo headless/histórico. Workspace: 522
+testes passaram, 2 ignorados. O destino ativo agora é journey-studios/tessel-editor,
+público/MIT; o histórico privado anterior foi arquivado. Render dirigido e UI seguem pendentes.

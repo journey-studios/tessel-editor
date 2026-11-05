@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-camera-unknown-easing",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-camera-unknown-easing.bundle.json",
+  "bundleSha256": "3b9e9e2fe52a0dce58a7ae95c47400f5f14a29f1fac73261e18338e114b70e16",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "UNKNOWN_CAMERA_EASING",
+          "message": "UNKNOWN_CAMERA_EASING: Clip cam-main segment 0 easing bounce is not supported"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

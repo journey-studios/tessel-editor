@@ -108,7 +108,8 @@ Ela se aplica a todo trabalho de feature neste repositório, inclusive quando n�
 ## Migração por etapas — rodada paralela autorizada
 
 O usuário autorizou a implementação da base descrita em
-`docs/migration/parallel-implementation-plan.md`, com agentes em worktrees isoladas.
+`docs/migration/parallel-implementation-plan.md`, com agentes com ownership exclusivo de arquivos (limitação local do T3 registrada no plano).
 Esta rodada cobre documento/grafo mínimo, corpus de equivalência e robustez da viewport.
 Não autoriza portar famílias visuais inteiras nem modificar a origem.
-Commits locais das entregas estão autorizados; integração é responsabilidade do coordenador.
+Commits locais das entregas estão autorizados; nesta rodada somente o coordenador
+faz staging/commits e integração.

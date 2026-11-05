@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-audio-hash-required",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-audio-hash-required.bundle.json",
+  "bundleSha256": "646e35959dd6aa728b094b4ca34b8f49055c37fb15ab402c1947db6193073b5a",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "AUDIO_HASH_REQUIRED",
+          "message": "AUDIO_HASH_REQUIRED: audio.sourcePcmHashSha256 is required when audio.mixRelativePath is set"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

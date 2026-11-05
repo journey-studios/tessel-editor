@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-join-instance-frame-discontinuity",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-join-instance-frame-discontinuity.bundle.json",
+  "bundleSha256": "f2d6c604b562952f895ed32efae4040fb4e622aaf4ce72b9b4f65ed97a289052",
+  "validation": {
+    "schema": {
+      "success": true,
+      "issues": []
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": [],
+    "editJoins": [
+      {
+        "code": "INSTANCE_FRAME_DISCONTINUITY",
+        "message": "Instance mapping breaks at shot-2: expected start 48, got 40",
+        "shotId": "shot-2"
+      }
+    ],
+    "finalize": {
+      "ok": false,
+      "message": "Edit joins broken: Instance mapping breaks at shot-2: expected start 48, got 40"
+    },
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

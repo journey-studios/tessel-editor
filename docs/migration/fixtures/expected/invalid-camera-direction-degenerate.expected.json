@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-camera-direction-degenerate",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-camera-direction-degenerate.bundle.json",
+  "bundleSha256": "f590f44db4fabf541d7c86fc03400b0cb2d9d98e6080e6f6fc9eaad46a2f7f3b",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "CAMERA_DIRECTION_DEGENERATE",
+          "message": "CAMERA_DIRECTION_DEGENERATE: Clip cam-main target equals position"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

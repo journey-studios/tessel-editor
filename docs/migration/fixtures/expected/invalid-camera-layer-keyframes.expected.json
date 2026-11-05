@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-camera-layer-keyframes",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-camera-layer-keyframes.bundle.json",
+  "bundleSha256": "fe32dd4ad53f76fc64a683c024a7eea4ef581125243e0ca998222327f988c126",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "CAMERA_LAYER_KEYFRAMES",
+          "message": "CAMERA_LAYER_KEYFRAMES: Clip cam-rich track 2 segment 1 holds keyframes; a layer adds to the main track and has no poses of its own"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

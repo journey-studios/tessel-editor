@@ -1,0 +1,33 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-join-segment-reset",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-join-segment-reset.bundle.json",
+  "bundleSha256": "8e1dffedb1698a787e7f4c8b9f3276a7b129f27fc2ad9f3575af825c14396d68",
+  "validation": {
+    "schema": {
+      "success": true,
+      "issues": []
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": [],
+    "editJoins": [
+      {
+        "code": "CAMERA_SEGMENT_RESET",
+        "message": "Clip cam-main segment 1 uses from:initial mid-clip (resets pose)"
+      }
+    ],
+    "finalize": {
+      "ok": false,
+      "message": "Edit joins broken: Clip cam-main segment 1 uses from:initial mid-clip (resets pose)"
+    },
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

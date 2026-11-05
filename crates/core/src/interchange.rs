@@ -129,6 +129,9 @@ pub fn plan_import(
             .collect::<Result<_, _>>()?
     };
     let mut plan = ImportPlan::default();
+    if !source.scenes.is_empty() {
+        plan.warnings.push(format!("The source project has {} directed scene(s); they are not imported (scenes belong to the project, not to a sequence)", source.scenes.len()));
+    }
     let (mut seq_taken, mut asset_taken, mut clip_taken) =
         (HashSet::new(), HashSet::new(), HashSet::new());
     for timeline in &chosen {

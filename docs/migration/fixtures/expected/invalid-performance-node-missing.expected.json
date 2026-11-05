@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-performance-node-missing",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-performance-node-missing.bundle.json",
+  "bundleSha256": "369652609afabd896849da24f397f390e5ed86b81bd48aa27637c4ee172270ab",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "PERFORMANCE_NODE_MISSING",
+          "message": "PERFORMANCE_NODE_MISSING: Channel arm-swing targets missing node ghost-node on instance inst-a"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-rig",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

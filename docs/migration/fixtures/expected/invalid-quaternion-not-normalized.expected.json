@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-quaternion-not-normalized",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-quaternion-not-normalized.bundle.json",
+  "bundleSha256": "bdb64fbace2c3a383f60e5f8739f2f8aa95a3cb84018fc6c9e109ca41d4b4cc0",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "QUATERNION_NOT_NORMALIZED",
+          "message": "QUATERNION_NOT_NORMALIZED: Node figure localRotation length 2.0000 (expected ~1)"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

@@ -1,0 +1,38 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-join-cut-without-reason",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-join-cut-without-reason.bundle.json",
+  "bundleSha256": "cfcee4801d4743ea53649833cf8f74171fd6a47941767d80af0042163cf1fd5c",
+  "validation": {
+    "schema": {
+      "success": true,
+      "issues": []
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      },
+      {
+        "definitionId": "scene-b",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": [],
+    "editJoins": [
+      {
+        "code": "CUT_WITHOUT_REASON",
+        "message": "Cut into shot-b requires reason",
+        "shotId": "shot-b"
+      }
+    ],
+    "finalize": {
+      "ok": false,
+      "message": "Edit joins broken: Cut into shot-b requires reason"
+    },
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

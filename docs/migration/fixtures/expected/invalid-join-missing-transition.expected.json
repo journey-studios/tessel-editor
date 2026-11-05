@@ -1,0 +1,34 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-join-missing-transition",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-join-missing-transition.bundle.json",
+  "bundleSha256": "00f2750b51dff59ea59d3a1e71d3c918041a78367c915b77fef84a77f082c848",
+  "validation": {
+    "schema": {
+      "success": true,
+      "issues": []
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": [],
+    "editJoins": [
+      {
+        "code": "MISSING_TRANSITION",
+        "message": "Shot shot-2 missing transitionInto",
+        "shotId": "shot-2"
+      }
+    ],
+    "finalize": {
+      "ok": false,
+      "message": "Edit joins broken: Shot shot-2 missing transitionInto"
+    },
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

@@ -1,0 +1,212 @@
+{
+  "schemaVersion": "1.0",
+  "bundleId": "oracle-minimal",
+  "revisionId": "rev-1",
+  "fps": {
+    "numerator": 24,
+    "denominator": 1
+  },
+  "editDurationFrames": 96,
+  "renderProfile": {
+    "width": 320,
+    "height": 180,
+    "fps": {
+      "numerator": 24,
+      "denominator": 1
+    },
+    "colorSpace": "srgb-display",
+    "alphaMode": "straight",
+    "premultiplyOnUpload": false,
+    "videoCodec": "h264-yuv420p",
+    "threeRevision": "0.187.0",
+    "browserChannel": "synthetic-oracle"
+  },
+  "assets": [
+    {
+      "assetId": "backdrop",
+      "revisionId": "rev-1",
+      "contentHash": "synthetic-sha256-backdrop",
+      "relativePath": "assets/backdrop.png",
+      "widthPx": 64,
+      "heightPx": 36,
+      "alphaMode": "opaque",
+      "colorSpace": "srgb"
+    },
+    {
+      "assetId": "figure",
+      "revisionId": "rev-1",
+      "contentHash": "synthetic-sha256-figure",
+      "relativePath": "assets/figure.png",
+      "widthPx": 32,
+      "heightPx": 32,
+      "alphaMode": "straight",
+      "colorSpace": "srgb"
+    }
+  ],
+  "performanceTracks": [],
+  "compositionPasses": [],
+  "sceneDefinitions": [
+    {
+      "id": "scene-a",
+      "schemaVersion": "1.0",
+      "rootNodeId": "root",
+      "nodes": [
+        {
+          "id": "root",
+          "parentId": null,
+          "type": "group",
+          "localPosition": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "backdrop",
+          "parentId": "root",
+          "type": "imagePlane",
+          "assetRef": {
+            "assetId": "backdrop",
+            "revisionId": "rev-1",
+            "contentHash": "synthetic-sha256-backdrop",
+            "relativePath": "assets/backdrop.png"
+          },
+          "widthSceneUnits": 8,
+          "heightSceneUnits": 4.5,
+          "renderOrder": 0,
+          "localPosition": {
+            "x": 0,
+            "y": 0,
+            "z": -2
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "figure",
+          "parentId": "root",
+          "type": "imagePlane",
+          "assetRef": {
+            "assetId": "figure",
+            "revisionId": "rev-1",
+            "contentHash": "synthetic-sha256-figure",
+            "relativePath": "assets/figure.png"
+          },
+          "widthSceneUnits": 2,
+          "heightSceneUnits": 2,
+          "renderOrder": 1,
+          "localPosition": {
+            "x": 0.5,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    }
+  ],
+  "sceneInstances": [
+    {
+      "id": "inst-a",
+      "sceneDefinitionId": "scene-a",
+      "durationFrames": 96,
+      "performanceTrackIds": []
+    }
+  ],
+  "cameraClips": [
+    {
+      "id": "cam-main",
+      "initialPosition": {
+        "x": 0,
+        "y": 1.5,
+        "z": 8
+      },
+      "initialTarget": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "initialFovDeg": 45,
+      "segments": [
+        {
+          "recipe": "dollyIn",
+          "durationFrames": 32,
+          "from": "initial",
+          "distanceSceneUnits": 1.5,
+          "easing": "easeInOutCubic"
+        },
+        {
+          "recipe": "hold",
+          "durationFrames": 16,
+          "from": "previousEnd"
+        },
+        {
+          "recipe": "truckRight",
+          "durationFrames": 48,
+          "from": "previousEnd",
+          "distanceSceneUnits": 1,
+          "easing": "easeOutCubic"
+        }
+      ]
+    }
+  ],
+  "shots": [
+    {
+      "id": "shot-1",
+      "sceneInstanceId": "inst-a",
+      "editRange": {
+        "startFrame": 0,
+        "endFrameExclusive": 48
+      },
+      "instanceStartFrame": 0,
+      "cameraClipId": "cam-main",
+      "cameraInFrame": 0,
+      "intent": "synthetic shot shot-1"
+    },
+    {
+      "id": "shot-2",
+      "sceneInstanceId": "inst-a",
+      "editRange": {
+        "startFrame": 48,
+        "endFrameExclusive": 96
+      },
+      "instanceStartFrame": 48,
+      "cameraClipId": "cam-main",
+      "cameraInFrame": 48,
+      "intent": "synthetic shot shot-2",
+      "transitionInto": {
+        "type": "continuous"
+      }
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-shot-unknown-instance",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-shot-unknown-instance.bundle.json",
+  "bundleSha256": "e8f3273d13ccd0f9f3633ad42cc67183c3977eb8fb087b4ee3e538aba37d7c59",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "SHOT_UNKNOWN_INSTANCE",
+          "message": "SHOT_UNKNOWN_INSTANCE: Shot shot-1 references unknown sceneInstanceId no-such-instance"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

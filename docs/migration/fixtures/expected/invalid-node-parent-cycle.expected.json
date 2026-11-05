@@ -1,0 +1,47 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-node-parent-cycle",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-node-parent-cycle.bundle.json",
+  "bundleSha256": "974f72528b654ab98985e0848d9a4a3140564d6a694e99d5637ea80f1daab0fd",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "sceneDefinitions.scene-a",
+          "zodCode": "custom",
+          "sourceCode": "PARENT_CYCLE",
+          "message": "PARENT_CYCLE: Cycle detected involving node backdrop"
+        },
+        {
+          "path": "sceneDefinitions.scene-a",
+          "zodCode": "custom",
+          "sourceCode": "EFFECTIVE_GRAPH_CYCLE",
+          "message": "EFFECTIVE_GRAPH_CYCLE: Effective parenting cycle involving node backdrop"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": [
+          {
+            "code": "PARENT_CYCLE",
+            "message": "Cycle detected involving node backdrop"
+          },
+          {
+            "code": "EFFECTIVE_GRAPH_CYCLE",
+            "message": "Effective parenting cycle involving node backdrop"
+          }
+        ]
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

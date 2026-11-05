@@ -1,0 +1,32 @@
+{
+  "formatVersion": 1,
+  "case": "invalid-duplicate-shot-id",
+  "kind": "invalid",
+  "bundle": "bundles/invalid-duplicate-shot-id.bundle.json",
+  "bundleSha256": "716bf1088fef1d6bcfcebefa6c9d85d045a6ace102d13259e76834578968f425",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "DUPLICATE_ID",
+          "message": "DUPLICATE_ID: Duplicate shots id shot-1"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null
+}

@@ -1,0 +1,360 @@
+{
+  "schemaVersion": "1.0",
+  "bundleId": "layered-street",
+  "revisionId": "rev-1",
+  "fps": {
+    "numerator": 24000,
+    "denominator": 1001
+  },
+  "editDurationFrames": 48,
+  "renderProfile": {
+    "width": 1280,
+    "height": 720,
+    "fps": {
+      "numerator": 24000,
+      "denominator": 1001
+    },
+    "colorSpace": "srgb-display",
+    "alphaMode": "straight",
+    "premultiplyOnUpload": false,
+    "videoCodec": "h264-yuv420p",
+    "threeRevision": "0.187.0",
+    "browserChannel": "chrome"
+  },
+  "assets": [
+    {
+      "assetId": "bg",
+      "revisionId": "bg-r1",
+      "contentHash": "hash-bg",
+      "relativePath": "layers/bg.png",
+      "widthPx": 1920,
+      "heightPx": 1080,
+      "alphaMode": "opaque",
+      "colorSpace": "srgb"
+    },
+    {
+      "assetId": "hero",
+      "revisionId": "hero-r1",
+      "contentHash": "hash-hero",
+      "relativePath": "layers/hero.png",
+      "format": "png",
+      "widthPx": 512,
+      "heightPx": 1024,
+      "alphaMode": "straight",
+      "colorSpace": "srgb"
+    },
+    {
+      "assetId": "prop",
+      "revisionId": "prop-r1",
+      "contentHash": "hash-prop",
+      "relativePath": "layers/prop.png",
+      "widthPx": 128,
+      "heightPx": 128,
+      "alphaMode": "straight",
+      "colorSpace": "srgb"
+    },
+    {
+      "assetId": "hero-surface",
+      "revisionId": "hs-r1",
+      "contentHash": "hash-hs",
+      "relativePath": "maps/hero-surface.png",
+      "widthPx": 512,
+      "heightPx": 1024,
+      "alphaMode": "opaque",
+      "colorSpace": "linear-srgb"
+    }
+  ],
+  "sceneDefinitions": [
+    {
+      "id": "street",
+      "schemaVersion": "1.0",
+      "rootNodeId": "root",
+      "weather": "rain",
+      "lighting": {
+        "ambient": 1,
+        "lights": []
+      },
+      "nodes": [
+        {
+          "id": "root",
+          "parentId": null,
+          "type": "group",
+          "localPosition": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "stage",
+          "parentId": "root",
+          "type": "group",
+          "localPosition": {
+            "x": 1,
+            "y": 2,
+            "z": 3
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 2,
+            "y": 2,
+            "z": 2
+          },
+          "x-note": "kept although render-bundle 1.0 does not declare it"
+        },
+        {
+          "id": "bg-plane",
+          "parentId": "stage",
+          "type": "imagePlane",
+          "assetRef": {
+            "assetId": "bg",
+            "revisionId": "bg-r1",
+            "contentHash": "hash-bg",
+            "relativePath": "layers/bg.png"
+          },
+          "localPosition": {
+            "x": 0,
+            "y": 0,
+            "z": -5
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          },
+          "widthSceneUnits": 16,
+          "heightSceneUnits": 9,
+          "renderOrder": 0
+        },
+        {
+          "id": "hero-plane",
+          "parentId": "stage",
+          "type": "imagePlane",
+          "assetRef": {
+            "assetId": "hero",
+            "revisionId": "hero-r1",
+            "contentHash": "hash-hero",
+            "relativePath": "layers/hero.png"
+          },
+          "localPosition": {
+            "x": 3,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0.7071067811865476,
+            "z": 0,
+            "w": 0.7071067811865476
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          },
+          "widthSceneUnits": 1,
+          "heightSceneUnits": 2,
+          "renderOrder": 1,
+          "surface": {
+            "assetRef": {
+              "assetId": "hero-surface",
+              "revisionId": "hs-r1",
+              "contentHash": "hash-hs",
+              "relativePath": "maps/hero-surface.png"
+            },
+            "intrinsics": {
+              "fx": 1,
+              "fy": 1,
+              "cx": 0.5,
+              "cy": 0.5
+            },
+            "floor": null
+          }
+        },
+        {
+          "id": "prop-plane",
+          "parentId": null,
+          "type": "imagePlane",
+          "assetRef": {
+            "assetId": "prop",
+            "revisionId": "prop-r1",
+            "contentHash": "hash-prop",
+            "relativePath": "layers/prop.png"
+          },
+          "localPosition": {
+            "x": 0.5,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          },
+          "widthSceneUnits": 0.25,
+          "heightSceneUnits": 0.25,
+          "attachToSocket": {
+            "parentNodeId": "hero-plane",
+            "socketName": "hand"
+          }
+        }
+      ],
+      "sockets": [
+        {
+          "nodeId": "hero-plane",
+          "name": "hand",
+          "localPosition": {
+            "x": 0,
+            "y": 1,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          }
+        }
+      ]
+    }
+  ],
+  "sceneInstances": [
+    {
+      "id": "street-a",
+      "sceneDefinitionId": "street",
+      "durationFrames": 60,
+      "performanceTrackIds": [
+        "walk"
+      ],
+      "label": "extra field on an instance"
+    }
+  ],
+  "performanceTracks": [
+    {
+      "id": "walk",
+      "instanceId": "street-a",
+      "channels": [
+        {
+          "kind": "cycle",
+          "channelId": "bob",
+          "nodeId": "hero-plane",
+          "property": "localPosition",
+          "periodFrames": 12,
+          "amplitude": 0.1,
+          "axis": {
+            "x": 0,
+            "y": 1,
+            "z": 0
+          },
+          "phaseOffsetFrames": 0
+        }
+      ]
+    }
+  ],
+  "cameraClips": [
+    {
+      "id": "wide",
+      "initialPosition": {
+        "x": 0,
+        "y": 2,
+        "z": 10
+      },
+      "initialTarget": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "initialFovDeg": 50,
+      "segments": [
+        {
+          "recipe": "dollyIn",
+          "durationFrames": 48,
+          "from": "initial",
+          "distanceSceneUnits": 6,
+          "easing": "linear"
+        }
+      ]
+    }
+  ],
+  "shots": [
+    {
+      "id": "s1",
+      "sceneInstanceId": "street-a",
+      "editRange": {
+        "startFrame": 0,
+        "endFrameExclusive": 24
+      },
+      "instanceStartFrame": 0,
+      "cameraClipId": "wide",
+      "cameraInFrame": 0,
+      "intent": "establish the street"
+    },
+    {
+      "id": "s2",
+      "sceneInstanceId": "street-a",
+      "editRange": {
+        "startFrame": 24,
+        "endFrameExclusive": 48
+      },
+      "instanceStartFrame": 24,
+      "cameraClipId": "wide",
+      "cameraInFrame": 24,
+      "transitionInto": {
+        "type": "continuous"
+      },
+      "intent": "push toward the hero"
+    }
+  ],
+  "compositionPasses": [
+    {
+      "fragmentId": "hero-first",
+      "nodeId": "hero-plane",
+      "stage": "prePost",
+      "order": -1
+    }
+  ],
+  "audio": {
+    "mixRelativePath": "audio/mix.wav",
+    "editStartSeconds": 0,
+    "editEndSecondsExclusive": 2.002,
+    "sourcePcmHashSha256": "0123abcd"
+  },
+  "metadata": {
+    "author": "fixture",
+    "x-editor": {
+      "theme": "dark"
+    }
+  },
+  "x-tool": {
+    "name": "synthetic",
+    "note": "unknown top-level field"
+  }
+}
