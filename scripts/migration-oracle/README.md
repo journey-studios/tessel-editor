@@ -181,3 +181,67 @@ for case in index["cases"].as_array().unwrap() {
 Ver `harness/scope.json` (`loadedButNotExercised`, `notExecuted`, `corpusGaps`) e o relatório.
 Em resumo: sem narração, outline, clima, luz por keys, efeitos, rig/path, splat, FPS não inteiro,
 preflight de assets, I/O de arquivo, runtime/pixel/áudio e nada do branch piloto.
+
+## Corpus estendido (K / BL018, rodada 2)
+
+Segundo corpus, **isolado** do de 55 casos: fixtures em `docs/migration/fixtures/extended-round2/`,
+CLI `extended.mjs`, código em `extended/`. Mesma origem (`d6adac15…`), mesmos `zod 4.3.6` / `three
+0.187.0`, mesma regra "executar o módulo real empacotado, nunca reimplementar". O corpus base, o
+manifest dele e o `harness/` não são tocados (`extended.mjs` **recusa** gerar em `docs/migration/fixtures/`
+e `oracle-extended.spec.mjs` prova com `git status` que o base não mudou). Única mudança no código
+compartilhado: `lib/harness.mjs` aceita outro ponto de entrada e passa a registrar como fonte direta os
+imports de qualquer arquivo do oráculo, e o `verify` do base continua byte a byte igual.
+
+```bash
+node scripts/migration-oracle/extended.mjs setup      # mesmas dependências fixas, fora do repo
+node scripts/migration-oracle/extended.mjs corpus     # reescreve bundles/, cases.json, tolerances.json (não usa a origem)
+node scripts/migration-oracle/extended.mjs generate   # executa a origem e grava expected/ + manifest.json
+node scripts/migration-oracle/extended.mjs verify     # hashes, deriva da origem, tolerâncias, intenção, regeneração byte a byte
+node scripts/migration-oracle/extended.mjs verify --fixtures-only   # só integridade; NÃO compara com a origem
+node --test scripts/migration-oracle/oracle-extended.spec.mjs       # 24 testes, incl. controles negativos
+```
+
+### O que cobre (47 casos)
+
+| Família | Casos | Pergunta |
+|---|---|---|
+| `join-boundary` (31) | posição, alvo, FOV, velocidade, velocidade de FOV, diagonal, segunda junção, shots fora de ordem, FPS 24000/1001 e 30000/1001: abaixo / igual / acima | O gate aceita/recusa exatamente onde a origem (`>` estrito) recusa? As poses nos dois lados são as da origem? |
+| `fps` (11) | 24000/1001, 30000/1001, 60000/1001, 25, 30, 60, 48/2 não reduzido, 2000/1, e 3 recusas (perfil divergente, denominador 0) | `fpsToRate`, `editFrameToSeconds`, `secondsToEditFrame`, `editSecondsToFrame` |
+| `out-of-order` (1) | 7 ordens: crescente, decrescente, embaralhada (semente fixa), repetida, nas bordas | Mesma resposta em qualquer ordem (origem e Rust) |
+| `world-matrix` (4) | gimbal (`|m13| ≥ 0.9999999`), escalas extremas e cadeia profunda, sockets encadeados com canais, poses `lookAt` da câmera | Matrizes mundo e matriz da câmera |
+
+### Formato de `expected/<id>.expected.json`
+
+`{ formatVersion, case, family, kind, bundle, bundleSha256, validation, probes, evaluation, joins,
+cameraWorld, orders, time }`:
+
+- `validation`: o mesmo bloco do corpus base (`schema`, `sceneGraphStructure`, `integrityOnParsed`,
+  `editJoins`, `finalize`, `accepted`).
+- `joins[]`: por junção contínua no mesmo clipe, a pose da câmera (`resolveCameraAtClipFrame`) no último
+  frame do shot anterior (`end`) e no primeiro do seguinte (`start`), com `clipFrame`.
+- `cameraWorld[]`: `{ editFrame, ok, source: "three-library", matrix[16] }`.
+- `orders`: `identicalToCanonical` e, por ordem, `resultsSha256` dos resultados.
+- `time`: `rate`, durações, `frames[]` (segundos de cada frame) e `seconds[]` — sondas de segundos→frame
+  com o instante **exato** (`exact.num/den`, strings), o `floorFrame` da origem (ponto flutuante), o
+  `exactFloorFrame` (racional exato), `originMatchesExact` e o recorte (`clampedFrame`).
+
+### Tolerâncias (fixadas antes de comparar; `tolerances.json`)
+
+As mesmas do corpus base, nenhuma afrouxada: matrizes de nós `1e-10 + 1e-12·|e|`; local/câmera/matriz
+da câmera `1e-9 + 1e-12·|e|`; segundos `1e-12 + 1e-12·|e|`; ids, frames, códigos exatos. Os `JOIN_*` são
+regras de domínio da origem (comparação estrita `>`), conferidos contra o módulo real a cada
+`generate`/`verify`. O consumidor Rust repete as constantes e confere `tolerances.json`.
+
+### Limites declarados
+
+- **Fronteiras decididas pela origem** (`kind: "boundary"`, 6 casos): velocidade 0,08, velocidade de FOV
+  0,5, diagonal e variações de 1 ulp não são exatas em binário; o oráculo grava o que a origem responde
+  (`summary.originDecidedBoundaries`) e não afirma um valor a priori.
+- **Artefatos de ponto flutuante** (14 sondas): `secondsToEditFrame` da origem é `Math.floor(s·rate)`
+  em `double` e erra um frame em alguns limites NTSC exatos. A fixture marca `originMatchesExact=false`;
+  o Rust (racionais exatos) deve igualar o piso exato ali e a origem em todo o resto.
+- **Dependem de método não exportado** (`scope.json`): a matriz mundo da câmera (método privado do
+  runtime, precisa de WebGL) é gravada com `PerspectiveCamera.lookAt` do `three` fixo sobre a pose que a
+  origem avaliou (`source: "three-library"`); `compareContinuousPose` e as mensagens `toFixed(4)` não
+  são exportadas (o oráculo grava códigos e poses; as distâncias saem das poses).
+- Sem GPU, áudio, pixel, narração; tempo racional amostrado em 9 frames por FPS, não em todos.

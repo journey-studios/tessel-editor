@@ -1,0 +1,482 @@
+{
+  "schemaVersion": "1.0",
+  "bundleId": "world-gimbal-threshold",
+  "revisionId": "rev-1",
+  "fps": {
+    "numerator": 24,
+    "denominator": 1
+  },
+  "editDurationFrames": 24,
+  "renderProfile": {
+    "width": 320,
+    "height": 180,
+    "fps": {
+      "numerator": 24,
+      "denominator": 1
+    },
+    "colorSpace": "srgb-display",
+    "alphaMode": "straight",
+    "premultiplyOnUpload": false,
+    "videoCodec": "h264-yuv420p",
+    "threeRevision": "0.187.0",
+    "browserChannel": "synthetic-oracle"
+  },
+  "assets": [
+    {
+      "assetId": "backdrop",
+      "revisionId": "rev-1",
+      "contentHash": "synthetic-sha256-backdrop",
+      "relativePath": "assets/backdrop.png",
+      "widthPx": 64,
+      "heightPx": 36,
+      "alphaMode": "opaque",
+      "colorSpace": "srgb"
+    },
+    {
+      "assetId": "figure",
+      "revisionId": "rev-1",
+      "contentHash": "synthetic-sha256-figure",
+      "relativePath": "assets/figure.png",
+      "widthPx": 32,
+      "heightPx": 32,
+      "alphaMode": "straight",
+      "colorSpace": "srgb"
+    }
+  ],
+  "performanceTracks": [
+    {
+      "id": "perf-gimbal",
+      "instanceId": "inst-a",
+      "channels": [
+        {
+          "kind": "cycle",
+          "channelId": "g4-wobble",
+          "nodeId": "g4",
+          "property": "localRotation",
+          "periodFrames": 12,
+          "amplitude": 0.01,
+          "axis": {
+            "x": 0,
+            "y": 1,
+            "z": 0
+          },
+          "phaseOffsetFrames": 0
+        }
+      ]
+    }
+  ],
+  "compositionPasses": [],
+  "sceneDefinitions": [
+    {
+      "id": "scene-gimbal",
+      "schemaVersion": "1.0",
+      "rootNodeId": "root",
+      "nodes": [
+        {
+          "id": "root",
+          "parentId": null,
+          "type": "group",
+          "localPosition": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "g0",
+          "parentId": "root",
+          "type": "group",
+          "localPosition": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0.2987823440093237,
+            "y": 0.6402414191655775,
+            "z": 0.29888990587412045,
+            "w": 0.6414708569059868
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "g0-child",
+          "parentId": "g0",
+          "type": "group",
+          "localPosition": {
+            "x": 1,
+            "y": 2,
+            "z": 3
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "g1",
+          "parentId": "root",
+          "type": "group",
+          "localPosition": {
+            "x": 2,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0.29882170958148896,
+            "y": 0.6406903901522435,
+            "z": 0.29885075128840144,
+            "w": 0.6410223383812147
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "g1-child",
+          "parentId": "g1",
+          "type": "group",
+          "localPosition": {
+            "x": 1,
+            "y": 2,
+            "z": 3
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "g2",
+          "parentId": "root",
+          "type": "group",
+          "localPosition": {
+            "x": 4,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0.29882224799394524,
+            "y": 0.6406965386348674,
+            "z": 0.29885021408210205,
+            "w": 0.6410161924852029
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "g2-child",
+          "parentId": "g2",
+          "type": "group",
+          "localPosition": {
+            "x": 1,
+            "y": 2,
+            "z": 3
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "g3",
+          "parentId": "root",
+          "type": "group",
+          "localPosition": {
+            "x": 6,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0.29882278638364507,
+            "y": 0.6407026870686995,
+            "z": 0.298849676853044,
+            "w": 0.641010046540375
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "g3-child",
+          "parentId": "g3",
+          "type": "group",
+          "localPosition": {
+            "x": 1,
+            "y": 2,
+            "z": 3
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "g4",
+          "parentId": "root",
+          "type": "group",
+          "localPosition": {
+            "x": 8,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0.29882547799079334,
+            "y": 0.6407334285059665,
+            "z": 0.2988469903663739,
+            "w": 0.6409793160840089
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "g4-child",
+          "parentId": "g4",
+          "type": "group",
+          "localPosition": {
+            "x": 1,
+            "y": 2,
+            "z": 3
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "g5",
+          "parentId": "root",
+          "type": "group",
+          "localPosition": {
+            "x": 10,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0.2988362387301198,
+            "y": 0.6408563820557885,
+            "z": 0.2988362387301198,
+            "w": 0.6408563820557887
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "g5-child",
+          "parentId": "g5",
+          "type": "group",
+          "localPosition": {
+            "x": 1,
+            "y": 2,
+            "z": 3
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "g6",
+          "parentId": "root",
+          "type": "group",
+          "localPosition": {
+            "x": 12,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": -0.061576259014928525,
+            "y": -0.704304165135464,
+            "z": 0.06168057254020126,
+            "w": 0.7045278662123142
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "g6-child",
+          "parentId": "g6",
+          "type": "group",
+          "localPosition": {
+            "x": 1,
+            "y": 2,
+            "z": 3
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "g7",
+          "parentId": "root",
+          "type": "group",
+          "localPosition": {
+            "x": 14,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": -0.0616284167162193,
+            "y": -0.7044160264027586,
+            "z": 0.06162841671621935,
+            "w": 0.7044160264027587
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "g7-child",
+          "parentId": "g7",
+          "type": "group",
+          "localPosition": {
+            "x": 1,
+            "y": 2,
+            "z": 3
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    }
+  ],
+  "sceneInstances": [
+    {
+      "id": "inst-a",
+      "sceneDefinitionId": "scene-gimbal",
+      "durationFrames": 24,
+      "performanceTrackIds": [
+        "perf-gimbal"
+      ]
+    }
+  ],
+  "cameraClips": [
+    {
+      "id": "cam-still",
+      "initialPosition": {
+        "x": 0,
+        "y": 1,
+        "z": 7
+      },
+      "initialTarget": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "initialFovDeg": 40,
+      "segments": [
+        {
+          "recipe": "hold",
+          "durationFrames": 24,
+          "from": "initial"
+        }
+      ]
+    }
+  ],
+  "shots": [
+    {
+      "id": "shot-only",
+      "sceneInstanceId": "inst-a",
+      "editRange": {
+        "startFrame": 0,
+        "endFrameExclusive": 24
+      },
+      "instanceStartFrame": 0,
+      "cameraClipId": "cam-still",
+      "cameraInFrame": 0,
+      "intent": "synthetic shot shot-only"
+    }
+  ]
+}

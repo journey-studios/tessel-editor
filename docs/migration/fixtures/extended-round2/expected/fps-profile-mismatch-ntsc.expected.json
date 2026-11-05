@@ -1,0 +1,37 @@
+{
+  "formatVersion": 1,
+  "case": "fps-profile-mismatch-ntsc",
+  "family": "fps",
+  "kind": "invalid",
+  "bundle": "bundles/fps-profile-mismatch-ntsc.bundle.json",
+  "bundleSha256": "2f7256c872b8e815994dde5d07abadc79474abb3d8765f7ea6fa0d5661776083",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "FPS_MISMATCH",
+          "message": "FPS_MISMATCH: bundle.fps must match renderProfile.fps"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null,
+  "joins": null,
+  "cameraWorld": null,
+  "orders": null,
+  "time": null
+}

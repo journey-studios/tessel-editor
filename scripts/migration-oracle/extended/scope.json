@@ -1,0 +1,70 @@
+{
+  "claim": "O corpus estendido (BL018/K) executa funções REAIS de packages/scene-engine empacotadas SEM modificação (esbuild + zod 4.3.6 + three 0.187.0, sem GPU/DOM/rede), no mesmo snapshot d6adac15… do corpus base. Cobertura por linha NÃO foi medida: 'executado' = chamado pelo harness ou exercitado por essas chamadas nas entradas do corpus.",
+  "executedFunctions": [
+    {
+      "module": "src/validate/edit-joins.ts",
+      "symbols": ["validateEditJoins (via inspectBundle/finalizeBundle)", "JOIN_POSITION_TOLERANCE_SCENE_UNITS", "JOIN_FOV_TOLERANCE_DEG", "JOIN_VELOCITY_TOLERANCE_SCENE_UNITS_PER_FRAME", "JOIN_FOV_VELOCITY_TOLERANCE_DEG_PER_FRAME"],
+      "how": "validateEditJoins via o harness base; as quatro constantes são importadas direto do módulo real e conferidas com tolerances.json",
+      "publicIndex": "validateEditJoins sim (core.ts); JOIN_* NÃO são exportadas pelo índice do pacote, só pelo módulo"
+    },
+    {
+      "module": "src/camera/resolve-camera-clip.ts",
+      "symbols": ["resolveCameraAtClipFrame (poses dos dois lados de cada junção)", "getCameraClipDurationFrames", "mainTrackPoses"],
+      "how": "chamada direta nos frames de medida de cada junção contínua (último frame do shot anterior e primeiro do seguinte)"
+    },
+    {
+      "module": "src/types/fps.ts",
+      "symbols": ["fpsToRate", "secondsToEditFrame", "editFrameToSeconds"],
+      "how": "chamada direta com FPS 24000/1001, 30000/1001, 60000/1001, 25, 30, 60, 48/2 (não reduzido) e 2000/1",
+      "publicIndex": "sim (core.ts)"
+    },
+    {
+      "module": "src/transport/audio-window.ts",
+      "symbols": ["editSecondsToFrame", "editFrameToEditSeconds", "maxEditSeconds", "editTimelineDurationSeconds", "clampEditSeconds"],
+      "how": "chamada direta",
+      "publicIndex": "sim (transport/index.ts reexportado por core.ts)"
+    },
+    {
+      "module": "src/evaluator/evaluate-edit-frame.ts + src/scene/scene-graph.ts",
+      "symbols": ["evaluateEditFrame", "computeWorldMatrices", "resolveParentLinks"],
+      "how": "via evaluateBundle do harness base, agora em hierarquias profundas, gimbal, escalas extremas, sockets encadeados e canais cycle/event/static; e em 7 ordens de avaliação por caso de 'out-of-order'"
+    }
+  ],
+  "dependsOnNonExportedMethod": [
+    {
+      "what": "Matriz mundo da câmera (o equivalente ao `CameraPose::to_world_matrix` do Rust)",
+      "where": "src/runtime/three-scene-runtime.ts: ThreeSceneRuntime.drawEditFrame (método privado) — position.set, lookAt(Vector3), updateMatrixWorld",
+      "why": "A classe exige WebGLRenderer; o método é privado e não há função exportada e pura. Sem GPU/Chrome não há como executá-lo.",
+      "what_is_recorded": "A MESMA sequência de chamadas com a biblioteca Three.js 0.187.0 fixada (PerspectiveCamera), sobre a pose que a origem avaliou. Marcado `source: three-library` em cada matriz; é prova da biblioteca real, não do método da origem. Se o runtime mudar a sequência, este caso não percebe (limite aceito)."
+    },
+    {
+      "what": "compareContinuousPose, cameraStateAtJoinEnd/Start (cálculo das distâncias da junção)",
+      "where": "src/validate/edit-joins.ts (funções não exportadas)",
+      "why": "Não exportadas. O oráculo grava os CÓDIGOS que validateEditJoins devolve e as poses reais dos dois lados (resolveCameraAtClipFrame); as distâncias são conferidas no Rust a partir dessas poses, com os limites exportados.",
+      "what_is_recorded": "Códigos e poses; a escolha dos frames de medida espelha onde a origem mede (seleção de ponto, como probes.mjs)."
+    },
+    {
+      "what": "Mensagens `toFixed(4)` das junções (distância formatada)",
+      "where": "src/validate/edit-joins.ts",
+      "why": "São texto de diagnóstico; o consumidor compara códigos, não mensagens.",
+      "what_is_recorded": "Mensagens gravadas em validation.editJoins[].message, sem comparação obrigatória."
+    }
+  ],
+  "loadedButNotExercised": [
+    {
+      "modules": ["src/narration/*", "src/outline/*", "src/rig/*", "src/path/*", "src/effects/*", "src/weather/*", "src/lighting/*"],
+      "why": "Importados pelo schema, mas o corpus estendido também não tem narração, outline, clima, luz por keys, efeitos, rigs ou paths."
+    }
+  ],
+  "corpusGaps": [
+    "Fronteiras de junção são medidas em movimentos lineares (passo exato) e em uma diagonal; easings não lineares não têm caso 'exatamente igual' porque o passo por frame não é controlável sem ajustar a distância por tentativa.",
+    "As fronteiras de velocidade e de velocidade de FOV (0,08 e 0,5) não são exatas em binário: o caso 'igual' é decidido pela origem e gravado (kind=boundary).",
+    "Seek aleatório cobre a ORDEM de avaliação de frames de edição de um caso, não um fuzz de bundles.",
+    "Tempo racional foi comparado em 9 frames por FPS (até o frame 100000), não em todos os frames.",
+    "O oráculo registra a resposta em ponto flutuante da origem para segundos→frame; quando ela difere do piso exato o probe é marcado originMatchesExact=false (ver tolerances.json).",
+    "Sem áudio, narração, GPU, pixel ou performance; sem o branch piloto."
+  ],
+  "notExecuted": [
+    { "area": "Tudo que o corpus base já declara como não executado (comandos de câmera, edição em lote, narração, rig, luz por keys, clima, runtime Three.js/Spark, I/O)", "reason": "fora do escopo de K; ver harness/scope.json" }
+  ]
+}

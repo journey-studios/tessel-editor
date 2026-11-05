@@ -1,0 +1,43 @@
+{
+  "formatVersion": 1,
+  "case": "fps-zero-denominator",
+  "family": "fps",
+  "kind": "invalid",
+  "bundle": "bundles/fps-zero-denominator.bundle.json",
+  "bundleSha256": "8eb31725410999cb8b6344b6f1738a7a2c8035d73c50bb8c53f8194142ab4c45",
+  "validation": {
+    "schema": {
+      "success": false,
+      "issues": [
+        {
+          "path": "fps.denominator",
+          "zodCode": "too_small",
+          "sourceCode": null,
+          "message": "Too small: expected number to be >0"
+        },
+        {
+          "path": "",
+          "zodCode": "custom",
+          "sourceCode": "FPS_MISMATCH",
+          "message": "FPS_MISMATCH: bundle.fps must match renderProfile.fps"
+        }
+      ]
+    },
+    "sceneGraphStructure": [
+      {
+        "definitionId": "scene-a",
+        "issues": []
+      }
+    ],
+    "integrityOnParsed": null,
+    "editJoins": null,
+    "finalize": null,
+    "accepted": false
+  },
+  "probes": null,
+  "evaluation": null,
+  "joins": null,
+  "cameraWorld": null,
+  "orders": null,
+  "time": null
+}

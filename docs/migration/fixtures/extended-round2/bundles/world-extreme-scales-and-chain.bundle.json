@@ -1,0 +1,543 @@
+{
+  "schemaVersion": "1.0",
+  "bundleId": "world-extreme-scales-and-chain",
+  "revisionId": "rev-1",
+  "fps": {
+    "numerator": 24,
+    "denominator": 1
+  },
+  "editDurationFrames": 24,
+  "renderProfile": {
+    "width": 320,
+    "height": 180,
+    "fps": {
+      "numerator": 24,
+      "denominator": 1
+    },
+    "colorSpace": "srgb-display",
+    "alphaMode": "straight",
+    "premultiplyOnUpload": false,
+    "videoCodec": "h264-yuv420p",
+    "threeRevision": "0.187.0",
+    "browserChannel": "synthetic-oracle"
+  },
+  "assets": [
+    {
+      "assetId": "backdrop",
+      "revisionId": "rev-1",
+      "contentHash": "synthetic-sha256-backdrop",
+      "relativePath": "assets/backdrop.png",
+      "widthPx": 64,
+      "heightPx": 36,
+      "alphaMode": "opaque",
+      "colorSpace": "srgb"
+    },
+    {
+      "assetId": "figure",
+      "revisionId": "rev-1",
+      "contentHash": "synthetic-sha256-figure",
+      "relativePath": "assets/figure.png",
+      "widthPx": 32,
+      "heightPx": 32,
+      "alphaMode": "straight",
+      "colorSpace": "srgb"
+    }
+  ],
+  "performanceTracks": [],
+  "compositionPasses": [],
+  "sceneDefinitions": [
+    {
+      "id": "scene-extreme",
+      "schemaVersion": "1.0",
+      "rootNodeId": "root",
+      "nodes": [
+        {
+          "id": "root",
+          "parentId": null,
+          "type": "group",
+          "localPosition": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "chain-1",
+          "parentId": "root",
+          "type": "group",
+          "localPosition": {
+            "x": 0.5,
+            "y": 0.25,
+            "z": -0.1
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0.13052619222005157,
+            "z": 0,
+            "w": 0.9914448613738104
+          },
+          "localScale": {
+            "x": 1.1,
+            "y": 1.1,
+            "z": 1.1
+          }
+        },
+        {
+          "id": "chain-2",
+          "parentId": "chain-1",
+          "type": "group",
+          "localPosition": {
+            "x": 0.5,
+            "y": 0.5,
+            "z": -0.2
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0.13052619222005157,
+            "w": 0.9914448613738104
+          },
+          "localScale": {
+            "x": 1.1,
+            "y": 1.1,
+            "z": 1.1
+          }
+        },
+        {
+          "id": "chain-3",
+          "parentId": "chain-2",
+          "type": "group",
+          "localPosition": {
+            "x": 0.5,
+            "y": 0.75,
+            "z": -0.30000000000000004
+          },
+          "localRotation": {
+            "x": 0.13052619222005157,
+            "y": 0,
+            "z": 0,
+            "w": 0.9914448613738104
+          },
+          "localScale": {
+            "x": 1.1,
+            "y": 1.1,
+            "z": 1.1
+          }
+        },
+        {
+          "id": "chain-4",
+          "parentId": "chain-3",
+          "type": "group",
+          "localPosition": {
+            "x": 0.5,
+            "y": 1,
+            "z": -0.4
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0.13052619222005157,
+            "z": 0,
+            "w": 0.9914448613738104
+          },
+          "localScale": {
+            "x": 1.1,
+            "y": 1.1,
+            "z": 1.1
+          }
+        },
+        {
+          "id": "chain-5",
+          "parentId": "chain-4",
+          "type": "group",
+          "localPosition": {
+            "x": 0.5,
+            "y": 1.25,
+            "z": -0.5
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0.13052619222005157,
+            "w": 0.9914448613738104
+          },
+          "localScale": {
+            "x": 1.1,
+            "y": 1.1,
+            "z": 1.1
+          }
+        },
+        {
+          "id": "chain-6",
+          "parentId": "chain-5",
+          "type": "group",
+          "localPosition": {
+            "x": 0.5,
+            "y": 1.5,
+            "z": -0.6000000000000001
+          },
+          "localRotation": {
+            "x": 0.13052619222005157,
+            "y": 0,
+            "z": 0,
+            "w": 0.9914448613738104
+          },
+          "localScale": {
+            "x": 1.1,
+            "y": 1.1,
+            "z": 1.1
+          }
+        },
+        {
+          "id": "chain-7",
+          "parentId": "chain-6",
+          "type": "group",
+          "localPosition": {
+            "x": 0.5,
+            "y": 1.75,
+            "z": -0.7000000000000001
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0.13052619222005157,
+            "z": 0,
+            "w": 0.9914448613738104
+          },
+          "localScale": {
+            "x": 1.1,
+            "y": 1.1,
+            "z": 1.1
+          }
+        },
+        {
+          "id": "chain-8",
+          "parentId": "chain-7",
+          "type": "group",
+          "localPosition": {
+            "x": 0.5,
+            "y": 2,
+            "z": -0.8
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0.13052619222005157,
+            "w": 0.9914448613738104
+          },
+          "localScale": {
+            "x": 1.1,
+            "y": 1.1,
+            "z": 1.1
+          }
+        },
+        {
+          "id": "chain-9",
+          "parentId": "chain-8",
+          "type": "group",
+          "localPosition": {
+            "x": 0.5,
+            "y": 2.25,
+            "z": -0.9
+          },
+          "localRotation": {
+            "x": 0.13052619222005157,
+            "y": 0,
+            "z": 0,
+            "w": 0.9914448613738104
+          },
+          "localScale": {
+            "x": 1.1,
+            "y": 1.1,
+            "z": 1.1
+          }
+        },
+        {
+          "id": "chain-10",
+          "parentId": "chain-9",
+          "type": "group",
+          "localPosition": {
+            "x": 0.5,
+            "y": 2.5,
+            "z": -1
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0.13052619222005157,
+            "z": 0,
+            "w": 0.9914448613738104
+          },
+          "localScale": {
+            "x": 1.1,
+            "y": 1.1,
+            "z": 1.1
+          }
+        },
+        {
+          "id": "chain-11",
+          "parentId": "chain-10",
+          "type": "group",
+          "localPosition": {
+            "x": 0.5,
+            "y": 2.75,
+            "z": -1.1
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0.13052619222005157,
+            "w": 0.9914448613738104
+          },
+          "localScale": {
+            "x": 1.1,
+            "y": 1.1,
+            "z": 1.1
+          }
+        },
+        {
+          "id": "chain-12",
+          "parentId": "chain-11",
+          "type": "group",
+          "localPosition": {
+            "x": 0.5,
+            "y": 3,
+            "z": -1.2000000000000002
+          },
+          "localRotation": {
+            "x": 0.13052619222005157,
+            "y": 0,
+            "z": 0,
+            "w": 0.9914448613738104
+          },
+          "localScale": {
+            "x": 1.1,
+            "y": 1.1,
+            "z": 1.1
+          }
+        },
+        {
+          "id": "anisotropic",
+          "parentId": "root",
+          "type": "group",
+          "localPosition": {
+            "x": -3,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 2,
+            "y": 0.5,
+            "z": 3
+          }
+        },
+        {
+          "id": "anisotropic-child",
+          "parentId": "anisotropic",
+          "type": "group",
+          "localPosition": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          },
+          "localRotation": {
+            "x": 0.262516422608944,
+            "y": 0.23212469599949465,
+            "z": 0.5613526613390638,
+            "w": 0.7497242446228446
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "mirrored-x",
+          "parentId": "root",
+          "type": "group",
+          "localPosition": {
+            "x": 0,
+            "y": -2,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": -1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "mirrored-child",
+          "parentId": "mirrored-x",
+          "type": "group",
+          "localPosition": {
+            "x": 1,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0.3826834323650898,
+            "w": 0.9238795325112867
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "far",
+          "parentId": "root",
+          "type": "group",
+          "localPosition": {
+            "x": 1000000,
+            "y": -2000000,
+            "z": 3000000
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "far-child",
+          "parentId": "far",
+          "type": "group",
+          "localPosition": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1000,
+            "y": 0.001,
+            "z": 1
+          }
+        },
+        {
+          "id": "collapsed",
+          "parentId": "root",
+          "type": "group",
+          "localPosition": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 0,
+            "y": 1,
+            "z": 1
+          }
+        },
+        {
+          "id": "collapsed-child",
+          "parentId": "collapsed",
+          "type": "group",
+          "localPosition": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          },
+          "localRotation": {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "w": 1
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          }
+        }
+      ]
+    }
+  ],
+  "sceneInstances": [
+    {
+      "id": "inst-a",
+      "sceneDefinitionId": "scene-extreme",
+      "durationFrames": 24,
+      "performanceTrackIds": []
+    }
+  ],
+  "cameraClips": [
+    {
+      "id": "cam-still",
+      "initialPosition": {
+        "x": 0,
+        "y": 1,
+        "z": 7
+      },
+      "initialTarget": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "initialFovDeg": 40,
+      "segments": [
+        {
+          "recipe": "hold",
+          "durationFrames": 24,
+          "from": "initial"
+        }
+      ]
+    }
+  ],
+  "shots": [
+    {
+      "id": "shot-only",
+      "sceneInstanceId": "inst-a",
+      "editRange": {
+        "startFrame": 0,
+        "endFrameExclusive": 24
+      },
+      "instanceStartFrame": 0,
+      "cameraClipId": "cam-still",
+      "cameraInFrame": 0,
+      "intent": "synthetic shot shot-only"
+    }
+  ]
+}

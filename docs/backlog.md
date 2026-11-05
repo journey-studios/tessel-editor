@@ -61,7 +61,7 @@ Fontes: [roadmap](migration/phased-roadmap.md), [matriz](features/README.md),
 | BL015 | BB08 | Overlays/handles: coordenadas, foco, hit testing e resize sobre WebView | Pendente | BL007, BL013, BL014, BL042 | — | Handle e comando dão mesmo resultado; validar foco/resize nativos |
 | BL016 | BB09 | Transporte/mix do modelo dirigido: shots, janela de edição e relógio | Pendente | BL006, BL008 | — | Frame e amostra correspondentes em play/seek/pause; offline sem dispositivo |
 | BL017 | BB09 | Narração/takes/legendas e monitor gain | Pendente | BL016, BL026 | — | Tempo, texto e mix persistem e coincidem na saída |
-| BL018 | BB10 | Expandir corpus: tolerâncias JOIN, FPS variados contra a origem e to_world_matrix | Em andamento | BB10 existente | K / Cursor Sonnet 5.5 (ver rodada) | Expectativas executadas na origem, tolerâncias prévias e casos de fronteira |
+| BL018 | BB10 | Expandir corpus: tolerâncias JOIN, FPS variados e matrizes mundo | Parcial | BB10 existente | K / F032 ([relatório](migration/foundation-k-report.md)) | 47 casos estendidos + 55 base verificados contra origem; 45 testes Node e 15 testes Rust passaram. Matriz da câmera usa Three isolado; limite do runtime em BL071 |
 | BL019 | BB10 | Provas de plano/pixels/áudio/performance por novo domínio | Parcial | Cada entrega | — | Código final e proveniência; não usar resultado de protótipo como aceite |
 | BL020 | Adapters | Expor avaliação completa de nós por frame no acesso programático de cena | A validar | BB03 existente | J / F039 ([relatório](migration/foundation-j-report.md)) | Lib/JSONL e testes escritos, ainda não executados; UI/socket e gesto físico pendentes |
 | BL021 | Adapters | Provar `scene.*` pelo socket da janela e depois pela UI visual | A validar | BL012/BL014 para UI | — | Socket e UI têm evidências distintas; headless já está validado |
@@ -168,7 +168,7 @@ Plano e ownership: [H/I/J/K](migration/next-round-plan.md). As quatro tarefas es
 | H | BL006 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3Aa6ff05b3-f726-4031-ab83-3f9cc3045ebf> | A validar — código recebido, sem Cargo |
 | I | BL009/BL010/BL011 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A9cb28c3e-6589-4f90-840f-b43f21c534ca> | Em andamento |
 | J | BL012/BL013/BL020 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A975cf39a-05f7-40c5-a224-811495f83404> | A validar — código recebido, sem Cargo |
-| K | BL018 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A72230e00-998b-473e-aa85-12aacc2a00d7> | Em andamento |
+| K | BL018 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A72230e00-998b-473e-aa85-12aacc2a00d7> | Recebido — Node e 15 testes Rust validados |
 
 Ambiente: checkout compartilhado por limitação da delegação local; ownership exclusivo no plano. Nenhum agente altera o projeto aberto do usuário. O app foi reconstruído e aberto em release antes da integração desta rodada.
 
@@ -210,3 +210,16 @@ os novos IDs de H foram reconciliados como BL063–BL065.
 As propostas de J para automação/controles, prova de socket e gate JSONL reutilizam BL012/BL014,
 BL021 e o status A validar, respectivamente; não abrem tarefas duplicadas. F036 foi atualizada
 para apontar F039, removendo a limitação histórica de consultas apenas de câmera.
+
+## Divergências e cobertura adicional de K
+
+| ID | Área | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL070 | BB10/compatibilidade | Formalizar política de segundos→frame: racional exato do destino versus floor em float da origem | Decisão | BL018 | — | Manter comportamento atual até decisão; documentar divergência e testar os 14 artefatos, sem alterar expectativas para esconder diferença |
+| BL071 | BB10/câmera | Medir matriz da câmera no runtime real da origem, além de Three.lookAt isolado | A validar | BL018, bancada WebGL | — | Proveniência distingue source runtime de three-library; comparar método real antes de alegar equivalência |
+| BL072 | BB10/FPS | Formalizar teto de 1000 fps versus origem sem esse limite | Decisão | BL018 | — | Manter limite atual até decisão; teste explícito FPS_OUT_OF_RANGE e documentação de compatibilidade |
+| BL073 | BB10/junções | Ampliar fronteiras de JOIN com easing não linear e sondas de 1 ulp | Pendente | BL018 | — | Resposta efetiva da origem registrada; preservar tolerâncias prévias e controles negativos |
+
+K validada no coordenador: base 55 e extensão 47 regeneradas byte a byte; Node 45/45;
+consumidor Rust 15/15. FPS>1000 e as 14 diferenças de piso NTSC são divergências explícitas,
+não bugs corrigidos nem equivalência integral. A câmera em Three isolado não prova o runtime.
