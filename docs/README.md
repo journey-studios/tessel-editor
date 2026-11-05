@@ -3,7 +3,11 @@
 Comece pela [matriz de features](features/README.md): ela registra o contrato e o estado de
 cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 
+- [Integração M/N/O/P](migration/round-mnop-report.md): renderer, recursos portáteis, inspector e provas do fluxo dirigido.
+- [Renderer de cenas dirigidas](features/scene-renderer.md): scene.plan/scene.render, lib/JSONL e monitor com mapas verificados.
 - [Integração H/I/J/K + sliders](migration/round-hijkl-report.md): 718 testes Rust, provas por superfície e limites atuais da base.
+- [Inspector e árvore de cena](features/scene-inspector.md): controles recebidos, input GPUI e socket reportados; gate integrado e inspeção visual pendentes.
+- [Integração de recursos de cena](features/scene-resource-integration.md): host, geração, pacote/restauração e intercâmbio; 22 testes direcionados reconferidos, renderer/UI pendentes.
 - [Backlog compartilhado](backlog.md): registro único de pendências, responsáveis, dependências e aceite; obrigatório para todos os agentes.
 - [Inventário de migração do Scene Studio](migration/README.md): 121 itens classificados,
   evidências na origem, diferenças do branch piloto, matriz de migração e fatias sugeridas.

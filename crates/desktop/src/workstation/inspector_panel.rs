@@ -277,7 +277,7 @@ impl Workstation {
             .child(reset)
     }
 
-    pub(super) fn render_inspector(
+    pub(super) fn render_clip_inspector(
         &mut self,
         t: &Tokens,
         window: &mut Window,
@@ -422,7 +422,6 @@ impl Workstation {
             .size_full()
             .min_h(px(0.))
             .bg(t.panel)
-            .child(self.geometry.probe("region:inspector"))
             .child(tab_bar)
             .child(summary)
             .child(

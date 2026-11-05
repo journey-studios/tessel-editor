@@ -53,9 +53,11 @@ Lib V significa testes do modelo demo, não um motor real de edição.
 | F034 | [Catálogo de propriedades e edição atômica de cenas (BB04)](scene-edit.md) | P | P | P | Parcial¹² | `scene_edit::{catalog, apply, dry_run}`; importação e gates compartilhados |
 | F035 | [Animação de nós e matrizes de mundo (BB03)](scene-animation.md) | P | P | P | Parcial¹³ | `Bundle::{evaluate_frame, node_timeline, evaluate_instance_nodes, performance_plan}` |
 | F036 | [Cenas no projeto, histórico e CLI](scene-project.md) | P | P | V | V | `Command::Scene` / `scene.*`; schema 2 com cenas, undo compartilhado, contagem de bytes em cache |
-| F037 | [Plano avaliado de frame de cena dirigida (BB05)](scene-plan.md) | P | P | P | V¹⁴ | `scene_plan::ScenePlan`; 29 testes públicos e doctest passaram; sem renderer |
-| F038 | [Recursos da cena dirigida: manifesto, preflight e materialização (BB06)](scene-resources.md) | P | P | P | Parcial¹⁵ | `scene_resources::ResourceManifest`; `directed_resources::{preflight, materialize}`; sem ligação ao pacote/CLI/UI |
-| F039 | [Interação com cenas dirigidas: seleção, árvore, frame e gestos](scene-interaction.md) | P | P | V | V | `scene.tree`, `scene.evaluate`, `scene.select`, `scene.selection`, `scene.gesture.*`; testes públicos e executável JSONL passaram |
+| F037 | [Plano avaliado da cena dirigida](scene-plan.md) | Parcial | V | V | V | `ScenePlan`, `scene.plan` com gates e candidato de gesto; 60 checks headless do plano; renderer F041 |
+| F038 | [Recursos da cena dirigida: manifesto, preflight e materialização (BB06)](scene-resources.md) | P | P | P | Parcial¹⁵ | `scene_resources::ResourceManifest`; `directed_resources::{preflight, materialize}`; integração host/pacote/CLI em F040 |
+| F039 | [Interação de cenas](scene-interaction.md) e [inspector/árvore](scene-inspector.md) | Parcial | V no corpus | V | V | `scene.*` compartilhado; input GPUI e árvore semântica; aparência, ponteiro físico e handles pendentes |
+| F040 | [Recursos da cena no editor](scene-resource-integration.md) | Parcial | V no corpus | V no corpus | Parcial | `scene.resources.*`, `project.import_scenes`, pacote/restauração; integração F041 com mapas verificados; formatos BL077 pendentes |
+| F041 | [Renderer da cena dirigida](scene-renderer.md) | Parcial | V no corpus | V no corpus | V no subconjunto | `scene.render`, SceneHost, SceneRenderer e SceneSlots; pixels Chrome/WKWebView; export dirigido BL008 pendente |
 
 ¹ Dock/tema/janela são capacidades de apresentação. A lib valida layout, mas quem o executa
 é o DockArea vivo; não há execução do Dock no core. UI nativa não é requisito para fluxos

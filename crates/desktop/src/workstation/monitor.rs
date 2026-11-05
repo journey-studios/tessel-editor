@@ -55,6 +55,9 @@ impl Workstation {
         };
         let stage = render_viewport(t, content);
         let headline = self.viewport.headline();
+        // A directed scene is attached but nothing can draw it yet: say so where the picture
+        // would be, instead of leaving the monitor silent about it (see `scene_monitor.rs`).
+        let scene_badge = self.scene_attached().then(|| self.scene_monitor().badge());
         let failed = self.viewport.failure().is_some() || self.viewport.blocking_error().is_some();
         let sequence_preview = matches!(state.preview, PreviewIntent::Sequence);
         let length = state.timeline.length;
@@ -171,6 +174,13 @@ impl Workstation {
                             .items_center()
                             .gap(px(8.))
                             .child(preview_modes)
+                            .children(scene_badge.map(|badge| {
+                                div()
+                                    .id("monitor-scene-badge")
+                                    .text_size(px(10.))
+                                    .text_color(t.faint)
+                                    .child(badge)
+                            }))
                             .child(
                                 div()
                                     .id("monitor-status")

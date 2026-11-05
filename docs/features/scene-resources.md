@@ -111,11 +111,11 @@ let done = materialize(&manifest, &source_root, &transport_root, &Options::defau
 
 ## CLI headless
 
-Gap declarado: nenhum comando. A ligação em `scene.*`/pacote é a próxima etapa (BL011/BL063).
+O módulo puro não faz I/O. A integração de operações `scene.resources.*`, pacote e intercâmbio está em [F040](scene-resource-integration.md), consumida pelo renderer F041.
 
 ## UI e CLI da janela
 
-N/A nesta fatia: sem apresentação. Pendente junto do fluxo de pacote.
+O módulo puro não tem apresentação. O fluxo da janela usa o mesmo host F040; controles dedicados de carregar/anexar ainda são parciais.
 
 ## Evidências e status
 

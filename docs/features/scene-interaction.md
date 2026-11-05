@@ -6,8 +6,8 @@
 |---|---|---|
 | Lib (`tessel_editor_core::scene_interaction`, `SceneCommand::{Tree,Evaluate,Select,Selection,Gesture}`) | **V (lib)** — 21 testes públicos e testes unitários do módulo passaram no gate direcionado do coordenador | `crates/core/tests/scene_interaction.rs` (21/21 executados) e testes unitários em `scene_interaction/{address,selection,tree}.rs` |
 | CLI headless (JSON Lines) | **V (headless)** — mesmo parser/executor (`ops::parse_op`, `headless::execute`); sessão JSONL de 19 linhas executada em processo; o executável `tessel-headless` passou uma sessão real de 13 requests | `a_json_lines_session_runs_the_whole_interaction_flow_in_process` |
-| Socket / `ui op` da janela | **P** — roteia por `Op::Run(Command::Scene)` sem tocar o desktop; **não provado** | — |
-| UI visual (árvore, inspetor, handles, Escape) | **P** — sem controle, sem nó em `tree.rs`, sem apresentação, sem gesto de ponteiro | — |
+| Socket / `ui op` da janela | **V no corpus** — comandos reais na janela e seleção por nó semântico | `scripts/directed-scene-proof/proof.py`, F039-UI |
+| UI (árvore, inspector e Escape) | **Parcial** — controles e 16 testes de input GPUI; aparência, ponteiro físico e handles não provados | [Inspector](scene-inspector.md) |
 
 Esta feature é **semântica**: não existe gesto físico de ponteiro aqui. O "gesto" é um ciclo de
 comandos (begin → update* → commit | cancel) que a UI futura deve apenas chamar.
@@ -143,11 +143,7 @@ no executável `tessel-headless` (ver a evidência de integração ao final).
 
 ## UI e CLI da janela
 
-`./scripts/ui op '{"op":"scene.tree","scene":"street"}'` chega a `Op::Run(Command::Scene(..))`, que o
-desktop já executa por `EditorState::execute`; nenhuma variante nova de `Op`, nenhum arquivo do
-desktop alterado. **Não exercitado.** Apresentação visual **P**: sem controle (árvore, handle,
-Escape), portanto sem equivalente `ui click`. Quando existir, Escape = `scene.gesture.cancel` e o
-soltar do ponteiro = `scene.gesture.commit`; handle e comando devem dar o mesmo resultado (BL015).
+A janela executa os mesmos `scene.*` por `Op::Run(Command::Scene(..))`. Árvore/seleção/propriedades, Escape e confirmação por release estão em [F039-UI](scene-inspector.md). Socket e pixels foram exercitados no corpus da rodada M/N/O/P; testes GPUI injetam entrada, sem prova de ponteiro físico. Aparência e handles seguem pendentes (BL087/BL015).
 
 ## Evidências e status
 
@@ -174,7 +170,7 @@ Limitações conhecidas:
 - IDs de gesto reiniciam quando o projeto é aberto/criado; um cliente que guardou `gesture-1` de antes
   poderia colidir com o do novo projeto.
 - Rejeição do commit por orçamento de bytes não tem teste (o orçamento é inalcançável com fixtures).
-- Sem nó em `state/tree.rs`, sem prova de socket, sem UI.
+- Nós semânticos e controles em F039-UI; aparência, ponteiro físico e handles ainda não provados.
 - `summary()` não expõe seleção nem gesto.
 
-Integração pelo coordenador: testes públicos 21/21, unitários no gate core (197/197 no conjunto) e clippy lib limpo. Corrigidas duas expectativas: alvo fora do gesto é recusado antes de validar nó inexistente (`gesture_target_mismatch`). O executável headless passou uma sessão real de 13 requests (attach, árvore, seleção, evaluate, begin/update/commit, get, undo/redo). Socket/UI ainda pendentes; testes e CLI sem janela não provam ponteiro físico.
+Integração pelo coordenador: testes públicos 21/21, unitários no gate core (197/197 no conjunto) e clippy lib limpo. Corrigidas duas expectativas: alvo fora do gesto é recusado antes de validar nó inexistente (`gesture_target_mismatch`). O executável headless passou uma sessão real de 13 requests (attach, árvore, seleção, evaluate, begin/update/commit, get, undo/redo). A integração posterior da janela está em F039-UI; testes e CLI sem janela não provam ponteiro físico.

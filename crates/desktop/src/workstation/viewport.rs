@@ -112,20 +112,47 @@ impl Workstation {
     }
 
     /// [`viewport_send`](Self::viewport_send) and a repaint, for what the user did.
-    fn viewport_flush(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn viewport_flush(&mut self, cx: &mut Context<Self>) {
         self.viewport_send(cx);
         cx.notify();
     }
 
     /// Follows the editor state after a command.
     pub(super) fn viewport_sync(&mut self, cx: &mut Context<Self>) {
-        self.viewport.sync(&self.state);
+        if let Some(scene) = self.viewport.directed_scene().map(str::to_owned) {
+            let gesture = self
+                .state
+                .scene_interaction
+                .gesture()
+                .filter(|gesture| gesture.scene() == scene)
+                .map(|gesture| gesture.id().to_owned());
+            let request = serde_json::json!({ "scene": scene, "frame": self.state.timeline.playhead,
+                "gesture": gesture });
+            if let Err(error) = self.viewport.render_scene(
+                &mut self.state,
+                &self.workflow.scene_resources(),
+                &request,
+                false,
+            ) {
+                self.viewport.scene_error(&error);
+            }
+        } else {
+            self.viewport.sync(&self.state);
+        }
         self.viewport_flush(cx);
     }
 
     fn viewport_ipc(&mut self, raw: &str, cx: &mut Context<Self>) {
         let before = self.viewport.ui_signature();
         self.viewport.on_ipc(raw, &self.state);
+        let restarted = serde_json::from_str::<serde_json::Value>(raw)
+            .ok()
+            .is_some_and(|message| {
+                matches!(message["type"].as_str(), Some("ready" | "context.restored"))
+            });
+        if restarted && self.viewport.directed_scene().is_some() {
+            self.viewport_sync(cx);
+        }
         self.viewport_send(cx);
         // OPT04: a message that leaves the header and the error area as they were (a presentation
         // report, an asset or proxy acknowledgement) has nothing to repaint.
@@ -191,6 +218,8 @@ impl Workstation {
     pub fn viewport_reset_project(&mut self, cx: &mut Context<Self>) {
         // A clock running over the old project would seek the new one.
         self.playback_stop(cx);
+        // Selections, gestures and sliders of the old project's scenes do not carry over.
+        self.scene_project_changed();
         self.viewport.reset_project();
         self.viewport_sync(cx);
     }
@@ -211,6 +240,9 @@ impl Workstation {
             return;
         }
         self.viewport.on_screen = on_screen;
+        if on_screen {
+            self.viewport_sync(cx);
+        }
         if let Some(view) = self.viewport_view.clone() {
             view.update(cx, |view, _| {
                 let _ = view.set_visible(on_screen);

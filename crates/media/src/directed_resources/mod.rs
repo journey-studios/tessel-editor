@@ -7,9 +7,12 @@
 //!                                    └─materialize─▶ <transport root>/<relativePath>
 //! ```
 //!
-//! The caller must exclusively control both roots for the duration of the operation: component
-//! checks do not defend against concurrent hostile replacement of parent directories.
-//! What it guarantees under that precondition (limits: `docs/features/scene-resources.md`):
+//! The transport root is held under an exclusive [`RootLease`] (BL079), so two *Tessel*
+//! operations never publish into one root together. That is cooperative: a hostile writer
+//! replacing a parent directory with a link is only narrowed (a containment check around each
+//! link), not excluded; the source root is read-only and verified by hash. Limits:
+//! `docs/features/scene-resources.md` and `docs/features/scene-resource-integration.md`.
+//! What it guarantees (the lease and the roots' own ownership being the precondition):
 //!
 //! - **Containment.** A joined path does not keep a symbolic link inside its root, so every source
 //!   path is walked component by component (no symlink unless `SymlinkPolicy::AllowContained`),
@@ -26,25 +29,42 @@
 //!   content problem.
 //! - **Atomicity.** Files are copied and verified into a staging folder inside the transport root,
 //!   then published without overwriting. An error or a cancellation before publishing removes the
-//!   staging folder and leaves the root as it was; an error while publishing removes the files and
-//!   folders this call created. Cancellation is not observed while publishing. Publication requires hard-link support;
-//!   failures are returned, never downgraded to a check-then-rename that could overwrite.
+//!   staging folder and leaves the root as it was; an error or a cancellation while publishing
+//!   (checked before every file, BL080) removes exactly the files and folders this call created,
+//!   never what was already in the root. Publication requires hard-link support; failures are
+//!   returned, never downgraded to a check-then-rename that could overwrite.
 //!
-//! This module does not change `host.rs`, package or interchange, and does not lift the guards of
-//! an incomplete package: wiring it into the real flow is the next slice.
+//! The consumers that wire this into the editor (resolution for the renderer, adoption into the
+//! project, package/restore and scene interchange) are `crate::scene_resources`.
 
 mod check;
 mod destination;
+mod lease;
 mod materialize;
 mod preflight;
 mod source;
 
-pub use materialize::{MaterializeReport, MaterializedItem, Outcome, materialize};
+pub use lease::{LEASE_FILE, RootLease};
+pub use materialize::{
+    MaterializeReport, MaterializedItem, Outcome, Published, materialize, materialize_leased,
+    materialize_observed,
+};
 pub use preflight::{CheckedResource, PreflightReport, preflight};
+
+use std::path::Path;
 
 use serde_json::{Value, json};
 use tessel_editor_core::jobs::JobError;
-use tessel_editor_core::scene_resources::{ManifestIssue, ResourceKey, TransportItem};
+use tessel_editor_core::scene_resources::{
+    ManifestIssue, ResourceKey, TransportItem, TransportResource,
+};
+
+/// Header check of one file against what the bundle says about the resource (PNG signature and
+/// size, SPZ). The hash is the caller's business; this is what lets a restore re-prove a file
+/// it did not copy itself without reading it again.
+pub(crate) fn verify_content(path: &Path, resource: &TransportResource) -> Result<(), String> {
+    check::content(path, resource).map_err(|failure| failure.detail)
+}
 
 /// Whether a symbolic link may appear on the way to a source file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -210,7 +230,7 @@ fn issue_json(issue: &ManifestIssue) -> Value {
 }
 
 /// The manifest has blocking issues: no plan, so nothing was looked at.
-fn blocked_by_manifest(issues: &[ManifestIssue]) -> JobError {
+pub(crate) fn blocked_by_manifest(issues: &[ManifestIssue]) -> JobError {
     JobError::new(
         "manifest_blocked",
         format!(
@@ -221,7 +241,7 @@ fn blocked_by_manifest(issues: &[ManifestIssue]) -> JobError {
     .with_details(json!({ "issues": issues.iter().map(issue_json).collect::<Vec<_>>() }))
 }
 
-fn rejected(problems: &[ResourceProblem]) -> JobError {
+pub(crate) fn rejected(problems: &[ResourceProblem]) -> JobError {
     JobError::new(
         "resources_invalid",
         format!(

@@ -6,6 +6,7 @@ import * as THREE from 'three';
 
 import { AssetStore } from './assets.js';
 import { Compositor, describePixels } from './compositor.js';
+import { DIRECTED_SCENE_CAPABILITIES } from './directed-scene.js';
 import { RetentionCounters } from './retention.js';
 import { SPLAT_FORMATS } from './splat-format.js';
 import { SPARK_VERSION } from './splat-stage.js';
@@ -38,7 +39,14 @@ const NATIVE_VIDEO = {
 };
 
 /** Optional runtime behaviours a host asks for in `hello`; absent means the default. */
-const FEATURES = ['frame.presented', 'cache.telemetry', 'asset.proxy', 'frame.quality', 'scene.result_cache'];
+const FEATURES = [
+  'frame.presented',
+  'cache.telemetry',
+  'asset.proxy',
+  'frame.quality',
+  'scene.result_cache',
+  'directed_scene',
+];
 
 export const createRuntime = ({ post, assetUrl, canvas }) => {
   const send = (message) => post({ v: BRIDGE_VERSION, ...message });
@@ -123,6 +131,8 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
         max_size: active.maxSize,
         features: FEATURES,
         native_video: NATIVE_VIDEO,
+        // Additive: what a `directed_scene` layer needs and how its resources are identified.
+        directed_scene: DIRECTED_SCENE_CAPABILITIES,
       },
     });
   };
@@ -146,6 +156,8 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
       texture_entries: assets.textureCount(),
       texture_bytes: assets.textureBytes(),
       asset_generation: assets.generation,
+      scene_resources: assets.sceneResourceCount(),
+      scene_generation: assets.sceneGeneration,
       context_generation: active.contextGeneration,
       gl_textures: memory.textures,
       gl_geometries: memory.geometries,
@@ -319,6 +331,8 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
       texture_entries: assets.textureCount(),
       texture_bytes: assets.textureBytes(),
       asset_generation: assets.generation,
+      scene_resources: assets.sceneResourceCount(),
+      scene_generation: assets.sceneGeneration,
       context_generation: compositor?.contextGeneration ?? 0,
       counters: counters.snapshot(),
     }),

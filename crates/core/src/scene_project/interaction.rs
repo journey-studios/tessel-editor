@@ -97,6 +97,44 @@ impl EditorState {
         Ok(answer)
     }
 
+    pub(super) fn scene_plan(
+        &self,
+        scene: &str,
+        at: &FrameAt,
+        partial: bool,
+        gesture: Option<&str>,
+    ) -> Result<Value, CommandError> {
+        let entry = self.attached_scene(scene)?;
+        let directed = if let Some(id) = gesture {
+            let candidate = self.scene_interaction.gesture.find(id)?;
+            self.ensure_live(candidate)?;
+            if candidate.scene() != scene {
+                return Err(CommandError::new(
+                    "gesture_scene_mismatch",
+                    "The gesture belongs to another scene",
+                ));
+            }
+            candidate.preview_scene()
+        } else {
+            &entry.scene
+        };
+        let frame = match at {
+            FrameAt::Frame(frame) => *frame,
+            FrameAt::Time(time) => directed.bundle().frame_at_time(*time)?,
+        };
+        // Admission also protects callers that construct EditorState directly.
+        super::run::check_admission(directed)?;
+        let plan = crate::scene_plan::ScenePlan::build_with(
+            directed,
+            frame,
+            crate::scene_plan::PlanOptions {
+                allow_partial: partial,
+            },
+        )?;
+        Ok(json!({ "action": "scene.plan", "scene": scene,
+            "complete": plan.is_complete(), "plan": plan.to_json() }))
+    }
+
     pub(super) fn scene_select(
         &mut self,
         scene: Option<&str>,

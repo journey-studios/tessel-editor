@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "about": "Adapter between the proof phases and operations that other fronts (M renderer, N resources, coordinator) are still adding. `op` and `args` are PROPOSALS: after integration the coordinator edits the real op name and argument names here (`$name` is replaced by the phase's value; a null value drops the key). A phase sends the real request; `unknown_operation` makes that phase BLOCKED (exit 3), never PASS. No rule of the editor lives in the harness.",
+  "logical_ops": {
+    "plan": {
+      "op": "scene.plan",
+      "args": {"scene": "$scene", "frame": "$frame"},
+      "result_path": "plan",
+      "result_contract": "ScenePlan::to_json (docs/features/scene-plan.md): camera.position/target/fovDeg, nodes[].id/worldMatrix, layers[].nodeId back to front, resources[].assetId/usedBy, required capabilities",
+      "backlog": "BL063",
+      "needs": "scene.plan { scene, frame } through the shared parser (ops::parse_op) answering ScenePlan::to_json, plus the admission gates (temporal_issues/edit_join_issues) before it answers"
+    },
+    "render_frame": {
+      "op": "scene.render",
+      "args": {"scene": "$scene", "frame": "$frame", "width": "$width", "height": "$height", "out": "$out", "probes": "$probes", "resources_root": "$resources_root"},
+      "result_path": "frame",
+      "result_contract": "same shape as render.frame's `frame`: png (file that exists), probes = [[r,g,b,a],...] in request order, inspected=true (a frame answered without readback is NOT a match), plus the identity of the resources used (assetId -> content hash)",
+      "backlog": "BL007",
+      "needs": "scene.render { scene, frame, width, height, out?, probes?, resources_root? } drawing the ScenePlan with resources resolved by assetId from an approved root (never by absolute path), answered only after the frame is drawn, with a typed error for unresolved resources/missing capability"
+    },
+    "export": {
+      "op": "scene.export",
+      "args": {"scene": "$scene", "path": "$out", "from": "$from", "frames": "$frames"},
+      "result_path": "",
+      "result_contract": "exported file readable by ffprobe with `frames` frames at the bundle's fps; frame i comparable with scene.render of the same frame",
+      "backlog": "BL008",
+      "needs": "directed-scene export (BL008) reusing the plan and the resource binding of scene.render; this round only prepares the seam"
+    },
+    "lose_context": {
+      "op": null,
+      "args": {},
+      "result_path": "",
+      "result_contract": "a way to force WEBGL_lose_context mid-session and restore it, as scripts/viewport-lifecycle-proof.py does with a scratch runtime page",
+      "backlog": "BL007",
+      "needs": "the scene renderer must go through the same `frame.render` path of the runtime page that the lifecycle proof triggers, so the existing trigger works unchanged"
+    }
+  }
+}

@@ -65,7 +65,7 @@ ordem de anexação. Cada `scene.*` é um `SceneCommand` dentro de `Command::Sce
 | `scene.properties` | `scene`, `prefix?` | cada propriedade aplicável com o valor atual | — |
 | `scene.get` | `scene`, `property` (caminho canônico) | uma propriedade | — |
 | `scene.camera` | `scene`, **um de** `frame` · `time` (`{"num","den"}` exato) · `clip`+`clip_frame` | câmera via `evaluate_camera` / `camera_at_clip_frame` (mapeamento shot→instância→clipe incluso) | — |
-| `scene.tree`, `scene.evaluate`, `scene.select`, `scene.selection`, `scene.gesture.*` | ver [F039](scene-interaction.md) | Árvore/seleção, câmera e nós por frame, gesto com candidato isolado; status e evidências em F039 | Só commit é edição |
+| `scene.plan`, `scene.tree`, `scene.evaluate`, `scene.select`, `scene.selection`, `scene.gesture.*` | ver [F039](scene-interaction.md) | Árvore/seleção, câmera e nós por frame, gesto com candidato isolado; status e evidências em F039 | Só commit é edição |
 | `scene.capabilities` | — | comandos, limites e o `scope` | — |
 
 O parser (`ops::scene_command`) só traduz forma; nenhuma regra mora nele. As respostas de câmera usam

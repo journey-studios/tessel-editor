@@ -28,10 +28,15 @@ use super::{AttachedScene, check_scene_id};
 /// *edit* produces; a bundle that arrives by attach or from a document has not been through them,
 /// and a scene that fails them could be edited into a state nobody can undo into.
 pub fn admit(scene: DirectedScene) -> Result<DirectedScene, CommandError> {
+    check_admission(&scene)?;
+    Ok(scene)
+}
+
+pub(super) fn check_admission(scene: &DirectedScene) -> Result<(), CommandError> {
     let mut issues = scene.edit_join_issues();
     issues.extend(scene.temporal_issues());
     if issues.is_empty() {
-        return Ok(scene);
+        return Ok(());
     }
     Err(ImportError::Invalid { issues }.into())
 }
@@ -100,6 +105,12 @@ impl EditorState {
             SceneCommand::Evaluate { scene, at, gesture } => {
                 self.scene_evaluate(&scene, &at, gesture.as_deref())
             }
+            SceneCommand::Plan {
+                scene,
+                at,
+                partial,
+                gesture,
+            } => self.scene_plan(&scene, &at, partial, gesture.as_deref()),
             SceneCommand::Select {
                 scene,
                 entities,

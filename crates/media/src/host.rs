@@ -8,8 +8,10 @@
 //! `wait: false` returns a job ID and `job.commit` applies it when the job succeeded).
 //!
 //! Operations: `media.import|relink|search|status|prepare|thumbnail|waveform|proxy`,
-//! `project.package_preflight|package|verify|restore|import`, `export.preflight|start`,
-//! `job.list|get|wait|cancel|commit`. Presets (`preset.*`) belong to the core.
+//! `project.package_preflight|package|verify|restore|import|import_scenes`,
+//! `scene.resources.status|preflight|resolve|adopt|release|invalidate` (F040),
+//! `export.preflight|start`, `job.list|get|wait|cancel|commit`. Presets (`preset.*`) belong to
+//! the core.
 //!
 //! Anything that reads files, runs a tool or builds a renderer (probe, decode, verify, restore,
 //! preflight) is a job; the caller's thread only snapshots the project and later applies the
@@ -30,6 +32,7 @@ use serde_json::{Value, json};
 use tessel_editor_core::assets::{
     Asset, Decoded, DecodedFrames, MediaKind, ProxyFormat, ProxyFrames,
 };
+use tessel_editor_core::directed_scene::DirectedScene;
 use tessel_editor_core::headless::{Extension, open_summary};
 use tessel_editor_core::interchange::apply_import;
 use tessel_editor_core::jobs::{
@@ -37,15 +40,21 @@ use tessel_editor_core::jobs::{
 };
 use tessel_editor_core::preset::{self, Preset};
 use tessel_editor_core::preview::{PreviewPolicy, Reason};
+use tessel_editor_core::scene_resources::ResourceManifest;
 use tessel_editor_core::session::Renderer;
 use tessel_editor_core::state::Command;
 use tessel_editor_core::{CommandError, EditorState};
 
 use crate::derive::Cache;
+use crate::directed_resources::Options as ResourceOptions;
 use crate::export::{self, ExportRequest};
 use crate::import::{self, ImportMode, ImportRequest, PreparedItem};
 use crate::interchange::{self, PreparedProjectImport};
-use crate::package::{self, DOCUMENT_NAME, PackageFormat, PackageOptions};
+use crate::package::{self, DOCUMENT_NAME, PackageFormat, PackageInputs, PackageOptions};
+use crate::scene_resources::import::{self as scene_import, PreparedSceneImport};
+use crate::scene_resources::{
+    Invalidation, LoadRequest, ResolvedResourceMap, ResourceBase, SceneResourceSession,
+};
 use crate::tools::Tools;
 
 /// Builds the renderer one export drives. It runs on the export's own thread, so a session that
@@ -73,6 +82,14 @@ enum Pending {
         project: String,
         items: Vec<(String, Option<String>, ProxyFrames)>,
     },
+    /// Approved resources of one scene, installed in the session only while the project, the
+    /// generation and the scene's bundle revision are still the ones the job was started for.
+    SceneResources {
+        map: Box<ResolvedResourceMap>,
+        session: SceneResourceSession,
+    },
+    /// Scenes whose files are already in the workspace, attached as one undo step.
+    SceneImport(Box<PreparedSceneImport>),
     /// A restored project, already loaded and validated off the caller's thread, that replaces the
     /// open project only if that one is still at `(project, revision)`.
     Open {
@@ -131,6 +148,9 @@ pub struct MediaHost {
     /// `(asset, hash, height, format)` whose proxy failed: not retried until one of them changes.
     proxy_failed: Vec<ProxyKey>,
     proxy_assets: HashMap<JobId, Vec<ProxyKey>>,
+    /// Approved scene resources of the open project (BL010). Shared with jobs and, through
+    /// [`MediaHost::scene_resources`], with a renderer.
+    scene_resources: SceneResourceSession,
 }
 
 type ProxyKey = (String, Option<String>, u32, ProxyFormat);
@@ -221,7 +241,20 @@ impl MediaHost {
             auto_proxy: None,
             proxy_failed: Vec::new(),
             proxy_assets: HashMap::new(),
+            scene_resources: SceneResourceSession::default(),
         }
+    }
+
+    /// The session that owns the approved resources of the scenes. Hand a clone to a renderer
+    /// as its `ResourceResolver`; the host invalidates it when the project changes.
+    pub fn scene_resources(&self) -> SceneResourceSession {
+        self.scene_resources.clone()
+    }
+
+    /// Uses another session (a shared one, or one with a different byte budget).
+    pub fn with_scene_resources(mut self, session: SceneResourceSession) -> Self {
+        self.scene_resources = session;
+        self
     }
 
     /// Lets `export.start` build a renderer; without one exports answer `backend_unavailable`.
@@ -252,6 +285,7 @@ impl MediaHost {
     /// transaction on the caller's thread, and reports what happened to each. A job that failed
     /// or was cancelled changed nothing and is reported once. Call it from the UI thread's tick.
     pub fn poll(&mut self, state: &mut EditorState) -> Vec<Value> {
+        self.scene_resources.observe_project(&state.project.id);
         let finished: Vec<JobId> = self
             .pending
             .keys()
@@ -547,6 +581,13 @@ impl MediaHost {
             "project.verify" => self.verify(state, request),
             "project.restore" => self.restore(state, request),
             "project.import" => self.project_import(state, request),
+            "project.import_scenes" => self.import_scenes(state, request),
+            "scene.resources.status" => Ok(self.scene_resources_status(state)),
+            "scene.resources.preflight" => self.scene_preflight(state, request),
+            "scene.resources.resolve" => self.scene_resolve(state, request),
+            "scene.resources.adopt" => self.scene_adopt(state, request),
+            "scene.resources.release" => self.scene_release(request),
+            "scene.resources.invalidate" => self.scene_invalidate(request),
             "export.preflight" => self.export_preflight(state, request),
             "export.start" => self.export_start(state, request),
             "job.list" => Ok(self.registry.to_json()),
@@ -773,22 +814,27 @@ impl MediaHost {
         request: &Value,
     ) -> Result<Value, CommandError> {
         let options = Self::package_options(request)?;
+        let inputs = package_inputs(request)?;
         let path = PathBuf::from(text(request, "path")?);
         let snapshot = state.clone();
-        let (id, slot) = self.start(JobKind::Preflight, "Package preflight", move |_| {
-            Ok((None, package::preflight(&snapshot, &options, &path)?))
+        let (id, slot) = self.start(JobKind::Preflight, "Package preflight", move |ctx| {
+            Ok((
+                None,
+                package::preflight_with(&snapshot, &options, &inputs, &path, ctx.token())?,
+            ))
         });
         self.finish(state, request, id, slot)
     }
 
     fn package(&mut self, state: &mut EditorState, request: &Value) -> Result<Value, CommandError> {
         let options = Self::package_options(request)?;
+        let inputs = package_inputs(request)?;
         let destination = PathBuf::from(text(request, "path")?);
         let snapshot = state.clone();
         let (id, slot) = self.start(JobKind::Package, "Package project", move |ctx| {
             Ok((
                 None,
-                package::create(&snapshot, &destination, &options, ctx)?,
+                package::create_with(&snapshot, &destination, &options, &inputs, ctx)?,
             ))
         });
         self.finish(state, request, id, slot)
@@ -853,6 +899,224 @@ impl MediaHost {
             let prepared = prepared?;
             let report = json!({ "plan": prepared.plan.to_json(), "copied": prepared.copied, "reused": prepared.reused });
             Ok((Some(Pending::ProjectImport(Box::new(prepared))), report))
+        });
+        self.finish(state, request, id, slot)
+    }
+
+    /// The scene named by `scene`, its bundle shared (not copied) with the job.
+    fn scene_of(
+        state: &EditorState,
+        request: &Value,
+    ) -> Result<(String, Arc<DirectedScene>), CommandError> {
+        let id = text(request, "scene")?;
+        let attached = state
+            .scenes
+            .get(id)
+            .ok_or_else(|| CommandError::unknown_element("scene", id))?;
+        Ok((id.to_string(), attached.scene.clone()))
+    }
+
+    /// `base` when the caller names one (absolute), else the managed base of the workspace.
+    fn scene_base(
+        state: &EditorState,
+        request: &Value,
+        id: &str,
+    ) -> Result<ResourceBase, CommandError> {
+        if let Some(root) = optional_text(request, "base")? {
+            return Ok(ResourceBase::explicit(root)?);
+        }
+        Ok(ResourceBase::managed(&workspace(state)?, id)?)
+    }
+
+    /// `scene.resources.status`: what the session holds and, per attached scene, whether that is
+    /// still current for the scene's bundle and where its managed base is.
+    fn scene_resources_status(&self, state: &EditorState) -> Value {
+        self.scene_resources.observe_project(&state.project.id);
+        let mut report = self.scene_resources.status();
+        let workspace = state.project.workspace.clone();
+        report["attached"] = json!(
+            state
+                .scenes
+                .iter()
+                .map(|attached| {
+                    let held = self.scene_resources.get(&attached.id);
+                    let base = workspace
+                        .as_deref()
+                        .and_then(|workspace| ResourceBase::managed(workspace, &attached.id).ok());
+                    json!({
+                        "scene": attached.id,
+                        "loaded": held.is_some(),
+                        // A map of an older bundle revision is stale even in the same generation:
+                        // the renderer must reload, not trust it.
+                        "current": held.as_ref().is_some_and(|map| {
+                            map.bundle_revision == attached.scene.bundle().revision_id
+                        }),
+                        "managedBase": base.as_ref().map(ResourceBase::to_json),
+                        "managedBaseExists": base.as_ref().is_some_and(ResourceBase::exists),
+                    })
+                })
+                .collect::<Vec<_>>()
+        );
+        report
+    }
+
+    /// `scene.resources.preflight`: read-only check, with every problem listed. Installs nothing.
+    fn scene_preflight(
+        &mut self,
+        state: &mut EditorState,
+        request: &Value,
+    ) -> Result<Value, CommandError> {
+        let (id, scene) = Self::scene_of(state, request)?;
+        let base = Self::scene_base(state, request, &id)?;
+        let (id_job, slot) = self.start(
+            JobKind::Preflight,
+            "Scene resources preflight",
+            move |ctx| {
+                ctx.stage("verify", scene_file_total(&scene));
+                let report = crate::scene_resources::check(
+                    &scene,
+                    &base,
+                    &ResourceOptions::default(),
+                    ctx.token(),
+                    &mut |progress| ctx.progress(progress.done as u64),
+                )?;
+                Ok((
+                    None,
+                    json!({ "action": "scene.resources.preflight", "scene": id,
+                    "base": base.to_json(), "report": report.to_json() }),
+                ))
+            },
+        );
+        self.finish(state, request, id_job, slot)
+    }
+
+    /// `scene.resources.resolve`: verifies the files and installs the approved map in the
+    /// session, under the generation current when the job started.
+    fn scene_resolve(
+        &mut self,
+        state: &mut EditorState,
+        request: &Value,
+    ) -> Result<Value, CommandError> {
+        let (id, scene) = Self::scene_of(state, request)?;
+        let base = Self::scene_base(state, request, &id)?;
+        let project = state.project.id.clone();
+        let generation = self.scene_resources.observe_project(&project);
+        let session = self.scene_resources.clone();
+        let (id_job, slot) = self.start(JobKind::Preflight, "Load scene resources", move |ctx| {
+            ctx.stage("verify", scene_file_total(&scene));
+            let map = crate::scene_resources::load(
+                &LoadRequest {
+                    scene: &scene,
+                    scene_id: &id,
+                    project_id: &project,
+                    generation,
+                    base: &base,
+                },
+                &ResourceOptions::default(),
+                ctx.token(),
+                &mut |progress| ctx.progress(progress.done as u64),
+            )?;
+            let report = json!({ "action": "scene.resources.resolve", "map": map.to_json() });
+            Ok((
+                Some(Pending::SceneResources {
+                    map: Box::new(map),
+                    session,
+                }),
+                report,
+            ))
+        });
+        self.finish(state, request, id_job, slot)
+    }
+
+    /// `scene.resources.adopt`: copies the files from `source` (an absolute folder) into the
+    /// project's managed base. Also the relink: run it again with another `source`.
+    fn scene_adopt(
+        &mut self,
+        state: &mut EditorState,
+        request: &Value,
+    ) -> Result<Value, CommandError> {
+        let (id, scene) = Self::scene_of(state, request)?;
+        let workspace = workspace(state)?;
+        let source = ResourceBase::explicit(text(request, "source")?)?;
+        let (id_job, slot) = self.start(JobKind::Import, "Adopt scene resources", move |ctx| {
+            ctx.stage("copy", scene_file_total(&scene));
+            let adoption = crate::scene_resources::adopt(
+                &scene,
+                &id,
+                &workspace,
+                &source,
+                &ResourceOptions::default(),
+                ctx.token(),
+                &mut |progress| ctx.progress(progress.done as u64),
+                &mut |_| {},
+            )?;
+            Ok((
+                None,
+                json!({ "action": "scene.resources.adopt", "scene": id,
+                    "base": adoption.base.to_json(), "report": adoption.report.to_json() }),
+            ))
+        });
+        self.finish(state, request, id_job, slot)
+    }
+
+    fn scene_release(&mut self, request: &Value) -> Result<Value, CommandError> {
+        let id = text(request, "scene")?;
+        let released = self.scene_resources.release(id);
+        Ok(json!({ "action": "scene.resources.release", "scene": id, "released": released }))
+    }
+
+    /// `scene.resources.invalidate`: everything approved so far is forgotten (a renderer reload,
+    /// a lost graphics context, a replaced asset). `reason` is one of `reload`, `context_loss`,
+    /// `asset_swap`, `requested`.
+    fn scene_invalidate(&mut self, request: &Value) -> Result<Value, CommandError> {
+        let reason = match optional_text(request, "reason")? {
+            None => Invalidation::Requested,
+            Some(label) => Invalidation::parse(label).ok_or_else(|| {
+                invalid("`reason` is `reload`, `context_loss`, `asset_swap`, `requested` or `project_switch`")
+            })?,
+        };
+        let generation = self.scene_resources.invalidate(reason);
+        Ok(
+            json!({ "action": "scene.resources.invalidate", "reason": reason.as_str(),
+            "generation": generation.0 }),
+        )
+    }
+
+    /// `project.import_scenes`: carries scenes (their bundle and files) from another project or
+    /// package; see `scene_resources::import` for what is guaranteed about IDs, references and paths.
+    fn import_scenes(
+        &mut self,
+        state: &mut EditorState,
+        request: &Value,
+    ) -> Result<Value, CommandError> {
+        let workspace = workspace(state)?;
+        let source = PathBuf::from(text(request, "source")?);
+        let wanted = strings(request, "scenes")?.unwrap_or_default();
+        let bases = scene_bases(request)?;
+        let dry_run = flag(request, "dry_run", false);
+        let destination = state.clone();
+        let (id, slot) = self.start(JobKind::ProjectImport, "Import scenes", move |ctx| {
+            let loaded = interchange::load_source(&source, &workspace, ctx)?;
+            if dry_run {
+                let plan = scene_import::plan(&destination, &loaded.state, &wanted);
+                loaded.cleanup();
+                let plan = plan?;
+                return Ok((None, json!({ "dry_run": true, "scenes": plan.iter().map(|scene| json!({
+                    "from": scene.from, "to": scene.to, "renamed": scene.renamed() })).collect::<Vec<_>>() })));
+            }
+            let prepared = scene_import::prepare(
+                &destination,
+                &loaded.state,
+                &workspace,
+                &wanted,
+                &bases,
+                ctx.token(),
+                &mut |progress| ctx.progress(progress.done as u64),
+            );
+            loaded.cleanup();
+            let prepared = prepared?;
+            let report = prepared.to_json();
+            Ok((Some(Pending::SceneImport(Box::new(prepared))), report))
         });
         self.finish(state, request, id, slot)
     }
@@ -1000,6 +1264,40 @@ impl MediaHost {
         )?;
         Ok(merge_applied(result, id, applied))
     }
+}
+
+/// `scene_bases`: `{ "<sceneId>": "<absolute folder>" }`, a folder the caller authorizes for one
+/// operation (never stored). Relative folders are refused later, by `ResourceBase::explicit`.
+fn scene_bases(
+    request: &Value,
+) -> Result<std::collections::BTreeMap<String, PathBuf>, CommandError> {
+    let Some(value) = request.get("scene_bases").filter(|value| !value.is_null()) else {
+        return Ok(Default::default());
+    };
+    let object = value
+        .as_object()
+        .ok_or_else(|| invalid("`scene_bases` must be an object of scene ID → folder"))?;
+    object
+        .iter()
+        .map(|(id, root)| {
+            root.as_str()
+                .map(|root| (id.clone(), PathBuf::from(root)))
+                .ok_or_else(|| invalid("`scene_bases` values must be folder paths"))
+        })
+        .collect()
+}
+
+fn package_inputs(request: &Value) -> Result<PackageInputs, CommandError> {
+    Ok(PackageInputs {
+        scene_bases: scene_bases(request)?,
+    })
+}
+
+/// Files a scene's supported resources need: the job's progress total.
+fn scene_file_total(scene: &DirectedScene) -> u64 {
+    ResourceManifest::from_scene(scene)
+        .transport_plan()
+        .map_or(0, |plan| plan.items.len() as u64)
 }
 
 /// Assets whose decoded media is missing: container videos and compressed audio that were
@@ -1221,6 +1519,33 @@ fn apply(
                 json!({ "action": "media.prepare", "applied": applied, "stale": stale }),
             ))
         }
+        Pending::SceneResources { map, session } => {
+            let current = state
+                .scenes
+                .get(&map.scene_id)
+                .map(|attached| attached.scene.bundle().revision_id.clone());
+            if state.project.id != map.project_id
+                || current.as_deref() != Some(&map.bundle_revision)
+            {
+                return Err(CommandError::new(
+                    "stale_result",
+                    format!(
+                        "Scene `{}` or the open project changed while its resources loaded; nothing was installed",
+                        map.scene_id
+                    ),
+                ));
+            }
+            let installed = session
+                .install(*map)
+                .map_err(|error| CommandError::new(error.code(), error.to_string()))?;
+            Ok(Some(
+                json!({ "action": "scene.resources.resolve", "installed": true,
+                "scene": installed.scene_id, "generation": installed.generation.0,
+                "resources": installed.entries.len(), "complete": installed.complete,
+                "approvedBytes": installed.approved_bytes() }),
+            ))
+        }
+        Pending::SceneImport(prepared) => Ok(Some(scene_import::apply(state, *prepared)?)),
         Pending::Open {
             project,
             revision,
@@ -1248,6 +1573,14 @@ impl Extension for MediaHost {
         request: &Value,
     ) -> Option<Result<Value, CommandError>> {
         let op = request.get("op")?.as_str()?;
+        // Whatever swapped the project (open, restore, a window), the next request notices.
+        self.scene_resources.observe_project(&state.project.id);
+        // A detached scene's resources are not the renderer's to keep; the core still runs it.
+        if op == "scene.detach"
+            && let Some(scene) = request.get("scene").and_then(Value::as_str)
+        {
+            self.scene_resources.release(scene);
+        }
         // Rendering needs decoded media: prepare it first instead of failing with a hint to run
         // another command. The core still answers the request itself.
         if matches!(op, "render.frame" | "render.audio") {
@@ -1256,6 +1589,7 @@ impl Extension for MediaHost {
         let ours = op.starts_with("media.")
             || op.starts_with("job.")
             || op.starts_with("export.")
+            || op.starts_with("scene.resources.")
             || matches!(
                 op,
                 "project.package_preflight"
@@ -1263,6 +1597,7 @@ impl Extension for MediaHost {
                     | "project.verify"
                     | "project.restore"
                     | "project.import"
+                    | "project.import_scenes"
             );
         ours.then(|| self.handle(state, op, request))
     }

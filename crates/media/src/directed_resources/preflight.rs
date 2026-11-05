@@ -1,7 +1,7 @@
 //! Read-only verification of every file the manifest says a frame needs.
 
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use tessel_editor_core::jobs::{CancelToken, JobError};
@@ -22,6 +22,11 @@ pub struct CheckedResource {
     /// Every resource that lands on this file, with its own `assetId`.
     pub keys: Vec<ResourceKey>,
     pub bytes: u64,
+    /// SHA-256 (lowercase hex) the file was verified against.
+    pub hash: String,
+    /// Canonical path of the verified file, inside the canonical source root. This is the
+    /// *approved* path a renderer may open (`scene_resources::ResolvedResource::path`).
+    pub resolved: PathBuf,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -97,12 +102,14 @@ pub fn preflight(
     for (index, item) in plan.items.iter().enumerate() {
         token.check()?;
         match check_item(&root, item, options, token) {
-            Ok(bytes) => {
+            Ok((bytes, resolved)) => {
                 report.total_bytes = report.total_bytes.saturating_add(bytes);
                 report.checked.push(CheckedResource {
                     path: item.path.clone(),
                     keys: item.resources.iter().map(|r| r.key.clone()).collect(),
                     bytes,
+                    hash: item.expected_hash.clone(),
+                    resolved,
                 });
             }
             Err(Stop::Problem(failure)) => report.problems.push(failure.of(item)),
@@ -128,13 +135,14 @@ pub fn preflight(
     Ok(report)
 }
 
-/// One transport file: contained, hashed, then its header. Returns its size.
+/// One transport file: contained, hashed, then its header. Returns its size and the canonical
+/// path that was verified.
 fn check_item(
     root: &Root,
     item: &TransportItem,
     options: &Options,
     token: &CancelToken,
-) -> Result<u64, Stop> {
+) -> Result<(u64, PathBuf), Stop> {
     let mut source = root.open_file(&item.path, options)?;
     let (observed, bytes) = copy_hashed(
         &mut source.file,
@@ -157,5 +165,5 @@ fn check_item(
     for resource in &item.resources {
         check::content(&source.resolved, resource)?;
     }
-    Ok(bytes)
+    Ok((bytes, source.resolved))
 }

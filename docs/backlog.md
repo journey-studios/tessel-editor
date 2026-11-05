@@ -50,21 +50,21 @@ Fontes: [roadmap](migration/phased-roadmap.md), [matriz](features/README.md),
 | BL004 | BB04 | Ampliar catálogo: componentes, renderOrder, keys/segmentos e propriedades dos novos domínios | Parcial | BL001–BL003 aplicáveis | — | Tipo/unidade/faixa/default compartilhados; rollback e undo por lote |
 | BL005 | BB04 | Compatibilizar escrita de pose inicial com a conversão de movimentos/keys da origem | Pendente | BL004 | — | Semântica escolhida documentada e comparada com a origem |
 | BL006 | BB05 | Definir plano avaliado de cena e contrato core → runtime, versão/capabilities | A validar | BB02/BB03 existentes | H / F037 ([relatório](migration/foundation-h-report.md)) | 29 testes públicos, doctest e clippy lib passaram. Renderer BL007 e recursos BL009 continuam pendentes; gate completo da rodada ainda será executado |
-| BL007 | BB05 | Renderer da cena dirigida em preview e headless; geração/cancelamento/invalidação | Pendente | BL006, BL010 | — | Mesmo conteúdo em seek fora de ordem, troca de projeto e recuperação de contexto |
+| BL007 | BB05 | Renderer da cena dirigida em preview e headless; geração/cancelamento/invalidação | Parcial | BL006, BL010 | M / coordenador | F041: plano real no Three.js, CLI e monitor WKWebView; 184 checks headless (com plano) e 40 checks de pixels nativos. Lifecycle Node e 3 testes do host. Contexto/reload nativos dirigidos ainda a ampliar |
 | BL008 | BB05 | Exportar cenas dirigidas pelo mesmo plano e original | Pendente | BL007 | — | Comparação de frames preview/headless/export e export curto reproduzível |
 | BL009 | BB06 | Resolver dependências transitivas: imagens/mapas/splats/fontes e base de caminhos | Parcial | Modelo BB01/BB02 | I / F038 ([relatório](migration/foundation-i-report.md)) | Manifesto/closure/preflight implementados; 27 core + 39 media e plano × manifesto passaram. Mapas/f32/narração só listados; fontes fora da fatia |
-| BL010 | BB06 | Jobs/load/cache/release por geração e dependentes da cena | Parcial | BL009 | — (fatia I recebida) | Materialização tem limites/cancelamento de cópia/rollback; faltam geração, invalidação e release no fluxo real |
-| BL011 | BB06 | Save/package/restore/relink/interchange de recursos de cena | Parcial | BL009, BL010 | — (fatia I recebida) | Helper de materialização disponível; ainda sem host/package/interchange. Guarda só cai após prova de abrir sem origem |
+| BL010 | BB06 | Jobs/load/cache/release por geração e dependentes da cena | Parcial | BL009 | N / coordenador | F040: MediaHost com sessão, geração, orçamento, resolve/release/invalidate; 22 testes de integração/publicação reconferidos. Consumo por mapa aprovado e pixels comprovados em F041 |
+| BL011 | BB06 | Save/package/restore/relink/interchange de recursos de cena | Parcial | BL009, BL010 | N / coordenador | F040: adopt/relink, base gerenciada, pacote Directory/Archive e project.import_scenes; teste de restauração sem origem/workspace passou. UI e formatos BL077 pendentes; guardas mantidas fora do subconjunto |
 | BL012 | BB07 | Seleção por entidade, árvore de cena e tool state | A validar | BB02, BL004 | J / F039 ([relatório](migration/foundation-j-report.md)) | 21 testes públicos e unidade core passaram; executável headless real (13 requests) validou queries/seleção/gestos/undo; UI/socket e gesto físico pendentes |
 | BL013 | BB07 | Gestos com preview/commit/cancel e histórico agrupado | A validar | BL012 | J / F039 ([relatório](migration/foundation-j-report.md)) | 21 testes públicos e unidade core passaram; executável headless real (13 requests) validou queries/seleção/gestos/undo; UI/socket e gesto físico pendentes |
-| BL014 | BB08 | Inspector ligado ao catálogo e às propriedades vivas | Pendente | BL004, BL012 | — | UI/CLI/lib compartilham comandos e valores; controle indisponível explica motivo |
+| BL014 | BB08 | Inspector ligado ao catálogo e às propriedades vivas | A validar | BL004, BL012 | O / coordenador | [F039-UI](features/scene-inspector.md): árvore, oito propriedades, candidato/reset e erro tipado; agente reporta 137 testes desktop e clippy limpos, socket em instância própria. Gate local passou; falta inspeção visual |
 | BL015 | BB08 | Overlays/handles: coordenadas, foco, hit testing e resize sobre WebView | Pendente | BL007, BL013, BL014, BL042 | — | Handle e comando dão mesmo resultado; validar foco/resize nativos |
 | BL016 | BB09 | Transporte/mix do modelo dirigido: shots, janela de edição e relógio | Pendente | BL006, BL008 | — | Frame e amostra correspondentes em play/seek/pause; offline sem dispositivo |
 | BL017 | BB09 | Narração/takes/legendas e monitor gain | Pendente | BL016, BL026 | — | Tempo, texto e mix persistem e coincidem na saída |
 | BL018 | BB10 | Expandir corpus: tolerâncias JOIN, FPS variados e matrizes mundo | Parcial | BB10 existente | K / F032 ([relatório](migration/foundation-k-report.md)) | 47 casos estendidos + 55 base verificados contra origem; 49 testes Node e 15 testes Rust passaram. Matriz da câmera usa Three isolado; limite do runtime em BL071 |
-| BL019 | BB10 | Provas de plano/pixels/áudio/performance por novo domínio | Parcial | Cada entrega | — | Código final e proveniência; não usar resultado de protótipo como aceite |
+| BL019 | BB10 | Provas de plano/pixels/áudio/performance por novo domínio | Parcial | Cada entrega | P / coordenador | [Corpus e harness](migration/directed-scene-proof.md) recebidos: modelo/corpus e 14 testes Python reconferidos; agente executou 80 checks headless e 80 socket, binários sinalizados como anteriores às fontes. Pixels/pacote/export bloqueados até BL007/BL011/BL008/BL063; reexecutar após build integrado |
 | BL020 | Adapters | Expor avaliação completa de nós por frame no acesso programático de cena | A validar | BB03 existente | J / F039 ([relatório](migration/foundation-j-report.md)) | 21 testes públicos e unidade core passaram; executável headless real (13 requests) validou queries/seleção/gestos/undo; UI/socket e gesto físico pendentes |
-| BL021 | Adapters | Provar `scene.*` pelo socket da janela e depois pela UI visual | A validar | BL012/BL014 para UI | — | Socket e UI têm evidências distintas; headless já está validado |
+| BL021 | Adapters | Provar `scene.*` pelo socket da janela e depois pela UI visual | A validar | BL012/BL014 para UI | O/P / coordenador | Socket reportado em instâncias próprias; O: controles semânticos, P: 80 checks. UI com 16 testes de input GPUI; aparência e ponteiro físico não conferidos. Build integrado: prova final 408/408, com 80 checks de socket e 2 da árvore semântica |
 
 Primeiro marco pendente: cena mínima → plano → monitor/headless → pacote sem origem →
 export curto. BB05 e BB06 podem avançar em paralelo após acordar o contrato de recursos;
@@ -189,7 +189,7 @@ serão integrados pelo coordenador. A janela do usuário não é reiniciada dura
 
 | ID | Área | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL063 | BB05/Adapters | Expor scene.plan por lib/JSONL/UI e integrar plano × manifesto | Parcial | BL006, BL009 | Coordenador | Identidade H/I provada em 4 bundles × 4 frames; recursos requeridos conhecidos no manifesto. Ainda faltam adapter scene.plan e consumo no runtime |
+| BL063 | BB05/Adapters | Expor scene.plan por lib/JSONL/UI e integrar plano × manifesto | Concluído | BL006, BL009 | Coordenador | Operação compartilhada scene.plan com gates/gesture; mapa F040 consumido em scene.render e monitor. 7 testes scene_flow e 60 checks de plano headless passaram; gate local passou (827/2 no workspace, scene_flow 8/8 após teste extra) |
 | BL064 | BB05/performance | Avaliação de muitos frames sem reconstruir NodeTimeline; medir tamanho/custo do plano | Pendente | BL006, consumidor BL007/BL008 | — | Hipótese medida antes de otimizar; mesma saída e budget explícito no export curto |
 | BL065 | BB05/domínios | Expandir plano aos domínios recusados e ao desempate por profundidade | Pendente | BL003, BL023–BL027 | — | Capabilities/versão e estado completo por domínio, com provas; não remover unsupported sem implementação |
 
@@ -241,8 +241,8 @@ pertencem ao corpus K; pendências adicionais de L foram reconciliadas como BL07
 |---|---|---|---|---|---|---|
 | BL077 | BB06/formatos | Interpretar/transportar mapas, grades f32, profundidade/relevo e narração | Pendente | BL001/BL003, BL009 | — | Capabilities/versão e verificação por formato (pixels/alpha, tamanho e endianness), sem omitir dependências |
 | BL078 | BB06/portabilidade | Identidade de arquivo fora de Unix e colisões Unicode NFC/NFD | Pendente | BL009 | — | Equivalente Windows a dev/ino e política de normalização, com testes reais |
-| BL079 | BB06/concorrência | Garantir controle exclusivo das raízes ou usar operações ancoradas em diretórios | Pendente | BL011 | — | Não prometer contenção contra troca concorrente de pais; integrar lease/isolamento ou handles seguros antes de liberar fluxo compartilhado |
-| BL080 | BB06/cancelamento | Observar cancelamento durante publicação e provar rollback parcial dessa fase | Pendente | BL010 | — | Cancel por arquivo publicado; rollback só dos arquivos próprios; teste determinístico sem corrida de threads |
+| BL079 | BB06/concorrência | Garantir controle exclusivo das raízes ou usar operações ancoradas em diretórios | Parcial | BL011 | N / coordenador | RootLease advisory e recusa root_busy testados; protege operações cooperativas. Escritor hostil trocando pai continua fora da garantia; operações ancoradas pendentes |
+| BL080 | BB06/cancelamento | Observar cancelamento durante publicação e provar rollback parcial dessa fase | A validar | BL010 | N / coordenador | Cancelamento antes de cada publicação e rollback só dos arquivos próprios; 4 testes determinísticos de publicação reconferidos. Gate integrado da rodada pendente |
 
 A proposta de I para ligar materialize ao pacote reutiliza BL011, sem duplicação. IDs sugeridos
 BL070–BL072 foram reconciliados como BL011/BL077/BL078; BL079/BL080 explicitam os limites de
@@ -274,3 +274,77 @@ refletem gates executados, IDs reconciliados e o teste correto de F039; comandos
 usam scripts/cargo; tabela do runner teve pipes escapados. Gate desta correção: 49 Node,
 16 Rust direcionados e fmt. O último gate workspace completo continua o da rodada (718/2),
 não foi reexecutado por estas mudanças em documentação, proteção Node e lista de frames de teste.
+
+## Rodada de integração de cena dirigida — M/N/O/P
+
+Autorizada pelo usuário em 2026-11-05. Contrato e ownership: [plano](migration/directed-scene-integration-plan.md).
+Delegações serão registradas abaixo pelo coordenador. Não há conclusão por mera atribuição.
+
+| Frente | Itens | Estado | Ownership |
+|---|---|---|---|
+| M | BL007/BL063 | Recebido e integrado — gate local passou | Renderer/runtime, scene.plan e ligação ao monitor pelo coordenador |
+| N | BL010/BL011 | Recebido — 22 testes reconferidos | Recursos e mídia/pacote integrados ao renderer; formatos parciais documentados |
+| O | BL014/BL021 | Integrado — gate local passou | Desktop/inspector/árvore; 140 testes desktop, socket/pixels; sem inspeção visual |
+| P | BL019 | Recebido — integração parcial | Provas e fixtures sintéticas; 408 checks integrados, contexto/export dirigido pendentes |
+
+As quatro delegações foram iniciadas no Cursor com `claude-sonnet-5-5`:
+
+| Frente | Delegação | Estado |
+|---|---|---|
+| M | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A00e21202-77b5-4542-9153-18a3a3e3a46c> | Recebido — headless/pixels; integração compartilhada pelo coordenador |
+| N | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3Aa95284fe-dc6e-4fb3-86d9-d267f72e5c34> | Recebido — testes direcionados de recursos/publicação 22/22 reconferidos |
+| O | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A4a23d447-780f-4752-a38a-5b5c3047e216> | Recebido — código e relatório revisados; gate local passou; inspeção visual pendente |
+| P | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A3c548058-1010-46b8-8463-8225ed541d76> | Recebido — corpus e 14 testes Python reconferidos; 408 checks no build integrado, contexto/export dirigido fora do conjunto |
+
+### Limites recebidos da frente P
+
+- BL019: corpus atual não discrimina ordem relativa hero/echo (mesma textura e sem sobreposição). Ampliar caso antes de afirmar essa cobertura.
+- BL021: agente reporta 80/80 checks por socket de instância própria; sem pixels e com binário sinalizado anterior às fontes. Revalidar no build final, separadamente da UI visual.
+- BL007/BL008/BL011/BL063: operações propostas em `scripts/directed-scene-proof/interfaces.json` são adapters do harness, não contrato de produção já entregue; coordenador deve mapear APIs reais e reexecutar.
+
+### Integração pendente da UI de cena — frente O
+
+| ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
+|---|---|---|---|---|---|---|
+| BL086 | F039/UI | Anexar cena por diálogo na janela | Pendente | scene.attach existente | Coordenador | Entrada de arquivo e semântica pelo mesmo fluxo; erro sem mutação; respeitar ocultação da WebView no diálogo |
+| BL087 | F039/UI | Inspeção visual da árvore e inspector de cena | A validar | BL014 e build integrado | Coordenador | Conferir layout amplo/menor e propriedades; não confundir input GPUI com inspeção visual |
+
+`monitor.show_scene` reutiliza BL007/BL063 (seam documentado em foundation-o-report.md), sem nova fila.
+Modo Clipe/Cena é apresentação local exposta pelo socket; avaliar necessidade de Command/persistência junto de F014, sem criar regra de domínio artificial.
+Limites BL074/BL075 também precisam ser considerados nos sliders de cena.
+
+### Limites de recursos/pacote recebidos da frente N
+
+| ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
+|---|---|---|---|---|---|---|
+| BL088 | Pacote/atomicidade | Preservar pacote anterior se a substituição falhar antes do rename | Pendente | F026 | Coordenador | Falha injetada mantém pacote anterior legível; publicação e limpeza próprias recuperáveis |
+| BL089 | Recursos/jobs | Limpar staging/materialização de import de cena cujo resultado fica obsoleto | Pendente | BL010/BL011 | Coordenador | Troca de projeto durante import não deixa pasta órfã nem apaga arquivo pré-existente; teste determinístico |
+
+F040 recebida em [foundation-n-report.md](migration/foundation-n-report.md). Coordenador reconferiu 18 testes de integração e 4 de publicação em 2026-11-05. Sem prova de pixels/UI nessa entrega.
+
+### Limites do renderer dirigido recebidos da frente M
+
+| ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
+|---|---|---|---|---|---|---|
+| BL090 | F041/qualidade | Política de alpha de saída e mipmaps/minificação de planos | Pendente | BL008/BL018 | Coordenador | Fundo preto opaco atual declarado; definir alpha e comparar minificação com origem antes de prometer equivalência visual completa |
+| BL091 | Runtime/testes | Investigar falha intermitente de splat.test.mjs em concorrência padrão | Pendente | Harness runtime | Coordenador | Reproduzir/diagnosticar corrida; suíte serial de 79 passa, isso não prova concorrência |
+| BL092 | F041/lifecycle | Prova nativa dirigida de perda de contexto, reload e recursos invalidados com frame em voo | A validar | BL007 | Coordenador | WebView real converge ao frame atual e rejeita respostas antigas; distinguir testes Node/host roteirizado de prova nativa |
+
+O contrato e evidências integradas da rodada estão em [round-mnop-report.md](migration/round-mnop-report.md).
+
+### Gate local da rodada M/N/O/P
+
+Entregas integradas na branch feat/directed-scene-end-to-end: workspace 827 testes verdes, 2 ignorados; scene_flow repetido 8/8 após adicionar regressão de candidato; clippy/fmt/build release limpos. Prova final **408/408** inclui pixels headless/nativos, monitor interativo, pacote restaurado sem origem e seleção semântica. Relatório e hashes em [round-mnop-report.md](migration/round-mnop-report.md).
+Isso não fecha BL008 (export dirigido), BL087 (inspeção visual) ou BL092 (lifecycle dirigido nativo forçado). App/projeto do usuário preservados.
+
+Runtime final: 79/79 reconferidos pelo coordenador em execução serializada; sem skips. BL091 continua aberto para concorrência padrão.
+
+Entrega de implementação: commit `6a8b030`; revisão em [PR #3](https://github.com/journey-studios/tessel-editor/pull/3). Gates descritos são locais; revisão/merge são estados separados.
+
+### Revisão da PR #3
+
+| ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
+|---|---|---|---|---|---|---|
+| BL093 | Revisão/robustez | Corrigir 10 apontamentos e nit de admissão por referência da PR #3 | Concluído local | PR #3 | Coordenador | Arc retido no cache, import obsoleto recusado na lib, CLI relativa, orçamento concorrente, corpus portátil, JSONL com timeout/stderr drenado e docs reproduzíveis; 68 Rust + 19 runtime + 19 Python direcionados passaram; prova integrada repetida 408/408; revisão incremental da PR #3 pendente |
+
+BL089: troca de projeto agora é recusada por `scene_resources::import::apply` com stale_result e descarte das pastas próprias; regressão via job.commit passou. Outros caminhos de descarte/cancelamento ainda precisam de auditoria antes de encerrar o item inteiro.

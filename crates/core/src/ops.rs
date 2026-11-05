@@ -590,6 +590,12 @@ fn scene_command(op: &str, request: &Value) -> Result<SceneCommand, CommandError
             at: frame_at(request)?,
             gesture: optional_string(request, "gesture")?,
         },
+        "scene.plan" => SceneCommand::Plan {
+            scene: scene()?,
+            at: frame_at(request)?,
+            partial: optional_bool(request, "partial")?.unwrap_or(false),
+            gesture: optional_string(request, "gesture")?,
+        },
         "scene.select" => SceneCommand::Select {
             scene: optional_string(request, "scene")?,
             entities: string_list(request, "entities")?,

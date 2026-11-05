@@ -296,6 +296,27 @@ fn set(
             None => CommandError::new("unknown_field", "Not settable").to_json(),
         };
     }
+    if target == "inspector.mode" || target.starts_with("scene.") {
+        // The scene inspector's nodes: a property component runs the same begin/update/commit the
+        // slider sends, so one `set` is one undo entry (`scene_ui.rs`).
+        let Some(raw) = Raw::from_json(&request["value"]) else {
+            return CommandError::new(
+                "missing_argument",
+                "Missing a string, number or boolean value",
+            )
+            .target(target)
+            .to_json();
+        };
+        let outcome = workstation.update(cx, |workstation, cx| {
+            workstation.scene_set(target, field, &raw, cx)
+        });
+        return match outcome {
+            Some(Ok(data)) => json!({"ok":true,"version":1,"data":data}),
+            Some(Err(error)) if error.target.is_none() => error.target(target).to_json(),
+            Some(Err(error)) => error.to_json(),
+            None => CommandError::new("unknown_field", "Not settable").to_json(),
+        };
+    }
     let prepared = (|| {
         let node = lookup(workstation, target, cx)?;
         require_enabled(&node)?;
@@ -395,6 +416,16 @@ fn invoke(
         return match outcome {
             Ok(data) => json!({"ok":true,"version":1,"data":data}),
             Err(error) => error.target(&target).to_json(),
+        };
+    }
+    // Entities, properties and the scene panel of the directed-scene inspector.
+    if let Some(outcome) = workstation.update(cx, |workstation, cx| {
+        workstation.scene_invoke(&target, action, cx)
+    }) {
+        return match outcome {
+            Ok(data) => json!({"ok":true,"version":1,"data":data}),
+            Err(error) if error.target.is_none() => error.target(&target).to_json(),
+            Err(error) => error.to_json(),
         };
     }
     let prepared = (|| {

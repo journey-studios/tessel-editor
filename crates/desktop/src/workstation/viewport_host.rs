@@ -11,6 +11,9 @@
 //! reply would deadlock. The handshake is therefore driven by events, and the blocking
 //! `ViewportSession::capabilities()` is never called (see `known_capabilities`).
 
+#[path = "scene_monitor_host.rs"]
+mod directed;
+
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
@@ -155,6 +158,7 @@ struct Waiter {
 }
 
 pub struct ViewportHost {
+    directed: directed::DirectedViewport,
     dist: Option<PathBuf>,
     session: ViewportSession<BridgeBackend<WebTransport>>,
     outbox: Rc<RefCell<VecDeque<String>>>,
@@ -230,6 +234,7 @@ impl ViewportHost {
             last_frame: None,
             output_size: None,
             on_screen: true,
+            directed: directed::DirectedViewport::default(),
             ui_repaints: 0,
             ui_skipped: 0,
         };
@@ -285,6 +290,7 @@ impl ViewportHost {
         let Some(_) = &self.dist else {
             return false;
         };
+        self.reset_directed_runtime();
         self.session.reset_project();
         self.access.borrow_mut().clear();
         self.inbox.borrow_mut().clear();
@@ -300,6 +306,7 @@ impl ViewportHost {
 
     /// The project was replaced: IDs may now mean something else.
     pub fn reset_project(&mut self) {
+        self.clear_directed();
         self.fail_waiters(&BackendError::new("cancelled", "The project was replaced"));
         self.session.reset_project();
         self.access.borrow_mut().clear();
@@ -310,6 +317,7 @@ impl ViewportHost {
 
     /// Closes the runtime before the window goes away.
     pub fn shutdown(&mut self) {
+        self.clear_directed();
         self.fail_waiters(&BackendError::new("cancelled", "The viewport is closing"));
         if self.phase == Phase::Ready || matches!(self.phase, Phase::Handshaking(_)) {
             self.session.shutdown();
@@ -344,6 +352,10 @@ impl ViewportHost {
 
     /// Follows the editor state: asks for a new picture if what the monitor shows changed.
     pub fn sync(&mut self, state: &EditorState) {
+        if self.directed_scene().is_some() {
+            self.dispatch_directed();
+            return;
+        }
         if !self.is_ready() {
             self.dirty = true;
             return;
@@ -545,6 +557,9 @@ impl ViewportHost {
             Some("frame.done") => self.attach_png(&mut message),
             _ => {}
         }
+        if self.directed_ipc(&message) {
+            return;
+        }
         self.inbox.borrow_mut().push_back(message);
         self.drain(state);
     }
@@ -584,6 +599,7 @@ impl ViewportHost {
             self.on_event(event);
         }
         self.dispatch_pending(state);
+        self.dispatch_directed();
         if matches!(self.phase, Phase::Handshaking(_))
             && self.session.known_capabilities().is_some()
         {
@@ -651,6 +667,7 @@ impl ViewportHost {
                 true
             }
             Some(Err(error)) => {
+                self.reset_directed_runtime();
                 self.report_failure(error);
                 true
             }
@@ -719,6 +736,7 @@ impl ViewportHost {
                     "timeout",
                     format!("No frame within {FRAME_TIMEOUT:?}; the request was cancelled"),
                 );
+                self.reset_directed_runtime();
                 self.report_failure(error);
                 true
             }
@@ -794,6 +812,7 @@ impl ViewportHost {
             summary["trace"] = self.session.trace().snapshot(frames);
         }
         json!({
+            "directed_scene": self.directed_scene(),
             "phase": phase,
             "headline": self.headline(),
             "on_screen": self.on_screen,

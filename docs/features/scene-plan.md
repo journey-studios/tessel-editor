@@ -2,10 +2,8 @@
 
 ## Status
 
-Lib **V no subconjunto documentado** (29 testes públicos e o doctest passaram via Cargo;
-clippy lib limpo na integração do coordenador). CLI headless **P** (nenhum comando). UI **P** (nenhum controle).
-BB05 continua **parcial**: esta fatia entrega o **contrato e o plano**; não existe renderer que o
-consuma (BL007) e nenhum recurso é resolvido em disco (BL009/BL010). Nada aqui é render real.
+Lib **V no subconjunto documentado**; CLI headless e socket **V no corpus** por `scene.plan`.
+A UI consome o plano pelo renderer [F041](scene-renderer.md). A biblioteca de plano é pura: resolução de arquivos pertence a [F040](scene-resource-integration.md), e execução GPU ao runtime. BB05 continua parcial nos domínios recusados e no export dirigido BL008.
 
 ## Objetivo e limites
 
@@ -115,16 +113,9 @@ plano que carregasse dados ignorados não faria round-trip), tempos só reduzido
 - Teste de integração `scene_plan_resources.rs` executado (BL063): em 4 bundles e 4 frames por bundle, todo
   `required_asset_ids()` é conhecido do manifesto do mesmo bundle.
 
-## CLI headless
+## CLI headless, janela e UI
 
-**P.** Nenhum comando ainda. Proposta (BL063): `scene.plan { scene, frame, partial? }` →
-`ScenePlan::to_json`, com o mesmo parser compartilhado (`ops::parse_op`) e o mesmo `PlanError` →
-`CommandError`. Não implementado nesta fatia: ela não toca `ops.rs`, `scene_project` nem `headless`.
-
-## UI e CLI da janela
-
-**P / N/A.** Nenhum controle. A UI não precisa do plano: o consumidor é o runtime/renderer
-(BL007), que ainda não existe.
+`scene.plan {scene,frame|time,partial?,gesture?}` retorna `{plan,complete}` pelo parser compartilhado e aplica os gates estruturais/temporais. É uma consulta sem histórico. O candidato do gesto deve estar vivo e pertencer à mesma cena. F041 consome o resultado no monitor e no headless.
 
 ## Evidências e status
 
@@ -133,9 +124,12 @@ plano que carregasse dados ignorados não faria round-trip), tempos só reduzido
 | Lib | **V** no subconjunto documentado — 29 testes públicos em `crates/core/tests/scene_plan.rs` e o doctest passaram (`./scripts/cargo test -p tessel-editor-core --locked --test scene_plan`; `--doc scene_plan`) |
 | Qualidade | fmt e clippy da lib limpos com `-D warnings`; gate workspace local passou (ver [relatório](../migration/round-hijkl-report.md)) |
 | Contra a origem | Nenhuma comparação nova. O plano é comparado com `evaluate_frame` (que as suítes F033/F035 comparam com a origem); a ordem de pintura vem de `paint_order` (BB01/BB02) |
-| CLI headless / UI | **P** |
+| CLI headless / socket / UI | **V no corpus** para consulta; monitor **Parcial** em F041 (aparência/ponteiro pendentes) |
 
-Limites: o plano não é um render; não há consumidor; recursos não são resolvidos nem verificados em
-disco; domínios listados acima são recusados; o custo por frame refaz a linha do tempo de nós
+Limites: a biblioteca de plano não é um render nem faz I/O (consumidor F041, recursos F040); domínios listados acima são recusados; o custo por frame refaz a linha do tempo de nós
 (`NodeTimeline::new`) a cada chamada, o que importa para exportar muitos frames (BL064);
 cada nó leva duas matrizes de 16 números no JSON.
+
+## Adapter integrado de consulta
+
+`scene.plan {scene,frame|time,partial?,gesture?}` executa SceneCommand::Plan pelo mesmo parser da lib, JSONL e socket. Aplica admissão estrutural/temporal antes do plano. `partial:false` é o padrão. `gesture` usa candidato vivo do mesmo projeto/cena, com erro tipado em invalidação, sem histórico. O teste de operação em `scene_flow` deixou de ser ignorado; 60 checks do plano passaram no processo headless. Consumo real: [F041](scene-renderer.md).

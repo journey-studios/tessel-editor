@@ -18,6 +18,11 @@ mod media;
 mod monitor;
 mod ops;
 mod playback;
+mod scene_gesture;
+mod scene_model;
+mod scene_monitor;
+mod scene_panel;
+mod scene_ui;
 mod slider_gesture;
 mod status_bar;
 mod timeline_panel;
@@ -44,6 +49,7 @@ use self::drag::{ClipPreview, Preview, TrackPreview, frame_at, insertion_at, row
 pub use self::geometry::Geometry;
 pub use self::ops::OpReply;
 use self::playback::PlaybackState;
+use self::scene_ui::SceneUi;
 use self::slider_gesture::SliderGesture;
 pub use self::tokens::Tokens;
 pub use self::viewport_host::FrameWaiter;
@@ -106,6 +112,9 @@ pub struct Workstation {
     /// The property-slider interaction in progress (see `slider_gesture.rs`). Input state of
     /// the adapter only: the gesture and its history entry live in `EditorState`.
     slider_gesture: SliderGesture,
+    /// The directed-scene inspector's window state (see `scene_ui.rs`): presentation only, the
+    /// scene, its selection and its gestures live in `EditorState`.
+    scene_ui: SceneUi,
     focus: FocusHandle,
 }
 
@@ -250,6 +259,7 @@ impl Workstation {
         cx.observe_window_activation(window, |this, window, cx| {
             if !window.is_window_active() {
                 this.slider_focus_lost(cx);
+                this.scene_slider_focus_lost(cx);
             }
         })
         .detach();
@@ -263,6 +273,7 @@ impl Workstation {
         } else {
             tessel_editor_render::discover_page()
         };
+        let scene_ui = SceneUi::new(window, cx);
         let mut viewport = ViewportHost::new(page);
         let viewport_view = Self::build_viewport(&mut viewport, window, cx);
 
@@ -293,6 +304,7 @@ impl Workstation {
             workflow: Workflow::new(),
             playback: PlaybackState::default(),
             slider_gesture: SliderGesture::default(),
+            scene_ui,
             focus: cx.focus_handle(),
         }
     }
@@ -310,7 +322,11 @@ impl Workstation {
         source: Source,
         cx: &mut Context<Self>,
     ) -> Result<Value, CommandError> {
+        let ordinary_preview = matches!(command, Command::SetPreview { .. });
         let result = self.state.execute(command);
+        if result.is_ok() && ordinary_preview {
+            self.viewport.clear_directed();
+        }
         if result.is_ok() {
             // After a failed command the state is untouched, so the picture stays as it was.
             self.viewport_sync(cx);
@@ -398,7 +414,10 @@ impl Workstation {
         for node in &mut nodes {
             self.adopt_viewport(node);
             self.adopt_playback(node);
+            self.adopt_scene(node);
         }
+        // The scene inspector and the scene monitor seam are window state too.
+        nodes.extend(self.scene_nodes());
         // The viewport state lives in the window, not in `EditorState`.
         nodes.push(self.viewport_node());
         // Flows, dialog fields and jobs: window state the core cannot describe.
@@ -410,6 +429,9 @@ impl Workstation {
         if id == "monitor.viewport" {
             return Some(self.viewport_node());
         }
+        if let Some(node) = self.scene_node(id) {
+            return Some(node);
+        }
         if let Some(node) = self
             .workflow_nodes(cx)
             .into_iter()
@@ -420,6 +442,7 @@ impl Workstation {
         let mut node = self.with_tree(cx, |state, context| tree::find(state, context, id))?;
         self.adopt_viewport(&mut node);
         self.adopt_playback(&mut node);
+        self.adopt_scene(&mut node);
         Some(node)
     }
 
@@ -683,7 +706,7 @@ impl Workstation {
 fn describe(outcome: &Value) -> String {
     let target = outcome["target"].as_str().unwrap_or("state");
     let detail = [
-        "value", "frame", "action", "visible", "open", "size", "sizes",
+        "value", "frame", "action", "visible", "open", "size", "sizes", "gesture",
     ]
     .iter()
     .find_map(|key| outcome.get(*key).filter(|value| !value.is_null()))
@@ -720,6 +743,7 @@ impl Render for Workstation {
                     this.cancel_drag(cx);
                     // A slider drag is a gesture too: Escape puts the original value back.
                     this.cancel_slider_gesture(cx);
+                    this.cancel_scene_gesture(cx);
                 }
             }))
             // A release over no drop target ends the drag with no change. A
@@ -743,6 +767,8 @@ impl Render for Workstation {
 mod dock_tests;
 #[cfg(test)]
 mod input_tests;
+#[cfg(test)]
+mod scene_tests;
 #[cfg(test)]
 mod slider_gesture_tests;
 #[cfg(test)]

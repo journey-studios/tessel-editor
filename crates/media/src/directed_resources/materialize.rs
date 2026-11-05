@@ -8,10 +8,14 @@
 //! 2. **Stage**: copy each new file into a staging folder inside the transport root while hashing
 //!    it, compare with the declared hash and check its header. The first problem stops the run and
 //!    the staging folder is removed. Cancellation is checked between chunks.
-//! 3. **Publish**: create the folders and move each staged file into place without overwriting. On
-//!    an error, exactly the files and folders created by this call are removed. Cancellation is
-//!    not checked here: publication is a short metadata pass; callers requiring interruptible publication need the
-//!    per-file cancellation extension tracked in the shared backlog.
+//! 3. **Publish**: create the folders and move each staged file into place without overwriting.
+//!    Cancellation is observed before **every** file (BL080); on a cancellation or an error,
+//!    exactly the files and folders created by this call are removed, never anything that was
+//!    already in the root. [`materialize_observed`] reports each published file, which is also
+//!    what makes a cancellation in the middle of publication testable without threads.
+//!
+//! The transport root is held under a [`RootLease`](super::RootLease) for the whole call
+//! (BL079): a second Tessel operation on the same root is refused with `root_busy`.
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -19,10 +23,11 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 use tessel_editor_core::jobs::{CancelToken, JobError};
 use tessel_editor_core::scene_resources::{
-    ResourceKey, ResourceManifest, ResourcePath, SkippedResource, TransportItem,
+    ResourceKey, ResourceManifest, ResourcePath, SkippedResource, TransportItem, TransportPlan,
 };
 
 use super::destination::{self, Journal, Slot};
+use super::lease::RootLease;
 use super::source::Root;
 use super::{
     Failure, Options, ProblemKind, Progress, ResourceProblem, Stop, blocked_by_manifest, check,
@@ -54,7 +59,17 @@ pub struct MaterializedItem {
     /// manifest.
     pub keys: Vec<ResourceKey>,
     pub bytes: u64,
+    /// SHA-256 (lowercase hex) of the file, as the bundle declares and the copy was verified.
+    pub hash: String,
     pub outcome: Outcome,
+}
+
+/// One file made visible in the transport root; the next cancellation check follows it.
+#[derive(Debug, Clone, Copy)]
+pub struct Published<'a> {
+    pub path: &'a ResourcePath,
+    pub done: usize,
+    pub total: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -92,6 +107,7 @@ impl MaterializeReport {
                 "path": item.path.as_str(),
                 "resources": item.keys.iter().map(ResourceKey::label).collect::<Vec<_>>(),
                 "bytes": item.bytes,
+                "sha256": item.hash,
                 "outcome": item.outcome.as_str(),
             })).collect::<Vec<_>>(),
             "skipped": self.skipped.iter().map(|skipped| json!({
@@ -116,8 +132,8 @@ struct Work<'a> {
 /// The transport root must exist. Errors (all leave the root as it was, except that a rollback
 /// that itself fails says what remains in `details.rollbackLeftovers`):
 /// `manifest_blocked`, `resources_invalid` (`details.problems`), `root_unavailable`,
-/// `root_not_directory`, `disk_full`, `cancelled`, `destination_conflict`, `permission_denied`,
-/// `io_error`.
+/// `root_not_directory`, `root_busy`, `disk_full`, `cancelled`, `destination_conflict`,
+/// `destination_escaped`, `permission_denied`, `io_error`.
 pub fn materialize(
     manifest: &ResourceManifest,
     source_root: &Path,
@@ -126,14 +142,86 @@ pub fn materialize(
     token: &CancelToken,
     on_progress: &mut dyn FnMut(Progress),
 ) -> Result<MaterializeReport, JobError> {
+    materialize_observed(
+        manifest,
+        source_root,
+        transport_root,
+        options,
+        token,
+        on_progress,
+        &mut |_| {},
+    )
+}
+
+/// [`materialize`] that also reports every file as it is published.
+pub fn materialize_observed(
+    manifest: &ResourceManifest,
+    source_root: &Path,
+    transport_root: &Path,
+    options: &Options,
+    token: &CancelToken,
+    on_progress: &mut dyn FnMut(Progress),
+    on_published: &mut dyn FnMut(Published<'_>),
+) -> Result<MaterializeReport, JobError> {
     let plan = manifest
         .transport_plan()
         .map_err(|issues| blocked_by_manifest(&issues))?;
     let source = Root::open(source_root, "source")?;
-    let destination = Root::open(transport_root, "transport")?;
+    let lease = RootLease::acquire(transport_root)?;
+    run(
+        manifest,
+        plan,
+        &source,
+        lease.root(),
+        options,
+        token,
+        on_progress,
+        on_published,
+    )
+}
+
+/// [`materialize_observed`] for a caller that already holds the lease of the transport root
+/// (it has more to do there than this call, such as a package assembling several scenes).
+pub fn materialize_leased(
+    manifest: &ResourceManifest,
+    source_root: &Path,
+    lease: &RootLease,
+    options: &Options,
+    token: &CancelToken,
+    on_progress: &mut dyn FnMut(Progress),
+    on_published: &mut dyn FnMut(Published<'_>),
+) -> Result<MaterializeReport, JobError> {
+    let plan = manifest
+        .transport_plan()
+        .map_err(|issues| blocked_by_manifest(&issues))?;
+    let source = Root::open(source_root, "source")?;
+    run(
+        manifest,
+        plan,
+        &source,
+        lease.root(),
+        options,
+        token,
+        on_progress,
+        on_published,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run(
+    manifest: &ResourceManifest,
+    plan: TransportPlan,
+    source: &Root,
+    destination_root: &Path,
+    options: &Options,
+    token: &CancelToken,
+    on_progress: &mut dyn FnMut(Progress),
+    on_published: &mut dyn FnMut(Published<'_>),
+) -> Result<MaterializeReport, JobError> {
+    let destination = Root::open(destination_root, "transport")?;
     let total = plan.items.len();
 
-    let works = decide(&plan.items, &source, &destination, options, token)?;
+    let works = decide(&plan.items, source, &destination, options, token)?;
     let reused_bytes: u64 = works
         .iter()
         .filter(|work| work.outcome == Outcome::Reused)
@@ -180,7 +268,7 @@ pub fn materialize(
     {
         token.check()?;
         let staged_path = staging.path().join(format!("{index}.part"));
-        stage(work.item, &source, &staged_path, options, token)
+        stage(work.item, source, &staged_path, options, token)
             .map_err(|stop| stop_to_error(stop, work.item))?;
         staged.push((work, staged_path));
         staged_bytes = staged_bytes.saturating_add(work.bytes);
@@ -191,9 +279,14 @@ pub fn materialize(
         });
     }
 
-    token.check()?;
-    let mut journal = Journal::default();
-    if let Err(error) = publish(&staged, destination.path(), &mut journal) {
+    let mut journal = Journal::new(destination.path());
+    if let Err(error) = publish(
+        &staged,
+        destination.path(),
+        token,
+        &mut journal,
+        on_published,
+    ) {
         let leftovers = journal.rollback();
         return Err(with_leftovers(error, leftovers));
     }
@@ -207,6 +300,7 @@ pub fn materialize(
                 path: work.item.path.clone(),
                 keys: work.item.resources.iter().map(|r| r.key.clone()).collect(),
                 bytes: work.bytes,
+                hash: work.item.expected_hash.clone(),
                 outcome: work.outcome,
             })
             .collect(),
@@ -306,15 +400,24 @@ fn stage(
     Ok(())
 }
 
-/// Pass 3: folders, then each staged file, in plan order.
+/// Pass 3: folders, then each staged file, in plan order. Cancellation is checked before each
+/// file, so what is visible when it stops is exactly what the journal can remove.
 fn publish(
     staged: &[(&Work<'_>, PathBuf)],
     root: &Path,
+    token: &CancelToken,
     journal: &mut Journal,
+    on_published: &mut dyn FnMut(Published<'_>),
 ) -> Result<(), JobError> {
-    for (work, staged_path) in staged {
+    for (index, (work, staged_path)) in staged.iter().enumerate() {
+        token.check()?;
         journal.create_parents(root, &work.item.path)?;
         journal.publish(staged_path, &destination::target(root, &work.item.path))?;
+        on_published(Published {
+            path: &work.item.path,
+            done: index + 1,
+            total: staged.len(),
+        });
     }
     Ok(())
 }

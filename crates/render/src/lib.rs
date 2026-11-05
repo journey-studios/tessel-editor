@@ -8,6 +8,14 @@
 pub mod host;
 mod process;
 mod runtime;
+pub mod scene;
+pub mod scene_host;
+pub mod scene_operation;
+mod scene_renderer;
 
 pub use process::ProcessTransport;
-pub use runtime::{RuntimeConfig, SetupError, demo_dir, discover_page, session, worker_backend};
+pub use runtime::{
+    HANDSHAKE_TIMEOUT, RuntimeConfig, SetupError, demo_dir, discover_page, session, worker_backend,
+};
+pub use scene::{ResolvedResource, SceneResourceMap, SceneSlots};
+pub use scene_renderer::{FrameOptions, SceneRenderer, SubmittedFrame};
