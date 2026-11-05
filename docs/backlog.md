@@ -370,7 +370,7 @@ Usuário autorizou iniciar dez agentes Cursor Sonnet 5.5. [Contrato, ownership e
 
 | ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
 |---|---|---|---|---|---|---|
-| BL094 | Jobs/resultados | Descartar explicitamente resultado finalizado não aplicado e proteger prune de resultado pendente | Pendente | BL089, host compartilhado após R1 | Coordenador | job.discard/semântica equivalente limpa somente arquivos próprios e tem estado consultável; prune não perde dono do resultado |
+| BL094 | Jobs/resultados | Descartar explicitamente resultado finalizado não aplicado e proteger prune de resultado pendente | A validar | BL089, host compartilhado após R1 | S1 (subthread) | `job.discard {job, wait?}` + `result_state` (none/pending/discarding/discarded/applied) no `JobRegistry`; `begin_discard` atômico recusa ativo/aplicado/descartando/descartado/sem resultado com código tipado; `prune` não perde `pending`/`discarding`; job `discard` não cancelável retém o dono (claims) até terminar. 14 testes de host + 5 de core + 2 de cleanup; evidências e limites em [F025](features/jobs.md). Falta: prova nativa da janela e CI/revisão. Limite: resultados sem arquivos próprios (ex.: cópias de `media.import`) só liberam memória |
 | BL095 | Recursos/rollback | Garantir Journal de materialize com unwinding de panic | Concluído | F038 | Integração / coordenador | ArmedJournal desfaz links em panic de publicação; regressão e mutação reportadas, gate global passou; ver integration-cleanup-report.md  Gate final: [R1–R10](migration/round-r1-r10-report.md); [PR #4](https://github.com/journey-studios/tessel-editor/pull/4), merge `c099f10`; [gate final](migration/round-r1-r10-report.md). |
 | BL096 | Recursos/concorrência | Impedir que descarte apague arquivos reutilizados por outro job no mesmo processo | Concluído | BL089/BL079 | Integração / coordenador | Claims e transferência de posse ao aceitar, ordens determinísticas de aceitar/descartar cobertas. Limite explícito: dois processos não compartilham registro (BL111); gate global passou  Gate final: [R1–R10](migration/round-r1-r10-report.md); [PR #4](https://github.com/journey-studios/tessel-editor/pull/4), merge `c099f10`; [gate final](migration/round-r1-r10-report.md). |
 | BL097 | Recursos/identidade | Preservar arquivo reescrito em lugar com mesmo inode e tamanho antes do cleanup | Concluído | BL089 | Integração / coordenador | SHA-256 e metadata antes/depois; leitura/falha incerta mantém arquivo. Mutação do hash causa 3 falhas. Mesmos bytes e escritor concorrente após última conferência ficam fora da garantia; custo UI BL112  Gate final: [R1–R10](migration/round-r1-r10-report.md); [PR #4](https://github.com/journey-studios/tessel-editor/pull/4), merge `c099f10`; [gate final](migration/round-r1-r10-report.md). |
@@ -434,7 +434,7 @@ Follow-up de integração BL089/BL096/BL097 delegado ao Cursor Sonnet 5.5: <t3-t
 | ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
 |---|---|---|---|---|---|---|
 | BL111 | F040/multiprocesso | Coordenar ownership de recursos pendentes entre editores/processos | Pendente | BL096/BL079 | Coordenador | Registro atual é só em memória do processo; dois editores/CLI sobre o mesmo workspace não podem ter garantia de cleanup compartilhado. Persistir claims sob lease e provar com dois processos reais antes de declarar suporte |
-| BL112 | F040/responsividade | Mover hash e descarte de resultados grandes para job fora da UI | Pendente — prioridade alta | BL094/BL097 | Coordenador | Medição debug: descartar 256 MiB levou 8,7 s; não executar leitura pesada no destrutor da UI. job.discard/limpeza assíncrona deve preservar ownership até terminar; medir release e garantir encerramento seguro |
+| BL112 | F040/responsividade | Mover hash e descarte de resultados grandes para job fora da UI | A validar | BL094/BL097 | S1 (subthread) | O tick `poll()` não remove nem calcula hash: adopt/import recusado vai para job `discard` (`PendingAdoption::settle`, `import::try_apply`; erro `stale_result` com `details.discard_job`); `Drop` do host interativo entrega pendentes a jobs. Medição 256 MiB: `job.discard` 65 µs debug / 30 µs release no chamador, job 10,9 s debug / 0,66 s release. Falta: medição com a janela real e CI/revisão. Limites: host sem janela remove no `Drop` (para o CLI não sair antes); encerrar o processo no meio do descarte deixa os arquivos (BL111/S2) |
 
 ### Gate integrado da rodada R1–R10
 
@@ -456,7 +456,7 @@ Plano e contratos: [wave-s1-s10-plan.md](migration/wave-s1-s10-plan.md). R1–R1
 
 | Frente | Itens | Estado | Gate de entrega |
 |---|---|---|---|
-| S1 | BL094/BL112 | Preparada para delegação | descarte assíncrono, sem hashing na UI |
+| S1 | BL094/BL112 | A validar (PR própria, branch `t3/observable-job-discard`) | descarte assíncrono, sem hashing na UI |
 | S2 | BL111 | Preparada para delegação | claims persistentes e dois processos reais |
 | S3 | BL109 | Preparada para delegação | bytes imutáveis em export e cancelamento |
 | S4 | BL102 | Preparada para delegação | ack antigo de slot reutilizado recusado |

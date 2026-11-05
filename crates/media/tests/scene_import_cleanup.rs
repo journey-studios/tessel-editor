@@ -503,6 +503,30 @@ fn an_import_prepared_for_another_project_is_discarded_by_apply() {
 }
 
 #[test]
+fn try_apply_refuses_without_removing_and_hands_the_files_back_owned() {
+    let mut fixture = import_fixture("try-apply");
+    let before = tree(&fixture.workspace);
+    let prepared = fixture.prepared();
+    assert!(fixture.scenes().join("street").is_dir());
+    fixture.destination.project.id = "another-project".to_string();
+
+    // The caller that must not block gets the refusal and the still-owned import (BL112)...
+    let rejected = *import::try_apply(&mut fixture.destination, prepared).unwrap_err();
+    assert_eq!(rejected.error.code, "stale_result");
+    assert!(fixture.destination.scenes.is_empty());
+    assert!(
+        fixture.scenes().join("street").is_dir(),
+        "nothing was removed by the refusal"
+    );
+    assert!(tracked_under(&fixture.workspace) > 0);
+    // ...and removes the files where blocking is allowed, with the report.
+    let report = rejected.prepared.discard();
+    assert!(report.is_clean(), "{report:?}");
+    assert_eq!(tree(&fixture.workspace), before);
+    assert_eq!(tracked_under(&fixture.workspace), 0);
+}
+
+#[test]
 fn the_same_project_opened_from_another_workspace_makes_the_import_stale() {
     let mut fixture = import_fixture("stale-workspace");
     let before = tree(&fixture.workspace);
@@ -675,6 +699,27 @@ fn an_import_job_nobody_commits_is_cleaned_when_the_host_goes_away() {
     );
     drop(host);
     assert_eq!(tree(&fixture.workspace), before);
+    assert!(state.scenes.is_empty());
+}
+
+#[test]
+fn job_discard_takes_a_finished_import_back_and_blocks_a_late_commit() {
+    let (fixture, mut state, mut host, document) = host_world("host-discard");
+    let before = tree(&fixture.workspace);
+    let job = start_import(&fixture, &mut state, &mut host, &document);
+    assert!(fixture.scenes().join("street").is_dir());
+
+    let answer = run(&mut state, &mut host, json!({"op":"job.discard","job":job})).unwrap();
+    assert_eq!(answer["state"], "discarded", "{answer}");
+    assert_eq!(answer["discarded"], "scene-import", "{answer}");
+    assert!(
+        answer["cleanup"]["removedFiles"].as_u64().unwrap() >= 2,
+        "{answer}"
+    );
+    assert_eq!(tree(&fixture.workspace), before);
+    assert_eq!(tracked_under(&fixture.workspace), 0);
+    let error = run(&mut state, &mut host, json!({"op":"job.commit","job":job})).unwrap_err();
+    assert_eq!(error.code, "job_discarded", "{error:?}");
     assert!(state.scenes.is_empty());
 }
 

@@ -199,22 +199,26 @@ e o 5 um escritor ainda ganharia (cooperativo, não é defesa contra escritor ho
 Custo: uma leitura SHA-256 de cada arquivo que será de fato removido, nunca de resultado aceito.
 Medição (`measure_discarding_a_result_with_a_large_file`, ignorado por padrão, build de **debug**,
 este disco): descartar um resultado com um arquivo de 256 MiB levou 8,7 s (~29 MiB/s). Em
-release o SHA-256 é bem mais rápido, mas **não foi medido**. Em consequência, descartar um
-resultado grande num destrutor da thread de UI bloqueia; a saída é `job.discard` (BL094,
-pendente).
+release o mesmo descarte levou 0,66 s (medido em BL112, no job de descarte). Descartar um
+resultado grande num destrutor da thread de UI bloquearia; por isso a janela usa `job.discard`
+(BL094/BL112, [F025](jobs.md)): o tick de `poll()` e o `Drop` do host interativo entregam o resultado a um
+job `discard`, que mantém o dono dos arquivos até terminar, e `job.discard {job}` descarta sob pedido.
 
 ### Host (`MediaHost`)
 
 `scene_adopt` captura o `AdoptionTarget` (projeto, workspace, cena, revisão do bundle) **antes**
 de iniciar o job; o resultado vira `Pending::SceneAdopt(Box<PendingAdoption>)`. `apply` (via
 `poll` ou `job.commit`) aceita só se tudo continua igual; senão responde `stale_result` com o
-motivo (projeto, workspace, cena ou revisão) e remove. Host descartado = `Drop` remove. A API
+motivo (projeto, workspace, cena ou revisão) e remove: na lib e no host sem janela, na hora
+(`PendingAdoption::apply`); no tick da janela por um job `discard` (`PendingAdoption::settle` devolve o
+resultado ainda dono dos arquivos; o erro traz `details.discard_job`). Host descartado = `Drop` remove (host
+interativo: por job de descarte). A API
 `SceneExport` da R1 em `host.rs` não foi tocada.
 
 Fora do que se faz: revisão do projeto que muda por edições não relacionadas não invalida um
 import (ele só acrescenta cenas); `undo` do import desfaz o projeto, não os arquivos (a pasta fica
-para um novo anexo); um `job` finalizado e nunca confirmado continua exigindo `job.commit` ou o
-descarte do host (`job.discard`, BL094, segue pendente).
+para um novo anexo); um `job` finalizado e nunca confirmado exige `job.commit` ou `job.discard`
+(F025), ou o descarte do host.
 
 ## UI e CLI da janela
 

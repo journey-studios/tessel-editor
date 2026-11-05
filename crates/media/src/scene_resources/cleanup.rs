@@ -51,7 +51,8 @@
 //! only runs where a file is actually removed, never for a result that is accepted, and a
 //! cancelled import has already rolled back most of its files before this runs. A destructor
 //! that drops a large result therefore pays about as much as copying it again; callers that must
-//! not block (a UI thread) should discard from a job (BL094).
+//! not block (a UI thread) discard from a job (`job.discard`, BL094): `MediaHost` moves the result
+//! into a `discard` job, which keeps this owner (and its claims) until it has finished.
 //!
 //! Removal first takes the same cooperative [`RootLease`] the publication used, so it cannot
 //! interleave with another Tessel operation working in that root. A root that stays busy is

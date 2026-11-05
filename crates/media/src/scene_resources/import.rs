@@ -372,23 +372,50 @@ fn unavailable(scene: &str, why: &str) -> JobError {
 /// Attaches the prepared scenes as one undo step. A result that no longer fits the project (a
 /// different project or workspace is open) or that the project refuses (scene limit, byte budget,
 /// an ID taken meanwhile) leaves the project as it was and removes what [`prepare`] copied.
+///
+/// The removal hashes every file it takes back; a caller that must not block uses [`try_apply`].
 pub fn apply(
     state: &mut EditorState,
-    mut prepared: PreparedSceneImport,
+    prepared: PreparedSceneImport,
 ) -> Result<Value, CommandError> {
-    if state.project.id != prepared.project {
+    try_apply(state, prepared).map_err(|rejected| {
+        // The removal happens here, as `prepared` drops with the files it still owns.
+        let RejectedImport { error, prepared } = *rejected;
         drop(prepared);
-        return Err(CommandError::new(
-            "stale_result",
-            "The open project changed while the scenes were imported; nothing was attached",
-        ));
+        error
+    })
+}
+
+/// An import the project refused. It still owns the files [`prepare`] copied (BL094): dropping
+/// or discarding it removes them, which is the work to do wherever blocking is allowed.
+#[derive(Debug)]
+pub struct RejectedImport {
+    pub error: CommandError,
+    pub prepared: PreparedSceneImport,
+}
+
+/// [`apply`] without the removal: a refusal comes back with the copied files still owned.
+pub fn try_apply(
+    state: &mut EditorState,
+    mut prepared: PreparedSceneImport,
+) -> Result<Value, Box<RejectedImport>> {
+    if state.project.id != prepared.project {
+        return Err(Box::new(RejectedImport {
+            error: CommandError::new(
+                "stale_result",
+                "The open project changed while the scenes were imported; nothing was attached",
+            ),
+            prepared,
+        }));
     }
     if !same_folder(state.project.workspace.as_deref(), &prepared.workspace) {
-        drop(prepared);
-        return Err(CommandError::new(
-            "stale_result",
-            "The open project lives in another workspace than the one the scenes were imported into; nothing was attached",
-        ));
+        return Err(Box::new(RejectedImport {
+            error: CommandError::new(
+                "stale_result",
+                "The open project lives in another workspace than the one the scenes were imported into; nothing was attached",
+            ),
+            prepared,
+        }));
     }
     let outcome = state.transaction("Import scenes", |state| {
         for scene in &prepared.scenes {
@@ -400,8 +427,9 @@ pub fn apply(
         }
         Ok(())
     });
-    // A rejection returns here, and `prepared` drops with the copied files still owned.
-    outcome?;
+    if let Err(error) = outcome {
+        return Err(Box::new(RejectedImport { error, prepared }));
+    }
     let report = json!({ "action": "project.import_scenes", "changed": !prepared.scenes.is_empty(),
         "result": prepared.to_json() });
     // Accepted: the files belong to the project now.

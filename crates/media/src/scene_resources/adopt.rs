@@ -232,37 +232,69 @@ impl PendingAdoption {
     /// Keeps the files when the project, its workspace and the scene still match; otherwise
     /// removes them and answers `stale_result`. An adoption changes no project data, so nothing
     /// else is applied.
-    pub fn apply(mut self, state: &EditorState) -> Result<(), CommandError> {
-        let Some(why) = self.target.mismatch(state) else {
-            // Dropping the released record is the acceptance: the files are the project's.
-            drop(self.owned.release());
-            return Ok(());
-        };
-        let scene = self.target.scene.clone();
-        let report = self.discard();
-        let mut kept = String::new();
-        if !report.shared.is_empty() {
-            kept.push_str(&format!(
-                "; {} item(s) stay because another result relies on them",
-                report.shared.len()
-            ));
+    ///
+    /// The removal reads and hashes every file it takes back, so a caller that must not block
+    /// (the window's tick) uses [`PendingAdoption::settle`] and removes from a job instead.
+    pub fn apply(self, state: &EditorState) -> Result<(), CommandError> {
+        match self.settle(state) {
+            Ok(()) => Ok(()),
+            Err(stale) => {
+                let StaleAdoption { why, pending } = *stale;
+                let scene = pending.target.scene.clone();
+                let report = pending.discard();
+                let mut kept = String::new();
+                if !report.shared.is_empty() {
+                    kept.push_str(&format!(
+                        "; {} item(s) stay because another result relies on them",
+                        report.shared.len()
+                    ));
+                }
+                if !report.kept.is_empty() {
+                    kept.push_str(&format!("; kept: {}", report.kept.join("; ")));
+                }
+                Err(CommandError::new(
+                    "stale_result",
+                    format!(
+                        "Scene `{scene}` changed while its resources were adopted ({why}); the {} file(s) this adoption copied were removed{kept}",
+                        report.removed_files
+                    ),
+                ))
+            }
         }
-        if !report.kept.is_empty() {
-            kept.push_str(&format!("; kept: {}", report.kept.join("; ")));
+    }
+
+    /// [`apply`](PendingAdoption::apply) without the removal: accepted, the files are the
+    /// project's; refused, the adoption comes back **still owning its files** so the caller can
+    /// remove them wherever it may block (BL094, BL112). Reads no file.
+    pub fn settle(mut self, state: &EditorState) -> Result<(), Box<StaleAdoption>> {
+        match self.target.mismatch(state) {
+            None => {
+                // Dropping the released record is the acceptance: the files are the project's.
+                drop(self.owned.release());
+                Ok(())
+            }
+            Some(why) => Err(Box::new(StaleAdoption { why, pending: self })),
         }
-        Err(CommandError::new(
-            "stale_result",
-            format!(
-                "Scene `{scene}` changed while its resources were adopted ({why}); the {} file(s) this adoption copied were removed{kept}",
-                report.removed_files
-            ),
-        ))
+    }
+
+    /// The scene this adoption was started for.
+    pub fn scene(&self) -> &str {
+        &self.target.scene
     }
 
     /// Removes what the adoption created without looking at the project.
     pub fn discard(self) -> CleanupReport {
         self.owned.discard()
     }
+}
+
+/// An adoption the project refused ([`PendingAdoption::settle`]). It still owns what it copied:
+/// dropping or discarding it removes those files, which is the work to do off the UI thread.
+#[derive(Debug)]
+pub struct StaleAdoption {
+    /// Why it no longer fits the project, in words.
+    pub why: &'static str,
+    pub pending: PendingAdoption,
 }
 
 /// The folders of `paths` below `root` that exist now.

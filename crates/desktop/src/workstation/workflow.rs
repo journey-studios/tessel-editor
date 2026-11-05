@@ -20,7 +20,7 @@ use gpui_kit::component::{ActiveTheme, Sizable, WindowExt as _, h_flex, v_flex};
 use gpui_kit::*;
 use serde_json::{Value, json};
 use tessel_editor_core::headless::{Extension, run_project_op};
-use tessel_editor_core::jobs::{JobError, JobInfo};
+use tessel_editor_core::jobs::{JobError, JobInfo, ResultState};
 use tessel_editor_core::ops::ProjectOp;
 use tessel_editor_core::session::Renderer;
 use tessel_editor_core::{Command, CommandError};
@@ -1018,7 +1018,7 @@ impl Render for JobsView {
         }
         let rows = jobs.into_iter().rev().take(12).map(|job| {
             let id = job.id.clone();
-            let running = !job.state.is_final();
+            let running = !job.state.is_final() && job.kind.is_cancellable();
             let this = self.workstation.clone();
             let cancel = running.then(|| {
                 Button::new(format!("job-cancel-{id}"))
@@ -1032,11 +1032,15 @@ impl Render for JobsView {
                         });
                     })
             });
-            let detail = match (&job.error, job.state.label()) {
+            let mut detail = match (&job.error, job.state.label()) {
                 (Some(error), _) => error.message.clone(),
                 (None, state) if job.stage.is_empty() => state.to_string(),
                 (None, state) => format!("{state} · {}", job.stage),
             };
+            // A result being discarded still owns its files until the discard job ends.
+            if job.result_state == ResultState::Discarding {
+                detail.push_str(" · descartando o resultado");
+            }
             v_flex()
                 .gap_1()
                 .child(

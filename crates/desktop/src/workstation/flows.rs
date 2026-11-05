@@ -463,6 +463,16 @@ pub fn describe_report(report: &Value) -> String {
 /// What the status bar says when a background job finishes.
 pub fn describe_job_event(event: &Value) -> (String, bool) {
     let kind = event["kind"].as_str().unwrap_or("job");
+    if kind == "discard" {
+        // The files of a result nobody applied are back (or the reason they were not).
+        return match event["state"].as_str() {
+            Some("succeeded") => ("Resultado descartado".to_string(), false),
+            _ => {
+                let message = event["error"]["message"].as_str().unwrap_or("falhou");
+                (format!("Descarte falhou: {message}"), true)
+            }
+        };
+    }
     let label = match kind {
         "video-export" => "Exportação",
         "package" => "Pacote",
@@ -642,6 +652,11 @@ mod tests {
         );
         assert!(error && text.contains("disco cheio"));
         assert!(!describe_job_event(&json!({ "kind": "import", "state": "cancelled" })).1);
+        assert_eq!(
+            describe_job_event(&json!({ "kind": "discard", "state": "succeeded" })),
+            ("Resultado descartado".to_string(), false)
+        );
+        assert!(describe_job_event(&json!({ "kind": "discard", "state": "failed" })).1);
     }
 
     #[test]

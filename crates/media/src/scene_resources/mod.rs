@@ -38,7 +38,7 @@ pub mod map;
 pub(crate) mod pack;
 pub mod session;
 
-pub use adopt::{Adoption, AdoptionTarget, PendingAdoption, adopt};
+pub use adopt::{Adoption, AdoptionTarget, PendingAdoption, StaleAdoption, adopt};
 pub use base::{BaseKind, MANAGED_DIR, ResourceBase};
 pub use claims::tracked_under;
 pub use cleanup::{CleanupReport, Created, Provisional};

@@ -352,5 +352,14 @@ fn a_window_reports_an_adopt_the_project_outgrew_as_failed_and_removes_its_files
     let event = poll_until_reported(&mut world, &job);
     assert_eq!(event["state"], "failed", "{event}");
     assert_eq!(event["error"]["code"], "stale_result", "{event}");
+    // The window's tick does not delete: a discard job (BL094/BL112) takes the files back and the
+    // window hears about it with a later event.
+    let discard = event["error"]["details"]["discard_job"]
+        .as_str()
+        .unwrap_or_else(|| panic!("the refusal names its discard job: {event}"))
+        .to_string();
+    let ended = poll_until_reported(&mut world, &discard);
+    assert_eq!(ended["kind"], "discard", "{ended}");
+    assert_eq!(ended["state"], "succeeded", "{ended}");
     world.assert_nothing_copied();
 }
