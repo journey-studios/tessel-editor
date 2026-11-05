@@ -146,9 +146,11 @@ completa segue intacta); é `null` em erros estruturais do zod e em mensagens se
 borda (`probes`) são gravados no arquivo: o teste Rust usa a lista gravada.
 
 Convenções: números são os doubles exatos do JS (`JSON.stringify`); `-0` aparece como `0`; valor não
-finito apareceria como `{ "$nonFinite": "NaN" }`. **Nenhuma tolerância é definida aqui**: as
-únicas tolerâncias são constantes da própria origem (`JOIN_*` em `validate/edit-joins.ts`); a política
-de comparação numérica do Rust deve ser decidida e registrada antes de ver os diffs.
+finito apareceria como `{ "$nonFinite": "NaN" }`. O consumidor Rust já adota `abs <= 1e-10 + 1e-12 * abs(expected)` para matrizes estáticas
+([directed_scene_oracle.rs](../../crates/core/tests/directed_scene_oracle.rs)) e
+`abs <= 1e-9 + 1e-12 * abs(expected)` para câmera e animação
+(`directed_scene_temporal.rs`, `directed_scene_animation.rs`). IDs, frames e códigos são exatos.
+As constantes `JOIN_*` da origem são regras de domínio distintas dessas tolerâncias de comparação.
 Textos de erro estrutural do zod (`zodCode`/`message` sem `sourceCode`) são específicos do zod 4.3.6:
 para eles, compare veredito e `path`, não o texto.
 

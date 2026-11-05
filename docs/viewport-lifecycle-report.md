@@ -146,3 +146,5 @@ com export de 12 frames idêntico antes/depois. Este resultado substitui a limit
 de binário antigo para a base A–E: [dados](viewport-performance-results/lifecycle/foundation-window-proof.json)
 e [fingerprint de fontes/binário](viewport-performance-results/lifecycle/foundation-PROVENANCE.json).
 A prova anterior permanece no diretório como evidência histórica.
+
+Regressão do harness: `python3 scripts/viewport-lifecycle-proof.spec.py` prova relatório JSON em stdout e `--out` mesmo com retorno antecipado, exceção de setup ou falha na limpeza; exceções continuam propagadas. Não requer GPU.

@@ -9,6 +9,7 @@ use super::camera::CameraTimeline;
 /// Longest clip, in frames, whose stacked field of view is swept frame by frame. Past it the gate
 /// reports `TEMPORAL_CHECK_BUDGET_EXCEEDED` instead of running unbounded on a hostile duration
 /// (the importer bounds counts, not frame numbers). 1 000 000 frames is 11 hours at 24 fps.
+/// The same cap also bounds the sum of planned sweeps across all clips in one bundle.
 pub const LAYER_FOV_SWEEP_MAX_FRAMES: u64 = 1_000_000;
 
 /// For each clip with layers: the composed field of view must stay inside (0, 180) at every
@@ -17,6 +18,7 @@ pub const LAYER_FOV_SWEEP_MAX_FRAMES: u64 = 1_000_000;
 /// checked per movement).
 pub(in crate::directed_scene) fn layered_fov_issues(bundle: &Bundle) -> Vec<Issue> {
     let mut issues = Vec::new();
+    let mut remaining_frames = LAYER_FOV_SWEEP_MAX_FRAMES;
     for (index, clip) in bundle.camera_clips.iter().enumerate() {
         if clip.layers.is_empty() {
             continue;
@@ -41,6 +43,15 @@ pub(in crate::directed_scene) fn layered_fov_issues(bundle: &Bundle) -> Vec<Issu
             ));
             continue;
         }
+        if timeline.frames() > remaining_frames {
+            issues.push(Issue::new(
+                "TEMPORAL_CHECK_BUDGET_EXCEEDED",
+                &path,
+                format!("Clip {} exceeds the remaining bundle-wide stacked FOV budget of {remaining_frames} frames; this and subsequent clips were not checked", clip.id),
+            ));
+            break;
+        }
+        remaining_frames -= timeline.frames();
         for frame in 0..timeline.frames() {
             // `frames()` is at most the budget, so it fits `i64`.
             let verdict = i64::try_from(frame)

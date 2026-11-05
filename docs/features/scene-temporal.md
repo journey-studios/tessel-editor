@@ -162,7 +162,7 @@ Importar e não ter achado estrutural **não** certifica o bundle: uma UI/CLI qu
   pelo mapeamento exato com bundles sintéticos, não contra a origem.
 - `CameraPose::to_world_matrix` segue o `lookAt` do Three.js mas **não** foi comparada com o oráculo (ele não grava matriz de câmera).
 - Mapeamento de nós/camadas de luz, clima e rigs por frame: fora (M2/M3/M6).
-- O gate varre FOV de camadas até 1 000 000 frames por clipe (acima, achado de orçamento).
+- O gate varre FOV de camadas até 1 000 000 frames por clipe e por bundle (soma das durações planejadas). Ao exceder o saldo agregado, reporta `TEMPORAL_CHECK_BUDGET_EXCEEDED` no clipe e interrompe os seguintes, sem certificá-los. Regressão: `stacked_fov_sweeps_share_one_bundle_budget`.
 
 ## Revisão do coordenador
 

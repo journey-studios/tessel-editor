@@ -50,7 +50,7 @@ Um consumidor real, ponta a ponta, sobre as peças que já existiam (sem repetir
 2. **Cenas pertencem ao projeto, não à sequência.** Importar sequências de outro projeto não leva cenas; o plano avisa em vez de falhar.
 3. **Package incompleto, não "portátil".** Bundle que nomeia arquivos (`assets[].relativePath`, mix) → `missing` com `state:"not_packaged"`;
    sem `allow_partial` o bloqueio é `unsupported` tipado. Com `allow_partial` o documento e as cenas viajam e o pacote diz
-   `complete:false`. Cena só de dados empacota completa. Some quando BB05/BB06 empacotarem os recursos.
+   `complete:false`. Todo bundle válido exige assets: nenhum projeto com cenas anexadas empacota completo nesta etapa. Some quando BB05/BB06 empacotarem os recursos.
 4. **Tetos.** `MAX_SCENES = 64` e `MAX_SCENE_BYTES = 128 MiB` somados: `persist::save` não confere o tamanho e `persist::load` recusa
    > 256 MiB, então sem o teto seria possível salvar um projeto que ninguém reabre. O teto vale na entrada (anexar/abrir), não em cada
    edição (editar reescreve números no lugar).
@@ -74,7 +74,7 @@ Um consumidor real, ponta a ponta, sobre as peças que já existiam (sem repetir
 |---|---|
 | `crates/core/tests/scene_project.rs` | `a_project_keeps_its_scenes_through_save_and_reopen`, `a_project_without_scenes_writes_what_it_always_wrote`, `the_stored_block_is_validated_like_an_attach_and_never_half_opens`, `unknown_fields_survive_attach_edit_save_and_reopen`, `catalog_properties_and_camera_are_queryable_by_id_alone`, `the_camera_of_every_edit_frame_matches_the_origin_oracle`, `the_camera_can_be_asked_by_frame_exact_time_or_clip_frame`, `undo_and_redo_move_a_whole_batch_as_one_step`, `several_scene_commands_inside_a_transaction_are_one_undo_entry`, `a_late_invalid_batch_changes_nothing_and_keeps_index_path_and_issue_codes`, `dry_run_and_no_op_leave_state_and_history_alone`, `attach_runs_the_importer_and_the_structural_gate_before_anything_changes`, `the_temporal_gates_run_on_attach_and_on_every_edit`, `bundles_come_from_an_object_a_text_or_a_file_and_only_one_at_a_time`, `scene_ids_are_caller_chosen_stable_and_bounded`, `a_project_holds_a_bounded_number_of_scenes`, `a_json_lines_session_runs_the_whole_flow_in_process`, `the_headless_executable_answers_exactly_like_the_library` |
 | `crates/core/src/scene_project/{mod,scope,store}.rs` | 11 testes unitários (alfabeto de ID = `Id`, IDs gerados, round-trip do bloco, versão futura, entrada ruim com código do importador, blocos malformados, duplicata, famílias adiadas) |
-| `crates/media/tests/scene_project_guards.rs` | `a_package_never_claims_to_be_portable_while_a_scene_names_files_it_does_not_carry`, `a_partial_package_keeps_the_scenes_in_its_document_and_reports_the_gap`, `a_scene_without_files_packages_complete`, `importing_sequences_never_carries_scenes_and_the_plan_says_so` |
+| `crates/media/tests/scene_project_guards.rs` | `a_package_never_claims_to_be_portable_while_a_scene_names_files_it_does_not_carry`, `a_partial_package_keeps_the_scenes_in_its_document_and_reports_the_gap`, `a_project_without_scenes_packages_complete`, `importing_sequences_never_carries_scenes_and_the_plan_says_so` |
 
 Comando sugerido:
 
@@ -89,7 +89,7 @@ Comando sugerido:
 (`scene_edit`, `directed_scene`, `CommandError`), mas é código às cegas; possíveis pontos: `large_enum_variant` do clippy em `Command`
 (`SceneCommand::Attach` carrega um `Value`) e as asserções
 `details.index == 1`/`QUATERNION_NOT_NORMALIZED` copiadas de `scene_edit.rs`. Os testes de pacote assumem que o bundle `valid-minimal-continuous`
-(dois PNGs em `assets[]`) é o fixture com recursos, e o de cena só-dados remove `assetRef`/medidas dos planos de imagem.
+(dois PNGs em `assets[]`) é o fixture com recursos, e o caso completo remove a cena do projeto; não existe bundle válido sem assets.
 
 ## Superfícies
 

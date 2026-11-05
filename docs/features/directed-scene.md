@@ -62,7 +62,7 @@ que não serve para entrada não confiável; IDs do bundle são `String`.
 
 Os problemas de forma escondem os de integridade (uma referência para um campo que não leu só geraria ruído). Todo
 `Issue` traz `code`, `path` (JSON Pointer) e `message`; a lista nunca é vazia. Códigos da origem são mantidos
-(`DUPLICATE_NODE_ID`, `NODE_PARENT_MISSING`, `SHOT_*`, `CAMERA_*`, `FPS_MISMATCH`...); os próprios do importador
+(`DUPLICATE_NODE_ID`, `MISSING_PARENT`, `SHOT_*`, `CAMERA_*`, `FPS_MISMATCH`...); os próprios do importador
 são `INVALID_TYPE`, `MISSING_FIELD`, `INVALID_VALUE`, `UNKNOWN_FIELD` (aviso), `UNSUPPORTED_SCHEMA_VERSION`,
 `LIMIT_EXCEEDED`, `UNSAFE_RELATIVE_PATH`, `FPS_OUT_OF_RANGE`, `NON_FINITE_TRANSFORM`.
 
@@ -72,7 +72,7 @@ são `INVALID_TYPE`, `MISSING_FIELD`, `INVALID_VALUE`, `UNKNOWN_FIELD` (aviso), 
 |---|---|
 | Versão | Só `schemaVersion` `"1.0"` (bundle e cada definição de cena). Outra → `UNSUPPORTED_SCHEMA_VERSION`, sem ler mais nada |
 | Campo desconhecido | **Preservado** e reportado em `notices()`. A origem (zod) o descarta em silêncio |
-| Tipo/receita/enum fora do vocabulário | **Recusado** com o código da origem (`nodes[].type` além de `group`/`image-plane`/`splat`, receita de câmera desconhecida, easing desconhecido, transição `dissolve`...) |
+| Tipo/receita/enum fora do vocabulário | **Recusado**: tipos `supportPlane`/`overlay` → `UNSUPPORTED_NODE_TYPE`; transição `dissolve` → `DISSOLVE_UNSUPPORTED`; easing desconhecido → `UNKNOWN_CAMERA_EASING`; outros tipos/receitas fora do schema → `INVALID_VALUE`. Tipos de nó aceitos: `group`, `imagePlane`, `splat` |
 | Dados não interpretados | Preservados por valor no documento; regras adiadas não são validadas (lista em `DEFERRED_*`) |
 | Round-trip | **Igual por valor e idempotente.** Formatação e ordem das chaves não são preservadas; chave JSON duplicada colapsa (a última vence); números preservam inteiro × decimal |
 | Limites (`Limits`) | 32 MiB de texto, profundidade 128, 100 000 itens por array interpretado. Arrays em seções adiadas não têm esse limite individual. Aplicados antes/durante a leitura, nunca truncando |
@@ -115,3 +115,5 @@ reais da origem: schema e integridade passam, mas `finalizeBundle` a rejeita por
 e não encontrar problema estrutural **não** certifica o bundle completo para execução/export.
 O gate BB03 já detecta esse erro com `temporal_issues()`. Adapters futuros precisam chamá-lo,
 além de `edit_join_issues()`, antes de habilitar cenas na UI; domínios adiados continuam sem certificação.
+
+Inteiros fora de ±(2^53 − 1), inclusive `i64::MIN`, são recusados sem panic; regressão em `extreme_signed_integers_are_rejected_without_panicking`.

@@ -80,6 +80,8 @@ pub struct AttachedScene {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct SceneBook {
     scenes: Vec<AttachedScene>,
+    // Compact byte counts aligned with scenes; unchanged bundles are never reserialized.
+    scene_bytes: Vec<usize>,
     /// Keys of the stored `scenes` block that this editor does not know (kept on save).
     extra: Map<String, Value>,
 }
@@ -196,17 +198,13 @@ impl SceneBook {
     }
 
     fn stored_bytes(&self) -> usize {
-        self.scenes
-            .iter()
-            .map(|entry| serialized_len(&entry.scene))
-            .sum()
+        self.scene_bytes.iter().sum()
     }
 
     pub(crate) fn insert(&mut self, entry: AttachedScene) -> Result<(), CommandError> {
         self.check_room(&entry.id)?;
-        let total = self
-            .stored_bytes()
-            .saturating_add(serialized_len(&entry.scene));
+        let bytes = serialized_len(&entry.scene);
+        let total = self.stored_bytes().saturating_add(bytes);
         if total > MAX_SCENE_BYTES {
             return Err(CommandError::new(
                 "scenes_too_large",
@@ -219,11 +217,13 @@ impl SceneBook {
             .target(entry.id.as_str()));
         }
         self.scenes.push(entry);
+        self.scene_bytes.push(bytes);
         Ok(())
     }
 
     pub(crate) fn remove(&mut self, id: &str) -> Option<AttachedScene> {
         let index = self.scenes.iter().position(|entry| entry.id == id)?;
+        self.scene_bytes.remove(index);
         Some(self.scenes.remove(index))
     }
 
@@ -241,12 +241,14 @@ impl SceneBook {
         scene: &DirectedScene,
         limit: usize,
     ) -> Result<(), CommandError> {
-        let current = self
-            .get(id)
+        let index = self
+            .scenes
+            .iter()
+            .position(|entry| entry.id == id)
             .ok_or_else(|| CommandError::unknown_element("scene", id))?;
         let total = self
             .stored_bytes()
-            .saturating_sub(serialized_len(&current.scene))
+            .saturating_sub(self.scene_bytes[index])
             .saturating_add(serialized_len(scene));
         if total > limit {
             return Err(CommandError::new("scenes_too_large", format!("Editing scene `{id}` would exceed the {limit}-byte scene budget ({total} bytes)")).target(id));
@@ -270,12 +272,13 @@ impl SceneBook {
         limit: usize,
     ) -> Result<(), CommandError> {
         self.check_replacement_size_with(id, &scene, limit)?;
-        let entry = self
+        let index = self
             .scenes
-            .iter_mut()
-            .find(|entry| entry.id == id)
+            .iter()
+            .position(|entry| entry.id == id)
             .ok_or_else(|| CommandError::unknown_element("scene", id))?;
-        entry.scene = Arc::new(scene);
+        self.scene_bytes[index] = serialized_len(&scene);
+        self.scenes[index].scene = Arc::new(scene);
         Ok(())
     }
 
@@ -353,6 +356,42 @@ mod tests {
 #[cfg(test)]
 mod edit_budget_tests {
     use super::*;
+
+    #[test]
+    fn cached_sizes_follow_insert_replace_remove_and_snapshot() {
+        let raw: Value = serde_json::from_str(include_str!(
+            "../../../../docs/migration/fixtures/bundles/valid-minimal-continuous.bundle.json"
+        ))
+        .unwrap();
+        let original = DirectedScene::import_value(raw.clone()).unwrap();
+        let mut book = SceneBook::default();
+        for id in ["a", "b"] {
+            book.insert(AttachedScene {
+                id: id.into(),
+                name: id.into(),
+                scene: Arc::new(original.clone()),
+                extra: Map::new(),
+            })
+            .unwrap();
+        }
+        let snapshot = book.clone();
+        let mut changed = raw;
+        changed["x-size-probe"] = Value::String("larger".into());
+        let changed = DirectedScene::import_value(changed).unwrap();
+        book.replace_scene("a", changed).unwrap();
+        assert_eq!(
+            book.stored_bytes(),
+            book.iter()
+                .map(|entry| serialized_len(&entry.scene))
+                .sum::<usize>()
+        );
+        assert_eq!(snapshot.stored_bytes(), 2 * serialized_len(&original));
+        book.remove("a").unwrap();
+        assert_eq!(book.stored_bytes(), serialized_len(&original));
+        book.remove("b").unwrap();
+        assert_eq!(book.stored_bytes(), 0);
+        assert!(book.scene_bytes.is_empty());
+    }
 
     #[test]
     fn a_replacement_over_budget_is_rejected_before_the_scene_is_changed() {

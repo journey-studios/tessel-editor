@@ -1013,3 +1013,23 @@ fn evaluating_never_changes_the_scene() {
     assert_eq!(scene, before);
     assert_eq!(scene.to_json_string(), before.to_json_string());
 }
+
+#[test]
+fn stacked_fov_sweeps_share_one_bundle_budget() {
+    let mut value = layered();
+    let mut clip = value["cameraClips"][0].clone();
+    clip["segments"] = json!([{ "recipe": "hold", "durationFrames": 24, "from": "initial" }]);
+    clip["layers"] = json!([{ "segments": [{
+        "recipe": "hold", "durationFrames": LAYER_FOV_SWEEP_MAX_FRAMES / 2 + 1,
+        "from": "previousEnd",
+    }]}]);
+    value["cameraClips"] = json!([clip.clone()]);
+    clip["id"] = json!("other-budget-clip");
+    value["cameraClips"].as_array_mut().unwrap().push(clip);
+    let findings = import(value).temporal_issues();
+    let budget = findings
+        .iter()
+        .find(|issue| issue.code == "TEMPORAL_CHECK_BUDGET_EXCEEDED")
+        .expect("the aggregate budget must be enforced");
+    assert_eq!(budget.path, "/cameraClips/1");
+}

@@ -36,7 +36,9 @@ mapeamento de frames e gates temporais (F033); a F035 compara também performanc
 - `docs/migration/fixtures/manifest.json` — proveniência (commit, hashes, versões).
 
 Pré-condições de consumo e política numérica (o oráculo grava doubles exatos; o consumidor Rust compara
-matrizes com tolerância absoluta `1e-10` + relativa `1e-12`) estão no [README do runner](../../scripts/migration-oracle/README.md).
+matrizes com `abs <= 1e-10 + 1e-12 * abs(expected)`) estão no [README do runner](../../scripts/migration-oracle/README.md) e no consumidor
+[directed_scene_oracle.rs](../../crates/core/tests/directed_scene_oracle.rs). Câmera e animação usam
+`1e-9 + 1e-12 * abs(expected)`; IDs, frames e códigos são exatos.
 Rejeição: um bundle recusado tem `evaluation: null`; um Rust equivalente não deve avaliá-lo.
 
 ## CLI headless

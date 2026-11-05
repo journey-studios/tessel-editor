@@ -96,9 +96,11 @@ Lista completa e justificada em [`harness/scope.json`](../../scripts/migration-o
   `CAMERA_CLIP_OFFSET_BREAK`), FPS sempre 24/1, sem seek aleatório; sem cobertura por linha.
 - Mensagens de erro estrutural do zod são específicas da versão 4.3.6; para elas o Rust deve
   comparar veredito e `path`.
-- Política numérica do Rust não definida (o oráculo grava doubles exatos; `-0` vira `0` no JSON).
+- Na entrega inicial a política Rust ainda não existia. **Superado na integração:** matrizes estáticas usam `1e-10 + 1e-12 * abs(expected)`; câmera e animação usam `1e-9 + 1e-12 * abs(expected)`. O oráculo mantém doubles exatos (`-0` vira `0`).
 
 ## Dependências e pontos para o coordenador
+
+Atualização de integração: o consumidor Rust existe em `directed_scene_oracle.rs`, com consumidores temporais e de animação separados. As referências abaixo a consumidor pendente registram o estado da entrega original, não o estado atual.
 
 - Nada em `Cargo.toml`, `Cargo.lock`, `.gitignore` ou índices gerais foi tocado. O repo não ganha
   `node_modules` (deps fora dele); não há necessidade de `.gitignore`.

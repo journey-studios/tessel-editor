@@ -147,7 +147,7 @@ Só compatibilidade; codificação/importação/render intocados.
 
 | Operação | Comportamento |
 |---|---|
-| `package.preflight` / `package.create` | As cenas viajam no documento do pacote. Se algum bundle nomeia arquivos (`assets[].relativePath`, mix de áudio), cada cena entra em `missing` como `{asset:"scene:<id>", paths, state:"not_packaged"}`: o pacote é **incompleto** (`complete:false`) e, sem `allow_partial`, bloqueia com `unsupported` (preflight: blocker `unsupported`; create: `JobError unsupported`). Com `allow_partial` o pacote preserva o documento e as cenas e diz que está incompleto. Uma cena só de dados (sem arquivos) empacota completa. |
+| `package.preflight` / `package.create` | As cenas viajam no documento do pacote. Se algum bundle nomeia arquivos (`assets[].relativePath`, mix de áudio), cada cena entra em `missing` como `{asset:"scene:<id>", paths, state:"not_packaged"}`: o pacote é **incompleto** (`complete:false`) e, sem `allow_partial`, bloqueia com `unsupported` (preflight: blocker `unsupported`; create: `JobError unsupported`). Com `allow_partial` o pacote preserva o documento e as cenas e diz que está incompleto. Todo bundle válido exige ao menos um asset com caminho; portanto, atualmente todo projeto com cena anexada tem pacote incompleto. O teste de pacote completo cobre projeto sem cenas. |
 | `project.import` (sequências de outro projeto) | Cenas pertencem ao projeto, não à sequência: nunca são importadas, e o plano ganha um aviso (`directed scene(s) … not imported`). A origem só é lida. |
 | `project.restore` | Restaura o documento com as cenas; `complete:false` quando o manifesto diz que faltam recursos. |
 
@@ -186,3 +186,5 @@ Validação oficial final do coordenador: workspace com **522 testes passando,
 zero falhas e 2 ignorados** (ZIP64 de 4,5 GiB); clippy com warnings negados e
 formatação passaram. Os 19 testes públicos de cena incluem executável headless real;
 as 4 guardas de mídia também passaram. UI visual/socket continuam sem prova específica.
+
+O tamanho compacto de cada bundle é contado ao inserir/substituir e mantido em cache no `SceneBook`; consultas de orçamento não reserializam cenas inalteradas. Clone, remoção, substituição e rejeição preservam os contadores (testes de `scene_project::edit_budget_tests`).

@@ -903,17 +903,25 @@ def main():
         used = tree_gib(work)
         report["artifacts_gib"] = round(used, 2)
         check(f"own artifacts stayed under {BUDGET_GIB} GiB ({used:.2f})", used < BUDGET_GIB)
+    except Exception as error:
+        check("unhandled proof exception", False, repr(error))
+        raise
     finally:
-        if lab:
-            lab.stop()
-        if args.keep:
-            print("kept", work)
-        else:
-            shutil.rmtree(work, ignore_errors=True)
-    if args.out:
-        with open(args.out, "w") as handle:
-            json.dump(report, handle, indent=1)
-    print(json.dumps(report))
+        try:
+            if lab:
+                lab.stop()
+        finally:
+            if args.keep:
+                print("kept", work)
+            else:
+                shutil.rmtree(work, ignore_errors=True)
+            report["failures"] = list(failures)
+            try:
+                if args.out:
+                    with open(args.out, "w") as handle:
+                        json.dump(report, handle, indent=1)
+            finally:
+                print(json.dumps(report))
     return 1 if failures else 0
 
 

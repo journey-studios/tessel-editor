@@ -1312,3 +1312,24 @@ fn no_single_field_mutation_panics_and_every_refusal_is_explained() {
         "mutations should mostly be caught: {refused_count}"
     );
 }
+
+#[test]
+fn extreme_signed_integers_are_rejected_without_panicking() {
+    for value in [i64::MIN, -9_007_199_254_740_992, 9_007_199_254_740_992] {
+        let error =
+            with(|bundle| bundle["compositionPasses"][0]["order"] = json!(value)).unwrap_err();
+        assert!(
+            error
+                .issues()
+                .iter()
+                .any(|issue| issue.path == "/compositionPasses/0/order")
+        );
+    }
+}
+
+#[test]
+fn javascript_safe_integer_endpoints_remain_valid() {
+    for value in [-9_007_199_254_740_991_i64, 9_007_199_254_740_991] {
+        with(|bundle| bundle["compositionPasses"][0]["order"] = json!(value)).unwrap();
+    }
+}

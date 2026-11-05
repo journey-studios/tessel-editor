@@ -265,7 +265,7 @@ impl<'a> Obj<'a> {
             self.invalid(key, format!("expected a whole number, got {number}"));
             return None;
         };
-        if integer.abs() > MAX_SAFE_INT {
+        if !(-MAX_SAFE_INT..=MAX_SAFE_INT).contains(&integer) {
             self.invalid(
                 key,
                 format!("{integer} is outside the exactly representable range (+-2^53 - 1)"),
