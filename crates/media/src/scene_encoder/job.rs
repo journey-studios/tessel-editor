@@ -19,14 +19,18 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tessel_editor_core::CommandError;
 use tessel_editor_core::jobs::{JobContext, JobError};
-use tessel_editor_core::scene_export::SceneExportSnapshot;
+use tessel_editor_core::scene_export::{DirectedAudioMix, SceneExportSnapshot};
+use tessel_editor_core::scene_resources::ResourceKey;
 
 use crate::export::{self, ExportRequest, Schedule};
 use crate::fsx::{self, Staging, hex, io_error};
-use crate::scene_resources::{ResolveError, ResourceResolver, SceneResourceSession};
+use crate::scene_resources::{
+    ApprovedResource, ResolveError, ResourceResolver, SceneResourceSession,
+};
 use crate::tools::Tools;
 
-use super::args::encode_args;
+use super::args::encode_args_with_audio;
+use super::audio::{self, InspectError};
 use super::render::{FrameJob, FrozenResources, SceneFrameRenderer};
 
 const SPACE_MARGIN: u64 = 16 << 20;
@@ -89,6 +93,18 @@ impl SceneExport {
                 .resolve_asset(scene, asset)
                 .map_err(|error| resolve_error(&error).target(asset.as_str()))?;
         }
+        if let Some(mix) = snapshot.audio().mix() {
+            let approved = resources
+                .resolve(scene, &ResourceKey::AudioMix)
+                .map_err(|error| resolve_error(&error).target("audio-mix"))?;
+            // Only the header, and only to refuse what no mix could ever use (not a WAV, 24-bit,
+            // surround, 96 kHz, too short for the range) before a job exists. A file that cannot be
+            // opened is the job's preflight to report, like a vanished image.
+            if let Err(InspectError::Unsupported(error)) = audio::check_layout(mix, &approved.path)
+            {
+                return Err(error.target("audio-mix"));
+            }
+        }
         Ok(Self {
             snapshot,
             resources,
@@ -96,6 +112,13 @@ impl SceneExport {
             replace,
         })
     }
+}
+
+/// The approved mix file of an export that carries audio.
+fn audio_resource(export: &SceneExport) -> Result<ApprovedResource, ResolveError> {
+    export
+        .resources
+        .resolve(export.snapshot.scene_id(), &ResourceKey::AudioMix)
 }
 
 fn blocker(code: &str, message: impl Into<String>) -> Value {
@@ -190,8 +213,14 @@ pub fn preflight(export: &SceneExport, tools: &Tools, max_size: Option<u32>) -> 
             },
         }
     }
+    let mut audio_bytes = 0;
+    if let Some(mix) = snapshot.audio().mix() {
+        audio_blockers(export, mix, tools, &mut blockers);
+        // The staged 48 kHz stereo WAV plus its AAC encoding.
+        audio_bytes = mix.output_samples() * 4 + audio_aac_bytes(export, mix);
+    }
     let frame_bytes = u64::from(render_w) * u64::from(render_h) * 4;
-    let needed = estimated_video_bytes(export) + frame_bytes;
+    let needed = estimated_video_bytes(export) + frame_bytes + audio_bytes;
     let free = export.destination.parent().and_then(fsx::free_bytes);
     if let Some(free) = free
         && free < needed.saturating_add(SPACE_MARGIN)
@@ -208,11 +237,69 @@ pub fn preflight(export: &SceneExport, tools: &Tools, max_size: Option<u32>) -> 
     json!({
         "ok": blockers.is_empty(), "blockers": blockers, "warnings": snapshot.warnings(),
         "summary": snapshot.summary(),
-        "estimate": { "output_bytes": estimated_video_bytes(export), "staging_bytes": needed,
+        "estimate": { "output_bytes": estimated_video_bytes(export)
+                + snapshot.audio().mix().map_or(0, |mix| audio_aac_bytes(export, mix)),
+            "staging_bytes": needed,
             "note": "Estimates from typical content; the encoder decides the real size" },
         "free_bytes": free, "encoder": tools.h264_encoder(), "ffmpeg": tools.version,
         "destination": export.destination,
     })
+}
+
+fn audio_aac_bytes(export: &SceneExport, mix: &DirectedAudioMix) -> u64 {
+    let seconds =
+        mix.output_samples() as f64 / f64::from(tessel_editor_core::scene_export::MIX_RATE);
+    (seconds * f64::from(export.snapshot.preset().audio_kbps) * 125.0) as u64
+}
+
+/// What stops the mix: no AAC encoder, a file that vanished, changed size or cannot serve the range.
+fn audio_blockers(
+    export: &SceneExport,
+    mix: &DirectedAudioMix,
+    tools: &Tools,
+    blockers: &mut Vec<Value>,
+) {
+    let audio = |value: Value| {
+        let mut value = value;
+        value["asset"] = json!("audio-mix");
+        value
+    };
+    if !tools.has_encoder("aac") {
+        blockers.push(blocker(
+            "encoder_unavailable",
+            format!(
+                "This FFmpeg ({}) has no aac encoder for the audio mix",
+                tools.version
+            ),
+        ));
+    }
+    let approved = match audio_resource(export) {
+        Ok(approved) => approved,
+        Err(error) => {
+            blockers.push(audio(blocker("resource_unresolved", error.to_string())));
+            return;
+        }
+    };
+    match fs::metadata(&approved.path) {
+        Ok(meta) if meta.is_file() && meta.len() == approved.bytes => {}
+        Ok(_) => {
+            blockers.push(audio(blocker(
+                "resource_changed",
+                "The audio mix is not the file that was approved",
+            )));
+            return;
+        }
+        Err(error) => {
+            blockers.push(audio(blocker(
+                "resource_missing",
+                format!("The audio mix cannot be read: {error}"),
+            )));
+            return;
+        }
+    }
+    if let Err(error) = audio::check_layout(mix, &approved.path) {
+        blockers.push(audio(blocker(error.code(), error.message())));
+    }
 }
 
 trait WithAsset {
@@ -412,11 +499,24 @@ pub fn run(
     let frame_path = staging.path().join("frame.png");
     let log = staging.path().join("ffmpeg.log");
     let log_file = File::create(&log).map_err(|error| io_error(&log, &error))?;
+    // The mix is rendered first: a missing, swapped or too-short file fails here, before a single
+    // frame is drawn, and the encoder is handed a finished stream exactly as long as the video.
+    let mixed = match snapshot.audio().mix() {
+        Some(mix) => {
+            let approved = audio_resource(export).map_err(JobError::from)?;
+            let wav = staging.path().join("mix.wav");
+            let report = audio::render(mix, &approved, &wav, ctx)
+                .map_err(|error| as_disk_full(error, staging.path()))?;
+            Some((wav, report, approved))
+        }
+        None => None,
+    };
     let mut child = Command::new(&tools.ffmpeg)
-        .args(encode_args(
+        .args(encode_args_with_audio(
             snapshot.preset(),
             &schedule.geometry,
             schedule.output_rate,
+            mixed.as_ref().map(|(wav, ..)| wav.as_path()),
             &staged,
         ))
         .stdin(Stdio::piped())
@@ -468,9 +568,9 @@ pub fn run(
             output_rate: schedule.output_rate,
             frames: schedule.frames,
             geometry: schedule.geometry,
-            audio_samples: 0,
+            audio_samples: mixed.as_ref().map_or(0, |(_, report, _)| report.samples),
         },
-        false,
+        mixed.is_some(),
     )?;
     let size = fs::metadata(&staged)
         .map_err(|error| io_error(&staged, &error))?
@@ -490,7 +590,7 @@ pub fn run(
         "duration_seconds": schedule.duration_seconds(),
         "render": { "width": schedule.geometry.render.0, "height": schedule.geometry.render.1 },
         "output": { "width": snapshot.preset().width, "height": snapshot.preset().height },
-        "audio": snapshot.audio().to_json(),
+        "audio": audio_result(snapshot, mixed.as_ref()),
         "resources": used_resources(export),
         "warnings": report["warnings"],
         "verification": verification,
@@ -504,6 +604,21 @@ pub fn run(
             "pipe_ms_total": drawn.metrics.pipe_ms,
         },
     }))
+}
+
+/// `result.audio`: the plan (`included`, `declared`, `mix`) and, when a mix was written, what the
+/// file it came from was and what was measured on the stream handed to the encoder.
+fn audio_result(
+    snapshot: &SceneExportSnapshot,
+    mixed: Option<&(PathBuf, audio::MixReport, ApprovedResource)>,
+) -> Value {
+    let mut result = snapshot.audio().to_json();
+    if let Some((_, report, approved)) = mixed {
+        let extra = report.to_json(approved);
+        result["source"] = extra["source"].clone();
+        result["measured"] = extra["measured"].clone();
+    }
+    result
 }
 
 /// The resources the export drew from, as the frozen map identified them: what a reader needs to

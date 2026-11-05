@@ -16,14 +16,14 @@ calculado pelo core.
 - **Snapshot imutável:** a cena e o mapa de recursos são congelados na chamada. Editar, destacar a cena, gesto
   vivo (preview/candidato) ou invalidar a sessão de recursos depois **não** muda um export em andamento.
 - **Sem efeito no projeto:** o resultado não altera cena, timeline, histórico nem cria clipe. Não há `job.commit`.
-- **Áudio:** **não há áudio dirigido fictício.** Cena sem áudio exporta vídeo apenas (aviso `no_audio_sources`).
-  Cena que declara `audio` ou `narration` é **recusada** (`unsupported`) a menos que o pedido diga `audio:false`
-  (ou o preset não tenha áudio); aí o MP4 sai sem áudio e o resultado traz o aviso `audio_omitted` com os domínios
-  omitidos. Nunca um stream silencioso, nunca um mix parcial.
+- **Áudio:** o mix WAV declarado no bundle é gravado no MP4 (AAC, mesma duração do vídeo) e tem contrato
+  próprio em [F042A](scene-export-audio.md). Cena sem áudio exporta vídeo apenas (aviso `no_audio_sources`).
+  `audio:false` (ou preset sem áudio) omite o declarado com o aviso `audio_omitted`. Cena que declara
+  `narration` com áudio pedido é **recusada** (`unsupported`). Nunca um stream silencioso nem um mix parcial.
 - **Domínios sem avaliação** (por exemplo `lighting`) continuam sendo recusados antes de qualquer job, pela
   mesma regra de `ScenePlan::build`.
 
-Fora do escopo desta entrega: áudio dirigido (BL016), alpha de saída (BL090), equivalência visual contra o
+Fora do escopo desta entrega: narração/takes (BL017), alpha de saída (BL090), equivalência visual contra o
 runtime da origem (BL018/BL071). A UI está integrada pelo coordenador, com prova viva ainda pendente.
 
 ## Contrato do core / biblioteca
@@ -34,7 +34,7 @@ runtime da origem (BL018/BL071). A UI está integrada pelo coordenador, com prov
 |---|---|
 | `SceneExportSpec::from_json(&EditorState, &Value)` | Lê `{scene, preset?, from?, frames?, audio?}`; inteiros estritos (nada de float); preset por id, objeto ou o `export_preset` do projeto |
 | `SceneExportSchedule` | `[from, from+frames)`, rate da cena → rate do preset, `sample_time(i)` exato (`Ratio`), `edit_frame(bundle, i)` (igual ao `Bundle::frame_at_time`, piso), geometria do preset |
-| `AudioPlan` | `NoSources` ou `Omitted { declared }`; recusa o resto |
+| `AudioPlan` | `NoSources`, `Omitted { declared }` ou `Mix(DirectedAudioMix)` ([F042A](scene-export-audio.md)); recusa o resto |
 | `SceneExportSnapshot::capture` | Cena **commitada** (nunca candidato de gesto), `preset.validate()`, admissão (`edit_join_issues` + `temporal_issues`), cronograma, política de áudio, assets exigidos (um `ScenePlan::build` por shot tocado), plano do último frame |
 | `SceneExportSnapshot::plan(i)` | `ScenePlan::build` do frame de edição do frame de saída `i`: **o mesmo** de `scene.plan` |
 | `SceneExportSnapshot::timeline()` + `plan_with(&timeline, i)` | O laço do export usa uma `PlanTimeline` (R6) por job: mesmo plano, mesmo intervalo e mesmos erros que `plan(i)` (teste de equivalência), sem refazer o preparo por frame |
@@ -99,7 +99,7 @@ warnings, verification (ffprobe), frame_hashes {count, first, last, digest, list
 | Código | Quando | Efeito |
 |---|---|---|
 | `invalid_request`, `invalid_range`, `unknown_element`, `invalid_value` | pedido, cena, intervalo ou preset inválido | recusado **antes** do job; nada muda |
-| `unsupported` | áudio/narração declarados sem `audio:false`; domínio sem avaliação | idem |
+| `unsupported` | narração declarada sem `audio:false`; mix em formato não suportado; domínio sem avaliação | idem |
 | `scene_resources_not_loaded`, `stale_generation`, `resources_stale` | recursos não aprovados/obsoletos | idem |
 | `backend_unavailable` | sem renderer (sem runtime) | idem |
 | `destination_exists`, `preflight_failed`, `disk_full` | falha do preflight do job | job falha; destino intocado; sem staging |
@@ -162,7 +162,7 @@ O que cada teste de Chrome prova (SwiftShader, rodado sob `with-gpu-lock.py`):
   existente permanece byte a byte; `replace:true` troca por um MP4 verificado.
 - **Recurso sumido**: um arquivo apagado depois da aprovação bloqueia no preflight (`resource_*`), sem arquivo.
 - **Cancelamento**: `job.cancel` após ≥2 frames de 96 → `cancelled`, sem MP4 e sem staging; o progresso por frame é reportado.
-- **Áudio**: cena com `audio` declarado (WAV real + hash) é recusada (`unsupported`); com `audio:false` exporta
+- **Áudio**: cena com `audio` declarado (WAV real + hash) tem o mix no arquivo (F042A); com `audio:false` exporta
   sem stream de áudio e com `audio_omitted`; `lighting` é recusado.
 
 Tempo medido (SwiftShader, máquina de desenvolvimento, único dado de uma execução): ~210–290 ms/frame a
