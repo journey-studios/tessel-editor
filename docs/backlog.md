@@ -2,7 +2,7 @@
 
 Registro único de execução das pendências: building blocks, migração, produto, decisões e provas.
 Atualizado em 2026-11-05, após o merge `6cc4392` (PR #1). A rodada A–G terminou;
-A próxima rodada H/I/J/K foi autorizada; atribuições e links constam abaixo após o despacho. Responsável `—` significa não atribuído.
+A rodada H/I/J/K foi iniciada com quatro agentes Cursor Sonnet 5.5; atribuições e links abaixo. Responsável `—` significa não atribuído.
 
 ## Como todo agente deve usar
 
@@ -49,21 +49,21 @@ Fontes: [roadmap](migration/phased-roadmap.md), [matriz](features/README.md),
 | BL003 | BB03 | Avaliar domínios ainda em `unevaluated`: luz, clima, efeitos, rig, paths, bind/reveal | Parcial | Domínio escolhido | — | Estado por frame equivalente; nada omitido como se estivesse avaliado |
 | BL004 | BB04 | Ampliar catálogo: componentes, renderOrder, keys/segmentos e propriedades dos novos domínios | Parcial | BL001–BL003 aplicáveis | — | Tipo/unidade/faixa/default compartilhados; rollback e undo por lote |
 | BL005 | BB04 | Compatibilizar escrita de pose inicial com a conversão de movimentos/keys da origem | Pendente | BL004 | — | Semântica escolhida documentada e comparada com a origem |
-| BL006 | BB05 | Definir plano avaliado de cena e contrato core → runtime, versão/capabilities | Pendente | BB02/BB03 existentes | — | Core resolve o frame; runtime só executa estado explícito, com erros tipados |
+| BL006 | BB05 | Definir plano avaliado de cena e contrato core → runtime, versão/capabilities | Em andamento | BB02/BB03 existentes | H / Cursor Sonnet 5.5 (ver rodada) | Core resolve o frame; runtime só executa estado explícito, com erros tipados |
 | BL007 | BB05 | Renderer da cena dirigida em preview e headless; geração/cancelamento/invalidação | Pendente | BL006, BL010 | — | Mesmo conteúdo em seek fora de ordem, troca de projeto e recuperação de contexto |
 | BL008 | BB05 | Exportar cenas dirigidas pelo mesmo plano e original | Pendente | BL007 | — | Comparação de frames preview/headless/export e export curto reproduzível |
-| BL009 | BB06 | Resolver dependências transitivas: imagens/mapas/splats/fontes e base de caminhos | Pendente | Modelo BB01/BB02 | — | Closure de recursos explícita, validação de caminhos e diagnóstico de ausentes |
-| BL010 | BB06 | Jobs/load/cache/release por geração e dependentes da cena | Pendente | BL009 | — | Troca/release invalida dependentes; orçamento de memória e cancelamento |
-| BL011 | BB06 | Save/package/restore/relink/interchange de recursos de cena | Pendente | BL009, BL010 | — | Pacote abre sem arquivos originais; só então retirar a guarda de pacote incompleto |
-| BL012 | BB07 | Seleção por entidade, árvore de cena e tool state | Pendente | BB02, BL004 | — | Mesmo alvo por ID em UI/lib/CLI; batch independe de seleção |
-| BL013 | BB07 | Gestos com preview/commit/cancel e histórico agrupado | Pendente | BL012 | — | Escape cancela, undo único e comando semântico equivalente ao gesto |
+| BL009 | BB06 | Resolver dependências transitivas: imagens/mapas/splats/fontes e base de caminhos | Em andamento | Modelo BB01/BB02 | I / Cursor Sonnet 5.5 (ver rodada) | Closure de recursos explícita, validação de caminhos e diagnóstico de ausentes |
+| BL010 | BB06 | Jobs/load/cache/release por geração e dependentes da cena | Em andamento | BL009 | I / Cursor Sonnet 5.5 (ver rodada) | Troca/release invalida dependentes; orçamento de memória e cancelamento |
+| BL011 | BB06 | Save/package/restore/relink/interchange de recursos de cena | Em andamento | BL009, BL010 | I / Cursor Sonnet 5.5 (ver rodada) | Pacote abre sem arquivos originais; só então retirar a guarda de pacote incompleto |
+| BL012 | BB07 | Seleção por entidade, árvore de cena e tool state | Em andamento | BB02, BL004 | J / Cursor Sonnet 5.5 (ver rodada) | Mesmo alvo por ID em UI/lib/CLI; batch independe de seleção |
+| BL013 | BB07 | Gestos com preview/commit/cancel e histórico agrupado | Em andamento | BL012 | J / Cursor Sonnet 5.5 (ver rodada) | Escape cancela, undo único e comando semântico equivalente ao gesto |
 | BL014 | BB08 | Inspector ligado ao catálogo e às propriedades vivas | Pendente | BL004, BL012 | — | UI/CLI/lib compartilham comandos e valores; controle indisponível explica motivo |
 | BL015 | BB08 | Overlays/handles: coordenadas, foco, hit testing e resize sobre WebView | Pendente | BL007, BL013, BL014, BL042 | — | Handle e comando dão mesmo resultado; validar foco/resize nativos |
 | BL016 | BB09 | Transporte/mix do modelo dirigido: shots, janela de edição e relógio | Pendente | BL006, BL008 | — | Frame e amostra correspondentes em play/seek/pause; offline sem dispositivo |
 | BL017 | BB09 | Narração/takes/legendas e monitor gain | Pendente | BL016, BL026 | — | Tempo, texto e mix persistem e coincidem na saída |
-| BL018 | BB10 | Expandir corpus: tolerâncias JOIN, FPS variados contra a origem e to_world_matrix | Parcial | BB10 existente | — | Expectativas executadas na origem, tolerâncias prévias e casos de fronteira |
+| BL018 | BB10 | Expandir corpus: tolerâncias JOIN, FPS variados contra a origem e to_world_matrix | Em andamento | BB10 existente | K / Cursor Sonnet 5.5 (ver rodada) | Expectativas executadas na origem, tolerâncias prévias e casos de fronteira |
 | BL019 | BB10 | Provas de plano/pixels/áudio/performance por novo domínio | Parcial | Cada entrega | — | Código final e proveniência; não usar resultado de protótipo como aceite |
-| BL020 | Adapters | Expor avaliação completa de nós por frame no acesso programático de cena | Pendente | BB03 existente | — | Lib e JSONL retornam câmera/nós/unevaluated de forma coerente |
+| BL020 | Adapters | Expor avaliação completa de nós por frame no acesso programático de cena | Em andamento | BB03 existente | J / Cursor Sonnet 5.5 (ver rodada) | Lib e JSONL retornam câmera/nós/unevaluated de forma coerente |
 | BL021 | Adapters | Provar `scene.*` pelo socket da janela e depois pela UI visual | A validar | BL012/BL014 para UI | — | Socket e UI têm evidências distintas; headless já está validado |
 
 Primeiro marco pendente: cena mínima → plano → monitor/headless → pacote sem origem →
@@ -161,4 +161,13 @@ reuso isolado de objetos sem hipótese nova. Experimentos refutados ficam descar
 
 ## Rodada atual
 
-Plano e ownership: [H/I/J/K](migration/next-round-plan.md). Status de execução e links serão registrados pelo coordenador ao despachar; ainda não são entregas concluídas.
+Plano e ownership: [H/I/J/K](migration/next-round-plan.md). As quatro tarefas estão iniciadas, sem entrega concluída. Cargo e integração final são do coordenador.
+
+| Frente | Itens | Responsável/tarefa | Estado |
+|---|---|---|---|
+| H | BL006 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3Aa6ff05b3-f726-4031-ab83-3f9cc3045ebf> | Em andamento |
+| I | BL009/BL010/BL011 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A9cb28c3e-6589-4f90-840f-b43f21c534ca> | Em andamento |
+| J | BL012/BL013/BL020 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A975cf39a-05f7-40c5-a224-811495f83404> | Em andamento |
+| K | BL018 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A72230e00-998b-473e-aa85-12aacc2a00d7> | Em andamento |
+
+Ambiente: checkout compartilhado por limitação da delegação local; ownership exclusivo no plano. Nenhum agente altera o projeto aberto do usuário. O app foi reconstruído e aberto em release antes da integração desta rodada.
