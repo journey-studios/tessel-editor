@@ -21,7 +21,7 @@ Lib V significa testes do modelo demo, não um motor real de edição.
 | F002 | [Busca e seleção de mídia](media-selection.md) | I | I | I | V | `SetMediaSearch / SelectMedia` |
 | F003 | [Tabs do workspace e inspetor](tabs.md) | I | I | I | V | `SetWorkspaceTab / SetInspectorTab` |
 | F004 | [Accordions do inspetor](accordions.md) | I | I | I | V | `SetSectionExpanded` |
-| F005 | [Sliders, selects e switches de propriedades](properties.md) | I | I | I | V | `SetProperty`, `property.gesture.*` (28 core + 13 GPUI; socket atualizado pendente) |
+| F005 | [Sliders, selects e switches de propriedades](properties.md) | I | I | I | V | `SetProperty`, `property.gesture.*` (28 core + 13 GPUI + 12 checks de socket/janela; mouse físico não provado) |
 | F006 | [Reset de propriedades e seções](reset.md) | I | I | I | V | `ResetProperty / ResetSection` |
 | F007 | [Tempo, seek e passos por frame](seek.md) | I | I | I | V | `SetPlayhead` |
 | F008 | [Zoom da timeline e snapping](timeline-view.md) | I | I | I | V | `SetTimelineZoom / SetSnap` |

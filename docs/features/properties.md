@@ -80,4 +80,6 @@ do Kit, Escape, perda de foco, teclado) em `crates/desktop/src/workstation/slide
 limites e o que foi (ou não) executado em [slider-gesture-history-report.md](../slider-gesture-history-report.md).
 Limite conhecido: as ações de acessibilidade Aumentar/Diminuir do slider do Kit não emitem evento e não chegam ao modelo.
 
-Evidência da integração BL062: 28 testes core, 13 testes de input GPUI e sessão do executável headless passaram; clippy core/desktop limpos. Gate completo e socket da janela com binário atualizado ainda pendentes. Input GPUI não prova mouse físico (BL043).
+Evidência da integração BL062: 28 testes core, 13 testes de input GPUI e sessão do executável headless passaram; clippy core/desktop limpos. O gate completo da rodada de migração ainda aguarda recursos; o socket dos sliders já foi provado no release atualizado. Input GPUI não prova mouse físico (BL043).
+
+Release e prova socket concluídos: [slider-live-proof](../slider-gesture-live-proof.json), 12/12 checagens em janela nativa isolada, sem ponteiro físico. O app do usuário foi atualizado preservando snapshot local.

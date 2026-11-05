@@ -161,7 +161,7 @@ reuso isolado de objetos sem hipótese nova. Experimentos refutados ficam descar
 
 ## Rodada atual
 
-Plano e ownership: [H/I/J/K](migration/next-round-plan.md). As quatro tarefas estão iniciadas, sem entrega concluída. Cargo e integração final são do coordenador.
+Plano e ownership: [H/I/J/K](migration/next-round-plan.md). H/J/K foram recebidas e passaram nos gates direcionados registrados acima; a entrega de I aguarda recebimento. L foi adicionada para BL062 e está concluída. Cargo e integração final são do coordenador.
 
 | Frente | Itens | Responsável/tarefa | Estado |
 |---|---|---|---|
@@ -176,7 +176,7 @@ Ambiente: checkout compartilhado por limitação da delegação local; ownership
 
 | ID | Área | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL062 | F005/F024 | Agrupar sliders por gesto com preview ao vivo e commit único | A validar | Gate integrado da rodada e atualização do app | L + coordenador ([relatório](slider-gesture-history-report.md)) | 28 testes core, 13 testes GPUI de input e CLI headless real passaram; clippy core/desktop limpos. Mouse físico permanece BL043; app aberto ainda anterior |
+| BL062 | F005/F024 | Agrupar sliders por gesto com preview ao vivo e commit único | Concluído | — | L + coordenador ([relatório](slider-gesture-history-report.md)) | 28 core + 13 GPUI + CLI real + 12 checks socket/janela isolada passaram; regressão desktop 108/108; clippy/fmt/release OK. App do usuário atualizado com snapshot preservado. Mouse físico permanece BL043 |
 
 Tarefa L: <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3A6b408492-699c-46af-b4f2-06a6933bd3dc>
 
@@ -230,7 +230,7 @@ não bugs corrigidos nem equivalência integral. A câmera em Three isolado não
 |---|---|---|---|---|---|---|
 | BL074 | F005/a11y | Increment/Decrement do Kit alteram estado sem emitir evento de aplicação | Pendente | BL062 | — | Ponte local ou correção upstream; uma ação acessível aplica/valida e gera uma entrada |
 | BL075 | F005/UX | Eliminar salto visual do thumb ao cancelar até release | Pendente | BL062 | — | Thumb e preview coerentes após Escape sem reabrir gesto; teste de estado |
-| BL076 | F005/socket | Provar property.gesture.* pelo socket da janela e documentar acesso cruzado | A validar | BL062 | Coordenador | Docs UI automation/project creation já atualizadas; falta prova na janela com binary novo |
+| BL076 | F005/socket | Provar property.gesture.* no socket e documentar acesso cruzado | Concluído | — | Coordenador | scripts/slider-live-proof.py: 12/12 na janela nativa isolada; docs de UI automation/project creation atualizadas; prova não usa ponteiro físico |
 
 As propostas de L para mouse físico reutilizam BL043/BL062, sem novo ID. BL070–BL073
 pertencem ao corpus K; pendências adicionais de L foram reconciliadas como BL074–BL076.

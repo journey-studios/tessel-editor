@@ -152,3 +152,16 @@ gesture if gesture.starts_with("property.gesture.") => {
 - Testes usam input do GPUI, não mouse físico. O binário do app aberto ainda é o anterior à correção.
 - BL074/BL075/BL076 são os IDs reconciliados; a prova física continua em BL043. Docs de automação e
   criação já receberam o ciclo JSONL; prova socket aguarda o build atualizado.
+
+## Release e janela atualizada
+
+Build release passou. `python3 scripts/slider-live-proof.py` executou 12 checagens em uma
+instância nativa com HOME/socket próprios: valores expostos no controle, histórico vazio durante
+updates, commit único, undo/redo, cancel e no-op. [Resultado e hashes](slider-gesture-live-proof.json).
+A prova usa IPC semântico, não ponteiro físico nem comparação visual de pixels.
+
+O app do usuário foi atualizado depois de salvar um snapshot local fora do Git, sem jobs ativos.
+Nome, playhead e duração da timeline foram conferidos após reabrir. Os dados do projeto e o caminho
+da cópia não entram nos artefatos versionados. BL062/BL076 concluídos; BL043/BL074/BL075 continuam abertos.
+
+Regressão desktop completa após a correção: `test -p tessel-editor --locked`, 108/108 passaram (inclui os 13 novos de slider). Não equivale ao gate workspace da rodada, que ainda aguarda integração de recursos.

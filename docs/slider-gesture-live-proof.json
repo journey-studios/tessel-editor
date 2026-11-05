@@ -1,0 +1,57 @@
+{
+  "checks": [
+    {
+      "name": "preview 0 reaches the live widget",
+      "ok": true
+    },
+    {
+      "name": "preview 0 adds no undo",
+      "ok": true
+    },
+    {
+      "name": "preview 1 reaches the live widget",
+      "ok": true
+    },
+    {
+      "name": "preview 1 adds no undo",
+      "ok": true
+    },
+    {
+      "name": "preview 2 reaches the live widget",
+      "ok": true
+    },
+    {
+      "name": "preview 2 adds no undo",
+      "ok": true
+    },
+    {
+      "name": "release records exactly one entry",
+      "ok": true
+    },
+    {
+      "name": "undo restores the original widget value",
+      "ok": true
+    },
+    {
+      "name": "redo restores the final widget value",
+      "ok": true
+    },
+    {
+      "name": "cancel restores the original value",
+      "ok": true
+    },
+    {
+      "name": "cancel adds no undo",
+      "ok": true
+    },
+    {
+      "name": "returning to the original adds no entry",
+      "ok": true
+    }
+  ],
+  "input": "semantic IPC, not physical pointer",
+  "ok": true,
+  "source_commit": "b65ef05",
+  "binary_sha256": "a5464ac402d1cb7fe52b2bf305c1478b1adb89691178410ef0c3716bd28c3edb",
+  "harness_sha256": "31cc03f0d42d88e1c4c4a6e93a1b82173757f12f4fef231f65813b011fb8f53d"
+}
