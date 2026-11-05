@@ -55,3 +55,21 @@ Sem push, PR ou merge pelos agentes.
 3. B gera expectativas a partir do código da origem, com commit e hashes verificáveis.
 4. C demonstra recuperação com frames reais; limitações de hardware ficam pendentes.
 5. Cada relatório distingue lib, CLI sem janela, socket e UI; não declarar a migração completa.
+
+## Rodada 2 — após integrar A/B (`72fa715`)
+
+A base de documento/grafo está integrada. Seguem em paralelo, sem mudar APIs existentes:
+
+| Frente | Responsabilidade | Ownership |
+|---|---|---|
+| D — BB03 | Avaliação pura de tempo de shot/instância/clipe de câmera; recipes, keys, easing, camadas; gates de junção temporal; comparação com oráculo | `directed_scene/temporal/`, `directed_scene/mod.rs`, `joins.rs`; ajustes aditivos em `model.rs`/`parse.rs` somente se necessários; testes e docs próprios |
+| E — BB04 | Catálogo mínimo de propriedades de nó/câmera e edição por IDs em lote/dry-run com rollback; usa importador existente, sem regras exclusivas da UI | `crates/core/src/scene_edit/`, export em `lib.rs`, testes e docs próprios |
+
+D não altera `lib.rs`; E não altera módulos internos de `directed_scene`. Ambos consomem
+a API pública existente sem a quebrar. D executa os checks Cargo; E implementa e informa
+checks Rust para o coordenador executar na integração, evitando concorrência pesada.
+C continua com GPU/runtime exclusivamente. Matriz/índices e commits ficam com coordenador.
+
+Esta rodada ainda é biblioteca de base: adapters, ligação ao documento/estado do editor e
+render dirigido serão etapas seguintes, com status pendente explícito. E não certifica
+validação temporal antes de consumir o gate D; o coordenador integra esse gate após ambas.
