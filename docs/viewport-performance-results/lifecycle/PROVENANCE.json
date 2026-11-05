@@ -1,0 +1,63 @@
+{
+  "recorded_utc": "2026-11-05T13:44:08.613210+00:00",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "checkout_head_at_verification": "d7b405d0a989d486cfd94d003ddc737a664b42f2",
+  "binary_build_source_commit": "unknown; pre-existing release binary, not rebuilt for this proof",
+  "commands": {
+    "runtime": "cd runtime && TESSEL_REQUIRE_RUNTIME=1 pnpm test",
+    "window": "python3 scripts/viewport-lifecycle-proof.py --out /tmp/tessel-lifecycle-integration.json",
+    "cleanup_regression": "cd runtime && TESSEL_REQUIRE_RUNTIME=1 node --test test/lifecycle.test.mjs"
+  },
+  "results": {
+    "runtime_passed": 61,
+    "runtime_failed": 0,
+    "runtime_skipped": 0,
+    "window_passed": 147,
+    "window_failed": 0,
+    "export_frames": 12,
+    "export_identical": true,
+    "lifecycle_after_cleanup_passed": 8,
+    "lifecycle_after_cleanup_failed": 0
+  },
+  "files": {
+    "target/release/tessel-editor": {
+      "sha256": "d7754401f3d90ae6bbabfe81e37b8e6a61a81e622ae3f0d06f9d59b257a73d5f",
+      "bytes": 38910464,
+      "mtime_utc": "2026-11-05T12:43:26.174267+00:00"
+    },
+    "runtime/dist/runtime.js": {
+      "sha256": "0651aa849a96c426293210ac29fc4763d087c09de80ff9b675cca9d0a48363ea",
+      "bytes": 4157806,
+      "mtime_utc": "2026-11-05T13:15:02.778435+00:00"
+    },
+    "runtime/src/index.js": {
+      "sha256": "793edebbc603e23b945725d4405dbc2a7ab3f3a0847b6afd82fe86081ddef4d4",
+      "bytes": 14580,
+      "mtime_utc": "2026-11-05T13:13:28.119580+00:00"
+    },
+    "runtime/pnpm-lock.yaml": {
+      "sha256": "cb7f671c4828f8632533fdbdcf2db5a998f2b6b73651472b55471f3ec11707ed",
+      "bytes": 15625,
+      "mtime_utc": "2026-11-04T18:29:23.592061+00:00"
+    },
+    "scripts/viewport-lifecycle-proof.py": {
+      "sha256": "68356ee9992147efb21b42991235433ff85f39c1e66202759a07dc629d20d558",
+      "bytes": 44242,
+      "mtime_utc": "2026-11-05T13:39:07.021021+00:00"
+    },
+    "runtime/test/lifecycle.test.mjs": {
+      "sha256": "cd8df39a9ea18ed102b9ceb7113c7ee05b6785e1b62d07b837c799166a8fd1ae",
+      "bytes": 17763
+    },
+    "runtime/test/lifecycle-fixtures.mjs": {
+      "sha256": "f6851a37626c7730baf9e250716c9026b9490271c97dc950b797b388e5c4e0dd",
+      "bytes": 5832
+    }
+  },
+  "window_report_sha256": "96efc03df50b8fd6793d8813191b36b1720d51cc20d0f2589e79e0fdebf5e8b3",
+  "limits": [
+    "Forced WEBGL_lose_context, not driver reset",
+    "Existing release binary; Rust source changes from the migration are not validated by this proof",
+    "No seek-to-photon, no physical GPU memory accounting, no popup/keyboard focus proof"
+  ]
+}

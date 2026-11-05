@@ -19,6 +19,8 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
   vídeo, áudio (processado), texto e Three.js/splat.
 - [Relatório da fundação da viewport](viewport-foundation-report.md): arquivos, APIs, comandos, métricas e lacunas.
 - [Plano da viewport](viewport-foundation-plan.md): fatias e critérios (histórico).
+- [Ciclo de vida do preview](viewport-lifecycle-report.md): testes de contexto perdido com proxy,
+  ocultar/reabrir, cancelamento, troca de projeto e preservação do export.
 - [Desempenho do preview: relatório de implementação](viewport-performance-implementation-report.md): retenção de GPU,
   spans do host e harness; comandos, arquivos, riscos, provas, lacunas e builds. Parecer e validação independentes:
   [revisão](viewport-performance-opus-review.md) e [validação](viewport-performance-opus-validation.md) (do Opus, sobre

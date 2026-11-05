@@ -3,7 +3,8 @@
 Status: execução em andamento após o primeiro commit `59d618a`. Frente B entregue e
 verificada pelo coordenador: 55 casos contra a origem e 21 testes do runner; consumidor Rust
 integrado parcialmente na frente A (55 vereditos, grafo e matrizes estáticas). A entregue e
-revisada, com validação temporal/adapters pendentes; C segue em execução.
+revisada, com validação temporal/adapters pendentes. C entregue: suíte runtime 61/61
+e prova de janela real 147/147, repetidas pelo coordenador contra release existente.
 Referência: [building blocks e fases](phased-roadmap.md).
 
 ## Contrato de integração

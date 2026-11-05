@@ -102,6 +102,14 @@ passam; a suíte do core tem 219 testes incluindo doctest. Somente um subconjunt
 `edit_join_issues()` verifica apenas junções estruturais. Não equivale a `finalizeBundle`
 completo nem habilita render/export. [Contrato e limites](directed-scene.md).
 
+Ciclo de vida de F021: perda forçada de contexto com proxy, ocultar/reabrir monitor, diálogo,
+reload/troca de projeto com quadro em voo e export intacto têm prova específica no
+[relatório](../viewport-lifecycle-report.md) e em `runtime/test/lifecycle.test.mjs`. A evidência
+de janela usa macOS, uma tela e binário release existente, sem rebuild nesta frente.
+`WEBGL_lose_context` não equivale a reset do driver; métricas Three.js não medem memória
+física da GPU. Esses cenários não acrescentam comandos de domínio nem mudam o contrato
+headless; os testes Chrome cobrem o runtime sem janela nativa.
+
 ## Critério de conclusão
 
 - Documento da feature com contrato, exemplos, erros e limites atualizado.

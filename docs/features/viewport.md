@@ -299,6 +299,34 @@ retidos). No `gpui-pre` a view nativa **cobre overlays e não recorta**: ela é 
 explicitamente quando o monitor fecha ou não é a aba ativa (`update_viewport_visibility`).
 O GPUI não pinta janela totalmente coberta; use `ui invoke window.activate` antes de observar.
 
+### Ciclo de vida do preview sob incidente
+
+O que o preview (proxy + refino) promete quando o ambiente falha, e como é provado. Contrato: **a última posição pedida
+converge para a imagem original correta; o render/export original nunca muda; recursos da geração abandonada são liberados
+segundo os contadores do runtime/Three.js (não é prova de liberação física no driver)**.
+
+| Incidente | Resultado esperado | Prova |
+|---|---|---|
+| Perda de contexto no meio de um quadro de scrub com proxy / de refino / com o timer de refino pendente / com o playhead andando / com o monitor oculto / 6 vezes seguidas | `context_lost` tipado (`details.cause`), o proxy volta a ser aplicado na restauração (nunca é derrubado pela perda), o refino converge ao original byte a byte, `gl_textures` não cresce por ciclo | `runtime/test/lifecycle.test.mjs` (Chrome) e `scripts/viewport-lifecycle-proof.py` (janela real) |
+| Contexto **nunca** restaurado | falha visível (`Falha: context_lost`), intenções novas respondem sem travar o host, `monitor.reload` recupera | harness |
+| Perda e, antes da restauração, troca de projeto / reload | nenhum asset, proxy ou falha do projeto antigo aparece; o novo projeto desenha os próprios pixels | harness + teste do runtime (asset trocado durante a perda) |
+| Ocultar/mostrar o monitor (8 alternâncias com o playhead andando), diálogo sobre o monitor (`flow.import` → `dialog.cancel`), janela minimizada/ativada | o monitor volta `on_screen`, sem falha, e a posição final converge ao hash de um `render.frame` original | harness |
+| `monitor.reload` / `project.open` com quadro em voo e `render.frame` explícito esperando | o explícito responde (`cancelled` tipado ou um quadro de UM projeto, nunca pendurado) e a posição converge | harness (o reload é repetido até a corrida acontecer de fato) |
+| Quadro cancelado em voo, `dispose` com quadros de proxy em voo | nada fica retido (`debug.glMemory()` zera), o próximo quadro é exato | `lifecycle.test.mjs` |
+| Export original antes e depois de todos os incidentes | `framemd5` idêntico (12 quadros) | harness (export do próprio editor, worker Node+Chrome servindo o `dist` real) |
+
+"Convergiu" significa, ao mesmo tempo: `session.status ready`, nada pendente nem refino, `presented.frame` == playhead,
+`last_frame.revision` == `session.revision`; o hash da imagem na tela (`TESSEL_VIEWPORT_INSPECT=1`) == o de um
+`render.frame` original do mesmo quadro e tamanho; o código de barras do quadro decodifica certo (+100 no segundo projeto);
+e `last_frame.cache.context_generation` conta exatamente as perdas provocadas.
+
+Limites: a perda é **forçada** com `WEBGL_lose_context` (eventos reais `webglcontextlost/restored`, via
+`TesselRuntime.debug`, num `index.html` de rascunho que só instala o gatilho; o `runtime.js` é o mesmo), não é reset de GPU nem
+queda de driver; não há timing de foto; o RSS dos processos auxiliares do WebKit não é medido (só o do editor); minimizar a
+janela não muda `on_screen` (não é observável como ocultar). A contagem de texturas GL de quadros originais cresce com os
+quadros distintos visitados até o teto de bytes (256 MiB) — é a retenção desenhada, não vazamento. Sem Rust alterado:
+observações em [viewport-lifecycle-report](../viewport-lifecycle-report.md#observações-do-rust-sem-correção).
+
 ### `gpui-fast`
 
 POC feita numa cópia temporária com `gpui-fast` ligado em `gpui-kit` **e** `gpui-webview`:
@@ -313,14 +341,15 @@ está fora do escopo). Portanto o backend padrão **continua `gpui-pre`**.
 |---|---|---|
 | Lib (plano, tempo, sessão, bridge, mixer, trace) | V | `./scripts/cargo test -p tessel-editor-core` (158 unit + 8 `proof` + 2 headless; 36 testes de sessão, 4 de `trace`) |
 | Headless com runtime real | V | `crates/render/tests/frames.rs` (7) + `./scripts/render`; pixels conferidos por tipo |
-| Runtime JS | V | `./scripts/runtime test` (53 testes, Chrome; inclui `inspect:false`, a retenção e o alvo por camada com duas cenas) |
+| Runtime JS | V | `./scripts/runtime test` (61 testes, Chrome; inclui `inspect:false`, a retenção, o alvo por camada com duas cenas e 8 de ciclo de vida: perda com proxy, repetida, asset trocado, cancelamento, dispose) |
 | Host da WebView sem GPUI | V | `viewport_host_tests` (34, incluindo scrub contra página lenta e os spans) + `viewport_tests` (7, janela de teste sem WebView) |
 | Scrub na janela real | V (macOS) | `scripts/seek-scrub-proof.py` (+ `--pixel-proof`), números em [seek-performance-report](../seek-performance-report.md) |
 | Janela real (WKWebView) | V (macOS) | `scripts/live-proof.py` 56/56 (57/57 com `--shots`, que acrescenta a checagem do PNG gravado), build debug, HOME isolado, com e sem `TESSEL_VIEWPORT_RETAIN=0` |
 | Retenção: pixel igual e ganho de CPU | V (WebKit, Chrome GPU, SwiftShader) | harness `runtime/scripts/perf` (hash/vida/bench); tabelas e proveniência em [viewport-performance-results](../viewport-performance-results/); leitura em [viewport-performance-implementation-report](../viewport-performance-implementation-report.md) |
 | Proxy automático + refino + export original | V (macOS, release) | `scripts/proxy-live-proof.py` (janela real, HOME isolado, só pedidos semânticos): proxy gerado pelo job, quadro do scrub vem do proxy, refino converge ao pixel do `render.frame` original, export idêntico ao da política `original`; testes de sessão/host/media/runtime |
 | Ritmo do preview na janela, build release | V (macOS, uma tela) | [relatório OPT01–OPT10](../viewport-performance-next-report.md); soak de 480 s em `scripts/proxy-soak.py`; outros displays e foto na tela: P |
+| Ciclo de vida sob incidente (perda de contexto com proxy, ocultar/mostrar, diálogo, reload/troca de projeto com quadro em voo, export intacto) | V (macOS, release, uma tela; perda **forçada**) | `scripts/viewport-lifecycle-proof.py` (147 checagens, janela real, HOME isolado, só pedidos semânticos) + `runtime/test/lifecycle.test.mjs`; [relatório](../viewport-lifecycle-report.md) |
 | Áudio ouvido / A/V sync | P | não há saída de dispositivo |
-| Overlays/foco sobre a WebView | P | ver `gpui-fast` |
+| Overlays/foco sobre a WebView | P | ver `gpui-fast` (o diálogo que esconde a WebView é coberto pelo harness de ciclo de vida; popover/tooltip e foco continuam P) |
 
 Limites conhecidos estão no [relatório](../viewport-foundation-report.md#lacunas).
