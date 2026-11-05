@@ -5,6 +5,8 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 
 - [Inventário de migração do Scene Studio](migration/README.md): 121 itens classificados,
   evidências na origem, diferenças do branch piloto, matriz de migração e fatias sugeridas.
+- [Tempo e câmera de cenas dirigidas](features/scene-temporal.md): avaliação pura, mapeamento racional
+  e gate temporal; animação de nós e adapters ainda pendentes.
 - [Oráculo de migração](../scripts/migration-oracle/README.md): 55 bundles sintéticos, expectativas
   executadas na origem fixada e runner de integridade/equivalência; consumidor Rust parcial.
 - [Rodada paralela da base](migration/parallel-implementation-plan.md): ownership, dependências e gates.

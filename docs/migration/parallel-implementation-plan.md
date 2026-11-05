@@ -74,3 +74,10 @@ C continua com GPU/runtime exclusivamente. Matriz/índices e commits ficam com c
 Esta rodada ainda é biblioteca de base: adapters, ligação ao documento/estado do editor e
 render dirigido serão etapas seguintes, com status pendente explícito. E não certifica
 validação temporal antes de consumir o gate D; o coordenador integra esse gate após ambas.
+
+### Status da rodada 2
+
+D entregue e revisada: 19 testes públicos temporais, comparação de câmera/gates com o
+oráculo, teste dos limites de tolerância e gerador com proveniência validada. E segue
+com ownership próprio; integração do gate temporal aos lotes ainda depende dessa entrega.
+UI/CLI e animação de nós continuam pendentes.

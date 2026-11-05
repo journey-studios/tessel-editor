@@ -6,6 +6,10 @@
 //! playback state or the runtime. Adapters (command, headless, desktop) are not wired yet.
 //! Contract, policies and divergences from the origin: `docs/features/directed-scene.md`.
 //!
+//! Time and camera (BB03) live in `temporal`: frame mapping, camera pose and speed, and the
+//! temporal gate (`DirectedScene::temporal_join_issues` / `temporal_issues`). Node animation is
+//! not evaluated and says so. Contract: `docs/features/scene-temporal.md`.
+//!
 //! ```
 //! use tessel_editor_core::directed_scene::DirectedScene;
 //!
@@ -27,6 +31,7 @@ mod model;
 mod parse;
 mod read;
 mod refs;
+mod temporal;
 mod transform;
 
 use serde_json::Value;
@@ -38,6 +43,10 @@ pub use issue::{
     MISSING_FIELD, NON_FINITE_TRANSFORM, Notice, UNKNOWN_FIELD, UNSAFE_RELATIVE_PATH,
     UNSUPPORTED_SCHEMA_VERSION,
 };
+pub use joins::{
+    JOIN_FOV_TOLERANCE_DEG, JOIN_FOV_VELOCITY_TOLERANCE_DEG_PER_FRAME,
+    JOIN_POSITION_TOLERANCE_SCENE_UNITS, JOIN_VELOCITY_TOLERANCE_SCENE_UNITS_PER_FRAME,
+};
 pub use model::{
     Asset, AssetAlpha, AssetColorSpace, AssetFormat, AssetRef, AudioMix, Bundle, CameraClip,
     CameraKey, CameraMotion, CameraSegment, ChannelKind, CompositionPass, Fps, MoveRecipe, Node,
@@ -45,6 +54,10 @@ pub use model::{
     Shot, Socket, SocketAttachment, Transition, ZoomRecipe,
 };
 pub use refs::{Entity, EntityKind, Reference};
+pub use temporal::{
+    CameraEvaluation, CameraPose, CameraState, CameraTimeline, FrameEvaluation, FrameMapping,
+    LAYER_FOV_SWEEP_MAX_FRAMES, NodeAnimation, SegmentPoses, TemporalError, Unsupported,
+};
 pub use transform::{Mat4, Quat, Transform, Vec3};
 
 /// The only `schemaVersion` this importer reads, for the bundle and for each scene definition.
@@ -85,9 +98,10 @@ pub const DEFERRED_RULES: &[&str] = &[
     "weather name, rig, path and effects rules (M3/M6)",
     "narration and outline rules (M5)",
     "the weatherGround node must be an image plane",
-    "performance channel payload rules (BB03)",
-    "CAMERA_LAYER composed field-of-view check, frame by frame (BB03)",
-    "CONTINUOUS_*_JUMP pose comparison at joins (BB03)",
+    "performance channel payload rules and their evaluation (BB03, not in its camera/time slice)",
+    // These two need the camera evaluated: import does not run them, `temporal_issues` does.
+    "CAMERA_LAYER composed field-of-view check, frame by frame (run by `temporal_issues`, not by import)",
+    "CONTINUOUS_*_JUMP pose comparison at joins (run by `temporal_join_issues`, not by import)",
 ];
 
 /// Bounds on what an import accepts, so untrusted input cannot exhaust memory or stack.
@@ -268,8 +282,27 @@ impl DirectedScene {
     }
 
     /// The structural rules of the cuts between shots (the origin's `validateEditJoins`, minus
-    /// the camera-pose comparison, which waits for temporal evaluation). Empty means no finding.
+    /// the camera-pose comparison, which is `temporal_join_issues`). Empty means no *structural*
+    /// finding: it does not certify that the camera is smooth at continuous cuts.
     pub fn edit_join_issues(&self) -> Vec<Issue> {
         joins::check(&self.bundle)
+    }
+
+    /// The camera-pose rules of continuous cuts (`CONTINUOUS_CAMERA_JUMP`, `_TARGET_JUMP`,
+    /// `_FOV_JUMP`, `_VELOCITY_JUMP`, `_FOV_VELOCITY_JUMP`), each with the origin's tolerances
+    /// (`JOIN_*`). Additive to `edit_join_issues`: the origin's `validateEditJoins` is the two
+    /// together. `CAMERA_EVALUATION_FAILED` appears where a join's camera cannot be evaluated.
+    pub fn temporal_join_issues(&self) -> Vec<Issue> {
+        joins::check_temporal(&self.bundle)
+    }
+
+    /// Everything that needs the camera evaluated: the stacked field of view of layered clips
+    /// (`FOV_OUT_OF_RANGE`, which the origin checks at import) and `temporal_join_issues`.
+    /// Empty, together with `edit_join_issues` being empty, is what the origin's `finalizeBundle`
+    /// accepts for the part of the bundle this module interprets.
+    pub fn temporal_issues(&self) -> Vec<Issue> {
+        let mut issues = temporal::layered_fov_issues(&self.bundle);
+        issues.extend(self.temporal_join_issues());
+        issues
     }
 }

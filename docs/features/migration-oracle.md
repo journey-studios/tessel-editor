@@ -25,7 +25,8 @@ Limites honestos:
 
 O consumidor Rust `crates/core/tests/directed_scene_oracle.rs` está integrado (**Lib: Parcial**):
 55 vereditos de importação + junções estruturais, referências pai/socket dos casos válidos,
-round-trip e matrizes estáticas; não compara câmera temporal/performance. O contrato de dados é:
+round-trip e matrizes estáticas. `directed_scene_temporal.rs` acrescenta a comparação de câmera,
+mapeamento de frames e gates temporais (F033); performance dos nós continua pendente. O contrato de dados é:
 
 - `docs/migration/fixtures/bundles/<id>.bundle.json` — entrada.
 - `docs/migration/fixtures/expected/<id>.expected.json` — veredito (`validation.accepted`, issues com
@@ -69,7 +70,8 @@ N/A: sem superfície de editor. Nenhum controle, comando `ui`/`headless` ou nó 
 - Origem: working tree dos 33 arquivos executados == blobs de `d6adac15…`; árvore
   `packages/scene-engine` == `d5fc9871…` (a do inventário).
 - Não executado: Cargo, Chrome, GPU. O consumidor Rust integrado passou nos 3 testes adicionais; a coluna Lib é parcial
-  porque avaliação temporal e demais domínios não são comparados.
+  porque performance dos nós e demais domínios não são comparados. A câmera/gates temporais
+  têm comparação adicional na F033 (19 testes públicos).
 
 Linha da matriz (a ser consolidada pelo coordenador) e relatório:
 [`docs/migration/foundation-b-report.md`](../migration/foundation-b-report.md).

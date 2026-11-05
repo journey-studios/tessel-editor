@@ -49,6 +49,7 @@ Lib V significa testes do modelo demo, não um motor real de edição.
 | F030 | [Gaussian splats (Spark 2.4.0)](spark.md) | V | V | V | V | cena `tessel-scene@1` + asset `splat` |
 | F031 | [Cena dirigida: importar, consultar e regravar render-bundle 1.0](directed-scene.md) | P | P | P | Parcial¹⁰ | `directed_scene::DirectedScene`; adapters pendentes |
 | F032 | [Oráculo de equivalência da migração (BB10/E0)](migration-oracle.md) | N/A⁹ | N/A⁹ | N/A⁹ | Parcial⁹ | `scripts/migration-oracle/oracle.mjs verify` + `docs/migration/fixtures/` |
+| F033 | [Cena dirigida: tempo, câmera e gate temporal (BB03)](scene-temporal.md) | P | P | P | Parcial¹¹ | `Bundle::evaluate_camera`, `evaluate_frame`, `DirectedScene::temporal_issues`; adapters pendentes |
 
 ¹ Dock/tema/janela são capacidades de apresentação. A lib valida layout, mas quem o executa
 é o DockArea vivo; não há execução do Dock no core. UI nativa não é requisito para fluxos
@@ -91,16 +92,24 @@ provados por barcode em Chrome, WKWebView e na janela real (`scripts/video-live-
 
 ⁹ Ferramenta de desenvolvimento, não uma capacidade do editor: UI, CLI da janela e CLI headless são
 N/A (o runner é Node, não é o `tessel-headless`). Lib é Parcial: o consumidor `directed_scene_oracle.rs` compara os 55 vereditos,
-referências pai/socket e matrizes estáticas; avaliação temporal ainda pendente. O contrato de dados tem 55 bundles e expectativas geradas por funções reais de `packages/scene-engine@d6adac15`,
+referências pai/socket e matrizes estáticas. O consumidor temporal F033 também compara câmera
+e gates; animação de nós ainda pendente. O contrato de dados tem 55 bundles e expectativas geradas por funções reais de `packages/scene-engine@d6adac15`,
 manifest com hashes e validação Node (21/21 testes, repetidos pelo coordenador). Cobre validação,
 grafo, avaliação e câmera; não cobre narração, clima, luz por keys, efeitos, rig, splat, I/O,
 runtime nem pixel/áudio. Ver [relatório](../migration/foundation-b-report.md).
 
 ¹⁰ Importador BB01/BB02 puro, sem adapters CLI/UI. 29 testes próprios e 3 testes do oráculo
-passam; a suíte do core tem 219 testes incluindo doctest. Somente um subconjunto do schema
+passam (baseline desta integração: 219 testes do core incluindo doctest). Somente um subconjunto do schema
 é validado; as famílias adiadas e junções temporais podem conter erros aceitos na importação.
 `edit_join_issues()` verifica apenas junções estruturais. Não equivale a `finalizeBundle`
 completo nem habilita render/export. [Contrato e limites](directed-scene.md).
+
+¹¹ Avaliação pura de câmera e tempo com 19 testes públicos, comparada ao oráculo nos 4 casos
+válidos e em 9 variantes geradas pelo código fixado da origem. Gates combinados conferidos
+nos 55 casos. Tolerância numérica `1e-9 + 1e-12·|x|`; frames/IDs/códigos são exatos. O teste
+unitário adicional cobre abaixo/no/acima dos cinco limiares de junção (não é corpus da origem).
+Animação de nós retorna `Unsupported`; UI/CLI permanecem pendentes. Não é `finalizeBundle`
+completo para domínios adiados. [Contrato](scene-temporal.md).
 
 Ciclo de vida de F021: perda forçada de contexto com proxy, ocultar/reabrir monitor, diálogo,
 reload/troca de projeto com quadro em voo e export intacto têm prova específica no

@@ -92,8 +92,10 @@ são `INVALID_TYPE`, `MISSING_FIELD`, `INVALID_VALUE`, `UNKNOWN_FIELD` (aviso), 
 
 - `DEFERRED_FIELDS`/`DEFERRED_RULES`: `LIGHT_*` exceto `LIGHT_PARENT_UNKNOWN`, clima, rigs, caminhos, efeitos, `SURFACE_*`/`NORMAL_MAP_*`/
   `RELIEF_*`/`SCENE_DEPTH_*`, `AUDIT_*`, narração/outline, payload dos canais de performance (BB03), checagem
-  de FOV composto das camadas de câmera, `CONTINUOUS_*_JUMP` (comparação de pose nas junções).
-- Avaliação de câmera/performance por frame (BB03), `finalize`/escrita atômica em disco (adaptador de `persist.rs`).
+  de FOV composto e `CONTINUOUS_*_JUMP` não rodam na importação, mas estão disponíveis no
+  gate explícito `temporal_issues()` da [avaliação temporal](scene-temporal.md).
+- Performance dos nós por frame permanece pendente. Câmera/tempo e gate temporal BB03 estão
+  implementados na [F033](scene-temporal.md); `finalize` completo/escrita atômica em disco seguem pendentes.
 - Adaptadores: comando `scene.*`, headless JSONL, diálogo desktop, ponte para runtime/`document.rs`.
 - Fixture própria **sintética** (`crates/core/tests/directed_scene_fixtures/layered_scene.json`); nenhum bundle ou
   mídia privados foram copiados.
@@ -111,4 +113,5 @@ A fixture própria `layered_scene.json` foi também conferida pelo coordenador c
 reais da origem: schema e integridade passam, mas `finalizeBundle` a rejeita por
 `CONTINUOUS_VELOCITY_JUMP`. Isto confirma a limitação deliberada das junções temporais: importar
 e não encontrar problema estrutural **não** certifica o bundle completo para execução/export.
-A futura avaliação BB03 deverá executar esse gate antes de habilitar cenas na UI.
+O gate BB03 já detecta esse erro com `temporal_issues()`. Adapters futuros precisam chamá-lo,
+além de `edit_join_issues()`, antes de habilitar cenas na UI; domínios adiados continuam sem certificação.
