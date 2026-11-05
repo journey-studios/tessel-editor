@@ -18,6 +18,7 @@
 //! |---|---|
 //! | [`base`] | An explicit, absolute base. Managed = `<workspace>/scenes/<id>`, derived (persistent and transportable); never the working directory |
 //! | [`map`] | `assetId` → approved path + content/revision identity + generation; the [`ResourceResolver`] seam a renderer holds; typed [`ResolveError`] |
+//! | [`snapshot`] | Private, read-only copies of the approved files, verified by hash while they are copied (BL109): bytes, not only paths, frozen for a long reader |
 //! | [`session`] | Ownership, generation, release, byte budget; a late job result cannot install |
 //! | [`load`] | The job body that produces a map |
 //! | [`adopt`] | Copy from where a bundle was authored into the managed base (also the relink) |
@@ -37,6 +38,7 @@ pub mod load;
 pub mod map;
 pub(crate) mod pack;
 pub mod session;
+pub mod snapshot;
 
 pub use adopt::{Adoption, AdoptionTarget, PendingAdoption, adopt};
 pub use base::{BaseKind, MANAGED_DIR, ResourceBase};
@@ -48,3 +50,4 @@ pub use map::{
     ResourceResolver,
 };
 pub use session::{DEFAULT_BUDGET_BYTES, Invalidation, SceneResourceSession};
+pub use snapshot::{ResourceSnapshot, snapshot_bytes};

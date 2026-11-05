@@ -13,7 +13,8 @@ calculado pelo core.
   edição da cena.
 - **Job único:** o export é um job `video-export` do `JobRegistry` existente (progresso por frame, cancelar,
   staging, publicação por rename). Não há segunda fila.
-- **Snapshot imutável:** a cena e o mapa de recursos são congelados na chamada. Editar, destacar a cena, gesto
+- **Snapshot imutável:** a cena e o mapa de recursos são congelados na chamada, e os **bytes** dos recursos
+  aprovados são congelados pelo job em uma cópia privada (BL109, abaixo). Editar, destacar a cena, gesto
   vivo (preview/candidato) ou invalidar a sessão de recursos depois **não** muda um export em andamento.
 - **Sem efeito no projeto:** o resultado não altera cena, timeline, histórico nem cria clipe. Não há `job.commit`.
 - **Áudio:** **não há áudio dirigido fictício.** Cena sem áudio exporta vídeo apenas (aviso `no_audio_sources`).
@@ -46,12 +47,38 @@ são repetidos ou pulados, **nunca** misturados. O aviso `frame_rate_conversion`
 
 - `SceneFrameRenderer` / `SceneRendererFactory`: a fronteira do renderer. Cada export constrói o seu (Chrome
   próprio), na thread do job, e o libera ao fim (`finish`) mesmo em erro.
-- `FrozenResources`: o `ResolvedResourceMap` aprovado, congelado. O renderer recebe **só** isto como
-  `ResourceResolver`.
+- `FrozenResources`: o `ResolvedResourceMap` aprovado, congelado: congela **caminhos** e identidade.
+- `scene_resources::ResourceSnapshot` (BL109): cópia privada, somente leitura, dos arquivos que o plano desenha.
+  `take(resolver, cena, chaves, dir, token, progresso)` lê cada arquivo **uma vez**, calcula SHA-256 na mesma
+  passada que grava a cópia e compara com o hash e o tamanho aprovados; implementa `ResourceResolver` com a mesma
+  identidade (hash, revisão, geração, `cache_key`) e o caminho da cópia. O renderer recebe **só** este
+  resolver, nunca o caminho original. `snapshot_bytes` informa o volume a copiar (conteúdo igual conta uma vez).
+  Opera sobre `ResourceKey`, não sobre o tipo do recurso: splat/áudio de S7/S9 entram como novas chaves.
 - `SceneExport::freeze(snapshot, &SceneResourceSession, destino, replace)` recusa `scene_resources_not_loaded`,
   `stale_generation`, `resources_stale` ou o erro de resolução de um asset exigido.
 - `preflight(&SceneExport, &Tools, max_size) -> Value` e `run(...)`: ver abaixo.
 - `MediaHost::with_scene_renderer(factory)`; sem fábrica, `scene.export` responde `backend_unavailable`.
+
+### Bytes congelados (BL109)
+
+```text
+preflight (stat) ─▶ staging ─▶ snapshot: copia + SHA-256 numa passada ─▶ frames leem a cópia ─▶ verify_intact
+```
+
+- **Quando:** no job (thread própria, estágio `snapshot` com progresso em bytes, cancelável entre blocos de
+  1 MiB), nunca na UI nem em `scene.export.preflight`, que continua só com `stat`.
+- **Troca de mesmo tamanho depois do `resolve`:** o hash da cópia difere do aprovado → job falha com
+  `resource_changed` (`details.resource`, `expected {sha256, bytes}`, `got {sha256, bytes}`) antes de qualquer frame,
+  sem MP4 e sem staging.
+- **Alteração durante o job:** o renderer só abre a cópia (dentro de `.tessel-staging-scene-export-*/resources/<sha256>/`,
+  `0444`), então reescrever o original **não alcança nenhum frame** (isolamento, não detecção). `verify_intact` confere,
+  antes de finalizar, tamanho e mtime das cópias contra o que foi verificado (algo externo que as reescreva falha com
+  `resource_changed`; sem novo hash).
+- **Arquivo sumido/ilegível na cópia:** `resource_missing`.
+- **Cleanup:** a cópia mora no staging do próprio job. Sucesso, falha, cancelamento e `resource_changed` removem
+  só esse diretório (`Staging::drop`); outros `.tessel-staging-*` (de outro job/processo) e os originais nunca são tocados.
+- **Espaço:** o preflight inclui `estimate.resource_copy_bytes` em `staging_bytes` (`disk_full` antes de escrever).
+- **Resultado (aditivo):** `snapshot {files, bytes, verified}`; o restante e os `frame_hashes` não mudam.
 
 ### Operações (JSONL, socket e biblioteca usam o mesmo JSON)
 
@@ -103,6 +130,8 @@ warnings, verification (ffprobe), frame_hashes {count, first, last, digest, list
 | `scene_resources_not_loaded`, `stale_generation`, `resources_stale` | recursos não aprovados/obsoletos | idem |
 | `backend_unavailable` | sem renderer (sem runtime) | idem |
 | `destination_exists`, `preflight_failed`, `disk_full` | falha do preflight do job | job falha; destino intocado; sem staging |
+| `resource_changed` | bytes de um recurso diferem do aprovado (mesmo tamanho inclusive), ou a cópia privada foi reescrita | job falha com as duas identidades; sem arquivo e sem staging |
+| `resource_missing` | original sumiu/ilegível entre o preflight e a cópia | idem |
 | `render_failed` | um frame falhou (com `backend_code`) | job falha; sem arquivo |
 | `cancelled` | `job.cancel` | sem arquivo parcial; sem staging |
 | `encode_failed`, `verification_failed` | FFmpeg ou ffprobe | sem publicação |
@@ -142,6 +171,7 @@ Compilação e 190 testes desktop passaram após a integração, incluindo dois 
 | CLI headless (`tessel-render`) | **V no corpus** | mesmo arquivo: sessão JSONL exporta 4 frames 1080p, 2º pedido recusa o destino |
 | Socket do app / UI | **Implementado, prova viva pendente** | Integração do coordenador: desktop 190/190, dois testes novos do diálogo; R10 valida export real |
 | Áudio dirigido | **Recusado de forma explícita** | `declared_audio_and_unevaluated_domains…` |
+| Bytes congelados (BL109) | **V (lib/host, headless, corpus)** | `media/tests/scene_export.rs`: troca de mesmo tamanho recusada antes do 1º frame (`resource_changed`, staging alheio preservado), original reescrito no frame 2 não chega ao renderer (hash do que foi aberto = aprovado, caminho dentro do staging), cleanup em falha/cancelamento; 4 unitários em `scene_resources::snapshot`; `render/tests/scene_export.rs`: troca de mesmo tamanho recusada pelo `tessel-render` com Chrome. UI: N/A além de `job.get` (o diálogo F042 apresenta o código do job) |
 
 O que cada teste de Chrome prova (SwiftShader, rodado sob `with-gpu-lock.py`):
 
@@ -171,9 +201,13 @@ Tempo medido (SwiftShader, máquina de desenvolvimento, único dado de uma execu
 ### Limites declarados
 
 - **Cancelamento por frame:** um frame em desenho não é interrompido; o cancelamento vale entre frames.
-- **Recursos:** os bytes foram verificados por hash quando o mapa foi aprovado (`scene.resources.resolve`); o
-  export só confere presença e tamanho no início (um arquivo trocado por outro do mesmo tamanho durante o
-  export não é detectado).
+- **Recursos (BL109):** os bytes são verificados por hash quando o mapa é aprovado e **de novo** quando o job os copia
+  para o staging; o renderer lê a cópia. Limites: (a) o custo é uma leitura + escrita de todos os recursos usados antes
+  do primeiro frame (observável no estágio `snapshot`; sem reflink/hardlink, porque compartilhariam o inode com o
+  original); (b) uma troca entre a aprovação do mapa e a cópia é detectada, uma troca *durante* a leitura da cópia
+  também (o hash é da mesma leitura que grava), mas o export não detecta que o original mudou **depois** da cópia —
+  ele é isolado, e o vídeo reflete os bytes aprovados; (c) `verify_intact` não refaz o hash das cópias; (d) o espaço
+  de staging dobra o volume de recursos (splats grandes de S7 exigirão decidir cópia vs. verificação).
 - **Plano por frame:** o job usa `PlanTimeline` (BL064); o ganho no export real **não foi medido** (o custo do corpus é dominado pelo renderer e o plano vira JSON por frame).
 - **Rate:** frames de edição são repetidos/pulados na conversão; sem mistura nem interpolação.
 - **Cena sem corte longo / 4K longo:** só exports curtos foram exercitados; não há teste de resistência a
