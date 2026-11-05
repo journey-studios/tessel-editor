@@ -30,6 +30,9 @@ export const LIMITS = {
   rigs: 4,
   targets: 2,
   targetBytes: 192 * MIB,
+  /** Directed-scene pictures kept decoded (CPU side), by count and RGBA bytes; a load past either is refused. */
+  sceneResourceEntries: 64,
+  sceneResourceBytes: 768 * MIB,
 };
 
 /** Event counters of the retention layer; `delta` gives what one frame did. */

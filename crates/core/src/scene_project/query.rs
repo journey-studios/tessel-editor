@@ -206,7 +206,7 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
                 "scene.catalog", "scene.properties", "scene.get", "scene.camera",
                 "scene.capabilities",
                 // F039 (docs/features/scene-interaction.md).
-                "scene.tree", "scene.evaluate", "scene.select", "scene.selection",
+                "scene.tree", "scene.evaluate", "scene.plan", "scene.select", "scene.selection",
                 "scene.gesture.begin", "scene.gesture.update", "scene.gesture.commit",
                 "scene.gesture.cancel", "scene.gesture.status",
             ],
@@ -270,6 +270,7 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
         | SceneCommand::Edit { .. }
         | SceneCommand::Tree { .. }
         | SceneCommand::Evaluate { .. }
+        | SceneCommand::Plan { .. }
         | SceneCommand::Select { .. }
         | SceneCommand::Selection
         | SceneCommand::Gesture(_) => Err(CommandError::new(

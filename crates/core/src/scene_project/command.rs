@@ -86,6 +86,13 @@ pub enum SceneCommand {
         at: FrameAt,
         gesture: Option<String>,
     },
+    /// Evaluated, versioned frame plan for render adapters. Partial is diagnostic only.
+    Plan {
+        scene: String,
+        at: FrameAt,
+        partial: bool,
+        gesture: Option<String>,
+    },
     /// F039: selects entities by address. `scene` is only optional for `SelectMode::Clear`.
     Select {
         scene: Option<String>,

@@ -128,3 +128,9 @@ sem mutação, executa o binário como processo filho, confirma estado entre lin
 Testes de domínio anteriores foram movidos com o código. O workspace mantém testes de
 input GPUI e Dock no desktop. Confira os resultados da entrega; não confunda teste da
 plataforma GPUI com arraste manual na janela nativa.
+
+## Cena dirigida: integração M/N/O/P
+
+`SceneCommand::Plan` consulta o plano completo ou diagnóstico parcial, aplicando admissão estrutural/temporal e usando opcionalmente um candidato de gesto vivo. `scene_operation` (render) reutiliza esse comando e `headless::output_geometry`; não duplica domínio.
+`SceneHost` reúne `MediaHost` e `SceneRenderer` na sessão JSONL de `tessel-render`: `scene.render` consome apenas recursos aprovados por F040. O desktop usa o mesmo SceneSlots/frame_render_message de forma assíncrona, confirma loads e coalesce seek, sem esperar GPU na thread gráfica. `monitor.show_scene` é escolha de apresentação local; documento e histórico continuam no core.
+A cena dirigida ainda não entra no export comum da timeline; BL008 permanece pendente. Contrato [F041](features/scene-renderer.md).

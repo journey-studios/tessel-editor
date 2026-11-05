@@ -1,0 +1,44 @@
+{
+  "corpusVersion": 1,
+  "generator": {
+    "file": "scripts/directed-scene-proof/corpus.py",
+    "sha256": "891d0320e4a174c447c4e6023d5385a575684b1f30d1f56b3074402a560f65bf",
+    "model": {
+      "file": "scripts/directed-scene-proof/model.py",
+      "sha256": "322af021aceb5ae45d8b99992c126c5360faa243c571e5bf5db73c6c7991e9bd"
+    },
+    "python": "3.14"
+  },
+  "origin": "none: drawn from scratch; expected values from model.py validated against docs/migration/fixtures/expected (origin oracle, packages/scene-engine@d6adac15)",
+  "private_media": false,
+  "files": {
+    "assets-rev2/hero.png": {
+      "sha256": "a89546e3fd8c4a0a6e34457e42d49f14238b65f4a8e1af493bbcd6adc5a69c2c",
+      "bytes": 4196
+    },
+    "assets/hero.png": {
+      "sha256": "7bacab4e0dd6aff8d146e6f208c06a63f58b26dbfc5fee54b1c32a712f356ef6",
+      "bytes": 4196
+    },
+    "assets/mid.png": {
+      "sha256": "205942c4e79e910b10ea184d1368b7c6436427e1e45d9db8c1639bf56946bd08",
+      "bytes": 9332
+    },
+    "assets/sky.png": {
+      "sha256": "e32d40ae8c87cde266bf73a58cb2fe800e12221b76aaa5ce4028ad126346964a",
+      "bytes": 9320
+    },
+    "bundle.json": {
+      "sha256": "6f2086eb2ffa919c93f74531145c2e3601ee91bd4c948b1965b67f5effc4c93b",
+      "bytes": 8160
+    },
+    "bundle.swap.json": {
+      "sha256": "f7fefb010b92a5e489c4251447f5984e21ef4aced02670e6e81ae40b9b325b21",
+      "bytes": 8175
+    },
+    "expected.json": {
+      "sha256": "745c46c16edaff4c9c6d95a2d0a259012744620d0f236cc3e14a978f6e3bfc1e",
+      "bytes": 60373
+    }
+  }
+}

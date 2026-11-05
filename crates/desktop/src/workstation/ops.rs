@@ -34,6 +34,25 @@ impl Workstation {
         request: &Value,
         cx: &mut gpui_kit::Context<Self>,
     ) -> Result<OpReply, CommandError> {
+        if request["op"] == "monitor.show_scene" {
+            let scene = request["scene"]
+                .as_str()
+                .ok_or_else(|| CommandError::new("invalid_request", "Expected scene id"))?;
+            return self.show_directed_scene(scene, cx).map(OpReply::Done);
+        }
+        if request["op"] == "scene.render" {
+            let waiter = self
+                .viewport
+                .render_scene(
+                    &mut self.state,
+                    &self.workflow.scene_resources(),
+                    request,
+                    true,
+                )?
+                .ok_or_else(|| CommandError::new("render_failed", "Missing frame receiver"))?;
+            self.viewport_flush(cx);
+            return Ok(OpReply::Pending(waiter));
+        }
         if let Some(result) = self.run_playback_op(request, cx) {
             return result.map(OpReply::Done);
         }

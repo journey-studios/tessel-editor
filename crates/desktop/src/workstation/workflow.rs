@@ -91,6 +91,12 @@ impl Workflow {
     }
 
     /// A native WebView paints above every GPUI element, so any open dialog must hide it.
+    pub(super) fn scene_resources(
+        &self,
+    ) -> tessel_editor_media::scene_resources::SceneResourceSession {
+        self.host.scene_resources()
+    }
+
     pub fn has_dialog(&self) -> bool {
         self.flow.is_some() || self.jobs_open
     }

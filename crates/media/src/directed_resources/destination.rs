@@ -80,13 +80,23 @@ pub(super) fn inspect(root: &Path, resource: &ResourcePath) -> Result<Slot, Fail
 }
 
 /// Everything this run created under the transport root, so a failure can remove exactly that.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(super) struct Journal {
+    /// Canonical transport root: every published file must still resolve below it.
+    root: PathBuf,
     files: Vec<PathBuf>,
     dirs: Vec<PathBuf>,
 }
 
 impl Journal {
+    pub(super) fn new(root: &Path) -> Self {
+        Self {
+            root: root.to_path_buf(),
+            files: Vec::new(),
+            dirs: Vec::new(),
+        }
+    }
+
     /// Creates the folders of `resource` that do not exist yet, one at a time (never
     /// `create_dir_all`, which would follow a link), and records each one it made.
     pub(super) fn create_parents(
@@ -120,7 +130,18 @@ impl Journal {
     /// first because linking fails if the destination exists, which closes the window between
     /// "nothing is there" and "put it there". Other failures are returned: check-then-rename
     /// would permit replacing a destination created by another writer in between.
+    ///
+    /// The parent is resolved before and the new link after: a parent that was swapped for a
+    /// link to somewhere else between the folder pass and now (BL079; the lease keeps other
+    /// Tessel operations out but not a hostile writer) is caught here and the stray link is
+    /// removed. This narrows that window, it does not close it: see `lease.rs`.
     pub(super) fn publish(&mut self, staged: &Path, destination: &Path) -> Result<(), JobError> {
+        if let Some(parent) = destination.parent() {
+            let real = fs::canonicalize(parent).map_err(|error| io_error(parent, &error))?;
+            if !real.starts_with(&self.root) {
+                return Err(escaped(destination));
+            }
+        }
         match fs::hard_link(staged, destination) {
             Ok(()) => {}
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
@@ -128,8 +149,12 @@ impl Journal {
             }
             Err(error) => return Err(io_error(destination, &error)),
         }
+        // Recorded before the check so a rollback also removes a link that landed outside.
         self.files.push(destination.to_path_buf());
-        Ok(())
+        match fs::canonicalize(destination) {
+            Ok(real) if real.starts_with(&self.root) => Ok(()),
+            _ => Err(escaped(destination)),
+        }
     }
 
     /// Removes what this run created, files first and folders deepest first. Returns what could
@@ -148,6 +173,16 @@ impl Journal {
         }
         leftovers
     }
+}
+
+fn escaped(destination: &Path) -> JobError {
+    JobError::new(
+        "destination_escaped",
+        format!(
+            "`{}` would resolve outside the transport root; the file was not kept",
+            destination.display()
+        ),
+    )
 }
 
 fn exists(destination: &Path) -> JobError {
@@ -171,7 +206,7 @@ mod tests {
         let source = sandbox.path().join("unexpected-directory");
         let destination = sandbox.path().join("output");
         fs::create_dir(&source).unwrap();
-        let mut journal = Journal::default();
+        let mut journal = Journal::new(&fs::canonicalize(sandbox.path()).unwrap());
         // Linking a directory fails. A check-then-rename fallback would still move it,
         // and has no atomic no-replace guarantee if another writer creates the leaf.
         assert!(journal.publish(&source, &destination).is_err());

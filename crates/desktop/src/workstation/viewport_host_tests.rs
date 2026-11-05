@@ -1068,3 +1068,168 @@ fn changing_the_preview_quality_redraws_the_monitor_and_says_which_quality_it_as
         "original"
     );
 }
+
+/// Directed scene fixtures cross the media verification seam before reaching the WebView.
+fn directed_host(
+    tag: &str,
+) -> (
+    ViewportHost,
+    EditorState,
+    tessel_editor_media::scene_resources::SceneResourceSession,
+) {
+    use tessel_editor_core::headless::execute_ext;
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../scripts/directed-scene-proof/corpus")
+        .canonicalize()
+        .unwrap();
+    let mut state = empty_state();
+    let mut media = tessel_editor_media::host::MediaHost::new();
+    execute_ext(
+        &mut state,
+        None,
+        Some(&mut media),
+        &json!({"op":"scene.attach","id":"proof","path":root.join("bundle.json")}),
+    )
+    .unwrap();
+    execute_ext(
+        &mut state,
+        None,
+        Some(&mut media),
+        &json!({"op":"scene.resources.resolve","scene":"proof","base":root}),
+    )
+    .unwrap();
+    let mut host = ViewportHost::new(Ok(page(tag)));
+    from_page(&mut host, &state, json!({"type":"page.ready"}));
+    sent(&mut host);
+    let mut ready = ready_message();
+    ready["capabilities"]["features"] = json!(["directed_scene"]);
+    ready["capabilities"]["directed_scene"]["capabilities"] =
+        json!(tessel_editor_core::scene_plan::Capability::ALL.map(|c| c.as_str()));
+    from_page(&mut host, &state, ready);
+    sent(&mut host);
+    (host, state, media.scene_resources())
+}
+
+fn confirm_scene_assets(host: &mut ViewportHost, state: &EditorState) -> Vec<Value> {
+    let loads = sent(host);
+    for message in loads.iter().filter(|m| m["type"] == "asset.load") {
+        from_page(
+            host,
+            state,
+            json!({"type":"asset.state","id":message["asset"]["id"],"state":"ready","meta":{}}),
+        );
+    }
+    sent(host)
+}
+
+#[test]
+fn directed_frames_use_verified_files_and_wait_for_asset_acknowledgements() {
+    let (mut host, mut state, resources) = directed_host("directed-ready");
+    let waiter = host
+        .render_scene(
+            &mut state,
+            &resources,
+            &json!({"scene":"proof","frame":20,"width":320,"height":180}),
+            true,
+        )
+        .unwrap()
+        .unwrap();
+    let renders = confirm_scene_assets(&mut host, &state);
+    let message = renders
+        .iter()
+        .find(|m| m["type"] == "frame.render")
+        .unwrap();
+    assert_eq!(message["plan"]["layers"][0]["kind"], "directed_scene");
+    assert_eq!(message["plan"]["frame"], 20);
+    from_page(
+        &mut host,
+        &state,
+        frame_done(
+            message["id"].as_u64().unwrap(),
+            message["revision"].as_u64().unwrap(),
+        ),
+    );
+    assert!(waiter.try_recv().unwrap().is_ok());
+    assert_eq!(host.report()["directed_scene"], "proof");
+}
+
+#[test]
+fn directed_interactive_seeks_coalesce_and_explicit_requests_are_cancelled_on_project_reset() {
+    let (mut host, mut state, resources) = directed_host("directed-coalesce");
+    let waiter = host
+        .render_scene(
+            &mut state,
+            &resources,
+            &json!({"scene":"proof","frame":0}),
+            true,
+        )
+        .unwrap()
+        .unwrap();
+    let first = confirm_scene_assets(&mut host, &state)
+        .into_iter()
+        .find(|m| m["type"] == "frame.render")
+        .unwrap();
+    for frame in [11, 20, 36] {
+        host.render_scene(
+            &mut state,
+            &resources,
+            &json!({"scene":"proof","frame":frame}),
+            false,
+        )
+        .unwrap();
+    }
+    assert!(sent(&mut host).is_empty());
+    from_page(
+        &mut host,
+        &state,
+        frame_done(
+            first["id"].as_u64().unwrap(),
+            first["revision"].as_u64().unwrap(),
+        ),
+    );
+    assert!(waiter.try_recv().unwrap().is_ok());
+    let next = sent(&mut host)
+        .into_iter()
+        .find(|m| m["type"] == "frame.render")
+        .unwrap();
+    assert_eq!(next["plan"]["frame"], 36);
+    let waiter = host
+        .render_scene(
+            &mut state,
+            &resources,
+            &json!({"scene":"proof","frame":48}),
+            true,
+        )
+        .unwrap()
+        .unwrap();
+    host.reset_project();
+    assert_eq!(waiter.try_recv().unwrap().unwrap_err().code, "cancelled");
+    assert_eq!(host.directed_scene(), None);
+    from_page(
+        &mut host,
+        &state,
+        frame_done(
+            next["id"].as_u64().unwrap(),
+            next["revision"].as_u64().unwrap(),
+        ),
+    );
+    assert!(host.report()["last_frame"].is_null());
+}
+
+#[test]
+fn directed_output_rejection_leaves_the_monitor_and_history_unchanged() {
+    let (mut host, mut state, resources) = directed_host("directed-reject");
+    let before = state.summary();
+    let error = host
+        .render_scene(
+            &mut state,
+            &resources,
+            &json!({"scene":"proof","frame":20,"width":0,"height":180}),
+            true,
+        )
+        .unwrap_err();
+    assert_eq!(error.code, "invalid_value");
+    assert_eq!(state.summary(), before);
+    assert_eq!(host.directed_scene(), None);
+    assert!(sent(&mut host).is_empty());
+}

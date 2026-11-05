@@ -12,5 +12,6 @@ pub mod import;
 pub mod interchange;
 pub mod package;
 pub mod probe;
+pub mod scene_resources;
 pub mod tools;
 pub mod zip;

@@ -269,3 +269,9 @@ current gesture. `property.gesture.cancel` restores the original without an undo
 no change or returning to the original produces no entry. `history.status` exposes the
 open gesture. Native pointer evidence and command evidence remain distinct; see
 [properties](features/properties.md) and the [report](slider-gesture-history-report.md).
+
+## Cena dirigida: inspector e monitor
+
+Nós da janela: `inspector.mode` (clip/scene), `scene.panel`, `scene.picker` (quando houver várias cenas), `scene.tree`, `scene.entity:<path>`, `scene.property:<path>` e `monitor.scene`. Expandir a árvore expõe descendentes; eles não são listados como visíveis quando o pai está recolhido.
+Um set de componente de propriedade usa begin/update/commit compartilhados (um undo).
+`ui op '{"op":"scene.resources.resolve","scene":"id","base":"/raiz/absoluta"}'` cria job; conferir job.get e aplicação antes de exibir. `monitor.show_scene {scene}` seleciona a apresentação; `scene.render` responde depois do frame real. `scene.plan` é a consulta core/headless. Inspeção de pixels não prova ponteiro ou aparência.

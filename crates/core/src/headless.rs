@@ -303,7 +303,16 @@ pub fn create_project(
 
 /// Output size of a frame request and the checks every host applies to it.
 pub fn frame_geometry(plan: &RenderPlan, frame: &RenderFrame) -> Result<(u32, u32), CommandError> {
-    let (width, height) = frame.size.unwrap_or((plan.width, plan.height));
+    output_geometry(plan.width, plan.height, frame)
+}
+
+/// Shared output/probe bounds for ordinary and directed-scene frames.
+pub fn output_geometry(
+    width: u32,
+    height: u32,
+    frame: &RenderFrame,
+) -> Result<(u32, u32), CommandError> {
+    let (width, height) = frame.size.unwrap_or((width, height));
     if width == 0 || height == 0 || width > 8192 || height > 8192 {
         return Err(CommandError::invalid_value(
             "Output size is between 1x1 and 8192x8192",

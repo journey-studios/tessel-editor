@@ -8,6 +8,7 @@
 
 import * as THREE from 'three';
 
+import { parseSceneIdentity } from './directed-scene.js';
 import { closeVideo, frameCount, openVideo, proveVideo, readFrame } from './native-video.js';
 import { RuntimeError, expandPattern } from './protocol.js';
 import { LIMITS, RetentionCounters, rgbaBytes } from './retention.js';
@@ -79,6 +80,9 @@ export class AssetStore {
     // Every loaded entry gets a number nobody else had. A cache of a *result* built from an asset
     // keys on it: the id may come back with other bytes (relink, reload), the serial never does.
     this.serials = 0;
+    // Highest project generation a scene resource (`descriptor.scene`) has announced. A resource of
+    // a lower one belongs to a world that was replaced: it is refused and what it left is released.
+    this.sceneGeneration = 0;
   }
 
   /** Called by the compositor when a frame starts: nothing is pinned yet. */
@@ -112,6 +116,8 @@ export class AssetStore {
   /** Loads (or reloads) an asset and returns the metadata the runtime measured. */
   async load(descriptor) {
     const { id, kind, source } = descriptor;
+    // Refused before `release`: a refused load leaves the entry that was there untouched.
+    if (descriptor.scene !== undefined) this.admitScene(descriptor);
     this.release(id);
     // release() while the bytes are still arriving cancels this load (see below).
     const token = Symbol(id);
@@ -147,6 +153,13 @@ export class AssetStore {
       throw new RuntimeError('cancelled', `Asset \`${id}\` was released while loading`, { asset: id });
     }
     this.loading.delete(id);
+    if (descriptor.scene !== undefined) {
+      const refusal = this.sceneRefusal(descriptor, entry);
+      if (refusal) {
+        entry.bitmap?.close?.();
+        throw refusal;
+      }
+    }
     this.entries.set(id, { id, kind, descriptor, serial: (this.serials += 1), ...entry });
     this.generation += 1;
     if (after) {
@@ -154,6 +167,75 @@ export class AssetStore {
       entry.frames.set(0, { bitmap: after, texture: null, lastUsed: 0 });
     }
     return meta;
+  }
+
+  /** Entries loaded for a directed scene (`descriptor.scene`), other than the one under `exceptId`. */
+  sceneEntries(exceptId = null) {
+    return [...this.entries.values()].filter((entry) => entry.id !== exceptId && entry.descriptor?.scene !== undefined);
+  }
+
+  sceneResourceCount() {
+    return this.sceneEntries().length;
+  }
+
+  /** Decoded RGBA bytes held for directed-scene pictures (the CPU side; GPU textures have their own budget). */
+  sceneResourceBytes(exceptId = null) {
+    return this.sceneEntries(exceptId).reduce((bytes, entry) => bytes + rgbaBytes(entry.width, entry.height), 0);
+  }
+
+  /**
+   * Checks a directed-scene resource's identity before it loads (see `directed-scene.js`). A higher
+   * generation than any seen releases every resource of the older ones: replacing the project is
+   * an invalidation even when the host forgets to release one by one.
+   */
+  admitScene({ id, kind, scene }) {
+    const identity = parseSceneIdentity(scene);
+    if (kind !== 'still') {
+      throw new RuntimeError('unsupported_format', `Directed-scene resources are still images, not \`${kind}\``, { asset: id });
+    }
+    if (identity.generation < this.sceneGeneration) {
+      throw new RuntimeError(
+        'resource_stale',
+        `\`${identity.assetId}\` is of generation ${identity.generation}; the runtime is already at ${this.sceneGeneration}`,
+        { asset_id: identity.assetId, generation: identity.generation, current: this.sceneGeneration },
+      );
+    }
+    if (identity.generation > this.sceneGeneration) this.advanceSceneGeneration(identity.generation);
+    if (this.sceneEntries(id).length >= this.limits.sceneResourceEntries) {
+      throw new RuntimeError(
+        'resource_budget',
+        `${this.limits.sceneResourceEntries} directed-scene resources are loaded; release some before loading \`${identity.assetId}\``,
+        { asset_id: identity.assetId, limit: this.limits.sceneResourceEntries },
+      );
+    }
+  }
+
+  advanceSceneGeneration(generation) {
+    this.sceneGeneration = generation;
+    for (const entry of this.sceneEntries()) {
+      if (entry.descriptor.scene.generation < generation) this.release(entry.id);
+    }
+  }
+
+  /** After the bytes arrived: what `admitScene` could not know (the world moved on while loading, the size). */
+  sceneRefusal({ id, scene }, entry) {
+    const identity = parseSceneIdentity(scene);
+    if (identity.generation < this.sceneGeneration) {
+      return new RuntimeError('resource_stale', `\`${identity.assetId}\` finished loading after its generation was replaced`, {
+        asset_id: identity.assetId,
+        generation: identity.generation,
+        current: this.sceneGeneration,
+      });
+    }
+    const bytes = this.sceneResourceBytes(id) + rgbaBytes(entry.width, entry.height);
+    if (bytes > this.limits.sceneResourceBytes) {
+      return new RuntimeError(
+        'resource_budget',
+        `\`${identity.assetId}\` would take directed-scene pictures to ${bytes} bytes (limit ${this.limits.sceneResourceBytes})`,
+        { asset_id: identity.assetId, bytes, limit: this.limits.sceneResourceBytes },
+      );
+    }
+    return null;
   }
 
   release(id) {

@@ -58,13 +58,15 @@ fn main() {
             // WHY a factory: an export drives its own renderer on its own thread, so it never
             // shares GPU state or frame timing with this session's `render.frame`.
             let export_config = config.clone();
-            let mut media = MediaHost::new().with_renderer(Arc::new(move || {
+            let media = MediaHost::new().with_renderer(Arc::new(move || {
                 Ok(Box::new(self::session(&export_config)))
             }));
+            let mut scenes =
+                tessel_editor_render::scene_host::SceneHost::new(media, config.clone());
             let result = headless::run_session_ext(
                 &mut state,
                 Some(&mut session),
-                Some(&mut media),
+                Some(&mut scenes),
                 io::stdin().lock(),
                 &mut output,
             );

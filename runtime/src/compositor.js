@@ -17,6 +17,14 @@
 import * as THREE from 'three';
 
 import { imageTexture } from './assets.js';
+import {
+  buildDirectedScene,
+  containSize,
+  createSceneMaterial,
+  drawDirectedScene,
+  parseDirectedLayer,
+  resolveSceneResources,
+} from './directed-scene.js';
 import { forEachLitCell, measureText, GLYPH_ROWS } from './font.js';
 import { fnv1a64, meanColor } from './hash.js';
 import { BLEND_MODES, RuntimeError } from './protocol.js';
@@ -462,9 +470,59 @@ export class Compositor {
         if (key && cached && !aborted()) cached.result = key;
         return { texture: target.texture, width, height, fit: false, flipV: true };
       }
+      case 'directed_scene':
+        return this.prepareDirectedScene(layer, frame);
       default:
         throw new RuntimeError('unsupported_format', `Cannot draw \`${layer.kind}\` layers`);
     }
+  }
+
+  /**
+   * A layer that is the evaluated plan of a directed scene (directed-scene.js). The plan is
+   * checked whole before anything is drawn; its pictures are the store's own retained textures
+   * (so release, reload, context loss and the byte budget invalidate them like any other still);
+   * the picture goes to an offscreen target and is composited like a `scene` layer.
+   */
+  async prepareDirectedScene(layer, frame) {
+    const { assets, keep, width, height, aborted, used } = frame;
+    const spec = parseDirectedLayer(layer);
+    const bound = resolveSceneResources(spec, assets);
+    // A slot replaced before the draw makes the frame cancelled, never a mix of two revisions.
+    bound.forEach(({ slot, entry }) => used.set(slot, entry));
+    if (aborted()) throw new RuntimeError('cancelled', 'The frame was superseded');
+
+    const size = containSize(spec.output, width, height);
+    // Its own slot space (`ds:`): a directed scene never shares a target, or a cached result, with a `scene` layer.
+    const { target, cached } = this.sceneTarget(`ds:${frame.order}`, size.width, size.height, keep);
+    if (cached) cached.result = null;
+    const textureOf = (assetId) => {
+      const { slot, entry } = bound.get(assetId);
+      return this.retain ? assets.stillTexture(slot) : keep(imageTexture(entry.bitmap));
+    };
+    const directed = buildDirectedScene(spec, {
+      textureOf,
+      materialOf: (alpha, index, texture) => this.sceneMaterial(frame.order, alpha, index, texture, keep),
+      keep,
+    });
+    drawDirectedScene(this.renderer, target, directed);
+    frame.sources.directed_scene_layers = (frame.sources.directed_scene_layers ?? 0) + 1;
+    return { texture: target.texture, width: size.width, height: size.height, fit: false, flipV: true };
+  }
+
+  /** Same retention rule as `layerMaterial`: one material per layer slot keeps its shader program linked. */
+  sceneMaterial(order, alpha, index, texture, keep) {
+    if (!this.retain) return keep(createSceneMaterial(alpha, texture));
+    const key = `ds:${order}:${alpha}:${index}`;
+    let material = this.materials.get(key);
+    if (material) {
+      this.counters.add('material_reused');
+    } else {
+      material = createSceneMaterial(alpha, texture);
+      this.materials.set(key, material);
+      this.counters.add('material_created');
+    }
+    material.map = texture;
+    return material;
   }
 
   freshText(spec, canvasHeight, keep) {

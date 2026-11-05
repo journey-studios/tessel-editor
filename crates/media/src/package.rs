@@ -6,7 +6,11 @@
 //! manifest.json              files, sizes, hashes, completeness, runtime requirements
 //! media/<sha256>/<name>      one copy per distinct content
 //! media/seq-<asset>/<frame>  frame sequences (each frame listed in the manifest)
+//! scenes/<sceneId>/<path>    files of directed scenes, at the paths their bundles declare
 //! ```
+//!
+//! Scene files are carried by `scene_resources::pack` (verified against the bundle's hashes); a
+//! package is complete only when nothing a scene names is left out.
 //!
 //! Creation copies and verifies in a staging area and publishes only when everything checked
 //! out; a failure or cancellation leaves the sources and any previous package untouched.
@@ -22,12 +26,13 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tessel_editor_core::assets::{Source, expand_pattern};
 use tessel_editor_core::document::{SPARK_VERSION, THREE_VERSION, checked_canonical_bytes};
-use tessel_editor_core::jobs::{JobContext, JobError};
+use tessel_editor_core::jobs::{CancelToken, JobContext, JobError};
 use tessel_editor_core::state::Command;
 use tessel_editor_core::{CommandError, EditorState, persist};
 
 use crate::fsx::{self, Staging, copy_file_hashed, hash_file, io_error, safe_file_name};
 use crate::import::{FileState, file_state};
+use crate::scene_resources::pack;
 use crate::zip::{Entry, ZipReader, ZipWriter, check_entry_name};
 
 pub const DOCUMENT_NAME: &str = "project.tessel.json";
@@ -63,6 +68,17 @@ pub struct PackageOptions {
     pub replace: bool,
 }
 
+/// Inputs of a package that are not part of the project: where to read the files of a scene that
+/// has not been adopted into the workspace yet. Additive to [`PackageOptions`] so existing
+/// callers keep compiling; `PackageInputs::default()` is "use the managed bases only".
+#[derive(Debug, Clone, Default)]
+pub struct PackageInputs {
+    /// Scene ID → absolute folder the caller authorizes for this package. Takes precedence over
+    /// the managed base `<workspace>/scenes/<id>`. Not stored anywhere: the package carries the
+    /// files, and a restored project uses its own root.
+    pub scene_bases: BTreeMap<String, PathBuf>,
+}
+
 /// One file the package will contain.
 #[derive(Debug, Clone)]
 struct Planned {
@@ -79,6 +95,8 @@ struct Plan {
     files: Vec<Planned>,
     missing: Vec<Value>,
     warnings: Vec<String>,
+    /// Which scenes' files go in, and what is reported for the ones that cannot.
+    scenes: pack::ScenePlan,
     /// Asset ID → entry names, to rewrite the document.
     rewrites: Vec<(String, Rewrite)>,
 }
@@ -156,7 +174,13 @@ fn select(state: &EditorState, sequences: Option<&[String]>) -> Result<EditorSta
     Ok(selected)
 }
 
-fn plan(state: &EditorState, options: &PackageOptions) -> Result<Plan, JobError> {
+/// `verify` makes the plan read and hash every scene file (see `pack::plan`).
+fn plan(
+    state: &EditorState,
+    options: &PackageOptions,
+    inputs: &PackageInputs,
+    verify: Option<&CancelToken>,
+) -> Result<Plan, JobError> {
     let selected = select(state, options.sequences.as_deref())?;
     let (mut files, mut missing, mut warnings, mut rewrites) =
         (Vec::<Planned>::new(), Vec::new(), Vec::new(), Vec::new());
@@ -243,31 +267,28 @@ fn plan(state: &EditorState, options: &PackageOptions) -> Result<Plan, JobError>
             Source::Demo(_) | Source::Inline => {}
         }
     }
-    // Directed scenes travel inside the document, but the files they name by relative path are
-    // not resolved, hashed or copied yet (BB05/BB06). Reported like any other missing media, so
-    // a package is never called complete while a scene points at files it does not hold.
-    for (scene, paths) in selected.scenes.resource_paths() {
-        missing.push(json!({ "asset": format!("scene:{scene}"), "paths": paths,
-            "state": SCENE_RESOURCES_STATE }));
-    }
+    // Directed scenes travel inside the document; the files they name by relative path travel
+    // as `scenes/<id>/…` when a base exists and verifies, and are reported like any other
+    // missing media otherwise, so a package is never called complete while a scene points at
+    // files it does not hold.
+    let scenes = pack::plan(&selected, &inputs.scene_bases, verify)?;
+    missing.extend(scenes.missing.iter().cloned());
     Ok(Plan {
         state: selected,
         files,
         missing,
         warnings,
+        scenes,
         rewrites,
     })
 }
 
-/// `state` of a `missing` entry that stands for the resources of a directed scene.
-const SCENE_RESOURCES_STATE: &str = "not_packaged";
-
 fn has_scene_resources(planned: &Plan) -> bool {
-    planned
-        .missing
-        .iter()
-        .any(|entry| entry["state"] == SCENE_RESOURCES_STATE)
+    pack::has_not_packaged(&planned.missing)
 }
+
+/// The sentence both the preflight blocker and the create error use.
+const SCENE_RESOURCES_MESSAGE: &str = "A directed scene names resource files this package cannot carry (no resource base to read them from, or sections nothing transports yet); allow a partial package to keep the document and its scenes";
 
 /// What `create` would do, without writing anything: files, bytes, missing dependencies.
 pub fn preflight(
@@ -275,8 +296,31 @@ pub fn preflight(
     options: &PackageOptions,
     destination: &Path,
 ) -> Result<Value, JobError> {
-    let planned = plan(state, options)?;
-    let bytes: u64 = planned.files.iter().map(|file| file.size).sum();
+    preflight_with(
+        state,
+        options,
+        &PackageInputs::default(),
+        destination,
+        &CancelToken::new(),
+    )
+}
+
+/// [`preflight`] with the extra inputs of a package and a token. It reads and hashes every file
+/// of every scene that would be carried, so it is a job body, not something for a UI thread.
+pub fn preflight_with(
+    state: &EditorState,
+    options: &PackageOptions,
+    inputs: &PackageInputs,
+    destination: &Path,
+    token: &CancelToken,
+) -> Result<Value, JobError> {
+    let planned = plan(state, options, inputs, Some(token))?;
+    let bytes: u64 = planned
+        .files
+        .iter()
+        .map(|file| file.size)
+        .sum::<u64>()
+        .saturating_add(planned.scenes.bytes);
     let parent = destination
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
@@ -284,8 +328,10 @@ pub fn preflight(
     let free = fsx::free_bytes(parent);
     let mut blockers = Vec::new();
     if has_scene_resources(&planned) && !options.allow_partial {
-        blockers.push(json!({ "code": "unsupported", "message": "A directed scene names resource files that packages do not carry yet; the document and its scenes can be packed as a partial package",
-            "assets": planned.missing }));
+        blockers.push(
+            json!({ "code": "unsupported", "message": SCENE_RESOURCES_MESSAGE,
+            "assets": planned.missing }),
+        );
     } else if !planned.missing.is_empty() && !options.allow_partial {
         blockers.push(json!({ "code": "missing_media", "message": "Some media files are missing or changed; relink them or allow a partial package",
             "assets": planned.missing }));
@@ -299,10 +345,21 @@ pub fn preflight(
         blockers.push(json!({ "code": "disk_full", "message": "Not enough free space for the package", "needed": bytes, "free": free }));
     }
     Ok(
-        json!({ "files": planned.files.len(), "bytes": bytes, "free_bytes": free,
+        json!({ "files": planned.files.len(), "scene_files": scene_file_count(&planned),
+        "bytes": bytes, "free_bytes": free,
         "missing": planned.missing, "warnings": planned.warnings, "blockers": blockers,
         "complete": planned.missing.is_empty(), "ok": blockers.is_empty() }),
     )
+}
+
+fn scene_file_count(planned: &Plan) -> usize {
+    planned
+        .scenes
+        .carry
+        .iter()
+        .filter_map(|carry| carry.manifest.transport_plan().ok())
+        .map(|plan| plan.items.len())
+        .sum()
 }
 
 /// Files whose content hash was never recorded (assets registered by path) get their content
@@ -392,6 +449,7 @@ fn rewrite_document(
 fn manifest(
     planned: &Plan,
     files: &[(String, u64, String, Vec<String>)],
+    scene_files: &[Value],
     document_hash: &str,
     document_size: u64,
 ) -> Value {
@@ -399,6 +457,7 @@ fn manifest(
         .iter()
         .map(|(entry, size, sha, assets)| json!({ "path": entry, "size": size, "sha256": sha, "role": "media", "assets": assets }))
         .collect();
+    listed.extend(scene_files.iter().cloned());
     listed.push(json!({ "path": DOCUMENT_NAME, "size": document_size, "sha256": document_hash, "role": "document" }));
     listed.sort_by(|a, b| a["path"].as_str().cmp(&b["path"].as_str()));
     json!({
@@ -421,14 +480,25 @@ pub fn create(
     options: &PackageOptions,
     ctx: &JobContext,
 ) -> Result<Value, JobError> {
-    let mut planned = plan(state, options)?;
+    create_with(state, destination, options, &PackageInputs::default(), ctx)
+}
+
+/// [`create`] with the extra inputs of a package (`PackageInputs`).
+pub fn create_with(
+    state: &EditorState,
+    destination: &Path,
+    options: &PackageOptions,
+    inputs: &PackageInputs,
+    ctx: &JobContext,
+) -> Result<Value, JobError> {
+    // Scene files are verified while they are copied, which already makes any failure abort a
+    // package that may not be partial. Only a partial package needs to know *beforehand* which
+    // scenes can be carried, so only it pays for the extra read.
+    let verify = options.allow_partial.then(|| ctx.token());
+    let mut planned = plan(state, options, inputs, verify)?;
     if has_scene_resources(&planned) && !options.allow_partial {
-        return Err(JobError::new(
-            "unsupported",
-            "A directed scene names resource files that packages do not carry yet; \
-             allow a partial package to keep the document and its scenes",
-        )
-        .with_details(json!({ "missing": planned.missing })));
+        return Err(JobError::new("unsupported", SCENE_RESOURCES_MESSAGE)
+            .with_details(json!({ "missing": planned.missing })));
     }
     if !planned.missing.is_empty() && !options.allow_partial {
         return Err(JobError::new(
@@ -454,9 +524,19 @@ pub fn create(
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
     resolve_unhashed(&mut planned, ctx)?;
-    let total: u64 = planned.files.iter().map(|file| file.size).sum();
+    let total: u64 = planned
+        .files
+        .iter()
+        .map(|file| file.size)
+        .sum::<u64>()
+        .saturating_add(planned.scenes.bytes);
     fs::create_dir_all(parent).map_err(|error| io_error(parent, &error))?;
-    fsx::ensure_space(parent, total, 64 << 20)?;
+    // An archive stages the scene files once before streaming them into the ZIP.
+    let staged_twice = match options.format {
+        PackageFormat::Archive => planned.scenes.bytes,
+        PackageFormat::Directory => 0,
+    };
+    fsx::ensure_space(parent, total.saturating_add(staged_twice), 64 << 20)?;
     let staging = Staging::create(parent, "package")?;
     ctx.stage("copy", planned.files.len() as u64);
     let mut hashes: BTreeMap<String, String> = BTreeMap::new();
@@ -507,12 +587,41 @@ pub fn create(
         listed.push((file.entry.clone(), size, sha, file.assets.clone()));
         ctx.advance(1);
     }
+    let mut scene_written: Vec<pack::Written> = Vec::new();
+    if !planned.scenes.carry.is_empty() {
+        ctx.stage("scenes", planned.scenes.carry.len() as u64);
+        let scene_parent = match options.format {
+            PackageFormat::Directory => content_root.clone(),
+            PackageFormat::Archive => staging.path().join("scene-files"),
+        };
+        for carry in &planned.scenes.carry {
+            ctx.check()?;
+            let (_, written) = pack::stage(carry, &scene_parent, ctx.token())?;
+            if let Some(zip) = &mut zip {
+                for file in &written {
+                    let mut input =
+                        File::open(&file.file).map_err(|error| io_error(&file.file, &error))?;
+                    let (sha, size) =
+                        zip.add_stream(&file.entry, &mut input, ctx.token(), &file.file, |_| {})?;
+                    if sha != file.sha || size != file.size {
+                        return Err(JobError::new(
+                            "integrity_error",
+                            format!("`{}` changed while it was added to the archive", file.entry),
+                        ));
+                    }
+                }
+            }
+            scene_written.extend(written);
+            ctx.advance(1);
+        }
+    }
     ctx.stage("document", 2);
     let document_bytes = rewrite_document(&planned, &hashes)?;
     let document_hash = fsx::hex(&Sha256::digest(&document_bytes));
     let manifest_json = manifest(
         &planned,
         &listed,
+        &pack::manifest_entries(&scene_written),
         &document_hash,
         document_bytes.len() as u64,
     );
@@ -569,7 +678,8 @@ pub fn create(
     Ok(
         json!({ "action": "project.package", "path": destination, "format": match options.format {
             PackageFormat::Archive => "archive", PackageFormat::Directory => "directory" },
-        "files": verified["files"], "bytes": total, "complete": planned.missing.is_empty(),
+        "files": verified["files"], "scene_files": scene_written.len(), "bytes": total,
+        "complete": planned.missing.is_empty(),
         "missing": planned.missing, "warnings": planned.warnings, "manifest": manifest_json["project"] }),
     )
 }
@@ -855,20 +965,24 @@ pub fn restore(package: &Path, destination: &Path, ctx: &JobContext) -> Result<V
             unresolved.push(item.id.as_str().to_string());
         }
     }
+    // The scenes' files must be in the package with the hash each bundle declares: this is what
+    // proves the restored project opens with no access to the machine it was packed on.
+    let scene_unresolved = pack::verify_restored(&loaded, &files, &root);
     let complete = manifest["complete"].as_bool().unwrap_or(false);
     // `load` resolved paths against the staging folder; the published folder is what counts.
-    if complete && !unresolved.is_empty() {
+    if complete && (!unresolved.is_empty() || !scene_unresolved.is_empty()) {
         return Err(JobError::new(
             "invalid_package",
             "The package is marked complete but the document names media it does not contain",
         )
-        .with_details(json!({ "assets": unresolved })));
+        .with_details(json!({ "assets": unresolved, "scenes": scene_unresolved })));
     }
     staging_publish(staging, &root, destination)?;
     Ok(
         json!({ "action": "project.restore", "path": destination, "document": destination.join(DOCUMENT_NAME),
         "files": files.len(), "complete": complete, "project": manifest["project"], "verified": true,
-        "unresolved": if complete { Vec::new() } else { unresolved } }),
+        "unresolved": if complete { Vec::new() } else { unresolved },
+        "unresolved_scenes": if complete { Vec::new() } else { scene_unresolved } }),
     )
 }
 

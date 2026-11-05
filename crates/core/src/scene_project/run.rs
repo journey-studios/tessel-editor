@@ -100,6 +100,12 @@ impl EditorState {
             SceneCommand::Evaluate { scene, at, gesture } => {
                 self.scene_evaluate(&scene, &at, gesture.as_deref())
             }
+            SceneCommand::Plan {
+                scene,
+                at,
+                partial,
+                gesture,
+            } => self.scene_plan(&scene, &at, partial, gesture.as_deref()),
             SceneCommand::Select {
                 scene,
                 entities,
