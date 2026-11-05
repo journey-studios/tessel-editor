@@ -61,7 +61,7 @@ Fontes: [roadmap](migration/phased-roadmap.md), [matriz](features/README.md),
 | BL015 | BB08 | Overlays/handles: coordenadas, foco, hit testing e resize sobre WebView | Pendente | BL007, BL013, BL014, BL042 | — | Handle e comando dão mesmo resultado; validar foco/resize nativos |
 | BL016 | BB09 | Transporte/mix do modelo dirigido: shots, janela de edição e relógio | Pendente | BL006, BL008 | — | Frame e amostra correspondentes em play/seek/pause; offline sem dispositivo |
 | BL017 | BB09 | Narração/takes/legendas e monitor gain | Pendente | BL016, BL026 | — | Tempo, texto e mix persistem e coincidem na saída |
-| BL018 | BB10 | Expandir corpus: tolerâncias JOIN, FPS variados e matrizes mundo | Parcial | BB10 existente | K / F032 ([relatório](migration/foundation-k-report.md)) | 47 casos estendidos + 55 base verificados contra origem; 45 testes Node e 15 testes Rust passaram. Matriz da câmera usa Three isolado; limite do runtime em BL071 |
+| BL018 | BB10 | Expandir corpus: tolerâncias JOIN, FPS variados e matrizes mundo | Parcial | BB10 existente | K / F032 ([relatório](migration/foundation-k-report.md)) | 47 casos estendidos + 55 base verificados contra origem; 49 testes Node e 15 testes Rust passaram. Matriz da câmera usa Three isolado; limite do runtime em BL071 |
 | BL019 | BB10 | Provas de plano/pixels/áudio/performance por novo domínio | Parcial | Cada entrega | — | Código final e proveniência; não usar resultado de protótipo como aceite |
 | BL020 | Adapters | Expor avaliação completa de nós por frame no acesso programático de cena | A validar | BB03 existente | J / F039 ([relatório](migration/foundation-j-report.md)) | 21 testes públicos e unidade core passaram; executável headless real (13 requests) validou queries/seleção/gestos/undo; UI/socket e gesto físico pendentes |
 | BL021 | Adapters | Provar `scene.*` pelo socket da janela e depois pela UI visual | A validar | BL012/BL014 para UI | — | Socket e UI têm evidências distintas; headless já está validado |
@@ -262,3 +262,15 @@ Integração local H–L: [relatório consolidado](migration/round-hijkl-report.
 Rust passaram, 2 ZIP64 ignorados; 45 Node passaram, 55+47 casos verificados contra origem.
 BL061 recebeu correções pontuais de README/índices e rótulo histórico A–E; ainda pede revisão
 das descrições antigas restantes. Não há agente de implementação em andamento nesta rodada.
+
+## Revisão do PR #2
+
+| ID | Área | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL085 | F032/integridade | Impedir aliases de saída do oráculo estendido de alterarem o corpus base | Concluído | — | Coordenador | Canonização/ancestrais + identidade de arquivos antes de escrever; 4 regressões em cópias temporárias; 49 Node e 16 Rust direcionados passaram; só hashes do gerador mudaram no manifest |
+
+Os 12 comentários acionáveis e o nit de cobertura foram tratados: contratos e índices agora
+refletem gates executados, IDs reconciliados e o teste correto de F039; comandos reproduzíveis
+usam scripts/cargo; tabela do runner teve pipes escapados. Gate desta correção: 49 Node,
+16 Rust direcionados e fmt. O último gate workspace completo continua o da rodada (718/2),
+não foi reexecutado por estas mudanças em documentação, proteção Node e lista de frames de teste.

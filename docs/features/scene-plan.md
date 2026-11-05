@@ -112,12 +112,12 @@ plano que carregasse dados ignorados não faria round-trip), tempos só reduzido
 - O manifesto de I continua dono de resolver caminhos, hashes e ausentes. Dados que o importador
   preserva e o plano não usa **não** viram recurso: aparecem em `uninterpreted`, ou em `unsupported`
   (mapas de dados e splats, cujos assets o plano **não** lista como requeridos).
-- Teste de integração sugerido depois do merge das duas frentes (BL062): para cada frame, todo
+- Teste de integração `scene_plan_resources.rs` executado (BL063): em 4 bundles e 4 frames por bundle, todo
   `required_asset_ids()` é conhecido do manifesto do mesmo bundle.
 
 ## CLI headless
 
-**P.** Nenhum comando ainda. Proposta (BL062): `scene.plan { scene, frame, partial? }` →
+**P.** Nenhum comando ainda. Proposta (BL063): `scene.plan { scene, frame, partial? }` →
 `ScenePlan::to_json`, com o mesmo parser compartilhado (`ops::parse_op`) e o mesmo `PlanError` →
 `CommandError`. Não implementado nesta fatia: ela não toca `ops.rs`, `scene_project` nem `headless`.
 
@@ -130,12 +130,12 @@ plano que carregasse dados ignorados não faria round-trip), tempos só reduzido
 
 | Superfície | Estado |
 |---|---|
-| Lib | **I** — 29 testes públicos escritos em `crates/core/tests/scene_plan.rs`; **não executados** (sem Cargo nesta rodada) |
-| Qualidade | `rustfmt` aplicado só aos arquivos da frente. Cargo/clippy/doctest **não rodados** |
+| Lib | **V** no subconjunto documentado — 29 testes públicos em `crates/core/tests/scene_plan.rs` e o doctest passaram (`./scripts/cargo test -p tessel-editor-core --locked --test scene_plan`; `--doc scene_plan`) |
+| Qualidade | fmt e clippy da lib limpos com `-D warnings`; gate workspace local passou (ver [relatório](../migration/round-hijkl-report.md)) |
 | Contra a origem | Nenhuma comparação nova. O plano é comparado com `evaluate_frame` (que as suítes F033/F035 comparam com a origem); a ordem de pintura vem de `paint_order` (BB01/BB02) |
 | CLI headless / UI | **P** |
 
 Limites: o plano não é um render; não há consumidor; recursos não são resolvidos nem verificados em
 disco; domínios listados acima são recusados; o custo por frame refaz a linha do tempo de nós
-(`NodeTimeline::new`) a cada chamada, o que importa para exportar muitos frames (BL063);
+(`NodeTimeline::new`) a cada chamada, o que importa para exportar muitos frames (BL064);
 cada nó leva duas matrizes de 16 números no JSON.

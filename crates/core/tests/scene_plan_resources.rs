@@ -23,7 +23,7 @@ fn every_required_asset_is_known_by_the_manifest_for_each_corpus_scene() {
         let scene = DirectedScene::import_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         let manifest = ResourceManifest::from_scene(&scene);
         let last = i64::try_from(scene.bundle().edit_duration_frames).unwrap() - 1;
-        for frame in [last, 0, last / 2, last] {
+        for frame in [0, 1, last / 2, last] {
             // Some corpus scenes declare deferred domains. They stay explicitly partial;
             // this proves identity agreement, not full rendering or portable transport.
             let plan = ScenePlan::build_with(

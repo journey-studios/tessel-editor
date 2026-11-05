@@ -5,7 +5,10 @@ Origem (`/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage`, sna
 `d6adac15c61f4ef582a7ec259397b2e025d1f059`) e `tesselapp` não foram tocados. Contrato:
 [`docs/features/migration-oracle.md`](../features/migration-oracle.md) (seção "Corpus estendido").
 
-**O código Rust desta frente não foi compilado nem executado.** Não rodou Cargo, rustc nem clippy
+> Estado original da entrega, antes da integração: o coordenador posteriormente executou
+> Cargo/clippy e os 15 testes Rust passaram (ver "Integração pelo coordenador").
+
+**Na entrega, o código Rust desta frente não tinha sido compilado nem executado.** Não rodou Cargo, rustc nem clippy
 (só `rustfmt` no próprio arquivo de teste, que confirma que a sintaxe parseia). **Rust não é declarado
 verde.** Não fez `git add`/commit/push/PR, não criou branch/worktree, não tocou `core/src/lib.rs`,
 `media/src/lib.rs`, `Cargo.toml/lock`, `docs/backlog.md`, matriz nem índices. Nenhum subagente, nenhum
@@ -36,7 +39,7 @@ numérico e a distância medida das fronteiras de junção).
 | `.../extended/core.mjs` | `generate`/`verify`: execução, intenção, ordem, tolerâncias, manifest, regeneração |
 | `.../extended/config.mjs`, `numeric.mjs` | configuração isolada; aritmética exata (`nextUp/Down`, racional exato de um `double`, piso exato, quaternion de Euler) |
 | `.../extended/tolerances.json`, `scope.json` | tolerâncias fixadas **antes** de comparar; escopo, métodos não exportados e lacunas |
-| `scripts/migration-oracle/oracle-extended.spec.mjs` | 24 testes Node (`node:test`) com controles negativos |
+| `scripts/migration-oracle/oracle-extended.spec.mjs` | 28 testes Node (`node:test`) com controles negativos |
 | `docs/migration/fixtures/extended-round2/` | `bundles/` (47), `expected/` (47), `cases.json`, `tolerances.json`, `manifest.json` (**novo; o corpus de 55 casos e o manifest dele não foram escritos**) |
 | `crates/core/tests/directed_scene_oracle_extended.rs` | consumidor Rust (API pública), 15 testes (9 comparações + 6 controles negativos) |
 | `scripts/migration-oracle/README.md`, `docs/features/migration-oracle.md` | seção "Corpus estendido" |
@@ -85,15 +88,15 @@ são tolerâncias de comparação, são regras de domínio da origem.
 
 | Teste | Escrito | Executado |
 |---|---|---|
-| `oracle-extended.spec.mjs` (Node, 24 testes) | sim | **sim — 24/24** |
+| `oracle-extended.spec.mjs` (Node, 28 testes) | sim | **sim — 28/28** |
 | `oracle.spec.mjs` (Node, base, 21 testes), regressão | já existia | **sim — 21/21** |
 | `node scripts/migration-oracle/oracle.mjs verify` (55 casos) | — | **sim — ok, byte a byte** |
 | `node scripts/migration-oracle/extended.mjs verify` (47 casos) | — | **sim — ok, contra a origem** |
-| `crates/core/tests/directed_scene_oracle_extended.rs` (Rust, 15 testes) | sim | **NÃO** (sem Cargo, por regra da rodada) |
+| `crates/core/tests/directed_scene_oracle_extended.rs` (Rust, 15 testes) | sim | **sim — 15/15 pelo coordenador** (`cargo test --locked`) |
 
 Observação sobre o comando: no Node 22 usado aqui, `node --test scripts/migration-oracle/` (diretório)
 não carrega; passe os arquivos: `node --test scripts/migration-oracle/oracle.spec.mjs
-scripts/migration-oracle/oracle-extended.spec.mjs` (45/45).
+scripts/migration-oracle/oracle-extended.spec.mjs` (49/49).
 
 **Controles negativos executados (Node)** — cada um precisa falhar com exit `1` e a categoria certa:
 número adulterado (hash **e** divergência); tempo adulterado com manifest "consertado" (só a
@@ -106,7 +109,7 @@ divergência); origem ausente (exit 2); `generate` recusando origem não prováv
 `intent.accepted` trocado (falha e **nada** é regravado); `generate`/`verify`/`corpus` recusando o
 diretório do corpus base; regeneração idempotente; corpus base inalterado segundo o `git status`.
 
-**Controles negativos escritos no Rust (não executados)**: tolerância aplicada exatamente (dentro
+**Controles negativos Rust executados pelo coordenador**: tolerância aplicada exatamente (dentro
 passa, fora falha, NaN falha); veredito invertido com as distâncias na mensagem; bundle com
 comportamento de câmera alterado (dolly 3,9 → 4,1 e 4,1 → 3,9) muda o veredito; matriz mundo de nó
 perturbada por `1e-6` falha e por `1e-13` passa, e o quadro 16 não passa por quadro 8; matriz da câmera
@@ -154,22 +157,23 @@ Divergências **esperadas** (afirmadas, nunca puladas em silêncio):
   FPS (até o frame 100000), não em todos; sem áudio, narração, pixel, GPU, performance nem branch piloto.
 - Cobertura por linha **não foi medida**; "executado" = chamado pelo harness ou exercitado por essas
   chamadas.
-- O teste Rust foi escrito às cegas a partir das assinaturas lidas (`Report` com `Result`/mensagens, JSON de
-  `FrameEvaluation::to_json`, `Rate`/`Ratio` sem `Debug`, daí `assert!(a == b)`). Pontos mais prováveis
-  de ajuste no primeiro `cargo test`: contagens fixas (`6` fronteiras, `7` ordens, `8` casos com tempo,
-  `47` casos, `14` artefatos, ≥ 300 matrizes) que o manifest confere, e clippy `-D warnings` em
-  `--all-targets` (não rodado).
-- Nenhum bug de produção foi encontrado nesta frente (a execução do Rust é que decide). Se o primeiro
-  `cargo test` revelar divergência, propor BL com a mensagem do `Report`, sem corrigir arquivo de outro
-  agente.
+- Na entrega inicial, o teste Rust foi escrito a partir das assinaturas. O coordenador depois
+  compilou e executou os 15 testes e o clippy; não há primeira execução pendente. Os limites de
+  contagem (47 casos, 14 artefatos e fronteiras numéricas) continuam explícitos no consumidor.
+- Nenhum bug de produção do avaliador foi encontrado nesta frente. A revisão do PR #2 encontrou
+  um bypass por aliases no gerador de corpus; ele foi corrigido e recebeu quatro regressões,
+  sempre em cópias temporárias. Status e atribuições continuam no backlog comum.
 
-## Patches propostos (para o coordenador consolidar)
+## Propostas históricas (já consolidadas no backlog)
+
+Status e atribuições atuais: [docs/backlog.md](../backlog.md). As linhas abaixo registram
+a proposta original, não constituem uma fila de execução independente.
 
 ### `docs/backlog.md`
 
 BL018: **Em andamento → A validar** (depois que o coordenador compilar e rodar o teste Rust), com a
 evidência: *"Corpus estendido de 47 casos gerado e verificado contra a origem `d6adac15…` (Node:
-`extended.mjs verify`, 24/24 + 21/21); consumidor Rust
+`extended.mjs verify`, 28/28 + 21/21); consumidor Rust
 `crates/core/tests/directed_scene_oracle_extended.rs` escrito, a rodar. Divergências documentadas: fps >
 1000 e 14 artefatos de ponto flutuante da origem."*
 
@@ -189,7 +193,7 @@ Novas linhas (numeração sugerida a partir de BL070; o coordenador renumera):
 > NTSC e racional (`Rate`/`Ratio`), avaliação fora de ordem, matrizes mundo de nós e da câmera.
 > **Limites**: matriz da câmera pela biblioteca `three` (método da origem é privado), 14 artefatos de
 > ponto flutuante da origem e fps > 1000 declarados como divergências; 6 fronteiras decididas pela
-> origem. **Evidência**: `extended.mjs verify`, `oracle-extended.spec.mjs` (24/24); Rust escrito, não
+> origem. **Evidência**: `extended.mjs verify`, `oracle-extended.spec.mjs` (28/28); Rust escrito, não
 > executado.
 
 ## Disco e orçamento

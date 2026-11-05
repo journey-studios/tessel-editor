@@ -65,7 +65,7 @@ ordem de anexação. Cada `scene.*` é um `SceneCommand` dentro de `Command::Sce
 | `scene.properties` | `scene`, `prefix?` | cada propriedade aplicável com o valor atual | — |
 | `scene.get` | `scene`, `property` (caminho canônico) | uma propriedade | — |
 | `scene.camera` | `scene`, **um de** `frame` · `time` (`{"num","den"}` exato) · `clip`+`clip_frame` | câmera via `evaluate_camera` / `camera_at_clip_frame` (mapeamento shot→instância→clipe incluso) | — |
-| `scene.tree`, `scene.evaluate`, `scene.select`, `scene.selection`, `scene.gesture.*` | ver [F039](scene-interaction.md) | Árvore/seleção, câmera e nós por frame, gesto com candidato isolado; implementação recebida, gate Cargo pendente | Só commit é edição |
+| `scene.tree`, `scene.evaluate`, `scene.select`, `scene.selection`, `scene.gesture.*` | ver [F039](scene-interaction.md) | Árvore/seleção, câmera e nós por frame, gesto com candidato isolado; status e evidências em F039 | Só commit é edição |
 | `scene.capabilities` | — | comandos, limites e o `scope` | — |
 
 O parser (`ops::scene_command`) só traduz forma; nenhuma regra mora nele. As respostas de câmera usam
@@ -190,4 +190,4 @@ as 4 guardas de mídia também passaram. UI visual/socket continuam sem prova es
 
 O tamanho compacto de cada bundle é contado ao inserir/substituir e mantido em cache no `SceneBook`; consultas de orçamento não reserializam cenas inalteradas. Clone, remoção, substituição e rejeição preservam os contadores (testes de `scene_project::edit_budget_tests`).
 
-F039 adiciona consultas de nós por `scene.evaluate`, árvore/seleção e gestos semânticos; os novos caminhos ainda aguardam o gate conjunto. O V de F036 refere-se aos fluxos anteriores já executados, não valida automaticamente F039.
+F039 adiciona consultas de nós por `scene.evaluate`, árvore/seleção e gestos semânticos; o status e as evidências desses caminhos estão em `scene-interaction.md`. O V de F036 refere-se aos fluxos da F036, não valida automaticamente F039.

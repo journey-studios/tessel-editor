@@ -121,10 +121,9 @@ N/A nesta fatia: sem apresentação. Pendente junto do fluxo de pacote.
 
 | Superfície | Evidência | Estado |
 |---|---|---|
-| Core | `crates/core/tests/scene_resources.rs` (27 testes) e 6 testes unitários de `path.rs` | Escritos; executados **só** em compilação avulsa (`rustc`, fora do Cargo e do checkout), 27 + 6 passaram |
-| Media | `crates/media/tests/directed_resources.rs` (19, preflight e links), `directed_resources_transport.rs` (20, materialização, rollback, cancelamento) | Escritos; executados do mesmo modo avulso, 39 passaram (unix; um deles pula sozinho se rodar como root) |
-| Clippy | `clippy-driver` avulso no core, na media e nos testes | Sem avisos; **não** substitui `-D warnings` do workspace |
-| Gate Cargo | `cargo test -p tessel-editor-core --locked --test scene_resources` (+ `--lib scene_resources`, `--doc`), `-p tessel-editor-media --test directed_resources --test directed_resources_transport`, clippy, `cargo tree` | **Pendente: coordenador.** Rust **não** está declarado verde |
+| Core | `crates/core/tests/scene_resources.rs` (27) e 6 testes unitários de `path.rs` | Passaram via Cargo `--locked` no gate do coordenador |
+| Media | `directed_resources.rs` (19) e `directed_resources_transport.rs` (20) | Passaram via Cargo `--locked` em Unix; o teste de rollback pula se executado como root |
+| Qualidade/gate | `test --workspace --locked`, `clippy --workspace --all-targets --locked -- -D warnings`, fmt, check, release e `cargo tree -p tessel-editor-core` | Passaram localmente ([relatório](../migration/round-hijkl-report.md)); sem CI de testes e sem Windows |
 
 O comportamento de links usa unix; sem execução em Windows.
 

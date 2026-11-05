@@ -11,9 +11,12 @@ import {
   cpSync,
   existsSync,
   mkdtempSync,
+  mkdirSync,
+  linkSync,
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs"
 import os from "node:os"
@@ -393,5 +396,84 @@ describe("o corpus base de 55 casos segue intocado", () => {
       return
     }
     assert.equal(result.stdout.trim(), "", `o corpus base foi alterado:\n${result.stdout}`)
+  })
+})
+
+
+// Copy the runner and its base before probing aliases: a failing guard must never
+// let the regression test itself delete the repository's immutable corpus.
+const isolatedRunner = (label) => {
+  const root = freshDir(label)
+  const runner = path.join(root, "scripts", "migration-oracle")
+  const baseline = path.join(root, "docs", "migration", "fixtures")
+  cpSync(ORACLE_DIR, runner, { recursive: true })
+  cpSync(BASELINE_FIXTURES_DIR, baseline, { recursive: true })
+  return { root, runner, baseline }
+}
+const runIsolated = (sandbox, command, fixtures, viaEnv = false) => spawnSync(
+  "node", [path.join(sandbox.runner, "extended.mjs"), command,
+    ...(viaEnv ? [] : ["--fixtures", fixtures])],
+  { encoding: "utf8", env: { ...process.env,
+    ORACLE_EXTENDED_FIXTURES_DIR: fixtures,
+    ORACLE_SOURCE_ROOT: REAL.sourceRoot, ORACLE_DEPS_DIR: REAL.depsDir } },
+)
+
+describe("canonical protection of the base corpus", () => {
+  test("a root symlink cannot overwrite the base via flag or environment", () => {
+    const sandbox = isolatedRunner("root-alias")
+    const alias = path.join(sandbox.root, "alias")
+    symlinkSync(sandbox.baseline, alias, "dir")
+    const before = snapshotDir(sandbox.baseline)
+    for (const viaEnv of [false, true]) {
+      for (const command of ["corpus", "generate", "verify"]) {
+        const result = runIsolated(sandbox, command, alias, viaEnv)
+        assert.equal(result.status, 2, result.stderr)
+        assert.match(result.stderr, /corpus base/)
+        assert.deepEqual(snapshotDir(sandbox.baseline), before)
+      }
+    }
+  })
+
+  test("symlinked output directories and metadata cannot overwrite base files", () => {
+    for (const name of ["bundles", "expected", "cases.json", "manifest.json"]) {
+      const sandbox = isolatedRunner(`output-alias-${name}`)
+      const output = path.join(sandbox.root, "output")
+      mkdirSync(output)
+      symlinkSync(path.join(sandbox.baseline, name), path.join(output, name),
+        name.endsWith("json") ? "file" : "dir")
+      const before = snapshotDir(sandbox.baseline)
+      for (const command of ["corpus", "generate"]) {
+        const result = runIsolated(sandbox, command, output)
+        assert.equal(result.status, 2, result.stderr)
+        assert.match(result.stderr, /corpus base/)
+        assert.deepEqual(snapshotDir(sandbox.baseline), before)
+      }
+    }
+  })
+
+
+  test("hard-linked metadata cannot overwrite a base file", () => {
+    const sandbox = isolatedRunner("metadata-hardlink")
+    const output = path.join(sandbox.root, "output")
+    mkdirSync(output)
+    linkSync(path.join(sandbox.baseline, "cases.json"), path.join(output, "cases.json"))
+    const before = snapshotDir(sandbox.baseline)
+    for (const command of ["corpus", "generate"]) {
+      const result = runIsolated(sandbox, command, output)
+      assert.equal(result.status, 2, result.stderr)
+      assert.match(result.stderr, /corpus base/)
+      assert.deepEqual(snapshotDir(sandbox.baseline), before)
+    }
+  })
+
+  test("a nonexistent path under an aliased protected directory is refused", () => {
+    const sandbox = isolatedRunner("ancestor-alias")
+    const alias = path.join(sandbox.root, "alias")
+    symlinkSync(sandbox.baseline, alias, "dir")
+    const before = snapshotDir(sandbox.baseline)
+    const result = runIsolated(sandbox, "corpus", path.join(alias, "bundles", "new-output"))
+    assert.equal(result.status, 2, result.stderr)
+    assert.match(result.stderr, /corpus base/)
+    assert.deepEqual(snapshotDir(sandbox.baseline), before)
   })
 })

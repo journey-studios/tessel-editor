@@ -71,7 +71,7 @@ N/A: sem superfície de editor. Nenhum controle, comando `ui`/`headless` ou nó 
 - Idempotência: `generate` duas vezes produz hash idêntico de `expected/` + `manifest.json`.
 - Origem: working tree dos 33 arquivos executados == blobs de `d6adac15…`; árvore
   `packages/scene-engine` == `d5fc9871…` (a do inventário).
-- Não executado: Cargo, Chrome, GPU. O consumidor Rust integrado passou nos 3 testes adicionais; a coluna Lib é parcial
+- A frente B não executou Cargo/Chrome/GPU na entrega inicial. O coordenador executou os consumidores Rust; a coluna Lib é parcial
   porque os demais domínios ainda não são comparados. Performance/matrizes animadas são
   comparadas na F035; a câmera/gates temporais
   têm comparação adicional na F033 (19 testes públicos).
@@ -105,11 +105,13 @@ escalas extremas, sockets encadeados, poses `lookAt` da câmera). Comandos, form
   (precisa de WebGL); a fixture usa `PerspectiveCamera.lookAt` do `three` fixo sobre a pose avaliada
   pela origem (`source: "three-library"`).
 - **Evidência executada (Node, sem Cargo)**: `extended.mjs verify` passa (47 casos, a origem a
-  `d6adac15…`); `oracle-extended.spec.mjs` 24/24 e `oracle.spec.mjs` 21/21 (45/45); o `verify` do corpus
-  base segue passando byte a byte. **O teste Rust foi escrito, mas não foi compilado nem executado.**
+  `d6adac15…`); `oracle-extended.spec.mjs` 28/28 e `oracle.spec.mjs` 21/21 (49/49); o `verify` do corpus
+  base segue passando byte a byte. O teste Rust foi validado depois pelo coordenador (15/15 via Cargo --locked).
 
-Linha da matriz (F032 existente, a consolidar pelo coordenador): Oráculo Origem=Sim; Lib=Parcial → A
-validar com a execução do coordenador; tempo racional e fronteiras de junção agora comparados.
+F032 permanece parcial pelos limites declarados, com tempo racional e fronteiras de junção comparados.
+A matriz e o backlog registram o estado integrado; não há gate Rust pendente para essa fatia.
 Relatório: [`docs/migration/foundation-k-report.md`](../migration/foundation-k-report.md).
 
-Validação da integração K pelo coordenador: `node --test scripts/migration-oracle/oracle.spec.mjs scripts/migration-oracle/oracle-extended.spec.mjs` 45/45; ambos os verify passaram contra a origem. `directed_scene_oracle_extended` passou 15/15 via Cargo com `--locked`. Mantidas as divergências declaradas e a distinção Three isolado/runtime.
+Validação da integração K pelo coordenador: `node --test scripts/migration-oracle/oracle.spec.mjs scripts/migration-oracle/oracle-extended.spec.mjs` 49/49; ambos os verify passaram contra a origem. `directed_scene_oracle_extended` passou 15/15 via Cargo com `--locked`. Mantidas as divergências declaradas e a distinção Three isolado/runtime.
+
+Proteção do corpus base na revisão do PR #2: caminhos canônicos e ancestrais existentes, aliases dos diretórios/arquivos de saída e identidade de metadados por hard link são conferidos antes de escrever. Quatro testes novos usam cópias temporárias do runner/base; 49 testes Node passaram. O manifest estendido foi regenerado só para atualizar hashes do gerador; os 55 casos base ficaram intactos.

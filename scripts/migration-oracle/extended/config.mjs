@@ -2,7 +2,7 @@
 // oráculo base (`lib/config.mjs`) e só troca onde as fixtures vivem: um subdiretório próprio, que
 // NÃO é lido nem sobrescrito pelo corpus de 55 casos.
 
-import { readFileSync } from "node:fs"
+import { lstatSync, readFileSync, realpathSync, statSync } from "node:fs"
 import path from "node:path"
 
 import { harnessFileHashes, ORACLE_DIR, REPO_ROOT, resolveConfig, sha256Of } from "../lib/config.mjs"
@@ -15,6 +15,58 @@ export const EXTENDED_FIXTURES_DIR = path.join(BASELINE_FIXTURES_DIR, "extended-
 export const EXTENDED_FORMAT_VERSION = 1
 export const EXTENDED_MANIFEST_VERSION = 1
 
+// Resolve existing ancestors too: a new output can live below a symlinked parent.
+// An existing but unresolvable path (including a dangling link) is never a safe output.
+const canonicalOutput = (value) => {
+  let current = path.resolve(value)
+  const suffix = []
+  for (;;) {
+    try {
+      return path.join(realpathSync(current), ...suffix)
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error
+      try {
+        lstatSync(current)
+      } catch (missing) {
+        if (missing.code !== "ENOENT") throw missing
+        suffix.unshift(path.basename(current))
+        const parent = path.dirname(current)
+        if (parent === current) throw error
+        current = parent
+        continue
+      }
+      throw new EnvironmentError(`não é possível resolver o destino ${current}`)
+    }
+  }
+}
+
+// A hard-linked metadata file has another pathname but still modifies the same corpus.
+const identityOf = (file) => {
+  try {
+    const { dev, ino } = statSync(file, { bigint: true })
+    return ino === 0n ? null : `${dev}:${ino}`
+  } catch (error) {
+    if (error.code === "ENOENT") return null
+    throw error
+  }
+}
+
+export const assertExtendedOutput = (fixturesDir) => {
+  const baseline = canonicalOutput(BASELINE_FIXTURES_DIR)
+  const protectedOutputs = ["bundles", "expected", "cases.json", "manifest.json"]
+    .map((name) => canonicalOutput(path.join(BASELINE_FIXTURES_DIR, name)))
+  const outputs = [fixturesDir, ...["bundles", "expected", "cases.json", "manifest.json", "tolerances.json"]
+    .map((name) => path.join(fixturesDir, name))].map(canonicalOutput)
+  const protectedIdentities = new Set([baseline, ...protectedOutputs].map(identityOf).filter(Boolean))
+  if (outputs.some((output) => protectedIdentities.has(identityOf(output)) || output === baseline || protectedOutputs.some(
+    (protectedPath) => output === protectedPath || output.startsWith(`${protectedPath}${path.sep}`),
+  ))) {
+    throw new EnvironmentError(
+      `o corpus estendido não pode ser gerado em ${BASELINE_FIXTURES_DIR} (é o corpus base)`,
+    )
+  }
+}
+
 export const resolveExtendedConfig = (flags) => {
   const base = resolveConfig({ ...flags, fixtures: undefined })
   const requested = flags.fixtures ?? process.env.ORACLE_EXTENDED_FIXTURES_DIR
@@ -22,12 +74,7 @@ export const resolveExtendedConfig = (flags) => {
     typeof requested === "string" && requested.length > 0
       ? path.resolve(requested)
       : EXTENDED_FIXTURES_DIR
-  // O corpus de 55 casos e o manifest dele são intocáveis por esta ferramenta.
-  if (fixturesDir === BASELINE_FIXTURES_DIR) {
-    throw new EnvironmentError(
-      `o corpus estendido não pode ser gerado em ${BASELINE_FIXTURES_DIR} (é o corpus base)`,
-    )
-  }
+  assertExtendedOutput(fixturesDir)
   return { ...base, fixturesDir }
 }
 

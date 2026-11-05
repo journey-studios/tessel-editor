@@ -49,7 +49,7 @@ arquivos (que também confirma que a sintaxe parseia). Nenhum teste foi executad
 | **Executados** | **Nenhum.** Sem Cargo nesta rodada. Nada aqui é "verde" |
 | **Revisão manual** | Passagem linha a linha por tipos, empréstimos e inferência de fechamentos (anotei o tipo de retorno dos que usam `?`); pode restar erro de compilação |
 
-Comando do gate (coordenador): `python3 /Users/wallyssonnunes/.cache/tessel-editor/cargo-serial.py test -p tessel-editor-core --locked --test scene_plan` e `--doc scene_plan`; depois clippy `-D warnings` e `cargo tree -p tessel-editor-core` (sem GPUI).
+Comando do gate (coordenador): `MBX_GC_MAX_TOTAL_SIZE=64GiB ./scripts/cargo test -p tessel-editor-core --locked --test scene_plan` e `--doc scene_plan`; depois clippy `-D warnings` e `cargo tree -p tessel-editor-core` (sem GPUI).
 
 Pontos que, se falharem, são **expectativas de fixture e não do plano** (verificar antes de mudar código):
 `valid-cut-instance-offsets` com `shots[0]` começando em 0 e `instance_frame == 10`; o contador

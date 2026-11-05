@@ -5,7 +5,7 @@
 | Superfície | Estado | Evidência |
 |---|---|---|
 | Lib (`tessel_editor_core::scene_interaction`, `SceneCommand::{Tree,Evaluate,Select,Selection,Gesture}`) | **V (lib)** — 21 testes públicos e testes unitários do módulo passaram no gate direcionado do coordenador | `crates/core/tests/scene_interaction.rs` (21/21 executados) e testes unitários em `scene_interaction/{address,selection,tree}.rs` |
-| CLI headless (JSON Lines) | **V (headless)** — mesmo parser/executor (`ops::parse_op`, `headless::execute`); sessão JSONL de 19 linhas executada em processo; o executável `tessel-headless` passou uma sessão real de 13 requests | `a_json_lines_session_runs_the_whole_flow_in_process` |
+| CLI headless (JSON Lines) | **V (headless)** — mesmo parser/executor (`ops::parse_op`, `headless::execute`); sessão JSONL de 19 linhas executada em processo; o executável `tessel-headless` passou uma sessão real de 13 requests | `a_json_lines_session_runs_the_whole_interaction_flow_in_process` |
 | Socket / `ui op` da janela | **P** — roteia por `Op::Run(Command::Scene)` sem tocar o desktop; **não provado** | — |
 | UI visual (árvore, inspetor, handles, Escape) | **P** — sem controle, sem nó em `tree.rs`, sem apresentação, sem gesto de ponteiro | — |
 
@@ -138,8 +138,8 @@ printf '%s\n' \
   | ./scripts/cargo run -q -p tessel-editor-core --bin tessel-headless -- --empty
 ```
 
-Mesmo envelope `{ok, version, result|error}` das demais. **Não executado** nesta frente (sem Cargo); o
-coordenador roda o exemplo depois do gate.
+Mesmo envelope `{ok, version, result|error}` das demais. O coordenador executou uma sessão equivalente
+no executável `tessel-headless` (ver a evidência de integração ao final).
 
 ## UI e CLI da janela
 
@@ -151,7 +151,7 @@ soltar do ponteiro = `scene.gesture.commit`; handle e comando devem dar o mesmo 
 
 ## Evidências e status
 
-**Escritos e não executados** (a frente J não roda Cargo): `crates/core/tests/scene_interaction.rs`
+Executados pelo coordenador (21/21): `crates/core/tests/scene_interaction.rs`
 (árvore e catálogo de 8; seleção atômica, sem undo e sem ser pré-condição; poda por detach/undo; estado
 não salvo; `scene.evaluate` igual a `Bundle::evaluate_frame` nos três fixtures válidos e igual a
 `scene.camera`; nós animados; erros; preview/commit/cancel; um único undo; equivalência com

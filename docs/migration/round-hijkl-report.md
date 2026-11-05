@@ -64,3 +64,12 @@ neutro/ignorado de revisão executada. Artefatos numéricos têm verificação p
 
 O catálogo continua com oito propriedades. A UI de mídia/timeline existente continua funcional,
 mas não é evidência da UI de DirectedScene. Não foram portados luz/clima/rig/efeitos nesta rodada.
+
+## Revisão do PR #2
+
+Corrigidos 12 comentários acionáveis e o nit de cobertura. A proteção de escrita do oráculo
+agora resolve aliases canônicos/ancestrais e detecta metadados hard-linked ao corpus base;
+as quatro regressões usam cópias temporárias, nunca a base versionada como alvo de escrita.
+Após a correção: 49 testes Node, 16 Rust direcionados e fmt passaram. A mudança no manifest
+estendido é somente nos hashes dos dois arquivos do gerador; dados esperados e base intactos.
+O gate completo de 718/2 acima é o gate anterior da rodada, não uma nova execução neste commit.

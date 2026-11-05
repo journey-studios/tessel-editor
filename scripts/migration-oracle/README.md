@@ -208,7 +208,7 @@ node --test scripts/migration-oracle/oracle-extended.spec.mjs       # 24 testes,
 | `join-boundary` (31) | posição, alvo, FOV, velocidade, velocidade de FOV, diagonal, segunda junção, shots fora de ordem, FPS 24000/1001 e 30000/1001: abaixo / igual / acima | O gate aceita/recusa exatamente onde a origem (`>` estrito) recusa? As poses nos dois lados são as da origem? |
 | `fps` (11) | 24000/1001, 30000/1001, 60000/1001, 25, 30, 60, 48/2 não reduzido, 2000/1, e 3 recusas (perfil divergente, denominador 0) | `fpsToRate`, `editFrameToSeconds`, `secondsToEditFrame`, `editSecondsToFrame` |
 | `out-of-order` (1) | 7 ordens: crescente, decrescente, embaralhada (semente fixa), repetida, nas bordas | Mesma resposta em qualquer ordem (origem e Rust) |
-| `world-matrix` (4) | gimbal (`|m13| ≥ 0.9999999`), escalas extremas e cadeia profunda, sockets encadeados com canais, poses `lookAt` da câmera | Matrizes mundo e matriz da câmera |
+| `world-matrix` (4) | gimbal (`\|m13\| ≥ 0.9999999`), escalas extremas e cadeia profunda, sockets encadeados com canais, poses `lookAt` da câmera | Matrizes mundo e matriz da câmera |
 
 ### Formato de `expected/<id>.expected.json`
 

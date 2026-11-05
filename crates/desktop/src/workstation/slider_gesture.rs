@@ -26,7 +26,7 @@
 //!
 //! Known limit: the Kit's accessibility Increment/Decrement actions call `set_value` without
 //! emitting an event, so they never reach the model (and the next render re-syncs the slider
-//! from it). Tracked as BL070 in `docs/slider-gesture-history-report.md`.
+//! from it). Tracked as BL074 in `docs/backlog.md` and `docs/slider-gesture-history-report.md`.
 
 use gpui_kit::component::slider::SliderEvent;
 use gpui_kit::*;

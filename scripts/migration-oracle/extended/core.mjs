@@ -35,6 +35,7 @@ import {
   EXTENDED_FORMAT_VERSION,
   EXTENDED_MANIFEST_VERSION,
   extendedHarnessHashes,
+  assertExtendedOutput,
 } from "./config.mjs"
 import { buildExtendedCorpus } from "./corpus.mjs"
 import {
@@ -71,6 +72,7 @@ const scriptTolerancesPath = path.join(EXTENDED_DIR, TOLERANCES_FILE)
 // --------------------------------------------------------------------------------------------
 
 export const writeExtendedCorpus = (fixturesDir) => {
+  assertExtendedOutput(fixturesDir)
   const corpus = buildExtendedCorpus()
   for (const stale of readdirSafe(path.join(fixturesDir, BUNDLES_DIR))) {
     rmSync(path.join(fixturesDir, BUNDLES_DIR, stale))
@@ -306,6 +308,7 @@ const toleranceProblems = (harness, fixturesDir) => {
 // --------------------------------------------------------------------------------------------
 
 export const generateExtended = async (config) => {
+  assertExtendedOutput(config.fixturesDir)
   const entries = readCases(config.fixturesDir)
   const built = await buildHarness(config, path.join(EXTENDED_DIR, "entry.mjs"))
   const blobCheck = pinnedBlobCheck(built.sourceRoot, PINNED_COMMIT, built.sources)
