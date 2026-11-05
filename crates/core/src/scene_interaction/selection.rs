@@ -18,6 +18,9 @@ use serde_json::{Value, json};
 /// list as many entities as its text allows.
 pub const MAX_SELECTION: usize = 4096;
 
+/// Entities the shared summary lists (the count is always the whole selection).
+pub const SUMMARY_LIMIT: usize = 64;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Selected {
     /// ID of the attached scene (the project-level one).
@@ -138,14 +141,7 @@ impl Selection {
     pub(crate) fn prune(&mut self, book: &SceneBook) -> Vec<Dropped> {
         let mut removed = Vec::new();
         self.entries.retain(|selected| {
-            let reason = match book.get(&selected.scene) {
-                None => Some("scene_detached"),
-                Some(entry) if !exists(entry.scene.bundle(), &selected.entity) => {
-                    Some("entity_missing")
-                }
-                Some(_) => None,
-            };
-            let Some(reason) = reason else {
+            let Some(reason) = missing_reason(book, selected) else {
                 return true;
             };
             removed.push(Dropped {
@@ -156,6 +152,43 @@ impl Selection {
         });
         self.dropped.extend(removed.iter().cloned());
         removed
+    }
+
+    /// The selection as the shared summary prints it. Read-only: an entry the project no longer
+    /// holds is marked `stale` (with the reason `prune` would give) instead of being removed, so
+    /// asking for the summary never changes the selection. The list is cut at
+    /// [`SUMMARY_LIMIT`]: a summary is polled, and `scene.selection` has the whole list.
+    pub fn summary_json(&self, book: &SceneBook) -> Value {
+        let entities: Vec<Value> = self
+            .entries
+            .iter()
+            .take(SUMMARY_LIMIT)
+            .map(|selected| {
+                let mut value = selected.to_json();
+                if let Some(reason) = missing_reason(book, selected) {
+                    value["stale"] = json!(reason);
+                }
+                value
+            })
+            .collect();
+        json!({
+            "count": self.entries.len(),
+            "entities": entities,
+            "truncated": self.entries.len() > SUMMARY_LIMIT,
+            "dropped": self.dropped.iter().take(SUMMARY_LIMIT).map(Dropped::to_json)
+                .collect::<Vec<_>>(),
+            "dropped_count": self.dropped.len(),
+        })
+    }
+}
+
+/// Why `selected` no longer names something in the project: `scene_detached` (the attached scene
+/// is gone) or `entity_missing` (the scene is there, the entity is not). `None` while it is live.
+fn missing_reason(book: &SceneBook, selected: &Selected) -> Option<&'static str> {
+    match book.get(&selected.scene) {
+        None => Some("scene_detached"),
+        Some(entry) if !exists(entry.scene.bundle(), &selected.entity) => Some("entity_missing"),
+        Some(_) => None,
     }
 }
 
@@ -241,5 +274,79 @@ mod tests {
         assert_eq!(error.code, "selection_limit");
         assert!(selection.contains("s", &node("keep")));
         assert_eq!(selection.entries().len(), 1);
+    }
+
+    fn book_with(bundle: &str) -> SceneBook {
+        use crate::directed_scene::DirectedScene;
+        use crate::scene_project::AttachedScene;
+        let mut book = SceneBook::default();
+        book.insert(AttachedScene {
+            id: "street".to_string(),
+            name: "Street".to_string(),
+            scene: std::sync::Arc::new(DirectedScene::import_str(bundle).unwrap()),
+            extra: Default::default(),
+        })
+        .unwrap();
+        book
+    }
+
+    const MINIMAL: &str = include_str!(
+        "../../../../docs/migration/fixtures/bundles/valid-minimal-continuous.bundle.json"
+    );
+    const RIG: &str = include_str!(
+        "../../../../docs/migration/fixtures/bundles/valid-graph-sockets-performance.bundle.json"
+    );
+
+    #[test]
+    fn the_summary_marks_what_went_stale_without_pruning_it() {
+        // `perf-1` is a performance track of the rig bundle only.
+        let instance = Entity::new(EntityKind::PerformanceTrack, "perf-1");
+        let book = book_with(RIG);
+        let mut selection = Selection::default();
+        selection
+            .apply(Some("street"), vec![instance.clone()], SelectMode::Replace)
+            .unwrap();
+        let live = selection.summary_json(&book);
+        assert_eq!(live["count"], 1);
+        assert!(live["entities"][0].get("stale").is_none());
+
+        // A scene that is there without the entity (another bundle under the same ID).
+        let replaced = book_with(MINIMAL);
+        let missing = selection.summary_json(&replaced);
+        assert_eq!(missing["entities"][0]["stale"], "entity_missing");
+
+        // The scene is gone from the project: the entry is reported, not removed.
+        let empty = SceneBook::default();
+        let stale = selection.summary_json(&empty);
+        assert_eq!(stale["entities"][0]["stale"], "scene_detached");
+        assert_eq!(stale["count"], 1);
+        assert!(
+            selection.contains("street", &instance),
+            "reading is not pruning"
+        );
+
+        // `prune` agrees with what the summary reported, and the summary then remembers it.
+        let dropped = selection.prune(&empty);
+        assert_eq!(dropped[0].reason, "scene_detached");
+        let after = selection.summary_json(&empty);
+        assert_eq!(after["count"], 0);
+        assert_eq!(after["dropped"][0]["reason"], "scene_detached");
+        assert_eq!(after["dropped_count"], 1);
+    }
+
+    #[test]
+    fn the_summary_list_is_bounded_but_the_count_is_not() {
+        let book = book_with(MINIMAL);
+        let mut selection = Selection::default();
+        let shots = (0..SUMMARY_LIMIT + 5)
+            .map(|n| Entity::new(EntityKind::Shot, &format!("shot-{n}")))
+            .collect();
+        selection
+            .apply(Some("street"), shots, SelectMode::Replace)
+            .unwrap();
+        let summary = selection.summary_json(&book);
+        assert_eq!(summary["count"], SUMMARY_LIMIT + 5);
+        assert_eq!(summary["entities"].as_array().unwrap().len(), SUMMARY_LIMIT);
+        assert_eq!(summary["truncated"], true);
     }
 }

@@ -1,0 +1,63 @@
+{
+  "corpusVersion": 1,
+  "generator": {
+    "file": "scripts/directed-scene-export-proof/export_corpus.py",
+    "sha256": "20bbed3797586800f729269c826fd376deea1466c85d697bbcb2dccfc47dc00e",
+    "model": {
+      "file": "scripts/directed-scene-proof/model.py",
+      "sha256": "322af021aceb5ae45d8b99992c126c5360faa243c571e5bf5db73c6c7991e9bd"
+    },
+    "pGenerator": {
+      "file": "scripts/directed-scene-proof/corpus.py",
+      "sha256": "025c0e260c9158b30ee45a09070bb092f963ecab254ca99ed6d5c239d8ad8337"
+    },
+    "python": ">=3.10"
+  },
+  "origin": "none: drawn from scratch; pixel expectations from model.py validated against the origin oracle",
+  "private_media": false,
+  "files": {
+    "assets/hero.png": {
+      "sha256": "7bacab4e0dd6aff8d146e6f208c06a63f58b26dbfc5fee54b1c32a712f356ef6",
+      "bytes": 4196
+    },
+    "assets/mid.png": {
+      "sha256": "205942c4e79e910b10ea184d1368b7c6436427e1e45d9db8c1639bf56946bd08",
+      "bytes": 9332
+    },
+    "assets/sky.png": {
+      "sha256": "e32d40ae8c87cde266bf73a58cb2fe800e12221b76aaa5ce4028ad126346964a",
+      "bytes": 9320
+    },
+    "audio/mix.wav": {
+      "sha256": "bf33df3662cb6c025044ff76a6f2b4135ae1f402d0f4d58942575e1fe68413e7",
+      "bytes": 384044
+    },
+    "bundle.audio.json": {
+      "sha256": "be3c166896d9e2dabb3deff6a086171e0fa78203591930e44ac8b1ba90d18c38",
+      "bytes": 8383
+    },
+    "bundle.detail.json": {
+      "sha256": "ef11120eab86ff4424242109de58fcd77dc79bddb770d5bad7511a2dfffc2653",
+      "bytes": 3089
+    },
+    "bundle.main.json": {
+      "sha256": "ffc0ac8f2057e70386aaa5b81cc0fdd77b97a84cfefdd789532c8013a06b1a76",
+      "bytes": 8167
+    },
+    "bundle.ntsc.json": {
+      "sha256": "fab20e742dc340454ef817412c914a2e966eb2ebb82c09a6de3db71ac3dc9ffb",
+      "bytes": 8179
+    },
+    "expected.json": {
+      "sha256": "3fd0c377ec38980e86420be0ca31cc6b8c2d129b2ea25c32a66de20743712fe9",
+      "bytes": 330988
+    }
+  },
+  "notCommitted": {
+    "assets/detail.png": {
+      "sha256": "2d5d406458c9fa99b492cfbce34e983a9ebdd983f9d9b1b16232c8ab38f0ce40",
+      "bytes": 33182358,
+      "why": "33 MB; regenerated deterministically by --materialize"
+    }
+  }
+}

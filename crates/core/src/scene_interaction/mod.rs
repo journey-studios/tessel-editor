@@ -23,6 +23,10 @@
 //!
 //! Contract and limits: `docs/features/scene-interaction.md`.
 
+use serde_json::{Value, json};
+
+use crate::scene_project::SceneBook;
+
 mod address;
 mod command;
 mod frame;
@@ -36,7 +40,7 @@ pub use address::{
 pub use command::{FrameAt, GestureCommand, SelectMode};
 pub use frame::frame_json;
 pub use gesture::{Gesture, GestureSlot, Invalidation};
-pub use selection::{Dropped, MAX_SELECTION, Selected, Selection};
+pub use selection::{Dropped, MAX_SELECTION, SUMMARY_LIMIT, Selected, Selection};
 pub use tree::{MAX_TREE_DEPTH, tree_json};
 
 /// The session state of the scene tools of one project: what is selected and which gesture is
@@ -55,5 +59,20 @@ impl SceneInteraction {
     /// The gesture in progress, stale or not (`Gesture::invalidation` says which).
     pub fn gesture(&self) -> Option<&Gesture> {
         self.gesture.current()
+    }
+
+    /// The `scene_interaction` block of `EditorState::summary`, or `None` while there is nothing
+    /// to show (no selection, nothing dropped, no gesture), so the summary of a project that
+    /// never used the scene tools is what it always was. Read-only: it reflects a selection that
+    /// went stale and a gesture that was invalidated, it does not prune or settle either.
+    pub fn summary_json(&self, book: &SceneBook, revision: u64) -> Option<Value> {
+        let selection = &self.selection;
+        if selection.is_empty() && selection.dropped().is_empty() && self.gesture().is_none() {
+            return None;
+        }
+        Some(json!({
+            "selection": selection.summary_json(book),
+            "gesture": self.gesture().map(|gesture| gesture.to_json(book, revision)),
+        }))
     }
 }

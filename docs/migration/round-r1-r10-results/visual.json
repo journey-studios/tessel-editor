@@ -1,0 +1,1740 @@
+{
+  "input": "semantic IPC for state; OS window capture for pixels; no pointer",
+  "captures": [
+    {
+      "name": "tree",
+      "size": "wide",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/tree-wide-dark.png",
+      "captured": true,
+      "pixels": [
+        3360,
+        1754
+      ],
+      "window_id": "14773",
+      "window": [
+        1680.0,
+        877.0
+      ],
+      "inspector": {
+        "x": 1408.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 783.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/tree-wide-dark-inspector.png"
+    },
+    {
+      "name": "selected",
+      "size": "wide",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/selected-wide-dark.png",
+      "captured": true,
+      "pixels": [
+        3360,
+        1754
+      ],
+      "window_id": "14773",
+      "window": [
+        1680.0,
+        877.0
+      ],
+      "inspector": {
+        "x": 1408.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 783.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/selected-wide-dark-inspector.png"
+    },
+    {
+      "name": "deep",
+      "size": "wide",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/deep-wide-dark.png",
+      "captured": true,
+      "pixels": [
+        3360,
+        1754
+      ],
+      "window_id": "14773",
+      "window": [
+        1680.0,
+        877.0
+      ],
+      "inspector": {
+        "x": 1408.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 783.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/deep-wide-dark-inspector.png"
+    },
+    {
+      "name": "lastrow",
+      "size": "wide",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/lastrow-wide-dark.png",
+      "captured": true,
+      "pixels": [
+        3360,
+        1754
+      ],
+      "window_id": "14773",
+      "window": [
+        1680.0,
+        877.0
+      ],
+      "inspector": {
+        "x": 1408.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 783.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/lastrow-wide-dark-inspector.png"
+    },
+    {
+      "name": "candidate",
+      "size": "wide",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/candidate-wide-dark.png",
+      "captured": true,
+      "pixels": [
+        3360,
+        1754
+      ],
+      "window_id": "14773",
+      "window": [
+        1680.0,
+        877.0
+      ],
+      "inspector": {
+        "x": 1408.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 783.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/candidate-wide-dark-inspector.png"
+    },
+    {
+      "name": "error",
+      "size": "wide",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/error-wide-dark.png",
+      "captured": true,
+      "pixels": [
+        3360,
+        1754
+      ],
+      "window_id": "14773",
+      "window": [
+        1680.0,
+        877.0
+      ],
+      "inspector": {
+        "x": 1408.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 783.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/error-wide-dark-inspector.png"
+    },
+    {
+      "name": "extreme",
+      "size": "wide",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/extreme-wide-dark.png",
+      "captured": true,
+      "pixels": [
+        3360,
+        1754
+      ],
+      "window_id": "14773",
+      "window": [
+        1680.0,
+        877.0
+      ],
+      "inspector": {
+        "x": 1408.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 783.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/extreme-wide-dark-inspector.png"
+    },
+    {
+      "name": "vector",
+      "size": "wide",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/vector-wide-dark.png",
+      "captured": true,
+      "pixels": [
+        3360,
+        1754
+      ],
+      "window_id": "14773",
+      "window": [
+        1680.0,
+        877.0
+      ],
+      "inspector": {
+        "x": 1408.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 783.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/vector-wide-dark-inspector.png"
+    },
+    {
+      "name": "tree",
+      "size": "wide",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/tree-wide-light.png",
+      "captured": true,
+      "pixels": [
+        3360,
+        1754
+      ],
+      "window_id": "14773",
+      "window": [
+        1680.0,
+        877.0
+      ],
+      "inspector": {
+        "x": 1408.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 783.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/tree-wide-light-inspector.png"
+    },
+    {
+      "name": "selected",
+      "size": "wide",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/selected-wide-light.png",
+      "captured": true,
+      "pixels": [
+        3360,
+        1754
+      ],
+      "window_id": "14773",
+      "window": [
+        1680.0,
+        877.0
+      ],
+      "inspector": {
+        "x": 1408.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 783.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/selected-wide-light-inspector.png"
+    },
+    {
+      "name": "deep",
+      "size": "wide",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/deep-wide-light.png",
+      "captured": true,
+      "pixels": [
+        3360,
+        1754
+      ],
+      "window_id": "14773",
+      "window": [
+        1680.0,
+        877.0
+      ],
+      "inspector": {
+        "x": 1408.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 783.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/deep-wide-light-inspector.png"
+    },
+    {
+      "name": "lastrow",
+      "size": "wide",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/lastrow-wide-light.png",
+      "captured": true,
+      "pixels": [
+        3360,
+        1754
+      ],
+      "window_id": "14773",
+      "window": [
+        1680.0,
+        877.0
+      ],
+      "inspector": {
+        "x": 1408.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 783.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/lastrow-wide-light-inspector.png"
+    },
+    {
+      "name": "candidate",
+      "size": "wide",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/candidate-wide-light.png",
+      "captured": true,
+      "pixels": [
+        3360,
+        1754
+      ],
+      "window_id": "14773",
+      "window": [
+        1680.0,
+        877.0
+      ],
+      "inspector": {
+        "x": 1408.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 783.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/candidate-wide-light-inspector.png"
+    },
+    {
+      "name": "error",
+      "size": "wide",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/error-wide-light.png",
+      "captured": true,
+      "pixels": [
+        3360,
+        1754
+      ],
+      "window_id": "14773",
+      "window": [
+        1680.0,
+        877.0
+      ],
+      "inspector": {
+        "x": 1408.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 783.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/error-wide-light-inspector.png"
+    },
+    {
+      "name": "extreme",
+      "size": "wide",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/extreme-wide-light.png",
+      "captured": true,
+      "pixels": [
+        3360,
+        1754
+      ],
+      "window_id": "14773",
+      "window": [
+        1680.0,
+        877.0
+      ],
+      "inspector": {
+        "x": 1408.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 783.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/extreme-wide-light-inspector.png"
+    },
+    {
+      "name": "vector",
+      "size": "wide",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/vector-wide-light.png",
+      "captured": true,
+      "pixels": [
+        3360,
+        1754
+      ],
+      "window_id": "14773",
+      "window": [
+        1680.0,
+        877.0
+      ],
+      "inspector": {
+        "x": 1408.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 783.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/vector-wide-light-inspector.png"
+    },
+    {
+      "name": "tree",
+      "size": "min",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/tree-min-dark.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 688.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/tree-min-dark-inspector.png"
+    },
+    {
+      "name": "selected",
+      "size": "min",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/selected-min-dark.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 688.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/selected-min-dark-inspector.png"
+    },
+    {
+      "name": "deep",
+      "size": "min",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/deep-min-dark.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 688.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/deep-min-dark-inspector.png"
+    },
+    {
+      "name": "lastrow",
+      "size": "min",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/lastrow-min-dark.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 688.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/lastrow-min-dark-inspector.png"
+    },
+    {
+      "name": "candidate",
+      "size": "min",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/candidate-min-dark.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 688.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/candidate-min-dark-inspector.png"
+    },
+    {
+      "name": "error",
+      "size": "min",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/error-min-dark.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 688.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/error-min-dark-inspector.png"
+    },
+    {
+      "name": "extreme",
+      "size": "min",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/extreme-min-dark.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 688.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/extreme-min-dark-inspector.png"
+    },
+    {
+      "name": "vector",
+      "size": "min",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/vector-min-dark.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 688.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/vector-min-dark-inspector.png"
+    },
+    {
+      "name": "tree",
+      "size": "min",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/tree-min-light.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 688.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/tree-min-light-inspector.png"
+    },
+    {
+      "name": "selected",
+      "size": "min",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/selected-min-light.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 688.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/selected-min-light-inspector.png"
+    },
+    {
+      "name": "deep",
+      "size": "min",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/deep-min-light.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 688.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/deep-min-light-inspector.png"
+    },
+    {
+      "name": "lastrow",
+      "size": "min",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/lastrow-min-light.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 688.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/lastrow-min-light-inspector.png"
+    },
+    {
+      "name": "candidate",
+      "size": "min",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/candidate-min-light.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 688.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/candidate-min-light-inspector.png"
+    },
+    {
+      "name": "error",
+      "size": "min",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/error-min-light.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 688.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/error-min-light-inspector.png"
+    },
+    {
+      "name": "extreme",
+      "size": "min",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/extreme-min-light.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 688.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/extreme-min-light-inspector.png"
+    },
+    {
+      "name": "vector",
+      "size": "min",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/vector-min-light.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 688.0,
+        "y": 70.0,
+        "width": 272.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/vector-min-light-inspector.png"
+    },
+    {
+      "name": "selected",
+      "size": "panel100",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/selected-panel100-dark.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 860.0,
+        "y": 70.0,
+        "width": 100.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/selected-panel100-dark-inspector.png"
+    },
+    {
+      "name": "error",
+      "size": "panel100",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/error-panel100-dark.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 860.0,
+        "y": 70.0,
+        "width": 100.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/error-panel100-dark-inspector.png"
+    },
+    {
+      "name": "extreme",
+      "size": "panel100",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/extreme-panel100-dark.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 860.0,
+        "y": 70.0,
+        "width": 100.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/extreme-panel100-dark-inspector.png"
+    },
+    {
+      "name": "selected",
+      "size": "panel100",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/selected-panel100-light.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 860.0,
+        "y": 70.0,
+        "width": 100.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/selected-panel100-light-inspector.png"
+    },
+    {
+      "name": "error",
+      "size": "panel100",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/error-panel100-light.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 860.0,
+        "y": 70.0,
+        "width": 100.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/error-panel100-light-inspector.png"
+    },
+    {
+      "name": "extreme",
+      "size": "panel100",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/extreme-panel100-light.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 860.0,
+        "y": 70.0,
+        "width": 100.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/extreme-panel100-light-inspector.png"
+    },
+    {
+      "name": "selected",
+      "size": "panel180",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/selected-panel180-dark.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 780.0,
+        "y": 70.0,
+        "width": 180.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/selected-panel180-dark-inspector.png"
+    },
+    {
+      "name": "error",
+      "size": "panel180",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/error-panel180-dark.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 780.0,
+        "y": 70.0,
+        "width": 180.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/error-panel180-dark-inspector.png"
+    },
+    {
+      "name": "extreme",
+      "size": "panel180",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/extreme-panel180-dark.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 780.0,
+        "y": 70.0,
+        "width": 180.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/extreme-panel180-dark-inspector.png"
+    },
+    {
+      "name": "selected",
+      "size": "panel180",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/selected-panel180-light.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 780.0,
+        "y": 70.0,
+        "width": 180.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/selected-panel180-light-inspector.png"
+    },
+    {
+      "name": "error",
+      "size": "panel180",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/error-panel180-light.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 780.0,
+        "y": 70.0,
+        "width": 180.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/error-panel180-light-inspector.png"
+    },
+    {
+      "name": "extreme",
+      "size": "panel180",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/extreme-panel180-light.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 780.0,
+        "y": 70.0,
+        "width": 180.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/extreme-panel180-light-inspector.png"
+    },
+    {
+      "name": "selected",
+      "size": "panel628",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/selected-panel628-dark.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 332.0,
+        "y": 70.0,
+        "width": 628.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/selected-panel628-dark-inspector.png"
+    },
+    {
+      "name": "error",
+      "size": "panel628",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/error-panel628-dark.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 332.0,
+        "y": 70.0,
+        "width": 628.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/error-panel628-dark-inspector.png"
+    },
+    {
+      "name": "extreme",
+      "size": "panel628",
+      "theme": "dark",
+      "path": "/tmp/te-final-r9/shots/extreme-panel628-dark.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 332.0,
+        "y": 70.0,
+        "width": 628.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/extreme-panel628-dark-inspector.png"
+    },
+    {
+      "name": "selected",
+      "size": "panel628",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/selected-panel628-light.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 332.0,
+        "y": 70.0,
+        "width": 628.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/selected-panel628-light-inspector.png"
+    },
+    {
+      "name": "error",
+      "size": "panel628",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/error-panel628-light.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 332.0,
+        "y": 70.0,
+        "width": 628.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/error-panel628-light-inspector.png"
+    },
+    {
+      "name": "extreme",
+      "size": "panel628",
+      "theme": "light",
+      "path": "/tmp/te-final-r9/shots/extreme-panel628-light.png",
+      "captured": true,
+      "pixels": [
+        1920,
+        1280
+      ],
+      "window_id": "14773",
+      "window": [
+        960.0,
+        640.0
+      ],
+      "inspector": {
+        "x": 332.0,
+        "y": 70.0,
+        "width": 628.0,
+        "height": 546.0
+      },
+      "inspector_crop": "/tmp/te-final-r9/shots/extreme-panel628-light-inspector.png"
+    }
+  ],
+  "checks": [
+    {
+      "check": "the scene attaches from a path",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the tree is wider than a minimum-size panel",
+      "ok": true,
+      "detail": "37"
+    },
+    {
+      "check": "the dock accepts an inspector 100px wide",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'dock:right', 'size': 100.0}, '_ms': 0.893375003215624}"
+    },
+    {
+      "check": "the dock accepts an inspector 180px wide",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'dock:right', 'size': 180.0}, '_ms': 0.928000001295004}"
+    },
+    {
+      "check": "the dock accepts an inspector 628px wide",
+      "ok": true,
+      "detail": "{'ok': True, 'version': 1, 'data': {'target': 'dock:right', 'size': 628.0}, '_ms': 0.959999997576233}"
+    },
+    {
+      "check": "every capture was taken by the OS",
+      "ok": true,
+      "detail": "[]"
+    }
+  ],
+  "tree": {
+    "visible_entities": 37,
+    "truncated": false
+  },
+  "windows": {
+    "wide-dark": {
+      "requested": [
+        1680,
+        1000
+      ],
+      "reported": [
+        1680.0,
+        877.0
+      ],
+      "regions": {
+        "region:header": {
+          "x": 0.0,
+          "y": 0.0,
+          "width": 1680.0,
+          "height": 39.0
+        },
+        "region:toolbar": {
+          "x": 817.0,
+          "y": 5.5,
+          "width": 855.0,
+          "height": 28.0
+        },
+        "region:status": {
+          "x": 0.0,
+          "y": 854.0,
+          "width": 1680.0,
+          "height": 23.0
+        },
+        "region:library": {
+          "x": 0.0,
+          "y": 70.0,
+          "width": 232.0,
+          "height": 783.0
+        },
+        "region:monitor": {
+          "x": 232.0,
+          "y": 70.0,
+          "width": 1176.0,
+          "height": 487.0
+        },
+        "region:timeline": {
+          "x": 232.0,
+          "y": 587.0,
+          "width": 1176.0,
+          "height": 266.0
+        },
+        "region:inspector": {
+          "x": 1408.0,
+          "y": 70.0,
+          "width": 272.0,
+          "height": 783.0
+        }
+      }
+    },
+    "wide-light": {
+      "requested": [
+        1680,
+        1000
+      ],
+      "reported": [
+        1680.0,
+        879.0
+      ],
+      "regions": {
+        "region:header": {
+          "x": 0.0,
+          "y": 0.0,
+          "width": 1680.0,
+          "height": 39.0
+        },
+        "region:toolbar": {
+          "x": 817.0,
+          "y": 5.5,
+          "width": 855.0,
+          "height": 28.0
+        },
+        "region:status": {
+          "x": 0.0,
+          "y": 856.0,
+          "width": 1680.0,
+          "height": 23.0
+        },
+        "region:library": {
+          "x": 0.0,
+          "y": 70.0,
+          "width": 232.0,
+          "height": 785.0
+        },
+        "region:monitor": {
+          "x": 232.0,
+          "y": 70.0,
+          "width": 1176.0,
+          "height": 489.0
+        },
+        "region:timeline": {
+          "x": 232.0,
+          "y": 589.0,
+          "width": 1176.0,
+          "height": 266.0
+        },
+        "region:inspector": {
+          "x": 1408.0,
+          "y": 70.0,
+          "width": 272.0,
+          "height": 785.0
+        }
+      }
+    },
+    "min-dark": {
+      "requested": [
+        960,
+        640
+      ],
+      "reported": [
+        960.0,
+        640.0
+      ],
+      "regions": {
+        "region:header": {
+          "x": 0.0,
+          "y": 0.0,
+          "width": 960.0,
+          "height": 39.0
+        },
+        "region:toolbar": {
+          "x": 562.0,
+          "y": 5.5,
+          "width": 390.0,
+          "height": 28.0
+        },
+        "region:status": {
+          "x": 0.0,
+          "y": 617.0,
+          "width": 960.0,
+          "height": 23.0
+        },
+        "region:library": {
+          "x": 0.0,
+          "y": 70.0,
+          "width": 232.0,
+          "height": 546.0
+        },
+        "region:monitor": {
+          "x": 232.0,
+          "y": 70.0,
+          "width": 456.0,
+          "height": 250.0
+        },
+        "region:timeline": {
+          "x": 232.0,
+          "y": 350.0,
+          "width": 456.0,
+          "height": 266.0
+        },
+        "region:inspector": {
+          "x": 688.0,
+          "y": 70.0,
+          "width": 272.0,
+          "height": 546.0
+        }
+      }
+    },
+    "min-light": {
+      "requested": [
+        960,
+        640
+      ],
+      "reported": [
+        960.0,
+        640.0
+      ],
+      "regions": {
+        "region:header": {
+          "x": 0.0,
+          "y": 0.0,
+          "width": 960.0,
+          "height": 39.0
+        },
+        "region:toolbar": {
+          "x": 562.0,
+          "y": 5.5,
+          "width": 390.0,
+          "height": 28.0
+        },
+        "region:status": {
+          "x": 0.0,
+          "y": 617.0,
+          "width": 960.0,
+          "height": 23.0
+        },
+        "region:library": {
+          "x": 0.0,
+          "y": 70.0,
+          "width": 232.0,
+          "height": 546.0
+        },
+        "region:monitor": {
+          "x": 232.0,
+          "y": 70.0,
+          "width": 456.0,
+          "height": 250.0
+        },
+        "region:timeline": {
+          "x": 232.0,
+          "y": 350.0,
+          "width": 456.0,
+          "height": 266.0
+        },
+        "region:inspector": {
+          "x": 688.0,
+          "y": 70.0,
+          "width": 272.0,
+          "height": 546.0
+        }
+      }
+    },
+    "panel100-dark": {
+      "requested": [
+        960,
+        640
+      ],
+      "reported": [
+        960.0,
+        640.0
+      ],
+      "regions": {
+        "region:header": {
+          "x": 0.0,
+          "y": 0.0,
+          "width": 960.0,
+          "height": 39.0
+        },
+        "region:toolbar": {
+          "x": 562.0,
+          "y": 5.5,
+          "width": 390.0,
+          "height": 28.0
+        },
+        "region:status": {
+          "x": 0.0,
+          "y": 617.0,
+          "width": 960.0,
+          "height": 23.0
+        },
+        "region:library": {
+          "x": 0.0,
+          "y": 70.0,
+          "width": 232.0,
+          "height": 546.0
+        },
+        "region:monitor": {
+          "x": 232.0,
+          "y": 70.0,
+          "width": 628.0,
+          "height": 250.0
+        },
+        "region:timeline": {
+          "x": 232.0,
+          "y": 350.0,
+          "width": 628.0,
+          "height": 266.0
+        },
+        "region:inspector": {
+          "x": 860.0,
+          "y": 70.0,
+          "width": 100.0,
+          "height": 546.0
+        }
+      }
+    },
+    "panel100-light": {
+      "requested": [
+        960,
+        640
+      ],
+      "reported": [
+        960.0,
+        640.0
+      ],
+      "regions": {
+        "region:header": {
+          "x": 0.0,
+          "y": 0.0,
+          "width": 960.0,
+          "height": 39.0
+        },
+        "region:toolbar": {
+          "x": 562.0,
+          "y": 5.5,
+          "width": 390.0,
+          "height": 28.0
+        },
+        "region:status": {
+          "x": 0.0,
+          "y": 617.0,
+          "width": 960.0,
+          "height": 23.0
+        },
+        "region:library": {
+          "x": 0.0,
+          "y": 70.0,
+          "width": 232.0,
+          "height": 546.0
+        },
+        "region:monitor": {
+          "x": 232.0,
+          "y": 70.0,
+          "width": 628.0,
+          "height": 250.0
+        },
+        "region:timeline": {
+          "x": 232.0,
+          "y": 350.0,
+          "width": 628.0,
+          "height": 266.0
+        },
+        "region:inspector": {
+          "x": 860.0,
+          "y": 70.0,
+          "width": 100.0,
+          "height": 546.0
+        }
+      }
+    },
+    "panel180-dark": {
+      "requested": [
+        960,
+        640
+      ],
+      "reported": [
+        960.0,
+        640.0
+      ],
+      "regions": {
+        "region:header": {
+          "x": 0.0,
+          "y": 0.0,
+          "width": 960.0,
+          "height": 39.0
+        },
+        "region:toolbar": {
+          "x": 562.0,
+          "y": 5.5,
+          "width": 390.0,
+          "height": 28.0
+        },
+        "region:status": {
+          "x": 0.0,
+          "y": 617.0,
+          "width": 960.0,
+          "height": 23.0
+        },
+        "region:library": {
+          "x": 0.0,
+          "y": 70.0,
+          "width": 232.0,
+          "height": 546.0
+        },
+        "region:monitor": {
+          "x": 232.0,
+          "y": 70.0,
+          "width": 548.0,
+          "height": 250.0
+        },
+        "region:timeline": {
+          "x": 232.0,
+          "y": 350.0,
+          "width": 548.0,
+          "height": 266.0
+        },
+        "region:inspector": {
+          "x": 780.0,
+          "y": 70.0,
+          "width": 180.0,
+          "height": 546.0
+        }
+      }
+    },
+    "panel180-light": {
+      "requested": [
+        960,
+        640
+      ],
+      "reported": [
+        960.0,
+        640.0
+      ],
+      "regions": {
+        "region:header": {
+          "x": 0.0,
+          "y": 0.0,
+          "width": 960.0,
+          "height": 39.0
+        },
+        "region:toolbar": {
+          "x": 562.0,
+          "y": 5.5,
+          "width": 390.0,
+          "height": 28.0
+        },
+        "region:status": {
+          "x": 0.0,
+          "y": 617.0,
+          "width": 960.0,
+          "height": 23.0
+        },
+        "region:library": {
+          "x": 0.0,
+          "y": 70.0,
+          "width": 232.0,
+          "height": 546.0
+        },
+        "region:monitor": {
+          "x": 232.0,
+          "y": 70.0,
+          "width": 548.0,
+          "height": 250.0
+        },
+        "region:timeline": {
+          "x": 232.0,
+          "y": 350.0,
+          "width": 548.0,
+          "height": 266.0
+        },
+        "region:inspector": {
+          "x": 780.0,
+          "y": 70.0,
+          "width": 180.0,
+          "height": 546.0
+        }
+      }
+    },
+    "panel628-dark": {
+      "requested": [
+        960,
+        640
+      ],
+      "reported": [
+        960.0,
+        640.0
+      ],
+      "regions": {
+        "region:header": {
+          "x": 0.0,
+          "y": 0.0,
+          "width": 960.0,
+          "height": 39.0
+        },
+        "region:toolbar": {
+          "x": 562.0,
+          "y": 5.5,
+          "width": 390.0,
+          "height": 28.0
+        },
+        "region:status": {
+          "x": 0.0,
+          "y": 617.0,
+          "width": 960.0,
+          "height": 23.0
+        },
+        "region:library": {
+          "x": 0.0,
+          "y": 70.0,
+          "width": 232.0,
+          "height": 546.0
+        },
+        "region:monitor": {
+          "x": 232.0,
+          "y": 70.0,
+          "width": 100.0,
+          "height": 250.0
+        },
+        "region:timeline": {
+          "x": 232.0,
+          "y": 350.0,
+          "width": 100.0,
+          "height": 266.0
+        },
+        "region:inspector": {
+          "x": 332.0,
+          "y": 70.0,
+          "width": 628.0,
+          "height": 546.0
+        }
+      }
+    },
+    "panel628-light": {
+      "requested": [
+        960,
+        640
+      ],
+      "reported": [
+        960.0,
+        640.0
+      ],
+      "regions": {
+        "region:header": {
+          "x": 0.0,
+          "y": 0.0,
+          "width": 960.0,
+          "height": 39.0
+        },
+        "region:toolbar": {
+          "x": 562.0,
+          "y": 5.5,
+          "width": 390.0,
+          "height": 28.0
+        },
+        "region:status": {
+          "x": 0.0,
+          "y": 617.0,
+          "width": 960.0,
+          "height": 23.0
+        },
+        "region:library": {
+          "x": 0.0,
+          "y": 70.0,
+          "width": 232.0,
+          "height": 546.0
+        },
+        "region:monitor": {
+          "x": 232.0,
+          "y": 70.0,
+          "width": 100.0,
+          "height": 250.0
+        },
+        "region:timeline": {
+          "x": 232.0,
+          "y": 350.0,
+          "width": 100.0,
+          "height": 266.0
+        },
+        "region:inspector": {
+          "x": 332.0,
+          "y": 70.0,
+          "width": 628.0,
+          "height": 546.0
+        }
+      }
+    }
+  },
+  "visual_validated": "Selected screenshots inspected by coordinator; all 50 OS captures succeeded; not a physical-pointer proof",
+  "ok": true,
+  "reviewed_captures": [
+    "selected-min-dark.png",
+    "selected-min-light.png",
+    "selected-panel100-light-inspector.png"
+  ]
+}

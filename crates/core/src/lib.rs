@@ -23,6 +23,7 @@ pub mod plan;
 pub mod preset;
 pub mod preview;
 pub mod scene_edit;
+pub mod scene_export;
 pub mod scene_interaction;
 pub mod scene_plan;
 pub mod scene_project;

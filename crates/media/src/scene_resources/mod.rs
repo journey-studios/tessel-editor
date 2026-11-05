@@ -21,6 +21,8 @@
 //! | [`session`] | Ownership, generation, release, byte budget; a late job result cannot install |
 //! | [`load`] | The job body that produces a map |
 //! | [`adopt`] | Copy from where a bundle was authored into the managed base (also the relink) |
+//! | [`cleanup`] | What an adoption/import created and may remove again; the owner that removes it unless the result is accepted (BL089), checked by content (BL097) |
+//! | `claims` | Who relies on a file a pending result created, so a discard never removes what another result reused (BL096) |
 //! | [`pack`] | What a package carries and proves for scenes |
 //! | [`import`] | Carrying scenes between projects, renaming IDs without losing references |
 //!
@@ -28,14 +30,18 @@
 
 pub mod adopt;
 pub mod base;
+mod claims;
+pub mod cleanup;
 pub mod import;
 pub mod load;
 pub mod map;
 pub(crate) mod pack;
 pub mod session;
 
-pub use adopt::{Adoption, adopt};
+pub use adopt::{Adoption, AdoptionTarget, PendingAdoption, adopt};
 pub use base::{BaseKind, MANAGED_DIR, ResourceBase};
+pub use claims::tracked_under;
+pub use cleanup::{CleanupReport, Created, Provisional};
 pub use load::{LoadRequest, check, load};
 pub use map::{
     ApprovedResource, Generation, ResolveError, ResolvedResource, ResolvedResourceMap,

@@ -9,6 +9,8 @@ use serde_json::{Value, json};
 use tessel_editor_core::CommandError;
 use tessel_editor_core::preset::BUILTIN_IDS;
 
+use super::scene_import::{self, ImportPlan};
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum FlowKind {
     Open,
@@ -18,10 +20,16 @@ pub enum FlowKind {
     ImportProject,
     Package,
     Export,
+    ExportScene,
+    /// F043: `scene.attach` of a render-bundle, then (with a resource folder) adopt, load,
+    /// select and show it. See `scene_import.rs`.
+    AttachScene,
+    /// F043: load or re-adopt the resources of a scene that is already attached.
+    SceneResources,
 }
 
 impl FlowKind {
-    pub const ALL: [FlowKind; 7] = [
+    pub const ALL: [FlowKind; 10] = [
         Self::Open,
         Self::SaveAs,
         Self::Recover,
@@ -29,6 +37,9 @@ impl FlowKind {
         Self::ImportProject,
         Self::Package,
         Self::Export,
+        Self::ExportScene,
+        Self::AttachScene,
+        Self::SceneResources,
     ];
 
     /// Stable suffix of the automation IDs (`flow.<id>`).
@@ -41,6 +52,9 @@ impl FlowKind {
             Self::ImportProject => "import_project",
             Self::Package => "package",
             Self::Export => "export",
+            Self::ExportScene => "export_scene",
+            Self::AttachScene => "attach_scene",
+            Self::SceneResources => "scene_resources",
         }
     }
 
@@ -57,6 +71,9 @@ impl FlowKind {
             Self::ImportProject => "Importar de outro projeto",
             Self::Package => "Empacotar projeto",
             Self::Export => "Exportar vídeo",
+            Self::ExportScene => "Exportar cena",
+            Self::AttachScene => "Anexar cena",
+            Self::SceneResources => "Recursos da cena",
         }
     }
 
@@ -69,6 +86,9 @@ impl FlowKind {
             Self::ImportProject => "Importar",
             Self::Package => "Empacotar",
             Self::Export => "Exportar",
+            Self::ExportScene => "Exportar cena",
+            Self::AttachScene => "Anexar",
+            Self::SceneResources => "Carregar",
         }
     }
 
@@ -81,12 +101,31 @@ impl FlowKind {
             Self::ImportProject => &[SOURCE],
             Self::Package => &[PACKAGE_PATH, PACKAGE_FORMAT],
             Self::Export => &[PRESET, DESTINATION],
+            Self::ExportScene => &[
+                SCENE,
+                PRESET,
+                FROM_FRAME,
+                FRAME_COUNT,
+                SCENE_AUDIO,
+                DESTINATION,
+            ],
+            Self::AttachScene => &[BUNDLE, SCENE_ID, SCENE_NAME, RESOURCE_FOLDER, SHOW],
+            Self::SceneResources => &[SCENE, RESOURCE_FOLDER, SHOW],
         }
+    }
+
+    /// The scene flows hand over to `scene_import.rs` instead of sending one operation: loading
+    /// resources is a chain of background jobs the window follows on its tick.
+    pub fn is_scene_import(self) -> bool {
+        matches!(self, Self::AttachScene | Self::SceneResources)
     }
 
     /// Whether the dialog shows a report (preflight or recovery listing) it can refresh.
     pub fn has_report(self) -> bool {
-        matches!(self, Self::Export | Self::Package | Self::Recover)
+        matches!(
+            self,
+            Self::Export | Self::ExportScene | Self::Package | Self::Recover
+        )
     }
 }
 
@@ -97,6 +136,8 @@ pub enum Picker {
     Files,
     File,
     NewFile(&'static str),
+    /// A folder (F043: where a scene's resources were authored).
+    Directory,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -174,6 +215,94 @@ const DESTINATION: FieldSpec = FieldSpec {
     options: &[],
 };
 
+const BUNDLE: FieldSpec = FieldSpec {
+    name: "bundle",
+    label: "Render-bundle (.json)",
+    placeholder: "/caminho/render-bundle.json",
+    picker: Picker::File,
+    options: &[],
+};
+const SCENE_ID: FieldSpec = FieldSpec {
+    name: "id",
+    label: "ID da cena (opcional)",
+    placeholder: "street",
+    picker: Picker::None,
+    options: &[],
+};
+const SCENE_NAME: FieldSpec = FieldSpec {
+    name: "name",
+    label: "Nome (opcional)",
+    placeholder: "Rua à noite",
+    picker: Picker::None,
+    options: &[],
+};
+const SCENE: FieldSpec = FieldSpec {
+    name: "scene",
+    label: "Cena",
+    placeholder: "street",
+    picker: Picker::None,
+    options: &[],
+};
+const FROM_FRAME: FieldSpec = FieldSpec {
+    name: "from",
+    label: "Primeiro frame (opcional)",
+    placeholder: "0",
+    picker: Picker::None,
+    options: &[],
+};
+const FRAME_COUNT: FieldSpec = FieldSpec {
+    name: "frames",
+    label: "Quantidade de frames (opcional)",
+    placeholder: "Até o fim",
+    picker: Picker::None,
+    options: &[],
+};
+const SCENE_AUDIO: FieldSpec = FieldSpec {
+    name: "audio",
+    label: "Incluir áudio (ainda indisponível para cenas)",
+    placeholder: "yes",
+    picker: Picker::None,
+    options: &["yes", "no"],
+};
+const RESOURCE_FOLDER: FieldSpec = FieldSpec {
+    name: "source",
+    label: "Pasta dos recursos (opcional)",
+    placeholder: "/caminho/da/pasta",
+    picker: Picker::Directory,
+    options: &[],
+};
+const SHOW: FieldSpec = FieldSpec {
+    name: "show",
+    label: "Exibir no monitor",
+    placeholder: "yes",
+    picker: Picker::None,
+    options: &["yes", "no"],
+};
+
+pub(super) fn field_value(values: &[(&str, String)], name: &str) -> String {
+    values
+        .iter()
+        .find(|(field, _)| *field == name)
+        .map(|(_, text)| text.trim().to_string())
+        .unwrap_or_default()
+}
+
+/// What follows a scene dialog's own operation: whether resources are loaded, from which folder,
+/// and whether the scene is then shown. `scene` is the ID the core gave (or the user typed).
+/// The folder is only a path: whether it exists, is absolute or holds the files is decided by
+/// the media host's `scene.resources.*`, never here.
+pub fn import_plan(kind: FlowKind, values: &[(&str, String)], scene: &str) -> ImportPlan {
+    let source = Some(field_value(values, "source")).filter(|folder| !folder.is_empty());
+    ImportPlan {
+        scene: scene.to_string(),
+        // Attaching alone is a valid outcome; loading from the project's own folder is what the
+        // second dialog is for.
+        load: kind == FlowKind::SceneResources || source.is_some(),
+        source,
+        show: field_value(values, "show") != "no",
+    }
+}
+
 fn missing(label: &str) -> CommandError {
     CommandError::new("missing_argument", format!("Preencha o campo «{label}»"))
 }
@@ -229,6 +358,48 @@ pub fn build_request(kind: FlowKind, values: &[(&str, String)]) -> Result<Value,
         FlowKind::Export => {
             json!({ "op": "export.start", "preset": required("preset")?, "destination": required("destination")? })
         }
+        FlowKind::ExportScene => {
+            let mut request = json!({"op": "scene.export", "scene": required("scene")?,
+                "preset": required("preset")?, "destination": required("destination")?});
+            for name in ["from", "frames"] {
+                let text = value(name);
+                if !text.is_empty() {
+                    let number = text.parse::<i64>().map_err(|_| {
+                        CommandError::new(
+                            "invalid_value",
+                            format!("«{name}» deve ser um número inteiro"),
+                        )
+                    })?;
+                    request[name] = json!(number);
+                }
+            }
+            match value("audio").as_str() {
+                "" | "yes" => {}
+                "no" => request["audio"] = json!(false),
+                _ => {
+                    return Err(CommandError::new(
+                        "invalid_value",
+                        "Áudio deve ser yes ou no",
+                    ));
+                }
+            }
+            request
+        }
+        FlowKind::AttachScene => {
+            let mut request = json!({ "op": "scene.attach", "path": required("bundle")? });
+            for name in ["id", "name"] {
+                let text = value(name);
+                if !text.is_empty() {
+                    request[name] = json!(text);
+                }
+            }
+            request
+        }
+        // The first job of the chain; the rest follows from its answer (`scene_import.rs`).
+        FlowKind::SceneResources => {
+            let scene = required("scene")?;
+            scene_import::first_request(&import_plan(kind, values, &scene))
+        }
     })
 }
 
@@ -237,6 +408,10 @@ pub fn report_request(kind: FlowKind, values: &[(&str, String)]) -> Option<Value
     let request = match kind {
         FlowKind::Export => build_request(kind, values).ok().map(|mut request| {
             request["op"] = json!("export.preflight");
+            request
+        }),
+        FlowKind::ExportScene => build_request(kind, values).ok().map(|mut request| {
+            request["op"] = json!("scene.export.preflight");
             request
         }),
         FlowKind::Package => build_request(kind, values).ok().map(|mut request| {
@@ -338,6 +513,51 @@ mod tests {
             .iter()
             .map(|(name, value)| (*name, value.to_string()))
             .collect()
+    }
+
+    #[test]
+    fn directed_export_dialog_uses_the_shared_operation_and_typed_range() {
+        let fields = values(&[
+            ("scene", "demo"),
+            ("preset", "1080p"),
+            ("destination", "/tmp/out.mp4"),
+            ("from", "2"),
+            ("frames", "4"),
+            ("audio", "no"),
+        ]);
+        let request = build_request(FlowKind::ExportScene, &fields).unwrap();
+        assert_eq!(
+            request,
+            json!({"op":"scene.export", "scene":"demo", "preset":"1080p", "destination":"/tmp/out.mp4", "from":2, "frames":4, "audio":false})
+        );
+        assert_eq!(
+            report_request(FlowKind::ExportScene, &fields).unwrap()["op"],
+            "scene.export.preflight"
+        );
+        assert_eq!(FlowKind::parse("export_scene"), Some(FlowKind::ExportScene));
+    }
+
+    #[test]
+    fn directed_export_dialog_refuses_bad_numbers_and_does_not_silently_omit_audio() {
+        let mut fields = values(&[
+            ("scene", "demo"),
+            ("preset", "1080p"),
+            ("destination", "/tmp/out.mp4"),
+            ("from", "abc"),
+        ]);
+        assert_eq!(
+            build_request(FlowKind::ExportScene, &fields)
+                .unwrap_err()
+                .code,
+            "invalid_value"
+        );
+        fields.pop();
+        assert!(
+            build_request(FlowKind::ExportScene, &fields)
+                .unwrap()
+                .get("audio")
+                .is_none()
+        );
     }
 
     #[test]

@@ -1,0 +1,111 @@
+{
+  "version": 1,
+  "about": "Adapter between this proof and the operations other fronts are adding. `op`/`args` of `export` are the CONTRACT TARGET (docs/migration/next-delivery-ten-agents.md, frozen contract 3: scene.export {scene,preset,destination,from,frames,wait?}); every other field is an ADDITIVE proposal and is marked `proposed`. `$name` is replaced by the phase's value, a null value drops the key. A phase sends the real request; `unknown_operation` makes that phase BLOCKED (exit 3), never PASS. No editor rule lives in this file or in the harness: the coordinator edits names after R1 lands, no phase code changes.",
+  "ops": {
+    "export": {
+      "op": "scene.export",
+      "args": {
+        "scene": "$scene",
+        "preset": "$preset",
+        "destination": "$destination",
+        "from": "$from",
+        "frames": "$frames",
+        "wait": "$wait",
+        "replace": "$replace",
+        "audio": "$audio"
+      },
+      "backlog": "BL008",
+      "needs": "scene.export {scene, preset, destination, from, frames, wait?} through the shared parser (core ops::parse_op), a snapshot of the scene taken at the request, frames [from, from+frames), the plan and approved resources of scene.render, a job with progress/cancel (job.get/job.cancel), staging + publish by rename",
+      "result": {
+        "about": "Paths into the body answered by a successful export (wait=true) or into `job.get`.result. Every field is OPTIONAL: when present it is compared with what ffprobe measured in the file (a report that lies fails); when absent it is listed as `unreported` in the evidence, never assumed.",
+        "path": "",
+        "fields": {
+          "destination": "destination",
+          "frames": "frames",
+          "fps": "fps",
+          "duration_seconds": "duration_seconds",
+          "output_width": "output.width",
+          "output_height": "output.height",
+          "audio": "audio",
+          "warnings": "warnings",
+          "verification": "verification",
+          "resources": "resources"
+        },
+        "status": "confirmed against R1's delivered report (docs/migration/next-r1-report.md): destination, frames, fps, duration_seconds, output, audio, warnings, verification and frame_hashes/metrics and `resources` ([{asset, sha256, revision, bytes}], checked against the bundle's own contentHash/revisionId) are answered. `fps` is an object {num,den,fps} (Rate::to_json): compared as the exact fraction num/den, `fps` (a float) is ignored."
+      },
+      "async": {
+        "job_key": "job",
+        "about": "wait=false (or the interactive window host) answers {job, state:'queued', info}; the result then comes from job.get.result when job.state is `succeeded`",
+        "status": "same shape as export.start: wait=false answers {job, state, ...}; result from job.get.result (exercised by export_cancel and export_snapshot)"
+      }
+    },
+    "job_get": {
+      "op": "job.get",
+      "args": {
+        "job": "$job"
+      },
+      "backlog": "BL008",
+      "needs": "job.get on the export job"
+    },
+    "job_cancel": {
+      "op": "job.cancel",
+      "args": {
+        "job": "$job"
+      },
+      "backlog": "BL008",
+      "needs": "job.cancel on the export job"
+    }
+  },
+  "error_codes": {
+    "about": "Codes this proof accepts for refusals. A refusal must be typed (non-empty `code`); these only name the ones the contract is expected to use.",
+    "destination_exists": [
+      "destination_exists"
+    ],
+    "range": [
+      "invalid_range",
+      "frame_out_of_range",
+      "invalid_value",
+      "invalid_request",
+      "range_out_of_bounds"
+    ],
+    "unknown_scene": [
+      "unknown_element",
+      "unknown_scene",
+      "scene_not_found"
+    ],
+    "unknown_preset": [
+      "invalid_preset",
+      "unknown_preset"
+    ],
+    "audio_not_mixed_warning_codes": [
+      "audio_omitted",
+      "directed_audio_not_mixed",
+      "audio_not_mixed",
+      "scene_audio_not_mixed",
+      "video_audio_not_mixed"
+    ],
+    "audio_refusal": [
+      "unsupported",
+      "audio_not_supported",
+      "unsupported_resource",
+      "audio_not_mixed"
+    ],
+    "audio_omitted_warning_codes": [
+      "audio_omitted"
+    ]
+  },
+  "ui": {
+    "about": "Prepared, not wired: the coordinator integrates the export control (frozen contract 4; real id `flow.export_scene`, R1 dialog). The phase looks for these ids in the live tree of an isolated editor instance. While none exists it is BLOCKED; once one exists it STAYS BLOCKED until a verified semantic flow (invoke/set only, then export and verify like socket_export) is written against the integrated build: finding a node is never a PASS.",
+    "export_node_prefixes": [
+      "flow.export_scene",
+      "scene.export",
+      "export.scene"
+    ],
+    "backlog": "BL086/BL008"
+  },
+  "limits": {
+    "poll_seconds": 0.1,
+    "job_start_timeout_seconds": 120,
+    "job_final_timeout_seconds": 900
+  }
+}

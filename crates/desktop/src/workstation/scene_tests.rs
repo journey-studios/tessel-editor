@@ -633,3 +633,8 @@ fn the_limits_a_client_reads_are_the_limits_the_slider_has(cx: &mut TestAppConte
     assert_eq!(semantic["fields"][0]["max"].as_f64(), Some(window.max));
     assert!(window.max >= 9.0, "{window:?}");
 }
+
+// BL087 (R9): the inspector's layout at the sizes the window really takes. A path module so the
+// coordinator's `mod.rs` needs no new line.
+#[path = "scene_visual_tests.rs"]
+mod visual;

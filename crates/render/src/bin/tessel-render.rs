@@ -6,7 +6,8 @@
 //! Starts from an empty project (`--demo` keeps the demonstration bootstrap). The Node worker
 //! and Chrome start on the first request that needs a frame, so planning and editing work
 //! even when the runtime is not installed; `render.frame` then answers `backend_unavailable`
-//! with the setup command.
+//! with the setup command. `scene.render` and `scene.export` (a directed scene as an MP4, F042)
+//! go through `SceneHost`; without the runtime `scene.export` answers `backend_unavailable`.
 use std::io::{self, BufWriter};
 use std::sync::Arc;
 

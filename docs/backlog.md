@@ -1,8 +1,8 @@
 # Backlog compartilhado do Tessel Editor
 
 Registro único de execução das pendências: building blocks, migração, produto, decisões e provas.
-Atualizado em 2026-11-05, após o merge `6cc4392` (PR #1). A rodada A–G terminou;
-A rodada H/I/J/K foi iniciada com quatro agentes Cursor Sonnet 5.5; atribuições e links abaixo. Responsável `—` significa não atribuído.
+Atualizado em 2026-11-05, após o merge `914c830` (PR #3). Rodadas A–G, H–L e M–P integradas.
+Próxima rodada autorizada: dez frentes R1–R10, com contratos/ownership no plano abaixo. Responsável `—` significa não atribuído.
 
 ## Como todo agente deve usar
 
@@ -49,20 +49,20 @@ Fontes: [roadmap](migration/phased-roadmap.md), [matriz](features/README.md),
 | BL003 | BB03 | Avaliar domínios ainda em `unevaluated`: luz, clima, efeitos, rig, paths, bind/reveal | Parcial | Domínio escolhido | — | Estado por frame equivalente; nada omitido como se estivesse avaliado |
 | BL004 | BB04 | Ampliar catálogo: componentes, renderOrder, keys/segmentos e propriedades dos novos domínios | Parcial | BL001–BL003 aplicáveis | — | Tipo/unidade/faixa/default compartilhados; rollback e undo por lote |
 | BL005 | BB04 | Compatibilizar escrita de pose inicial com a conversão de movimentos/keys da origem | Pendente | BL004 | — | Semântica escolhida documentada e comparada com a origem |
-| BL006 | BB05 | Definir plano avaliado de cena e contrato core → runtime, versão/capabilities | A validar | BB02/BB03 existentes | H / F037 ([relatório](migration/foundation-h-report.md)) | 29 testes públicos, doctest e clippy lib passaram. Renderer BL007 e recursos BL009 continuam pendentes; gate completo da rodada ainda será executado |
+| BL006 | BB05 | Definir plano avaliado e contrato core → runtime | Concluído | BB02/BB03 | Coordenador | F037/F041 integrados na PR #3; plano completo, capabilities, gates e consumidor real. Domínios adicionais e export permanecem em seus próprios itens |
 | BL007 | BB05 | Renderer da cena dirigida em preview e headless; geração/cancelamento/invalidação | Parcial | BL006, BL010 | M / coordenador | F041: plano real no Three.js, CLI e monitor WKWebView; 184 checks headless (com plano) e 40 checks de pixels nativos. Lifecycle Node e 3 testes do host. Contexto/reload nativos dirigidos ainda a ampliar |
-| BL008 | BB05 | Exportar cenas dirigidas pelo mesmo plano e original | Pendente | BL007 | — | Comparação de frames preview/headless/export e export curto reproduzível |
+| BL008 | BB05 | Exportar cenas dirigidas pelo mesmo plano e original | Validado localmente | BL007 | R1 / coordenador | R1 reporta 10 testes Chrome real com 1080p/4K, pixels e CLI. Coordenador reconferiu core 14/14, media 7/7 e desktop integrado 190/190; diálogo/host ligados, R10 reporta 23/23 fases CLI/socket/diálogo; repetir com fontes finais e gate global passous; áudio dirigido recusado salvo omissão explícita  Gate final: [R1–R10](migration/round-r1-r10-report.md); PR/revisão pendentes. |
 | BL009 | BB06 | Resolver dependências transitivas: imagens/mapas/splats/fontes e base de caminhos | Parcial | Modelo BB01/BB02 | I / F038 ([relatório](migration/foundation-i-report.md)) | Manifesto/closure/preflight implementados; 27 core + 39 media e plano × manifesto passaram. Mapas/f32/narração só listados; fontes fora da fatia |
 | BL010 | BB06 | Jobs/load/cache/release por geração e dependentes da cena | Parcial | BL009 | N / coordenador | F040: MediaHost com sessão, geração, orçamento, resolve/release/invalidate; 22 testes de integração/publicação reconferidos. Consumo por mapa aprovado e pixels comprovados em F041 |
 | BL011 | BB06 | Save/package/restore/relink/interchange de recursos de cena | Parcial | BL009, BL010 | N / coordenador | F040: adopt/relink, base gerenciada, pacote Directory/Archive e project.import_scenes; teste de restauração sem origem/workspace passou. UI e formatos BL077 pendentes; guardas mantidas fora do subconjunto |
-| BL012 | BB07 | Seleção por entidade, árvore de cena e tool state | A validar | BB02, BL004 | J / F039 ([relatório](migration/foundation-j-report.md)) | 21 testes públicos e unidade core passaram; executável headless real (13 requests) validou queries/seleção/gestos/undo; UI/socket e gesto físico pendentes |
-| BL013 | BB07 | Gestos com preview/commit/cancel e histórico agrupado | A validar | BL012 | J / F039 ([relatório](migration/foundation-j-report.md)) | 21 testes públicos e unidade core passaram; executável headless real (13 requests) validou queries/seleção/gestos/undo; UI/socket e gesto físico pendentes |
+| BL012 | BB07 | Seleção por entidade, árvore de cena e tool state | Parcial | BB02, BL004 | J / F039 ([relatório](migration/foundation-j-report.md)) | 21 testes públicos e unidade core passaram; executável headless real (13 requests) validou queries/seleção/gestos/undo; UI/input GPUI e socket integrados na PR #3; ponteiro físico/handles pendentes |
+| BL013 | BB07 | Gestos com preview/commit/cancel e histórico agrupado | Parcial | BL012 | J / F039 ([relatório](migration/foundation-j-report.md)) | 21 testes públicos e unidade core passaram; executável headless real (13 requests) validou queries/seleção/gestos/undo; UI/input GPUI e socket integrados na PR #3; ponteiro físico/handles pendentes |
 | BL014 | BB08 | Inspector ligado ao catálogo e às propriedades vivas | A validar | BL004, BL012 | O / coordenador | [F039-UI](features/scene-inspector.md): árvore, oito propriedades, candidato/reset e erro tipado; agente reporta 137 testes desktop e clippy limpos, socket em instância própria. Gate local passou; falta inspeção visual |
 | BL015 | BB08 | Overlays/handles: coordenadas, foco, hit testing e resize sobre WebView | Pendente | BL007, BL013, BL014, BL042 | — | Handle e comando dão mesmo resultado; validar foco/resize nativos |
 | BL016 | BB09 | Transporte/mix do modelo dirigido: shots, janela de edição e relógio | Pendente | BL006, BL008 | — | Frame e amostra correspondentes em play/seek/pause; offline sem dispositivo |
 | BL017 | BB09 | Narração/takes/legendas e monitor gain | Pendente | BL016, BL026 | — | Tempo, texto e mix persistem e coincidem na saída |
 | BL018 | BB10 | Expandir corpus: tolerâncias JOIN, FPS variados e matrizes mundo | Parcial | BB10 existente | K / F032 ([relatório](migration/foundation-k-report.md)) | 47 casos estendidos + 55 base verificados contra origem; 49 testes Node e 15 testes Rust passaram. Matriz da câmera usa Three isolado; limite do runtime em BL071 |
-| BL019 | BB10 | Provas de plano/pixels/áudio/performance por novo domínio | Parcial | Cada entrega | P / coordenador | [Corpus e harness](migration/directed-scene-proof.md) recebidos: modelo/corpus e 14 testes Python reconferidos; agente executou 80 checks headless e 80 socket, binários sinalizados como anteriores às fontes. Pixels/pacote/export bloqueados até BL007/BL011/BL008/BL063; reexecutar após build integrado |
+| BL019 | BB10 | Provas de plano/pixels/áudio/performance por domínio | Parcial | Cada entrega | Coordenador | PR #3: 408 checks no fluxo de cena, headless/socket/pixels/pacote; sem prova de export dirigido ou áudio. R10 amplia para export; contexto nativo dirigido em BL092 |
 | BL020 | Adapters | Expor avaliação completa de nós por frame no acesso programático de cena | A validar | BB03 existente | J / F039 ([relatório](migration/foundation-j-report.md)) | 21 testes públicos e unidade core passaram; executável headless real (13 requests) validou queries/seleção/gestos/undo; UI/socket e gesto físico pendentes |
 | BL021 | Adapters | Provar `scene.*` pelo socket da janela e depois pela UI visual | A validar | BL012/BL014 para UI | O/P / coordenador | Socket reportado em instâncias próprias; O: controles semânticos, P: 80 checks. UI com 16 testes de input GPUI; aparência e ponteiro físico não conferidos. Build integrado: prova final 408/408, com 80 checks de socket e 2 da árvore semântica |
 
@@ -190,7 +190,7 @@ serão integrados pelo coordenador. A janela do usuário não é reiniciada dura
 | ID | Área | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
 | BL063 | BB05/Adapters | Expor scene.plan por lib/JSONL/UI e integrar plano × manifesto | Concluído | BL006, BL009 | Coordenador | Operação compartilhada scene.plan com gates/gesture; mapa F040 consumido em scene.render e monitor. 7 testes scene_flow e 60 checks de plano headless passaram; gate local passou (827/2 no workspace, scene_flow 8/8 após teste extra) |
-| BL064 | BB05/performance | Avaliação de muitos frames sem reconstruir NodeTimeline; medir tamanho/custo do plano | Pendente | BL006, consumidor BL007/BL008 | — | Hipótese medida antes de otimizar; mesma saída e budget explícito no export curto |
+| BL064 | BB05/performance | Avaliação de muitos frames sem reconstruir NodeTimeline; medir tamanho/custo do plano | Validado localmente | BL006, consumidor BL007/BL008 | R6 / coordenador | PlanTimeline aditiva recebida; coordenador reconferiu 10/10 testes de equivalência e 4/4 do runner; agente mediu plano 3–5x, plano+JSON 1,09–1,24x (câmera pesada 28x/2,7x). Equivalência, golden por perfil e memória documentados em next-r6-report.md. PlanTimeline adotada pela R1 no job e coleta de assets; ganho no export real e gate global passous  Gate final: [R1–R10](migration/round-r1-r10-report.md); PR/revisão pendentes. |
 | BL065 | BB05/domínios | Expandir plano aos domínios recusados e ao desempate por profundidade | Pendente | BL003, BL023–BL027 | — | Capabilities/versão e estado completo por domínio, com provas; não remover unsupported sem implementação |
 
 H recebida: plano não executa gates de admissão temporal/estrutural; o adapter consumidor deve
@@ -202,10 +202,10 @@ os novos IDs de H foram reconciliados como BL063–BL065.
 
 | ID | Área | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL066 | BB07/segurança de sessão | Evitar colisão de IDs de gesto após abrir/criar projeto | Pendente | BL013 | Coordenador | Pedido antigo não consegue atualizar/confirmar gesto novo; teste cruzando sessões/projetos |
-| BL067 | BB07/prova de erro | Commit de gesto rejeitado pelo orçamento de bytes | A validar | BL013 | Coordenador | Rejeição preserva cena/histórico/candidato e devolve erro tipado |
-| BL068 | BB07/observabilidade | Expor seleção e gesto no summary compartilhado | Pendente | BL012/BL013 | — | Estado efêmero consultável sem criar histórico; refletir invalidação |
-| BL069 | BB07/seleção | Poda/invalidação imediata no undo, além da checagem preguiçosa atual | Pendente | BL012/BL013, coordenação com L | — | Avaliar necessidade antes de alterar; se implementada, sem restaurar apresentação antiga no undo |
+| BL066 | BB07/segurança de sessão | Evitar colisão de IDs de gesto após abrir/criar projeto | Validado localmente | BL013 | R3 / coordenador | IDs opacos por sessão; teste de projeto novo e reaberto recusa pedido antigo com other_session. Coordenador reconferiu scene_session 15/15 e scene_interaction 21/21, incluindo executável JSONL; workspace/desktop e provas finais passaram.  Gate final: [R1–R10](migration/round-r1-r10-report.md); PR/revisão pendentes. |
+| BL067 | BB07/prova de erro | Commit de gesto rejeitado pelo orçamento de bytes | Validado localmente | BL013 | R3 / coordenador | Update público acima de 128 MiB recusa sem mutação. Commit acima do orçamento é ramo de defesa provado só por teste unitário white-box, inalcançável via API pública normal; não alegar prova de commit por JSONL.  Gate final: [R1–R10](migration/round-r1-r10-report.md); PR/revisão pendentes. |
+| BL068 | BB07/observabilidade | Expor seleção e gesto no summary compartilhado | Validado localmente | BL012/BL013 | R3 / coordenador | summary adiciona scene_interaction apenas quando há seleção/gesto, lista até 64 com contagem total; leitura sem poda/histórico. Socket/UI precisam gate integrado.  Gate final: [R1–R10](migration/round-r1-r10-report.md); PR/revisão pendentes. |
+| BL069 | BB07/seleção | Poda/invalidação imediata no undo, além da checagem preguiçosa atual | Validado localmente | BL012/BL013, coordenação com L | R3 / coordenador | Poda imediata de seleção em undo/redo/rollback elimina dependência de consulta intermediária; redo não revive seleção. Gesto permanece invalidado até uso/cancel, por decisão documentada.  Gate final: [R1–R10](migration/round-r1-r10-report.md); PR/revisão pendentes. |
 
 As propostas de J para automação/controles, prova de socket e gate JSONL reutilizam BL012/BL014,
 BL021 e o status A validar, respectivamente; não abrem tarefas duplicadas. F036 foi atualizada
@@ -306,8 +306,8 @@ As quatro delegações foram iniciadas no Cursor com `claude-sonnet-5-5`:
 
 | ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
 |---|---|---|---|---|---|---|
-| BL086 | F039/UI | Anexar cena por diálogo na janela | Pendente | scene.attach existente | Coordenador | Entrada de arquivo e semântica pelo mesmo fluxo; erro sem mutação; respeitar ocultação da WebView no diálogo |
-| BL087 | F039/UI | Inspeção visual da árvore e inspector de cena | A validar | BL014 e build integrado | Coordenador | Conferir layout amplo/menor e propriedades; não confundir input GPUI com inspeção visual |
+| BL086 | F039/UI | Anexar cena por diálogo na janela | Validado localmente | scene.attach existente | R2 / coordenador | F043 recebida: cabeçalho node:26, flow.attach_scene/resources e cadeia adopt/resolve/monitor; coordenador reconferiu 18/18 testes; agente reporta 33 checks nativos. Hook do inspector integrado após R9; seletor nativo/aparência não provados. Attach síncrono em BL100  Gate final: [R1–R10](migration/round-r1-r10-report.md); PR/revisão pendentes. |
+| BL087 | F039/UI | Inspeção visual da árvore e inspector de cena | Validado localmente | BL014 e build integrado | R9 / coordenador | Agente reporta 50/50 capturas nativas e desktop 188/188; coordenador inspecionou mínimo escuro e dock 100 px claro e reconferiu 11 testes visuais após ligar Anexar. Cabeçalho ajustado, captura final BL104; ponteiro físico BL043; gate global passou  Gate final: [R1–R10](migration/round-r1-r10-report.md); PR/revisão pendentes. |
 
 `monitor.show_scene` reutiliza BL007/BL063 (seam documentado em foundation-o-report.md), sem nova fila.
 Modo Clipe/Cena é apresentação local exposta pelo socket; avaliar necessidade de Command/persistência junto de F014, sem criar regra de domínio artificial.
@@ -317,8 +317,8 @@ Limites BL074/BL075 também precisam ser considerados nos sliders de cena.
 
 | ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
 |---|---|---|---|---|---|---|
-| BL088 | Pacote/atomicidade | Preservar pacote anterior se a substituição falhar antes do rename | Pendente | F026 | Coordenador | Falha injetada mantém pacote anterior legível; publicação e limpeza próprias recuperáveis |
-| BL089 | Recursos/jobs | Limpar staging/materialização de import de cena cujo resultado fica obsoleto | Pendente | BL010/BL011 | Coordenador | Troca de projeto durante import não deixa pasta órfã nem apaga arquivo pré-existente; teste determinístico |
+| BL088 | Pacote/atomicidade | Preservar pacote anterior se a substituição falhar antes do rename | Validado localmente | F026 | R4 / coordenador | Publicação preserva anterior: rename único para arquivo; backup+rollback para pasta/troca de formato. Coordenador reconferiu package_atomic 10/10; agente também executou JSONL real. Gate integrado pendente. Queda entre renames/recuperação automática em BL098.  Gate final: [R1–R10](migration/round-r1-r10-report.md); PR/revisão pendentes. |
+| BL089 | Recursos/jobs | Limpar staging/materialização de import de cena cujo resultado fica obsoleto | Parcial | BL010/BL011, BL094/BL111 | Integração / coordenador | PendingAdoption integrado ao host; cleanup29/ownership23/host13 cobertos e gate global passou. Claims seguros no mesmo processo e SHA-256 antes de remover; limite de multiprocesso BL111 e custo UI BL112 permanecem. [Relatório](migration/integration-cleanup-report.md). |
 
 F040 recebida em [foundation-n-report.md](migration/foundation-n-report.md). Coordenador reconferiu 18 testes de integração e 4 de publicação em 2026-11-05. Sem prova de pixels/UI nessa entrega.
 
@@ -327,15 +327,15 @@ F040 recebida em [foundation-n-report.md](migration/foundation-n-report.md). Coo
 | ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
 |---|---|---|---|---|---|---|
 | BL090 | F041/qualidade | Política de alpha de saída e mipmaps/minificação de planos | Pendente | BL008/BL018 | Coordenador | Fundo preto opaco atual declarado; definir alpha e comparar minificação com origem antes de prometer equivalência visual completa |
-| BL091 | Runtime/testes | Investigar falha intermitente de splat.test.mjs em concorrência padrão | Pendente | Harness runtime | Coordenador | Reproduzir/diagnosticar corrida; suíte serial de 79 passa, isso não prova concorrência |
-| BL092 | F041/lifecycle | Prova nativa dirigida de perda de contexto, reload e recursos invalidados com frame em voo | A validar | BL007 | Coordenador | WebView real converge ao frame atual e rejeita respostas antigas; distinguir testes Node/host roteirizado de prova nativa |
+| BL091 | Runtime/testes | Falha intermitente de splat.test.mjs em concorrência padrão | Validado localmente | Harness runtime | R7 / coordenador | Corrida do teste entre dois page.evaluate e carga já concluída; gate de fetch comprova load em voo. Agente reporta 2/6 falhas antes, 12/12 suítes de 85 testes depois; runtime intocado. Coordenador reconferiu 6/6 testes splat/splat-concurrency com concorrência padrão. Gate global passou. [Relatório](migration/next-r7-report.md)  Gate final: [R1–R10](migration/round-r1-r10-report.md); PR/revisão pendentes. |
+| BL092 | F041/lifecycle | Prova nativa dirigida de perda de contexto, reload e recursos invalidados com frame em voo | Validado localmente | BL007 | R8 / coordenador | Vazamento de slots corrigido; coordenador reconferiu host 13/13 e harness 7/7. Agente reporta 218 checks nativos em duas execuções Apple GPU, perda forçada; gate global passou. Ready atrasado em BL102; orçamento ampliado em BL103. Relatório next-r8-report.md  Gate final: [R1–R10](migration/round-r1-r10-report.md); PR/revisão pendentes. |
 
 O contrato e evidências integradas da rodada estão em [round-mnop-report.md](migration/round-mnop-report.md).
 
 ### Gate local da rodada M/N/O/P
 
 Entregas integradas na branch feat/directed-scene-end-to-end: workspace 827 testes verdes, 2 ignorados; scene_flow repetido 8/8 após adicionar regressão de candidato; clippy/fmt/build release limpos. Prova final **408/408** inclui pixels headless/nativos, monitor interativo, pacote restaurado sem origem e seleção semântica. Relatório e hashes em [round-mnop-report.md](migration/round-mnop-report.md).
-Isso não fecha BL008 (export dirigido), BL087 (inspeção visual) ou BL092 (lifecycle dirigido nativo forçado). App/projeto do usuário preservados.
+Isso não fecha BL008 (export dirigido) ou BL087 (inspeção visual). BL092 recebeu prova nativa forçada na R8, ainda sujeita ao gate integrado. App/projeto do usuário preservados.
 
 Runtime final: 79/79 reconferidos pelo coordenador em execução serializada; sem skips. BL091 continua aberto para concorrência padrão.
 
@@ -345,6 +345,101 @@ Entrega de implementação: commit `6a8b030`; revisão em [PR #3](https://github
 
 | ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
 |---|---|---|---|---|---|---|
-| BL093 | Revisão/robustez | Corrigir 10 apontamentos e nit de admissão por referência da PR #3 | Concluído local | PR #3 | Coordenador | Arc retido no cache, import obsoleto recusado na lib, CLI relativa, orçamento concorrente, corpus portátil, JSONL com timeout/stderr drenado e docs reproduzíveis; 68 Rust + 19 runtime + 19 Python direcionados passaram; prova integrada repetida 408/408; revisão incremental da PR #3 pendente |
+| BL093 | Revisão/robustez | Corrigir 10 apontamentos e nit de admissão por referência da PR #3 | Concluído | PR #3 | Coordenador | Arc retido no cache, import obsoleto recusado na lib, CLI relativa, orçamento concorrente, corpus portátil, JSONL com timeout/stderr drenado e docs reproduzíveis; 68 Rust + 19 runtime + 19 Python direcionados passaram; prova integrada repetida 408/408; PR #3 mergeada em 914c830; incremental pulada por cota, sem aprovação nova desse head |
 
 BL089: troca de projeto agora é recusada por `scene_resources::import::apply` com stale_result e descarte das pastas próprias; regressão via job.commit passou. Outros caminhos de descarte/cancelamento ainda precisam de auditoria antes de encerrar o item inteiro.
+
+## Próxima entrega — dez frentes R1–R10
+
+Usuário autorizou iniciar dez agentes Cursor Sonnet 5.5. [Contrato, ownership e aceite](migration/next-delivery-ten-agents.md). Somente delegação iniciada ganha status Em andamento; coordenador insere os links abaixo.
+
+| Frente | Itens | Delegação | Estado |
+|---|---|---|---|
+| R1 | BL008 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3Atessel-next-914c830-r1> | Recebida — UI/host integrados; core15/media7/desktop190 reconferidos; prova independente e gate global pendentes |
+| R2 | BL086 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3Atessel-next-914c830-r2> | Recebido — 18/18 testes reconferidos; 33 checks nativos reportados; hook/gate integrado pendentes |
+| R3 | BL066–BL069 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3Atessel-next-914c830-r3> | Recebido — coordenador reconferiu 36 testes core/JSONL; janela/gate integrado pendentes |
+| R4 | BL088 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3Atessel-next-914c830-r4> | Recebido — coordenador reconferiu package_atomic 10/10; gate integrado pendente |
+| R5 | BL089 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3Atessel-next-914c830-r5> | Recebido — coordenador reconferiu 21/21; host/concorrência a integrar e validar |
+| R6 | BL064 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3Atessel-next-914c830-r6> | Recebida — equivalência 10/10 e runner 4/4 reconferidos; consumo em R1 e gate global pendentes |
+| R7 | BL091 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3Atessel-next-914c830-r7> | Recebido — corrida do harness corrigida, runtime intocado; coordenador reconferiu 6/6 testes Spark concorrentes; gate global pendente |
+| R8 | BL092 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3Atessel-next-914c830-r8> | Recebida — host 13/13 e harness 7/7 reconferidos; prova nativa reportada pelo agente; gate global pendente |
+| R9 | BL087 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3Atessel-next-914c830-r9> | Recebida — 11 testes visuais reconferidos; integração do botão aplicada; captura final e gate global pendentes |
+| R10 | BL019/BL008 | <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3Atessel-next-914c830-r10> | Recebida — 23/23 fases reportadas, CLI/socket/diálogo reais; binários ficaram anteriores a novas fontes, repetir após correções finais |
+
+### Pendências recebidas na limpeza R5
+
+| ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
+|---|---|---|---|---|---|---|
+| BL094 | Jobs/resultados | Descartar explicitamente resultado finalizado não aplicado e proteger prune de resultado pendente | Pendente | BL089, host compartilhado após R1 | Coordenador | job.discard/semântica equivalente limpa somente arquivos próprios e tem estado consultável; prune não perde dono do resultado |
+| BL095 | Recursos/rollback | Garantir Journal de materialize com unwinding de panic | Validado localmente | F038 | Integração / coordenador | ArmedJournal desfaz links em panic de publicação; regressão e mutação reportadas, gate global passou; ver integration-cleanup-report.md  Gate final: [R1–R10](migration/round-r1-r10-report.md); PR/revisão pendentes. |
+| BL096 | Recursos/concorrência | Impedir que descarte apague arquivos reutilizados por outro job no mesmo processo | Validado localmente | BL089/BL079 | Integração / coordenador | Claims e transferência de posse ao aceitar, ordens determinísticas de aceitar/descartar cobertas. Limite explícito: dois processos não compartilham registro (BL111); gate global passou  Gate final: [R1–R10](migration/round-r1-r10-report.md); PR/revisão pendentes. |
+| BL097 | Recursos/identidade | Preservar arquivo reescrito em lugar com mesmo inode e tamanho antes do cleanup | Validado localmente | BL089 | Integração / coordenador | SHA-256 e metadata antes/depois; leitura/falha incerta mantém arquivo. Mutação do hash causa 3 falhas. Mesmos bytes e escritor concorrente após última conferência ficam fora da garantia; custo UI BL112  Gate final: [R1–R10](migration/round-r1-r10-report.md); PR/revisão pendentes. |
+
+Patch de host R5: aplicado manualmente no follow-up de integração e coberto por 13 testes de MediaHost; o arquivo [next-r5-host.patch](migration/next-r5-host.patch) é referência histórica e não deve ser reaplicado. Não há prova visual específica de cleanup.
+
+### Limites recebidos de R3/R4
+
+- R3: IDs de gesto são opacos. Sal de processo é probabilístico; época distingue sessões do mesmo processo. Provas de orçamento de update público e commit white-box têm escopos distintos. Relatório: [next-r3-report.md](migration/next-r3-report.md).
+- R4: arquivo/arquivo tem troca por rename único; pasta/troca de formato usa dois renames, com intervalo sem destino. O anterior é preservado em backup se rollback falhar e seu caminho vem no erro. Não declarar operação inteiramente atômica contra queda de processo. Relatório: [next-r4-report.md](migration/next-r4-report.md).
+
+| ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
+|---|---|---|---|---|---|---|
+| BL098 | Pacote/recuperação | Recuperar replace interrompido entre renames e tratar resto de pacote anterior não apagável | Pendente | BL088 | Coordenador | Falha de processo deixa anterior identificável e recuperável; rotina segura não apaga backup/vizinho arbitrário nem oculta pacote incompleto; testar crash/rollback e restos parciais |
+
+### Limite recebido da bancada Spark R7
+
+| ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
+|---|---|---|---|---|---|---|
+| BL099 | Spark/lifecycle | Provar release durante decodificação após fetch, antes de ready | Pendente | BL091 | Coordenador | Gate determinístico durante decodificação, sem trocar por serial/skip/timeout maior; resposta cancelled e nenhum recurso retido. GPU real reusa BL054 e tem evidência separada de SwiftShader |
+
+A correção R7 não altera runtime/src nem substitui provas de WKWebView ou GPU real. As taxas da bancada são observações sob carga variável, não garantia estatística de ausência de outras falhas.
+
+### Limites recebidos da importação visual R2
+
+| ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
+|---|---|---|---|---|---|---|
+| BL100 | F043/latência | Mover leitura/parse/validação pesada do attach para job sem bloquear UI | Pendente | BL086/core/media | Coordenador | Arquivo grande não congela UI; resultado aplica somente no projeto/revisão apropriados, com cancelamento/erro tipado; não duplicar validação no adapter |
+| BL101 | F040/recursos vazios | Carregar cena sem arquivos externos sem exigir diretório inexistente | Pendente | BL010/BL086 | Coordenador | Manifesto sem dependências resolve sem root_unavailable; cenas que nomeiam arquivos continuam exigindo raiz e verificação; teste lib/headless/monitor |
+
+R2 não faz attach+carga atômicos: em falha de recursos a cena anexada permanece para reparo/undo; isso é comportamento explícito, não fluxo completo bem-sucedido. A prova do painel nativo de arquivos e aparência fica pendente em BL087/BL043.
+Falha observada em teste de slider/layout (arquivo R9 ainda WIP) foi encaminhada à frente responsável; não considerar crate desktop inteiro verde enquanto persistir. [Relatório R2](migration/next-r2-report.md).
+
+| ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
+|---|---|---|---|---|---|---|
+| BL102 | F041/identidade IPC | Ecoar identidade de carga em asset.state e recusar ready atrasado de slot reutilizado | Pendente | BL092/runtime/host | Coordenador | Contrato aditivo compatível; teste injeta ready antigo após substituir carga no mesmo slot e prova que não desbloqueia o frame novo; ver next-r8-report.md |
+| BL103 | F041/orçamento nativo | Exercitar mais de 32 recursos distintos com LRU e perda de contexto | Pendente | BL092 | Coordenador | Prova WKWebView com recursos acima do teto, contadores host/runtime coerentes e pixels atuais após evicção e restauração; corpus atual tem só 3 recursos |
+
+| ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
+|---|---|---|---|---|---|---|
+| BL104 | F043/cabeçalho | Validar captura final em 960 px após compactar ações e ligar Anexar | Validado localmente | BL086/BL087 | Coordenador | Capturas finais selected-min-dark/light inspecionadas: cabeçalho sem sobreposição em 960 px. 50/50 capturas feitas, gate global passou; ponteiro físico não provado. [Relatório](migration/round-r1-r10-report.md). |
+| BL105 | F039/automação | Expor rolagem semântica do inspector e árvore | Pendente | BL087 | Coordenador | CLI usa os scroll handles vivos, sem coordenadas; permite provas nativas da propriedade fora da vista sem duplicar estado |
+| BL106 | F005/layout | Avaliar reutilização do layout compacto de propriedades no inspector de clipe | Pendente | BL087 | Coordenador | Conferir controls.rs::property_row em docks estreitos e compartilhar layout se o mesmo defeito for reproduzido; não alterar regras de domínio |
+
+| ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
+|---|---|---|---|---|---|---|
+| BL107 | F037/JSON | Medir e implementar escritor direto do plano sem alterar formato | Pendente | BL064 | Coordenador | Mesmos bytes de to_json_string no corpus/golden, erros e versão preservados; medir ganho total sem confundir montagem do plano com export real; JSON domina a bancada R6 |
+| BL108 | F037/bridge | Avaliar redução do plano enviado por frame | Pendente | BL064/BL008 | Coordenador | Medir bytes e custo no export real antes de decidir; fragmentos estáticos ou matrizes derivadas exigem contrato versionado e compatível; planos atuais chegam a 2,2 MiB por frame, não alterar formato sem prova de pixels |
+
+| ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
+|---|---|---|---|---|---|---|
+| BL109 | F042/recursos | Proteger export contra mudança de bytes após aprovação do mapa | Pendente | BL008/F040 | Coordenador | Hoje só presença/tamanho são conferidos no export; testar troca de mesmo tamanho após resolve e durante job e definir cópia imutável ou verificação apropriada sem bloquear UI; mapa congelado não garante bytes congelados |
+| BL110 | F042/manutenção | Compartilhar helpers de encode e resolução aprovados entre exports | Pendente | BL008 | Coordenador | Deduplicar encode_args/png_size/kill/read_tail/encode_error e avaliar approved_map com dyn ResourceResolver, preservando testes de ambos exports; evitar ampliar refactor sem necessidade |
+
+### Aceitação independente R10 recebida
+
+`migration/next-r10-report.md` e `scripts/directed-scene-export-proof/results.json` registram 23/23 fases com exit 0: export CLI 1080p/UHD/NTSC, socket, diálogo semântico, política de áudio, cancelamento, snapshot e pacote restaurado sem origem. Os binários foram reconstruídos antes da prova, mas novas edições posteriores tornam a repetição final obrigatória. Não prova ponteiro físico, roteamento node:16, preflight do diálogo ou GPU real. O follow-up integrou o patch do host e cobriu BL096/BL097 no escopo de um processo; o gate final e a repetição com binários finais seguem registrados na entrega integrada. Limites BL111/BL112 permanecem.
+
+Follow-up de integração BL089/BL096/BL097 delegado ao Cursor Sonnet 5.5: <t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3Ad3856989-26f9-4933-b607-9945895abf30%3Adelegate-task%3Atessel-next-integration-cleanup-fix>. Inclui aplicar e provar PendingAdoption no host após R1. Coordenador reconferiu os 16/16 self-tests do harness de export R10; gate final após esse follow-up.
+
+| ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
+|---|---|---|---|---|---|---|
+| BL111 | F040/multiprocesso | Coordenar ownership de recursos pendentes entre editores/processos | Pendente | BL096/BL079 | Coordenador | Registro atual é só em memória do processo; dois editores/CLI sobre o mesmo workspace não podem ter garantia de cleanup compartilhado. Persistir claims sob lease e provar com dois processos reais antes de declarar suporte |
+| BL112 | F040/responsividade | Mover hash e descarte de resultados grandes para job fora da UI | Pendente — prioridade alta | BL094/BL097 | Coordenador | Medição debug: descartar 256 MiB levou 8,7 s; não executar leitura pesada no destrutor da UI. job.discard/limpeza assíncrona deve preservar ownership até terminar; medir release e garantir encerramento seguro |
+
+### Gate integrado da rodada R1–R10
+
+Concluído localmente: fmt/check/clippy, workspace 1027 testes verdes (8 ignorados), runtime85, builds debug/release. Repetição final: export23 fases/570 checks, lifecycle218, import33 e capturas50, com binários atuais. [Relatório e limites](migration/round-r1-r10-report.md). Validação local não significa CI, revisão ou merge. BL089 segue parcial por BL111/BL112; nenhuma pendência desses limites foi apagada.
+
+### PR da entrega e bloqueio de revisão
+
+[PR #4](https://github.com/journey-studios/tessel-editor/pull/4), implementação `f6311d2`, gate local acima. CodeRabbit pulou a revisão: 121 arquivos selecionados, teto de 100 e capacidade/créditos indisponíveis ([comentário](https://github.com/journey-studios/tessel-editor/pull/4#issuecomment-6669704948)). PR aberta, sem merge ou aprovação do serviço. Os limites BL111/BL112 permanecem pendentes. A configuração nova de filtros de evidências só entra para futuras execuções que a usem; a execução atual leu a base.

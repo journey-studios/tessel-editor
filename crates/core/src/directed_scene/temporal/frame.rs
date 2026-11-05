@@ -1,6 +1,7 @@
 //! Edit frame → shot → instance frame → camera clip frame (`resolve-shot-at-edit-frame.ts`,
 //! `evaluate-edit-frame.ts`), and the honest boundary of what a frame evaluation covers.
 
+use std::borrow::Cow;
 use std::fmt;
 
 use serde_json::{Value, json};
@@ -303,10 +304,14 @@ impl Bundle {
         Ok(mapping)
     }
 
-    fn camera_of(&self, mapping: &FrameMapping<'_>) -> Result<CameraState, TemporalError> {
+    /// The camera of the clip frame a mapping lands on, on a timeline laid out for its clip.
+    fn camera_of(
+        mapping: &FrameMapping<'_>,
+        timeline: &CameraTimeline<'_>,
+    ) -> Result<CameraState, TemporalError> {
         let clip_frame =
             i64::try_from(mapping.camera_clip_frame).map_err(|_| TemporalError::FrameOverflow)?;
-        self.camera_at_clip_frame(&mapping.shot.camera_clip_id, clip_frame)
+        timeline.state_at(clip_frame)
     }
 
     /// The camera at an edit frame: shot, instance and clip frames, then the pose and speed with
@@ -314,7 +319,8 @@ impl Bundle {
     /// `evaluate_frame` for that boundary).
     pub fn evaluate_camera(&self, edit_frame: i64) -> Result<CameraEvaluation<'_>, TemporalError> {
         let mapping = self.mapping_inside_instance(edit_frame)?;
-        let camera = self.camera_of(&mapping)?;
+        let timeline = self.camera_timeline(&mapping.shot.camera_clip_id)?;
+        let camera = Self::camera_of(&mapping, &timeline)?;
         Ok(CameraEvaluation { mapping, camera })
     }
 
@@ -326,9 +332,32 @@ impl Bundle {
     /// The checks run in the origin's order (mapping, instance range, channels, camera), so a frame
     /// that fails twice reports what the origin reports.
     pub fn evaluate_frame(&self, edit_frame: i64) -> Result<FrameEvaluation<'_>, TemporalError> {
+        self.evaluate_frame_with(
+            edit_frame,
+            |instance| NodeTimeline::new(self, instance).map(Cow::Owned),
+            |clip_id| self.camera_timeline(clip_id).map(Cow::Owned),
+        )
+    }
+
+    /// `evaluate_frame` on timelines the caller owns: the one body of the evaluation, so a caller
+    /// that keeps the layouts (`scene_plan::PlanTimeline`) cannot drift from the one that rebuilds
+    /// them. `evaluate_frame` hands in freshly built ones; the answer is the same either way
+    /// because a timeline is a pure function of the bundle.
+    ///
+    /// Each supplier is called at most once and in the origin's order (nodes, then camera), after
+    /// the mapping and instance range checks, so a frame that fails twice reports the same error.
+    pub(crate) fn evaluate_frame_with<'a: 't, 't>(
+        &'a self,
+        edit_frame: i64,
+        node_timeline: impl FnOnce(
+            &'a SceneInstance,
+        ) -> Result<Cow<'t, NodeTimeline<'a>>, TemporalError>,
+        camera_timeline: impl FnOnce(&str) -> Result<Cow<'t, CameraTimeline<'a>>, TemporalError>,
+    ) -> Result<FrameEvaluation<'a>, TemporalError> {
         let mapping = self.mapping_inside_instance(edit_frame)?;
-        let timeline = NodeTimeline::new(self, mapping.instance)?;
-        let camera = self.camera_of(&mapping)?;
+        let timeline = node_timeline(mapping.instance)?;
+        let camera_layout = camera_timeline(&mapping.shot.camera_clip_id)?;
+        let camera = Self::camera_of(&mapping, &camera_layout)?;
         let nodes = timeline.state_at(mapping.instance_frame)?;
         let plan = timeline.plan();
         let node_animation = if plan.is_empty() {

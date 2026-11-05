@@ -275,3 +275,11 @@ open gesture. Native pointer evidence and command evidence remain distinct; see
 Nós da janela: `inspector.mode` (clip/scene), `scene.panel`, `scene.picker` (quando houver várias cenas), `scene.tree`, `scene.entity:<path>`, `scene.property:<path>` e `monitor.scene`. Expandir a árvore expõe descendentes; eles não são listados como visíveis quando o pai está recolhido.
 Um set de componente de propriedade usa begin/update/commit compartilhados (um undo).
 `ui op '{"op":"scene.resources.resolve","scene":"id","base":"/raiz/absoluta"}'` cria job; conferir job.get e aplicação antes de exibir. `monitor.show_scene {scene}` seleciona a apresentação; `scene.render` responde depois do frame real. `scene.plan` é a consulta core/headless. Inspeção de pixels não prova ponteiro ou aparência.
+
+### Importação visual de cena (F043, R2)
+
+Botão do cabeçalho: `node:26` (ícone `node:27`). Operações `flow.attach_scene` e `flow.scene_resources` abrem os diálogos; `dialog.field.*`/submit/cancel compartilham os handlers da UI. Nó `scene_import` expõe passo/job/done/error/presentation_error. A cadeia aguarda job concluído **e aplicado** antes de seguir para o monitor. A seleção nativa de arquivo ainda não tem prova; campos por caminho têm evidência semântica.
+
+### Exportação de cena dirigida (F042)
+
+`flow.export_scene` abre o diálogo com campos `scene`, `preset`, `from`, `frames`, `audio` (`yes`/`no`) e `destination`. `dialog.submit` envia `scene.export`, com a mesma validação do core. O botão Exportar (`node:16`) abre esse fluxo quando o inspector está na aba Cena. `scene.export.preflight` não cria export; a operação de export retorna job na janela e `job.get`/`job.cancel` acompanham e cancelam. A integração compila e passa nos testes desktop; a prova nativa de export desta integração fica a cargo da R10.

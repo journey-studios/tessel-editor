@@ -9,6 +9,7 @@ pub mod host;
 mod process;
 mod runtime;
 pub mod scene;
+pub mod scene_export;
 pub mod scene_host;
 pub mod scene_operation;
 mod scene_renderer;

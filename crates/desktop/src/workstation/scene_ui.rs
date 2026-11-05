@@ -893,7 +893,7 @@ impl Workstation {
 const ENTITY_PREFIX: &str = "scene.entity:";
 const PROPERTY_PREFIX: &str = "scene.property:";
 
-pub const NO_SCENE_REASON: &str = "Nenhuma cena dirigida está anexada. Anexe um render-bundle com scene.attach (ui op ou headless); a janela ainda não tem diálogo de anexar";
+pub const NO_SCENE_REASON: &str = "Nenhuma cena dirigida está anexada. Use Anexar cena na janela ou scene.attach (ui op ou headless)";
 
 fn no_scene() -> CommandError {
     CommandError::new("unknown_element", NO_SCENE_REASON)

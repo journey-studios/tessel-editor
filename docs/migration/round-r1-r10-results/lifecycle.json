@@ -1,0 +1,1283 @@
+{
+ "checks": [
+  {
+   "check": "setup: the editor runs the scratch page (chaos installed)",
+   "ok": true,
+   "detail": "/tmp/te-r8-jhpilk68/runtime/dist"
+  },
+  {
+   "check": "S0 baseline: project s0 is created",
+   "ok": true,
+   "detail": "{'action': 'project.create', 'project': 's0', 'sequence': 'main', 'rate': {'num': 24, 'den': 1, 'fps': 24.0}, 'width': 320, 'height': 180, 'length': 96, 'id': 'p-94f4cfa74bd4cd92', 'workspace': '/tmp/te-r8-jhpilk68/ws/s0', 'changed': True}"
+  },
+  {
+   "check": "S0 baseline: s0: scene.attach",
+   "ok": true,
+   "detail": "{'action': 'scene.attach', 'scene': 'proof', 'name': 'proof-p-corpus', 'bundle_id': 'proof-p-corpus', 'revision_id': 'rev-1', 'counts': {'definitions': 1, 'nodes': 6, 'instances': 1, 'shots': 2, 'camera_clips': 1, 'performance_tracks': 1, 'assets': 3}, 'notices': [], 'deferred_in_use': [], 'scope': {'format': 'render-bundle', 'schema_version': '1.0', 'role': 'interchange data kept in the project document', 'validated': ['schema subset (BB01/BB02): layers, hierarchy, references, 3D transforms, sh"
+  },
+  {
+   "check": "S0 baseline: s0: scene.resources.resolve",
+   "ok": true,
+   "detail": "{'job': 'job-1', 'state': 'queued', 'info': {'id': 'job-1', 'kind': 'preflight', 'label': 'Load scene resources', 'state': 'queued', 'stage': 'queued', 'done': 0, 'total': 0, 'progress': None, 'eta_seconds': None, 'warnings': [], 'error': None, 'result': None, 'cancel_requested': False, 'created_ms': 1793912963342, 'started_ms': None, 'finished_ms': None}}"
+  },
+  {
+   "check": "S0 baseline: s0: the resource job is applied",
+   "ok": true,
+   "detail": "{'action': 'scene.resources.resolve', 'map': {'scene': 'proof', 'bundleId': 'proof-p-corpus', 'bundleRevision': 'rev-1', 'project': 'p-94f4cfa74bd4cd92', 'generation': 2, 'base': '/Users/wallyssonnunes/www/tessel-editor/scripts/directed-scene-proof/corpus', 'complete': True, 'approvedBytes': 22848, 'resources': [{'resource': 'asset:hero', 'kind': 'image', 'path': '/Users/wallyssonnunes/www/tessel-editor/scripts/directed-scene-proof/corpus/assets/hero.png', 'sha256': '7bacab4e0dd6aff8d146e6f208c0"
+  },
+  {
+   "check": "S0 baseline: s0: monitor.show_scene",
+   "ok": true,
+   "detail": "{'action': 'monitor.show_scene', 'scene': 'proof'}"
+  },
+  {
+   "check": "S0 baseline: the monitor draws frame 0 of the scene",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 2, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 0}, 'context_losses': 0, 'shown': {'request_id': 281474976710656, 'edit_frame': 0}}"
+  },
+  {
+   "check": "S0 baseline: the playhead position converges on the monitor",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 2, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 0}, 'context_losses': 0, 'shown': {'request_id': 281474976710657, 'edit_frame': 20}}"
+  },
+  {
+   "check": "S0 baseline: the monitor: explicit render of frame 20 answers",
+   "ok": true,
+   "detail": "{'action': 'render.frame', 'plan': {'kind': 'tessel-scene-plan', 'planVersion': 1, 'complete': True, 'requires': ['camera', 'nodeTransforms', 'performanceChannels', 'imagePlanes', 'straightAlpha', 'opaqueAlpha'], 'source': {'bundleId': 'proof-p-corpus', 'revisionId': 'rev-1', 'sceneDefinitionId': 'scene-a', 'sceneInstanceId': 'inst-a'}, 'output': {'width': 320, 'height': 180, 'fps': {'numerator': 24, 'denominator': 1}, 'colorSpace': 'srgb-display', 'alphaMode': 'straight'}, 'frame': {'editFrame'"
+  },
+  {
+   "check": "S0 baseline: the monitor: frame 20 was read back (inspected)",
+   "ok": true,
+   "detail": "True"
+  },
+  {
+   "check": "S0 baseline: the monitor: frame 20 probes match the independent model",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "check": "S0 baseline: the monitor shows frame 20 with the hash of its original render",
+   "ok": true,
+   "detail": "monitor=3f2c5c698d03cec4 explicit=3f2c5c698d03cec4"
+  },
+  {
+   "check": "S0 baseline: baseline: book holds 3..3 slots (<= 32) and the runtime holds the same (3 vs 3)",
+   "ok": true,
+   "detail": "(3, 3)"
+  },
+  {
+   "check": "S0 baseline: baseline: no load is left tracked beyond the slots held",
+   "ok": true,
+   "detail": "{'occupied': 3, 'generation': 2, 'tracked_loads': 3}"
+  },
+  {
+   "check": "S1 context lost while the monitor draws its frame: the monitor converges on frame 31 after the loss",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 2, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 0}, 'context_losses': 1, 'shown': {'request_id': 281474976710660, 'edit_frame': 31}}"
+  },
+  {
+   "check": "S1 context lost while the monitor draws its frame: the host saw exactly one context.lost",
+   "ok": true,
+   "detail": "(0, 1)"
+  },
+  {
+   "check": "S1 context lost while the monitor draws its frame: the runtime counted exactly one real loss",
+   "ok": true,
+   "detail": "(0, 1)"
+  },
+  {
+   "check": "S1 context lost while the monitor draws its frame: the monitor: explicit render of frame 31 answers",
+   "ok": true,
+   "detail": "{'action': 'render.frame', 'plan': {'kind': 'tessel-scene-plan', 'planVersion': 1, 'complete': True, 'requires': ['camera', 'nodeTransforms', 'performanceChannels', 'imagePlanes', 'straightAlpha', 'opaqueAlpha'], 'source': {'bundleId': 'proof-p-corpus', 'revisionId': 'rev-1', 'sceneDefinitionId': 'scene-a', 'sceneInstanceId': 'inst-a'}, 'output': {'width': 320, 'height': 180, 'fps': {'numerator': 24, 'denominator': 1}, 'colorSpace': 'srgb-display', 'alphaMode': 'straight'}, 'frame': {'editFrame'"
+  },
+  {
+   "check": "S1 context lost while the monitor draws its frame: the monitor: frame 31 was read back (inspected)",
+   "ok": true,
+   "detail": "True"
+  },
+  {
+   "check": "S1 context lost while the monitor draws its frame: the monitor: frame 31 probes match the independent model",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "check": "S1 context lost while the monitor draws its frame: the monitor shows frame 31 with the hash of its original render",
+   "ok": true,
+   "detail": "monitor=3a02319f391695c9 explicit=3a02319f391695c9"
+  },
+  {
+   "check": "S1 context lost while the monitor draws its frame: after the loss: book holds 3..3 slots (<= 32) and the runtime holds the same (3 vs 3)",
+   "ok": true,
+   "detail": "(3, 3)"
+  },
+  {
+   "check": "S1 context lost while the monitor draws its frame: after the loss: no load is left tracked beyond the slots held",
+   "ok": true,
+   "detail": "{'occupied': 3, 'generation': 2, 'tracked_loads': 3}"
+  },
+  {
+   "check": "S2 hidden monitor, explicit frame, context lost mid frame: the monitor hides",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S2 hidden monitor, explicit frame, context lost mid frame: the viewport reports off-screen",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S2 hidden monitor, explicit frame, context lost mid frame: the explicit frame of a hidden monitor is answered (not parked, not hanging)",
+   "ok": true,
+   "detail": "no answer in 40s"
+  },
+  {
+   "check": "S2 hidden monitor, explicit frame, context lost mid frame: it is the frame or a typed context_lost",
+   "ok": true,
+   "detail": "(True, {'action': 'render.frame', 'plan': {'kind': 'tessel-scene-plan', 'planVersion': 1, 'complete': True, 'requires': ['camera', 'nodeTransforms', 'performanceChannels', 'imagePlanes', 'straightAlpha', 'opaqueAlpha'], 'source': {'bundleId': 'proof-p-corpus', 'revisionId': 'rev-1', 'sceneDefinitionId': 'scene-a', 'sceneInstanceId': 'inst-a'}, 'output': {'width': 320, 'height': 180, 'fps': {'numerator': 24, 'denominator': 1}, 'colorSpace': 'srgb-display', 'alphaMode': 'straight'}, 'frame': {'edi"
+  },
+  {
+   "check": "S2 hidden monitor, explicit frame, context lost mid frame: an answered frame of the hidden monitor matches the model",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "check": "S2 hidden monitor, explicit frame, context lost mid frame: the loss happened in the hidden monitor (host saw context.lost)",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': True, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 2, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 0}, 'context_losses': 2, 'shown': None}"
+  },
+  {
+   "check": "S2 hidden monitor, explicit frame, context lost mid frame: the context comes back (not suspended)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S2 hidden monitor, explicit frame, context lost mid frame: the monitor shows again",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S2 hidden monitor, explicit frame, context lost mid frame: showing the monitor converges on the current playhead frame",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 2, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 0}, 'context_losses': 2, 'shown': {'request_id': 281474976710663, 'edit_frame': 31}}"
+  },
+  {
+   "check": "S2 hidden monitor, explicit frame, context lost mid frame: the monitor: explicit render of frame 31 answers",
+   "ok": true,
+   "detail": "{'action': 'render.frame', 'plan': {'kind': 'tessel-scene-plan', 'planVersion': 1, 'complete': True, 'requires': ['camera', 'nodeTransforms', 'performanceChannels', 'imagePlanes', 'straightAlpha', 'opaqueAlpha'], 'source': {'bundleId': 'proof-p-corpus', 'revisionId': 'rev-1', 'sceneDefinitionId': 'scene-a', 'sceneInstanceId': 'inst-a'}, 'output': {'width': 320, 'height': 180, 'fps': {'numerator': 24, 'denominator': 1}, 'colorSpace': 'srgb-display', 'alphaMode': 'straight'}, 'frame': {'editFrame'"
+  },
+  {
+   "check": "S2 hidden monitor, explicit frame, context lost mid frame: the monitor: frame 31 was read back (inspected)",
+   "ok": true,
+   "detail": "True"
+  },
+  {
+   "check": "S2 hidden monitor, explicit frame, context lost mid frame: the monitor: frame 31 probes match the independent model",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "check": "S2 hidden monitor, explicit frame, context lost mid frame: the monitor shows frame 31 with the hash of its original render",
+   "ok": true,
+   "detail": "monitor=3a02319f391695c9 explicit=3a02319f391695c9"
+  },
+  {
+   "check": "S3 hide / show parks the monitor and converges on show: the monitor hides",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S3 hide / show parks the monitor and converges on show: the viewport reports off-screen",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S3 hide / show parks the monitor and converges on show: the frame of a hidden monitor is parked, not drawn",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': {'explicit': False}, 'slots': {'occupied': 3, 'generation': 2, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 0}, 'context_losses': 2, 'shown': {'request_id': 281474976710664, 'edit_frame': 31}}"
+  },
+  {
+   "check": "S3 hide / show parks the monitor and converges on show: hidden monitor: explicit render of frame 12 answers",
+   "ok": true,
+   "detail": "{'action': 'render.frame', 'plan': {'kind': 'tessel-scene-plan', 'planVersion': 1, 'complete': True, 'requires': ['camera', 'nodeTransforms', 'performanceChannels', 'imagePlanes', 'straightAlpha', 'opaqueAlpha'], 'source': {'bundleId': 'proof-p-corpus', 'revisionId': 'rev-1', 'sceneDefinitionId': 'scene-a', 'sceneInstanceId': 'inst-a'}, 'output': {'width': 320, 'height': 180, 'fps': {'numerator': 24, 'denominator': 1}, 'colorSpace': 'srgb-display', 'alphaMode': 'straight'}, 'frame': {'editFrame'"
+  },
+  {
+   "check": "S3 hide / show parks the monitor and converges on show: hidden monitor: frame 12 was read back (inspected)",
+   "ok": true,
+   "detail": "True"
+  },
+  {
+   "check": "S3 hide / show parks the monitor and converges on show: hidden monitor: frame 12 probes match the independent model",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "check": "S3 hide / show parks the monitor and converges on show: an explicit frame of the hidden monitor is drawn",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S3 hide / show parks the monitor and converges on show: the monitor shows again",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S3 hide / show parks the monitor and converges on show: showing the monitor starts the parked frame and converges on frame 47",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 2, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 0}, 'context_losses': 2, 'shown': {'request_id': 281474976710666, 'edit_frame': 47}}"
+  },
+  {
+   "check": "S3 hide / show parks the monitor and converges on show: the monitor: explicit render of frame 47 answers",
+   "ok": true,
+   "detail": "{'action': 'render.frame', 'plan': {'kind': 'tessel-scene-plan', 'planVersion': 1, 'complete': True, 'requires': ['camera', 'nodeTransforms', 'performanceChannels', 'imagePlanes', 'straightAlpha', 'opaqueAlpha'], 'source': {'bundleId': 'proof-p-corpus', 'revisionId': 'rev-1', 'sceneDefinitionId': 'scene-a', 'sceneInstanceId': 'inst-a'}, 'output': {'width': 320, 'height': 180, 'fps': {'numerator': 24, 'denominator': 1}, 'colorSpace': 'srgb-display', 'alphaMode': 'straight'}, 'frame': {'editFrame'"
+  },
+  {
+   "check": "S3 hide / show parks the monitor and converges on show: the monitor: frame 47 was read back (inspected)",
+   "ok": true,
+   "detail": "True"
+  },
+  {
+   "check": "S3 hide / show parks the monitor and converges on show: the monitor: frame 47 probes match the independent model",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "check": "S3 hide / show parks the monitor and converges on show: the monitor shows frame 47 with the hash of its original render",
+   "ok": true,
+   "detail": "monitor=0215efb3e7f52eec explicit=0215efb3e7f52eec"
+  },
+  {
+   "check": "S3 hide / show parks the monitor and converges on show: after hide/show: book holds 3..3 slots (<= 32) and the runtime holds the same (3 vs 3)",
+   "ok": true,
+   "detail": "(3, 3)"
+  },
+  {
+   "check": "S3 hide / show parks the monitor and converges on show: after hide/show: no load is left tracked beyond the slots held",
+   "ok": true,
+   "detail": "{'occupied': 3, 'generation': 2, 'tracked_loads': 3}"
+  },
+  {
+   "check": "S3b explicit frame pending while the monitor hides: project s3b is created",
+   "ok": true,
+   "detail": "{'action': 'project.create', 'project': 's3b', 'sequence': 'main', 'rate': {'num': 24, 'den': 1, 'fps': 24.0}, 'width': 320, 'height': 180, 'length': 96, 'id': 'p-66eab739a9490cd7', 'workspace': '/tmp/te-r8-jhpilk68/ws/s3b', 'changed': True}"
+  },
+  {
+   "check": "S3b explicit frame pending while the monitor hides: s3b: scene.attach",
+   "ok": true,
+   "detail": "{'action': 'scene.attach', 'scene': 'proof', 'name': 'proof-p-corpus', 'bundle_id': 'proof-p-corpus', 'revision_id': 'rev-1', 'counts': {'definitions': 1, 'nodes': 6, 'instances': 1, 'shots': 2, 'camera_clips': 1, 'performance_tracks': 1, 'assets': 3}, 'notices': [], 'deferred_in_use': [], 'scope': {'format': 'render-bundle', 'schema_version': '1.0', 'role': 'interchange data kept in the project document', 'validated': ['schema subset (BB01/BB02): layers, hierarchy, references, 3D transforms, sh"
+  },
+  {
+   "check": "S3b explicit frame pending while the monitor hides: s3b: scene.resources.resolve",
+   "ok": true,
+   "detail": "{'job': 'job-2', 'state': 'queued', 'info': {'id': 'job-2', 'kind': 'preflight', 'label': 'Load scene resources', 'state': 'queued', 'stage': 'queued', 'done': 0, 'total': 0, 'progress': None, 'eta_seconds': None, 'warnings': [], 'error': None, 'result': None, 'cancel_requested': False, 'created_ms': 1793912986972, 'started_ms': None, 'finished_ms': None}}"
+  },
+  {
+   "check": "S3b explicit frame pending while the monitor hides: s3b: the resource job is applied",
+   "ok": true,
+   "detail": "{'action': 'scene.resources.resolve', 'map': {'scene': 'proof', 'bundleId': 'proof-p-corpus', 'bundleRevision': 'rev-1', 'project': 'p-66eab739a9490cd7', 'generation': 3, 'base': '/private/tmp/te-r8-jhpilk68/slow-a', 'complete': True, 'approvedBytes': 22848, 'resources': [{'resource': 'asset:hero', 'kind': 'image', 'path': '/private/tmp/te-r8-jhpilk68/slow-a/assets/hero.png', 'sha256': '7bacab4e0dd6aff8d146e6f208c06a63f58b26dbfc5fee54b1c32a712f356ef6', 'revisionId': 'rev-1', 'bytes': 4196, 'node"
+  },
+  {
+   "check": "S3b explicit frame pending while the monitor hides: s3b: monitor.show_scene",
+   "ok": true,
+   "detail": "{'action': 'monitor.show_scene', 'scene': 'proof'}"
+  },
+  {
+   "check": "S3b explicit frame pending while the monitor hides: the monitor hides with the explicit frame waiting for its assets",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S3b explicit frame pending while the monitor hides: the pending explicit frame is answered across the hide",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S3b explicit frame pending while the monitor hides: it is the frame or a typed error",
+   "ok": true,
+   "detail": "(True, {'action': 'render.frame', 'plan': {'kind': 'tessel-scene-plan', 'planVersion': 1, 'complete': True, 'requires': ['camera', 'nodeTransforms', 'performanceChannels', 'imagePlanes', 'straightAlpha', 'opaqueAlpha'], 'source': {'bundleId': 'proof-p-corpus', 'revisionId': 'rev-1', 'sceneDefinitionId': 'scene-a', 'sceneInstanceId': 'inst-a'}, 'output': {'width': 320, 'height': 180, 'fps': {'numerator': 24, 'denominator': 1}, 'colorSpace': 'srgb-display', 'alphaMode': 'straight'}, 'frame': {'edi"
+  },
+  {
+   "check": "S3b explicit frame pending while the monitor hides: an answered frame matches the model",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "check": "S3b explicit frame pending while the monitor hides: the monitor shows again",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S3b explicit frame pending while the monitor hides: the monitor converges on the playhead frame after show",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 3, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 0}, 'context_losses': 2, 'shown': {'request_id': 281474976710670, 'edit_frame': 0}}"
+  },
+  {
+   "check": "S3b explicit frame pending while the monitor hides: the monitor: explicit render of frame 0 answers",
+   "ok": true,
+   "detail": "{'action': 'render.frame', 'plan': {'kind': 'tessel-scene-plan', 'planVersion': 1, 'complete': True, 'requires': ['camera', 'nodeTransforms', 'performanceChannels', 'imagePlanes', 'straightAlpha', 'opaqueAlpha'], 'source': {'bundleId': 'proof-p-corpus', 'revisionId': 'rev-1', 'sceneDefinitionId': 'scene-a', 'sceneInstanceId': 'inst-a'}, 'output': {'width': 320, 'height': 180, 'fps': {'numerator': 24, 'denominator': 1}, 'colorSpace': 'srgb-display', 'alphaMode': 'straight'}, 'frame': {'editFrame'"
+  },
+  {
+   "check": "S3b explicit frame pending while the monitor hides: the monitor: frame 0 was read back (inspected)",
+   "ok": true,
+   "detail": "True"
+  },
+  {
+   "check": "S3b explicit frame pending while the monitor hides: the monitor: frame 0 probes match the independent model",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "check": "S3b explicit frame pending while the monitor hides: the monitor shows frame 0 with the hash of its original render",
+   "ok": true,
+   "detail": "monitor=0382ef5ffef9668d explicit=0382ef5ffef9668d"
+  },
+  {
+   "check": "S4 monitor.reload with an explicit frame waiting for slow assets: project s4 is created",
+   "ok": true,
+   "detail": "{'action': 'project.create', 'project': 's4', 'sequence': 'main', 'rate': {'num': 24, 'den': 1, 'fps': 24.0}, 'width': 320, 'height': 180, 'length': 96, 'id': 'p-1c5ae67f548f6a9a', 'workspace': '/tmp/te-r8-jhpilk68/ws/s4', 'changed': True}"
+  },
+  {
+   "check": "S4 monitor.reload with an explicit frame waiting for slow assets: s4: scene.attach",
+   "ok": true,
+   "detail": "{'action': 'scene.attach', 'scene': 'proof', 'name': 'proof-p-corpus', 'bundle_id': 'proof-p-corpus', 'revision_id': 'rev-1', 'counts': {'definitions': 1, 'nodes': 6, 'instances': 1, 'shots': 2, 'camera_clips': 1, 'performance_tracks': 1, 'assets': 3}, 'notices': [], 'deferred_in_use': [], 'scope': {'format': 'render-bundle', 'schema_version': '1.0', 'role': 'interchange data kept in the project document', 'validated': ['schema subset (BB01/BB02): layers, hierarchy, references, 3D transforms, sh"
+  },
+  {
+   "check": "S4 monitor.reload with an explicit frame waiting for slow assets: s4: scene.resources.resolve",
+   "ok": true,
+   "detail": "{'job': 'job-3', 'state': 'queued', 'info': {'id': 'job-3', 'kind': 'preflight', 'label': 'Load scene resources', 'state': 'queued', 'stage': 'queued', 'done': 0, 'total': 0, 'progress': None, 'eta_seconds': None, 'warnings': [], 'error': None, 'result': None, 'cancel_requested': False, 'created_ms': 1793912988294, 'started_ms': None, 'finished_ms': None}}"
+  },
+  {
+   "check": "S4 monitor.reload with an explicit frame waiting for slow assets: s4: the resource job is applied",
+   "ok": true,
+   "detail": "{'action': 'scene.resources.resolve', 'map': {'scene': 'proof', 'bundleId': 'proof-p-corpus', 'bundleRevision': 'rev-1', 'project': 'p-1c5ae67f548f6a9a', 'generation': 4, 'base': '/private/tmp/te-r8-jhpilk68/slow-a', 'complete': True, 'approvedBytes': 22848, 'resources': [{'resource': 'asset:hero', 'kind': 'image', 'path': '/private/tmp/te-r8-jhpilk68/slow-a/assets/hero.png', 'sha256': '7bacab4e0dd6aff8d146e6f208c06a63f58b26dbfc5fee54b1c32a712f356ef6', 'revisionId': 'rev-1', 'bytes': 4196, 'node"
+  },
+  {
+   "check": "S4 monitor.reload with an explicit frame waiting for slow assets: s4: monitor.show_scene",
+   "ok": true,
+   "detail": "{'action': 'monitor.show_scene', 'scene': 'proof'}"
+  },
+  {
+   "check": "S4 monitor.reload with an explicit frame waiting for slow assets: the reload is accepted",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S4 monitor.reload with an explicit frame waiting for slow assets: the explicit frame pending during the reload is answered (not left hanging)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S4 monitor.reload with an explicit frame waiting for slow assets: it is typed `cancelled` (the page that would have drawn it is gone)",
+   "ok": true,
+   "detail": "(False, {'code': 'cancelled', 'message': 'The viewport is reloading', 'details': {'backend_code': 'cancelled', 'backend_details': None}})"
+  },
+  {
+   "check": "S4 monitor.reload with an explicit frame waiting for slow assets: after the reload the monitor redraws the playhead frame",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 4, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 0}, 'context_losses': 2, 'shown': {'request_id': 281474976710674, 'edit_frame': 0}}"
+  },
+  {
+   "check": "S4 monitor.reload with an explicit frame waiting for slow assets: the monitor: explicit render of frame 0 answers",
+   "ok": true,
+   "detail": "{'action': 'render.frame', 'plan': {'kind': 'tessel-scene-plan', 'planVersion': 1, 'complete': True, 'requires': ['camera', 'nodeTransforms', 'performanceChannels', 'imagePlanes', 'straightAlpha', 'opaqueAlpha'], 'source': {'bundleId': 'proof-p-corpus', 'revisionId': 'rev-1', 'sceneDefinitionId': 'scene-a', 'sceneInstanceId': 'inst-a'}, 'output': {'width': 320, 'height': 180, 'fps': {'numerator': 24, 'denominator': 1}, 'colorSpace': 'srgb-display', 'alphaMode': 'straight'}, 'frame': {'editFrame'"
+  },
+  {
+   "check": "S4 monitor.reload with an explicit frame waiting for slow assets: the monitor: frame 0 was read back (inspected)",
+   "ok": true,
+   "detail": "True"
+  },
+  {
+   "check": "S4 monitor.reload with an explicit frame waiting for slow assets: the monitor: frame 0 probes match the independent model",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "check": "S4 monitor.reload with an explicit frame waiting for slow assets: the monitor shows frame 0 with the hash of its original render",
+   "ok": true,
+   "detail": "monitor=0382ef5ffef9668d explicit=0382ef5ffef9668d"
+  },
+  {
+   "check": "S4 monitor.reload with an explicit frame waiting for slow assets: after the reload: book holds 3..3 slots (<= 32) and the runtime holds the same (3 vs 3)",
+   "ok": true,
+   "detail": "(3, 3)"
+  },
+  {
+   "check": "S4 monitor.reload with an explicit frame waiting for slow assets: after the reload: no load is left tracked beyond the slots held",
+   "ok": true,
+   "detail": "{'occupied': 3, 'generation': 4, 'tracked_loads': 3}"
+  },
+  {
+   "check": "S4 monitor.reload with an explicit frame waiting for slow assets: and follows the playhead again",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S4 monitor.reload with an explicit frame waiting for slow assets: the monitor: explicit render of frame 60 answers",
+   "ok": true,
+   "detail": "{'action': 'render.frame', 'plan': {'kind': 'tessel-scene-plan', 'planVersion': 1, 'complete': True, 'requires': ['camera', 'nodeTransforms', 'performanceChannels', 'imagePlanes', 'straightAlpha', 'opaqueAlpha'], 'source': {'bundleId': 'proof-p-corpus', 'revisionId': 'rev-1', 'sceneDefinitionId': 'scene-a', 'sceneInstanceId': 'inst-a'}, 'output': {'width': 320, 'height': 180, 'fps': {'numerator': 24, 'denominator': 1}, 'colorSpace': 'srgb-display', 'alphaMode': 'straight'}, 'frame': {'editFrame'"
+  },
+  {
+   "check": "S4 monitor.reload with an explicit frame waiting for slow assets: the monitor: frame 60 was read back (inspected)",
+   "ok": true,
+   "detail": "True"
+  },
+  {
+   "check": "S4 monitor.reload with an explicit frame waiting for slow assets: the monitor: frame 60 probes match the independent model",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "check": "S4 monitor.reload with an explicit frame waiting for slow assets: the monitor shows frame 60 with the hash of its original render",
+   "ok": true,
+   "detail": "monitor=42ced9a7298a6a20 explicit=42ced9a7298a6a20"
+  },
+  {
+   "check": "S5a resource swap, no frame in flight (revision -> pixels): project s5a is created",
+   "ok": true,
+   "detail": "{'action': 'project.create', 'project': 's5a', 'sequence': 'main', 'rate': {'num': 24, 'den': 1, 'fps': 24.0}, 'width': 320, 'height': 180, 'length': 96, 'id': 'p-598b9967b6721cbb', 'workspace': '/tmp/te-r8-jhpilk68/ws/s5a', 'changed': True}"
+  },
+  {
+   "check": "S5a resource swap, no frame in flight (revision -> pixels): s5a: scene.attach",
+   "ok": true,
+   "detail": "{'action': 'scene.attach', 'scene': 'proof', 'name': 'proof-p-corpus', 'bundle_id': 'proof-p-corpus', 'revision_id': 'rev-1', 'counts': {'definitions': 1, 'nodes': 6, 'instances': 1, 'shots': 2, 'camera_clips': 1, 'performance_tracks': 1, 'assets': 3}, 'notices': [], 'deferred_in_use': [], 'scope': {'format': 'render-bundle', 'schema_version': '1.0', 'role': 'interchange data kept in the project document', 'validated': ['schema subset (BB01/BB02): layers, hierarchy, references, 3D transforms, sh"
+  },
+  {
+   "check": "S5a resource swap, no frame in flight (revision -> pixels): s5a: scene.resources.resolve",
+   "ok": true,
+   "detail": "{'job': 'job-4', 'state': 'queued', 'info': {'id': 'job-4', 'kind': 'preflight', 'label': 'Load scene resources', 'state': 'queued', 'stage': 'queued', 'done': 0, 'total': 0, 'progress': None, 'eta_seconds': None, 'warnings': [], 'error': None, 'result': None, 'cancel_requested': False, 'created_ms': 1793912990058, 'started_ms': None, 'finished_ms': None}}"
+  },
+  {
+   "check": "S5a resource swap, no frame in flight (revision -> pixels): s5a: the resource job is applied",
+   "ok": true,
+   "detail": "{'action': 'scene.resources.resolve', 'map': {'scene': 'proof', 'bundleId': 'proof-p-corpus', 'bundleRevision': 'rev-1', 'project': 'p-598b9967b6721cbb', 'generation': 5, 'base': '/Users/wallyssonnunes/www/tessel-editor/scripts/directed-scene-proof/corpus', 'complete': True, 'approvedBytes': 22848, 'resources': [{'resource': 'asset:hero', 'kind': 'image', 'path': '/Users/wallyssonnunes/www/tessel-editor/scripts/directed-scene-proof/corpus/assets/hero.png', 'sha256': '7bacab4e0dd6aff8d146e6f208c0"
+  },
+  {
+   "check": "S5a resource swap, no frame in flight (revision -> pixels): s5a: monitor.show_scene",
+   "ok": true,
+   "detail": "{'action': 'monitor.show_scene', 'scene': 'proof'}"
+  },
+  {
+   "check": "S5a resource swap, no frame in flight (revision -> pixels): rev-1 converges on frame 20",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 5, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 0}, 'context_losses': 2, 'shown': {'request_id': 281474976710679, 'edit_frame': 20}}"
+  },
+  {
+   "check": "S5a resource swap, no frame in flight (revision -> pixels): rev-1: explicit render of frame 20 answers",
+   "ok": true,
+   "detail": "{'action': 'render.frame', 'plan': {'kind': 'tessel-scene-plan', 'planVersion': 1, 'complete': True, 'requires': ['camera', 'nodeTransforms', 'performanceChannels', 'imagePlanes', 'straightAlpha', 'opaqueAlpha'], 'source': {'bundleId': 'proof-p-corpus', 'revisionId': 'rev-1', 'sceneDefinitionId': 'scene-a', 'sceneInstanceId': 'inst-a'}, 'output': {'width': 320, 'height': 180, 'fps': {'numerator': 24, 'denominator': 1}, 'colorSpace': 'srgb-display', 'alphaMode': 'straight'}, 'frame': {'editFrame'"
+  },
+  {
+   "check": "S5a resource swap, no frame in flight (revision -> pixels): rev-1: frame 20 was read back (inspected)",
+   "ok": true,
+   "detail": "True"
+  },
+  {
+   "check": "S5a resource swap, no frame in flight (revision -> pixels): rev-1: frame 20 probes match the independent model",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "check": "S5a resource swap, no frame in flight (revision -> pixels): rev-1 shows frame 20 with the hash of its original render",
+   "ok": true,
+   "detail": "monitor=3f2c5c698d03cec4 explicit=3f2c5c698d03cec4"
+  },
+  {
+   "check": "S5a resource swap, no frame in flight (revision -> pixels): rev-2: scene.attach",
+   "ok": true,
+   "detail": "{'action': 'scene.attach', 'scene': 'proof', 'name': 'proof-p-corpus', 'bundle_id': 'proof-p-corpus', 'revision_id': 'rev-2', 'counts': {'definitions': 1, 'nodes': 6, 'instances': 1, 'shots': 2, 'camera_clips': 1, 'performance_tracks': 1, 'assets': 3}, 'notices': [], 'deferred_in_use': [], 'scope': {'format': 'render-bundle', 'schema_version': '1.0', 'role': 'interchange data kept in the project document', 'validated': ['schema subset (BB01/BB02): layers, hierarchy, references, 3D transforms, sh"
+  },
+  {
+   "check": "S5a resource swap, no frame in flight (revision -> pixels): rev-2: scene.resources.resolve",
+   "ok": true,
+   "detail": "{'job': 'job-5', 'state': 'queued', 'info': {'id': 'job-5', 'kind': 'preflight', 'label': 'Load scene resources', 'state': 'queued', 'stage': 'queued', 'done': 0, 'total': 0, 'progress': None, 'eta_seconds': None, 'warnings': [], 'error': None, 'result': None, 'cancel_requested': False, 'created_ms': 1793912990151, 'started_ms': None, 'finished_ms': None}}"
+  },
+  {
+   "check": "S5a resource swap, no frame in flight (revision -> pixels): rev-2: the resource job is applied",
+   "ok": true,
+   "detail": "{'action': 'scene.resources.resolve', 'map': {'scene': 'proof', 'bundleId': 'proof-p-corpus', 'bundleRevision': 'rev-2', 'project': 'p-598b9967b6721cbb', 'generation': 5, 'base': '/Users/wallyssonnunes/www/tessel-editor/scripts/directed-scene-proof/corpus', 'complete': True, 'approvedBytes': 22848, 'resources': [{'resource': 'asset:hero', 'kind': 'image', 'path': '/Users/wallyssonnunes/www/tessel-editor/scripts/directed-scene-proof/corpus/assets-rev2/hero.png', 'sha256': 'a89546e3fd8c4a0a6e34457"
+  },
+  {
+   "check": "S5a resource swap, no frame in flight (revision -> pixels): rev-2 converges on frame 20",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 5, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 0}, 'context_losses': 2, 'shown': {'request_id': 281474976710681, 'edit_frame': 20}}"
+  },
+  {
+   "check": "S5a resource swap, no frame in flight (revision -> pixels): rev-2: explicit render of frame 20 answers",
+   "ok": true,
+   "detail": "{'action': 'render.frame', 'plan': {'kind': 'tessel-scene-plan', 'planVersion': 1, 'complete': True, 'requires': ['camera', 'nodeTransforms', 'performanceChannels', 'imagePlanes', 'straightAlpha', 'opaqueAlpha'], 'source': {'bundleId': 'proof-p-corpus', 'revisionId': 'rev-2', 'sceneDefinitionId': 'scene-a', 'sceneInstanceId': 'inst-a'}, 'output': {'width': 320, 'height': 180, 'fps': {'numerator': 24, 'denominator': 1}, 'colorSpace': 'srgb-display', 'alphaMode': 'straight'}, 'frame': {'editFrame'"
+  },
+  {
+   "check": "S5a resource swap, no frame in flight (revision -> pixels): rev-2: frame 20 was read back (inspected)",
+   "ok": true,
+   "detail": "True"
+  },
+  {
+   "check": "S5a resource swap, no frame in flight (revision -> pixels): rev-2: frame 20 probes match the independent model",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "check": "S5a resource swap, no frame in flight (revision -> pixels): rev-2 shows frame 20 with the hash of its original render",
+   "ok": true,
+   "detail": "monitor=7234a2c5a9fbf13e explicit=7234a2c5a9fbf13e"
+  },
+  {
+   "check": "S5a resource swap, no frame in flight (revision -> pixels): the swapped resource changes the picture (rev-2 hash differs from rev-1)",
+   "ok": true,
+   "detail": "('3f2c5c698d03cec4', '7234a2c5a9fbf13e')"
+  },
+  {
+   "check": "S5a resource swap, no frame in flight (revision -> pixels): after the swap: book holds 3..4 slots (<= 32) and the runtime holds the same (3 vs 3)",
+   "ok": true,
+   "detail": "(3, 3)"
+  },
+  {
+   "check": "S5a resource swap, no frame in flight (revision -> pixels): after the swap: no load is left tracked beyond the slots held",
+   "ok": true,
+   "detail": "{'occupied': 3, 'generation': 5, 'tracked_loads': 3}"
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: project s5b is created",
+   "ok": true,
+   "detail": "{'action': 'project.create', 'project': 's5b', 'sequence': 'main', 'rate': {'num': 24, 'den': 1, 'fps': 24.0}, 'width': 320, 'height': 180, 'length': 96, 'id': 'p-ba6984de93f87ea5', 'workspace': '/tmp/te-r8-jhpilk68/ws/s5b', 'changed': True}"
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: s5b: scene.attach",
+   "ok": true,
+   "detail": "{'action': 'scene.attach', 'scene': 'proof', 'name': 'proof-p-corpus', 'bundle_id': 'proof-p-corpus', 'revision_id': 'rev-1', 'counts': {'definitions': 1, 'nodes': 6, 'instances': 1, 'shots': 2, 'camera_clips': 1, 'performance_tracks': 1, 'assets': 3}, 'notices': [], 'deferred_in_use': [], 'scope': {'format': 'render-bundle', 'schema_version': '1.0', 'role': 'interchange data kept in the project document', 'validated': ['schema subset (BB01/BB02): layers, hierarchy, references, 3D transforms, sh"
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: s5b: scene.resources.resolve",
+   "ok": true,
+   "detail": "{'job': 'job-6', 'state': 'queued', 'info': {'id': 'job-6', 'kind': 'preflight', 'label': 'Load scene resources', 'state': 'queued', 'stage': 'queued', 'done': 0, 'total': 0, 'progress': None, 'eta_seconds': None, 'warnings': [], 'error': None, 'result': None, 'cancel_requested': False, 'created_ms': 1793912990234, 'started_ms': None, 'finished_ms': None}}"
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: s5b: the resource job is applied",
+   "ok": true,
+   "detail": "{'code': 'job_finished', 'message': 'Job `job-6` has nothing to apply or was already applied'}"
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: s5b: monitor.show_scene",
+   "ok": true,
+   "detail": "{'action': 'monitor.show_scene', 'scene': 'proof'}"
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: rev-1 (slow files) converges on frame 20",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 6, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 0}, 'context_losses': 2, 'shown': {'request_id': 281474976710684, 'edit_frame': 20}}"
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: rev-2 (slow): scene.attach",
+   "ok": true,
+   "detail": "{'action': 'scene.attach', 'scene': 'proof', 'name': 'proof-p-corpus', 'bundle_id': 'proof-p-corpus', 'revision_id': 'rev-2', 'counts': {'definitions': 1, 'nodes': 6, 'instances': 1, 'shots': 2, 'camera_clips': 1, 'performance_tracks': 1, 'assets': 3}, 'notices': [], 'deferred_in_use': [], 'scope': {'format': 'render-bundle', 'schema_version': '1.0', 'role': 'interchange data kept in the project document', 'validated': ['schema subset (BB01/BB02): layers, hierarchy, references, 3D transforms, sh"
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: rev-2 (slow): scene.resources.resolve",
+   "ok": true,
+   "detail": "{'job': 'job-7', 'state': 'queued', 'info': {'id': 'job-7', 'kind': 'preflight', 'label': 'Load scene resources', 'state': 'queued', 'stage': 'queued', 'done': 0, 'total': 0, 'progress': None, 'eta_seconds': None, 'warnings': [], 'error': None, 'result': None, 'cancel_requested': False, 'created_ms': 1793912991533, 'started_ms': None, 'finished_ms': None}}"
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: rev-2 (slow): the resource job is applied",
+   "ok": true,
+   "detail": "{'action': 'scene.resources.resolve', 'map': {'scene': 'proof', 'bundleId': 'proof-p-corpus', 'bundleRevision': 'rev-2', 'project': 'p-ba6984de93f87ea5', 'generation': 6, 'base': '/private/tmp/te-r8-jhpilk68/slow-a', 'complete': True, 'approvedBytes': 22848, 'resources': [{'resource': 'asset:hero', 'kind': 'image', 'path': '/private/tmp/te-r8-jhpilk68/slow-a/assets-rev2/hero.png', 'sha256': 'a89546e3fd8c4a0a6e34457e42d49f14238b65f4a8e1af493bbcd6adc5a69c2c', 'revisionId': 'rev-2', 'bytes': 4196, "
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: rev-1 again (slow): scene.attach",
+   "ok": true,
+   "detail": "{'action': 'scene.attach', 'scene': 'proof', 'name': 'proof-p-corpus', 'bundle_id': 'proof-p-corpus', 'revision_id': 'rev-1', 'counts': {'definitions': 1, 'nodes': 6, 'instances': 1, 'shots': 2, 'camera_clips': 1, 'performance_tracks': 1, 'assets': 3}, 'notices': [], 'deferred_in_use': [], 'scope': {'format': 'render-bundle', 'schema_version': '1.0', 'role': 'interchange data kept in the project document', 'validated': ['schema subset (BB01/BB02): layers, hierarchy, references, 3D transforms, sh"
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: rev-1 again (slow): scene.resources.resolve",
+   "ok": true,
+   "detail": "{'job': 'job-8', 'state': 'queued', 'info': {'id': 'job-8', 'kind': 'preflight', 'label': 'Load scene resources', 'state': 'queued', 'stage': 'queued', 'done': 0, 'total': 0, 'progress': None, 'eta_seconds': None, 'warnings': [], 'error': None, 'result': None, 'cancel_requested': False, 'created_ms': 1793912991898, 'started_ms': None, 'finished_ms': None}}"
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: rev-1 again (slow): the resource job is applied",
+   "ok": true,
+   "detail": "{'action': 'scene.resources.resolve', 'map': {'scene': 'proof', 'bundleId': 'proof-p-corpus', 'bundleRevision': 'rev-1', 'project': 'p-ba6984de93f87ea5', 'generation': 6, 'base': '/private/tmp/te-r8-jhpilk68/slow-a', 'complete': True, 'approvedBytes': 22848, 'resources': [{'resource': 'asset:hero', 'kind': 'image', 'path': '/private/tmp/te-r8-jhpilk68/slow-a/assets/hero.png', 'sha256': '7bacab4e0dd6aff8d146e6f208c06a63f58b26dbfc5fee54b1c32a712f356ef6', 'revisionId': 'rev-1', 'bytes': 4196, 'node"
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: the explicit frame in flight when the resources were replaced is answered",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: it is typed (cancelled/resource_*) or a picture of exactly one revision",
+   "ok": true,
+   "detail": "(False, {'code': 'cancelled', 'message': 'The scene runtime was reset', 'details': {'backend_code': 'cancelled', 'backend_details': None}})"
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: after the replacement the monitor converges on the playhead frame",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 6, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 3}, 'context_losses': 2, 'shown': {'request_id': 281474976710687, 'edit_frame': 20}}"
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: after the swap back: explicit render of frame 20 answers",
+   "ok": true,
+   "detail": "{'action': 'render.frame', 'plan': {'kind': 'tessel-scene-plan', 'planVersion': 1, 'complete': True, 'requires': ['camera', 'nodeTransforms', 'performanceChannels', 'imagePlanes', 'straightAlpha', 'opaqueAlpha'], 'source': {'bundleId': 'proof-p-corpus', 'revisionId': 'rev-1', 'sceneDefinitionId': 'scene-a', 'sceneInstanceId': 'inst-a'}, 'output': {'width': 320, 'height': 180, 'fps': {'numerator': 24, 'denominator': 1}, 'colorSpace': 'srgb-display', 'alphaMode': 'straight'}, 'frame': {'editFrame'"
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: after the swap back: frame 20 was read back (inspected)",
+   "ok": true,
+   "detail": "True"
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: after the swap back: frame 20 probes match the independent model",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: after the swap back shows frame 20 with the hash of its original render",
+   "ok": true,
+   "detail": "monitor=3f2c5c698d03cec4 explicit=3f2c5c698d03cec4"
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: the picture is the CURRENT revision (rev-1), not the invalidated rev-2",
+   "ok": true,
+   "detail": "('3f2c5c698d03cec4', '3f2c5c698d03cec4')"
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: after the replacement: book holds 3..4 slots (<= 32) and the runtime holds the same (3 vs 3)",
+   "ok": true,
+   "detail": "(3, 3)"
+  },
+  {
+   "check": "S5b resources replaced while the frame that needs them is in flight: after the replacement: no load is left tracked beyond the slots held",
+   "ok": true,
+   "detail": "{'occupied': 3, 'generation': 6, 'tracked_loads': 3}"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: project s6a is created",
+   "ok": true,
+   "detail": "{'action': 'project.create', 'project': 's6a', 'sequence': 'main', 'rate': {'num': 24, 'den': 1, 'fps': 24.0}, 'width': 320, 'height': 180, 'length': 96, 'id': 'p-4ffa8d0cd32d5cae', 'workspace': '/tmp/te-r8-jhpilk68/ws/s6a', 'changed': True}"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: s6a: scene.attach",
+   "ok": true,
+   "detail": "{'action': 'scene.attach', 'scene': 'proof', 'name': 'proof-p-corpus', 'bundle_id': 'proof-p-corpus', 'revision_id': 'rev-1', 'counts': {'definitions': 1, 'nodes': 6, 'instances': 1, 'shots': 2, 'camera_clips': 1, 'performance_tracks': 1, 'assets': 3}, 'notices': [], 'deferred_in_use': [], 'scope': {'format': 'render-bundle', 'schema_version': '1.0', 'role': 'interchange data kept in the project document', 'validated': ['schema subset (BB01/BB02): layers, hierarchy, references, 3D transforms, sh"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: s6a: scene.resources.resolve",
+   "ok": true,
+   "detail": "{'job': 'job-9', 'state': 'queued', 'info': {'id': 'job-9', 'kind': 'preflight', 'label': 'Load scene resources', 'state': 'queued', 'stage': 'queued', 'done': 0, 'total': 0, 'progress': None, 'eta_seconds': None, 'warnings': [], 'error': None, 'result': None, 'cancel_requested': False, 'created_ms': 1793912993227, 'started_ms': None, 'finished_ms': None}}"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: s6a: the resource job is applied",
+   "ok": true,
+   "detail": "{'action': 'scene.resources.resolve', 'map': {'scene': 'proof', 'bundleId': 'proof-p-corpus', 'bundleRevision': 'rev-1', 'project': 'p-4ffa8d0cd32d5cae', 'generation': 7, 'base': '/private/tmp/te-r8-jhpilk68/slow-a', 'complete': True, 'approvedBytes': 22848, 'resources': [{'resource': 'asset:hero', 'kind': 'image', 'path': '/private/tmp/te-r8-jhpilk68/slow-a/assets/hero.png', 'sha256': '7bacab4e0dd6aff8d146e6f208c06a63f58b26dbfc5fee54b1c32a712f356ef6', 'revisionId': 'rev-1', 'bytes': 4196, 'node"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: s6a: monitor.show_scene",
+   "ok": true,
+   "detail": "{'action': 'monitor.show_scene', 'scene': 'proof'}"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: project s6b is created",
+   "ok": true,
+   "detail": "{'action': 'project.create', 'project': 's6b', 'sequence': 'main', 'rate': {'num': 24, 'den': 1, 'fps': 24.0}, 'width': 320, 'height': 180, 'length': 96, 'id': 'p-9d91aa929fc3c934', 'workspace': '/tmp/te-r8-jhpilk68/ws/s6b', 'changed': True}"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: s6b: scene.attach",
+   "ok": true,
+   "detail": "{'action': 'scene.attach', 'scene': 'proof', 'name': 'proof-p-corpus', 'bundle_id': 'proof-p-corpus', 'revision_id': 'rev-1', 'counts': {'definitions': 1, 'nodes': 6, 'instances': 1, 'shots': 2, 'camera_clips': 1, 'performance_tracks': 1, 'assets': 3}, 'notices': [], 'deferred_in_use': [], 'scope': {'format': 'render-bundle', 'schema_version': '1.0', 'role': 'interchange data kept in the project document', 'validated': ['schema subset (BB01/BB02): layers, hierarchy, references, 3D transforms, sh"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: s6b: scene.resources.resolve",
+   "ok": true,
+   "detail": "{'job': 'job-10', 'state': 'queued', 'info': {'id': 'job-10', 'kind': 'preflight', 'label': 'Load scene resources', 'state': 'queued', 'stage': 'queued', 'done': 0, 'total': 0, 'progress': None, 'eta_seconds': None, 'warnings': [], 'error': None, 'result': None, 'cancel_requested': False, 'created_ms': 1793912993679, 'started_ms': None, 'finished_ms': None}}"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: s6b: the resource job is applied",
+   "ok": true,
+   "detail": "{'action': 'scene.resources.resolve', 'map': {'scene': 'proof', 'bundleId': 'proof-p-corpus', 'bundleRevision': 'rev-1', 'project': 'p-9d91aa929fc3c934', 'generation': 8, 'base': '/private/tmp/te-r8-jhpilk68/slow-b', 'complete': True, 'approvedBytes': 22848, 'resources': [{'resource': 'asset:hero', 'kind': 'image', 'path': '/private/tmp/te-r8-jhpilk68/slow-b/assets/hero.png', 'sha256': '7bacab4e0dd6aff8d146e6f208c06a63f58b26dbfc5fee54b1c32a712f356ef6', 'revisionId': 'rev-1', 'bytes': 4196, 'node"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: the old project's explicit frame is answered across the switch",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: it is typed `cancelled`, not a picture of the old project",
+   "ok": true,
+   "detail": "(False, {'code': 'cancelled', 'message': 'The scene monitor was closed', 'details': {'backend_code': 'cancelled', 'backend_details': None}})"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: the new project's explicit frame is answered",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: it is the FRAME, not failed by the old project's `cancelled` loads",
+   "ok": true,
+   "detail": "(True, {'action': 'render.frame', 'plan': {'kind': 'tessel-scene-plan', 'planVersion': 1, 'complete': True, 'requires': ['camera', 'nodeTransforms', 'performanceChannels', 'imagePlanes', 'straightAlpha', 'opaqueAlpha'], 'source': {'bundleId': 'proof-p-corpus', 'revisionId': 'rev-1', 'sceneDefinitionId': 'scene-a', 'sceneInstanceId': 'inst-a'}, 'output': {'width': 320, 'height': 180, 'fps': {'numerator': 24, 'denominator': 1}, 'colorSpace': 'srgb-display', 'alphaMode': 'straight'}, 'frame': {'edi"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: and it matches the independent model",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: the new project's resources have a newer generation than the old one",
+   "ok": true,
+   "detail": "(7, 8)"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: the replaced loads of the old project were refused, not applied",
+   "ok": true,
+   "detail": "(3, 6)"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: the new project's frame drew with the old project's resources released (runtime holds only the new ones)",
+   "ok": true,
+   "detail": "{'retain': True, 'texture_created': 3, 'texture_reused': 1, 'texture_evicted': 0, 'text_created': 0, 'text_reused': 0, 'text_evicted': 0, 'material_created': 0, 'material_reused': 5, 'material_evicted': 0, 'rig_built': 0, 'rig_reused': 0, 'rig_evicted': 0, 'target_created': 0, 'target_reused': 1, 'target_evicted': 0, 'proxy_attached': 0, 'proxy_failed': 0, 'result_hit': 0, 'result_miss': 0, 'result_invalidated': 0, 'text_entries': 0, 'text_bytes': 0, 'material_entries': 5, 'rig_entries': 0, 'tar"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: the monitor is shown for the new project",
+   "ok": true,
+   "detail": "{'action': 'monitor.show_scene', 'scene': 'proof'}"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: the monitor converges on the new project's playhead frame",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 8, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 6}, 'context_losses': 2, 'shown': {'request_id': 281474976710692, 'edit_frame': 0}}"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: the monitor: explicit render of frame 0 answers",
+   "ok": true,
+   "detail": "{'action': 'render.frame', 'plan': {'kind': 'tessel-scene-plan', 'planVersion': 1, 'complete': True, 'requires': ['camera', 'nodeTransforms', 'performanceChannels', 'imagePlanes', 'straightAlpha', 'opaqueAlpha'], 'source': {'bundleId': 'proof-p-corpus', 'revisionId': 'rev-1', 'sceneDefinitionId': 'scene-a', 'sceneInstanceId': 'inst-a'}, 'output': {'width': 320, 'height': 180, 'fps': {'numerator': 24, 'denominator': 1}, 'colorSpace': 'srgb-display', 'alphaMode': 'straight'}, 'frame': {'editFrame'"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: the monitor: frame 0 was read back (inspected)",
+   "ok": true,
+   "detail": "True"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: the monitor: frame 0 probes match the independent model",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: the monitor shows frame 0 with the hash of its original render",
+   "ok": true,
+   "detail": "monitor=0382ef5ffef9668d explicit=0382ef5ffef9668d"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: after the switch: book holds 3..3 slots (<= 32) and the runtime holds the same (3 vs 3)",
+   "ok": true,
+   "detail": "(3, 3)"
+  },
+  {
+   "check": "S6 project switch with a frame in flight; replaced loads end after the new project asked: after the switch: no load is left tracked beyond the slots held",
+   "ok": true,
+   "detail": "{'occupied': 3, 'generation': 8, 'tracked_loads': 3}"
+  },
+  {
+   "check": "S7 context lost, project replaced before the restore: project s7 is created",
+   "ok": true,
+   "detail": "{'action': 'project.create', 'project': 's7', 'sequence': 'main', 'rate': {'num': 24, 'den': 1, 'fps': 24.0}, 'width': 320, 'height': 180, 'length': 96, 'id': 'p-a85fdc9a09a75c51', 'workspace': '/tmp/te-r8-jhpilk68/ws/s7', 'changed': True}"
+  },
+  {
+   "check": "S7 context lost, project replaced before the restore: s7: scene.attach",
+   "ok": true,
+   "detail": "{'action': 'scene.attach', 'scene': 'proof', 'name': 'proof-p-corpus', 'bundle_id': 'proof-p-corpus', 'revision_id': 'rev-1', 'counts': {'definitions': 1, 'nodes': 6, 'instances': 1, 'shots': 2, 'camera_clips': 1, 'performance_tracks': 1, 'assets': 3}, 'notices': [], 'deferred_in_use': [], 'scope': {'format': 'render-bundle', 'schema_version': '1.0', 'role': 'interchange data kept in the project document', 'validated': ['schema subset (BB01/BB02): layers, hierarchy, references, 3D transforms, sh"
+  },
+  {
+   "check": "S7 context lost, project replaced before the restore: s7: scene.resources.resolve",
+   "ok": true,
+   "detail": "{'job': 'job-11', 'state': 'queued', 'info': {'id': 'job-11', 'kind': 'preflight', 'label': 'Load scene resources', 'state': 'queued', 'stage': 'queued', 'done': 0, 'total': 0, 'progress': None, 'eta_seconds': None, 'warnings': [], 'error': None, 'result': None, 'cancel_requested': False, 'created_ms': 1793912995011, 'started_ms': None, 'finished_ms': None}}"
+  },
+  {
+   "check": "S7 context lost, project replaced before the restore: s7: the resource job is applied",
+   "ok": true,
+   "detail": "{'action': 'scene.resources.resolve', 'map': {'scene': 'proof', 'bundleId': 'proof-p-corpus', 'bundleRevision': 'rev-1', 'project': 'p-a85fdc9a09a75c51', 'generation': 9, 'base': '/Users/wallyssonnunes/www/tessel-editor/scripts/directed-scene-proof/corpus', 'complete': True, 'approvedBytes': 22848, 'resources': [{'resource': 'asset:hero', 'kind': 'image', 'path': '/Users/wallyssonnunes/www/tessel-editor/scripts/directed-scene-proof/corpus/assets/hero.png', 'sha256': '7bacab4e0dd6aff8d146e6f208c0"
+  },
+  {
+   "check": "S7 context lost, project replaced before the restore: s7: monitor.show_scene",
+   "ok": true,
+   "detail": "{'action': 'monitor.show_scene', 'scene': 'proof'}"
+  },
+  {
+   "check": "S7 context lost, project replaced before the restore: frame 0 converges",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S7 context lost, project replaced before the restore: the loss is seen by the host",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': True, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 9, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 6}, 'context_losses': 3, 'shown': None}"
+  },
+  {
+   "check": "S7 context lost, project replaced before the restore: project s7b is created",
+   "ok": true,
+   "detail": "{'action': 'project.create', 'project': 's7b', 'sequence': 'main', 'rate': {'num': 24, 'den': 1, 'fps': 24.0}, 'width': 320, 'height': 180, 'length': 96, 'id': 'p-909b96e3174c44f3', 'workspace': '/tmp/te-r8-jhpilk68/ws/s7b', 'changed': True}"
+  },
+  {
+   "check": "S7 context lost, project replaced before the restore: s7b: scene.attach",
+   "ok": true,
+   "detail": "{'action': 'scene.attach', 'scene': 'proof', 'name': 'proof-p-corpus', 'bundle_id': 'proof-p-corpus', 'revision_id': 'rev-1', 'counts': {'definitions': 1, 'nodes': 6, 'instances': 1, 'shots': 2, 'camera_clips': 1, 'performance_tracks': 1, 'assets': 3}, 'notices': [], 'deferred_in_use': [], 'scope': {'format': 'render-bundle', 'schema_version': '1.0', 'role': 'interchange data kept in the project document', 'validated': ['schema subset (BB01/BB02): layers, hierarchy, references, 3D transforms, sh"
+  },
+  {
+   "check": "S7 context lost, project replaced before the restore: s7b: scene.resources.resolve",
+   "ok": true,
+   "detail": "{'job': 'job-12', 'state': 'queued', 'info': {'id': 'job-12', 'kind': 'preflight', 'label': 'Load scene resources', 'state': 'queued', 'stage': 'queued', 'done': 0, 'total': 0, 'progress': None, 'eta_seconds': None, 'warnings': [], 'error': None, 'result': None, 'cancel_requested': False, 'created_ms': 1793912995120, 'started_ms': None, 'finished_ms': None}}"
+  },
+  {
+   "check": "S7 context lost, project replaced before the restore: s7b: the resource job is applied",
+   "ok": true,
+   "detail": "{'action': 'scene.resources.resolve', 'map': {'scene': 'proof', 'bundleId': 'proof-p-corpus', 'bundleRevision': 'rev-1', 'project': 'p-909b96e3174c44f3', 'generation': 10, 'base': '/Users/wallyssonnunes/www/tessel-editor/scripts/directed-scene-proof/corpus', 'complete': True, 'approvedBytes': 22848, 'resources': [{'resource': 'asset:hero', 'kind': 'image', 'path': '/Users/wallyssonnunes/www/tessel-editor/scripts/directed-scene-proof/corpus/assets/hero.png', 'sha256': '7bacab4e0dd6aff8d146e6f208c"
+  },
+  {
+   "check": "S7 context lost, project replaced before the restore: s7b: monitor.show_scene",
+   "ok": true,
+   "detail": "{'action': 'monitor.show_scene', 'scene': 'proof'}"
+  },
+  {
+   "check": "S7 context lost, project replaced before the restore: the new project draws once the context is back",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 10, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 6}, 'context_losses': 3, 'shown': {'request_id': 281474976710697, 'edit_frame': 0}}"
+  },
+  {
+   "check": "S7 context lost, project replaced before the restore: the monitor: explicit render of frame 0 answers",
+   "ok": true,
+   "detail": "{'action': 'render.frame', 'plan': {'kind': 'tessel-scene-plan', 'planVersion': 1, 'complete': True, 'requires': ['camera', 'nodeTransforms', 'performanceChannels', 'imagePlanes', 'straightAlpha', 'opaqueAlpha'], 'source': {'bundleId': 'proof-p-corpus', 'revisionId': 'rev-1', 'sceneDefinitionId': 'scene-a', 'sceneInstanceId': 'inst-a'}, 'output': {'width': 320, 'height': 180, 'fps': {'numerator': 24, 'denominator': 1}, 'colorSpace': 'srgb-display', 'alphaMode': 'straight'}, 'frame': {'editFrame'"
+  },
+  {
+   "check": "S7 context lost, project replaced before the restore: the monitor: frame 0 was read back (inspected)",
+   "ok": true,
+   "detail": "True"
+  },
+  {
+   "check": "S7 context lost, project replaced before the restore: the monitor: frame 0 probes match the independent model",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "check": "S7 context lost, project replaced before the restore: the monitor shows frame 0 with the hash of its original render",
+   "ok": true,
+   "detail": "monitor=0382ef5ffef9668d explicit=0382ef5ffef9668d"
+  },
+  {
+   "check": "S7 context lost, project replaced before the restore: exactly one real loss happened",
+   "ok": true,
+   "detail": "(0, 1)"
+  },
+  {
+   "check": "S7 context lost, project replaced before the restore: and follows the playhead",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S7 context lost, project replaced before the restore: after loss+switch: book holds 3..3 slots (<= 32) and the runtime holds the same (3 vs 3)",
+   "ok": true,
+   "detail": "(3, 3)"
+  },
+  {
+   "check": "S7 context lost, project replaced before the restore: after loss+switch: no load is left tracked beyond the slots held",
+   "ok": true,
+   "detail": "{'occupied': 3, 'generation': 10, 'tracked_loads': 3}"
+  },
+  {
+   "check": "S8 context never restored: project s8 is created",
+   "ok": true,
+   "detail": "{'action': 'project.create', 'project': 's8', 'sequence': 'main', 'rate': {'num': 24, 'den': 1, 'fps': 24.0}, 'width': 320, 'height': 180, 'length': 96, 'id': 'p-24e597a3c6114a0f', 'workspace': '/tmp/te-r8-jhpilk68/ws/s8', 'changed': True}"
+  },
+  {
+   "check": "S8 context never restored: s8: scene.attach",
+   "ok": true,
+   "detail": "{'action': 'scene.attach', 'scene': 'proof', 'name': 'proof-p-corpus', 'bundle_id': 'proof-p-corpus', 'revision_id': 'rev-1', 'counts': {'definitions': 1, 'nodes': 6, 'instances': 1, 'shots': 2, 'camera_clips': 1, 'performance_tracks': 1, 'assets': 3}, 'notices': [], 'deferred_in_use': [], 'scope': {'format': 'render-bundle', 'schema_version': '1.0', 'role': 'interchange data kept in the project document', 'validated': ['schema subset (BB01/BB02): layers, hierarchy, references, 3D transforms, sh"
+  },
+  {
+   "check": "S8 context never restored: s8: scene.resources.resolve",
+   "ok": true,
+   "detail": "{'job': 'job-13', 'state': 'queued', 'info': {'id': 'job-13', 'kind': 'preflight', 'label': 'Load scene resources', 'state': 'queued', 'stage': 'queued', 'done': 0, 'total': 0, 'progress': None, 'eta_seconds': None, 'warnings': [], 'error': None, 'result': None, 'cancel_requested': False, 'created_ms': 1793912996739, 'started_ms': None, 'finished_ms': None}}"
+  },
+  {
+   "check": "S8 context never restored: s8: the resource job is applied",
+   "ok": true,
+   "detail": "{'action': 'scene.resources.resolve', 'map': {'scene': 'proof', 'bundleId': 'proof-p-corpus', 'bundleRevision': 'rev-1', 'project': 'p-24e597a3c6114a0f', 'generation': 11, 'base': '/Users/wallyssonnunes/www/tessel-editor/scripts/directed-scene-proof/corpus', 'complete': True, 'approvedBytes': 22848, 'resources': [{'resource': 'asset:hero', 'kind': 'image', 'path': '/Users/wallyssonnunes/www/tessel-editor/scripts/directed-scene-proof/corpus/assets/hero.png', 'sha256': '7bacab4e0dd6aff8d146e6f208c"
+  },
+  {
+   "check": "S8 context never restored: s8: monitor.show_scene",
+   "ok": true,
+   "detail": "{'action': 'monitor.show_scene', 'scene': 'proof'}"
+  },
+  {
+   "check": "S8 context never restored: frame 0 converges",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S8 context never restored: the host knows the context is lost",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': True, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 11, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 6}, 'context_losses': 4, 'shown': None}"
+  },
+  {
+   "check": "S8 context never restored: the monitor says so instead of freezing on the last picture",
+   "ok": true,
+   "detail": "Falha: context_lost"
+  },
+  {
+   "check": "S8 context never restored: an explicit frame is refused at once with a typed `context_lost`",
+   "ok": true,
+   "detail": "(False, {'code': 'context_lost', 'message': 'The graphics context is lost; try again once it is restored'})"
+  },
+  {
+   "check": "S8 context never restored: the reload recovers",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S8 context never restored: after the reload the monitor draws the playhead frame",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 11, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 6}, 'context_losses': 4, 'shown': {'request_id': 281474976710703, 'edit_frame': 12}}"
+  },
+  {
+   "check": "S8 context never restored: the monitor: explicit render of frame 12 answers",
+   "ok": true,
+   "detail": "{'action': 'render.frame', 'plan': {'kind': 'tessel-scene-plan', 'planVersion': 1, 'complete': True, 'requires': ['camera', 'nodeTransforms', 'performanceChannels', 'imagePlanes', 'straightAlpha', 'opaqueAlpha'], 'source': {'bundleId': 'proof-p-corpus', 'revisionId': 'rev-1', 'sceneDefinitionId': 'scene-a', 'sceneInstanceId': 'inst-a'}, 'output': {'width': 320, 'height': 180, 'fps': {'numerator': 24, 'denominator': 1}, 'colorSpace': 'srgb-display', 'alphaMode': 'straight'}, 'frame': {'editFrame'"
+  },
+  {
+   "check": "S8 context never restored: the monitor: frame 12 was read back (inspected)",
+   "ok": true,
+   "detail": "True"
+  },
+  {
+   "check": "S8 context never restored: the monitor: frame 12 probes match the independent model",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "check": "S8 context never restored: the monitor shows frame 12 with the hash of its original render",
+   "ok": true,
+   "detail": "monitor=7f1653cb9ccb2d80 explicit=7f1653cb9ccb2d80"
+  },
+  {
+   "check": "S8 context never restored: after the reload: book holds 3..3 slots (<= 32) and the runtime holds the same (3 vs 3)",
+   "ok": true,
+   "detail": "(3, 3)"
+  },
+  {
+   "check": "S8 context never restored: after the reload: no load is left tracked beyond the slots held",
+   "ok": true,
+   "detail": "{'occupied': 3, 'generation': 11, 'tracked_loads': 3}"
+  },
+  {
+   "check": "S9 context lost, page reloaded before the restore: the loss is seen by the host",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': True, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 11, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 6}, 'context_losses': 5, 'shown': None}"
+  },
+  {
+   "check": "S9 context lost, page reloaded before the restore: the reload is accepted",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "check": "S9 context lost, page reloaded before the restore: the monitor converges on the playhead frame in the new page",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 11, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 6}, 'context_losses': 5, 'shown': {'request_id': 281474976710707, 'edit_frame': 12}}"
+  },
+  {
+   "check": "S9 context lost, page reloaded before the restore: the monitor: explicit render of frame 12 answers",
+   "ok": true,
+   "detail": "{'action': 'render.frame', 'plan': {'kind': 'tessel-scene-plan', 'planVersion': 1, 'complete': True, 'requires': ['camera', 'nodeTransforms', 'performanceChannels', 'imagePlanes', 'straightAlpha', 'opaqueAlpha'], 'source': {'bundleId': 'proof-p-corpus', 'revisionId': 'rev-1', 'sceneDefinitionId': 'scene-a', 'sceneInstanceId': 'inst-a'}, 'output': {'width': 320, 'height': 180, 'fps': {'numerator': 24, 'denominator': 1}, 'colorSpace': 'srgb-display', 'alphaMode': 'straight'}, 'frame': {'editFrame'"
+  },
+  {
+   "check": "S9 context lost, page reloaded before the restore: the monitor: frame 12 was read back (inspected)",
+   "ok": true,
+   "detail": "True"
+  },
+  {
+   "check": "S9 context lost, page reloaded before the restore: the monitor: frame 12 probes match the independent model",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "check": "S9 context lost, page reloaded before the restore: the monitor shows frame 12 with the hash of its original render",
+   "ok": true,
+   "detail": "monitor=7f1653cb9ccb2d80 explicit=7f1653cb9ccb2d80"
+  },
+  {
+   "check": "S9 context lost, page reloaded before the restore: after loss+reload: book holds 3..3 slots (<= 32) and the runtime holds the same (3 vs 3)",
+   "ok": true,
+   "detail": "(3, 3)"
+  },
+  {
+   "check": "S9 context lost, page reloaded before the restore: after loss+reload: no load is left tracked beyond the slots held",
+   "ok": true,
+   "detail": "{'occupied': 3, 'generation': 11, 'tracked_loads': 3}"
+  },
+  {
+   "check": "S9 context lost, page reloaded before the restore: the old page's late restore changed nothing",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 11, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 6}, 'context_losses': 5, 'shown': {'request_id': 281474976710708, 'edit_frame': 12}}"
+  },
+  {
+   "check": "S10 six losses in a row: frame 81 converged after its loss",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 11, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 6}, 'context_losses': 6, 'shown': {'request_id': 281474976710710, 'edit_frame': 81}}"
+  },
+  {
+   "check": "S10 six losses in a row: frame 82 converged after its loss",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 11, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 6}, 'context_losses': 7, 'shown': {'request_id': 281474976710712, 'edit_frame': 82}}"
+  },
+  {
+   "check": "S10 six losses in a row: frame 83 converged after its loss",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 11, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 6}, 'context_losses': 8, 'shown': {'request_id': 281474976710714, 'edit_frame': 83}}"
+  },
+  {
+   "check": "S10 six losses in a row: frame 84 converged after its loss",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 11, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 6}, 'context_losses': 9, 'shown': {'request_id': 281474976710716, 'edit_frame': 84}}"
+  },
+  {
+   "check": "S10 six losses in a row: frame 85 converged after its loss",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 11, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 6}, 'context_losses': 10, 'shown': {'request_id': 281474976710718, 'edit_frame': 85}}"
+  },
+  {
+   "check": "S10 six losses in a row: frame 86 converged after its loss",
+   "ok": true,
+   "detail": "{'scene': 'proof', 'suspended': False, 'active': None, 'queued': None, 'slots': {'occupied': 3, 'generation': 11, 'tracked_loads': 3}, 'refused': {'stale_frames': 0, 'stale_asset_states': 6}, 'context_losses': 11, 'shown': {'request_id': 281474976710720, 'edit_frame': 86}}"
+  },
+  {
+   "check": "S10 six losses in a row: exactly six losses happened",
+   "ok": true,
+   "detail": "(5, 11)"
+  },
+  {
+   "check": "S10 six losses in a row: the monitor: explicit render of frame 86 answers",
+   "ok": true,
+   "detail": "{'action': 'render.frame', 'plan': {'kind': 'tessel-scene-plan', 'planVersion': 1, 'complete': True, 'requires': ['camera', 'nodeTransforms', 'performanceChannels', 'imagePlanes', 'straightAlpha', 'opaqueAlpha'], 'source': {'bundleId': 'proof-p-corpus', 'revisionId': 'rev-1', 'sceneDefinitionId': 'scene-a', 'sceneInstanceId': 'inst-a'}, 'output': {'width': 320, 'height': 180, 'fps': {'numerator': 24, 'denominator': 1}, 'colorSpace': 'srgb-display', 'alphaMode': 'straight'}, 'frame': {'editFrame'"
+  },
+  {
+   "check": "S10 six losses in a row: the monitor: frame 86 was read back (inspected)",
+   "ok": true,
+   "detail": "True"
+  },
+  {
+   "check": "S10 six losses in a row: the monitor shows frame 86 with the hash of its original render",
+   "ok": true,
+   "detail": "monitor=8eefcb9c3d69d22e explicit=8eefcb9c3d69d22e"
+  },
+  {
+   "check": "S10 six losses in a row: after six losses: book holds 3..3 slots (<= 32) and the runtime holds the same (3 vs 3)",
+   "ok": true,
+   "detail": "(3, 3)"
+  },
+  {
+   "check": "S10 six losses in a row: after six losses: no load is left tracked beyond the slots held",
+   "ok": true,
+   "detail": "{'occupied': 3, 'generation': 11, 'tracked_loads': 3}"
+  },
+  {
+   "check": "S10 six losses in a row: gl_textures did not grow across the losses (4 <= 7)",
+   "ok": true,
+   "detail": "(5, 4)"
+  },
+  {
+   "check": "S10 six losses in a row: texture_entries did not grow across the losses (3 <= 5)",
+   "ok": true,
+   "detail": "(3, 3)"
+  },
+  {
+   "check": "end: the editor is still ready and unfailed at the end",
+   "ok": true,
+   "detail": "None"
+  },
+  {
+   "check": "end: own artifacts stayed under 2 GiB (0.004)",
+   "ok": true,
+   "detail": ""
+  }
+ ],
+ "scenarios": {
+  "S0 baseline": {
+   "footprint": {
+    "scene_resources": 3,
+    "scene_generation": 2,
+    "context_generation": 0,
+    "gl_textures": 5,
+    "texture_entries": 3,
+    "occupied": 3
+   },
+   "renderer": "Apple GPU"
+  },
+  "S1 context lost while the monitor draws its frame": {
+   "footprint": {
+    "scene_resources": 3,
+    "scene_generation": 2,
+    "context_generation": 1,
+    "gl_textures": 4,
+    "texture_entries": 3,
+    "occupied": 3
+   }
+  },
+  "S2 hidden monitor, explicit frame, context lost mid frame": {
+   "explicit_outcome": {
+    "ok": true,
+    "error": null,
+    "seconds": 0.02
+   }
+  },
+  "S3 hide / show parks the monitor and converges on show": {
+   "footprint": {
+    "scene_resources": 3,
+    "scene_generation": 2,
+    "context_generation": 2,
+    "gl_textures": 4,
+    "texture_entries": 3,
+    "occupied": 3
+   }
+  },
+  "S3b explicit frame pending while the monitor hides": {
+   "pending_across_hide": {
+    "ok": true,
+    "error": null,
+    "seconds": 1.22
+   }
+  },
+  "S4 monitor.reload with an explicit frame waiting for slow assets": {
+   "explicit_during_reload": {
+    "ok": false,
+    "error": "cancelled",
+    "seconds": 0.35
+   },
+   "footprint": {
+    "scene_resources": 3,
+    "scene_generation": 4,
+    "context_generation": 0,
+    "gl_textures": 4,
+    "texture_entries": 3,
+    "occupied": 3
+   }
+  },
+  "S5b resources replaced while the frame that needs them is in flight": {
+   "state_when_invalidated": {
+    "active": {
+     "id": 281474976710686,
+     "sent": false,
+     "waiting": [
+      "scene-res-21",
+      "scene-res-22",
+      "scene-res-23"
+     ],
+     "explicit": true
+    },
+    "queued": null
+   },
+   "explicit_across_swap": {
+    "ok": false,
+    "error": "cancelled"
+   },
+   "footprint": {
+    "scene_resources": 3,
+    "scene_generation": 6,
+    "context_generation": 0,
+    "gl_textures": 4,
+    "texture_entries": 3,
+    "occupied": 3
+   }
+  },
+  "S6 project switch with a frame in flight; replaced loads end after the new project asked": {
+   "old_explicit_across_switch": {
+    "ok": false,
+    "error": "cancelled"
+   },
+   "refused_stale_asset_states": 3,
+   "footprint": {
+    "scene_resources": 3,
+    "scene_generation": 8,
+    "context_generation": 0,
+    "gl_textures": 4,
+    "texture_entries": 3,
+    "occupied": 3
+   }
+  },
+  "S7 context lost, project replaced before the restore": {
+   "footprint": {
+    "scene_resources": 3,
+    "scene_generation": 10,
+    "context_generation": 1,
+    "gl_textures": 4,
+    "texture_entries": 3,
+    "occupied": 3
+   }
+  },
+  "S8 context never restored": {
+   "footprint": {
+    "scene_resources": 3,
+    "scene_generation": 11,
+    "context_generation": 0,
+    "gl_textures": 4,
+    "texture_entries": 3,
+    "occupied": 3
+   }
+  },
+  "S9 context lost, page reloaded before the restore": {
+   "footprint": {
+    "scene_resources": 3,
+    "scene_generation": 11,
+    "context_generation": 0,
+    "gl_textures": 4,
+    "texture_entries": 3,
+    "occupied": 3
+   }
+  },
+  "S10 six losses in a row": {
+   "footprint": {
+    "scene_resources": 3,
+    "scene_generation": 11,
+    "context_generation": 6,
+    "gl_textures": 4,
+    "texture_entries": 3,
+    "occupied": 3
+   }
+  }
+ },
+ "binary": {
+  "path": "target/release/tessel-editor",
+  "present": true,
+  "sha256": "8547e46f765866ef630d01deaba6a221c22d07caa58c18612c04fb9817f05bb3",
+  "bytes": 35895760,
+  "mtime_utc": "2026-11-05T21:06:00Z",
+  "older_than_sources": false
+ },
+ "git": {
+  "head": "914c830ed7e247b40e6915a527278031f4d0ee6f",
+  "branch": "feat/directed-scene-next-delivery",
+  "dirty_files": 95
+ },
+ "page": "/tmp/te-r8-jhpilk68/runtime/dist",
+ "renderer": "Apple GPU",
+ "final": {
+  "directed": {
+   "scene": "proof",
+   "suspended": false,
+   "active": null,
+   "queued": null,
+   "slots": {
+    "occupied": 3,
+    "generation": 11,
+    "tracked_loads": 3
+   },
+   "refused": {
+    "stale_frames": 0,
+    "stale_asset_states": 6
+   },
+   "context_losses": 11,
+   "shown": {
+    "request_id": 281474976710721,
+    "edit_frame": 86
+   }
+  },
+  "ui": {
+   "repaints": 96,
+   "skipped": 99
+  }
+ },
+ "artifacts_gib": 0.004,
+ "failures": [],
+ "checks_total": 218,
+ "checks_failed": 0
+}
