@@ -3,6 +3,8 @@ name = "tessel-editor-render"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Process transport and CLI for the Three.js viewport runtime (headless frames, no window)"
 
 [dependencies]

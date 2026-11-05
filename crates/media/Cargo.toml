@@ -3,6 +3,8 @@ name = "tessel-editor-media"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+license.workspace = true
+repository.workspace = true
 description = "Media adapters: FFmpeg/FFprobe, import, derived media, packages and video export (no GPUI)"
 
 [dependencies]
