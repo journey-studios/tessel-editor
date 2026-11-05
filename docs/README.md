@@ -3,6 +3,7 @@
 Comece pela [matriz de features](features/README.md): ela registra o contrato e o estado de
 cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 
+- [Backlog compartilhado](backlog.md): registro único de pendências, responsáveis, dependências e aceite; obrigatório para todos os agentes.
 - [Inventário de migração do Scene Studio](migration/README.md): 121 itens classificados,
   evidências na origem, diferenças do branch piloto, matriz de migração e fatias sugeridas.
 - [Cenas no projeto e CLI](features/scene-project.md): attach, lotes, histórico, save/reopen

@@ -1,5 +1,10 @@
 # Rodada paralela da base de migração
 
+> Estado de execução e novas pendências: [backlog compartilhado](../backlog.md).
+> Este plano registra as rodadas anteriores; A–G foram integradas no PR #1.
+> Não inferir agentes ativos a partir dos status históricos abaixo.
+
+
 Status: execução em andamento após o primeiro commit `59d618a`. Frente B entregue e
 verificada pelo coordenador: 55 casos contra a origem e 21 testes do runner; consumidor Rust
 integrado parcialmente na frente A (55 vereditos, grafo e matrizes estáticas). A entregue e

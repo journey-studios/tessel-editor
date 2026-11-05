@@ -8,6 +8,11 @@ description: Implementar ou alterar features do Tessel Editor com regras no core
 Aplica-se ao projeto `tessel-editor`. Leia `docs/README.md`, `docs/features/README.md` e
 `docs/core-architecture.md` a partir da raiz do repositório antes de alterar comportamento.
 
+- Leia [docs/backlog.md](../../../docs/backlog.md) antes de começar. Toda pendência descoberta,
+  inclusive prova ausente ou decisão, entra nesse registro comum com ID, status, responsável,
+  dependências, aceite e referência. Não crie outra fila de execução; preserve relatórios como histórico.
+- Antes de encerrar, atualize o item com evidência por superfície, commit/PR e limites restantes.
+  Em paralelo, envie ao coordenador o patch das linhas sob seu ownership para integração segura.
 - Toda feature implementada ou alterada exige um `.md` em `docs/features/` e uma linha na
   matriz. Preserve IDs estáveis. Mudanças de comportamento exigem atualizar ambos na mesma entrega.
 - Comece pelo contrato público da biblioteca `crates/core`: comandos, consultas, resultados,
