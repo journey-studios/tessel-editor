@@ -5,6 +5,7 @@ use std::fmt;
 
 use serde_json::{Value, json};
 
+use crate::directed_scene::animation::{NodeFrame, NodeTimeline};
 use crate::directed_scene::{Bundle, CameraClip, SceneInstance, Shot};
 use crate::time::{Rate, Ratio};
 
@@ -34,32 +35,29 @@ pub struct CameraEvaluation<'a> {
     pub camera: CameraState,
 }
 
-/// What this evaluator does not compute. Returned inside a result (never silently dropped) so a
-/// caller cannot mistake a partial frame for a complete one.
+/// What a frame evaluation does not compute. Returned inside a result (never silently dropped) so
+/// a caller cannot mistake a partial frame for a complete one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Unsupported {
-    /// The instance plays performance channels (cycles, events, static overrides of node
-    /// transforms). Their evaluation is not part of BB03's first slice: the nodes would sit at
-    /// their static transforms while the origin moves them.
-    PerformanceChannels {
-        instance_id: String,
-        track_ids: Vec<String>,
-        channels: usize,
+    /// The scene the instance plays declares sections that change the picture and that no
+    /// evaluator computes yet (`weather`, `lighting`, `rigs`, `nodes[].rigBind`...). The camera and
+    /// the node transforms of the frame are still evaluated; these sections have no state here.
+    DeferredSections {
+        scene_definition_id: String,
+        sections: Vec<String>,
     },
 }
 
 impl Unsupported {
     pub fn to_json(&self) -> Value {
         match self {
-            Self::PerformanceChannels {
-                instance_id,
-                track_ids,
-                channels,
+            Self::DeferredSections {
+                scene_definition_id,
+                sections,
             } => json!({
-                "unsupported": "performance_channels",
-                "instanceId": instance_id,
-                "trackIds": track_ids,
-                "channels": channels,
+                "unsupported": "deferred_sections",
+                "sceneDefinitionId": scene_definition_id,
+                "sections": sections,
             }),
         }
     }
@@ -68,52 +66,111 @@ impl Unsupported {
 impl fmt::Display for Unsupported {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::PerformanceChannels {
-                instance_id,
-                channels,
-                ..
+            Self::DeferredSections {
+                scene_definition_id,
+                sections,
             } => write!(
                 f,
-                "instance {instance_id} plays {channels} performance channel(s); node animation is not evaluated"
+                "scene {scene_definition_id} declares {} that no evaluator computes yet",
+                sections.join(", ")
             ),
         }
     }
 }
 
-/// State of the scene nodes at a frame, as far as this evaluator knows.
+/// Whether performance channels moved the nodes of a frame. The node states themselves are always
+/// in `FrameEvaluation::nodes`; this says where they came from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NodeAnimation {
-    /// No performance channel applies: the nodes sit at the transforms of their `SceneGraph`.
+    /// No performance channel applies: the nodes sit at the transforms of their `SceneGraph`
+    /// (through the same Euler path as an animated frame, so the two compare equal).
     Static,
-    /// Channels apply and are not evaluated. The graph's static transforms are **not** the nodes'
-    /// transforms at this frame.
-    Unsupported(Unsupported),
+    /// `channels` channel(s) of these tracks were evaluated at the frame.
+    Animated {
+        track_ids: Vec<String>,
+        channels: usize,
+    },
 }
 
-/// A whole frame: mapping, camera and what is known about node animation.
+/// A whole frame: mapping, camera and nodes, and what is known not to be covered.
 ///
-/// WHY not a single `evaluate_frame` that errors when channels exist: the camera is complete and
-/// useful on its own (preview, gates); refusing it would hide a correct answer. The caller that
-/// needs the whole truth asks `is_complete` / `require_complete`.
+/// WHY `evaluate_frame` succeeds with `unevaluated` filled instead of erroring when the scene has
+/// weather or lights: the camera and the nodes are complete and useful on their own (preview,
+/// gates); refusing them would hide a correct answer. The caller that needs the whole truth asks
+/// `is_complete` / `require_complete`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FrameEvaluation<'a> {
     pub mapping: FrameMapping<'a>,
     pub camera: CameraState,
     pub node_animation: NodeAnimation,
+    /// Every node of the instance's scene at this frame, with its matrices, queryable by id.
+    pub nodes: NodeFrame,
+    /// Sections the scene declares and nothing evaluates (see `Unsupported::DeferredSections`).
+    pub unevaluated: Vec<&'static str>,
 }
 
 impl FrameEvaluation<'_> {
-    /// Whether every part of the frame was evaluated.
+    /// Whether no declared animated/lighting section was deferred by this evaluator.
+    /// This does not validate static material maps, assets, or render capabilities.
     pub fn is_complete(&self) -> bool {
-        self.node_animation == NodeAnimation::Static
+        self.unevaluated.is_empty()
     }
 
     /// The evaluation, or the typed `Unsupported` that makes it partial.
     pub fn require_complete(self) -> Result<Self, TemporalError> {
-        match self.node_animation {
-            NodeAnimation::Static => Ok(self),
-            NodeAnimation::Unsupported(what) => Err(TemporalError::Unsupported(what)),
+        if self.unevaluated.is_empty() {
+            return Ok(self);
         }
+        Err(TemporalError::Unsupported(Unsupported::DeferredSections {
+            scene_definition_id: self.mapping.instance.scene_definition_id.clone(),
+            sections: self.unevaluated.iter().map(|s| s.to_string()).collect(),
+        }))
+    }
+
+    /// The evaluated frame for a renderer or an adapter: stable camelCase JSON, the origin's
+    /// `ResolvedFrameState` plus the world matrices, the animation provenance and what is left
+    /// unevaluated. Numbers are the exact `f64`s; the times are exact `{numerator, denominator}`.
+    pub fn to_json(&self) -> Value {
+        let ratio = |value: Ratio| json!({ "numerator": value.num(), "denominator": value.den() });
+        let camera = &self.camera;
+        let animation = match &self.node_animation {
+            NodeAnimation::Static => json!({ "status": "static" }),
+            NodeAnimation::Animated {
+                track_ids,
+                channels,
+            } => json!({ "status": "animated", "trackIds": track_ids, "channels": channels }),
+        };
+        let mut frame = json!({
+            "editFrame": self.mapping.edit_frame,
+            "shotId": self.mapping.shot.id,
+            "instanceId": self.mapping.instance.id,
+            "instanceFrame": self.mapping.instance_frame,
+            "cameraClipId": self.mapping.shot.camera_clip_id,
+            "cameraClipFrame": self.mapping.camera_clip_frame,
+            "editTime": ratio(self.mapping.edit_time),
+            "instanceTime": ratio(self.mapping.instance_time),
+            "cameraClipTime": ratio(self.mapping.camera_clip_time),
+            "camera": {
+                "position": camera.position.to_json(),
+                "target": camera.target.to_json(),
+                "fovDeg": camera.fov_deg,
+                "velocity": camera.velocity.to_json(),
+                "fovVelocityDegPerFrame": camera.fov_velocity_deg_per_frame,
+            },
+            "animation": animation,
+            "complete": self.is_complete(),
+            "unevaluated": self.unevaluated,
+        });
+        // The node block is the one `NodeFrame::to_json` defines; merged flat so that the frame
+        // keeps the origin's key names (`nodes`, `performanceOverrides`) at its top level.
+        if let (Value::Object(map), Value::Object(nodes)) = (&mut frame, self.nodes.to_json()) {
+            for key in ["sceneDefinitionId", "nodes", "performanceOverrides"] {
+                if let Some(value) = nodes.get(key) {
+                    map.insert(key.to_string(), value.clone());
+                }
+            }
+        }
+        frame
     }
 }
 
@@ -261,37 +318,37 @@ impl Bundle {
         Ok(CameraEvaluation { mapping, camera })
     }
 
-    /// `evaluate_camera` plus the state of node animation: `Static` when no performance channel
-    /// applies, `Unsupported` (typed, with the tracks) when one does. Never fakes node state.
+    /// The whole frame: shot mapping, camera, and the state of every node (performance channels
+    /// applied, matrices composed through hierarchy and sockets), all at the instance frame the
+    /// shot maps the edit frame to. Never fakes state: what the scene declares and nothing
+    /// evaluates (lights, weather, rigs...) is listed in `unevaluated`.
+    ///
+    /// The checks run in the origin's order (mapping, instance range, channels, camera), so a frame
+    /// that fails twice reports what the origin reports.
     pub fn evaluate_frame(&self, edit_frame: i64) -> Result<FrameEvaluation<'_>, TemporalError> {
         let mapping = self.mapping_inside_instance(edit_frame)?;
+        let timeline = NodeTimeline::new(self, mapping.instance)?;
         let camera = self.camera_of(&mapping)?;
-        let node_animation = self.node_animation_of(mapping.instance);
+        let nodes = timeline.state_at(mapping.instance_frame)?;
+        let plan = timeline.plan();
+        let node_animation = if plan.is_empty() {
+            NodeAnimation::Static
+        } else {
+            NodeAnimation::Animated {
+                track_ids: plan.track_ids().into_iter().map(str::to_string).collect(),
+                channels: plan.channel_count(),
+            }
+        };
+        let unevaluated = self
+            .scene(&mapping.instance.scene_definition_id)
+            .map(|scene| scene.unevaluated_sections().to_vec())
+            .unwrap_or_default();
         Ok(FrameEvaluation {
             mapping,
             camera,
             node_animation,
-        })
-    }
-
-    /// The same selection the origin makes: tracks of this instance that the instance lists.
-    fn node_animation_of(&self, instance: &SceneInstance) -> NodeAnimation {
-        let applied: Vec<_> = self
-            .performance_tracks
-            .iter()
-            .filter(|track| {
-                track.instance_id == instance.id
-                    && instance.performance_track_ids.contains(&track.id)
-                    && !track.channels.is_empty()
-            })
-            .collect();
-        if applied.is_empty() {
-            return NodeAnimation::Static;
-        }
-        NodeAnimation::Unsupported(Unsupported::PerformanceChannels {
-            instance_id: instance.id.clone(),
-            track_ids: applied.iter().map(|track| track.id.clone()).collect(),
-            channels: applied.iter().map(|track| track.channels.len()).sum(),
+            nodes,
+            unevaluated,
         })
     }
 }

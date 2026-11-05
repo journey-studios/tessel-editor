@@ -106,3 +106,9 @@ no pacote: dependências transitivas e ligação ao renderer ficam para BB05/BB0
 
 IDs reservados: F035 (avaliação dos nós), F036 (cenas no projeto e acesso programático).
 Matriz/índices, commits e revisão do conjunto continuam com o coordenador.
+
+### Status da rodada 3
+
+F entregue e revalidada pelo coordenador: 29 testes públicos de animação, gerador verificável
+e round-trip JSON de binary64 sem perda. G segue com documento/histórico/CLI em andamento.
+Nenhuma dessas provas equivale ainda a render dirigido na UI.

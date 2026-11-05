@@ -163,16 +163,76 @@ pub enum ChannelKind {
     Static,
 }
 
-/// A performance channel's identity and target. Its payload (period, amplitude, delta, value,
-/// property) is kept raw and not validated yet: it belongs to temporal evaluation (BB03).
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// The transform property of a node a performance channel writes. Rotation is in XYZ Euler
+/// degrees, as in the origin (`NodeTransformOverride.property`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ChannelProperty {
+    LocalRotation,
+    LocalPosition,
+    LocalScale,
+}
+
+impl ChannelProperty {
+    /// The bundle's own spelling (`localRotation`, ...), also what the origin's errors print.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::LocalRotation => "localRotation",
+            Self::LocalPosition => "localPosition",
+            Self::LocalScale => "localScale",
+        }
+    }
+}
+
+/// What a performance channel does to its node property, as declared. Evaluating it over the
+/// instance's frames is `animation` (BB03, nodes).
+#[derive(Debug, Clone, PartialEq)]
+pub enum ChannelMotion {
+    /// `sin` swing around the base: `axis * sin(phase / period * 2π) * amplitude`, where
+    /// `phase = (instanceFrame + phaseOffsetFrames) % periodFrames`. Never `localScale`.
+    Cycle {
+        property: ChannelProperty,
+        period_frames: u64,
+        amplitude: f64,
+        axis: Vec3,
+        phase_offset_frames: u64,
+    },
+    /// Linear move by `delta` over `durationFrames` from `startInstanceFrame`, then held at
+    /// `delta` (the schema requires `holdFinal: true`, so there is no variant without the hold).
+    /// Never `localScale`.
+    Event {
+        property: ChannelProperty,
+        start_instance_frame: u64,
+        duration_frames: u64,
+        delta: Vec3,
+    },
+    /// A constant `value` at every frame.
+    Static {
+        property: ChannelProperty,
+        value: Vec3,
+    },
+}
+
+impl ChannelMotion {
+    pub fn property(&self) -> ChannelProperty {
+        match self {
+            Self::Cycle { property, .. }
+            | Self::Event { property, .. }
+            | Self::Static { property, .. } => *property,
+        }
+    }
+}
+
+/// A performance channel: its identity, its target and what it does there (`kind` repeats the
+/// variant of `motion`, kept so identity-only consumers need not match on the payload).
+#[derive(Debug, Clone, PartialEq)]
 pub struct PerformanceChannel {
     pub kind: ChannelKind,
     pub channel_id: String,
     pub node_id: String,
+    pub motion: ChannelMotion,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PerformanceTrack {
     pub id: String,
     pub instance_id: String,

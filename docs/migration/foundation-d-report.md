@@ -165,3 +165,8 @@ qualquer fixture. O fallback que declarava o commit fixado quando Git falhasse f
 `origin.json` inclui hashes das fontes, entradas/gerador e versões das dependências.
 Duas gerações consecutivas produziram bytes idênticos; os 19 testes temporais passaram
 novamente depois dessa regeneração. A matriz F033 permanece parcial, sem UI/CLI.
+
+Atualização posterior: a fronteira `NodeAnimation::Unsupported(PerformanceChannels)` acima
+foi substituída pela F035. Agora os canais são avaliados, `NodeAnimation` é Static/Animated,
+e `unevaluated` identifica outros domínios pendentes. O registro da entrega D permanece
+histórico; contrato atual em [scene-animation](../features/scene-animation.md).

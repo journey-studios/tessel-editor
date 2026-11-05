@@ -21,6 +21,9 @@ pub(super) struct SceneDef {
     /// Assets that deferred node sections (surface map, normal map) read as data, so a
     /// `linear-srgb` asset is legitimate when one of them points at it.
     pub data_assets: HashSet<String>,
+    /// Sections of the definition that change the frame and that nothing evaluates yet
+    /// (`weather`, `lighting`, `nodes[].rigBind`...), sorted, without repeats.
+    pub unevaluated: Vec<&'static str>,
     /// JSON Pointer of the definition (`/sceneDefinitions/0`).
     pub pointer: String,
 }
@@ -51,8 +54,11 @@ pub struct SceneGraph {
     index: HashMap<String, usize>,
     parents: Vec<Option<Parent>>,
     children: HashMap<String, Vec<usize>>,
+    /// Node indices parents-first, from the root: the order a world pass must follow.
+    order: Vec<usize>,
     local: Vec<Mat4>,
     world: Vec<Mat4>,
+    unevaluated: Vec<&'static str>,
 }
 
 impl SceneGraph {
@@ -122,6 +128,41 @@ impl SceneGraph {
     /// The node in scene space: every ancestor (and socket) transform applied.
     pub fn world_matrix(&self, id: &str) -> Option<&Mat4> {
         self.index.get(id).map(|&i| &self.world[i])
+    }
+
+    /// Sections of this scene definition that change a frame and that no evaluator computes yet
+    /// (`weather`, `lighting`, `rigs`, `nodes[].rigBind`...), sorted. A frame evaluation of an
+    /// instance that plays this scene reports them instead of passing for the whole picture.
+    pub fn unevaluated_sections(&self) -> &[&'static str] {
+        &self.unevaluated
+    }
+
+    /// World matrices for the given local matrices (one per node, in document order), with the
+    /// graph's hierarchy and sockets: `world = parentWorld * local`, and for a node on a socket
+    /// `parentWorld = ownerWorld * socketLocal`. The static graph uses this with the authored
+    /// locals; an animated frame uses it with the locals its channels produced (`animation`).
+    pub(in crate::directed_scene) fn compose_world(&self, local: &[Mat4]) -> Vec<Mat4> {
+        let mut world = vec![Mat4::IDENTITY; self.nodes.len()];
+        for &i in &self.order {
+            let parent_world = match &self.parents[i] {
+                None => Mat4::IDENTITY,
+                Some(Parent::Node(owner)) => world[self.index[owner.as_str()]],
+                Some(Parent::Socket { owner, socket }) => {
+                    let socket_local =
+                        self.socket(owner, socket).map_or(Mat4::IDENTITY, |socket| {
+                            Transform {
+                                position: socket.position,
+                                rotation: socket.rotation,
+                                scale: super::transform::Vec3::ONE,
+                            }
+                            .matrix()
+                        });
+                    world[self.index[owner.as_str()]].mul(&socket_local)
+                }
+            };
+            world[i] = parent_world.mul(&local[i]);
+        }
+        world
     }
 
     pub fn image_planes(&self) -> impl Iterator<Item = &Node> {
@@ -492,51 +533,18 @@ impl SceneGraph {
             }
         }
         let local: Vec<Mat4> = def.nodes.iter().map(|n| n.transform.matrix()).collect();
-        let socket_matrix = |owner: &str, name: &str| {
-            def.sockets
-                .iter()
-                .find(|s| s.owner == owner && s.name == name)
-                .map(|s| {
-                    Transform {
-                        position: s.position,
-                        rotation: s.rotation,
-                        scale: super::transform::Vec3::ONE,
-                    }
-                    .matrix()
-                })
-        };
 
         // Top-down from the root, so a parent's world matrix exists before its children's.
-        let mut world = vec![Mat4::IDENTITY; def.nodes.len()];
-        let mut queue: Vec<usize> = index.get(&def.root).copied().into_iter().collect();
+        let mut order: Vec<usize> = index.get(&def.root).copied().into_iter().collect();
         let mut cursor = 0;
-        while let Some(&i) = queue.get(cursor) {
+        while let Some(&i) = order.get(cursor) {
             cursor += 1;
-            let parent_world = match &parents[i] {
-                None => Mat4::IDENTITY,
-                Some(Parent::Node(owner)) => world[index[owner.as_str()]],
-                Some(Parent::Socket { owner, socket }) => {
-                    let owner_world = world[index[owner.as_str()]];
-                    owner_world.mul(&socket_matrix(owner, socket).unwrap_or(Mat4::IDENTITY))
-                }
-            };
-            world[i] = parent_world.mul(&local[i]);
-            if !world[i].is_finite() {
-                issues.push(Issue::new(
-                    NON_FINITE_TRANSFORM,
-                    at(&child(&def.pointer, "nodes"), i),
-                    format!(
-                        "The world matrix of node {} is not finite; the hierarchy's transforms overflow",
-                        def.nodes[i].id
-                    ),
-                ));
-            }
             if let Some(next) = children.get(&def.nodes[i].id) {
-                queue.extend(next.iter().copied());
+                order.extend(next.iter().copied());
             }
         }
 
-        Self {
+        let mut graph = Self {
             id: def.id,
             root: def.root,
             nodes: def.nodes,
@@ -544,8 +552,24 @@ impl SceneGraph {
             index,
             parents,
             children,
+            order,
             local,
-            world,
+            world: Vec::new(),
+            unevaluated: def.unevaluated,
+        };
+        graph.world = graph.compose_world(&graph.local);
+        for &i in &graph.order {
+            if !graph.world[i].is_finite() {
+                issues.push(Issue::new(
+                    NON_FINITE_TRANSFORM,
+                    at(&child(&def.pointer, "nodes"), i),
+                    format!(
+                        "The world matrix of node {} is not finite; the hierarchy's transforms overflow",
+                        graph.nodes[i].id
+                    ),
+                ));
+            }
         }
+        graph
     }
 }

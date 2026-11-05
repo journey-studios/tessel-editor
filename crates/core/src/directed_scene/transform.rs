@@ -4,6 +4,8 @@
 //! column-major), because the origin computes its effective matrices with it
 //! (`scene-graph.ts: computeWorldMatrices`) and the equivalence oracle compares them.
 
+use serde_json::{Value, json};
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Vec3 {
     pub x: f64,
@@ -22,6 +24,20 @@ impl Vec3 {
         y: 1.0,
         z: 1.0,
     };
+
+    /// `{ "x": .., "y": .., "z": .. }`, the bundle's own shape for a vector.
+    pub fn to_json(self) -> Value {
+        json!({ "x": self.x, "y": self.y, "z": self.z })
+    }
+
+    /// Component-wise sum (Three.js `Vector3.add`; also the origin's `addVec3`).
+    pub fn plus(self, other: Self) -> Self {
+        Self {
+            x: self.x + other.x,
+            y: self.y + other.y,
+            z: self.z + other.z,
+        }
+    }
 
     pub fn distance(self, other: Self) -> f64 {
         (self.x - other.x)
@@ -50,6 +66,50 @@ impl Quat {
 
     pub fn length(self) -> f64 {
         self.x.hypot(self.y).hypot(self.z).hypot(self.w)
+    }
+
+    /// Three.js `Euler.setFromQuaternion(q, "XYZ")`, in degrees (`quatSchemaToEulerDegrees`).
+    ///
+    /// WHY this exists: the origin does not keep a node's quaternion while it animates. It turns it
+    /// into XYZ Euler degrees, adds the performance offset there and rebuilds the rotation from the
+    /// sum, so the same path is needed here (not the quaternion composed directly) for the state to
+    /// be the origin's. Like Three.js it assumes a unit quaternion (the importer checks the length)
+    /// and, at a gimbal lock (`|m13| >= 0.9999999`), puts the whole turn in `x` and sets `z` to 0.
+    pub fn to_euler_xyz_degrees(self) -> Vec3 {
+        // `makeRotationFromQuaternion` is `compose(0, q, 1)`; the elements read below are m13, m23,
+        // m33, m12, m11, m32 and m22 of its column-major array.
+        let m = Mat4::compose(Vec3::ZERO, self, Vec3::ONE).0;
+        let (m11, m12, m13) = (m[0], m[4], m[8]);
+        let (m22, m23) = (m[5], m[9]);
+        let (m32, m33) = (m[6], m[10]);
+        let y = m13.clamp(-1.0, 1.0).asin();
+        let (x, z) = if m13.abs() < 0.999_999_9 {
+            ((-m23).atan2(m33), (-m12).atan2(m11))
+        } else {
+            (m32.atan2(m22), 0.0)
+        };
+        // `radToDeg = 180 / Math.PI`, computed once and multiplied, as the origin does.
+        let rad_to_deg = 180.0 / std::f64::consts::PI;
+        Vec3 {
+            x: x * rad_to_deg,
+            y: y * rad_to_deg,
+            z: z * rad_to_deg,
+        }
+    }
+
+    /// Three.js `Quaternion.setFromEuler(Euler(x, y, z, "XYZ"))` from degrees (`eulerDegToQuat`).
+    pub fn from_euler_xyz_degrees(degrees: Vec3) -> Self {
+        // The origin writes `(deg * Math.PI) / 180`: same operations, same order.
+        let radians = |deg: f64| deg * std::f64::consts::PI / 180.0;
+        let (x, y, z) = (radians(degrees.x), radians(degrees.y), radians(degrees.z));
+        let (c1, c2, c3) = ((x / 2.0).cos(), (y / 2.0).cos(), (z / 2.0).cos());
+        let (s1, s2, s3) = ((x / 2.0).sin(), (y / 2.0).sin(), (z / 2.0).sin());
+        Self {
+            x: s1 * c2 * c3 + c1 * s2 * s3,
+            y: c1 * s2 * c3 - s1 * c2 * s3,
+            z: c1 * c2 * s3 + s1 * s2 * c3,
+            w: c1 * c2 * c3 - s1 * s2 * s3,
+        }
     }
 }
 
@@ -225,5 +285,52 @@ mod tests {
         assert_eq!(scale.mul(&move_x).translation().x, 10.0);
         assert_eq!(move_x.mul(&scale).translation().x, 5.0);
         assert_eq!(Mat4::IDENTITY.mul(&move_x), move_x);
+    }
+
+    fn euler(x: f64, y: f64, z: f64) -> Vec3 {
+        Vec3 { x, y, z }
+    }
+
+    fn rotation_of(q: Quat) -> Mat4 {
+        Mat4::compose(Vec3::ZERO, q, Vec3::ONE)
+    }
+
+    #[test]
+    fn a_quarter_turn_about_z_is_ninety_degrees_in_euler() {
+        let q = Quat::from_euler_xyz_degrees(euler(0.0, 0.0, 90.0));
+        let half = std::f64::consts::FRAC_1_SQRT_2;
+        assert!((q.z - half).abs() < 1e-15 && (q.w - half).abs() < 1e-15);
+        let back = q.to_euler_xyz_degrees();
+        assert!(back.x.abs() < 1e-12 && back.y.abs() < 1e-12 && (back.z - 90.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn euler_angles_survive_a_round_trip_away_from_the_poles() {
+        for (x, y, z) in [
+            (10.0, 20.0, 30.0),
+            (-170.0, 45.0, 95.0),
+            (0.0, -89.0, 0.0),
+            (179.0, 0.5, -179.0),
+        ] {
+            let back = Quat::from_euler_xyz_degrees(euler(x, y, z)).to_euler_xyz_degrees();
+            assert!(
+                (back.x - x).abs() < 1e-9 && (back.y - y).abs() < 1e-9 && (back.z - z).abs() < 1e-9,
+                "({x}, {y}, {z}) came back as {back:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn at_the_pole_the_whole_turn_goes_to_x_and_z_is_zero_but_the_rotation_is_kept() {
+        // Y = 90 degrees is the gimbal lock: X and Z turn about the same axis, so Three.js keeps only
+        // one of them. The Euler triple changes; the rotation it describes must not.
+        let q = Quat::from_euler_xyz_degrees(euler(20.0, 90.0, 35.0));
+        let back = q.to_euler_xyz_degrees();
+        assert_eq!(back.z, 0.0);
+        assert!((back.y - 90.0).abs() < 1e-6);
+        let rebuilt = Quat::from_euler_xyz_degrees(back);
+        // Looser than elsewhere on purpose: `asin` near 1 turns a 1e-16 error in m13 into ~1e-8 rad,
+        // and the angle is re-derived from it. Dropping the turn instead (a bug) would differ by O(0.1).
+        assert!(rotation_of(q).max_abs_diff(&rotation_of(rebuilt)) < 1e-6);
     }
 }

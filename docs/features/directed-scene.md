@@ -91,10 +91,10 @@ são `INVALID_TYPE`, `MISSING_FIELD`, `INVALID_VALUE`, `UNKNOWN_FIELD` (aviso), 
 ## Pendências (explícitas)
 
 - `DEFERRED_FIELDS`/`DEFERRED_RULES`: `LIGHT_*` exceto `LIGHT_PARENT_UNKNOWN`, clima, rigs, caminhos, efeitos, `SURFACE_*`/`NORMAL_MAP_*`/
-  `RELIEF_*`/`SCENE_DEPTH_*`, `AUDIT_*`, narração/outline, payload dos canais de performance (BB03), checagem
+  `RELIEF_*`/`SCENE_DEPTH_*`, `AUDIT_*`, narração/outline, campos de domínios adiados; payload dos canais é validado na [F035](scene-animation.md). A checagem
   de FOV composto e `CONTINUOUS_*_JUMP` não rodam na importação, mas estão disponíveis no
   gate explícito `temporal_issues()` da [avaliação temporal](scene-temporal.md).
-- Performance dos nós por frame permanece pendente. Câmera/tempo e gate temporal BB03 estão
+- Performance dos nós por frame está na [F035](scene-animation.md). Câmera/tempo e gate temporal BB03 estão
   implementados na [F033](scene-temporal.md); `finalize` completo/escrita atômica em disco seguem pendentes.
 - Adaptadores: comando `scene.*`, headless JSONL, diálogo desktop, ponte para runtime/`document.rs`.
 - Fixture própria **sintética** (`crates/core/tests/directed_scene_fixtures/layered_scene.json`); nenhum bundle ou

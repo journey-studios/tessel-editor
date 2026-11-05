@@ -6,8 +6,8 @@ Registrada na matriz como F033; integração e limites no relatório da frente D
 
 Lib **Parcial**: avaliação pura de edit frame → shot → frame de instância → frame do clipe de câmera →
 pose/velocidade da câmera (receitas, keys, easings, camadas) e gate temporal das junções contínuas, validados
-contra o corpus do oráculo. **Fora desta fatia, e declarado no retorno:** animação de nós (canais de
-performance). CLI headless **P** e UI **P**: nenhum comando, nenhum controle, nenhum nó em `tree.rs`. Nada
+contra o corpus do oráculo. A animação de nós está entregue na [F035](scene-animation.md);
+campos ainda não avaliados aparecem em `unevaluated`. CLI headless **P** e UI **P**: nenhum comando, nenhum controle, nenhum nó em `tree.rs`. Nada
 daqui afirma paridade de adapters.
 
 ## Objetivo e limites
@@ -46,7 +46,7 @@ let cam = bundle.evaluate_camera(24)?;              // cam.mapping + cam.camera 
 let frame = bundle.evaluate_frame(24)?;
 match &frame.node_animation {
     NodeAnimation::Static => { /* nenhum canal de performance se aplica */ }
-    NodeAnimation::Unsupported(what) => { /* canais existem e NÃO foram avaliados */ }
+    NodeAnimation::Animated { track_ids, channels } => { /* canais avaliados na F035 */ }
 }
 let frame = frame.require_complete()?;              // Err(TemporalError::Unsupported) se parcial
 
@@ -65,8 +65,8 @@ let all        = scene.temporal_issues();           // + FOV empilhado das camad
 | `Bundle::resolve_frame_mapping(i64)` | `FrameMapping { edit_frame, shot, instance, instance_frame, camera_clip_frame, edit_time, instance_time, camera_clip_time }`. Fora de `[0, editDurationFrames)` → `EditFrameOutOfRange` (texto idêntico ao da origem) |
 | `Bundle::frame_at_time(Ratio)` / `resolve_time_mapping` | Piso exato: um limite pertence ao frame que começa nele; antes de 0 dá frame negativo (fora da edição) |
 | `Bundle::evaluate_camera(i64)` | Mapeamento + `instanceFrame < duração da instância` + câmera. **Completo para a câmera**; não diz nada sobre nós |
-| `Bundle::evaluate_frame(i64)` | O mesmo mais `node_animation`. `Static` ou `Unsupported(PerformanceChannels { instance_id, track_ids, channels })`. Nunca inventa estado de nó |
-| `FrameEvaluation::is_complete` / `require_complete` | Quem precisa da verdade inteira pergunta; recebe `TemporalError::Unsupported` tipado |
+| `Bundle::evaluate_frame(i64)` | O mesmo mais `nodes`, `node_animation` (`Static` ou `Animated`) e `unevaluated`; ver F035 |
+| `FrameEvaluation::is_complete` / `require_complete` | Verifica se há seções declaradas adiadas pelo avaliador; retorna `Unsupported` tipado. Não certifica assets/render |
 | `Bundle::camera_timeline(id)` → `CameraTimeline` | Clipe disposto uma vez (`O(segmentos)`); `state_at(i64)`, `pose_at(i64)`, `frames()`, `main_track_poses()` respondem por busca binária |
 | `Bundle::camera_at_clip_frame`, `camera_clip_frames`, `main_track_poses` | Atalhos de uma chamada |
 | `CameraState` | `position`, `target`, `fov_deg`, `velocity` (unidades/frame do clipe), `fov_velocity_deg_per_frame`; `.pose()`; `CameraPose::to_world_matrix()` (`Mat4`, convenção `lookAt` do Three.js) |
@@ -156,8 +156,8 @@ Importar e não ter achado estrutural **não** certifica o bundle: uma UI/CLI qu
 
 ## Limitações explícitas
 
-- **Animação de nós não é avaliada.** `evaluate_frame` devolve `NodeAnimation::Unsupported` com as trilhas; nada
-  de estado parcial passado por completo. O estado estático dos nós está em `SceneGraph`, e **não** vale nesses frames.
+- Animação de nós foi integrada pela [F035](scene-animation.md); `nodes` contém o estado avaliado.
+  `unevaluated` lista luz/clima/efeitos/rig/caminhos ainda não avaliados; não usar grafo estático para frames animados.
 - Sem FPS não inteiro no corpus do oráculo (lacuna dele); 24000/1001, 30000/1001, 60000/1001, 25 e 30 são testados
   pelo mapeamento exato com bundles sintéticos, não contra a origem.
 - `CameraPose::to_world_matrix` segue o `lookAt` do Three.js mas **não** foi comparada com o oráculo (ele não grava matriz de câmera).

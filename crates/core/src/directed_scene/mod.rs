@@ -7,8 +7,12 @@
 //! Contract, policies and divergences from the origin: `docs/features/directed-scene.md`.
 //!
 //! Time and camera (BB03) live in `temporal`: frame mapping, camera pose and speed, and the
-//! temporal gate (`DirectedScene::temporal_join_issues` / `temporal_issues`). Node animation is
-//! not evaluated and says so. Contract: `docs/features/scene-temporal.md`.
+//! temporal gate (`DirectedScene::temporal_join_issues` / `temporal_issues`). Contract:
+//! `docs/features/scene-temporal.md`. Node animation (BB03, nodes) lives in `animation`: the
+//! performance channels, the transform of every node and the world matrices at a frame of an
+//! instance, joined to the camera by `Bundle::evaluate_frame`. Contract:
+//! `docs/features/scene-animation.md`. Lighting, weather, effects and rigs are not evaluated and a
+//! frame says so.
 //!
 //! ```
 //! use tessel_editor_core::directed_scene::DirectedScene;
@@ -23,6 +27,7 @@
 //! # let _ = exported; Ok(()) }
 //! ```
 
+mod animation;
 mod graph;
 mod integrity;
 mod issue;
@@ -36,6 +41,7 @@ mod transform;
 
 use serde_json::Value;
 
+pub use animation::{NodeFrame, NodeOverride, NodeState, NodeTimeline, PerformancePlan};
 pub use graph::{Parent, SceneGraph};
 pub use integrity::KNOWN_EASINGS;
 pub use issue::{
@@ -49,9 +55,10 @@ pub use joins::{
 };
 pub use model::{
     Asset, AssetAlpha, AssetColorSpace, AssetFormat, AssetRef, AudioMix, Bundle, CameraClip,
-    CameraKey, CameraMotion, CameraSegment, ChannelKind, CompositionPass, Fps, MoveRecipe, Node,
-    NodeKind, PerformanceChannel, PerformanceTrack, RenderProfile, SceneInstance, SegmentStart,
-    Shot, Socket, SocketAttachment, Transition, ZoomRecipe,
+    CameraKey, CameraMotion, CameraSegment, ChannelKind, ChannelMotion, ChannelProperty,
+    CompositionPass, Fps, MoveRecipe, Node, NodeKind, PerformanceChannel, PerformanceTrack,
+    RenderProfile, SceneInstance, SegmentStart, Shot, Socket, SocketAttachment, Transition,
+    ZoomRecipe,
 };
 pub use refs::{Entity, EntityKind, Reference};
 pub use temporal::{
@@ -87,7 +94,6 @@ pub const DEFERRED_FIELDS: &[&str] = &[
     "sceneDefinitions[].nodes[].relief",
     "sceneDefinitions[].nodes[].rigBind",
     "sceneDefinitions[].nodes[].reveal",
-    "performanceTracks[].channels[] (only kind, channelId and nodeId are read)",
 ];
 
 /// Rules of the origin that this importer does not run yet, by origin code or code family.
@@ -98,7 +104,7 @@ pub const DEFERRED_RULES: &[&str] = &[
     "weather name, rig, path and effects rules (M3/M6)",
     "narration and outline rules (M5)",
     "the weatherGround node must be an image plane",
-    "performance channel payload rules and their evaluation (BB03, not in its camera/time slice)",
+    "two channels writing one node property: the origin raises it when it evaluates the instance (`performance_plan` and `evaluate_frame` do), not when it validates",
     // These two need the camera evaluated: import does not run them, `temporal_issues` does.
     "CAMERA_LAYER composed field-of-view check, frame by frame (run by `temporal_issues`, not by import)",
     "CONTINUOUS_*_JUMP pose comparison at joins (run by `temporal_join_issues`, not by import)",

@@ -150,9 +150,6 @@ fn edit_frames_match_the_origin_on_every_valid_bundle_including_the_borders() {
     for (id, raw, expected) in corpus_valid() {
         let scene = DirectedScene::import_value(raw.clone()).unwrap();
         let bundle = scene.bundle();
-        let has_channels = raw["performanceTracks"]
-            .as_array()
-            .is_some_and(|tracks| !tracks.is_empty());
         for frame in expected["evaluation"]["editFrames"].as_array().unwrap() {
             let edit_frame = frame["editFrame"].as_i64().unwrap();
             let label = format!("{id} edit {edit_frame}");
@@ -194,15 +191,19 @@ fn edit_frames_match_the_origin_on_every_valid_bundle_including_the_borders() {
             );
             worst.camera(&label, &camera.camera, &state["camera"]);
 
-            // The whole-frame answer carries the same camera, and never claims a node state the
-            // origin would have overridden.
+            // The whole-frame answer carries the same camera. Node animation is evaluated now (its
+            // equivalence with the origin is `directed_scene_animation.rs`); here it only has to
+            // agree with the origin on whether channels applied. These bundles declare no lights,
+            // weather or rigs, so every frame is whole.
             let whole = bundle.evaluate_frame(edit_frame).unwrap();
             assert_eq!(whole.camera, camera.camera, "{label}");
             let overridden = !state["performanceOverrides"].as_array().unwrap().is_empty();
-            if overridden {
-                assert!(!whole.is_complete(), "{label}: origin overrides nodes here");
-            }
-            assert_eq!(whole.is_complete(), !has_channels, "{label}");
+            assert_eq!(
+                matches!(whole.node_animation, NodeAnimation::Animated { .. }),
+                overridden,
+                "{label}"
+            );
+            assert!(whole.is_complete(), "{label}");
             frames += 1;
         }
     }
@@ -935,50 +936,48 @@ fn the_corpus_cut_with_offsets_maps_instance_and_clip_frames_independently() {
     }
 }
 
-// ---- the honest boundary: node animation ----------------------------------------------------
+// ---- the honest boundary: what a frame evaluation does not cover ------------------------------
 
 #[test]
-fn node_animation_is_reported_unsupported_instead_of_faked() {
+fn a_scene_with_weather_or_lights_reports_them_unevaluated_instead_of_faking_them() {
     let scene = import(layered());
     let bundle = scene.bundle();
     // The camera of this very frame is complete and available on its own.
     assert!(bundle.evaluate_camera(10).is_ok());
 
+    // The layered scene declares `lighting` and `weather`; the channels themselves are evaluated.
     let whole = bundle.evaluate_frame(10).unwrap();
-    assert!(!whole.is_complete());
     assert_eq!(
         whole.node_animation,
-        NodeAnimation::Unsupported(Unsupported::PerformanceChannels {
-            instance_id: "street-a".to_string(),
+        NodeAnimation::Animated {
             track_ids: vec!["walk".to_string()],
             channels: 1,
-        })
+        }
     );
+    assert_eq!(whole.unevaluated, vec!["lighting", "weather"]);
+    assert!(!whole.is_complete());
     let error = whole.clone().require_complete().unwrap_err();
-    assert_eq!(
-        error,
-        TemporalError::Unsupported(Unsupported::PerformanceChannels {
-            instance_id: "street-a".to_string(),
-            track_ids: vec!["walk".to_string()],
-            channels: 1,
-        })
-    );
-    assert!(
-        error
-            .to_string()
-            .contains("node animation is not evaluated")
-    );
+    let expected = Unsupported::DeferredSections {
+        scene_definition_id: "street".to_string(),
+        sections: vec!["lighting".to_string(), "weather".to_string()],
+    };
+    assert_eq!(error, TemporalError::Unsupported(expected));
+    assert!(error.to_string().contains("lighting, weather"));
     let command = CommandError::from(error);
     assert_eq!(command.code, "unsupported");
     assert_eq!(
-        command.details.as_ref().unwrap()["trackIds"],
-        json!(["walk"])
+        command.details.as_ref().unwrap()["sections"],
+        json!(["lighting", "weather"])
     );
 
-    // Without channels the frame is whole and says so.
+    // Without those sections and without channels the frame is whole and says so.
     let mut value = layered();
     value["performanceTracks"] = json!([]);
     value["sceneInstances"][0]["performanceTrackIds"] = json!([]);
+    value["sceneDefinitions"][0]
+        .as_object_mut()
+        .unwrap()
+        .retain(|key, _| key != "weather" && key != "lighting");
     let plain = import(value);
     let frame = plain.bundle().evaluate_frame(10).unwrap();
     assert_eq!(frame.node_animation, NodeAnimation::Static);

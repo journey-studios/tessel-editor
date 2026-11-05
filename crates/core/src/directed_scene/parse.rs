@@ -6,7 +6,7 @@
 //! (`premultiplied`, `rec709-video`, `supportPlane`, dissolve, ...) are refused here, with the
 //! origin's code, as soon as they are read: the typed model only holds supported vocabulary.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use serde_json::Value;
 
@@ -19,9 +19,9 @@ use super::issue::{
 };
 use super::model::{
     Asset, AssetAlpha, AssetColorSpace, AssetFormat, AssetRef, AudioMix, CameraClip, CameraKey,
-    CameraMotion, CameraSegment, ChannelKind, CompositionPass, Fps, MoveRecipe, Node, NodeKind,
-    PerformanceChannel, PerformanceTrack, RenderProfile, SceneInstance, SegmentStart, Shot, Socket,
-    SocketAttachment, Transition, ZoomRecipe,
+    CameraMotion, CameraSegment, ChannelKind, ChannelMotion, ChannelProperty, CompositionPass, Fps,
+    MoveRecipe, Node, NodeKind, PerformanceChannel, PerformanceTrack, RenderProfile, SceneInstance,
+    SegmentStart, Shot, Socket, SocketAttachment, Transition, ZoomRecipe,
 };
 use super::read::{Arr, Bound, Obj, Sink, at, child, kind_of};
 use super::transform::Transform;
@@ -230,7 +230,35 @@ fn nested_asset_id(section: Option<&Value>) -> Option<String> {
         .map(str::to_string)
 }
 
-fn node(obj: &Obj<'_>, data_assets: &mut HashSet<String>) -> Option<Node> {
+/// Sections of a scene definition that move or light the frame and that no evaluator computes yet.
+/// A frame evaluation lists the ones a scene carries (`SceneGraph::unevaluated_sections`) so it
+/// cannot be taken for the whole picture. Static data maps (surface, relief, depth) and audit
+/// fields are not here: they hold no state that changes over time.
+const UNEVALUATED_DEFINITION_SECTIONS: [&str; 7] = [
+    "weather",
+    "weatherKeys",
+    "lighting",
+    "effects",
+    "weatherGround",
+    "rigs",
+    "paths",
+];
+
+/// The same for the sections that hang off a node: `(key, label reported)`.
+const UNEVALUATED_NODE_SECTIONS: [(&str, &str); 2] =
+    [("rigBind", "nodes[].rigBind"), ("reveal", "nodes[].reveal")];
+
+/// Reads a section that is kept raw and reports whether the scene actually declares it (`null`
+/// counts as absent: the origin's schema would refuse it, and it carries no state).
+fn declared(section: Option<&Value>) -> bool {
+    section.is_some_and(|value| !value.is_null())
+}
+
+fn node(
+    obj: &Obj<'_>,
+    data_assets: &mut HashSet<String>,
+    unevaluated: &mut BTreeSet<&'static str>,
+) -> Option<Node> {
     let id = obj.id("id");
     let parent_id = obj.nullable_text("parentId");
     let type_name = obj.one_of(
@@ -261,8 +289,13 @@ fn node(obj: &Obj<'_>, data_assets: &mut HashSet<String>) -> Option<Node> {
     // Sections of lighting, weather and rig that hang off a node: kept raw (BB02 is the graph).
     let surface = obj.deferred("surface");
     let normal_map = obj.deferred("normalMap");
-    for section in ["sceneDepth", "relief", "rigBind", "reveal"] {
+    for section in ["sceneDepth", "relief"] {
         obj.deferred(section);
+    }
+    for (key, label) in UNEVALUATED_NODE_SECTIONS {
+        if declared(obj.deferred(key)) {
+            unevaluated.insert(label);
+        }
     }
     data_assets.extend(nested_asset_id(surface));
     data_assets.extend(nested_asset_id(normal_map));
@@ -317,26 +350,22 @@ fn scene_definition(obj: &Obj<'_>, pointer: String) -> Option<SceneDef> {
     let versioned = version(obj);
     let root = obj.id("rootNodeId");
     let mut data_assets = HashSet::new();
-    let nodes = obj
-        .array("nodes", 1)
-        .and_then(|array| array.objects(|_, node_obj| node(node_obj, &mut data_assets)));
+    let mut unevaluated = BTreeSet::new();
+    let nodes = obj.array("nodes", 1).and_then(|array| {
+        array.objects(|_, node_obj| node(node_obj, &mut data_assets, &mut unevaluated))
+    });
     let sockets = match obj.opt_array("sockets", 0) {
         None => None,
         Some(None) => Some(Vec::new()),
         Some(Some(array)) => array.objects(|_, socket_obj| socket(socket_obj)),
     };
-    for section in [
-        "contactPlaneId",
-        "frameAudit",
-        "weather",
-        "weatherKeys",
-        "lighting",
-        "effects",
-        "weatherGround",
-        "rigs",
-        "paths",
-    ] {
+    for section in ["contactPlaneId", "frameAudit"] {
         obj.deferred(section);
+    }
+    for section in UNEVALUATED_DEFINITION_SECTIONS {
+        if declared(obj.deferred(section)) {
+            unevaluated.insert(section);
+        }
     }
     versioned.then_some(())?;
     Some(SceneDef {
@@ -345,6 +374,7 @@ fn scene_definition(obj: &Obj<'_>, pointer: String) -> Option<SceneDef> {
         nodes: nodes?,
         sockets: sockets?,
         data_assets,
+        unevaluated: unevaluated.into_iter().collect(),
         pointer,
     })
 }
@@ -365,25 +395,96 @@ fn instance(obj: &Obj<'_>) -> Option<SceneInstance> {
     })
 }
 
+/// Cycles and events move a node by an offset; only a static channel may also replace its scale
+/// (`performanceChannelSchema`).
+const OFFSET_PROPERTIES: [&str; 2] = ["localRotation", "localPosition"];
+const ALL_PROPERTIES: [&str; 3] = ["localRotation", "localPosition", "localScale"];
+
+fn channel_property(channel: &Obj<'_>, allowed: &[&'static str]) -> Option<ChannelProperty> {
+    Some(match channel.one_of("property", allowed)? {
+        "localRotation" => ChannelProperty::LocalRotation,
+        "localPosition" => ChannelProperty::LocalPosition,
+        _ => ChannelProperty::LocalScale,
+    })
+}
+
+/// The payload of a channel, every field read (and every problem recorded) even after one fails,
+/// like the other objects of the bundle: the origin's zod parse reports all of them.
+fn channel_motion(kind: ChannelKind, channel: &Obj<'_>) -> Option<ChannelMotion> {
+    match kind {
+        ChannelKind::Cycle => {
+            let property = channel_property(channel, &OFFSET_PROPERTIES);
+            let period = channel.count("periodFrames", Bound::Positive);
+            let amplitude = channel.num("amplitude", Bound::Any);
+            let axis = channel.vec3("axis");
+            let phase_offset = channel.count("phaseOffsetFrames", Bound::NonNegative);
+            Some(ChannelMotion::Cycle {
+                property: property?,
+                period_frames: period?,
+                amplitude: amplitude?,
+                axis: axis?,
+                phase_offset_frames: phase_offset?,
+            })
+        }
+        ChannelKind::Event => {
+            let property = channel_property(channel, &OFFSET_PROPERTIES);
+            let start = channel.count("startInstanceFrame", Bound::NonNegative);
+            let duration = channel.count("durationFrames", Bound::Positive);
+            let delta = channel.vec3("delta");
+            // `holdFinal: z.literal(true)`: required, and `false` is not "no hold" but an error.
+            let hold_final = match channel.flag("holdFinal") {
+                Some(true) => Some(()),
+                Some(false) => {
+                    channel.sink_issue(
+                        INVALID_VALUE,
+                        "holdFinal",
+                        "expected `true`: an event always holds its final value",
+                    );
+                    None
+                }
+                None => None,
+            };
+            hold_final?;
+            Some(ChannelMotion::Event {
+                property: property?,
+                start_instance_frame: start?,
+                duration_frames: duration?,
+                delta: delta?,
+            })
+        }
+        ChannelKind::Static => {
+            let property = channel_property(channel, &ALL_PROPERTIES);
+            let value = channel.vec3("value");
+            Some(ChannelMotion::Static {
+                property: property?,
+                value: value?,
+            })
+        }
+    }
+}
+
+fn performance_channel(channel: &Obj<'_>) -> Option<PerformanceChannel> {
+    let kind = channel.one_of("kind", &["cycle", "event", "static"]);
+    let (channel_id, node_id) = (channel.id("channelId"), channel.id("nodeId"));
+    let kind = match kind? {
+        "cycle" => ChannelKind::Cycle,
+        "event" => ChannelKind::Event,
+        _ => ChannelKind::Static,
+    };
+    let motion = channel_motion(kind, channel);
+    Some(PerformanceChannel {
+        kind,
+        channel_id: channel_id?.to_string(),
+        node_id: node_id?.to_string(),
+        motion: motion?,
+    })
+}
+
 fn performance_track(obj: &Obj<'_>) -> Option<PerformanceTrack> {
     let (id, instance_id) = (obj.id("id"), obj.id("instanceId"));
-    let channels = obj.array("channels", 1).and_then(|array| {
-        array.objects(|_, channel| {
-            let kind = channel.one_of("kind", &["cycle", "event", "static"]);
-            let (channel_id, node_id) = (channel.id("channelId"), channel.id("nodeId"));
-            // period, amplitude, axis, delta, value, property...: temporal evaluation (BB03).
-            channel.defer_rest();
-            Some(PerformanceChannel {
-                kind: match kind? {
-                    "cycle" => ChannelKind::Cycle,
-                    "event" => ChannelKind::Event,
-                    _ => ChannelKind::Static,
-                },
-                channel_id: channel_id?.to_string(),
-                node_id: node_id?.to_string(),
-            })
-        })
-    });
+    let channels = obj
+        .array("channels", 1)
+        .and_then(|array| array.objects(|_, channel| performance_channel(channel)));
     Some(PerformanceTrack {
         id: id?.to_string(),
         instance_id: instance_id?.to_string(),

@@ -13,7 +13,7 @@
 //! | Which shot, instance frame and clip frame does an edit frame play? | `Bundle::resolve_frame_mapping` |
 //! | Camera pose and speed at an edit frame (recipes, keys, easings, layers) | `Bundle::evaluate_camera` |
 //! | Camera of a clip at a clip frame, or many frames in any order | `Bundle::camera_at_clip_frame`, `Bundle::camera_timeline` |
-//! | Node animation (performance channels) | **Not evaluated.** `evaluate_frame` says so with `NodeAnimation::Unsupported` |
+//! | Everything above plus the nodes (performance channels, matrices) | `Bundle::evaluate_frame`, built on `animation` |
 //! | Are continuous cuts between shots smooth? | `DirectedScene::temporal_join_issues` / `temporal_issues` |
 //!
 //! Contract, tolerances and what was compared with the origin: `docs/features/scene-temporal.md`.
@@ -25,6 +25,8 @@ mod gate;
 use std::fmt;
 
 use crate::state::CommandError;
+
+use super::ChannelProperty;
 
 pub(in crate::directed_scene) use camera::distance;
 pub use camera::{CameraPose, CameraState, CameraTimeline, SegmentPoses};
@@ -43,7 +45,7 @@ pub enum TemporalError {
     EditFrameOutOfRange { frame: i64, duration_frames: u64 },
     /// No shot covers the edit frame (the importer guarantees shots tile the edit).
     NoShotAtFrame { frame: u64 },
-    /// An id the shot points at does not exist (`kind`: `"scene instance"`, `"camera clip"`).
+    /// An id the shot points at does not exist (`kind`: `"scene instance"`, `"scene definition"`, `"camera clip"`).
     Unresolved { kind: &'static str, id: String },
     /// The shot maps the edit frame past the end of its instance.
     InstanceFrameOutOfRange {
@@ -63,6 +65,16 @@ pub enum TemporalError {
     LayerKeyframes,
     /// A pose, speed or field of view that is not a finite number.
     NonFiniteCamera,
+    /// Two channels the instance applies write the same node property (`Multiple performance
+    /// channels write ...` in the origin, raised when its first frame is evaluated).
+    PerformanceWriterConflict {
+        instance_id: String,
+        node_id: String,
+        property: ChannelProperty,
+    },
+    /// A node whose transform or matrix is not finite at the frame (a channel or a hierarchy that
+    /// overflows).
+    NonFiniteNode { node_id: String },
     /// Frame or time arithmetic that does not fit the integer types.
     FrameOverflow,
     /// The question is outside what this evaluator computes; see `Unsupported`.
@@ -78,6 +90,9 @@ impl TemporalError {
             | Self::CameraFrameBeforeStart { .. } => "frame_out_of_range",
             Self::Unsupported(_) => "unsupported",
             Self::InvalidFrameRate | Self::FrameOverflow => "invalid_time",
+            Self::PerformanceWriterConflict { .. } | Self::NonFiniteNode { .. } => {
+                "invalid_animation"
+            }
             _ => "invalid_camera",
         }
     }
@@ -110,6 +125,19 @@ impl fmt::Display for TemporalError {
             Self::EmptyKeyframes => write!(f, "A keyframes movement needs at least one key"),
             Self::LayerKeyframes => write!(f, "A layer cannot hold keyframes"),
             Self::NonFiniteCamera => write!(f, "the camera evaluates to a non-finite number"),
+            Self::PerformanceWriterConflict {
+                instance_id,
+                node_id,
+                property,
+            } => write!(
+                f,
+                "Multiple performance channels write {node_id}:{} on instance {instance_id}",
+                property.as_str()
+            ),
+            Self::NonFiniteNode { node_id } => write!(
+                f,
+                "node {node_id} evaluates to a non-finite transform at this frame"
+            ),
             Self::FrameOverflow => write!(f, "frame or time arithmetic overflows"),
             Self::Unsupported(what) => write!(f, "not evaluated: {what}"),
         }

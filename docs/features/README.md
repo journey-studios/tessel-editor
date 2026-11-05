@@ -51,6 +51,7 @@ Lib V significa testes do modelo demo, não um motor real de edição.
 | F032 | [Oráculo de equivalência da migração (BB10/E0)](migration-oracle.md) | N/A⁹ | N/A⁹ | N/A⁹ | Parcial⁹ | `scripts/migration-oracle/oracle.mjs verify` + `docs/migration/fixtures/` |
 | F033 | [Cena dirigida: tempo, câmera e gate temporal (BB03)](scene-temporal.md) | P | P | P | Parcial¹¹ | `Bundle::evaluate_camera`, `evaluate_frame`, `DirectedScene::temporal_issues`; adapters pendentes |
 | F034 | [Catálogo de propriedades e edição atômica de cenas (BB04)](scene-edit.md) | P | P | P | Parcial¹² | `scene_edit::{catalog, apply, dry_run}`; importação e gates compartilhados |
+| F035 | [Animação de nós e matrizes de mundo (BB03)](scene-animation.md) | P | P | P | Parcial¹³ | `Bundle::{evaluate_frame, node_timeline, evaluate_instance_nodes, performance_plan}` |
 
 ¹ Dock/tema/janela são capacidades de apresentação. A lib valida layout, mas quem o executa
 é o DockArea vivo; não há execução do Dock no core. UI nativa não é requisito para fluxos
@@ -94,7 +95,7 @@ provados por barcode em Chrome, WKWebView e na janela real (`scripts/video-live-
 ⁹ Ferramenta de desenvolvimento, não uma capacidade do editor: UI, CLI da janela e CLI headless são
 N/A (o runner é Node, não é o `tessel-headless`). Lib é Parcial: o consumidor `directed_scene_oracle.rs` compara os 55 vereditos,
 referências pai/socket e matrizes estáticas. O consumidor temporal F033 também compara câmera
-e gates; animação de nós ainda pendente. O contrato de dados tem 55 bundles e expectativas geradas por funções reais de `packages/scene-engine@d6adac15`,
+e gates; o consumidor F035 acrescenta animação de nós e matrizes. O contrato de dados tem 55 bundles e expectativas geradas por funções reais de `packages/scene-engine@d6adac15`,
 manifest com hashes e validação Node (21/21 testes, repetidos pelo coordenador). Cobre validação,
 grafo, avaliação e câmera; não cobre narração, clima, luz por keys, efeitos, rig, splat, I/O,
 runtime nem pixel/áudio. Ver [relatório](../migration/foundation-b-report.md).
@@ -109,7 +110,7 @@ completo nem habilita render/export. [Contrato e limites](directed-scene.md).
 válidos e em 9 variantes geradas pelo código fixado da origem. Gates combinados conferidos
 nos 55 casos. Tolerância numérica `1e-9 + 1e-12·|x|`; frames/IDs/códigos são exatos. O teste
 unitário adicional cobre abaixo/no/acima dos cinco limiares de junção (não é corpus da origem).
-Animação de nós retorna `Unsupported`; UI/CLI permanecem pendentes. Não é `finalizeBundle`
+Animação de nós está integrada na F035; UI/CLI permanecem pendentes. Não é `finalizeBundle`
 completo para domínios adiados. [Contrato](scene-temporal.md).
 
 ¹² 8 propriedades tipadas de nó/câmera, edição por ID, lote atômico e dry-run, validados
@@ -117,6 +118,12 @@ por 29 testes públicos e 1 doctest via Cargo. `apply` e `dry_run` executam impo
 gates estruturais/temporais da F033; falhas não alteram a entrada. Ainda sem integração
 com histórico/documento, CLI ou UI; não certifica render/domínios adiados.
 [Contrato e divergências de escrita da câmera](scene-edit.md).
+
+¹³ Avaliação de `cycle`/`event`/`static`, hierarquia e matrizes animadas, com 29 testes
+públicos. Comparação com 4 casos válidos, 11 variantes e 20 payloads recusados gerados na
+origem (tolerância `1e-9 + 1e-12·|x|`). JSON preserva bits de binary64 com
+`serde_json/float_roundtrip`, conferido por regressão. Luz/clima/rig/pós e render continuam
+fora da avaliação; `unevaluated` informa as seções adiadas. [Contrato](scene-animation.md).
 
 Ciclo de vida de F021: perda forçada de contexto com proxy, ocultar/reabrir monitor, diálogo,
 reload/troca de projeto com quadro em voo e export intacto têm prova específica no
