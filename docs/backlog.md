@@ -449,3 +449,20 @@ Concluído localmente: fmt/check/clippy, workspace 1027 testes verdes (8 ignorad
 16 itens concluídos no escopo documentado: BL008, BL014, BL064, BL066–BL069, BL086–BL088, BL091–BL092, BL095–BL097 e BL104. Merge `c099f102d230271923684bc4e27a970a2bdfbe2a`. O CodeRabbit pulou a revisão e o usuário autorizou o merge; isso não foi aprovação do serviço.
 
 BL089 continua parcial: claims são locais ao processo e hashing no descarte pode bloquear UI; BL094/BL111/BL112 continuam pendentes. Blocos amplos de domínios, recursos e migração continuam parciais conforme seus critérios. Relatórios de recebimento e registros de prova preservam o estado histórico anterior ao merge.
+
+## Rodada S1–S10 autorizada — PR por frente
+
+Plano e contratos: [wave-s1-s10-plan.md](migration/wave-s1-s10-plan.md). R1–R10 e follow-up encerrados, sem execução/filas antigas; resultados preservados. Novas frentes em worktrees isolados com Cursor Sonnet 5.5, PRs próprias e aceite somente após revisão CodeRabbit executada, correções e conferência do coordenador. SKIPPED não é aprovação.
+
+| Frente | Itens | Estado | Gate de entrega |
+|---|---|---|---|
+| S1 | BL094/BL112 | Preparada para delegação | descarte assíncrono, sem hashing na UI |
+| S2 | BL111 | Preparada para delegação | claims persistentes e dois processos reais |
+| S3 | BL109 | Preparada para delegação | bytes imutáveis em export e cancelamento |
+| S4 | BL102 | Preparada para delegação | ack antigo de slot reutilizado recusado |
+| S5 | BL100/BL101 | Preparada para delegação | attach off-thread e recursos vazios |
+| S6 | BL004/BL005 | Preparada para delegação | catálogo e pose inicial equivalentes à origem |
+| S7 | BL025 (subconjunto) | Preparada para delegação | Spark dirigido em preview/pacote/export |
+| S8 | BL015/BL042 | Preparada para delegação | gizmo de translação e comando semântico equivalentes |
+| S9 | BL016 | Preparada para delegação | mix offline dirigido e áudio no export |
+| S10 | BL019 (ampliação) | Preparada para delegação | provas independentes e controles negativos |
