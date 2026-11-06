@@ -246,6 +246,7 @@ fn label_of(spec: &'static PropertySpec) -> &'static str {
         "scale" => "Escala",
         "width" => "Largura",
         "height" => "Altura",
+        "renderOrder" => "Ordem de desenho",
         "start/position" => "Posição inicial",
         "start/target" => "Alvo inicial",
         "start/fov" => "Campo de visão",
@@ -341,7 +342,7 @@ const ROTATION: &[Component] = &[
 
 pub fn components(kind: ValueKind) -> &'static [Component] {
     match kind {
-        ValueKind::Number => NUMBER,
+        ValueKind::Number | ValueKind::Integer => NUMBER,
         ValueKind::Vec3 => VECTOR,
         ValueKind::Quaternion => ROTATION,
     }
@@ -351,6 +352,7 @@ pub fn components(kind: ValueKind) -> &'static [Component] {
 pub fn component_values(value: &PropertyValue) -> Vec<f64> {
     match value {
         PropertyValue::Number(number) => vec![*number],
+        PropertyValue::Integer(integer) => vec![*integer as f64],
         PropertyValue::Vec3(v) => vec![v.x, v.y, v.z],
         PropertyValue::Quaternion(q) => {
             let euler = q.to_euler_xyz_degrees();
@@ -366,6 +368,9 @@ pub fn with_component(value: &PropertyValue, index: usize, new: f64) -> Option<P
     *parts.get_mut(index)? = new;
     Some(match value {
         PropertyValue::Number(_) => PropertyValue::Number(new),
+        // A slider steps by whole numbers; a typed value is rounded here, so the core only ever
+        // sees an integer (and still refuses one beyond its range).
+        PropertyValue::Integer(_) => PropertyValue::Integer(new.round() as i64),
         PropertyValue::Vec3(_) => PropertyValue::Vec3(Vec3 {
             x: parts[0],
             y: parts[1],
@@ -439,6 +444,16 @@ pub fn scrub(spec: &PropertySpec, index: usize, value: f64) -> Scrub {
             min: -limit,
             max: limit,
             step: 0.5,
+        };
+    }
+    if spec.kind == ValueKind::Integer {
+        // Whole steps around the value; the catalog's range is the 2^53 safe-integer window,
+        // far wider than any slider can offer.
+        let half = (value.abs() * 2.0).max(10.0).round();
+        return Scrub {
+            min: (value - half).round(),
+            max: (value + half).round(),
+            step: 1.0,
         };
     }
     let range = spec.range;
@@ -593,8 +608,11 @@ fn target_view(
         .filter(|open| open.scene() == scene_id && open.has_candidate())
         .filter(|_| gesture.is_some_and(|gesture| gesture.invalidated.is_none()))
         .map(|open| open.preview_scene().clone());
+    // A component (`position/x`) restates its parent: the panel already has one slider per
+    // axis, so listing it again would show every number twice. It stays addressable by path.
     let properties = catalog()
         .iter()
+        .filter(|spec| spec.component.is_none())
         .filter(|spec| match spec.applies_to {
             Applicability::Node(_) => is_node_entity(&entry.kind),
             Applicability::CameraClip => is_camera_entity(&entry.kind),
@@ -829,7 +847,7 @@ mod tests {
     }
 
     #[test]
-    fn an_image_plane_lists_five_node_properties_with_the_catalog_values() {
+    fn an_image_plane_lists_its_node_properties_with_the_catalog_values() {
         let mut state = state_with_scene();
         select(
             &mut state,
@@ -841,8 +859,25 @@ mod tests {
             panic!("one entity is selected");
         };
         let names: Vec<_> = target.properties.iter().map(|p| p.spec.name).collect();
-        assert_eq!(names, ["position", "rotation", "scale", "width", "height"]);
+        // Components (`position/x`) restate their parent and are not listed twice.
+        assert_eq!(
+            names,
+            [
+                "position",
+                "rotation",
+                "scale",
+                "width",
+                "height",
+                "renderOrder"
+            ]
+        );
         assert!(target.properties.iter().all(PropertyView::is_editable));
+        let order = snapshot
+            .property("scene/scene-a/node/figure/renderOrder")
+            .unwrap();
+        // The fixture plane stores order 1; the catalog default is 0, so it shows as modified.
+        assert_eq!(order.live, Some(PropertyValue::Integer(1)));
+        assert!(order.is_modified());
         let position = snapshot
             .property("scene/scene-a/node/figure/position")
             .unwrap();
@@ -1038,6 +1073,27 @@ mod tests {
             with_component(&PropertyValue::Number(1.0), 0, 4.0),
             Some(PropertyValue::Number(4.0))
         );
+    }
+
+    #[test]
+    fn an_integer_property_has_one_whole_number_slider() {
+        assert_eq!(components(ValueKind::Integer).len(), 1);
+        let order = PropertyValue::Integer(3);
+        assert_eq!(component_values(&order), vec![3.0]);
+        assert_eq!(
+            with_component(&order, 0, 4.4),
+            Some(PropertyValue::Integer(4))
+        );
+        assert_eq!(
+            with_component(&order, 0, -2.6),
+            Some(PropertyValue::Integer(-3))
+        );
+        assert_eq!(with_component(&order, 1, 4.0), None);
+        let window = scrub(spec_named("renderOrder"), 0, 3.0);
+        assert_eq!(window.step, 1.0);
+        assert!(window.min <= 3.0 && 3.0 <= window.max);
+        assert_eq!(window.min.fract(), 0.0);
+        assert_eq!(window.max.fract(), 0.0);
     }
 
     fn spec_named(name: &str) -> &'static PropertySpec {

@@ -570,6 +570,7 @@ fn scene_command(op: &str, request: &Value) -> Result<SceneCommand, CommandError
         "scene.properties" => SceneCommand::Properties {
             scene: scene()?,
             path_prefix: optional_string(request, "prefix")?,
+            components: optional_bool(request, "components")?.unwrap_or(false),
         },
         "scene.get" => SceneCommand::Get {
             scene: scene()?,
