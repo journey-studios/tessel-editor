@@ -38,7 +38,7 @@ CORPUS = ROOT / 'scripts/directed-scene-proof/corpus'
 spec = importlib.util.spec_from_file_location('video_proof', ROOT / 'scripts/video-live-proof.py')
 video = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(video)
-MIN_FREE_GIB = 10
+MIN_FREE_GIB = 12
 
 
 def wait_for_socket(lab, seconds=90):

@@ -1135,8 +1135,8 @@ impl MediaHost {
     /// `scene.resources.recover`: takes back what a result that no longer exists left claimed in
     /// the project's workspace: orphans only, after the same content proof as any cleanup, under
     /// the lease of each root (BL111). It hashes every orphan file, so it is a cancellable job
-    /// with progress in orphan files; `claims_unavailable` when the ledger cannot be used (nothing
-    /// is removed), `cancelled` with the partial report in the error's details. Changes no
+    /// with progress in orphan files; `claims_unavailable` when the ledger cannot be used,
+    /// with any partial removals reported in details, as for `cancelled`. Changes no
     /// project data. `Hash` is the kind of the job that reads file bytes.
     fn scene_recover(
         &mut self,

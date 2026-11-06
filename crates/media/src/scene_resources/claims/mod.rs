@@ -43,8 +43,8 @@
 //!     refused before copying, `claims_unavailable` with `details.phase = "before_changes"`, and
 //!     "nothing was changed" is true;
 //!   - **after** it started (a write fails once files are already copied): the file whose claim
-//!     could not be written is taken back at once, under the root lease, and the adoption is
-//!     refused with `details.phase = "after_changes"`, which never claims that nothing changed.
+//!     could not be written has rollback attempted under the root lease. If proof or removal
+//!     fails it can remain unclaimed in `kept`, outside ledger recovery. The adoption is refused with `details.phase = "after_changes"`, which never claims that nothing changed.
 //!     Success is only ever returned for claims that are on disk ([`Tracker::create_file`] and
 //!     [`Tracker::create_dir`] answer `Ok` only after the write);
 //!   - a discard that cannot record leaving ([`Leave::Unverifiable`]) keeps the file, claimed,

@@ -172,6 +172,7 @@ pub fn recover_with(
                     "`{}`: the claims ledger could not record that it was handled ({why})",
                     path.display()
                 ));
+                return Err(unavailable(&why, &recovery));
             }
         }
     }
@@ -209,6 +210,7 @@ pub fn recover_with(
                 "`{}`: the claims ledger could not record that it was handled ({why})",
                 dir.display()
             ));
+            return Err(unavailable(&why, &recovery));
         }
     }
     Ok(recovery)
@@ -359,6 +361,46 @@ mod tests {
         assert_eq!(error.details.unwrap()["cleanup"]["removedFiles"], 1);
         assert!(!paths[0].exists());
         assert!(!error.message.contains("nothing was removed"));
+    }
+
+    #[test]
+    fn a_failed_forget_after_removals_is_an_error_with_the_partial_report() {
+        let dir = Staging::create(&std::env::temp_dir(), "recover-forget-fault").unwrap();
+        let paths = orphans(dir.path(), &[("a", b"one"), ("b", b"two")]);
+        let error = recover_with(dir.path(), &CancelToken::default(), &mut |done, total| {
+            if done == total {
+                fs::create_dir(dir.path().join(".tessel-claims/claims.json.tmp")).unwrap();
+            }
+        })
+        .unwrap_err();
+        assert_eq!(error.code, "claims_unavailable");
+        let details = error.details.unwrap();
+        assert_eq!(details["cleanup"]["removedFiles"], 2);
+        assert!(!details["cleanup"]["kept"].as_array().unwrap().is_empty());
+        assert!(paths.iter().all(|path| !path.exists()));
+        // The failed write left the old claims on disk; success would misreport this state.
+        assert_eq!(claimed(dir.path()), 2);
+    }
+
+    #[test]
+    fn a_failed_folder_forget_is_an_error_after_partial_directory_removal() {
+        let dir = Staging::create(&std::env::temp_dir(), "recover-folder-forget").unwrap();
+        let ledger = Ledger::of(dir.path());
+        let holder = next_holder();
+        for name in ["a", "b"] {
+            let path = dir.path().join(name);
+            fs::create_dir(&path).unwrap();
+            let mut tracker = ledger.lock_creating();
+            tracker.create_dir(holder, path.clone()).unwrap();
+            tracker.abandon(holder, &path);
+        }
+        let error = recover_with(dir.path(), &CancelToken::default(), &mut |_, _| {
+            fs::create_dir(dir.path().join(".tessel-claims/claims.json.tmp")).unwrap();
+        })
+        .unwrap_err();
+        assert_eq!(error.code, "claims_unavailable");
+        assert_eq!(error.details.unwrap()["cleanup"]["removedFolders"], 1);
+        assert_eq!(claimed(dir.path()), 2);
     }
 
     #[test]

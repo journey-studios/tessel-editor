@@ -255,7 +255,8 @@ editor, CLI ou job que abra o mesmo workspace.
     descarte mantém, `claims` diz `available:false`. O caminho que cria (nova adoção) toma um
     lock novo e segue lendo o estado: nunca trata as claims como inexistentes.
   - Limite aberto (BL111.3): a cópia em curso não pode ser interrompida pelo observador
-    `on_published`; os arquivos seguintes são copiados e desfeitos um a um, sem arquivo sem claim
+    `on_published`; os arquivos seguintes ainda podem ser copiados; o rollback de cada um é tentado sob prova,
+    podendo manter arquivos sem claim em `details.kept`, fora do alcance de `recover`
     e sem remoção sem prova. Seguro, só desperdiça trabalho.
 - Sem entradas nem owners o ledger inteiro é removido: workspace sem resultado pendente fica
   idêntico a um que nunca teve ledger.
@@ -447,3 +448,16 @@ mas recusou dois testes de render porque o runtime ainda não estava instalado. 
 `./scripts/runtime setup`, o crate render inteiro passou com `TESSEL_REQUIRE_RUNTIME=1`
 sob lock de GPU. Logs locais: `/tmp/tessel-s2-review-workspace.log` e
 `/tmp/tessel-s2-review-render.log`; a falha inicial foi preservada, não contada como PASS.
+
+A falha de `Tracker::forget` em arquivos ou pastas interrompe a recuperação com
+`claims_unavailable` e relatório parcial, em vez de sucesso com claims antigas. Regressão:
+`a_failed_forget_after_removals_is_an_error_with_the_partial_report` (duas claims, escrita
+bloqueada depois de remover ambos os arquivos). Os testes de janela de import e claims usam
+uma guarda de diretório com `Drop`, inclusive quando uma asserção falha.
+
+Revalidação após o último finding: recover8, integrity8, processos16 (inclui papel filho),
+JSONL6 e workflow desktop8 passaram; clippy workspace/build verdes. A regressão de forget
+falha ao reintroduzir a regra antiga (sucesso indevido) e passa com a correção restaurada.
+A prova nativa foi repetida no código atualizado: **23/23**, instância própria e lock GPU,
+piso12GiB, relatório `/tmp/tessel-s2-review-native-final.json`. Há também regressão específica
+para falha de forget de pasta após remoção parcial de diretórios.
