@@ -7,13 +7,21 @@
 //! registry, progress, cancellation and `job.*` operations are the ones every other export uses
 //! (`MediaHost`, `scene.export`); there is no second queue.
 //!
-//! Contract and limits: `docs/features/scene-export.md`.
+//! The declared WAV mix (F042A, BL016) is rendered by [`render_audio`] into a 48 kHz stereo stream the
+//! encoder muxes as AAC; the rules about which sample plays when live in the core.
+//!
+//! Contract and limits: `docs/features/scene-export.md`, `docs/features/scene-export-audio.md`.
 
 mod args;
+mod audio;
 mod job;
 mod render;
 
-pub use args::encode_args;
+pub use args::{encode_args, encode_args_with_audio};
+pub use audio::{
+    InspectError, MixReport, WavLayout, check_layout, inspect, render as render_audio,
+    render_private as render_audio_private,
+};
 pub use job::{LISTED_HASHES, SceneExport, preflight, run};
 pub use render::{
     FrameJob, FrozenResources, RenderedFrame, SceneFrameRenderer, SceneRendererFactory,
