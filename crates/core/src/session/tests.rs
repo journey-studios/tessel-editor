@@ -196,6 +196,7 @@ fn ready(id: &str) -> BackendEvent {
     BackendEvent::Asset {
         id: Id::lit(id),
         status: AssetStatus::Ready(json!({})),
+        echo: None,
     }
 }
 
@@ -334,6 +335,7 @@ fn asset_failures_from_the_runtime_surface_with_the_asset_id() {
         .push_back(BackendEvent::Asset {
             id: Id::lit("img"),
             status: AssetStatus::Failed(BackendError::new("decode_failed", "bad PNG")),
+            echo: None,
         });
     rig.session
         .request_frame(&rig.state, plan(&rig, 0), output(), vec![])
