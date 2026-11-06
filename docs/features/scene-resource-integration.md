@@ -430,11 +430,18 @@ parecendo nunca ter tido ledger.
    (`recover`, descarte, `claims_status`, a próxima adoção, o `Tracker` de qualquer job) aplica o diário ao abrir; ninguém lê
    `claims.json` sozinho. Por isso nenhum projeto referencia um arquivo que `recover` poderia remover: o aceite gravado vale
    para o primeiro leitor que o veja, inclusive o de um processo que acabou de morrer (`SIGKILL` logo depois do tick).
+   **Contra queda do processo, não contra perda de energia:** como o estado, o diário não tem `fsync`; o que o `write_all`
+   entregou ao sistema operacional sobrevive a um `SIGKILL`, mas um corte de energia pode perder o registro (e então o
+   projeto, que também não foi sincronizado, não o referencia mais).
 2. **Compactação antes de qualquer coisa.** O `Tracker` que encontra um diário reescreve `claims.json` sem essas chaves
    (rename atômico) e só então remove o diário, **antes de responder a quem o abriu**. Assim ninguém reivindica um caminho
    de novo enquanto um registro antigo dele ainda existe (o registro o aceitaria por engano), e uma queda entre o rename e a
    remoção deixa um diário cujas chaves já não existem: reaplicar não muda nada (idempotente, sem campo de geração). A
-   compactação é feita em jobs/CLI/`recover`/status, **nunca no tick**.
+   compactação é feita em jobs/CLI/`recover`/status, **nunca no tick**. Por que a idempotência basta: uma reivindicação nova
+   só é gravada **depois** de a compactação do `Tracker` que a faz ter terminado (`with_lock` dobra o diário antes de
+   responder a quem abriu) ou, se o diário não pôde ser removido, o ledger é `fault` e nada é reivindicado; logo um registro
+   antigo nunca é aplicado depois de uma reivindicação nova do mesmo caminho, e uma queda entre o rename e a remoção só pode
+   repetir uma dobra que já foi feita.
 3. **Gravado antes de acreditado, e reversível.** O tick só responde `Ok` depois de o registro ser escrito inteiro sob o lock.
    Uma escrita que falha é desfeita (`set_len` até onde o arquivo estava) e responde `Err`: o resultado continua dono e
    claimado, o projeto, o undo e a revisão voltam ao que eram (o aceite é o último passo da transação) e o resultado vai
@@ -453,7 +460,24 @@ ressuscitam uma entrada (teste de threads em `claims/tests.rs`; processo real em
 
 **Limites.** O tick não valida nem faz reap (isso é do próximo `Tracker`, fora da UI); o diário não tem `fsync`, como o
 estado; o limite de 64 KiB é uma decisão de custo, não de correção (os dois caminhos têm as mesmas regras); um leitor que
-compacta um diário grande paga `O(ledger)` fora da UI (jobs, CLI, `recover`, `claims`).
+compacta um diário grande paga `O(ledger)` fora da UI (jobs, CLI, `recover`, `claims`). O ganho só aparece com cerca de 500
+entradas pendentes ou mais (64 KiB): um ledger desse tamanho é um cenário de estresse, não o uso normal (um projeto típico
+tem poucas dezenas). **Pré-condição de qualquer mudança de formato (BL112.9):** o caminho grande de `Ledger::accept` só
+acrescenta e não confere a versão de `claims.json`; com um `version: 2` um app antigo acrescentaria um diário que o novo pode
+não conhecer, então a versão do estado precisa ser conferida nesse caminho antes de o formato mudar.
+
+**Provas do diário no fechamento da revisão independente (F2–F4).** `claims/tests.rs`: dois titulares da mesma chave, o
+aceite pelo diário e a saída do outro em qualquer ordem (`Untracked`, nada removido); `transfer` seguido de aceite (e
+`transfer` depois do aceite, sem trazer a entrada de volta); `Created::absorb` e um registro que só se apoiava na pasta
+(`Created::remove` mantém a pasta aceita) num ledger acima do limite; descarte, saída e aceite vazio nunca acrescentam; a
+queda entre o rename do estado e a remoção do diário, reaplicada duas vezes e seguida de uma reivindicação do mesmo caminho,
+e a mesma janela provocada **de verdade** (a remoção do diário falha por `chflags uchg`, só em macOS: o `Tracker` devolve
+falha, o estado já está compactado e o próximo leitor completa). `scene_claims_journal.rs`: um **import** (não só uma adoção)
+cujo diário não grava volta o projeto ao que era (sem cena, sem passo de undo, mesma revisão), mantém as claims pelo descarte
+que não consegue provar, e num processo-janela real o `recover` deixa os arquivos enquanto a janela vive e os recolhe depois
+do `SIGKILL`; a repetição do teste de `SIGKILL` só repete a rodada quando `details.why` diz que o lock foi segurado além do
+orçamento do tick (`is_contention`): qualquer outra recusa falha na hora, e um teste com eventos injetados fixa a diferença
+(falha de escrita, diretório no lugar, diário danificado e `claims_unavailable` sem motivo não são contenção).
 
 **Descarte e claims (BL094.4, F1):** o último titular de um arquivo **não** sai do ledger antes do arquivo: `Tracker::begin_leave`
 responde `Last` com a entrada (e a lease deste processo) ainda gravada; o job prova (SHA-256), remove e só então chama `leave`
