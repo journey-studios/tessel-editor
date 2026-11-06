@@ -341,7 +341,6 @@ relatório JSON da rodada (`head`, hashes dos binários, lista de checks e o que
 como artefatos locais fora do repositório (`/tmp/s6-final-gates/`, 212 KiB; relatório sha256
 `cc9304343d72867d99dc3cda17df2c4907a36b88bfa7c261c4d1f798daf590ef`) e **não** são commitados.
 
-Equivalência: o commit que contém esta seção difere de `d0d972b` somente em documentação; nada em `crates/`, `runtime/`,
-`scripts/` ou `Cargo.lock` mudou, então o código de produção testado é exatamente o que a PR entrega.
+Equivalência da produção: nada em `crates/`, `runtime/` ou `Cargo.lock` mudou desde `cf21f97`, então o código do editor testado é o que a PR entrega. A prova em `d0d972b` usava a versão anterior do script: `6f2f8a5` altera a guarda de disco de `scripts/scene-edit-proof.py` e sua spec, além da documentação. Os sete testes puros e a mutação abaixo cobrem essa alteração; a repetição positiva da prova no script atualizado continua pendente até seu relatório ser registrado.
 
 CodeRabbit `r4494002899`: o piso de disco durante a prova nativa usa uma condição explícita e `ProofFailure`, preservando relatório `--out`, resumo, saída 1 e limpeza do processo/HOME próprios. A spec pura tem 7 testes, todos verdes com Python normal e `-O`; recolocar o `assert` anterior reprova o novo teste em ambos os modos. Isso não altera o editor nem o cenário sem queda de disco.
