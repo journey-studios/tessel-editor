@@ -41,7 +41,7 @@ sys.path.insert(0, str(ROOT / "scripts" / "directed-scene-proof"))
 import harness as h  # noqa: E402
 
 MIN_FREE_GIB, BUDGET_GIB = 12, 2
-# `splat.centerColorDelta` of the S10 tolerances (frozen before any result): a centre colour within 24 of the stored one.
+# `splat.centerColorDelta` of the S10 tolerances (historical baseline; not a pre-registration): a centre colour within 24 of the stored one.
 COLOUR_TOLERANCE = 24
 # Frames of the splat shot the monitor is asked to show: the camera moves between them.
 FRAMES = (0, 12, 24, 36, 47)
@@ -133,6 +133,8 @@ def main():
             shown = last.get("hash")
             check(f"{label}: the runtime drew the splat layer in the monitor frame", "directed_scene_splats" in json.dumps(last), sorted(last))
             isolated = [s for s in case["splats"] if s["asset"] != "sp-order"]
+            if not check(f"{label}: the corpus has isolated colour probes", bool(isolated), case["splats"]):
+                continue
             probes = [[int(round(s["x"])), int(round(s["y"]))] for s in isolated]
             shifted = [[min(width - 1, int(round(s["x"])) + 40), int(round(s["y"]))] for s in isolated]
             far = [list(point) for point in case["backgroundPoints"]]
@@ -144,7 +146,10 @@ def main():
             check(f"{label}: the render was read back", result.get("inspected") is True, result.get("inspected"))
             check(f"{label}: the monitor's picture is the render's picture (hash)", bool(shown) and shown == result["hash"],
                   f"monitor={shown} render={result['hash']}")
-            got = result["probes"]
+            got = result.get("probes")
+            if not check(f"{label}: every requested probe was returned",
+                         isinstance(got, list) and len(got) == len(probes + shifted + far), got):
+                continue
             centres, away, flat = got[: len(isolated)], got[len(isolated): 2 * len(isolated)], got[2 * len(isolated):]
             deltas = {}
             for splat, centre, off in zip(isolated, centres, away):

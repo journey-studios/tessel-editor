@@ -510,3 +510,7 @@ PR12 / BL005a: CodeRabbit r4494002899 corrigido no script de prova: condição d
 | ID | Bloco | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
 | BL102c | F041/teste | Substituição de request21 por22 dependia de fetch21 ainda pendente entre dois round trips CDP | A validar | BL102/BL102b | Coordenador / S7 | Fix só no teste: holdFetches retém arquivo vermelho até22 pronto; finally libera e remove interceptação. Chromefiltrado1/1 verde; suíte anterior107/108FAIL e6/6isolados não são prova de suíte verde. Suíte completa após o fix, head `2c7cf7c`: **108/108, saída 0** (execução do coordenador, atribuída: `./scripts/runtime test`, `TESSEL_REQUIRE_RUNTIME=1`, lock GPU; log sha256 `2f1844e8283b2391…`); o workspace Rust do mesmo head (1239/0/9, com o Chrome real) também passou em execução própria. A validar até a revisão final. |
+
+### S7 — resíduos CodeRabbit após os gates
+
+- **BL127** (coordenador, PR #13, a validar): parser runtime recusa splat duplicado; prova nativa recusa corpus sem sondas isoladas e resposta com cardinalidade diferente. Revalidação posterior a `91bd915` pendente. Findings `4494744803` e `4494744819`; limites anteriores e S10 preservados.

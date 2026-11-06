@@ -248,10 +248,13 @@ export const parseDirectedLayer = (layer) => {
   // The splat nodes. Each one is the evaluated node (its world matrix), the `spz` it reads and the
   // slot the core gave it among the planes (`afterLayers`: how many planes are painted before it);
   // a splat node the plan does not list would silently not be drawn, so it is refused.
+  const listed = new Set();
   const splats = arrayAt(plan.splats ?? [], '/splats').map((raw, index) => {
     const at = `/splats/${index}`;
     const entry = objectAt(raw, at);
     const nodeId = stringAt(entry.nodeId, `${at}/nodeId`);
+    if (listed.has(nodeId)) throw invalid(`${at}/nodeId`, `splat node \`${nodeId}\` is listed twice`);
+    listed.add(nodeId);
     const assetId = stringAt(entry.assetId, `${at}/assetId`);
     const found = nodes.get(nodeId);
     if (!found) throw invalid(`${at}/nodeId`, `node \`${nodeId}\` is not in the plan`);
@@ -274,7 +277,6 @@ export const parseDirectedLayer = (layer) => {
     }
     return { nodeId, assetId, after, world };
   });
-  const listed = new Set(splats.map((splat) => splat.nodeId));
   for (const [nodeId, { node }] of nodes) {
     if (node.kind === 'splat' && !listed.has(nodeId)) throw invalid('/splats', `splat node \`${nodeId}\` is not listed`);
   }

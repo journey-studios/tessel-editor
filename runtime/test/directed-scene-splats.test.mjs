@@ -124,6 +124,7 @@ test('a plan that hides, mislabels or under-declares its splats is refused with 
     assert.equal(error.code, 'invalid_plan');
     assert.equal(error.details.pointer, pointer);
   };
+  invalid((plan) => { plan.splats.push({ ...plan.splats[0] }); }, '/splats/1/nodeId');
   invalid((plan) => { plan.splats = []; }, '/splats'); // a splat node nobody lists would not be drawn
   invalid((plan) => { plan.splats[0].nodeId = 'nobody'; }, '/splats/0/nodeId');
   invalid((plan) => { plan.splats[0].afterLayers = 1; }, '/splats/0/afterLayers'); // there is no layer to come after

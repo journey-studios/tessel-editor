@@ -290,3 +290,9 @@ anterior e a prova direta `BL125`, que passou na suíte completa.
 
 Limites que esta execução **não** muda: o aceite independente S10 segue `FAIL`/`BLOCKED` (BL120/BL121); `full_av` e áudio
 dependem do S9; a revisão independente final (Opus) ainda precisa aceitar o delta.
+
+### Correções da revisão CodeRabbit em `2c7cf7c`
+
+O parser do runtime recusa `nodeId` repetido em `/splats/N/nodeId`, como o core. A prova nativa exige ao menos uma sonda de splat isolado por frame e cardinalidade exata da resposta antes de comparar cores; uma resposta curta não pode passar pelo `zip`. Os gates de `2c7cf7c` são anteriores a essas correções; a revalidação está pendente.
+
+Validação desta correção: `node --check`, `py_compile`, `git diff --check` e o teste de parser `hides, mislabels` passaram (1 teste). A execução ampla foi interrompida e não conta como gate. Prova nativa e runtime completo pendentes: disco abaixo de 12 GiB.
