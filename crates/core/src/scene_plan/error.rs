@@ -25,7 +25,8 @@ pub enum PlanError {
     /// A splat node whose world matrix is not a similarity (rotation, one positive uniform scale,
     /// translation): non-uniform or mirrored scale of the node or an ancestor, shear, degenerate.
     /// The Spark runtime keeps one uniform scale per splat, so the frame is refused instead of
-    /// drawn approximated (BL123). Frame-dependent: an animated scale may fail on some frames only.
+    /// drawn approximated (BL123). Frame-dependent: animated rotations under non-uniform scales
+    /// in the hierarchy may fail on some frames only.
     SplatTransform {
         node_id: String,
         reason: &'static str,
