@@ -196,3 +196,9 @@ Não provado na janela: bundle com dezenas de milhares de nós (só medido no co
 no processo `tessel-media`; a janela usa o mesmo host e o mesmo core).
 Diálogos Kit exigem `Root`, que a janela de teste não tem: o corpo do diálogo é provado pelo script
 vivo, não pelo teste unitário.
+
+Integração com main `ac04dca` (S2): conflito apenas no comentário de operações do host,
+preservando attach assíncrono e claims/recover. Fmt/check/clippy workspace/build desktop
+passaram; regressões project_session, scene_attach_facts/prepared/job/process, async_host,
+scene_claims_integrity e scene_claims_jsonl passaram. A prova nativa anterior não foi repetida
+neste merge; esta validação cobre as junções de host/core, não novos gestos físicos.
