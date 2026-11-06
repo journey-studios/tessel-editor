@@ -513,8 +513,8 @@ impl Created {
     }
 
     /// [`Created::accept`] for a caller that must not block (the window's tick): a ledger lock
-    /// that another process holds at that instant is not waited for. It answers `Err` like any
-    /// ledger that cannot record the acceptance, and the record keeps everything.
+    /// still held after the tick's fixed budget (20 ms) is not waited for any longer. It answers
+    /// `Err` like any ledger that cannot record the acceptance, and the record keeps everything.
     pub(crate) fn accept_nowait(&mut self) -> Result<(), String> {
         self.accept_waiting(false)
     }
@@ -1094,10 +1094,11 @@ impl Provisional {
             .map_err(|why| accept_unavailable(&why))
     }
 
-    /// [`Provisional::accept`] for the window's tick, which never waits for the ledger lock: one
-    /// held by another process at that instant refuses the acceptance (`claims_unavailable`,
-    /// `details.phase = "accept"`, `details.why` says it was busy) instead of holding the tick
-    /// up. Everything else is as in `accept`: nothing was promised and the result is still owned.
+    /// [`Provisional::accept`] for the window's tick, which waits for the ledger lock only a fixed
+    /// 20 ms (`ledger::TICK_WAIT`): one still held after that (another process, or another job of
+    /// this one) refuses the acceptance (`claims_unavailable`, `details.phase = "accept"`,
+    /// `details.why` says it was held and for how long it was waited for) instead of holding the
+    /// tick up. Everything else is as in `accept`: nothing was promised and the result is still owned.
     pub fn accept_nowait(&mut self) -> Result<(), JobError> {
         self.created
             .accept_nowait()

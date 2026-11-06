@@ -49,6 +49,10 @@ const PROTOCOL: &str = "@@ ";
 
 /// Fills every running slot of `registry` with jobs that end when released, so any job spawned
 /// afterwards stays `queued`.
+///
+/// Dropping it releases the slots too (N3): a failed assertion while it is held would otherwise
+/// unwind into a non-interactive host that waits for a discard queued behind these slots, and the
+/// suite would hang instead of reporting the failure.
 struct Blockers {
     release: CancelToken,
     jobs: Vec<String>,
@@ -88,6 +92,26 @@ impl Blockers {
         for job in &self.jobs {
             self.registry.wait(job, Duration::from_secs(10)).unwrap();
         }
+    }
+}
+
+impl Drop for Blockers {
+    fn drop(&mut self) {
+        self.release.cancel();
+    }
+}
+
+#[test]
+fn blockers_that_are_dropped_instead_of_released_give_their_slots_back() {
+    let registry = JobRegistry::new(2);
+    let blockers = Blockers::hold(&registry);
+    let jobs = blockers.jobs.clone();
+    drop(blockers);
+    for job in &jobs {
+        let info = registry
+            .wait(job, Duration::from_secs(10))
+            .expect("a dropped blocker ends its jobs");
+        assert_eq!(info.state, JobState::Succeeded);
     }
 }
 
@@ -743,10 +767,11 @@ fn signal(name: &str, pid: u32) {
 /// BL112.3, hypothesis confirmed and fixed. The window's tick accepts a result, which writes the
 /// ledger under its `flock`. Another process stopped (`SIGSTOP`) while it holds that lock kept the
 /// tick waiting for as long as it stayed stopped. A first fix bounded the wait at 1.5 s, which is
-/// still above the tick's 100 ms ceiling, so the tick now **does not wait at all**: it looks once
-/// (`Ledger::try_lock`), finds the lock held, and the ledger is reported unavailable. The
+/// still above the tick's 100 ms ceiling, so the tick now waits a **fixed 20 ms** (`Ledger::try_lock`,
+/// enough to ride out a holder of this very process, see `claims/tests.rs`), finds the lock
+/// still held, and the ledger is reported unavailable. The
 /// acceptance is refused like any other ledger failure (nothing applied, the result still claimed
-/// and handed to a discard job) and the tick comes back at once. The bounded wait remains for
+/// and handed to a discard job) and the tick comes back within that budget. The bounded wait remains for
 /// callers that may block (jobs, the CLI).
 #[test]
 fn a_peer_stopped_while_holding_the_ledger_lock_cannot_freeze_the_tick() {
@@ -789,10 +814,10 @@ fn a_peer_stopped_while_holding_the_ledger_lock_cannot_freeze_the_tick() {
     let tick = Instant::now();
     let events = host.poll(&mut state);
     let elapsed = tick.elapsed();
-    // Not the 1.5 s of the bounded wait either: the tick does not wait for the lock at all. A full
-    // second keeps a loaded machine honest while still failing for any wait on the lock.
+    // Not the 1.5 s of the bounded wait either: the tick waits its fixed 20 ms budget and no more,
+    // and the whole tick stays under the UI's 100 ms ceiling (not a loose second).
     assert!(
-        elapsed < Duration::from_secs(1),
+        elapsed < Duration::from_millis(100),
         "the tick was held for {elapsed:?} by a stopped peer"
     );
     let failed = events
@@ -806,8 +831,8 @@ fn a_peer_stopped_while_holding_the_ledger_lock_cannot_freeze_the_tick() {
     assert!(
         details["why"]
             .as_str()
-            .is_some_and(|why| why.contains("not waited for")),
-        "the reason is that the tick does not wait for the lock: {failed}"
+            .is_some_and(|why| why.contains("gave up after") && !why.contains("another process")),
+        "the reason is the tick's budget on a lock that stayed held, without blaming anyone: {failed}"
     );
     // Nothing was applied, and the result is still owned (the discard job is queued).
     assert_eq!(state.summary(), summary);

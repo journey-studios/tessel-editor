@@ -284,7 +284,7 @@ fn waiting_for_a_lock_nobody_lets_go_of_is_bounded() {
     assert!(
         tracker
             .fault()
-            .is_some_and(|why| why.contains("does not let go")),
+            .is_some_and(|why| why.contains("gave up after")),
         "{:?}",
         tracker.fault()
     );
@@ -302,16 +302,89 @@ fn waiting_for_a_lock_nobody_lets_go_of_is_bounded() {
     );
 }
 
+/// The UI's ceiling for one tick (BL112.3). The tick's lock budget is far below it and the
+/// elapsed time of a refused look is held to it (not to a loose second that ten times the
+/// ceiling would still satisfy).
+const TICK_CEILING: std::time::Duration = std::time::Duration::from_millis(100);
+
 #[test]
-fn a_caller_that_must_not_wait_looks_once_and_never_waits_for_a_held_lock() {
-    let dir = workspace("claims-lock-nowait");
+fn the_tick_budget_is_fixed_and_well_below_the_ui_ceiling() {
+    assert!(
+        ledger::TICK_WAIT >= std::time::Duration::from_millis(10),
+        "a budget of microseconds refuses results for contention inside this very process"
+    );
+    assert!(
+        ledger::TICK_WAIT <= std::time::Duration::from_millis(25)
+            && ledger::TICK_WAIT * 4 <= TICK_CEILING,
+        "the tick cannot wait a good share of its ceiling: {:?}",
+        ledger::TICK_WAIT
+    );
+}
+
+#[test]
+fn a_tick_that_finds_the_lock_held_for_a_moment_by_this_process_gets_it() {
+    // N1: every `Tracker` opens its own descriptor and `flock` conflicts between descriptors of the
+    // same process, so a discard, an adoption or a recovery of another slot holding the ledger for
+    // a moment is a conflict too. Looking once refused a valid result for that.
+    let dir = workspace("claims-lock-moment");
     let canonical = fs::canonicalize(dir.path()).unwrap();
     let ledger = Ledger::of(dir.path());
-    let (holder, path) = (next_holder(), key("lock-nowait"));
+    let (holder, path) = (next_holder(), key("lock-moment"));
     ledger
         .lock_creating()
         .create_file(holder, path.clone(), &root(), None)
         .unwrap();
+    let lock_path = canonical.join(".tessel-claims/ledger.lock");
+
+    let ticking = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (held_tx, held_rx) = std::sync::mpsc::channel();
+    let other_job = {
+        let ticking = ticking.clone();
+        std::thread::spawn(move || {
+            let file = fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(lock_path)
+                .unwrap();
+            file.lock().unwrap();
+            held_tx.send(()).unwrap();
+            // Held until the tick has started looking, and 2 ms more: a looks-once tick refuses.
+            while !ticking.load(std::sync::atomic::Ordering::SeqCst) {
+                std::thread::yield_now();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+            file.unlock().unwrap();
+        })
+    };
+    held_rx.recv().unwrap();
+    ticking.store(true, std::sync::atomic::Ordering::SeqCst);
+    let mut tracker = ledger.try_lock();
+    assert!(
+        tracker.fault().is_none(),
+        "the lock was free again within the tick's budget: {:?}",
+        tracker.fault()
+    );
+    assert_eq!(
+        tracker.leave(holder, &path),
+        Leave::Last(Item::File(None)),
+        "the ledger was really opened and read"
+    );
+    drop(tracker);
+    other_job.join().unwrap();
+}
+
+#[test]
+fn a_tick_that_finds_the_lock_stuck_gives_up_inside_its_budget_with_a_neutral_reason() {
+    let dir = workspace("claims-lock-stuck");
+    let canonical = fs::canonicalize(dir.path()).unwrap();
+    let ledger = Ledger::of(dir.path());
+    let (holder, path) = (next_holder(), key("lock-stuck"));
+    ledger
+        .lock_creating()
+        .create_file(holder, path.clone(), &root(), None)
+        .unwrap();
+    // Another open file description holding the lock is what a stopped process does (and what a
+    // stuck job of this one does).
     let stuck = fs::OpenOptions::new()
         .read(true)
         .write(true)
@@ -321,17 +394,22 @@ fn a_caller_that_must_not_wait_looks_once_and_never_waits_for_a_held_lock() {
     let started = std::time::Instant::now();
     let tracker = ledger.try_lock();
     let waited = started.elapsed();
+    let why = tracker.fault().expect("the lock stayed held: unavailable");
     assert!(
-        tracker
-            .fault()
-            .is_some_and(|why| why.contains("not waited for")),
-        "{:?}",
-        tracker.fault()
+        why.contains("held right now") && why.contains("gave up after"),
+        "{why}"
     );
-    // Far below the 1.5 s of a waiting caller (and its poll); 1 s only keeps a loaded machine honest.
     assert!(
-        waited < std::time::Duration::from_secs(1),
-        "it did not wait: {waited:?}"
+        !why.contains("another process"),
+        "a job of this process looks the same, so the reason does not blame one: {why}"
+    );
+    assert!(
+        waited >= ledger::TICK_WAIT,
+        "it waited its budget before giving up: {waited:?}"
+    );
+    assert!(
+        waited < TICK_CEILING,
+        "and no longer than the UI's ceiling: {waited:?}"
     );
     drop(tracker);
     stuck.unlock().unwrap();

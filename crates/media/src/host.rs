@@ -270,6 +270,12 @@ pub struct MediaHost {
     /// would never say how it ended: whoever waits for that job (a chain of jobs, a dialog's
     /// report) would wait forever. `poll` reports each once, as a failure `job_discarded`.
     discarded_unreported: Vec<(JobId, JobId)>,
+    /// The event of a job whose result `job.commit` applied (or refused) **before**
+    /// [`MediaHost::poll`] had seen the job finish (BL094.10). `job.commit` takes the slot out of
+    /// `pending`, so the tick would never report the job: a chain or a dialog waiting for it would
+    /// wait forever, exactly like a discard before the tick. Interactive hosts only (a host without
+    /// a window has no tick); `poll` delivers each once, shaped like its own events.
+    committed_unreported: Vec<Value>,
 }
 
 type ProxyKey = (String, Option<String>, u32, ProxyFormat);
@@ -364,6 +370,7 @@ impl MediaHost {
             scene_resources: SceneResourceSession::default(),
             reported_discards: HashSet::new(),
             discarded_unreported: Vec::new(),
+            committed_unreported: Vec::new(),
         }
     }
 
@@ -472,6 +479,7 @@ impl MediaHost {
             });
         }
         events.extend(self.discarded_before_report());
+        events.extend(std::mem::take(&mut self.committed_unreported));
         events.extend(self.finished_discards());
         self.schedule_prepare(state);
         self.schedule_proxies(state);
@@ -1650,14 +1658,24 @@ impl MediaHost {
                 format!("Job `{id}` has nothing to apply or was already applied"),
             )
         })?;
-        let applied = apply(
+        let outcome = apply(
             &self.registry.clone(),
             id,
             take(&slot),
             state,
             !self.interactive,
-        )?;
-        Ok(merge_applied(result, id, applied))
+        );
+        if self.interactive {
+            // `poll` never saw this job finish: it reports the end (see the field).
+            let kind = info.kind.label();
+            self.committed_unreported.push(match &outcome {
+                Ok(applied) => json!({ "job": id, "state": "succeeded", "kind": kind,
+                    "result": result.clone(), "applied": applied }),
+                Err(error) => json!({ "job": id, "state": "failed", "kind": kind,
+                    "error": error.to_json()["error"] }),
+            });
+        }
+        Ok(merge_applied(result, id, outcome?))
     }
 
     /// `job.discard {job, wait?}`: gives up the finished, unapplied result of `job` (BL094).
@@ -2217,10 +2235,22 @@ impl MediaHost {
     /// A host without a window is driven by a script that ends with its input: the process must
     /// not leave while a `job.discard {wait:false}` is still taking files back (BL112). A job
     /// waits only for what has to run: discard jobs are never cancelled.
+    ///
+    /// The discard jobs queue behind the registry's running slots, so they are waited for behind
+    /// whatever occupies those slots (`export.start`, a package, an adoption started with
+    /// `wait:false`). Nothing else may outlive the process (their results are thrown away), so
+    /// everything that is not a discard is cancelled **first** (`cancel_all` skips discards, which
+    /// are not cancellable), and the wait is then for the discards and for the cancelled jobs to
+    /// give their slots back; it no longer depends on a job that would run for as long as it
+    /// likes (N2).
     fn wait_for_discards(&self) {
         let active = self
             .registry
             .matching(|info| info.kind == JobKind::Discard && !info.state.is_final());
+        if active.is_empty() {
+            return;
+        }
+        self.registry.cancel_all();
         for info in active {
             while self
                 .registry

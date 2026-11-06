@@ -331,9 +331,10 @@ fn a_settle_the_ledger_refuses_returns_the_adoption_still_owning_and_claiming_it
 }
 
 #[test]
-fn a_settle_never_waits_for_a_ledger_lock_another_process_holds() {
+fn a_settle_gives_up_inside_the_tick_budget_when_the_ledger_lock_stays_held() {
     // BL112.3: `settle` runs on the window's tick, whose ceiling is 100 ms. The bounded wait of
-    // the ledger lock (1.5 s) belongs to callers that may block; the tick looks once and refuses.
+    // the ledger lock (1.5 s) belongs to callers that may block; the tick waits a fixed 20 ms and
+    // refuses (the holder here is a descriptor that never lets go, like a stopped process).
     let mut world = world("settle-busy");
     let _bystander = world.bystander();
     let (pending, backdrop) = pending_adoption(&mut world);
@@ -352,10 +353,10 @@ fn a_settle_never_waits_for_a_ledger_lock_another_process_holds() {
         .expect_err("the ledger is busy: the acceptance cannot be recorded");
     let waited = started.elapsed();
 
-    // Far below the 1.5 s a waiting caller would take; 1 s only keeps a loaded machine honest.
+    // Held to the UI's ceiling, not to the 1.5 s a waiting caller would take.
     assert!(
-        waited < std::time::Duration::from_secs(1),
-        "the tick did not wait for the lock: {waited:?}"
+        waited < std::time::Duration::from_millis(100),
+        "the tick waited beyond its ceiling for the lock: {waited:?}"
     );
     let error = stale
         .refusal_error()
@@ -365,7 +366,7 @@ fn a_settle_never_waits_for_a_ledger_lock_another_process_holds() {
     assert!(
         error.details.as_ref().unwrap()["why"]
             .as_str()
-            .is_some_and(|why| why.contains("not waited for")),
+            .is_some_and(|why| why.contains("gave up after") && !why.contains("another process")),
         "{error:?}"
     );
     assert_eq!(world.destination.summary(), summary);
@@ -377,6 +378,53 @@ fn a_settle_never_waits_for_a_ledger_lock_another_process_holds() {
     let report = stale.pending.discard();
     assert_eq!(report.removed_files, 2, "{report:?}");
     assert!(!backdrop.exists());
+}
+
+#[test]
+fn a_settle_rides_out_a_ledger_lock_another_job_of_this_process_holds_for_a_moment() {
+    // N1: a discard or an adoption of the other slot holds `ledger.lock` for microseconds, and
+    // `flock` conflicts between descriptors of the same process. The tick used to look once, so a
+    // valid result was refused, its copy removed and "another process" blamed.
+    let mut world = world("settle-moment");
+    let _bystander = world.bystander();
+    let (pending, backdrop) = pending_adoption(&mut world);
+    let lock_path = world.ledger().join("ledger.lock");
+    let ticking = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (held_tx, held_rx) = std::sync::mpsc::channel();
+    let other_job = {
+        let ticking = ticking.clone();
+        std::thread::spawn(move || {
+            let file = fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(lock_path)
+                .unwrap();
+            file.lock().unwrap();
+            held_tx.send(()).unwrap();
+            // Held until the tick has started, and 2 ms more.
+            while !ticking.load(std::sync::atomic::Ordering::SeqCst) {
+                std::thread::yield_now();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+            file.unlock().unwrap();
+        })
+    };
+    held_rx.recv().unwrap();
+    ticking.store(true, std::sync::atomic::Ordering::SeqCst);
+    let settled = pending.settle(&world.destination);
+    other_job.join().unwrap();
+    assert!(
+        settled.is_ok(),
+        "a holder that lets go within the budget does not cost the result: {:?}",
+        settled.err().map(|stale| stale.refusal_error())
+    );
+    assert!(backdrop.is_file(), "the accepted copy stays");
+    assert!(
+        file_entries(&world.workspace)
+            .iter()
+            .all(|entry| !entry["path"].as_str().unwrap().contains("/lot/")),
+        "and nobody is left to recover it: the acceptance was recorded"
+    );
 }
 
 #[test]

@@ -422,8 +422,9 @@ pub struct RejectedImport {
 }
 
 /// [`apply`] without the removal: a refusal comes back with the copied files still owned. This is
-/// the window's tick, so it never waits for the claims ledger lock: one held by another process
-/// at that instant refuses the acceptance (`claims_unavailable`) and the project stays as it was.
+/// the window's tick, so it waits for the claims ledger lock only a fixed 20 ms: one still held
+/// after that (by another process or another job of this one) refuses the acceptance
+/// (`claims_unavailable`) and the project stays as it was.
 pub fn try_apply(
     state: &mut EditorState,
     prepared: PreparedSceneImport,

@@ -461,29 +461,54 @@ pub fn describe_report(report: &Value) -> String {
     report.to_string().chars().take(160).collect()
 }
 
+/// How many `kept` reasons the status bar spells out before it counts the rest.
+const KEPT_REASONS_SHOWN: usize = 3;
+
 /// What the status bar says when a discard job ended. A discard that could not take everything
-/// back (an item `kept`, a root that stayed busy) is not a plain success: it says what stays,
-/// as an error, because that is the part a person has to act on (BL112, F5).
+/// back (an item `kept`, a root that stayed busy) is not a plain success: it says what was not
+/// completed, as an error, because that is the part a person has to act on (BL112, F5).
+///
+/// `kept` is **not** "stayed on disk" (N5): an item is there too when the file *was* removed and
+/// only the ledger could not record that afterwards (`removedFiles` and `kept` can name the same
+/// path). The text says "não foram concluídos", gives the removed files as their own count and
+/// spells out the reasons (each one carries its path and what happened), up to
+/// [`KEPT_REASONS_SHOWN`], then counts the rest.
 fn describe_discard(cleanup: &Value) -> (String, bool) {
-    let kept = cleanup["kept"].as_array().map_or(0, Vec::len);
+    let kept: Vec<&str> = cleanup["kept"]
+        .as_array()
+        .map(|items| items.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    let kept_count = cleanup["kept"].as_array().map_or(0, Vec::len);
     let busy = cleanup["busyRoots"].as_u64().unwrap_or(0);
-    if kept == 0 && busy == 0 {
+    if kept_count == 0 && busy == 0 {
         return ("Resultado descartado".to_string(), false);
     }
-    let mut text = String::from("Resultado descartado, mas ");
-    if kept > 0 {
-        text.push_str(&format!("{kept} item(ns) permaneceram no disco"));
-        if let Some(first) = cleanup["kept"][0].as_str() {
-            text.push_str(&format!(" ({first})"));
+    let mut parts: Vec<String> = Vec::new();
+    if kept_count > 0 {
+        let mut part = format!("{kept_count} item(ns) não foram concluídos");
+        if !kept.is_empty() {
+            let shown = kept
+                .iter()
+                .take(KEPT_REASONS_SHOWN)
+                .copied()
+                .collect::<Vec<_>>()
+                .join("; ");
+            part.push_str(&format!(" ({shown}"));
+            if kept_count > KEPT_REASONS_SHOWN {
+                part.push_str(&format!("; e mais {}", kept_count - KEPT_REASONS_SHOWN));
+            }
+            part.push(')');
         }
+        parts.push(part);
     }
     if busy > 0 {
-        if kept > 0 {
-            text.push_str("; ");
-        }
-        text.push_str(&format!(
+        parts.push(format!(
             "{busy} pasta(s) ocupada(s) ficaram para recuperação"
         ));
+    }
+    let mut text = format!("Resultado descartado, mas {}", parts.join("; "));
+    if let Some(removed) = cleanup["removedFiles"].as_u64().filter(|count| *count > 0) {
+        text.push_str(&format!(" · {removed} arquivo(s) removido(s)"));
     }
     (text, true)
 }
@@ -709,6 +734,50 @@ mod tests {
             "result": { "cleanup": { "kept": [], "busyRoots": 2 } } });
         let (text, error) = describe_job_event(&busy);
         assert!(error && text.contains("2 pasta(s)"), "{text}");
+    }
+
+    /// N5: a file that *was* removed, whose claim the ledger then could not drop, is in
+    /// `removedFiles` and in `kept` under the same path. The bar must not say it stayed on disk.
+    #[test]
+    fn a_removed_file_whose_claim_stayed_is_not_reported_as_left_on_disk() {
+        let removed_but_claim_kept = json!({ "kind": "discard", "state": "succeeded",
+            "result": { "cleanup": { "removedFiles": 1, "busyRoots": 0, "kept": [
+                "`/w/a.png`: it was handled, but the claims ledger could not record that (disk full); the claim stays for recovery"
+            ] } } });
+        let (text, error) = describe_job_event(&removed_but_claim_kept);
+        assert!(error, "{text}");
+        assert!(
+            !text.contains("permaneceram") && !text.contains("no disco"),
+            "it does not claim the file stayed on disk: {text}"
+        );
+        assert!(
+            text.contains("não foram concluídos") && text.contains("1 arquivo(s) removido(s)"),
+            "the removal is counted apart from the item that was not completed: {text}"
+        );
+        assert!(
+            text.contains("disk full"),
+            "the reason is preserved: {text}"
+        );
+    }
+
+    #[test]
+    fn every_reason_a_discard_kept_is_spelled_out_or_counted() {
+        let many = json!({ "kind": "discard", "state": "succeeded",
+            "result": { "cleanup": { "removedFiles": 0, "busyRoots": 1,
+                "kept": ["`a`: one", "`b`: two", "`c`: three", "`d`: four", "`e`: five"] } } });
+        let (text, error) = describe_job_event(&many);
+        assert!(error);
+        for reason in ["one", "two", "three"] {
+            assert!(text.contains(reason), "{reason} is shown: {text}");
+        }
+        assert!(
+            !text.contains("four") && text.contains("e mais 2"),
+            "the rest is counted, not dropped: {text}"
+        );
+        assert!(
+            text.contains("5 item(ns)") && text.contains("1 pasta(s)"),
+            "{text}"
+        );
     }
 
     #[test]

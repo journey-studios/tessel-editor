@@ -1119,3 +1119,79 @@ fn discarding_the_attach_job_before_the_tick_ends_the_chain_instead_of_leaving_i
     assert_eq!(settle(&view, cx)["state"], "loaded");
     assert_eq!(scene_ids(&view, cx).len(), 1);
 }
+
+/// BL094.10: the sibling of the discard above. `job.commit` on the attach job before the tick
+/// applies it and answers the caller, but used to take the slot out of the host's `pending`, so no
+/// tick ever reported the job and the chain stayed `Running` (`scene_import_busy` refused every
+/// new attach). The host now reports that job's end once, like any other.
+#[gpui_kit::test]
+fn committing_the_attach_job_before_the_tick_still_moves_the_chain_on(cx: &mut TestAppContext) {
+    let (view, cx) = fixture(cx);
+    let authoring = Authoring::new("commit-attach");
+    project(&view, cx, &authoring);
+    let answer = run_attach(
+        &view,
+        cx,
+        attach(
+            &authoring,
+            &[("source", &authoring.folder().to_string_lossy())],
+        ),
+    )
+    .unwrap();
+    let job = answer["import"]["job"]
+        .as_str()
+        .expect("the chain waits for the attach job")
+        .to_string();
+
+    // The attach job ends in the background; no tick has run, so nothing reported it.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let report = view.read_with(cx, |view, _| view.jobs_report());
+        let info = report["all"]
+            .as_array()
+            .and_then(|jobs| jobs.iter().find(|info| info["id"] == job.as_str()))
+            .cloned()
+            .expect("the attach job is in the registry");
+        if matches!(info["state"].as_str(), Some("succeeded")) {
+            assert_eq!(info["result_state"], "pending", "{info}");
+            break;
+        }
+        assert!(
+            !matches!(info["state"].as_str(), Some("failed" | "cancelled")),
+            "the attach job did not succeed: {info}"
+        );
+        assert!(Instant::now() < deadline, "the attach job never ended");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(import_state(&view, cx)["state"], "running");
+
+    // The commit arrives first and applies the scene.
+    let committed = view
+        .update(cx, |view, cx| {
+            view.run_op(&json!({"op":"job.commit","job":job}), cx)
+        })
+        .expect("job.commit is accepted");
+    let OpReply::Done(committed) = committed else {
+        panic!("job.commit answers at once");
+    };
+    assert_eq!(committed["job"], job.as_str(), "{committed}");
+    assert_eq!(
+        scene_ids(&view, cx).len(),
+        1,
+        "the commit attached the scene"
+    );
+
+    // The tick reports the job that was committed, and the chain goes on to the end.
+    let state = settle(&view, cx);
+    assert_eq!(state["state"], "loaded", "{state}");
+    let report = view.read_with(cx, |view, _| view.jobs_report());
+    assert!(
+        report["recent"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|event| event["job"] == job.as_str() && event["state"] == "succeeded"),
+        "the event of the committed job is in the history: {report}"
+    );
+    assert_eq!(scene_ids(&view, cx).len(), 1, "attached once, not twice");
+}

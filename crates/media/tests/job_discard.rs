@@ -16,7 +16,9 @@ use std::time::{Duration, Instant};
 
 use directed_resources_common::*;
 use serde_json::{Value, json};
-use tessel_editor_core::jobs::{CancelToken, JobKind, JobRegistry, JobState, ResultState};
+use tessel_editor_core::jobs::{
+    CancelToken, JobError, JobKind, JobRegistry, JobState, ResultState,
+};
 use tessel_editor_core::{CommandError, EditorState, headless, persist};
 use tessel_editor_media::host::MediaHost;
 use tessel_editor_media::scene_resources::tracked_under;
@@ -111,6 +113,10 @@ impl World {
 
 /// Fills every running slot of `registry` with jobs that end when the token is cancelled, so any
 /// job spawned afterwards stays `queued`.
+///
+/// Dropping it releases the slots too (N3): an assertion that fails while it is held unwinds the
+/// test, which drops the host, which (not interactive) waits for the queued discard, which waits
+/// for these slots. Without the `Drop` the suite hangs instead of reporting the failure.
 struct Blockers {
     release: CancelToken,
     jobs: Vec<String>,
@@ -118,13 +124,26 @@ struct Blockers {
 }
 
 impl Blockers {
+    /// Jobs that ignore a cancel request of the registry: only `release` (or the drop) ends them.
     fn hold(registry: &JobRegistry) -> Self {
+        Self::hold_with(registry, false)
+    }
+
+    /// Jobs that also end as `cancelled` when the registry cancels them, like a real export.
+    fn hold_cancellable(registry: &JobRegistry) -> Self {
+        Self::hold_with(registry, true)
+    }
+
+    fn hold_with(registry: &JobRegistry, honours_cancel: bool) -> Self {
         let release = CancelToken::new();
         let jobs: Vec<String> = (0..2)
             .map(|_| {
                 let hold = release.clone();
-                registry.spawn(JobKind::Proxy, "blocker", move |_| {
+                registry.spawn(JobKind::Proxy, "blocker", move |ctx| {
                     while !hold.is_cancelled() {
+                        if honours_cancel && ctx.is_cancelled() {
+                            return Err(JobError::cancelled());
+                        }
                         std::thread::sleep(Duration::from_millis(2));
                     }
                     Ok(json!(null))
@@ -150,6 +169,12 @@ impl Blockers {
         for job in &self.jobs {
             self.registry.wait(job, Duration::from_secs(10)).unwrap();
         }
+    }
+}
+
+impl Drop for Blockers {
+    fn drop(&mut self) {
+        self.release.cancel();
     }
 }
 
@@ -541,6 +566,172 @@ fn a_window_host_that_goes_away_hands_pending_files_to_a_discard_job() {
     assert_eq!(
         registry.get(&job).unwrap().result_state,
         ResultState::Discarded
+    );
+    world.assert_nothing_copied();
+}
+
+// -------------------------------------------------------------- commit before the tick (N7) --
+
+#[test]
+fn a_commit_before_the_tick_still_has_its_end_reported_once() {
+    // BL094.10: `job.commit` takes the slot out of `pending`, so `poll` never saw the job finish
+    // and a chain or dialog waiting for it waited forever (the same hole as a discard before the
+    // tick, which was closed with `job_discarded`).
+    let mut world = world("commit-unreported", MediaHost::new().interactive());
+    let job = interactive_adopt(&mut world);
+    let registry = world.registry();
+    wait_final(&registry, &job);
+
+    let committed = world.run(json!({"op":"job.commit","job":job})).unwrap();
+    assert_eq!(committed["job"], job.as_str(), "{committed}");
+
+    let events = world.host.as_mut().unwrap().poll(&mut world.state);
+    let reported: Vec<&Value> = events
+        .iter()
+        .filter(|event| event["job"] == job.as_str())
+        .collect();
+    assert_eq!(reported.len(), 1, "the job is reported: {events:?}");
+    let event = reported[0];
+    assert_eq!(event["state"], "succeeded", "{event}");
+    assert_eq!(
+        event["kind"],
+        registry.get(&job).unwrap().kind.label(),
+        "{event}"
+    );
+    assert_eq!(
+        event["applied"], committed["applied"],
+        "the same applied answer the commit gave"
+    );
+    let again = world.host.as_mut().unwrap().poll(&mut world.state);
+    assert!(
+        again.iter().all(|event| event["job"] != job.as_str()),
+        "each end is reported once: {again:?}"
+    );
+}
+
+#[test]
+fn a_refused_commit_before_the_tick_is_reported_as_failed_with_the_same_code() {
+    let mut world = world("commit-refused-unreported", MediaHost::new().interactive());
+    let job = interactive_adopt(&mut world);
+    let registry = world.registry();
+    wait_final(&registry, &job);
+    // The project is replaced before the commit: the result no longer fits.
+    world
+        .run(json!({"op":"project.create","name":"next"}))
+        .unwrap();
+
+    let error = world.run(json!({"op":"job.commit","job":job})).unwrap_err();
+    let events = world.host.as_mut().unwrap().poll(&mut world.state);
+    let event = events
+        .iter()
+        .find(|event| event["job"] == job.as_str())
+        .unwrap_or_else(|| panic!("the refused commit is reported: {events:?}"));
+    assert_eq!(event["state"], "failed", "{event}");
+    assert_eq!(event["error"]["code"], error.code, "{event}");
+    // The refused result went to a discard job: let it finish before the sandbox goes away.
+    if let Some(discard) = event["error"]["details"]["discard_job"].as_str() {
+        wait_final(&registry, discard);
+    }
+}
+
+// ------------------------------------------------------------------------------- end of input --
+
+/// Drops `host` on a thread and waits for it. On a timeout `rescue` frees whatever the drop is
+/// waiting behind, so a regression fails the assertion instead of leaving a thread (and the
+/// suite) stuck.
+fn drop_with_deadline(host: MediaHost, rescue: impl FnOnce()) -> bool {
+    let (done, finished) = std::sync::mpsc::channel();
+    let dropper = std::thread::spawn(move || {
+        drop(host);
+        let _ = done.send(());
+    });
+    let returned = finished.recv_timeout(Duration::from_secs(30)).is_ok();
+    if !returned {
+        rescue();
+    }
+    dropper.join().unwrap();
+    returned
+}
+
+#[test]
+fn end_of_input_cancels_what_is_not_a_discard_instead_of_waiting_behind_it() {
+    // N2: the discard queues behind the two running slots. A script that ends its input used to
+    // wait for those jobs for as long as they ran (and their results were thrown away anyway).
+    // These jobs end only when the registry cancels them: the drop returns only if it does.
+    let mut world = world("eof-cancels", MediaHost::new());
+    let job = world.adopt_job();
+    let registry = world.registry();
+    let blockers = Blockers::hold_cancellable(&registry);
+    let started = world
+        .run(json!({"op":"job.discard","job":job,"wait":false}))
+        .unwrap();
+    let discard = started["job"].as_str().unwrap().to_string();
+    assert_eq!(registry.get(&discard).unwrap().state, JobState::Queued);
+    world.assert_files_kept();
+
+    let host = world.host.take().unwrap();
+    let release = blockers.release.clone();
+    assert!(
+        drop_with_deadline(host, move || release.cancel()),
+        "the end of input waited behind jobs that are not discards"
+    );
+
+    for blocker in &blockers.jobs {
+        assert_eq!(
+            registry.get(blocker).unwrap().state,
+            JobState::Cancelled,
+            "the job in the way was cancelled, not waited for"
+        );
+    }
+    let ended = registry.get(&discard).unwrap();
+    assert_eq!(ended.state, JobState::Succeeded, "the discard still ran");
+    assert_eq!(
+        registry.get(&job).unwrap().result_state,
+        ResultState::Discarded
+    );
+    world.assert_nothing_copied();
+}
+
+#[test]
+fn end_of_input_with_no_discard_active_cancels_nothing() {
+    // The cancel is only the price of waiting for a discard: a session that started none leaves
+    // the other jobs exactly as it did before.
+    let mut world = world("eof-no-discard", MediaHost::new());
+    let registry = world.registry();
+    let blockers = Blockers::hold_cancellable(&registry);
+    drop(world.host.take());
+    for blocker in &blockers.jobs {
+        let info = registry.get(blocker).unwrap();
+        assert!(!info.cancel_requested, "{info:?}");
+        assert_eq!(info.state, JobState::Running);
+    }
+    blockers.release();
+}
+
+#[test]
+fn a_failed_assertion_while_the_slots_are_held_reports_instead_of_hanging_the_suite() {
+    // N3: the unwinding of an assertion drops the host while a discard waits for a slot that only
+    // the (panicked) test would have released. These blockers ignore the registry's cancel, so
+    // only their `Drop` can free the slots: without it the drop below never returns.
+    let mut world = world("unwind", MediaHost::new());
+    let job = world.adopt_job();
+    let registry = world.registry();
+    let blockers = Blockers::hold(&registry);
+    let rescue = blockers.release.clone();
+    world
+        .run(json!({"op":"job.discard","job":job,"wait":false}))
+        .unwrap();
+
+    let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+        let _held = blockers;
+        panic!("a deliberate failed assertion while the blockers are held");
+    }));
+    assert!(unwound.is_err(), "the closure panicked on purpose");
+
+    let host = world.host.take().unwrap();
+    assert!(
+        drop_with_deadline(host, move || rescue.cancel()),
+        "the host never came back: the blockers were not released by the unwinding"
     );
     world.assert_nothing_copied();
 }

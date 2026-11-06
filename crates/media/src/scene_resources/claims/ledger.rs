@@ -51,10 +51,19 @@ const DANGLING_PAUSE: std::time::Duration = std::time::Duration::from_millis(2);
 /// ledger unavailable (BL112.3), and how often it looks while waiting. The lock is held for
 /// microseconds; this only matters when a holder is stopped or stuck.
 ///
-/// **Not for the window's tick**: 1.5 s is far above its 100 ms ceiling. The tick never waits:
-/// it opens the ledger with [`Ledger::try_lock`] (`Duration::ZERO`), looks once and, when another
-/// process holds the lock at that instant, treats the ledger as unavailable (BL112.3).
+/// **Not for the window's tick**: 1.5 s is far above its 100 ms ceiling. The tick waits only
+/// [`TICK_WAIT`] (see [`Ledger::try_lock`]).
 const LOCK_WAIT: std::time::Duration = std::time::Duration::from_millis(1500);
+/// How long the window's tick waits for `ledger.lock` (BL112.3, BL112.5): a fixed budget well
+/// below the UI's 100 ms ceiling, sized to ride out a holder that keeps the lock for one
+/// read-modify-write. `flock` conflicts between descriptors **of the same process** too (every
+/// [`Tracker`] opens its own), so a job of this process (a discard, an adoption, a recovery)
+/// holding the ledger for a moment is the common holder, not only another process: looking once
+/// refused valid results and discarded their copy for a contention of microseconds. Past the
+/// budget the ledger is unavailable for that call (the acceptance is refused and the result goes
+/// to a discard job); the tick never waits longer.
+pub(in crate::scene_resources) const TICK_WAIT: std::time::Duration =
+    std::time::Duration::from_millis(20);
 const LOCK_POLL: std::time::Duration = std::time::Duration::from_micros(500);
 
 /// Recovers a poisoned process-local mutex without discarding the persisted ledger.
@@ -126,11 +135,18 @@ impl Ledger {
         Tracker::open(&self.0, false, LOCK_WAIT)
     }
 
-    /// [`Ledger::lock`] for a caller that must not wait (the window's tick): when another process
-    /// holds `ledger.lock` right now the tracker is faulted (`fault()` says it was busy, not
-    /// waited for) and nothing is read or changed, exactly like any other unavailable ledger.
+    /// [`Ledger::lock`] for a caller that must not block (the window's tick): it waits at most
+    /// [`TICK_WAIT`]. When `ledger.lock` is still held after that (by another process, or by
+    /// another job of this one) the tracker is faulted (`fault()` says it was held and for how
+    /// long it was waited for) and nothing is read or changed, exactly like any other
+    /// unavailable ledger.
     pub(in crate::scene_resources) fn try_lock(&self) -> Tracker {
-        Tracker::open(&self.0, false, std::time::Duration::ZERO)
+        self.lock_for(TICK_WAIT)
+    }
+
+    /// [`Ledger::try_lock`] with the budget chosen by the caller (tests of the budget itself).
+    pub(in crate::scene_resources) fn lock_for(&self, wait: std::time::Duration) -> Tracker {
+        Tracker::open(&self.0, false, wait)
     }
 
     /// Opens the ledger, creating it when it is not there yet: for whoever is about to claim.
@@ -751,21 +767,16 @@ impl DiskLock {
             // Bounded (BL112.3): the lock is held for one read-modify-write, microseconds. A holder
             // that is stopped (`SIGSTOP`) or stuck keeps it for as long as it lives, and a caller
             // that waits forever is a stuck caller. The window's tick (where `accept` runs)
-            // does not wait at all: its wait is zero. Past the bound the ledger is reported
-            // unavailable, which every caller already handles by
-            // failing closed: an acceptance is refused (the result stays claimed and goes to a
-            // discard job), a removal keeps the file, a recovery removes nothing.
+            // waits `TICK_WAIT` only. Past the bound the ledger is reported unavailable,
+            // which every caller already handles by failing closed: an acceptance is refused (the
+            // result stays claimed and goes to a discard job), a removal keeps the file, a
+            // recovery removes nothing. The message does not say who holds it: another process
+            // and another job of this one look the same.
             match lock_within(&file, deadline) {
                 Ok(true) => {}
-                Ok(false) if wait.is_zero() => {
-                    return Err(format!(
-                        "`{}` is held by another process right now; not waited for (the window's tick must not block)",
-                        path.display()
-                    ));
-                }
                 Ok(false) => {
                     return Err(format!(
-                        "`{}` is held by another process that does not let go of it (stopped or stuck?); gave up after {:?}",
+                        "`{}` is held right now by a holder that did not let go of it; gave up after {:?}",
                         path.display(),
                         wait
                     ));
