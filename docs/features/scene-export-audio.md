@@ -136,3 +136,26 @@ Status: **a validar na integração** (implementado, com as provas abaixo; sem p
   desta entrega).
 - O harness da R10 (`proof.py`, fase `ui_export_flow`) ainda espera a recusa do padrão `audio=yes`; com o mix
   entregue essa fase muda de resultado e é ajuste da frente S10.
+
+### Aceite independente da S10 (PR #8, `proof.py` em `c03b41e`) — divergência de semântica, não de qualidade
+
+Rodado com o binário desta branch, sem alterar verificadores nem tolerâncias, sob o lock de GPU:
+`tolerances_frozen` 6/6, `corpus` 32/32, `controls_audio` 26/26, `baseline_audio` 46/46, `audio_off` 70/70 (o
+`audio:false` e a política de aviso passam no corpus da S10); `audio_export` **FAIL** e `audio_package_export`
+**FAIL/abortado**. A causa é a **suposição A1** do oráculo da S10 (`oracle.py`: "mix[0] ↔ editStartSeconds", o
+arquivo começa em `editStartSeconds` da linha do tempo e antes disso há silêncio), que contradiz a origem:
+
+- origem (`packages/scene-engine/src/transport/audio-window.ts`): `editSecondsToSourceTime(t) = editStartSeconds + t`,
+  o WAV é a **fonte inteira** e a janela escolhe um trecho dela; `node/render.ts` recusa com `AUDIO_SHORT` quando
+  `duration(source) < editEndSecondsExclusive`. É o que esta entrega implementa.
+- o `mix.wav` do corpus da S10 tem 8 s com janela `[1, 9)`: pela regra da origem ele é **curto** (`audio_source_short`,
+  `file_frames 352800`, `needed_through 396899` no caso `audio24_window_b`) e o bundle seria recusado pela própria
+  origem.
+
+Medido de forma independente (ffmpeg decodifica o MP4 do `audio24_window_a`, janelas de 100 ms): 440 Hz de 0 a
+0,25 s, silêncio até 0,75 s, 880 Hz até 2,25 s, 1320 Hz a −6 dB depois — exatamente o que a regra da origem prevê
+para `from=18` (0,75 s) com `editStart=1,0` (arquivo em 1,75 s…); o oráculo da S10 espera o contrário (silêncio, 440 Hz
+em 0,25 s). Nenhum dos dois lados foi ajustado para passar: a decisão é do coordenador (BL016.5). Para fechar o aceite
+vivo sem mudar o contrato da origem a S10 precisa de um WAV que cubra `[0, editEnd)` com o tom no tempo de arquivo
+(ou de assumir A1 como contrato novo, o que muda o core e esta doc); as fases `audio_export` e `audio_package_export`
+só viram PASS quando o oráculo e a origem concordarem.
