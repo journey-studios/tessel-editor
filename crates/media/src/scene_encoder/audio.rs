@@ -8,7 +8,10 @@
 //! ```
 //!
 //! * The file is the one the resource map approved: its size and SHA-256 are compared again before
-//!   a sample is read, so bytes swapped after approval are `resource_changed`, never mixed.
+//!   a sample is read, so bytes swapped after approval are `resource_changed`, never mixed. The
+//!   export job goes further (BL109): it copies the file into its staging while hashing it and
+//!   mixes **only that copy** ([`render_private`]), so a rewrite of the original during the job
+//!   cannot reach a sample.
 //! * Memory is flat: the file is read one second of output at a time (`seek` + `read_exact`), so a
 //!   long mix is as cheap as a short one.
 //! * The conversion is the one the core describes: linear interpolation between the two source
@@ -316,7 +319,8 @@ fn confirm_identity(approved: &ApprovedResource, ctx: &JobContext) -> Result<(),
     Ok(())
 }
 
-/// Writes the exported stream (stereo, 48 kHz, PCM16) for `mix` into `out`.
+/// Writes the exported stream (stereo, 48 kHz, PCM16) for `mix` into `out`, reading the file
+/// `approved` names after confirming it is still the approved one (size and SHA-256).
 pub fn render(
     mix: &DirectedAudioMix,
     approved: &ApprovedResource,
@@ -325,6 +329,20 @@ pub fn render(
 ) -> Result<MixReport, JobError> {
     ctx.check()?;
     confirm_identity(approved, ctx)?;
+    render_private(mix, approved, out, ctx)
+}
+
+/// Same stream, for a file that is already the job's private copy (BL109): its bytes were hashed
+/// against the approved identity while they were copied, nothing but this job can reach it, and
+/// the job checks the copy is intact afterwards. No second hash, and never a read of the
+/// original: `approved.path` must be the copy.
+pub fn render_private(
+    mix: &DirectedAudioMix,
+    approved: &ApprovedResource,
+    out: &Path,
+    ctx: &JobContext,
+) -> Result<MixReport, JobError> {
+    ctx.check()?;
     let (layout, span) = check_layout(mix, &approved.path).map_err(|error| match error {
         InspectError::Unsupported(error) => {
             let details = error.details.map_or(Value::Null, |boxed| *boxed);

@@ -1,10 +1,11 @@
 //! The export itself: frozen scene + frozen resources → staged MP4 → verified → published.
 //!
 //! ```text
-//! preflight ─▶ staging ─▶ [ plan(i) ─▶ renderer ─▶ PNG ─▶ ffmpeg pipe ]×frames ─▶ ffprobe verify ─▶ publish
+//! preflight ─▶ staging ─▶ byte snapshot ─▶ [ plan(i) ─▶ renderer ─▶ PNG ─▶ ffmpeg pipe ]×frames ─▶ ffprobe verify ─▶ publish
 //! ```
 //!
-//! Everything happens in a staging directory on the destination volume. A failure, a cancel or a
+//! Everything happens in a staging directory on the destination volume, the private byte copy of
+//! the approved resources included (BL109): the renderer reads that copy, never the originals. A failure, a cancel or a
 //! verification mismatch drops the directory with the encoder's output in it, so the destination
 //! either holds the finished, verified file or what it held before. Memory is bounded: one PNG
 //! crosses the pipe at a time.
@@ -25,7 +26,8 @@ use tessel_editor_core::scene_resources::ResourceKey;
 use crate::export::{self, ExportRequest, Schedule};
 use crate::fsx::{self, Staging, hex, io_error};
 use crate::scene_resources::{
-    ApprovedResource, ResolveError, ResourceResolver, SceneResourceSession,
+    ApprovedResource, ResolveError, ResourceResolver, ResourceSnapshot, SceneResourceSession,
+    snapshot_bytes,
 };
 use crate::tools::Tools;
 
@@ -114,11 +116,28 @@ impl SceneExport {
     }
 }
 
-/// The approved mix file of an export that carries audio.
+/// The approved mix file of an export that carries audio, as the frozen map names it (the
+/// original). Only the preflight looks at it, and only with a stat and the header: the mix itself
+/// reads the private copy.
 fn audio_resource(export: &SceneExport) -> Result<ApprovedResource, ResolveError> {
     export
         .resources
         .resolve(export.snapshot.scene_id(), &ResourceKey::AudioMix)
+}
+
+/// What the export reads: every asset its plans draw and, when the file carries audio, the
+/// declared mix, as resource keys. The private byte copy (BL109) is taken for exactly these, so
+/// the picture and the sound are frozen by the same mechanism.
+fn required_keys(snapshot: &SceneExportSnapshot) -> Vec<ResourceKey> {
+    let mut keys: Vec<ResourceKey> = snapshot
+        .required_assets()
+        .iter()
+        .map(|asset| ResourceKey::asset(asset))
+        .collect();
+    if snapshot.audio().mix().is_some() {
+        keys.push(ResourceKey::AudioMix);
+    }
+    keys
 }
 
 fn blocker(code: &str, message: impl Into<String>) -> Value {
@@ -220,7 +239,15 @@ pub fn preflight(export: &SceneExport, tools: &Tools, max_size: Option<u32>) -> 
         audio_bytes = mix.output_samples() * 4 + audio_aac_bytes(export, mix);
     }
     let frame_bytes = u64::from(render_w) * u64::from(render_h) * 4;
-    let needed = estimated_video_bytes(export) + frame_bytes + audio_bytes;
+    // The private copy of the approved files (the mix included) lives in the same staging as the
+    // video and the mixed stream (BL109): all of it must fit before anything is written.
+    let copy_bytes = snapshot_bytes(
+        &export.resources,
+        snapshot.scene_id(),
+        &required_keys(snapshot),
+    )
+    .unwrap_or(0);
+    let needed = estimated_video_bytes(export) + frame_bytes + audio_bytes + copy_bytes;
     let free = export.destination.parent().and_then(fsx::free_bytes);
     if let Some(free) = free
         && free < needed.saturating_add(SPACE_MARGIN)
@@ -239,7 +266,8 @@ pub fn preflight(export: &SceneExport, tools: &Tools, max_size: Option<u32>) -> 
         "summary": snapshot.summary(),
         "estimate": { "output_bytes": estimated_video_bytes(export)
                 + snapshot.audio().mix().map_or(0, |mix| audio_aac_bytes(export, mix)),
-            "staging_bytes": needed,
+            "staging_bytes": needed, "resource_copy_bytes": copy_bytes,
+            "audio_mix_bytes": audio_bytes,
             "note": "Estimates from typical content; the encoder decides the real size" },
         "free_bytes": free, "encoder": tools.h264_encoder(), "ffmpeg": tools.version,
         "destination": export.destination,
@@ -374,6 +402,7 @@ struct Drawn {
 
 fn frame_loop(
     export: &SceneExport,
+    resources: &dyn ResourceResolver,
     renderer: &mut dyn SceneFrameRenderer,
     child: &mut Child,
     frame_path: &Path,
@@ -407,7 +436,7 @@ fn frame_loop(
             .render(&FrameJob {
                 scene_id: snapshot.scene_id(),
                 plan: &plan,
-                resources: &export.resources,
+                resources,
                 generation: export.resources.map().generation.0,
                 size: (width, height),
                 png: frame_path,
@@ -499,18 +528,41 @@ pub fn run(
     let frame_path = staging.path().join("frame.png");
     let log = staging.path().join("ffmpeg.log");
     let log_file = File::create(&log).map_err(|error| io_error(&log, &error))?;
-    // The mix is rendered first: a missing, swapped or too-short file fails here, before a single
-    // frame is drawn, and the encoder is handed a finished stream exactly as long as the video.
+    // BL109: freeze the *bytes* the plans draw and the mix reads, not only the approved paths.
+    // Everything below reads this private copy; the originals can change (or be swapped for
+    // same-size content) without reaching a frame or a sample, and a swap before this point is
+    // refused here by hash.
+    let keys = required_keys(snapshot);
+    let copy_total =
+        snapshot_bytes(&export.resources, snapshot.scene_id(), &keys).map_err(JobError::from)?;
+    ctx.stage("snapshot", copy_total);
+    let frozen = ResourceSnapshot::take(
+        &export.resources,
+        snapshot.scene_id(),
+        &keys,
+        &staging.path().join("resources"),
+        ctx.token(),
+        |bytes| ctx.advance(bytes),
+    )
+    .map_err(|error| as_disk_full(error, staging.path()))?;
+
+    // The mix is rendered next, from the private copy only: a swapped, unreadable or too-short
+    // file fails here, before a single frame is drawn, and the encoder is handed a finished
+    // stream exactly as long as the video.
     let mixed = match snapshot.audio().mix() {
         Some(mix) => {
-            let approved = audio_resource(export).map_err(JobError::from)?;
+            let approved = frozen
+                .resolve(snapshot.scene_id(), &ResourceKey::AudioMix)
+                .map_err(JobError::from)?;
             let wav = staging.path().join("mix.wav");
-            let report = audio::render(mix, &approved, &wav, ctx)
+            let report = audio::render_private(mix, &approved, &wav, ctx)
                 .map_err(|error| as_disk_full(error, staging.path()))?;
+            frozen.verify_intact()?;
             Some((wav, report, approved))
         }
         None => None,
     };
+
     let mut child = Command::new(&tools.ffmpeg)
         .args(encode_args_with_audio(
             snapshot.preset(),
@@ -528,7 +580,15 @@ pub fn run(
         })?;
 
     // The pipe closes when the loop's `stdin` drops, which is what lets ffmpeg finish.
-    let drawn = frame_loop(export, renderer, &mut child, &frame_path, &log, ctx);
+    let drawn = frame_loop(
+        export,
+        &frozen,
+        renderer,
+        &mut child,
+        &frame_path,
+        &log,
+        ctx,
+    );
     let drawn = match drawn {
         Ok(drawn) => drawn,
         Err(error) => {
@@ -536,6 +596,10 @@ pub fn run(
             return Err(as_disk_full(error, staging.path()));
         }
     };
+    if let Err(error) = frozen.verify_intact() {
+        kill(&mut child);
+        return Err(error);
+    }
     ctx.stage("finalize", 1);
     let status = loop {
         if ctx.is_cancelled() {
@@ -592,6 +656,7 @@ pub fn run(
         "output": { "width": snapshot.preset().width, "height": snapshot.preset().height },
         "audio": audio_result(snapshot, mixed.as_ref()),
         "resources": used_resources(export),
+        "snapshot": { "files": frozen.files(), "bytes": frozen.bytes(), "verified": true },
         "warnings": report["warnings"],
         "verification": verification,
         "frame_hashes": { "count": schedule.frames, "first": drawn.first, "last": drawn.last,

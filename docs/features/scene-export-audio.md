@@ -33,9 +33,17 @@ codifica em AAC com a mesma duração do vídeo. Nada é simulado.
     `unsupported`, **antes** de existir job. Acima de 48 kHz não há filtro passa-baixa: recusa em vez de
     aliasing;
   - `narration` declarada com áudio pedido → `unsupported` (takes/legendas/ganho por linha ficam em BL017).
-- **Identidade**: o arquivo é o aprovado no mapa de recursos. Antes de ler uma amostra o job confere
-  tamanho e SHA-256 de novo; bytes trocados depois da aprovação falham com `resource_changed` **antes de
-  qualquer frame**. (Cópia imutável durante o job é o escopo de BL109/S3; esta entrega apenas verifica.)
+- **Identidade e bytes congelados (BL109, S3)**: o arquivo é o aprovado no mapa de recursos e o job o trata como
+  qualquer outro recurso exigido: `ResourceKey::AudioMix` entra nas chaves da cópia privada
+  (`ResourceSnapshot::take`), que lê o WAV **uma vez**, calcula o SHA-256 na mesma passada que grava a cópia
+  `0444` no staging e compara com o hash e o tamanho aprovados. A mistura lê **somente essa cópia**
+  (`render_audio_private`); o original nunca é relido durante o job. Consequências:
+  - troca de mesmo tamanho depois do `resolve` → `resource_changed` (`details.resource: "audio-mix"`, `expected` e
+    `got` com SHA-256 e bytes) **antes de qualquer frame** e antes de qualquer amostra;
+  - alteração do original **durante** o job fica isolada: o MP4 reflete os bytes aprovados;
+  - o job confere a cópia (`verify_intact`: tamanho e mtime) depois de misturar e antes de finalizar;
+  - sucesso, falha e cancelamento removem só o staging do próprio job (cópia e `mix.wav` incluídos); staging alheio
+    e o original nunca são tocados.
 - **Não faz**: tocar som, dispositivo, TTS, mix de narração, ganho de monitor, `mixMuted`, formatos
   comprimidos, sample rate > 48 kHz, ZIP/pacote do áudio (o pacote de recursos já o carrega, F040).
 
@@ -61,8 +69,12 @@ Mídia (`tessel_editor_media::scene_encoder`): `inspect(path) -> WavLayout` (só
 `encode_args_with_audio` (`encode_args` é o mesmo comando sem áudio). `SceneExport::freeze` recusa antes do
 job o que o cabeçalho já mostra impossível; `preflight` acrescenta bloqueios `encoder_unavailable` (sem `aac`),
 `resource_unresolved|resource_missing|resource_changed` (`asset:"audio-mix"`), `unsupported`/`audio_source_short`
-e inclui WAV + AAC na estimativa de disco. O job renderiza o mix **antes** dos frames (falha cedo) em
-`mix.wav` dentro do staging, que some em sucesso, falha ou cancelamento.
+e inclui na estimativa de disco o WAV misturado + AAC (`estimate.audio_mix_bytes`) **e** a cópia privada do arquivo
+(`estimate.resource_copy_bytes`, parte de `staging_bytes`). O preflight só faz `stat` e lê o cabeçalho; a cópia e a
+mistura acontecem no job (thread própria, estágios `snapshot` e `audio` com progresso, canceláveis), nunca na UI.
+O job copia, **depois** mistura a cópia (falha cedo, antes dos frames) em `mix.wav` dentro do staging, que some em
+sucesso, falha ou cancelamento. `render_audio` (identidade por SHA-256 e leitura do caminho recebido) segue público;
+`render_audio_private` é o mesmo stream para o arquivo que já é a cópia do job.
 
 ### Fluxo Rust sem UI
 
@@ -79,8 +91,11 @@ let result = headless::execute_ext(&mut state, None, Some(&mut host), &json!({
 
 `audio` ganha `source` e `measured` quando o mix foi gravado; `warnings` pode trazer `audio_silence_tail`;
 `verification` (ffprobe) confere `aac`, 48 kHz, 2 canais, duração e início iguais aos do vídeo.
-Um job que falha reporta o código pelo registro de jobs: códigos sem nome estático aparecem como
-`job_failed` com `details.job_code` (ex.: `resource_changed`).
+`snapshot {files, bytes, verified}` inclui o WAV. Um job que falha reporta o código **tipado** (BL016.4):
+`From<JobError> for CommandError` nomeia `resource_changed`, `resource_missing`, `unsupported`, `audio_source_short`,
+`audio_window_invalid`, `audio_window_short`, `audio_too_long` e os erros do resolvedor
+(`scene_resources_not_loaded`, `resource_unknown`, `resource_not_carried`, `stale_generation`,
+`resource_budget_exceeded`); só o que não tem nome vira `job_failed` + `details.job_code`.
 
 ### Erros
 
@@ -90,7 +105,8 @@ Um job que falha reporta o código pelo registro de jobs: códigos sem nome est�
 | `audio_window_invalid` | tempo do bundle que a conta exata não comporta | idem |
 | `audio_source_short` | o arquivo não tem quadros para o trecho | idem (cabeçalho) ou bloqueio no preflight |
 | `unsupported` | formato/canais/taxa fora do suportado; narração com áudio pedido | idem |
-| `resource_unresolved`, `resource_missing`, `resource_changed` | mix fora do mapa, sumido ou trocado | bloqueio no preflight; `resource_changed` também falha o job antes dos frames |
+| `resource_unresolved`, `resource_missing`, `resource_changed` | mix fora do mapa, sumido ou trocado | bloqueio no preflight; `resource_changed` (troca de mesmo tamanho incluída) falha o job antes dos frames, com as duas identidades |
+| `disk_full` | staging sem espaço para vídeo + WAV + AAC + cópias | bloqueio no preflight, antes de escrever |
 | `encoder_unavailable` | FFmpeg sem `aac` | bloqueio no preflight |
 
 ## CLI headless
@@ -106,13 +122,15 @@ Um job que falha reporta o código pelo registro de jobs: códigos sem nome est�
 
 ## UI e CLI da janela
 
-O diálogo `flow.export_scene` já tinha o campo `audio` (`yes|no`): `yes`/omitido agora inclui o mix, `no` o omite
-com aviso. A mudança de UI é só o rótulo do campo e a tradução do pedido (teste de unidade em `flows.rs`); o
-pedido é o mesmo `scene.export` dos outros adaptadores. **Sem prova viva na janela** com mix (ver limites).
+O diálogo `flow.export_scene` tem o campo `audio` (`yes|no`): `yes`/omitido inclui o mix, `no` o omite com aviso.
+A mudança de UI é só o rótulo do campo e a tradução do pedido (teste de unidade em `flows.rs`); o pedido é o
+mesmo `scene.export` dos outros adaptadores. A prova na janela real está em
+[`scripts/scene-export-audio-ui-proof.py`](../../scripts/scene-export-audio-ui-proof.py): instância própria (binário
+direto, HOME curto, socket próprio), somente `get`/`set`/`invoke`/`op` (sem ponteiro nem coordenadas), sob o lock de GPU.
 
 ## Evidências e status
 
-Status: **a validar na integração** (implementado, com as provas abaixo; sem prova viva da janela).
+Status: **a validar na integração** (implementado, com as provas abaixo, incluindo a janela real; sem som ouvido).
 
 | Superfície | Evidência |
 |---|---|
@@ -120,7 +138,8 @@ Status: **a validar na integração** (implementado, com as provas abaixo; sem p
 | Lib (mídia, FFmpeg real, sem browser) | `crates/media/tests/scene_export_audio.rs` (15): amostras **exatas** em 48 kHz (cópia = fatia da fonte), offset, 44,1 kHz mono (interpolação calculada no teste, ±1 LSB), cauda silenciosa, NaN/∞/clipping, bytes trocados (`resource_changed`), 8 arquivos/formatos recusados (`unsupported`) mais curto e ausente com código próprio; MP4 pelo host com espectro 440→880 Hz medido no AAC decodificado nos lugares certos, 24→30 + 44,1 kHz, offset de janela, `audio:false`, recusas antes de job/frame, troca de bytes falha com 0 frames desenhados, preflight de mix sumido |
 | CLI headless real (Chrome) | `crates/render/tests/scene_export.rs`: `the_headless_binary_mixes_the_declared_wav_at_the_requested_range` (JSONL, frames reais do runtime, 440→880 Hz medido) e o teste de política de áudio atualizado |
 | Oráculo independente da R10 | `scripts/directed-scene-export-proof/proof.py --phases export_audio_policy`: 17/17 (uma stream de áudio, metade 440 Hz e metade 880 Hz, duração do áudio = vídeo ± 50 ms), resultado `outcome: mixed` |
-| UI | só rótulo + `flows.rs` (unidade); janela real com mix **não provada** |
+| Bytes congelados do mix (BL109) | `crates/media/tests/scene_export_audio.rs` (20): troca de mesmo tamanho → `resource_changed` **tipado** com as duas identidades e 0 frames; original reescrito no frame 0 não muda o AAC (440→880 Hz medidos, `source.sha256` = aprovado, `snapshot.bytes` ≥ WAV); `render_audio_private` sobre a cópia dá as amostras exatas depois de reescrever o original (e `render_audio` ainda recusa o original); mix sumido → `preflight_failed`/`resource_missing` e só o staging próprio some; cancelamento no meio dos frames limpa só o próprio staging; estimativa: `resource_copy_bytes` e `audio_mix_bytes` somam o WAV, e `jobs.rs` testa o mapeamento tipado |
+| UI (janela real, instância própria) | `scripts/scene-export-audio-ui-proof.py` **45/45**: árvore expõe `flow.export_scene`; `audio` oferece yes/no com padrão yes; `dialog.submit` com `audio=yes` cria 1 job; MP4 com AAC 48 kHz estéreo, duração do áudio = vídeo (±60 ms), 440 Hz em 0,05–0,40 s e 880 Hz em 0,60–0,95 s no decodificado; `snapshot` inclui o WAV; `audio=no` exporta sem stream e com `audio_omitted`; troca de mesmo tamanho (WAV válido) → job `failed` com `resource_changed`, `details.resource=audio-mix`, sem MP4 e sem staging, visível em `get jobs`; mix que deixou de ser WAV → submit recusado (`unsupported`) com diálogo aberto, sem job nem arquivo; `audio=no` ainda exporta com o mix inutilizável |
 
 ### Limites declarados
 
@@ -129,13 +148,15 @@ Status: **a validar na integração** (implementado, com as provas abaixo; sem p
 - Conversão de taxa é interpolação linear (sem passa-baixa); fonte > 48 kHz é recusada.
 - Mono com −3 dB (convenção da origem/FFmpeg); a origem usa `atrim` sem teto em `editEnd` no render Node,
   enquanto o transporte web para nele — aqui o teto é regra (recusa trecho fora da janela).
-- A identidade é checada por SHA-256 no início do job, não por cópia imutável: uma troca *durante* o job
-  continua em BL109 (S3).
+- A cópia privada dobra o espaço do WAV no staging e custa uma leitura + escrita antes do primeiro frame (como as
+  imagens, BL109); `verify_intact` não refaz o hash. O original que mudou **depois** da cópia não é detectado:
+  é isolado, e o vídeo reflete os bytes aprovados.
+- A prova da janela é semântica (get/set/invoke): não prova que uma pessoa vê ou alcança o controle (BL043), nem som
+  ouvido (BL046). O `--min-free-gib` do script existe porque a máquina de desenvolvimento é compartilhada; a prova
+  escreve < 200 MiB.
 - Narração, takes, `mixMuted`, ganho de monitor, reprodução em dispositivo e TTS: fora (BL017/BL046).
-- Códigos novos de job aparecem como `job_failed` + `details.job_code` (mapeamento estático em `jobs.rs`, fora
-  desta entrega).
 - O harness da R10 (`proof.py`, fase `ui_export_flow`) ainda espera a recusa do padrão `audio=yes`; com o mix
-  entregue essa fase muda de resultado e é ajuste da frente S10.
+  entregue essa fase muda de resultado e é ajuste da frente S10 (não alterado aqui).
 
 ### Aceite independente da S10 (PR #8, `proof.py` em `c03b41e`) — divergência de semântica, não de qualidade
 
@@ -159,3 +180,12 @@ em 0,25 s). Nenhum dos dois lados foi ajustado para passar: a decisão é do coo
 vivo sem mudar o contrato da origem a S10 precisa de um WAV que cubra `[0, editEnd)` com o tom no tempo de arquivo
 (ou de assumir A1 como contrato novo, o que muda o core e esta doc); as fases `audio_export` e `audio_package_export`
 só viram PASS quando o oráculo e a origem concordarem.
+
+**Decisão do coordenador (BL016.5).** A leitura do pin da origem `d6adac15c61f4ef582a7ec259397b2e025d1f059`
+(`git show`, só leitura) confirma `packages/scene-engine/src/transport/audio-window.ts` →
+`editStartSeconds + editSeconds` e `node/render.ts:246-248` → `AUDIO_SHORT` quando a duração do arquivo é menor que
+`editEndSecondsExclusive`. Fica a regra da origem; o oráculo da S10 (A1) é corrigido por **outra tarefa** já iniciada,
+e o core não muda para fazer uma fixture errada passar. Enquanto o oráculo não for corrigido, os FAIL de
+`audio_export` e `audio_package_export` acima permanecem registrados como estão. Esta entrega não altera o harness
+da S10 nem as tolerâncias. A prova da janela (`scripts/scene-export-audio-ui-proof.py`) usa o `bundle.audio.json`
+com janela `[0, 4)`, onde as duas semânticas coincidem.

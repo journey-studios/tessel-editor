@@ -20,6 +20,7 @@ mod render;
 pub use args::{encode_args, encode_args_with_audio};
 pub use audio::{
     InspectError, MixReport, WavLayout, check_layout, inspect, render as render_audio,
+    render_private as render_audio_private,
 };
 pub use job::{LISTED_HASHES, SceneExport, preflight, run};
 pub use render::{

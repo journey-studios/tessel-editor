@@ -694,6 +694,29 @@ fn a_resource_that_vanished_since_it_was_approved_blocks_the_export_in_preflight
 }
 
 #[test]
+fn a_same_size_swap_after_the_map_was_approved_is_refused_by_hash_not_by_size() {
+    let Some(mut session) = session("swapped") else {
+        return;
+    };
+    let origin = session.path("origin");
+    copy_corpus_images(&origin);
+    session.ok(json!({"op":"scene.attach","id":"copy",
+        "path":corpus().join("bundle.json")}));
+    session.ok(json!({"op":"scene.resources.resolve","scene":"copy","base":origin}));
+    // Same length, other bytes: presence and size (the preflight stat) cannot tell.
+    let hero = origin.join("assets/hero.png");
+    let size = fs::metadata(&hero).unwrap().len() as usize;
+    fs::write(&hero, vec![0x5A; size]).unwrap();
+    let destination = session.path("swapped.mp4");
+    let error = session.err(json!({"op":"scene.export","scene":"copy","preset":"fullhd",
+        "from":0,"frames":2,"destination":destination}));
+    assert_eq!(error.code, "resource_changed", "{}", error.message);
+    assert_eq!(error.details.as_ref().unwrap()["resource"], "asset:hero");
+    assert!(!destination.exists());
+    assert!(session.leftovers().is_empty(), "{:?}", session.leftovers());
+}
+
+#[test]
 fn cancelling_an_export_leaves_no_partial_file_and_no_staging_folder() {
     let Some(mut session) = session("cancel") else {
         return;

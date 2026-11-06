@@ -26,7 +26,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use tessel_editor_core::jobs::{JobError, JobKind, JobRegistry};
+use tessel_editor_core::jobs::{CancelToken, JobError, JobKind, JobRegistry};
 use tessel_editor_core::scene_export::{SceneExportSnapshot, SceneExportSpec};
 use tessel_editor_core::scene_resources::{ResourceKey, ResourceKind};
 use tessel_editor_core::state::ProjectSettings;
@@ -34,9 +34,11 @@ use tessel_editor_core::{CommandError, EditorState, headless};
 use tessel_editor_media::host::MediaHost;
 use tessel_editor_media::scene_encoder::{
     FrameJob, InspectError, MixReport, RenderedFrame, SceneFrameRenderer, SceneRendererFactory,
-    check_layout, render_audio,
+    check_layout, render_audio, render_audio_private,
 };
-use tessel_editor_media::scene_resources::{ApprovedResource, Generation};
+use tessel_editor_media::scene_resources::{
+    ApprovedResource, Generation, ResolveError, ResourceResolver, ResourceSnapshot, snapshot_bytes,
+};
 use tessel_editor_media::tools::Tools;
 
 fn corpus() -> PathBuf {
@@ -474,9 +476,22 @@ fn judge_missing(mix: &tessel_editor_core::scene_export::DirectedAudioMix, path:
 // Through the host: scene.export with a stand-in frame source.
 // ---------------------------------------------------------------------------------------------
 
+/// What the stand-in frame source does besides drawing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Fault {
+    None,
+    /// BL109: rewrite the approved original mix, same size and other bytes, once the first frame
+    /// is asked for (the mix was already read by then; the picture is still being drawn).
+    TamperMix,
+    /// Slow frames, so a test can cancel the job while it renders.
+    Slow,
+}
+
 struct StillRenderer {
     png: PathBuf,
     drawn: Arc<AtomicU64>,
+    fault: Fault,
+    victim: PathBuf,
 }
 
 impl SceneFrameRenderer for StillRenderer {
@@ -486,6 +501,11 @@ impl SceneFrameRenderer for StillRenderer {
 
     fn render(&mut self, job: &FrameJob) -> Result<RenderedFrame, JobError> {
         let index = self.drawn.fetch_add(1, Ordering::SeqCst);
+        match self.fault {
+            Fault::TamperMix if index == 0 => same_size_garbage(&self.victim),
+            Fault::Slow => std::thread::sleep(Duration::from_millis(25)),
+            _ => {}
+        }
         fs::copy(&self.png, job.png)
             .map_err(|error| JobError::new("render_failed", error.to_string()))?;
         Ok(RenderedFrame {
@@ -569,7 +589,16 @@ impl Lab {
     }
 }
 
+fn same_size_garbage(path: &Path) {
+    let size = fs::metadata(path).unwrap().len();
+    fs::write(path, vec![0x55; size as usize]).unwrap();
+}
+
 fn lab(name: &str, mix: &[u8], window: (f64, f64)) -> Option<Lab> {
+    lab_with(name, mix, window, Fault::None)
+}
+
+fn lab_with(name: &str, mix: &[u8], window: (f64, f64), fault: Fault) -> Option<Lab> {
     let tools = match Tools::discover() {
         Ok(tools) => tools,
         Err(error) => {
@@ -606,10 +635,13 @@ fn lab(name: &str, mix: &[u8], window: (f64, f64)) -> Option<Lab> {
     let base = base_with_mix(&work, mix);
     let drawn = Arc::new(AtomicU64::new(0));
     let counter = drawn.clone();
+    let victim = base.join("audio/mix.wav");
     let factory: Arc<SceneRendererFactory> = Arc::new(move || {
         Ok(Box::new(StillRenderer {
             png: frame.clone(),
             drawn: counter.clone(),
+            fault,
+            victim: victim.clone(),
         }))
     });
     let mut lab = Lab {
@@ -821,14 +853,12 @@ fn bytes_swapped_after_approval_fail_the_job_before_a_frame_is_drawn() {
     other[last] ^= 0x7f;
     fs::write(lab.base.join("audio/mix.wav"), &other).unwrap();
     let error = lab.export("swapped.mp4", tiny(), 0, 24).unwrap_err();
-    // The job registry reports codes it has no static name for as `job_failed` + `details.job_code`.
-    assert_eq!(error.code, "job_failed", "{}", error.message);
-    assert_eq!(
-        error.details.as_ref().unwrap()["job_code"],
-        "resource_changed",
-        "{}",
-        error.message
-    );
+    // The code is typed all the way out (never `job_failed`), with both identities named.
+    assert_eq!(error.code, "resource_changed", "{}", error.message);
+    let details = error.details.as_ref().expect("both identities are named");
+    assert_eq!(details["resource"], "audio-mix");
+    assert_ne!(details["got"]["sha256"], details["expected"]["sha256"]);
+    assert_eq!(details["got"]["bytes"], details["expected"]["bytes"]);
     assert_eq!(
         lab.drawn.load(Ordering::SeqCst),
         0,
@@ -864,4 +894,213 @@ fn preflight_names_a_vanished_mix_and_a_clear_one() {
     assert_eq!(blocker["asset"], "audio-mix");
     assert!(!lab.work.path("q.mp4").exists());
     assert_eq!(lab.drawn.load(Ordering::SeqCst), 0);
+}
+
+/// A finished or failed export leaves no staging directory of its own beside the destination.
+fn assert_clean(lab: &Lab) {
+    assert!(lab.leftovers().is_empty(), "{:?}", lab.leftovers());
+}
+
+#[test]
+fn the_private_copy_of_the_mix_is_what_the_export_mixes_even_when_the_original_is_rewritten_mid_job()
+ {
+    let mix = two_tone(48_000, 4, 440.0, 880.0);
+    let Some(mut lab) = lab_with("e2e-during", &mix, (0.0, 4.0), Fault::TamperMix) else {
+        return;
+    };
+    let original = lab.base.join("audio/mix.wav");
+    let result = lab.export("during.mp4", tiny(), 36, 24).unwrap();
+    assert_eq!(result["verification"]["ok"], true, "{result}");
+    assert_ne!(
+        fs::read(&original).unwrap(),
+        mix,
+        "the fault really rewrote the original while the job ran"
+    );
+    // The file the sound came from is the approved one, and the job's private copy holds it.
+    assert_eq!(result["audio"]["source"]["sha256"], sha(&mix));
+    let snapshot = &result["snapshot"];
+    assert_eq!(snapshot["verified"], true);
+    assert!(
+        snapshot["bytes"].as_u64().unwrap() >= mix.len() as u64,
+        "the copy counts the mix: {snapshot}"
+    );
+    let samples = lab.decoded_audio(&lab.work.path("during.mp4"));
+    assert_tone(&samples, 0.05, 0.40, 440.0, 880.0);
+    assert_tone(&samples, 0.60, 0.95, 880.0, 440.0);
+    assert_clean(&lab);
+}
+
+#[test]
+fn rendering_reads_only_the_snapshot_and_a_swap_after_the_copy_cannot_reach_a_sample() {
+    // The media-level proof that the mix never re-reads the original: take the copy, rewrite the
+    // original (same size), mix from the copy, and compare with the samples of the approved bytes.
+    let work = Work::new("private");
+    let mix = pcm16(2, 48_000, &ramp_stereo(4 * 48_000));
+    let state = demo_state(&bundle_with_mix(&mix, (0.0, 4.0)));
+    let plan = snapshot(
+        &state,
+        json!({"scene":"street","preset":tiny(),"from":24,"frames":24}),
+    )
+    .unwrap();
+    let original = work.path("mix.wav");
+    fs::write(&original, &mix).unwrap();
+    let approved = approved(&original, &mix);
+    let resolver = OnlyMix(approved.clone());
+
+    assert_eq!(
+        snapshot_bytes(&resolver, "street", &[ResourceKey::AudioMix]).unwrap(),
+        mix.len() as u64
+    );
+    let frozen = ResourceSnapshot::take(
+        &resolver,
+        "street",
+        &[ResourceKey::AudioMix],
+        &work.path("resources"),
+        &CancelToken::new(),
+        |_| {},
+    )
+    .unwrap();
+    assert_eq!((frozen.files(), frozen.bytes()), (1, mix.len() as u64));
+    let private = frozen.resolve("street", &ResourceKey::AudioMix).unwrap();
+    assert_ne!(private.path, original);
+    assert!(private.path.starts_with(work.path("resources")));
+    assert_eq!(private.content_hash, approved.content_hash);
+
+    same_size_garbage(&original);
+    let out = work.path("out.wav");
+    let mix_plan = plan.audio().mix().expect("a mix is planned").clone();
+    let from_copy = run_job(move |ctx| render_audio_private(&mix_plan, &private, &out, ctx));
+    from_copy.unwrap();
+    let samples = read_stereo(&work.path("out.wav"));
+    let source = ramp_stereo(4 * 48_000);
+    assert_eq!(&samples[..], &source[2 * 48_000..2 * 96_000]);
+    frozen.verify_intact().unwrap();
+
+    // The identity-checking entry point still refuses the original it was asked to read.
+    let error = render(&plan, &approved, &work.path("again.wav")).unwrap_err();
+    assert_eq!(error.code, "resource_changed", "{}", error.message);
+}
+
+struct OnlyMix(ApprovedResource);
+
+impl ResourceResolver for OnlyMix {
+    fn resolve(&self, _: &str, key: &ResourceKey) -> Result<ApprovedResource, ResolveError> {
+        if key == &ResourceKey::AudioMix {
+            Ok(self.0.clone())
+        } else {
+            Err(ResolveError::UnknownAsset {
+                scene: "street".into(),
+                resource: key.label(),
+            })
+        }
+    }
+}
+
+fn run_job<T: Send + 'static>(
+    body: impl FnOnce(&tessel_editor_core::jobs::JobContext) -> T + Send + 'static,
+) -> T {
+    let registry = JobRegistry::new(1);
+    let (sender, receiver) = mpsc::channel();
+    registry.spawn(JobKind::VideoExport, "audio", move |ctx| {
+        let _ = sender.send(body(ctx));
+        Ok(json!({}))
+    });
+    receiver.recv_timeout(Duration::from_secs(60)).unwrap()
+}
+
+#[test]
+fn a_vanished_mix_fails_typed_before_any_frame_and_only_its_own_staging_goes() {
+    let mix = two_tone(48_000, 4, 440.0, 880.0);
+    let Some(mut lab) = lab("e2e-missing", &mix, (0.0, 4.0)) else {
+        return;
+    };
+    // Another export's staging that happens to sit next to the destination is not ours to clean.
+    let foreign = lab.work.path(".tessel-staging-scene-export-foreign-0");
+    fs::create_dir_all(&foreign).unwrap();
+    fs::write(foreign.join("keep"), b"theirs").unwrap();
+    // Removed between approval and the job: the preflight of the request is the one to say so.
+    fs::remove_file(lab.base.join("audio/mix.wav")).unwrap();
+    let error = lab.export("gone.mp4", tiny(), 0, 24).unwrap_err();
+    assert_eq!(error.code, "preflight_failed", "{}", error.message);
+    let blockers = &error.details.as_ref().expect("the report")["blockers"];
+    assert_eq!(blockers[0]["code"], "resource_missing", "{blockers}");
+    assert_eq!(blockers[0]["asset"], "audio-mix");
+    assert_eq!(lab.drawn.load(Ordering::SeqCst), 0);
+    assert!(!lab.work.path("gone.mp4").exists());
+    assert_eq!(lab.leftovers(), [".tessel-staging-scene-export-foreign-0"]);
+    assert_eq!(fs::read(foreign.join("keep")).unwrap(), b"theirs");
+}
+
+#[test]
+fn a_cancelled_export_with_audio_removes_its_own_staging_and_nothing_else() {
+    let mix = two_tone(48_000, 4, 440.0, 880.0);
+    let Some(mut lab) = lab_with("e2e-cancel", &mix, (0.0, 4.0), Fault::Slow) else {
+        return;
+    };
+    let foreign = lab.work.path(".tessel-staging-scene-export-foreign-1");
+    fs::create_dir_all(&foreign).unwrap();
+    fs::write(foreign.join("keep"), b"theirs").unwrap();
+    let destination = lab.work.path("cancel.mp4");
+    let started = lab.ok(json!({"op":"scene.export","scene":"street","preset":tiny(),
+        "from":0,"frames":96,"destination":destination,"wait":false}));
+    let job = started["job"].as_str().unwrap().to_string();
+    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    loop {
+        let info = lab.ok(json!({"op":"job.get","job":job}));
+        if info["stage"] == "render" && info["done"].as_u64().unwrap_or(0) >= 2 {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "never rendered: {info}"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    lab.ok(json!({"op":"job.cancel","job":job}));
+    let info = lab.ok(json!({"op":"job.wait","job":job,"timeout_ms":60000}));
+    assert_eq!(info["state"], "cancelled", "{info}");
+    assert!(!destination.exists());
+    assert_eq!(lab.leftovers(), [".tessel-staging-scene-export-foreign-1"]);
+    assert_eq!(fs::read(foreign.join("keep")).unwrap(), b"theirs");
+    assert!(
+        lab.base.join("audio/mix.wav").is_file(),
+        "the original is never removed"
+    );
+}
+
+#[test]
+fn preflight_counts_the_mix_and_its_private_copy_without_touching_the_destination() {
+    let mix = two_tone(48_000, 4, 440.0, 880.0);
+    let Some(mut lab) = lab("e2e-estimate", &mix, (0.0, 4.0)) else {
+        return;
+    };
+    let ask = |lab: &mut Lab, name: &str, audio: bool| {
+        let destination = lab.work.path(name);
+        lab.ok(
+            json!({"op":"scene.export.preflight","scene":"street","preset":tiny(),
+            "from":0,"frames":24,"audio":audio,"destination":destination}),
+        )
+    };
+    let with = ask(&mut lab, "with.mp4", true);
+    let without = ask(&mut lab, "without.mp4", false);
+    let (with, without) = (&with["estimate"], &without["estimate"]);
+    assert_eq!(
+        with["resource_copy_bytes"].as_u64().unwrap()
+            - without["resource_copy_bytes"].as_u64().unwrap(),
+        mix.len() as u64,
+        "the copy of the mix is part of the copy estimate"
+    );
+    // One second of 48 kHz stereo s16 for the mixed stream, plus the AAC encoding.
+    assert!(with["audio_mix_bytes"].as_u64().unwrap() >= 48_000 * 4);
+    assert_eq!(without["audio_mix_bytes"], 0);
+    assert!(
+        with["staging_bytes"].as_u64().unwrap()
+            >= without["staging_bytes"].as_u64().unwrap()
+                + mix.len() as u64
+                + with["audio_mix_bytes"].as_u64().unwrap()
+    );
+    assert!(with["output_bytes"].as_u64().unwrap() > without["output_bytes"].as_u64().unwrap());
+    assert_eq!(lab.drawn.load(Ordering::SeqCst), 0);
+    assert!(!lab.work.path("with.mp4").exists());
+    assert_clean(&lab);
 }
