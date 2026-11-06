@@ -414,7 +414,8 @@ fn folders_of(root: &Path, canonical_root: &Path, path: &ResourcePath) -> Vec<(P
 }
 
 /// Records the file just published and the folders it needed that did not exist before. `Err`
-/// is a publication the ledger could not claim, already taken back (see [`Created::published`]).
+/// is a publication the ledger could not claim: rollback was attempted under proof, and
+/// [`Unclaimed`] reports what was taken back and what remained (see [`Created::published`]).
 fn record_published(
     created: &mut Created,
     existing: &mut HashSet<PathBuf>,
