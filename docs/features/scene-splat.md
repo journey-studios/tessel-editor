@@ -245,3 +245,48 @@ numa árvore **suja** sobre o head `6a0bdd5`, antes do commit: são **atribuído
 | `cargo test --workspace` | **não concluiu**: abortou em `playback_follows_the_audio_clock_or_says_why_it_cannot` (a asserção do `sample_rate` do dispositivo de áudio esperava 48000 e o AirPods mediu 24000); falha do ambiente/teste, não do splat; o PR #12 corrige a asserção e não foi importado aqui |
 | Restante de `scene_splat_frames`, `scene_splat_package`, `media`, `desktop` (exceto o teste acima) e prova nativa do monitor | **pendentes** neste head; a prova nativa de 119 checks é de outro head sujo e não vale |
 | Harness S10 (`splat_*`, `full_av`) | **BLOCKED/FAIL** como antes (BL120/BL121); nada alterado |
+
+#### Execução no head commitado `2c7cf7c` (executado, com proveniência)
+
+A tabela acima fica como histórico da rodada anterior (árvore suja, head `6a0bdd5`); esta seção a **substitui** como
+evidência. Tudo abaixo foi executado por um único runner enfileirado sob o lock da GPU (`with-gpu-lock.py`), com Cargo por
+`cargo-serial.py`, árvore limpa no início, `TESSEL_REQUIRE_RUNTIME=1` e piso de 12 GiB livres vigiado durante cada passo
+(mínimo observado 13,3 GiB). Head `2c7cf7cbf099e36080e59f52be0a3e340c433d46`, tree `e25374f8…`, UTC 2026-11-06 16:32:30–16:40:37.
+Os logs, o sidecar de cada passo (head, tree, `status --porcelain`, `cmd`, `cwd`, env em lista branca, UTC, saída, livre
+antes/mín./depois, sha256 do log) e o manifesto ficam fora do repositório em `/tmp/te-711b-final/`
+(`manifest.json` sha256 `7917457e73bcd319…`, runner `runner.py` sha256 `6e64ad346401d7a2…`).
+
+| Gate | Resultado |
+|---|---|
+| `cargo fmt --all -- --check` | PASS (saída 0) |
+| `cargo check --workspace --locked` | PASS |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | PASS |
+| `cargo test --workspace --locked --no-fail-fast` | PASS: **1239 passed, 0 failed, 9 ignored** (o teste de áudio do dispositivo passou neste ambiente; os mesmos totais do gate antecessor em `ed7827c`, cuja produção não mudou: a diferença até `2c7cf7c` é só `runtime/test/directed-scene-browser.test.mjs` e docs) |
+| `cargo build -p tessel-editor --locked` | PASS |
+| `cargo tree -p tessel-editor-core --locked` | PASS: sem `gpui` nem `wry` |
+| `./scripts/runtime test` (108 testes) | PASS **atribuído ao coordenador** (mesmo head, `TESSEL_REQUIRE_RUNTIME=1`, saída 0, 108/0): não repetido aqui; ver [scene-renderer.md](scene-renderer.md) (BL102c) |
+| `scripts/scene-splat-native-proof.py` (janela real, WKWebView, Apple GPU) | PASS **119/119** no commit limpo |
+
+Prova nativa: binário direto `target/debug/tessel-editor` (sha256 `b69b11f2210f82a3…`), `runtime/dist/runtime.js` sha256
+`bbe3bbfcae0b2fbc…`, script sha256 `9863cee21f09579f…`, corpus S10 somente leitura em
+`t3-02272e59` no head `d435abea` (limpo antes e depois; 21 arquivos, sha agregado `2a2582be4816bd6b…`), relatório JSON
+sha256 `4833bbd59dcad30d…`, sidecar `native-sidecar.json` sha256 `601f5921ee672443…`. A prova é por requisições semânticas
+(`op`, `get`, `set`; HOME curto e socket próprios); o "pixel" é o hash que o WebView reportou comparado ao de `scene.render`,
+e as sondas de cor leem o `scene.render`: **não** é captura da tela nem ponteiro físico.
+
+Mutações (cada uma aplicada na árvore, o teste alvo tem de falhar, depois `git checkout` do arquivo, árvore limpa e a mesma
+seleção volta a passar; os diffs e as listas de testes reprovados ficam em `/tmp/te-711b-final/mut-*`):
+
+| Mutação | Teste que reprovou | Restaurado |
+|---|---|---|
+| F1 core: guarda de semelhança desligada (`check_splat_transforms`) | `a_splat_whose_matrix_is_not_a_similarity_is_refused_never_approximated`, `the_reader_refuses_a_splat_matrix_that_is_not_a_similarity_and_the_timeline_checks_each_frame`, `a_frame_cut_from_a_template_is_checked_for_its_own_splat_matrices` | PASS |
+| F1 runtime: `splatMatrixFault` devolve `null` | `BL123: a splat whose matrix is not a similarity is refused, never approximated` | PASS |
+| F2: camada com profundidade `<= 0` volta a contar | `a_plane_behind_the_camera_does_not_take_the_splats_slot`, `the_timeline_ignores_a_plane_the_camera_flies_past` | PASS |
+| F4: recusa de `spz` em camada de imagem desligada | `a_plan_that_lies_about_its_splats_is_refused_with_the_pointer` | PASS |
+| T1: todos os splats no slot 0 (runtime reconstruído com a mutação, Chrome) | `T1: two splats of different files in different slots are each over their own planes and under the next` | PASS; `runtime/dist/runtime.js` reconstruído tem o mesmo sha256 da linha de base |
+
+A mutação F3 (decodificação compartilhada, BL125) não foi repetida nesta execução: continua só com a atribuição da rodada
+anterior e a prova direta `BL125`, que passou na suíte completa.
+
+Limites que esta execução **não** muda: o aceite independente S10 segue `FAIL`/`BLOCKED` (BL120/BL121); `full_av` e áudio
+dependem do S9; a revisão independente final (Opus) ainda precisa aceitar o delta.
