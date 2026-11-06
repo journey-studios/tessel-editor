@@ -41,8 +41,8 @@ desconhecidos, então o transporte reaproveita `asset.load`, `asset.release`, `f
 | Onde | Acréscimo |
 |---|---|
 | `ready.capabilities.features` | `"directed_scene"`. Um runtime que não lista não recebe o layer (o host recusa antes: `backend_unavailable` com o comando de rebuild) |
-| `ready.capabilities.directed_scene` | `{ layer_kind, plan_kind: "tessel-scene-plan", plan_versions: [1], capabilities: [8 nomes de Capability::as_str], resource_identity: ["generation","asset_id","revision_id","content_hash"], resource_kinds: ["still"] }`. Os 8 nomes são exatamente `Capability::ALL` (teste) |
-| `asset.load` → `asset.scene` | `{ asset_id, revision_id, content_hash, generation }`. Só para `kind: "still"`; vincula o **slot** (o `asset.id` do runtime) à identidade |
+| `ready.capabilities.directed_scene` | `{ layer_kind, plan_kind: "tessel-scene-plan", plan_versions: [1], capabilities: [9 nomes de Capability::as_str], resource_identity: ["generation","asset_id","revision_id","content_hash"], resource_kinds: ["still","splat"] }`. Os 9 nomes (com `splats`, F048) são exatamente `Capability::ALL` (teste) |
+| `asset.load` → `asset.scene` | `{ asset_id, revision_id, content_hash, generation }`. Para `kind: "still"` (PNG) e `kind: "splat"` (`meta.format: "spz"`, F048); vincula o **slot** (o `asset.id` do runtime) à identidade |
 | `frame.render` → `plan.layers[]` | `kind: "directed_scene"`, `scene_plan` (o `ScenePlan::to_json()` inteiro) e `resources: [{ asset_id, slot, revision_id, content_hash, generation }]` |
 | `ready.capabilities.layers` | **Não** muda: lista os tipos do plano comum; o gate é `features` |
 | Telemetria | `frame.done.source.directed_scene_layers`; `cache`/`debug.retention`: `scene_resources`, `scene_generation` |
@@ -76,9 +76,9 @@ Todos com `code` estável, sem desenho parcial:
 | `unsupported_plan_version` | `planVersion` ≠ 1 (checado antes de ler outros campos) |
 | `unsupported` | plano parcial (`complete: false`; `details.domains`) ou `requires` que o runtime não anuncia (`details.missing`) |
 | `resource_unresolved` | sem entrada no mapa, slot não carregado, arquivo ausente ou raiz ilegível |
-| `resource_mismatch` | revisão/hash difere do plano, tamanho difere, ou não é `still` |
+| `resource_mismatch` | revisão/hash difere do plano, tamanho difere, ou o tipo não é o do plano (`still` para PNG; `splat` `.spz` para splat — o host recusa antes um arquivo que não é SPZ) |
 | `resource_stale` | geração mais velha que a em uso, ou slot de outra identidade/geração |
-| `resource_budget` | slots/bytes além do orçamento (host: 32 slots, 512 MiB RGBA; runtime: 64 e 768 MiB) |
+| `resource_budget` | slots/bytes além do orçamento (host: 32 slots, 512 MiB; runtime: 64 e 768 MiB). Um splat conta os bytes do arquivo mais 16 bytes por splat, uma vez por recurso, nos dois lados. Além disso o quadro soma os splats de cada nó `splat` (arquivo compartilhado conta por nó) e é recusado acima de 8 Mi (`details.frame_splats`; host `DEFAULT_FRAME_SPLATS`, runtime `LIMITS.frameSplats`), BL125 |
 | `resource_path_invalid` | caminho relativo no mapa ou link que sai da raiz aprovada |
 | `bundle_invalid` | importação ou gates (`edit_join_issues` + `temporal_issues`) do bundle (`details.issues`) |
 | `cancelled` | frame substituído por outro mais novo (último ganha) ou `frame.cancel` |
@@ -247,7 +247,7 @@ em execução serializada.
   sai opaco). Alpha de saída é trabalho futuro de BL008.
 - **Sem desempate por profundidade**: a ordem do plano é a ordem de pintura, de propósito.
 - **Sem cache de resultado de frame dirigido**: cada frame é redesenhado (medir em BL064 antes de otimizar).
-- **Só imagens estáticas** (`still`/PNG nos testes); vídeo, splat, luz, clima, rigs, efeitos continuam recusados
+- **Imagens estáticas e splats SPZ** (F048); vídeo, luz, clima, rigs, efeitos continuam recusados
   como domínio não avaliado.
 - **O hash do conteúdo não é verificado aqui.** O runtime compara o que o mapa declara com o que o plano exige;
   provar que os bytes têm aquele hash é do adaptador que materializa/verifica (N/`media`).
@@ -293,3 +293,9 @@ Provas finais e limites em [round-mnop-report.md](../migration/round-mnop-report
 `--bundle bundle.json` sem pai usa a pasta atual como raiz de recursos. O runtime revalida o número de recursos imediatamente antes do registro, além de geração e bytes; cargas concorrentes não ultrapassam sceneResourceEntries. `scene.plan` aplica admissão por referência, evitando cópia profunda do bundle por frame, com os mesmos gates.
 
 Integração de S4 com main `2bc340d` (S3): conflitos apenas no backlog/matriz, preservando identidade negociada e snapshot. Coordenador reconferiu fmt, check/clippy workspace, core, media/export 11/11, desktop/lifecycle 17/17, render scene_frames/scene_seam/scene_export com runtime obrigatório e lock GPU, build do editor e testes JS puros de identidade 6/6. Log local `/tmp/tessel-s4-main-gates.log`; revisão CodeRabbit continua pendente.
+
+BL102c (validação do runtime): a suíte completa do S7 teve 107/108 com falha na substituição de request21 por22; seis execuções isoladas verdes não encerravam essa falha. O teste agora retém o fetch real de21 com holdFetches até22 ser admitido e libera/fecha a interceptação em finally. O teste filtrado passou em Chrome real (1/1, TESSEL_REQUIRE_RUNTIME=1, lockGPU); a suíte completa após a correção ainda precisa ser executada. Nenhuma lógica de produção foi alterada por esse ajuste.
+
+Suíte completa após o fix (execução do **coordenador**, atribuída, não repetida aqui): `./scripts/runtime test` com `TESSEL_REQUIRE_RUNTIME=1` e lock da GPU, head `2c7cf7c`, saída 0, `# tests 108`, `# pass 108`, `# fail 0` (UTC 2026-11-06T16:11:18Z–16:12:26Z, livre mínimo 26,8 GiB); log `runtime-after-bl102c.log` sha256 `2f1844e8283b2391…` (cópia em `/tmp/te-711b-final/coordinator-runtime/`). Os 6/6 isolados anteriores seguem sem anular a falha 107/108 da execução antiga.
+
+No head `586a671` (runner dos gates, `TESSEL_REQUIRE_RUNTIME=1`, lock da GPU), a suíte completa deu 108/108 em duas execuções e 107/108 em outra: falhou `video B2: a frame superseded while it seeks is cancelled and the next one is exact` (`video.test.mjs:208`), um teste fora do diff do S7; registrado como BL128, sem relaxar nada. Detalhes em [scene-splat.md](scene-splat.md#revalidação-no-head-586a671-executado-com-proveniência).

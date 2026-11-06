@@ -34,8 +34,20 @@ Spark **2.4.0** fixado em `runtime/package.json` com Three.js 0.187.0. Sem CDN: 
 - `cargo test -p tessel-editor-render --test frames` (7) e `crates/render/tests/export.rs` (2).
 - `scripts/live-proof.py`: 56/56 na janela macOS real (splat incluso).
 
+## Splat numa cena dirigida (F048)
+
+O mesmo Spark, o mesmo estágio e o mesmo `settle` desenham um splat de um plano de cena dirigida:
+o plano ([F037](scene-plan.md)) carrega a matriz de mundo do nó e a câmera avaliadas e o recurso
+`spz` aprovado; o runtime só os desenha. Contrato e limites em [scene-splat.md](scene-splat.md).
+
 ## Limites
 
 Medido em SwiftShader (CPU); ordem de composição entre splats e planos transparentes segue as
 limitações documentadas do Spark (splats ordenados entre si, planos pela ordem do plano).
 Outros formatos do Spark (`.ksplat`, `.sog`) não têm prova aqui e não são aceitos.
+
+Cor (BL019-F1): o desenho vai a um render target e, nele, o Spark 2.4.0 usa `ColorManagement.workingColorSpace`
+(linear) para ligar `encodeLinear`, o que escurecia a cor guardada. `keepStoredColour`
+(`runtime/src/splat-stage.js`) mantém o uniform em `false` só no material do Spark, depois do `onBeforeRender` do
+próprio Spark. **Isto também muda a cor do caminho de projeto (`scene`)**, não só o da cena dirigida: um splat do
+projeto agora mostra a cor guardada. Detalhes e prova em [scene-splat.md](scene-splat.md#cor-bl019-f1).

@@ -54,7 +54,7 @@ são repetidos ou pulados, **nunca** misturados. O aviso `frame_rate_conversion`
   identidade (hash, revisão, geração, `cache_key`) e o caminho da cópia. O renderer recebe **só** este
   resolver, nunca o caminho original. `snapshot_bytes` informa o volume a copiar (conteúdo igual conta uma vez).
   Opera sobre `ResourceKey`, não sobre o tipo do recurso: o mix de áudio (`ResourceKey::AudioMix`, F042A) já entra
-  nas chaves da cópia, e o splat de S7 entrará como nova chave.
+  nas chaves da cópia, e o `spz` do splat de S7 entra como `ResourceKey::Asset` (chave de asset, sem variante nova).
 - `SceneExport::freeze(snapshot, &SceneResourceSession, destino, replace)` recusa `scene_resources_not_loaded`,
   `stale_generation`, `resources_stale` ou o erro de resolução de um asset exigido.
 - `preflight(&SceneExport, &Tools, max_size) -> Value` e `run(...)`: ver abaixo.
@@ -210,7 +210,7 @@ Tempo medido (SwiftShader, máquina de desenvolvimento, único dado de uma execu
   original); (b) uma troca entre a aprovação do mapa e a cópia é detectada, uma troca *durante* a leitura da cópia
   também (o hash é da mesma leitura que grava), mas o export não detecta que o original mudou **depois** da cópia —
   ele é isolado, e o vídeo reflete os bytes aprovados; (c) `verify_intact` não refaz o hash das cópias; (d) o espaço
-  de staging dobra o volume de recursos (splats grandes de S7 exigirão decidir cópia vs. verificação).
+  de staging dobra o volume de recursos (splats grandes de S7 são copiados como qualquer asset: decidir cópia vs. verificação continua em aberto).
 - **Plano por frame:** o job usa `PlanTimeline` (BL064); o ganho no export real **não foi medido** (o custo do corpus é dominado pelo renderer e o plano vira JSON por frame).
 - **Rate:** frames de edição são repetidos/pulados na conversão; sem mistura nem interpolação.
 - **Cena sem corte longo / 4K longo:** só exports curtos foram exercitados; não há teste de resistência a

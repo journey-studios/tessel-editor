@@ -33,6 +33,13 @@ export const LIMITS = {
   /** Directed-scene pictures kept decoded (CPU side), by count and RGBA bytes; a load past either is refused. */
   sceneResourceEntries: 64,
   sceneResourceBytes: 768 * MIB,
+  /**
+   * Splats a directed-scene frame may draw in all: the sum over its splat nodes of the splats of the
+   * file each reads (a file used by many nodes counts once per node, since each is sorted and drawn).
+   * 16 bytes per splat of packed data per node is what the frame's own budget would hold; a frame past
+   * this is refused (`resource_budget`) before anything is drawn. The host applies the same number.
+   */
+  frameSplats: 8 * 1024 * 1024,
 };
 
 /** Event counters of the retention layer; `delta` gives what one frame did. */
