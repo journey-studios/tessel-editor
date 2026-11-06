@@ -91,7 +91,13 @@ pub fn preflight(
             });
         }
     };
-    let root = Root::open(source_root, "source")?;
+    // A manifest with no files has nothing to open: requiring a folder for it would make a scene
+    // that carries only data unloadable (BL101). Any file keeps the full containment checks.
+    let root = if plan.items.is_empty() {
+        None
+    } else {
+        Some(Root::open(source_root, "source")?)
+    };
     let mut report = PreflightReport {
         checked: Vec::new(),
         problems: Vec::new(),
@@ -101,7 +107,8 @@ pub fn preflight(
     };
     for (index, item) in plan.items.iter().enumerate() {
         token.check()?;
-        match check_item(&root, item, options, token) {
+        let Some(root) = &root else { break };
+        match check_item(root, item, options, token) {
             Ok((bytes, resolved)) => {
                 report.total_bytes = report.total_bytes.saturating_add(bytes);
                 report.checked.push(CheckedResource {

@@ -235,6 +235,7 @@ retenção ligada) e `hello.telemetry.presented:true` (pede `frame.presented`, q
 (`frame.presented`, `cache.telemetry`); `frame.done` ganha `timings.{prepare_ms, draw_ms, flush_ms}` e `cache`
 (textura/texto/material/rig/alvo × criado/reaproveitado/expulso e o que está retido). Campos antigos e `settle_ms`
 continuam. `HelloOptions` padrão gera a mesma mensagem de antes, byte a byte (`hello_defaults_stay_byte_identical…`).
+Mais um campo aditivo (BL102, ainda v1): `asset.load.asset.request` (inteiro) e o eco `request`/`scene` em todo `asset.state`, negociados por `capabilities.features` `asset.identity`; só é enviado a runtime que o anuncia, e o runtime antigo ignora. Contrato em [scene-renderer.md](scene-renderer.md#identidade-de-carga-em-assetloadassetstate-bl102).
 Versão incompatível vira `backend_unavailable` mencionando a bridge. O worker Node e a WebView falam o mesmo protocolo.
 
 ## CLI headless (sem janela do editor)

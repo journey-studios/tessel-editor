@@ -9,14 +9,15 @@
 //!
 //! Operations: `media.import|relink|search|status|prepare|thumbnail|waveform|proxy`,
 //! `project.package_preflight|package|verify|restore|import|import_scenes`,
-//! `scene.resources.status|preflight|resolve|adopt|release|invalidate` (F040),
+//! `scene.attach.start` (F043: read/validate a bundle on a job, attach it as one undo step),
+//! `scene.resources.status|preflight|resolve|adopt|release|invalidate|claims|recover` (F040),
 //! `export.preflight|start`, `scene.export[.preflight]` (F042: a directed scene as video, same jobs),
 //! `job.list|get|wait|cancel|commit`. Presets (`preset.*`) belong to the core.
 //!
 //! Anything that reads files, runs a tool or builds a renderer (probe, decode, verify, restore,
 //! preflight) is a job; the caller's thread only snapshots the project and later applies the
 //! result. A result is applied only if the project it was computed for is still the open one
-//! (same ID, same revision for whole-project swaps, same content hash per asset for decoded
+//! (same ID, editing session and revision for whole-project swaps and scene attach, same content hash per asset for decoded
 //! media), so a slow job can never overwrite what the user did meanwhile.
 //!
 //! Media is prepared automatically: export and the render CLIs decode what they need, and an
@@ -41,9 +42,10 @@ use tessel_editor_core::jobs::{
 use tessel_editor_core::preset::{self, Preset};
 use tessel_editor_core::preview::{PreviewPolicy, Reason};
 use tessel_editor_core::scene_export::{SceneExportSnapshot, SceneExportSpec};
+use tessel_editor_core::scene_project::{AdmittedScene, SceneCommand, SceneSource};
 use tessel_editor_core::scene_resources::ResourceManifest;
 use tessel_editor_core::session::Renderer;
-use tessel_editor_core::state::Command;
+use tessel_editor_core::state::{Command, ProjectStamp};
 use tessel_editor_core::{CommandError, EditorState};
 
 use crate::derive::Cache;
@@ -93,16 +95,28 @@ enum Pending {
     },
     /// Scenes whose files are already in the workspace, attached as one undo step.
     SceneImport(Box<PreparedSceneImport>),
+    /// A bundle read, imported and admitted off the caller's thread (BL100), attached as one undo
+    /// step only while the open project is still the exact `stamp` it was started for: same ID,
+    /// same editing session (BL113a: reopening a document is a new session even with the same ID
+    /// and revision 0) and same revision. It owns no files.
+    SceneAttach {
+        stamp: ProjectStamp,
+        id: Option<String>,
+        name: Option<String>,
+        scene: AdmittedScene,
+        /// What loading its resources will need, computed with the scene on the job thread.
+        resources: Value,
+    },
     /// Files an adoption copied, kept only while the project, its workspace and the scene's
     /// bundle are still the ones the job was started for; otherwise removed (BL089). Changes no
     /// project data. Dropped unapplied (host gone, job never committed) it removes them too,
     /// except what another pending or accepted result relies on (BL096).
     SceneAdopt(Box<PendingAdoption>),
     /// A restored project, already loaded and validated off the caller's thread, that replaces the
-    /// open project only if that one is still at `(project, revision)`.
+    /// open project only if that one is still the exact `stamp` the restore was started for (same
+    /// guard as [`Pending::SceneAttach`]).
     Open {
-        project: String,
-        revision: u64,
+        stamp: ProjectStamp,
         candidate: Box<EditorState>,
         summary: Value,
     },
@@ -507,6 +521,7 @@ impl MediaHost {
         self.auto_prepare = Some(id);
     }
 
+    /// Shares the job registry used by JSONL and window adapters; it does not apply pending results.
     pub fn registry(&self) -> &JobRegistry {
         &self.registry
     }
@@ -532,6 +547,7 @@ impl MediaHost {
         (id, slot)
     }
 
+    /// Waits for terminal job state within a deadline and refuses jobs that disappear.
     fn wait_final(&self, id: &str, timeout: Duration) -> Result<JobInfo, CommandError> {
         let deadline = std::time::Instant::now() + timeout;
         loop {
@@ -570,10 +586,15 @@ impl MediaHost {
         Ok(merge_applied(result, &id, applied))
     }
 
+    /// Maps terminal results to command replies, preserving stored errors and partial cancellation details.
     fn outcome(info: &JobInfo) -> Result<Value, CommandError> {
         match info.state {
             JobState::Succeeded => Ok(info.result.clone().unwrap_or(Value::Null)),
-            JobState::Cancelled => Err(JobError::cancelled().into()),
+            JobState::Cancelled => Err(info
+                .error
+                .clone()
+                .unwrap_or_else(JobError::cancelled)
+                .into()),
             _ => Err(info.error.clone().map_or_else(
                 || CommandError::new("job_failed", "The job failed"),
                 CommandError::from,
@@ -601,12 +622,15 @@ impl MediaHost {
             "project.restore" => self.restore(state, request),
             "project.import" => self.project_import(state, request),
             "project.import_scenes" => self.import_scenes(state, request),
+            "scene.attach.start" => self.scene_attach(state, request),
             "scene.resources.status" => Ok(self.scene_resources_status(state)),
             "scene.resources.preflight" => self.scene_preflight(state, request),
             "scene.resources.resolve" => self.scene_resolve(state, request),
             "scene.resources.adopt" => self.scene_adopt(state, request),
             "scene.resources.release" => self.scene_release(request),
             "scene.resources.invalidate" => self.scene_invalidate(request),
+            "scene.resources.claims" => self.scene_claims(state, request),
+            "scene.resources.recover" => self.scene_recover(state, request),
             "export.preflight" => self.export_preflight(state, request),
             "export.start" => self.export_start(state, request),
             "scene.export" => self.scene_export(state, request),
@@ -875,7 +899,7 @@ impl MediaHost {
         let package = PathBuf::from(text(request, "path")?);
         let folder = PathBuf::from(text(request, "folder")?);
         let open = flag(request, "open", true);
-        let (project, revision) = (state.project.id.clone(), state.project.revision);
+        let stamp = state.project.stamp();
         let (id, slot) = self.start(JobKind::Restore, "Restore package", move |ctx| {
             let report = package::restore(&package, &folder, ctx)?;
             if !open {
@@ -887,8 +911,7 @@ impl MediaHost {
             let summary = open_summary(&candidate, &document);
             Ok((
                 Some(Pending::Open {
-                    project,
-                    revision,
+                    stamp,
                     candidate: Box::new(candidate),
                     summary,
                 }),
@@ -949,6 +972,69 @@ impl MediaHost {
         Ok(ResourceBase::managed(&workspace(state)?, id)?)
     }
 
+    /// [`Self::scene_base`], except that a scene whose manifest names no files needs no folder
+    /// and so no workspace either (BL101): it loads against [`ResourceBase::unbound`]. Anything
+    /// else keeps the error that says why there is no base.
+    fn scene_base_for(
+        state: &EditorState,
+        request: &Value,
+        id: &str,
+        scene: &DirectedScene,
+    ) -> Result<ResourceBase, CommandError> {
+        match Self::scene_base(state, request, id) {
+            Err(error)
+                if error.code == "no_workspace" && !crate::scene_resources::needs_files(scene) =>
+            {
+                Ok(ResourceBase::unbound())
+            }
+            outcome => outcome,
+        }
+    }
+
+    /// `scene.attach.start {path | bundle | text, id?, name?, wait?}`: `scene.attach` with the
+    /// slow part on a job (BL100). Reading, parsing, importing and the structural and temporal
+    /// gates run off the caller's thread (cancellable, `bundle_unreadable`/`invalid_bundle`/...
+    /// as the job's typed error); the scene is attached as one undo step by `poll`, `job.commit`
+    /// or, for a host that may block, at once. The attach itself is still `scene.attach`'s core
+    /// command, so the ID, room and byte-budget rules are not repeated here.
+    ///
+    /// The result applies only while the open project is exactly the one it was started for (ID,
+    /// editing session and revision); otherwise it fails `stale_result` and nothing is attached. The answer carries
+    /// `resources`: how many files the scene needs and whether it can load without a folder.
+    fn scene_attach(
+        &mut self,
+        state: &mut EditorState,
+        request: &Value,
+    ) -> Result<Value, CommandError> {
+        let source = tessel_editor_core::ops::scene_source(request)?;
+        let id = optional_text(request, "id")?.map(str::to_string);
+        let name = optional_text(request, "name")?.map(str::to_string);
+        // Refused here, before any file is read, exactly as `scene.attach` would.
+        state.scenes.check_attach(id.as_deref(), name.as_deref())?;
+        let stamp = state.project.stamp();
+        let (job, slot) = self.start(JobKind::Import, "Attach scene", move |ctx| {
+            ctx.stage("read", 1);
+            let scene = AdmittedScene::prepare(source, ctx.token())?;
+            ctx.advance(1);
+            let resources = scene_resources_needed(scene.scene());
+            let report = json!({ "action": "scene.attach.start",
+                "bundle_id": scene.scene().bundle().bundle_id,
+                "revision_id": scene.scene().bundle().revision_id,
+                "resources": resources });
+            Ok((
+                Some(Pending::SceneAttach {
+                    stamp,
+                    id,
+                    name,
+                    scene,
+                    resources,
+                }),
+                report,
+            ))
+        });
+        self.finish(state, request, job, slot)
+    }
+
     /// `scene.resources.status`: what the session holds and, per attached scene, whether that is
     /// still current for the scene's bundle and where its managed base is.
     fn scene_resources_status(&self, state: &EditorState) -> Value {
@@ -988,7 +1074,7 @@ impl MediaHost {
         request: &Value,
     ) -> Result<Value, CommandError> {
         let (id, scene) = Self::scene_of(state, request)?;
-        let base = Self::scene_base(state, request, &id)?;
+        let base = Self::scene_base_for(state, request, &id, &scene)?;
         let (id_job, slot) = self.start(
             JobKind::Preflight,
             "Scene resources preflight",
@@ -1019,7 +1105,7 @@ impl MediaHost {
         request: &Value,
     ) -> Result<Value, CommandError> {
         let (id, scene) = Self::scene_of(state, request)?;
-        let base = Self::scene_base(state, request, &id)?;
+        let base = Self::scene_base_for(state, request, &id, &scene)?;
         let project = state.project.id.clone();
         let generation = self.scene_resources.observe_project(&project);
         let session = self.scene_resources.clone();
@@ -1101,6 +1187,67 @@ impl MediaHost {
             json!({ "action": "scene.resources.invalidate", "reason": reason.as_str(),
             "generation": generation.0 }),
         )
+    }
+
+    /// `scene.resources.claims`: who holds what in the claims ledger of the project's workspace
+    /// (BL111). A job like every operation that touches files, but **not read-only**: opening the
+    /// ledger reaps the owners whose lease is gone, and the answer says so (`readOnly: false`,
+    /// `effects`, `reaped`). It removes no resource file and hashes nothing. Changes no project
+    /// data. A ledger that cannot be read is an answer (`available: false`, `fault`), not a failure.
+    fn scene_claims(
+        &mut self,
+        state: &mut EditorState,
+        request: &Value,
+    ) -> Result<Value, CommandError> {
+        let workspace = workspace(state)?;
+        // `Preflight` is the nearest kind: it is the one for jobs that look at files and change
+        // no project; the label and the answer carry the exact meaning.
+        let (id_job, slot) = self.start(JobKind::Preflight, "Scene resources claims", move |ctx| {
+            ctx.stage("ledger", 1);
+            ctx.check()?;
+            let report = crate::scene_resources::claims_status(&workspace);
+            ctx.progress(1);
+            Ok((None, report))
+        });
+        self.finish(state, request, id_job, slot)
+    }
+
+    /// `scene.resources.recover`: takes back what a result that no longer exists left claimed in
+    /// the project's workspace: orphans only, after the same content proof as any cleanup, under
+    /// the lease of each root (BL111). It hashes every orphan file, so it is a cancellable job
+    /// with progress in orphan files; `claims_unavailable` when the ledger cannot be used,
+    /// with any partial removals reported in details, as for `cancelled`. Changes no
+    /// project data. `Hash` is the kind of the job that reads file bytes.
+    fn scene_recover(
+        &mut self,
+        state: &mut EditorState,
+        request: &Value,
+    ) -> Result<Value, CommandError> {
+        let workspace = workspace(state)?;
+        let (id_job, slot) = self.start(JobKind::Hash, "Recover scene resources", move |ctx| {
+            ctx.stage("recover", 0);
+            let recovery = crate::scene_resources::recover_with(
+                &workspace,
+                ctx.token(),
+                &mut |done, total| {
+                    if done == 0 {
+                        ctx.stage("recover", total as u64);
+                    } else {
+                        ctx.progress(done as u64);
+                    }
+                },
+            )?;
+            for kept in &recovery.report.kept {
+                ctx.warn(kept.clone());
+            }
+            Ok((
+                None,
+                json!({ "action": "scene.resources.recover",
+                "workspace": workspace.display().to_string(),
+                "recovery": recovery.to_json() }),
+            ))
+        });
+        self.finish(state, request, id_job, slot)
     }
 
     /// `project.import_scenes`: carries scenes (their bundle and files) from another project or
@@ -1290,6 +1437,7 @@ impl MediaHost {
         )
     }
 
+    /// Returns observable job state without applying its pending project mutation.
     fn job_get(&mut self, request: &Value) -> Result<Value, CommandError> {
         let id = text(request, "job")?;
         let info = self
@@ -1299,6 +1447,7 @@ impl MediaHost {
         Ok(info.to_json())
     }
 
+    /// Waits without committing in headless sessions; interactive callers get a snapshot at once.
     fn job_wait(&mut self, request: &Value) -> Result<Value, CommandError> {
         let id = text(request, "job")?;
         if self.interactive {
@@ -1315,6 +1464,7 @@ impl MediaHost {
         Ok(info.to_json())
     }
 
+    /// Applies a successful pending result once; terminal errors retain their cleanup details.
     fn job_commit(
         &mut self,
         state: &mut EditorState,
@@ -1373,6 +1523,17 @@ fn package_inputs(request: &Value) -> Result<PackageInputs, CommandError> {
     Ok(PackageInputs {
         scene_bases: scene_bases(request)?,
     })
+}
+
+/// What a scene's resources ask of the project, from the core's own manifest: `files` is how many
+/// distinct files a load opens (`null` when the manifest is blocked and has no plan) and
+/// `needs_folder` is whether loading needs a folder at all (BL101: `false` for data-only scenes).
+fn scene_resources_needed(scene: &DirectedScene) -> Value {
+    let files = ResourceManifest::from_scene(scene)
+        .transport_plan()
+        .ok()
+        .map(|plan| plan.items.len());
+    json!({ "files": files, "needs_folder": crate::scene_resources::needs_files(scene) })
 }
 
 /// Files a scene's supported resources need: the job's progress total.
@@ -1472,6 +1633,7 @@ fn probe_capabilities(
     }
 }
 
+/// Consumes the pending result once so two application paths cannot own the same files.
 fn take(slot: &Slot) -> Option<Pending> {
     slot.lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -1628,17 +1790,37 @@ fn apply(
             ))
         }
         Pending::SceneImport(prepared) => Ok(Some(scene_import::apply(state, *prepared)?)),
+        Pending::SceneAttach {
+            stamp,
+            id,
+            name,
+            scene,
+            resources,
+        } => {
+            if !stamp.is_current(&state.project) {
+                return Err(CommandError::new(
+                    "stale_result",
+                    "The open project changed (an edit, or another project or a reopened document took its place) while the scene bundle was being read; nothing was attached (attach it again)",
+                ));
+            }
+            let mut report = state.execute(Command::Scene(SceneCommand::Attach {
+                id,
+                name,
+                source: SceneSource::Admitted(scene),
+            }))?;
+            report["resources"] = resources;
+            Ok(Some(report))
+        }
         Pending::SceneAdopt(pending) => {
             pending.apply(state)?;
             Ok(None)
         }
         Pending::Open {
-            project,
-            revision,
+            stamp,
             candidate,
             summary,
         } => {
-            if state.project.id != project || state.project.revision != revision {
+            if !stamp.is_current(&state.project) {
                 return Err(CommandError::new(
                     "stale_result",
                     "The open project changed while the package was restoring; the files were \
@@ -1677,6 +1859,7 @@ impl Extension for MediaHost {
             || op.starts_with("export.")
             || op.starts_with("scene.resources.")
             || op == "scene.export"
+            || op == "scene.attach.start"
             || op == "scene.export.preflight"
             || matches!(
                 op,

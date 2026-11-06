@@ -4,6 +4,7 @@
 
 import * as THREE from 'three';
 
+import { ASSET_IDENTITY_CAPABILITIES, assetEcho } from './asset-identity.js';
 import { AssetStore } from './assets.js';
 import { Compositor, describePixels } from './compositor.js';
 import { DIRECTED_SCENE_CAPABILITIES } from './directed-scene.js';
@@ -46,6 +47,7 @@ const FEATURES = [
   'frame.quality',
   'scene.result_cache',
   'directed_scene',
+  'asset.identity',
 ];
 
 export const createRuntime = ({ post, assetUrl, canvas }) => {
@@ -133,17 +135,29 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
         native_video: NATIVE_VIDEO,
         // Additive: what a `directed_scene` layer needs and how its resources are identified.
         directed_scene: DIRECTED_SCENE_CAPABILITIES,
+        // Additive: `asset.state` repeats the `request`/`scene` identity of the `asset.load` it answers.
+        asset_identity: ASSET_IDENTITY_CAPABILITIES,
       },
     });
   };
 
   const loadAsset = async (descriptor) => {
-    send({ type: 'asset.state', id: descriptor.id, state: 'loading' });
+    // Every state of this load carries the identity of the request that caused it, including the
+    // `cancelled` of a load a release overtook: the host tells it from the answer of the load that
+    // took its slot (BL102). A descriptor without identity gets the messages it always got.
+    let echo;
+    try {
+      echo = assetEcho(descriptor);
+    } catch (error) {
+      send({ type: 'asset.state', id: descriptor.id, state: 'failed', error: toErrorJson(error, 'invalid_request') });
+      return;
+    }
+    send({ type: 'asset.state', id: descriptor.id, state: 'loading', ...echo });
     try {
       const meta = await assets.load(descriptor);
-      send({ type: 'asset.state', id: descriptor.id, state: 'ready', meta });
+      send({ type: 'asset.state', id: descriptor.id, state: 'ready', meta, ...echo });
     } catch (error) {
-      send({ type: 'asset.state', id: descriptor.id, state: 'failed', error: toErrorJson(error, 'asset_unreadable') });
+      send({ type: 'asset.state', id: descriptor.id, state: 'failed', error: toErrorJson(error, 'asset_unreadable'), ...echo });
     }
   };
 

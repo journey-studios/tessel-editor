@@ -164,6 +164,9 @@ fn the_runtime_advertises_every_capability_the_core_can_ask_for_and_nothing_it_c
     assert_eq!(advertised, all);
     // The feature list, not `layers` (the kinds of the ordinary plan), is what gates the messages.
     assert!(capabilities.supports("directed_scene"));
+    // BL102b: the runtime of this repository lists `asset.identity` and the renderer negotiated it.
+    assert!(capabilities.supports("asset.identity"));
+    assert!(renderer.asset_identity());
     renderer.shutdown();
 }
 
@@ -218,6 +221,9 @@ fn frames_match_the_independent_pixel_oracle_in_a_seek_order_that_jumps_and_repe
         expected["seekOrder"].as_array().unwrap().len(),
         hashes.len()
     );
+    // Every load was stamped and answered by its own echo: a refused answer would have timed out.
+    assert!(renderer.asset_identity());
+    assert_eq!(renderer.refused_asset_states(), 0);
     renderer.release_all().unwrap();
     renderer.shutdown();
     let _ = std::fs::remove_dir_all(out);

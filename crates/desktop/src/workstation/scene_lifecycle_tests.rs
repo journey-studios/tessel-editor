@@ -17,6 +17,7 @@ use tessel_editor_core::scene_plan::Capability;
 use tessel_editor_core::{EditorState, state::ProjectSettings};
 use tessel_editor_media::host::MediaHost;
 use tessel_editor_media::scene_resources::SceneResourceSession;
+use tessel_editor_render::scene::SceneSlots;
 
 use super::super::ViewportHost;
 
@@ -73,6 +74,21 @@ fn asset_failed(slot: &str, code: &str, details: Value) -> Value {
 
 /// A host whose page completed the handshake, and the verified resources of the corpus scene.
 fn directed_host(tag: &str) -> (ViewportHost, EditorState, SceneResourceSession) {
+    host_with(tag, ready_message())
+}
+
+/// The handshake of a runtime that lists `asset.identity` and echoes the request of every load.
+fn identified_ready_message() -> Value {
+    let mut ready = ready_message();
+    ready["capabilities"]["features"] = json!(["directed_scene", "asset.identity"]);
+    ready
+}
+
+fn identified_host(tag: &str) -> (ViewportHost, EditorState, SceneResourceSession) {
+    host_with(tag, identified_ready_message())
+}
+
+fn host_with(tag: &str, ready: Value) -> (ViewportHost, EditorState, SceneResourceSession) {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../scripts/directed-scene-proof/corpus")
         .canonicalize()
@@ -86,15 +102,19 @@ fn directed_host(tag: &str) -> (ViewportHost, EditorState, SceneResourceSession)
         execute_ext(&mut state, None, Some(&mut media), &request).unwrap();
     }
     let mut host = ViewportHost::new(Ok(page(tag)));
-    start_page(&mut host, &state);
+    start_page_with(&mut host, &state, ready);
     (host, state, media.scene_resources())
 }
 
 /// `page.ready` then the handshake: what a freshly loaded page does.
 fn start_page(host: &mut ViewportHost, state: &EditorState) {
+    start_page_with(host, state, ready_message());
+}
+
+fn start_page_with(host: &mut ViewportHost, state: &EditorState, ready: Value) {
     from_page(host, state, json!({"type":"page.ready"}));
     sent(host);
-    from_page(host, state, ready_message());
+    from_page(host, state, ready);
     sent(host);
     assert!(host.is_ready());
 }
@@ -566,4 +586,159 @@ fn a_timeout_releases_the_pictures_the_page_still_holds_but_a_reload_only_forget
     assert!(host.begin_reload());
     assert!(sent(&mut host).is_empty());
     assert_eq!(host.report()["directed"]["slots"]["occupied"], 0);
+}
+
+/// The `asset.state` a runtime that echoes identity sends for `load`: the request and scene it names.
+fn echoed(load: &Value, state: &str) -> Value {
+    let mut message = json!({"type":"asset.state","id":load["asset"]["id"],"state":state,
+        "request":load["asset"]["request"],"scene":load["asset"]["scene"]});
+    if state == "ready" {
+        message["meta"] = json!({});
+    }
+    message
+}
+
+fn loads_of(messages: &[Value]) -> Vec<Value> {
+    messages
+        .iter()
+        .filter(|m| m["type"] == "asset.load")
+        .cloned()
+        .collect()
+}
+
+/// BL102: the page answered the load of a slot late, after the slot was released and given to a
+/// newer load. The old `ready` carries the old request, so it cannot unblock the new frame.
+#[test]
+fn an_old_ready_of_a_reused_slot_never_confirms_the_load_that_replaced_it() {
+    let (mut host, mut state, resources) = identified_host("identity-reused-slot");
+    // Exactly the three slots the scene needs: a replaced project has to reuse the same names.
+    host.directed.slots = SceneSlots::new(3, 512 * 1024 * 1024);
+    assert_eq!(host.report()["directed"]["asset_identity"], true);
+    host.render_scene(&mut state, &resources, &frame_request(20), false)
+        .unwrap();
+    let old_loads = loads_of(&sent(&mut host));
+    assert!(!old_loads.is_empty());
+    assert!(
+        old_loads.iter().all(|m| m["asset"]["request"].is_u64()),
+        "every load is stamped once the feature is negotiated"
+    );
+
+    // The project is replaced before the page answered: the same slot names are loaded again.
+    host.reset_project();
+    sent(&mut host);
+    let waiter = host
+        .render_scene(&mut state, &resources, &frame_request(20), true)
+        .unwrap()
+        .unwrap();
+    let new_loads = loads_of(&sent(&mut host));
+    assert_eq!(new_loads.len(), old_loads.len());
+    for old in &old_loads {
+        let new = new_loads
+            .iter()
+            .find(|new| new["asset"]["id"] == old["asset"]["id"])
+            .expect("the slot is loaded again");
+        assert_ne!(
+            old["asset"]["request"], new["asset"]["request"],
+            "a request number is never reused, not even for the same picture in the same slot"
+        );
+    }
+
+    // The old answers arrive now, in the page's own order.
+    for old in &old_loads {
+        from_page(&mut host, &state, echoed(old, "ready"));
+    }
+    assert!(
+        sent(&mut host).iter().all(|m| m["type"] != "frame.render"),
+        "the frame is not sent against pictures nobody confirmed"
+    );
+    assert_eq!(
+        host.report()["directed"]["refused"]["stale_asset_states"],
+        old_loads.len() as u64
+    );
+    assert!(waiter.try_recv().is_err());
+
+    for new in &new_loads {
+        from_page(&mut host, &state, echoed(new, "ready"));
+    }
+    let render = frame_render(&sent(&mut host));
+    complete(&mut host, &state, &render);
+    assert!(waiter.try_recv().unwrap().is_ok());
+}
+
+#[test]
+fn without_the_feature_the_load_is_unchanged_and_the_slot_name_is_all_there_is() {
+    let (mut host, mut state, resources) = directed_host("identity-legacy-runtime");
+    assert_eq!(host.report()["directed"]["asset_identity"], false);
+    host.render_scene(&mut state, &resources, &frame_request(20), false)
+        .unwrap();
+    let loads = loads_of(&sent(&mut host));
+    assert!(!loads.is_empty());
+    assert!(
+        loads.iter().all(|m| m["asset"].get("request").is_none()),
+        "an older runtime is never sent the field"
+    );
+    assert_eq!(host.report()["directed"]["slots"]["identified_loads"], 0);
+    let render = frame_render(&confirm_loads(&mut host, &state, &loads));
+    assert_eq!(render["type"], "frame.render");
+}
+
+#[test]
+fn once_negotiated_an_answer_without_the_echo_confirms_nothing() {
+    let (mut host, mut state, resources) = identified_host("identity-no-echo");
+    host.render_scene(&mut state, &resources, &frame_request(20), false)
+        .unwrap();
+    let loads = loads_of(&sent(&mut host));
+    for load in &loads {
+        from_page(
+            &mut host,
+            &state,
+            asset_ready(load["asset"]["id"].as_str().unwrap()),
+        );
+    }
+    assert!(sent(&mut host).iter().all(|m| m["type"] != "frame.render"));
+    assert_eq!(
+        host.report()["directed"]["refused"]["stale_asset_states"],
+        loads.len() as u64
+    );
+    // The echoed answers still work: nothing was forgotten by refusing the bare ones.
+    for load in &loads {
+        from_page(&mut host, &state, echoed(load, "ready"));
+    }
+    assert_eq!(frame_render(&sent(&mut host))["type"], "frame.render");
+}
+
+#[test]
+fn the_echo_tells_the_failure_of_a_replaced_load_from_the_failure_of_the_current_one() {
+    let (mut host, mut state, resources) = identified_host("identity-failures");
+    host.render_scene(&mut state, &resources, &frame_request(20), false)
+        .unwrap();
+    let old = loads_of(&sent(&mut host));
+    host.reset_project();
+    sent(&mut host);
+    let waiter = host
+        .render_scene(&mut state, &resources, &frame_request(20), true)
+        .unwrap()
+        .unwrap();
+    let new = loads_of(&sent(&mut host));
+
+    // The old load ends with a real-looking error, but it is not the load that holds the slot.
+    let mut stale = echoed(&old[0], "failed");
+    stale["error"] = json!({"code":"asset_unreadable","message":"old"});
+    from_page(&mut host, &state, stale);
+    assert!(
+        waiter.try_recv().is_err(),
+        "the answer of a replaced load does not fail the frame that replaced it"
+    );
+    assert_eq!(
+        host.report()["directed"]["refused"]["stale_asset_states"],
+        1
+    );
+
+    let mut current = echoed(&new[0], "failed");
+    current["error"] = json!({"code":"asset_unreadable","message":"the real one"});
+    from_page(&mut host, &state, current);
+    assert_eq!(
+        waiter.try_recv().unwrap().unwrap_err().code,
+        "asset_unreadable"
+    );
 }

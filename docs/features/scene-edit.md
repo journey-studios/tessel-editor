@@ -255,3 +255,8 @@ Três regressões adicionais falharam antes da integração do gate e passaram d
 lote sobre entrada temporalmente quebrada, entrada com junção estrutural inválida e edição
 que deixa o FOV composto fora do limite. `dry_run` e `apply` rejeitam igualmente e preservam
 a entrada. A fixture da A não foi modificada; a adaptação de corte é local ao helper de testes.
+
+Integração com main6f7a944 (S2/S5): conflito restrito ao backlog, resolvido preservando
+as linhas da base e a entrega S6. O auto-merge de ops/attach foi validado com o core completo
+(595 passaram,3 ignorados) e desktop completo (203 passaram), além de fmt, clippy workspace
+all-targets com -Dwarnings e build desktop. Nenhuma nova prova nativa de edição foi declarada.
