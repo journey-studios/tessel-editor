@@ -1,4 +1,4 @@
-//! F044 (S7, BL025 subset): a Gaussian splat in a directed scene, drawn by the real runtime
+//! F048 (S7, BL025 subset): a Gaussian splat in a directed scene, drawn by the real runtime
 //! (Node worker + headless Chrome, SwiftShader + Spark) with no window.
 //!
 //! The oracle is independent of the renderer: the position a splat must take in the picture is
@@ -358,6 +358,21 @@ impl Session {
             .unwrap_or_else(|error| panic!("{request}: {error:?}"))
     }
 
+    fn err(&mut self, request: Value) -> CommandError {
+        self.run(request.clone())
+            .expect_err(&format!("{request} should have been refused"))
+    }
+
+    /// Names of the staging folders the export may have left next to the destination.
+    fn leftovers(&self) -> Vec<String> {
+        fs::read_dir(&self.work)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with(".tessel-"))
+            .collect()
+    }
+
     fn hash(&mut self, scene: &str, frame: i64) -> String {
         self.ok(json!({"op":"scene.render","scene":scene,"frame":frame,
             "width":WIDTH,"height":HEIGHT}))["frame"]["hash"]
@@ -436,4 +451,186 @@ fn an_export_carries_the_same_splat_frames_as_scene_render_and_verifies_as_an_mp
             "edit frame {edit_frame}"
         );
     }
+}
+
+// ------------------------------------------------- approved resources only (S3 seam) --
+
+/// A session with the splat scene attached and its resources approved from a private copy the
+/// test may rewrite. `None` (with the reason on stderr) when the runtime or FFmpeg is absent.
+fn splat_export_session(name: &str) -> Option<(Session, PathBuf)> {
+    let config = match RuntimeConfig::discover() {
+        Ok(config) => config,
+        Err(setup) => {
+            skip(&setup.message());
+            return None;
+        }
+    };
+    if let Err(error) = Tools::discover() {
+        skip(&error.message);
+        return None;
+    }
+    let work = scratch(name);
+    let root = work.join("origin");
+    let bundle = write_bundle(&root, true);
+    let mut session = Session {
+        state: EditorState::empty(&ProjectSettings::default()).unwrap(),
+        host: SceneHost::new(MediaHost::new(), config),
+        work,
+    };
+    session.ok(json!({"op":"scene.attach","id":"cloud","path":bundle}));
+    session.ok(json!({"op":"scene.resources.resolve","scene":"cloud","base":root}));
+    Some((session, root))
+}
+
+fn export_request(session: &Session, name: &str, frames: u32, wait: bool) -> Value {
+    json!({"op":"scene.export","scene":"cloud",
+        "preset":{"id":"s7","name":"S7","width":WIDTH,"height":HEIGHT,"fps":24},
+        "from":0,"frames":frames,"destination":session.work.join(name),"wait":wait})
+}
+
+#[test]
+fn the_export_copies_the_approved_splat_and_nothing_else_and_leaves_no_staging() {
+    let Some((mut session, root)) = splat_export_session("approved-only") else {
+        return;
+    };
+    // A file the bundle never declared sits next to the approved ones: it must not travel.
+    fs::write(root.join("splats/unapproved.spz"), splat_spz(500)).unwrap();
+    fs::write(root.join("private-note.txt"), b"not part of the scene").unwrap();
+    let request = export_request(&session, "approved.mp4", 3, true);
+    let result = session.ok(request);
+    assert_eq!(result["verification"]["ok"], true, "{result}");
+    let used: Vec<&str> = result["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|resource| resource["asset"].as_str().unwrap())
+        .collect();
+    assert_eq!(used, ["cloud", "hero", "mid"], "{}", result["resources"]);
+    assert_eq!(
+        result["snapshot"]["files"], 3,
+        "the private copy holds exactly the approved resources: {}",
+        result["snapshot"]
+    );
+    assert_eq!(result["snapshot"]["verified"], true);
+    assert!(session.leftovers().is_empty(), "{:?}", session.leftovers());
+}
+
+#[test]
+fn a_splat_swapped_or_removed_after_approval_is_refused_and_leaves_nothing() {
+    let Some((mut session, root)) = splat_export_session("swapped") else {
+        return;
+    };
+    let file = root.join("splats/cloud.spz");
+    let approved = fs::read(&file).unwrap();
+    // Same length, other bytes: presence and size cannot tell, the approved hash does.
+    fs::write(&file, vec![0x5A; approved.len()]).unwrap();
+    let request = export_request(&session, "swapped.mp4", 2, true);
+    let error = session.err(request);
+    assert_eq!(error.code, "resource_changed", "{}", error.message);
+    assert_eq!(error.details.as_ref().unwrap()["resource"], "asset:cloud");
+    assert!(!session.work.join("swapped.mp4").exists());
+    assert!(session.leftovers().is_empty(), "{:?}", session.leftovers());
+
+    // A valid SPZ of another size is just as unapproved as garbage.
+    fs::write(&file, splat_spz(900)).unwrap();
+    let request = export_request(&session, "other.mp4", 2, true);
+    let error = session.err(request);
+    assert!(
+        error.code == "resource_changed" || error.code == "preflight_failed",
+        "{}: {}",
+        error.code,
+        error.message
+    );
+
+    // And a vanished one blocks the export in the preflight, before any job.
+    fs::remove_file(&file).unwrap();
+    let request = export_request(&session, "vanished.mp4", 2, true);
+    let error = session.err(request);
+    assert_eq!(error.code, "preflight_failed", "{}", error.message);
+    assert!(!session.work.join("vanished.mp4").exists());
+    assert!(session.leftovers().is_empty(), "{:?}", session.leftovers());
+
+    // Restoring the approved bytes makes the very same request succeed: nothing was poisoned.
+    fs::write(&file, &approved).unwrap();
+    let request = export_request(&session, "restored.mp4", 2, true);
+    let result = session.ok(request);
+    assert_eq!(result["verification"]["ok"], true, "{result}");
+}
+
+#[test]
+fn an_original_splat_rewritten_while_the_job_renders_cannot_reach_a_frame() {
+    let Some((mut session, root)) = splat_export_session("immutable") else {
+        return;
+    };
+    let request = export_request(&session, "reference.mp4", 12, true);
+    let reference = session.ok(request);
+    assert_eq!(reference["verification"]["ok"], true, "{reference}");
+
+    let file = root.join("splats/cloud.spz");
+    let approved = fs::read(&file).unwrap();
+    let request = export_request(&session, "during.mp4", 12, false);
+    let started = session.ok(request);
+    let job = started["job"].as_str().unwrap().to_string();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(180);
+    loop {
+        let info = session.ok(json!({"op":"job.get","job":job}));
+        if info["stage"] == "render" && info["done"].as_u64().unwrap_or(0) >= 1 {
+            assert!(info["state"] == "running", "still rendering: {info}");
+            // The original is overwritten behind the job's back, same size.
+            fs::write(&file, vec![0x5A; approved.len()]).unwrap();
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "never started rendering: {info}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let info = session.ok(json!({"op":"job.wait","job":job,"timeout_ms":180000}));
+    assert_eq!(info["state"], "succeeded", "{info}");
+    let result = &info["result"];
+    assert_eq!(
+        result["frame_hashes"], reference["frame_hashes"],
+        "every frame came from the approved bytes, not from the rewritten original"
+    );
+    assert!(session.leftovers().is_empty(), "{:?}", session.leftovers());
+}
+
+#[test]
+fn cancelling_a_splat_export_removes_its_own_private_copy_only() {
+    let Some((mut session, root)) = splat_export_session("cancel") else {
+        return;
+    };
+    // Another job's staging folder (someone else's) must survive this job's cleanup.
+    let foreign = session.work.join(".tessel-foreign-staging");
+    fs::create_dir_all(&foreign).unwrap();
+    let request = export_request(&session, "cancelled.mp4", 96, false);
+    let started = session.ok(request);
+    let job = started["job"].as_str().unwrap().to_string();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(180);
+    loop {
+        let info = session.ok(json!({"op":"job.get","job":job}));
+        if info["stage"] == "render" && info["done"].as_u64().unwrap_or(0) >= 2 {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "never started rendering: {info}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    session.ok(json!({"op":"job.cancel","job":job}));
+    let info = session.ok(json!({"op":"job.wait","job":job,"timeout_ms":180000}));
+    assert_eq!(info["state"], "cancelled", "{info}");
+    assert!(!session.work.join("cancelled.mp4").exists());
+    assert_eq!(
+        session.leftovers(),
+        [".tessel-foreign-staging"],
+        "only the foreign folder remains"
+    );
+    // The approved original was never touched.
+    assert_eq!(
+        fs::read(root.join("splats/cloud.spz")).unwrap(),
+        splat_spz(1500)
+    );
 }
