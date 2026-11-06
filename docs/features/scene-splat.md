@@ -126,7 +126,9 @@ da conversão), por isso os testes antigos passavam. O teste de Chrome do caminh
   ser abortado. A primeira malha é a do próprio recurso; as demais são `SplatMesh` sobre os **mesmos** `packedSplats`
   (`shareSplatMesh`): N nós de um arquivo decodificam 1 vez, não N−1 por quadro (antes: 40 nós de 1 M de splats = 39
   decodes por quadro, ~624 MB fora do orçamento). Ao devolver, a malha emprestada solta os dados sem descartá-los. Perda de
-  contexto reconstrói das bytes guardadas.
+  contexto reconstrói das bytes guardadas. BL131: a malha devolvida fica com o asset (até 16 sobressalentes por arquivo,
+  `LIMITS.splatMeshes`) e é emprestada de novo no quadro seguinte, sem recriar gerador/programa Spark; o excedente de 16 usos
+  simultâneos de um arquivo continua sendo criado e liberado por quadro. Não medido em cena dirigida com muitos nós.
 - Orçamento de desenho por quadro (BL125): ordenar e desenhar custa por **nó**, não por arquivo. O quadro soma, sobre
   os nós `splat`, os splats do arquivo de cada um e é recusado com `resource_budget` acima de `8 Mi` splats (`LIMITS.frameSplats`
   no runtime, `DEFAULT_FRAME_SPLATS` no host, mesmo número; `details`: `frame_splats`, `limit`/`max_frame_splats`), antes

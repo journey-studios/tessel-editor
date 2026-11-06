@@ -19,7 +19,8 @@ export class SceneRig {
   /**
    * Whether the scene file has splat objects. A rig without them is a pure function of the scene
    * file, so the compositor may keep it between frames; one with splats holds leases on meshes
-   * that belong to the asset store and is built (and released) per frame.
+   * that belong to the asset store and is built (and released) per frame: the store hands the same
+   * meshes out again, so building the rig decodes nothing and creates no Spark generator (BL131).
    */
   static hasSplatObjects(sceneFile) {
     return sceneFile.objects.some((object) => object.type === 'splat');
