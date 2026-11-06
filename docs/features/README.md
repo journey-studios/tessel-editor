@@ -50,7 +50,7 @@ Lib V significa testes do modelo demo, não um motor real de edição.
 | F031 | [Cena dirigida: importar, consultar e regravar render-bundle 1.0](directed-scene.md) | P | P | P | Parcial¹⁰ | `directed_scene::DirectedScene`; inteiros extremos recusados sem panic; adapters pendentes |
 | F032 | [Oráculo de equivalência da migração (BB10/E0)](migration-oracle.md) | N/A⁹ | N/A⁹ | N/A⁹ | Parcial⁹ | `oracle.mjs verify` (55) + `extended.mjs verify` (47); 49 testes Node e 15 testes Rust estendidos passaram |
 | F033 | [Cena dirigida: tempo, câmera e gate temporal (BB03)](scene-temporal.md) | P | P | P | Parcial¹¹ | `Bundle::evaluate_camera`, `evaluate_frame`, `DirectedScene::temporal_issues`; orçamento agregado de FOV; adapters pendentes |
-| F034 | [Catálogo de propriedades e edição atômica de cenas (BB04)](scene-edit.md) | P | P | P | Parcial¹² | `scene_edit::{catalog, apply, dry_run}`; importação e gates compartilhados |
+| F034 | [Catálogo de propriedades e edição atômica de cenas (BB04)](scene-edit.md) | P | P | P | Parcial¹² | `scene_edit::{catalog, apply, dry_run}`; S6 (a validar): componentes `X/Y/Z`, `renderOrder`, pose inicial com conversão do 1º movimento, `modified` por dado (pai e eixo), oráculo fixo de 31 casos com divergências medidas; prova de superfície com guarda de disco testada também em Python -O; revisão R2: preservação por receita corrigida e asserção de avanço do playback reforçada; gates executados em `cf21f97` (fmt, check, clippy, workspace 1215 passaram/0 falharam/9 ignorados com Chrome real) e prova de superfície `scripts/scene-edit-proof.py` (janela própria 44 checks + headless 32 checks passaram na rodada limpa de `d0d972b`, registrada em F034) |
 | F035 | [Animação de nós e matrizes de mundo (BB03)](scene-animation.md) | P | P | P | Parcial¹³ | `Bundle::{evaluate_frame, node_timeline, evaluate_instance_nodes, performance_plan}` |
 | F036 | [Cenas no projeto, histórico e CLI](scene-project.md) | P | P | V | V | `Command::Scene` / `scene.*`; schema 2 com cenas, undo compartilhado, contagem de bytes em cache, medida por `AdmittedScene::prepare` (BL100a) |
 | F037 | [Plano avaliado da cena dirigida](scene-plan.md) | Parcial | V | V | V | `ScenePlan`, `scene.plan` com gates e candidato de gesto; `PlanTimeline` reutilizável com equivalência testada na lib (R6); adotada no export F042, ganho real ainda não medido; 60 checks headless do plano; renderer F041 |
@@ -121,11 +121,21 @@ unitário adicional cobre abaixo/no/acima dos cinco limiares de junção (não �
 Animação de nós está integrada na F035; UI/CLI permanecem pendentes. Não é `finalizeBundle`
 completo para domínios adiados. [Contrato](scene-temporal.md).
 
-¹² 8 propriedades tipadas de nó/câmera, edição por ID, lote atômico e dry-run, validados
-por 29 testes públicos e 1 doctest via Cargo. `apply` e `dry_run` executam importador e
-gates estruturais/temporais da F033; falhas não alteram a entrada. Ainda sem integração
-com histórico/documento, CLI ou UI; não certifica render/domínios adiados.
-[Contrato e divergências de escrita da câmera](scene-edit.md).
+¹² 21 propriedades tipadas de nó/câmera (as 8 originais, `renderOrder` inteiro e 12 componentes
+`X/Y/Z`), edição por ID, lote atômico, reset/no-op definidos e dry-run. `apply` e `dry_run`
+executam importador e gates estruturais/temporais da F033; falhas não alteram a entrada.
+Escrever `start/position` converte o primeiro movimento em keys como a origem, comparado
+frame a frame com um oráculo fixo de 31 casos (24 originais e 7 acrescentados, gerados pela
+própria `setProperties`). Testes: 69 de lib (29+33+7), 8 de sessão e 22 de
+interação headless, além dos testes do inspector. **A validar** pelo coordenador, sem aprovação formal: os gates
+foram executados pelo agente de testes no head de produção `cf21f97` (fmt, check, clippy `-D warnings`; os cinco
+grupos acima com 29+33+7+8+22 passando; desktop `scene_`/`playback` 93; workspace com `TESSEL_REQUIRE_RUNTIME=1`,
+Chrome real e lock de GPU: 1215 passaram, 0 falharam, 9 ignorados por medição/ZIP64/export; build e árvore do core sem
+gpui/wry). A produção de `0d5304a` e a 33ª regressão passaram, e a regressão reprova quando a correção é desfeita.
+Gestos usam o executável headless compartilhado e a janela real recebe o mesmo cenário em
+`scripts/scene-edit-proof.py` (superfícies reportadas separadamente; socket da janela não é headless; 44 + 32 checks passaram na rodada final limpa). Sem ponteiro
+físico nem pixels. Sem editor geral de keyframes; não certifica render/domínios adiados.
+[Contrato, conversão e oráculo](scene-edit.md).
 
 ¹³ Avaliação de `cycle`/`event`/`static`, hierarquia e matrizes animadas, com 29 testes
 públicos. Comparação com 4 casos válidos, 11 variantes e 20 payloads recusados gerados na
