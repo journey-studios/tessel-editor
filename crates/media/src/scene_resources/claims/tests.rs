@@ -856,6 +856,8 @@ fn grow_past_inline(ledger: &Ledger, holder: HolderId, canonical: &Path) -> usiz
     let mut tracker = ledger.lock_creating();
     let mut count = 0;
     while fs::metadata(state_path(canonical)).map_or(0, |meta| meta.len()) <= ledger::INLINE_LIMIT {
+        // A limit nobody can reach (a mutation of it) must fail the test, not fill the disk.
+        assert!(count < 4096, "the ledger never got past the inline limit");
         tracker
             .create_file(holder, key(&format!("bulk-{count}")), &root(), None)
             .unwrap();
