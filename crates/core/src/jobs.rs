@@ -154,6 +154,8 @@ impl From<JobError> for CommandError {
             "bundle_too_large" => "bundle_too_large",
             "invalid_json" => "invalid_json",
             "invalid_bundle" => "invalid_bundle",
+            "resource_changed" => "resource_changed",
+            "resource_missing" => "resource_missing",
             _ => "job_failed",
         };
         let mut mapped = Self::new(code, error.message);
