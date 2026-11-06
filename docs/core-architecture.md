@@ -40,6 +40,17 @@ O chamador é dono da sessão. Não existe singleton gráfico nem processo deskt
 Para adicionar a lib em outro crate local, use `tessel-editor-core = { path = "../core" }`,
 ajustando o caminho. A API ainda é 0.1 e não tem compromisso de estabilidade pública.
 
+### Identidade da sessão de edição (BL113a)
+
+`ProjectMeta::id` é persistido e `revision` volta a 0 a cada abertura, então `(id, revision)` não
+distingue um projeto do documento reaberto. `ProjectMeta::session` (`ProjectSession`) é identidade
+só de runtime: nasce quando um `EditorState` é *construído* (`demo`, `empty`, carregar ou recuperar
+um documento, restaurar um pacote) e não muda ao salvar, editar, desfazer, refazer, consultar nem
+clonar (snapshots de undo e planos de job continuam na mesma sessão). Não entra no documento,
+não vale em outro processo e `==` a ignora (compare com `is_same`). Um job que aplica depois captura
+`ProjectMeta::stamp()` (ID, sessão, revisão) e aplica só se `ProjectStamp::is_current` ainda vale;
+`project.history`/`history.status` expõem `project.session` para scripts e provas.
+
 ## Usar pela CLI sem UI
 
 ```sh
