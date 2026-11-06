@@ -263,7 +263,15 @@ pub fn prepare_observed(
             on_progress,
             on_published,
             &mut prepared.owned,
-        )?;
+        );
+        let done = match done {
+            Ok(done) => done,
+            Err(error) if error.code == "claims_unavailable" => {
+                let report = prepared.owned.discard();
+                return Err(with_cleanup(error, &report));
+            }
+            Err(error) => return Err(error),
+        };
         if done.not_carried > 0 {
             prepared.warnings.push(format!(
                 "scene `{}` names {} file(s) that no version carries yet (preserved sections, unreferenced assets); the scene arrives with them listed, not copied",

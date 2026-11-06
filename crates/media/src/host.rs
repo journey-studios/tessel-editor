@@ -573,7 +573,11 @@ impl MediaHost {
     fn outcome(info: &JobInfo) -> Result<Value, CommandError> {
         match info.state {
             JobState::Succeeded => Ok(info.result.clone().unwrap_or(Value::Null)),
-            JobState::Cancelled => Err(JobError::cancelled().into()),
+            JobState::Cancelled => Err(info
+                .error
+                .clone()
+                .unwrap_or_else(JobError::cancelled)
+                .into()),
             _ => Err(info.error.clone().map_or_else(
                 || CommandError::new("job_failed", "The job failed"),
                 CommandError::from,

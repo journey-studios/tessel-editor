@@ -396,3 +396,35 @@ fn a_ledger_without_its_lock_refuses_every_operation_and_removes_no_file() {
         "what the ledger lists is left for a person to look at"
     );
 }
+
+#[test]
+fn a_second_scene_merge_failure_reports_files_kept_from_both_scenes() {
+    let world = world("second-absorb");
+    let _bystander = world.bystander();
+    let seen = Cell::new(0);
+    let error = world
+        .prepare(&mut |scene| {
+            if scene == "market" {
+                seen.set(seen.get() + 1);
+                if seen.get() == 2 {
+                    world.block_writes();
+                }
+            }
+        })
+        .unwrap_err();
+    assert_eq!(seen.get(), 2);
+    assert_eq!(error.code, "claims_unavailable");
+    let kept = error.details.as_ref().unwrap()["cleanup"]["kept"]
+        .as_array()
+        .unwrap();
+    for file in world.files() {
+        assert!(file.exists());
+        assert!(
+            kept.iter()
+                .any(|entry| entry.as_str().unwrap().contains(file.to_str().unwrap())),
+            "missing {} from {kept:?}",
+            file.display()
+        );
+    }
+    world.unblock_writes();
+}

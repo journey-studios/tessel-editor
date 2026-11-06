@@ -236,6 +236,7 @@ impl Tracker {
 
     // A stale entry at a path that was just created cannot be a live holder's: whoever listed it
     // removed or lost the file first. The new entry replaces it.
+    /// Replaces a stale publication entry and persists the new holder before success.
     fn insert(
         &mut self,
         holder: HolderId,
@@ -412,6 +413,7 @@ impl Tracker {
 
     // --- persistence ---------------------------------------------------------------------
 
+    /// Validates the persisted version and every entry before allowing any mutation.
     fn load(&mut self) -> Result<(), String> {
         let path = self.inner.dir.join(STATE);
         let bytes = match fs::read(&path) {
@@ -576,6 +578,7 @@ impl Tracker {
         }
     }
 
+    /// Atomically replaces ledger JSON, or removes it only when no entries or owners remain.
     fn write(&self) -> Result<(), String> {
         let state = self.inner.dir.join(STATE);
         if self.entries.is_empty() && self.owners.is_empty() {
@@ -742,6 +745,7 @@ fn look_for_damage(dir: &Path, seen: &mut usize) -> Look {
     }
 }
 
+/// Reports a persistent state file with no coordination lock as damage, never as empty.
 fn damaged(dir: &Path) -> String {
     format!(
         "`{}` exists but its `{LOCK}` is missing: the claims ledger is damaged (the lock was deleted); nothing was changed, restore `{LOCK}` or remove `{DIR}` once no Tessel is running",
@@ -751,6 +755,7 @@ fn damaged(dir: &Path) -> String {
 
 // --- leases ------------------------------------------------------------------------------
 
+/// Locates a random process token lease; PIDs never decide ownership.
 fn live_path(dir: &Path, owner: u128) -> PathBuf {
     dir.join(LIVE).join(owner_text(owner))
 }
@@ -834,6 +839,7 @@ fn object<'a>(value: &'a Value, key: &str) -> Option<&'a Map<String, Value>> {
     value.get(key)?.as_object()
 }
 
+/// Encodes the publication identity, root and complete set of holders.
 fn entry_to_json(entry: &Entry) -> Value {
     let holders: Vec<String> = entry.holders.iter().map(holder_text).collect();
     match &entry.item {
@@ -847,6 +853,7 @@ fn entry_to_json(entry: &Entry) -> Value {
     }
 }
 
+/// Rejects malformed entry identities or holders rather than silently dropping ownership.
 fn entry_from_json(value: &Value) -> Option<Entry> {
     let holders = value
         .get("holders")?

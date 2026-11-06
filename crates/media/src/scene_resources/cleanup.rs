@@ -243,6 +243,7 @@ impl Created {
             .clone()
     }
 
+    /// The workspace ledger chosen on first bind; an unbound record owns no disk claims.
     fn ledger(&self) -> Option<&Ledger> {
         self.ledger.as_ref()
     }
@@ -302,6 +303,7 @@ impl Created {
         Ok(())
     }
 
+    /// Persists a newly created directory before adding it to this record.
     fn dir(&mut self, path: PathBuf, key: PathBuf) -> Result<(), String> {
         let Some(ledger) = self.ledger().cloned() else {
             return Ok(());
@@ -310,6 +312,7 @@ impl Created {
         self.dir_with(&mut tracker, path, key)
     }
 
+    /// Joins an existing directory once; repeated joins avoid taking the ledger lock.
     pub(super) fn join_dir(&mut self, path: PathBuf, key: PathBuf) -> Result<(), JobError> {
         if self.has(&self.dirs, &key) {
             return Ok(());
@@ -328,8 +331,8 @@ impl Created {
     /// **Fails closed, after the copy.** When any of those claims cannot be written to the ledger
     /// the copy is already on disk, so the answer cannot be "refused before copying": the file is
     /// taken back at once (verified to be the one just published) and so are the folders made for
-    /// it that are still empty, and the result says what was and was not. Nothing is left that
-    /// the ledger does not know about, which is what a discard or a recovery needs to find it.
+    /// it that are still empty, and the result says what was and was not. A failed proof or
+    /// removal can leave an unclaimed file in `kept`; recovery cannot find that file by ledger.
     ///
     /// Safe to remove because of what the caller guarantees: it holds the lease of `root`, the
     /// file was published by this operation a moment ago (an adoption never overwrites), and the
@@ -357,6 +360,7 @@ impl Created {
         }
     }
 
+    /// Lists a publication in memory only after its durable claim succeeds.
     fn claim_file(
         &mut self,
         root: &Path,
@@ -455,10 +459,12 @@ impl Created {
         Ok(())
     }
 
+    /// Matches canonical ownership keys, independently of the caller spelling a path.
     fn has(&self, list: &[Owned], key: &Path) -> bool {
         list.iter().any(|owned| owned.key == key)
     }
 
+    /// Retains each root once so removal can acquire all publication leases.
     fn note_root(&mut self, root: &Path) {
         if !self.roots.iter().any(|known| known == root) {
             self.roots.push(root.to_path_buf());
@@ -738,7 +744,22 @@ pub(super) fn with_cleanup(mut error: JobError, report: &CleanupReport) -> JobEr
         Some(details @ Value::Object(_)) => details,
         _ => json!({}),
     };
-    details["cleanup"] = report.to_json();
+    let mut cleanup = report.to_json();
+    if let Some(previous) = details.get("cleanup").filter(|value| value.is_object()) {
+        for key in ["removedFiles", "removedFolders", "busyRoots"] {
+            cleanup[key] =
+                json!(cleanup[key].as_u64().unwrap_or(0) + previous[key].as_u64().unwrap_or(0));
+        }
+        for key in ["kept", "shared"] {
+            if let Some(items) = previous[key].as_array() {
+                cleanup[key]
+                    .as_array_mut()
+                    .expect("cleanup array")
+                    .extend(items.iter().cloned());
+            }
+        }
+    }
+    details["cleanup"] = cleanup;
     if !report.kept.is_empty() {
         error.message = format!(
             "{}; left in place: {}",

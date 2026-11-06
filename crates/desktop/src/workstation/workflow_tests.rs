@@ -266,7 +266,6 @@ fn an_import_is_a_job_the_window_keeps_editing_through_and_applies_on_its_tick(
         );
         assert_eq!(view.jobs_report()["recent"][0]["job"], job.as_str());
     });
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 /// Ticks the window until the job `id` appears among the finished events the status bar reads.
@@ -307,9 +306,8 @@ fn the_claims_operations_are_jobs_with_typed_refusals_and_the_window_reports_the
         "a refusal starts no job"
     );
 
-    let dir = std::env::temp_dir().join(format!("tessel-window-claims-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+    let scratch = ClaimsScratch::new();
+    let dir = &scratch.0;
     op(
         &view,
         cx,
@@ -356,7 +354,6 @@ fn the_claims_operations_are_jobs_with_typed_refusals_and_the_window_reports_the
         b"not a ledger",
         "nothing repaired"
     );
-    std::fs::remove_dir_all(&dir).ok();
 }
 
 /// Ticks the window's playback clock the way its timer does, until `done` or the time runs out.
@@ -433,4 +430,22 @@ fn playback_follows_the_audio_clock_or_says_why_it_cannot(cx: &mut TestAppContex
     assert_eq!(stopped["report"]["state"], "stopped");
     let idle = op(&view, cx, json!({"op":"playback.pause"})).unwrap_err();
     assert_eq!(idle.code, "not_playing");
+}
+
+/// Removes this test's project even when an assertion unwinds.
+struct ClaimsScratch(std::path::PathBuf);
+
+impl ClaimsScratch {
+    fn new() -> Self {
+        let dir = std::env::temp_dir().join(format!("tessel-window-claims-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        Self(dir)
+    }
+}
+
+impl Drop for ClaimsScratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }

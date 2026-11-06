@@ -16,8 +16,8 @@
 //! * a folder is removed only when it is empty and no entry lies below it (`remove_dir`).
 //!
 //! Hashing is real work (it reads every orphan once): callers run it from a job, not from a UI
-//! thread. A ledger that cannot be read or written refuses (`claims_unavailable`) and removes
-//! nothing.
+//! thread. A ledger that cannot be read or written refuses (`claims_unavailable`). If it fails
+//! after removal began, the error carries the partial report; removed files stay removed.
 
 use std::path::{Path, PathBuf};
 
@@ -47,11 +47,11 @@ impl Recovery {
     }
 }
 
-fn unavailable(why: &str) -> JobError {
+fn unavailable(why: &str, recovery: &Recovery) -> JobError {
     JobError::new(
         "claims_unavailable",
-        format!("the claims ledger of this workspace cannot be used; nothing was removed: {why}"),
-    )
+        format!("the claims ledger of this workspace cannot be used; see the partial cleanup report: {why}"),
+    ).with_details(recovery.to_json())
 }
 
 /// Reaps the holders whose lease is gone and removes the files and folders they left claimed,
@@ -82,7 +82,7 @@ pub fn recover_with(
     let roots: Vec<PathBuf> = {
         let tracker = ledger.lock();
         if let Some(why) = tracker.fault() {
-            return Err(unavailable(why));
+            return Err(unavailable(why, &recovery));
         }
         recovery.reaped_holders = tracker.reaped().len();
         let mut roots: Vec<PathBuf> = tracker
@@ -105,7 +105,7 @@ pub fn recover_with(
     let files: Vec<(PathBuf, Option<Stamp>, Option<PathBuf>)> = {
         let tracker = ledger.lock();
         if let Some(why) = tracker.fault() {
-            return Err(unavailable(why));
+            return Err(unavailable(why, &recovery));
         }
         recovery.reaped_holders += tracker.reaped().len();
         recovery.orphans = tracker
@@ -191,7 +191,7 @@ pub fn recover_with(
     // when no claim lies below.
     let mut tracker = ledger.lock();
     if let Some(why) = tracker.fault() {
-        return Err(unavailable(why));
+        return Err(unavailable(why, &recovery));
     }
     let mut dirs: Vec<PathBuf> = tracker
         .entries()
@@ -305,6 +305,60 @@ mod tests {
 
     fn claimed(workspace: &Path) -> usize {
         Ledger::of(workspace).lock().entries().count()
+    }
+
+    #[test]
+    fn a_cancelled_recovery_keeps_its_partial_report_through_job_commit() {
+        use tessel_editor_core::headless::Extension;
+        use tessel_editor_core::jobs::JobKind;
+        let dir = Staging::create(&std::env::temp_dir(), "recover-commit").unwrap();
+        let paths = orphans(dir.path(), &[("a", b"one"), ("b", b"two")]);
+        let workspace = dir.path().to_path_buf();
+        let mut host = crate::host::MediaHost::new();
+        let id = host.registry().spawn(JobKind::Hash, "recover", move |ctx| {
+            recover_with(&workspace, ctx.token(), &mut |done, _| {
+                if done == 1 {
+                    ctx.token().cancel();
+                }
+            })
+            .map(|report| report.to_json())
+        });
+        let info = host
+            .registry()
+            .wait(&id, std::time::Duration::from_secs(5))
+            .unwrap();
+        let expected = info.error.unwrap().details.unwrap();
+        assert_eq!(expected["cleanup"]["removedFiles"], 1);
+        let error = host
+            .execute(
+                &mut tessel_editor_core::EditorState::demo(),
+                None,
+                &json!({"op":"job.commit", "job": id}),
+            )
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(error.code, "cancelled");
+        let details = *error.details.unwrap();
+        assert_eq!(details["cleanup"], expected["cleanup"]);
+        assert_eq!(details["undecidedFiles"], 1);
+        assert!(!paths[0].exists());
+        assert!(paths[1].exists());
+    }
+
+    #[test]
+    fn a_ledger_failure_after_removal_reports_what_was_already_removed() {
+        let dir = Staging::create(&std::env::temp_dir(), "recover-partial-fault").unwrap();
+        let paths = orphans(dir.path(), &[("a", b"one")]);
+        let error = recover_with(dir.path(), &CancelToken::default(), &mut |done, _| {
+            if done == 1 {
+                fs::write(dir.path().join(".tessel-claims/claims.json"), b"invalid").unwrap();
+            }
+        })
+        .unwrap_err();
+        assert_eq!(error.code, "claims_unavailable");
+        assert_eq!(error.details.unwrap()["cleanup"]["removedFiles"], 1);
+        assert!(!paths[0].exists());
+        assert!(!error.message.contains("nothing was removed"));
     }
 
     #[test]

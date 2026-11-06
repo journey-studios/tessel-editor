@@ -10,8 +10,8 @@
 //!
 //! All the work is `directed_resources::materialize_observed`, so adoption inherits staging,
 //! per-file cancellation with rollback of only its own files (BL080) and the exclusive root
-//! lease (BL079). Folders this call creates (`scenes/`, `scenes/<id>/`) are removed again when it
-//! fails, so a refused adoption leaves the workspace as it was.
+//! lease (BL079). Failure attempts rollback of this call's publications and empty folders.
+//! A proof or removal failure can leave files behind; claims failures report those in `kept`.
 //!
 //! BL089: a successful adoption also says what it created ([`Adoption::created`]: the files it
 //! copied and the folders it made, never a reused file or a folder that was already there). A
@@ -69,13 +69,13 @@ impl Adoption {
 
 /// Copies the supported resources of `scene` from `source` into the managed base of `scene_id`.
 ///
-/// Errors leave the workspace as it was: `manifest_blocked`, `resources_invalid`,
+/// Errors refuse the adoption and attempt safe rollback: `manifest_blocked`, `resources_invalid`,
 /// `root_unavailable`, `root_busy`, `scene_id_collision`, `scene_id_not_portable`,
 /// `destination_conflict`, `disk_full`, `cancelled`, `io_error`, `claims_unavailable`.
 ///
 /// `claims_unavailable` has two meanings, told apart by `details.phase`: `before_changes` (the
 /// ledger could not be used, nothing was touched) and `after_changes` (it stopped working once
-/// copying had begun: the file whose claim could not be written was taken back, the rest was
+/// copying had begun: rollback of the unclaimed file was attempted, the rest was
 /// discarded, and `details.takenBack`, `details.kept` and `details.cleanup` say what stays).
 #[allow(clippy::too_many_arguments)]
 pub fn adopt(
@@ -135,9 +135,10 @@ pub fn adopt(
     }
 }
 
-/// An adoption that failed leaves the workspace as it was. A `claims_unavailable` one also says
+/// A failed adoption attempts rollback. A `claims_unavailable` one also says
 /// what discarding the result did, because with a ledger that stopped working that is not always
-/// everything: what cannot be released is kept, claimed, and listed in the error.
+/// everything: what cannot be released is kept and listed. A failed publication rollback may
+/// leave an unclaimed file outside ledger recovery; see `kept`.
 fn settle(error: JobError, owned: Provisional) -> JobError {
     if error.code != "claims_unavailable" {
         drop(owned);
