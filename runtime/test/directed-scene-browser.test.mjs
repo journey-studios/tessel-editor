@@ -461,3 +461,92 @@ test('the resource budget is a limit the runtime enforces, with the pictures it 
     await runtime.close();
   }
 });
+
+test('asset.state repeats the identity of the load it answers, so a reused slot can tell an old answer from the new one (BL102)', async (t) => {
+  if (skipUnavailable(t, assert)) return;
+  const paths = files(t);
+  const runtime = await directedRuntime(paths);
+  try {
+    const ready = await runtime.hello();
+    assert.ok(ready.capabilities.features.includes('asset.identity'));
+    assert.deepEqual(ready.capabilities.asset_identity.echo, ['request', 'scene']);
+
+    const states = (slot) => runtime.messages.filter((m) => m.type === 'asset.state' && m.id === slot);
+    const settled = (slot, request) => (m) =>
+      m.type === 'asset.state' && m.id === slot && m.request === request && m.state !== 'loading';
+    const identity = (name) => ({
+      asset_id: name,
+      revision_id: `${name}-r1`,
+      content_hash: `hash-${name}`,
+      generation: GENERATION,
+    });
+
+    // Every state of one load (loading and ready) repeats the request and the scene identity.
+    await runtime.send({ type: 'asset.load', asset: { ...sceneAsset('slot', paths.red, 'red'), request: 11 } });
+    const first = await runtime.waitFor(settled('slot', 11), 'ready of request 11');
+    assert.equal(first.state, 'ready');
+    assert.deepEqual(first.scene, identity('red'));
+    assert.deepEqual(
+      states('slot').map((m) => [m.state, m.request]),
+      [['loading', 11]],
+      'the loading state of the same request was echoed too (ready was consumed)',
+    );
+    runtime.messages.length = 0;
+
+    // The slot is given to another picture while the first load is still reading: the page ends
+    // the first one as cancelled with ITS request, and the second one is ready with its own.
+    await runtime.send({ type: 'asset.load', asset: { ...sceneAsset('slot', paths.red, 'red'), request: 21 } });
+    await runtime.send({ type: 'asset.load', asset: { ...sceneAsset('slot', paths.green, 'green'), request: 22 } });
+    const replacing = await runtime.waitFor(settled('slot', 22), 'ready of request 22');
+    assert.equal(replacing.state, 'ready');
+    assert.deepEqual(replacing.scene, identity('green'));
+    const ended = await runtime.waitFor(settled('slot', 21), 'end of request 21');
+    assert.deepEqual(
+      [ended.state, ended.error.code, ended.scene.asset_id],
+      ['failed', 'cancelled', 'red'],
+      'the replaced load ends as cancelled, naming its own request and picture, never as a ready',
+    );
+    assert.equal(states('slot').filter((m) => m.request === 21 && m.state === 'ready').length, 0);
+
+    // The same picture loaded into the same slot again is a different request.
+    runtime.messages.length = 0;
+    await runtime.send({ type: 'asset.load', asset: { ...sceneAsset('slot', paths.green, 'green'), request: 23 } });
+    assert.equal((await runtime.waitFor(settled('slot', 23), 'ready of request 23')).request, 23);
+
+    // A failure carries the identity as well.
+    runtime.messages.length = 0;
+    await runtime.send({ type: 'asset.load', asset: { ...sceneAsset('gone', `${paths.red}.missing`, 'red'), request: 31 } });
+    const failed = await runtime.waitFor((m) => m.type === 'asset.state' && m.id === 'gone' && m.state === 'failed', 'failed load');
+    assert.equal(failed.request, 31);
+    assert.deepEqual(failed.scene, identity('red'));
+
+    // A request that is not a non-negative integer is refused as a load, with no echo to trust.
+    runtime.messages.length = 0;
+    await runtime.send({ type: 'asset.load', asset: { ...sceneAsset('bad', paths.red, 'red'), request: -1 } });
+    const invalid = await runtime.waitFor((m) => m.type === 'asset.state' && m.id === 'bad', 'refused request');
+    assert.deepEqual([invalid.state, invalid.error.code, invalid.request], ['failed', 'invalid_request', undefined]);
+    assert.equal(runtime.messages.some((m) => m.type === 'asset.state' && m.id === 'bad' && m.state === 'ready'), false);
+  } finally {
+    await runtime.close();
+  }
+});
+
+test('a load without identity gets the asset.state messages it always got (bridge v1 stays compatible)', async (t) => {
+  if (skipUnavailable(t, assert)) return;
+  const paths = files(t);
+  const runtime = await directedRuntime(paths);
+  try {
+    runtime.messages.length = 0;
+    const loaded = await runtime.load({ id: 'plain', kind: 'still', source: { type: 'file', path: paths.red }, meta: {} });
+    assert.deepEqual(Object.keys(loaded).sort(), ['id', 'meta', 'state', 'type', 'v']);
+    const loading = runtime.messages.find((m) => m.type === 'asset.state' && m.id === 'plain' && m.state === 'loading');
+    assert.deepEqual(Object.keys(loading).sort(), ['id', 'state', 'type', 'v']);
+
+    // A scene load of a host that never learned `request` still works, and is not echoed a request.
+    const scene = await runtime.load(sceneAsset('slot', paths.green, 'green'));
+    assert.equal(scene.state, 'ready');
+    assert.equal(scene.request, undefined);
+  } finally {
+    await runtime.close();
+  }
+});

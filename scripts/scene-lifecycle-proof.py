@@ -422,6 +422,12 @@ def s0_baseline(lab, work, env):
     if not check("the playhead position converges on the monitor", bool(state), lab.viewport().get("directed")):
         return None
     env["hash_rev1_20"] = prove_current(lab, 20)
+    # BL102: the real WebView runtime lists `asset.identity`, so the host stamps every load and
+    # trusts only the answer that repeats its request.
+    d = directed(lab.viewport())
+    slots = d.get("slots") or {}
+    check("the host negotiated `asset.identity` with the real runtime", d.get("asset_identity") is True, d)
+    check("every load the book tracks was stamped with a request", slots.get("tracked_loads", 0) >= 1 and slots.get("identified_loads") == slots.get("tracked_loads"), slots)
     foot = budget(lab, "baseline")
     note("footprint", foot)
     note("renderer", (state.get("capabilities") or {}).get("renderer"))
@@ -616,6 +622,7 @@ def s6_project_switch(lab, work, env):
     gen_second = (d.get("slots") or {}).get("generation")
     check("the new project's resources have a newer generation than the old one", gen_first is not None and gen_second is not None and gen_second > gen_first, (gen_first, gen_second))
     check("the replaced loads of the old project were refused, not applied", refused - refused_before >= 1, (refused_before, refused))
+    check("the refusal is by identity: the new project's loads were stamped, so a late answer of the old request counts for nothing", d.get("asset_identity") is True and (d.get("slots") or {}).get("identified_loads", 0) >= 1, d.get("slots"))
     check("the new project's frame drew with the old project's resources released (runtime holds only the new ones)", cache_of(state).get("scene_resources") == SCENE_ASSETS, cache_of(state))
     ok, body = lab.op({"op": "monitor.show_scene", "scene": "proof"})
     check("the monitor is shown for the new project", ok, body)

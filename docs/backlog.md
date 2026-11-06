@@ -406,7 +406,8 @@ Falha observada em teste de slider/layout (arquivo R9 ainda WIP) foi encaminhada
 
 | ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
 |---|---|---|---|---|---|---|
-| BL102 | F041/identidade IPC | Ecoar identidade de carga em asset.state e recusar ready atrasado de slot reutilizado | Pendente | BL092/runtime/host | Coordenador | Contrato aditivo compatível; teste injeta ready antigo após substituir carga no mesmo slot e prova que não desbloqueia o frame novo; ver next-r8-report.md |
+| BL102 | F041/identidade IPC | Ecoar identidade de carga em asset.state e recusar ready atrasado de slot reutilizado | A validar (S4) | BL092/runtime/host | S4 / coordenador | Contrato aditivo compatível; teste injeta ready antigo após substituir carga no mesmo slot e prova que não desbloqueia o frame novo; ver next-r8-report.md |
+| BL102b | F041/identidade headless | Carimbar `asset.request` e conferir o eco também no `SceneRenderer` (CLI headless) | A validar (S4) | BL102 | S4 / coordenador | `BackendEvent::Asset.echo` aditivo; `SceneRenderer` negocia `asset.identity`, carimba (contador nunca reiniciado), recusa eco ausente/parcial/de outro pedido e conta em `refused_asset_states()`; runtime antigo inalterado. 6 testes roteirizados em `scene_seam.rs` (ready velho no mesmo slot com `SceneSlots::new(3, ..)`; mutação verificada: 3 falham) + 2 de decode no core + `scene_frames.rs` 8/8 no runtime real (Chrome, `asset_identity()` negociado, 0 recusas). Ver [scene-renderer.md](features/scene-renderer.md#headless-scenerenderer-bl102b) |
 | BL103 | F041/orçamento nativo | Exercitar mais de 32 recursos distintos com LRU e perda de contexto | Pendente | BL092 | Coordenador | Prova WKWebView com recursos acima do teto, contadores host/runtime coerentes e pixels atuais após evicção e restauração; corpus atual tem só 3 recursos |
 
 | ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
@@ -422,7 +423,7 @@ Falha observada em teste de slider/layout (arquivo R9 ainda WIP) foi encaminhada
 
 | ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
 |---|---|---|---|---|---|---|
-| BL109 | F042/recursos | Proteger export contra mudança de bytes após aprovação do mapa | Pendente | BL008/F040 | Coordenador | Hoje só presença/tamanho são conferidos no export; testar troca de mesmo tamanho após resolve e durante job e definir cópia imutável ou verificação apropriada sem bloquear UI; mapa congelado não garante bytes congelados |
+| BL109 | F042/recursos | Proteger export contra mudança de bytes após aprovação do mapa | A validar | BL008/F040 | S3 ([wave-s1-s10-plan](migration/wave-s1-s10-plan.md)); [PR #5](https://github.com/journey-studios/tessel-editor/pull/5) | `scene_resources::ResourceSnapshot` + estágio `snapshot` em `scene_encoder::run`: o job copia (e faz SHA-256 na mesma leitura) os recursos exigidos para o próprio staging, o renderer lê a cópia 0444. Troca de mesmo tamanho após `resolve` → `resource_changed` antes do 1º frame; original reescrito durante o job não chega ao renderer; cleanup só do próprio staging em sucesso/falha/cancelamento. Evidência: media `scene_export` 11/11 (4 novos) + 5 unitários (inclui regressão de origem duplicada após revisão), render `scene_export` 11/11 com Chrome real (`TESSEL_REQUIRE_RUNTIME=1`, sob lock GPU). Limites: custo de leitura+escrita antes do 1º frame e espaço de staging dobrado para recursos grandes (S7); `verify_intact` sem novo hash; UI/socket provados por instância nativa própria (20/20 checks semânticos), job.get/get jobs expõem código e details; Jobs view mostra error.message, sem captura de pixels ([detalhes](features/scene-export.md)) |
 | BL110 | F042/manutenção | Compartilhar helpers de encode e resolução aprovados entre exports | Pendente | BL008 | Coordenador | Deduplicar encode_args/png_size/kill/read_tail/encode_error e avaliar approved_map com dyn ResourceResolver, preservando testes de ambos exports; evitar ampliar refactor sem necessidade |
 
 ### Aceitação independente R10 recebida
@@ -458,8 +459,8 @@ Plano e contratos: [wave-s1-s10-plan.md](migration/wave-s1-s10-plan.md). R1–R1
 |---|---|---|---|
 | S1 | BL094/BL112 | Preparada para delegação | descarte assíncrono, sem hashing na UI |
 | S2 | BL111 | Preparada para delegação | claims persistentes e dois processos reais |
-| S3 | BL109 | Preparada para delegação | bytes imutáveis em export e cancelamento |
-| S4 | BL102 | Preparada para delegação | ack antigo de slot reutilizado recusado |
+| S3 | BL109 | Implementada, a validar (PR própria) | bytes imutáveis em export e cancelamento |
+| S4 | BL102 | Implementada, PR #7 aberta (a validar) | ack antigo de slot reutilizado recusado com `asset.identity` na janela e no `SceneRenderer` headless (BL102b); a validar até revisão e gate integrado |
 | S5 | BL100/BL101 | Preparada para delegação | attach off-thread e recursos vazios |
 | S6 | BL004/BL005 | Preparada para delegação | catálogo e pose inicial equivalentes à origem |
 | S7 | BL025 (subconjunto) | PR aberta, a validar | Spark dirigido em preview/pacote/export (F044); luz/clima/rig recusados; BL109 e aceite S10 BLOCKED |

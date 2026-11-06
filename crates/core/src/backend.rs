@@ -334,6 +334,11 @@ pub enum BackendEvent {
     Asset {
         id: Id,
         status: AssetStatus,
+        /// Identity the runtime repeated from the `asset.load` it answers (`asset.identity`,
+        /// BL102b): an object with `request` and/or `scene`, exactly as received and nothing else.
+        /// `None` from a runtime that does not echo it. Judge it with
+        /// [`LoadIdentity::answered_by`](crate::bridge::LoadIdentity::answered_by).
+        echo: Option<Value>,
     },
     /// The runtime answered an `asset.proxy` message.
     Proxy {
