@@ -128,8 +128,8 @@ Escrever `start/position` converte o primeiro movimento em keys como a origem, c
 frame a frame com um oráculo fixo de 31 casos (24 originais e 7 acrescentados, gerados pela
 própria `setProperties`). Fontes atuais: 69 testes de lib (29+33+7), 8 de sessão e 22 de
 interação headless, além dos testes do inspector. **A validar** pelo coordenador: execução
-atribuída ao Cursor em `5831e07` (29+32+7, sessão 8 e interação 22); a regressão acrescentada
-em `0d5304a` ainda não rodou. Gestos usam o executor headless compartilhado; isso não prova
+atribuída ao Cursor em `5831e07` (29+32+7, sessão 8 e interação 22); a alteração de produção e a regressão acrescentadas
+em `0d5304a` ainda não foram executadas. Gestos usam o executor headless compartilhado; isso não prova
 gestos pelo executável `tessel-headless`. Sem captura nativa nem ponteiro físico. Sem editor geral
 de keyframes; não certifica render/domínios adiados.
 [Contrato, conversão e oráculo](scene-edit.md).
