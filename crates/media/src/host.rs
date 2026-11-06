@@ -2281,6 +2281,60 @@ impl Drop for MediaHost {
     }
 }
 
+impl Extension for MediaHost {
+    fn execute(
+        &mut self,
+        state: &mut EditorState,
+        _renderer: Option<&mut dyn Renderer>,
+        request: &Value,
+    ) -> Option<Result<Value, CommandError>> {
+        let op = request.get("op")?.as_str()?;
+        // Whatever swapped the project (open, restore, a window), the next request notices.
+        self.scene_resources.observe_project(&state.project.id);
+        // A detached scene's resources are not the renderer's to keep; the core still runs it.
+        if op == "scene.detach"
+            && let Some(scene) = request.get("scene").and_then(Value::as_str)
+        {
+            self.scene_resources.release(scene);
+        }
+        // Rendering needs decoded media: prepare it first instead of failing with a hint to run
+        // another command. The core still answers the request itself.
+        if matches!(op, "render.frame" | "render.audio") {
+            return self.ensure_prepared(state, op).err().map(Err);
+        }
+        let ours = op.starts_with("media.")
+            || op.starts_with("job.")
+            || op.starts_with("export.")
+            || op.starts_with("scene.resources.")
+            || op == "scene.export"
+            || op == "scene.attach.start"
+            || op == "scene.export.preflight"
+            || matches!(
+                op,
+                "project.package_preflight"
+                    | "project.package"
+                    | "project.verify"
+                    | "project.restore"
+                    | "project.import"
+                    | "project.import_scenes"
+            );
+        ours.then(|| self.handle(state, op, request))
+    }
+}
+
+/// The job's own report plus what applying it did. A swapped-in project is also reported as
+/// `opened`, the name `project.restore` has always used for it.
+fn merge_applied(mut report: Value, id: &str, applied: Option<Value>) -> Value {
+    report["job"] = json!(id);
+    if let Some(applied) = applied {
+        if applied["action"] == "project.open" {
+            report["opened"] = applied.clone();
+        }
+        report["applied"] = applied;
+    }
+    report
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::mpsc;
@@ -2379,58 +2433,4 @@ mod tests {
             "exactly one discard job took the result"
         );
     }
-}
-
-impl Extension for MediaHost {
-    fn execute(
-        &mut self,
-        state: &mut EditorState,
-        _renderer: Option<&mut dyn Renderer>,
-        request: &Value,
-    ) -> Option<Result<Value, CommandError>> {
-        let op = request.get("op")?.as_str()?;
-        // Whatever swapped the project (open, restore, a window), the next request notices.
-        self.scene_resources.observe_project(&state.project.id);
-        // A detached scene's resources are not the renderer's to keep; the core still runs it.
-        if op == "scene.detach"
-            && let Some(scene) = request.get("scene").and_then(Value::as_str)
-        {
-            self.scene_resources.release(scene);
-        }
-        // Rendering needs decoded media: prepare it first instead of failing with a hint to run
-        // another command. The core still answers the request itself.
-        if matches!(op, "render.frame" | "render.audio") {
-            return self.ensure_prepared(state, op).err().map(Err);
-        }
-        let ours = op.starts_with("media.")
-            || op.starts_with("job.")
-            || op.starts_with("export.")
-            || op.starts_with("scene.resources.")
-            || op == "scene.export"
-            || op == "scene.attach.start"
-            || op == "scene.export.preflight"
-            || matches!(
-                op,
-                "project.package_preflight"
-                    | "project.package"
-                    | "project.verify"
-                    | "project.restore"
-                    | "project.import"
-                    | "project.import_scenes"
-            );
-        ours.then(|| self.handle(state, op, request))
-    }
-}
-
-/// The job's own report plus what applying it did. A swapped-in project is also reported as
-/// `opened`, the name `project.restore` has always used for it.
-fn merge_applied(mut report: Value, id: &str, applied: Option<Value>) -> Value {
-    report["job"] = json!(id);
-    if let Some(applied) = applied {
-        if applied["action"] == "project.open" {
-            report["opened"] = applied.clone();
-        }
-        report["applied"] = applied;
-    }
-    report
 }
