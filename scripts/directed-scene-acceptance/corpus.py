@@ -29,7 +29,7 @@ sys.path.insert(0, str(HERE))
 import oracle  # noqa: E402
 
 CORPUS_DIR = HERE / "corpus"
-CORPUS_VERSION = 1
+CORPUS_VERSION = 2  # 1 -> 2: amendment A1 (audio window semantics); the version-1 corpus is kept in history/A1-audio-window/before
 TOLERANCES_PATH = HERE / "tolerances.json"
 
 # Palette: solid colours, far from each other and from the background (max channel distance >= 120).
@@ -42,21 +42,36 @@ CAMERA_SIZES = [(640, 360), (360, 640)]
 CAMERA_FRAMES = [0, 8, 15, 16, 24, 31, 32, 40, 47]
 SPLAT_FRAMES = [0, 12, 23, 24, 36, 47]
 AUDIO_RATE_OUT, AUDIO_RATE_MIX, AUDIO_AMPLITUDE = 48000, 44100, 0.5
+MIX_CHANNELS = 1  # the mix WAV is mono; the origin's graph writes stereo, so the expected gain is oracle.channel_gain_db(1, 2)
 
-# Mix time (seconds): tone, silence, tone, tone, silence, tone. The 880 -> 1320 join has no silence on purpose.
-MIX_SEGMENTS = [(0, 2, 440, 0.5), (Fraction(5, 2), 4, 880, 0.5), (4, Fraction(11, 2), 1320, 0.25), (6, 8, 440, 0.5)]
-MIX_SECONDS = 8
+# File time (seconds from the first sample of the WHOLE mix WAV; the origin's `editSecondsToSourceTime` reads the file at
+# `editStartSeconds + edit time`): tone, silence, tone, tone, silence, tone. The 880 -> 1320 join has no silence on purpose.
+# The WAV must cover [0, editEndSecondsExclusive) of every bundle that declares it (origin `node/render.ts`, AUDIO_SHORT):
+# the longest window is audio24's [1, 13).
+MIX_SEGMENTS = [(0, 3, 440, 0.5), (Fraction(7, 2), 6, 880, 0.5), (6, Fraction(15, 2), 1320, 0.25), (Fraction(33, 4), 13, 440, 0.5)]
+MIX_SECONDS = 13
+
+# The pre-amendment mix (8 s, tones laid out for the retired assumption A1) is kept byte for byte, but only as the
+# negative control "source shorter than the declared window": it is the right fixture for the origin's AUDIO_SHORT rule.
+SHORT_MIX_SEGMENTS = [(0, 2, 440, 0.5), (Fraction(5, 2), 4, 880, 0.5), (4, Fraction(11, 2), 1320, 0.25), (6, 8, 440, 0.5)]
+SHORT_MIX_SECONDS = 8
+SHORT_MIX_SHA256 = "cc252a2b0f8ec9695772e0ef51b01b7700d242b72af9a1e77ca10f0eeaffba75"  # the A1-era audio/mix.wav
 
 AUDIO_CASES = {
     "audio24_window_a": {"bundle": "audio24", "from": 18, "frames": 72,
-                         "covers": "export starts before the mix (silence), then 440 Hz, a gap, the first 0.25 s of 880 Hz"},
+                         "covers": "edit window offset 1 s: the export reads the file from 1.75 s; the last 1.25 s of the 440 Hz tone, a gap, the first 1.25 s of 880 Hz"},
     "audio24_window_b": {"bundle": "audio24", "from": 96, "frames": 96,
-                         "covers": "880 -> 1320 Hz join without silence, a gap, 440 Hz; mix offset 1 s respected"},
-    "audio_ntsc_window": {"bundle": "audio_ntsc", "from": 150, "frames": 96,
-                          "covers": "rate 30000/1001: the window starts at 5.005 s, not 5.000 s; the mix ends inside the window"},
+                         "covers": "file 5.0-9.0 s: 880 -> 1320 Hz join without silence, a gap, 440 Hz; mix offset 1 s respected"},
+    "audio_ntsc_window": {"bundle": "audio_ntsc", "from": 180, "frames": 96,
+                          "covers": "rate 30000/1001, offset 0: the window starts at 6.006 s, not 6.000 s; 1320 Hz ends and 440 Hz begins inside the window"},
     "full_av": {"bundle": "full", "from": 0, "frames": 48,
                 "covers": "splat scene and audio mix together (integrated acceptance of the splat and mix fronts): first 2 s of the 440 Hz tone"},
 }
+
+# The source-too-short control (negative, live): the A1-era WAV is 8 s but the declared window is [1, 13); the range below
+# reads file seconds 5-9, one second past the end. The origin refuses a source that does not cover the window; the destination
+# must refuse this range with `audio_source_short` and create nothing.
+SHORT_SOURCE_CASE = {"bundle": "audio_short", "from": 96, "frames": 96, "expectedCode": "audio_source_short"}
 
 
 # ---------------------------------------------------------------------------------- PNG
@@ -184,6 +199,8 @@ def build_files():
     files["splat/sp-purple.spz"] = cloud(((0, 0, 0), PURPLE, 0.20))
     mix = oracle.ToneTable(MIX_SEGMENTS, MIX_SECONDS)
     files["audio/mix.wav"] = oracle.wav_bytes(mix, AUDIO_RATE_MIX)
+    files["audio/mix-short.wav"] = oracle.wav_bytes(oracle.ToneTable(SHORT_MIX_SEGMENTS, SHORT_MIX_SECONDS), AUDIO_RATE_MIX)
+    assert sha256(files["audio/mix-short.wav"]) == SHORT_MIX_SHA256, "the short-source control must stay byte-identical to the pre-amendment mix"
     return files
 
 
@@ -213,6 +230,7 @@ def build_bundles(files):
     for name in SPLAT_SPECS:
         rec[name] = asset_record(name, f"splat/{name}.spz", files[f"splat/{name}.spz"], "spz")
     mix_hash = sha256(files["audio/mix.wav"])  # `sourcePcmHashSha256` is the hash of the whole WAV file
+    short_hash = sha256(files["audio/mix-short.wav"])
 
     def marker_nodes():
         return [
@@ -243,14 +261,20 @@ def build_bundles(files):
     hold = lambda frames: [{"id": "cam-hold", "initialPosition": v3(0, 1, 8), "initialTarget": v3(0, 0.5, 0),
                             "initialFovDeg": 50, "segments": [{"recipe": "hold", "durationFrames": frames, "from": "initial"}]}]
 
-    def audio_block(start):
-        return {"mixRelativePath": "audio/mix.wav", "editStartSeconds": start,
-                "editEndSecondsExclusive": float(start + MIX_SECONDS), "sourcePcmHashSha256": mix_hash}
+    def audio_block(start, frames, fps, path="audio/mix.wav", digest=mix_hash):
+        """The window is `[start, start + edit duration)`: origin `node/render.ts` refuses a window whose length differs from the
+        edit's by more than 1 ms (`AUDIO_VIDEO_DURATION`), and a source shorter than `editEndSecondsExclusive` (`AUDIO_SHORT`)."""
+        edit_seconds = Fraction(frames * fps["denominator"], fps["numerator"])
+        return {"mixRelativePath": path, "editStartSeconds": start,
+                "editEndSecondsExclusive": float(Fraction(start).limit_denominator(1000) + edit_seconds), "sourcePcmHashSha256": digest}
 
     audio24 = assemble("s10-audio24", FPS24, 288, marker_assets, marker_nodes(), hold(288),
-                       [shot("shot-1", 0, 288, "cam-hold")], audio=audio_block(1.0))
+                       [shot("shot-1", 0, 288, "cam-hold")], audio=audio_block(1.0, 288, FPS24))
     audio_ntsc = assemble("s10-audio-ntsc", FPS_NTSC, 300, marker_assets, marker_nodes(), hold(300),
-                          [shot("shot-1", 0, 300, "cam-hold")], audio=audio_block(0.0))
+                          [shot("shot-1", 0, 300, "cam-hold")], audio=audio_block(0.0, 300, FPS_NTSC))
+    # Negative control, own fixture: the same edit as audio24, but its WAV (8 s) does not cover the window [1, 13).
+    audio_short = assemble("s10-audio-short", FPS24, 288, marker_assets, marker_nodes(), hold(288),
+                           [shot("shot-1", 0, 288, "cam-hold")], audio=audio_block(1.0, 288, FPS24, "audio/mix-short.wav", short_hash))
 
     splat_nodes = [node("root", None, "group", v3(0, 0, 0)), plane("bg", rec["bg"], v3(0, 0, -12), (40, 40), 0)]
     for node_id, asset, position, rotation, scale, _ in SPLAT_NODES:
@@ -271,17 +295,17 @@ def build_bundles(files):
     # Splat and audio together: what the integrated acceptance packages and exports.
     full = copy.deepcopy(splat)
     full["bundleId"] = "s10-full"
-    full["audio"] = audio_block(0.0)
+    full["audio"] = audio_block(0.0, 48, FPS24)
     # The same scene and camera moves authored for a 9:16 deliverable: the render profile is the authored frame, and the
     # destination fits the requested output into it (a 16:9 profile asked for 360x640 gets bars, not a taller picture).
     portrait = copy.deepcopy(camera)
     portrait["bundleId"] = "s10-camera-portrait"
     portrait["renderProfile"] = render_profile(360, 640, FPS24)
-    return {"camera": camera, "camera_portrait": portrait, "audio24": audio24, "audio_ntsc": audio_ntsc, "splat": splat, "full": full}
+    return {"camera": camera, "camera_portrait": portrait, "audio24": audio24, "audio_ntsc": audio_ntsc, "audio_short": audio_short, "splat": splat, "full": full}
 
 
 BUNDLE_FILES = {"camera": "bundle.camera.json", "camera_portrait": "bundle.camera-portrait.json", "audio24": "bundle.audio24.json", "audio_ntsc": "bundle.audio-ntsc.json",
-                "splat": "bundle.splat.json", "full": "bundle.full.json"}
+                "audio_short": "bundle.audio-short.json", "splat": "bundle.splat.json", "full": "bundle.full.json"}
 
 
 # ---------------------------------------------------------------------------------- camera expectations
@@ -313,6 +337,12 @@ def camera_expectations(bundle):
     judged = [c for c in cases.values() if c["size"] == [640, 360]]
     assert all(sum(1 for m in c["markers"].values() if m["area"] >= 400) >= 2 for c in judged), \
         "every 640x360 frame needs at least two markers with an area of 400 px or more"
+    portrait = [c for c in cases.values() if c["size"] == [360, 640]]
+    # Portrait is judged by fewer markers (a tall frame sees fewer of them): every frame still needs one judged marker, and the
+    # frames that judge only one (`@8`, `@15`) are covered by the other six portrait frames in all three shots.
+    assert all(sum(1 for m in c["markers"].values() if m["area"] >= 400) >= 1 for c in portrait), \
+        "every 360x640 frame needs at least one marker with an area of 400 px or more"
+    assert sum(1 for c in portrait if sum(1 for m in c["markers"].values() if m["area"] >= 400) >= 2) >= 6
     return cases
 
 
@@ -380,7 +410,7 @@ def audio_expectations(bundles):
                 segments.append({"from": float(a), "to": float(b), "hz": hz, "amplitude": amp})
         out[case_id] = {
             **{k: case[k] for k in ("bundle", "from", "frames", "covers")},
-            "fps": f"{fps.numerator}/{fps.denominator}", "editStartSeconds": float(start),
+            "fps": f"{fps.numerator}/{fps.denominator}", "editStartSeconds": float(start), "sourceChannels": MIX_CHANNELS,
             "windowStartSeconds": str(window_start), "durationSeconds": str(duration), "durationSecondsFloat": float(duration),
             "outputSamples": int(round(duration * AUDIO_RATE_OUT)),
             "transitions": transitions, "segments": segments,
@@ -389,8 +419,23 @@ def audio_expectations(bundles):
     # A case must be able to tell NTSC from 30 fps by more than the onset tolerance.
     tolerance = json.loads(TOLERANCES_PATH.read_text())["audio"]["onsetToleranceSeconds"]
     ntsc = out["audio_ntsc_window"]
-    assert abs(float(Fraction(150 * 1001, 30000)) - 5.0) > 1.5 * tolerance, "NTSC window is not distinguishable from 30 fps"
-    assert ntsc["transitions"], "the NTSC window has no edge to time"
+    ntsc_from = AUDIO_CASES["audio_ntsc_window"]["from"]
+    assert abs(float(Fraction(ntsc_from * 1001, 30000)) - ntsc_from / 30) > 1.5 * tolerance, "NTSC window is not distinguishable from 30 fps"
+    assert len(ntsc["transitions"]) >= 2, "the NTSC window needs edges to time"
+    # Origin rules the corpus must obey for every bundle that declares a mix (the corpus is generated, never hand-edited).
+    mix_seconds = Fraction(MIX_SECONDS)
+    for key, bundle in bundles.items():
+        audio = bundle.get("audio")
+        if not audio or key == "audio_short":
+            continue
+        fps = Fraction(bundle["fps"]["numerator"], bundle["fps"]["denominator"])
+        window = Fraction(audio["editEndSecondsExclusive"]).limit_denominator(100000) - Fraction(audio["editStartSeconds"]).limit_denominator(1000)
+        assert abs(window - oracle.frames_to_seconds(bundle["editDurationFrames"], fps)) <= Fraction(1, 1000), f"{key}: window length differs from the edit duration"
+        assert Fraction(audio["editEndSecondsExclusive"]).limit_denominator(100000) <= mix_seconds, f"{key}: the mix WAV is shorter than editEndSecondsExclusive"
+    short = bundles["audio_short"]["audio"]
+    assert Fraction(SHORT_MIX_SECONDS) < Fraction(short["editEndSecondsExclusive"]).limit_denominator(1000), "the short fixture must be shorter than its window"
+    reads_through = Fraction(SHORT_SOURCE_CASE["from"] + SHORT_SOURCE_CASE["frames"], 24) + Fraction(short["editStartSeconds"]).limit_denominator(1000)
+    assert reads_through > SHORT_MIX_SECONDS, "the short-source range must read past the end of the short file"
     return out
 
 
@@ -411,8 +456,11 @@ def build():
         "camera": {"markers": MARKERS, "cases": camera_expectations(bundles["camera"])},
         "splat": {"renderSize": [SPLAT_W, SPLAT_H], "frames": SPLAT_FRAMES, "cases": splat_expectations(bundles["splat"]),
                   "nodes": [{"node": n, "asset": a, "role": r} for n, a, _, _, _, r in SPLAT_NODES]},
-        "audio": {"mix": {"relativePath": "audio/mix.wav", "sampleRate": AUDIO_RATE_MIX, "seconds": MIX_SECONDS,
+        "audio": {"mix": {"relativePath": "audio/mix.wav", "sampleRate": AUDIO_RATE_MIX, "seconds": MIX_SECONDS, "timeBase": "file", "channels": MIX_CHANNELS,
+                          "windowRule": "file time = editStartSeconds + edit time (origin audio-window.ts); the WAV covers [0, editEndSecondsExclusive)",
                           "segments": [[str(a), str(b), hz, float(amp)] for a, b, hz, amp in oracle.ToneTable(MIX_SEGMENTS, MIX_SECONDS).segments]},
+                  "shortSource": {**SHORT_SOURCE_CASE, "relativePath": "audio/mix-short.wav", "fileSeconds": SHORT_MIX_SECONDS,
+                                  "windowSeconds": [1.0, 13.0], "readsThroughSeconds": float(Fraction(SHORT_SOURCE_CASE["from"] + SHORT_SOURCE_CASE["frames"], 24) + 1)},
                   "outputSampleRate": AUDIO_RATE_OUT, "cases": audio_expectations(bundles)},
     }
     json_files["expected.json"] = json.dumps(expected, indent=1, sort_keys=True).encode() + b"\n"

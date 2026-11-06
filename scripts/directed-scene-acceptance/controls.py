@@ -66,41 +66,50 @@ def camera_picture(bundle, frame, width, height, palette, state=None):
     return paint(width, height, palette["background"], layers)
 
 
-def camera_controls(expected, bundle):
+def camera_controls(expected, bundle, portrait_bundle=None):
+    """Controls on 640x360@8 and, when the portrait bundle is given, on 360x640@24 (three judged markers, the truck of cam-b half done): a verifier that
+    only ever failed on landscape would say nothing about the portrait profile."""
     palette = expected["palette"]
-    width, height, frame = 640, 360, 8
-    case = expected["camera"]["cases"][f"{width}x{height}@{frame}"]
-    exact = verify.exact_masks_for(bundle, case)
     results = []
+    # the camera clip index is the clip the frame's shot plays (shot-a -> cam-a at frame 8; shot-b -> cam-b at frame 24, where the truck is half done): a mutation of
+    # another shot's clip would change nothing in the picture and the control could never fail
+    targets = [(bundle, 640, 360, 8, 0, "")]
+    if portrait_bundle is not None:
+        targets.append((portrait_bundle, 360, 640, 24, 1, " (portrait 360x640@24)"))
+    for bundle, width, height, frame, clip, tag in targets:
+        case = expected["camera"]["cases"][f"{width}x{height}@{frame}"]
+        exact = verify.exact_masks_for(bundle, case)
 
-    def judge(rgb):
-        return lambda p: verify.judge_camera_frame(p, rgb, width, height, exact, case, palette)
+        def judge(rgb, case=case, exact=exact, width=width, height=height):
+            return lambda p: verify.judge_camera_frame(p, rgb, width, height, exact, case, palette)
 
-    results.append(run_control("positive: the model's own rasterised picture", True, judge(camera_picture(bundle, frame, width, height, palette))))
+        def picture(b, f=frame, state=None, width=width, height=height):
+            return camera_picture(b, f, width, height, palette, state)
 
-    def mutated(change):
-        copy_bundle = copy.deepcopy(bundle)
-        change(copy_bundle)
-        return copy_bundle
+        def mutated(change, bundle=bundle):
+            copy_bundle = copy.deepcopy(bundle)
+            change(copy_bundle)
+            return copy_bundle
 
-    def fov_plus_five(b):
-        b["cameraClips"][0]["initialFovDeg"] += 5
+        def fov_plus_five(b, clip=clip):
+            b["cameraClips"][clip]["initialFovDeg"] += 5
 
-    def dolly_reversed(b):
-        b["cameraClips"][0]["segments"][0]["distanceSceneUnits"] *= -1
+        def dolly_reversed(b, clip=clip):
+            b["cameraClips"][clip]["segments"][0]["distanceSceneUnits"] *= -1
 
-    results.append(run_control("negative: fov +5 deg", False, judge(camera_picture(mutated(fov_plus_five), frame, width, height, palette))))
-    results.append(run_control("negative: dolly direction reversed", False, judge(camera_picture(mutated(dolly_reversed), frame, width, height, palette))))
-    results.append(run_control("negative: mirrored x", False, judge(flip_horizontal(camera_picture(bundle, frame, width, height, palette), width, height))))
-    results.append(run_control("negative: camera one frame late", False, judge(camera_picture(bundle, frame - 1, width, height, palette))))
+        results.append(run_control(f"positive: the model's own rasterised picture{tag}", True, judge(picture(bundle))))
+        results.append(run_control(f"negative: fov +5 deg{tag}", False, judge(picture(mutated(fov_plus_five)))))
+        results.append(run_control(f"negative: dolly direction reversed{tag}", False, judge(picture(mutated(dolly_reversed)))))
+        results.append(run_control(f"negative: mirrored x{tag}", False, judge(flip_horizontal(picture(bundle), width, height))))
+        results.append(run_control(f"negative: camera one frame late{tag}", False, judge(picture(bundle, frame - 1))))
 
-    def horizontal_fov(p):
-        state = oracle.frame_state(bundle, frame)
-        state["camera"] = dict(state["camera"])
-        state["camera"]["fovDeg"] = math.degrees(2 * math.atan(math.tan(math.radians(state["camera"]["fovDeg"]) / 2) * height / width))
-        return verify.judge_camera_frame(p, camera_picture(bundle, frame, width, height, palette, state), width, height, exact, case, palette)
+        def horizontal_fov(p, bundle=bundle, frame=frame, case=case, exact=exact, width=width, height=height):
+            state = oracle.frame_state(bundle, frame)
+            state["camera"] = dict(state["camera"])
+            state["camera"]["fovDeg"] = math.degrees(2 * math.atan(math.tan(math.radians(state["camera"]["fovDeg"]) / 2) * height / width))
+            return verify.judge_camera_frame(p, camera_picture(bundle, frame, width, height, palette, state), width, height, exact, case, palette)
 
-    results.append(run_control("negative: vertical fov used as horizontal", False, horizontal_fov))
+        results.append(run_control(f"negative: vertical fov used as horizontal{tag}", False, horizontal_fov))
     return results
 
 
@@ -125,16 +134,11 @@ def splat_picture(expected_case, palette, width, height, mutate=None):
 
 
 def splat_controls(expected, bundle):
+    """Every control runs on EVERY frame the corpus judges (`expected["splat"]["frames"]`): the overlap of the two order splats
+    changes with the camera, and a positive control on one frame cannot show that another frame is not rejected."""
     palette = expected["palette"]
     width, height = expected["splat"]["renderSize"]
-    case = expected["splat"]["cases"]["12"]
     results = []
-
-    def judge(rgb):
-        return lambda p: verify.judge_splat_frame(p, rgb, width, height, case, palette)
-
-    results.append(run_control("positive: the model's own gaussians composited over the flat background", True,
-                               judge(splat_picture(case, palette, width, height))))
 
     def shift(entries):
         for e in entries:
@@ -160,7 +164,6 @@ def splat_controls(expected, bundle):
         return entries
 
     def transform_ignored(entries):
-        nodes = {n["node"]: n for n in expected["splat"]["nodes"]}
         out = []
         for e in entries:
             e = dict(e)
@@ -171,12 +174,18 @@ def splat_controls(expected, bundle):
             out.append(e)
         return out
 
-    results.append(run_control("negative: centroid shifted 4 px", False, judge(splat_picture(case, palette, width, height, shift))))
-    results.append(run_control("negative: colour channels swapped", False, judge(splat_picture(case, palette, width, height, swap_channels))))
-    results.append(run_control("negative: front and back order swapped", False, judge(splat_picture(case, palette, width, height, swap_order))))
-    results.append(run_control("negative: size x1.5", False, judge(splat_picture(case, palette, width, height, bigger))))
-    results.append(run_control("negative: splat missing", False, judge(splat_picture(case, palette, width, height, missing))))
-    results.append(run_control("negative: node transform ignored", False, judge(splat_picture(case, palette, width, height, transform_ignored))))
+    for frame in expected["splat"]["frames"]:
+        case = expected["splat"]["cases"][str(frame)]
+        tag = f" @f{frame}"
+
+        def judge(rgb, case=case):
+            return lambda p: verify.judge_splat_frame(p, rgb, width, height, case, palette)
+
+        results.append(run_control(f"positive: the model's own gaussians composited over the flat background{tag}", True,
+                                   judge(splat_picture(case, palette, width, height))))
+        for name, change in (("centroid shifted 4 px", shift), ("colour channels swapped", swap_channels), ("front and back order swapped", swap_order),
+                             ("size x1.5", bigger), ("splat missing", missing), ("node transform ignored", transform_ignored)):
+            results.append(run_control(f"negative: {name}{tag}", False, judge(splat_picture(case, palette, width, height, change))))
     return results
 
 
@@ -197,65 +206,67 @@ def window(expected, bundles, case_id, **override):
     return values
 
 
+def correct_export(expected, samples, channels=2):
+    """What a correct export writes for `samples` (source-level mono): the origin's channel law applied, on every output channel."""
+    law = 10 ** (oracle.channel_gain_db(expected["audio"]["mix"]["channels"], channels) / 20)
+    scaled = [x * law for x in samples]
+    return [list(scaled) for _ in range(channels)]
+
+
 def audio_controls(expected, bundles, work):
     results = []
     work = pathlib.Path(work)
-    for case_id in ("audio24_window_a", "audio24_window_b", "audio_ntsc_window"):
+
+    def judge_file(case_id, name, channels):
         case = expected["audio"]["cases"][case_id]
         bundle = bundles[case["bundle"]]
+        path = work / f"{case_id}-{name}.mp4"
+        verify.write_av_file(path, channels, case["frames"], case["fps"])
+        return lambda p: verify.judge_audio(p, path, case, bundle, label="", video_seconds=case["durationSecondsFloat"])
 
-        def judge(samples_by_channel, case=case, bundle=bundle, name=None):
-            path = work / f"{case_id}-{name or 'file'}.mp4"
-            verify.write_av_file(path, samples_by_channel, case["frames"], case["fps"])
-            return lambda p: verify.judge_audio(p, path, case, bundle, label="", video_seconds=case["durationSecondsFloat"])
-
-        results.append(run_control(f"positive: analytic window of {case_id}, AAC", True, judge([window(expected, bundles, case_id)], name="exact")))
-    for case_id, bundle_key in (("audio24_window_a", "audio24"),):
-        case = expected["audio"]["cases"][case_id]
-        bundle = bundles[bundle_key]
+    for case_id in ("audio24_window_a", "audio24_window_b", "audio_ntsc_window"):
         exact = window(expected, bundles, case_id)
+        results.append(run_control(f"positive: analytic window of {case_id}, stereo with the origin's mono->stereo law, AAC", True,
+                                   judge_file(case_id, "exact", correct_export(expected, exact))))
+    case_id, case, bundle = "audio24_window_a", expected["audio"]["cases"]["audio24_window_a"], bundles["audio24"]
+    exact = window(expected, bundles, case_id)
+    n = len(exact)
 
-        def judge(samples_by_channel, name, case=case, bundle=bundle, case_id=case_id):
-            path = work / f"{case_id}-{name}.mp4"
-            verify.write_av_file(path, samples_by_channel, case["frames"], case["fps"])
-            return lambda p: verify.judge_audio(p, path, case, bundle, label="", video_seconds=case["durationSecondsFloat"])
+    def stereo(samples, extra=1.0):
+        return [[extra * x for x in channel] for channel in correct_export(expected, samples)]
 
-        n = len(exact)
-        shift = lambda k: ([0.0] * k + exact)[:n]  # noqa: E731
-        results.append(run_control("positive: stereo with the same signal on both channels", True, judge([exact, exact], "stereo")))
-        results.append(run_control("negative: shifted 5 ms", False, judge([shift(240)], "shift5ms")))
-        results.append(run_control("negative: shifted one frame", False, judge([shift(2000)], "shift1frame")))
-        mix_44k = []  # the 44.1 kHz samples read as if they were 48 kHz: pitch x1.088, duration x0.919
-        table = table_of(expected)
-        start = Fraction(bundle["audio"]["editStartSeconds"]).limit_denominator(1000)
-        origin = float(oracle.frames_to_seconds(case["from"], Fraction(24)) - start)
-        mix_44k = [table.value(origin + k / 44100) for k in range(int(case["durationSecondsFloat"] * 44100))]
-        results.append(run_control("negative: rate bug (44.1 kHz read as 48 kHz)", False, judge([mix_44k], "ratebug")))
-        results.append(run_control("negative: silent stream", False, judge([[0.0] * n], "silent")))
-        results.append(run_control("negative: gain -6 dB", False, judge([[0.5 * x for x in exact]], "gain")))
-        results.append(run_control("negative: mix offset ignored", False,
-                                   judge([window(expected, bundles, case_id, edit_start=Fraction(0))], "offset")))
-        results.append(run_control("negative: export range ignored", False, judge([window(expected, bundles, case_id, first=0)], "range")))
-        swapped = oracle.ToneTable([(a, b, {440: 880, 880: 440}.get(hz, hz), amp) for a, b, hz, amp in table.segments], table.duration)
-        results.append(run_control("negative: tone swapped", False, judge([window(expected, bundles, case_id, table=swapped)], "swapped")))
-        results.append(run_control("negative: truncated audio", False, judge([exact[: int(n * 0.6)]], "truncated")))
+    def shift(k):
+        return ([0.0] * k + exact)[:n]
 
-        def no_audio(p):
-            path = work / f"{case_id}-noaudio.mp4"
-            verify.write_video_only(path, case["frames"], case["fps"])
-            return verify.judge_audio(p, path, case, bundle, label="", video_seconds=case["durationSecondsFloat"])
+    results.append(run_control("positive: mono output, no channel conversion (0 dB)", True, judge_file(case_id, "mono", [exact])))
+    results.append(run_control("negative: mono source written at 0 dB (channel law ignored)", False, judge_file(case_id, "unlawful", [exact, exact])))
+    results.append(run_control("negative: shifted 5 ms", False, judge_file(case_id, "shift5ms", stereo(shift(240)))))
+    results.append(run_control("negative: shifted one frame", False, judge_file(case_id, "shift1frame", stereo(shift(2000)))))
+    table = table_of(expected)
+    start = Fraction(bundle["audio"]["editStartSeconds"]).limit_denominator(1000)
+    origin = float(oracle.source_time_of(oracle.frames_to_seconds(case["from"], Fraction(24)), start))
+    mix_44k = [table.value(origin + k / 44100) for k in range(int(case["durationSecondsFloat"] * 44100))]  # 44.1 kHz read as 48 kHz
+    results.append(run_control("negative: rate bug (44.1 kHz read as 48 kHz)", False, judge_file(case_id, "ratebug", stereo(mix_44k))))
+    results.append(run_control("negative: silent stream", False, judge_file(case_id, "silent", [[0.0] * n, [0.0] * n])))
+    results.append(run_control("negative: gain -6 dB", False, judge_file(case_id, "gain", stereo(exact, 0.5))))
+    results.append(run_control("negative: mix offset ignored", False,
+                               judge_file(case_id, "offset", stereo(window(expected, bundles, case_id, edit_start=Fraction(0))))))
+    results.append(run_control("negative: retired A1 reading (mix[0] plays at editStartSeconds)", False,
+                               judge_file(case_id, "retiredA1", stereo(window(expected, bundles, case_id, edit_start=-start)))))
+    results.append(run_control("negative: export range ignored", False, judge_file(case_id, "range", stereo(window(expected, bundles, case_id, first=0)))))
+    swapped = oracle.ToneTable([(a, b, {440: 880, 880: 440}.get(hz, hz), amp) for a, b, hz, amp in table.segments], table.duration)
+    results.append(run_control("negative: tone swapped", False, judge_file(case_id, "swapped", stereo(window(expected, bundles, case_id, table=swapped)))))
+    results.append(run_control("negative: truncated audio", False, judge_file(case_id, "truncated", stereo(exact[: int(n * 0.6)]))))
 
-        results.append(run_control("negative: no audio stream", False, no_audio))
-    case = expected["audio"]["cases"]["audio_ntsc_window"]
-    bundle = bundles["audio_ntsc"]
-    wrong = window(expected, bundles, "audio_ntsc_window", fps=Fraction(30))
-
-    def ntsc_as_30(p):
-        path = work / "ntsc-as-30.mp4"
-        verify.write_av_file(path, [wrong], case["frames"], case["fps"])
+    def no_audio(p):
+        path = work / f"{case_id}-noaudio.mp4"
+        verify.write_video_only(path, case["frames"], case["fps"])
         return verify.judge_audio(p, path, case, bundle, label="", video_seconds=case["durationSecondsFloat"])
 
-    results.append(run_control("negative: NTSC treated as 30 fps", False, ntsc_as_30))
+    results.append(run_control("negative: no audio stream", False, no_audio))
+    ntsc = expected["audio"]["cases"]["audio_ntsc_window"]
+    wrong = window(expected, bundles, "audio_ntsc_window", fps=Fraction(30))
+    results.append(run_control("negative: NTSC treated as 30 fps", False, judge_file("audio_ntsc_window", "ntsc-as-30", stereo(wrong))))
     return results
 
 
@@ -268,7 +279,9 @@ def package_controls(expected, corpus_dir, work):
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_STORED) as handle:
         for relative in assets:
             handle.writestr(f"project/{relative}", (corpus_dir / relative).read_bytes())
-    results = [run_control("positive: a package with every asset", True, lambda p: verify.judge_package(p, archive, assets))]
+    results = [run_control("positive: a bundle that declares the corpus hash of every asset", True,
+                           lambda p: verify.judge_declared_hashes(p, json.loads((corpus_dir / "bundle.camera.json").read_text()), assets)),
+               run_control("positive: a package with every asset", True, lambda p: verify.judge_package(p, archive, assets))]
     victim = "assets/mk-green.png"
 
     flipped = work / "flipped.zip"
@@ -281,11 +294,8 @@ def package_controls(expected, corpus_dir, work):
 
     def wrong_declared_hash(p):
         bundle = json.loads((corpus_dir / "bundle.camera.json").read_text())
-        record = bundle["assets"][1]
-        record["contentHash"] = "0" * 64
-        declared = {a["relativePath"]: a["contentHash"] for a in bundle["assets"]}
-        mismatched = [path for path, digest in declared.items() if assets[path]["sha256"] != digest]
-        p.check("the bundle declares the corpus hash of every asset", not mismatched, mismatched)
+        bundle["assets"][1]["contentHash"] = "0" * 64
+        return verify.judge_declared_hashes(p, bundle, assets)
 
     results.append(run_control("negative: wrong hash declared in the bundle", False, wrong_declared_hash))
     directory = work / "dir-package"

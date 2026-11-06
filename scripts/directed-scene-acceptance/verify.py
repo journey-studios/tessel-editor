@@ -83,8 +83,9 @@ def marker_masks(rgb, width, height, palette, threshold):
 
 def judge_camera_frame(p, rgb, width, height, exact_masks, case, palette, video=False, label=""):
     """Compares the detected marker masks with the model's exact ray-cast masks of one frame (`exact_masks` from
-    `oracle.marker_mask`) and with the model's centroids. Markers with fewer than 300 model pixels are partly out of
-    the picture and are recorded as not judged: no frozen tolerance covers them."""
+    `oracle.marker_mask`) and with the model's centroids. Markers with fewer model pixels than `camera.minJudgedAreaPx` are
+    partly out of the picture and are recorded as not judged for position; a marker the model puts entirely outside the
+    picture (area 0) must leave at most `camera.absentMarkerMaxPixels` pixels of its colour."""
     tol = TOLERANCES["camera"]
     centroid_tol = tol["videoMaskCentroidPx" if video else "maskCentroidPx"]
     iou_min = tol["videoMaskIouMin" if video else "maskIouMin"]
@@ -92,7 +93,13 @@ def judge_camera_frame(p, rgb, width, height, exact_masks, case, palette, video=
     masks = marker_masks(rgb, width, height, palette, tol["markerMask"]["channelDistanceFromBackgroundMin"])
     metrics = {}
     for name, expected in case["markers"].items():
-        if expected["area"] < 300:
+        if expected["area"] == 0:
+            stray = len(masks[name])
+            p.check(f"{label}{name}: absent from the picture, as the model puts it outside the frame (<= {tol['absentMarkerMaxPixels']} px of its colour, {stray})",
+                    stray <= tol["absentMarkerMaxPixels"], stray)
+            metrics[name] = {"expectedArea": 0, "judged": False, "strayPixels": stray}
+            continue
+        if expected["area"] < tol["minJudgedAreaPx"]:
             metrics[name] = {"expectedArea": expected["area"], "judged": False}
             continue
         found = oracle.mask_stats(masks[name])
@@ -166,8 +173,9 @@ def judge_splat_frame(p, rgb, width, height, case, palette, video=False, label="
     coverage = tol["coverageChannelDistanceFromBackgroundMin"]
     metrics = {}
     for px, py in case["backgroundPoints"]:
-        p.check(f"{label}background at ({px},{py}) is the flat background within {tol['backgroundDelta'] + (6 if video else 0)}",
-                distance(pixel(rgb, width, px, py), background) <= tol["backgroundDelta"] + (6 if video else 0),
+        allowed_background = tol["backgroundDelta"] + (tol["videoBackgroundExtraDelta"] if video else 0)
+        p.check(f"{label}background at ({px},{py}) is the flat background within {allowed_background}",
+                distance(pixel(rgb, width, px, py), background) <= allowed_background,
                 pixel(rgb, width, px, py))
     by_key = {(s["node"], s["index"]): s for s in case["splats"]}
     for entry in case["splats"]:
@@ -192,12 +200,21 @@ def judge_splat_frame(p, rgb, width, height, case, palette, video=False, label="
         metrics[key] = {"offsetPx": round(offset, 3), "r50": round(found["r50"], 3), "r50Expected": entry["r50Px"]}
     front, back = by_key.get(("s-order", 0)), by_key.get(("s-order", 1))
     if front and back and (not only or "s-order" in only):
-        for who, at in (("front centre", front), ("back centre", back)):
-            got = pixel(rgb, width, int(round(at["x"])), int(round(at["y"])))
-            p.check(f"{label}s-order {who}: the front splat's colour wins within {tol['overlapFrontColorDelta']}",
-                    distance(got, front["color"]) <= tol["overlapFrontColorDelta"], f"{got} vs front {front['color']}")
-            p.check(f"{label}s-order {who}: far (>= {tol['overlapBackColorMinDistance']}) from the back splat's colour",
-                    distance(got, back["color"]) >= tol["overlapBackColorMinDistance"], f"{got} vs back {back['color']}")
+        at_front = (int(round(front["x"])), int(round(front["y"])))
+        at_back = (int(round(back["x"])), int(round(back["y"])))
+        got_front = pixel(rgb, width, *at_front)
+        p.check(f"{label}s-order front centre: the front splat's colour within {tol['overlapFrontColorDelta']}",
+                distance(got_front, front["color"]) <= tol["overlapFrontColorDelta"], f"{got_front} vs front {front['color']}")
+        p.check(f"{label}s-order front centre: far (>= {tol['overlapBackColorMinDistance']}) from the back splat's colour",
+                distance(got_front, back["color"]) >= tol["overlapBackColorMinDistance"], f"{got_front} vs back {back['color']}")
+        # The back splat's centre lies inside the front splat's gaussian, so the front is only partly opaque there: the picture
+        # is the model's own back-to-front `over` composition of the two gaussians (amendment A2), not the front colour alone.
+        got_back = pixel(rgb, width, *at_back)
+        blended = oracle.composite_at(case["splats"], background, *at_back)
+        p.check(f"{label}s-order back centre: the over-composition of the model's gaussians within {tol['overlapBackCompositionDelta']} ({got_back} vs {blended})",
+                distance(got_back, blended) <= tol["overlapBackCompositionDelta"], f"{got_back} vs composition {blended}")
+        p.check(f"{label}s-order back centre: far (>= {tol['overlapBackColorMinDistance']}) from the back splat's own colour (the front is in front)",
+                distance(got_back, back["color"]) >= tol["overlapBackColorMinDistance"], f"{got_back} vs back {back['color']}")
     return metrics
 
 
@@ -257,8 +274,9 @@ def envelope_lag(expected_env, got_env, max_hops):
 
 
 def _onset(env, hop_seconds, kind, near, threshold):
-    """Time of the first (`on`) or last (`off`) envelope value crossing `threshold` within 80 ms of `near`."""
-    lo, hi = max(0, int((near - 0.08) / hop_seconds)), min(len(env), int((near + 0.08) / hop_seconds) + 1)
+    """Time of the first (`on`) or last (`off`) envelope value crossing `threshold` within `audio.onsetSearchWindowSeconds` of `near`."""
+    window = TOLERANCES["audio"]["onsetSearchWindowSeconds"]
+    lo, hi = max(0, int((near - window) / hop_seconds)), min(len(env), int((near + window) / hop_seconds) + 1)
     crossings = [i for i in range(lo, hi) if env[i] >= threshold]
     if not crossings:
         return None
@@ -268,7 +286,7 @@ def _onset(env, hop_seconds, kind, near, threshold):
 
 def expected_samples(case, bundle):
     """Analytic PCM of the case (floats) from the corpus's tone table: never read from the destination."""
-    table = oracle.ToneTable(case_mix_segments(), 8)
+    table = oracle.ToneTable(case_mix_segments(), _mix_seconds())
     fps = Fraction(bundle["fps"]["numerator"], bundle["fps"]["denominator"])
     start = Fraction(bundle["audio"]["editStartSeconds"]).limit_denominator(1000)
     values, count, _ = oracle.expected_window(table, fps, start, case["from"], case["frames"], 48000)
@@ -276,18 +294,29 @@ def expected_samples(case, bundle):
 
 
 _MIX = []
+_MIX_SECONDS = []
 
 
 def case_mix_segments():
-    """The tone table of the corpus's mix, read from expected.json (written by corpus.py from the same constants)."""
+    """The tone table of the corpus's mix (file time), read from expected.json (written by corpus.py from the same constants)."""
     if not _MIX:
-        data = json.loads((HERE / "corpus/expected.json").read_text())["audio"]["mix"]["segments"]
-        _MIX.extend((Fraction(a), Fraction(b), hz, amp) for a, b, hz, amp in data)
+        data = json.loads((HERE / "corpus/expected.json").read_text())["audio"]["mix"]
+        _MIX.extend((Fraction(a), Fraction(b), hz, amp) for a, b, hz, amp in data["segments"])
+        _MIX_SECONDS.append(Fraction(data["seconds"]))
     return list(_MIX)
 
 
-def judge_audio(p, path, case, bundle, label="", video_seconds=None, channels_expected=None, gain_db=0.0):
-    """Measures the exported file's audio against the analytic expectation of `case`. Returns metrics."""
+def _mix_seconds():
+    case_mix_segments()
+    return _MIX_SECONDS[0]
+
+
+def judge_audio(p, path, case, bundle, label="", video_seconds=None, channels_expected=None, gain_db=None):
+    """Measures the exported file's audio against the analytic expectation of `case`. Returns metrics.
+
+    The expected gain is the origin's channel law for the case's source and the file's channels
+    (`oracle.channel_gain_db`: a mono source written as stereo is -3.01 dB per channel) unless `gain_db` states the law of
+    a different surface (the project layer's own mixer, `phase_baseline_audio`)."""
     tol = TOLERANCES["audio"]
     try:
         channels, probe = decode_audio(path, tol["outputSampleRate"])
@@ -307,6 +336,13 @@ def judge_audio(p, path, case, bundle, label="", video_seconds=None, channels_ex
     p.check(f"{label}audio: duration {audio_seconds:.4f} s within {tol['durationVsVideoSeconds']} s of {reference:.4f} s",
             abs(audio_seconds - reference) <= tol["durationVsVideoSeconds"], audio_seconds)
     expected = expected_samples(case, bundle)
+    if gain_db is None:
+        try:
+            gain_db = oracle.channel_gain_db(case["sourceChannels"], len(channels))
+        except ValueError as error:
+            p.check(f"{label}audio: a channel law is established for {case['sourceChannels']} -> {len(channels)} channel(s)", False, error)
+            return {}
+    gain_linear = 10 ** (gain_db / 20)
     rate = tol["outputSampleRate"]
     guard = tol["transitionGuardSeconds"]
     metrics = {"channels": []}
@@ -353,7 +389,7 @@ def judge_audio(p, path, case, bundle, label="", video_seconds=None, channels_ex
         onset_errors = []
         for transition in case["transitions"]:
             amp = _amplitude_near(case, transition)
-            found = _onset(env_g, 0.001, transition["kind"], transition["exportSecondsFloat"], 0.35 * amp / math.sqrt(2))
+            found = _onset(env_g, 0.001, transition["kind"], transition["exportSecondsFloat"], tol["onsetThresholdFraction"] * amp * gain_linear / math.sqrt(2))
             if found is None:
                 p.check(f"{tag}: {transition['kind']} edge near {transition['exportSecondsFloat']:.3f}s exists in the file", False, "no crossing")
                 continue
@@ -441,6 +477,15 @@ def judge_package(p, path, expected_assets, label=""):
     missing = [name for name, info in expected_assets.items() if info["sha256"] not in by_hash]
     p.check(f"{label}all {len(expected_assets)} asset(s) are inside, byte-identical (SHA-256)", not missing, missing)
     return {"entries": len(entries), "missing": missing}
+
+
+def judge_declared_hashes(p, bundle, expected_assets, label=""):
+    """A bundle must declare, for every asset, exactly the hash the corpus computed from the bytes."""
+    declared = {a["relativePath"]: a["contentHash"] for a in bundle["assets"]}
+    mismatched = sorted(path for path, digest in declared.items() if path in expected_assets and expected_assets[path]["sha256"] != digest)
+    unknown = sorted(path for path in declared if path not in expected_assets)
+    p.check(f"{label}the bundle declares the corpus hash of every asset", not mismatched and not unknown, {"mismatched": mismatched, "unknown": unknown})
+    return {"mismatched": mismatched, "unknown": unknown}
 
 
 def tamper_zip(source, target, mutate):

@@ -1,0 +1,109 @@
+{
+ "schema": "s10-amendments/1",
+ "about": "The one book of changes to the S10 oracle, verifiers, controls, corpus and tolerances (see ledger.py). Entries record what changed and why; they are not a pre-registration. Older numbers are never edited in place without a round.",
+ "pinned": [
+  "tolerances.json",
+  "oracle.py",
+  "corpus.py",
+  "verify.py",
+  "controls.py",
+  "corpus/expected.json"
+ ],
+ "baseline": {
+  "commit": "a8480074788dd8ee435c9e772b1ff44d067279ae",
+  "note": "The head of PR #8 as reviewed by the independent Opus review (pullrequestreview-5800808754). Before it, the first full run (results.json, harness 1b5953e) recorded the historical FAIL and BLOCKED results; that file is left untouched.",
+  "hashes": {
+   "tolerances.json": "696c3cd112dbfbefecd23e2849162be8df3a783d512a6f407b1369fe2ed1c722",
+   "oracle.py": "59240b24db0523a0a14518198550112d3f30e433a0135e6126b8ea82f8537ffb",
+   "corpus.py": "4681351226d9790937ead9c06d5e6e1c7c623662b703588d6f25449f9672621a",
+   "verify.py": "2aea5a286de6441a5201e725295861aeaf4785890fc5f3afffa9347d2ecc16b9",
+   "controls.py": "cabd701b64bae7783e6113451bddc5adbfd76172bb5a6aed694bf48171296f0f",
+   "corpus/expected.json": "71c9508b16d46ecb338b3e707f47d26235511fc986adf46e0b89381a91f4bad2"
+  }
+ },
+ "rounds": [
+  {
+   "id": "R1",
+   "reason": "Corrections the independent review of PR #8 required before any further live result: three oracle rules that would reject a correct editor (A1 audio window, A2 splat overlap, A3 mono gain), values the report did not pin, honest provenance, and controls that did not exercise every frame or orientation. No live result of the amended harness exists yet; the historical FAIL/BLOCKED results keep their meaning for the pre-amendment oracle.",
+   "applied": "together, in one commit, before any live run of the amended harness; the intermediate states between A1 and A5 never existed on their own",
+   "before": {
+    "tolerances.json": "696c3cd112dbfbefecd23e2849162be8df3a783d512a6f407b1369fe2ed1c722",
+    "oracle.py": "59240b24db0523a0a14518198550112d3f30e433a0135e6126b8ea82f8537ffb",
+    "corpus.py": "4681351226d9790937ead9c06d5e6e1c7c623662b703588d6f25449f9672621a",
+    "verify.py": "2aea5a286de6441a5201e725295861aeaf4785890fc5f3afffa9347d2ecc16b9",
+    "controls.py": "cabd701b64bae7783e6113451bddc5adbfd76172bb5a6aed694bf48171296f0f",
+    "corpus/expected.json": "71c9508b16d46ecb338b3e707f47d26235511fc986adf46e0b89381a91f4bad2"
+   },
+   "amendments": [
+    {
+     "id": "A1",
+     "finding": "F1 / BL016.5",
+     "files": [
+      "oracle.py",
+      "corpus.py",
+      "verify.py",
+      "corpus/expected.json"
+     ],
+     "change": "Audio window follows the origin: edit time t plays the WHOLE WAV at editStartSeconds + t (packages/scene-engine/src/transport/audio-window.ts, origin d6adac15), the WAV covers [0, editEndSecondsExclusive) and the window is the edit's length (node/render.ts AUDIO_SHORT / AUDIO_VIDEO_DURATION). Corpus version 2: 13 s mix, windows derived from the edit; the retired 8 s mix is kept byte for byte as the audio_short negative fixture.",
+     "motivating_result": "baseline_audio 46/46 never validated this rule (its own clip started at 24 with source 0); the live FAIL of audio_export attributed to PRs #11/#13 and the A1 draft in wave-resource-stop/S10 (preserved, not assumed complete)."
+    },
+    {
+     "id": "A2",
+     "finding": "F2 / BL120",
+     "files": [
+      "oracle.py",
+      "verify.py",
+      "tolerances.json",
+      "controls.py"
+     ],
+     "change": "At the centre of the back s-order splat the expected colour is the model's own over-composition (oracle.composite_at), judged within overlapBackCompositionDelta = 40 (the value the front rule always had; not widened) and still >= 80 from the back colour. The rule that required the front colour within 40 there is removed because the front gaussian is only 0.80 to 0.92 opaque at that point. All splat controls now run on every corpus frame.",
+     "motivating_result": "arithmetic on the model's own gaussians (frames 36 and 47 give 43.5 and 52.3 from the front colour); measured (198,161,68) / (190,163,75) in PR #13 against the composition (197,161,69) / (190,163,76) is attributed, not executed here."
+    },
+    {
+     "id": "A3",
+     "finding": "F3 / BL019-F3",
+     "files": [
+      "oracle.py",
+      "verify.py",
+      "corpus.py",
+      "corpus/expected.json",
+      "tolerances.json",
+      "controls.py"
+     ],
+     "change": "Expected export gain is the origin's channel law, not 0 dB: oracle.channel_gain_db (mono -> stereo = 1/sqrt(2) = -3.0103 dB per channel, because the origin's audio-graph.ts forces channel_layouts=stereo and FFmpeg's rematrix applies). Source channel count is recorded in the corpus; controls write the law-correct signal and a new negative control, 'mono source written at 0 dB', must fail. proof.spec.py re-derives the law by running the origin's own filter.",
+     "motivating_result": "PR #11 attributed -3 dB (citing the origin); the old harness expected 0 dB and its fake exporter wrote 0 dB."
+    },
+    {
+     "id": "A4",
+     "finding": "F5",
+     "files": [
+      "verify.py",
+      "tolerances.json"
+     ],
+     "change": "Numbers that lived in the verifier move into tolerances.json: minJudgedAreaPx 300, videoBackgroundExtraDelta 6, onsetSearchWindowSeconds 0.08, onsetThresholdFraction 0.35 (threshold now relative to the expected, law-scaled level). New: absentMarkerMaxPixels 20 (a marker the model puts outside the frame must leave at most 20 pixels). Values equal the literals they replace.",
+     "motivating_result": "review F5 and the low item on markers outside the frame."
+    },
+    {
+     "id": "A5",
+     "finding": "F4 / F5 / low items",
+     "files": [
+      "tolerances.json",
+      "controls.py",
+      "corpus.py",
+      "verify.py"
+     ],
+     "change": "Provenance reworded: tolerances.json claims Git ancestry from da0b593, not a pre-registration. Controls added: portrait 360x640@24 (camera), the retired A1 reading, mono at 0 dB; the wrong-hash control now calls verify.judge_declared_hashes instead of re-implementing the rule; corpus asserts the portrait judged-marker minimum.",
+     "motivating_result": "review F4/F5 and the low items."
+    }
+   ],
+   "after": {
+    "tolerances.json": "ac984043cc70427e9edc2d34448b49b07f1c5646addd7d1bae8875cbf7090a12",
+    "oracle.py": "d4b48696c6f0a3f857afa9e34169cbf2cf233955558873b7ccfe284914d98940",
+    "corpus.py": "5f1d6842d8e91114f749af734aee04afd30d87ecde21180abe2d10f86843ab80",
+    "verify.py": "fcc5ea307ee3359cb9cfe8b1504dbf8750e453f69a5985828e659b06bd9ca2b7",
+    "controls.py": "132e70c57ca8017a204252b2da4cb927714301d749015607b728cac0bd3621b4",
+    "corpus/expected.json": "3396851716c0cb7923a77cd5e343f6cf9d90ef67d8aff833b730e4e41681ba02"
+   }
+  }
+ ]
+}

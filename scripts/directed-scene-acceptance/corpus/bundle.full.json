@@ -67,10 +67,10 @@
     }
   ],
   "audio": {
-    "editEndSecondsExclusive": 8.0,
+    "editEndSecondsExclusive": 2.0,
     "editStartSeconds": 0.0,
     "mixRelativePath": "audio/mix.wav",
-    "sourcePcmHashSha256": "cc252a2b0f8ec9695772e0ef51b01b7700d242b72af9a1e77ca10f0eeaffba75"
+    "sourcePcmHashSha256": "e089e7d141d6bbfed6df66b7b8be7e27b9d0d2f308a882cafd1a8e61e659ed48"
   },
   "bundleId": "s10-full",
   "cameraClips": [

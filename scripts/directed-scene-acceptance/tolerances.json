@@ -1,8 +1,11 @@
 {
   "schema": "s10-tolerances/1",
-  "frozenBeforeResults": true,
-  "rule": "Every number below was fixed before the first result of this harness existed (the commit that introduced this file precedes every commit that holds a harness run). A change after a result is an amendment: it is appended to `amendments` with the reason and the result that motivated it, the file hash changes, and the report prints both. Nothing is tuned silently to make a phase pass.",
-  "amendments": [],
+  "frozenFrom": {
+    "commit": "da0b59328687622831cc54efdaba4b28178edf28",
+    "what": "Git ancestry only: this file was committed in da0b593 (2026-11-05 20:20:57 -0300), six seconds before the commit that added the harness code (1b5953e), and that second commit already contained the baseline_splat_colour FINDING. Development runs of the harness preceded the first commit that holds a result file. Nothing below is claimed to be fixed before every result; no number is known to have been tuned either."
+  },
+  "provenance": "No value that existed in da0b593 has been changed by any amendment (amendments.json pins the hashes). Values added or moved into this file by amendments carry a `why...` note. The author did NOT re-derive the older values independently and does not claim a pre-registration; the review of every number by a reviewer who is not the author is requested before the next live result of the amended harness is accepted (docs/features/scene-acceptance.md, Provenance). A change after commit da0b593 is an amendment: amendments.json records the reason, the motivating finding and the SHA-256 of every pinned file before and after, and `tolerances_frozen` fails if a pinned file differs from the last recorded state.",
+  "amendmentsLedger": "amendments.json",
   "units": "pixels are 8-bit sRGB; positions are output pixels of the stated render size; audio is float PCM in [-1, 1]; times are seconds",
 
   "camera": {
@@ -12,6 +15,9 @@
     "maskCentroidPx": 0.75,
     "maskIouMin": 0.90,
     "interiorColorDelta": 6,
+    "minJudgedAreaPx": 300,
+    "absentMarkerMaxPixels": 20,
+    "whyArea": "A marker with fewer than 300 model pixels is clipped by the frame edge; its centroid and IoU move by the clipping, so it is not judged for position. One whose model area is 0 is outside the frame: it must leave at most 20 stray pixels (under 7% of the smallest judged mask; anti-aliasing of a neighbour can colour a few).",
     "videoMaskCentroidPx": 1.25,
     "videoMaskIouMin": 0.85,
     "videoInteriorColorDelta": 12,
@@ -32,6 +38,9 @@
     "halfIntensityRadius": {"relative": 0.30, "absolutePx": 1.5, "law": "r50 = sigma * sqrt(2 ln 2) for an isotropic gaussian"},
     "coverageChannelDistanceFromBackgroundMin": 30,
     "overlapFrontColorDelta": 40,
+    "overlapBackCompositionDelta": 40,
+    "whyOverlap": "Amendment A2. At the centre of the front splat the front colour is the picture (alpha 1). At the centre of the back splat the front gaussian is only partly opaque (alpha = exp(-d^2 / 2 sigma^2), 0.80 to 0.92 over the six frames), so the picture is the model's own over-composition (oracle.composite_at), judged within the same 40 the front rule always had; the >= 80 rule against the back colour is unchanged.",
+    "videoBackgroundExtraDelta": 6,
     "overlapBackColorMinDistance": 80,
     "videoCentroidPx": 2.0,
     "videoCenterColorDelta": 36,
@@ -42,6 +51,10 @@
   },
 
   "audio": {
+    "channelLaw": "The origin forces stereo (aformat channel_layouts=stereo) and sums with amix normalize=0, so FFmpeg's rematrix applies: mono -> stereo is 1/sqrt(2) per channel (-3.0103 dB), same layout is untouched. oracle.channel_gain_db; proof.spec.py re-derives it by running the origin's own filter.",
+    "onsetSearchWindowSeconds": 0.08,
+    "onsetThresholdFraction": 0.35,
+    "whyOnset": "An edge is searched within 80 ms of the expected time (half a 24 fps frame is 21 ms, the AAC encoder delay about 21 ms) and is the first 1 ms RMS value reaching 35% of the expected tone RMS (the 2 ms window half-covers the edge at 50%).",
     "about": "The oracle is analytic: a tone table, an exact rational frame-to-time mapping and a rate conversion that is the identity on the continuous signal. The exported file is decoded by ffmpeg to float PCM and compared with the analytic signal, never with a copy of the editor's mix.",
     "outputSampleRate": 48000,
     "mixSampleRate": 44100,
@@ -59,7 +72,7 @@
     "startTimeAbsSeconds": 0.025,
     "streamCountExact": 1,
     "channelsAccepted": [1, 2],
-    "negativeControlsMustFail": ["shifted 5 ms", "shifted one frame", "rate bug (44.1 kHz read as 48 kHz)", "silent stream", "gain -6 dB", "mix offset ignored", "export range ignored", "tone swapped", "no audio stream", "truncated audio", "NTSC treated as 30 fps"]
+    "negativeControlsMustFail": ["shifted 5 ms", "shifted one frame", "rate bug (44.1 kHz read as 48 kHz)", "silent stream", "gain -6 dB", "mix offset ignored", "export range ignored", "tone swapped", "no audio stream", "truncated audio", "NTSC treated as 30 fps", "mono source written at 0 dB (channel law ignored)", "retired A1 reading (mix[0] plays at editStartSeconds)"]
   },
 
   "package": {
@@ -82,7 +95,7 @@
   },
 
   "blockedPolicy": {
-    "rule": "A phase whose dependency is absent (front S7 for splat in the directed scene, front S9 for mixed audio in the export) exits BLOCKED, the process exits 3 and the PR stays draft. BLOCKED is never counted as pass and never silently skipped.",
-    "exit": {"0": "every selected phase ran and passed", "1": "at least one FAIL", "2": "harness usage error", "3": "no FAIL but at least one BLOCKED"}
+    "rule": "A phase whose dependency is absent (front S7 for splat in the directed scene, front S9 for mixed audio in the export) exits BLOCKED and the process exits 3 when nothing failed. BLOCKED is never counted as pass and never silently skipped, and it never replaces a FAIL: a phase that failed a check keeps FAIL even if a later step of it is blocked. Aceite of the integrated heads needs every phase to run and pass.",
+    "exit": {"0": "every selected phase ran and passed", "1": "at least one FAIL (also: the 2 GiB budget exceeded)", "2": "harness usage error or prerequisite refused (disk reserve, stale binary) and no FAIL", "3": "no FAIL but at least one BLOCKED"}
   }
 }

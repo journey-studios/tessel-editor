@@ -9,8 +9,11 @@ gaussian, SPZ v2 layout, rational frame times, sine tones) without reading the R
     quads, projected centre and size of a gaussian);
   * splat: a gaussian with sigma `s` at world point `c` seen at depth `d` by a camera of vertical fov `f` and image
     height `H` has screen sigma `s * (H/2) / tan(f/2) / d` and centre at the pinhole projection of `c`;
-  * audio: a tone table in *mix time*, an exact `Fraction` mapping from edit frames to seconds, and the bundle's
-    reading `mix[0] <-> editStartSeconds` (assumption A1 in docs/features/scene-acceptance.md).
+  * audio: a tone table in *file time* (seconds from the first sample of the whole WAV), an exact `Fraction` mapping
+    from edit frames to seconds, and the origin's window rule: edit time t plays the file at `editStartSeconds + t`
+    (`packages/scene-engine/src/transport/audio-window.ts`, `editSecondsToSourceTime`, origin commit d6adac15). The WAV
+    is the *whole* source and must cover `[0, editEndSecondsExclusive)` (`node/render.ts`, `AUDIO_SHORT`). This replaced
+    the earlier assumption A1 (`mix[0] <-> editStartSeconds`) by amendment A1 (docs/features/scene-acceptance.md).
 
 Nothing here reads a destination output. Unsupported inputs raise instead of guessing.
 """
@@ -202,15 +205,16 @@ def dot_splat_file(splats):
 
 # ---------------------------------------------------------------------------------- audio
 class ToneTable:
-    """Piecewise sine tones in mix time. Each segment is `(start, end, hz, amplitude)` in exact `Fraction` seconds;
-    the phase restarts at the segment start (phase = 2 pi hz (t - start)); outside every segment the mix is silent."""
+    """Piecewise sine tones in *file time*. Each segment is `(start, end, hz, amplitude)` in exact `Fraction` seconds
+    from the first sample of the WAV; the phase restarts at the segment start (phase = 2 pi hz (t - start)); outside
+    every segment the file is silent. `duration` is the length of the WAV: a time past it is not in the file."""
 
     def __init__(self, segments, duration):
         self.segments = [(Fraction(a), Fraction(b), hz, amp) for a, b, hz, amp in segments]
         self.duration = Fraction(duration)
 
     def value(self, t):
-        """`t` is a Fraction (or float) of seconds in mix time."""
+        """`t` is a Fraction (or float) of seconds in file time."""
         if t < 0 or t >= self.duration:
             return 0.0
         for start, end, hz, amp in self.segments:
@@ -225,7 +229,7 @@ class ToneTable:
         return None
 
     def transitions(self):
-        """`(time, kind)` of every silence<->tone edge in mix time, kind in {'on', 'off'}."""
+        """`(time, kind)` of every silence<->tone edge in file time, kind in {'on', 'off'}."""
         out = []
         for index, (start, end, _, _) in enumerate(self.segments):
             previous_end = self.segments[index - 1][1] if index else None
@@ -242,25 +246,68 @@ def frames_to_seconds(frame, fps):
     return Fraction(frame) / fps
 
 
+def source_time_of(edit_seconds, edit_start):
+    """The origin's window rule (`editSecondsToSourceTime`): the WAV second that plays at edit time `edit_seconds`."""
+    return Fraction(edit_start) + Fraction(edit_seconds)
+
+
+def splat_alpha(entry, x, y):
+    """Opacity of an isotropic gaussian splat at pixel `(x, y)`: `opacity * exp(-r^2 / (2 sigma^2))` (opacity 1 = opaque)."""
+    r2 = (x - entry["x"]) ** 2 + (y - entry["y"]) ** 2
+    return entry.get("opacity", 1.0) * math.exp(-r2 / (2 * entry["sigmaPx"] ** 2))
+
+
+def composite_at(entries, background, x, y):
+    """The colour the model expects at pixel `(x, y)`: every gaussian composited far to near with the `over` operator on the
+    flat background (straight alpha, 8-bit colour). Entries carry `depth` (distance along the view), `color`, `x`, `y`, `sigmaPx`.
+    This is the one blending law the acceptance models (amendment A2); coverage, tonemapping and linear-light blending are not."""
+    colour = [float(c) for c in background]
+    for entry in sorted(entries, key=lambda e: -e["depth"]):
+        alpha = splat_alpha(entry, x, y)
+        colour = [c * (1 - alpha) + k * alpha for c, k in zip(colour, entry["color"])]
+    return tuple(int(round(c)) for c in colour)
+
+
+MONO_TO_STEREO_GAIN = math.sqrt(0.5)
+
+
+def channel_gain_db(source_channels, output_channels):
+    """Gain (dB, per output channel) the origin's graph applies to a source with `source_channels` channels written as
+    `output_channels` channels.
+
+    Origin `packages/scene-engine/src/node/audio-graph.ts` (commit d6adac15) forces every mix input through
+    `aformat=...:channel_layouts=stereo` and sums with `amix=...:normalize=0`, so the channel law is FFmpeg's (libswresample)
+    default rematrix: a mono (front-centre) source reaches front-left and front-right each at `center_mix_level = 1/sqrt(2)`
+    (-3.0103 dB; `libswresample/rematrix.c`, `M_SQRT1_2`), and a source that already has the output layout is untouched. The
+    mono -> stereo number is therefore not a property of the editor under test: `proof.spec.py` re-derives it by running the
+    origin's own `aformat` filter in FFmpeg. Any other pair raises instead of being guessed."""
+    if source_channels == output_channels:
+        return 0.0
+    if (source_channels, output_channels) == (1, 2):
+        return 20 * math.log10(MONO_TO_STEREO_GAIN)
+    raise ValueError(f"no channel law is established for {source_channels} -> {output_channels} channels")
+
+
 def expected_window(table, fps, edit_start, first_frame, frames, out_rate):
     """Analytic expected PCM of an export of edit frames `[first_frame, first_frame + frames)`.
 
-    Sample n of the output is at edit time `first_frame/fps + n/out_rate`; mix time is `edit time - edit_start`
-    (assumption A1). Returns `(list of floats, N, duration Fraction)` with N = round(duration * out_rate)."""
-    start = frames_to_seconds(first_frame, fps) - Fraction(edit_start)
+    Sample n of the output is at edit time `first_frame/fps + n/out_rate`; it plays the file at
+    `edit_start + edit time` (origin rule). Returns `(list of floats, N, duration Fraction)` with
+    N = round(duration * out_rate)."""
+    start = source_time_of(frames_to_seconds(first_frame, fps), edit_start)
     duration = frames_to_seconds(frames, fps)
     count = int(round(duration * out_rate))
     origin = float(start)  # exact Fraction -> float once; sample times then differ from the exact ones by < 1e-12 s
     return [table.value(origin + n / out_rate) for n in range(count)], count, duration
 
 
-def export_time_of(mix_time, fps, edit_start, first_frame):
-    """Seconds into the exported file at which `mix_time` of the mix is heard."""
-    return Fraction(mix_time) + Fraction(edit_start) - frames_to_seconds(first_frame, fps)
+def export_time_of(file_time, fps, edit_start, first_frame):
+    """Seconds into the exported file at which `file_time` of the WAV is heard (negative before the export starts)."""
+    return Fraction(file_time) - source_time_of(frames_to_seconds(first_frame, fps), edit_start)
 
 
 def wav_bytes(table, rate, channels=1):
-    """16-bit PCM WAV of the whole mix at `rate`, sampled from the analytic table."""
+    """16-bit PCM WAV of the whole file at `rate`, sampled from the analytic table (`[0, table.duration)`)."""
     import io
     import struct
     import wave

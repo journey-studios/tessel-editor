@@ -1,0 +1,2021 @@
+{
+  "harness": {
+    "name": "directed-scene-acceptance",
+    "version": 1,
+    "files": {
+      "proof.py": "7cb153d32b86bbd5ce01195538fd0e89e434190ee9ab681c80fe926b7987ed9d",
+      "oracle.py": "59240b24db0523a0a14518198550112d3f30e433a0135e6126b8ea82f8537ffb",
+      "corpus.py": "4681351226d9790937ead9c06d5e6e1c7c623662b703588d6f25449f9672621a",
+      "verify.py": "2aea5a286de6441a5201e725295861aeaf4785890fc5f3afffa9347d2ecc16b9",
+      "controls.py": "cabd701b64bae7783e6113451bddc5adbfd76172bb5a6aed694bf48171296f0f",
+      "tolerances.json": "696c3cd112dbfbefecd23e2849162be8df3a783d512a6f407b1369fe2ed1c722"
+    }
+  },
+  "git": {
+    "head": "0d95be13f9a99805ae816225134a580268576b65",
+    "branch": "t3/fix-s10-oracle-audio-timing",
+    "dirty_files": 0
+  },
+  "tolerances": {
+    "sha256": "696c3cd112dbfbefecd23e2849162be8df3a783d512a6f407b1369fe2ed1c722",
+    "introduced_in": "da0b59328687622831cc54efdaba4b28178edf28",
+    "amendments": []
+  },
+  "corpus": {
+    "version": 1,
+    "dir": "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-0a6c9670/scripts/directed-scene-acceptance/corpus",
+    "files": {
+      "assets/bg.png": {
+        "bytes": 332,
+        "sha256": "558fc8a856d83df60ce44899c0e5213d8453090fa387d491a90dec3003118ed5"
+      },
+      "assets/mk-blue.png": {
+        "bytes": 332,
+        "sha256": "7aed8931a61a3892f3ae2801a53b30079ce0bd6aeabb77fc7a14c9be48137032"
+      },
+      "assets/mk-green.png": {
+        "bytes": 332,
+        "sha256": "dee88d164efad7fa8e8088196e50ad72504e37679632de90a2baa34071e5daf2"
+      },
+      "assets/mk-red.png": {
+        "bytes": 332,
+        "sha256": "4e54755af584a124f801dfffef09c5f2130fcdce75decd93584cc8e364951f0a"
+      },
+      "assets/mk-yellow.png": {
+        "bytes": 332,
+        "sha256": "b41a584e38e01466fa107e540495416b5fff13001fe3b5cce61d3358d998877d"
+      },
+      "audio/mix.wav": {
+        "bytes": 705644,
+        "sha256": "cc252a2b0f8ec9695772e0ef51b01b7700d242b72af9a1e77ca10f0eeaffba75"
+      },
+      "bundle.audio-ntsc.json": {
+        "bytes": 7689,
+        "sha256": "3919bb6238c633aef31e696506a043b8aac444fb3a2b0a926699363b2618c767"
+      },
+      "bundle.audio24.json": {
+        "bytes": 7674,
+        "sha256": "1b181b3f080526ef8b9cb99453a2a03060fdbb013ebfbe7e542b8af6229439b6"
+      },
+      "bundle.camera-portrait.json": {
+        "bytes": 9261,
+        "sha256": "d26dd58c9f01b85688e4ddb534bba4dc22f70630330740d482aca15ae47c84d0"
+      },
+      "bundle.camera.json": {
+        "bytes": 9252,
+        "sha256": "fa6087745736309c0852387a13557f7864c9bb6a9245b509c01631ba7bc95f3f"
+      },
+      "bundle.full.json": {
+        "bytes": 9243,
+        "sha256": "32ef214b974c93b2cab3f121c41a075981b5309eb7ab30f9d1618f9e9838cede"
+      },
+      "bundle.splat.json": {
+        "bytes": 9027,
+        "sha256": "be2c4f08a8773bc2ad9b195947df18d77f7691cbdbdc5a337ce08027d75ffec5"
+      },
+      "expected.json": {
+        "bytes": 57063,
+        "sha256": "71c9508b16d46ecb338b3e707f47d26235511fc986adf46e0b89381a91f4bad2"
+      },
+      "splat/sp-green.spz": {
+        "bytes": 45,
+        "sha256": "9aa9a3cda6a8803dd9aa5bdb74a756e7bf5fb5ca5a17bf21939484dfb55d1902"
+      },
+      "splat/sp-order.spz": {
+        "bytes": 62,
+        "sha256": "46a03d6e062c2c2d31f9cb0bd967b99fd4bd193b39c1658535fd4dda2378d51f"
+      },
+      "splat/sp-pair.spz": {
+        "bytes": 57,
+        "sha256": "fa122ab2a8e2ddaaa011863d96640bcb82cb14b6ec029d8b3f5db58b025e176d"
+      },
+      "splat/sp-purple.spz": {
+        "bytes": 45,
+        "sha256": "18dc77abd318264f74518a6d0f2f99856dd7fc2525c92c195b7ea04fc6c5b635"
+      },
+      "splat/sp-red.spz": {
+        "bytes": 45,
+        "sha256": "362517d47323e6330671874431fdbfa36f745ba382e862b8dd4dae33e7b9cd8d"
+      }
+    },
+    "expected_sha256": "71c9508b16d46ecb338b3e707f47d26235511fc986adf46e0b89381a91f4bad2"
+  },
+  "binaries": {
+    "render": {
+      "path": "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-205dc567/target/debug/tessel-render",
+      "present": true,
+      "sha256": "c5122a4e7f2b3735587eda5fc11a7ab9624312d88f75c56980ca382d56e2c86a",
+      "bytes": 19765552,
+      "mtime_utc": "2026-11-06T00:01:27Z",
+      "older_than_sources": true
+    }
+  },
+  "runtime_bundle": {
+    "dist": {},
+    "node": "v22.23.3",
+    "package_json_sha256": "d6617084d3cc6116102fd22f22b8c2237eb96dabcf79418c82c726e2c90bf2d7"
+  },
+  "environment": {
+    "python": "3.14.3",
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "ffmpeg": "ffmpeg version 7.1.1 Copyright (c) 2000-2025 the FFmpeg developers",
+    "ffprobe": "ffprobe version 7.1.1 Copyright (c) 2007-2025 the FFmpeg developers",
+    "free_gib_tmp": 15.7
+  },
+  "gl": "swiftshader",
+  "seams": {
+    "S7": {
+      "backlog": "BL025",
+      "signal": "scene.plan on a bundle with `splat` nodes answers `unsupported` with details.domains containing `splat`",
+      "needs": "ScenePlan carries the approved splat reference, generation, evaluated matrix and camera; the runtime draws it; preview, headless and export coincide (docs/migration/wave-s1-s10-plan.md, S7)"
+    },
+    "S9": {
+      "backlog": "BL016",
+      "signal": "scene.export with the default `audio` answers `unsupported` with details.domains containing `audio`",
+      "needs": "mix of the bundle's WAV into the exported file with rational frame/sample mapping, offset and rate conversion; `audio:false` omits with a warning (S9)"
+    }
+  },
+  "seconds": 60.0,
+  "work_budget_respected": true,
+  "work_bytes_at_end": 2032723,
+  "phases": [
+    {
+      "phase": "tolerances_frozen",
+      "surface": "data (tolerances committed before any result)",
+      "status": "PASS",
+      "seconds": 0.1,
+      "checks_total": 6,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "tolerances.json declares itself frozen before results",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the corpus was generated against exactly these tolerances (hash recorded in expected.json)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "git knows the commit that introduced tolerances.json",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "tolerances.json is unchanged since it was committed (no silent tuning)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every later change to tolerances.json is a recorded amendment",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "scripts/directed-scene-acceptance/results.json: the tolerance commit precedes the first commit that holds this result",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "introduced_in": "da0b59328687622831cc54efdaba4b28178edf28",
+        "amendments": [],
+        "tolerances_sha256": "696c3cd112dbfbefecd23e2849162be8df3a783d512a6f407b1369fe2ed1c722"
+      }
+    },
+    {
+      "phase": "corpus",
+      "surface": "data (corpus determinism, provenance, pinned hashes)",
+      "status": "PASS",
+      "seconds": 2.2,
+      "checks_total": 32,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "committed corpus is byte-identical to what corpus.py writes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "provenance declares no private media",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "assets/bg.png: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "assets/mk-blue.png: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "assets/mk-green.png: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "assets/mk-red.png: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "assets/mk-yellow.png: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio/mix.wav: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle.audio-ntsc.json: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle.audio24.json: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle.camera-portrait.json: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle.camera.json: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle.full.json: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle.splat.json: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "expected.json: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "splat/sp-green.spz: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "splat/sp-order.spz: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "splat/sp-pair.spz: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "splat/sp-purple.spz: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "splat/sp-red.spz: hash matches provenance",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle audio24: expected.json pins its bytes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle audio24: sourcePcmHashSha256 is the hash of the whole WAV file (the rule the resource gate enforces)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle audio_ntsc: expected.json pins its bytes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle audio_ntsc: sourcePcmHashSha256 is the hash of the whole WAV file (the rule the resource gate enforces)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle camera: expected.json pins its bytes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle camera_portrait: expected.json pins its bytes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle full: expected.json pins its bytes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle full: sourcePcmHashSha256 is the hash of the whole WAV file (the rule the resource gate enforces)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "bundle splat: expected.json pins its bytes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the NTSC audio bundle carries the rational rate 30000/1001",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the corpus has camera frames in three shots (fov 30/50/75), both orientations, and splats in two shots",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every splat has at least 6 px of sigma and is isolated (asserted when the corpus is generated)",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "corpus": {
+          "version": 1,
+          "bundles": {
+            "audio24": "1b181b3f080526ef8b9cb99453a2a03060fdbb013ebfbe7e542b8af6229439b6",
+            "audio_ntsc": "3919bb6238c633aef31e696506a043b8aac444fb3a2b0a926699363b2618c767",
+            "camera": "fa6087745736309c0852387a13557f7864c9bb6a9245b509c01631ba7bc95f3f",
+            "camera_portrait": "d26dd58c9f01b85688e4ddb534bba4dc22f70630330740d482aca15ae47c84d0",
+            "full": "32ef214b974c93b2cab3f121c41a075981b5309eb7ab30f9d1618f9e9838cede",
+            "splat": "be2c4f08a8773bc2ad9b195947df18d77f7691cbdbdc5a337ce08027d75ffec5"
+          }
+        }
+      }
+    },
+    {
+      "phase": "models",
+      "surface": "data (models vs origin oracle and analytic identities)",
+      "status": "PASS",
+      "seconds": 0.06,
+      "checks_total": 16,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "the camera model agrees with the origin oracle (scripts/directed-scene-proof/model.spec.py, read-only)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the target projects to the exact centre of the picture",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "a point at the vertical half-fov projects to the top edge (the fov is vertical)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "a point behind the camera does not project",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "+x in the world is to the right of the picture",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "a gaussian of sigma 0.3 at depth 8 has the closed-form screen sigma",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the splat centre uses pixel-index coordinates (the picture centre is (319.5, 179.5))",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the SPZ writer's header is NGSP, version 2, one point, SH degree 0, 12 fractional bits",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "positions decode from the 24-bit fixed point within one step",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "alpha 1.0 is stored as 255",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "scale is stored as (ln sigma + 10) * 16 and decodes within one quantisation step",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the mix WAV is 8 s of mono 16-bit at 44.1 kHz",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the WAV samples equal the analytic tone table to one 16-bit step (first 0.1 s)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "tone table: 440 Hz at 1 s, silence at 2.2 s, 1320 Hz at 4.5 s",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame 150 at 30000/1001 is exactly 5.005 s",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "rational window: frame 18 at 24 fps with a 1 s mix offset is mix time -1/4 s",
+          "ok": true,
+          "detail": ""
+        }
+      ]
+    },
+    {
+      "phase": "controls_audio",
+      "surface": "harness (audio verifier on right and wrong files; ffmpeg only)",
+      "status": "PASS",
+      "seconds": 24.07,
+      "checks_total": 26,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "positive: analytic window of audio24_window_a, AAC",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "positive: analytic window of audio24_window_b, AAC",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "positive: analytic window of audio_ntsc_window, AAC",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "positive: stereo with the same signal on both channels",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: shifted 5 ms",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: shifted one frame",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: rate bug (44.1 kHz read as 48 kHz)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: silent stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: gain -6 dB",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: mix offset ignored",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: export range ignored",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: tone swapped",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: truncated audio",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: no audio stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "negative: NTSC treated as 30 fps",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `shifted 5 ms` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `shifted one frame` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `rate bug (44.1 kHz read as 48 kHz)` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `silent stream` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `gain -6 dB` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `mix offset ignored` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `export range ignored` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `tone swapped` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `no audio stream` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `truncated audio` is exercised",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the frozen negative control `NTSC treated as 30 fps` is exercised",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "controls": [
+          {
+            "control": "positive: analytic window of audio24_window_a, AAC",
+            "should_pass": true,
+            "ok": true
+          },
+          {
+            "control": "positive: analytic window of audio24_window_b, AAC",
+            "should_pass": true,
+            "ok": true
+          },
+          {
+            "control": "positive: analytic window of audio_ntsc_window, AAC",
+            "should_pass": true,
+            "ok": true
+          },
+          {
+            "control": "positive: stereo with the same signal on both channels",
+            "should_pass": true,
+            "ok": true
+          },
+          {
+            "control": "negative: shifted 5 ms",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: shifted one frame",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: rate bug (44.1 kHz read as 48 kHz)",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: silent stream",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: gain -6 dB",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: mix offset ignored",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: export range ignored",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: tone swapped",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: truncated audio",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: no audio stream",
+            "should_pass": false,
+            "ok": true
+          },
+          {
+            "control": "negative: NTSC treated as 30 fps",
+            "should_pass": false,
+            "ok": true
+          }
+        ]
+      }
+    },
+    {
+      "phase": "baseline_audio",
+      "surface": "tessel-render CLI: existing offline mixer vs the analytic oracle",
+      "status": "PASS",
+      "seconds": 8.08,
+      "checks_total": 46,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "audio24_window_a: the mixer reports 144000 frames at 48000 Hz",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio: exactly 1 audio stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio: 2 channel(s) are accepted",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio: sample rate 48000",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio: start_time within 0.025 s of zero (0.0000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio: duration 3.0000 s within 0.0225 s of 3.0000 s",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch0: at least 142920 samples",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch0: sample-level correlation with the analytic signal >= 0.97 (1.0000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch0: envelope lag +0 samples within 48",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch0: 20 tone window(s) judged, each dominated by its expected frequency (ratio >= 25)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch0: gain -3.01 dB within +-1.0 dB of the expected -3.01 dB",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch0: 2 silent range(s) stay below RMS 0.004 (worst 0.00000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch0: on edge at 0.2500s vs 0.2500s (error +0.00 ms, limit 3 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch0: off edge at 2.2500s vs 2.2500s (error +0.00 ms, limit 3 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch0: on edge at 2.7500s vs 2.7500s (error +0.00 ms, limit 3 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch1: at least 142920 samples",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch1: sample-level correlation with the analytic signal >= 0.97 (1.0000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch1: envelope lag +0 samples within 48",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch1: 20 tone window(s) judged, each dominated by its expected frequency (ratio >= 25)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch1: gain -3.01 dB within +-1.0 dB of the expected -3.01 dB",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch1: 2 silent range(s) stay below RMS 0.004 (worst 0.00000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch1: on edge at 0.2500s vs 0.2500s (error +0.00 ms, limit 3 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch1: off edge at 2.2500s vs 2.2500s (error +0.00 ms, limit 3 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch1: on edge at 2.7500s vs 2.7500s (error +0.00 ms, limit 3 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b: the mixer reports 192000 frames at 48000 Hz",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio: exactly 1 audio stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio: 2 channel(s) are accepted",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio: sample rate 48000",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio: start_time within 0.025 s of zero (0.0000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio: duration 4.0000 s within 0.0225 s of 4.0000 s",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch0: at least 190920 samples",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch0: sample-level correlation with the analytic signal >= 0.97 (1.0000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch0: envelope lag +0 samples within 48",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch0: 32 tone window(s) judged, each dominated by its expected frequency (ratio >= 25)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch0: gain -3.02 dB within +-1.0 dB of the expected -3.01 dB",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch0: 1 silent range(s) stay below RMS 0.004 (worst 0.00000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch0: off edge at 2.5000s vs 2.5000s (error +0.00 ms, limit 3 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch0: on edge at 3.0000s vs 3.0000s (error +0.00 ms, limit 3 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch1: at least 190920 samples",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch1: sample-level correlation with the analytic signal >= 0.97 (1.0000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch1: envelope lag +0 samples within 48",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch1: 32 tone window(s) judged, each dominated by its expected frequency (ratio >= 25)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch1: gain -3.02 dB within +-1.0 dB of the expected -3.01 dB",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch1: 1 silent range(s) stay below RMS 0.004 (worst 0.00000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch1: off edge at 2.5000s vs 2.5000s (error +0.00 ms, limit 3 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b audio ch1: on edge at 3.0000s vs 3.0000s (error +0.00 ms, limit 3 ms)",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "audio24_window_a": {
+          "channels": [
+            {
+              "correlation": 1.0,
+              "lagSamples": 0,
+              "gainDb": -3.014,
+              "silentWorstRms": 0.0,
+              "onsetErrorsMs": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            {
+              "correlation": 1.0,
+              "lagSamples": 0,
+              "gainDb": -3.014,
+              "silentWorstRms": 0.0,
+              "onsetErrorsMs": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            }
+          ]
+        },
+        "audio24_window_b": {
+          "channels": [
+            {
+              "correlation": 1.0,
+              "lagSamples": 0,
+              "gainDb": -3.021,
+              "silentWorstRms": 0.0,
+              "onsetErrorsMs": [
+                0.0,
+                0.0
+              ]
+            },
+            {
+              "correlation": 1.0,
+              "lagSamples": 0,
+              "gainDb": -3.021,
+              "silentWorstRms": 0.0,
+              "onsetErrorsMs": [
+                0.0,
+                0.0
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "phase": "audio_off",
+      "surface": "tessel-render CLI: scene.export audio:false preserved",
+      "status": "PASS",
+      "seconds": 6.57,
+      "checks_total": 70,
+      "checks_failed": 0,
+      "checks": [
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 640x360",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 72 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 3 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result reports the frame count the file holds",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result reports the exact rational rate of the file",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result reports the output size of the file",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result says audio included = False, and the file has no audio stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result lists exactly the bundle's image/splat resources with the bundle's own hashes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file has exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_red: centroid within 1.25 px of the model (0.462)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.970)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_green: centroid within 1.25 px of the model (0.526)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.973)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_blue: centroid within 1.25 px of the model (0.113)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.949)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_yellow: centroid within 1.25 px of the model (0.524)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.959)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f18 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_red: centroid within 1.25 px of the model (0.462)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.970)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_green: centroid within 1.25 px of the model (0.526)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.973)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_blue: centroid within 1.25 px of the model (0.112)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.949)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_yellow: centroid within 1.25 px of the model (0.524)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.959)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f40 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_red: centroid within 1.25 px of the model (0.462)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.970)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_green: centroid within 1.25 px of the model (0.526)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.973)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_blue: centroid within 1.25 px of the model (0.112)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.949)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_yellow: centroid within 1.25 px of the model (0.524)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.959)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false f89 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio:false: no audio stream, as asked (`audio:false`)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "scene.export with audio:false succeeds",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result lists the declared audio as omitted and says why",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "a typed `audio_omitted` warning is present",
+          "ok": true,
+          "detail": ""
+        }
+      ],
+      "metrics": {
+        "export": {
+          "duration_seconds": 3.0,
+          "tick": "1/12288",
+          "bytes": 5281,
+          "audio_streams": 0,
+          "seconds": 4.15,
+          "pictures": {
+            "18": {
+              "mk_red": {
+                "offsetPx": 0.462,
+                "iou": 0.9698,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.526,
+                "iou": 0.9732,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.113,
+                "iou": 0.9487,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.524,
+                "iou": 0.9591,
+                "judged": true
+              }
+            },
+            "40": {
+              "mk_red": {
+                "offsetPx": 0.462,
+                "iou": 0.9698,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.526,
+                "iou": 0.9732,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.112,
+                "iou": 0.9492,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.524,
+                "iou": 0.9591,
+                "judged": true
+              }
+            },
+            "89": {
+              "mk_red": {
+                "offsetPx": 0.462,
+                "iou": 0.9698,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.526,
+                "iou": 0.9732,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.112,
+                "iou": 0.9492,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.524,
+                "iou": 0.9591,
+                "judged": true
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "phase": "audio_export",
+      "surface": "S9 seam: scene.export mixed audio vs the analytic oracle (24 fps and 30000/1001)",
+      "status": "FAIL",
+      "seconds": 14.21,
+      "checks_total": 92,
+      "checks_failed": 17,
+      "checks": [
+        {
+          "check": "the file is readable by ffprobe/ffmpeg",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "codec h264, pixel format yuv420p",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "resolution 640x360",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "frame count: 72 frames decoded (not just declared)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "container nb_frames agrees with the decoded count",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "r_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "avg_frame_rate is exactly 24",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "colour declared: BT.709, limited range",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "every pts sits on the exact frame grid i/fps (to one container tick)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the first pts is within one frame of zero",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "duration 3 s = frames * den/num (to 1 ms)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result reports the frame count the file holds",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result reports the exact rational rate of the file",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result reports the output size of the file",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result says audio included = True, and the file has an audio stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the result lists exactly the bundle's image/splat resources with the bundle's own hashes",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "the file has exactly one video stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f18 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f18 mk_red: centroid within 1.25 px of the model (0.462)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f18 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.970)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f18 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f18 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f18 mk_green: centroid within 1.25 px of the model (0.526)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f18 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.973)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f18 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f18 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f18 mk_blue: centroid within 1.25 px of the model (0.113)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f18 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.949)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f18 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f18 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f18 mk_yellow: centroid within 1.25 px of the model (0.524)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f18 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.959)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f18 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f54 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f54 mk_red: centroid within 1.25 px of the model (0.462)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f54 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.970)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f54 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f54 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f54 mk_green: centroid within 1.25 px of the model (0.526)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f54 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.973)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f54 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f54 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f54 mk_blue: centroid within 1.25 px of the model (0.112)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f54 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.949)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f54 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f54 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f54 mk_yellow: centroid within 1.25 px of the model (0.524)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f54 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.959)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f54 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f89 mk_red: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f89 mk_red: centroid within 1.25 px of the model (0.462)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f89 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.970)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f89 mk_red: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f89 mk_green: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f89 mk_green: centroid within 1.25 px of the model (0.526)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f89 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.973)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f89 mk_green: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f89 mk_blue: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f89 mk_blue: centroid within 1.25 px of the model (0.112)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f89 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.949)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f89 mk_blue: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f89 mk_yellow: detected",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f89 mk_yellow: centroid within 1.25 px of the model (0.524)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f89 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.959)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a f89 mk_yellow: interior colour at the model centroid within 12",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio: exactly 1 audio stream",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio: 2 channel(s) are accepted",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio: sample rate 48000",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio: start_time within 0.025 s of zero (0.0000)",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio: duration 3.0080 s within 0.0225 s of 3.0000 s",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch0: at least 142920 samples",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch0: sample-level correlation with the analytic signal >= 0.97 (-0.0000)",
+          "ok": false,
+          "detail": "-6.329526721982883e-07"
+        },
+        {
+          "check": "audio24_window_a audio ch0: envelope lag +7200 samples within 48",
+          "ok": false,
+          "detail": "7200"
+        },
+        {
+          "check": "audio24_window_a audio ch0: 20 tone window(s) judged, each dominated by its expected frequency (ratio >= 25)",
+          "ok": false,
+          "detail": "['0.69s expects 440 Hz (ratio 0.0)', '0.79s expects 440 Hz (ratio 0.0)', '0.89s expects 440 Hz (ratio 0.0)']"
+        },
+        {
+          "check": "audio24_window_a audio ch0: gain -4.38 dB within +-1.0 dB of the expected +0.00 dB",
+          "ok": false,
+          "detail": "-4.375645678198222"
+        },
+        {
+          "check": "audio24_window_a audio ch0: 2 silent range(s) stay below RMS 0.004 (worst 0.25000)",
+          "ok": false,
+          "detail": "0.2500049462844291"
+        },
+        {
+          "check": "audio24_window_a audio ch0: on edge at 0.1700s vs 0.2500s (error -80.00 ms, limit 3 ms)",
+          "ok": false,
+          "detail": "-0.07999999999999999"
+        },
+        {
+          "check": "audio24_window_a audio ch0: off edge at 2.3310s vs 2.2500s (error +81.00 ms, limit 3 ms)",
+          "ok": false,
+          "detail": "0.08099999999999996"
+        },
+        {
+          "check": "audio24_window_a audio ch0: on edge at 2.6720s vs 2.7500s (error -78.00 ms, limit 3 ms)",
+          "ok": false,
+          "detail": "-0.07799999999999985"
+        },
+        {
+          "check": "audio24_window_a audio ch1: at least 142920 samples",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a audio ch1: sample-level correlation with the analytic signal >= 0.97 (-0.0000)",
+          "ok": false,
+          "detail": "-6.329526722911922e-07"
+        },
+        {
+          "check": "audio24_window_a audio ch1: envelope lag +7200 samples within 48",
+          "ok": false,
+          "detail": "7200"
+        },
+        {
+          "check": "audio24_window_a audio ch1: 20 tone window(s) judged, each dominated by its expected frequency (ratio >= 25)",
+          "ok": false,
+          "detail": "['0.69s expects 440 Hz (ratio 0.0)', '0.79s expects 440 Hz (ratio 0.0)', '0.89s expects 440 Hz (ratio 0.0)']"
+        },
+        {
+          "check": "audio24_window_a audio ch1: gain -4.38 dB within +-1.0 dB of the expected +0.00 dB",
+          "ok": false,
+          "detail": "-4.375645678198222"
+        },
+        {
+          "check": "audio24_window_a audio ch1: 2 silent range(s) stay below RMS 0.004 (worst 0.25000)",
+          "ok": false,
+          "detail": "0.25000494594143524"
+        },
+        {
+          "check": "audio24_window_a audio ch1: on edge at 0.1700s vs 0.2500s (error -80.00 ms, limit 3 ms)",
+          "ok": false,
+          "detail": "-0.07999999999999999"
+        },
+        {
+          "check": "audio24_window_a audio ch1: off edge at 2.3310s vs 2.2500s (error +81.00 ms, limit 3 ms)",
+          "ok": false,
+          "detail": "0.08099999999999996"
+        },
+        {
+          "check": "audio24_window_a audio ch1: on edge at 2.6720s vs 2.7500s (error -78.00 ms, limit 3 ms)",
+          "ok": false,
+          "detail": "-0.07799999999999985"
+        },
+        {
+          "check": "audio24_window_a: scene.export succeeds with the mix",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_a: no `audio_omitted` warning when the mix is in the file",
+          "ok": true,
+          "detail": ""
+        },
+        {
+          "check": "audio24_window_b: scene.export succeeds with the mix",
+          "ok": false,
+          "detail": "{'code': 'audio_source_short', 'message': 'The mix file holds 352800 frames but this range reads up to frame 396899 (window 1.000-9.000 s at 44100 Hz)', 'target': 'audio-mix', 'details': {'file_frames': 352800, 'needed_through': 396899, 'sample_rate': 44100}}"
+        }
+      ],
+      "error": "Abort: scene.export failed for a reason other than the missing audio seam: {\"code\": \"destination_exists\", \"message\": \"`/tmp/s10-acc-wp852mar/seam-probe/probe.mp4` already exists\", \"details\": {\"ok\": false, \"blockers\": [{\"code\": \"destination_exists\", \"message\": \"`/tmp/s10-acc-wp852mar/seam-probe/probe.mp4` already exists\"}], \"warnings\": [], \"summary\": {\"scene\": \"au\", \"bundle",
+      "metrics": {
+        "audio24_window_a": {
+          "duration_seconds": 3.0,
+          "tick": "1/12288",
+          "bytes": 68557,
+          "audio_streams": 1,
+          "seconds": 4.05,
+          "pictures": {
+            "18": {
+              "mk_red": {
+                "offsetPx": 0.462,
+                "iou": 0.9698,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.526,
+                "iou": 0.9732,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.113,
+                "iou": 0.9487,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.524,
+                "iou": 0.9591,
+                "judged": true
+              }
+            },
+            "54": {
+              "mk_red": {
+                "offsetPx": 0.462,
+                "iou": 0.9698,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.526,
+                "iou": 0.9732,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.112,
+                "iou": 0.9492,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.524,
+                "iou": 0.9591,
+                "judged": true
+              }
+            },
+            "89": {
+              "mk_red": {
+                "offsetPx": 0.462,
+                "iou": 0.9698,
+                "judged": true
+              },
+              "mk_green": {
+                "offsetPx": 0.526,
+                "iou": 0.9732,
+                "judged": true
+              },
+              "mk_blue": {
+                "offsetPx": 0.112,
+                "iou": 0.9492,
+                "judged": true
+              },
+              "mk_yellow": {
+                "offsetPx": 0.524,
+                "iou": 0.9591,
+                "judged": true
+              }
+            }
+          },
+          "audio": {
+            "channels": [
+              {
+                "correlation": -0.0,
+                "lagSamples": 7200,
+                "gainDb": -4.376,
+                "silentWorstRms": 0.250005,
+                "onsetErrorsMs": [
+                  -80.0,
+                  81.0,
+                  -78.0
+                ]
+              },
+              {
+                "correlation": -0.0,
+                "lagSamples": 7200,
+                "gainDb": -4.376,
+                "silentWorstRms": 0.250005,
+                "onsetErrorsMs": [
+                  -80.0,
+                  81.0,
+                  -78.0
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "phase": "audio_package_export",
+      "surface": "S9 seam: export with the mix from a restored project",
+      "status": "FAIL",
+      "seconds": 4.52,
+      "checks_total": 0,
+      "checks_failed": 0,
+      "checks": [],
+      "error": "Abort: scene.export failed for a reason other than the missing audio seam: {\"code\": \"destination_exists\", \"message\": \"`/tmp/s10-acc-wp852mar/seam-probe/probe.mp4` already exists\", \"details\": {\"ok\": false, \"blockers\": [{\"code\": \"destination_exists\", \"message\": \"`/tmp/s10-acc-wp852mar/seam-probe/probe.mp4` already exists\"}], \"warnings\": [], \"summary\": {\"scene\": \"au\", \"bundle"
+    }
+  ],
+  "not_run": [
+    "controls_camera",
+    "controls_splat",
+    "controls_package",
+    "camera_plan",
+    "camera_render",
+    "camera_export",
+    "baseline_splat_geometry",
+    "baseline_splat_colour",
+    "package_portability",
+    "package_tamper",
+    "splat_plan",
+    "splat_render",
+    "splat_export",
+    "splat_package",
+    "full_av"
+  ],
+  "not_claimed": [
+    "heard audio: audio is measured on decoded samples; nothing was listened to and no device is involved",
+    "photons, seek-to-photon and physical pointer input: no coordinate clicks, no display measurement",
+    "the native window: socket and UI flows of scene.export are R10's (scripts/directed-scene-export-proof); this harness drives the tessel-render process only",
+    "other GPUs, platforms and codecs: one machine, SwiftShader GL unless --gl gpu, libx264/aac as found by ffmpeg",
+    "partial opacity blending, anisotropic splat scales, spherical harmonics, splat lighting/weather/effects (BL025 beyond the subset), splats occluded by planes",
+    "bit-exact frames or samples: pictures are judged by masks, centroids and tolerances fixed beforehand; audio by correlation, edges and spectra",
+    "the editor's own clock/seek behaviour and playback in a device (BL046)"
+  ],
+  "exit_code": 1
+}

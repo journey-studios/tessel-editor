@@ -10,8 +10,8 @@ Exit status (never 0 unless every selected phase ran and passed):
     0  all selected phases PASS
     1  at least one FAIL
     3  no FAIL, but at least one phase is BLOCKED: a dependency (front S7: splat in the directed scene; front S9: the audio
-       mix in `scene.export`) is absent. BLOCKED is NOT a pass and keeps the PR in draft.
-    2  usage / prerequisite error of the harness itself
+       mix in `scene.export`) is absent. BLOCKED is NOT a pass, and it never replaces a FAIL of the same phase.
+    2  usage / prerequisite error of the harness itself (disk reserve under 12 GiB, unknown phase, missing corpus)
 
 Groups, and what each proves (docs/features/scene-acceptance.md):
   * data / controls  -> tolerances frozen before results, corpus determinism, models checked against analytic identities and the
@@ -54,6 +54,7 @@ def _load(name, path):
 
 import controls  # noqa: E402
 import corpus as corpus_module  # noqa: E402
+import ledger  # noqa: E402
 import oracle  # noqa: E402
 import verify  # noqa: E402
 
@@ -65,7 +66,7 @@ WORK_BUDGET_BYTES = 2 * 1024 ** 3
 TOL = verify.TOLERANCES
 PRESET_H = {"id": "s10-360p", "name": "S10 640x360", "width": 640, "height": 360}
 PRESET_V = {"id": "s10-360v", "name": "S10 360x640", "width": 360, "height": 640}
-RENDER_HINT = "python3 /Users/wallyssonnunes/.cache/tessel-editor/cargo-serial.py build -p tessel-editor-render --locked"
+RENDER_HINT = "./scripts/cargo build -p tessel-editor-render --locked"
 
 NOT_CLAIMED = [
     "heard audio: audio is measured on decoded samples; nothing was listened to and no device is involved",
@@ -92,19 +93,38 @@ def free_gib(path="/tmp"):
 
 
 class Workspace:
-    """Own temporary directory (`s10-acc-*`): budget 2 GiB, refuses under 12 GiB free, removes only itself."""
+    """Own temporary directory: budget 2 GiB, refuses under 12 GiB free, removes only itself.
+
+    `base` (`--work`) is a directory the caller owns and may already fill with their own files: the harness never writes into
+    it directly and never removes it. Everything it creates lives in an `s10-acc-*` directory it makes inside `base` (default
+    `/tmp`), and `close()` removes exactly that directory."""
 
     def __init__(self, keep=False, base=None):
         if free_gib() < MIN_FREE_GIB:
-            raise SystemExit(f"refusing to start: {free_gib():.1f} GiB free under /tmp, need {MIN_FREE_GIB}")
+            print(f"refusing to start: {free_gib():.1f} GiB free under /tmp, need {MIN_FREE_GIB}", file=sys.stderr)
+            raise SystemExit(2)  # a prerequisite refusal, not a FAIL of the editor (exit 1)
         self.keep = keep
-        self.path = pathlib.Path(base) if base else pathlib.Path(tempfile.mkdtemp(prefix="s10-acc-", dir="/tmp"))
-        self.path.mkdir(parents=True, exist_ok=True)
+        self.base = pathlib.Path(base) if base else pathlib.Path("/tmp")
+        self.base.mkdir(parents=True, exist_ok=True)
+        self.path = pathlib.Path(tempfile.mkdtemp(prefix="s10-acc-", dir=self.base))
+
+    scope = None  # the running phase: every directory of a phase lives under its own subtree
+
+    def _base(self):
+        base = self.path / self.scope if self.scope else self.path
+        base.mkdir(parents=True, exist_ok=True)
+        return base
 
     def sub(self, name):
-        path = self.path / name
+        """A directory named `name` private to the running phase (the same name in another phase is another directory)."""
+        path = self._base() / name
         path.mkdir(parents=True, exist_ok=True)
         return path
+
+    def fresh(self, name):
+        """A new, empty directory that nothing else has used: outputs of one request never collide with an earlier request's
+        (`destination_exists`), inside the phase or across phases, whether the earlier request passed or failed."""
+        return pathlib.Path(tempfile.mkdtemp(prefix=f"{name}-", dir=self._base()))
 
     def bytes_used(self):
         return harness.tree_bytes(self.path)
@@ -114,7 +134,7 @@ class Workspace:
 
     def close(self):
         if not self.keep:
-            shutil.rmtree(self.path, ignore_errors=True)
+            shutil.rmtree(self.path, ignore_errors=True)  # only the `s10-acc-*` directory this object created, never `base`
 
 
 class Channel:
@@ -152,7 +172,11 @@ class Context:
         path = pathlib.Path(getattr(self.args, f"bin_{key}"))
         if not path.is_file():
             raise Blocked(f"binary not built: {path}", f"build it with the serialized helper: {RENDER_HINT}", "BL019")
-        self.binaries[key] = harness.binary_info(path)
+        info = harness.binary_info(path)
+        self.binaries[key] = info
+        if info.get("older_than_sources") and not getattr(self.args, "allow_stale_binary", False):
+            raise Blocked(f"{path} is older than the sources of this checkout (a result would describe a different build)",
+                          f"rebuild it ({RENDER_HINT}), or pass --allow-stale-binary and the report will say so", "BL019")
         return path
 
     def open(self, name, bundle_key, scene="proof", resolve=True, gpu=True, base=None):
@@ -160,7 +184,7 @@ class Context:
         if gpu:
             self.gpu()
         binary = self.binary("render")
-        work = self.work.sub(name)
+        work = self.work.fresh(name)
         channel = Channel(harness.JsonlSession(binary, ["--gl", self.args.gl]))
         try:
             must(channel, {"op": "project.create", "name": name, "dir": str(work / "ws")})
@@ -287,8 +311,8 @@ def export_and_verify(p, ctx, ch, scene, bundle_key, destination, frm, frames, p
         metrics["pictures"] = judge_video_frames(p, ctx, destination, bundle_key, size, frm, frames, set(judge_frames), label, kind)
     if audio_case is not None:
         metrics["audio"] = verify.judge_audio(p, destination, audio_case, bundle, label=f"{label} ", video_seconds=metrics.get("duration_seconds"))
-    elif not verify.audio_streams(probe):
-        p.check(f"{label}: no audio stream, as asked (`audio:false`)", True)
+    elif audio_expected is False:
+        p.check(f"{label}: no audio stream, as asked (`audio:false`)", not verify.audio_streams(probe), len(verify.audio_streams(probe)))
     return ok, body, metrics
 
 
@@ -298,9 +322,14 @@ def git(*args):
 
 
 def phase_tolerances_frozen(ctx, p):
+    """What this phase proves is bookkeeping, and says so: the tolerances' first commit is an ancestor of every result file, and
+    no pinned file (tolerances, oracle, corpus, verifiers, controls) differs from the state the amendment ledger last recorded.
+    It does NOT prove that the numbers were fixed before every result."""
     path = HERE / "tolerances.json"
     data = json.loads(path.read_text())
-    p.check("tolerances.json declares itself frozen before results", data.get("frozenBeforeResults") is True)
+    frozen = data.get("frozenFrom", {})
+    p.check("tolerances.json states what Git proves (ancestry from a named commit) and does not claim a pre-registration",
+            bool(frozen.get("commit")) and "frozenBeforeResults" not in data, frozen)
     p.check("the corpus was generated against exactly these tolerances (hash recorded in expected.json)",
             ctx.exp["tolerancesSha256"] == sha256_file(path), (ctx.exp["tolerancesSha256"], sha256_file(path)))
     rel = str(path.relative_to(ROOT))
@@ -309,17 +338,18 @@ def phase_tolerances_frozen(ctx, p):
         return
     first = introduced[-1]
     p.metrics["introduced_in"] = first
-    p.check("tolerances.json is unchanged since it was committed (no silent tuning)",
-            subprocess.run(["git", "diff", "--quiet", "HEAD", "--", rel], cwd=ROOT).returncode == 0, "uncommitted edits")
-    touched = git("log", "--format=%H", "--", rel).splitlines()
-    p.check("every later change to tolerances.json is a recorded amendment",
-            len(touched) == 1 + len(data["amendments"]), f"{len(touched)} commits touch the file, {len(data['amendments'])} amendments recorded")
+    p.check("the commit named in tolerances.json is the commit that introduced it", first == frozen.get("commit"), (first, frozen.get("commit")))
+    for name, ok, detail in ledger.verify_ledger():
+        p.check(f"amendment ledger: {name}", ok, detail)
     results = [str(f.relative_to(ROOT)) for f in HERE.glob("results*.json")]
     for name in results:
         earliest = git("log", "--diff-filter=A", "--format=%H", "--", name).splitlines()
         ok = bool(earliest) and subprocess.run(["git", "merge-base", "--is-ancestor", first, earliest[-1]], cwd=ROOT).returncode == 0
-        p.check(f"{name}: the tolerance commit precedes the first commit that holds this result", ok, earliest[-1:] or "result not committed")
-    p.metrics["amendments"] = data["amendments"]
+        p.check(f"{name}: the tolerance commit is an ancestor of the first commit that holds this result (ancestry, not pre-registration)", ok, earliest[-1:] or "result not committed")
+    book = ledger.load()
+    p.metrics["amendments"] = [a | {"round": r["id"]} for r in book["rounds"] for a in r["amendments"]]
+    p.metrics["ledger_baseline"] = book["baseline"]["commit"]
+    p.metrics["pinned_sha256"] = ledger.current()
     p.metrics["tolerances_sha256"] = sha256_file(path)
 
 
@@ -382,15 +412,37 @@ def phase_models(ctx, p):
     import wave
     wav = wave.open(io.BytesIO((ctx.corpus_dir / "audio/mix.wav").read_bytes()))
     shape = (wav.getnchannels(), wav.getsampwidth(), wav.getframerate(), wav.getnframes())
-    p.check("the mix WAV is 8 s of mono 16-bit at 44.1 kHz", shape == (1, 2, 44100, 8 * 44100), shape)
+    p.check("the mix WAV is 13 s of mono 16-bit at 44.1 kHz", shape == (1, 2, 44100, corpus_module.MIX_SECONDS * 44100), shape)
+    for key, bundle in ctx.bundles.items():
+        audio = bundle.get("audio")
+        if not audio or key == "audio_short":
+            continue
+        # origin node/render.ts: the source must cover the whole window (AUDIO_SHORT), and the window is the edit's length
+        fps_of = Fraction(bundle["fps"]["numerator"], bundle["fps"]["denominator"])
+        end = Fraction(audio["editEndSecondsExclusive"]).limit_denominator(100000)
+        p.check(f"{key}: the whole WAV covers [0, editEndSecondsExclusive = {float(end)}) (origin AUDIO_SHORT rule)", end <= Fraction(shape[3], shape[2]), (float(end), shape[3] / shape[2]))
+        length = end - Fraction(audio["editStartSeconds"]).limit_denominator(1000)
+        p.check(f"{key}: the window is exactly the edit's length (origin AUDIO_VIDEO_DURATION rule)",
+                abs(length - oracle.frames_to_seconds(bundle["editDurationFrames"], fps_of)) <= Fraction(1, 1000), float(length))
+    short = wave.open(io.BytesIO((ctx.corpus_dir / "audio/mix-short.wav").read_bytes()))
+    short_end = Fraction(ctx.bundles["audio_short"]["audio"]["editEndSecondsExclusive"]).limit_denominator(1000)
+    p.check("the negative-control WAV is shorter than the window its bundle declares (a correct AUDIO_SHORT fixture)",
+            Fraction(short.getnframes(), short.getframerate()) < short_end, (short.getnframes() / short.getframerate(), float(short_end)))
+    p.check("the negative-control WAV is byte-identical to the pre-amendment mix (history/A1-audio-window)",
+            sha256_file(ctx.corpus_dir / "audio/mix-short.wav") == corpus_module.SHORT_MIX_SHA256)
     pcm = struct.unpack("<%dh" % (44100 // 10), wav.readframes(44100 // 10))
     table = controls.table_of(ctx.exp)
     worst = max(abs(pcm[i] / 32768 - table.value(Fraction(i, 44100))) for i in range(len(pcm)))
     p.check("the WAV samples equal the analytic tone table to one 16-bit step (first 0.1 s)", worst <= 1.5 / 32768, worst)
-    p.check("tone table: 440 Hz at 1 s, silence at 2.2 s, 1320 Hz at 4.5 s", (table.hz_at(Fraction(1)), table.hz_at(Fraction(22, 10)), table.hz_at(Fraction(9, 2))) == (440, None, 1320))
+    p.check("tone table (file time): 440 Hz at 1 s, silence at 3.2 s, 880 Hz at 5 s, 1320 Hz at 7 s, silence at 8 s, 440 Hz at 9 s",
+            (table.hz_at(Fraction(1)), table.hz_at(Fraction(16, 5)), table.hz_at(Fraction(5)), table.hz_at(Fraction(7)), table.hz_at(Fraction(8)), table.hz_at(Fraction(9)))
+            == (440, None, 880, 1320, None, 440))
     ntsc = Fraction(30000, 1001)
-    p.check("frame 150 at 30000/1001 is exactly 5.005 s", oracle.frames_to_seconds(150, ntsc) == Fraction(5005, 1000), oracle.frames_to_seconds(150, ntsc))
-    p.check("rational window: frame 18 at 24 fps with a 1 s mix offset is mix time -1/4 s", oracle.frames_to_seconds(18, Fraction(24)) - 1 == Fraction(-1, 4))
+    p.check("frame 180 at 30000/1001 is exactly 6.006 s", oracle.frames_to_seconds(180, ntsc) == Fraction(6006, 1000), oracle.frames_to_seconds(180, ntsc))
+    p.check("rational window (origin rule): frame 18 at 24 fps with editStartSeconds 1 plays file time 7/4 s",
+            oracle.source_time_of(oracle.frames_to_seconds(18, Fraction(24)), 1) == Fraction(7, 4))
+    p.check("the origin rule is not the retired assumption A1: file time 1.75 s is heard 0 s into an export of frame 18, not 2 s",
+            oracle.export_time_of(Fraction(7, 4), Fraction(24), 1, 18) == 0 and oracle.export_time_of(Fraction(7, 4), Fraction(24), 1, 18) != Fraction(2))
 
 
 NEGATIVE_DOMAIN = {"camera": "camera", "splat": "splat", "audio": "audio", "package": "package"}
@@ -413,7 +465,7 @@ def controls_phase(domain, runner):
 
 
 def _camera(expected, bundles, corpus_dir, work):
-    return controls.camera_controls(expected, bundles["camera"])
+    return controls.camera_controls(expected, bundles["camera"], bundles["camera_portrait"])
 
 
 def _splat(expected, bundles, corpus_dir, work):
@@ -572,7 +624,12 @@ def phase_baseline_audio(ctx, p):
         must(channel, {"op": "project.create", "name": "baseline-audio", "sequence": "main", "rate": 24, "width": 640, "height": 360, "length": 288, "dir": str(work / "ws")})
         must(channel, {"op": "asset.add", "kind": "audio", "id": "mix", "name": "mix", "path": str(ctx.corpus_dir / "audio/mix.wav")})
         must(channel, {"op": "track.add", "id": "a", "name": "A", "kind": "audio"})
-        must(channel, {"op": "clip.add", "id": "c", "track": "a", "asset": "mix", "start": 24, "duration": 192})
+        # The project layer places a clip on the timeline. To play the file the way the bundle's window does (edit time t -> file
+        # `editStartSeconds + t`, origin audio-window.ts) the clip covers the whole edit from frame 0 and starts reading the
+        # file `editStartSeconds` in (`source_start`, seconds). The earlier layout (clip at 1 s, file from its first sample)
+        # was the retired assumption A1 (amendment A1).
+        start = ctx.bundles["audio24"]["audio"]["editStartSeconds"]
+        must(channel, {"op": "clip.add", "id": "c", "track": "a", "asset": "mix", "start": 0, "duration": 288, "source_start": int(start)})
         for case_id in ("audio24_window_a", "audio24_window_b"):
             case = ctx.exp["audio"]["cases"][case_id]
             out = work / f"{case_id}.wav"
@@ -612,7 +669,7 @@ def restore_flow(ctx, p, bundle_key, label, scene="proof"):
     """package the project (origin = the harness's own copy), delete the origin, restore, return (restored folder, archive, work)."""
     ctx.gpu()
     binary = ctx.binary("render")
-    work = ctx.work.sub(label)
+    work = ctx.work.fresh(label)
     origin = work / "origin"
     shutil.copytree(ctx.corpus_dir, origin)
     archive, workspace, restored = work / "project.zip", work / "ws", work / "restored"
@@ -648,8 +705,11 @@ def phase_package_portability(ctx, p):
     entries = verify.read_package(archive) or {}
     manifest = json.loads(__import__("zipfile").ZipFile(archive).read("manifest.json"))
     declared = {f["path"]: f["sha256"] for f in manifest.get("files", [])}
+    wanted = package_assets(ctx, "audio24")
+    p.check("the package manifest declares a file entry for every corpus asset (a manifest without `files` proves nothing)",
+            bool(declared) and all(any(path.endswith(rel) for path in declared) for rel in wanted), sorted(set(wanted) - {r for r in wanted if any(d.endswith(r) for d in declared)}))
     p.check("the package manifest's declared hashes equal the hashes this harness computed from the entries (an independent reader)",
-            all(entries.get(path) == digest for path, digest in declared.items()), {k: v for k, v in declared.items() if entries.get(k) != v})
+            bool(declared) and all(entries.get(path) == digest for path, digest in declared.items()), {k: v for k, v in declared.items() if entries.get(k) != v})
     binary = ctx.binary("render")
     second = Channel(harness.JsonlSession(binary, ["--gl", ctx.args.gl]))
     try:
@@ -825,10 +885,16 @@ def phase_splat_package(ctx, p):
 
 
 def require_audio(ctx, ch, scene, preset=PRESET_H):
-    """BLOCKED while the default (`audio` omitted) request is refused for lack of the mix."""
-    probe = {"op": "scene.export.preflight", "scene": scene, "preset": preset, "from": 0, "frames": 2}
-    ok, body = ch({"op": "scene.export", "scene": scene, "preset": preset, "destination": str(ctx.work.sub("seam-probe") / "probe.mp4"),
-                   "from": 0, "frames": 2}, 300)
+    """BLOCKED while the default (`audio` omitted) request is refused for lack of the mix.
+
+    The probe writes into a directory of its own (a successful probe leaves a file; a probe or an earlier phase that failed
+    must never make this one answer `destination_exists`, which would be read as a failure of the seam) and removes it."""
+    directory = ctx.work.fresh("seam-probe")
+    try:
+        ok, body = ch({"op": "scene.export", "scene": scene, "preset": preset, "destination": str(directory / "probe.mp4"),
+                       "from": 0, "frames": 2}, 300)
+    finally:
+        shutil.rmtree(directory, ignore_errors=True)
     if not ok:
         domains = (body.get("details", {}) or {}).get("domains", [])
         if body.get("code") == "unsupported" and "audio" in domains:
@@ -885,6 +951,34 @@ def phase_audio_package_export(ctx, p):
         second.close()
 
 
+def phase_audio_short_source(ctx, p):
+    """Negative control against the destination: a source WAV shorter than the declared window must be refused, not exported.
+
+    Fixture `audio/mix-short.wav` (8 s) under a bundle declaring the window [1, 13): the origin (`node/render.ts`, AUDIO_SHORT)
+    refuses a source that does not cover the window. The range below reads file seconds 5-9 (one second past the end), so the
+    destination must answer `audio_source_short`, write no file and leave nothing behind. This case used to be an accidental
+    fixture of the retired assumption A1 and failed the real export for the wrong reason; it is now deliberate."""
+    ensure_tools()
+    case = ctx.exp["audio"]["shortSource"]
+    channel, work = ctx.open("audio-short-source", case["bundle"], scene="sh")
+    try:
+        require_audio(ctx, channel, "sh")  # BLOCKED while the seam is absent; a range inside the file exports
+        destination = work / "short.mp4"
+        ok, body = channel({"op": "scene.export", "scene": "sh", "preset": PRESET_H, "destination": str(destination),
+                            "from": case["from"], "frames": case["frames"]}, 300)
+        p.check("scene.export of a range that reads past the end of the source is refused", not ok, body if ok else "")
+        code = body.get("code") if isinstance(body, dict) else None
+        p.check(f"the refusal is the typed `{case['expectedCode']}` (not a generic or unrelated failure)", (not ok) and code == case["expectedCode"], code)
+        p.check("no file is created at the destination", not destination.exists(), str(destination))
+        leftovers = sorted(x.name for x in work.iterdir() if x.name not in ("ws",) and x != destination and x.suffix in (".mp4", ".wav", ".m4a", ".part"))
+        p.check("nothing else is left next to the destination (no partial output, no staged mix)", not leftovers, leftovers)
+        message = (body.get("message") if isinstance(body, dict) else "") or ""
+        p.check("the refusal names the numbers (frames held by the file and read by the range)", any(ch.isdigit() for ch in message), message[:160])
+        p.metrics["short_source"] = {"file_seconds": case["fileSeconds"], "reads_through_seconds": case["readsThroughSeconds"], "code": code}
+    finally:
+        channel.close()
+
+
 def phase_full_av(ctx, p):
     """Splat scene and audio mix together: plan, export (picture and sound) and package. Needs both fronts."""
     ensure_tools()
@@ -904,7 +998,7 @@ def phase_full_av(ctx, p):
 
 
 PHASES = [
-    ("tolerances_frozen", "data (tolerances committed before any result)", phase_tolerances_frozen),
+    ("tolerances_frozen", "data (tolerances ancestry and the amendment ledger of the oracle, verifiers, controls and corpus)", phase_tolerances_frozen),
     ("corpus", "data (corpus determinism, provenance, pinned hashes)", phase_corpus),
     ("models", "data (models vs origin oracle and analytic identities)", phase_models),
     ("controls_camera", "harness (camera verifier on right and wrong pictures)", controls_phase("camera", _camera)),
@@ -926,6 +1020,7 @@ PHASES = [
     ("splat_package", "S7 seam: package/restore with splat assets", phase_splat_package),
     ("audio_export", "S9 seam: scene.export mixed audio vs the analytic oracle (24 fps and 30000/1001)", phase_audio_export),
     ("audio_package_export", "S9 seam: export with the mix from a restored project", phase_audio_package_export),
+    ("audio_short_source", "S9 seam: a source shorter than the window is refused (negative control, own fixture)", phase_audio_short_source),
     ("full_av", "S7+S9 seams: splat and audio together, export and package", phase_full_av),
 ]
 
@@ -944,13 +1039,41 @@ def environment():
             "free_gib_tmp": round(free_gib(), 1)}
 
 
+def run_phase(ctx, phase, run):
+    """Runs one phase and settles its status. A FAIL is never overwritten: a phase whose checks failed and whose later step was
+    blocked stays FAIL (the blocked step is recorded next to it); BLOCKED only describes a phase that did not fail."""
+    try:
+        run(ctx, phase)
+    except Blocked as blocked:
+        phase.blocked = {"reason": blocked.reason, "needs": blocked.needs, "backlog": blocked.backlog}
+        if phase.status == harness.FAIL:
+            phase.blocked["note"] = "a later step was blocked after checks of this phase had already failed: the phase stays FAIL"
+        else:
+            phase.status = harness.BLOCKED
+        print(f"  BLOCKED {blocked.backlog}: {blocked.reason}", flush=True)
+    except Exception as error:  # noqa: BLE001 - any harness/request failure is a FAIL with its text
+        phase.status = harness.FAIL
+        phase.error = f"{type(error).__name__}: {error}"
+        print(f"  FAIL {phase.error}", flush=True)
+
+
+def exit_code_of(statuses, within_budget=True, stopped_early=False):
+    """1 if any FAIL (or the budget was exceeded), else 2 if the run stopped on a prerequisite, else 3 if any BLOCKED, else 0."""
+    if harness.FAIL in statuses or not within_budget:
+        return 1
+    if stopped_early:
+        return 2
+    return 3 if harness.BLOCKED in statuses else 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--phases", default="all")
     parser.add_argument("--bin-render", default=str(ROOT / "target/debug/tessel-render"))
     parser.add_argument("--gl", default="swiftshader", choices=["swiftshader", "gpu"])
-    parser.add_argument("--work", default=None)
+    parser.add_argument("--work", default=None, help="a directory you own: the harness makes and removes its own s10-acc-* inside it, never touching the rest")
+    parser.add_argument("--allow-stale-binary", action="store_true", help="accept a tessel-render older than this checkout's sources (the report records it)")
     parser.add_argument("--keep", action="store_true")
     parser.add_argument("--corpus", default=None, help="corpus directory; a tampered copy is the negative control (exits 1)")
     parser.add_argument("--gpu-lock-held", action="store_true", help="run under scripts/directed-scene-proof/with-gpu-lock.py")
@@ -973,41 +1096,37 @@ def main():
     expected, bundles, _ = controls.load(corpus_dir)
     work = Workspace(keep=args.keep, base=args.work)
     ctx = Context(args, work, expected, bundles)
-    results, started = [], time.time()
+    results, started, stopped = [], time.time(), None
     try:
         for phase_id, surface, run in PHASES:
             if phase_id not in wanted:
                 continue
+            if free_gib() < MIN_FREE_GIB or not work.within_budget():
+                stopped = f"stopped before {phase_id}: {free_gib():.1f} GiB free (reserve {MIN_FREE_GIB}) / work dir {work.bytes_used() / 1024 ** 3:.2f} GiB (budget {WORK_BUDGET_BYTES / 1024 ** 3:.0f})"
+                print(f"  {stopped}", flush=True)
+                break
             print(f"== {phase_id} [{surface}]", flush=True)
             phase = Phase(phase_id, surface)
+            work.scope = phase_id  # outputs of this phase never share a directory with another phase's, passed or failed
             t0 = time.time()
-            try:
-                run(ctx, phase)
-            except Blocked as blocked:
-                phase.status = harness.BLOCKED
-                phase.blocked = {"reason": blocked.reason, "needs": blocked.needs, "backlog": blocked.backlog}
-                print(f"  BLOCKED {blocked.backlog}: {blocked.reason}", flush=True)
-            except Exception as error:  # noqa: BLE001 - any harness/request failure is a FAIL with its text
-                phase.status = harness.FAIL
-                phase.error = f"{type(error).__name__}: {error}"
-                print(f"  FAIL {phase.error}", flush=True)
+            run_phase(ctx, phase, run)
             phase.seconds = time.time() - t0
             results.append(phase)
         within, peak_bytes = work.within_budget(), work.bytes_used()
     finally:
         work.close()
     statuses = [r.status for r in results]
-    exit_code = 1 if harness.FAIL in statuses else 3 if harness.BLOCKED in statuses else 0
-    if not within:
-        exit_code = 1
+    exit_code = exit_code_of(statuses, within, stopped is not None)
     provenance = json.loads((corpus_dir / "provenance.json").read_text())
     tolerances_path = HERE / "tolerances.json"
     report = {
         "harness": {"name": "directed-scene-acceptance", "version": HARNESS_VERSION,
-                    "files": {name: sha256_file(HERE / name) for name in ("proof.py", "oracle.py", "corpus.py", "verify.py", "controls.py", "tolerances.json")}},
+                    "files": {name: sha256_file(HERE / name) for name in ("proof.py", "oracle.py", "corpus.py", "verify.py", "controls.py", "ledger.py", "tolerances.json", "amendments.json", "proof.spec.py")}},
         "git": harness.git_state(),
         "tolerances": {"sha256": sha256_file(tolerances_path), "introduced_in": (git("log", "--diff-filter=A", "--format=%H", "--", str(tolerances_path.relative_to(ROOT))).splitlines() or [None])[-1],
-                       "amendments": json.loads(tolerances_path.read_text())["amendments"]},
+                       "frozen_from": json.loads(tolerances_path.read_text())["frozenFrom"]},
+        "amendment_ledger": {"sha256": sha256_file(ledger.LEDGER), "pinned_now": ledger.current(), "book": ledger.load()},
+        "stopped": stopped, "allow_stale_binary": args.allow_stale_binary,
         "corpus": {"version": expected["corpusVersion"], "dir": str(corpus_dir), "files": provenance["files"],
                    "expected_sha256": sha256_file(corpus_dir / "expected.json")},
         "binaries": ctx.binaries, "runtime_bundle": runtime_identity(), "environment": environment(), "gl": args.gl,
@@ -1024,7 +1143,7 @@ def main():
         print(f"  {r.status:8s} {r.id:26s} {detail}{extra}")
     for x in report["not_run"]:
         print(f"  NOT RUN  {x}")
-    print(f"exit {exit_code} ({'all selected phases passed' if exit_code == 0 else 'failures' if exit_code == 1 else 'blocked phases: not a pass'})")
+    print(f"exit {exit_code} ({'all selected phases passed' if exit_code == 0 else 'failures' if exit_code == 1 else 'stopped on a prerequisite' if exit_code == 2 else 'blocked phases: not a pass'})")
     if args.report:
         harness.write_report(args.report, report)
         print(f"report: {args.report}")

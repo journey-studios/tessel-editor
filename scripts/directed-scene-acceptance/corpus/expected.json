@@ -20,9 +20,13 @@
    "bytes": 332,
    "sha256": "b41a584e38e01466fa107e540495416b5fff13001fe3b5cce61d3358d998877d"
   },
-  "audio/mix.wav": {
+  "audio/mix-short.wav": {
    "bytes": 705644,
    "sha256": "cc252a2b0f8ec9695772e0ef51b01b7700d242b72af9a1e77ca10f0eeaffba75"
+  },
+  "audio/mix.wav": {
+   "bytes": 1146644,
+   "sha256": "e089e7d141d6bbfed6df66b7b8be7e27b9d0d2f308a882cafd1a8e61e659ed48"
   },
   "splat/sp-green.spz": {
    "bytes": 45,
@@ -49,7 +53,7 @@
   "cases": {
    "audio24_window_a": {
     "bundle": "audio24",
-    "covers": "export starts before the mix (silence), then 440 Hz, a gap, the first 0.25 s of 880 Hz",
+    "covers": "edit window offset 1 s: the export reads the file from 1.75 s; the last 1.25 s of the 440 Hz tone, a gap, the first 1.25 s of 880 Hz",
     "durationSeconds": "3",
     "durationSecondsFloat": 3.0,
     "editStartSeconds": 1.0,
@@ -61,42 +65,37 @@
     "segments": [
      {
       "amplitude": 0.5,
-      "from": 0.25,
+      "from": 0.0,
       "hz": 440,
-      "to": 2.25
+      "to": 1.25
      },
      {
       "amplitude": 0.5,
-      "from": 2.75,
+      "from": 1.75,
       "hz": 880,
       "to": 3.0
      }
     ],
+    "sourceChannels": 1,
     "transitions": [
      {
-      "exportSeconds": "1/4",
-      "exportSecondsFloat": 0.25,
-      "kind": "on",
-      "mixSeconds": "0"
-     },
-     {
-      "exportSeconds": "9/4",
-      "exportSecondsFloat": 2.25,
+      "exportSeconds": "5/4",
+      "exportSecondsFloat": 1.25,
       "kind": "off",
-      "mixSeconds": "2"
+      "mixSeconds": "3"
      },
      {
-      "exportSeconds": "11/4",
-      "exportSecondsFloat": 2.75,
+      "exportSeconds": "7/4",
+      "exportSecondsFloat": 1.75,
       "kind": "on",
-      "mixSeconds": "5/2"
+      "mixSeconds": "7/2"
      }
     ],
     "windowStartSeconds": "3/4"
    },
    "audio24_window_b": {
     "bundle": "audio24",
-    "covers": "880 -> 1320 Hz join without silence, a gap, 440 Hz; mix offset 1 s respected",
+    "covers": "file 5.0-9.0 s: 880 -> 1320 Hz join without silence, a gap, 440 Hz; mix offset 1 s respected",
     "durationSeconds": "4",
     "durationSecondsFloat": 4.0,
     "editStartSeconds": 1.0,
@@ -120,73 +119,69 @@
      },
      {
       "amplitude": 0.5,
-      "from": 3.0,
+      "from": 3.25,
       "hz": 440,
       "to": 4.0
      }
     ],
+    "sourceChannels": 1,
     "transitions": [
      {
       "exportSeconds": "5/2",
       "exportSecondsFloat": 2.5,
       "kind": "off",
-      "mixSeconds": "11/2"
+      "mixSeconds": "15/2"
      },
      {
-      "exportSeconds": "3",
-      "exportSecondsFloat": 3.0,
+      "exportSeconds": "13/4",
+      "exportSecondsFloat": 3.25,
       "kind": "on",
-      "mixSeconds": "6"
+      "mixSeconds": "33/4"
      }
     ],
     "windowStartSeconds": "4"
    },
    "audio_ntsc_window": {
     "bundle": "audio_ntsc",
-    "covers": "rate 30000/1001: the window starts at 5.005 s, not 5.000 s; the mix ends inside the window",
+    "covers": "rate 30000/1001, offset 0: the window starts at 6.006 s, not 6.000 s; 1320 Hz ends and 440 Hz begins inside the window",
     "durationSeconds": "2002/625",
     "durationSecondsFloat": 3.2032,
     "editStartSeconds": 0.0,
     "fps": "30000/1001",
     "frames": 96,
-    "from": 150,
-    "naive30fpsStartSeconds": 5.0,
+    "from": 180,
+    "naive30fpsStartSeconds": 6.0,
     "outputSamples": 153754,
     "segments": [
      {
       "amplitude": 0.25,
       "from": 0.0,
       "hz": 1320,
-      "to": 0.495
+      "to": 1.494
      },
      {
       "amplitude": 0.5,
-      "from": 0.995,
+      "from": 2.244,
       "hz": 440,
-      "to": 2.995
+      "to": 3.2032
      }
     ],
+    "sourceChannels": 1,
     "transitions": [
      {
-      "exportSeconds": "99/200",
-      "exportSecondsFloat": 0.495,
+      "exportSeconds": "747/500",
+      "exportSecondsFloat": 1.494,
       "kind": "off",
-      "mixSeconds": "11/2"
+      "mixSeconds": "15/2"
      },
      {
-      "exportSeconds": "199/200",
-      "exportSecondsFloat": 0.995,
+      "exportSeconds": "561/250",
+      "exportSecondsFloat": 2.244,
       "kind": "on",
-      "mixSeconds": "6"
-     },
-     {
-      "exportSeconds": "599/200",
-      "exportSecondsFloat": 2.995,
-      "kind": "off",
-      "mixSeconds": "8"
+      "mixSeconds": "33/4"
      }
     ],
-    "windowStartSeconds": "1001/200"
+    "windowStartSeconds": "3003/500"
    },
    "full_av": {
     "bundle": "full",
@@ -207,42 +202,59 @@
       "to": 2.0
      }
     ],
+    "sourceChannels": 1,
     "transitions": [],
     "windowStartSeconds": "0"
    }
   },
   "mix": {
+   "channels": 1,
    "relativePath": "audio/mix.wav",
    "sampleRate": 44100,
-   "seconds": 8,
+   "seconds": 13,
    "segments": [
     [
      "0",
-     "2",
+     "3",
      440,
      0.5
     ],
     [
-     "5/2",
-     "4",
+     "7/2",
+     "6",
      880,
      0.5
     ],
     [
-     "4",
-     "11/2",
+     "6",
+     "15/2",
      1320,
      0.25
     ],
     [
-     "6",
-     "8",
+     "33/4",
+     "13",
      440,
      0.5
     ]
-   ]
+   ],
+   "timeBase": "file",
+   "windowRule": "file time = editStartSeconds + edit time (origin audio-window.ts); the WAV covers [0, editEndSecondsExclusive)"
   },
-  "outputSampleRate": 48000
+  "outputSampleRate": 48000,
+  "shortSource": {
+   "bundle": "audio_short",
+   "expectedCode": "audio_source_short",
+   "fileSeconds": 8,
+   "frames": 96,
+   "from": 96,
+   "readsThroughSeconds": 9.0,
+   "relativePath": "audio/mix-short.wav",
+   "windowSeconds": [
+    1.0,
+    13.0
+   ]
+  }
  },
  "bundles": {
   "audio24": {
@@ -250,14 +262,21 @@
    "editFrames": 288,
    "file": "bundle.audio24.json",
    "fps": "24/1",
-   "sha256": "1b181b3f080526ef8b9cb99453a2a03060fdbb013ebfbe7e542b8af6229439b6"
+   "sha256": "1162e28ae664029843a811a4a6a33277b183b31ec00e3c42043f5715184ad157"
   },
   "audio_ntsc": {
    "bundleId": "s10-audio-ntsc",
    "editFrames": 300,
    "file": "bundle.audio-ntsc.json",
    "fps": "30000/1001",
-   "sha256": "3919bb6238c633aef31e696506a043b8aac444fb3a2b0a926699363b2618c767"
+   "sha256": "7f3ff2e28a4f8af37b6d59e7a58290b7bb46a9655bf51a50a54b4e0e69f81c32"
+  },
+  "audio_short": {
+   "bundleId": "s10-audio-short",
+   "editFrames": 288,
+   "file": "bundle.audio-short.json",
+   "fps": "24/1",
+   "sha256": "7bf6766e22459eb6d404148dd8a6ffc66da9256382521d4fdade5b2fbc8eb148"
   },
   "camera": {
    "bundleId": "s10-camera",
@@ -278,7 +297,7 @@
    "editFrames": 48,
    "file": "bundle.full.json",
    "fps": "24/1",
-   "sha256": "32ef214b974c93b2cab3f121c41a075981b5309eb7ab30f9d1618f9e9838cede"
+   "sha256": "14aaf573e9b5837859c70a6cfbc50e8cb0a784c6808223dbacb88c1c5c1ba9e0"
   },
   "splat": {
    "bundleId": "s10-splat",
@@ -2422,7 +2441,7 @@
    "mk_yellow"
   ]
  },
- "corpusVersion": 1,
+ "corpusVersion": 2,
  "note": "Generated by corpus.py from oracle.py (closed-form maths). No destination output is stored here.",
  "palette": {
   "background": [
@@ -3806,5 +3825,5 @@
    360
   ]
  },
- "tolerancesSha256": "696c3cd112dbfbefecd23e2849162be8df3a783d512a6f407b1369fe2ed1c722"
+ "tolerancesSha256": "ac984043cc70427e9edc2d34448b49b07f1c5646addd7d1bae8875cbf7090a12"
 }
