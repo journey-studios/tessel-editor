@@ -206,6 +206,18 @@ impl From<JobError> for CommandError {
             "invalid_bundle" => "invalid_bundle",
             "resource_changed" => "resource_changed",
             "resource_missing" => "resource_missing",
+            // The mix of a directed scene export (F042A) and the resolver errors a job can surface:
+            // a person can act on each of them, so none is hidden behind `job_failed`.
+            "unsupported" => "unsupported",
+            "audio_source_short" => "audio_source_short",
+            "audio_window_invalid" => "audio_window_invalid",
+            "audio_window_short" => "audio_window_short",
+            "audio_too_long" => "audio_too_long",
+            "scene_resources_not_loaded" => "scene_resources_not_loaded",
+            "resource_unknown" => "resource_unknown",
+            "resource_not_carried" => "resource_not_carried",
+            "stale_generation" => "stale_generation",
+            "resource_budget_exceeded" => "resource_budget_exceeded",
             _ => "job_failed",
         };
         let mut mapped = Self::new(code, error.message);
@@ -839,6 +851,26 @@ mod tests {
         assert_eq!(info.error.as_ref().unwrap().code, "disk_full");
         let command: CommandError = info.error.unwrap().into();
         assert_eq!(command.code, "disk_full");
+
+        // Codes a person can act on keep their own name; only the unnamed ones become `job_failed`.
+        for code in [
+            "resource_changed",
+            "resource_missing",
+            "unsupported",
+            "audio_source_short",
+            "audio_window_invalid",
+            "audio_window_short",
+            "audio_too_long",
+            "scene_resources_not_loaded",
+            "resource_unknown",
+            "stale_generation",
+        ] {
+            let command: CommandError = JobError::new(code, "x").into();
+            assert_eq!(command.code, code);
+        }
+        let unnamed: CommandError = JobError::new("something_new", "x").into();
+        assert_eq!(unnamed.code, "job_failed");
+        assert_eq!(unnamed.details.unwrap()["job_code"], "something_new");
 
         let panicked = registry.spawn(JobKind::Package, "panic", |_| panic!("boom"));
         let info = registry.wait(&panicked, Duration::from_secs(5)).unwrap();

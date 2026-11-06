@@ -259,7 +259,7 @@ const FRAME_COUNT: FieldSpec = FieldSpec {
 };
 const SCENE_AUDIO: FieldSpec = FieldSpec {
     name: "audio",
-    label: "Incluir áudio (ainda indisponível para cenas)",
+    label: "Incluir a mix de áudio declarada (no = só imagem)",
     placeholder: "yes",
     picker: Picker::None,
     options: &["yes", "no"],
