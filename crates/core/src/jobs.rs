@@ -198,6 +198,8 @@ impl From<JobError> for CommandError {
             "verification_failed" => "verification_failed",
             "destination_exists" => "destination_exists",
             "permission_denied" => "permission_denied",
+            "resource_changed" => "resource_changed",
+            "resource_missing" => "resource_missing",
             _ => "job_failed",
         };
         let mut mapped = Self::new(code, error.message);
