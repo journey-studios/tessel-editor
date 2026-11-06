@@ -166,7 +166,7 @@ Ver a seção de resultados abaixo e `docs/backlog.md` (BL025).
 
 | Superfície | Teste | Prova |
 |---|---|---|
-| Export + snapshot (lib/JSONL, Chrome real) | `crates/render/tests/scene_splat_frames.rs` | só o recurso aprovado entra na cópia privada (arquivo não declarado ao lado não viaja; `snapshot.files == 3`); troca de mesmo tamanho → `resource_changed` (`asset:cloud`), outro tamanho/ausente recusados, nada fica; reescrita **durante** o job não chega a nenhum quadro (hashes dos 12 quadros iguais aos do export de referência); cancelar remove só o estágio próprio (pasta alheia `.tessel-*` sobrevive) |
+| Export + snapshot (lib/JSONL, Chrome real) | `crates/render/tests/scene_splat_frames.rs` | só o recurso aprovado entra na cópia privada (arquivo não declarado ao lado não viaja; `snapshot.files == 3`); troca de mesmo tamanho → `resource_changed` (`asset:cloud`), outro tamanho/ausente recusados, nada fica; reescrita **durante** o job não chega a nenhum quadro (hashes dos 12 quadros iguais aos do export de referência; limite honesto: a reescrita de `an_original_splat_rewritten_while_the_job_renders_cannot_reach_a_frame` ocorre depois de o runtime já ter carregado o `spz` e o teste não confirma que o job segue `running` no momento da escrita, então só distingue uma regressão que releia o original no meio do render; a garantia determinística de que o carregamento usa a cópia privada vem de `a_splat_swapped_or_removed_after_approval_is_refused_and_leaves_nothing`, de `snapshot.files == 3` e do `ResourceSnapshot`/BL109); cancelar remove só o estágio próprio (pasta alheia `.tessel-*` sobrevive) |
 | Janela nativa (WKWebView) | `scripts/scene-splat-native-proof.py --corpus <corpus do S10>` | 5 quadros (câmera se move): monitor convergiu, hash do monitor = hash do `scene.render` do mesmo quadro, centro de cada splat com a cor guardada (≤ 24) e fundo plano; controles: 40 px ao lado não é a cor, a cor escurecida pelo caminho antigo não é a cor; `asset.identity` negociado e todas as cargas carimbadas; runtime e livro de slots têm o mesmo número de recursos |
 
 A prova nativa lê o corpus do S10 (esperados do oráculo independente) por `--corpus`, somente leitura; ele não é
@@ -187,7 +187,7 @@ branch (debug, runtime real, SwiftShader, sob o lock da GPU):
 | `splat_render` | **FAIL 165/167** |
 | `splat_export` | **FAIL 186/187** |
 | `splat_package` | **FAIL 59/60** |
-| `audio_export`, `audio_package_export`, `full_av` | **BLOCKED** (S9/BL016 não integrado) |
+| `audio_export`, `audio_package_export`, `full_av` | **BLOCKED** (medido com S9 não integrado; S9 entrou na main em `8c6c3b9`, mas não há execução viva nem oráculo emendado, BL120/BL121) |
 
 As quatro falhas são a **mesma regra**: `s-order back centre: the front splat's colour wins within 40`, nos quadros
 36 e 47 (em 0/12/23/24 passa). O corpus do oráculo coloca, nesses quadros, o centro do splat de trás a 10,6 e 11,6 px
@@ -206,8 +206,9 @@ qualquer renderer correto, o que sustenta a hipótese de BL120 (emenda do S10, q
 harness). **Nada disso transforma FAIL em PASS**: `splat_render`, `splat_export` e `splat_package` seguem FAIL e `full_av`/áudio
 BLOCKED.
 
-`full_av` precisa do mix de áudio do S9 (`scene.export` ainda recusa o bundle com áudio): fica BLOCKED e não conta
-como pass. As fases `splat_*` devem ser reexecutadas (BL121) com o merge de S7 e S9 e a emenda BL120.
+`full_av` precisa do mix de áudio do S9, que já está integrado neste head (a recusa do bundle com áudio descrita na medição
+acima era do head sem S9): continua BLOCKED porque não há execução viva nem oráculo emendado, e não conta
+como pass. Nenhum teste deste repositório declara splat e áudio juntos; a combinação S7+S9 só tem prova por leitura. As fases `splat_*` devem ser reexecutadas (BL121) com o merge de S7 e S9 e a emenda BL120.
 
 ### Correções da revisão PR13
 
