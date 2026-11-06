@@ -425,7 +425,7 @@ fn playback_follows_the_audio_clock_or_says_why_it_cannot(cx: &mut TestAppContex
     let moved = tick_playback(&view, cx, |report| {
         report["frame"].as_i64().unwrap_or(0) > 30
     });
-    assert!(moved["frame"].as_i64().unwrap() >= 30, "{moved}");
+    assert!(moved["frame"].as_i64().unwrap() > 30, "{moved}");
     assert_eq!(moved["state"], "playing");
 
     let stopped = op(&view, cx, json!({"op":"playback.stop"})).unwrap();

@@ -35,20 +35,16 @@ use super::value::{PropertyValue, ValueKind};
 /// (`scene_edit_oracle.rs`), and it grows with how fast the orbit turns.
 const ORBIT_KEY_STEP: u64 = 2;
 
-/// Every field the schema declares on a movement, whatever its recipe: the ones a conversion
-/// rebuilds (`recipe`, `durationFrames`, `from`, `keys`) and the recipe-specific ones it retires
-/// (`easing`, `distanceSceneUnits`, `fovDeltaDeg`, `yawDeg`, `pitchDeg`).
-const SCHEMA_KEYS: [&str; 9] = [
-    "recipe",
-    "durationFrames",
-    "from",
-    "keys",
-    "easing",
-    "distanceSceneUnits",
-    "fovDeltaDeg",
-    "yawDeg",
-    "pitchDeg",
-];
+/// Fields consumed by the old recipe. Other recipes' fields remain unknown document data.
+fn retired_recipe_keys(motion: &CameraMotion) -> &'static [&'static str] {
+    match motion {
+        CameraMotion::Hold => &[],
+        CameraMotion::Move { .. } => &["distanceSceneUnits", "easing"],
+        CameraMotion::Zoom { .. } => &["fovDeltaDeg", "easing"],
+        CameraMotion::Orbit { .. } => &["yawDeg", "pitchDeg", "easing"],
+        CameraMotion::Keyframes { .. } => &["keys"],
+    }
+}
 
 /// A movement that was turned into keys by a write of the batch.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -193,7 +189,9 @@ pub(super) fn convert_first_movement(
     // never sees them (its zod parse strips them before any command runs).
     if let (Some(old), Some(new)) = (slot.as_object(), converted.as_object_mut()) {
         for (key, value) in old {
-            if !SCHEMA_KEYS.contains(&key.as_str()) {
+            if !["recipe", "durationFrames", "from", "keys"].contains(&key.as_str())
+                && !retired_recipe_keys(&segment.motion).contains(&key.as_str())
+            {
                 new.insert(key.clone(), value.clone());
             }
         }

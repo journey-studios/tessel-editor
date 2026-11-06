@@ -221,7 +221,7 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
             ],
             "max_scenes": MAX_SCENES,
             // Additive contract of the property catalog (docs/features/scene-edit.md): a caller
-            // that does not read it still gets the original eight properties unchanged.
+            // that does not read it gets the default property listing (including renderOrder).
             "edit": {
                 "catalog_version": 2,
                 "components": true,

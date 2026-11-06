@@ -484,3 +484,11 @@ Plano e contratos: [wave-s1-s10-plan.md](migration/wave-s1-s10-plan.md). R1–R1
 | S8 | BL015/BL042 | Preparada para delegação | gizmo de translação e comando semântico equivalentes |
 | S9 | BL016 | Preparada para delegação | mix offline dirigido e áudio no export |
 | S10 | BL019 (ampliação) | Preparada para delegação | provas independentes e controles negativos |
+
+## PR12 — resíduos da revisão Opus R2
+
+N1: campos aposentados selecionados pela receita; regressão dollyIn/yawDeg e hold/easing escrita, não executada (disco<12GiB). N2: contrato e comentários distinguem validação final de conversão intermediária; no-op só após candidato válido. Texto das ferramentas/manifesto do corpus fica para regeneração com hashes coerentes, sem alterar fixtures agora. N3: teste de playback exige frame>30. Nenhum gate novo executado; nova revisão independente e gates finais pendentes.
+
+| ID | Bloco | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL005d | BB04/decisão | Lote deve validar também todos os estados intermediários como a origem? | Decisão, não bloqueia comportamento atual | BL005c | Coordenador | Contrato atual atômico preservado; conversões dependem da pose intermediária e da ordem. Review Opus R2 5801336179. Alteração futura exige decisão explícita e compatibilidade dos consumidores. |

@@ -12,11 +12,13 @@
 //!   change; the editor leaves the document byte-identical (a no-op is a no-op). Poses agree.
 //! - `noop-restored-start`, `axis-restored-by-vector`, `restore-orbit` (A -> B -> A): the origin
 //!   converts on the first write and keeps its keys; the editor judges the net effect, finds none
-//!   and returns the input scene with no conversion. Poses agree for straight movements; for an
+//!   and returns the input scene with no conversion, after successful conversion and candidate
+//!   validation (invalid keys still reject a net no-op). Poses agree for straight movements; for an
 //!   orbit the origin's chords differ from the arc the editor keeps, by a measured amount.
 //! - `intermediate-degenerate-then-target` (`divergence`): the origin validates each write against
 //!   the whole bundle, so putting the camera on its own target is refused even if the next write
-//!   moves the target; the editor validates the final candidate of the batch only.
+//!   moves the target; importer and gates validate the final candidate. Conversion itself uses
+//!   the intermediate pose and can fail at its op, so operation order still matters.
 //! - `axis` cases: the origin has no per-axis path. The expected answer is the origin's answer to
 //!   the whole vector with one axis replaced (composed by the harness): it proves an axis is its
 //!   parent with one axis replaced, not that the origin has an axis path.

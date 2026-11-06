@@ -1011,6 +1011,30 @@ fn a_conversion_keeps_the_fields_the_schema_does_not_declare() {
 }
 
 #[test]
+fn a_conversion_preserves_fields_belonging_to_other_recipes() {
+    for (recipe, field, value) in [
+        ("dollyIn", "yawDeg", json!(5)),
+        ("hold", "easing", json!("x")),
+    ] {
+        let mut doc = document();
+        doc["cameraClips"][0]["segments"][0]["recipe"] = json!(recipe);
+        doc["cameraClips"][0]["segments"][0][field] = value.clone();
+        let scene = scene_of(doc);
+        let outcome = apply(
+            &scene,
+            &[set(
+                clip(CameraProperty::StartPosition),
+                vec3(1.0, 2.0, 10.0),
+            )],
+        )
+        .expect("converts while preserving unknown fields");
+        let segment = &clip_json(&outcome.candidate)["segments"][0];
+        assert_eq!(segment["recipe"], json!("keyframes"));
+        assert_eq!(segment[field], value, "{recipe}: {field}");
+    }
+}
+
+#[test]
 fn render_order_beyond_what_a_number_holds_is_a_value_error_not_a_type_error() {
     let scene = fixture();
     let code_of = |value: Value| {
