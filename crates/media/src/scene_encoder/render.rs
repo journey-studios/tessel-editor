@@ -60,7 +60,9 @@ pub type SceneRendererFactory =
 /// started**. WHY a frozen map and not the live session: the session forgets everything when the
 /// project changes or a resolver is invalidated, and an export that quietly switched to other
 /// bytes halfway would not be one video. The files are verified when the map is approved
-/// (`scene.resources.resolve`); this does not hash them again.
+/// (`scene.resources.resolve`); this does not hash them again. It freezes *paths* only: the job
+/// freezes the *bytes* by copying them into its staging (`ResourceSnapshot`, BL109) and hands the
+/// renderer that copy, so a file swapped after approval cannot reach a frame.
 #[derive(Debug, Clone)]
 pub struct FrozenResources(Arc<ResolvedResourceMap>);
 

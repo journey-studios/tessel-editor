@@ -49,3 +49,7 @@ A evidência precede o commit, por isso os registros incluem base e árvore suja
 ## Publicação e revisão
 
 Implementação e evidências publicadas na [PR #4](https://github.com/journey-studios/tessel-editor/pull/4), commit `f6311d20bcdc6768b39756f5531e5f44850f983a`. CodeRabbit pulou a revisão por selecionar 121 arquivos, acima do teto de 100; o comentário também cita capacidade/créditos indisponíveis. [Status do serviço](https://github.com/journey-studios/tessel-editor/pull/4#issuecomment-6669704948). Não houve aprovação do CodeRabbit nem merge. A configuração dessa execução veio da base `914c830`, sem os filtros novos de artefatos adicionados nesta PR. A entrega permanece em uma PR, conforme a regra do projeto; não foi dividida ou ocultada para contornar a revisão.
+
+## Merge confirmado
+
+O usuário autorizou o merge apesar da revisão pulada. A PR #4 foi mergeada na main em `c099f102d230271923684bc4e27a970a2bdfbe2a`; o checkout foi atualizado para esse merge. O bloqueio de revisão descrito acima é histórico e não significa aprovação do CodeRabbit. Status atuais estão no backlog reconciliado.
