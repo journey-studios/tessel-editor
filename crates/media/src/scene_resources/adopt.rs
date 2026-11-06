@@ -386,10 +386,11 @@ impl PendingAdoption {
     /// [`apply`](PendingAdoption::apply) without the removal: accepted, the files are the
     /// project's; refused, the adoption comes back **still owning its files** (and still claimed)
     /// so the caller can remove them wherever it may block (BL094, BL112). Reads and hashes no
-    /// resource file; accepting does read and write the workspace's `claims.json` under its
-    /// `flock`, without waiting for it: this is the window's tick, so a lock that another
-    /// process holds at that instant makes the ledger unavailable for this call (BL112.3)
-    /// instead of holding the tick up.
+    /// resource file; accepting takes the workspace's ledger `flock` without waiting for it
+    /// (this is the window's tick, so a lock that another process holds at that instant makes
+    /// the ledger unavailable for this call, BL112.3, instead of holding the tick up) and, in a
+    /// large ledger, appends one record to its journal instead of rewriting it, so the cost does
+    /// not depend on the size of the ledger (BL112.7).
     ///
     /// Two refusals: the project no longer fits (`refusal` is `None`), or the ledger could not
     /// record the acceptance (`refusal` is the `claims_unavailable` error and nothing was

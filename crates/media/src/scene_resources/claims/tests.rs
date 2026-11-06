@@ -843,3 +843,338 @@ fn a_folder_the_record_already_holds_is_not_looked_up_in_the_ledger_again() {
         );
     });
 }
+
+// --- accepting in a large ledger appends a record instead of rewriting it (BL112.7) ------------
+
+fn journal_path(canonical: &Path) -> PathBuf {
+    canonical.join(".tessel-claims/claims.journal")
+}
+
+/// Fills the ledger with entries of `holder` until its state is past what an acceptance still
+/// rewrites inline. Returns how many entries that took.
+fn grow_past_inline(ledger: &Ledger, holder: HolderId, canonical: &Path) -> usize {
+    let mut tracker = ledger.lock_creating();
+    let mut count = 0;
+    while fs::metadata(state_path(canonical)).map_or(0, |meta| meta.len()) <= ledger::INLINE_LIMIT {
+        tracker
+            .create_file(holder, key(&format!("bulk-{count}")), &root(), None)
+            .unwrap();
+        count += 1;
+    }
+    count
+}
+
+/// A large ledger, plus entries of a result that is about to be accepted.
+struct Large {
+    _dir: Staging,
+    canonical: PathBuf,
+    ledger: Ledger,
+    bulk: usize,
+    result: HolderId,
+}
+
+fn large(name: &str, accepted: &[&str]) -> Large {
+    let dir = workspace(name);
+    let canonical = fs::canonicalize(dir.path()).unwrap();
+    let ledger = Ledger::of(dir.path());
+    let (bulk_holder, result) = (next_holder(), next_holder());
+    let bulk = grow_past_inline(&ledger, bulk_holder, &canonical);
+    let mut tracker = ledger.lock();
+    for name in accepted {
+        tracker
+            .create_file(result, key(name), &root(), None)
+            .unwrap();
+    }
+    drop(tracker);
+    Large {
+        _dir: dir,
+        canonical,
+        ledger,
+        bulk,
+        result,
+    }
+}
+
+#[test]
+fn a_large_ledger_is_accepted_by_one_appended_record_not_by_rewriting_it() {
+    let world = large("claims-journal-append", &["accepted-one", "accepted-two"]);
+    let (one, two) = (key("accepted-one"), key("accepted-two"));
+    let before = fs::read(state_path(&world.canonical)).unwrap();
+    assert!(before.len() as u64 > ledger::INLINE_LIMIT);
+
+    world
+        .ledger
+        .accept([one.as_path(), two.as_path()].into_iter(), false)
+        .unwrap();
+
+    assert_eq!(
+        fs::read(state_path(&world.canonical)).unwrap(),
+        before,
+        "the state file was neither read into a new document nor rewritten"
+    );
+    let journal = fs::read_to_string(journal_path(&world.canonical)).unwrap();
+    assert_eq!(journal.lines().count(), 1, "one record: {journal}");
+    assert!(journal.ends_with('\n'), "complete: {journal}");
+    assert!(journal.contains("accepted-one") && journal.contains("accepted-two"));
+
+    // The next reader sees them as gone, and only them.
+    let tracker = world.ledger.lock();
+    assert!(tracker.fault().is_none(), "{:?}", tracker.fault());
+    assert_eq!(tracker.entries().count(), world.bulk);
+    assert!(
+        tracker
+            .entries()
+            .all(|(entry, _)| entry != one && entry != two)
+    );
+    drop(tracker);
+    assert!(
+        !journal_path(&world.canonical).exists(),
+        "the reader folded the journal into the state before answering"
+    );
+    let state = fs::read_to_string(state_path(&world.canonical)).unwrap();
+    assert!(!state.contains("accepted-one") && !state.contains("accepted-two"));
+}
+
+#[test]
+fn a_journal_that_survived_its_compaction_changes_nothing_the_second_time() {
+    // A crash between writing the state and removing the journal.
+    let world = large("claims-journal-survives", &["survivor"]);
+    let path = key("survivor");
+    world
+        .ledger
+        .accept([path.as_path()].into_iter(), false)
+        .unwrap();
+    let journal = journal_path(&world.canonical);
+    let record = fs::read(&journal).unwrap();
+    assert_eq!(world.ledger.lock().entries().count(), world.bulk);
+    assert!(!journal.exists());
+
+    fs::write(&journal, &record).unwrap();
+    let tracker = world.ledger.lock();
+    assert!(tracker.fault().is_none(), "{:?}", tracker.fault());
+    assert_eq!(tracker.entries().count(), world.bulk);
+    drop(tracker);
+    assert!(!journal.exists(), "and it is gone now");
+}
+
+#[test]
+fn a_path_claimed_again_after_an_acceptance_is_not_taken_by_the_old_record() {
+    let world = large("claims-journal-reclaim", &["reclaimed"]);
+    let path = key("reclaimed");
+    world
+        .ledger
+        .accept([path.as_path()].into_iter(), false)
+        .unwrap();
+    assert!(journal_path(&world.canonical).exists());
+
+    // Whoever claims next opens the ledger, which folds the old record in before it writes.
+    let again = next_holder();
+    world
+        .ledger
+        .lock_creating()
+        .create_file(again, path.clone(), &root(), None)
+        .unwrap();
+    assert!(!journal_path(&world.canonical).exists());
+    let entry = on_disk(&world.ledger, &path).expect("claimed anew, the old record is gone");
+    assert!(entry.holders.contains(&again), "{entry:?}");
+    assert!(!entry.holders.contains(&world.result));
+}
+
+#[test]
+fn a_record_that_never_finished_is_not_an_acceptance_and_the_next_writer_cuts_it_off() {
+    let world = large("claims-journal-torn", &["torn-a", "torn-b", "torn-c"]);
+    let (a, b, c) = (key("torn-a"), key("torn-b"), key("torn-c"));
+    let journal = journal_path(&world.canonical);
+    // One complete record, then a writer that died halfway through the next (no newline).
+    let mut text = format!("{{\"accept\":[\"{}\"]}}\n", a.display());
+    text.push_str(&format!("{{\"accept\":[\"{}", b.display()));
+    fs::write(&journal, text).unwrap();
+
+    world
+        .ledger
+        .accept([c.as_path()].into_iter(), false)
+        .unwrap();
+    let after = fs::read_to_string(&journal).unwrap();
+    assert_eq!(after.lines().count(), 2, "the torn tail is gone: {after}");
+    assert!(
+        after.ends_with('\n') && !after.contains("torn-b"),
+        "{after}"
+    );
+
+    let tracker = world.ledger.lock();
+    assert!(tracker.fault().is_none(), "{:?}", tracker.fault());
+    let left: Vec<&Path> = tracker
+        .entries()
+        .map(|(entry, _)| entry)
+        .filter(|entry| entry.to_string_lossy().contains("/torn-"))
+        .collect();
+    assert_eq!(
+        left,
+        vec![b.as_path()],
+        "only the unfinished one is left claimed"
+    );
+}
+
+#[test]
+fn a_torn_journal_alone_is_read_as_no_acceptance() {
+    let world = large("claims-journal-torn-alone", &["torn-alone"]);
+    let path = key("torn-alone");
+    fs::write(
+        journal_path(&world.canonical),
+        format!("{{\"accept\":[\"{}\"", path.display()),
+    )
+    .unwrap();
+    let tracker = world.ledger.lock();
+    assert!(tracker.fault().is_none(), "{:?}", tracker.fault());
+    assert!(
+        tracker.entries().any(|(entry, _)| entry == path),
+        "an acceptance that never completed did not happen"
+    );
+    drop(tracker);
+    assert!(!journal_path(&world.canonical).exists());
+}
+
+#[test]
+fn a_complete_line_that_does_not_parse_is_damage_and_the_ledger_refuses() {
+    let world = large("claims-journal-damaged", &["damaged"]);
+    let path = key("damaged");
+    let journal = journal_path(&world.canonical);
+    fs::write(&journal, b"{ not a record\n").unwrap();
+    let state = fs::read(state_path(&world.canonical)).unwrap();
+
+    let tracker = world.ledger.lock();
+    let fault = tracker.fault().expect("damage is not an empty journal");
+    assert!(fault.contains("claims journal"), "{fault}");
+    drop(tracker);
+    assert!(matches!(
+        world.ledger.lock().leave(world.result, &path),
+        Leave::Unverifiable(_)
+    ));
+    assert_eq!(
+        fs::read(&journal).unwrap(),
+        b"{ not a record\n",
+        "left as it is for a person to look at"
+    );
+    assert_eq!(fs::read(state_path(&world.canonical)).unwrap(), state);
+}
+
+#[test]
+fn an_acceptance_that_could_not_be_appended_is_an_error_and_the_entries_stay_claimed() {
+    let world = large("claims-journal-fails", &["append-fails"]);
+    let path = key("append-fails");
+    // A folder where the journal file should be: the record cannot be written.
+    let journal = journal_path(&world.canonical);
+    fs::create_dir(&journal).unwrap();
+
+    let error = world
+        .ledger
+        .accept([path.as_path()].into_iter(), false)
+        .expect_err("an acceptance that was not written must not be reported");
+    assert!(error.contains("claims.journal"), "{error}");
+    fs::remove_dir(&journal).unwrap();
+
+    let entry = on_disk(&world.ledger, &path).expect("still listed: not accepted");
+    assert!(entry.holders.contains(&world.result), "and still held");
+}
+
+#[test]
+fn the_tick_does_not_wait_for_a_stuck_holder_in_a_large_ledger_either() {
+    let world = large("claims-journal-stuck", &["stuck"]);
+    let path = key("stuck");
+    let stuck = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(world.canonical.join(".tessel-claims/ledger.lock"))
+        .unwrap();
+    stuck.lock().unwrap();
+
+    let started = std::time::Instant::now();
+    let error = world
+        .ledger
+        .accept([path.as_path()].into_iter(), false)
+        .expect_err("the lock stayed held: unavailable");
+    let waited = started.elapsed();
+    assert!(
+        error.contains("held right now") && error.contains("gave up after"),
+        "{error}"
+    );
+    assert!(
+        waited >= ledger::TICK_WAIT,
+        "it waited its budget: {waited:?}"
+    );
+    assert!(
+        waited < TICK_CEILING,
+        "and no longer than the ceiling: {waited:?}"
+    );
+    assert!(
+        !journal_path(&world.canonical).exists(),
+        "a refused acceptance writes nothing"
+    );
+    stuck.unlock().unwrap();
+    drop(stuck);
+    world
+        .ledger
+        .accept([path.as_path()].into_iter(), false)
+        .unwrap();
+}
+
+#[test]
+fn a_small_ledger_is_still_accepted_inline_and_an_emptied_one_disappears() {
+    let dir = workspace("claims-inline-accept");
+    let canonical = fs::canonicalize(dir.path()).unwrap();
+    let ledger = Ledger::of(dir.path());
+    let (holder, path) = (next_holder(), key("inline"));
+    assert!(
+        ledger.accept([path.as_path()].into_iter(), false).is_ok(),
+        "nothing is claimed in a workspace without a ledger"
+    );
+    assert!(!canonical.join(".tessel-claims").exists());
+
+    ledger
+        .lock_creating()
+        .create_file(holder, path.clone(), &root(), None)
+        .unwrap();
+    ledger.accept([path.as_path()].into_iter(), false).unwrap();
+    assert!(
+        !journal_path(&canonical).exists(),
+        "small: rewritten inline"
+    );
+    assert!(
+        !canonical.join(".tessel-claims").exists(),
+        "the workspace looks as if it never had a claim"
+    );
+}
+
+/// Several threads accepting (as the tick of several windows could) while others claim and
+/// compact: every acceptance stays accepted and nothing is resurrected.
+#[test]
+fn concurrent_acceptances_and_compactions_never_lose_or_resurrect_an_entry() {
+    let world = large("claims-journal-race", &[]);
+    let ledger = &world.ledger;
+    std::thread::scope(|scope| {
+        for worker in 0..4 {
+            scope.spawn(move || {
+                for round in 0..40 {
+                    let holder = next_holder();
+                    let path = key(&format!("race-{worker}-{round}"));
+                    ledger
+                        .lock_creating()
+                        .create_file(holder, path.clone(), &root(), None)
+                        .unwrap();
+                    // The lock may be held for a moment by another worker: a refused acceptance
+                    // is retried (as a discard would then keep the entry), never skipped.
+                    let accepted =
+                        (0..50).any(|_| ledger.accept([path.as_path()].into_iter(), true).is_ok());
+                    assert!(accepted, "{path:?} was never accepted");
+                }
+            });
+        }
+    });
+    let tracker = ledger.lock();
+    assert!(tracker.fault().is_none(), "{:?}", tracker.fault());
+    assert_eq!(
+        tracker.entries().count(),
+        world.bulk,
+        "every entry that was accepted is gone, and only those"
+    );
+}

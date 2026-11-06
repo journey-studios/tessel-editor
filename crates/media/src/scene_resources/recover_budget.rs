@@ -11,11 +11,11 @@
 //!   spans the lock was held, so `total` and `longest` are what `recover` kept the ledger for
 //!   (an upper bound by the observer's granularity; its own brief locks can delay `recover` by at
 //!   most one `LOCK_POLL`).
-//! * **tick run** (no observer): a thread does what the tick does against the ledger, every ~1 ms:
-//!   `try_lock` (open, read, reap), claim an entry of its own and accept it (a second write), all
-//!   under the one lock, so a tick is a read plus two writes of the ledger. Ticks that start before
-//!   `recover` are the control (same ledger, same load, nobody holding); ticks that start while it
-//!   runs are the measurement. A refusal ("gave up after") counts, with how long it took to say it.
+//! * **tick run** (no observer): a thread claims an entry (the job side, not timed) and accepts it
+//!   the way the tick does, `Ledger::accept` with the tick's budget (BL112.7: the real path, not a
+//!   `Tracker` standing in for it), every ~1 ms. Ticks that start before `recover` are the control
+//!   (same ledger, same load, nobody holding); ticks that start while it runs are the
+//!   measurement. A refusal ("gave up after") counts, with how long it took to say it.
 //! * `0` orphans is the control run, `1`, `10` and `100` are the bounded sizes (no 10 000-orphan
 //!   flush soak), three replicas each.
 //!
@@ -151,30 +151,34 @@ struct Tick {
     ledger_bytes: u64,
 }
 
-/// What the window's tick does to the ledger, every ~1 ms, until `stop`: `try_lock` (its fixed
-/// budget), then claim an entry and accept it under the same lock.
+/// What the window's tick does to the ledger, every ~1 ms, until `stop`: a result claims an entry
+/// (the job side, not timed: it may wait for the lock), then the tick accepts it exactly as
+/// `Created::accept_nowait` does (`Ledger::accept` with the tick's budget). A refused acceptance
+/// is discarded by the job side, as the host does, so nothing is left claimed.
 fn tick(ledger: &Ledger, claims: &Path, running: &AtomicBool, stop: &AtomicBool) -> Vec<Tick> {
     let holder = next_holder();
     let root = PathBuf::from("/te-budget");
     let mut ticks = Vec::new();
     let mut index = 0u64;
     while !stop.load(Ordering::Relaxed) {
-        let during = running.load(Ordering::Relaxed);
         let key = PathBuf::from(format!("/te-budget/tick-{index}"));
         index += 1;
+        ledger
+            .lock_creating()
+            .create_file(holder, key.clone(), &root, None)
+            .unwrap();
+        let during = running.load(Ordering::Relaxed);
         let started = Instant::now();
-        let mut tracker = ledger.try_lock();
-        let refused = tracker.fault().is_some();
-        if !refused {
-            tracker
-                .create_file(holder, key.clone(), &root, None)
-                .unwrap();
-            tracker.accept(std::iter::once(key.as_path())).unwrap();
+        let refused = ledger
+            .accept(std::iter::once(key.as_path()), false)
+            .is_err();
+        let took = started.elapsed();
+        if refused {
+            ledger.lock().leave(holder, &key);
         }
-        drop(tracker);
         ticks.push(Tick {
             during,
-            took: started.elapsed(),
+            took,
             refused,
             ledger_bytes: fs::metadata(claims).map_or(0, |meta| meta.len()),
         });

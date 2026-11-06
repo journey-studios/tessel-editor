@@ -524,12 +524,9 @@ impl Created {
         let mut failure = None;
         let mut accepted: Vec<PathBuf> = Vec::new();
         for (ledger, keys) in by_ledger(self.files.iter().chain(&self.dirs)) {
-            let mut tracker = if wait {
-                ledger.lock()
-            } else {
-                ledger.try_lock()
-            };
-            match tracker.accept(keys.iter().map(|key| key.as_path())) {
+            // One lock per ledger, whatever the size of the ledger (BL112.7): a large one is
+            // not read, see `Ledger::accept`.
+            match ledger.accept(keys.iter().map(|key| key.as_path()), wait) {
                 Ok(()) => accepted.push(ledger.dir().to_path_buf()),
                 Err(why) => {
                     failure.get_or_insert(why);

@@ -1,12 +1,20 @@
-//! BL112.3 (F025/F040): what the window's tick costs when it accepts a result against a **real
-//! ledger on disk** that is large, measured through the real `MediaHost::poll`.
+//! BL112.3 / BL112.7 (F025/F040): what the window's tick costs when it accepts a result against a
+//! **real ledger on disk** that is large, measured through the real `MediaHost::poll`.
 //!
-//! The tick accepts a finished adoption on the window's thread: it opens `<workspace>/.tessel-claims`
-//! (reads and parses `claims.json`, reaps dead leases), removes the result's entries and writes the
-//! file again. That is **not** zero I/O; the question is whether it stays under the 100 ms ceiling
-//! of the UI when the ledger has 1 000 and 10 000 entries. Nothing here is a model of the tick:
-//! the number is the elapsed time of `MediaHost::poll`, which applies the result through
-//! `PendingAdoption::settle` and `Ledger::try_lock` exactly as the window does.
+//! The tick accepts a finished adoption on the window's thread, through `PendingAdoption::settle`
+//! and `Ledger::accept` with the tick's 20 ms lock budget, exactly as the window does. Until
+//! BL112.7 that meant reading and parsing `claims.json`, removing the result's entries and
+//! writing the whole file again: `O(entries of the ledger)`, 304-310 ms for 10 000 entries in a
+//! debug build against the UI's ceiling of 100 ms. Now a large ledger is accepted by appending
+//! one record to `claims.journal` (the design and its invariants are in `ledger.rs` and in
+//! `docs/features/scene-resource-integration.md`), whose cost does not depend on the ledger.
+//! Nothing here is a model of the tick: the number is the elapsed time of `MediaHost::poll`.
+//!
+//! This is a **test that runs**, not an `#[ignore]`d measurement, and it has two independent ways
+//! to fail when the heavy acceptance comes back to the tick: the elapsed time of the tick (against
+//! a ceiling that is never raised) and a structural check that the tick did **not** rewrite
+//! `claims.json` (the bytes are the same before and after, and a journal record is there). The
+//! first can pass on a fast machine with the regression in place; the second cannot.
 //!
 //! Method (what is real and what is seeded):
 //!
@@ -19,20 +27,18 @@
 //!   live peer's claims, never as orphans.
 //! * The seed is verified by a **third process**: the real `tessel-media` CLI opens the project
 //!   and answers `scene.resources.claims` with the same number of entries, and again after the
-//!   measurement. The host under test uses the very same ledger directory (the test asserts the
-//!   entry count through `claims_status` before and after each tick), not a parallel state.
+//!   measurement (which is also what a second editor sees after the tick: the journal is applied
+//!   by every reader). The host under test uses the very same ledger directory (the test asserts
+//!   the entry count through `claims_status` before and after each tick), not a parallel state.
 //! * Three replicas per size, each a different scene adopted by a real job, then one `poll`.
-//!   The control is the same flow with an empty ledger (only the result's own two entries).
+//!   The control is the same flow with an empty ledger (only the result's own two entries), which
+//!   stays on the inline path.
 //!
 //! Gaps, stated: the tick of a window also paints and the proofs of the native window measure
 //! only the latency of requests (`scripts/job-discard-proof.py`); the seeded entries are one
-//! holder's, so reaping looks at one extra owner; three replicas are a bounded sample, not a
-//! distribution; a loaded machine moves the numbers (compare with the control before blaming the
-//! code). The ceiling is **not** relaxed to pass.
-//!
-//! The tests are `#[ignore]`d with a reason: they are measurements, run on purpose under the GPU
-//! lock (`TESSEL_BUDGET_LOG=<file>` also appends one JSON object per sample):
-//! `cargo test -p tessel-editor-media --test scene_claims_budget -- --ignored --nocapture --test-threads=1`.
+//! holder's; three replicas are a bounded sample, not a distribution; a loaded machine moves the
+//! numbers (compare with the control before blaming the code). The ceiling is **not** relaxed to
+//! pass. `TESSEL_BUDGET_LOG=<file>` appends one JSON object per sample.
 #![cfg(unix)]
 
 mod directed_resources_common;
@@ -42,6 +48,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::Mutex;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
 use std::time::{Duration, Instant};
 
@@ -56,6 +63,9 @@ const PROTOCOL: &str = "@@ ";
 /// The UI's ceiling for one tick. Fixed before any measurement; never raised to make a run pass.
 const CEILING: Duration = Duration::from_millis(100);
 const REPLICAS: usize = 3;
+/// One measurement at a time: a test that seeds 10 000 files in another thread would load the
+/// machine under the one that is timing a tick.
+static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
 /// The token of the seeded owner (never zero, never this process's).
 const OWNER: u128 = 0x5eed_0b5e_55ed_1ed9_0000_0000_0000_0001;
 
@@ -287,6 +297,9 @@ fn claims_from_another_process(project: &Path) -> Value {
 // ------------------------------------------------------------------------ the measurement --
 
 fn measure(count: usize) {
+    let _alone = ONE_AT_A_TIME
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let sandbox = Sandbox::new(&format!("te-budget-{count}"));
     let workspace = sandbox.root.join("ws");
     fs::create_dir_all(&workspace).unwrap();
@@ -371,9 +384,33 @@ fn measure(count: usize) {
             count + 2,
             "{id}: the result's two files join the seed"
         );
+        let claims_file = workspace.join(".tessel-claims/claims.json");
+        let journal = workspace.join(".tessel-claims/claims.journal");
+        let state_before = fs::read(&claims_file).unwrap_or_default();
         let tick = Instant::now();
         let events = host.poll(&mut state);
         let elapsed = tick.elapsed();
+        // Structural, independent of the clock (checked before anything else opens the ledger,
+        // because every reader folds the journal into the state): a large ledger was accepted by
+        // one appended record and its state file was not rewritten; the empty control stays inline
+        // and leaves no ledger at all.
+        if count > 0 {
+            assert_eq!(
+                fs::read(&claims_file).unwrap(),
+                state_before,
+                "{id}: the tick rewrote the whole ledger ({count} entries) instead of appending"
+            );
+            let record = fs::read_to_string(&journal)
+                .unwrap_or_else(|error| panic!("{id}: no journal record after the tick: {error}"));
+            assert_eq!(record.lines().count(), 1, "{id}: one record: {record}");
+            assert!(record.ends_with('\n'), "{id}: a complete record");
+        } else {
+            assert!(
+                !journal.exists() && !workspace.join(".tessel-claims").exists(),
+                "{id}: the empty ledger is accepted inline and disappears"
+            );
+        }
+        let journal_bytes = fs::metadata(&journal).map_or(0, |meta| meta.len());
         let event = events
             .iter()
             .find(|event| event["job"] == job.as_str())
@@ -389,7 +426,8 @@ fn measure(count: usize) {
         emit(
             json!({"measure": "tick-accept", "entries": count, "replica": id,
             "pollMs": millis(elapsed), "entriesBefore": before.0.0,
-            "ledgerBytesBefore": before.1, "ledgerBytesAfter": after.1, "ceilingMs": millis(CEILING)}),
+            "ledgerBytesBefore": before.1, "ledgerBytesAfter": after.1,
+            "journalBytes": journal_bytes, "ceilingMs": millis(CEILING)}),
         );
     }
 
@@ -417,19 +455,16 @@ fn measure(count: usize) {
 }
 
 #[test]
-#[ignore = "BL112.3 measurement (empty-ledger control); run on purpose under the GPU lock with --ignored"]
 fn the_tick_accepting_a_result_in_an_empty_ledger_is_the_control() {
     measure(0);
 }
 
 #[test]
-#[ignore = "BL112.3 measurement (1 000 real entries); run on purpose under the GPU lock with --ignored"]
 fn the_tick_accepting_a_result_stays_under_its_ceiling_with_1000_entries() {
     measure(1_000);
 }
 
 #[test]
-#[ignore = "BL112.3 measurement (10 000 real entries); run on purpose under the GPU lock with --ignored"]
 fn the_tick_accepting_a_result_stays_under_its_ceiling_with_10000_entries() {
     measure(10_000);
 }

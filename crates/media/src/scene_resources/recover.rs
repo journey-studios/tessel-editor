@@ -163,6 +163,16 @@ pub fn recover_with(
     }
     {
         let mut tracker = ledger.lock();
+        // BL112.8: a ledger that cannot be locked or read here (held past the bound, damaged
+        // since the check above) has recorded nothing. Without this look the loop below finds
+        // no entry to forget and recovery answers `Ok` with every handled orphan still listed.
+        if let Some(why) = tracker.fault() {
+            recovery.report.kept.push(format!(
+                "the claims ledger could not record that {} orphan file(s) were handled ({why})",
+                handled.len()
+            ));
+            return Err(unavailable(why, &recovery));
+        }
         for path in &handled {
             // Dropped only if it is still an orphan: a holder that joined meanwhile keeps it.
             if tracker
@@ -363,6 +373,51 @@ mod tests {
         assert_eq!(error.details.unwrap()["cleanup"]["removedFiles"], 1);
         assert!(!paths[0].exists());
         assert!(!error.message.contains("nothing was removed"));
+    }
+
+    #[test]
+    fn a_ledger_that_cannot_be_locked_when_the_orphans_are_forgotten_is_an_error_not_a_success() {
+        // BL112.8: the lock is taken by another holder right after the last orphan was removed and
+        // stays held past `LOCK_WAIT` (a stopped process would do the same), so only the lock that
+        // forgets the handled orphans fails: the checks before it and the folder pass after it.
+        let dir = Staging::create(&std::env::temp_dir(), "recover-forget-locked").unwrap();
+        let paths = orphans(dir.path(), &[("a", b"one")]);
+        let lock = fs::canonicalize(dir.path())
+            .unwrap()
+            .join(".tessel-claims/ledger.lock");
+        let mut holder = None;
+        let error = recover_with(dir.path(), &CancelToken::default(), &mut |done, total| {
+            if done == total {
+                let file = fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(&lock)
+                    .unwrap();
+                file.lock().unwrap();
+                holder = Some(std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(2500));
+                    drop(file);
+                }));
+            }
+        })
+        .expect_err("the orphan could not be forgotten: not a success");
+        assert_eq!(error.code, "claims_unavailable");
+        let details = error.details.unwrap();
+        assert_eq!(
+            details["cleanup"]["removedFiles"], 1,
+            "what was done is said"
+        );
+        assert!(
+            details["cleanup"]["kept"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|reason| reason.as_str().unwrap().contains("could not record")),
+            "{details}"
+        );
+        assert!(!paths[0].exists());
+        holder.unwrap().join().unwrap();
+        assert_eq!(claimed(dir.path()), 1, "still listed: nothing recorded it");
     }
 
     #[test]

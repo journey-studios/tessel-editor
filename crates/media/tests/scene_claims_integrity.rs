@@ -387,7 +387,7 @@ fn a_settle_gives_up_inside_the_tick_budget_when_the_ledger_lock_stays_held() {
 
 #[test]
 fn a_settle_rides_out_a_ledger_lock_another_job_of_this_process_holds_for_a_moment() {
-    // N1: a discard or an adoption of the other slot holds `ledger.lock` for microseconds, and
+    // N1: a discard or an adoption of the other slot holds `ledger.lock` briefly, and
     // `flock` conflicts between descriptors of the same process. The tick used to look once, so a
     // valid result was refused, its copy removed and "another process" blamed.
     let mut world = world("settle-moment");
