@@ -293,9 +293,10 @@ fn a_provisional_adoption_removes_on_drop_and_keeps_once_released() {
     )
     .unwrap();
     let mut guard = adoption.provisional();
-    let accepted = guard.release();
+    let created = guard.created().files().count();
+    guard.accept().unwrap();
     drop(guard);
-    assert_eq!(accepted.files().count(), 2);
+    assert_eq!(created, 2);
     assert!(
         workspace
             .join("scenes/street/assets/backdrop.png")
@@ -752,7 +753,7 @@ fn discarding_a_prepared_import_keeps_the_files_an_accepted_adoption_reused() {
     assert!(fixture.scenes().join("street/assets/figure.png").is_file());
     assert!(!fixture.scenes().join("market").exists());
 
-    drop(adoption.provisional().release());
+    adoption.provisional().accept().unwrap();
     assert!(fixture.scenes().join("street/assets/figure.png").is_file());
     assert_eq!(tracked_under(&fixture.workspace), 0);
     assert_ne!(tree(&fixture.workspace), before);

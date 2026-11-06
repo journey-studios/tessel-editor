@@ -166,3 +166,10 @@ compara os planos em cache com `ScenePlan::build` e valida cada plano.
 A derivação retorna imediatamente sem splats; com splats, indexa os nós uma vez para evitar
 buscas lineares repetidas. Isso preserva o caminho de planos sem splats. O script nativo lê
 o corpus uma só vez com UTF-8 explícito e grava seu relatório em UTF-8.
+
+Integração com main6f7a944: conflito apenas na matriz, preservando F043 e F048. No código
+integrado passaram fmt/clippy workspace, scene_plan_splat10, scene_splat_package1,
+scene_splat_frames8 com Chrome real/runtime obrigatório e build desktop. Prova nativa
+repetida:119/119, instância própria sob lockGPU e piso12GiB
+(`/tmp/tessel-s7-main-native.json`). Os FAILs de composição e gates de áudio/S10 continuam
+abertos; esta atualização não altera oráculo/tolerâncias nem constitui aceite completo.

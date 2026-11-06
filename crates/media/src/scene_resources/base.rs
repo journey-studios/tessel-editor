@@ -32,6 +32,8 @@ pub const MANAGED_DIR: &str = "scenes";
 pub enum BaseKind {
     Managed,
     Explicit,
+    /// No folder at all: what a scene that names no files loads against (BL101).
+    Unbound,
 }
 
 impl BaseKind {
@@ -39,6 +41,7 @@ impl BaseKind {
         match self {
             Self::Managed => "managed",
             Self::Explicit => "explicit",
+            Self::Unbound => "unbound",
         }
     }
 }
@@ -73,6 +76,16 @@ impl ResourceBase {
             root: workspace.join(MANAGED_DIR).join(folder),
             kind: BaseKind::Managed,
         })
+    }
+
+    /// A base that is nowhere. It is enough for a scene whose manifest names no files (nothing is
+    /// opened, so nothing can escape), and for nothing else: a scene that names a file still
+    /// fails the preflight with `root_unavailable`, because an empty path is never a folder.
+    pub fn unbound() -> Self {
+        Self {
+            root: PathBuf::new(),
+            kind: BaseKind::Unbound,
+        }
     }
 
     pub fn root(&self) -> &Path {

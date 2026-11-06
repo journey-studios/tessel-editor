@@ -23,7 +23,8 @@
 //! | [`load`] | The job body that produces a map |
 //! | [`adopt`] | Copy from where a bundle was authored into the managed base (also the relink) |
 //! | [`cleanup`] | What an adoption/import created and may remove again; the owner that removes it unless the result is accepted (BL089), checked by content (BL097) |
-//! | `claims` | Who relies on a file a pending result created, so a discard never removes what another result reused (BL096) |
+//! | `claims` | Who relies on a file a pending result created, so a discard never removes what another result reused (BL096); persisted per workspace under a lease so it holds across processes (BL111) |
+//! | [`recover`] | What a result that died left claimed, taken back after the same content proof; the read-only claims view (BL111) |
 //! | [`pack`] | What a package carries and proves for scenes |
 //! | [`import`] | Carrying scenes between projects, renaming IDs without losing references |
 //!
@@ -37,6 +38,7 @@ pub mod import;
 pub mod load;
 pub mod map;
 pub(crate) mod pack;
+pub mod recover;
 pub mod session;
 pub mod snapshot;
 
@@ -44,10 +46,11 @@ pub use adopt::{Adoption, AdoptionTarget, PendingAdoption, adopt};
 pub use base::{BaseKind, MANAGED_DIR, ResourceBase};
 pub use claims::tracked_under;
 pub use cleanup::{CleanupReport, Created, Provisional};
-pub use load::{LoadRequest, check, load};
+pub use load::{LoadRequest, check, load, needs_files};
 pub use map::{
     ApprovedResource, Generation, ResolveError, ResolvedResource, ResolvedResourceMap,
     ResourceResolver,
 };
+pub use recover::{Recovery, recover, recover_with, status as claims_status};
 pub use session::{DEFAULT_BUDGET_BYTES, Invalidation, SceneResourceSession};
 pub use snapshot::{ResourceSnapshot, snapshot_bytes};

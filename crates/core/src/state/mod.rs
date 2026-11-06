@@ -20,7 +20,7 @@ pub use error::{CommandError, Raw};
 use history::History;
 use inspector::{Inspector, InspectorTab};
 use library::{Library, MediaItem};
-pub use project::ProjectMeta;
+pub use project::{ProjectMeta, ProjectSession, ProjectStamp};
 use timeline::{Clip, ClipKind, Placement, SequenceSettings, Timeline, TrackFlag, TrackKind};
 
 use crate::assets::{Asset, MediaKind, ProxyFormat};
