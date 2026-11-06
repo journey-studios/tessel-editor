@@ -49,5 +49,5 @@ pub use map::{
     ApprovedResource, Generation, ResolveError, ResolvedResource, ResolvedResourceMap,
     ResourceResolver,
 };
-pub use recover::{Recovery, recover, status as claims_status};
+pub use recover::{Recovery, recover, recover_with, status as claims_status};
 pub use session::{DEFAULT_BUDGET_BYTES, Invalidation, SceneResourceSession};

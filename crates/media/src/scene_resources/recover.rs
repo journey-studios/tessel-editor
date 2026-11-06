@@ -60,6 +60,19 @@ fn unavailable(why: &str) -> JobError {
 /// Errors: `claims_unavailable` (ledger unreadable or unwritable), `cancelled`. What was
 /// removed before a cancellation stays removed and is no longer claimed.
 pub fn recover(workspace: &Path, token: &CancelToken) -> Result<Recovery, JobError> {
+    recover_with(workspace, token, &mut |_, _| {})
+}
+
+/// [`recover`] that tells `progress(done, total)` how far it is, counted in orphan **files**
+/// (the work that reads bytes): once with `done == 0` when the files are known, then after each
+/// one is decided. Cancellation is honoured **between files**: the content check of one file (the
+/// cleanup shared with every discard) is not interrupted, so a cancel waits for the file being
+/// hashed; the ones not reached stay orphans for the next run.
+pub fn recover_with(
+    workspace: &Path,
+    token: &CancelToken,
+    progress: &mut dyn FnMut(usize, usize),
+) -> Result<Recovery, JobError> {
     let ledger = Ledger::of(workspace);
     let mut recovery = Recovery::default();
 
@@ -112,7 +125,8 @@ pub fn recover(workspace: &Path, token: &CancelToken) -> Result<Recovery, JobErr
     };
     let mut handled = Vec::new();
     let mut cancelled = None;
-    for (path, stamp, root) in &files {
+    progress(0, files.len());
+    for (index, (path, stamp, root)) in files.iter().enumerate() {
         if let Err(error) = token.check() {
             cancelled = Some(error);
             break;
@@ -124,12 +138,14 @@ pub fn recover(workspace: &Path, token: &CancelToken) -> Result<Recovery, JobErr
                 .report
                 .kept
                 .push(format!("`{}`: its root is busy or unknown", path.display()));
+            progress(index + 1, files.len());
             continue;
         }
         // Under the root lease nothing can reuse the file, and it has no holder, so the content
         // check runs without the ledger lock.
         remove_file(path, stamp.as_ref(), &mut recovery.report);
         handled.push(path.clone());
+        progress(index + 1, files.len());
     }
     {
         let mut tracker = ledger.lock();
@@ -146,7 +162,12 @@ pub fn recover(workspace: &Path, token: &CancelToken) -> Result<Recovery, JobErr
     // The lock file of a root lives inside it: release before removing folders.
     drop(leases);
     if let Some(error) = cancelled {
-        return Err(error);
+        // What was done before the cancellation stays done: say how much.
+        return Err(error.with_details(json!({
+            "reapedHolders": recovery.reaped_holders,
+            "orphans": recovery.orphans,
+            "cleanup": recovery.report.to_json(),
+        })));
     }
 
     // Folders, deepest first, each while the ledger is locked (as a discard does), and only
@@ -171,8 +192,10 @@ pub fn recover(workspace: &Path, token: &CancelToken) -> Result<Recovery, JobErr
     Ok(recovery)
 }
 
-/// The claims of `workspace`, as `scene.resources.claims` reports them. Opening the ledger
-/// reaps the holders whose lease is gone, so `reaped` says what that found.
+/// The claims of `workspace`, as `scene.resources.claims` reports them. Not read-only: opening
+/// the ledger reaps the holders whose lease is gone (so `reaped` says what that found), and a
+/// ledger left with nothing in it is removed. It never removes a resource file or a folder of the
+/// workspace, and never hashes one; `effects` repeats this in the answer.
 pub fn status(workspace: &Path) -> Value {
     let ledger = Ledger::of(workspace);
     let tracker = ledger.lock();
@@ -197,6 +220,8 @@ pub fn status(workspace: &Path) -> Value {
         .count();
     json!({
         "action": "scene.resources.claims",
+        "readOnly": false,
+        "effects": "reaps the ledger entries of owners whose lease is gone; removes no resource file or folder",
         "workspace": ledger.dir().parent().map(|dir| dir.display().to_string()),
         "available": tracker.fault().is_none(),
         "fault": tracker.fault(),
@@ -214,4 +239,97 @@ pub fn status(workspace: &Path) -> Value {
         "orphans": orphans,
         "entries": entries,
     })
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::fs;
+    use std::os::unix::fs::MetadataExt;
+
+    use super::*;
+    use crate::fsx::{Staging, hash_file};
+    use crate::scene_resources::claims::next_holder;
+
+    /// Files that are claimed with nobody holding them: what a crashed process leaves. The holder
+    /// is this process, which gives the claim up without removing the file (`abandon`), the way a
+    /// discard that finds its root busy does.
+    fn orphans(workspace: &Path, files: &[(&str, &[u8])]) -> Vec<PathBuf> {
+        let root = workspace.join("scenes/s/assets");
+        fs::create_dir_all(&root).unwrap();
+        let root = fs::canonicalize(&root).unwrap();
+        let holder = next_holder();
+        let mut paths = Vec::new();
+        for (name, bytes) in files {
+            let path = root.join(name);
+            fs::write(&path, bytes).unwrap();
+            let metadata = fs::metadata(&path).unwrap();
+            let (sha256, _) = hash_file(&path, &CancelToken::default(), |_| {}).unwrap();
+            let stamp = Stamp {
+                len: metadata.len(),
+                device: metadata.dev(),
+                inode: metadata.ino(),
+                sha256,
+            };
+            let ledger = Ledger::of(workspace);
+            let mut tracker = ledger.lock_creating();
+            tracker.create_file(holder, path.clone(), &root, Some(stamp));
+            tracker.abandon(holder, &path);
+            paths.push(path);
+        }
+        paths
+    }
+
+    fn claimed(workspace: &Path) -> usize {
+        Ledger::of(workspace).lock().entries().count()
+    }
+
+    #[test]
+    fn progress_counts_orphan_files_and_ends_with_the_ledger_gone() {
+        let dir = Staging::create(&std::env::temp_dir(), "recover-progress").unwrap();
+        let paths = orphans(dir.path(), &[("a", b"one"), ("b", b"two"), ("c", b"three")]);
+        let mut seen = Vec::new();
+        let recovery = recover_with(dir.path(), &CancelToken::default(), &mut |done, total| {
+            seen.push((done, total));
+        })
+        .unwrap();
+        assert_eq!(seen, [(0, 3), (1, 3), (2, 3), (3, 3)]);
+        assert_eq!(recovery.report.removed_files, 3, "{recovery:?}");
+        assert!(paths.iter().all(|path| !path.exists()));
+        assert_eq!(claimed(dir.path()), 0);
+    }
+
+    #[test]
+    fn cancelling_between_files_keeps_the_rest_claimed_and_reports_what_was_done() {
+        let dir = Staging::create(&std::env::temp_dir(), "recover-cancel").unwrap();
+        let paths = orphans(dir.path(), &[("a", b"one"), ("b", b"two"), ("c", b"three")]);
+        let token = CancelToken::default();
+        let error = recover_with(dir.path(), &token, &mut |done, _| {
+            if done == 1 {
+                token.cancel();
+            }
+        })
+        .unwrap_err();
+        assert!(error.is_cancelled(), "{error:?}");
+        let details = error.details.expect("the partial report travels with it");
+        assert_eq!(details["cleanup"]["removedFiles"], 1, "{details}");
+        // Sorted by path: `a` went, `b` and `c` stay, still claimed, so a later run finishes.
+        assert!(!paths[0].exists() && paths[1].exists() && paths[2].exists());
+        assert_eq!(claimed(dir.path()), 2);
+        let rest = recover(dir.path(), &CancelToken::default()).unwrap();
+        assert_eq!(rest.report.removed_files, 2, "{rest:?}");
+        assert_eq!(claimed(dir.path()), 0);
+    }
+
+    #[test]
+    fn a_ledger_that_cannot_be_read_removes_nothing_and_says_so() {
+        let dir = Staging::create(&std::env::temp_dir(), "recover-unreadable").unwrap();
+        let paths = orphans(dir.path(), &[("a", b"one")]);
+        fs::write(dir.path().join(".tessel-claims/claims.json"), b"not json").unwrap();
+        let error = recover(dir.path(), &CancelToken::default()).unwrap_err();
+        assert_eq!(error.code, "claims_unavailable");
+        assert!(paths[0].exists());
+        let status = status(dir.path());
+        assert_eq!(status["available"], false, "{status}");
+        assert_eq!(status["readOnly"], false);
+    }
 }

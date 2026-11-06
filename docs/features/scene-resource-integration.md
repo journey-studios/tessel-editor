@@ -113,6 +113,8 @@ chegam como `job_failed` com o código original em `details.job_code`.
 {"op":"scene.resources.adopt","scene":"street","source":"/abs/where/it/was/authored"}
 {"op":"scene.resources.release","scene":"street"}
 {"op":"scene.resources.invalidate","reason":"context_loss"}
+{"op":"scene.resources.claims"}
+{"op":"scene.resources.recover"}
 {"op":"project.import_scenes","source":"/abs/p.tessel.json","scenes":["street"],"scene_bases":{"street":"/abs/folder"},"dry_run":true}
 {"op":"project.package_preflight","path":"/abs/out.tesselpack","scene_bases":{"street":"/abs/folder"}}
 {"op":"project.package","path":"/abs/out.tesselpack","scene_bases":{"street":"/abs/folder"},"allow_partial":false}
@@ -222,10 +224,37 @@ editor, CLI ou job que abra o mesmo workspace.
   devolve o JSON `scene.resources.claims` (owners, reaped, orphans, entradas) sem alterar nada além do reap.
 - Ordem de travas: lease da raiz → `ledger.lock`; nada espera lease de raiz com o ledger travado.
 
-Superfícies: **lib** (`adopt`, `Provisional`, `recover`, `claims_status`, `tracked_under`) e
-testes com dois processos reais. **CLI JSONL / UI**: sem comando novo nesta entrega; `recover`
-e `claims_status` não têm tradução em `scene.resources.*` (BL111.1). Hashing do `recover` não deve rodar na thread de UI
-(mesma restrição do BL112).
+Superfícies: **lib** (`adopt`, `Provisional`, `recover`, `recover_with`, `claims_status`,
+`tracked_under`), **JSONL** (`scene.resources.claims`, `scene.resources.recover`, BL111.1) e a
+**janela** pelo mesmo canal de operações (`ui op`), ver abaixo.
+
+#### `scene.resources.claims` e `scene.resources.recover` (BL111.1)
+
+Mesmo `MediaHost`/`Extension` de todo `scene.resources.*` (`tessel-media`, `tessel-render`,
+`./scripts/ui op`); nenhuma regra mora no desktop. Escopo: o **workspace do projeto aberto**
+(`project.workspace`); sem workspace, `no_workspace` antes de qualquer job. Não aceitam caminho
+arbitrário: não há como apontar o `recover` para uma pasta que o projeto não abriu. Ambos são
+**jobs** (`wait:false`/host interativo devolvem o ID; o desktop nunca espera) e não mudam dados do projeto
+(sem `Pending`, sem `job.commit`).
+
+| Operação | Tipo do job | Efeito | Resposta / erros |
+|---|---|---|---|
+| `scene.resources.claims` | `preflight` | **Não é só leitura**: abrir o ledger faz o *reap* dos titulares cujo lease sumiu e remove um ledger que ficou vazio. Nunca remove nem lê o conteúdo de arquivo de recurso | `{action, readOnly:false, effects, workspace, available, fault, owners[], reaped[], orphans, entries[]}`. Ledger ilegível **não falha**: `available:false` com `fault` |
+| `scene.resources.recover` | `hash` | Remove só **órfãos** (sem titular vivo), após a mesma prova de conteúdo de todo cleanup (BL097), sob o lease de cada raiz; faz o hash fora da trava do ledger | `{action, workspace, recovery:{reapedHolders, orphans, cleanup:{removedFiles, removedFolders, kept, shared, busyRoots}}}`. Cada arquivo mantido vira `warnings` do job. Erros (no job: `error.code`; esperando com `wait:true` chegam como `job_failed` com `details.job_code`): `claims_unavailable` (nada removido), `cancelled` (`details` leva o relatório parcial; o que já saiu continua removido e sem claim); `no_workspace` é recusa imediata, sem job |
+
+Progresso do `recover`: etapa `recover`, `total` = arquivos órfãos, `done` = arquivos decididos.
+Cancelamento (`job.cancel`) vale **entre arquivos**: o hash do arquivo em curso (cleanup
+compartilhado com todo descarte) não é interrompido; o que não foi alcançado continua órfão e claimado. Os
+tipos de job existentes foram reaproveitados de propósito (`preflight`/`hash`) para não tocar o enum
+de `core::jobs`, que a frente S1 também altera; o rótulo (`Scene resources claims`,
+`Recover scene resources`) e a resposta dizem o que o job faz.
+
+Superfícies: lib `recover_with` + testes unitários; JSONL real (`scene_claims_jsonl.rs`, processos
+`tessel-media`); janela (`workflow_tests.rs` + `scripts/scene-claims-proof.py`). Sem controle novo
+na janela (nenhum botão, nó de árvore ou comando de parser): o acesso é `ui op`, e o job aparece
+no nó `jobs`, no diálogo de Tarefas e em `job.get`/`job.cancel`. Apresentação de um botão
+"Recuperar" é **N/A nesta entrega** (decisão de escopo, não ausência de domínio): o domínio completo
+está acessível por lib, JSONL e `ui op`.
 
 Achado na prova: no macOS um `open` que corre contra o `unlink` do `ledger.lock` pelo processo que esvaziou o ledger responde `EINVAL` (visto em 2 de 5 execuções do teste de ciclos concorrentes antes da correção); a abertura é refeita (30/30 execuções seguidas passaram depois).
 
@@ -265,8 +294,8 @@ descarte do host (`job.discard`, BL094, segue pendente).
 
 ## UI e CLI da janela
 
-N/A nesta frente (sem controle novo). Equivalente semântico: as operações acima via
-`./scripts/ui`/CLI quando a frente de interface as expuser.
+Sem controle novo (apresentação N/A). As operações acima, incluindo `scene.resources.claims` e
+`scene.resources.recover` (BL111.1), funcionam via `./scripts/ui op` na janela; o job aparece em `jobs`.
 
 ## BL080 / BL079
 
@@ -295,10 +324,13 @@ Comandos (todos pelo helper `cargo-serial.py`):
 | host (R5) | `crates/media/tests/scene_adopt_host.rs` (13) | adopt imediato como antes; `job.commit` no mesmo projeto; projeto trocado, cópia aberta de outro workspace, cena destacada e bundle trocado são stale e limpam; host descartado limpa; pasta existente preservada; dois jobs para a mesma cena; janela interativa aplica no `poll` e reporta falha |
 | lib (unidade) | `scene_resources::claims` (10) | ledger em disco: sobrevive a trackers e some vazio; lease preso mantém titular vivo mesmo com PID inventado; lease solto remove titular mesmo com PID vivo; último a sair; transferência; órfão reaproveitado; ledger ilegível ou de versão nova recusa |
 | **dois processos reais (BL111)** | `crates/media/tests/scene_claims_processes.rs` (11 + papel filho) | o binário de teste é reexecutado como segundo processo (`TESSEL_CLAIMS_ROLE`) e usa `adopt` de verdade: arquivo compartilhado sobrevive ao descarte de qualquer um, nos dois sentidos; último titular leva tudo; aceito nunca é removido pelo outro; ledger inconfiável recusa antes de copiar; ciclos de adopt/discard concorrentes deixam o workspace como estava; `SIGKILL` do titular vira órfão sem remover nada; reaproveitar o órfão (aceitar/descartar); `recover` remove só o órfão; arquivo reescrito depois da morte fica; titular vivo não é recuperado |
+| lib (unidade, BL111.1) | `scene_resources::recover` (3) | progresso em arquivos órfãos e ledger removido no fim; cancelar entre arquivos mantém o resto claimado, devolve o relatório parcial e uma nova execução termina; ledger ilegível recusa (`claims_unavailable`), nada removido, `claims` informa `available:false` |
+| **JSONL real (BL111.1)** | `crates/media/tests/scene_claims_jsonl.rs` (6) | processos `tessel-media`: titular morto por `SIGKILL` → `claims` lista órfãos sem remover arquivo e declara `readOnly:false`; `recover` como job (`wait:false`, `done==total`) remove só os órfãos e restaura o workspace; titular vivo não é recuperado (e `job.commit` mantém); arquivo reescrito fica e o job avisa; ledger ilegível → `available:false` e `claims_unavailable` sem remover; sem workspace → `no_workspace`; fim ordenado da sessão não deixa claims |
+| janela (BL111.1) | `workflow_tests.rs` (1) e `scripts/scene-claims-proof.py` | recusa sem workspace sem iniciar job; as duas operações voltam com job e o tick reporta o resultado; ledger ilegível falha com `claims_unavailable` na janela. A prova nativa dirige a janela própria por `op`/`get`/`invoke` com um segundo `tessel-media` real morto por `SIGKILL` |
 | lib (unidade) | `scene_resources::*` e `directed_resources::lease` | bases, colisão de caixa, sessão/orçamento, lease |
 | regressão | `scene_project_guards`, `directed_resources*`, `package`, `interchange`, `import` | as guardas de pacote incompleto continuam valendo para o que não é transportado |
 
-Sem prova (não executado): Windows, escritor hostil concorrente, filesystem de rede, disco cheio real, janela/UI, pixels/renderer, FFmpeg real além da suíte existente do
+Sem prova (não executado): Windows, escritor hostil concorrente, filesystem de rede, disco cheio real, cancelamento no meio do hash de um arquivo, botão de recuperação na janela, pixels/renderer, FFmpeg real além da suíte existente do
 crate, o custo do hash em build de release e a limpeza com raiz ocupada além de 200 ms.
 
 ## Consumidor integrado e prova de restauração

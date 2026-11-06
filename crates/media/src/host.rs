@@ -9,7 +9,7 @@
 //!
 //! Operations: `media.import|relink|search|status|prepare|thumbnail|waveform|proxy`,
 //! `project.package_preflight|package|verify|restore|import|import_scenes`,
-//! `scene.resources.status|preflight|resolve|adopt|release|invalidate` (F040),
+//! `scene.resources.status|preflight|resolve|adopt|release|invalidate|claims|recover` (F040),
 //! `export.preflight|start`, `scene.export[.preflight]` (F042: a directed scene as video, same jobs),
 //! `job.list|get|wait|cancel|commit`. Presets (`preset.*`) belong to the core.
 //!
@@ -607,6 +607,8 @@ impl MediaHost {
             "scene.resources.adopt" => self.scene_adopt(state, request),
             "scene.resources.release" => self.scene_release(request),
             "scene.resources.invalidate" => self.scene_invalidate(request),
+            "scene.resources.claims" => self.scene_claims(state, request),
+            "scene.resources.recover" => self.scene_recover(state, request),
             "export.preflight" => self.export_preflight(state, request),
             "export.start" => self.export_start(state, request),
             "scene.export" => self.scene_export(state, request),
@@ -1101,6 +1103,67 @@ impl MediaHost {
             json!({ "action": "scene.resources.invalidate", "reason": reason.as_str(),
             "generation": generation.0 }),
         )
+    }
+
+    /// `scene.resources.claims`: who holds what in the claims ledger of the project's workspace
+    /// (BL111). A job like every operation that touches files, but **not read-only**: opening the
+    /// ledger reaps the owners whose lease is gone, and the answer says so (`readOnly: false`,
+    /// `effects`, `reaped`). It removes no resource file and hashes nothing. Changes no project
+    /// data. A ledger that cannot be read is an answer (`available: false`, `fault`), not a failure.
+    fn scene_claims(
+        &mut self,
+        state: &mut EditorState,
+        request: &Value,
+    ) -> Result<Value, CommandError> {
+        let workspace = workspace(state)?;
+        // `Preflight` is the nearest kind: it is the one for jobs that look at files and change
+        // no project; the label and the answer carry the exact meaning.
+        let (id_job, slot) = self.start(JobKind::Preflight, "Scene resources claims", move |ctx| {
+            ctx.stage("ledger", 1);
+            ctx.check()?;
+            let report = crate::scene_resources::claims_status(&workspace);
+            ctx.progress(1);
+            Ok((None, report))
+        });
+        self.finish(state, request, id_job, slot)
+    }
+
+    /// `scene.resources.recover`: takes back what a result that no longer exists left claimed in
+    /// the project's workspace: orphans only, after the same content proof as any cleanup, under
+    /// the lease of each root (BL111). It hashes every orphan file, so it is a cancellable job
+    /// with progress in orphan files; `claims_unavailable` when the ledger cannot be used (nothing
+    /// is removed), `cancelled` with the partial report in the error's details. Changes no
+    /// project data. `Hash` is the kind of the job that reads file bytes.
+    fn scene_recover(
+        &mut self,
+        state: &mut EditorState,
+        request: &Value,
+    ) -> Result<Value, CommandError> {
+        let workspace = workspace(state)?;
+        let (id_job, slot) = self.start(JobKind::Hash, "Recover scene resources", move |ctx| {
+            ctx.stage("recover", 0);
+            let recovery = crate::scene_resources::recover_with(
+                &workspace,
+                ctx.token(),
+                &mut |done, total| {
+                    if done == 0 {
+                        ctx.stage("recover", total as u64);
+                    } else {
+                        ctx.progress(done as u64);
+                    }
+                },
+            )?;
+            for kept in &recovery.report.kept {
+                ctx.warn(kept.clone());
+            }
+            Ok((
+                None,
+                json!({ "action": "scene.resources.recover",
+                "workspace": workspace.display().to_string(),
+                "recovery": recovery.to_json() }),
+            ))
+        });
+        self.finish(state, request, id_job, slot)
     }
 
     /// `project.import_scenes`: carries scenes (their bundle and files) from another project or
