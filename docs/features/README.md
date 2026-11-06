@@ -50,7 +50,7 @@ Lib V significa testes do modelo demo, não um motor real de edição.
 | F031 | [Cena dirigida: importar, consultar e regravar render-bundle 1.0](directed-scene.md) | P | P | P | Parcial¹⁰ | `directed_scene::DirectedScene`; inteiros extremos recusados sem panic; adapters pendentes |
 | F032 | [Oráculo de equivalência da migração (BB10/E0)](migration-oracle.md) | N/A⁹ | N/A⁹ | N/A⁹ | Parcial⁹ | `oracle.mjs verify` (55) + `extended.mjs verify` (47); 49 testes Node e 15 testes Rust estendidos passaram |
 | F033 | [Cena dirigida: tempo, câmera e gate temporal (BB03)](scene-temporal.md) | P | P | P | Parcial¹¹ | `Bundle::evaluate_camera`, `evaluate_frame`, `DirectedScene::temporal_issues`; orçamento agregado de FOV; adapters pendentes |
-| F034 | [Catálogo de propriedades e edição atômica de cenas (BB04)](scene-edit.md) | P | P | P | Parcial¹² | `scene_edit::{catalog, apply, dry_run}`; S6 (a validar): componentes `X/Y/Z`, `renderOrder`, pose inicial com conversão do 1º movimento, `modified` por dado (pai e eixo), oráculo fixo de 31 casos com divergências medidas; revisão R2: preservação por receita e avanço do relógio corrigidos, testes novos a executar |
+| F034 | [Catálogo de propriedades e edição atômica de cenas (BB04)](scene-edit.md) | P | P | P | Parcial¹² | `scene_edit::{catalog, apply, dry_run}`; S6 (a validar): componentes `X/Y/Z`, `renderOrder`, pose inicial com conversão do 1º movimento, `modified` por dado (pai e eixo), oráculo fixo de 31 casos com divergências medidas; revisão R2: preservação por receita corrigida e asserção de avanço do playback reforçada; regressão nova a executar |
 | F035 | [Animação de nós e matrizes de mundo (BB03)](scene-animation.md) | P | P | P | Parcial¹³ | `Bundle::{evaluate_frame, node_timeline, evaluate_instance_nodes, performance_plan}` |
 | F036 | [Cenas no projeto, histórico e CLI](scene-project.md) | P | P | V | V | `Command::Scene` / `scene.*`; schema 2 com cenas, undo compartilhado, contagem de bytes em cache, medida por `AdmittedScene::prepare` (BL100a) |
 | F037 | [Plano avaliado da cena dirigida](scene-plan.md) | Parcial | V | V | V | `ScenePlan`, `scene.plan` com gates e candidato de gesto; `PlanTimeline` reutilizável com equivalência testada na lib (R6); adotada no export F042, ganho real ainda não medido; 60 checks headless do plano; renderer F041 |
@@ -125,9 +125,12 @@ completo para domínios adiados. [Contrato](scene-temporal.md).
 `X/Y/Z`), edição por ID, lote atômico, reset/no-op definidos e dry-run. `apply` e `dry_run`
 executam importador e gates estruturais/temporais da F033; falhas não alteram a entrada.
 Escrever `start/position` converte o primeiro movimento em keys como a origem, comparado
-frame a frame com um oráculo fixo (24 casos gerados pela própria `setProperties`). Evidência S6,
-**a validar** pelo coordenador: 59 testes de lib (29+25+5), 5 de sessão JSONL/executável
-`tessel-headless` e testes do inspector; sem captura nativa nem ponteiro físico. Sem editor geral
+frame a frame com um oráculo fixo de 31 casos (24 originais e 7 acrescentados, gerados pela
+própria `setProperties`). Fontes atuais: 69 testes de lib (29+33+7), 8 de sessão e 22 de
+interação headless, além dos testes do inspector. **A validar** pelo coordenador: execução
+atribuída ao Cursor em `5831e07` (29+32+7, sessão 8 e interação 22); a regressão acrescentada
+em `0d5304a` ainda não rodou. Gestos usam o executor headless compartilhado; isso não prova
+gestos pelo executável `tessel-headless`. Sem captura nativa nem ponteiro físico. Sem editor geral
 de keyframes; não certifica render/domínios adiados.
 [Contrato, conversão e oráculo](scene-edit.md).
 
