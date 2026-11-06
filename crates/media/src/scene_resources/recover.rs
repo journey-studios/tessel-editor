@@ -38,6 +38,7 @@ pub struct Recovery {
 }
 
 impl Recovery {
+    /// Reports both the initial orphan inventory and actual partial cleanup effects.
     pub fn to_json(&self) -> Value {
         json!({
             "reapedHolders": self.reaped_holders,
@@ -47,6 +48,7 @@ impl Recovery {
     }
 }
 
+/// Preserves effects already performed when a later ledger operation prevents recovery completion.
 fn unavailable(why: &str, recovery: &Recovery) -> JobError {
     JobError::new(
         "claims_unavailable",

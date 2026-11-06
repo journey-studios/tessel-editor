@@ -788,12 +788,14 @@ pub(super) fn refused_accept(
     refused
 }
 
+/// Lists only publications made by this result, excluding resources it merely reused.
 fn created(list: &[Owned]) -> impl Iterator<Item = &Path> {
     list.iter()
         .filter(|owned| owned.created)
         .map(|owned| owned.path.as_path())
 }
 
+/// Builds display and canonical keys from the same validated relative resource path.
 fn locate(root: &Path, canonical_root: &Path, relative: &ResourcePath) -> (PathBuf, PathBuf) {
     let under = |base: &Path| {
         relative
@@ -822,11 +824,13 @@ pub(super) struct Leases {
 }
 
 impl Leases {
+    /// Prevents removal below any root whose publication lease could not be acquired.
     pub(super) fn blocked(&self, path: &Path) -> bool {
         self.busy.iter().any(|root| path.starts_with(root))
     }
 }
 
+/// Takes available root leases and records busy roots so their resources remain untouched.
 pub(super) fn take_leases(roots: &[PathBuf], report: &mut CleanupReport) -> Leases {
     let mut leases = Leases::default();
     for root in roots {
@@ -846,6 +850,7 @@ pub(super) fn take_leases(roots: &[PathBuf], report: &mut CleanupReport) -> Leas
     leases
 }
 
+/// Retries a busy publication lease within the bounded cleanup wait; other errors return at once.
 fn acquire(root: &Path) -> Result<RootLease, tessel_editor_core::jobs::JobError> {
     let mut attempt = 0;
     loop {
@@ -934,6 +939,7 @@ pub(super) fn remove_file_unless_cancelled(
     Ok(())
 }
 
+/// Removes only an empty directory; missing is harmless and every other refusal is reported.
 pub(super) fn remove_dir(dir: &Path, report: &mut CleanupReport) {
     match fs::remove_dir(dir) {
         Ok(()) => report.removed_dirs += 1,
@@ -972,10 +978,12 @@ pub struct CleanupReport {
 }
 
 impl CleanupReport {
+    /// Reports whether cleanup left any uncertain resources; shared resources are legitimate owners.
     pub fn is_clean(&self) -> bool {
         self.kept.is_empty()
     }
 
+    /// Serializes removals and retained resources without treating shared ownership as a leftover.
     pub fn to_json(&self) -> Value {
         json!({
             "removedFiles": self.removed_files,
@@ -998,10 +1006,12 @@ pub struct Provisional {
 }
 
 impl Provisional {
+    /// Arms cleanup for a created record until explicit acceptance transfers it to the project.
     pub fn new(created: Created) -> Self {
         Self { created }
     }
 
+    /// Borrows publication evidence without duplicating ownership or disarming cleanup.
     pub fn created(&self) -> &Created {
         &self.created
     }
@@ -1015,6 +1025,7 @@ impl Provisional {
             .map_err(|why| claims_unavailable(&why))
     }
 
+    /// Allows the import adapter to combine records while preserving the single cleanup owner.
     pub(crate) fn created_mut(&mut self) -> &mut Created {
         &mut self.created
     }

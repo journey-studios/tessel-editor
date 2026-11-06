@@ -507,6 +507,7 @@ impl MediaHost {
         self.auto_prepare = Some(id);
     }
 
+    /// Shares the job registry used by JSONL and window adapters; it does not apply pending results.
     pub fn registry(&self) -> &JobRegistry {
         &self.registry
     }
@@ -532,6 +533,7 @@ impl MediaHost {
         (id, slot)
     }
 
+    /// Waits for terminal job state within a deadline and refuses jobs that disappear.
     fn wait_final(&self, id: &str, timeout: Duration) -> Result<JobInfo, CommandError> {
         let deadline = std::time::Instant::now() + timeout;
         loop {
@@ -570,6 +572,7 @@ impl MediaHost {
         Ok(merge_applied(result, &id, applied))
     }
 
+    /// Maps terminal results to command replies, preserving stored errors and partial cancellation details.
     fn outcome(info: &JobInfo) -> Result<Value, CommandError> {
         match info.state {
             JobState::Succeeded => Ok(info.result.clone().unwrap_or(Value::Null)),
@@ -1357,6 +1360,7 @@ impl MediaHost {
         )
     }
 
+    /// Returns observable job state without applying its pending project mutation.
     fn job_get(&mut self, request: &Value) -> Result<Value, CommandError> {
         let id = text(request, "job")?;
         let info = self
@@ -1366,6 +1370,7 @@ impl MediaHost {
         Ok(info.to_json())
     }
 
+    /// Waits without committing in headless sessions; interactive callers get a snapshot at once.
     fn job_wait(&mut self, request: &Value) -> Result<Value, CommandError> {
         let id = text(request, "job")?;
         if self.interactive {
@@ -1382,6 +1387,7 @@ impl MediaHost {
         Ok(info.to_json())
     }
 
+    /// Applies a successful pending result once; terminal errors retain their cleanup details.
     fn job_commit(
         &mut self,
         state: &mut EditorState,
@@ -1539,6 +1545,7 @@ fn probe_capabilities(
     }
 }
 
+/// Consumes the pending result once so two application paths cannot own the same files.
 fn take(slot: &Slot) -> Option<Pending> {
     slot.lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())

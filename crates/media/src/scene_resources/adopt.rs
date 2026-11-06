@@ -278,6 +278,7 @@ pub struct AdoptionTarget {
 }
 
 impl AdoptionTarget {
+    /// Captures the project, workspace and bundle revision that must still match at apply.
     pub fn of(state: &EditorState, scene: &str) -> Self {
         Self {
             project: state.project.id.clone(),
@@ -308,6 +309,7 @@ impl AdoptionTarget {
     }
 }
 
+/// Reads the attached bundle revision, or None after the scene has been detached.
 fn bundle_revision(state: &EditorState, scene: &str) -> Option<String> {
     state
         .scenes
@@ -484,6 +486,7 @@ fn create_folders(
     Ok(())
 }
 
+/// Refuses an unusable ledger before publication, when no workspace mutation has occurred.
 fn refused_before_changes(why: &str) -> JobError {
     JobError::new(
         "claims_unavailable",
@@ -492,6 +495,7 @@ fn refused_before_changes(why: &str) -> JobError {
     .with_details(json!({ "phase": "before_changes", "why": why }))
 }
 
+/// Uses the canonical folder for identity comparison, falling back when it cannot be resolved.
 fn canonical_or_spelled(folder: &Path) -> PathBuf {
     fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf())
 }

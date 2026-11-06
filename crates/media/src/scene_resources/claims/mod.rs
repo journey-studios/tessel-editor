@@ -105,14 +105,17 @@ pub(super) struct HolderId {
 }
 
 impl HolderId {
+    /// Pairs a process identity with the sequence of one result; neither component is a PID.
     pub(super) fn new(owner: u128, seq: u64) -> Self {
         Self { owner, seq }
     }
 
+    /// Returns the process token whose live lease protects this result.
     pub(super) fn owner(&self) -> u128 {
         self.owner
     }
 
+    /// Returns the result sequence within its owning process.
     pub(super) fn seq(&self) -> u64 {
         self.seq
     }
@@ -120,6 +123,7 @@ impl HolderId {
 
 static NEXT_HOLDER: AtomicU64 = AtomicU64::new(1);
 
+/// Allocates a result identity under this process token without sharing mutable ownership.
 pub(super) fn next_holder() -> HolderId {
     HolderId::new(process_owner(), NEXT_HOLDER.fetch_add(1, Ordering::Relaxed))
 }

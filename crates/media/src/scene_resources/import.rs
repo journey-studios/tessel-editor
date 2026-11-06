@@ -67,6 +67,7 @@ pub struct PlannedScene {
 }
 
 impl PlannedScene {
+    /// Reports an ID collision resolved during planning, before any file was copied.
     pub fn renamed(&self) -> bool {
         self.from != self.to
     }
@@ -99,6 +100,7 @@ pub struct PreparedSceneImport {
 }
 
 impl PreparedSceneImport {
+    /// Reports per-scene transport facts while retaining the ownership record in memory.
     pub fn to_json(&self) -> Value {
         json!({
             "scenes": self.scenes.iter().map(|scene| json!({
@@ -123,6 +125,7 @@ impl PreparedSceneImport {
     }
 }
 
+/// Reserves existing managed scene directories using case-insensitive names.
 fn taken_folders(workspace: &Path) -> Vec<String> {
     fs::read_dir(workspace.join(MANAGED_DIR))
         .map(|entries| {
@@ -150,6 +153,7 @@ fn free_id(wanted: &str, is_taken: impl Fn(&str) -> bool) -> String {
         .unwrap_or_else(|| wanted.to_string())
 }
 
+/// Selects requested attached scenes, refusing unknown IDs before preparing any resource.
 fn select<'a>(
     source: &'a EditorState,
     wanted: &[String],
@@ -287,6 +291,7 @@ pub fn prepare_observed(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Carries one scene and transfers its durable claims to the import only after a successful merge.
 fn prepare_scene(
     source: &EditorState,
     workspace: &Path,
@@ -376,6 +381,7 @@ fn prepare_scene(
     })
 }
 
+/// Identifies the scene whose resources cannot be carried without pretending the import succeeded.
 fn unavailable(scene: &str, why: &str) -> JobError {
     JobError::new(
         "missing_media",

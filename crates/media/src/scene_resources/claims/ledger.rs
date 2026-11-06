@@ -48,6 +48,7 @@ const ATTEMPTS: usize = 64;
 const DANGLING_SEEN: usize = 5;
 const DANGLING_PAUSE: std::time::Duration = std::time::Duration::from_millis(2);
 
+/// Recovers a poisoned process-local mutex without discarding the persisted ledger.
 fn relock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     // Every change under these locks is one assignment: a panic leaves consistent data.
     mutex
@@ -147,6 +148,7 @@ struct DiskLock {
 }
 
 impl Tracker {
+    /// Acquires coordination, validates state and reaps dead leases; any failure stays a fault.
     fn open(inner: &Arc<Inner>, create: bool) -> Self {
         let mut tracker = Self {
             inner: Arc::clone(inner),
@@ -190,12 +192,14 @@ impl Tracker {
         self.owners.iter().map(|(token, owner)| (*token, owner))
     }
 
+    /// Exposes the locked snapshot; callers must check fault before relying on ownership.
     pub(in crate::scene_resources) fn entries(&self) -> impl Iterator<Item = (&Path, &Entry)> {
         self.entries
             .iter()
             .map(|(key, entry)| (key.as_path(), entry))
     }
 
+    /// Counts entries within a resource root, including the root itself when registered.
     pub(in crate::scene_resources) fn count_under(&self, root: &Path) -> usize {
         self.entries
             .keys()
@@ -801,6 +805,7 @@ fn is_alive(dir: &Path, owner: u128) -> bool {
 }
 
 #[cfg(unix)]
+/// Checks whether the open lock still names the path, detecting unlink and replacement races.
 fn same_file(path: &Path, file: &File) -> bool {
     use std::os::unix::fs::MetadataExt;
     match (fs::metadata(path), file.metadata()) {
@@ -818,23 +823,28 @@ fn same_file(path: &Path, _file: &File) -> bool {
 
 // --- format ------------------------------------------------------------------------------
 
+/// Encodes the random process token in the stable ledger key format.
 fn owner_text(owner: u128) -> String {
     format!("{owner:032x}")
 }
 
+/// Rejects malformed persisted owner tokens instead of inventing a process identity.
 fn parse_owner(text: &str) -> Option<u128> {
     (text.len() == 32).then(|| u128::from_str_radix(text, 16).ok())?
 }
 
+/// Combines process token and per-result sequence into an unambiguous persisted holder.
 fn holder_text(holder: &HolderId) -> String {
     format!("{}:{}", owner_text(holder.owner()), holder.seq())
 }
 
+/// Requires both a valid process token and result sequence to accept a holder key.
 fn parse_holder(text: &str) -> Option<HolderId> {
     let (owner, seq) = text.split_once(':')?;
     Some(HolderId::new(parse_owner(owner)?, seq.parse().ok()?))
 }
 
+/// Requires an object field when validating persisted state; other JSON types are rejected.
 fn object<'a>(value: &'a Value, key: &str) -> Option<&'a Map<String, Value>> {
     value.get(key)?.as_object()
 }
@@ -880,6 +890,7 @@ fn entry_from_json(value: &Value) -> Option<Entry> {
     })
 }
 
+/// Persists content identity and the platform file identity needed for safe cleanup.
 fn stamp_to_json(stamp: &Stamp) -> Value {
     #[cfg(unix)]
     {
@@ -892,6 +903,7 @@ fn stamp_to_json(stamp: &Stamp) -> Value {
     }
 }
 
+/// Requires every platform identity field and content hash before accepting a saved stamp.
 fn stamp_from_json(value: &Value) -> Option<Stamp> {
     Some(Stamp {
         len: value.get("len")?.as_u64()?,

@@ -461,3 +461,9 @@ falha ao reintroduzir a regra antiga (sucesso indevido) e passa com a correção
 A prova nativa foi repetida no código atualizado: **23/23**, instância própria e lock GPU,
 piso12GiB, relatório `/tmp/tessel-s2-review-native-final.json`. Há também regressão específica
 para falha de forget de pasta após remoção parcial de diretórios.
+
+### Documentação dos contratos de ownership (BL111.5)
+
+Após a revisão, os contratos de 46 funções receberam docstrings: identidade de holders,
+validação do ledger, leases, publicação/cleanup, import e consumo de resultados pelo host.
+A alteração é documental; o percentual de cobertura depende da nova medição do CodeRabbit.
