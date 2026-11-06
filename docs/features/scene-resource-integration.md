@@ -203,6 +203,7 @@ editor, CLI ou job que abra o mesmo workspace.
 .tessel-claims/
   ledger.lock     flock exclusivo durante uma leitura-modificação-escrita
   claims.json     versão 1: owners + entries, trocado por rename atômico
+  claims.journal  aceites ainda não dobrados em claims.json (BL112.7); só existe num ledger grande
   live/<token>    um por processo dono, com flock mantido enquanto o processo vive
 ```
 
@@ -389,11 +390,70 @@ Evidência por superfície do descarte em job (integração S1 + S3 + S4): lib/h
 remoção medida (detalhes e limites em [F025](jobs.md#evidência-por-superfície-integração-s1--s3--s4-a-validar-até-a-revisão)).
 **Costura S1 x S2 (já incorporada, ver "Junção com a S1" acima e BL094.3):** `PendingAdoption::settle` devolve a adoção
 recusada ainda dona de arquivos e claims; `apply` é `settle` + remoção inline e só a remoção (`discard`) lê/hasheia
-**recursos**. O aceite, em si, lê e grava `claims.json` sob `flock`: no tick da janela (`settle`, `import::try_apply`) esperando o
-lock só **20 ms** (um lock ainda ocupado depois disso, por outro processo ou por outro job deste, recusa o aceite com
-`claims_unavailable`, BL112.3/N1). **Medido (gates finais da PR 6, debug):** esse aceite custa 29–31 ms com 1 mil entradas no ledger e 304–310 ms com 10 mil (teto de 100 ms), `O(entradas)`: **BL112.7**, bloqueio aberto, decisão de arquitetura;
-em quem pode bloquear (`apply`, `job.commit` da CLI, jobs) a espera é limitada a 1,5 s. Um dono persistente de claims precisa
-manter essas propriedades (testes `settle_*`/`apply_is_settle_*`).
+**recursos**. O aceite é `Ledger::accept` (um só caminho para o tick e para quem pode bloquear): no tick da janela
+(`settle`, `import::try_apply`) espera o lock só **20 ms** (um lock ainda ocupado depois disso, por outro processo ou por
+outro job deste, recusa o aceite com `claims_unavailable`, BL112.3/N1); em quem pode bloquear (`apply`, `job.commit` da CLI,
+jobs) a espera é limitada a 1,5 s. **O custo do aceite não depende do tamanho do ledger (BL112.7, ver "Diário de aceites"
+abaixo).** Um dono persistente de claims precisa manter essas propriedades (testes `settle_*`/`apply_is_settle_*`).
+
+### Diário de aceites (BL112.7)
+
+**Problema.** Aceitar um resultado é o último passo da transação do projeto e roda na thread da janela. Reescrever
+`claims.json` para isso custa `O(entradas do ledger inteiro)` (ler, parsear, montar, serializar): 304–310 ms com 10 mil
+entradas em build debug, contra o teto de 100 ms do tick (BL112.3). O critério de 10 mil entradas continua e não foi
+relaxado; também não foi "resolvido" com ajuste de constante, build release, ignorar o teste ou só mover o flush para depois
+do `apply` (o aceite continuaria sendo `O(ledger)` na UI e o projeto passaria a apontar para arquivos antes de o ledger
+dizer que são dele).
+
+**Alternativas.** (1) *Aceite assíncrono / duas fases:* o tick só marcaria "aceito" e um worker gravaria depois. Descartado:
+até o worker terminar, o projeto referencia arquivos que o ledger ainda lista como órfãos em potencial, e `recover` de outro
+processo os removeria; reverter o projeto depois de aplicado exige uma segunda máquina de estados no `poll` (a mesma que o
+BL112.5 deixou de lado). (2) *Reserva/transição reversível* (mover as entradas para um estado "aceitando" e confirmar
+depois): ainda é uma reescrita `O(ledger)` ou um segundo arquivo com as mesmas regras de leitura única; é o diário com mais
+estados. (3) **Diário por acréscimo (escolhido):** uma gravação `O(chaves do resultado)` sob o mesmo `ledger.lock`, lida por
+todo leitor antes de qualquer outra coisa. É o menor que mantém as quatro regras abaixo sem mudar a máquina de estados dos
+jobs, o contrato do `poll` nem os códigos da CLI.
+
+**Formato.** Um ledger cujo `claims.json` + `claims.journal` passa de `INLINE_LIMIT` (64 KiB, ~500 entradas) é aceito
+**acrescentando uma linha** a `claims.journal`, sem ler nem parsear `claims.json`:
+
+```text
+{"accept":["/ws/scenes/a/assets/x.png","/ws/scenes/a/assets"]}\n
+```
+
+Até o limite o aceite continua inline (reescreve o estado, poucos milissegundos), e um workspace sem nada pendente continua
+parecendo nunca ter tido ledger.
+
+**Invariantes.**
+
+1. **Um só leitor.** O ledger efetivo é `claims.json` **menos** as chaves de todo registro completo do diário. Todo leitor
+   (`recover`, descarte, `claims_status`, a próxima adoção, o `Tracker` de qualquer job) aplica o diário ao abrir; ninguém lê
+   `claims.json` sozinho. Por isso nenhum projeto referencia um arquivo que `recover` poderia remover: o aceite gravado vale
+   para o primeiro leitor que o veja, inclusive o de um processo que acabou de morrer (`SIGKILL` logo depois do tick).
+2. **Compactação antes de qualquer coisa.** O `Tracker` que encontra um diário reescreve `claims.json` sem essas chaves
+   (rename atômico) e só então remove o diário, **antes de responder a quem o abriu**. Assim ninguém reivindica um caminho
+   de novo enquanto um registro antigo dele ainda existe (o registro o aceitaria por engano), e uma queda entre o rename e a
+   remoção deixa um diário cujas chaves já não existem: reaplicar não muda nada (idempotente, sem campo de geração). A
+   compactação é feita em jobs/CLI/`recover`/status, **nunca no tick**.
+3. **Gravado antes de acreditado, e reversível.** O tick só responde `Ok` depois de o registro ser escrito inteiro sob o lock.
+   Uma escrita que falha é desfeita (`set_len` até onde o arquivo estava) e responde `Err`: o resultado continua dono e
+   claimado, o projeto, o undo e a revisão voltam ao que eram (o aceite é o último passo da transação) e o resultado vai
+   para um job `discard` (`claims_unavailable`, `details.phase="accept"`). Um registro cujo escritor morreu no meio não tem
+   `\n` final: nunca foi um aceite (o projeto a que pertencia também não foi salvo), não é lido e o próximo escritor o corta.
+   Uma linha **completa** que não parseia é dano: o ledger é `fault` e tudo recusa (`recover` não remove nada), porque ignorar
+   um aceite deixaria `recover` remover arquivo que o projeto referencia.
+4. **Dono vivo e claim até um destino terminal; descarte nunca apaga o aceito.** O aceite só remove as chaves **do próprio
+   resultado**; um resultado recusado, obsoleto (`stale_result`) ou descartado nunca grava registro, então o descarte segue
+   sob prova (hash) e `Leave` como antes e as claims de terceiros nunca são tocadas. A lease do processo continua listada
+   até o próximo `Tracker` compactar.
+
+**Concorrência e falha.** O registro é escrito sob `ledger.lock` (o mesmo `flock` de qualquer escrita), com a espera de 20 ms
+no tick; um holder longo recusa o aceite como antes (BL112.3/BL112.5). Aceites concorrentes e compactações nunca perdem nem
+ressuscitam uma entrada (teste de threads em `claims/tests.rs`; processo real em `scene_claims_journal.rs`).
+
+**Limites.** O tick não valida nem faz reap (isso é do próximo `Tracker`, fora da UI); o diário não tem `fsync`, como o
+estado; o limite de 64 KiB é uma decisão de custo, não de correção (os dois caminhos têm as mesmas regras); um leitor que
+compacta um diário grande paga `O(ledger)` fora da UI (jobs, CLI, `recover`, `claims`).
 
 **Descarte e claims (BL094.4, F1):** o último titular de um arquivo **não** sai do ledger antes do arquivo: `Tracker::begin_leave`
 responde `Last` com a entrada (e a lease deste processo) ainda gravada; o job prova (SHA-256), remove e só então chama `leave`
