@@ -459,7 +459,7 @@ Plano e contratos: [wave-s1-s10-plan.md](migration/wave-s1-s10-plan.md). R1–R1
 |---|---|---|---|
 | S1 | BL094/BL112 | Preparada para delegação | descarte assíncrono, sem hashing na UI |
 | S2 | BL111/BL111.1 | Entregue para revisão (a validar) | claims persistentes e dois processos reais; `claims`/`recover` em JSONL e na janela como jobs; findings CodeRabbit do head `c495308` em tratamento (persistência em tarefa própria) |
-| S3 | BL109 | Preparada para delegação | bytes imutáveis em export e cancelamento |
+| S3 | BL109 | Implementada, a validar (PR própria) | bytes imutáveis em export e cancelamento |
 | S4 | BL102 | Preparada para delegação | ack antigo de slot reutilizado recusado |
 | S5 | BL100/BL101 | Preparada para delegação | attach off-thread e recursos vazios |
 | S6 | BL004/BL005 | Preparada para delegação | catálogo e pose inicial equivalentes à origem |
