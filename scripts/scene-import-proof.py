@@ -415,8 +415,13 @@ def empty_manifest_scenario(live, shots=None):
                               'total_ms': round(total_ms, 1), 'final': current['state']}
     check('the large bundle attaches (read, parsed and validated off the UI thread)',
           current['state'] == 'loaded', current)
-    check('submitting a 24 MiB bundle returns at once and the window keeps answering while it is read',
-          submit_ms < 1000 and max(latencies) < 1000, report['large_bundle'])
+    # BL100a: the apply (attach of the prepared scene) used to hold the window ~0.5 s (it serialized
+    # the 24 MiB document to count its bytes); the size is now measured by the job. A 1 s bound would
+    # have hidden that, so the bound is the 100 ms the window needs to feel instant, and the stalls
+    # themselves are the evidence (polls are 5 ms apart).
+    check('submitting a 24 MiB bundle returns at once and no poll of the window stalls over 100 ms '
+          'while it is read, parsed, validated and attached',
+          submit_ms < 100 and not stalls, report['large_bundle'])
     # Reference only (no assertion): the same bundle through the synchronous `scene.attach`, which
     # holds the window for the whole read, parse and validation. What the job leaves on the UI
     # thread is the apply (`stalls_over_100ms`).

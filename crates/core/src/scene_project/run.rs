@@ -22,7 +22,7 @@ use crate::state::{CommandError, EditorState};
 use super::AttachedScene;
 use super::command::{AdmittedScene, SceneCommand, SceneSource};
 use super::query;
-use super::scope::{deferred_in_use, scope_json};
+use super::scope::scope_json;
 
 /// The gates a scene must pass to live in a project: the importer already ran (that is how a
 /// `DirectedScene` exists), and the structural and temporal gates run here, the same ones
@@ -184,29 +184,33 @@ impl EditorState {
         self.scenes.check_attach(id.as_deref(), name.as_deref())?;
         let id = id.unwrap_or_else(|| self.scenes.fresh_id());
         let name = name.map(|raw| raw.trim().to_string());
-        let scene = match source {
-            SceneSource::Admitted(admitted) => admitted.into_shared(),
-            source => {
-                let imported = source.import(&CancelToken::new())?;
-                Arc::new(admit(imported)?)
-            }
+        // One door for every source: a bundle that was not prepared elsewhere is prepared here,
+        // by the same function a job thread runs, so the gates and the facts cannot differ.
+        let admitted = match source {
+            SceneSource::Admitted(admitted) => admitted,
+            source => AdmittedScene::prepare(source, &CancelToken::new())?,
         };
+        let (scene, facts) = admitted.into_parts();
         let name = name.unwrap_or_else(|| scene.bundle().bundle_id.clone());
-        let report = json!({
+        let mut report = json!({
             "action": "scene.attach", "scene": id, "name": name,
             "bundle_id": scene.bundle().bundle_id, "revision_id": scene.bundle().revision_id,
-            "counts": query::counts(&scene),
-            "notices": query::notices_json(&scene),
-            "deferred_in_use": deferred_in_use(scene.document()),
             "scope": scope_json(),
             "changed": true,
         });
-        self.scenes.insert(AttachedScene {
-            id,
-            name,
-            scene,
-            extra: Map::new(),
-        })?;
+        // Moved in, not copied through `json!`: the lists can hold one entry per node.
+        report["counts"] = facts.counts;
+        report["notices"] = Value::Array(facts.notices);
+        report["deferred_in_use"] = Value::Array(facts.deferred_in_use);
+        self.scenes.insert_measured(
+            AttachedScene {
+                id,
+                name,
+                scene,
+                extra: Map::new(),
+            },
+            facts.serialized_len,
+        )?;
         Ok(report)
     }
 

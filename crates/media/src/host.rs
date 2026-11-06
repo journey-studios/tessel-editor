@@ -17,7 +17,7 @@
 //! Anything that reads files, runs a tool or builds a renderer (probe, decode, verify, restore,
 //! preflight) is a job; the caller's thread only snapshots the project and later applies the
 //! result. A result is applied only if the project it was computed for is still the open one
-//! (same ID, same revision for whole-project swaps, same content hash per asset for decoded
+//! (same ID, editing session and revision for whole-project swaps and scene attach, same content hash per asset for decoded
 //! media), so a slow job can never overwrite what the user did meanwhile.
 //!
 //! Media is prepared automatically: export and the render CLIs decode what they need, and an
@@ -45,7 +45,7 @@ use tessel_editor_core::scene_export::{SceneExportSnapshot, SceneExportSpec};
 use tessel_editor_core::scene_project::{AdmittedScene, SceneCommand, SceneSource};
 use tessel_editor_core::scene_resources::ResourceManifest;
 use tessel_editor_core::session::Renderer;
-use tessel_editor_core::state::Command;
+use tessel_editor_core::state::{Command, ProjectStamp};
 use tessel_editor_core::{CommandError, EditorState};
 
 use crate::derive::Cache;
@@ -96,10 +96,11 @@ enum Pending {
     /// Scenes whose files are already in the workspace, attached as one undo step.
     SceneImport(Box<PreparedSceneImport>),
     /// A bundle read, imported and admitted off the caller's thread (BL100), attached as one undo
-    /// step only while the open project is still `(project, revision)`. It owns no files.
+    /// step only while the open project is still the exact `stamp` it was started for: same ID,
+    /// same editing session (BL113a: reopening a document is a new session even with the same ID
+    /// and revision 0) and same revision. It owns no files.
     SceneAttach {
-        project: String,
-        revision: u64,
+        stamp: ProjectStamp,
         id: Option<String>,
         name: Option<String>,
         scene: AdmittedScene,
@@ -112,10 +113,10 @@ enum Pending {
     /// except what another pending or accepted result relies on (BL096).
     SceneAdopt(Box<PendingAdoption>),
     /// A restored project, already loaded and validated off the caller's thread, that replaces the
-    /// open project only if that one is still at `(project, revision)`.
+    /// open project only if that one is still the exact `stamp` the restore was started for (same
+    /// guard as [`Pending::SceneAttach`]).
     Open {
-        project: String,
-        revision: u64,
+        stamp: ProjectStamp,
         candidate: Box<EditorState>,
         summary: Value,
     },
@@ -889,7 +890,7 @@ impl MediaHost {
         let package = PathBuf::from(text(request, "path")?);
         let folder = PathBuf::from(text(request, "folder")?);
         let open = flag(request, "open", true);
-        let (project, revision) = (state.project.id.clone(), state.project.revision);
+        let stamp = state.project.stamp();
         let (id, slot) = self.start(JobKind::Restore, "Restore package", move |ctx| {
             let report = package::restore(&package, &folder, ctx)?;
             if !open {
@@ -901,8 +902,7 @@ impl MediaHost {
             let summary = open_summary(&candidate, &document);
             Ok((
                 Some(Pending::Open {
-                    project,
-                    revision,
+                    stamp,
                     candidate: Box::new(candidate),
                     summary,
                 }),
@@ -989,8 +989,8 @@ impl MediaHost {
     /// or, for a host that may block, at once. The attach itself is still `scene.attach`'s core
     /// command, so the ID, room and byte-budget rules are not repeated here.
     ///
-    /// The result applies only while the open project has the ID and revision it was started
-    /// for; otherwise it fails `stale_result` and nothing is attached. The answer carries
+    /// The result applies only while the open project is exactly the one it was started for (ID,
+    /// editing session and revision); otherwise it fails `stale_result` and nothing is attached. The answer carries
     /// `resources`: how many files the scene needs and whether it can load without a folder.
     fn scene_attach(
         &mut self,
@@ -1002,7 +1002,7 @@ impl MediaHost {
         let name = optional_text(request, "name")?.map(str::to_string);
         // Refused here, before any file is read, exactly as `scene.attach` would.
         state.scenes.check_attach(id.as_deref(), name.as_deref())?;
-        let (project, revision) = (state.project.id.clone(), state.project.revision);
+        let stamp = state.project.stamp();
         let (job, slot) = self.start(JobKind::Import, "Attach scene", move |ctx| {
             ctx.stage("read", 1);
             let scene = AdmittedScene::prepare(source, ctx.token())?;
@@ -1014,8 +1014,7 @@ impl MediaHost {
                 "resources": resources });
             Ok((
                 Some(Pending::SceneAttach {
-                    project,
-                    revision,
+                    stamp,
                     id,
                     name,
                     scene,
@@ -1718,17 +1717,16 @@ fn apply(
         }
         Pending::SceneImport(prepared) => Ok(Some(scene_import::apply(state, *prepared)?)),
         Pending::SceneAttach {
-            project,
-            revision,
+            stamp,
             id,
             name,
             scene,
             resources,
         } => {
-            if state.project.id != project || state.project.revision != revision {
+            if !stamp.is_current(&state.project) {
                 return Err(CommandError::new(
                     "stale_result",
-                    "The open project changed while the scene bundle was being read; nothing was attached (attach it again)",
+                    "The open project changed (an edit, or another project or a reopened document took its place) while the scene bundle was being read; nothing was attached (attach it again)",
                 ));
             }
             let mut report = state.execute(Command::Scene(SceneCommand::Attach {
@@ -1744,12 +1742,11 @@ fn apply(
             Ok(None)
         }
         Pending::Open {
-            project,
-            revision,
+            stamp,
             candidate,
             summary,
         } => {
-            if state.project.id != project || state.project.revision != revision {
+            if !stamp.is_current(&state.project) {
                 return Err(CommandError::new(
                     "stale_result",
                     "The open project changed while the package was restoring; the files were \

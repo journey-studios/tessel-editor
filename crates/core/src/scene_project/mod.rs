@@ -227,8 +227,21 @@ impl SceneBook {
     }
 
     pub(crate) fn insert(&mut self, entry: AttachedScene) -> Result<(), CommandError> {
+        // Room first: a refused ID must not pay for serializing the bundle.
         self.check_room(&entry.id)?;
         let bytes = serialized_len(&entry.scene);
+        self.insert_measured(entry, bytes)
+    }
+
+    /// [`Self::insert`] with the compact size already known (measured once by
+    /// [`AdmittedScene::prepare`](AdmittedScene)), so attaching does not walk the bundle again.
+    /// The rules and their order are the same: room first, then the project byte budget.
+    pub(crate) fn insert_measured(
+        &mut self,
+        entry: AttachedScene,
+        bytes: usize,
+    ) -> Result<(), CommandError> {
+        self.check_room(&entry.id)?;
         let total = self.stored_bytes().saturating_add(bytes);
         if total > MAX_SCENE_BYTES {
             return Err(CommandError::new(

@@ -29,22 +29,58 @@ pub enum SceneSource {
 }
 
 /// A bundle that passed the importer and the structural and temporal gates of `admit`, held
-/// ready to attach. WHY opaque: the only way to make one is [`AdmittedScene::prepare`], so
-/// `SceneSource::Admitted` can skip validation without letting a caller skip the rules.
+/// ready to attach, together with every fact attach needs that depends only on the bundle.
+/// WHY opaque: the only way to make one is [`AdmittedScene::prepare`], so `SceneSource::Admitted`
+/// can skip validation without letting a caller skip the rules, and the facts below are always
+/// derived by the core from the very scene they travel with (a caller cannot hand in a count).
+/// WHY the facts live here (BL100a): they cost O(bundle) (serializing 24 MiB of JSON to learn its
+/// size, scanning every node for deferred families, one notice per unknown field) and `prepare`
+/// runs on a job thread, whereas attaching runs on the caller's (the window's) thread.
 #[derive(Debug, Clone, PartialEq)]
-pub struct AdmittedScene(Arc<DirectedScene>);
+pub struct AdmittedScene {
+    scene: Arc<DirectedScene>,
+    // `Arc` so that cloning an admitted scene never copies what can be tens of thousands of notices.
+    facts: Arc<SceneFacts>,
+}
+
+/// What `scene.attach` reports and budgets, computed once by [`AdmittedScene::prepare`].
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct SceneFacts {
+    /// Compact JSON size of the document: what the project's scene budget counts.
+    pub(super) serialized_len: usize,
+    pub(super) counts: Value,
+    pub(super) notices: Vec<Value>,
+    pub(super) deferred_in_use: Vec<Value>,
+}
 
 impl AdmittedScene {
     pub(super) fn new(scene: DirectedScene) -> Self {
-        Self(Arc::new(scene))
+        let facts = SceneFacts {
+            serialized_len: super::serialized_len(&scene),
+            counts: super::query::counts(&scene),
+            notices: super::query::notices_json(&scene),
+            deferred_in_use: super::scope::deferred_in_use(scene.document()),
+        };
+        Self {
+            scene: Arc::new(scene),
+            facts: Arc::new(facts),
+        }
     }
 
     pub fn scene(&self) -> &DirectedScene {
-        &self.0
+        &self.scene
     }
 
-    pub(crate) fn into_shared(self) -> Arc<DirectedScene> {
-        self.0
+    /// Compact JSON bytes this scene will count against the project's scene budget
+    /// ([`MAX_SCENE_BYTES`](super::MAX_SCENE_BYTES)), measured when it was prepared.
+    pub fn serialized_len(&self) -> usize {
+        self.facts.serialized_len
+    }
+
+    /// The scene and its facts, the facts moved out when this is their only owner.
+    pub(super) fn into_parts(self) -> (Arc<DirectedScene>, SceneFacts) {
+        let facts = Arc::try_unwrap(self.facts).unwrap_or_else(|shared| (*shared).clone());
+        (self.scene, facts)
     }
 }
 

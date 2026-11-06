@@ -332,6 +332,170 @@ fn a_result_for_another_project_is_not_applied() {
     );
 }
 
+// ---- BL113a: the guard knows the editing session, not only (ID, revision) ----
+
+impl World {
+    fn document(&self) -> PathBuf {
+        self.workspace.join("p.tessel.json")
+    }
+
+    /// `(id, revision)`: what the guard used to compare, and what a reopen leaves unchanged.
+    fn identity(&self) -> (String, u64) {
+        (self.state.project.id.clone(), self.state.project.revision)
+    }
+
+    fn session(&self) -> u64 {
+        self.state.project.session.number()
+    }
+
+    /// Fills both job slots so the next job waits queued: the test then decides, without any
+    /// delay, what happens to the project before that job starts reading. Release with the flag.
+    fn hold_the_slots(&self) -> Arc<AtomicBool> {
+        let release = Arc::new(AtomicBool::new(false));
+        for _ in 0..2 {
+            let release = release.clone();
+            self.host
+                .registry()
+                .spawn(JobKind::Hash, "blocker", move |ctx| {
+                    while !release.load(Ordering::SeqCst) {
+                        ctx.check()?;
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Ok(Value::Null)
+                });
+        }
+        release
+    }
+
+    fn assert_untouched(&mut self, scenes: &[&str], identity: &(String, u64), depth: u64) {
+        assert_eq!(self.scene_ids(), scenes);
+        assert_eq!(&self.identity(), identity);
+        assert_eq!(self.undo_depth(), depth, "no undo entry was recorded");
+    }
+}
+
+#[test]
+fn a_result_started_before_the_document_was_reopened_is_stale() {
+    let mut world = world("reopen-headless", MediaHost::new());
+    let path = world.data_only();
+    let started = world.ok(json!({"op":"scene.attach.start","path":path,"id":"late","wait":false}));
+    let job = started["job"].as_str().unwrap().to_string();
+    // The job is finished (a barrier, not a delay) and its result is held, not applied.
+    world.ok(json!({"op":"job.wait","job":job}));
+    let (before_identity, before_session) = (world.identity(), world.session());
+
+    // The project is closed and its own document opened again: same ID, revision back to 0.
+    world.ok(json!({"op":"project.open","path":world.document()}));
+    assert_eq!(
+        world.identity(),
+        before_identity,
+        "the reopened project has the ID and revision the job saw: only the session tells them apart"
+    );
+    assert_ne!(world.session(), before_session);
+    let identity = world.identity();
+
+    let error = world.run(json!({"op":"job.commit","job":job})).unwrap_err();
+    assert_eq!(error.code, "stale_result", "{error:?}");
+    world.assert_untouched(&[], &identity, 0);
+    let undo = world.run(json!({"op":"history.undo"})).unwrap_err();
+    assert_eq!(
+        undo.code, "nothing_to_undo",
+        "nothing was recorded: {undo:?}"
+    );
+}
+
+#[test]
+fn an_interactive_poll_refuses_a_job_that_read_after_the_document_was_reopened() {
+    let mut world = world("reopen-interactive", MediaHost::new().interactive());
+    let path = world.data_only();
+    let release = world.hold_the_slots();
+    let answer = world.ok(json!({"op":"scene.attach.start","path":path,"id":"late"}));
+    let job = answer["job"].as_str().unwrap().to_string();
+    assert_eq!(answer["state"], "queued", "{answer}");
+    let before = world.identity();
+
+    world.ok(json!({"op":"project.open","path":world.document()}));
+    assert_eq!(world.identity(), before);
+    release.store(true, Ordering::SeqCst);
+
+    let event = poll_until(&mut world.host, &mut world.state, &job);
+    assert_eq!(event["state"], "failed", "{event}");
+    assert_eq!(event["error"]["code"], "stale_result", "{event}");
+    assert!(
+        world.host.poll(&mut world.state).is_empty(),
+        "reported once"
+    );
+    world.assert_untouched(&[], &before, 0);
+}
+
+#[test]
+fn a_project_with_the_same_id_and_revision_from_another_session_does_not_receive_the_result() {
+    let mut world = world("other-session", MediaHost::new());
+    let path = world.data_only();
+    let started = world.ok(json!({"op":"scene.attach.start","path":path,"id":"late","wait":false}));
+    let job = started["job"].as_str().unwrap().to_string();
+    world.ok(json!({"op":"job.wait","job":job}));
+
+    // Another session's copy of the same document takes the project's place without going
+    // through `project.open` (what a window does when it swaps its state).
+    let other = persist::load(&world.document()).unwrap();
+    assert_eq!(
+        (other.project.id.clone(), other.project.revision),
+        world.identity()
+    );
+    world.state = other;
+    let identity = world.identity();
+
+    let error = world.run(json!({"op":"job.commit","job":job})).unwrap_err();
+    assert_eq!(error.code, "stale_result", "{error:?}");
+    world.assert_untouched(&[], &identity, 0);
+}
+
+#[test]
+fn the_normal_flow_survives_saving_queries_and_undo_cycles_without_reopening() {
+    let mut world = world("same-session", MediaHost::new());
+    let path = world.data_only();
+    // History moved before the job started; the session is the same one throughout.
+    world.ok(json!({"op":"scene.attach","path":path,"id":"first"}));
+    world.ok(json!({"op":"history.undo"}));
+    world.ok(json!({"op":"history.redo"}));
+    let session = world.session();
+
+    let started =
+        world.ok(json!({"op":"scene.attach.start","path":path,"id":"second","wait":false}));
+    let job = started["job"].as_str().unwrap().to_string();
+    world.ok(json!({"op":"job.wait","job":job}));
+    // Saving is not an edit; neither is anything that only reads, nor the clones the host and the
+    // package plan take of the project.
+    world.ok(json!({"op":"project.save","path":world.document()}));
+    world.ok(json!({"op":"scene.list"}));
+    world.ok(json!({"op":"scene.resources.status"}));
+    world.ok(json!({"op":"history.status"}));
+    let pack = world.sandbox.root.join("out/pack.tesselpack");
+    world.ok(json!({"op":"project.package_preflight","path":pack}));
+    assert_eq!(world.session(), session);
+
+    let committed = world.ok(json!({"op":"job.commit","job":job}));
+    assert_eq!(committed["applied"]["scene"], "second", "{committed}");
+    assert_eq!(world.scene_ids(), ["first", "second"]);
+    assert_eq!(world.undo_depth(), 2, "one undo entry for the job");
+}
+
+#[test]
+fn an_interactive_attach_applies_across_a_save_in_the_same_session() {
+    let mut world = world("save-interactive", MediaHost::new().interactive());
+    let path = world.data_only();
+    let release = world.hold_the_slots();
+    let answer = world.ok(json!({"op":"scene.attach.start","path":path,"id":"street"}));
+    let job = answer["job"].as_str().unwrap().to_string();
+    world.ok(json!({"op":"project.save","path":world.document()}));
+    release.store(true, Ordering::SeqCst);
+    let event = poll_until(&mut world.host, &mut world.state, &job);
+    assert_eq!(event["state"], "succeeded", "{event}");
+    assert_eq!(world.scene_ids(), ["street"]);
+    assert_eq!(world.undo_depth(), 1);
+}
+
 #[test]
 fn a_cancelled_attach_job_attaches_nothing() {
     let mut world = world("cancel", MediaHost::new());
