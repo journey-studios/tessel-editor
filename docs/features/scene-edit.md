@@ -239,9 +239,9 @@ Apresentação (foco, docking) é N/A para este módulo.
 
 | Superfície | Estado |
 |---|---|
-| Lib | **A validar** (S6). `scene_edit.rs` (29), `scene_edit_properties.rs` (32: componentes, `renderOrder`, conversão, rollback, reset, no-op, ordem de ops, efeito líquido por dado, A→B→A, chaves desconhecidas, `INVALID_VALUE` de `renderOrder`) e `scene_edit_oracle.rs` (7: 31 casos contra o oráculo fixo, controle negativo, divergências medidas) passaram via `cargo-serial.py test -p tessel-editor-core --locked` no head da correção dos findings da revisão Opus. Doctest e golden JSON ordenado da PR4 preservados; **a suíte completa do core não foi reexecutada depois dessa correção** (disco abaixo do piso) |
-| CLI headless | **A validar** (S6). `crates/core/tests/scene_edit_session.rs` (8) e `scene_interaction.rs` (22, `scene.gesture.update`/`commit` com `conversions`): capabilities/listagem/catálogo aditivos (`origin` dos eixos), lote de componentes + `renderOrder` como uma entrada de undo, lote recusado sem mutação, no-op sem entrada, conversão com dry-run igual ao apply, o executável `tessel-headless` responde linha a linha como a lib, o lote com eixo escondido entre escritas do vetor é edição real com uma entrada de undo, restauração líquida é no-op, `renderOrder` fora da faixa é `invalid_value` |
-| UI (desktop) | **A validar** (S6). Testes de `scene_model.rs` (lista de propriedades sem componentes, `renderOrder` inteiro: slider, arredondamento, janela) e `scene_tests.rs` (`set` semântico de `renderOrder`, undo, componente sem controle duplicado; **arrastar o slider de `start/position`** converte o primeiro movimento ao soltar, uma entrada de undo, desfazer restaura a receita; `set` semântico do eixo informa `conversions`) em GPUI headless de teste (`scene_`: 91 passaram). **Sem** captura nativa nem ponteiro físico nesta fatia |
+| Lib | **A validar** (S6). Gates executados no head de produção `cf21f97` (o commit que acrescentou o script de prova não altera `crates/`, `runtime/` nem `Cargo.lock`), via `cargo-serial.py`, com `TESSEL_REQUIRE_RUNTIME=1`, Chrome real e lock de GPU: `scene_edit` 29, `scene_edit_properties` **33** (inclui `a_conversion_preserves_fields_belonging_to_other_recipes`: dollyIn/`yawDeg` e hold/`easing` sobrevivem), `scene_edit_oracle` 7, `scene_edit_session` 8 e `scene_interaction` 22 passaram, 0 falhas, 0 ignorados. Controle negativo da correção de `0d5304a`: reintroduzir `yawDeg`/`easing` na lista de campos aposentados reprova a nova regressão (`dollyIn: yawDeg`) e a falha some ao restaurar o arquivo. Suíte completa do workspace: **1215 passaram, 0 falharam, 9 ignorados** em 78 grupos (ver "Gates do workspace"). Doctest e golden JSON ordenado da PR4 preservados |
+| CLI headless | **A validar** (S6). `crates/core/tests/scene_edit_session.rs` (8) e `scene_interaction.rs` (22, `scene.gesture.update`/`commit` com `conversions`): capabilities/listagem/catálogo aditivos (`origin` dos eixos), lote de componentes + `renderOrder` como uma entrada de undo, lote recusado sem mutação, no-op sem entrada, conversão com dry-run igual ao apply, o executável `tessel-headless` responde linha a linha como a lib, o lote com eixo escondido entre escritas do vetor é edição real com uma entrada de undo, restauração líquida é no-op, `renderOrder` fora da faixa é `invalid_value`. Os mesmos testes foram executados no head `cf21f97` (8 e 22 passaram). Prova do executável fora da suíte: `scripts/scene-edit-proof.py` roda o mesmo cenário em `tessel-headless` (JSONL, sem janela), separado da prova da janela; a execução final limpa está registrada em "Prova nativa final" |
+| UI (desktop) | **A validar** (S6). Testes de `scene_model.rs` (lista de propriedades sem componentes, `renderOrder` inteiro: slider, arredondamento, janela) e `scene_tests.rs` (`set` semântico de `renderOrder`, undo, componente sem controle duplicado; **arrastar o slider de `start/position`** converte o primeiro movimento ao soltar, uma entrada de undo, desfazer restaura a receita; `set` semântico do eixo informa `conversions`) em GPUI headless de teste (`scene_` + `playback`: 93 passaram, 0 falharam, 0 ignorados, em `cf21f97`; `playback_follows_the_audio_clock_or_says_why_it_cannot` com `frame > 30` passou). **Sem** ponteiro físico nem captura de pixels. A janela real, em instância própria, recebe só requisições semânticas em `scripts/scene-edit-proof.py` (ver "Prova nativa final") |
 | Oráculo | `node scripts/scene-edit-oracle/oracle.mjs verify` (regeneração byte a byte contra a origem, somente leitura) saiu 0 com os 31 casos; os 24 originais não mudaram |
 
 Limites: um editor geral de keyframes não existe; só o primeiro movimento é convertido; uma conversão de órbita usa
@@ -274,4 +274,59 @@ as linhas da base e a entrega S6. O auto-merge de ops/attach foi validado com o 
 (595 passaram,3 ignorados) e desktop completo (203 passaram), além de fmt, clippy workspace
 all-targets com -Dwarnings e build desktop. Nenhuma nova prova nativa de edição foi declarada.
 
-Revisões R2–R4: a 33ª regressão de `scene_edit_properties` e a correção de produção de preservação por receita em `0d5304a` estão escritas, ainda sem compilação ou execução. Os resultados acima de 32 testes pertencem ao head executado pelo Cursor, não ao head final; gates completos e prova nativa continuam pendentes.
+## Gates do workspace e prova nativa final (S6, PR #12)
+
+Executados pelo agente de testes no head de produção `cf21f97` (árvore limpa; as diferenças posteriores são só
+`scripts/scene-edit-proof*.py` e documentação). Ambiente: macOS, Rust 1.99.1 pelo `cargo-serial.py`, Chrome real,
+`./scripts/runtime setup` no próprio checkout, lock de GPU, disco livre ≥ 28 GiB em todas as fases (piso 12 GiB).
+
+| Gate | Resultado |
+|---|---|
+| `cargo fmt --all -- --check` | passou |
+| `cargo check --workspace --all-targets --locked` | passou, 0 avisos |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | passou |
+| Core direcionado (`scene_edit`, `scene_edit_properties`, `scene_edit_oracle`, `scene_edit_session`, `scene_interaction`) | 29 + 33 + 7 + 8 + 22 passaram |
+| Desktop `scene_` e `playback` | 93 passaram; `playback_follows_the_audio_clock_or_says_why_it_cannot` passou com `frame > 30` |
+| `TESSEL_REQUIRE_RUNTIME=1 cargo test --workspace --no-fail-fast --locked` (lock de GPU) | **1215 passaram, 0 falharam, 9 ignorados**, 78 grupos; os testes com Chrome real (`frames` 7, `scene_frames` 8) rodaram e passaram, nenhum foi contado como passado por *skip* |
+| `node scripts/scene-edit-oracle/oracle.mjs verify` | saiu 0 (31 casos, regeneração byte a byte; origem lida só para leitura) |
+| `cargo build -p tessel-editor --locked` | passou (`tessel-headless` construído também) |
+| `cargo tree -p tessel-editor-core --locked` | 16 linhas, nenhuma menção a `gpui` nem `wry` |
+
+Os 9 ignorados são medições e provas longas fora do escopo de S6, todos com motivo declarado no próprio `#[ignore]`:
+`measure_attach_cost`, `report_memory_over_a_long_run`, `report_plan_cost_and_size` (medições de desempenho),
+`entries_past_four_gib_use_64_bit_sizes_and_offsets` e `a_zip64_archive_past_four_gib_is_written_to_disk_and_read_by_unzip`
+(ZIP64 de 4,5 GiB), `measure_discarding_a_result_with_a_large_file` (256 MiB), `export_proof_headless_phases`,
+`export_proof_restored_projects` e `export_proof_window_flows` (aceite do export, BL008/BL019). Nenhum é caminho de S6.
+Nenhum teste intermitente apareceu: uma única execução completa, sem repetição.
+
+**Áudio (BL004d).** Neste ambiente a saída padrão é "Alto-falantes (MacBook Pro)" a 48000 Hz (`system_profiler`,
+somente leitura; nenhuma configuração de dispositivo foi alterada), então o teste passa pelo ramo `audio_device`. O
+caso de 24 kHz (AirPods) **não foi reproduzido**: a causa raiz relatada pelo Cursor continua não confirmada. O que está
+provado é que o teste exige `sample_rate >= 8000` e avanço real do playhead (`frame > 30`).
+
+### Prova nativa final
+
+`scripts/scene-edit-proof.py` (`scripts/scene-edit-proof.spec.py`: 6 testes de lógica pura) carrega o bundle do corpus
+(clipe `cam-main`: `dollyIn`, `hold`, `truckRight`, câmera com movimento) e executa o **mesmo cenário** em duas
+superfícies separadas: (1) a janela real, binário direto com `HOME` curto e socket próprios, só pelo `ui` desse
+binário (`op`, `get`, `set`); (2) `tessel-headless` por JSONL. O socket da janela **não** é evidência headless. O
+documento é lido de volta por `project.save` (o `.tessel.json` real). Provas do cenário:
+
+1. o clipe tem movimento (z decresce nos frames 0, 16 e 31);
+2. `start/position/x` converte o 1º movimento (`conversions` com clip, índice, segmento, receita e `keys`), o documento
+   guarda um `keyframes` com 1 key sem os campos da receita, o início muda só no eixo escrito, os frames 32, 40, 47, 60 e 90
+   não se movem (tolerância `1e-9`) e o mesmo comparador vê o início e o frame 16 diferentes (controle);
+3. **um** `history.undo` restaura o documento inteiro e as poses;
+4. `start/target` e `renderOrder` escrevem no lugar, sem `conversions`, deixando o movimento intacto, em uma entrada;
+5. valor igual é no-op (sem entrada de undo, documento idêntico);
+6. recusas tipadas sem mutação (documento, revisão e profundidade do undo): `start/fov` 200, `renderOrder` 1,5 e 1e16,
+   vetor num eixo, `reset` de `width`, clipe inexistente e lote com primeira op válida e segunda inválida;
+7. só na janela: o `set` semântico do inspector (`scene.property:camera/cam-main/start/position` campo `x`) converte
+   e informa `conversions`, uma entrada de undo, um undo restaura; `start/fov` 200 é recusado com `invalid_value`, sem
+   gesto aberto e com o mesmo erro como `notice` do painel; `renderOrder` digitado 4,4 vira 4.
+
+Não prova ponteiro físico, arraste de slider (os testes GPUI-headless cobrem o gesto, mas não são ponteiro nativo),
+pixels nem equivalência com a origem (o oráculo fixo é quem prova).
+
+Resultado da execução final: ver a seção "Execução final" abaixo (preenchida depois do commit que a testou, só com
+diferença de documentação; a produção testada é a de `cf21f97`).
