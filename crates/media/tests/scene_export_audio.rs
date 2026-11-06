@@ -274,7 +274,7 @@ fn a_48k_pcm16_stereo_source_is_copied_bit_for_bit_across_the_whole_16_bit_range
         (source[2 * frames - 2], source[2 * frames - 1]),
         (32767, -32768)
     );
-    assert!(source.iter().any(|sample| *sample == 20_000));
+    assert!(source.contains(&20_000));
     let mix = pcm16(2, 48_000, &source);
     let state = demo_state(&bundle_with_mix(&mix, (0.0, 4.0)));
     let file = work.path("mix.wav");
@@ -534,8 +534,9 @@ enum Fault {
     /// Stop the job right after the copy (before the mix) until the test releases it, so a
     /// cancel lands exactly at the start of the `audio` step.
     ParkAfterCopy,
-    /// Stop the job after the first chunk of the private copy was written, until the test
-    /// releases it: the cancel lands in the middle of the copy, whatever the disk's speed.
+    /// Stop the job after the first full `COPY_CHUNK` of one resource was written, until the test
+    /// releases it. Only the mix is that large (the corpus pictures are 4-9 KiB), so the job is
+    /// parked inside the copy of the WAV with the copy provably unfinished, whatever the disk's speed.
     ParkCopyChunk,
     /// Stop the job once the mix has written this many one-second steps, until the test
     /// releases it: the cancel lands between two known steps of the mix.
@@ -545,7 +546,19 @@ enum Fault {
     SwapAtStart,
     /// Slow frames, so a test can cancel the job while it renders.
     Slow,
+    /// `resources_frozen` fails: the job must end with that error, the copy removed with its staging.
+    FailAfterCopy,
+    /// `resources_frozen` panics: the job registry must end the job as failed.
+    PanicAfterCopy,
+    /// `mix_stepped` fails after this many steps were written (half a mix on disk).
+    FailMixStep(u64),
+    /// `mix_stepped` panics after this many steps were written.
+    PanicMixStep(u64),
 }
+
+/// One chunk of the private copy (`fsx::CHUNK`): a resource smaller than this is copied in one piece,
+/// so only the mix reports exactly this many bytes at once.
+const COPY_CHUNK: u64 = 1 << 20;
 
 /// The two ends of a park: the job says it arrived, the test says go.
 struct Gate {
@@ -591,21 +604,36 @@ impl SceneFrameRenderer for StillRenderer {
         match self.fault {
             Fault::TamperAfterCopy => same_size_garbage(&self.victim),
             Fault::ParkAfterCopy => self.park(),
+            Fault::FailAfterCopy => {
+                return Err(JobError::new("render_failed", "the hook refused the copy"));
+            }
+            Fault::PanicAfterCopy => panic!("the hook panicked after the copy"),
             _ => {}
         }
         Ok(())
     }
 
-    fn copy_progressed(&mut self, _bytes: u64) {
-        if self.fault == Fault::ParkCopyChunk && !self.parked_in_copy {
+    fn copy_progressed(&mut self, bytes: u64) {
+        // The pictures report their whole size at once (4-9 KiB); only the mix reports a full chunk.
+        if self.fault == Fault::ParkCopyChunk && !self.parked_in_copy && bytes == COPY_CHUNK {
             self.parked_in_copy = true;
             self.park();
         }
     }
 
     fn mix_stepped(&mut self, done: u64, _steps: u64) -> Result<(), JobError> {
-        if self.fault == Fault::ParkMixStep(done) {
-            self.park();
+        match self.fault {
+            Fault::ParkMixStep(at) if at == done => self.park(),
+            Fault::FailMixStep(at) if at == done => {
+                return Err(JobError::new(
+                    "render_failed",
+                    format!("the hook refused the mix at step {done}"),
+                ));
+            }
+            Fault::PanicMixStep(at) if at == done => {
+                panic!("the hook panicked at mix step {done}")
+            }
+            _ => {}
         }
         Ok(())
     }
@@ -1343,20 +1371,57 @@ fn start_parked(lab: &mut Lab, name: &str, frames: u32) -> (String, PathBuf) {
 }
 
 /// Cancels the parked job, lets it go on and returns what the job ended as.
-fn cancel_parked(lab: &mut Lab, job: &str) -> Value {
+///
+/// `parked` is what `job.get` said while the job stood at the barrier. A cancelled job's `stage` is
+/// always `cancelled` (the registry writes it), so the stage cannot prove *where* the job stopped:
+/// its `done`/`total` can. `finish` leaves them alone on cancel, so they must equal the barrier's:
+/// a job that copied on, mixed on or started the next stage after the cancel would change them.
+fn cancel_parked(lab: &mut Lab, job: &str, parked: &Value) -> Value {
     lab.ok(json!({"op":"job.cancel","job":job}));
     lab.release.send(()).unwrap();
     let info = lab.ok(json!({"op":"job.wait","job":job,"timeout_ms":60000}));
     assert_eq!(info["state"], "cancelled", "{info}");
+    assert_eq!(info["stage"], "cancelled", "{info}");
+    assert_eq!(
+        (info["done"].as_u64(), info["total"].as_u64()),
+        (parked["done"].as_u64(), parked["total"].as_u64()),
+        "the job went on after the cancel: it stood at {parked}, it ended at {info}"
+    );
     info
+}
+
+/// Bytes of the corpus pictures a scene export copies before the mix.
+fn corpus_picture_bytes() -> u64 {
+    ["sky.png", "mid.png", "hero.png"]
+        .iter()
+        .map(|name| {
+            fs::metadata(corpus().join("assets").join(name))
+                .unwrap()
+                .len()
+        })
+        .sum()
+}
+
+/// The job's own staging directories beside the destination (not another export's).
+fn own_staging(lab: &Lab) -> Vec<String> {
+    lab.leftovers()
+        .into_iter()
+        .filter(|name| !name.contains("foreign"))
+        .collect()
 }
 
 #[test]
 fn a_cancel_in_the_middle_of_the_copy_removes_only_its_own_staging() {
-    // BL016.9. 12 s of stereo is more than one 1 MiB copy chunk, and the job is parked after the
-    // first chunk is written: the copy is provably unfinished, with no dependence on timing.
+    // BL016.9. The corpus pictures are 4-9 KiB, so the job is parked after the first full chunk of
+    // the 12 s mix (2.3 MB, more than two chunks): it stands inside the copy of the WAV, with the copy
+    // provably unfinished and no dependence on the disk's speed.
+    let pictures = corpus_picture_bytes();
+    assert!(
+        pictures < COPY_CHUNK,
+        "no picture can be mistaken for the mix"
+    );
     let mix = pcm16(2, 48_000, &ramp_stereo(12 * 48_000));
-    assert!(mix.len() > 2 << 20);
+    assert!(mix.len() as u64 > 2 * COPY_CHUNK);
     let Some(mut lab) = lab_with("e2e-cancel-copy", &mix, (0.0, 4.0), Fault::ParkCopyChunk) else {
         return;
     };
@@ -1366,18 +1431,36 @@ fn a_cancel_in_the_middle_of_the_copy_removes_only_its_own_staging() {
     let (job, destination) = start_parked(&mut lab, "cancel-copy.mp4", 24);
     let parked = lab.ok(json!({"op":"job.get","job":job}));
     assert_eq!(parked["stage"], "snapshot", "{parked}");
-    let (done, total) = (parked["done"].as_u64().unwrap(), parked["total"].as_u64());
-    assert!(done > 0 && Some(done) < total, "a partial copy: {parked}");
-    let own: Vec<String> = lab
-        .leftovers()
-        .into_iter()
-        .filter(|name| !name.contains("foreign"))
-        .collect();
+    // Every picture, then one chunk of the WAV: the barrier is in the mix, not in a picture.
+    assert_eq!(
+        (parked["done"].as_u64(), parked["total"].as_u64()),
+        (
+            Some(pictures + COPY_CHUNK),
+            Some(pictures + mix.len() as u64)
+        ),
+        "a partial copy of the mix: {parked}"
+    );
+    let own = own_staging(&lab);
     assert_eq!(own.len(), 1, "the job's own staging exists: {own:?}");
-    let info = cancel_parked(&mut lab, &job);
-    assert_eq!(info["stage"], "snapshot", "it never left the copy: {info}");
+    let partial = lab
+        .work
+        .path(&own[0])
+        .join("resources")
+        .join(sha(&mix))
+        .join("mix.wav");
+    assert_eq!(
+        fs::metadata(&partial).unwrap().len(),
+        COPY_CHUNK,
+        "one chunk of the WAV is on disk"
+    );
+    let info = cancel_parked(&mut lab, &job, &parked);
     assert!(!destination.exists());
+    assert!(
+        !partial.exists(),
+        "the half-copied mix went with its staging"
+    );
     assert_only_the_foreign_staging_remains(&lab, &foreign, &mix, "cancel-copy.mp4");
+    assert_eq!(info["done"], parked["done"]);
 }
 
 #[test]
@@ -1391,17 +1474,25 @@ fn a_cancel_right_after_the_copy_and_before_the_mix_removes_only_its_own_staging
     fs::create_dir_all(&foreign).unwrap();
     fs::write(foreign.join("keep"), b"theirs").unwrap();
     let (job, _) = start_parked(&mut lab, "cancel-audio.mp4", 24);
-    let own: Vec<String> = lab
-        .leftovers()
-        .into_iter()
-        .filter(|name| !name.contains("foreign"))
-        .collect();
+    let parked = lab.ok(json!({"op":"job.get","job":job}));
+    // The copy is complete (`done == total`) and the `audio` stage has not begun.
+    let total = corpus_picture_bytes() + mix.len() as u64;
+    assert_eq!(parked["stage"], "snapshot", "{parked}");
+    assert_eq!(
+        (parked["done"].as_u64(), parked["total"].as_u64()),
+        (Some(total), Some(total)),
+        "the whole copy and nothing else: {parked}"
+    );
+    let own = own_staging(&lab);
     assert_eq!(
         own.len(),
         1,
         "the job's own staging exists while parked: {own:?}"
     );
-    cancel_parked(&mut lab, &job);
+    let staging = lab.work.path(&own[0]);
+    assert!(!staging.join("mix.wav").exists(), "no mix was started");
+    cancel_parked(&mut lab, &job, &parked);
+    assert!(!staging.exists(), "the copy went with its staging");
     assert_only_the_foreign_staging_remains(&lab, &foreign, &mix, "cancel-audio.mp4");
 }
 
@@ -1423,11 +1514,7 @@ fn a_cancel_in_the_middle_of_the_mix_removes_only_its_own_staging() {
         (parked["done"].as_u64(), parked["total"].as_u64()),
         (Some(2), Some(4))
     );
-    let own: Vec<String> = lab
-        .leftovers()
-        .into_iter()
-        .filter(|name| !name.contains("foreign"))
-        .collect();
+    let own = own_staging(&lab);
     assert_eq!(own.len(), 1, "the job's own staging exists: {own:?}");
     let staging = lab.work.path(&own[0]);
     let half = fs::metadata(staging.join("mix.wav")).unwrap().len();
@@ -1435,14 +1522,94 @@ fn a_cancel_in_the_middle_of_the_mix_removes_only_its_own_staging() {
         half >= 44 + 48_000 * 4,
         "the steps already written are on disk: {half} bytes"
     );
-    let info = cancel_parked(&mut lab, &job);
-    assert_eq!(info["stage"], "audio", "it never left the mix: {info}");
+    // Cancelled at step 2 of 4: the job did not write step 3 (`done`/`total` still 2 of 4).
+    cancel_parked(&mut lab, &job, &parked);
     assert!(!destination.exists());
     assert!(
         !staging.exists(),
         "the half-written mix went with its staging"
     );
     assert_only_the_foreign_staging_remains(&lab, &foreign, &mix, "cancel-mix.mp4");
+}
+
+#[test]
+fn a_hook_that_fails_or_panics_ends_the_job_typed_and_leaves_nothing_but_the_foreign_staging() {
+    // N5 / BL016.9. `resources_frozen` and `mix_stepped` are the points where a caller acts while the
+    // job holds a private copy and (for the mix) half a WAV. An error from them is the job's error;
+    // a panic is caught by the registry and ends the job as failed. Neither may leak the copy or the
+    // half mix, touch another export's staging or the original, or publish anything.
+    let mix = two_tone(48_000, 4, 440.0, 880.0);
+    // (fault, frames, expected code, message fragment, whether the job had entered the mix)
+    let cases: [(Fault, i64, &str, &str, bool); 4] = [
+        (
+            Fault::FailAfterCopy,
+            24,
+            "render_failed",
+            "the hook refused the copy",
+            false,
+        ),
+        (
+            Fault::PanicAfterCopy,
+            24,
+            "job_failed",
+            "The job panicked",
+            false,
+        ),
+        (
+            Fault::FailMixStep(2),
+            96,
+            "render_failed",
+            "the hook refused the mix at step 2",
+            true,
+        ),
+        (
+            Fault::PanicMixStep(2),
+            96,
+            "job_failed",
+            "The job panicked",
+            true,
+        ),
+    ];
+    for (index, (fault, frames, code, message, mixing)) in cases.into_iter().enumerate() {
+        let name = format!("e2e-hook-{index}");
+        let Some(mut lab) = lab_with(&name, &mix, (0.0, 4.0), fault) else {
+            return;
+        };
+        let foreign = lab
+            .work
+            .path(&format!(".tessel-staging-scene-export-foreign-{index}"));
+        fs::create_dir_all(&foreign).unwrap();
+        fs::write(foreign.join("keep"), b"theirs").unwrap();
+        let out = format!("hook-{index}.mp4");
+        let error = lab.export(&out, tiny(), 0, frames).unwrap_err();
+        assert_eq!(error.code, code, "{fault:?}: {error:?}");
+        assert!(
+            error.message.contains(message),
+            "{fault:?}: `{}` lacks `{message}`",
+            error.message
+        );
+        if code == "job_failed" {
+            assert_eq!(error.details.as_ref().unwrap()["job_code"], "job_failed");
+        }
+        // The registry recorded a failed job (not `running`, not `cancelled`) with the same code.
+        let jobs = lab.ok(json!({"op":"job.list"}));
+        let recorded = jobs["jobs"]
+            .as_array()
+            .and_then(|jobs| jobs.last())
+            .unwrap_or_else(|| panic!("{fault:?}: {jobs}"));
+        assert_eq!(recorded["state"], "failed", "{fault:?}: {recorded}");
+        assert_eq!(recorded["error"]["code"], code, "{fault:?}: {recorded}");
+        if mixing {
+            // The hook ran after step 2 of 4: the job had entered the mix and stood at that step.
+            assert_eq!(recorded["stage"], "audio", "{fault:?}: {recorded}");
+            assert_eq!(recorded["done"], 2, "{fault:?}: {recorded}");
+        } else {
+            assert_eq!(recorded["stage"], "snapshot", "{fault:?}: {recorded}");
+            assert_eq!(recorded["done"], recorded["total"], "{fault:?}: {recorded}");
+        }
+        // No frame, no file, only the foreign staging, the original untouched.
+        assert_only_the_foreign_staging_remains(&lab, &foreign, &mix, &out);
+    }
 }
 
 #[test]

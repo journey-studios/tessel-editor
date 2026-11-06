@@ -45,7 +45,7 @@ use crate::audio::WavFormat;
 use crate::directed_scene::AudioMix;
 use crate::plan::MIX_SAMPLE_RATE;
 use crate::state::CommandError;
-use crate::time::Ratio;
+use crate::time::{Rate, Ratio};
 
 use super::schedule::SceneExportSchedule;
 
@@ -89,10 +89,10 @@ pub struct SourcePosition {
 pub struct DirectedAudioMix {
     relative_path: String,
     pcm_hash: String,
-    window_start: Ratio,
-    window_end: Ratio,
+    window_start: Exact,
+    window_end: Exact,
     /// Where in the file output sample 0 sits, in seconds.
-    origin: Ratio,
+    origin: Exact,
     output_samples: u64,
     mix_samples: u64,
 }
@@ -101,10 +101,130 @@ fn invalid(code: &'static str, message: impl Into<String>) -> CommandError {
     CommandError::new(code, message)
 }
 
+/// Digits of a bundle's seconds that are kept: `1e-12` s, a picosecond. The error of rounding there is at
+/// most `5e-13` s, about `2.4e-8` of one 48 kHz sample, and it is what keeps every denominator of
+/// the arithmetic below small (`10^12`), whatever `f64` the bundle wrote.
+const DECIMAL_PLACES: usize = 12;
+/// A declared time is below this many seconds. The largest source a WAV can hold is 4 GiB, which is
+/// 268 435 s of 8 kHz mono PCM16, so no bundle's window can usefully reach further; the cap only keeps
+/// the integer arithmetic far from `i128`'s end.
+const MAX_DECLARED_SECONDS: i128 = 1_000_000_000;
+
+fn gcd(a: i128, b: i128) -> i128 {
+    let (mut a, mut b) = (a.unsigned_abs(), b.unsigned_abs());
+    while b != 0 {
+        (a, b) = (b, a % b);
+    }
+    i128::try_from(a).unwrap_or(1)
+}
+
+/// An exact fraction of seconds in `i128`, reduced, with a positive denominator. [`Ratio`] stops at
+/// `i64`, which a window start such as `1/24` plus a few minutes already leaves; here every
+/// operation is checked, and a result that does not fit is `None` (`audio_window_invalid`), never a
+/// wrapped number.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Exact {
+    num: i128,
+    den: i128,
+}
+
+impl std::fmt::Debug for Exact {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.num, self.den)
+    }
+}
+
+impl Exact {
+    #[cfg(test)]
+    const ZERO: Self = Self { num: 0, den: 1 };
+
+    fn new(num: i128, den: i128) -> Option<Self> {
+        if den == 0 {
+            return None;
+        }
+        let divisor = gcd(num, den).max(1);
+        let sign = if den < 0 { -1 } else { 1 };
+        Some(Self {
+            num: (num / divisor).checked_mul(sign)?,
+            den: (den / divisor).checked_mul(sign)?,
+        })
+    }
+
+    #[cfg(test)]
+    fn from_ratio(value: Ratio) -> Self {
+        Self {
+            num: i128::from(value.num()),
+            den: i128::from(value.den()),
+        }
+    }
+
+    /// The instant of `frame` at `rate`: `frame × den / num`.
+    fn frame_time(rate: Rate, frame: i64) -> Option<Self> {
+        Self::new(
+            i128::from(frame).checked_mul(i128::from(rate.den()))?,
+            i128::from(rate.num()),
+        )
+    }
+
+    fn add(self, other: Self) -> Option<Self> {
+        // Over the least common denominator, so it does not grow faster than it must.
+        let divisor = gcd(self.den, other.den);
+        let (mine, theirs) = (self.den / divisor, other.den / divisor);
+        Self::new(
+            self.num
+                .checked_mul(theirs)?
+                .checked_add(other.num.checked_mul(mine)?)?,
+            self.den.checked_mul(theirs)?,
+        )
+    }
+
+    fn sub(self, other: Self) -> Option<Self> {
+        self.add(Self {
+            num: other.num.checked_neg()?,
+            den: other.den,
+        })
+    }
+
+    fn mul_int(self, value: i128) -> Option<Self> {
+        Self::new(self.num.checked_mul(value)?, self.den)
+    }
+
+    /// Nearest integer, ties away from zero.
+    fn round(self) -> Option<i128> {
+        let sign = if self.num < 0 { -1 } else { 1 };
+        let twice_den = self.den.checked_mul(2)?;
+        Some(
+            self.num
+                .checked_mul(2)?
+                .checked_add(self.den.checked_mul(sign)?)?
+                / twice_den,
+        )
+    }
+
+    fn to_f64(self) -> f64 {
+        self.num as f64 / self.den as f64
+    }
+
+    /// The same shape as [`Ratio::to_json`]; a numerator or denominator beyond `i64` is a string.
+    fn to_json(self) -> Value {
+        let integer = |value: i128| {
+            i64::try_from(value).map_or_else(|_| json!(value.to_string()), |value| json!(value))
+        };
+        json!({ "num": integer(self.num), "den": integer(self.den), "seconds": self.to_f64() })
+    }
+
+    /// `None` when the reduced fraction is beyond `i64`.
+    fn ratio(self) -> Option<Ratio> {
+        Ratio::new(i64::try_from(self.num).ok()?, i64::try_from(self.den).ok()?)
+    }
+}
+
 /// The decimal a bundle author wrote (`1.5`, `0.04`), as an exact fraction. `f64`'s shortest
 /// round-trip text is that decimal, so `0.1` is `1/10`, not the binary neighbour of one tenth.
-/// `None` when it does not fit (a window of `1e30` seconds is not a window).
-fn decimal(value: f64) -> Option<Ratio> {
+/// Text beyond [`DECIMAL_PLACES`] is rounded there, half away from zero, on the digits themselves
+/// (no float arithmetic): `0.041666666666666664` is `41666666667/10^12`, within `5e-13` s of `1/24`.
+/// `None` when the value is not finite or not below [`MAX_DECLARED_SECONDS`].
+fn decimal(value: f64) -> Option<Exact> {
     if !value.is_finite() {
         return None;
     }
@@ -114,26 +234,31 @@ fn decimal(value: f64) -> Option<Ratio> {
         None => (false, text.as_str()),
     };
     let (whole, fraction) = digits.split_once('.').unwrap_or((digits, ""));
-    let scale = i64::try_from(fraction.len()).ok()?;
-    let mut numerator: i64 = format!("{whole}{fraction}").parse().ok()?;
-    if negative {
-        numerator = -numerator;
+    let whole: i128 = whole.parse().ok()?;
+    if whole >= MAX_DECLARED_SECONDS {
+        return None;
     }
-    let denominator = 10i64.checked_pow(u32::try_from(scale).ok()?)?;
-    Ratio::new(numerator, denominator)
+    let kept = &fraction[..fraction.len().min(DECIMAL_PLACES)];
+    let one = 10i128.pow(u32::try_from(DECIMAL_PLACES).ok()?);
+    let mut scaled = whole * one + format!("{kept:0<DECIMAL_PLACES$}").parse::<i128>().ok()?;
+    if fraction
+        .as_bytes()
+        .get(DECIMAL_PLACES)
+        .is_some_and(|digit| *digit >= b'5')
+    {
+        scaled += 1;
+    }
+    Exact::new(if negative { -scaled } else { scaled }, one)
 }
 
-/// `time` seconds on the 48 kHz grid: the nearest sample boundary, ties away from zero, in `i128`
-/// so that no window the bundle can write overflows. This is the only place a window and a range
-/// are compared: never as seconds in `f64`, which is how `0.3333333333333333 < 8/24` happens.
-fn grid(time: Ratio) -> i128 {
-    let numerator = i128::from(time.num()) * i128::from(MIX_RATE);
-    let denominator = i128::from(time.den());
-    let sign = if numerator < 0 { -1 } else { 1 };
-    (numerator * 2 + denominator * sign) / (denominator * 2)
+/// `time` seconds on the 48 kHz grid: the nearest sample boundary, ties away from zero. This is the
+/// only place a window and a range are compared: never as seconds in `f64`, which is how
+/// `0.3333333333333333 < 8/24` happens.
+fn grid(time: Exact) -> Option<i128> {
+    time.mul_int(i128::from(MIX_RATE))?.round()
 }
 
-fn seconds(value: f64, field: &str) -> Result<Ratio, CommandError> {
+fn seconds(value: f64, field: &str) -> Result<Exact, CommandError> {
     decimal(value).ok_or_else(|| {
         invalid(
             "audio_window_invalid",
@@ -154,10 +279,15 @@ impl DirectedAudioMix {
                 "The audio window overflows exact time",
             )
         };
-        let from_time = schedule.scene_rate.frame_to_time(schedule.from);
-        let range_end = schedule.scene_rate.frame_to_time(schedule.to());
+        let from_time =
+            Exact::frame_time(schedule.scene_rate, schedule.from).ok_or_else(overflow)?;
+        let range_end =
+            Exact::frame_time(schedule.scene_rate, schedule.to()).ok_or_else(overflow)?;
         let window_length = window_end.sub(window_start).ok_or_else(overflow)?;
-        let (window_samples, range_end_samples) = (grid(window_length), grid(range_end));
+        let (window_samples, range_end_samples) = (
+            grid(window_length).ok_or_else(overflow)?,
+            grid(range_end).ok_or_else(overflow)?,
+        );
         if range_end_samples > window_samples {
             return Err(invalid(
                 "audio_window_short",
@@ -177,17 +307,18 @@ impl DirectedAudioMix {
             })));
         }
         let origin = window_start.add(from_time).ok_or_else(overflow)?;
-        let samples = |time: Ratio| {
-            time.mul_int(i64::from(MIX_RATE))
-                .map(Ratio::round)
+        let samples = |time: Exact| {
+            time.mul_int(i128::from(MIX_RATE))
+                .and_then(Exact::round)
                 .and_then(|samples| u64::try_from(samples).ok())
                 .ok_or_else(overflow)
         };
         let output_samples = samples(
-            Ratio::new(
-                i64::try_from(schedule.frames).map_err(|_| overflow())?
-                    * i64::from(schedule.output_rate.den()),
-                i64::from(schedule.output_rate.num()),
+            Exact::new(
+                i128::from(schedule.frames)
+                    .checked_mul(i128::from(schedule.output_rate.den()))
+                    .ok_or_else(overflow)?,
+                i128::from(schedule.output_rate.num()),
             )
             .ok_or_else(overflow)?,
         )?
@@ -243,14 +374,16 @@ impl DirectedAudioMix {
         self.output_samples - self.mix_samples
     }
 
-    /// File time of output sample 0, seconds.
-    pub fn origin(&self) -> Ratio {
-        self.origin
+    /// File time of output sample 0, seconds. The window start is a decimal rounded to a picosecond,
+    /// so this is the exact sum of that and the range's first instant; `None` only when the reduced
+    /// fraction does not fit a [`Ratio`] (the cursor and the JSON report it in full regardless).
+    pub fn origin(&self) -> Option<Ratio> {
+        self.origin.ratio()
     }
 
     /// Where output sample `n` reads a source at `rate` Hz. Exact: one division of integers.
     pub fn cursor(&self, rate: u32) -> Result<SourceCursor, CommandError> {
-        SourceCursor::new(self.origin, rate)
+        SourceCursor::new(self.origin, rate, self.output_samples)
     }
 
     /// Whether a file with these facts can serve this export, and which frames it must provide.
@@ -276,11 +409,9 @@ impl DirectedAudioMix {
         // The origin's rule (`node/render.ts`, `AUDIO_SHORT`): the source must cover the whole
         // declared window, `duration + 1 ms >= editEndSecondsExclusive`, whatever part of it one
         // export reads. Exact in integers: `frames/rate + 1/1000 < end` is
-        // `frames*1000*d + rate*d < n*rate*1000` for `end = n/d`.
-        let (end_num, end_den) = (
-            i128::from(self.window_end.num()),
-            i128::from(self.window_end.den()),
-        );
+        // `frames*1000*d + rate*d < n*rate*1000` for `end = n/d`. A window end is a decimal below
+        // 1e9 s at 12 places, so `n < 1e21` and `d <= 10^12`: every product is far inside `i128`.
+        let (end_num, end_den) = (self.window_end.num, self.window_end.den);
         let rate = i128::from(facts.sample_rate);
         if i128::from(facts.frames) * 1000 * end_den + rate * end_den < end_num * rate * 1000 {
             return Err(invalid(
@@ -355,18 +486,26 @@ pub struct SourceCursor {
 }
 
 impl SourceCursor {
-    fn new(origin: Ratio, rate: u32) -> Result<Self, CommandError> {
+    /// `samples` is how many output samples will be asked for: the position of the last one is
+    /// computed here, checked, so [`at`](Self::at) can add without a check.
+    fn new(origin: Exact, rate: u32, samples: u64) -> Result<Self, CommandError> {
         let overflow = || invalid("audio_window_invalid", "The audio position overflows");
-        let scale = i128::from(origin.den()) * i128::from(MIX_RATE);
-        let start = i128::from(origin.num())
+        let scale = origin
+            .den
+            .checked_mul(i128::from(MIX_RATE))
+            .ok_or_else(overflow)?;
+        let start = origin
+            .num
             .checked_mul(i128::from(MIX_RATE))
             .and_then(|value| value.checked_mul(i128::from(rate)))
             .ok_or_else(overflow)?;
-        Ok(Self {
-            start,
-            step: i128::from(rate) * i128::from(origin.den()),
-            scale,
-        })
+        let step = i128::from(rate)
+            .checked_mul(origin.den)
+            .ok_or_else(overflow)?;
+        step.checked_mul(i128::from(samples))
+            .and_then(|span| span.checked_add(start))
+            .ok_or_else(overflow)?;
+        Ok(Self { start, step, scale })
     }
 
     pub fn at(&self, sample: u64) -> SourcePosition {
@@ -388,13 +527,59 @@ mod tests {
 
     #[test]
     fn a_decimal_is_the_number_the_author_wrote() {
-        assert_eq!(decimal(0.1), Ratio::new(1, 10));
-        assert_eq!(decimal(4.0), Ratio::new(4, 1));
-        assert_eq!(decimal(1.5), Ratio::new(3, 2));
-        assert_eq!(decimal(0.04), Ratio::new(1, 25));
+        let exact = |num: i128, den: i128| Exact::new(num, den);
+        assert_eq!(decimal(0.1), exact(1, 10));
+        assert_eq!(decimal(4.0), exact(4, 1));
+        assert_eq!(decimal(1.5), exact(3, 2));
+        assert_eq!(decimal(0.04), exact(1, 25));
+        assert_eq!(decimal(-2.5), exact(-5, 2));
         assert_eq!(decimal(f64::NAN), None);
+        assert_eq!(decimal(f64::INFINITY), None);
         assert_eq!(decimal(1e30), None);
-        assert_eq!(decimal(1e-25), None);
+    }
+
+    /// The honest precision: twelve places, rounded on the digits, half away from zero. A picosecond
+    /// is 2.4e-8 of a sample, so the rounding cannot move a sample; it is what bounds the arithmetic.
+    #[test]
+    fn a_decimal_keeps_twelve_places_and_rounds_the_rest_on_its_digits() {
+        let exact = |num: i128| Exact::new(num, 1_000_000_000_000);
+        // Below the twelfth place there is nothing left: 1e-25 s is zero, not "not a time".
+        assert_eq!(decimal(1e-25), Some(Exact::ZERO));
+        assert_eq!(decimal(4e-13), Some(Exact::ZERO));
+        // The thirteenth digit decides: 5 and up rounds away from zero, 4 and down does not.
+        assert_eq!(decimal(5e-13), exact(1));
+        assert_eq!(decimal(-5e-13), exact(-1));
+        assert_eq!(decimal(0.0000000000014), exact(1));
+        assert_eq!(decimal(0.0000000000016), exact(2));
+        // The shortest text of `1/24` and `1/960` as an `f64`, 17-19 digits long.
+        assert_eq!(decimal(1.0 / 24.0), exact(41_666_666_667));
+        assert_eq!(decimal(1.0 / 960.0), exact(1_041_666_667));
+        assert_eq!(decimal(1.0 / 3.0), exact(333_333_333_333));
+        assert_eq!(decimal(-1.0 / 3.0), exact(-333_333_333_333));
+        // Each is within 5e-13 s of the instant the author meant (a millionth of a sample).
+        for (value, num, den) in [(1.0 / 24.0, 1.0, 24.0), (1.0 / 960.0, 1.0, 960.0)] {
+            let kept = decimal(value).unwrap().to_f64();
+            assert!((kept - num / den).abs() <= 5e-13, "{value}: {kept}");
+        }
+        // The cap: below it a bundle's time is a time; at it, it is not (no WAV reaches that far).
+        assert!(decimal(999_999_999.5).is_some());
+        assert_eq!(decimal(1_000_000_000.0), None);
+        assert_eq!(decimal(-1_000_000_000.0), None);
+    }
+
+    /// The `i128` fraction is checked everywhere: what it cannot hold is `None`, never a wrapped value.
+    #[test]
+    fn exact_arithmetic_reports_overflow_instead_of_wrapping() {
+        let big = Exact::new(i128::MAX / 2 + 1, 1).unwrap();
+        assert_eq!(big.add(big), None);
+        assert_eq!(big.mul_int(2), None);
+        assert_eq!(Exact::new(1, 0), None);
+        assert_eq!(Exact::new(i128::MIN, -1), None);
+        let third = Exact::new(1, 3).unwrap();
+        assert_eq!(third.add(third).unwrap().add(third), Exact::new(1, 1));
+        assert_eq!(Exact::new(-5, 2).unwrap().round(), Some(-3));
+        assert_eq!(Exact::new(5, 2).unwrap().round(), Some(3));
+        assert_eq!(Exact::new(7, 3).unwrap().round(), Some(2));
     }
 
     fn mix(origin: Ratio, samples: u64) -> DirectedAudioMix {
@@ -405,9 +590,9 @@ mod tests {
         DirectedAudioMix {
             relative_path: "a.wav".into(),
             pcm_hash: String::new(),
-            window_start: Ratio::ZERO,
-            window_end,
-            origin,
+            window_start: Exact::ZERO,
+            window_end: Exact::from_ratio(window_end),
+            origin: Exact::from_ratio(origin),
             output_samples: samples,
             mix_samples: samples,
         }
@@ -565,6 +750,109 @@ mod tests {
         }
     }
 
+    fn schedule_of(rate: crate::time::Rate, from: i64, frames: u64) -> SceneExportSchedule {
+        SceneExportSchedule {
+            scene_rate: rate,
+            output_rate: rate,
+            from,
+            edit_frames: frames,
+            ..schedule(frames)
+        }
+    }
+
+    /// The seconds a bundle writes for an instant that is not a decimal: the shortest `f64` text.
+    fn written(numerator: u32, denominator: u32) -> f64 {
+        f64::from(numerator) / f64::from(denominator)
+    }
+
+    /// BL016.6, second half: a window that *starts* at `1/24`, `1/3` or `1/960` s is as valid as one
+    /// that starts at zero. The shortest `f64` text of these has 16-19 digits, which used to overflow
+    /// the `i64` fraction (`1/24` from 74 s, `1/960` at any length) before the 48 kHz grid was reached.
+    #[test]
+    fn a_window_that_starts_on_a_non_decimal_instant_plans_whatever_its_length() {
+        use crate::time::Rate;
+        let rate = Rate::new(24, 1).unwrap();
+        // (window start, the seconds of window the range must fit in)
+        for (start, seconds) in [
+            (written(1, 24), 120u64),
+            (written(1, 24), 600),
+            (written(1, 12), 93),
+            (written(1, 6), 185),
+            (1.0 + written(1, 24), 924),
+            (written(1, 3), 1_000),
+            (written(1, 960), 1),
+            (written(1, 960), 120),
+            (written(1, 960), 6 * 3600),
+        ] {
+            let frames = seconds * 24;
+            let end = start + seconds as f64;
+            DirectedAudioMix::plan(&declared(start, end), &schedule_of(rate, 0, frames))
+                .unwrap_or_else(|error| panic!("start {start}, {seconds} s: {error:?}"));
+            // One sample (1/48000 s) less is still refused, whatever the start.
+            let shorter = end - 1.5 / 48_000.0;
+            let refused =
+                DirectedAudioMix::plan(&declared(start, shorter), &schedule_of(rate, 0, frames))
+                    .unwrap_err();
+            assert_eq!(
+                refused.code, "audio_window_short",
+                "start {start}, {seconds} s"
+            );
+        }
+    }
+
+    /// The same defect through `window_start + from_time`: `1/3` plus the instant of frame 7372 at
+    /// 24 fps (307 s) overflowed, even though the window fit.
+    #[test]
+    fn a_non_decimal_start_and_a_late_range_place_the_first_sample_exactly() {
+        use crate::time::Rate;
+        let rate = Rate::new(24, 1).unwrap();
+        let start = written(1, 3);
+        for from in [7_371i64, 7_372, 8_000, 24 * 3_600] {
+            let planned = DirectedAudioMix::plan(
+                &declared(start, start + 40_000.0),
+                &schedule_of(rate, from, 24),
+            )
+            .unwrap_or_else(|error| panic!("from {from}: {error:?}"));
+            // The first sample reads the file at `start + from/24`, to far less than a sample.
+            let exact_frames = (1.0 / 3.0 + from as f64 / 24.0) * 48_000.0;
+            let cursor = planned.cursor(48_000).unwrap();
+            let position = cursor.at(0);
+            let got = position.base as f64 + position.fraction;
+            assert!(
+                (got - exact_frames).abs() < 1e-3,
+                "from {from}: {got} vs {exact_frames}"
+            );
+        }
+        // 30000/1001, a rate whose frame times are not decimal either, and a start that is not.
+        let ntsc = Rate::new(30_000, 1_001).unwrap();
+        DirectedAudioMix::plan(
+            &declared(written(1, 960), 5_000.0),
+            &schedule_of(ntsc, 100_000, 300),
+        )
+        .unwrap();
+        // 29.97 fps written as `2997/100`, a start of `1/3` and a range 10 000 s in: the sum's reduced
+        // denominator is ~3e15 and its numerator ~3e19, which an `i64` fraction cannot hold even
+        // though the window is quantised to twelve places.
+        let odd = Rate::new(2_997, 100).unwrap();
+        let planned = DirectedAudioMix::plan(
+            &declared(start, start + 20_000.0),
+            &schedule_of(odd, 300_000, 30),
+        )
+        .unwrap();
+        let position = planned.cursor(48_000).unwrap().at(0);
+        let exact = (1.0 / 3.0 + 300_000.0 * 100.0 / 2_997.0) * 48_000.0;
+        let got = position.base as f64 + position.fraction;
+        assert!((got - exact).abs() < 1e-2, "{got} vs {exact}");
+        assert_eq!(
+            planned.origin(),
+            None,
+            "too wide for a `Ratio`, still exact in the cursor"
+        );
+        // The refusal the arithmetic cannot avoid is still typed: a start beyond any file.
+        let refused = DirectedAudioMix::plan(&declared(1e30, 2e30), &schedule(24)).unwrap_err();
+        assert_eq!(refused.code, "audio_window_invalid");
+    }
+
     /// BL016.10: six hours is the ceiling, refused when the export is planned (nothing written, no
     /// 4 GiB generated here: the schedule is a value, not a render).
     #[test]
@@ -591,7 +879,11 @@ mod tests {
         let eight_frames = schedule(8);
         // The decimal the author wrote is below the exact third by 3.3e-17 s: a comparison in
         // seconds refuses the whole range, and the grid does not.
-        assert!(decimal(0.3333333333333333).unwrap() < Ratio::new(1, 3).unwrap());
+        let written = decimal(0.3333333333333333).unwrap();
+        assert!(
+            written.num * 3 < written.den,
+            "{written:?} is below the exact third"
+        );
         DirectedAudioMix::plan(&declared(0.0, 0.3333333333333333), &eight_frames).unwrap();
         // One sample (1/48000 s) less than the 16 000 the range needs.
         let refused =

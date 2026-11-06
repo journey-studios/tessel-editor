@@ -12,8 +12,14 @@ codifica em AAC com a mesma duração do vídeo. Nada é simulado.
   cena toca o arquivo em `editStartSeconds + t`; nada toca em `editEndSecondsExclusive` ou depois. O trecho
   `[from, from+frames)` lê, portanto, o arquivo a partir de `editStartSeconds + from/scene_rate`.
 - **Tempo**: a amostra `n` (48 kHz) da saída lê o instante `editStartSeconds + from/scene_rate + n/48000`.
-  Os segundos do bundle viram a fração decimal exata que o autor escreveu (`0.1` é `1/10`); nenhum `f64`
-  entra na conta. Janela e trecho são comparados **na grade de 48 kHz, em inteiros** (`round(t × 48000)`,
+  Os segundos do bundle viram a fração decimal que o autor escreveu (`0.1` é `1/10`), **arredondada a 12 casas**
+  (1 ps, erro ≤ `5e-13` s ≈ `2,4e-8` de amostra) sobre os próprios dígitos do texto `f64`, empate para longe de zero,
+  e valem abaixo de `1e9` s (nenhum WAV de ≤ 4 GiB alcança isso: 268 435 s a 8 kHz mono); nenhum `f64` entra na
+  conta. A aritmética é de frações em `i128` com cada operação verificada (`audio_window_invalid` se não couber, nunca
+  valor truncado): `1/24`, `1/3` e `1/960` s como início de janela e trechos a milhares de segundos funcionam (BL016.6;
+  o limite antigo de `i64` recusava `1/24` a partir de 74 s e `1/960` em qualquer duração). Um início não decimal cai
+  a < `2,4e-8` de amostra do instante pretendido: a leitura é interpolada com esse resíduo (sub-LSB), não é cópia
+  bit a bit. Janela e trecho são comparados **na grade de 48 kHz, em inteiros** (`round(t × 48000)`,
   empate para longe de zero): `8/24 s` é `1/3`, que nenhum decimal escreve, e o `0.3333333333333333` do autor
   são as mesmas 16 000 amostras, enquanto uma janela com 1 amostra a menos (`15999/48000`) continua recusada
   (BL016.6). Fonte em outra taxa (`44100`, `32000`, …) é lida na posição fracionária
@@ -71,7 +77,7 @@ codifica em AAC com a mesma duração do vídeo. Nada é simulado.
 |---|---|
 | `AudioPlan::Mix(DirectedAudioMix)` | terceira saída do plano de áudio do snapshot (`NoSources`, `Omitted`, `Mix`); `AudioPlan::mix()` |
 | `DirectedAudioMix::plan(&AudioMix, &SceneExportSchedule)` | posiciona o mix no export: `audio_window_invalid`, `audio_window_short` |
-| `output_samples / mix_samples / silence_tail_samples / origin()` | tamanho do stream, parte lida do arquivo, cauda de silêncio e segundo do arquivo da amostra 0 (`Ratio`) |
+| `output_samples / mix_samples / silence_tail_samples / origin()` | tamanho do stream, parte lida do arquivo, cauda de silêncio e segundo do arquivo da amostra 0 (`Option<Ratio>`: `None` só se a fração reduzida passar de `i64`; o cursor e o JSON a trazem inteira) |
 | `cursor(rate) -> SourceCursor`, `SourceCursor::at(n) -> SourcePosition{base, fraction}` | posição exata (inteiros de 128 bits) da amostra `n` em um arquivo de `rate` Hz; `fraction == 0.0` ⇒ cópia exata |
 | `check_source(&SourceFacts) -> SourceSpan` | regras do arquivo: canais, taxa, cobertura da janela declarada (tolerância de 1 ms da origem) e do trecho (`unsupported`, `audio_source_short`, `details.rule`) |
 | `MAX_MIX_SECONDS` | teto de 6 h do mix; `plan` recusa acima com `audio_too_long` |
@@ -101,12 +107,17 @@ chama em pontos exatos e **nada do que um gancho faz alcança os bytes que o job
 | Gancho | Quando | Uso nos testes |
 |---|---|---|
 | `resources_frozen()` | a cópia privada terminou e nada foi lido dela | reescrever o original; reter o job antes do 1º passo do mix |
-| `copy_progressed(bytes)` | depois de cada pedaço (1 MiB) gravado na cópia, estágio `snapshot` | reter o job no meio da cópia |
+| `copy_progressed(bytes)` | depois de cada pedaço (1 MiB) gravado na cópia, estágio `snapshot`; as imagens do corpus (4–9 KiB) chegam inteiras de uma vez, só o WAV reporta `bytes == 1 MiB` | reter o job dentro da cópia **do WAV** (primeiro pedaço cheio) |
 | `mix_stepped(done, steps)` | depois de cada passo de 1 s do mix gravado e contado, estágio `audio` | reter o job entre dois passos |
 | `max_size()` (já existia) | primeira conversa do job com o renderer, antes do preflight dele | trocar o arquivo depois do pedido aceito |
 
 Reter o job é determinístico: enquanto parado, `job.get` é fato (`stage`, `done`/`total`) e o staging tem o que o ponto
-implica; o teste então cancela e libera. Substitui a versão anterior, que consultava `stage == "snapshot"` com 46 MiB e
+implica; o teste então cancela e libera. Um job cancelado termina sempre com `stage == "cancelled"` (o registro o
+escreve), então o estágio não prova **onde** parou: o teste compara `done`/`total` finais com os lidos na barreira
+(`finish` não os altera ao cancelar), e qualquer cópia, passo de mix ou estágio seguinte depois do cancelamento os mudaria.
+`ParkCopyChunk` retém só em `bytes == 1 MiB`, portanto dentro do WAV (`done == imagens + 1 MiB`, `total == imagens +
+WAV`) e com 1 MiB do WAV em disco. Ganchos que **falham** ou **entram em pânico** (`resources_frozen`, `mix_stepped`)
+terminam o job tipado (`render_failed`) ou como `job_failed` (o `catch_unwind` do registro) e deixam só o staging alheio. Substitui a versão anterior, que consultava `stage == "snapshot"` com 46 MiB e
 dependia da velocidade do disco (o cancelamento podia chegar depois da cópia). O que isto **não** prova: nenhum
 cancelamento durante um único `read`/`write` do SO nem com o disco lento; prova que cada estágio observa o cancelamento
 entre as unidades e que o `Staging` limpa só o que é do job, qualquer que seja o ponto.
@@ -166,25 +177,28 @@ direto, HOME curto, socket próprio), somente `get`/`set`/`invoke`/`op` (sem pon
 
 ## Evidências e status
 
-Status: **a validar na integração** (implementado, sem som ouvido). As linhas "executado" abaixo são a evidência da
-rodada anterior (head `836d8cb`, revisada). A rodada de correção F1–F10 (BL016.6–.10) está **escrita e não
-executada**: o disco da máquina caiu abaixo do piso de 12 GiB antes de qualquer `cargo`, e nenhum teste novo ou
-alterado foi compilado. Não conte as contagens "escritas" como PASS; os gates da correção constam em BL016.6–.10.
+Status: **a validar na integração** (implementado, sem som ouvido). A rodada de correção da revisão independente
+(F1–F7 da primeira, N1–N5 e F7 da segunda; BL016.6–.11) foi **executada** neste head: os testes e as mutações abaixo
+rodaram (`TESSEL_REQUIRE_RUNTIME=1`); os gates de workspace e a prova nativa constam em BL016 e na PR.
 
-| Rodada de correção (BL016.6–.10) | Escrito, **não executado** |
+| Rodada de correção (BL016.6–.11) | Executado |
 |---|---|
-| Core, unidade (7) | `a_window_is_compared_on_the_48k_grid_not_as_float_seconds` (1–2000 quadros a 24 fps escritos como `f64`, e 1 amostra a menos), `a_source_shorter_than_the_window_is_refused_even_when_the_range_fits` (tolerância de 1 ms exata a 48 k, 44,1 k e `1/10`), `six_hours_of_audio_plan_and_one_frame_more_is_refused_before_any_write` (valor, nenhum WAV de 4 GiB) |
-| Core, integração (21) | `a_window_written_as_the_float_of_the_range_is_that_range_and_one_sample_less_is_not` |
-| Mídia, FFmpeg (28) | `a_48k_pcm16_stereo_source_is_copied_bit_for_bit_across_the_whole_16_bit_range` (rampa de fundo de escala, extremos, offset); `a_source_shorter_than_its_window_is_refused_for_every_range_the_origin_would_refuse`, `the_window_the_file_covers_exports_and_a_range_past_it_is_refused_by_the_window`, `an_offset_window_longer_than_the_file_is_refused_like_the_origin_does`; `rewriting_the_original_between_the_copy_and_the_mix_cannot_reach_a_sample` (via `SceneFrameRenderer::resources_frozen`); `a_cancel_in_the_middle_of_the_copy_…` (retido após o 1º pedaço, cópia parcial), `a_cancel_right_after_the_copy_and_before_the_mix_…`, `a_cancel_in_the_middle_of_the_mix_…` (retido após 2 de 4 passos; só o próprio staging some, inclusive o `mix.wav` pela metade); `a_header_that_changed_after_the_request_is_resource_changed_whatever_it_became` (5 trocas) |
-| Mutações a fazer (e reverter) | comparação em segundos `f64` (F1); `render_private` lendo `audio_resource(export)` (F4); escala `32767` no PCM16 (F3); sem a regra da janela (F2); sem `ctx.check()` no laço do mix (o teste de cancelamento no meio do mix deve falhar); sem `token.check()` entre pedaços da cópia (idem, cópia) |
+| Core, unidade `scene_export::audio` (11) | `a_window_is_compared_on_the_48k_grid_not_as_float_seconds` (1–2000 quadros a 24 fps escritos como `f64`, 1 amostra a menos); `a_window_that_starts_on_a_non_decimal_instant_plans_whatever_its_length` (início `1/24`, `1/12`, `1/6`, `1+1/24`, `1/3`, `1/960` com 1 s a 6 h; 1 amostra a menos recusada); `a_non_decimal_start_and_a_late_range_place_the_first_sample_exactly` (`1/3` com `from` > 307 s, 29,97 fps com início `1/3` a 10 000 s, NTSC, `1e30` recusado tipado); `a_decimal_keeps_twelve_places_and_rounds_the_rest_on_its_digits` (1e-25 → 0, empate 5e-13, teto de 1e9 s); `exact_arithmetic_reports_overflow_instead_of_wrapping`; `a_source_shorter_than_the_window_is_refused_even_when_the_range_fits`; `six_hours_of_audio_plan_and_one_frame_more_is_refused_before_any_write`; e os 4 anteriores |
+| Core, integração `scene_export` (21) | `a_window_written_as_the_float_of_the_range_is_that_range_and_one_sample_less_is_not`; `origin()` agora `Option<Ratio>` |
+| Mídia, FFmpeg `scene_export_audio` (29) | N1: `cancel_parked` compara `stage == "cancelled"` e `done`/`total` finais com os da barreira; N3: `a_cancel_in_the_middle_of_the_copy_…` retém no primeiro pedaço de 1 MiB **do WAV** (`done == imagens + 1 MiB`, `total == imagens + WAV`, 1 MiB do WAV em disco); `a_cancel_right_after_the_copy_…` (cópia completa, sem `mix.wav`); `a_cancel_in_the_middle_of_the_mix_…` (2 de 4); N5: `a_hook_that_fails_or_panics_ends_the_job_typed_and_leaves_nothing_but_the_foreign_staging` (4 casos: `Err` e pânico em `resources_frozen` e em `mix_stepped`; código, estágio/`done` do registro, só o staging alheio, original intacto, 0 frames, nada publicado); mais os 24 anteriores |
+| Mutações (aplicadas, executadas e revertidas) | M1 sem `token.check()` em `copy_hashed` → o teste do meio da cópia falha; M2 sem o `ctx.check()` inicial do mix → o teste pós-cópia falha; M3 sem `ctx.check()` no laço do mix → o teste do meio do mix falha; M4 erro de `resources_frozen` ignorado e M5 erro de `mix_stepped` ignorado → o teste de ganchos falha; M6 `Exact` limitado a `i64` → 2 testes falham; M7 arredondamento `>` em vez de `>=` e M8 sem quantização → o teste de 12 casas falha; M9 (M6 + M8, o comportamento anterior) → 4 testes de unidade falham. Antes da correção, os dois testes de início não decimal falhavam no código anterior (`audio_window_invalid`, 1/24 e `from` 7371) |
+
+Mutações **não** rodadas nesta rodada (da lista da rodada anterior): escala `32767` no PCM16 e `render_private` lendo o original
+(F3/F4, cobertas pelos testes do head anterior, não repetidas aqui); remover o `catch_unwind` do registro não foi tentado
+(o job ficaria `running`; o teste de pânico prova o caminho com o `catch_unwind` presente).
 
 | Superfície | Evidência |
 |---|---|
-| Lib (core) | `crates/core/tests/scene_export.rs` (20) e unidade `scene_export::audio` (4): plano padrão com mix, `audio:false`/preset mudo, offset de janela (`10–14 s`, `from=24`), taxa 24→30 (48 000 amostras), cauda de 800 amostras (2 frames → 3), NTSC `30000/1001` (48 048), janela curta com números, decimal exato, narração recusada |
-| Lib (mídia, FFmpeg real, sem browser) | `crates/media/tests/scene_export_audio.rs` (20, contando os de bytes congelados abaixo): amostras **exatas** em 48 kHz (cópia = fatia da fonte), offset, 44,1 kHz mono (interpolação calculada no teste, ±1 LSB), cauda silenciosa, NaN/∞/clipping, bytes trocados (`resource_changed`), 8 arquivos/formatos recusados (`unsupported`) mais curto e ausente com código próprio; MP4 pelo host com espectro 440→880 Hz medido no AAC decodificado nos lugares certos, 24→30 + 44,1 kHz, offset de janela, `audio:false`, recusas antes de job/frame, troca de bytes falha com 0 frames desenhados, preflight de mix sumido |
+| Lib (core) | `crates/core/tests/scene_export.rs` (21) e unidade `scene_export::audio` (11): plano padrão com mix, `audio:false`/preset mudo, offset de janela (`10–14 s`, `from=24`), taxa 24→30 (48 000 amostras), cauda de 800 amostras (2 frames → 3), NTSC `30000/1001` (48 048), janela curta com números, decimal exato, narração recusada |
+| Lib (mídia, FFmpeg real, sem browser) | `crates/media/tests/scene_export_audio.rs` (29, contando os de bytes congelados abaixo): amostras **exatas** em 48 kHz (cópia = fatia da fonte), offset, 44,1 kHz mono (interpolação calculada no teste, ±1 LSB), cauda silenciosa, NaN/∞/clipping, bytes trocados (`resource_changed`), 8 arquivos/formatos recusados (`unsupported`) mais curto e ausente com código próprio; MP4 pelo host com espectro 440→880 Hz medido no AAC decodificado nos lugares certos, 24→30 + 44,1 kHz, offset de janela, `audio:false`, recusas antes de job/frame, troca de bytes falha com 0 frames desenhados, preflight de mix sumido |
 | CLI headless real (Chrome) | `crates/render/tests/scene_export.rs`: `the_headless_binary_mixes_the_declared_wav_at_the_requested_range` (JSONL, frames reais do runtime, 440→880 Hz medido) e o teste de política de áudio atualizado |
 | Oráculo independente da R10 | `scripts/directed-scene-export-proof/proof.py --phases export_audio_policy`: 17/17 (uma stream de áudio, metade 440 Hz e metade 880 Hz, duração do áudio = vídeo ± 50 ms), resultado `outcome: mixed` |
-| Bytes congelados do mix (BL109) | `crates/media/tests/scene_export_audio.rs` (20): troca de mesmo tamanho → `resource_changed` **tipado** com as duas identidades e 0 frames; original reescrito no frame 0 não muda o AAC (440→880 Hz medidos, `source.sha256` = aprovado, `snapshot.bytes` ≥ WAV); `render_audio_private` sobre a cópia dá as amostras exatas depois de reescrever o original (e `render_audio` ainda recusa o original); mix sumido → `preflight_failed`/`resource_missing` e só o staging próprio some; cancelamento no meio dos frames limpa só o próprio staging; estimativa: `resource_copy_bytes` e `audio_mix_bytes` somam o WAV, e `jobs.rs` testa o mapeamento tipado |
+| Bytes congelados do mix (BL109) | `crates/media/tests/scene_export_audio.rs` (subconjunto BL109 dos 29): troca de mesmo tamanho → `resource_changed` **tipado** com as duas identidades e 0 frames; original reescrito no frame 0 não muda o AAC (440→880 Hz medidos, `source.sha256` = aprovado, `snapshot.bytes` ≥ WAV); `render_audio_private` sobre a cópia dá as amostras exatas depois de reescrever o original (e `render_audio` ainda recusa o original); mix sumido → `preflight_failed`/`resource_missing` e só o staging próprio some; cancelamento no meio dos frames limpa só o próprio staging; estimativa: `resource_copy_bytes` e `audio_mix_bytes` somam o WAV, e `jobs.rs` testa o mapeamento tipado |
 | UI (janela real, instância própria) | `scripts/scene-export-audio-ui-proof.py` **45/45**: árvore expõe `flow.export_scene`; `audio` oferece yes/no com padrão yes; `dialog.submit` com `audio=yes` cria 1 job; MP4 com AAC 48 kHz estéreo, duração do áudio = vídeo (±60 ms), 440 Hz em 0,05–0,40 s e 880 Hz em 0,60–0,95 s no decodificado; `snapshot` inclui o WAV; `audio=no` exporta sem stream e com `audio_omitted`; troca de mesmo tamanho (WAV válido) → job `failed` com `resource_changed`, `details.resource=audio-mix`, sem MP4 e sem staging, visível em `get jobs`; mix que deixou de ser WAV → submit recusado (`unsupported`) com diálogo aberto, sem job nem arquivo; `audio=no` ainda exporta com o mix inutilizável |
 
 ### Limites declarados
@@ -201,6 +215,21 @@ alterado foi compilado. Não conte as contagens "escritas" como PASS; os gates d
   (a tolerância de 1 ms vale como no original, não é epsilon de float). Adicionalmente, o trecho nunca lê além do
   arquivo (`audio_source_short`, `details.rule: "range"`): amostras não são inventadas dentro da tolerância.
   Consequência para o corpus da S10 (WAV de 8 s, janela `[1, 9)`): recusado, como a origem o recusaria.
+- **Divergência declarada com a origem na duração da janela (BL016.11; decisão do coordenador, sem paridade completa).**
+  No pin `d6adac15`, `node/render.ts` (`muxAudio`) recusa com `AUDIO_VIDEO_DURATION` quando
+  `|(editEndSecondsExclusive − editStartSeconds) − duração da edição| > 0,001` (tolerância de 1 ms nos dois sentidos), e
+  `createStudioSession.ts` só recusa a janela **mais curta** que a edição além de 1 ms. Esta entrega mantém o contrato
+  de 1 amostra exata e **não** implementa essa regra:
+  - janela até 1 ms mais curta que a edição — `[0, 0.333)` com 8 frames a 24 fps (edição de `0,3333…` s, 0,33 ms a
+    menos): a origem aceita dentro da tolerância; este editor recusa com `audio_window_short` o trecho que chega ao fim
+    da edição (15 984 amostras contra 16 000);
+  - janela mais curta que a edição por mais de 1 ms — `[0, 2)` com 96 frames a 24 fps (edição de 4 s): o `render.ts` da
+    origem recusa com `AUDIO_VIDEO_DURATION`; este editor exporta qualquer trecho que caiba na janela (`fits.mp4` nos
+    testes) e recusa só o que a ultrapassa;
+  - janela mais longa que a edição por mais de 1 ms: a origem recusa no render Node (a sessão do estúdio a aceita); este
+    editor exporta a edição inteira, pois o trecho cabe na janela;
+  - a origem julga o bundle inteiro, este editor julga o trecho pedido.
+  Não é epsilon de `f64` e não é "paridade completa": é o contrato atual, escolhido, e registrado em BL016.11.
 - A cópia privada dobra o espaço do WAV no staging e custa uma leitura + escrita antes do primeiro frame (como as
   imagens, BL109); `verify_intact` não refaz o hash. O original que mudou **depois** da cópia não é detectado:
   é isolado, e o vídeo reflete os bytes aprovados.
@@ -208,6 +237,10 @@ alterado foi compilado. Não conte as contagens "escritas" como PASS; os gates d
   ouvido (BL046). O `--min-free-gib` do script existe porque a máquina de desenvolvimento é compartilhada; a prova
   escreve < 200 MiB.
 - Narração, takes, `mixMuted`, ganho de monitor, reprodução em dispositivo e TTS: fora (BL017/BL046).
+- Precisão do tempo declarado: 12 casas decimais (ver "Tempo"); um bundle que escreva um tempo abaixo de `1e-12` s o vê
+  tornar-se zero, e tempos de `1e9` s ou mais são `audio_window_invalid`. A métrica `peak`/`rms` é de `f32` e uma fonte
+  float perto de `f32::MAX` interpolada pode dar `inf` na métrica; o áudio continua limitado a fundo de escala (limite
+  conhecido, sem feature nova).
 - O harness da R10 (`proof.py`, fase `ui_export_flow`) ainda espera a recusa do padrão `audio=yes`; com o mix
   entregue essa fase muda de resultado e é ajuste da frente S10 (não alterado aqui).
 

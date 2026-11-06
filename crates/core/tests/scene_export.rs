@@ -340,7 +340,7 @@ fn a_declared_mix_is_planned_by_default_and_video_only_is_the_explicit_choice() 
         ),
         (8_000, 8_000, 0)
     );
-    assert_eq!(mix.origin(), Ratio::ZERO);
+    assert_eq!(mix.origin(), Some(Ratio::ZERO));
     assert_eq!(mix.relative_path(), "audio/mix.wav");
     let audio = planned.summary()["audio"].clone();
     assert_eq!(audio["included"], true);
@@ -391,7 +391,7 @@ fn the_mix_follows_the_range_start_and_the_declared_window_offset() {
     )
     .unwrap();
     let mix = mix_of(&snapshot);
-    assert_eq!(mix.origin(), Ratio::from_int(11));
+    assert_eq!(mix.origin(), Some(Ratio::from_int(11)));
     assert_eq!(mix.output_samples(), 48_000);
     // Sample 0 is at file second 11, sample 24 000 half a second later (48 kHz source).
     let cursor = mix.cursor(48_000).unwrap();
@@ -409,7 +409,7 @@ fn the_mix_follows_the_range_start_and_the_declared_window_offset() {
         json!({"scene":"street","preset":"fullhd","from":0,"frames":24}),
     )
     .unwrap();
-    assert_eq!(mix_of(&snapshot).origin(), Ratio::new(1, 10).unwrap());
+    assert_eq!(mix_of(&snapshot).origin(), Ratio::new(1, 10));
     assert_eq!(mix_of(&snapshot).cursor(48_000).unwrap().at(0).base, 4_800);
 }
 
@@ -433,7 +433,7 @@ fn a_frame_rate_conversion_keeps_the_stream_as_long_as_the_video() {
         ),
         (48_000, 48_000, 0)
     );
-    assert_eq!(mix.origin(), Ratio::new(5, 3).unwrap());
+    assert_eq!(mix.origin(), Ratio::new(5, 3));
 
     // 2 edit frames (1/12 s) become 2.5 → 3 frames at 30 fps (0.1 s): the video is 800 samples
     // longer than the sound the range holds, and that tail is declared silence, not borrowed sound.
