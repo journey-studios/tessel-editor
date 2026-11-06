@@ -206,6 +206,8 @@ def main():
                         help="refuse to start under this much free disk (default 12; the run itself writes < 200 MiB)")
     parser.add_argument("--json", help="write the checks to this file")
     args = parser.parse_args()
+    if not math.isfinite(args.min_free_gib) or args.min_free_gib < MIN_FREE_GIB:
+        parser.error(f"--min-free-gib must be finite and at least {MIN_FREE_GIB}; the shared reserve cannot be lowered")
     if free_gib() < args.min_free_gib:
         raise SystemExit(f"refusing to start: {free_gib():.1f} GiB free, need {args.min_free_gib}")
     binary = pathlib.Path(args.bin_editor).resolve()

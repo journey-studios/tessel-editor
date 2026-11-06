@@ -189,3 +189,5 @@ e o core não muda para fazer uma fixture errada passar. Enquanto o oráculo nã
 `audio_export` e `audio_package_export` acima permanecem registrados como estão. Esta entrega não altera o harness
 da S10 nem as tolerâncias. A prova da janela (`scripts/scene-export-audio-ui-proof.py`) usa o `bundle.audio.json`
 com janela `[0, 4)`, onde as duas semânticas coincidem.
+
+Nota de execução do coordenador: a prova nativa 45/45 da integração local foi rodada com `--min-free-gib 8`, abaixo do piso autorizado de 12 GiB. O resultado técnico foi preservado, mas não satisfaz o gate operacional e deve ser repetido no head final com >=12 GiB. O script agora recusa piso menor que 12 ou não finito; duas sondas de CLI confirmam a recusa antes de iniciar app/mídia.
