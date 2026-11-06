@@ -55,7 +55,26 @@ const COMMAND_FIELDS = { target: "target", fov: "fovDeg" }
  * not. Returns the new bundle or the origin's errors; each write is checked on the whole bundle
  * (`finalizeBundle`), like `setProperties` does for each of its assignments.
  */
-const writeOnce = (harness, bundle, assignment) => {
+const AXES = { x: "x", y: "y", z: "z" }
+
+/**
+ * `camera/<clip>/start/(position|target)/(x|y|z)`: the origin has no per-axis path or command, so
+ * the whole vector is composed here (the clip's current vector with one axis replaced) and written
+ * through the origin's own `start/position` / `setStart`. This is "an axis is its parent with one
+ * axis replaced" and nothing more: the origin never saw an axis path.
+ */
+const composeAxis = (bundle, assignment) => {
+  const [, clipId, start, group, axisName] = assignment.path.split("/")
+  if (start !== "start" || AXES[axisName] === undefined || !["position", "target"].includes(group)) {
+    return assignment
+  }
+  const clip = bundle.cameraClips.find((candidate) => candidate.id === clipId)
+  const current = group === "position" ? clip.initialPosition : clip.initialTarget
+  return { path: `camera/${clipId}/start/${group}`, value: { ...current, [axisName]: assignment.value } }
+}
+
+const writeOnce = (harness, bundle, original) => {
+  const assignment = composeAxis(bundle, original)
   const [, clipId, group, field] = assignment.path.split("/")
   const commandField = group === "start" ? COMMAND_FIELDS[field] : undefined
   if (commandField === undefined) {
@@ -97,7 +116,7 @@ const expectedFor = (harness, entry) => {
 
 const INTENT_OK = { error: false }
 const checkIntent = (entry, expected) => {
-  const wantsError = entry.family === "error"
+  const wantsError = entry.family === "error" || entry.family === "divergence"
   if (expected.ok === wantsError) {
     throw new Error(`INTENT ${entry.id}: família ${entry.family}, mas a origem respondeu ok=${expected.ok}`)
   }
@@ -125,7 +144,7 @@ const generateInMemory = async (config) => {
   ])
   const manifest = {
     formatVersion: FORMAT_VERSION,
-    claim: "Expectativas geradas por setProperties/resolveCameraAtClipFrame REAIS de packages/scene-engine, empacotados sem alteração (esbuild + zod + three fixados). Não é a engine completa.",
+    claim: "Expectativas geradas por setProperties/resolveCameraAtClipFrame REAIS de packages/scene-engine, empacotados sem alteração (esbuild + zod + three fixados). Não é a engine completa. Os casos de família `axis` compõem o vetor inteiro antes de chamar a origem, que não tem caminho por eixo: provam eixo == pai com um eixo trocado, não um caminho da origem. Os de família `divergence` registram escritas intermediárias que a origem recusa e o editor aceita (valida só o candidato final).",
     originCommit: PINNED_COMMIT,
     packageTreeAtCommit: blobs.packageTreeAtCommit,
     tools: { node: process.version, ...installedToolVersions(config.depsDir) },

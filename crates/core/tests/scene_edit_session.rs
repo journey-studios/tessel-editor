@@ -69,7 +69,7 @@ fn names(listing: &Value) -> Vec<String> {
 }
 
 #[test]
-fn the_extension_is_negotiated_and_the_old_listing_keeps_its_shape() {
+fn the_extension_is_negotiated_and_the_default_listing_has_no_components() {
     let mut state = session();
     let capabilities = ok(&mut state, json!({"op":"scene.capabilities"}));
     assert_eq!(capabilities["edit"]["catalog_version"], 2);
@@ -87,6 +87,19 @@ fn the_extension_is_negotiated_and_the_old_listing_keeps_its_shape() {
     );
     let (plain, with) = (names(&plain), names(&with));
     assert!(plain.iter().all(|path| !path.ends_with("/x")));
+    // The default listing is not the first slice's: it gains the `renderOrder` rows of the image
+    // planes (the fixture has three). Only the components are opt-in.
+    let render_order: Vec<_> = plain
+        .iter()
+        .filter(|p| p.ends_with("/renderOrder"))
+        .collect();
+    assert_eq!(render_order.len(), 3, "{plain:?}");
+    let axes = with
+        .iter()
+        .filter(|path| ["/x", "/y", "/z"].iter().any(|axis| path.ends_with(axis)))
+        .count();
+    assert!(axes > 0);
+    assert_eq!(with.len() - plain.len(), axes, "only components are opt-in");
     assert!(with.len() > plain.len());
     assert!(with.contains(&"scene/street/node/hero-plane/position/x".to_string()));
     assert!(with.contains(&"camera/wide/start/target/z".to_string()));
@@ -112,6 +125,20 @@ fn the_extension_is_negotiated_and_the_old_listing_keeps_its_shape() {
     assert_eq!(find("position/x")["component_of"]["index"], 0);
     assert_eq!(find("start/position")["converts_first_movement"], true);
     assert_eq!(find("start/position")["origin"], "path-equivalent-write");
+    // The origin has no per-axis path: an axis of the camera start is the parent's write with one
+    // axis replaced, and says so; node axes stay what their parent is.
+    for axis in ["x", "y", "z"] {
+        assert_eq!(
+            find(&format!("start/position/{axis}"))["origin"],
+            "parent-write"
+        );
+        assert_eq!(
+            find(&format!("start/target/{axis}"))["origin"],
+            "parent-write"
+        );
+    }
+    assert_eq!(find("position/x")["origin"], "editor-only");
+    assert_eq!(find("start/target")["origin"], "command-only");
     assert_eq!(find("start/fov")["converts_first_movement"], false);
 }
 
@@ -240,6 +267,95 @@ fn moving_the_camera_start_converts_the_first_movement_and_undo_restores_it() {
         document(&state)["cameraClips"][0]["segments"][0]["recipe"],
         "dollyIn"
     );
+}
+
+fn x_of_hero(state: &mut EditorState) -> f64 {
+    value_of(state, "scene/street/node/hero-plane/position")["x"]
+        .as_f64()
+        .unwrap()
+}
+
+#[test]
+fn an_axis_edit_hidden_between_parent_writes_is_a_real_edit_with_one_undo_entry() {
+    // BL004a. Hero plane starts at x = 3. Judged per path this batch looked like a no-op
+    // (`position` 3 -> 3, `position/x` 2 -> 2) and the edit was discarded.
+    let mut state = session();
+    let before = document(&state);
+    let depth = undo_depth(&state);
+    let edited = ok(
+        &mut state,
+        json!({"op":"scene.edit","scene":"street","ops":[
+            {"set":"scene/street/node/hero-plane/position","value":{"x":2,"y":0,"z":0}},
+            {"set":"scene/street/node/hero-plane/position/x","value":5},
+            {"set":"scene/street/node/hero-plane/position","value":{"x":3,"y":0,"z":0}},
+            {"set":"scene/street/node/hero-plane/position/x","value":2}]}),
+    );
+    assert_eq!(edited["changed"], true, "{edited}");
+    assert_eq!(edited["noop"], false);
+    assert_eq!(x_of_hero(&mut state), 2.0);
+    assert_eq!(undo_depth(&state), depth + 1);
+    ok(&mut state, json!({"op":"history.undo"}));
+    assert_eq!(document(&state), before);
+    assert_eq!(x_of_hero(&mut state), 3.0);
+    assert_eq!(undo_depth(&state), depth);
+}
+
+#[test]
+fn an_axis_restored_by_the_parent_vector_is_a_no_op_without_dirt_or_undo_entry() {
+    let mut state = session();
+    let before = document(&state);
+    let depth = undo_depth(&state);
+    for ops in [
+        json!([
+            {"set":"scene/street/node/hero-plane/position/x","value":9},
+            {"set":"scene/street/node/hero-plane/position","value":{"x":3,"y":0,"z":0}}]),
+        json!([
+            {"set":"camera/wide/start/position/x","value":9},
+            {"set":"camera/wide/start/position","value":{"x":0,"y":2,"z":10}}]),
+        // A -> B -> A on the start: the first write converts inside the batch, the answer does not.
+        json!([
+            {"set":"camera/wide/start/position","value":{"x":1,"y":2,"z":10}},
+            {"set":"camera/wide/start/position","value":{"x":0,"y":2,"z":10}}]),
+    ] {
+        let noop = ok(
+            &mut state,
+            json!({"op":"scene.edit","scene":"street","ops":ops}),
+        );
+        assert_eq!(noop["changed"], false, "{ops}: {noop}");
+        assert_eq!(noop["noop"], true, "{ops}");
+        assert!(noop.get("conversions").is_none(), "{ops}: {noop}");
+        assert_eq!(undo_depth(&state), depth, "{ops}");
+        assert_eq!(document(&state), before, "{ops}");
+    }
+    let dry = ok(
+        &mut state,
+        json!({"op":"scene.edit","scene":"street","dry_run":true,"ops":[
+            {"set":"camera/wide/start/position","value":{"x":1,"y":2,"z":10}},
+            {"set":"camera/wide/start/position","value":{"x":0,"y":2,"z":10}}]}),
+    );
+    assert_eq!(dry["would_change"], false);
+    assert!(dry.get("conversions").is_none(), "{dry}");
+}
+
+#[test]
+fn a_render_order_beyond_a_number_is_invalid_value_over_json_lines() {
+    let mut state = session();
+    let before = document(&state);
+    for value in [json!(1e16), json!(18_446_744_073_709_551_615_u64)] {
+        let error = err(
+            &mut state,
+            json!({"op":"scene.edit","scene":"street","ops":[
+                {"set":"scene/street/node/hero-plane/renderOrder","value":value}]}),
+        );
+        assert_eq!(error.code, "invalid_value", "{value}: {error:?}");
+    }
+    let error = err(
+        &mut state,
+        json!({"op":"scene.edit","scene":"street","ops":[
+            {"set":"scene/street/node/hero-plane/renderOrder","value":0.5}]}),
+    );
+    assert_eq!(error.code, "invalid_type");
+    assert_eq!(document(&state), before);
 }
 
 fn requests() -> Vec<String> {

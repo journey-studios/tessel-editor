@@ -133,6 +133,11 @@ pub enum OriginRelation {
     /// path moves and the rest stays where it was (see `camera_keys`). Compared with the origin
     /// by the fixed oracle in `docs/migration/fixtures/scene-edit`.
     PathEquivalentWrite,
+    /// A component of a camera start (`start/position/x`): the origin has no per-axis path or
+    /// command. The write is the origin's write of the parent path (`component_of.parent`) with
+    /// that one axis replaced, and is only as equivalent as that write is; the fixed oracle builds
+    /// the expected answer by composing the vector, it does not ask the origin for an axis.
+    ParentWrite,
 }
 
 impl OriginRelation {
@@ -141,6 +146,7 @@ impl OriginRelation {
             Self::EditorOnly => "editor-only",
             Self::CommandOnly => "command-only",
             Self::PathEquivalentWrite => "path-equivalent-write",
+            Self::ParentWrite => "parent-write",
         }
     }
 }
@@ -420,7 +426,13 @@ const fn component_spec(
         default,
         applies_to: parent.applies_to,
         document_field,
-        origin: parent.origin,
+        // A node component stays what its parent is (the origin has no node paths at all); a camera
+        // start component is the parent's write with one axis replaced, which is not the origin's
+        // path.
+        origin: match parent.origin {
+            OriginRelation::EditorOnly => OriginRelation::EditorOnly,
+            _ => OriginRelation::ParentWrite,
+        },
         component: Some(ComponentOf {
             parent: parent.id,
             index,

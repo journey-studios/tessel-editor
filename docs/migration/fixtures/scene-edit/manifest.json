@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "claim": "Expectativas geradas por setProperties/resolveCameraAtClipFrame REAIS de packages/scene-engine, empacotados sem alteração (esbuild + zod + three fixados). Não é a engine completa.",
+  "claim": "Expectativas geradas por setProperties/resolveCameraAtClipFrame REAIS de packages/scene-engine, empacotados sem alteração (esbuild + zod + three fixados). Não é a engine completa. Os casos de família `axis` compõem o vetor inteiro antes de chamar a origem, que não tem caminho por eixo: provam eixo == pai com um eixo trocado, não um caminho da origem. Os de família `divergence` registram escritas intermediárias que a origem recusa e o editor aceita (valida só o candidato final).",
   "originCommit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
   "packageTreeAtCommit": "d5fc98713731c6c0ae201ca1f3ce3bd0c9b17214",
   "tools": {
@@ -11,8 +11,8 @@
   },
   "harness": {
     "scripts/scene-edit-oracle/entry.mjs": "1eb5b804b5a649e4274acbd3c77b3c1ac1dc6c1eaed3846dac209a0f939a88ad",
-    "scripts/scene-edit-oracle/corpus.mjs": "8d9d5f4463ae881629a82962e68f8af1a1d1f21e712c32757abeacaad1bd9d13",
-    "scripts/scene-edit-oracle/oracle.mjs": "a0f8ba8a0add380a832f892b4bb1d481c8afab20dff55efa69d83bfd00b21016"
+    "scripts/scene-edit-oracle/corpus.mjs": "c346774ce5e59f1a1b114f813badd658cef41ada6db1dff0b9279d25b96e4bb0",
+    "scripts/scene-edit-oracle/oracle.mjs": "46062a7200f11211f2de710f21bae43ee4f6caccd2a0effb38c2db805f41ef34"
   },
   "sources": [
     {
@@ -277,7 +277,7 @@
     }
   ],
   "fixtures": {
-    "cases.json": "6ed927b7d0d85d31d77cafd2defeadb6472df93202a9cdc0fd5c95197265c0cf",
-    "expected.json": "32ae90853ab9b6726b4691840d32e091becd6c3f23449d2260f610e3b81e8698"
+    "cases.json": "5b23944d0e2d8aabd15b4ac35bd2f1bf9f8a57cc022dbaebbe7b4acce6c1e394",
+    "expected.json": "7bebcc919ada2a4efae1cd43973bf0107eb04926912fb5d087be12794789bb1e"
   }
 }

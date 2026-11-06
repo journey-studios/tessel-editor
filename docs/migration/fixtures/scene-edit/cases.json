@@ -4501,6 +4501,1530 @@
       }
     },
     {
+      "id": "noop-restored-start",
+      "family": "noop",
+      "intent": "start moved and put back: the origin converted on the first write and keeps keys, this editor leaves the document alone (a dolly makes the same frames either way)",
+      "assignments": [
+        {
+          "path": "camera/cam/start/position",
+          "value": {
+            "x": 3.5,
+            "y": 1.5,
+            "z": 8
+          }
+        },
+        {
+          "path": "camera/cam/start/position",
+          "value": {
+            "x": 2,
+            "y": 1,
+            "z": 9
+          }
+        }
+      ],
+      "bundle": {
+        "schemaVersion": "1.0",
+        "bundleId": "oracle-scene-edit",
+        "revisionId": "rev-1",
+        "fps": {
+          "numerator": 24,
+          "denominator": 1
+        },
+        "editDurationFrames": 28,
+        "renderProfile": {
+          "width": 320,
+          "height": 180,
+          "fps": {
+            "numerator": 24,
+            "denominator": 1
+          },
+          "colorSpace": "srgb-display",
+          "alphaMode": "straight",
+          "premultiplyOnUpload": false,
+          "videoCodec": "h264-yuv420p",
+          "threeRevision": "0.187.0",
+          "browserChannel": "synthetic-oracle"
+        },
+        "assets": [
+          {
+            "assetId": "back",
+            "revisionId": "rev-1",
+            "contentHash": "synthetic-sha256-back",
+            "relativePath": "assets/back.png",
+            "widthPx": 32,
+            "heightPx": 32,
+            "alphaMode": "straight",
+            "colorSpace": "srgb"
+          },
+          {
+            "assetId": "front",
+            "revisionId": "rev-1",
+            "contentHash": "synthetic-sha256-front",
+            "relativePath": "assets/front.png",
+            "widthPx": 32,
+            "heightPx": 32,
+            "alphaMode": "straight",
+            "colorSpace": "srgb"
+          }
+        ],
+        "performanceTracks": [],
+        "compositionPasses": [],
+        "sceneDefinitions": [
+          {
+            "id": "scene-a",
+            "schemaVersion": "1.0",
+            "rootNodeId": "root",
+            "nodes": [
+              {
+                "id": "root",
+                "parentId": null,
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "type": "group"
+              },
+              {
+                "id": "back",
+                "parentId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "type": "imagePlane",
+                "assetRef": {
+                  "assetId": "back",
+                  "revisionId": "rev-1",
+                  "contentHash": "synthetic-sha256-back",
+                  "relativePath": "assets/back.png"
+                },
+                "widthSceneUnits": 8,
+                "heightSceneUnits": 4.5,
+                "renderOrder": 0
+              },
+              {
+                "id": "front",
+                "parentId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "type": "imagePlane",
+                "assetRef": {
+                  "assetId": "front",
+                  "revisionId": "rev-1",
+                  "contentHash": "synthetic-sha256-front",
+                  "relativePath": "assets/front.png"
+                },
+                "widthSceneUnits": 2,
+                "heightSceneUnits": 2,
+                "renderOrder": 1
+              }
+            ]
+          }
+        ],
+        "sceneInstances": [
+          {
+            "id": "inst-a",
+            "sceneDefinitionId": "scene-a",
+            "durationFrames": 28,
+            "performanceTrackIds": []
+          }
+        ],
+        "cameraClips": [
+          {
+            "id": "cam",
+            "initialPosition": {
+              "x": 2,
+              "y": 1,
+              "z": 9
+            },
+            "initialTarget": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            },
+            "initialFovDeg": 50,
+            "segments": [
+              {
+                "recipe": "dollyIn",
+                "durationFrames": 12,
+                "from": "previousEnd",
+                "distanceSceneUnits": 2,
+                "easing": "easeInOutCubic"
+              },
+              {
+                "recipe": "dollyIn",
+                "durationFrames": 10,
+                "from": "previousEnd",
+                "distanceSceneUnits": 1,
+                "easing": "easeInOutCubic"
+              },
+              {
+                "recipe": "hold",
+                "durationFrames": 6,
+                "from": "previousEnd"
+              }
+            ]
+          }
+        ],
+        "shots": [
+          {
+            "id": "shot-only",
+            "sceneInstanceId": "inst-a",
+            "editRange": {
+              "startFrame": 0,
+              "endFrameExclusive": 28
+            },
+            "instanceStartFrame": 0,
+            "cameraClipId": "cam",
+            "cameraInFrame": 0,
+            "intent": "synthetic shot"
+          }
+        ]
+      }
+    },
+    {
+      "id": "restore-orbit",
+      "family": "restore-orbit",
+      "intent": "same on an orbit: the origin's keys are chords of the arc, the editor keeps the arc; the gap is the chord error, measured by the consumer",
+      "assignments": [
+        {
+          "path": "camera/cam/start/position",
+          "value": {
+            "x": 3.5,
+            "y": 1.5,
+            "z": 8
+          }
+        },
+        {
+          "path": "camera/cam/start/position",
+          "value": {
+            "x": 2,
+            "y": 1,
+            "z": 9
+          }
+        }
+      ],
+      "bundle": {
+        "schemaVersion": "1.0",
+        "bundleId": "oracle-scene-edit",
+        "revisionId": "rev-1",
+        "fps": {
+          "numerator": 24,
+          "denominator": 1
+        },
+        "editDurationFrames": 36,
+        "renderProfile": {
+          "width": 320,
+          "height": 180,
+          "fps": {
+            "numerator": 24,
+            "denominator": 1
+          },
+          "colorSpace": "srgb-display",
+          "alphaMode": "straight",
+          "premultiplyOnUpload": false,
+          "videoCodec": "h264-yuv420p",
+          "threeRevision": "0.187.0",
+          "browserChannel": "synthetic-oracle"
+        },
+        "assets": [
+          {
+            "assetId": "back",
+            "revisionId": "rev-1",
+            "contentHash": "synthetic-sha256-back",
+            "relativePath": "assets/back.png",
+            "widthPx": 32,
+            "heightPx": 32,
+            "alphaMode": "straight",
+            "colorSpace": "srgb"
+          },
+          {
+            "assetId": "front",
+            "revisionId": "rev-1",
+            "contentHash": "synthetic-sha256-front",
+            "relativePath": "assets/front.png",
+            "widthPx": 32,
+            "heightPx": 32,
+            "alphaMode": "straight",
+            "colorSpace": "srgb"
+          }
+        ],
+        "performanceTracks": [],
+        "compositionPasses": [],
+        "sceneDefinitions": [
+          {
+            "id": "scene-a",
+            "schemaVersion": "1.0",
+            "rootNodeId": "root",
+            "nodes": [
+              {
+                "id": "root",
+                "parentId": null,
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "type": "group"
+              },
+              {
+                "id": "back",
+                "parentId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "type": "imagePlane",
+                "assetRef": {
+                  "assetId": "back",
+                  "revisionId": "rev-1",
+                  "contentHash": "synthetic-sha256-back",
+                  "relativePath": "assets/back.png"
+                },
+                "widthSceneUnits": 8,
+                "heightSceneUnits": 4.5,
+                "renderOrder": 0
+              },
+              {
+                "id": "front",
+                "parentId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "type": "imagePlane",
+                "assetRef": {
+                  "assetId": "front",
+                  "revisionId": "rev-1",
+                  "contentHash": "synthetic-sha256-front",
+                  "relativePath": "assets/front.png"
+                },
+                "widthSceneUnits": 2,
+                "heightSceneUnits": 2,
+                "renderOrder": 1
+              }
+            ]
+          }
+        ],
+        "sceneInstances": [
+          {
+            "id": "inst-a",
+            "sceneDefinitionId": "scene-a",
+            "durationFrames": 36,
+            "performanceTrackIds": []
+          }
+        ],
+        "cameraClips": [
+          {
+            "id": "cam",
+            "initialPosition": {
+              "x": 2,
+              "y": 1,
+              "z": 9
+            },
+            "initialTarget": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            },
+            "initialFovDeg": 50,
+            "segments": [
+              {
+                "recipe": "orbit",
+                "durationFrames": 20,
+                "from": "previousEnd",
+                "yawDeg": 40,
+                "pitchDeg": 10,
+                "easing": "easeInOutCubic"
+              },
+              {
+                "recipe": "dollyIn",
+                "durationFrames": 10,
+                "from": "previousEnd",
+                "distanceSceneUnits": 1,
+                "easing": "easeInOutCubic"
+              },
+              {
+                "recipe": "hold",
+                "durationFrames": 6,
+                "from": "previousEnd"
+              }
+            ]
+          }
+        ],
+        "shots": [
+          {
+            "id": "shot-only",
+            "sceneInstanceId": "inst-a",
+            "editRange": {
+              "startFrame": 0,
+              "endFrameExclusive": 36
+            },
+            "instanceStartFrame": 0,
+            "cameraClipId": "cam",
+            "cameraInFrame": 0,
+            "intent": "synthetic shot"
+          }
+        ]
+      }
+    },
+    {
+      "id": "zoom-first-with-fov-layer",
+      "family": "convert",
+      "intent": "a zoom as first movement with a field-of-view layer over the main track",
+      "assignments": [
+        {
+          "path": "camera/cam/start/position",
+          "value": {
+            "x": 3.5,
+            "y": 1.5,
+            "z": 8
+          }
+        }
+      ],
+      "bundle": {
+        "schemaVersion": "1.0",
+        "bundleId": "oracle-scene-edit",
+        "revisionId": "rev-1",
+        "fps": {
+          "numerator": 24,
+          "denominator": 1
+        },
+        "editDurationFrames": 16,
+        "renderProfile": {
+          "width": 320,
+          "height": 180,
+          "fps": {
+            "numerator": 24,
+            "denominator": 1
+          },
+          "colorSpace": "srgb-display",
+          "alphaMode": "straight",
+          "premultiplyOnUpload": false,
+          "videoCodec": "h264-yuv420p",
+          "threeRevision": "0.187.0",
+          "browserChannel": "synthetic-oracle"
+        },
+        "assets": [
+          {
+            "assetId": "back",
+            "revisionId": "rev-1",
+            "contentHash": "synthetic-sha256-back",
+            "relativePath": "assets/back.png",
+            "widthPx": 32,
+            "heightPx": 32,
+            "alphaMode": "straight",
+            "colorSpace": "srgb"
+          },
+          {
+            "assetId": "front",
+            "revisionId": "rev-1",
+            "contentHash": "synthetic-sha256-front",
+            "relativePath": "assets/front.png",
+            "widthPx": 32,
+            "heightPx": 32,
+            "alphaMode": "straight",
+            "colorSpace": "srgb"
+          }
+        ],
+        "performanceTracks": [],
+        "compositionPasses": [],
+        "sceneDefinitions": [
+          {
+            "id": "scene-a",
+            "schemaVersion": "1.0",
+            "rootNodeId": "root",
+            "nodes": [
+              {
+                "id": "root",
+                "parentId": null,
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "type": "group"
+              },
+              {
+                "id": "back",
+                "parentId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "type": "imagePlane",
+                "assetRef": {
+                  "assetId": "back",
+                  "revisionId": "rev-1",
+                  "contentHash": "synthetic-sha256-back",
+                  "relativePath": "assets/back.png"
+                },
+                "widthSceneUnits": 8,
+                "heightSceneUnits": 4.5,
+                "renderOrder": 0
+              },
+              {
+                "id": "front",
+                "parentId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "type": "imagePlane",
+                "assetRef": {
+                  "assetId": "front",
+                  "revisionId": "rev-1",
+                  "contentHash": "synthetic-sha256-front",
+                  "relativePath": "assets/front.png"
+                },
+                "widthSceneUnits": 2,
+                "heightSceneUnits": 2,
+                "renderOrder": 1
+              }
+            ]
+          }
+        ],
+        "sceneInstances": [
+          {
+            "id": "inst-a",
+            "sceneDefinitionId": "scene-a",
+            "durationFrames": 16,
+            "performanceTrackIds": []
+          }
+        ],
+        "cameraClips": [
+          {
+            "id": "cam",
+            "initialPosition": {
+              "x": 2,
+              "y": 1,
+              "z": 9
+            },
+            "initialTarget": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            },
+            "initialFovDeg": 50,
+            "segments": [
+              {
+                "recipe": "zoomIn",
+                "durationFrames": 9,
+                "from": "previousEnd",
+                "fovDeltaDeg": 12,
+                "easing": "easeOutCubic"
+              },
+              {
+                "recipe": "hold",
+                "durationFrames": 6,
+                "from": "previousEnd"
+              }
+            ],
+            "layers": [
+              {
+                "segments": [
+                  {
+                    "recipe": "zoomOut",
+                    "durationFrames": 16,
+                    "from": "previousEnd",
+                    "fovDeltaDeg": 6,
+                    "easing": "linear"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "shots": [
+          {
+            "id": "shot-only",
+            "sceneInstanceId": "inst-a",
+            "editRange": {
+              "startFrame": 0,
+              "endFrameExclusive": 16
+            },
+            "instanceStartFrame": 0,
+            "cameraClipId": "cam",
+            "cameraInFrame": 0,
+            "intent": "synthetic shot"
+          }
+        ]
+      }
+    },
+    {
+      "id": "axis-x-orbit",
+      "family": "axis",
+      "intent": "one axis of the start position converts an orbit exactly like the whole vector",
+      "assignments": [
+        {
+          "path": "camera/cam/start/position/x",
+          "value": 3.5
+        }
+      ],
+      "bundle": {
+        "schemaVersion": "1.0",
+        "bundleId": "oracle-scene-edit",
+        "revisionId": "rev-1",
+        "fps": {
+          "numerator": 24,
+          "denominator": 1
+        },
+        "editDurationFrames": 28,
+        "renderProfile": {
+          "width": 320,
+          "height": 180,
+          "fps": {
+            "numerator": 24,
+            "denominator": 1
+          },
+          "colorSpace": "srgb-display",
+          "alphaMode": "straight",
+          "premultiplyOnUpload": false,
+          "videoCodec": "h264-yuv420p",
+          "threeRevision": "0.187.0",
+          "browserChannel": "synthetic-oracle"
+        },
+        "assets": [
+          {
+            "assetId": "back",
+            "revisionId": "rev-1",
+            "contentHash": "synthetic-sha256-back",
+            "relativePath": "assets/back.png",
+            "widthPx": 32,
+            "heightPx": 32,
+            "alphaMode": "straight",
+            "colorSpace": "srgb"
+          },
+          {
+            "assetId": "front",
+            "revisionId": "rev-1",
+            "contentHash": "synthetic-sha256-front",
+            "relativePath": "assets/front.png",
+            "widthPx": 32,
+            "heightPx": 32,
+            "alphaMode": "straight",
+            "colorSpace": "srgb"
+          }
+        ],
+        "performanceTracks": [],
+        "compositionPasses": [],
+        "sceneDefinitions": [
+          {
+            "id": "scene-a",
+            "schemaVersion": "1.0",
+            "rootNodeId": "root",
+            "nodes": [
+              {
+                "id": "root",
+                "parentId": null,
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "type": "group"
+              },
+              {
+                "id": "back",
+                "parentId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "type": "imagePlane",
+                "assetRef": {
+                  "assetId": "back",
+                  "revisionId": "rev-1",
+                  "contentHash": "synthetic-sha256-back",
+                  "relativePath": "assets/back.png"
+                },
+                "widthSceneUnits": 8,
+                "heightSceneUnits": 4.5,
+                "renderOrder": 0
+              },
+              {
+                "id": "front",
+                "parentId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "type": "imagePlane",
+                "assetRef": {
+                  "assetId": "front",
+                  "revisionId": "rev-1",
+                  "contentHash": "synthetic-sha256-front",
+                  "relativePath": "assets/front.png"
+                },
+                "widthSceneUnits": 2,
+                "heightSceneUnits": 2,
+                "renderOrder": 1
+              }
+            ]
+          }
+        ],
+        "sceneInstances": [
+          {
+            "id": "inst-a",
+            "sceneDefinitionId": "scene-a",
+            "durationFrames": 28,
+            "performanceTrackIds": []
+          }
+        ],
+        "cameraClips": [
+          {
+            "id": "cam",
+            "initialPosition": {
+              "x": 2,
+              "y": 1,
+              "z": 9
+            },
+            "initialTarget": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            },
+            "initialFovDeg": 50,
+            "segments": [
+              {
+                "recipe": "orbit",
+                "durationFrames": 12,
+                "from": "previousEnd",
+                "yawDeg": 40,
+                "pitchDeg": 10,
+                "easing": "easeInOutCubic"
+              },
+              {
+                "recipe": "dollyIn",
+                "durationFrames": 10,
+                "from": "previousEnd",
+                "distanceSceneUnits": 1,
+                "easing": "easeInOutCubic"
+              },
+              {
+                "recipe": "hold",
+                "durationFrames": 6,
+                "from": "previousEnd"
+              }
+            ]
+          }
+        ],
+        "shots": [
+          {
+            "id": "shot-only",
+            "sceneInstanceId": "inst-a",
+            "editRange": {
+              "startFrame": 0,
+              "endFrameExclusive": 28
+            },
+            "instanceStartFrame": 0,
+            "cameraClipId": "cam",
+            "cameraInFrame": 0,
+            "intent": "synthetic shot"
+          }
+        ]
+      }
+    },
+    {
+      "id": "axis-batch-mixed",
+      "family": "axis",
+      "intent": "axes of position and target in one batch, each seeing the vector the previous write left",
+      "assignments": [
+        {
+          "path": "camera/cam/start/position/y",
+          "value": 1.5
+        },
+        {
+          "path": "camera/cam/start/target/x",
+          "value": 0.5
+        },
+        {
+          "path": "camera/cam/start/position/z",
+          "value": 8
+        },
+        {
+          "path": "camera/cam/start/target/z",
+          "value": 0.25
+        }
+      ],
+      "bundle": {
+        "schemaVersion": "1.0",
+        "bundleId": "oracle-scene-edit",
+        "revisionId": "rev-1",
+        "fps": {
+          "numerator": 24,
+          "denominator": 1
+        },
+        "editDurationFrames": 28,
+        "renderProfile": {
+          "width": 320,
+          "height": 180,
+          "fps": {
+            "numerator": 24,
+            "denominator": 1
+          },
+          "colorSpace": "srgb-display",
+          "alphaMode": "straight",
+          "premultiplyOnUpload": false,
+          "videoCodec": "h264-yuv420p",
+          "threeRevision": "0.187.0",
+          "browserChannel": "synthetic-oracle"
+        },
+        "assets": [
+          {
+            "assetId": "back",
+            "revisionId": "rev-1",
+            "contentHash": "synthetic-sha256-back",
+            "relativePath": "assets/back.png",
+            "widthPx": 32,
+            "heightPx": 32,
+            "alphaMode": "straight",
+            "colorSpace": "srgb"
+          },
+          {
+            "assetId": "front",
+            "revisionId": "rev-1",
+            "contentHash": "synthetic-sha256-front",
+            "relativePath": "assets/front.png",
+            "widthPx": 32,
+            "heightPx": 32,
+            "alphaMode": "straight",
+            "colorSpace": "srgb"
+          }
+        ],
+        "performanceTracks": [],
+        "compositionPasses": [],
+        "sceneDefinitions": [
+          {
+            "id": "scene-a",
+            "schemaVersion": "1.0",
+            "rootNodeId": "root",
+            "nodes": [
+              {
+                "id": "root",
+                "parentId": null,
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "type": "group"
+              },
+              {
+                "id": "back",
+                "parentId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "type": "imagePlane",
+                "assetRef": {
+                  "assetId": "back",
+                  "revisionId": "rev-1",
+                  "contentHash": "synthetic-sha256-back",
+                  "relativePath": "assets/back.png"
+                },
+                "widthSceneUnits": 8,
+                "heightSceneUnits": 4.5,
+                "renderOrder": 0
+              },
+              {
+                "id": "front",
+                "parentId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "type": "imagePlane",
+                "assetRef": {
+                  "assetId": "front",
+                  "revisionId": "rev-1",
+                  "contentHash": "synthetic-sha256-front",
+                  "relativePath": "assets/front.png"
+                },
+                "widthSceneUnits": 2,
+                "heightSceneUnits": 2,
+                "renderOrder": 1
+              }
+            ]
+          }
+        ],
+        "sceneInstances": [
+          {
+            "id": "inst-a",
+            "sceneDefinitionId": "scene-a",
+            "durationFrames": 28,
+            "performanceTrackIds": []
+          }
+        ],
+        "cameraClips": [
+          {
+            "id": "cam",
+            "initialPosition": {
+              "x": 2,
+              "y": 1,
+              "z": 9
+            },
+            "initialTarget": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            },
+            "initialFovDeg": 50,
+            "segments": [
+              {
+                "recipe": "dollyOut",
+                "durationFrames": 12,
+                "from": "previousEnd",
+                "distanceSceneUnits": 2,
+                "easing": "easeInOutCubic"
+              },
+              {
+                "recipe": "dollyIn",
+                "durationFrames": 10,
+                "from": "previousEnd",
+                "distanceSceneUnits": 1,
+                "easing": "easeInOutCubic"
+              },
+              {
+                "recipe": "hold",
+                "durationFrames": 6,
+                "from": "previousEnd"
+              }
+            ]
+          }
+        ],
+        "shots": [
+          {
+            "id": "shot-only",
+            "sceneInstanceId": "inst-a",
+            "editRange": {
+              "startFrame": 0,
+              "endFrameExclusive": 28
+            },
+            "instanceStartFrame": 0,
+            "cameraClipId": "cam",
+            "cameraInFrame": 0,
+            "intent": "synthetic shot"
+          }
+        ]
+      }
+    },
+    {
+      "id": "axis-restored-by-vector",
+      "family": "noop",
+      "intent": "an axis written and the whole vector put back: the origin ends on the original start, with keys from the first write",
+      "assignments": [
+        {
+          "path": "camera/cam/start/position/x",
+          "value": 3.5
+        },
+        {
+          "path": "camera/cam/start/position",
+          "value": {
+            "x": 2,
+            "y": 1,
+            "z": 9
+          }
+        }
+      ],
+      "bundle": {
+        "schemaVersion": "1.0",
+        "bundleId": "oracle-scene-edit",
+        "revisionId": "rev-1",
+        "fps": {
+          "numerator": 24,
+          "denominator": 1
+        },
+        "editDurationFrames": 28,
+        "renderProfile": {
+          "width": 320,
+          "height": 180,
+          "fps": {
+            "numerator": 24,
+            "denominator": 1
+          },
+          "colorSpace": "srgb-display",
+          "alphaMode": "straight",
+          "premultiplyOnUpload": false,
+          "videoCodec": "h264-yuv420p",
+          "threeRevision": "0.187.0",
+          "browserChannel": "synthetic-oracle"
+        },
+        "assets": [
+          {
+            "assetId": "back",
+            "revisionId": "rev-1",
+            "contentHash": "synthetic-sha256-back",
+            "relativePath": "assets/back.png",
+            "widthPx": 32,
+            "heightPx": 32,
+            "alphaMode": "straight",
+            "colorSpace": "srgb"
+          },
+          {
+            "assetId": "front",
+            "revisionId": "rev-1",
+            "contentHash": "synthetic-sha256-front",
+            "relativePath": "assets/front.png",
+            "widthPx": 32,
+            "heightPx": 32,
+            "alphaMode": "straight",
+            "colorSpace": "srgb"
+          }
+        ],
+        "performanceTracks": [],
+        "compositionPasses": [],
+        "sceneDefinitions": [
+          {
+            "id": "scene-a",
+            "schemaVersion": "1.0",
+            "rootNodeId": "root",
+            "nodes": [
+              {
+                "id": "root",
+                "parentId": null,
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "type": "group"
+              },
+              {
+                "id": "back",
+                "parentId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "type": "imagePlane",
+                "assetRef": {
+                  "assetId": "back",
+                  "revisionId": "rev-1",
+                  "contentHash": "synthetic-sha256-back",
+                  "relativePath": "assets/back.png"
+                },
+                "widthSceneUnits": 8,
+                "heightSceneUnits": 4.5,
+                "renderOrder": 0
+              },
+              {
+                "id": "front",
+                "parentId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "type": "imagePlane",
+                "assetRef": {
+                  "assetId": "front",
+                  "revisionId": "rev-1",
+                  "contentHash": "synthetic-sha256-front",
+                  "relativePath": "assets/front.png"
+                },
+                "widthSceneUnits": 2,
+                "heightSceneUnits": 2,
+                "renderOrder": 1
+              }
+            ]
+          }
+        ],
+        "sceneInstances": [
+          {
+            "id": "inst-a",
+            "sceneDefinitionId": "scene-a",
+            "durationFrames": 28,
+            "performanceTrackIds": []
+          }
+        ],
+        "cameraClips": [
+          {
+            "id": "cam",
+            "initialPosition": {
+              "x": 2,
+              "y": 1,
+              "z": 9
+            },
+            "initialTarget": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            },
+            "initialFovDeg": 50,
+            "segments": [
+              {
+                "recipe": "dollyIn",
+                "durationFrames": 12,
+                "from": "previousEnd",
+                "distanceSceneUnits": 2,
+                "easing": "easeInOutCubic"
+              },
+              {
+                "recipe": "dollyIn",
+                "durationFrames": 10,
+                "from": "previousEnd",
+                "distanceSceneUnits": 1,
+                "easing": "easeInOutCubic"
+              },
+              {
+                "recipe": "hold",
+                "durationFrames": 6,
+                "from": "previousEnd"
+              }
+            ]
+          }
+        ],
+        "shots": [
+          {
+            "id": "shot-only",
+            "sceneInstanceId": "inst-a",
+            "editRange": {
+              "startFrame": 0,
+              "endFrameExclusive": 28
+            },
+            "instanceStartFrame": 0,
+            "cameraClipId": "cam",
+            "cameraInFrame": 0,
+            "intent": "synthetic shot"
+          }
+        ]
+      }
+    },
+    {
+      "id": "intermediate-degenerate-then-target",
+      "family": "divergence",
+      "intent": "position on the target is refused by the origin as a write of its own; the editor judges the final candidate, where the target has moved",
+      "assignments": [
+        {
+          "path": "camera/cam/start/position",
+          "value": {
+            "x": 0,
+            "y": 1,
+            "z": 0
+          }
+        },
+        {
+          "path": "camera/cam/start/target",
+          "value": {
+            "x": 0.5,
+            "y": 1.2,
+            "z": 0
+          }
+        }
+      ],
+      "bundle": {
+        "schemaVersion": "1.0",
+        "bundleId": "oracle-scene-edit",
+        "revisionId": "rev-1",
+        "fps": {
+          "numerator": 24,
+          "denominator": 1
+        },
+        "editDurationFrames": 28,
+        "renderProfile": {
+          "width": 320,
+          "height": 180,
+          "fps": {
+            "numerator": 24,
+            "denominator": 1
+          },
+          "colorSpace": "srgb-display",
+          "alphaMode": "straight",
+          "premultiplyOnUpload": false,
+          "videoCodec": "h264-yuv420p",
+          "threeRevision": "0.187.0",
+          "browserChannel": "synthetic-oracle"
+        },
+        "assets": [
+          {
+            "assetId": "back",
+            "revisionId": "rev-1",
+            "contentHash": "synthetic-sha256-back",
+            "relativePath": "assets/back.png",
+            "widthPx": 32,
+            "heightPx": 32,
+            "alphaMode": "straight",
+            "colorSpace": "srgb"
+          },
+          {
+            "assetId": "front",
+            "revisionId": "rev-1",
+            "contentHash": "synthetic-sha256-front",
+            "relativePath": "assets/front.png",
+            "widthPx": 32,
+            "heightPx": 32,
+            "alphaMode": "straight",
+            "colorSpace": "srgb"
+          }
+        ],
+        "performanceTracks": [],
+        "compositionPasses": [],
+        "sceneDefinitions": [
+          {
+            "id": "scene-a",
+            "schemaVersion": "1.0",
+            "rootNodeId": "root",
+            "nodes": [
+              {
+                "id": "root",
+                "parentId": null,
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "type": "group"
+              },
+              {
+                "id": "back",
+                "parentId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "type": "imagePlane",
+                "assetRef": {
+                  "assetId": "back",
+                  "revisionId": "rev-1",
+                  "contentHash": "synthetic-sha256-back",
+                  "relativePath": "assets/back.png"
+                },
+                "widthSceneUnits": 8,
+                "heightSceneUnits": 4.5,
+                "renderOrder": 0
+              },
+              {
+                "id": "front",
+                "parentId": "root",
+                "localPosition": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0
+                },
+                "localRotation": {
+                  "x": 0,
+                  "y": 0,
+                  "z": 0,
+                  "w": 1
+                },
+                "localScale": {
+                  "x": 1,
+                  "y": 1,
+                  "z": 1
+                },
+                "type": "imagePlane",
+                "assetRef": {
+                  "assetId": "front",
+                  "revisionId": "rev-1",
+                  "contentHash": "synthetic-sha256-front",
+                  "relativePath": "assets/front.png"
+                },
+                "widthSceneUnits": 2,
+                "heightSceneUnits": 2,
+                "renderOrder": 1
+              }
+            ]
+          }
+        ],
+        "sceneInstances": [
+          {
+            "id": "inst-a",
+            "sceneDefinitionId": "scene-a",
+            "durationFrames": 28,
+            "performanceTrackIds": []
+          }
+        ],
+        "cameraClips": [
+          {
+            "id": "cam",
+            "initialPosition": {
+              "x": 2,
+              "y": 1,
+              "z": 9
+            },
+            "initialTarget": {
+              "x": 0,
+              "y": 1,
+              "z": 0
+            },
+            "initialFovDeg": 50,
+            "segments": [
+              {
+                "recipe": "dollyIn",
+                "durationFrames": 12,
+                "from": "previousEnd",
+                "distanceSceneUnits": 2,
+                "easing": "easeInOutCubic"
+              },
+              {
+                "recipe": "dollyIn",
+                "durationFrames": 10,
+                "from": "previousEnd",
+                "distanceSceneUnits": 1,
+                "easing": "easeInOutCubic"
+              },
+              {
+                "recipe": "hold",
+                "durationFrames": 6,
+                "from": "previousEnd"
+              }
+            ]
+          }
+        ],
+        "shots": [
+          {
+            "id": "shot-only",
+            "sceneInstanceId": "inst-a",
+            "editRange": {
+              "startFrame": 0,
+              "endFrameExclusive": 28
+            },
+            "instanceStartFrame": 0,
+            "cameraClipId": "cam",
+            "cameraInFrame": 0,
+            "intent": "synthetic shot"
+          }
+        ]
+      }
+    },
+    {
       "id": "refused-degenerate",
       "family": "error",
       "intent": "position on the target: the origin refuses the camera",

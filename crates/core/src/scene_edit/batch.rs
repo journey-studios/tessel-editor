@@ -45,28 +45,30 @@ impl PropertyChange {
 pub struct EditSummary {
     /// One entry per op, in batch order.
     pub changes: Vec<PropertyChange>,
-    /// Whether any property ended the batch with a value other than the one it started with.
-    /// Set then restore is `false`; the candidate's JSON may still spell a restored number
-    /// differently from the original (`1` and `1.0`).
+    /// Whether the batch left the document with a value other than the one it started with,
+    /// judged on what each touched property holds at the end against what it held at the start.
+    /// A component and its parent (`position/x`, `position`) are one datum, so they are compared
+    /// together: `position/x -> 9` followed by `position -> original` is `false`, and a final
+    /// `position/x` that differs after a parent write that restored the vector is `true`.
+    ///
+    /// When `false` the batch is a no-op: the candidate is the input scene itself (same document,
+    /// same spelling of numbers, no keyframes) and `conversions` is empty.
     pub modified: bool,
     /// Movements a write turned into keyframes (a camera start that changed), in batch order.
-    /// Empty for every other batch.
+    /// Empty for every other batch and for a batch that is a net no-op.
     pub conversions: Vec<MovementConversion>,
 }
 
 impl EditSummary {
-    fn new(changes: Vec<PropertyChange>, conversions: Vec<MovementConversion>) -> Self {
-        let mut net: HashMap<String, (PropertyValue, PropertyValue)> = HashMap::new();
-        for change in &changes {
-            net.entry(change.property.path())
-                .and_modify(|entry| entry.1 = change.after)
-                .or_insert((change.before, change.after));
-        }
-        let modified = net.values().any(|(first, last)| first != last);
+    fn new(
+        changes: Vec<PropertyChange>,
+        conversions: Vec<MovementConversion>,
+        modified: bool,
+    ) -> Self {
         Self {
             changes,
             modified,
-            conversions,
+            conversions: if modified { conversions } else { Vec::new() },
         }
     }
 
@@ -334,6 +336,9 @@ pub fn apply_with(
     let mut changes = Vec::with_capacity(ops.len());
     let mut touched: Vec<(usize, String)> = Vec::new();
     let mut conversions: Vec<MovementConversion> = Vec::new();
+    // The datum each op wrote (a component is read as its parent vector): the net effect is judged
+    // on these, in the input and in the result, not on the sequence of paths the ops spelled.
+    let mut data: Vec<Datum> = Vec::new();
 
     for (index, op) in ops.iter().enumerate() {
         let property = op.property();
@@ -365,7 +370,8 @@ pub fn apply_with(
                 conversions.extend(converted);
             }
             write_value(&mut work, &located, &after).map_err(fail)?;
-            touched.push((index, located.entity));
+            note_datum(&mut data, &located);
+            touched.push((index, located.entity.clone()));
         }
         changes.push(PropertyChange {
             index,
@@ -375,6 +381,7 @@ pub fn apply_with(
         });
     }
 
+    let modified = net_modified(scene.document(), &work, &data)?;
     let candidate = DirectedScene::import_value_with(work, limits)
         .map_err(|error| rejected(error, &touched))?;
     let mut issues = candidate.edit_join_issues();
@@ -382,10 +389,50 @@ pub fn apply_with(
     if !issues.is_empty() {
         return Err(rejected(ImportError::Invalid { issues }, &touched));
     }
+    let candidate = if modified {
+        candidate
+    } else {
+        // WHY the input back: the importer accepted `work`, but a net no-op must not carry what
+        // the ops did on the way (keys from a conversion, a restored number spelled `1.0`).
+        scene.clone()
+    };
     Ok(EditOutcome {
         candidate,
-        summary: EditSummary::new(changes, conversions),
+        summary: EditSummary::new(changes, conversions, modified),
     })
+}
+
+/// What a write changed in the document: the parent property when the op wrote a component.
+struct Datum {
+    field: String,
+    spec: &'static PropertySpec,
+}
+
+fn note_datum(data: &mut Vec<Datum>, located: &Located) {
+    let spec = match located.spec.component {
+        Some(component) => component.parent.spec(),
+        None => located.spec,
+    };
+    let field = format!("{}/{}", located.entity, spec.document_field);
+    if !data.iter().any(|datum| datum.field == field) {
+        data.push(Datum { field, spec });
+    }
+}
+
+/// Whether any datum the batch wrote ends with a value other than the one the input held.
+fn net_modified(input: &Value, work: &Value, data: &[Datum]) -> Result<bool, EditError> {
+    for datum in data {
+        let located = Located {
+            entity: String::new(),
+            field: datum.field.clone(),
+            spec: datum.spec,
+            clip_slot: None,
+        };
+        if read_value(input, &located)? != read_value(work, &located)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// Validates the batch exactly as `apply` would and reports what it would change, without

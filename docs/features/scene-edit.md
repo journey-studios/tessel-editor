@@ -67,7 +67,7 @@ assert_eq!(preview, outcome.summary);
 | `apply(&scene, &ops)` / `apply_with(.., &Limits)` | `Result<EditOutcome { candidate, summary }, EditError>` |
 | `dry_run(&scene, &ops)` / `dry_run_with` | `Result<EditSummary, EditError>`; mesma validação, sucede **sse** `apply` sucede, mesmo resumo |
 | `EditSummary` | `changes: Vec<PropertyChange { index, property, before, after }>`, `modified`, `conversions: Vec<MovementConversion { index, clip, segment, recipe, keys }>`, `changed_count()` |
-| `properties_of(&scene)` / `properties_with_components` / `read_property` | Lista o que se aplica, com valor atual, sem seleção; `properties_of` mantém a lista antiga (sem componentes), `properties_with_components` acrescenta os componentes depois das propriedades do mesmo nó/clipe; leitura por ID com os mesmos erros de ID/aplicabilidade |
+| `properties_of(&scene)` / `properties_with_components` / `read_property` | Lista o que se aplica, com valor atual, sem seleção; `properties_of` é a listagem **padrão**: sem componentes, mas **com** `renderOrder` dos planos de imagem (não é mais a lista da primeira fatia); `properties_with_components` acrescenta os componentes depois das propriedades do mesmo nó/clipe; leitura por ID com os mesmos erros de ID/aplicabilidade |
 | `EditError` | `code`, `message`, `index`, `path`, `id`, `issues()` (achados do importador), `cause()`; `From<EditError> for CommandError` |
 
 ### Catálogo
@@ -85,8 +85,8 @@ assert_eq!(preview, outcome.summary);
 | `scene/<s>/node/<n>/renderOrder` | **inteiro** / sem unidade | `0` | `[-(2^53-1), 2^53-1]` | `imagePlane` | `renderOrder` (opcional: ausente lê `0`) | só editor (a origem tem o campo no bundle) |
 | `scene/<s>/node/<n>/position/{x,y,z}` | número / unidades de cena | `0` | — | todo nó | `localPosition/{x,y,z}` | só editor |
 | `scene/<s>/node/<n>/scale/{x,y,z}` | número / multiplicador | `1` | — | todo nó | `localScale/{x,y,z}` | só editor |
-| `camera/<c>/start/position/{x,y,z}` | número / unidades de cena | nenhum | — | clipe | `initialPosition/{x,y,z}` | como `start/position` (mesma conversão) |
-| `camera/<c>/start/target/{x,y,z}` | número / unidades de cena | nenhum | — | clipe | `initialTarget/{x,y,z}` | como `start/target` |
+| `camera/<c>/start/position/{x,y,z}` | número / unidades de cena | nenhum | — | clipe | `initialPosition/{x,y,z}` | **`parent-write`**: a origem não tem caminho por eixo; é a escrita de `start/position` com um eixo trocado (mesma conversão) |
+| `camera/<c>/start/target/{x,y,z}` | número / unidades de cena | nenhum | — | clipe | `initialTarget/{x,y,z}` | **`parent-write`**: `setStart.target` com um eixo trocado |
 
 **Componentes.** Escrever `position/x` é escrever o pai com aquele eixo trocado: mesma aplicabilidade, mesmas
 checagens, mesmos efeitos (um eixo de `start/position` converte o primeiro movimento exatamente como o vetor
@@ -117,8 +117,10 @@ dentro do lote (`scene_edit::camera_keys`), com a aritmética de pose do avaliad
 |---|---|
 | `hold` | uma key linear no último frame |
 | `dolly`/`truck`/`zoom` | uma key no último frame, na pose final, mantendo o easing do movimento |
-| `orbit` | uma key linear a cada 2 frames sobre o arco + a pose final (cordas; erro do arco documentado e medido) |
+| `orbit` | uma key linear a cada 2 frames sobre o arco + a pose final (cordas). Erro medido (`scene_edit_oracle.rs`, caso `restore-orbit`: 40° com easing em 20 frames, raio 9,2195): **0,0976 unidades = 1,06% do raio**, e cresce com a velocidade da órbita; a origem tem as mesmas cordas |
 | já são keys | nada muda |
+
+Chaves que o schema não declara no movimento (`note`, por exemplo) **são preservadas** na conversão: o importador as mantém e reporta (F031) e o documento é o dado canônico. A origem as descarta, mas porque o `zod` as remove no parse, antes de qualquer comando; aqui nada as removeu (decisão, com teste `a_conversion_keeps_the_fields_the_schema_does_not_declare`). Só saem os campos da própria receita (`easing`, `distanceSceneUnits`, `fovDeltaDeg`, `yawDeg`, `pitchDeg`).
 
 Regras do lote: a conversão parte da pose que o clipe **tem agora** (inclusive de ops anteriores do mesmo lote) e só
 ocorre quando o valor muda de fato — escrever o valor atual não converte nem toca o documento; só a primeira escrita
@@ -128,11 +130,19 @@ op falha com `CAMERA_CONVERSION_FAILED` (`invalid_camera`) no índice dela e o l
 movimento de um frame converte, mas a key resultante é recusada pelo importador como a origem a recusa
 (`CANDIDATE_REJECTED`: `CAMERA_SEGMENT_TOO_SHORT`, `CAMERA_KEY_FRAME_ORDER`), também com rollback. As
 conversões feitas voltam em `EditSummary::conversions` e, nas respostas `scene.edit` e `scene.gesture.update`, no
-campo aditivo `conversions` (ausente quando nada converteu). `PropertySpec::origin` passa a ser
-`path-equivalent-write` (`PathNarrowerWrite`, a escrita mais estreita, deixou de existir).
+campo aditivo `conversions` (ausente quando nada converteu **ou quando o lote é um no-op líquido**, ver abaixo). `PropertySpec::origin` de `start/position` é
+`path-equivalent-write` (`PathNarrowerWrite`, a escrita mais estreita, deixou de existir); os eixos de `start/*` são `parent-write`
+(a origem não tem caminho nem comando por eixo) e os de nó seguem `editor-only`.
 
-**Oráculo fixo.** `docs/migration/fixtures/scene-edit/` (`cases.json`, `expected.json`, `manifest.json`) guarda 24
-casos sintéticos (14 conversões, 4 erros, 3 lotes, 2 comandos `setStart`, 1 no-op) e, por caso, o clipe resultante e a
+**Divergências deliberadas da origem** (cada uma provada em `scene_edit_oracle.rs`, nenhuma escondida):
+
+- *A → B → A.* A origem converte na primeira escrita e fica com keys; o editor julga o efeito líquido, vê nenhum, devolve a cena de entrada (sem keys, sem `conversions`, `noop: true`). Para movimentos retos as poses coincidem; para órbita as cordas da origem diferem do arco que o editor mantém (1,06% do raio no caso medido). Se o lote tem **outra** edição real, a conversão da primeira escrita permanece, como na origem, e é listada.
+- *Escrita intermediária inválida (H1, confirmada contra a origem real).* A origem valida cada escrita no bundle inteiro: `[start/position → alvo, start/target → outro]` é recusado já na primeira (`CAMERA_REFUSED`). O editor valida só o candidato final do lote (importador + gates), então aceita. Caso `intermediate-degenerate-then-target`.
+- *Eixos (H3).* Nenhum caso compara um caminho por eixo com a origem, porque ela não o tem. Os casos `axis` do corpus **compõem o vetor inteiro** (pose corrente com um eixo trocado) e o escrevem pela escrita da origem; provam eixo == pai com um eixo trocado, e só isso.
+- *Zoom no primeiro movimento com camada de FOV (H2).* Coberto por `zoom-first-with-fov-layer`: igual à origem frame a frame.
+
+**Oráculo fixo.** `docs/migration/fixtures/scene-edit/` (`cases.json`, `expected.json`, `manifest.json`) guarda 31
+casos sintéticos (15 conversões, 4 erros, 3 lotes, 2 comandos `setStart`, 3 no-ops, 2 por eixo composto, 1 órbita restaurada, 1 divergência de validação intermediária; os 24 originais não mudaram byte a byte) e, por caso, o clipe resultante e a
 pose de cada frame **como a própria `setProperties`/`resolveCameraAtClipFrame` da origem respondeu** (fontes reais
 empacotadas sem alteração, commit e hashes no manifesto; nada copiado para o repositório). Gerador:
 `node scripts/scene-edit-oracle/oracle.mjs generate`; conferência com regeneração byte a byte:
@@ -164,8 +174,11 @@ valor neutro (tamanho de plano, pose de câmera) `reset` é recusado com `NO_DEF
 3. Atomicidade: a entrada é `&DirectedScene`; qualquer falha deixa a cena do chamador intacta e não existe
    candidato. Uma op que escreve o valor atual não toca o documento (preserva a grafia dos números);
    componentes inalterados de um vetor e chaves desconhecidas dentro dele sobrevivem.
-4. `modified` é semântico (alguma propriedade terminou diferente de como começou); "alterar e restaurar" dá
-   `false`, embora o JSON do candidato possa grafar um número restaurado diferente (`1` × `1.0`).
+4. `modified` é semântico e por **dado**, não por path: para cada propriedade que o lote escreveu (um componente conta como o
+   vetor pai: `position/x` e `position` são o mesmo dado) compara-se o valor final do candidato com o da cena de entrada.
+   "Alterar e restaurar" dá `false`, por qualquer combinação de pai e eixo (`position/x → 9` e depois `position →` original é
+   `false`; `position → (2,y,z)`, `position/x → 5`, `position →` original, `position/x → 2` é `true`). Quando `false`, o
+   candidato **é a cena de entrada** (mesmo documento e grafia, sem keys de conversão) e `conversions` vem vazio.
 5. Números inteiros são gravados como inteiros (`16`, não `16.0`), como `JSON.stringify` na origem.
 6. **Reset**: escreve o default do catálogo (`position/x` → `0`, `scale/x` → `1`, `renderOrder` → `0`); sem default
    (`width`, `start/*`) é `NO_DEFAULT` e o lote inteiro falha. Reset de um valor que já é o default é no-op.
@@ -180,8 +193,8 @@ valor neutro (tamanho de plano, pose de câmera) `reset` é recusado com `NO_DEF
 | `UNKNOWN_PATH` | path fora da gramática/catálogo (a mensagem lista os nomes conhecidos) |
 | `UNKNOWN_SCENE` / `UNKNOWN_NODE` / `UNKNOWN_CLIP` | ID inexistente (`id` no erro) |
 | `NOT_APPLICABLE` | `width`/`height`/`renderOrder` em nó que não é `imagePlane` |
-| `INVALID_TYPE` | valor com forma errada (JSON estrito: chaves exatas, sem extras; `renderOrder` não inteiro) ou `PropertyValue` de outro tipo |
-| `INVALID_VALUE` | não finito ou fora da faixa |
+| `INVALID_TYPE` | valor com forma errada (JSON estrito: chaves exatas, sem extras; `renderOrder` não inteiro, como `1.5`) ou `PropertyValue` de outro tipo |
+| `INVALID_VALUE` | não finito ou fora da faixa; inclui um `renderOrder` inteiro além de ±(2^53−1) (`1e16`, inteiro acima de `i64::MAX`) |
 | `NO_DEFAULT` | `reset` sem default no catálogo |
 | `INVALID_OP` | op JSON que não é `{set,value}` nem `{reset}` |
 | `CANDIDATE_REJECTED` | ops válidas, mas importador ou gates estruturais/temporais recusam o candidato (`issues()`, `cause()`) |
@@ -208,8 +221,8 @@ printf '%s\n' \
 
 Contrato **aditivo e negociado**: `scene.capabilities` ganha `edit` (`catalog_version: 2`, `components`,
 `render_order`, `camera_start_conversion: "origin-keyframes"`, `batch: "atomic"`, `properties_option_components`);
-quem não lê o bloco recebe a listagem antiga (sem componentes), os mesmos oito `PropertySpec` na mesma ordem e
-respostas de `scene.edit` sem `conversions` quando nada converte. `scene.catalog` acrescenta por entrada
+quem não lê o bloco recebe a listagem padrão (sem componentes, mas **com** as linhas de `renderOrder` dos planos de imagem),
+as oito primeiras entradas de `scene.catalog` na mesma ordem e respostas de `scene.edit` sem `conversions` quando nada converte. `scene.catalog` acrescenta por entrada
 `component_of` (`{parent, index}` ou `null`), `optional` e `converts_first_movement`. `scene.tree` lista em `editable`
 também os caminhos de componente e `renderOrder` (S8 pode endereçar um eixo sem a janela).
 
@@ -226,10 +239,10 @@ Apresentação (foco, docking) é N/A para este módulo.
 
 | Superfície | Estado |
 |---|---|
-| Lib | **A validar** (S6). `scene_edit.rs` (29), `scene_edit_properties.rs` (25: componentes, `renderOrder`, conversão, rollback, reset, no-op, ordem de ops) e `scene_edit_oracle.rs` (5: 24 casos contra o oráculo fixo, controle negativo) passam via `cargo-serial.py test -p tessel-editor-core --locked`. Doctest e golden JSON ordenado da PR4 preservados |
-| CLI headless | **A validar** (S6). `crates/core/tests/scene_edit_session.rs` (5): capabilities/listagem/catálogo aditivos, lote de componentes + `renderOrder` como uma entrada de undo, lote recusado sem mutação, no-op sem entrada, conversão com dry-run igual ao apply, e o executável `tessel-headless` responde linha a linha como a lib |
-| UI (desktop) | **A validar** (S6). Testes de `scene_model.rs` (lista de propriedades sem componentes, `renderOrder` inteiro: slider, arredondamento, janela) e `scene_tests.rs` (`set` semântico de `renderOrder`, undo, componente sem controle duplicado) em GPUI headless de teste. **Sem** captura nativa nem ponteiro físico nesta fatia |
-| Oráculo | `node scripts/scene-edit-oracle/oracle.mjs verify` (regeneração byte a byte contra a origem, somente leitura) saiu 0 |
+| Lib | **A validar** (S6). `scene_edit.rs` (29), `scene_edit_properties.rs` (32: componentes, `renderOrder`, conversão, rollback, reset, no-op, ordem de ops, efeito líquido por dado, A→B→A, chaves desconhecidas, `INVALID_VALUE` de `renderOrder`) e `scene_edit_oracle.rs` (7: 31 casos contra o oráculo fixo, controle negativo, divergências medidas) passaram via `cargo-serial.py test -p tessel-editor-core --locked` no head da correção dos findings da revisão Opus. Doctest e golden JSON ordenado da PR4 preservados; **a suíte completa do core não foi reexecutada depois dessa correção** (disco abaixo do piso) |
+| CLI headless | **A validar** (S6). `crates/core/tests/scene_edit_session.rs` (8) e `scene_interaction.rs` (22, `scene.gesture.update`/`commit` com `conversions`): capabilities/listagem/catálogo aditivos (`origin` dos eixos), lote de componentes + `renderOrder` como uma entrada de undo, lote recusado sem mutação, no-op sem entrada, conversão com dry-run igual ao apply, o executável `tessel-headless` responde linha a linha como a lib, o lote com eixo escondido entre escritas do vetor é edição real com uma entrada de undo, restauração líquida é no-op, `renderOrder` fora da faixa é `invalid_value` |
+| UI (desktop) | **A validar** (S6). Testes de `scene_model.rs` (lista de propriedades sem componentes, `renderOrder` inteiro: slider, arredondamento, janela) e `scene_tests.rs` (`set` semântico de `renderOrder`, undo, componente sem controle duplicado; **arrastar o slider de `start/position`** converte o primeiro movimento ao soltar, uma entrada de undo, desfazer restaura a receita; `set` semântico do eixo informa `conversions`) em GPUI headless de teste (`scene_`: 91 passaram). **Sem** captura nativa nem ponteiro físico nesta fatia |
+| Oráculo | `node scripts/scene-edit-oracle/oracle.mjs verify` (regeneração byte a byte contra a origem, somente leitura) saiu 0 com os 31 casos; os 24 originais não mudaram |
 
 Limites: um editor geral de keyframes não existe; só o primeiro movimento é convertido; uma conversão de órbita usa
 cordas a cada 2 frames (igual à origem); `renderOrder` escrito no nó não vence uma passada de composição que o cubra.

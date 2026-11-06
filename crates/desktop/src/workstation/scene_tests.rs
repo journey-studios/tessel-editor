@@ -445,6 +445,110 @@ fn render_order_is_a_whole_number_property_set_reset_and_undone_like_any_other(
     assert_eq!(document_value(&view, cx, order), PropertyValue::Integer(1));
 }
 
+const CAMERA: &str = "camera/cam-main";
+const START: &str = "camera/cam-main/start/position";
+
+fn first_movement(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> Value {
+    view.read_with(cx, |view, _| {
+        let attached = view.state.scenes.get("street").unwrap();
+        attached.scene.document()["cameraClips"][0]["segments"][0].clone()
+    })
+}
+
+fn start_position(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> Vec3 {
+    let PropertyValue::Vec3(position) = document_value(view, cx, START) else {
+        panic!("the start position is a vector");
+    };
+    position
+}
+
+#[gpui_kit::test]
+fn dragging_the_camera_start_slider_converts_the_first_movement_once_and_undo_restores_it(
+    cx: &mut TestAppContext,
+) {
+    // BL005a: the surface of the origin-equivalent start write. The preview is a candidate; the
+    // conversion lands with the release, in the same single undo entry as the move.
+    let (view, cx) = mounted(cx, CAMERA);
+    let key = SliderKey {
+        scene: "street".into(),
+        entity: CAMERA.into(),
+        path: START.into(),
+        index: 0,
+    };
+    let original = start_position(&view, cx);
+    assert_eq!(first_movement(&view, cx)["recipe"], json!("dollyIn"));
+
+    let at = track_point(&view, cx, &key, 0.5);
+    press(cx, at);
+    for fraction in [0.55, 0.65, 0.75] {
+        let at = track_point(&view, cx, &key, fraction);
+        drag_to(cx, at);
+    }
+    assert!(gesture_open(&view, cx));
+    assert_eq!(first_movement(&view, cx)["recipe"], json!("dollyIn"));
+    assert_eq!(start_position(&view, cx), original);
+    assert_eq!(undo_depth(&view, cx), 0);
+    let PropertyValue::Vec3(previewed) = view
+        .read_with(cx, |view, _| view.scene_property_now(&key))
+        .unwrap()
+    else {
+        panic!("the start position is a vector");
+    };
+    assert_ne!(previewed.x, original.x, "the candidate shows the move");
+
+    let at = track_point(&view, cx, &key, 0.75);
+    release(cx, at);
+    assert!(!gesture_open(&view, cx));
+    assert_eq!(
+        undo_depth(&view, cx),
+        1,
+        "move and conversion are one entry"
+    );
+    let converted = first_movement(&view, cx);
+    assert_eq!(converted["recipe"], json!("keyframes"), "{converted}");
+    assert_eq!(converted["keys"].as_array().map(Vec::len), Some(1));
+    assert_eq!(start_position(&view, cx).x, previewed.x);
+
+    run_scene_undo(&view, cx);
+    assert_eq!(first_movement(&view, cx)["recipe"], json!("dollyIn"));
+    assert_eq!(start_position(&view, cx), original);
+}
+
+#[gpui_kit::test]
+fn the_semantic_set_of_a_camera_start_axis_converts_like_the_slider_and_says_so(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = mounted(cx, CAMERA);
+    let original = start_position(&view, cx);
+    let outcome = run_set(&view, cx, &property_node(START), "x", Raw::Number(2.5)).unwrap();
+    assert_eq!(outcome["changed"], json!(true), "{outcome}");
+    assert_eq!(
+        outcome["conversions"][0]["recipe"],
+        json!("dollyIn"),
+        "{outcome}"
+    );
+    assert_eq!(first_movement(&view, cx)["recipe"], json!("keyframes"));
+    assert_eq!(start_position(&view, cx).x, 2.5);
+    assert_eq!(undo_depth(&view, cx), 1);
+
+    run_scene_undo(&view, cx);
+    assert_eq!(first_movement(&view, cx)["recipe"], json!("dollyIn"));
+    assert_eq!(start_position(&view, cx), original);
+
+    // Writing the value the start already has converts nothing and leaves no entry.
+    let same = run_set(
+        &view,
+        cx,
+        &property_node(START),
+        "x",
+        Raw::Number(original.x),
+    )
+    .unwrap();
+    assert_eq!(same["changed"], json!(false), "{same}");
+    assert_eq!(first_movement(&view, cx)["recipe"], json!("dollyIn"));
+    assert_eq!(undo_depth(&view, cx), 0);
+}
+
 #[gpui_kit::test]
 fn a_gesture_begun_through_the_socket_is_shown_as_a_candidate_and_can_be_cancelled(
     cx: &mut TestAppContext,

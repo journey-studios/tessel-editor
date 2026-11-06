@@ -704,6 +704,97 @@ fn a_gesture_previews_apart_and_commits_as_one_undo_entry() {
     assert_eq!(undo_depth(&state), attached_depth);
 }
 
+const CAMERA: &str = "camera/cam-main";
+const START_X: &str = "camera/cam-main/start/position/x";
+
+fn first_recipe(state: &EditorState) -> Value {
+    document_of(state, "street")["cameraClips"][0]["segments"][0]["recipe"].clone()
+}
+
+#[test]
+fn a_gesture_on_the_camera_start_reports_its_conversion_and_commits_it_as_one_undo_entry() {
+    // BL005a: the slider of `start/position` is a gesture; the first movement becomes keys in the
+    // preview (separate from the document) and in the commit, as one entry. `conversions` rides
+    // on `update` and on `commit`, never when the candidate nets out to nothing.
+    let mut state = street();
+    let original = document_of(&state, "street");
+    let before = observable(&state);
+    let attached_depth = undo_depth(&state);
+    assert_eq!(first_recipe(&state), json!("dollyIn"));
+
+    let begun = ok(
+        &mut state,
+        json!({"op":"scene.gesture.begin","scene":"street","targets":[CAMERA]}),
+    );
+    let id = begun["gesture"].as_str().unwrap().to_string();
+
+    let first = update(&mut state, &id, vec![json!({"set": START_X, "value": 2})]);
+    assert_eq!(first["would_change"], true);
+    assert_eq!(first["document_changed"], false);
+    let conversions = first["conversions"].as_array().expect("conversions");
+    assert_eq!(conversions.len(), 1, "{first}");
+    assert_eq!(conversions[0]["clip"], "cam-main");
+    assert_eq!(conversions[0]["segment"], 0);
+    assert_eq!(conversions[0]["recipe"], "dollyIn");
+    assert_eq!(conversions[0]["keys"], 1);
+    // The preview converted; the document did not.
+    assert_eq!(observable(&state), before);
+    assert_eq!(first_recipe(&state), json!("dollyIn"));
+
+    // Absolute from the base, so a second update converts from the base again, once.
+    let second = update(&mut state, &id, vec![json!({"set": START_X, "value": 3})]);
+    assert_eq!(second["conversions"].as_array().unwrap().len(), 1);
+    assert_eq!(second["changes"][0]["before"], json!(0));
+
+    // Back to where it started within the same update: nothing to commit, nothing converted.
+    let back = update(
+        &mut state,
+        &id,
+        vec![
+            json!({"set": START_X, "value": 2}),
+            json!({"set": START_X, "value": 0}),
+        ],
+    );
+    assert_eq!(back["would_change"], false);
+    assert!(back.get("conversions").is_none(), "{back}");
+
+    update(&mut state, &id, vec![json!({"set": START_X, "value": 3})]);
+    let committed = ok(
+        &mut state,
+        json!({"op":"scene.gesture.commit","gesture":id}),
+    );
+    assert_eq!(committed["changed"], true);
+    assert_eq!(committed["document_changed"], true);
+    assert_eq!(committed["conversions"].as_array().unwrap().len(), 1);
+    assert_eq!(committed["conversions"][0]["recipe"], "dollyIn");
+    assert_eq!(first_recipe(&state), json!("keyframes"));
+    assert_eq!(
+        document_of(&state, "street")["cameraClips"][0]["initialPosition"]["x"],
+        3
+    );
+    assert_eq!(
+        undo_depth(&state),
+        attached_depth + 1,
+        "the conversion is part of the one entry"
+    );
+
+    // The same batch sent as `scene.edit` gives the same document.
+    let mut direct = street();
+    ok(
+        &mut direct,
+        json!({"op":"scene.edit","scene":"street","ops":[{"set": START_X, "value": 3}]}),
+    );
+    assert_eq!(
+        document_of(&state, "street"),
+        document_of(&direct, "street")
+    );
+
+    ok(&mut state, json!({"op":"history.undo"}));
+    assert_eq!(document_of(&state, "street"), original);
+    assert_eq!(first_recipe(&state), json!("dollyIn"));
+    assert_eq!(undo_depth(&state), attached_depth);
+}
+
 #[test]
 fn cancel_discards_the_candidate_and_leaves_no_trace() {
     let mut state = street();

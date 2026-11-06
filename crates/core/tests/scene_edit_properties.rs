@@ -10,9 +10,9 @@ use tessel_editor_core::CommandError;
 use tessel_editor_core::directed_scene::{DirectedScene, Vec3};
 use tessel_editor_core::scene_edit::{
     CAMERA_CONVERSION_FAILED, CANDIDATE_REJECTED, CameraProperty, ComponentOf, EditError, EditOp,
-    INVALID_OP, NO_DEFAULT, NOT_APPLICABLE, NodeProperty, PropertyId, PropertyRef, PropertyValue,
-    Unit, ValueKind, apply, catalog, dry_run, properties_of, properties_with_components,
-    read_property,
+    INVALID_OP, NO_DEFAULT, NOT_APPLICABLE, NodeProperty, OriginRelation, PropertyId, PropertyRef,
+    PropertyValue, Unit, ValueKind, apply, catalog, dry_run, properties_of,
+    properties_with_components, read_property,
 };
 
 const LAYERED: &str = include_str!("directed_scene_fixtures/layered_scene.json");
@@ -126,7 +126,14 @@ fn components_are_catalogued_next_to_their_parent_with_unit_default_and_applicab
                 (Some(PropertyValue::Number(value)), false) => assert_eq!(*value, defaults),
                 other => panic!("{}: unexpected default {other:?}", spec.name),
             }
-            assert_eq!(spec.origin, owner.origin, "{}", spec.name);
+            // A node axis is what its parent is (editor-only); a camera-start axis is the parent's
+            // write with one axis replaced, not the origin's path (BL004c).
+            let expected = if spec.name.starts_with("start/") {
+                OriginRelation::ParentWrite
+            } else {
+                owner.origin
+            };
+            assert_eq!(spec.origin, expected, "{}", spec.name);
         }
     }
     // A whole vector is never a component.
@@ -813,4 +820,220 @@ fn start_components_go_through_the_same_validation_as_the_whole_vector() {
         )],
     ));
     assert!(matches!(error.code, "INVALID_TYPE" | INVALID_OP), "{error}");
+}
+
+// ---- net effect: a component and its parent are one datum (BL004a, BL005b) -----------------
+
+/// `position` of the hero plane in the fixture is `(3, 0, 0)`; `start/position` of `wide` is
+/// `(0, 2, 10)`.
+fn hero_x(scene: &DirectedScene) -> f64 {
+    xyz(&hero_json(scene)["localPosition"])[0]
+}
+
+#[test]
+fn an_axis_edit_that_survives_a_parent_restore_in_between_is_a_real_edit() {
+    // position -> (2,0,0); position/x -> 5; position -> (3,0,0) (the original); position/x -> 2.
+    // Judged per path the vector looks restored and `position/x` looks like 2 -> 2, so a real edit
+    // used to be reported as a no-op and discarded.
+    let scene = fixture();
+    let outcome = apply(
+        &scene,
+        &[
+            set(
+                node("hero-plane", NodeProperty::Position),
+                vec3(2.0, 0.0, 0.0),
+            ),
+            set(node("hero-plane", NodeProperty::PositionX), number(5.0)),
+            set(
+                node("hero-plane", NodeProperty::Position),
+                vec3(3.0, 0.0, 0.0),
+            ),
+            set(node("hero-plane", NodeProperty::PositionX), number(2.0)),
+        ],
+    )
+    .expect("applies");
+    assert!(outcome.summary.modified, "{:?}", outcome.summary);
+    assert_eq!(hero_x(&outcome.candidate), 2.0);
+    assert_eq!(hero_x(&scene), 3.0);
+}
+
+#[test]
+fn the_same_sequence_on_the_camera_start_is_a_real_edit_and_keeps_its_conversion() {
+    let scene = fixture();
+    let outcome = apply(
+        &scene,
+        &[
+            set(clip(CameraProperty::StartPosition), vec3(2.0, 2.0, 10.0)),
+            set(clip(CameraProperty::StartPositionX), number(5.0)),
+            set(clip(CameraProperty::StartPosition), vec3(0.0, 2.0, 10.0)),
+            set(clip(CameraProperty::StartPositionX), number(2.0)),
+        ],
+    )
+    .expect("applies");
+    assert!(outcome.summary.modified);
+    assert_eq!(
+        xyz(&clip_json(&outcome.candidate)["initialPosition"]),
+        [2.0, 2.0, 10.0]
+    );
+    assert_eq!(segment_recipes(&outcome.candidate)[0], "keyframes");
+    assert_eq!(outcome.summary.conversions.len(), 1);
+}
+
+#[test]
+fn an_axis_restored_by_the_parent_vector_is_a_net_no_op_with_nothing_left_behind() {
+    // position/x -> 9, then position -> the original vector: nothing changed. Judged per path the
+    // two writes looked like a change, and the scene would have been replaced and dirtied.
+    let scene = fixture();
+    let outcome = apply(
+        &scene,
+        &[
+            set(node("hero-plane", NodeProperty::PositionX), number(9.0)),
+            set(
+                node("hero-plane", NodeProperty::Position),
+                vec3(3.0, 0.0, 0.0),
+            ),
+        ],
+    )
+    .expect("applies");
+    assert!(!outcome.summary.modified);
+    assert_eq!(outcome.summary.changed_count(), 2, "both ops did write");
+    assert_eq!(outcome.candidate.document(), scene.document());
+
+    // The same on the camera start, where the first write also converts the first movement.
+    let outcome = apply(
+        &scene,
+        &[
+            set(clip(CameraProperty::StartPositionX), number(9.0)),
+            set(clip(CameraProperty::StartPosition), vec3(0.0, 2.0, 10.0)),
+        ],
+    )
+    .expect("applies");
+    assert!(!outcome.summary.modified);
+    assert_eq!(outcome.candidate.document(), scene.document());
+}
+
+#[test]
+fn a_start_set_and_restored_converts_nothing_for_the_caller() {
+    // A -> B -> A: the first write converts inside the batch, but the net effect is nil, so the
+    // answer is a no-op with the input scene back and no conversion listed. (The origin would keep
+    // the keys its first write made; the editor treats a net no-op as nothing. Documented in
+    // F034 and in the header of `scene_edit_oracle.rs`.)
+    let scene = fixture();
+    let ops = [
+        set(clip(CameraProperty::StartPosition), vec3(1.0, 2.0, 10.0)),
+        set(clip(CameraProperty::StartPosition), vec3(0.0, 2.0, 10.0)),
+    ];
+    let outcome = apply(&scene, &ops).expect("applies");
+    assert!(!outcome.summary.modified);
+    assert!(outcome.summary.conversions.is_empty());
+    assert_eq!(outcome.candidate.document(), scene.document());
+    assert_eq!(segment_recipes(&outcome.candidate)[0], "dollyIn");
+    let summary = dry_run(&scene, &ops).expect("dry run");
+    assert_eq!(summary, outcome.summary);
+
+    // An orbit is the case where keys would not be the same movement (chords between keys): the
+    // candidate must be the arc the input had, frame by frame.
+    let mut doc = document();
+    doc["cameraClips"][0]["segments"][0] = json!({
+        "recipe": "orbit", "durationFrames": 24, "from": "initial",
+        "yawDeg": 120, "easing": "linear"
+    });
+    let orbit = scene_of(doc);
+    let outcome = apply(&orbit, &ops).expect("applies");
+    assert!(!outcome.summary.modified);
+    for frame in (1..24).step_by(2) {
+        let before = orbit
+            .bundle()
+            .camera_at_clip_frame("wide", frame)
+            .expect("before");
+        let after = outcome
+            .candidate
+            .bundle()
+            .camera_at_clip_frame("wide", frame)
+            .expect("after");
+        assert_eq!(before.position, after.position, "frame {frame}");
+    }
+}
+
+#[test]
+fn a_restored_start_with_another_real_edit_keeps_the_conversion_it_made() {
+    // The batch is not a no-op (the field of view changed), so what the first write did stays, as
+    // in the origin, and the conversion is reported because it is in the candidate.
+    let scene = fixture();
+    let outcome = apply(
+        &scene,
+        &[
+            set(clip(CameraProperty::StartPosition), vec3(1.0, 2.0, 10.0)),
+            set(clip(CameraProperty::StartPosition), vec3(0.0, 2.0, 10.0)),
+            set(clip(CameraProperty::StartFov), number(40.0)),
+        ],
+    )
+    .expect("applies");
+    assert!(outcome.summary.modified);
+    assert_eq!(outcome.summary.conversions.len(), 1);
+    assert_eq!(segment_recipes(&outcome.candidate)[0], "keyframes");
+}
+
+#[test]
+fn a_conversion_keeps_the_fields_the_schema_does_not_declare() {
+    // The importer keeps and reports unknown fields; a conversion must not drop them silently.
+    // (The origin drops them too, but its zod parse strips them before any command sees them.)
+    let mut doc = document();
+    doc["cameraClips"][0]["segments"][0]["note"] = json!("hand-written");
+    doc["cameraClips"][0]["segments"][0]["extra"] = json!({"kept": true});
+    let scene = scene_of(doc);
+    let outcome = apply(
+        &scene,
+        &[set(
+            clip(CameraProperty::StartPosition),
+            vec3(1.0, 2.0, 10.0),
+        )],
+    )
+    .expect("applies");
+    let segment = &clip_json(&outcome.candidate)["segments"][0];
+    assert_eq!(segment["recipe"], json!("keyframes"));
+    assert_eq!(segment["note"], json!("hand-written"));
+    assert_eq!(segment["extra"], json!({"kept": true}));
+    // What the recipe owned is retired with it.
+    assert!(segment.get("easing").is_none());
+    assert!(segment.get("distanceSceneUnits").is_none());
+    // Both are still reported as unknown fields by the importer.
+    let notices: Vec<String> = outcome
+        .candidate
+        .notices()
+        .iter()
+        .map(|notice| notice.path.clone())
+        .collect();
+    assert!(
+        notices.contains(&"/cameraClips/0/segments/0/note".to_string()),
+        "{notices:?}"
+    );
+}
+
+#[test]
+fn render_order_beyond_what_a_number_holds_is_a_value_error_not_a_type_error() {
+    let scene = fixture();
+    let code_of = |value: Value| {
+        let ops = tessel_editor_core::scene_edit::parse_batch(&json!([
+            {"set": "scene/street/node/hero-plane/renderOrder", "value": value}
+        ]));
+        match ops {
+            Err(error) => error.code,
+            Ok(ops) => failure(apply(&scene, &ops)).code,
+        }
+    };
+    // Whole, but outside +-(2^53 - 1): a float and integers above and below `i64`.
+    for value in [
+        json!(1e16),
+        json!(-1e16),
+        json!(1e300),
+        json!(18_446_744_073_709_551_615_u64),
+        json!(9_223_372_036_854_775_807_i64),
+    ] {
+        assert_eq!(code_of(value.clone()), "INVALID_VALUE", "{value}");
+    }
+    // Not whole, or not a number: still a type error.
+    for value in [json!(0.5), json!(1e-3), json!("7"), json!(null), json!([1])] {
+        assert_eq!(code_of(value.clone()), "INVALID_TYPE", "{value}");
+    }
 }

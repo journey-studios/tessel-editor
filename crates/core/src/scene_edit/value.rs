@@ -2,7 +2,7 @@
 
 use serde_json::{Map, Number, Value, json};
 
-use crate::directed_scene::{INVALID_TYPE, Quat, Vec3};
+use crate::directed_scene::{INVALID_TYPE, INVALID_VALUE, Quat, Vec3};
 
 use super::error::EditError;
 
@@ -82,14 +82,26 @@ fn number(value: &Value, what: &str) -> Result<f64, EditError> {
 }
 
 /// A whole number: a JSON integer, or a float with no fractional part (`2.0`, as the importer
-/// reads one). Anything else is a type error; the magnitude is the catalog's range check.
+/// reads one). A number that is whole but beyond what a JS number holds exactly (`1e16`, an
+/// integer above `i64::MAX`) is a value error, like any other integer out of the catalog's range;
+/// anything that is not whole (`1.5`, a string) is a type error.
 fn integer(value: &Value, what: &str) -> Result<i64, EditError> {
-    whole(value).ok_or_else(|| {
-        EditError::new(
-            INVALID_TYPE,
-            format!("{what} must be a whole number, got {}", json_kind(value)),
-        )
-    })
+    if let Some(integer) = whole(value) {
+        return Ok(integer);
+    }
+    if value
+        .as_f64()
+        .is_some_and(|float| float.is_finite() && float.fract() == 0.0)
+    {
+        return Err(EditError::new(
+            INVALID_VALUE,
+            format!("{what} must be a whole number of at most 2^53 - 1 in magnitude, got {value}"),
+        ));
+    }
+    Err(EditError::new(
+        INVALID_TYPE,
+        format!("{what} must be a whole number, got {}", json_kind(value)),
+    ))
 }
 
 /// `Some` for an integral JSON number whose magnitude an `i64` (and a JS number) holds exactly.

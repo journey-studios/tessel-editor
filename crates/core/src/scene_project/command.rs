@@ -126,8 +126,9 @@ pub enum SceneCommand {
         scene: String,
         /// Keeps the properties whose canonical path starts with it (`scene/street/node/`).
         path_prefix: Option<String>,
-        /// Also lists the component properties (`position/x`); off by default, so the listing
-        /// of an older caller keeps its shape.
+        /// Also lists the component properties (`position/x`); off by default. The default
+        /// listing is not the first slice's: it lists the original eight kinds plus `renderOrder`
+        /// of image planes; only the components are opt-in.
         components: bool,
     },
     Get {

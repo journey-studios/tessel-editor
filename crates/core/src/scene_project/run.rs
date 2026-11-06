@@ -279,9 +279,9 @@ impl EditorState {
             ));
         }
         if !summary.modified {
-            // WHY not replace with the equal candidate: it may spell a restored number
-            // differently (`1` vs `1.0`), and a command that changes nothing must not dirty the
-            // project nor leave an undo entry.
+            // WHY no replacement: a command whose net effect is nil must not dirty the project
+            // nor leave an undo entry. The candidate is the input scene itself in that case (no
+            // restored number spelled differently, no keys from a conversion made on the way).
             return Ok(with_conversions(
                 json!({
                     "action": "scene.edit", "scene": id, "dry_run": false, "changed": false,

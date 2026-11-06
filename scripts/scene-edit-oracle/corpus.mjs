@@ -3,6 +3,18 @@
 // uma lista de atribuições por caminho, exatamente o que `setProperties` da origem recebe.
 // Este arquivo só descreve ENTRADAS e a intenção de cada caso; o resultado esperado é sempre o que
 // a origem responde (ver oracle.mjs), nunca uma regra reimplementada aqui.
+//
+// Famílias: `convert`/`command`/`batch`/`noop`/`error` (a origem e o editor respondem igual, salvo
+// as divergências abaixo), e quatro que existem justamente para NÃO esconder diferenças:
+//   - `axis`: a origem NÃO tem caminho por eixo (`start/position/x`). O harness compõe o vetor
+//     inteiro (pose corrente com um eixo trocado) e o escreve em `start/position`/`setStart` da
+//     origem; o esperado é o dessa escrita composta, não de um caminho da origem. É a
+//     equivalência "eixo == pai com um eixo trocado", nada além.
+//   - `divergence`: a origem recusa uma escrita INTERMEDIÁRIA (ela valida cada escrita no bundle
+//     inteiro); o editor valida só o candidato final do lote. Por desenho, provado em Rust.
+//   - `noop`/`restore-orbit`: escrever B e voltar a A (também por eixo + vetor inteiro). A origem já converteu na primeira escrita e
+//     fica com keys; o editor trata o efeito líquido nulo como nada (documento intocado). Sem
+//     diferença de pose para movimentos retos; para órbita as cordas da origem diferem do arco.
 
 const START = { position: { x: 2, y: 1, z: 9 }, target: { x: 0, y: 1, z: 0 }, fovDeg: 50 }
 const MOVED = { x: 3.5, y: 1.5, z: 8 }
@@ -130,6 +142,8 @@ const key = (frame, position, target, fovDeg, easing) => ({ frame, position, tar
 const tail = () => [dolly("dollyIn", 10, 1), hold(6)]
 
 const startPosition = (value) => ({ path: `camera/${CLIP}/start/position`, value })
+const startTarget = (value) => ({ path: `camera/${CLIP}/start/target`, value })
+const axis = (group, name, value) => ({ path: `camera/${CLIP}/start/${group}/${name}`, value })
 
 const withTail = (first) => clipOf([first, ...tail()])
 
@@ -195,6 +209,13 @@ export const cases = [
     clip: withTail(dolly("dollyOut", 12, 2)),
     assignments: [startPosition(MOVED), startPosition(vec(-1, 2, 7))],
   },
+  { id: "noop-restored-start", family: "noop", intent: "start moved and put back: the origin converted on the first write and keeps keys, this editor leaves the document alone (a dolly makes the same frames either way)", clip: withTail(dolly("dollyIn", 12, 2)), assignments: [startPosition(MOVED), startPosition(START.position)] },
+  { id: "restore-orbit", family: "restore-orbit", intent: "same on an orbit: the origin's keys are chords of the arc, the editor keeps the arc; the gap is the chord error, measured by the consumer", clip: withTail(orbit(20, 40, 10)), assignments: [startPosition(MOVED), startPosition(START.position)] },
+  { id: "zoom-first-with-fov-layer", family: "convert", intent: "a zoom as first movement with a field-of-view layer over the main track", clip: clipOf([zoom("zoomIn", 9, 12, "easeOutCubic"), ...tail().slice(1)], [{ segments: [zoom("zoomOut", 16, 6, "linear")] }]), assignments: [startPosition(MOVED)] },
+  { id: "axis-x-orbit", family: "axis", intent: "one axis of the start position converts an orbit exactly like the whole vector", clip: withTail(orbit(12, 40, 10)), assignments: [axis("position", "x", 3.5)] },
+  { id: "axis-batch-mixed", family: "axis", intent: "axes of position and target in one batch, each seeing the vector the previous write left", clip: withTail(dolly("dollyOut", 12, 2)), assignments: [axis("position", "y", 1.5), axis("target", "x", 0.5), axis("position", "z", 8), axis("target", "z", 0.25)] },
+  { id: "axis-restored-by-vector", family: "noop", intent: "an axis written and the whole vector put back: the origin ends on the original start, with keys from the first write", clip: withTail(dolly("dollyIn", 12, 2)), assignments: [axis("position", "x", 3.5), startPosition(START.position)] },
+  { id: "intermediate-degenerate-then-target", family: "divergence", intent: "position on the target is refused by the origin as a write of its own; the editor judges the final candidate, where the target has moved", clip: withTail(dolly("dollyIn", 12, 2)), assignments: [startPosition(vec(0, 1, 0)), startTarget(vec(0.5, 1.2, 0))] },
   { id: "refused-degenerate", family: "error", intent: "position on the target: the origin refuses the camera", clip: withTail(dolly("dollyIn", 12, 2)), assignments: [startPosition(vec(0, 1, 0))] },
   { id: "refused-fov", family: "error", intent: "180 degrees is not a field of view", clip: withTail(dolly("dollyIn", 12, 2)), assignments: [{ path: `camera/${CLIP}/start/fov`, value: 180 }] },
   {

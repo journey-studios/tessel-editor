@@ -30,9 +30,25 @@ use super::error::{CAMERA_CONVERSION_FAILED, DOCUMENT_MISMATCH, EditError};
 use super::value::{PropertyValue, ValueKind};
 
 /// How many frames apart the keys of a converted orbit are (the origin's
-/// `ORBIT_KEY_STEP_FRAMES`): close enough for the chords to stay within a fraction of a percent of
-/// the radius.
+/// `ORBIT_KEY_STEP_FRAMES`). The straight spans between keys are chords of the arc; measured on the
+/// oracle's orbit (40 degrees eased over 20 frames) the largest gap is 1.06% of the radius
+/// (`scene_edit_oracle.rs`), and it grows with how fast the orbit turns.
 const ORBIT_KEY_STEP: u64 = 2;
+
+/// Every field the schema declares on a movement, whatever its recipe: the ones a conversion
+/// rebuilds (`recipe`, `durationFrames`, `from`, `keys`) and the recipe-specific ones it retires
+/// (`easing`, `distanceSceneUnits`, `fovDeltaDeg`, `yawDeg`, `pitchDeg`).
+const SCHEMA_KEYS: [&str; 9] = [
+    "recipe",
+    "durationFrames",
+    "from",
+    "keys",
+    "easing",
+    "distanceSceneUnits",
+    "fovDeltaDeg",
+    "yawDeg",
+    "pitchDeg",
+];
 
 /// A movement that was turned into keys by a write of the batch.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -163,7 +179,7 @@ pub(super) fn convert_first_movement(
         SegmentStart::Initial => "initial",
         SegmentStart::PreviousEnd => "previousEnd",
     };
-    let converted = json!({
+    let mut converted = json!({
         "recipe": "keyframes",
         "durationFrames": segment.duration_frames,
         "from": from,
@@ -172,6 +188,16 @@ pub(super) fn convert_first_movement(
     let slot = work
         .pointer_mut(&pointer)
         .ok_or_else(|| mismatch(format!("`{pointer}` vanished")))?;
+    // Fields the schema does not declare stay on the movement: the document is the canonical data
+    // and the importer keeps and reports unknown fields (F031). The origin drops them, but it
+    // never sees them (its zod parse strips them before any command runs).
+    if let (Some(old), Some(new)) = (slot.as_object(), converted.as_object_mut()) {
+        for (key, value) in old {
+            if !SCHEMA_KEYS.contains(&key.as_str()) {
+                new.insert(key.clone(), value.clone());
+            }
+        }
+    }
     *slot = converted;
     Ok(Some(MovementConversion {
         index,
