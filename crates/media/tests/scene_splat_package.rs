@@ -1,4 +1,4 @@
-//! F044 (S7, BL025 subset): a Gaussian splat of a directed scene travels like any other approved
+//! F048 (S7, BL025 subset): a Gaussian splat of a directed scene travels like any other approved
 //! resource — adopted into the project, packed, restored without the originals, resolved again.
 //!
 //! Synthetic (procedural PNG/SPZ, the repo's minimal bundle restated with real hashes); no

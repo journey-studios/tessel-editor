@@ -1,14 +1,16 @@
-# F044 — Splat Spark numa cena dirigida (S7, subconjunto de BL025)
+# F048 — Splat Spark numa cena dirigida (S7, subconjunto de BL025)
 
-> O número F044 foi escolhido por esta frente; o coordenador renumera se outra frente da rodada S1–S10
-> usar o mesmo.
+> F048: o F044 já é do aceite independente do S10 (PR #8, `scene-acceptance.md`); esta frente usa F048 para
+> não colidir. O coordenador renumera se outra frente da rodada S1–S10 usar o mesmo.
 
 ## Status
 
 Lib, runtime e CLI headless **V no corpus sintético** (Chrome real, SwiftShader); pacote **V**
-(diretório e arquivo, sem as origens). Monitor nativo (WKWebView) **a validar**: usa o mesmo
-`SceneSlots`/runtime, mas esta frente não rodou a prova nativa. Luz, clima, rigs e mapas de dados
-em nó `splat` continuam **recusados** por `unsupported`, com o nome do domínio.
+(diretório e arquivo, sem as origens); export **V** com cópia privada do `spz` aprovado (S3/BL109, integrado).
+Monitor nativo (WKWebView) **V no corpus independente do S10** (`scripts/scene-splat-native-proof.py`, 119/119
+checks, instância própria, só pedidos semânticos). Cor guardada do splat (BL019-F1) **corrigida** e provada
+com controle negativo. Luz, clima, rigs e mapas de dados em nó `splat` continuam **recusados** por
+`unsupported`, com o nome do domínio. Aceite independente do S10: ver [Aceite S10](#aceite-independente-s10-pr-8).
 
 ## Objetivo e limites
 
@@ -84,7 +86,12 @@ da conversão), por isso os testes antigos passavam.
 - Cada quadro empresta uma malha ao splat (`splatLease`) e a devolve ao terminar ou ao ser
   abortado; o mesmo arquivo em dois nós dá duas malhas, liberadas com o quadro. Perda de contexto
   reconstrói das bytes guardadas.
-- Imutabilidade das bytes durante export é do S3 (BL109); o seam é o mesmo mapa aprovado.
+- Export (S3/BL109, integrado): o `spz` aprovado entra no conjunto de recursos exigidos do job
+  (`required_assets` vem do plano), é copiado e conferido por SHA-256 para a cópia privada 0444 do próprio
+  estágio e o renderer lê a cópia, não o original. Arquivos do diretório do bundle que o manifesto não aprovou
+  não viajam (teste). Trocar o original (mesmo tamanho) depois do `resolve` é `resource_changed`; removê-lo é
+  `preflight_failed`; reescrevê-lo **durante** o job não chega a nenhum quadro (hashes iguais aos do export de
+  referência); cancelar remove só o estágio do próprio job.
 
 ## CLI headless
 
@@ -109,3 +116,43 @@ Ver a seção de resultados abaixo e `docs/backlog.md` (BL025).
 | Runtime em Chrome | mesmo arquivo (5–10) | posição por oráculo pinhole independente, splat entre planos por profundidade (atrás, na frente, entre dois), cor guardada vs. imagem (BL019-F1), ordem/repetição/frio, compartilhamento, recusas tipadas, perda de contexto |
 | Host/render | `crates/render/tests/scene_splat_frames.rs` | frame headless 0 e 24 contra oráculo, mesmo hash em qualquer ordem, arquivo não-SPZ, export = `scene.render` quadro a quadro e MP4 verificado |
 | Pacote | `crates/media/tests/scene_splat_package.rs` | adoção, pacote (dir e arquivo), restauração sem origens, mesmo hash, replanejamento |
+
+### Provas adicionadas na recuperação (S3/S4 integrados)
+
+| Superfície | Teste | Prova |
+|---|---|---|
+| Export + snapshot (lib/JSONL, Chrome real) | `crates/render/tests/scene_splat_frames.rs` | só o recurso aprovado entra na cópia privada (arquivo não declarado ao lado não viaja; `snapshot.files == 3`); troca de mesmo tamanho → `resource_changed` (`asset:cloud`), outro tamanho/ausente recusados, nada fica; reescrita **durante** o job não chega a nenhum quadro (hashes dos 12 quadros iguais aos do export de referência); cancelar remove só o estágio próprio (pasta alheia `.tessel-*` sobrevive) |
+| Janela nativa (WKWebView) | `scripts/scene-splat-native-proof.py --corpus <corpus do S10>` | 5 quadros (câmera se move): monitor convergiu, hash do monitor = hash do `scene.render` do mesmo quadro, centro de cada splat com a cor guardada (≤ 24) e fundo plano; controles: 40 px ao lado não é a cor, a cor escurecida pelo caminho antigo não é a cor; `asset.identity` negociado e todas as cargas carimbadas; runtime e livro de slots têm o mesmo número de recursos |
+
+A prova nativa lê o corpus do S10 (esperados do oráculo independente) por `--corpus`, somente leitura; ele não é
+copiado para este repositório (PR #8 é a dona).
+
+### Aceite independente S10 (PR #8)
+
+Harness e corpus do PR #8 (head `0d95be1`, `tolerances.json` sha256 `696c3cd1…1ed1c722`, **sem alterar nenhum
+limite nem verificador**) copiados para um scratch somente leitura e executados contra o `tessel-render` desta
+branch (debug, runtime real, SwiftShader, sob o lock da GPU):
+
+| Fase | Resultado |
+|---|---|
+| `tolerances_frozen` | não executável no scratch (precisa do git do PR #8); o sha256 do `tolerances.json` copiado foi conferido idêntico ao de `origin/pr8` |
+| `controls_*`, `camera_*`, `baseline_splat_geometry`, `baseline_audio`, `audio_off`, `package_*`, `corpus`, `models` | PASS (sem regressão) |
+| `baseline_splat_colour` (BL019-F1) | **PASS 7/7** (antes: FAIL, `(230,49,49)` saía `(203,7,7)`) |
+| `splat_plan` | PASS 78/78 |
+| `splat_render` | **FAIL 165/167** |
+| `splat_export` | **FAIL 186/187** |
+| `splat_package` | **FAIL 59/60** |
+| `audio_export`, `audio_package_export`, `full_av` | **BLOCKED** (S9/BL016 não integrado) |
+
+As quatro falhas são a **mesma regra**: `s-order back centre: the front splat's colour wins within 40`, nos quadros
+36 e 47 (em 0/12/23/24 passa). O corpus do oráculo coloca, nesses quadros, o centro do splat de trás a 10,6 e 11,6 px
+do centro do da frente (sigma da frente ≈ 15,7 px); o splat da frente tem alfa gaussiana ≈ 0,80/0,76 ali, e a regra
+exige que a cor da frente "vença" como se fosse opaca. Predição independente com o próprio `expected.json`
+(`a·frente + (1−a)·trás`): `(197,161,69)` e `(190,163,76)`; medido `(198,161,68)` e `(190,163,75)`: o renderer
+pinta o que a física da mistura pede, a frente por cima (a regra "longe da cor de trás ≥ 80" passa). A tolerância
+não foi relaxada e o oráculo não foi tocado: é **BL120** (emenda do S10, fora do S7) e a fase continua FAIL neste
+documento. Controle negativo da correção de cor: com `keepStoredColour` desligado o mesmo harness volta a medir
+`(203,7,7)`, `(7,149,15)`, `(104,11,149)` e as fases de cor falham.
+
+`full_av` precisa do mix de áudio do S9 (`scene.export` ainda recusa o bundle com áudio): fica BLOCKED e não conta
+como pass. As fases `splat_*` devem ser reexecutadas (BL121) com o merge de S7 e S9 e a emenda BL120.

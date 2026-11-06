@@ -1,4 +1,4 @@
-//! F044 — Gaussian splats in the directed-scene plan (S7, BL025 subset), through the public
+//! F048 — Gaussian splats in the directed-scene plan (S7, BL025 subset), through the public
 //! library API only: no GPUI, no window, no runtime, no IO beyond the fixtures.
 //!
 //! Proved here: a splat node is *evaluated* (it becomes `ScenePlan::splats` with its world matrix

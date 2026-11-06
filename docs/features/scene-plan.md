@@ -19,7 +19,7 @@ O plano **não reimplementa** câmera, animação nem matrizes: usa `Bundle::eva
 
 Fora do escopo desta entrega (listado no plano como **domínio não avaliado**, nunca omitido):
 luz, clima, efeitos, rigs, caminhos, `reveal`, mapas de dados dos nós (`surface`, `normalMap`,
-`sceneDepth`, `relief`). Nós `splat` entram desde [F044](scene-splat.md) (matriz e recurso aprovado; sem luz, clima ou rig). Também fora: IO, GPUI, resolução/leitura de arquivos,
+`sceneDepth`, `relief`). Nós `splat` entram desde [F048](scene-splat.md) (matriz e recurso aprovado; sem luz, clima ou rig). Também fora: IO, GPUI, resolução/leitura de arquivos,
 áudio/narração (BL016), os gates `temporal_issues()`/`edit_join_issues()` (o adapter que habilitar
 cenas deve chamá-los antes; o plano não os roda).
 
@@ -85,7 +85,7 @@ Evidência de custo e tamanho (medida, não suposta): ver "BL064 — medição" 
 | `nodes` | Todos os nós da definição, em ordem de documento: tipo, pai (nó ou socket), posição/rotação (Euler°)/escala locais, `local_matrix` e `world_matrix` (column-major, 16 números), `renderOrder` próprio, `asset_id`, tamanho em unidades de cena |
 | `layers` | Planos de imagem **de trás para frente**: nó, `asset_id`, `alpha` do asset, `render_order` próprio, `pass_order` (passe de composição) |
 | `resources` | Texturas requeridas, **ordenadas por `assetId` (bytes), sem repetição**: `revision_id`, `content_hash`, `relative_path`, formato, dimensões, alpha, espaço de cor, `used_by` (nós, em ordem de documento) |
-| `requires` | `Capability`s que o conteúdo exige: `camera`, `nodeTransforms`, `sockets`, `performanceChannels`, `imagePlanes`, `straightAlpha`, `opaqueAlpha`, `compositionPassOrder`, `splats` (só com nó `splat`; F044). Ascendente. Um plano sem camada opaca não pede `opaqueAlpha` |
+| `requires` | `Capability`s que o conteúdo exige: `camera`, `nodeTransforms`, `sockets`, `performanceChannels`, `imagePlanes`, `straightAlpha`, `opaqueAlpha`, `compositionPassOrder`, `splats` (só com nó `splat`; F048). Ascendente. Um plano sem camada opaca não pede `opaqueAlpha` |
 | `unsupported` | `UnsupportedDomain { domain, subject }` ordenados; vazio no plano completo |
 | `uninterpreted` | Campos do bundle que o importador preservou e o plano não interpreta (JSON Pointer + motivo), ordenados por ponteiro |
 
@@ -95,7 +95,7 @@ Evidência de custo e tamanho (medida, não suposta): ver "BL064 — medição" 
 |---|---|
 | Identidade de asset | **`assetId`.** `relative_path` é metadado (declarado, relativo à pasta do bundle, nunca absoluto — o plano recusa `..`, absoluto e drive); `revision_id`/`content_hash` servem a quem resolve e verifica o arquivo. O plano **não verifica** se o arquivo existe (BL009) |
 | Domínios não avaliados | Declarados e não avaliados ⇒ `PlanError::Unsupported { domains }` (ordenado por `Domain` e nó). Escopo: `weather`, `weatherKeys`, `lighting`, `effects`, `weatherGround`, `rigs`, `paths` (lista do próprio avaliador, `unevaluated_sections`); `rigBind`, `reveal`, `surface`, `normalMap`, `sceneDepth`, `relief` por nó (também num nó `splat`: nomeados, nunca ignorados). `null` conta como não declarado, como no importador. Mapas de dados não variam no tempo (por isso o avaliador temporal não os lista), mas mudam o aspecto do plano: um plano que os ignorasse não seria o quadro |
-| Splat | **Desde F044.** Um nó `splat` com asset `spz` vira uma entrada de `splats` (`node_id`, `asset_id`, `after_layers`; ordem do documento), o recurso entra em `resources` (`PlanResource::is_splat`) e o plano exige `Capability::Splats`. A matriz de mundo e a câmera são as do avaliador. `after_layers` (recalculado pelo validador) diz quantos planos são pintados antes do splat: o primeiro plano estritamente mais perto da câmera que a origem do nó o cobre; a ordem entre splats da mesma fatia é a do Spark por câmera. Luz, clima, rigs e mapas de dados continuam recusados por `unsupported`. A chave `splats` só existe no JSON quando há splat: planos sem splat mantêm os bytes (golden), e um runtime sem a capacidade recusa o plano pelo nome |
+| Splat | **Desde F048.** Um nó `splat` com asset `spz` vira uma entrada de `splats` (`node_id`, `asset_id`, `after_layers`; ordem do documento), o recurso entra em `resources` (`PlanResource::is_splat`) e o plano exige `Capability::Splats`. A matriz de mundo e a câmera são as do avaliador. `after_layers` (recalculado pelo validador) diz quantos planos são pintados antes do splat: o primeiro plano estritamente mais perto da câmera que a origem do nó o cobre; a ordem entre splats da mesma fatia é a do Spark por câmera. Luz, clima, rigs e mapas de dados continuam recusados por `unsupported`. A chave `splats` só existe no JSON quando há splat: planos sem splat mantêm os bytes (golden), e um runtime sem a capacidade recusa o plano pelo nome |
 | Campos não interpretados | Chave desconhecida (`UnknownField`) e seção declarada e mantida crua (`narration`, `outline`, `metadata`, `contactPlaneId`, `frameAudit`: `DeferredSection`) vão para `uninterpreted`, sem bloquear. **Escopo:** chaves do topo + definição de cena, instância, shot, clipe, trilhas, passes e assets que o frame usa; o plano de um frame não muda porque **outra** cena do bundle ganhou um campo |
 | Ordem de pintura | A de `Bundle::paint_order` (passe de composição > `renderOrder` > 0; empate = ordem de documento). `layers` copia as entradas para que a ordem seja conferível só pelo plano. Limite herdado: o desempate por profundidade da câmera do Three.js **não** é modelado |
 | Transparência | Do schema: `alpha` do asset da camada (`straight`/`opaque`) e `alphaMode` do `renderProfile`. Não há opacidade por nó no schema; nenhuma foi inventada |
@@ -131,7 +131,7 @@ plano que carregasse dados ignorados não faria round-trip), tempos só reduzido
   plano não o importa e o manifesto não precisa importar o plano.
 - O manifesto de I continua dono de resolver caminhos, hashes e ausentes. Dados que o importador
   preserva e o plano não usa **não** viram recurso: aparecem em `uninterpreted`, ou em `unsupported`
-  (mapas de dados, cujos assets o plano **não** lista como requeridos). Os `spz` dos splats são listados (F044).
+  (mapas de dados, cujos assets o plano **não** lista como requeridos). Os `spz` dos splats são listados (F048).
 - Teste de integração `scene_plan_resources.rs` executado (BL063): em 4 bundles e 4 frames por bundle, todo
   `required_asset_ids()` é conhecido do manifesto do mesmo bundle.
 

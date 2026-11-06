@@ -41,8 +41,8 @@ desconhecidos, então o transporte reaproveita `asset.load`, `asset.release`, `f
 | Onde | Acréscimo |
 |---|---|
 | `ready.capabilities.features` | `"directed_scene"`. Um runtime que não lista não recebe o layer (o host recusa antes: `backend_unavailable` com o comando de rebuild) |
-| `ready.capabilities.directed_scene` | `{ layer_kind, plan_kind: "tessel-scene-plan", plan_versions: [1], capabilities: [9 nomes de Capability::as_str], resource_identity: ["generation","asset_id","revision_id","content_hash"], resource_kinds: ["still","splat"] }`. Os 9 nomes (com `splats`, F044) são exatamente `Capability::ALL` (teste) |
-| `asset.load` → `asset.scene` | `{ asset_id, revision_id, content_hash, generation }`. Para `kind: "still"` (PNG) e `kind: "splat"` (`meta.format: "spz"`, F044); vincula o **slot** (o `asset.id` do runtime) à identidade |
+| `ready.capabilities.directed_scene` | `{ layer_kind, plan_kind: "tessel-scene-plan", plan_versions: [1], capabilities: [9 nomes de Capability::as_str], resource_identity: ["generation","asset_id","revision_id","content_hash"], resource_kinds: ["still","splat"] }`. Os 9 nomes (com `splats`, F048) são exatamente `Capability::ALL` (teste) |
+| `asset.load` → `asset.scene` | `{ asset_id, revision_id, content_hash, generation }`. Para `kind: "still"` (PNG) e `kind: "splat"` (`meta.format: "spz"`, F048); vincula o **slot** (o `asset.id` do runtime) à identidade |
 | `frame.render` → `plan.layers[]` | `kind: "directed_scene"`, `scene_plan` (o `ScenePlan::to_json()` inteiro) e `resources: [{ asset_id, slot, revision_id, content_hash, generation }]` |
 | `ready.capabilities.layers` | **Não** muda: lista os tipos do plano comum; o gate é `features` |
 | Telemetria | `frame.done.source.directed_scene_layers`; `cache`/`debug.retention`: `scene_resources`, `scene_generation` |
@@ -247,7 +247,7 @@ em execução serializada.
   sai opaco). Alpha de saída é trabalho futuro de BL008.
 - **Sem desempate por profundidade**: a ordem do plano é a ordem de pintura, de propósito.
 - **Sem cache de resultado de frame dirigido**: cada frame é redesenhado (medir em BL064 antes de otimizar).
-- **Imagens estáticas e splats SPZ** (F044); vídeo, luz, clima, rigs, efeitos continuam recusados
+- **Imagens estáticas e splats SPZ** (F048); vídeo, luz, clima, rigs, efeitos continuam recusados
   como domínio não avaliado.
 - **O hash do conteúdo não é verificado aqui.** O runtime compara o que o mapa declara com o que o plano exige;
   provar que os bytes têm aquele hash é do adaptador que materializa/verifica (N/`media`).
