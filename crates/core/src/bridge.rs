@@ -205,7 +205,18 @@ pub fn decode_event(message: &Value) -> Result<BackendEvent, BackendError> {
                 Some("failed") => AssetStatus::Failed(BackendError::from_json(&message["error"])),
                 other => return Err(protocol(format!("Unknown asset state {other:?}"))),
             };
-            Ok(BackendEvent::Asset { id, status })
+            // Additive (BL102b): only the identity fields, so a message without them decodes as before.
+            let mut echo = serde_json::Map::new();
+            for field in ["request", "scene"] {
+                if !message[field].is_null() {
+                    echo.insert(field.to_owned(), message[field].clone());
+                }
+            }
+            Ok(BackendEvent::Asset {
+                id,
+                status,
+                echo: (!echo.is_empty()).then_some(Value::Object(echo)),
+            })
         }
         "asset.proxy" => {
             let id = message["id"]
@@ -574,6 +585,48 @@ mod tests {
         assert_eq!(identity.scene, None);
         assert!(identity.answered_by(&json!({"type":"asset.state","id":"a","request":5})));
         assert!(!identity.answered_by(&json!({"type":"asset.state","id":"a","request":6})));
+    }
+
+    #[test]
+    fn decode_carries_the_echo_of_an_asset_state_and_nothing_else() {
+        // The echo is the identity fields as received; a path or other field never travels with it.
+        let mut message = echo("slot", "ready", 9, "red", 1);
+        message["meta"] = json!({"width": 2});
+        message["source"] = json!({"path": "/secret.png"});
+        let BackendEvent::Asset { echo, status, .. } = decode_event(&message).unwrap() else {
+            panic!("an asset event");
+        };
+        assert_eq!(status, AssetStatus::Ready(json!({"width": 2})));
+        let echo = echo.expect("the identity was echoed");
+        assert_eq!(
+            echo,
+            json!({"request": 9, "scene": {"asset_id":"red","revision_id":"red-r1",
+                "content_hash":"h-red","generation":1}})
+        );
+        // What was decoded is judged by the same pure rule as the raw message.
+        let mut load = scene_load("slot", "red", 1);
+        let identity = stamp_asset_load(&mut load, 9);
+        assert!(identity.answered_by(&echo));
+        assert!(!stamp_asset_load(&mut load, 10).answered_by(&echo));
+    }
+
+    #[test]
+    fn decode_of_a_runtime_without_the_echo_has_none() {
+        for message in [
+            json!({"v":1,"type":"asset.state","id":"slot","state":"ready"}),
+            json!({"v":1,"type":"asset.state","id":"slot","state":"loading","request":null}),
+        ] {
+            let BackendEvent::Asset { echo, .. } = decode_event(&message).unwrap() else {
+                panic!("an asset event");
+            };
+            assert_eq!(echo, None, "{message}");
+        }
+        let request_only = json!({"v":1,"type":"asset.state","id":"slot","state":"failed","request":4,
+                "error":{"code":"cancelled","message":"x"}});
+        let BackendEvent::Asset { echo, .. } = decode_event(&request_only).unwrap() else {
+            panic!("an asset event");
+        };
+        assert_eq!(echo, Some(json!({"request": 4})));
     }
 
     #[test]

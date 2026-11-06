@@ -174,8 +174,8 @@ os três casos em `reset_directed_runtime_for` (libera), `forget_directed_runtim
 ### Limites do BL092
 
 - A perda de contexto é **forçada** (`WEBGL_lose_context`); reset real de driver não foi provado.
-- A janela de um `asset.state ready` atrasado de um load substituído **para o mesmo slot** foi fechada por BL102
-  (seção abaixo) para runtimes que anunciam `asset.identity`; com um runtime antigo continua valendo a heurística por slot
+- A janela de um `asset.state ready` atrasado de um load substituído **para o mesmo slot** foi fechada por BL102/BL102b
+  (seção abaixo; janela e headless) para runtimes que anunciam `asset.identity`; com um runtime antigo continua valendo a heurística por slot
   e por detalhes do erro, sem garantia contra esse `ready`.
 - Medido só em macOS / Apple GPU com o corpus de 3 recursos; orçamento com muitos recursos não foi exercitado nativamente.
 
@@ -207,9 +207,28 @@ nativa S0/S6). Evidência executada nesta rodada: `cargo test -p tessel-editor s
 `scene-lifecycle-proof.py` completa S0–S10 com **221/221 checks** num WKWebView real (o host negocia `asset.identity`, 3/3 cargas
 carimbadas, `refused.stale_asset_states` ≥ 1 na troca de projeto). **Limite da prova nativa:** a página real não
 injeta um `ready` velho de propósito; a corrida do mesmo slot é provada no host com página roteirizada e no runtime
-real em Chrome (ordem de eco), não reproduzida deterministicamente no WKWebView. **CLI headless:** `SceneRenderer` (`ProcessTransport`) não carimba nem confere o eco: ele espera cada
-`ready` de forma síncrona numa mesma submissão e `BackendEvent::Asset` ainda não carrega a identidade. Esse é um gap
-registrado (BL102b), não paridade inventada.
+real em Chrome (ordem de eco), não reproduzida deterministicamente no WKWebView.
+
+### Headless (`SceneRenderer`, BL102b)
+
+`BackendEvent::Asset` ganhou o campo aditivo `echo: Option<Value>` (só `request` e/ou `scene`, como recebidos; `None` de
+runtime sem eco; nunca caminho). `bridge::decode_event` o preenche; a regra de julgamento continua uma só,
+`LoadIdentity::answered_by`. O `SceneRenderer` (lib, `tessel-scene-render`, export dirigido) agora faz o mesmo que o host da janela:
+
+| Peça | Contrato |
+|---|---|
+| Negociação | `ensure_ready` lê `features` do `ready`: `asset.identity` presente liga `asset_identity()`; ausente (runtime antigo) não envia campo novo e vale a heurística por slot, sem contar recusas |
+| Carimbo | cada `asset.load` recebe `asset.request` (1, 2, 3…), contador do renderer **nunca reiniciado**, nem em `shutdown`/reinício do runtime: um eco tardio de um processo anterior nunca casa com carga nova |
+| Regra | `ready`/`failed` só altera o livro de slots se repetir a identidade da carga que **detém o slot agora**; sem eco, eco parcial, de outro `request` ou de outra imagem: recusado e contado em `refused_asset_states()`, sem destravar nem falhar o frame |
+| Falha real | só com o eco certo (inclusive `cancelled`), e então a carga é esquecida para ser tentada de novo |
+| Escopo do estado | `loads` limpo por `release`, `release_all`, `shutdown`, `Closed`; `identified` reavaliado no próximo handshake |
+
+Efeito observável: um runtime que negociou e não ecoa (ou ecoa outro pedido) não destrava o frame: a espera termina em `timeout`
+(`the pictures`) com `refused_asset_states() > 0`, em vez de desenhar com a imagem errada. Superfícies: **lib** (6 testes novos em
+`crates/render/tests/scene_seam.rs` com transporte roteirizado, mais 2 de `decode_event` no core; mutação verificada: sem a conferência 3
+falham, incluindo o ready velho no mesmo slot, com `SceneSlots::new(3, ..)` para que o slot seja realmente reaproveitado) · **CLI JSONL**
+(`tessel-scene-render` usa o mesmo `SceneRenderer`: prova real em `scene_frames.rs`, que exige `asset_identity()` negociado com o runtime
+do repositório) · **UI**: N/A, a janela usa o host dirigido (acima). Limite: com runtime antigo continua sem garantia contra o ready velho.
 
 ## Retenção e invalidação (sem regressão do preview comum)
 
