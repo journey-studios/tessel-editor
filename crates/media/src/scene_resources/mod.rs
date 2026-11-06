@@ -46,7 +46,7 @@ pub use adopt::{Adoption, AdoptionTarget, PendingAdoption, StaleAdoption, adopt}
 pub use base::{BaseKind, MANAGED_DIR, ResourceBase};
 pub use claims::tracked_under;
 pub use cleanup::{CleanupReport, Created, Provisional};
-pub use load::{LoadRequest, check, load};
+pub use load::{LoadRequest, check, load, needs_files};
 pub use map::{
     ApprovedResource, Generation, ResolveError, ResolvedResource, ResolvedResourceMap,
     ResourceResolver,

@@ -435,6 +435,8 @@ crate, o custo do hash em build de release e a limpeza com raiz ocupada além de
 
 ## Consumidor integrado e prova de restauração
 
+**BL101 (S5): manifesto sem arquivos.** `scene.resources.preflight|resolve` não abrem raiz quando o plano de transporte não tem arquivo (assets declarados mas não usados, ou usados só por seções preservadas): o mapa é instalado com `resources: 0`, `complete: false` e `base: null`, sem exigir `scenes/<id>` nem workspace (`ResourceBase::unbound()`, `needs_files`). Qualquer cena que nomeie um arquivo mantém o preflight completo (`root_unavailable`, `resources_invalid`, contenção, hash) e, sem workspace, `no_workspace`; uma base explícita relativa continua `base_not_absolute`. `scene.resources.adopt` não mudou. Testes: `crates/media/tests/scene_attach_job.rs`; contrato do attach por job em [F043](scene-import-ui.md).
+
 F041 consome `SceneResourceSession` por `ResourceResolver`; não resolve caminhos nem confia só no assetId. O harness integrado usa o projeto restaurado para avaliar e renderizar sem a origem, comparando sondas de pixel independentes. Comandos de carga continuam jobs na janela; job concluído precisa estar aplicado antes do monitor. Sem diálogo de anexar/carregar dedicado ainda (BL086).
 
 ## Import descartado após troca de projeto (revisão PR #3; ampliado por BL089)

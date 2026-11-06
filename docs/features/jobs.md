@@ -153,3 +153,9 @@ Um job `discard` espera um slot (máx. 2 jobs por host); ele fica `queued` e o r
 `import` (job devolvido em < 400 ms com FFmpeg artificialmente lento, `async_host.rs`) e pelo teste do desktop que aplica o
 import no tick; não há medição de quadros por segundo da janela durante o job. Ver o
 [relatório](../media-project-export-report.md).
+
+Integração S1/S5 após main6f7a944: resultados SceneAttach têm rótulo próprio e podem ser
+descartados sem I/O sobre o bundle original, sem alterar cenas/undo/revisão. A guarda de
+sessão do attach e a devolução de ownership dos resultados de import/adopt foram preservadas.
+Regressão nova scene_attach_job passou; suítes de descarte/claims/attach/restore, clippy
+workspace/build/fmt passaram. Provas nativas no código integrado: import59/59, descarte39/39.

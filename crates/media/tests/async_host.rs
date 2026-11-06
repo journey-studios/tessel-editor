@@ -329,6 +329,83 @@ fn a_restore_that_lost_the_race_with_an_edit_is_discarded_not_merged() {
     );
 }
 
+/// BL113a for restore: the same guard as the scene attach job. The destination project is
+/// closed and its document reopened while the package unpacks; the reopened one has the same ID
+/// and revision 0, and is still not the project the restore was started for.
+#[test]
+fn a_restore_started_before_the_document_was_reopened_is_discarded() {
+    let dir = temp("async-stale-reopen");
+    let video = video_with_audio(&tools(), &dir, "clip.mp4");
+    let mut host = interactive(tools());
+    let mut state = EditorState::demo();
+    new_project(&mut host, &mut state, &dir, "origin");
+    let imported = ok(
+        &mut host,
+        &mut state,
+        json!({"op":"media.import","paths":[video]}),
+    );
+    let job = imported["job"].as_str().unwrap().to_string();
+    poll_until(&mut host, &mut state, &job);
+    poll_for(&mut host, &mut state, decoded);
+    ok(
+        &mut host,
+        &mut state,
+        json!({"op":"project.save","path":dir.join("origin/origin.tessel.json")}),
+    );
+    let archive = dir.join("share/pack.tesselpack");
+    let packaged = ok(
+        &mut host,
+        &mut state,
+        json!({"op":"project.package","path":archive,"format":"archive"}),
+    );
+    let job = packaged["job"].as_str().unwrap().to_string();
+    assert_eq!(
+        poll_until(&mut host, &mut state, &job)["state"],
+        "succeeded"
+    );
+
+    let mut destination = EditorState::demo();
+    new_project(&mut host, &mut destination, &dir, "destination");
+    let document = dir.join("destination/destination.tessel.json");
+    ok(
+        &mut host,
+        &mut destination,
+        json!({"op":"project.save","path":document}),
+    );
+    let started = destination.project.stamp();
+    let restore = ok(
+        &mut host,
+        &mut destination,
+        json!({"op":"project.restore","path":archive,"folder":dir.join("restored")}),
+    );
+    let restore = restore["job"].as_str().unwrap().to_string();
+    // The destination is closed and its document opened again, before the restore is applied.
+    ok(
+        &mut host,
+        &mut destination,
+        json!({"op":"project.open","path":document}),
+    );
+    assert_eq!(destination.project.revision, 0, "the revision restarted");
+    assert!(
+        !started.is_current(&destination.project),
+        "same ID and revision, other session"
+    );
+    let reopened = destination.project.session.number();
+
+    let event = poll_until(&mut host, &mut destination, &restore);
+    assert_eq!(event["state"], "failed", "{event}");
+    assert_eq!(event["error"]["code"], "stale_result", "{event}");
+    assert_eq!(
+        destination.project.session.number(),
+        reopened,
+        "the reopened project was not replaced by the restored one"
+    );
+    assert!(
+        destination.library.items.is_empty(),
+        "nothing of the package was opened"
+    );
+}
+
 #[test]
 fn a_decode_that_fails_is_reported_once_and_not_retried_every_tick() {
     let dir = temp("async-failing");
