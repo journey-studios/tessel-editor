@@ -287,7 +287,20 @@ descreve outra lei que não é a da origem nem a deste editor; ajustar esse orá
 o que mudaria o core e este texto) é decisão da S10, não parte desta frente. Teste desta lei:
 `a_44k_mono_source_is_interpolated_at_exact_positions_and_centred`.
 
-**Gate final da integração** (cabeça `989bfe3` = `c9833bb` + merge de `origin/main` `e296b36`, sem código novo depois do merge;
+**Gate da rodada de correção da revisão R2** (código no head `6e5f3f3`, árvore limpa; os commits seguintes só mudam documentação).
+Com `TESSEL_REQUIRE_RUNTIME=1`, Chrome real e sob o lock de GPU, executados por esta frente (nenhum número atribuído):
+`cargo fmt --all -- --check`, `check --workspace --all-targets --locked`, `clippy --workspace --all-targets --locked -- -D warnings`
+(um `manual_contains` de teste da rodada anterior, nunca compilado até então, corrigido), `test --workspace --locked --no-fail-fast`
+(**1210 passed, 0 failed, 9 ignored**: core lib 225, `scene_export` do core 21, mídia `scene_export` 11 e `scene_export_audio` 29, render
+`scene_export` 12, desktop 201; os `ignored` são as medições longas/ZIP64 e as fases de aceite que exigem o lock explícito),
+`build -p tessel-editor --locked`; `cargo tree -p tessel-editor-core` sem gpui nem wry. Não rodei `./scripts/runtime test` (o
+runtime Three.js não mudou nesta rodada; o gate de integração anterior registra 93/93). Prova nativa repetida no head limpo,
+sem ponteiro: `scripts/scene-export-audio-ui-proof.py` **45/45** sobre `target/debug/tessel-editor`
+(SHA-256 `bb35d75ac8f905a6c73b070f5cf079071c91b9a61b3d25b9cf99ff2b845d2685`; relatório JSON, que não traz o head, SHA-256
+`6521c4a5c21f05436a9a4dc9bea3c2ddbee2e96bc9b2fab87909c91c5ca13afd`, igual ao anterior porque só lista os checks). O S10 vivo
+**não** foi rodado: o FAIL registrado de `audio_export`/`audio_package_export` continua FAIL (BL121).
+
+**Gate final da integração anterior** (cabeça `989bfe3` = `c9833bb` + merge de `origin/main` `e296b36`, sem código novo depois do merge;
 conflito só nas linhas F041/F042/F042A da matriz). Com `TESSEL_REQUIRE_RUNTIME=1`, Chrome real e sob o lock de GPU:
 `cargo fmt --check`, `check --workspace --all-targets`, `clippy --workspace --all-targets -D warnings` e
 `test --workspace --locked` passaram (core 218, `scene_export` do core 20, desktop 194, mídia `scene_export` 11 e
