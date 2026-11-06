@@ -395,9 +395,9 @@ fn measure(count: usize) {
         // one appended record and its state file was not rewritten; the empty control stays inline
         // and leaves no ledger at all.
         if count > 0 {
-            assert_eq!(
-                fs::read(&claims_file).unwrap(),
-                state_before,
+            // `assert!`, not `assert_eq!`: a failure must not print megabytes of ledger.
+            assert!(
+                fs::read(&claims_file).unwrap() == state_before,
                 "{id}: the tick rewrote the whole ledger ({count} entries) instead of appending"
             );
             let record = fs::read_to_string(&journal)

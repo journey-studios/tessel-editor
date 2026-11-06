@@ -240,7 +240,10 @@ fn the_tick_accepts_an_adoption_in_a_large_ledger_with_one_record_and_leaves_the
     let before = fs::read(world.state_file()).unwrap();
     assert!(world.claims("/scenes/street") >= 2, "its files are claimed");
     // `claims` folded nothing (no journal yet), so the state is what the job left.
-    assert_eq!(fs::read(world.state_file()).unwrap(), before);
+    assert!(
+        fs::read(world.state_file()).unwrap() == before,
+        "the tick rewrote the state of the ledger"
+    );
 
     let event = world.tick(&job);
     assert_eq!(event["state"], "succeeded", "{event}");
@@ -293,7 +296,10 @@ fn the_tick_applies_an_import_in_a_large_ledger_with_one_record_and_the_project_
     assert_eq!(event["state"], "succeeded", "{event}");
     assert_eq!(world.state.scenes.len(), 1, "the scene is attached");
     assert!(world.state.history.can_undo(), "as one undo step");
-    assert_eq!(fs::read(world.state_file()).unwrap(), before);
+    assert!(
+        fs::read(world.state_file()).unwrap() == before,
+        "the tick rewrote the state of the ledger"
+    );
     assert_one_record_of_the_street(&world.journal());
     world.assert_files_kept();
     assert_eq!(world.claims("/scenes/street"), 0);
@@ -396,7 +402,10 @@ fn the_blocking_commit_of_a_cli_takes_the_same_path_and_keeps_its_result() {
 
     let committed = world.run(json!({"op":"job.commit","job":job})).unwrap();
     assert_eq!(committed["action"], "scene.resources.adopt", "{committed}");
-    assert_eq!(fs::read(world.state_file()).unwrap(), before);
+    assert!(
+        fs::read(world.state_file()).unwrap() == before,
+        "the tick rewrote the state of the ledger"
+    );
     assert_one_record_of_the_street(&world.journal());
     world.assert_files_kept();
     assert_eq!(world.claims("/scenes/street"), 0);
@@ -614,7 +623,10 @@ fn a_window_killed_before_any_reader_folds_its_record_is_still_not_recovered() {
         "{polled}"
     );
     // Nobody has opened the ledger since the tick: the record is there, the state is untouched.
-    assert_eq!(fs::read(world.state_file()).unwrap(), before);
+    assert!(
+        fs::read(world.state_file()).unwrap() == before,
+        "the tick rewrote the state of the ledger"
+    );
     assert_one_record_of_the_street(&world.journal());
     peer.crash();
 
