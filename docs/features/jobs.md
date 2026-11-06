@@ -3,9 +3,10 @@
 ## Status
 
 Lib **V**, `scripts/media`/`scripts/render` **V**, UI **V** (diálogo Tarefas, linha de progresso na barra de status,
-cancelar; `flow.jobs`). `job.discard` (BL094/BL112): lib/host **V** (testes abaixo), CLI headless **V** por
-`MediaHost` em JSONL (mesmos testes, sem janela), UI **parcial**: o tick da janela usa o descarte em job e o diálogo
-mostra o estado, sem prova nativa nesta entrega (ver "Descartar um resultado").
+cancelar; `flow.jobs`). `job.discard` (BL094/BL112): lib/host **V** (testes abaixo), CLI headless **V** (processo JSONL real
+`tessel-media`, 20 checks), janela **V no escopo de jobs** (instância própria, só requisições semânticas, 19 checks: o tick
+entrega a remoção a um job e a janela segue respondendo). Sem pixels (jobs não desenham na viewport), sem ponteiro, sem
+dois processos (BL111). Ver "Evidência por superfície" abaixo.
 
 ## Contrato
 
@@ -88,6 +89,42 @@ descarte sob demanda na janela; `Drop` interativo. `scene_import_cleanup.rs`: `t
 arquivos ainda com dono; `job.discard` de um `project.import_scenes` pendente. Medição (`-- --ignored --nocapture`, 256 MiB,
 este disco): `job.discard` retornou em **65 µs** (debug) / **30 µs** (release), o pior `poll` em 1,6 ms / 55 µs, e o job
 terminou em **10,9 s** (debug) / **0,66 s** (release); o cálculo de hash saiu da thread do chamador.
+
+### Evidência por superfície (integração S1 + S3 + S4, a validar até a revisão)
+
+Head integrado: merge de `main` `e296b36` (S3 bytes imutáveis, S4 identidade) sobre `3c5383e`. O único conflito textual foi a
+matriz (F040–F042); `jobs.rs` e `scene_resources/mod.rs` mesclaram sem sobreposição (S3 só acrescentou os códigos
+`resource_changed`/`resource_missing` ao mapa de erros e o módulo `snapshot`; S4 não toca host/jobs).
+
+| Superfície | Prova | Resultado |
+|---|---|---|
+| Lib (core, sem GPUI) | `jobs.rs` 219 testes do crate, 5 do descarte | verde |
+| Host/lib | `job_discard` 14 (+1 de medição), `scene_adopt_host` 13, `scene_import_cleanup` 31, `scene_cleanup_ownership` 26 (3 novos de `settle`/`apply`, BL111), `scene_export` (S3) 12 com 1 novo: job de export recusa `job.discard` (`job_nothing_to_discard`) e nada é removido | verde |
+| CLI headless (processo JSONL real `target/debug/tessel-media --empty`) | `scripts/job-discard-proof.py`: adopt pendente → `job.discard` espera e informa `removedFiles:3`; commit/descarte repetidos → `job_discarded`; `job.cancel` do job de descarte já final → `job_finished`; aplicado → `job_applied` com arquivos byte a byte iguais; falho → recusa; commit obsoleto remove **antes** da resposta; EOF com resultado pendente (64 MiB) só termina o processo depois de devolver os arquivos | 20/20 |
+| Janela (binário `target/debug/tessel-editor`, HOME curto e socket próprios, só `op`/`get`/`invoke`) | adopt de 128 MiB torna-se obsoleto (cena removida durante o job); a linha do tempo observada é `none → pending → discarding → discarded`; enquanto descarta: arquivos e dono presentes, `job.discard`/`job.commit` → `job_discarding`, `job.cancel` do job de descarte → `job_not_cancellable`, diálogo Tarefas abre e fecha, sem mutação; depois: arquivos e pasta removidos, evento `discard` único no `recent`, evento do apply com `details.discard_job`; resultado já aplicado → `job_applied` sem mudar bytes | 19/19 |
+| Responsividade da janela | uma segunda conexão pede `get jobs` a cada ~20 ms; os pedidos rodam na thread principal da janela (`window.update`). Tetos fixados antes da medição: ocioso p99 ≤ 100 ms; durante a remoção p99 ≤ 100 ms e máx ≤ 250 ms. Duas execuções: durante a remoção 173/177 respostas em ~4,3 s, p50 0,7–0,8 ms, p99 1,5–1,6 ms, máx 1,5–2,7 ms; ocioso máx 38–43 ms (1ª resposta após aquecimento) | verde |
+| Controle negativo | (a) o mesmo pedido cronometrado enquanto suspendemos **o próprio processo** da janela por 1,5 s mede 1508–1548 ms (a sonda enxerga uma janela parada; nenhuma operação do editor bloqueia a thread de propósito: `wait:true` volta na hora na janela). (b) Mutação temporária no host (`SceneAdopt … if decode_inline \|\| true`, remoção inline no tick) reprova a prova nativa (a transição `discarding` some; a execução parou na 1ª reprovação após ~64 s com a thread presa); revertida | reprova com a mutação |
+| Runtime/Chrome (`TESSEL_REQUIRE_RUNTIME=1`, sob lock de GPU) | workspace `cargo test`: 1076 passam, 0 falham, 9 ignorados, 65 suítes (inclui render `scene_export` 11 de S3, `scene_frames` 8 e `scene_seam` 28 de S4); `./scripts/runtime test` 93/93 | verde |
+
+Medição 256 MiB reexecutada no head integrado: `job.discard` voltou em **68 µs** (debug) / **64 µs** (release), o pior `poll`
+57 µs / 31 µs e o job terminou em **8,6 s** (debug) / **0,58 s** (release). Relatório gerado da prova nativa:
+[`s1-job-discard-proof.json`](../migration/s1-job-discard-proof.json). Reproduzir: `./scripts/cargo build -p tessel-editor
+-p tessel-editor-media --locked` e `python3 scripts/directed-scene-proof/with-gpu-lock.py python3 scripts/job-discard-proof.py`.
+
+**Não provado:** pixels/estética (nada novo é desenhado), quadros por segundo e tempo de pintura (só latência de pedidos),
+seletor nativo de arquivos, janela fechada com resultados pendentes (só o `Drop` por teste), build release da janela,
+Windows/Linux, dois processos (BL111) e escritor hostil. `job.discard` sob demanda **bem-sucedido** na janela não é
+observável: o tick aplica um resultado atual em ≤ 250 ms, então o descarte sob demanda de um resultado pendente é provado
+pela lib/host (host interativo sem tick) e pelo JSONL; na janela a prova é o descarte do obsoleto e a recusa do aplicado.
+
+**Harmonização com S2/BL111** (sem tomar a posse de S2): a costura que S2 precisa manter é `PendingAdoption::settle`
+(aceita: solta o registro, sem ler arquivo; recusa: devolve a adoção **ainda dona** dos arquivos e das claims) +
+`discard()` (única remoção). `PendingAdoption::apply` = `settle` + remoção inline (lib/CLI); `import::apply` = `try_apply` +
+`drop`. Testes em `scene_cleanup_ownership.rs` (`settle_accepts_without_touching_a_file…`,
+`a_refused_settle_returns_the_adoption_still_owning_its_copies…`, `apply_is_settle_plus_the_removal…`) e
+`scene_import_cleanup.rs::try_apply_refuses_without_removing…` devem continuar verdes com claims persistentes; uma claim
+persistida só pode ser liberada no aceite (sem I/O pesado no tick) ou no fim do job de descarte, e o job de descarte
+deve liberar a claim mesmo em pânico (`DiscardGuard` já marca o original `discarded`).
 
 Todo trabalho escreve num `Staging` (pasta no mesmo volume do destino) e **publica por rename** só depois de
 verificar; falha ou cancelamento removem o staging e preservam o destino anterior e os originais.

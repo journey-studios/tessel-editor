@@ -220,6 +220,13 @@ import (ele só acrescenta cenas); `undo` do import desfaz o projeto, não os ar
 para um novo anexo); um `job` finalizado e nunca confirmado exige `job.commit` ou `job.discard`
 (F025), ou o descarte do host.
 
+Evidência por superfície do descarte em job (integração S1 + S3 + S4): lib/host (`job_discard`, `scene_adopt_host`,
+`scene_import_cleanup`, `scene_cleanup_ownership`), processo JSONL real e janela própria com a latência dos pedidos durante a
+remoção medida (detalhes e limites em [F025](jobs.md#evidência-por-superfície-integração-s1--s3--s4-a-validar-até-a-revisão)).
+**Costura para BL111/S2:** `PendingAdoption::settle` devolve a adoção recusada ainda dona de arquivos e claims;
+`apply` é `settle` + remoção inline e só a remoção (`discard`) lê/hasheia. Um dono persistente de claims precisa manter essas
+propriedades (testes `settle_*`/`apply_is_settle_*`); nada de S2 foi incorporado aqui.
+
 ## UI e CLI da janela
 
 N/A nesta frente (sem controle novo). Equivalente semântico: as operações acima via

@@ -230,3 +230,9 @@ Gate final do coordenador: [R1–R10](../migration/round-r1-r10-report.md) e [pr
 Revisão S3: origens com hash aprovado idêntico são verificadas individualmente antes de reutilizar a cópia única. Regressão `changed_duplicate_origin_is_rejected_even_when_content_was_already_copied` cobre troca de mesmo tamanho na segunda origem.
 
 Aceite independente no head `9fbb93a`: snapshot 5/5, media/export 11/11, seis sondas negativas, render/export 11/11 em Chrome real e prova nativa 20/20. As mutações que removem o isolamento e a validação da segunda origem fazem os testes correspondentes falharem. Evidências locais: git common dir, `worktrees/t3-2d54921b/acceptance-s3/` (logs, hashes e `native_proof.py`). São comandos semânticos, sem ponteiro físico.
+
+## Integração com `job.discard` (BL094, integração S1)
+
+Um job de export nunca guarda resultado para aplicar (o arquivo é publicado pelo próprio job), então `job.discard` num job
+de export, bem-sucedido ou falho por `resource_changed`, responde `job_nothing_to_discard` e não remove o arquivo
+exportado, os originais nem o estágio de outro export. Teste: `crates/media/tests/scene_export.rs::an_export_job_has_nothing_to_discard_and_the_discard_removes_nothing`.

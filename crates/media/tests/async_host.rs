@@ -171,7 +171,12 @@ fn a_slow_import_never_blocks_the_caller_and_is_applied_once_on_poll() {
         json!({"op":"track.add","id":"during","name":"During","kind":"video"}),
     );
     assert!(state.project.revision > revision);
-    assert_eq!(host.registry().get(&job).unwrap().state.label(), "running");
+    // In flight, not necessarily started: the worker thread may not have been scheduled yet when
+    // the machine is busy (a `queued` job is just as unfinished as a `running` one).
+    assert!(
+        !host.registry().get(&job).unwrap().state.is_final(),
+        "the 0.6 s import cannot be over while the caller was only editing"
+    );
 
     let event = poll_until(&mut host, &mut state, &job);
     assert_eq!(event["state"], "succeeded", "{event}");

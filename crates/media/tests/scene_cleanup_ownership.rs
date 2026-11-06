@@ -18,10 +18,15 @@ use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use directed_resources_common::*;
+use serde_json::json;
 use tessel_editor_core::directed_scene::DirectedScene;
 use tessel_editor_core::jobs::CancelToken;
+use tessel_editor_core::state::ProjectSettings;
+use tessel_editor_core::{EditorState, headless};
 use tessel_editor_media::directed_resources::Options;
-use tessel_editor_media::scene_resources::{Adoption, ResourceBase, adopt, tracked_under};
+use tessel_editor_media::scene_resources::{
+    Adoption, AdoptionTarget, PendingAdoption, ResourceBase, adopt, tracked_under,
+};
 
 fn world(name: &str) -> (Sandbox, DirectedScene, PathBuf) {
     let sandbox = Sandbox::new(&format!("te-own-{name}"));
@@ -645,4 +650,78 @@ fn measure_discarding_a_result_with_a_large_file() {
         EXTRA as f64 / f64::from(1 << 20) / elapsed.as_secs_f64()
     );
     assert_eq!(report.removed_files, 2, "{report:?}");
+}
+
+// ------------------------------------------------------- BL094/BL112 seam, for BL111 --
+//
+// What a persistent, cross-process owner of the claims (BL111) has to keep true for the job that
+// discards a refused result: `settle` answers without reading or removing a file, a refusal hands
+// the adoption back **still owning** its copies (and their claims), and only `discard` takes them.
+
+fn settled_world(name: &str) -> (Sandbox, PathBuf, PendingAdoption, EditorState) {
+    let (sandbox, scene, workspace) = world(name);
+    let bundle = sandbox.root.join("bundle.json");
+    fs::write(
+        &bundle,
+        serde_json::to_vec(&standard_bundle(&sandbox)).unwrap(),
+    )
+    .unwrap();
+    let mut state = EditorState::empty(&ProjectSettings::default()).unwrap();
+    state.project.workspace = Some(workspace.clone());
+    headless::execute(
+        &mut state,
+        &json!({"op":"scene.attach","id":"street","path":bundle}),
+    )
+    .unwrap();
+    let target = AdoptionTarget::of(&state, "street");
+    let mut adoption = adopt_into(&scene, &workspace, &sandbox.src);
+    let pending = PendingAdoption::new(target, &mut adoption);
+    (sandbox, workspace, pending, state)
+}
+
+#[test]
+fn settle_accepts_without_touching_a_file_and_the_claims_end_with_it() {
+    let (sandbox, workspace, pending, state) = settled_world("settle-ok");
+    assert!(
+        tracked_under(&workspace) > 0,
+        "pending: the result is the owner"
+    );
+    pending
+        .settle(&state)
+        .expect("same project, workspace and scene");
+    assert_intact(&workspace, &sandbox);
+    assert_no_claims(&workspace);
+}
+
+#[test]
+fn a_refused_settle_returns_the_adoption_still_owning_its_copies_until_it_is_discarded() {
+    let (sandbox, workspace, pending, mut state) = settled_world("settle-stale");
+    state.project.id = "another-project".to_string();
+
+    let stale = *pending.settle(&state).expect_err("another project is open");
+    assert_eq!(stale.why, "another project is open now");
+    assert_eq!(stale.pending.scene(), "street");
+    // The refusal removed nothing and released nothing: that is the job's work, off the UI thread.
+    assert_intact(&workspace, &sandbox);
+    assert!(
+        tracked_under(&workspace) > 0,
+        "the files keep their owner while they wait for the discard"
+    );
+
+    let report = stale.pending.discard();
+    assert!(report.is_clean(), "{report:?}");
+    assert_eq!(report.removed_files, 2, "{report:?}");
+    assert!(!workspace.join("scenes").exists());
+    assert_no_claims(&workspace);
+}
+
+#[test]
+fn apply_is_settle_plus_the_removal_with_the_same_refusal() {
+    let (_sandbox, workspace, pending, mut state) = settled_world("apply-stale");
+    state.project.id = "another-project".to_string();
+    let error = pending.apply(&state).unwrap_err();
+    assert_eq!(error.code, "stale_result", "{error:?}");
+    assert!(error.message.contains("2 file(s)"), "{}", error.message);
+    assert!(!workspace.join("scenes").exists(), "apply removes inline");
+    assert_no_claims(&workspace);
 }
