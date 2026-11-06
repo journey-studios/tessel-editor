@@ -48,8 +48,9 @@ const ATTEMPTS: usize = 64;
 const DANGLING_SEEN: usize = 5;
 const DANGLING_PAUSE: std::time::Duration = std::time::Duration::from_millis(2);
 /// How long a caller that may block (a job, the CLI) waits for `ledger.lock` before calling the
-/// ledger unavailable (BL112.3), and how often it looks while waiting. The lock is held for
-/// microseconds; this only matters when a holder is stopped or stuck.
+/// ledger unavailable (BL112.3), and how often it looks while waiting. Short writes usually
+/// release it quickly, but a healthy recovery can hold it longer while repeatedly rewriting
+/// the ledger for its orphans; the limit is not restricted to stopped or stuck holders.
 ///
 /// **Not for the window's tick**: 1.5 s is far above its 100 ms ceiling. The tick waits only
 /// [`TICK_WAIT`] (see [`Ledger::try_lock`]).

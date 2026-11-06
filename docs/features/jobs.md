@@ -215,7 +215,7 @@ olhar uma vez (`Duration::ZERO`), mas `flock` conflita entre descritores **do me
 job `discard` (duas gravações por arquivo), uma adoção ou um `recover` do outro slot segurando o ledger por microssegundos
 recusava um resultado **válido**, o descarte removia a cópia e a mensagem culpava "outro processo". Agora o tick espera um
 orçamento **fixo de 20 ms** (`TICK_WAIT`, olhando a cada `LOCK_POLL` de 500 µs; quatro vezes abaixo do teto): contenção de
-microssegundos de qualquer origem é absorvida e só um holder que não solta (processo parado, travado) esgota o orçamento. Então
+curta pode ser absorvida, mas um holder longo saudável também pode esgotar o orçamento: `recover` mantém um único lock enquanto cada `forget` reescreve o ledger inteiro. Isso pode ocorrer com muitos órfãos, além de processos parados ou travados; a duração real ainda precisa ser medida (BL112.3). Então
 o ledger fica indisponível só para essa chamada (`fault`: "held right now by a holder that did not let go of it; gave up after
 20ms", sem apontar quem) e o aceite é **recusado** como qualquer outra falha do ledger: projeto, undo e revisão intactos, o
 resultado continua dono e vai para um job `discard` (`claims_unavailable`, `details.phase="accept"`, `details.why`). Quem pode

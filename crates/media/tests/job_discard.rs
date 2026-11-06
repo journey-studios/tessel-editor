@@ -678,7 +678,10 @@ fn end_of_input_cancels_what_is_not_a_discard_instead_of_waiting_behind_it() {
 
     for blocker in &blockers.jobs {
         assert_eq!(
-            registry.get(blocker).unwrap().state,
+            registry
+                .wait(blocker, Duration::from_secs(10))
+                .unwrap()
+                .state,
             JobState::Cancelled,
             "the job in the way was cancelled, not waited for"
         );
