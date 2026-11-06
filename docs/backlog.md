@@ -530,3 +530,22 @@ PR12 / BL005a: CodeRabbit r4494002899 corrigido no script de prova: condição d
 ### S7 — conclusão dos gates combinados após os abortos
 
 BL025 (subconjunto S7), BL127 e S7 validados; BL128 permanece Pendente: coordenador executou em `e7fd75f` workspace 1287/0/9 (81 resumos), builds, árvore do core, runtime 108/108 e provas nativas S7 129/129 e S9 45/45. Mínimo 13,69 GiB; logs `/tmp/te-pr13-coordinator-resume/`. Tentativas abortadas anteriores não contam como PASS. BL128 mantém o FAIL histórico. BL120/BL121/S10 seguem BLOCKED/FAIL; provas S7/S9 separadas não são `full_av`. Revisão Sonnet 5805273378 confirmou código e evidências; a reconferência 5805314926 confirmou as correções, restando apenas este texto de status, agora alinhado.
+
+## Performance de preview — investigação de 2026-11-06
+
+Relatório e medições: [viewport-performance-investigation-report.md](viewport-performance-investigation-report.md).
+Medido em release sobre `tessel-splat-h` (4 cenas de 1,18 M gaussianas) numa base anterior a `5ebb855`: cada frente
+deve **re-medir** antes de afirmar ganho. Relaciona-se a BL031/OPT07. Uma PR por item; revisão na própria PR.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL129 | PERF-1 | MSAA 0/2 durante reprodução e scrub; 4× em pausa, `render.frame` explícito e export | Pendente | — | — | Take A sem perda a 24 fps; scrub ≥ 40 quadros/s; explícito/export idênticos aos atuais; comparação visual MSAA 0 × 4 registrada |
+| BL130 | PERF-2 | Ordenação Spark sem espera em movimento e refino exato na pausa | Pendente | BL129 | — | Crossfade sem perda com MSAA 0; hash do quadro final = render explícito; sem popping em câmera animada |
+| BL131 | PERF-3 | Lease/malha compartilhada de assets de efeito entre camadas de crossfade | Pendente | — | — | `lease_decode` = 0 em quadros de 2 cenas com asset de efeito comum; teste de runtime |
+| BL132 | PERF-4 | Pré-carga de splats antes de o playhead entrar na cena | Pendente | — | — | Entrada fria em take sem travada ≥ 2 quadros; memória e cancelamento medidos |
+| BL133 | PERF-5 | Read-ahead de quadros de vídeo na WebView | Pendente | — | — | 4 vídeos com proxy: p95 do intervalo ≤ 50 ms e perda ≤ 1 % |
+| BL134 | PERF-8 | `RETAINED_ASSETS` por peso/contagem de assets pesados | Pendente | — | — | Projeto com 17+ assets visuais sem recarga na segunda passada |
+| BL135 | PERF-7 | Cabeçalho do monitor não deve sugerir 16 ms quando o intervalo real é maior (`render_ms` exclui a cauda de GPU) | Decisão | — | — | Indicador de intervalo/perda separado de `render_ms`, texto explícito |
+| BL136 | PERF-6 | Medir 8 vídeos, cenário misto splat + vídeo, vertical e 0→600 a frio em disco folgado | Bloqueado (disco) | — | — | Mesmas tabelas das seções 3, 5 e 7 do relatório |
+| BL137 | PERF-9 | Build debug no uso diário (`bin/tessel-editor` 141 MB tem overflow-checks): entregar release | Decisão | — | Usuário | Release no dia a dia; RTT semântico < 2 ms |
+| BL138 | PERF-10 | Hipóteses sem medição: lote das duas cenas do crossfade, pular camadas com opacidade ≈ 0 | Pendente (hipótese) | BL130 | — | Experimento com ganho medido antes de implementar |
