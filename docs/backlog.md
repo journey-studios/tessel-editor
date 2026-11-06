@@ -479,7 +479,7 @@ Plano e contratos: [wave-s1-s10-plan.md](migration/wave-s1-s10-plan.md). R1–R1
 | S3 | BL109 | Implementada, a validar (PR própria) | bytes imutáveis em export e cancelamento |
 | S4 | BL102 | Implementada, PR #7 aberta (a validar) | ack antigo de slot reutilizado recusado com `asset.identity` na janela e no `SceneRenderer` headless (BL102b); a validar até revisão e gate integrado |
 | S5 | BL100/BL101/BL100a/BL113a | Entregue em PR #10; a validar | attach off-thread, apply O(1), recursos vazios e guarda por sessão; ver BL100/BL100a/BL101/BL113a |
-| S6 | BL004/BL005 (+BL004a–d, BL005a–e) | Implementada, a validar (PR própria); correção dos findings F1–F6/H1–H3 da revisão Opus aplicada | catálogo e pose inicial equivalentes à origem; gates completos pendentes por disco; CodeRabbit sujeito ao limite OSS (NEUTRAL/SKIPPED não é aprovação) |
+| S6 | BL004/BL005 (+BL004a–d, BL005a–e) | Implementada, a validar (PR própria); correção dos findings F1–F6/H1–H3 da revisão Opus aplicada | catálogo e pose inicial com divergências documentadas; gates executados em `cf21f97` e prova de superfície em `d0d972b` (F034); a validar pelo coordenador; revisão independente Opus autorizada como alternativa à quota CodeRabbit (NEUTRAL/SKIPPED não é aprovação) |
 | S7 | BL025 (subconjunto) | Preparada para delegação | Spark dirigido em preview/pacote/export |
 | S8 | BL015/BL042 | Preparada para delegação | gizmo de translação e comando semântico equivalentes |
 | S9 | BL016 | Preparada para delegação | mix offline dirigido e áudio no export |
@@ -487,7 +487,7 @@ Plano e contratos: [wave-s1-s10-plan.md](migration/wave-s1-s10-plan.md). R1–R1
 
 ## PR12 — resíduos da revisão Opus R2
 
-N1: campos aposentados selecionados pela receita; regressão dollyIn/yawDeg e hold/easing escrita, não executada (disco<12GiB). N2: contrato e comentários distinguem validação final de conversão intermediária; no-op só após candidato válido. Texto das ferramentas/manifesto do corpus fica para regeneração com hashes coerentes, sem alterar fixtures agora (pendência com ID BL005e). N3: teste de playback exige frame>30. Gates completos executados em `cf21f97` pelo agente de testes (ver F034): N1 e N3 compilados e passando; nova revisão independente do head final continua necessária.
+N1: campos aposentados selecionados pela receita; regressão dollyIn/yawDeg e hold/easing executada com sucesso em `cf21f97` (F034). N2: contrato e comentários distinguem validação final de conversão intermediária; no-op só após candidato válido. Texto das ferramentas/manifesto do corpus fica para regeneração com hashes coerentes, sem alterar fixtures agora (pendência com ID BL005e). N3: teste de playback exige frame>30. Gates completos executados em `cf21f97` pelo agente de testes (ver F034): N1 e N3 compilados e passando; nova revisão independente do head final continua necessária.
 
 | ID | Bloco | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|

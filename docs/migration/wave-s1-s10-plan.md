@@ -45,6 +45,8 @@ Após push/criação, chamar link_pull_request imediatamente. O agente entrega U
 
 Aceite do coordenador exige: head atual, checks relevantes verdes, revisão CodeRabbit realmente executada no head (ou validação explícita da revisão incremental), nenhum finding acionável aberto sem justificativa verificável, teste proporcional após correções/rebase e conferência independente da entrega. SKIPPED/NEUTRAL por quota/tamanho não é aprovação. Sem autoaprovação de GitHub com a conta autora. O usuário autorizou merge somente depois deste ciclo nesta rodada.
 
+Atualização de autorização do usuário em 2026-11-06: nas PRs sem quota CodeRabbit, usar revisão independente Opus 5.5 como alternativa. O ciclo autorizado é Cursor corrige → nova revisão Opus → devolver findings ao Cursor até zero acionáveis, seguido da conferência do coordenador e dos gates de execução antes do merge. O COMMENT publicado pela conta autora registra o parecer; não é uma aprovação formal do GitHub. A quota NEUTRAL/SKIPPED não vira aprovação e esta alternativa não dispensa testes, evidências ou correções.
+
 ## Recursos e execução
 
 - Cargo apenas pelo helper serial `/Users/wallyssonnunes/.cache/tessel-editor/cargo-serial.py`, executado no próprio worktree; ele chama ./scripts/cargo. Target próprio por worktree com cache mbx compartilhado; nunca target único para os dez. Não rodar gc/clean nem trocar HOME em wrappers.
