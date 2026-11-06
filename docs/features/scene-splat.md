@@ -346,3 +346,9 @@ Head `12f9d489c30d62932850f899e3805dd4f8a7d706` (tree `f7aab3ce…`), árvore li
 Consequências, sem arredondar: a combinação S7+S9 neste head **continua sem gate combinado**. Valem apenas as evidências por base já registradas (S7: `2c7cf7c`/`586a671`; S9: o gate em `ed7827c`/PR #11) mais fmt/check/clippy/spec/sintaxe acima neste head. Nenhum teste de BL128 foi reexecutado; o `runtime test` ficou sem nova leitura (a flutuação 107/108 vs 108/108 segue como está em BL128). Nada foi limpo, apagado nem encerrado fora dos processos do próprio runner; o aceite S10 continua FAIL/BLOCKED (BL120/BL121) e **não** é declarado aceito.
 
 Para concluir: liberar espaço (≥ 16 GiB livres no início) e reexecutar o runner (`/tmp/te-pr13-final/runner.py test build tree runtime-test native-s7 native-s9` sob o lock da GPU).
+
+### Gate combinado S7 + S9 concluído no head `e7fd75f`
+
+O coordenador concluiu os passos antes abortados no mesmo checkout e target: workspace **1287 passed, 0 failed, 9 ignored** em 81 resumos; builds do editor e headless; árvore do core sem GPUI/wry; runtime **108/108**, zero skipped; prova nativa S7 **129/129** e S9 **45/45**. Logs e sidecars em `/tmp/te-pr13-coordinator-resume/`, arquivados em `.git/opus-reviews/pr13-integrated-completed-gates/`; todos os hashes dos sete logs conferem. Execução sob lock de GPU, `TESSEL_REQUIRE_RUNTIME=1`, piso de 12 GiB vigiado; mínimo de 13,69 GiB. Fmt, check e clippy foram executados em `12f9d48`; somente documentos mudaram depois dele. As tentativas anteriores abortadas continuam sem PASS, e o FAIL anterior de BL128 permanece histórico.
+
+As duas provas foram executadas separadamente: isso não comprova uma cena com splat e áudio juntos. S10/BL120/BL121 permanece sem aceite vivo combinado. Não há prova de ponteiro físico nem de pixels capturados da tela. A revisão independente final destas evidências está pendente.
