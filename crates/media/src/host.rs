@@ -9,7 +9,7 @@
 //!
 //! Operations: `media.import|relink|search|status|prepare|thumbnail|waveform|proxy`,
 //! `project.package_preflight|package|verify|restore|import|import_scenes`,
-//! `scene.resources.status|preflight|resolve|adopt|release|invalidate` (F040),
+//! `scene.resources.status|preflight|resolve|adopt|release|invalidate|claims|recover` (F040),
 //! `export.preflight|start`, `scene.export[.preflight]` (F042: a directed scene as video, same jobs),
 //! `job.list|get|wait|cancel|commit`. Presets (`preset.*`) belong to the core.
 //!
@@ -507,6 +507,7 @@ impl MediaHost {
         self.auto_prepare = Some(id);
     }
 
+    /// Shares the job registry used by JSONL and window adapters; it does not apply pending results.
     pub fn registry(&self) -> &JobRegistry {
         &self.registry
     }
@@ -532,6 +533,7 @@ impl MediaHost {
         (id, slot)
     }
 
+    /// Waits for terminal job state within a deadline and refuses jobs that disappear.
     fn wait_final(&self, id: &str, timeout: Duration) -> Result<JobInfo, CommandError> {
         let deadline = std::time::Instant::now() + timeout;
         loop {
@@ -570,10 +572,15 @@ impl MediaHost {
         Ok(merge_applied(result, &id, applied))
     }
 
+    /// Maps terminal results to command replies, preserving stored errors and partial cancellation details.
     fn outcome(info: &JobInfo) -> Result<Value, CommandError> {
         match info.state {
             JobState::Succeeded => Ok(info.result.clone().unwrap_or(Value::Null)),
-            JobState::Cancelled => Err(JobError::cancelled().into()),
+            JobState::Cancelled => Err(info
+                .error
+                .clone()
+                .unwrap_or_else(JobError::cancelled)
+                .into()),
             _ => Err(info.error.clone().map_or_else(
                 || CommandError::new("job_failed", "The job failed"),
                 CommandError::from,
@@ -607,6 +614,8 @@ impl MediaHost {
             "scene.resources.adopt" => self.scene_adopt(state, request),
             "scene.resources.release" => self.scene_release(request),
             "scene.resources.invalidate" => self.scene_invalidate(request),
+            "scene.resources.claims" => self.scene_claims(state, request),
+            "scene.resources.recover" => self.scene_recover(state, request),
             "export.preflight" => self.export_preflight(state, request),
             "export.start" => self.export_start(state, request),
             "scene.export" => self.scene_export(state, request),
@@ -1103,6 +1112,67 @@ impl MediaHost {
         )
     }
 
+    /// `scene.resources.claims`: who holds what in the claims ledger of the project's workspace
+    /// (BL111). A job like every operation that touches files, but **not read-only**: opening the
+    /// ledger reaps the owners whose lease is gone, and the answer says so (`readOnly: false`,
+    /// `effects`, `reaped`). It removes no resource file and hashes nothing. Changes no project
+    /// data. A ledger that cannot be read is an answer (`available: false`, `fault`), not a failure.
+    fn scene_claims(
+        &mut self,
+        state: &mut EditorState,
+        request: &Value,
+    ) -> Result<Value, CommandError> {
+        let workspace = workspace(state)?;
+        // `Preflight` is the nearest kind: it is the one for jobs that look at files and change
+        // no project; the label and the answer carry the exact meaning.
+        let (id_job, slot) = self.start(JobKind::Preflight, "Scene resources claims", move |ctx| {
+            ctx.stage("ledger", 1);
+            ctx.check()?;
+            let report = crate::scene_resources::claims_status(&workspace);
+            ctx.progress(1);
+            Ok((None, report))
+        });
+        self.finish(state, request, id_job, slot)
+    }
+
+    /// `scene.resources.recover`: takes back what a result that no longer exists left claimed in
+    /// the project's workspace: orphans only, after the same content proof as any cleanup, under
+    /// the lease of each root (BL111). It hashes every orphan file, so it is a cancellable job
+    /// with progress in orphan files; `claims_unavailable` when the ledger cannot be used,
+    /// with any partial removals reported in details, as for `cancelled`. Changes no
+    /// project data. `Hash` is the kind of the job that reads file bytes.
+    fn scene_recover(
+        &mut self,
+        state: &mut EditorState,
+        request: &Value,
+    ) -> Result<Value, CommandError> {
+        let workspace = workspace(state)?;
+        let (id_job, slot) = self.start(JobKind::Hash, "Recover scene resources", move |ctx| {
+            ctx.stage("recover", 0);
+            let recovery = crate::scene_resources::recover_with(
+                &workspace,
+                ctx.token(),
+                &mut |done, total| {
+                    if done == 0 {
+                        ctx.stage("recover", total as u64);
+                    } else {
+                        ctx.progress(done as u64);
+                    }
+                },
+            )?;
+            for kept in &recovery.report.kept {
+                ctx.warn(kept.clone());
+            }
+            Ok((
+                None,
+                json!({ "action": "scene.resources.recover",
+                "workspace": workspace.display().to_string(),
+                "recovery": recovery.to_json() }),
+            ))
+        });
+        self.finish(state, request, id_job, slot)
+    }
+
     /// `project.import_scenes`: carries scenes (their bundle and files) from another project or
     /// package; see `scene_resources::import` for what is guaranteed about IDs, references and paths.
     fn import_scenes(
@@ -1290,6 +1360,7 @@ impl MediaHost {
         )
     }
 
+    /// Returns observable job state without applying its pending project mutation.
     fn job_get(&mut self, request: &Value) -> Result<Value, CommandError> {
         let id = text(request, "job")?;
         let info = self
@@ -1299,6 +1370,7 @@ impl MediaHost {
         Ok(info.to_json())
     }
 
+    /// Waits without committing in headless sessions; interactive callers get a snapshot at once.
     fn job_wait(&mut self, request: &Value) -> Result<Value, CommandError> {
         let id = text(request, "job")?;
         if self.interactive {
@@ -1315,6 +1387,7 @@ impl MediaHost {
         Ok(info.to_json())
     }
 
+    /// Applies a successful pending result once; terminal errors retain their cleanup details.
     fn job_commit(
         &mut self,
         state: &mut EditorState,
@@ -1472,6 +1545,7 @@ fn probe_capabilities(
     }
 }
 
+/// Consumes the pending result once so two application paths cannot own the same files.
 fn take(slot: &Slot) -> Option<Pending> {
     slot.lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
