@@ -646,7 +646,7 @@ impl<B: RenderBackend> ViewportSession<B> {
                 self.capabilities = Some(*capabilities);
                 SessionEvent::Progress
             }
-            BackendEvent::Asset { id, status } => self.on_asset(id, status),
+            BackendEvent::Asset { id, status, .. } => self.on_asset(id, status),
             BackendEvent::Proxy { id, state } => {
                 match state {
                     ProxyState::Attached => self.stats.proxy_attached += 1,

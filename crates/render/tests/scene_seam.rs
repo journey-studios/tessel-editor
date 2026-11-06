@@ -538,6 +538,13 @@ fn well_behaved(message: &Value) -> Vec<Value> {
 fn renderer(
     respond: impl FnMut(&Value) -> Vec<Value> + 'static,
 ) -> (SceneRenderer<Scripted>, Sent) {
+    renderer_with_slots(SceneSlots::default(), respond)
+}
+
+fn renderer_with_slots(
+    slots: SceneSlots,
+    respond: impl FnMut(&Value) -> Vec<Value> + 'static,
+) -> (SceneRenderer<Scripted>, Sent) {
     let sent: Sent = Rc::default();
     let transport = Scripted {
         sent: Rc::clone(&sent),
@@ -546,7 +553,7 @@ fn renderer(
     };
     let backend = BridgeBackend::new("scripted", transport, Duration::from_secs(1));
     (
-        SceneRenderer::new(backend).with_timeout(Duration::from_secs(1)),
+        SceneRenderer::with_slots(backend, slots).with_timeout(Duration::from_secs(1)),
         sent,
     )
 }
@@ -859,4 +866,223 @@ fn a_silent_runtime_times_out_with_what_it_was_asked() {
         .unwrap_err();
     assert_eq!(error.code, "timeout");
     assert!(error.message.contains("pictures"), "{error:?}");
+}
+
+// ---- load identity (BL102b) -----------------------------------------------------------------
+
+/// What a runtime that negotiated `asset.identity` answers to `load`: the `ready` of exactly that
+/// request, with the request and the scene identity repeated and nothing else.
+fn echoed_ready(load: &Value) -> Value {
+    let mut state = json!({"v": 1, "type": "asset.state", "id": load["asset"]["id"],
+        "state": "ready", "meta": {}});
+    state["request"] = load["asset"]["request"].clone();
+    state["scene"] = load["asset"]["scene"].clone();
+    state
+}
+
+fn identified(message: &Value) -> Vec<Value> {
+    match message["type"].as_str() {
+        Some("hello") => vec![ready(&["directed_scene", "asset.identity"])],
+        Some("asset.load") => vec![echoed_ready(message)],
+        Some("frame.render") => vec![done(message["id"].as_u64().unwrap())],
+        _ => vec![],
+    }
+}
+
+fn loads(sent: &Sent) -> Vec<Value> {
+    sent.borrow()
+        .iter()
+        .filter(|message| message["type"] == "asset.load")
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn a_negotiated_runtime_is_sent_one_new_request_per_load_and_its_echo_unlocks_the_frame() {
+    let scene = scene("bundle.json");
+    let first_plan = plan(&scene, 0);
+    let map = resources(1, &first_plan);
+    let (mut renderer, sent) = renderer(identified);
+    renderer
+        .render(&first_plan, &map, &FrameOptions::default())
+        .unwrap();
+    assert!(renderer.asset_identity());
+    assert_eq!(renderer.refused_asset_states(), 0);
+    let requests: Vec<u64> = loads(&sent)
+        .iter()
+        .map(|load| load["asset"]["request"].as_u64().unwrap())
+        .collect();
+    assert_eq!(requests, vec![1, 2, 3], "one number per load, never reused");
+    // The frame was only asked for after the three echoes.
+    assert_eq!(
+        types(&sent).last().map(String::as_str),
+        Some("frame.render")
+    );
+}
+
+#[test]
+fn a_runtime_that_did_not_list_the_feature_is_sent_nothing_new_and_judged_by_slot_alone() {
+    let scene = scene("bundle.json");
+    let first_plan = plan(&scene, 0);
+    let map = resources(1, &first_plan);
+    // The old runtime answers with the slot only: no echo, and that still unlocks the frame.
+    let (mut renderer, sent) = renderer(well_behaved);
+    renderer
+        .render(&first_plan, &map, &FrameOptions::default())
+        .unwrap();
+    assert!(!renderer.asset_identity());
+    assert_eq!(renderer.refused_asset_states(), 0);
+    for load in loads(&sent) {
+        assert!(load["asset"].get("request").is_none(), "{load}");
+    }
+}
+
+#[test]
+fn a_late_ready_of_an_earlier_load_in_the_same_slot_never_confirms_the_new_one() {
+    let scene = scene("bundle.json");
+    let first_plan = plan(&scene, 0);
+    let first_map = resources(1, &first_plan);
+    // Generation 1 is never answered (the page is busy), then the project is reopened as
+    // generation 2: the slots are given to new loads and only then do the old answers arrive.
+    let held: Rc<RefCell<Vec<Value>>> = Rc::default();
+    let stale_held = Rc::clone(&held);
+    let deliver_new = Rc::new(RefCell::new(false));
+    let new_answers = Rc::clone(&deliver_new);
+    // Exactly as many slots as the plan has pictures: the new loads land in the very slots of the
+    // old ones, which is the only way the name of a slot says nothing about which load it answers.
+    let (mut renderer, sent) = renderer_with_slots(SceneSlots::new(3, u64::MAX), move |message| {
+        match message["type"].as_str() {
+            Some("asset.load") if message["asset"]["scene"]["generation"] == 1 => {
+                stale_held.borrow_mut().push(echoed_ready(message));
+                vec![]
+            }
+            Some("asset.load") => {
+                // The old, correctly echoed `ready`s come first; the answer to this very load, only
+                // when the test lets it.
+                let mut replies: Vec<Value> = stale_held.borrow_mut().drain(..).collect();
+                if *new_answers.borrow() {
+                    replies.push(echoed_ready(message));
+                }
+                replies
+            }
+            _ => identified(message),
+        }
+    });
+    renderer = renderer.with_timeout(Duration::from_millis(200));
+    let error = renderer
+        .render(&first_plan, &first_map, &FrameOptions::default())
+        .unwrap_err();
+    assert_eq!(error.code, "timeout");
+
+    let second_map = resources(2, &first_plan);
+    let error = renderer
+        .render(&first_plan, &second_map, &FrameOptions::default())
+        .unwrap_err();
+    assert_eq!(error.code, "timeout", "no answer to a new load, no frame");
+    assert!(
+        !types(&sent).contains(&"frame.render".to_string()),
+        "a late ready of the replaced loads released a frame with the wrong pictures"
+    );
+    assert!(renderer.refused_asset_states() >= 1);
+    let refused = renderer.refused_asset_states();
+
+    // The same situation where the new loads are answered: the frame is drawn, once.
+    *deliver_new.borrow_mut() = true;
+    let third_map = resources(3, &first_plan);
+    renderer
+        .render(&first_plan, &third_map, &FrameOptions::default())
+        .unwrap();
+    assert_eq!(renderer.refused_asset_states(), refused);
+    assert_eq!(
+        types(&sent)
+            .iter()
+            .filter(|kind| *kind == "frame.render")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn an_echo_of_another_request_or_picture_or_none_at_all_is_refused_when_negotiated() {
+    let scene = scene("bundle.json");
+    let first_plan = plan(&scene, 0);
+    let map = resources(1, &first_plan);
+    let wrong: [fn(&mut Value); 4] = [
+        |state| state["request"] = json!(999),
+        |state| state["scene"]["content_hash"] = json!("other"),
+        |state| state["scene"]["generation"] = json!(77),
+        |state| {
+            state.as_object_mut().unwrap().remove("request");
+            state.as_object_mut().unwrap().remove("scene");
+        },
+    ];
+    for (index, corrupt) in wrong.into_iter().enumerate() {
+        let (mut renderer, sent) = renderer(move |message| {
+            let mut replies = identified(message);
+            if message["type"] == "asset.load" {
+                corrupt(&mut replies[0]);
+            }
+            replies
+        });
+        renderer = renderer.with_timeout(Duration::from_millis(100));
+        let error = renderer
+            .render(&first_plan, &map, &FrameOptions::default())
+            .unwrap_err();
+        assert_eq!(error.code, "timeout", "case {index}");
+        assert_eq!(renderer.refused_asset_states(), 3, "case {index}");
+        assert!(
+            !types(&sent).contains(&"frame.render".to_string()),
+            "case {index}"
+        );
+    }
+}
+
+#[test]
+fn a_failure_is_real_only_with_the_right_echo_and_a_stale_cancelled_does_not_fail_the_new_load() {
+    let scene = scene("bundle.json");
+    let first_plan = plan(&scene, 0);
+    let map = resources(1, &first_plan);
+    let (mut renderer, _) = renderer(|message| {
+        let mut replies = identified(message);
+        if message["type"] == "asset.load" && message["asset"]["scene"]["asset_id"] == "mid" {
+            // The `cancelled` of an earlier load of the slot, then the real failure of this one.
+            let mut stale = echoed_ready(message);
+            stale["state"] = json!("failed");
+            stale["request"] = json!(message["asset"]["request"].as_u64().unwrap() + 100);
+            stale["error"] = json!({"code": "cancelled", "message": "superseded"});
+            let mut real = echoed_ready(message);
+            real["state"] = json!("failed");
+            real["error"] = json!({"code": "resource_mismatch", "message": "other hash"});
+            replies = vec![stale, real];
+        }
+        replies
+    });
+    let error = renderer
+        .render(&first_plan, &map, &FrameOptions::default())
+        .unwrap_err();
+    assert_eq!(
+        error.code, "resource_mismatch",
+        "the stale one is not the answer"
+    );
+    assert_eq!(renderer.refused_asset_states(), 1);
+}
+
+#[test]
+fn a_restarted_runtime_keeps_counting_requests_so_an_old_process_cannot_match_a_new_load() {
+    let scene = scene("bundle.json");
+    let first_plan = plan(&scene, 0);
+    let map = resources(1, &first_plan);
+    let (mut renderer, sent) = renderer(identified);
+    renderer
+        .render(&first_plan, &map, &FrameOptions::default())
+        .unwrap();
+    renderer.shutdown();
+    renderer
+        .render(&first_plan, &map, &FrameOptions::default())
+        .unwrap();
+    let requests: Vec<u64> = loads(&sent)
+        .iter()
+        .map(|load| load["asset"]["request"].as_u64().unwrap())
+        .collect();
+    assert_eq!(requests, vec![1, 2, 3, 4, 5, 6]);
 }
