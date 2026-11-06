@@ -47,7 +47,7 @@ mod run;
 mod scope;
 mod store;
 
-pub use command::{CameraAt, SceneCommand, SceneSource};
+pub use command::{AdmittedScene, CameraAt, SceneCommand, SceneSource};
 pub use run::admit;
 pub use scope::{deferred_in_use, scope_json};
 pub use store::STORE_VERSION;
@@ -181,6 +181,27 @@ impl SceneBook {
             .collect()
     }
 
+    /// The gate `scene.attach` runs before it reads anything: a well-formed, free ID (or room for a
+    /// generated one) and a name that is not blank. Public so an adapter that reads the bundle on a
+    /// job thread can refuse these without first spending that work (the command checks again when
+    /// the result is applied, because the project may have changed meanwhile).
+    pub fn check_attach(&self, id: Option<&str>, name: Option<&str>) -> Result<(), CommandError> {
+        match id {
+            Some(raw) => {
+                check_scene_id(raw)?;
+                self.check_room(raw)?;
+            }
+            None => self.check_room(&self.fresh_id())?,
+        }
+        if name.is_some_and(|raw| raw.trim().is_empty()) {
+            return Err(CommandError::invalid_value(
+                "A scene name cannot be blank",
+                serde_json::json!("a non-empty string"),
+            ));
+        }
+        Ok(())
+    }
+
     /// Whether `id` can be added now: free and under [`MAX_SCENES`]. Checked before the (costly)
     /// import so a refusal does not first parse a large bundle.
     pub(crate) fn check_room(&self, id: &str) -> Result<(), CommandError> {
@@ -206,8 +227,21 @@ impl SceneBook {
     }
 
     pub(crate) fn insert(&mut self, entry: AttachedScene) -> Result<(), CommandError> {
+        // Room first: a refused ID must not pay for serializing the bundle.
         self.check_room(&entry.id)?;
         let bytes = serialized_len(&entry.scene);
+        self.insert_measured(entry, bytes)
+    }
+
+    /// [`Self::insert`] with the compact size already known (measured once by
+    /// [`AdmittedScene::prepare`](AdmittedScene)), so attaching does not walk the bundle again.
+    /// The rules and their order are the same: room first, then the project byte budget.
+    pub(crate) fn insert_measured(
+        &mut self,
+        entry: AttachedScene,
+        bytes: usize,
+    ) -> Result<(), CommandError> {
+        self.check_room(&entry.id)?;
         let total = self.stored_bytes().saturating_add(bytes);
         if total > MAX_SCENE_BYTES {
             return Err(CommandError::new(

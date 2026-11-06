@@ -130,3 +130,10 @@ As fases do S7 e do S9 saem **BLOCKED** (código 3 se forem as únicas pendentes
 julgada por este harness: a cobertura dessas duas famílias hoje é o baseline do caminho existente e a cola testada com fakes.
 
 Conferência do coordenador: 16/16 testes de `proof.spec.py` reconferidos. Guarda operacional corrigida para 12 GiB; prova de limite recusa 11,99 GiB e aceita 12 GiB. As tolerâncias de pixel/áudio permanecem intactas. O relatório vivo acima preserva o fingerprint da execução anterior; não foi reclassificado após esta correção operacional.
+
+Integração com main6f7a944: conflito restrito à matriz, preservando F040–F043 e F044.
+O teste proof.spec.py passou. As fases tolerances_frozen, corpus e models foram executadas
+no checkout completo e passaram (`/tmp/tessel-s10-main-data.json`). Isso corrige apenas a
+proveniência/fixture ausente no scratch anterior; não é novo aceite vivo de splat/áudio.
+Tolerâncias, oráculos e relatórios históricos não foram alterados. As emendas ainda preservadas
+em wave-resource-stop/S10 continuam separadas e não foram aplicadas por este merge.

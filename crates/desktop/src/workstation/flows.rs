@@ -21,8 +21,8 @@ pub enum FlowKind {
     Package,
     Export,
     ExportScene,
-    /// F043: `scene.attach` of a render-bundle, then (with a resource folder) adopt, load,
-    /// select and show it. See `scene_import.rs`.
+    /// F043: `scene.attach.start` of a render-bundle (a job), then adopt (with a resource folder),
+    /// load, select and show it. See `scene_import.rs`.
     AttachScene,
     /// F043: load or re-adopt the resources of a scene that is already attached.
     SceneResources,
@@ -386,7 +386,8 @@ pub fn build_request(kind: FlowKind, values: &[(&str, String)]) -> Result<Value,
             request
         }
         FlowKind::AttachScene => {
-            let mut request = json!({ "op": "scene.attach", "path": required("bundle")? });
+            // Read and validated by a job (BL100); the core's `scene.attach` runs when it is applied.
+            let mut request = json!({ "op": "scene.attach.start", "path": required("bundle")? });
             for name in ["id", "name"] {
                 let text = value(name);
                 if !text.is_empty() {
