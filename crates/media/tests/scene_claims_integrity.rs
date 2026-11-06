@@ -352,6 +352,11 @@ fn a_settle_gives_up_inside_the_tick_budget_when_the_ledger_lock_stays_held() {
         .settle(&world.destination)
         .expect_err("the ledger is busy: the acceptance cannot be recorded");
     let waited = started.elapsed();
+    eprintln!(
+        "BUDGET {}",
+        json!({"measure": "settle-holder-stuck-same-process",
+            "settleMs": waited.as_secs_f64() * 1000.0, "ceilingMs": 100})
+    );
 
     // Held to the UI's ceiling, not to the 1.5 s a waiting caller would take.
     assert!(
@@ -411,7 +416,13 @@ fn a_settle_rides_out_a_ledger_lock_another_job_of_this_process_holds_for_a_mome
     };
     held_rx.recv().unwrap();
     ticking.store(true, std::sync::atomic::Ordering::SeqCst);
+    let looked = std::time::Instant::now();
     let settled = pending.settle(&world.destination);
+    eprintln!(
+        "BUDGET {}",
+        json!({"measure": "settle-holder-2ms-same-process",
+            "settleMs": looked.elapsed().as_secs_f64() * 1000.0, "ceilingMs": 100})
+    );
     other_job.join().unwrap();
     assert!(
         settled.is_ok(),

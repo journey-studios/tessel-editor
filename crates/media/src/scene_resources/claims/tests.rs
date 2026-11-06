@@ -358,7 +358,12 @@ fn a_tick_that_finds_the_lock_held_for_a_moment_by_this_process_gets_it() {
     };
     held_rx.recv().unwrap();
     ticking.store(true, std::sync::atomic::Ordering::SeqCst);
+    let looked = std::time::Instant::now();
     let mut tracker = ledger.try_lock();
+    eprintln!(
+        "BUDGET {{\"measure\":\"tick-holder-2ms-same-process\",\"tryLockMs\":{:.3}}}",
+        looked.elapsed().as_secs_f64() * 1000.0
+    );
     assert!(
         tracker.fault().is_none(),
         "the lock was free again within the tick's budget: {:?}",
@@ -394,6 +399,10 @@ fn a_tick_that_finds_the_lock_stuck_gives_up_inside_its_budget_with_a_neutral_re
     let started = std::time::Instant::now();
     let tracker = ledger.try_lock();
     let waited = started.elapsed();
+    eprintln!(
+        "BUDGET {{\"measure\":\"tick-holder-stuck-same-process\",\"tryLockMs\":{:.3}}}",
+        waited.as_secs_f64() * 1000.0
+    );
     let why = tracker.fault().expect("the lock stayed held: unavailable");
     assert!(
         why.contains("held right now") && why.contains("gave up after"),

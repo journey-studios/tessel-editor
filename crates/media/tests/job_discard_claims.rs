@@ -814,6 +814,11 @@ fn a_peer_stopped_while_holding_the_ledger_lock_cannot_freeze_the_tick() {
     let tick = Instant::now();
     let events = host.poll(&mut state);
     let elapsed = tick.elapsed();
+    eprintln!(
+        "BUDGET {}",
+        json!({"measure": "tick-sigstop-peer", "pollMs": elapsed.as_secs_f64() * 1000.0,
+            "peerPid": pid, "ceilingMs": 100})
+    );
     // Not the 1.5 s of the bounded wait either: the tick waits its fixed 20 ms budget and no more,
     // and the whole tick stays under the UI's 100 ms ceiling (not a loose second).
     assert!(

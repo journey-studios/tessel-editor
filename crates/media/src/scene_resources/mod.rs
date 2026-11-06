@@ -39,6 +39,8 @@ pub mod load;
 pub mod map;
 pub(crate) mod pack;
 pub mod recover;
+#[cfg(all(test, unix))]
+mod recover_budget;
 pub mod session;
 pub mod snapshot;
 
