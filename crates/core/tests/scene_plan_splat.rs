@@ -668,8 +668,8 @@ fn the_reader_refuses_a_splat_matrix_that_is_not_a_similarity_and_the_timeline_c
     );
     assert_eq!(plan.validate(), Ok(()));
 
-    // A performance channel never animates a scale (only a static value), so a refusal is the
-    // same for every frame of the shot and the timeline answers exactly as `build` does, in any order.
+    // This fixed stretched hierarchy is refused at every sampled frame. In general, animated
+    // rotations can change similarity even with static scales, so the timeline checks each frame.
     let mut doc = with_splat(SOCKETS, "scene-rig", "arm");
     set_node(
         &mut doc,

@@ -64,8 +64,9 @@ com erro tipado, nunca aproximado": o **core** recusa a matriz que não é rota�
   tiro não carrega a recusa de um frame aos demais), `ScenePlan::validate` (logo `from_json`, `SceneSlots::prepare`) e uma guarda no
   runtime (`parseDirectedLayer`, mesmo código `unsupported`) para um plano que chegue por outro caminho. Um plano parcial
   (`allow_partial`) não contorna: não é domínio, é a matriz.
-- Limite: canais de desempenho não animam escala (só valor estático), então na prática a recusa vale para todos os frames do tiro; a
-  verificação por frame é a defesa que não depende disso. Não há suporte aproximado nem `covSplats` (exigiria `extSplats`).
+- A escala local é estática, mas rotações animadas sob escalas não uniformes na hierarquia podem mudar a similaridade da matriz composta.
+  Um frame pode passar e outro ser recusado; a verificação por frame é necessária inclusive durante o export, que pode falhar no meio do
+  job sem publicar o resultado. Não há suporte aproximado nem `covSplats` (exigiria `extSplats`).
 
 ## Ordem de pintura e limites do Spark
 
