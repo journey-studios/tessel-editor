@@ -410,7 +410,8 @@ Falha observada em teste de slider/layout (arquivo R9 ainda WIP) foi encaminhada
 
 | ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
 |---|---|---|---|---|---|---|
-| BL102 | F041/identidade IPC | Ecoar identidade de carga em asset.state e recusar ready atrasado de slot reutilizado | Pendente | BL092/runtime/host | Coordenador | Contrato aditivo compatível; teste injeta ready antigo após substituir carga no mesmo slot e prova que não desbloqueia o frame novo; ver next-r8-report.md |
+| BL102 | F041/identidade IPC | Ecoar identidade de carga em asset.state e recusar ready atrasado de slot reutilizado | A validar (S4) | BL092/runtime/host | S4 / coordenador | Contrato aditivo compatível; teste injeta ready antigo após substituir carga no mesmo slot e prova que não desbloqueia o frame novo; ver next-r8-report.md |
+| BL102b | F041/identidade headless | Carimbar `asset.request` e conferir o eco também no `SceneRenderer` (CLI headless) | A validar (S4) | BL102 | S4 / coordenador | `BackendEvent::Asset.echo` aditivo; `SceneRenderer` negocia `asset.identity`, carimba (contador nunca reiniciado), recusa eco ausente/parcial/de outro pedido e conta em `refused_asset_states()`; runtime antigo inalterado. 6 testes roteirizados em `scene_seam.rs` (ready velho no mesmo slot com `SceneSlots::new(3, ..)`; mutação verificada: 3 falham) + 2 de decode no core + `scene_frames.rs` 8/8 no runtime real (Chrome, `asset_identity()` negociado, 0 recusas). Ver [scene-renderer.md](features/scene-renderer.md#headless-scenerenderer-bl102b) |
 | BL103 | F041/orçamento nativo | Exercitar mais de 32 recursos distintos com LRU e perda de contexto | Pendente | BL092 | Coordenador | Prova WKWebView com recursos acima do teto, contadores host/runtime coerentes e pixels atuais após evicção e restauração; corpus atual tem só 3 recursos |
 
 | ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
@@ -463,7 +464,7 @@ Plano e contratos: [wave-s1-s10-plan.md](migration/wave-s1-s10-plan.md). R1–R1
 | S1 | BL094/BL112 | Preparada para delegação | descarte assíncrono, sem hashing na UI |
 | S2 | BL111 | Preparada para delegação | claims persistentes e dois processos reais |
 | S3 | BL109 | Implementada, a validar (PR própria) | bytes imutáveis em export e cancelamento |
-| S4 | BL102 | Preparada para delegação | ack antigo de slot reutilizado recusado |
+| S4 | BL102 | Implementada, PR #7 aberta (a validar) | ack antigo de slot reutilizado recusado com `asset.identity` na janela e no `SceneRenderer` headless (BL102b); a validar até revisão e gate integrado |
 | S5 | BL100/BL101 | Entregue em PR; a validar | attach off-thread e recursos vazios; ver BL100/BL101 |
 | S6 | BL004/BL005 | Preparada para delegação | catálogo e pose inicial equivalentes à origem |
 | S7 | BL025 (subconjunto) | Preparada para delegação | Spark dirigido em preview/pacote/export |
