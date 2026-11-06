@@ -470,5 +470,5 @@ Plano e contratos: [wave-s1-s10-plan.md](migration/wave-s1-s10-plan.md). R1–R1
 | S6 | BL004/BL005 | Preparada para delegação | catálogo e pose inicial equivalentes à origem |
 | S7 | BL025 (subconjunto) | Preparada para delegação | Spark dirigido em preview/pacote/export |
 | S8 | BL015/BL042 | Preparada para delegação | gizmo de translação e comando semântico equivalentes |
-| S9 | BL016 | Entregue para revisão (PR desta branch) | mix offline dirigido e áudio no export: core 20+4, mídia 15, CLI headless real, oráculo R10 17/17; janela e transporte pendentes (BL016.1–.4) |
+| S9 | BL016 | Entregue para revisão (PR desta branch) | mix offline dirigido e áudio no export: core 20+4, mídia 20, CLI headless real, oráculo R10 17/17, janela real 45/45 com piso 12 GiB em `989bfe3`; pendentes: transporte (BL016.1), fonte > 48 kHz (BL016.3) e semântica da S10 (BL016.5); BL016.2/.4 a validar |
 | S10 | BL019 (ampliação) | Preparada para delegação | provas independentes e controles negativos |

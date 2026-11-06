@@ -135,7 +135,7 @@ Status: **a validar na integração** (implementado, com as provas abaixo, inclu
 | Superfície | Evidência |
 |---|---|
 | Lib (core) | `crates/core/tests/scene_export.rs` (20) e unidade `scene_export::audio` (4): plano padrão com mix, `audio:false`/preset mudo, offset de janela (`10–14 s`, `from=24`), taxa 24→30 (48 000 amostras), cauda de 800 amostras (2 frames → 3), NTSC `30000/1001` (48 048), janela curta com números, decimal exato, narração recusada |
-| Lib (mídia, FFmpeg real, sem browser) | `crates/media/tests/scene_export_audio.rs` (15): amostras **exatas** em 48 kHz (cópia = fatia da fonte), offset, 44,1 kHz mono (interpolação calculada no teste, ±1 LSB), cauda silenciosa, NaN/∞/clipping, bytes trocados (`resource_changed`), 8 arquivos/formatos recusados (`unsupported`) mais curto e ausente com código próprio; MP4 pelo host com espectro 440→880 Hz medido no AAC decodificado nos lugares certos, 24→30 + 44,1 kHz, offset de janela, `audio:false`, recusas antes de job/frame, troca de bytes falha com 0 frames desenhados, preflight de mix sumido |
+| Lib (mídia, FFmpeg real, sem browser) | `crates/media/tests/scene_export_audio.rs` (20, contando os de bytes congelados abaixo): amostras **exatas** em 48 kHz (cópia = fatia da fonte), offset, 44,1 kHz mono (interpolação calculada no teste, ±1 LSB), cauda silenciosa, NaN/∞/clipping, bytes trocados (`resource_changed`), 8 arquivos/formatos recusados (`unsupported`) mais curto e ausente com código próprio; MP4 pelo host com espectro 440→880 Hz medido no AAC decodificado nos lugares certos, 24→30 + 44,1 kHz, offset de janela, `audio:false`, recusas antes de job/frame, troca de bytes falha com 0 frames desenhados, preflight de mix sumido |
 | CLI headless real (Chrome) | `crates/render/tests/scene_export.rs`: `the_headless_binary_mixes_the_declared_wav_at_the_requested_range` (JSONL, frames reais do runtime, 440→880 Hz medido) e o teste de política de áudio atualizado |
 | Oráculo independente da R10 | `scripts/directed-scene-export-proof/proof.py --phases export_audio_policy`: 17/17 (uma stream de áudio, metade 440 Hz e metade 880 Hz, duração do áudio = vídeo ± 50 ms), resultado `outcome: mixed` |
 | Bytes congelados do mix (BL109) | `crates/media/tests/scene_export_audio.rs` (20): troca de mesmo tamanho → `resource_changed` **tipado** com as duas identidades e 0 frames; original reescrito no frame 0 não muda o AAC (440→880 Hz medidos, `source.sha256` = aprovado, `snapshot.bytes` ≥ WAV); `render_audio_private` sobre a cópia dá as amostras exatas depois de reescrever o original (e `render_audio` ainda recusa o original); mix sumido → `preflight_failed`/`resource_missing` e só o staging próprio some; cancelamento no meio dos frames limpa só o próprio staging; estimativa: `resource_copy_bytes` e `audio_mix_bytes` somam o WAV, e `jobs.rs` testa o mapeamento tipado |
@@ -191,3 +191,15 @@ da S10 nem as tolerâncias. A prova da janela (`scripts/scene-export-audio-ui-pr
 com janela `[0, 4)`, onde as duas semânticas coincidem.
 
 Nota de execução do coordenador: a prova nativa 45/45 da integração local foi rodada com `--min-free-gib 8`, abaixo do piso autorizado de 12 GiB. O resultado técnico foi preservado, mas não satisfaz o gate operacional e deve ser repetido no head final com >=12 GiB. O script agora recusa piso menor que 12 ou não finito; duas sondas de CLI confirmam a recusa antes de iniciar app/mídia.
+
+**Gate final da integração** (cabeça `989bfe3` = `c9833bb` + merge de `origin/main` `e296b36`, sem código novo depois do merge;
+conflito só nas linhas F041/F042/F042A da matriz). Com `TESSEL_REQUIRE_RUNTIME=1`, Chrome real e sob o lock de GPU:
+`cargo fmt --check`, `check --workspace --all-targets`, `clippy --workspace --all-targets -D warnings` e
+`test --workspace --locked` passaram (core 218, `scene_export` do core 20, desktop 194, mídia `scene_export` 11 e
+`scene_export_audio` 20, render `scene_export` 12; só ficaram `ignored` as medições longas/ZIP64 e as fases de aceite
+`scene_export_proof` que exigem o lock explícito); `./scripts/runtime test` 93/93; `cargo tree -p tessel-editor-core` não lista
+gpui/wry; R10 `export_audio_policy` 17/17. A prova da janela real foi repetida com o piso padrão de 12 GiB (29 GiB livres):
+`scripts/scene-export-audio-ui-proof.py` **45/45** sobre `target/debug/tessel-editor`
+(SHA-256 `2ab2541bb8080e93bb8e059c9e7c60fe1167f587a437a33a1471a12da3485a35`; relatório JSON SHA-256
+`6521c4a5c21f05436a9a4dc9bea3c2ddbee2e96bc9b2fab87909c91c5ca13afd`). Isto substitui a execução anterior com piso 8 GiB como
+gate; `--min-free-gib` 8, 11.99, `nan` e `inf` são recusados com status 2 antes de iniciar app ou mídia.
