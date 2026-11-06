@@ -808,7 +808,11 @@ fn a_managed_file_altered_after_adoption_fails_the_reload_without_approving_it(
     bytes[last] ^= 0xFF;
     fs::write(&managed, bytes).unwrap();
 
-    submit(&view, cx, FlowKind::SceneResources, &[("scene", "street")]).unwrap();
+    let started = submit(&view, cx, FlowKind::SceneResources, &[("scene", "street")]).unwrap();
+    assert_eq!(
+        started["changed"], false,
+        "starting a job has not changed the project"
+    );
     let failed = settle(&view, cx);
     assert_eq!(failed["state"], "failed", "{failed}");
     assert_eq!(failed["error"]["step"], "resolve");
@@ -1013,4 +1017,20 @@ fn the_scene_flows_are_in_the_automation_tree_and_the_header(cx: &mut TestAppCon
     assert_eq!(button["label"], "Anexar cena");
     assert_eq!(button["kind"], "button");
     assert_eq!(import_state(&view, cx), json!({ "state": "idle" }));
+}
+
+#[test]
+fn an_attach_failure_without_an_id_has_a_readable_scene_label() {
+    for id in ["", "street"] {
+        let mut request = plan(None, true);
+        request.scene = id.to_string();
+        let mut chain = SceneImport::attaching(request, json!({"op":"scene.attach.start"}));
+        chain.fail(&CommandError::new("invalid_bundle", "invalid bundle"));
+        let summary = chain.summary();
+        assert!(!summary.contains("«»"), "{summary}");
+        assert!(summary.contains("invalid bundle"), "{summary}");
+        if !id.is_empty() {
+            assert!(summary.contains("«street»"), "{summary}");
+        }
+    }
 }

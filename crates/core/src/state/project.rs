@@ -34,7 +34,7 @@ impl ProjectSession {
         Self(SESSIONS.fetch_add(1, Ordering::Relaxed))
     }
 
-    /// The counter value, for diagnostics (`project.history` and the status answers report it).
+    /// The counter value, for diagnostics (`history.status` and the status answers report it).
     pub fn number(self) -> u64 {
         self.0
     }

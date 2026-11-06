@@ -348,23 +348,24 @@ impl SceneImport {
     /// One line for the status bar once the chain stopped.
     fn summary(&self) -> String {
         let scene = &self.plan.scene;
+        let label = if scene.is_empty() {
+            "Cena".to_string()
+        } else {
+            format!("Cena «{scene}»")
+        };
         match &self.state {
             State::Running if self.step == Step::Attach => "Anexando cena…".to_string(),
-            State::Running => format!("Cena «{scene}»: carregando recursos…"),
-            State::Attached => format!("Cena «{scene}» anexada; recursos não carregados"),
-            State::Failed(failure) => format!(
-                "Cena «{scene}»: falha em {}: {}",
-                failure.step, failure.message
-            ),
+            State::Running => format!("{label}: carregando recursos…"),
+            State::Attached => format!("{label} anexada; recursos não carregados"),
+            State::Failed(failure) => {
+                format!("{label}: falha em {}: {}", failure.step, failure.message)
+            }
             State::Loaded => match (&self.presentation, self.done.contains(&"show")) {
                 (Some(failure), _) => {
-                    format!(
-                        "Cena «{scene}» carregada; {}: {}",
-                        failure.step, failure.message
-                    )
+                    format!("{label} carregada; {}: {}", failure.step, failure.message)
                 }
-                (None, true) => format!("Cena «{scene}» carregada e exibida no monitor"),
-                (None, false) => format!("Cena «{scene}» carregada"),
+                (None, true) => format!("{label} carregada e exibida no monitor"),
+                (None, false) => format!("{label} carregada"),
             },
         }
     }
@@ -400,7 +401,7 @@ impl Workstation {
         if kind == FlowKind::SceneResources {
             let plan = flows::import_plan(kind, values, &flows::field_value(values, "scene"));
             self.scene_import_begin(SceneImport::new(plan, false), false, cx)?;
-            return Ok(self.scene_import_answer(true));
+            return Ok(self.scene_import_answer(false));
         }
         let typed_id = flows::field_value(values, "id");
         let plan = flows::import_plan(kind, values, &typed_id);

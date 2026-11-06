@@ -17,23 +17,24 @@ use tessel_editor_core::scene_project::{SceneCommand, SceneSource};
 use tessel_editor_core::state::ProjectSettings;
 use tessel_editor_core::{Command, EditorState, headless, persist};
 
-fn temp(name: &str) -> PathBuf {
+fn temp(name: &str) -> Scratch {
     let dir = std::env::temp_dir().join(format!("tessel-session-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
-    dir
+    Scratch(dir)
 }
 
 fn ok(state: &mut EditorState, request: Value) -> Value {
     headless::execute(state, &request).unwrap_or_else(|error| panic!("{request}: {error:?}"))
 }
 
-fn saved_project(name: &str) -> (EditorState, PathBuf) {
+fn saved_project(name: &str) -> (EditorState, PathBuf, Scratch) {
     let mut state = EditorState::demo();
     ok(&mut state, json!({"op":"project.create","name":"identity"}));
-    let path = temp(name).join("p.tessel.json");
+    let scratch = temp(name);
+    let path = scratch.join("p.tessel.json");
     persist::save(&mut state, &path).unwrap();
-    (state, path)
+    (state, path, scratch)
 }
 
 fn session(state: &EditorState) -> u64 {
@@ -77,7 +78,7 @@ fn every_state_that_is_built_is_a_new_session_and_a_clone_is_the_same_one() {
 
 #[test]
 fn reopening_a_document_gives_the_same_id_and_revision_in_a_different_session() {
-    let (saved, path) = saved_project("reopen");
+    let (saved, path, _scratch) = saved_project("reopen");
     let first = persist::load(&path).unwrap();
     let second = persist::load(&path).unwrap();
     for loaded in [&first, &second] {
@@ -105,7 +106,7 @@ fn reopening_a_document_gives_the_same_id_and_revision_in_a_different_session() 
 
 #[test]
 fn the_session_is_not_in_the_document_and_does_not_change_what_is_saved() {
-    let (mut state, path) = saved_project("document");
+    let (mut state, path, _scratch) = saved_project("document");
     attach_scene(&mut state, "street");
     persist::save(&mut state, &path).unwrap();
     let text = fs::read_to_string(&path).unwrap();
@@ -132,7 +133,7 @@ fn the_session_is_not_in_the_document_and_does_not_change_what_is_saved() {
 
 #[test]
 fn edits_undo_redo_save_and_queries_stay_in_the_same_session() {
-    let (mut state, path) = saved_project("same-session");
+    let (mut state, path, _scratch) = saved_project("same-session");
     let started = session(&state);
     let stamp = state.project.stamp();
 
@@ -168,7 +169,7 @@ fn edits_undo_redo_save_and_queries_stay_in_the_same_session() {
 
 #[test]
 fn opening_and_creating_replace_the_session() {
-    let (mut state, path) = saved_project("replace");
+    let (mut state, path, _scratch) = saved_project("replace");
     let before = session(&state);
     let id = state.project.id.clone();
 
@@ -196,7 +197,7 @@ fn opening_and_creating_replace_the_session() {
 
 #[test]
 fn a_failed_open_keeps_the_session_it_was_in() {
-    let (mut state, path) = saved_project("failed-open");
+    let (mut state, path, _scratch) = saved_project("failed-open");
     let before = session(&state);
     let stamp = state.project.stamp();
     let broken = path.with_file_name("broken.tessel.json");
@@ -207,4 +208,17 @@ fn a_failed_open_keeps_the_session_it_was_in() {
         stamp.is_current(&state.project),
         "a rejected open changes nothing"
     );
+}
+
+struct Scratch(PathBuf);
+impl std::ops::Deref for Scratch {
+    type Target = PathBuf;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
 }

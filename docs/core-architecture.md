@@ -47,9 +47,10 @@ distingue um projeto do documento reaberto. `ProjectMeta::session` (`ProjectSess
 só de runtime: nasce quando um `EditorState` é *construído* (`demo`, `empty`, carregar ou recuperar
 um documento, restaurar um pacote) e não muda ao salvar, editar, desfazer, refazer, consultar nem
 clonar (snapshots de undo e planos de job continuam na mesma sessão). Não entra no documento,
-não vale em outro processo e `==` a ignora (compare com `is_same`). Um job que aplica depois captura
-`ProjectMeta::stamp()` (ID, sessão, revisão) e aplica só se `ProjectStamp::is_current` ainda vale;
-`project.history`/`history.status` expõem `project.session` para scripts e provas.
+não vale em outro processo e `==` a ignora (compare com `is_same`). Os jobs `scene.attach.start` e de restauração capturam `ProjectMeta::stamp()` (ID, sessão,
+revisão) e aplicam só se `ProjectStamp::is_current` ainda vale. Essa guarda não cobre todos os
+jobs: `media.prepare` confere ID do projeto e hash do asset, podendo aplicar após outra edição.
+`history.status` expõe `project.session` para scripts e provas.
 
 ## Usar pela CLI sem UI
 

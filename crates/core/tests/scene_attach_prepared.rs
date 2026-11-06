@@ -22,11 +22,11 @@ fn bundle_path() -> PathBuf {
         .join("../../docs/migration/fixtures/bundles/valid-minimal-continuous.bundle.json")
 }
 
-fn temp(name: &str) -> PathBuf {
+fn temp(name: &str) -> Scratch {
     let dir = std::env::temp_dir().join(format!("tessel-attach-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
-    dir
+    Scratch(dir)
 }
 
 fn project() -> EditorState {
@@ -170,4 +170,17 @@ fn an_admitted_scene_still_meets_the_projects_id_rules() {
     assert_eq!(undo_depth(&mut state), depth);
     assert_eq!(state.project.revision, revision);
     assert_eq!(state.scenes.ids().len(), 1);
+}
+
+struct Scratch(PathBuf);
+impl std::ops::Deref for Scratch {
+    type Target = PathBuf;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
 }

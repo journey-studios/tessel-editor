@@ -108,7 +108,7 @@ Módulo `workstation::scene_import` (crate `tessel-editor`, sem GPUI no contrato
 | `SceneImport::{new, request, bind, receive, fail, to_json}` | máquina de estados pura: não toca janela nem host |
 | `State::{Running, Attached, Loaded, Failed(Failure)}` | `Failure {step, code, message, details}` |
 | `Failure` | `code` é o do job (`resources_invalid`…): `details.job_code` vence o `job_failed` genérico; a mensagem ganha o primeiro problema por arquivo; `details` é guardado inteiro |
-| `Workstation::scene_import_submit` | monta o pedido, chama `scene.attach` e inicia a cadeia |
+| `Workstation::scene_import_submit` | monta o pedido, recusa cadeia concorrente e inicia `scene.attach.start`; o core aplica `scene.attach` no tick |
 | `Workstation::scene_import_receive` | chamado pelo tick para cada evento de job; ignora jobs que não são da cadeia |
 | `SceneImport::attaching(plan, request)` / `Step::Attach` | cadeia que começa pelo job `scene.attach.start`; o ID da cena é o digitado ou o que o core gerou ao aplicar (`applied.scene`); `resources.needs_folder == false` implica a carga mesmo sem pasta |
 | `Received::Attached` | o attach foi aplicado e nada mais foi pedido nem é necessário: a cena é só selecionada |
@@ -202,3 +202,6 @@ preservando attach assíncrono e claims/recover. Fmt/check/clippy workspace/buil
 passaram; regressões project_session, scene_attach_facts/prepared/job/process, async_host,
 scene_claims_integrity e scene_claims_jsonl passaram. A prova nativa anterior não foi repetida
 neste merge; esta validação cobre as junções de host/core, não novos gestos físicos.
+
+Revisão PR10: iniciar reparo de recursos responde `changed:false`; falhas de attach sem ID
+usam o rótulo “Cena”, sem delimitadores vazios. Regressões no teste desktop de scene_import.
