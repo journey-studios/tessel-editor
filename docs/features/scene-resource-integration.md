@@ -391,7 +391,7 @@ remoção medida (detalhes e limites em [F025](jobs.md#evidência-por-superfíci
 recusada ainda dona de arquivos e claims; `apply` é `settle` + remoção inline e só a remoção (`discard`) lê/hasheia
 **recursos**. O aceite, em si, lê e grava `claims.json` sob `flock`: no tick da janela (`settle`, `import::try_apply`) esperando o
 lock só **20 ms** (um lock ainda ocupado depois disso, por outro processo ou por outro job deste, recusa o aceite com
-`claims_unavailable`, BL112.3/N1);
+`claims_unavailable`, BL112.3/N1). **Medido (gates finais da PR 6, debug):** esse aceite custa 29–31 ms com 1 mil entradas no ledger e 304–310 ms com 10 mil (teto de 100 ms), `O(entradas)`: **BL112.7**, bloqueio aberto, decisão de arquitetura;
 em quem pode bloquear (`apply`, `job.commit` da CLI, jobs) a espera é limitada a 1,5 s. Um dono persistente de claims precisa
 manter essas propriedades (testes `settle_*`/`apply_is_settle_*`).
 

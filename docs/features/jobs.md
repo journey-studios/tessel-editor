@@ -163,8 +163,7 @@ Limite: a recusa de aceite não é exercida pela janela nativa (só pelo host in
 
 Cada item corrige um achado da revisão [5800801032](https://github.com/journey-studios/tessel-editor/pull/6#pullrequestreview-5800801032).
 **Executado** é o que o antecessor rodou, conforme o registro do coordenador (core, media 70, claims 12, EOF 2, desktop 5;
-sem log por teste, e não reexecutado nesta entrega). **Escrito, não executado** é o que ainda não passou por Cargo: os testes de
-F4 e tudo de BL112.3 abaixo, que aguardam os gates do coordenador.
+sem log por teste, e não reexecutado nesta entrega). **Escrito, não executado** era o que ainda não passou por Cargo; os gates finais da PR 6 (head `9bb4d18`) executaram tudo, inclusive F4 e BL112.3: ver o resumo em `docs/backlog.md` ("PR6 — gates finais e medições").
 
 | Item | Achado | Correção (onde) | Prova | Estado da prova |
 |---|---|---|---|---|
@@ -192,11 +191,7 @@ estão escritos e aguardam os gates (`fmt`, `check`, `clippy`, `test`, `build`, 
 | N6 | BL111.2 ainda dizia "junção com a S1 não incorporada" | uma linha em `backlog.md`, com autorização do coordenador | leitura |
 | N7 (BL094.10) | `job.commit` antes do tick deixava a cadeia em `running` (como F3) | `committed_unreported` em `MediaHost`: `poll` entrega uma vez o evento do job (`host.rs`) | `job_discard.rs` (2) e `scene_import_tests.rs::committing_the_attach_job_before_the_tick_still_moves_the_chain_on` |
 
-Mutações a rodar quando houver slot de execução (nenhuma foi executada): `begin_leave` → `leave` em `remove`; `try_lock` com
-`Duration::ZERO` (reprova o teste do holder de 2 ms) e com `LOCK_WAIT` (reprova os tetos de 100 ms); `took = is_ok()` em
-`apply_pending`; remover o `drop(media)` do `tessel-media`; remover `cancel_all` de `wait_for_discards` (o teste de N2 passa a
-estourar o relógio de 30 s); remover o `Drop` de `Blockers` (o de N3 passa a estourar o relógio); remover o `push` de
-`committed_unreported` (os de N7 reprovam).
+Mutações **executadas nos gates finais da PR 6** (head `9bb4d18`, cada uma revertida, logs `mut-*.log` em `/tmp/tessel-pr6-final-gates`): `begin_leave` → `leave` em `remove` (morta por `job_discard_claims`); `try_lock` com `Duration::ZERO` (morta pelos testes do holder de 2 ms, em `claims/tests.rs` e `scene_claims_integrity.rs`) e com `LOCK_WAIT` (morta pelos tetos de 100 ms, incluindo o `SIGSTOP`); `took = is_ok()` (morta por `job_commit_state` e `async_host`); remover o `drop(media)` do `tessel-media` (morta por `job_discard_exit`); remover `cancel_all` de `wait_for_discards` (morta pelo teste de N2, por tempo); remover o `Drop` de `Blockers` (morta nas duas suítes, por tempo); remover o `push` de `committed_unreported` (morta pelos dois testes de `commit_before_the_tick` em `job_discard.rs`). Não foi executada contra esta mutação a prova de cadeia da janela (`scene_import_tests.rs::committing_the_attach_job_before_the_tick_still_moves_the_chain_on`).
 
 **Por que o teste de F4 usa um processo.** O decode que segue um `job.commit` descobre o FFmpeg por conta própria
 (`Tools::discover()`, não as ferramentas do host) e o crate proíbe `unsafe` (então o teste não altera o ambiente do próprio
@@ -215,25 +210,23 @@ olhar uma vez (`Duration::ZERO`), mas `flock` conflita entre descritores **do me
 job `discard` (duas gravações por arquivo), uma adoção ou um `recover` do outro slot segurando o ledger durante uma atualização
 recusava um resultado **válido**, o descarte removia a cópia e a mensagem culpava "outro processo". Agora o tick espera um
 orçamento **fixo de 20 ms** (`TICK_WAIT`, olhando a cada `LOCK_POLL` de 500 µs; bem abaixo do teto): contenção
-curta pode ser absorvida, mas um holder longo saudável também pode esgotar o orçamento: `recover` mantém um único lock enquanto cada `forget` reescreve o ledger inteiro. Isso pode ocorrer com muitos órfãos, além de processos parados ou travados; a duração real ainda precisa ser medida (BL112.3). Então
+curta pode ser absorvida, mas um holder longo saudável também pode esgotar o orçamento: `recover` mantém um único lock enquanto cada `forget` reescreve o ledger inteiro. Isso pode ocorrer com muitos órfãos, além de processos parados ou travados; a duração foi medida nos gates finais (100 órfãos: 102,6–105,6 ms no total; ver abaixo). Então
 o ledger fica indisponível só para essa chamada (`fault`: "held right now by a holder that did not let go of it; gave up after
 20ms", sem apontar quem) e o aceite é **recusado** como qualquer outra falha do ledger: projeto, undo e revisão intactos, o
 resultado continua dono e vai para um job `discard` (`claims_unavailable`, `details.phase="accept"`, `details.why`). Quem pode
 bloquear (job de descarte, `apply`/`job.commit` da CLI, `recover`, `claims`) segue com a espera limitada de 1,5 s. O que o
-tick **ainda** faz na thread da UI: ler e reescrever `claims.json` (`O(entradas)`, sem `fsync`; a prova nativa mede só a latência
-de pedidos, p99 1,5–16 ms) e, apenas numa corrida com o processo que esvazia o ledger, as repetições da abertura (pausas de
+tick **ainda** faz na thread da UI: ler e reescrever `claims.json` (`O(entradas)`, sem `fsync`: 29–31 ms com 1 mil e 304–310 ms com 10 mil entradas em debug, BL112.7; a prova nativa mede a latência
+de pedidos, p99 16,6 ms) e, apenas numa corrida com o processo que esvazia o ledger, as repetições da abertura (pausas de
 1–2 ms, no máximo 64 tentativas; com as entradas do próprio resultado o ledger não fica vazio, então não ocorre na prática, mas
-**não foi medido**).
+**não foi medido em corrida real**).
 
 * **Disponibilidade, honestamente (BL112.5, pendente):** o orçamento de 20 ms cobre a contenção curta. Um holder que segura o
   lock além disso (outro editor parado, um ledger enorme) ainda recusa um resultado válido e **a cópia inteira é removida**:
   "nada se perde" não vale para o trabalho do usuário, só para a integridade (o descarte devolve apenas o que é nosso). A
   alternativa, manter o resultado `pending` e repetir o aceite no tick seguinte até um prazo, evita a recusa mas muda a máquina
   de estados do `poll`; fica registrada, sem implementação.
-* **Medição pendente (BL112.3):** o custo de ler/reescrever `claims.json` no tick com um ledger de 1 mil e de 10 mil entradas
-  **não foi medido**. Se passar de 100 ms é bloqueio genuíno e o aceite precisa sair da thread da UI (muda a arquitetura); hoje
-  não há evidência disso.
-* **Prova (escrita, não executada):** em `claims/tests.rs`: `the_tick_budget_is_fixed_and_well_below_the_ui_ceiling`
+* **Medido (BL112.3, gates finais da PR 6, head `9bb4d18`, build debug, 3 réplicas, `/tmp/tessel-pr6-final-gates`):** o tick lê e reescreve `claims.json` inteiro, `O(entradas)`. Ledger vazio (controle) 0,53–0,55 ms; **1 mil entradas 28,9–31,0 ms; 10 mil entradas 304–310 ms, acima do teto de 100 ms** (`scene_claims_budget.rs`, `--ignored`: ledger semeado uma vez e verificado por um segundo processo, host real; leitura+parse 112 ms, JSON 70 ms, serializar 113 ms). É o bloqueio genuíno previsto: **BL112.7**, decisão de arquitetura (o aceite é o último passo da transação do projeto; tirá-lo da UI exige diário por geração ou aceite em duas fases), **não corrigido** e sem teto relaxado. `recover` saudável com 100 órfãos segura o lock 102,6–105,6 ms; durante o hold o tick fica ≤ 20,4 ms, mas 12 de 19 ticks são recusados (BL112.5); com 10 órfãos o hold é de 3,0–3,3 ms e nada é recusado.
+* **Prova (executada nos gates finais):** em `claims/tests.rs`: `the_tick_budget_is_fixed_and_well_below_the_ui_ceiling`
   (orçamento entre 10 e 25 ms e ≤ ¼ do teto), `a_tick_that_finds_the_lock_held_for_a_moment_by_this_process_gets_it` (holder de
   2 ms em outra thread, solto só depois que o tick começou a olhar: olhar uma vez recusa) e
   `a_tick_that_finds_the_lock_stuck_gives_up_inside_its_budget_with_a_neutral_reason` (≥ 20 ms e < 100 ms, sem culpar "outro
@@ -241,7 +234,7 @@ de pedidos, p99 1,5–16 ms) e, apenas numa corrida com o processo que esvazia o
   e `a_settle_gives_up_inside_the_tick_budget_when_the_ledger_lock_stays_held`; e em `job_discard_claims.rs`:
   `a_peer_stopped_while_holding_the_ledger_lock_cannot_freeze_the_tick` (peer real em `SIGSTOP`; o tick inteiro < 100 ms,
   `why` "gave up after"). Os tetos de 1 s, que aceitavam dez vezes o limite, foram trocados por 100 ms; em máquina muito
-  carregada eles podem falhar sem regressão (repetir antes de concluir). Mutações a rodar: `try_lock` com `Duration::ZERO`
+  carregada eles podem falhar sem regressão (repetir antes de concluir). Mutações executadas (ver acima): `try_lock` com `Duration::ZERO`
   reprova o teste do holder de 2 ms; `try_lock` com `LOCK_WAIT` reprova os de teto de 100 ms. A espera limitada de quem pode
   bloquear segue coberta por `waiting_for_a_lock_nobody_lets_go_of_is_bounded` (executado pelo antecessor).
 
