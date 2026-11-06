@@ -22,6 +22,15 @@ pub enum PlanError {
     /// An id the plan needs does not resolve (`kind`: `"scene definition"`, `"asset"`, `"node"`).
     /// An imported scene never reaches this; the API stays total instead of panicking.
     Unresolved { kind: &'static str, id: String },
+    /// A splat node whose world matrix is not a similarity (rotation, one positive uniform scale,
+    /// translation): non-uniform or mirrored scale of the node or an ancestor, shear, degenerate.
+    /// The Spark runtime keeps one uniform scale per splat, so the frame is refused instead of
+    /// drawn approximated (BL123). Frame-dependent: animated rotations under non-uniform scales
+    /// in the hierarchy may fail on some frames only.
+    SplatTransform {
+        node_id: String,
+        reason: &'static str,
+    },
     /// The bundle document lacks a field the importer guarantees (`pointer` names it).
     MalformedDocument { pointer: String },
     /// The plan needs capabilities the runtime does not have.
@@ -38,7 +47,9 @@ impl PlanError {
     pub fn code(&self) -> &'static str {
         match self {
             Self::Frame(error) => error.code(),
-            Self::Unsupported { .. } | Self::CapabilityUnavailable { .. } => "unsupported",
+            Self::Unsupported { .. }
+            | Self::CapabilityUnavailable { .. }
+            | Self::SplatTransform { .. } => "unsupported",
             Self::UnsupportedVersion { .. } => "unsupported_plan_version",
             Self::Unresolved { .. } | Self::MalformedDocument { .. } | Self::Invalid { .. } => {
                 "invalid_plan"
@@ -67,6 +78,11 @@ impl PlanError {
                 "unsupported": "scene_plan_capabilities",
                 "missing": missing.iter().map(|capability| capability.as_str()).collect::<Vec<_>>(),
             })),
+            Self::SplatTransform { node_id, reason } => Some(json!({
+                "unsupported": "splat_transform",
+                "node": node_id,
+                "reason": reason,
+            })),
             _ => None,
         }
     }
@@ -90,6 +106,10 @@ impl fmt::Display for PlanError {
                     names.join(", ")
                 )
             }
+            Self::SplatTransform { node_id, reason } => write!(
+                f,
+                "the splat `{node_id}` cannot be drawn as planned: {reason} (a splat takes a rotation, one positive uniform scale and a translation)"
+            ),
             Self::Unresolved { kind, id } => write!(f, "Unknown {kind}: {id}"),
             Self::MalformedDocument { pointer } => {
                 write!(f, "the bundle document has no valid field at `{pointer}`")

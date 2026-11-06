@@ -27,7 +27,7 @@ import {
   vec,
 } from './directed-scene-fixtures.mjs';
 import { frameMessage, glMemory, loseDuring, loseNow, post, restore } from './lifecycle-fixtures.mjs';
-import { imageLayer, picture, shuffled, skipUnavailable, stillAsset } from './support.mjs';
+import { holdFetches, imageLayer, picture, shuffled, skipUnavailable, stillAsset } from './support.mjs';
 
 const PROBES = [
   [69, 34], // top-left quadrant of a 4x4 plane at the origin
@@ -106,7 +106,7 @@ test('the plan is drawn as listed: orientation, straight and opaque alpha, paint
     const ready = await runtime.hello();
     assert.ok(ready.capabilities.features.includes('directed_scene'));
     assert.equal(ready.capabilities.directed_scene.plan_kind, 'tessel-scene-plan');
-    assert.deepEqual(ready.capabilities.directed_scene.capabilities.length, 8);
+    assert.deepEqual(ready.capabilities.directed_scene.capabilities.length, 9);
     const refs = await loadAll(runtime, paths);
 
     // Orientation: image top is plane top (the V axis is flipped on purpose), left is left.
@@ -493,20 +493,27 @@ test('asset.state repeats the identity of the load it answers, so a reused slot 
     );
     runtime.messages.length = 0;
 
-    // The slot is given to another picture while the first load is still reading: the page ends
-    // the first one as cancelled with ITS request, and the second one is ready with its own.
-    await runtime.send({ type: 'asset.load', asset: { ...sceneAsset('slot', paths.red, 'red'), request: 21 } });
-    await runtime.send({ type: 'asset.load', asset: { ...sceneAsset('slot', paths.green, 'green'), request: 22 } });
-    const replacing = await runtime.waitFor(settled('slot', 22), 'ready of request 22');
-    assert.equal(replacing.state, 'ready');
-    assert.deepEqual(replacing.scene, identity('green'));
-    const ended = await runtime.waitFor(settled('slot', 21), 'end of request 21');
-    assert.deepEqual(
-      [ended.state, ended.error.code, ended.scene.asset_id],
-      ['failed', 'cancelled', 'red'],
-      'the replaced load ends as cancelled, naming its own request and picture, never as a ready',
-    );
-    assert.equal(states('slot').filter((m) => m.request === 21 && m.state === 'ready').length, 0);
+    // Hold request 21 at its real fetch: separate CDP calls alone do not prove it is still
+    // loading, especially when the image is cached or the suite is under load (BL102c).
+    const gate = await holdFetches(runtime.page, (url) => decodeURIComponent(url).includes(paths.red));
+    try {
+      await runtime.send({ type: 'asset.load', asset: { ...sceneAsset('slot', paths.red, 'red'), request: 21 } });
+      await gate.held();
+      await runtime.send({ type: 'asset.load', asset: { ...sceneAsset('slot', paths.green, 'green'), request: 22 } });
+      const replacing = await runtime.waitFor(settled('slot', 22), 'ready of request 22');
+      assert.equal(replacing.state, 'ready');
+      assert.deepEqual(replacing.scene, identity('green'));
+      await gate.open();
+      const ended = await runtime.waitFor(settled('slot', 21), 'end of request 21');
+      assert.deepEqual(
+        [ended.state, ended.error.code, ended.scene.asset_id],
+        ['failed', 'cancelled', 'red'],
+        'the replaced load ends as cancelled, naming its own request and picture, never as a ready',
+      );
+      assert.equal(states('slot').filter((m) => m.request === 21 && m.state === 'ready').length, 0);
+    } finally {
+      await gate.close();
+    }
 
     // The same picture loaded into the same slot again is a different request.
     runtime.messages.length = 0;

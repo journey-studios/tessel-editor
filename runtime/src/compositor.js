@@ -19,10 +19,12 @@ import * as THREE from 'three';
 import { imageTexture } from './assets.js';
 import {
   buildDirectedScene,
+  buildSplatScenes,
   containSize,
   createSceneMaterial,
   drawDirectedScene,
   parseDirectedLayer,
+  releaseSplatMesh,
   resolveSceneResources,
 } from './directed-scene.js';
 import { forEachLitCell, measureText, GLYPH_ROWS } from './font.js';
@@ -504,8 +506,35 @@ export class Compositor {
       materialOf: (alpha, index, texture) => this.sceneMaterial(frame.order, alpha, index, texture, keep),
       keep,
     });
-    drawDirectedScene(this.renderer, target, directed);
+    // What the frame will sort and draw: every node counts the splats of its file, however many nodes
+    // share one decode (the data is shared, the draw is not). Refused before any lease or draw.
+    const frameSplats = spec.splats.reduce((total, splat) => total + (bound.get(splat.assetId).entry.count ?? 0), 0);
+    if (frameSplats > this.limits.frameSplats) {
+      throw new RuntimeError(
+        'resource_budget',
+        `The frame would draw ${frameSplats} splats across ${spec.splats.length} splat nodes (limit ${this.limits.frameSplats})`,
+        { frame_splats: frameSplats, nodes: spec.splats.length, limit: this.limits.frameSplats },
+      );
+    }
+    // Splats are leased from the asset store for this frame only (a mesh has one parent, and the
+    // GPU side is rebuilt from the kept bytes after a lost context); `keep` hands them back when
+    // the frame ends, drawn, failed or cancelled.
+    const meshes = [];
+    for (const splat of spec.splats) {
+      const lease = await assets.splatLease(bound.get(splat.assetId).slot);
+      keep({
+        dispose: () => {
+          releaseSplatMesh(lease.mesh);
+          lease.release();
+        },
+      });
+      meshes.push(lease.mesh);
+      if (aborted()) throw new RuntimeError('cancelled', 'The frame was superseded');
+    }
+    const splatScenes = buildSplatScenes(spec, meshes);
+    await drawDirectedScene(this.renderer, target, { ...directed, splatScenes }, { stage: splatScenes.length > 0 ? this.splatStage() : null, aborted });
     frame.sources.directed_scene_layers = (frame.sources.directed_scene_layers ?? 0) + 1;
+    if (splatScenes.length > 0) frame.sources.directed_scene_splats = (frame.sources.directed_scene_splats ?? 0) + spec.splats.length;
     return { texture: target.texture, width: size.width, height: size.height, fit: false, flipV: true };
   }
 
