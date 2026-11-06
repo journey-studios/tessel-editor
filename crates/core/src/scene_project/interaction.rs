@@ -27,7 +27,7 @@ use crate::scene_interaction::{
 };
 use crate::state::{CommandError, EditorState};
 
-use super::run::changes_json;
+use super::run::{changes_json, with_conversions};
 
 impl EditorState {
     fn attached_scene(&self, id: &str) -> Result<&super::AttachedScene, CommandError> {
@@ -300,6 +300,7 @@ impl EditorState {
             }
         }
 
+        let mut conversions = None;
         let (stored, changes, would_change, changed_ops) = if ops.is_empty() {
             // An empty batch is the gesture back at its start: nothing to preview or commit.
             (None, Vec::new(), false, 0)
@@ -310,6 +311,7 @@ impl EditorState {
             }
             let changes = changes_json(&summary);
             let (modified, count) = (summary.modified, summary.changed_count());
+            conversions = Some(summary.clone());
             (
                 Some((Arc::new(candidate), summary)),
                 changes,
@@ -320,12 +322,16 @@ impl EditorState {
 
         let gesture = self.scene_interaction.gesture.find_mut(id)?;
         gesture.set_candidate(ops, stored);
-        Ok(json!({
+        let answer = json!({
             "action": "scene.gesture.update", "gesture": id, "scene": scene,
             "updates": gesture.updates(),
             "would_change": would_change, "changed_ops": changed_ops, "changes": changes,
             "changed": true, "document_changed": false,
-        }))
+        });
+        Ok(match conversions {
+            Some(summary) => with_conversions(answer, &summary),
+            None => answer,
+        })
     }
 
     /// Applies the gesture as ONE `scene.edit` batch. The gesture leaves the slot before the
