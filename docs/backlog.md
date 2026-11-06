@@ -504,3 +504,9 @@ N1: campos aposentados selecionados pela receita; regressão dollyIn/yawDeg e ho
 | BL005e | BB04/documentação do corpus | Precisar textos de corpus.mjs/oracle.mjs/manifest.json sobre validação intermediária e no-op após candidato válido | Pendente | BL005c/BL005d | Coordenador / S6 | Na próxima regeneração, corrigir os textos e renovar hashes sem mudar os casos ou tolerâncias por esse ajuste editorial. Hoje o contrato vivo explicita a dependência de ordem; recusa de A→B→A de um frame é leitura, não prova executada. Review R3 5801439011. |
 
 PR12 / BL005a: CodeRabbit r4494002899 corrigido no script de prova: condição de espaço livre com ProofFailure, teste de main confirma relatório de falha, resumo e limpeza. Spec7 normal/-O e mutação do assert anterior executados com sucesso; nenhuma alteração de produção.
+
+## Validação determinística do runtime
+
+| ID | Bloco | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL102c | F041/teste | Substituição de request21 por22 dependia de fetch21 ainda pendente entre dois round trips CDP | A validar | BL102/BL102b | Coordenador / S7 | Fix só no teste: holdFetches retém arquivo vermelho até22 pronto; finally libera e remove interceptação. Chromefiltrado1/1 verde; suíte anterior107/108FAIL e6/6isolados não são prova de suíte verde. Suíte completa após fix ainda pendente. |
