@@ -207,31 +207,54 @@ impl Tracker {
     }
 
     /// `holder` created the file at `key`, published under the lease of `root`.
+    ///
+    /// `Ok` means the claim is **on disk**: it was written (or the ledger already said so) by the
+    /// time this answers. `Err` is the reason it is not, and then nothing was recorded: the
+    /// caller owns a file the ledger knows nothing about and must not report success for it.
     pub(in crate::scene_resources) fn create_file(
         &mut self,
         holder: HolderId,
         key: PathBuf,
         root: &Path,
         stamp: Option<Stamp>,
-    ) {
-        self.insert(holder, key, Item::File(stamp), Some(root.to_path_buf()));
+    ) -> Result<(), String> {
+        self.insert(holder, key, Item::File(stamp), Some(root.to_path_buf()))
     }
 
-    /// `holder` created the folder at `key`.
-    pub(in crate::scene_resources) fn create_dir(&mut self, holder: HolderId, key: PathBuf) {
-        self.insert(holder, key, Item::Dir, None);
+    /// `holder` created the folder at `key`. Answers like [`Tracker::create_file`].
+    pub(in crate::scene_resources) fn create_dir(
+        &mut self,
+        holder: HolderId,
+        key: PathBuf,
+    ) -> Result<(), String> {
+        self.insert(holder, key, Item::Dir, None)
     }
 
     // A stale entry at a path that was just created cannot be a live holder's: whoever listed it
     // removed or lost the file first. The new entry replaces it.
-    fn insert(&mut self, holder: HolderId, key: PathBuf, item: Item, root: Option<PathBuf>) {
-        if self.lock.is_none() || self.fault.is_some() {
-            return;
+    fn insert(
+        &mut self,
+        holder: HolderId,
+        key: PathBuf,
+        item: Item,
+        root: Option<PathBuf>,
+    ) -> Result<(), String> {
+        if let Some(why) = &self.fault {
+            return Err(why.clone());
+        }
+        if self.lock.is_none() {
+            return Err(format!(
+                "the claims ledger `{}` is not open",
+                self.inner.dir.display()
+            ));
         }
         if key.to_str().is_none() {
-            // Not representable in the ledger: not recorded, so a discard will find nothing
-            // to vouch for the file and keep it.
-            return;
+            // The ledger is JSON text: a path that is not text cannot be vouched for, and a
+            // claim that is not recorded would leave a file nobody can ever take back.
+            return Err(format!(
+                "`{}` cannot be written in the claims ledger (not valid UTF-8)",
+                key.display()
+            ));
         }
         self.entries.insert(
             key,
@@ -243,6 +266,11 @@ impl Tracker {
         );
         self.dirty = true;
         self.flush();
+        // `flush` is what writes: a fault now means the entry above is in memory only.
+        match &self.fault {
+            Some(why) => Err(why.clone()),
+            None => Ok(()),
+        }
     }
 
     /// `holder` relies on the entry at `key`, if a pending result created one. Answers whether
@@ -274,14 +302,14 @@ impl Tracker {
         self.dirty = true;
         if !entry.holders.is_empty() {
             self.flush();
-            return Leave::Shared;
+            return self.unless_unwritten(Leave::Shared);
         }
         let leave = match self.entries.remove(key) {
             Some(entry) => Leave::Last(entry.item),
             None => Leave::Untracked,
         };
         self.flush();
-        leave
+        self.unless_unwritten(leave)
     }
 
     /// `holder` gives up the entry at `key` but the entry stays even when nobody else holds it:
@@ -303,7 +331,21 @@ impl Tracker {
         };
         self.dirty = true;
         self.flush();
-        leave
+        self.unless_unwritten(leave)
+    }
+
+    /// An answer that lets the caller remove or forget something is only given when the change
+    /// behind it reached the disk. Otherwise the ledger still lists the entry (with this holder),
+    /// so removing the file now would leave a claim for a file that is gone, and keeping the
+    /// answer would let a later reader trust a state that was never written: the caller is told
+    /// to keep what it has instead, and the entry stays for `recover`.
+    fn unless_unwritten(&self, leave: Leave) -> Leave {
+        match (&self.fault, &leave) {
+            (Some(why), Leave::Last(_) | Leave::Abandoned | Leave::Shared) => {
+                Leave::Unverifiable(why.clone())
+            }
+            _ => leave,
+        }
     }
 
     /// The result that listed `keys` was accepted: the project owns them now, for every holder.

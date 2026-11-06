@@ -37,14 +37,30 @@
 //!   whether it stays), or [`recover`](super::recover) removes it after the same content proof as
 //!   any other cleanup. Nothing here ever removes an accepted file, an entry another live holder
 //!   relies on, or a file that is not the published one.
-//! * A ledger that cannot be read or written **fails closed**: an adoption is refused before it
-//!   copies anything, a discard keeps the file and says why.
+//! * A ledger that cannot be read or written **fails closed**, and *when* it failed decides what
+//!   can be promised:
+//!   - **before** the adoption changes anything (the ledger cannot be opened or read): it is
+//!     refused before copying, `claims_unavailable` with `details.phase = "before_changes"`, and
+//!     "nothing was changed" is true;
+//!   - **after** it started (a write fails once files are already copied): the file whose claim
+//!     could not be written is taken back at once, under the root lease, and the adoption is
+//!     refused with `details.phase = "after_changes"`, which never claims that nothing changed.
+//!     Success is only ever returned for claims that are on disk ([`Tracker::create_file`] and
+//!     [`Tracker::create_dir`] answer `Ok` only after the write);
+//!   - a discard that cannot record leaving ([`Leave::Unverifiable`]) keeps the file, claimed,
+//!     and says why; `recover` takes it back after its owner is gone.
 //!
 //! The ledger is removed again when the last claim of the last holder is gone, so a workspace
 //! with no pending result looks exactly like one that never had any.
 //!
 //! The registry is keyed by canonical paths, so one folder spelled two ways (`ws/../ws`, a
 //! link, a trailing `.`) is still one entry.
+//!
+//! Not reported, by construction: dropping a record (accepting) and merging two records cannot
+//! return an error, so a ledger that stops being writable *exactly then* leaves the accepted (or
+//! merged) claims on disk. Their holder is this process, alive, so nobody removes anything while
+//! it lives; after it ends they are orphans that `recover` may remove after the content proof
+//! (BL111.2).
 //!
 //! Limits, stated honestly: the lease is an advisory lock of a **local** filesystem (network
 //! filesystems may not provide it), a **hostile** writer of the same user is out of scope, and a

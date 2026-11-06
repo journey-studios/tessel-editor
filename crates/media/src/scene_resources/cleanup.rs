@@ -27,8 +27,19 @@
 //!
 //! Accepting is releasing the record ([`Provisional::release`] and dropping the returned
 //! [`Created`], or dropping a bare [`Created`]): its entries are deleted, which is what turns the
-//! files into the project's. The registry belongs to one process; another process reusing the
-//! same file is outside the guarantee (see `claims.rs`).
+//! files into the project's. The registry is the workspace's on-disk ledger (see
+//! [`claims`](super::claims)), so another process reusing the same file is covered too.
+//!
+//! # A claim that cannot be written (BL111)
+//!
+//! A record never owns what the ledger does not list. [`Created::published`] answers success only
+//! when every claim it needed is on disk. When one cannot be written the copy is already there,
+//! so it is not a refusal "before copying": the file is verified (identity and SHA-256, like any
+//! removal) and taken back at once, together with the still-empty folders made for it, and the
+//! caller gets an [`Unclaimed`] saying what was and was not. That is only safe because the caller
+//! holds the lease of the root, the file was published a moment ago and the ledger never listed
+//! it, so no other result can have joined it. What cannot be taken back is reported and left,
+//! never claimed.
 //!
 //! # What is never removed
 //!
@@ -233,21 +244,29 @@ impl Created {
     }
 
     /// Records a folder this operation made, under the ledger lock the caller already holds
-    /// (so the folder and its entry appear together).
-    pub(super) fn dir_with(&mut self, tracker: &mut Tracker, path: PathBuf, key: PathBuf) {
+    /// (so the folder and its entry appear together). `Err` (the reason) means the claim is not
+    /// on disk: the folder is then this record's to deal with, not an adopted result's, and it is
+    /// **not** listed among the folders the record owns.
+    pub(super) fn dir_with(
+        &mut self,
+        tracker: &mut Tracker,
+        path: PathBuf,
+        key: PathBuf,
+    ) -> Result<(), String> {
         let Some(ledger) = self.ledger().cloned() else {
-            return;
+            return Ok(());
         };
         if self.has(&self.dirs, &key) {
-            return;
+            return Ok(());
         }
-        tracker.create_dir(self.holder, key.clone());
+        tracker.create_dir(self.holder, key.clone())?;
         self.dirs.push(Owned {
             path,
             key,
             ledger,
             created: true,
         });
+        Ok(())
     }
 
     /// Relies on a folder some pending result created, if one did. A folder nobody created is
@@ -279,12 +298,12 @@ impl Created {
         Ok(())
     }
 
-    pub(super) fn dir(&mut self, path: PathBuf, key: PathBuf) {
+    fn dir(&mut self, path: PathBuf, key: PathBuf) -> Result<(), String> {
         let Some(ledger) = self.ledger().cloned() else {
-            return;
+            return Ok(());
         };
         let mut tracker = ledger.lock_creating();
-        self.dir_with(&mut tracker, path, key);
+        self.dir_with(&mut tracker, path, key)
     }
 
     pub(super) fn join_dir(&mut self, path: PathBuf, key: PathBuf) -> Result<(), JobError> {
@@ -298,35 +317,104 @@ impl Created {
         self.join_dir_with(&mut tracker, path, key)
     }
 
-    /// Records a file published at `relative` under `root` (`canonical_root` is the same folder
-    /// resolved), with the SHA-256 it was verified to have.
-    pub(crate) fn file(
+    /// Records the file just published at `relative` under `root` (`canonical_root` is the same
+    /// folder resolved), with the SHA-256 it was verified to have, and the folders that had to be
+    /// made for it (`new_dirs`, shallowest first: where each is spelled and its registry key).
+    ///
+    /// **Fails closed, after the copy.** When any of those claims cannot be written to the ledger
+    /// the copy is already on disk, so the answer cannot be "refused before copying": the file is
+    /// taken back at once (verified to be the one just published) and so are the folders made for
+    /// it that are still empty, and the result says what was and was not. Nothing is left that
+    /// the ledger does not know about, which is what a discard or a recovery needs to find it.
+    ///
+    /// Safe to remove because of what the caller guarantees: it holds the lease of `root`, the
+    /// file was published by this operation a moment ago (an adoption never overwrites), and the
+    /// ledger never listed it, so no other result can have joined it (joining needs the entry).
+    pub(super) fn published(
         &mut self,
         root: &Path,
         canonical_root: &Path,
         relative: &ResourcePath,
         sha256: &str,
-    ) {
-        let Some(ledger) = self.ledger().cloned() else {
-            return;
-        };
+        new_dirs: &[(PathBuf, PathBuf)],
+    ) -> Result<(), Unclaimed> {
+        if self.ledger().is_none() {
+            return Ok(());
+        }
         let (path, key) = locate(root, canonical_root, relative);
+        let stamp = Stamp::of(&path, sha256);
+        let claimed = new_dirs
+            .iter()
+            .try_for_each(|(folder, key)| self.dir(folder.clone(), key.clone()))
+            .and_then(|()| self.claim_file(root, canonical_root, &path, key, stamp.clone()));
+        match claimed {
+            Ok(()) => Ok(()),
+            Err(why) => Err(self.take_back(&path, stamp.as_ref(), new_dirs, why)),
+        }
+    }
+
+    fn claim_file(
+        &mut self,
+        root: &Path,
+        canonical_root: &Path,
+        path: &Path,
+        key: PathBuf,
+        stamp: Option<Stamp>,
+    ) -> Result<(), String> {
+        let Some(ledger) = self.ledger().cloned() else {
+            return Ok(());
+        };
         if self.has(&self.files, &key) {
-            return;
+            return Ok(());
         }
         self.note_root(root);
-        let stamp = Stamp::of(&path, sha256);
-        // Recorded or not (a ledger that cannot be written), the file is this record's: a
-        // discard that finds no claim keeps it, never removes it.
         ledger
             .lock_creating()
-            .create_file(self.holder, key.clone(), canonical_root, stamp);
+            .create_file(self.holder, key.clone(), canonical_root, stamp)?;
+        // Listed only once the claim is on disk: a file the ledger does not know is not "owned".
         self.files.push(Owned {
-            path,
+            path: path.to_path_buf(),
             key,
             ledger,
             created: true,
         });
+        Ok(())
+    }
+
+    /// Undoes one publication whose claims could not be written (see [`Created::published`]).
+    fn take_back(
+        &mut self,
+        path: &Path,
+        stamp: Option<&Stamp>,
+        new_dirs: &[(PathBuf, PathBuf)],
+        why: String,
+    ) -> Unclaimed {
+        let mut report = CleanupReport::default();
+        remove_file(path, stamp, &mut report);
+        let mut taken_back = Vec::new();
+        if report.removed_files > 0 {
+            taken_back.push(path.to_path_buf());
+        }
+        let mut kept = report.kept;
+        let mut forget = Vec::new();
+        for (folder, key) in new_dirs.iter().rev() {
+            // A folder that was claimed stays this record's: a normal discard decides about it.
+            if self.has(&self.dirs, key) {
+                continue;
+            }
+            forget.push(folder.clone());
+            match fs::remove_dir(folder) {
+                Ok(()) => taken_back.push(folder.clone()),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => kept.push(format!("`{}`: {error}", folder.display())),
+            }
+        }
+        Unclaimed {
+            why,
+            taken_back,
+            kept,
+            forget,
+        }
     }
 
     /// Relies on the file at `relative` if a pending result created it (the file was reused).
@@ -531,13 +619,85 @@ fn by_ledger<'a>(owned: impl Iterator<Item = &'a Owned>) -> Vec<(Ledger, Vec<Pat
     groups
 }
 
+/// A published file or folder the ledger could not claim, and what was done about it (see
+/// [`Created::published`]).
+#[derive(Debug, Default)]
+pub(super) struct Unclaimed {
+    /// Why the ledger could not be written (the first reason, when there were several).
+    pub why: String,
+    /// What was removed again: files and folders, as the caller spells them.
+    pub taken_back: Vec<PathBuf>,
+    /// What could not be removed, with the reason. Never claimed, never removed later.
+    pub kept: Vec<String>,
+    /// Folders that are not claimed by this record (removed or kept): a caller that tracks which
+    /// folders it already recorded must forget them, so the next file records them again.
+    pub forget: Vec<PathBuf>,
+}
+
+impl Unclaimed {
+    /// Folds a later failure of the same operation into this one.
+    pub(super) fn merge(&mut self, other: Unclaimed) {
+        self.taken_back.extend(other.taken_back);
+        self.kept.extend(other.kept);
+        self.forget.extend(other.forget);
+    }
+
+    /// Whether something stays on disk that the ledger does not know about.
+    pub(super) fn left_behind(&self) -> bool {
+        !self.kept.is_empty()
+    }
+
+    /// `claims_unavailable`, said as it happened: after the copy, so not "nothing was changed".
+    pub(super) fn into_error(self) -> JobError {
+        let left = if self.kept.is_empty() {
+            String::new()
+        } else {
+            format!("; left in place: {}", self.kept.join("; "))
+        };
+        JobError::new(
+            "claims_unavailable",
+            format!(
+                "the claims ledger of this workspace stopped working after the adoption had started changing it ({}); the adoption was refused and the files it had just copied are taken back where possible{left}",
+                self.why
+            ),
+        )
+        .with_details(json!({
+            "phase": "after_changes",
+            "why": self.why,
+            "takenBack": self.taken_back.iter().map(|path| path.display().to_string()).collect::<Vec<_>>(),
+            "kept": self.kept,
+        }))
+    }
+}
+
+/// The ledger stopped working after this result started changing the workspace (it could not
+/// record that this result relies on a file or folder another one made).
 fn claims_unavailable(why: &str) -> JobError {
     JobError::new(
         "claims_unavailable",
         format!(
-            "the claims ledger of this workspace cannot be used, so nothing was shared or removed: {why}"
+            "the claims ledger of this workspace stopped working while this result was being recorded ({why}); the adoption was refused and what it copied is taken back where the ledger allows"
         ),
     )
+    .with_details(json!({ "phase": "after_changes", "why": why }))
+}
+
+/// Adds what discarding the refused result did to a `claims_unavailable` error: what was removed
+/// and, above all, what stays (it is never forgotten silently).
+pub(super) fn with_cleanup(mut error: JobError, report: &CleanupReport) -> JobError {
+    let mut details = match error.details.take() {
+        Some(details @ Value::Object(_)) => details,
+        _ => json!({}),
+    };
+    details["cleanup"] = report.to_json();
+    if !report.kept.is_empty() {
+        error.message = format!(
+            "{}; left in place: {}",
+            error.message,
+            report.kept.join("; ")
+        );
+    }
+    error.with_details(details)
 }
 
 fn created(list: &[Owned]) -> impl Iterator<Item = &Path> {

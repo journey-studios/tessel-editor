@@ -30,6 +30,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use serde_json::{Value, json};
 use tessel_editor_core::directed_scene::DirectedScene;
 use tessel_editor_core::jobs::{CancelToken, JobError};
 use tessel_editor_core::scene_resources::{ResourceManifest, ResourcePath};
@@ -37,7 +38,7 @@ use tessel_editor_core::{CommandError, EditorState};
 
 use super::base::{self, MANAGED_DIR, ResourceBase};
 use super::claims::Ledger;
-use super::cleanup::{CleanupReport, Created, Provisional, same_folder};
+use super::cleanup::{CleanupReport, Created, Provisional, Unclaimed, same_folder, with_cleanup};
 use crate::directed_resources::{
     MaterializeReport, Options, Outcome, Progress, Published, RootLease, blocked_by_manifest,
     materialize_leased,
@@ -68,7 +69,12 @@ impl Adoption {
 ///
 /// Errors leave the workspace as it was: `manifest_blocked`, `resources_invalid`,
 /// `root_unavailable`, `root_busy`, `scene_id_collision`, `scene_id_not_portable`,
-/// `destination_conflict`, `disk_full`, `cancelled`, `io_error`.
+/// `destination_conflict`, `disk_full`, `cancelled`, `io_error`, `claims_unavailable`.
+///
+/// `claims_unavailable` has two meanings, told apart by `details.phase`: `before_changes` (the
+/// ledger could not be used, nothing was touched) and `after_changes` (it stopped working once
+/// copying had begun: the file whose claim could not be written was taken back, the rest was
+/// discarded, and `details.takenBack`, `details.kept` and `details.cleanup` say what stays).
 #[allow(clippy::too_many_arguments)]
 pub fn adopt(
     scene: &DirectedScene,
@@ -99,29 +105,80 @@ pub fn adopt(
         });
     }
     base::check_managed_destination(workspace, scene_id)?;
-    // Declared before the lease on purpose: on every exit (an error, a cancellation, a panic) the
-    // lease is released first and then this owner removes what the call created, which takes the
-    // lease again. A success moves the record out with `release`.
+    // The owner is declared here, outside the call that holds the lease: on every exit (an
+    // error, a cancellation, a panic) the lease is released first and then this owner removes
+    // what the call created, which takes the lease again. A success moves the record out.
     let mut owned = Provisional::default();
     let ledger = owned.created_mut().bind(workspace);
-    create_folders(workspace, &managed, &ledger, owned.created_mut())?;
+    let copied = copy_and_claim(
+        &plan.items,
+        &manifest,
+        &managed,
+        workspace,
+        &ledger,
+        source,
+        options,
+        token,
+        on_progress,
+        on_published,
+        owned.created_mut(),
+    );
+    match copied {
+        Ok(report) => Ok(Adoption {
+            base: managed,
+            report,
+            created: owned.release(),
+        }),
+        Err(error) => Err(settle(error, owned)),
+    }
+}
+
+/// An adoption that failed leaves the workspace as it was. A `claims_unavailable` one also says
+/// what discarding the result did, because with a ledger that stopped working that is not always
+/// everything: what cannot be released is kept, claimed, and listed in the error.
+fn settle(error: JobError, owned: Provisional) -> JobError {
+    if error.code != "claims_unavailable" {
+        drop(owned);
+        return error;
+    }
+    let report = owned.discard();
+    with_cleanup(error, &report)
+}
+
+/// The part of an adoption that holds the root lease: folders, copies, claims. Returns with the
+/// lease released, so the caller's cleanup of a failure can take it again.
+#[allow(clippy::too_many_arguments)]
+fn copy_and_claim(
+    items: &[tessel_editor_core::scene_resources::TransportItem],
+    manifest: &ResourceManifest,
+    managed: &ResourceBase,
+    workspace: &Path,
+    ledger: &Ledger,
+    source: &ResourceBase,
+    options: &Options,
+    token: &CancelToken,
+    on_progress: &mut dyn FnMut(Progress),
+    on_published: &mut dyn FnMut(Published<'_>),
+    created: &mut Created,
+) -> Result<MaterializeReport, JobError> {
+    create_folders(workspace, managed, ledger, created)?;
     let lease = RootLease::acquire(managed.root())?;
     let canonical = lease.root().to_path_buf();
-    let hashes: HashMap<&ResourcePath, &str> = plan
-        .items
+    let hashes: HashMap<&ResourcePath, &str> = items
         .iter()
         .map(|item| (&item.path, item.expected_hash.as_str()))
         .collect();
     // Folders below the root that exist before publishing are not ours; `materialize` makes the
     // missing ones and does not say which, so the difference is taken here, under the lease so
     // that no other adoption can make one in between.
-    let mut existing = existing_ancestors(
-        managed.root(),
-        &canonical,
-        plan.items.iter().map(|item| &item.path),
-    );
-    let report = materialize_leased(
-        &manifest,
+    let mut existing =
+        existing_ancestors(managed.root(), &canonical, items.iter().map(|i| &i.path));
+    // What the ledger could not claim after it was copied. The callback cannot stop the copy, so
+    // it takes each such file back at once (still under the lease) and the failure is raised
+    // when the copy returns.
+    let mut unclaimed: Option<Unclaimed> = None;
+    let copied = materialize_leased(
+        manifest,
         source.root(),
         &lease,
         options,
@@ -129,34 +186,78 @@ pub fn adopt(
         on_progress,
         &mut |published| {
             let hash = hashes.get(published.path).copied().unwrap_or_default();
-            record_published(
-                owned.created_mut(),
+            if let Err(failure) = record_published(
+                created,
                 &mut existing,
                 managed.root(),
                 &canonical,
                 published.path,
                 hash,
-            );
+            ) {
+                for folder in &failure.forget {
+                    existing.remove(folder);
+                }
+                match &mut unclaimed {
+                    Some(earlier) => earlier.merge(failure),
+                    None => unclaimed = Some(failure),
+                }
+            }
             on_published(published);
         },
-    )?;
+    );
+    let report = match copied {
+        Ok(report) => report,
+        // The copy rolled back whatever it had published, which no longer includes what was
+        // taken back already: those are not leftovers. A cancellation stays a cancellation.
+        Err(error) => {
+            return Err(match unclaimed {
+                Some(failure) if failure.left_behind() => failure.into_error(),
+                Some(failure) => without_taken_back(error, &failure, managed.root()),
+                None => error,
+            });
+        }
+    };
+    if let Some(failure) = unclaimed {
+        return Err(failure.into_error());
+    }
     // Still under the lease: what was reused from another pending result, and the folders it
     // made that this call put files into, are relied on from here on (BL096).
     for item in &report.items {
         if item.outcome == Outcome::Reused {
-            owned
-                .created_mut()
-                .join_file(managed.root(), &canonical, &item.path)?;
+            created.join_file(managed.root(), &canonical, &item.path)?;
         }
         for (folder, key) in folders_of(managed.root(), &canonical, &item.path) {
-            owned.created_mut().join_dir(folder, key)?;
+            created.join_dir(folder, key)?;
         }
     }
-    Ok(Adoption {
-        base: managed,
-        report,
-        created: owned.release(),
-    })
+    Ok(report)
+}
+
+/// `error` of the copy without the leftovers it lists for things this adoption already took back
+/// (the copy's own rollback found them gone). The copy spells paths below the resolved root and
+/// this adoption below the root as it was given, so they are compared below `root`.
+fn without_taken_back(mut error: JobError, failure: &Unclaimed, root: &Path) -> JobError {
+    let Some(details) = error.details.as_mut() else {
+        return error;
+    };
+    let gone: Vec<String> = failure
+        .taken_back
+        .iter()
+        .filter_map(|path| path.strip_prefix(root).ok())
+        .map(|relative| format!("/{}`:", relative.display()))
+        .collect();
+    if let Some(Value::Array(leftovers)) = details.get_mut("rollbackLeftovers") {
+        leftovers.retain(|line| {
+            let line = line.as_str().unwrap_or_default();
+            !gone.iter().any(|tail| line.contains(tail.as_str()))
+        });
+        if leftovers.is_empty()
+            && let Some(map) = details.as_object_mut()
+        {
+            map.remove("rollbackLeftovers");
+        }
+    }
+    error
 }
 
 /// The project, the workspace and the scene an adoption was started for. Taken on the caller's
@@ -298,7 +399,8 @@ fn folders_of(root: &Path, canonical_root: &Path, path: &ResourcePath) -> Vec<(P
         .collect()
 }
 
-/// Records the file just published and the folders it needed that did not exist before.
+/// Records the file just published and the folders it needed that did not exist before. `Err`
+/// is a publication the ledger could not claim, already taken back (see [`Created::published`]).
 fn record_published(
     created: &mut Created,
     existing: &mut HashSet<PathBuf>,
@@ -306,13 +408,12 @@ fn record_published(
     canonical_root: &Path,
     path: &ResourcePath,
     sha256: &str,
-) {
-    for (folder, key) in folders_of(root, canonical_root, path) {
-        if existing.insert(folder.clone()) {
-            created.dir(folder, key);
-        }
-    }
-    created.file(root, canonical_root, path, sha256);
+) -> Result<(), Unclaimed> {
+    let new_dirs: Vec<(PathBuf, PathBuf)> = folders_of(root, canonical_root, path)
+        .into_iter()
+        .filter(|(folder, _)| existing.insert(folder.clone()))
+        .collect();
+    created.published(root, canonical_root, path, sha256, &new_dirs)
 }
 
 /// Creates `scenes/` and `scenes/<id>/` one folder at a time and records the ones that did not
@@ -327,20 +428,35 @@ fn create_folders(
 ) -> Result<(), JobError> {
     let mut tracker = ledger.lock_creating();
     // A ledger that cannot be used cannot tell this adoption whom a reused file belongs to:
-    // refuse before anything is created.
+    // refuse before anything is created. This is the only place where "nothing was changed" is
+    // true; a ledger that fails later is a different error (`after_changes`).
     if let Some(why) = tracker.fault() {
-        return Err(JobError::new(
-            "claims_unavailable",
-            format!(
-                "the claims ledger of this workspace cannot be used; nothing was changed: {why}"
-            ),
+        return Err(refused_before_changes(why));
+    }
+    if ledger.dir().to_str().is_none() {
+        return Err(refused_before_changes(
+            "the workspace path is not valid UTF-8, so its claims cannot be written down",
         ));
     }
     for folder in [workspace.join(MANAGED_DIR), managed.root().to_path_buf()] {
         match fs::create_dir(&folder) {
             Ok(()) => {
                 let key = canonical_or_spelled(&folder);
-                created.dir_with(&mut tracker, folder, key);
+                if let Err(why) = created.dir_with(&mut tracker, folder.clone(), key) {
+                    // Still holding the ledger lock, so no other adoption can have found this
+                    // folder yet: it is taken back before anyone can rely on it.
+                    let mut failure = Unclaimed {
+                        why,
+                        ..Unclaimed::default()
+                    };
+                    match fs::remove_dir(&folder) {
+                        Ok(()) => failure.taken_back.push(folder),
+                        Err(error) => failure
+                            .kept
+                            .push(format!("`{}`: {error}", folder.display())),
+                    }
+                    return Err(failure.into_error());
+                }
             }
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
                 let key = canonical_or_spelled(&folder);
@@ -351,6 +467,14 @@ fn create_folders(
         }
     }
     Ok(())
+}
+
+fn refused_before_changes(why: &str) -> JobError {
+    JobError::new(
+        "claims_unavailable",
+        format!("the claims ledger of this workspace cannot be used; nothing was changed: {why}"),
+    )
+    .with_details(json!({ "phase": "before_changes", "why": why }))
 }
 
 fn canonical_or_spelled(folder: &Path) -> PathBuf {

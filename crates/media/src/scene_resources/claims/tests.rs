@@ -29,7 +29,9 @@ fn only_the_last_holder_to_leave_may_remove() {
     let ledger = Ledger::of(dir.path());
     let (one, two, path) = (next_holder(), next_holder(), key("last-leaves"));
     let mut tracker = ledger.lock_creating();
-    tracker.create_file(one, path.clone(), &root(), None);
+    tracker
+        .create_file(one, path.clone(), &root(), None)
+        .unwrap();
     assert!(tracker.join(two, &path));
     assert_eq!(tracker.leave(one, &path), Leave::Shared);
     assert_eq!(tracker.leave(two, &path), Leave::Last(Item::File(None)));
@@ -42,7 +44,7 @@ fn accepting_makes_the_entry_nobodys_to_remove() {
     let ledger = Ledger::of(dir.path());
     let (one, two, path) = (next_holder(), next_holder(), key("accepted"));
     let mut tracker = ledger.lock_creating();
-    tracker.create_dir(one, path.clone());
+    tracker.create_dir(one, path.clone()).unwrap();
     tracker.join(two, &path);
     tracker.accept([path.as_path()].into_iter());
     assert_eq!(tracker.leave(one, &path), Leave::Untracked);
@@ -75,7 +77,9 @@ fn a_transferred_holder_keeps_the_entry_alive_under_its_new_name() {
         key("transferred"),
     );
     let mut tracker = ledger.lock_creating();
-    tracker.create_file(from, path.clone(), &root(), None);
+    tracker
+        .create_file(from, path.clone(), &root(), None)
+        .unwrap();
     tracker.join(other, &path);
     tracker.transfer(from, to, [path.as_path()].into_iter());
     assert_eq!(tracker.leave(other, &path), Leave::Shared);
@@ -89,7 +93,8 @@ fn claims_outlive_a_tracker_and_a_ledger_with_nothing_in_it_disappears() {
     let (one, path) = (next_holder(), key("persisted"));
     ledger
         .lock_creating()
-        .create_file(one, path.clone(), &root(), None);
+        .create_file(one, path.clone(), &root(), None)
+        .unwrap();
     assert!(state_path(dir.path()).is_file(), "written to disk");
     assert!(
         ledger
@@ -201,7 +206,12 @@ fn an_unreadable_ledger_refuses_and_vouches_for_nothing() {
     let mut tracker = ledger.lock_creating();
     assert!(tracker.fault().is_some());
     let holder = next_holder();
-    tracker.create_file(holder, key("faulty"), &root(), None);
+    assert!(
+        tracker
+            .create_file(holder, key("faulty"), &root(), None)
+            .is_err(),
+        "a ledger that cannot be trusted does not claim: it says so"
+    );
     assert!(!tracker.join(holder, &key("faulty")));
     assert!(matches!(
         tracker.leave(holder, &key("faulty")),
@@ -227,4 +237,163 @@ fn a_ledger_of_a_newer_version_is_not_touched() {
     .unwrap();
     let tracker = Ledger::of(dir.path()).lock();
     assert!(tracker.fault().unwrap().contains("newer"));
+}
+
+// --- a ledger that stops being writable after it was opened (BL111) ---------------------------
+
+/// Makes the next write of the ledger fail: its temporary file is a folder, so the atomic
+/// replace cannot start. Opening and reading are unaffected, which is what makes the case
+/// "worked at first, broke later".
+fn break_writes(dir: &Path) -> PathBuf {
+    let blocker = dir.join(".tessel-claims/claims.json.tmp");
+    fs::create_dir(&blocker).unwrap();
+    blocker
+}
+
+fn on_disk(ledger: &Ledger, path: &Path) -> Option<Entry> {
+    ledger
+        .lock()
+        .entries()
+        .find(|(known, _)| *known == path)
+        .map(|(_, entry)| entry.clone())
+}
+
+#[test]
+fn a_claim_that_cannot_be_written_is_an_error_and_is_not_on_disk() {
+    let dir = workspace("claims-write-fails");
+    let canonical = fs::canonicalize(dir.path()).unwrap();
+    let ledger = Ledger::of(dir.path());
+    let (holder, written, lost) = (next_holder(), key("written"), key("lost"));
+    ledger
+        .lock_creating()
+        .create_file(holder, written.clone(), &root(), None)
+        .unwrap();
+    let blocker = break_writes(&canonical);
+
+    // The ledger opens fine (reads work, nothing changed yet): it is the *write* that breaks.
+    let mut tracker = ledger.lock_creating();
+    assert!(tracker.fault().is_none(), "opened and read without a fault");
+    let error = tracker
+        .create_file(holder, lost.clone(), &root(), None)
+        .unwrap_err();
+    assert!(error.contains("claims.json"), "{error}");
+    assert!(tracker.fault().is_some(), "and the tracker knows it now");
+    assert!(
+        tracker.create_dir(holder, key("later")).is_err(),
+        "nothing more is recorded once the ledger failed"
+    );
+    drop(tracker);
+
+    fs::remove_dir(blocker).unwrap();
+    assert!(on_disk(&ledger, &lost).is_none(), "never listed");
+    assert!(
+        on_disk(&ledger, &written).is_some(),
+        "what was written stays"
+    );
+    assert_eq!(
+        ledger.lock().leave(holder, &written),
+        Leave::Last(Item::File(None))
+    );
+}
+
+#[test]
+fn leaving_is_not_reported_removable_when_the_ledger_could_not_record_it() {
+    let dir = workspace("claims-leave-fails");
+    let canonical = fs::canonicalize(dir.path()).unwrap();
+    let ledger = Ledger::of(dir.path());
+    let (holder, other, path) = (next_holder(), next_holder(), key("leave-fails"));
+    // Another entry keeps the ledger from being emptied: emptying it removes the file instead of
+    // replacing it, which does not need the temporary file that is blocked here.
+    let mut tracker = ledger.lock_creating();
+    tracker
+        .create_file(next_holder(), key("bystander"), &root(), None)
+        .unwrap();
+    tracker
+        .create_file(holder, path.clone(), &root(), None)
+        .unwrap();
+    drop(tracker);
+    let blocker = break_writes(&canonical);
+
+    // The last holder: removing the file would leave an entry (still on disk) for a file that
+    // is gone, so it is told to keep it.
+    assert!(matches!(
+        ledger.lock().leave(holder, &path),
+        Leave::Unverifiable(_)
+    ));
+    fs::remove_dir(&blocker).unwrap();
+    let entry = on_disk(&ledger, &path).expect("the entry is still there for recovery");
+    assert!(entry.holders.contains(&holder));
+
+    // The same for a holder that is not the last, and for abandoning.
+    assert!(ledger.lock().join(other, &path));
+    break_writes(&canonical);
+    assert!(matches!(
+        ledger.lock().leave(other, &path),
+        Leave::Unverifiable(_)
+    ));
+    assert!(matches!(
+        ledger.lock().abandon(other, &path),
+        Leave::Unverifiable(_)
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_path_the_ledger_cannot_write_down_is_refused_not_dropped() {
+    use std::os::unix::ffi::OsStrExt;
+    let dir = workspace("claims-not-utf8");
+    let ledger = Ledger::of(dir.path());
+    let odd = PathBuf::from(std::ffi::OsStr::from_bytes(b"/te-claims-unit/\xff\xfe"));
+    let mut tracker = ledger.lock_creating();
+    let error = tracker
+        .create_file(next_holder(), odd, &root(), None)
+        .unwrap_err();
+    assert!(error.contains("UTF-8"), "{error}");
+    assert!(tracker.fault().is_none(), "the ledger itself is fine");
+}
+
+// --- the record: folders already held are not read from the ledger again ------------------------
+
+#[test]
+fn a_folder_the_record_already_holds_is_not_looked_up_in_the_ledger_again() {
+    use std::sync::mpsc::channel;
+    use std::time::Duration;
+
+    let dir = workspace("claims-join-dir-held");
+    let canonical = fs::canonicalize(dir.path()).unwrap();
+    let folder = canonical.join("scenes");
+    let other = canonical.join("elsewhere");
+    let mut created = super::super::cleanup::Created::default();
+    let ledger = created.bind(dir.path());
+    {
+        let mut tracker = ledger.lock_creating();
+        created
+            .dir_with(&mut tracker, folder.clone(), folder.clone())
+            .unwrap();
+    }
+    // Hold the ledger lock: a lookup would wait for it for as long as it is held.
+    let tracker = ledger.lock();
+    let (done, answered) = channel();
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            let held = created.join_dir(folder.clone(), folder.clone());
+            done.send(("held", held.is_ok())).unwrap();
+            let fresh = created.join_dir(other.clone(), other.clone());
+            done.send(("fresh", fresh.is_ok())).unwrap();
+        });
+        assert_eq!(
+            answered.recv_timeout(Duration::from_secs(5)).ok(),
+            Some(("held", true)),
+            "a held folder is answered without waiting for the ledger"
+        );
+        assert!(
+            answered.recv_timeout(Duration::from_millis(300)).is_err(),
+            "a folder it does not hold does read the ledger, so it waits for the lock"
+        );
+        drop(tracker);
+        assert_eq!(
+            answered.recv_timeout(Duration::from_secs(5)).ok(),
+            Some(("fresh", true))
+        );
+    });
 }
