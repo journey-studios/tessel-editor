@@ -57,13 +57,13 @@ const DANGLING_PAUSE: std::time::Duration = std::time::Duration::from_millis(2);
 /// [`TICK_WAIT`] (see [`Ledger::try_lock`]).
 const LOCK_WAIT: std::time::Duration = std::time::Duration::from_millis(1500);
 /// How long the window's tick waits for `ledger.lock` (BL112.3, BL112.5): a fixed budget well
-/// below the UI's 100 ms ceiling, sized to ride out a holder that keeps the lock for one
-/// read-modify-write. `flock` conflicts between descriptors **of the same process** too (every
+/// below the UI's 100 ms ceiling, sized to ride out brief contention. A healthy recovery
+/// may keep the lock across several writes and exhaust this budget. `flock` conflicts between descriptors **of the same process** too (every
 /// [`Tracker`] opens its own), so a job of this process (a discard, an adoption, a recovery)
 /// holding the ledger for a moment is the common holder, not only another process: looking once
-/// refused valid results and discarded their copy for a contention of microseconds. Past the
+/// refused valid results and discarded their copy for a brief contention. Past the
 /// budget the ledger is unavailable for that call (the acceptance is refused and the result goes
-/// to a discard job); the tick never waits longer.
+/// to a discard job); the tick does not renew this lock-wait budget.
 pub(in crate::scene_resources) const TICK_WAIT: std::time::Duration =
     std::time::Duration::from_millis(20);
 const LOCK_POLL: std::time::Duration = std::time::Duration::from_micros(500);
@@ -711,8 +711,8 @@ impl Drop for Tracker {
 }
 
 impl DiskLock {
-    /// Takes the ledger lock, waiting for it up to `wait` (holders keep it for one
-    /// read-modify-write); `Duration::ZERO` looks once and never waits. `Ok(None)` when there is
+    /// Takes the ledger lock, waiting for it up to `wait`. A holder may keep it briefly or
+    /// across several writes during a healthy recovery; `Duration::ZERO` looks once and never waits. `Ok(None)` when there is
     /// no ledger and `create` is not set.
     fn acquire(
         dir: &Path,

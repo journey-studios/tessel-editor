@@ -212,7 +212,7 @@ na sessão, como já crescia.
 **O lock do ledger no tick (BL112.3, R2/N1).** `accept` roda na thread da janela e escreve `claims.json` sob `ledger.lock`.
 A primeira correção limitou a espera a 1,5 s (`LOCK_WAIT`), que **excede o teto de 100 ms** do tick. A segunda fez o tick
 olhar uma vez (`Duration::ZERO`), mas `flock` conflita entre descritores **do mesmo processo** (cada `Tracker` abre o seu): um
-job `discard` (duas gravações por arquivo), uma adoção ou um `recover` do outro slot segurando o ledger por microssegundos
+job `discard` (duas gravações por arquivo), uma adoção ou um `recover` do outro slot segurando o ledger durante uma atualização
 recusava um resultado **válido**, o descarte removia a cópia e a mensagem culpava "outro processo". Agora o tick espera um
 orçamento **fixo de 20 ms** (`TICK_WAIT`, olhando a cada `LOCK_POLL` de 500 µs; bem abaixo do teto): contenção
 curta pode ser absorvida, mas um holder longo saudável também pode esgotar o orçamento: `recover` mantém um único lock enquanto cada `forget` reescreve o ledger inteiro. Isso pode ocorrer com muitos órfãos, além de processos parados ou travados; a duração real ainda precisa ser medida (BL112.3). Então
