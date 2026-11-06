@@ -10,17 +10,19 @@ use crate::scene_plan::{PlanTimeline, ScenePlan};
 use crate::state::CommandError;
 use crate::{EditorState, scene_project::AttachedScene};
 
+use super::audio::DirectedAudioMix;
 use super::schedule::SceneExportSchedule;
 use super::spec::{AudioChoice, SceneExportSpec};
 
-/// What the file does about the scene's sound. There is no directed-scene audio mix yet, so the
-/// only two outcomes are "the scene has none" and "the caller chose to leave it out".
+/// What the file does about the scene's sound.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AudioPlan {
     /// The scene declares no audio: the file has no audio stream.
     NoSources,
     /// The scene declares `declared` and the caller explicitly exported video only.
     Omitted { declared: Vec<&'static str> },
+    /// The scene's declared WAV mix is mixed into the file (F042A): one AAC stream the length of the video.
+    Mix(DirectedAudioMix),
 }
 
 impl AudioPlan {
@@ -31,6 +33,17 @@ impl AudioPlan {
                 "included": false, "declared": declared,
                 "omitted": "left out because the export asked for video only",
             }),
+            Self::Mix(mix) => json!({
+                "included": true, "declared": ["audio"], "mix": mix.to_json(),
+            }),
+        }
+    }
+
+    /// The mix this export writes, when it writes one.
+    pub fn mix(&self) -> Option<&DirectedAudioMix> {
+        match self {
+            Self::Mix(mix) => Some(mix),
+            _ => None,
         }
     }
 }
@@ -55,6 +68,7 @@ fn audio_plan(
     scene: &DirectedScene,
     preset: &Preset,
     choice: AudioChoice,
+    schedule: &SceneExportSchedule,
 ) -> Result<AudioPlan, CommandError> {
     let declared = declared_audio(scene);
     if declared.is_empty() {
@@ -63,12 +77,22 @@ fn audio_plan(
     if choice == AudioChoice::Omitted || !preset.audio {
         return Ok(AudioPlan::Omitted { declared });
     }
-    Err(CommandError::new(
-        "unsupported",
-        "This scene declares audio and directed-scene audio is not exported yet; \
-         pass `audio: false` to export the picture only",
-    )
-    .details(json!({ "domains": declared, "hint": "audio: false" })))
+    // Narration (takes, captions, per-line gain) has no mix of its own yet: the declared mix cannot
+    // stand for it, so a scene that declares it is refused rather than exported with half its sound.
+    if declared.contains(&"narration") {
+        return Err(CommandError::new(
+            "unsupported",
+            "This scene declares narration and narration audio is not exported yet; \
+             pass `audio: false` to export the picture only",
+        )
+        .details(
+            json!({ "domains": ["narration"], "declared": declared, "hint": "audio: false" }),
+        ));
+    }
+    let Some(audio) = &scene.bundle().audio else {
+        return Ok(AudioPlan::NoSources);
+    };
+    Ok(AudioPlan::Mix(DirectedAudioMix::plan(audio, schedule)?))
 }
 
 /// One export, frozen: the scene (shared, never copied), the preset, the schedule and the audio
@@ -103,7 +127,7 @@ impl SceneExportSnapshot {
         }
         let schedule =
             SceneExportSchedule::new(scene.bundle(), &spec.preset, spec.from, spec.frames)?;
-        let audio = audio_plan(scene, &spec.preset, spec.audio)?;
+        let audio = audio_plan(scene, &spec.preset, spec.audio, &schedule)?;
         let mut snapshot = Self {
             scene_id: spec.scene.clone(),
             scene: Arc::clone(scene),
@@ -249,6 +273,17 @@ impl SceneExportSnapshot {
                     declared.join(" and ")
                 ),
             )),
+            AudioPlan::Mix(mix) => {
+                if mix.silence_tail_samples() > 0 {
+                    warnings.push(warn(
+                        "audio_silence_tail",
+                        format!(
+                            "The video is {} sample(s) longer than the audio range at this frame rate: the end of the audio is silence",
+                            mix.silence_tail_samples()
+                        ),
+                    ));
+                }
+            }
             AudioPlan::NoSources => {}
         }
         warnings

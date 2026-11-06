@@ -18,8 +18,8 @@
 //!   and change nothing in the project; a cancel leaves no partial file; a scene never lands on the
 //!   timeline.
 //!
-//! What it does not prove: the desktop UI/socket (`R2`/coordinator), audio (refused, not mixed),
-//! the independent re-derivation of expectations by R10, a real GPU (SwiftShader by default; run
+//! What it does not prove: the desktop UI/socket (`R2`/coordinator), what the audio sounds like (measured
+//! in `crates/media/tests/scene_export_audio.rs`), the independent re-derivation of expectations by R10, a real GPU (SwiftShader by default; run
 //! under `with-gpu-lock.py`), pixels against the origin's own runtime.
 //!
 //! A machine without Chrome, the runtime bundle or FFmpeg skips with the reason on stderr; set
@@ -575,7 +575,7 @@ fn a_destination_that_exists_or_is_not_an_mp4_fails_the_job_without_touching_any
 }
 
 #[test]
-fn declared_audio_and_unevaluated_domains_are_refused_and_video_only_is_explicit() {
+fn declared_audio_is_mixed_video_only_is_explicit_and_unevaluated_domains_are_refused() {
     let Some(mut session) = session("audio") else {
         return;
     };
@@ -613,13 +613,24 @@ fn declared_audio_and_unevaluated_domains_are_refused_and_video_only_is_explicit
         "editEndSecondsExclusive":4.0,"sourcePcmHashSha256":hash});
     session.ok(json!({"op":"scene.attach","id":"sound","bundle":raw}));
     session.ok(json!({"op":"scene.resources.resolve","scene":"sound","base":base}));
-    let destination = session.path("sound.mp4");
-    let refused = session.err(
+    // The declared mix is in the file by default: a real AAC stream the length of the picture.
+    let mixed = session.path("sound-mixed.mp4");
+    let result = session.ok(
         json!({"op":"scene.export","scene":"sound","preset":"fullhd",
-        "from":0,"frames":2,"destination":destination}),
+        "from":0,"frames":2,"destination":mixed}),
     );
-    assert_eq!(refused.code, "unsupported", "{}", refused.message);
-    assert!(!destination.exists());
+    assert_eq!(result["audio"]["included"], true, "{result}");
+    assert_eq!(result["verification"]["ok"], true, "{result}");
+    let probe = ffprobe(&mixed);
+    assert!(
+        probe["streams"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|stream| stream["codec_type"] == "audio" && stream["codec_name"] == "aac"),
+        "{probe}"
+    );
+    let destination = session.path("sound.mp4");
 
     let result = session.ok(
         json!({"op":"scene.export","scene":"sound","preset":"fullhd",
@@ -781,5 +792,133 @@ fn the_headless_binary_exports_a_scene_from_a_jsonl_session() {
     assert_eq!(answers[2]["error"]["code"], "destination_exists");
     assert_eq!(output.status.code(), Some(1), "a failed line exits 1");
     assert_stream(&ffprobe(&destination), 1920, 1080, 4, "24/1");
+    let _ = fs::remove_dir_all(&work);
+}
+
+/// F042A: the same headless binary, a bundle that declares a WAV mix, real frames from the runtime.
+/// The mix is 440 Hz for 2 s then 880 Hz; frames 36..60 are scene seconds 1.5–2.5, so the file must
+/// carry half a second of each, measured on the decoded AAC. Nothing is heard: the samples are measured.
+#[test]
+fn the_headless_binary_mixes_the_declared_wav_at_the_requested_range() {
+    if RuntimeConfig::discover().is_err() || Tools::discover().is_err() {
+        assert!(std::env::var("TESSEL_REQUIRE_RUNTIME").as_deref() != Ok("1"));
+        eprintln!("SKIPPED (runtime or FFmpeg unavailable)");
+        return;
+    }
+    let tools = Tools::discover().unwrap();
+    let work = std::env::temp_dir().join(format!("te-s9-{}-cli-audio", std::process::id()));
+    let _ = fs::remove_dir_all(&work);
+    fs::create_dir_all(&work).unwrap();
+    let base = work.join("base");
+    copy_corpus_images(&base);
+    fs::create_dir_all(base.join("audio")).unwrap();
+    // 4 s at 48 kHz mono: 440 Hz, then 880 Hz after 2 s, rendered by FFmpeg from two sine sources.
+    let made = Command::new(&tools.ffmpeg)
+        .args(["-v", "error", "-nostdin", "-f", "lavfi", "-i"])
+        .arg("sine=frequency=440:duration=2:sample_rate=48000")
+        .args(["-f", "lavfi", "-i"])
+        .arg("sine=frequency=880:duration=2:sample_rate=48000")
+        .args([
+            "-filter_complex",
+            "[0:a][1:a]concat=n=2:v=0:a=1",
+            "-c:a",
+            "pcm_s16le",
+        ])
+        .arg(base.join("audio/mix.wav"))
+        .status()
+        .unwrap();
+    assert!(made.success());
+    let hash = Command::new("shasum")
+        .args(["-a", "256"])
+        .arg(base.join("audio/mix.wav"))
+        .output()
+        .unwrap();
+    let hash = String::from_utf8_lossy(&hash.stdout)
+        .split_whitespace()
+        .next()
+        .unwrap()
+        .to_string();
+    let mut raw = raw_without_audio();
+    raw["audio"] = json!({"mixRelativePath":"audio/mix.wav","editStartSeconds":0.0,
+        "editEndSecondsExclusive":4.0,"sourcePcmHashSha256":hash});
+    let destination = work.join("cli-audio.mp4");
+    let lines = [
+        json!({"op":"scene.attach","id":"sound","bundle":raw}),
+        json!({"op":"scene.export","scene":"sound","preset":"fullhd","from":36,"frames":24,
+            "destination":destination,"resources_root":base}),
+    ];
+    let mut child = Command::new(env!("CARGO_BIN_EXE_tessel-render"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    {
+        let stdin = child.stdin.as_mut().unwrap();
+        for line in &lines {
+            writeln!(stdin, "{line}").unwrap();
+        }
+    }
+    let output = child.wait_with_output().unwrap();
+    let answers: Vec<Value> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(answers.len(), 2);
+    assert_eq!(answers[1]["ok"], true, "{}", answers[1]);
+    let result = &answers[1]["result"];
+    assert_eq!(result["verification"]["ok"], true, "{result}");
+    assert_eq!(result["audio"]["included"], true);
+    assert_eq!(result["audio"]["mix"]["samples"], 48_000);
+    assert_eq!(output.status.code(), Some(0));
+    let probe = ffprobe(&destination);
+    let video = probe["streams"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|stream| stream["codec_type"] == "video")
+        .expect("a video stream");
+    assert_eq!(
+        (video["width"].as_u64(), video["height"].as_u64()),
+        (Some(1920), Some(1080))
+    );
+    assert_eq!(video["nb_frames"], "24");
+    assert_eq!(video["r_frame_rate"], "24/1");
+
+    let decoded = Command::new(&tools.ffmpeg)
+        .args(["-v", "error", "-nostdin", "-i"])
+        .arg(&destination)
+        .args([
+            "-map", "0:a:0", "-f", "s16le", "-ac", "1", "-ar", "48000", "-",
+        ])
+        .output()
+        .unwrap();
+    assert!(decoded.status.success());
+    let samples: Vec<f64> = decoded
+        .stdout
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|pair| f64::from(i16::from_le_bytes(*pair)) / 32768.0)
+        .collect();
+    assert!(
+        (samples.len() as i64 - 48_000).abs() <= 2_048,
+        "{}",
+        samples.len()
+    );
+    // Goertzel power of `hz` over the second `from..to` of the decoded stream.
+    let power = |from: f64, to: f64, hz: f64| {
+        let slice = &samples[(from * 48_000.0) as usize..(to * 48_000.0) as usize];
+        let coeff = 2.0 * (2.0 * std::f64::consts::PI * hz / 48_000.0).cos();
+        let (mut s1, mut s2) = (0.0f64, 0.0f64);
+        for sample in slice {
+            let s0 = sample + coeff * s1 - s2;
+            s2 = s1;
+            s1 = s0;
+        }
+        (s1 * s1 + s2 * s2 - coeff * s1 * s2) / (slice.len() as f64).powi(2)
+    };
+    assert!(power(0.05, 0.40, 440.0) > 50.0 * power(0.05, 0.40, 880.0));
+    assert!(power(0.60, 0.95, 880.0) > 50.0 * power(0.60, 0.95, 440.0));
     let _ = fs::remove_dir_all(&work);
 }
