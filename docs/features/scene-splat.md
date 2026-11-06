@@ -7,10 +7,10 @@
 
 Lib, runtime e CLI headless **V no corpus sintético** (Chrome real, SwiftShader); pacote **V**
 (diretório e arquivo, sem as origens); export **V** com cópia privada do `spz` aprovado (S3/BL109, integrado).
-Monitor nativo (WKWebView): a prova `scripts/scene-splat-native-proof.py` (119 checks, instância própria, só pedidos
-semânticos) passou numa árvore **suja** de um head anterior; **não** vale para o head atual. A repetição, com árvore
-limpa depois do commit, com head e hashes reais, é registrada no corpo da PR e no comentário da entrega, nunca neste
-arquivo (que mudaria o head provado). Cor guardada do splat (BL019-F1) **corrigida** e provada com controle negativo.
+Monitor nativo (WKWebView): a prova `scripts/scene-splat-native-proof.py` (instância própria, só pedidos semânticos) passou
+**119/119** no head limpo `2c7cf7c` e **129/129** no head `586a671` (+10 checks das guardas novas), com runtime reconstruído;
+proveniência em [Revalidação no head `586a671`](#revalidação-no-head-586a671-executado-com-proveniência). Cor guardada do splat
+(BL019-F1) **corrigida** e provada com controle negativo.
 Luz, clima, rigs e mapas de dados em nó `splat` continuam **recusados** por `unsupported`, com o nome do domínio;
 uma matriz de splat que não é semelhança (escala não uniforme ou espelhada, cisalhamento) também (BL123). Aceite
 independente do S10: ver [Aceite S10](#aceite-independente-s10-pr-8); **BL121 continua BLOCKED**.
@@ -299,4 +299,28 @@ Validação desta correção: `node --check`, `py_compile`, `git diff --check` e
 
 Teste de regressão das guardas da prova nativa (`python3 scripts/scene-splat-native-proof.spec.py`, 10 testes, sem editor, GPU, Chrome nem bundle): dirige o `main()` real da prova por seus seams com um monitor falso. Corpus só `sp-order` e resposta de `scene.render` curta, longa, ausente ou não lista reprovam em todos os frames (e o primeiro caso nem renderiza); resposta completa passa, e cor errada com contagem certa ainda reprova pela regra de cor. Uma terceira classe remove cada guarda de uma cópia do script e confirma que as mesmas entradas passam vazias, logo os testes discriminam as guardas. Contra o script de `91bd915` 7 dos 10 testes reprovam. No runtime, a mutação sem `listed.has(nodeId)` faz `hides, mislabels` reprovar (`expected a refusal`) e o código atual passa; o conjunto puro `directed-scene`+`directed-scene-splats` dá 15 passam/9 pulados (navegador).
 
-Limites: no head `0248f8b` o disco livre (~9 GiB) está abaixo do piso de 12 GiB, então nenhum Cargo, Chrome nem rebuild rodou. Rebuild do JS, `./scripts/runtime test` completo, prova nativa final e sidecar seguem **pendentes**; os gates de `91bd915` (Rust 1239, runtime 108, nativa 119) são do código anterior. Esta feature continua Parcial até a revalidação.
+Limites (históricos, no head `0248f8b`): o disco livre (~9 GiB) estava abaixo do piso de 12 GiB, então nenhum Cargo, Chrome nem rebuild rodou. A revalidação foi feita depois, no head `586a671`: ver a seção seguinte, que **substitui** este parágrafo.
+
+#### Revalidação no head `586a671` (executado, com proveniência)
+
+Head `586a6717bcc8a6e26f3e7a6b2d43075be6abfc1c`, tree `9ad450e0…`, árvore limpa no início e no fim, branch da PR `t3/s7-directed-spark-scene-1` (`origin` = `journey-studios/tessel-editor`, fast-forward limpo a partir de `6084892`). Um runner enfileirado sob o lock da GPU (`with-gpu-lock.py`), UTC 2026-11-06T17:08:44–17:10:17, piso de 12 GiB vigiado em cada passo (mínimo observado 15,19 GiB; não houve aborto). Logs, sidecars e manifesto fora do repositório em `/tmp/te-bl127-final/` (`manifest.json` sha256 `71284dc3b95f9655…`, `runner.py` sha256 `8b69d084817f95d7…`). Runtime próprio: `./scripts/runtime setup` neste worktree, `runtime/dist/runtime.js` sha256 `0957c807…` (o `dist` do binário antigo, `bbe3bbfc…`, **não** foi usado: a prova roda com `TESSEL_RUNTIME_DIR` apontando para este `runtime/`).
+
+**Rust não foi repetido, por equivalência demonstrada, não por suposição:** `git diff 2c7cf7c..586a671 -- crates Cargo.toml Cargo.lock` e `-- docs/migration/fixtures assets` (os únicos caminhos que o Rust embute por `include_str!`/`include_bytes!`) são vazios; só mudaram `runtime/`, `scripts/` e docs. O binário `target/debug/tessel-editor` usado (sha256 `b69b11f2210f82a3…`, mtime UTC 16:38:53) é o do worktree `t3-711b6cd3`, somente leitura (head `0248f8b`, limpo antes e depois; o diff de `crates` desse head ao `586a671` também é vazio) e tem o mesmo sha256 do binário da prova de `2c7cf7c`. Os gates Rust de `2c7cf7c` (fmt, check, clippy `-D warnings`, `cargo test --workspace` **1239/0/9**, build, árvore do core sem gpui/wry) continuam valendo para esse código inalterado.
+
+| Gate | Resultado |
+|---|---|
+| `node --check runtime/src/directed-scene.js`, `py_compile`, `git diff --check 2c7cf7c HEAD` | PASS |
+| `python3 scripts/scene-splat-native-proof.spec.py` | PASS (10 testes) |
+| `./scripts/runtime setup` (`pnpm install --frozen-lockfile` + build) | PASS; árvore ainda limpa |
+| `./scripts/runtime test`, `TESSEL_REQUIRE_RUNTIME=1`, Chrome real, lock da GPU | **duas execuções do runner de gates: uma 107/108, outra 108/108** (abaixo) |
+| `scripts/scene-splat-native-proof.py` (janela real, WKWebView, Apple GPU) | PASS **129/129** (contagem real; ver abaixo) |
+| Mutação do parser: sem `listed.has(nodeId)` | `hides, mislabels` FAIL (`expected a refusal`); restaurado, passa |
+| Mutação T1: todos os splats no slot 0 (runtime reconstruído com a mutação) | `T1:` FAIL; restaurado, `dist` com o mesmo sha256 `0957c807…` |
+
+Suíte runtime: a primeira execução do passo (UTC 17:08:45–17:10:05, log sha256 `0657240e…`) deu **107/108**: falhou `video B2: a frame superseded while it seeks is cancelled and the next one is exact` (`video.test.mjs:208`, esperava `frame.failed`, veio `frame.done`: o primeiro `frame.render` terminou antes de o segundo o substituir). Esse teste, `video.test.mjs` e o seu caminho de código não estão no diff desta PR; é uma corrida de tempo do teste, não do splat. Uma execução anterior do mesmo runner no mesmo head (processo encerrado antes de gravar o manifesto, logs preservados em `/tmp/te-bl127-final-attempt1-killed/`) passou 108/108, e a repetição completa e isolada (UTC 17:10:33–17:13:29, mesmos env e lock, log sha256 `ea5c9e54…`) também: `# tests 108`, `# pass 108`, `# fail 0`, `# skipped 0`. Nada foi relaxado nem pulado; a flutuação é registrada como BL128 e **não** é apresentada como 108/108 numa execução única.
+
+Prova nativa: 129 checks, não 119. A contagem mudou porque as guardas novas (`the corpus has isolated colour probes` e `every requested probe was returned`) são 2 checks por quadro × 5 quadros, +10; nada foi forçado a 119 nem a 129. Relatório JSON sha256 `15b287c9…`, sidecar `native-sidecar.json` sha256 `513cc6e5…` (head, tree, status, binário e sha, `runtimeDir`/sha do `dist`, script sha256 `4b73bc1a…`, corpus). Corpus S10 somente leitura em `t3-02272e59` no head `d435abea` (limpo antes e depois; 21 arquivos, sha agregado `2a2582be…`, idêntico ao de `2c7cf7c`). Instância privada (HOME curto e socket próprios), binário direto, só `op`/`get`/`set` sem coordenadas; o "pixel" é o hash que o WebView reportou comparado ao de `scene.render`, e as sondas leem o `scene.render`: **não** é captura de tela nem ponteiro físico.
+
+Diff de equivalência com o head de `2c7cf7c`: só o runtime (`directed-scene.js`, o `Set` do `nodeId`), um teste de runtime, a prova nativa e seu teste Python, e docs. Os commits de documentação posteriores a `586a671` não tocam `crates/`, `runtime/` nem `scripts/` (verificável por `git diff 586a671 HEAD --stat`); o head da PR após eles prova o mesmo código.
+
+Limites que esta execução **não** muda: aceite independente S10 `FAIL`/`BLOCKED` (BL120/BL121, externos); `full_av`/áudio dependem do S9; a mutação F3 (BL125) segue só com a atribuição antiga e a prova direta `BL125`, que passou na suíte runtime; a revisão independente final (Opus) ainda precisa aceitar o delta. Dois nitpicks de `4494744803`/`5803260055` (limites host×runtime em `crates/render`) são Rust e escopo novo, não acionados aqui.
