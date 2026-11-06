@@ -325,3 +325,24 @@ Prova nativa: 129 checks, não 119. A contagem mudou porque as guardas novas (`t
 Diff de equivalência com o head de `2c7cf7c`: só o runtime (`directed-scene.js`, o `Set` do `nodeId`), um teste de runtime, a prova nativa e seu teste Python, e docs. Os commits de documentação posteriores a `586a671` não tocam `crates/`, `runtime/` nem `scripts/` (verificável por `git diff 586a671 HEAD --stat`); o head da PR após eles prova o mesmo código.
 
 Limites que esta execução **não** muda: aceite independente S10 `FAIL`/`BLOCKED` (BL120/BL121, externos); `full_av`/áudio dependem do S9; a mutação F3 (BL125) segue só com a atribuição antiga e a prova direta `BL125`, que passou na suíte runtime; a revisão independente final (Opus) ainda precisa aceitar o delta. Dois nitpicks de `4494744803`/`5803260055` (limites host×runtime em `crates/render`) são Rust e escopo novo, não acionados aqui.
+
+#### Tentativa de gates no head combinado `12f9d48` (PARCIAL e BLOQUEADA por disco; não é PASS)
+
+Head `12f9d489c30d62932850f899e3805dd4f8a7d706` (tree `f7aab3ce…`), árvore limpa no início e no fim: `origin/t3/s7-directed-spark-scene-1` em `5f4be89` (merge de `8c6c3b9`, S9 + `b6895b6`, S7) mais o commit de documentação `12f9d48`, por fast-forward limpo. Um runner enfileirado sob o lock da GPU (`with-gpu-lock.py`), Cargo só por `cargo-serial.py`, `TESSEL_REQUIRE_RUNTIME=1`, piso absoluto de 12 GiB vigiado a cada 2 s com aborto só dos processos do próprio runner. UTC 2026-11-06T18:08:14–18:21:58. O volume começou em **13,52 GiB livres** (abaixo dos 16 GiB preferidos; acima do piso) e caiu para **11,98–11,99 GiB**: consumo de outros processos da máquina mais o do próprio passo de testes. Logs, sidecar por passo (head, tree, status, `cmd`, `cwd`, env em lista branca, UTC, saída, livre antes/mín./depois, sha256 do log) e manifesto consolidado ficam fora do repositório em `/tmp/te-pr13-final/` (`manifest-final.json` sha256 `d1cc60df…`, `runner.py` sha256 `b0225a81…`).
+
+| Passo | Resultado neste head |
+|---|---|
+| `git diff --check 2c7cf7c HEAD`, `node --check runtime/src/*.js`, `py_compile` (prova nativa S7, seu spec, prova S9) | PASS |
+| `python3 scripts/scene-splat-native-proof.spec.py` e com `python3 -O` | PASS (10 testes cada) |
+| `cargo fmt --all -- --check` | PASS |
+| `cargo check --workspace --all-targets --locked` | PASS |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | PASS |
+| `./scripts/runtime setup` (`pnpm install --frozen-lockfile` + build) | PASS |
+| `cargo test --workspace --no-fail-fast --locked` | **ABORTADO duas vezes, sem resultado**: o runner terminou o grupo de processos ao cruzar 12 GiB (1ª: 13,46 → 11,98 GiB durante a compilação dos testes; 2ª: 12,22 → 11,99 GiB nos testes de export). Os logs parciais mostram só `test result: ok` (40 e 41 binários, 0 falhas, 0 `panicked`), mas **a suíte não terminou** e nenhuma contagem (esperada ≈1239/1263) é afirmada. Logs sha256 `0e5290e0…` e `334903b0…` |
+| `cargo build -p tessel-editor --locked`, build do `tessel-headless`, `cargo tree -p tessel-editor-core` (sem gpui/wry) | **NÃO EXECUTADOS** (livre < 12 GiB) |
+| `./scripts/runtime test` (Chrome real) | **NÃO EXECUTADO** (livre < 12 GiB) |
+| Prova nativa S7 (`scene-splat-native-proof.py`, corpus S10 somente leitura) e prova nativa S9 (`scene-export-audio-ui-proof.py`), ambas com instância privada, binário direto e só `op`/`get`/`set`/`invoke` | **NÃO EXECUTADAS** (as duas se recusam a iniciar abaixo de 12 GiB livres; o piso não foi relaxado) |
+
+Consequências, sem arredondar: a combinação S7+S9 neste head **continua sem gate combinado**. Valem apenas as evidências por base já registradas (S7: `2c7cf7c`/`586a671`; S9: o gate em `ed7827c`/PR #11) mais fmt/check/clippy/spec/sintaxe acima neste head. Nenhum teste de BL128 foi reexecutado; o `runtime test` ficou sem nova leitura (a flutuação 107/108 vs 108/108 segue como está em BL128). Nada foi limpo, apagado nem encerrado fora dos processos do próprio runner; o aceite S10 continua FAIL/BLOCKED (BL120/BL121) e **não** é declarado aceito.
+
+Para concluir: liberar espaço (≥ 16 GiB livres no início) e reexecutar o runner (`/tmp/te-pr13-final/runner.py test build tree runtime-test native-s7 native-s9` sob o lock da GPU).
