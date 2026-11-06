@@ -1,9 +1,14 @@
 """Pure-logic tests of the S6 scene-edit proof; no editor, GPU or runtime page is started."""
+import contextlib
+import io
 import importlib.util
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location("scene_edit_proof", Path(__file__).with_name("scene-edit-proof.py"))
 proof = importlib.util.module_from_spec(spec)
@@ -74,6 +79,58 @@ class CleanTreeTests(unittest.TestCase):
             clean, status = proof.clean_tracked_tree(root)
             self.assertFalse(clean)
             self.assertIn("a.txt", status)
+
+
+class DiskFloorTests(unittest.TestCase):
+    def test_a_mid_run_disk_drop_writes_failure_report_and_summary(self):
+        surfaces = []
+
+        class FakeSurface:
+            def __init__(self, binary, home):
+                self.home = Path(home)
+                self.stopped = False
+                surfaces.append(self)
+
+            def prepare(self):
+                pass
+
+            def stop(self):
+                self.stopped = True
+
+        class Headless(FakeSurface):
+            name = "headless"
+
+        class Native(FakeSurface):
+            name = "native"
+
+        with tempfile.TemporaryDirectory() as folder:
+            out = Path(folder) / "report.json"
+            stdout = io.StringIO()
+            free = [20, 20, 11]
+            with contextlib.ExitStack() as stack:
+                stack.enter_context(patch.object(sys, "argv", ["proof", "--out", str(out)]))
+                stack.enter_context(patch.object(proof, "Headless", Headless))
+                stack.enter_context(patch.object(proof, "Native", Native))
+                stack.enter_context(patch.object(proof, "scenario", return_value=None))
+                inspector = stack.enter_context(patch.object(proof, "native_inspector"))
+                stack.enter_context(patch.object(proof, "sha256", return_value="test-binary"))
+                stack.enter_context(patch.object(proof, "clean_tracked_tree", return_value=(True, "")))
+                stack.enter_context(patch.object(proof.subprocess, "run", return_value=SimpleNamespace(stdout="test-head")))
+                stack.enter_context(patch.object(proof.shutil, "disk_usage", side_effect=[
+                    SimpleNamespace(free=value * 1024 ** 3) for value in free
+                ]))
+                stack.enter_context(contextlib.redirect_stdout(stdout))
+                code = proof.main()
+            report = proof.json.loads(out.read_text())
+            self.assertEqual(code, 1)
+            self.assertFalse(report["ok"])
+            self.assertIn("free space fell below the floor", report["error"])
+            self.assertEqual(report["native"]["failure"], report["error"])
+            self.assertIn("FAILED:", stdout.getvalue())
+            self.assertIn('"ok": false', stdout.getvalue())
+            inspector.assert_not_called()
+            self.assertEqual(len(surfaces), 2)
+            self.assertTrue(all(surface.stopped and not surface.home.exists() for surface in surfaces))
 
 
 if __name__ == "__main__":

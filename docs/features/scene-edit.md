@@ -343,3 +343,5 @@ como artefatos locais fora do repositório (`/tmp/s6-final-gates/`, 212 KiB; rel
 
 Equivalência: o commit que contém esta seção difere de `d0d972b` somente em documentação; nada em `crates/`, `runtime/`,
 `scripts/` ou `Cargo.lock` mudou, então o código de produção testado é exatamente o que a PR entrega.
+
+CodeRabbit `r4494002899`: o piso de disco durante a prova nativa usa uma condição explícita e `ProofFailure`, preservando relatório `--out`, resumo, saída 1 e limpeza do processo/HOME próprios. A spec pura tem 7 testes, todos verdes com Python normal e `-O`; recolocar o `assert` anterior reprova o novo teste em ambos os modos. Isso não altera o editor nem o cenário sem queda de disco.

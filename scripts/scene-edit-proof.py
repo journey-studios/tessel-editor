@@ -374,7 +374,8 @@ def run_surface(factory, binary, report, free_gib):
         surface.prepare()
         context = scenario(surface, check, scratch)
         if surface.name == 'native':
-            assert free_gib() >= MIN_FREE_GIB, 'free space fell below the floor'
+            if free_gib() < MIN_FREE_GIB:
+                raise ProofFailure('free space fell below the floor')
             native_inspector(surface, check, scratch, context)
     except ProofFailure as failure:
         report[surface.name]['failure'] = str(failure)
