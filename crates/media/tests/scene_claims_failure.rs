@@ -269,7 +269,7 @@ fn a_refused_adoption_never_removes_what_another_pending_result_relies_on() {
 
     // The holder still decides: once the ledger works again, accepting keeps both files.
     world.unblock_writes();
-    drop(pending.release());
+    pending.accept().unwrap();
     assert!(world.backdrop().is_file());
     assert!(world.figure().is_file());
     assert_eq!(

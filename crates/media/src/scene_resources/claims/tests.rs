@@ -46,7 +46,7 @@ fn accepting_makes_the_entry_nobodys_to_remove() {
     let mut tracker = ledger.lock_creating();
     tracker.create_dir(one, path.clone()).unwrap();
     tracker.join(two, &path);
-    tracker.accept([path.as_path()].into_iter());
+    tracker.accept([path.as_path()].into_iter()).unwrap();
     assert_eq!(tracker.leave(one, &path), Leave::Untracked);
     assert_eq!(tracker.leave(two, &path), Leave::Untracked);
 }
@@ -81,7 +81,9 @@ fn a_transferred_holder_keeps_the_entry_alive_under_its_new_name() {
         .create_file(from, path.clone(), &root(), None)
         .unwrap();
     tracker.join(other, &path);
-    tracker.transfer(from, to, [path.as_path()].into_iter());
+    tracker
+        .transfer(from, to, [path.as_path()].into_iter())
+        .unwrap();
     assert_eq!(tracker.leave(other, &path), Leave::Shared);
     assert_eq!(tracker.leave(to, &path), Leave::Last(Item::File(None)));
 }
@@ -350,6 +352,214 @@ fn a_path_the_ledger_cannot_write_down_is_refused_not_dropped() {
         .unwrap_err();
     assert!(error.contains("UTF-8"), "{error}");
     assert!(tracker.fault().is_none(), "the ledger itself is fine");
+}
+
+// --- accepting and merging are written before they are believed (BL111.2) --------------------
+
+/// Makes every write of the ledger fail, including removing the state file: the folder is
+/// read-only. Opening the lock (an existing file) still works.
+#[cfg(unix)]
+fn read_only(dir: &Path, on: bool) {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = if on { 0o555 } else { 0o755 };
+    fs::set_permissions(dir.join(".tessel-claims"), fs::Permissions::from_mode(mode)).unwrap();
+}
+
+#[test]
+fn an_accept_the_ledger_could_not_write_is_an_error_and_the_entry_stays_claimed() {
+    let dir = workspace("claims-accept-fails");
+    let canonical = fs::canonicalize(dir.path()).unwrap();
+    let ledger = Ledger::of(dir.path());
+    let (holder, bystander, path) = (next_holder(), next_holder(), key("accept-fails"));
+    let mut tracker = ledger.lock_creating();
+    tracker
+        .create_file(bystander, key("bystander"), &root(), None)
+        .unwrap();
+    tracker
+        .create_file(holder, path.clone(), &root(), None)
+        .unwrap();
+    drop(tracker);
+    let blocker = break_writes(&canonical);
+
+    let mut tracker = ledger.lock();
+    let error = tracker
+        .accept([path.as_path()].into_iter())
+        .expect_err("an acceptance that was not written must not be reported");
+    assert!(error.contains("claims.json"), "{error}");
+    drop(tracker);
+    fs::remove_dir(blocker).unwrap();
+
+    let entry = on_disk(&ledger, &path).expect("still listed: not accepted");
+    assert!(entry.holders.contains(&holder), "and still held");
+    // A discard that follows keeps being right: it finds the entry and removes the file.
+    assert_eq!(
+        ledger.lock().leave(holder, &path),
+        Leave::Last(Item::File(None))
+    );
+}
+
+#[test]
+fn a_faulty_ledger_refuses_to_accept_or_merge() {
+    let dir = workspace("claims-accept-fault");
+    let canonical = fs::canonicalize(dir.path()).unwrap();
+    fs::create_dir_all(canonical.join(".tessel-claims")).unwrap();
+    File::create(canonical.join(".tessel-claims/ledger.lock")).unwrap();
+    fs::write(canonical.join(".tessel-claims/claims.json"), b"{ not json").unwrap();
+    let mut tracker = Ledger::of(dir.path()).lock();
+    let path = key("whatever");
+    assert!(tracker.accept([path.as_path()].into_iter()).is_err());
+    assert!(
+        tracker
+            .transfer(next_holder(), next_holder(), [path.as_path()].into_iter())
+            .is_err()
+    );
+    assert!(tracker.forget(&path).is_err());
+}
+
+#[test]
+fn a_transfer_the_ledger_could_not_write_leaves_the_owner_as_it_was() {
+    let dir = workspace("claims-transfer-fails");
+    let canonical = fs::canonicalize(dir.path()).unwrap();
+    let ledger = Ledger::of(dir.path());
+    let (from, to, path) = (next_holder(), next_holder(), key("transfer-fails"));
+    let mut tracker = ledger.lock_creating();
+    tracker
+        .create_file(from, path.clone(), &root(), None)
+        .unwrap();
+    tracker
+        .create_file(next_holder(), key("bystander"), &root(), None)
+        .unwrap();
+    drop(tracker);
+    let blocker = break_writes(&canonical);
+
+    let mut tracker = ledger.lock();
+    assert!(
+        tracker
+            .transfer(from, to, [path.as_path()].into_iter())
+            .is_err()
+    );
+    drop(tracker);
+    fs::remove_dir(blocker).unwrap();
+    let entry = on_disk(&ledger, &path).unwrap();
+    assert!(entry.holders.contains(&from) && !entry.holders.contains(&to));
+}
+
+/// The lease says "this process is alive and holds claims". It must outlive a write that failed:
+/// letting it go first would let another process reap this one while the disk still lists its
+/// claims, and `recover` would remove files a live process (or an accepted result) owns.
+#[cfg(unix)]
+#[test]
+fn a_failed_write_never_gives_up_the_lease_the_disk_still_depends_on() {
+    let dir = workspace("claims-lease-kept");
+    let canonical = fs::canonicalize(dir.path()).unwrap();
+    let ledger = Ledger::of(dir.path());
+    let (holder, path) = (next_holder(), key("lease-kept"));
+    ledger
+        .lock_creating()
+        .create_file(holder, path.clone(), &root(), None)
+        .unwrap();
+    let leases = |canonical: &Path| {
+        fs::read_dir(canonical.join(".tessel-claims/live"))
+            .map(|names| names.count())
+            .unwrap_or(0)
+    };
+    assert_eq!(leases(&canonical), 1);
+
+    // The only claim of this process is accepted, which empties the ledger: the state file is
+    // to be removed, and the folder does not allow it.
+    read_only(&canonical, true);
+    let mut tracker = ledger.lock();
+    let result = tracker.accept([path.as_path()].into_iter());
+    drop(tracker);
+    read_only(&canonical, false);
+    // (A process running as root ignores the mode: nothing to prove then.)
+    if result.is_ok() {
+        return;
+    }
+    assert_eq!(
+        leases(&canonical),
+        1,
+        "the claims are still on disk, so the lease that vouches for their holder stays"
+    );
+    assert!(on_disk(&ledger, &path).is_some());
+}
+
+// --- a state without its lock is damage, not an empty ledger (BL111.2) --------------------------
+
+#[test]
+fn a_state_file_without_its_lock_is_a_fault_not_an_empty_ledger() {
+    let dir = workspace("claims-dangling");
+    let canonical = fs::canonicalize(dir.path()).unwrap();
+    let ledger = Ledger::of(dir.path());
+    let (holder, path) = (next_holder(), key("dangling"));
+    ledger
+        .lock_creating()
+        .create_file(holder, path.clone(), &root(), None)
+        .unwrap();
+    fs::remove_file(canonical.join(".tessel-claims/ledger.lock")).unwrap();
+
+    let tracker = ledger.lock();
+    let fault = tracker.fault().expect("not an empty ledger");
+    assert!(
+        fault.contains("ledger.lock") && fault.contains("damaged"),
+        "{fault}"
+    );
+    drop(tracker);
+    assert!(matches!(
+        ledger.lock().leave(holder, &path),
+        Leave::Unverifiable(_)
+    ));
+    assert!(ledger.lock().accept([path.as_path()].into_iter()).is_err());
+    assert!(
+        state_path(&canonical).is_file(),
+        "what the ledger lists is left for a person to look at"
+    );
+}
+
+#[test]
+fn a_folder_without_a_state_is_an_empty_ledger() {
+    let dir = workspace("claims-empty-dir");
+    let canonical = fs::canonicalize(dir.path()).unwrap();
+    fs::create_dir_all(canonical.join(".tessel-claims")).unwrap();
+    let tracker = Ledger::of(dir.path()).lock();
+    assert!(tracker.fault().is_none());
+    assert_eq!(tracker.entries().count(), 0);
+}
+
+/// The emptied ledger is removed (state, then lock, then folder) while others look at it and
+/// claim again. A reader must never see that as damage.
+#[test]
+fn emptying_and_refilling_a_ledger_is_never_mistaken_for_damage() {
+    let dir = workspace("claims-race");
+    let ledger = Ledger::of(dir.path());
+    let stop = std::sync::atomic::AtomicBool::new(false);
+    std::thread::scope(|scope| {
+        for worker in 0..3 {
+            let ledger = ledger.clone();
+            let stop = &stop;
+            scope.spawn(move || {
+                for round in 0..150 {
+                    let holder = next_holder();
+                    let path = key(&format!("race-{worker}-{round}"));
+                    let mut tracker = ledger.lock_creating();
+                    tracker
+                        .create_file(holder, path.clone(), &root(), None)
+                        .unwrap();
+                    drop(tracker);
+                    assert!(matches!(ledger.lock().leave(holder, &path), Leave::Last(_)));
+                }
+                stop.store(true, std::sync::atomic::Ordering::SeqCst);
+            });
+        }
+        let reader = ledger.clone();
+        let stop = &stop;
+        scope.spawn(move || {
+            while !stop.load(std::sync::atomic::Ordering::SeqCst) {
+                let tracker = reader.lock();
+                assert!(tracker.fault().is_none(), "{:?}", tracker.fault());
+            }
+        });
+    });
 }
 
 // --- the record: folders already held are not read from the ledger again ------------------------

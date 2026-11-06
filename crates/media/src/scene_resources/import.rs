@@ -55,7 +55,7 @@ use tessel_editor_core::{CommandError, EditorState};
 
 use super::adopt::adopt;
 use super::base::{self, MANAGED_DIR, ResourceBase};
-use super::cleanup::{CleanupReport, Provisional, same_folder};
+use super::cleanup::{CleanupReport, Provisional, refused_accept, same_folder, with_cleanup};
 use crate::directed_resources::{Options, Progress, Published};
 
 /// One scene of the import and where it will live.
@@ -350,7 +350,14 @@ fn prepare_scene(
     )?;
     // Ownership comes from what `adopt` itself created, not from a look at the disk beforehand:
     // a folder that another operation made in between is not ours to remove.
-    owned.absorb(adopted.provisional().release());
+    // The transfer is written to the ledger before anything moves in memory. When that fails
+    // `mine` still owns what the adoption copied, so it is discarded (and says what that did)
+    // instead of being forgotten, and `owned` keeps what earlier scenes copied.
+    let mut mine = adopted.provisional();
+    if let Err(error) = owned.absorb(&mut mine) {
+        let report = mine.discard();
+        return Err(with_cleanup(error, &report));
+    }
     Ok(PreparedScene {
         planned: planned.clone(),
         bundle,
@@ -398,15 +405,42 @@ pub fn apply(
                 source: SceneSource::Bundle(scene.bundle.clone()),
             }))?;
         }
-        Ok(())
+        // The last step, after everything that can fail: the files become the project's only
+        // when the ledger says so. A failure here rolls the whole transaction back (project,
+        // undo history and revision), so a refused acceptance never leaves scenes attached to
+        // files that a recovery could take back.
+        prepared
+            .owned
+            .accept()
+            .map_err(|error| refused_accept(error, None, "no scene was attached"))
     });
-    // A rejection returns here, and `prepared` drops with the copied files still owned.
-    outcome?;
-    let report = json!({ "action": "project.import_scenes", "changed": !prepared.scenes.is_empty(),
-        "result": prepared.to_json() });
-    // Accepted: the files belong to the project now.
-    prepared.owned.release();
-    Ok(report)
+    if let Err(error) = outcome {
+        // The project is as it was. A refused acceptance discards what the import copied (safe
+        // whether or not the failed write reached the disk: a file whose claim is gone is kept,
+        // never removed) and says what that did; any other refusal drops it the same way.
+        if error.code != "claims_unavailable" {
+            return Err(error);
+        }
+        let report = prepared.discard();
+        let mut refused = error;
+        let mut details = match refused.details.take().map(|details| *details) {
+            Some(details @ Value::Object(_)) => details,
+            _ => json!({}),
+        };
+        details["cleanup"] = report.to_json();
+        if !report.kept.is_empty() {
+            refused.message = format!(
+                "{}; left in place: {}",
+                refused.message,
+                report.kept.join("; ")
+            );
+        }
+        return Err(refused.details(details));
+    }
+    Ok(
+        json!({ "action": "project.import_scenes", "changed": !prepared.scenes.is_empty(),
+        "result": prepared.to_json() }),
+    )
 }
 
 #[cfg(test)]

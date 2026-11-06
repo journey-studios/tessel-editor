@@ -5,7 +5,7 @@
 //! [`Created`] is a *record*: the files this operation published and the folders it made, in
 //! creation order, plus what it merely **relies on** (a file another pending result copied and it
 //! reused). [`Provisional`] is the *owner* of a record while the result is not yet accepted: it
-//! removes the record when dropped unless the result was accepted ([`Provisional::release`]).
+//! removes the record when dropped unless the result was accepted ([`Provisional::accept`]).
 //! Separating the two is deliberate:
 //!
 //! * A result that crosses a job slot, a `Pending` queue or a panic unwinding is always cleaned
@@ -25,10 +25,13 @@
 //! * a file that was in the workspace before, or that an accepted result owns, has no entry and
 //!   is never removed by anyone.
 //!
-//! Accepting is releasing the record ([`Provisional::release`] and dropping the returned
-//! [`Created`], or dropping a bare [`Created`]): its entries are deleted, which is what turns the
-//! files into the project's. The registry is the workspace's on-disk ledger (see
-//! [`claims`](super::claims)), so another process reusing the same file is covered too.
+//! Accepting is [`Provisional::accept`]: explicit and **fallible**. Its entries are deleted from
+//! the on-disk ledger, which is what turns the files into the project's, and it answers `Ok` only
+//! once that is written. The flow that applies a result calls it as its last step and undoes
+//! itself when it fails (the result then stays pending and claimed). Merging two results
+//! ([`Provisional::absorb`]) writes the transfer first and moves nothing when it fails. The
+//! registry is the workspace's on-disk ledger (see [`claims`](super::claims)), so another process
+//! reusing the same file is covered too.
 //!
 //! # A claim that cannot be written (BL111)
 //!
@@ -74,6 +77,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use serde_json::{Value, json};
+use tessel_editor_core::CommandError;
 use tessel_editor_core::jobs::{CancelToken, JobError};
 use tessel_editor_core::scene_resources::ResourcePath;
 
@@ -178,7 +182,7 @@ struct Owned {
 /// Files and folders one operation created, in creation order, and what it relies on that
 /// another pending result created. Plain data plus a place in the claims registry: cloning it is
 /// not possible on purpose (see the module docs); move it into a [`Provisional`] or call
-/// [`Created::remove`]. Dropping a bare record means the result was accepted.
+/// [`Created::remove`]. Dropping a bare record accepts it best effort (see the `Drop` impl).
 #[derive(Debug)]
 pub struct Created {
     holder: HolderId,
@@ -462,26 +466,58 @@ impl Created {
     }
 
     /// Appends what `other` created and relies on after what this one has. Both become one
-    /// holder: `other` is consumed and its entries are renamed to this record.
-    pub(crate) fn absorb(&mut self, mut other: Created) {
-        let files = std::mem::take(&mut other.files);
-        let dirs = std::mem::take(&mut other.dirs);
-        let roots = std::mem::take(&mut other.roots);
-        if self.ledger.is_none() {
-            self.ledger = other.ledger.take();
-        }
-        for (ledger, keys) in by_ledger(files.iter().chain(&dirs)) {
+    /// holder: `other`'s entries are renamed to this record, **on disk first**.
+    ///
+    /// Nothing moves in memory until the ledger says the transfer is written. On `Err` both
+    /// records are exactly as they were, so whoever owned a file before still does (if the write
+    /// did reach the disk the entries are held by this record and `other` finds them shared when
+    /// it leaves: a file may then outlive both, never be lost under an owner). Several ledgers
+    /// are only possible for a record that mixes workspaces, which nothing does; if one of them
+    /// fails after another succeeded, the same argument applies to the ones already moved.
+    pub(crate) fn absorb(&mut self, other: &mut Created) -> Result<(), String> {
+        for (ledger, keys) in by_ledger(other.files.iter().chain(&other.dirs)) {
             ledger.lock().transfer(
                 other.holder,
                 self.holder,
                 keys.iter().map(|key| key.as_path()),
-            );
+            )?;
         }
-        for root in roots {
+        if self.ledger.is_none() {
+            self.ledger = other.ledger.take();
+        }
+        let files = std::mem::take(&mut other.files);
+        let dirs = std::mem::take(&mut other.dirs);
+        for root in std::mem::take(&mut other.roots) {
             self.note_root(&root);
         }
         merge(&mut self.files, files);
         merge(&mut self.dirs, dirs);
+        Ok(())
+    }
+
+    /// The result was accepted: its entries are removed from the ledger, and only then is the
+    /// record emptied. `Ok` means the claims are gone from the disk, so nothing (a discard, a
+    /// recovery after this process ends) can take the files back. `Err` means that is not known:
+    /// the record keeps everything, stays claimed by this process, and the caller must undo
+    /// whatever it did to accept the result and discard or retry; discarding is safe in either
+    /// case (it finds entries still there and removes, or finds none and keeps the files).
+    pub(crate) fn accept(&mut self) -> Result<(), String> {
+        let mut failure = None;
+        let mut accepted: Vec<PathBuf> = Vec::new();
+        for (ledger, keys) in by_ledger(self.files.iter().chain(&self.dirs)) {
+            match ledger.lock().accept(keys.iter().map(|key| key.as_path())) {
+                Ok(()) => accepted.push(ledger.dir().to_path_buf()),
+                Err(why) => {
+                    failure.get_or_insert(why);
+                }
+            }
+        }
+        // What belongs to a ledger that did accept is the project's now; the rest stays listed.
+        self.files
+            .retain(|owned| !accepted.iter().any(|dir| dir == owned.ledger.dir()));
+        self.dirs
+            .retain(|owned| !accepted.iter().any(|dir| dir == owned.ledger.dir()));
+        failure.map_or(Ok(()), Err)
     }
 
     /// Removes exactly what this record created and nobody else relies on: files newest first,
@@ -590,17 +626,19 @@ fn leave_dir(dir: &Owned, holder: HolderId, report: &mut CleanupReport) {
     }
 }
 
-/// A bare record that is dropped is a result that was accepted: its files are the project's, so
-/// the entries go and nobody removes them later. Removal consumes the lists first, which is why
-/// it does not come through here.
+/// A bare record that is dropped without [`Created::accept`] or [`Created::remove`] is treated as
+/// accepted, **best effort**: it is the contract of a bare [`Adoption`](super::Adoption) that is
+/// dropped (its files stay), kept for callers that do not care. A destructor cannot report, so
+/// when the ledger cannot be written the entries stay claimed by this process and become orphans
+/// when it ends: that is **not** an acceptance anything may rely on. Every flow that changes a
+/// project (`import::apply`, `PendingAdoption::apply`) calls [`Created::accept`] explicitly,
+/// as its last step, and undoes itself when that fails.
 impl Drop for Created {
     fn drop(&mut self) {
         if self.files.is_empty() && self.dirs.is_empty() {
             return;
         }
-        for (ledger, keys) in by_ledger(self.files.iter().chain(&self.dirs)) {
-            ledger.lock().accept(keys.iter().map(|key| key.as_path()));
-        }
+        let _ = self.accept();
     }
 }
 
@@ -682,6 +720,17 @@ fn claims_unavailable(why: &str) -> JobError {
     .with_details(json!({ "phase": "after_changes", "why": why }))
 }
 
+/// The ledger could not record that the result was accepted. Not accepted: nothing was promised.
+fn accept_unavailable(why: &str) -> JobError {
+    JobError::new(
+        "claims_unavailable",
+        format!(
+            "the claims ledger of this workspace could not record that the result was accepted ({why}); it was not accepted and what it copied stays claimed (a discard keeps whatever it cannot prove is its own)"
+        ),
+    )
+    .with_details(json!({ "phase": "accept", "why": why }))
+}
+
 /// Adds what discarding the refused result did to a `claims_unavailable` error: what was removed
 /// and, above all, what stays (it is never forgotten silently).
 pub(super) fn with_cleanup(mut error: JobError, report: &CleanupReport) -> JobError {
@@ -698,6 +747,24 @@ pub(super) fn with_cleanup(mut error: JobError, report: &CleanupReport) -> JobEr
         );
     }
     error.with_details(details)
+}
+
+/// A refused acceptance as the project-facing error `claims_unavailable` (the code is kept, not
+/// folded into `job_failed`), with what discarding the result did. `what` says what was not done.
+pub(super) fn refused_accept(
+    error: JobError,
+    report: Option<&CleanupReport>,
+    what: &str,
+) -> CommandError {
+    let error = match report {
+        Some(report) => with_cleanup(error, report),
+        None => error,
+    };
+    let mut refused = CommandError::new("claims_unavailable", format!("{}; {what}", error.message));
+    if let Some(details) = error.details {
+        refused = refused.details(details);
+    }
+    refused
 }
 
 fn created(list: &[Owned]) -> impl Iterator<Item = &Path> {
@@ -774,12 +841,28 @@ fn acquire(root: &Path) -> Result<RootLease, tessel_editor_core::jobs::JobError>
 /// Removes the file at `path` if, and only if, it is still what was published (BL097): same
 /// identity, same content, and nothing wrote to it while it was being read.
 pub(super) fn remove_file(path: &Path, stamp: Option<&Stamp>, report: &mut CleanupReport) {
-    let keep = |report: &mut CleanupReport, why: &str| {
+    // A default token never cancels: this is the removal a destructor does, which cannot stop.
+    let _ = remove_file_unless_cancelled(path, stamp, &CancelToken::default(), report);
+}
+
+/// [`remove_file`] whose content check stops **between blocks** when `token` is cancelled (the
+/// hash reads in chunks and looks at the token before each one). A cancelled check removes
+/// nothing: the file stays exactly as it was and `Err(cancelled)` is returned, with nothing
+/// added to `report` for it, so the caller still lists it as not decided. Any other outcome is
+/// `Ok` and is in the report.
+pub(super) fn remove_file_unless_cancelled(
+    path: &Path,
+    stamp: Option<&Stamp>,
+    token: &CancelToken,
+    report: &mut CleanupReport,
+) -> Result<(), JobError> {
+    let keep = |report: &mut CleanupReport, why: &str| -> Result<(), JobError> {
         report.kept.push(format!("`{}`: {why}", path.display()));
+        Ok(())
     };
     let before = match Observed::of(path) {
         // Already gone: a rollback inside the operation got there first.
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return keep(report, &error.to_string()),
         Ok(None) => {
             return keep(
@@ -800,7 +883,8 @@ pub(super) fn remove_file(path: &Path, stamp: Option<&Stamp>, report: &mut Clean
             "it is not the file this operation published any more",
         );
     }
-    match hash_file(path, &CancelToken::default(), |_| {}) {
+    match hash_file(path, token, |_| {}) {
+        Err(error) if error.is_cancelled() => return Err(error),
         Ok((hash, _)) if hash == stamp.sha256 => {}
         Ok(_) => {
             return keep(
@@ -824,8 +908,9 @@ pub(super) fn remove_file(path: &Path, stamp: Option<&Stamp>, report: &mut Clean
     }
     match fs::remove_file(path) {
         Ok(()) => report.removed_files += 1,
-        Err(error) => keep(report, &error.to_string()),
+        Err(error) => return keep(report, &error.to_string()),
     }
+    Ok(())
 }
 
 pub(super) fn remove_dir(dir: &Path, report: &mut CleanupReport) {
@@ -882,7 +967,7 @@ impl CleanupReport {
 }
 
 /// Owns a [`Created`] until the result it belongs to is accepted. Dropping it removes what the
-/// record created (and nobody else relies on); [`release`](Provisional::release) hands it over
+/// record created (and nobody else relies on); [`accept`](Provisional::accept) hands it over
 /// to the project instead.
 ///
 /// Not `Clone`: see the module docs.
@@ -900,19 +985,31 @@ impl Provisional {
         &self.created
     }
 
-    pub(crate) fn absorb(&mut self, created: Created) {
-        self.created.absorb(created);
+    /// Takes over what `other` holds, writing the transfer to the ledger first (see
+    /// [`Created::absorb`]). On `Err` both are untouched and `other` still owns its files, so
+    /// the caller discards it (and says what that did) instead of losing track of them.
+    pub(crate) fn absorb(&mut self, other: &mut Provisional) -> Result<(), JobError> {
+        self.created
+            .absorb(&mut other.created)
+            .map_err(|why| claims_unavailable(&why))
     }
 
     pub(crate) fn created_mut(&mut self) -> &mut Created {
         &mut self.created
     }
 
-    /// The result was accepted: what it created now belongs to the project and nothing is
-    /// removed when this value drops. The returned record is that acceptance: **dropping it**
-    /// makes the files nobody's to remove, for every other result that relied on them too.
-    pub fn release(&mut self) -> Created {
-        std::mem::take(&mut self.created)
+    /// The result was accepted: what it created now belongs to the project. **Fallible and
+    /// explicit**: `Ok` only once the claims are removed from the ledger on disk. On `Err`
+    /// (`claims_unavailable`, `details.phase = "accept"`) the result is *not* accepted: it is
+    /// still owned here and still claimed, and the caller must reverse whatever it applied to
+    /// the project and then [`discard`](Provisional::discard) it (which is safe whether or not
+    /// the failed write reached the disk: a file whose claim is already gone is kept).
+    ///
+    /// Call it as the **last** step of applying the result, after everything that can fail.
+    pub fn accept(&mut self) -> Result<(), JobError> {
+        self.created
+            .accept()
+            .map_err(|why| accept_unavailable(&why))
     }
 
     /// The result will not be used: removes what it created and says what it kept.

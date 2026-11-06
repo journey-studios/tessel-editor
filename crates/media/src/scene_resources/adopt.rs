@@ -17,7 +17,7 @@
 //! copied and the folders it made, never a reused file or a folder that was already there). A
 //! caller whose result may still be discarded (the job finished but the project or the scene
 //! changed meanwhile) moves that record into a [`Provisional`] with [`Adoption::provisional`] and
-//! either releases it when the result is accepted or lets it remove exactly those files.
+//! either accepts it ([`Provisional::accept`], fallible) or lets it remove exactly those files.
 //!
 //! BL096: the whole call runs under the root lease, and everything it reuses that another
 //! *pending* result copied is claimed before the lease is released (`join_file`/`join_dir`), so a
@@ -38,7 +38,9 @@ use tessel_editor_core::{CommandError, EditorState};
 
 use super::base::{self, MANAGED_DIR, ResourceBase};
 use super::claims::Ledger;
-use super::cleanup::{CleanupReport, Created, Provisional, Unclaimed, same_folder, with_cleanup};
+use super::cleanup::{
+    CleanupReport, Created, Provisional, Unclaimed, refused_accept, same_folder, with_cleanup,
+};
 use crate::directed_resources::{
     MaterializeReport, Options, Outcome, Progress, Published, RootLease, blocked_by_manifest,
     materialize_leased,
@@ -59,7 +61,7 @@ pub struct Adoption {
 
 impl Adoption {
     /// Moves the record of what this adoption created into an owner that removes it unless it is
-    /// released. Call it once; the adoption keeps describing `base` and `report`.
+    /// accepted. Call it once; the adoption keeps describing `base` and `report`.
     pub fn provisional(&mut self) -> Provisional {
         Provisional::new(std::mem::take(&mut self.created))
     }
@@ -127,7 +129,7 @@ pub fn adopt(
         Ok(report) => Ok(Adoption {
             base: managed,
             report,
-            created: owned.release(),
+            created: std::mem::take(owned.created_mut()),
         }),
         Err(error) => Err(settle(error, owned)),
     }
@@ -336,9 +338,20 @@ impl PendingAdoption {
     /// else is applied.
     pub fn apply(mut self, state: &EditorState) -> Result<(), CommandError> {
         let Some(why) = self.target.mismatch(state) else {
-            // Dropping the released record is the acceptance: the files are the project's.
-            drop(self.owned.release());
-            return Ok(());
+            // Explicit and fallible: the files are the project's only once the ledger says so.
+            // A refusal discards (safe whether or not the failed write reached the disk) and
+            // reports what that did; nothing in the project was changed by an adoption.
+            return match self.owned.accept() {
+                Ok(()) => Ok(()),
+                Err(error) => {
+                    let report = self.discard();
+                    Err(refused_accept(
+                        error,
+                        Some(&report),
+                        "the adoption was not confirmed",
+                    ))
+                }
+            };
         };
         let scene = self.target.scene.clone();
         let report = self.discard();

@@ -48,7 +48,9 @@
 //!     Success is only ever returned for claims that are on disk ([`Tracker::create_file`] and
 //!     [`Tracker::create_dir`] answer `Ok` only after the write);
 //!   - a discard that cannot record leaving ([`Leave::Unverifiable`]) keeps the file, claimed,
-//!     and says why; `recover` takes it back after its owner is gone.
+//!     and says why; `recover` takes it back after its owner is gone;
+//!   - **accepting** (the last step of applying a result) that cannot be written is refused with
+//!     `details.phase = "accept"`: see below.
 //!
 //! The ledger is removed again when the last claim of the last holder is gone, so a workspace
 //! with no pending result looks exactly like one that never had any.
@@ -56,11 +58,28 @@
 //! The registry is keyed by canonical paths, so one folder spelled two ways (`ws/../ws`, a
 //! link, a trailing `.`) is still one entry.
 //!
-//! Not reported, by construction: dropping a record (accepting) and merging two records cannot
-//! return an error, so a ledger that stops being writable *exactly then* leaves the accepted (or
-//! merged) claims on disk. Their holder is this process, alive, so nobody removes anything while
-//! it lives; after it ends they are orphans that `recover` may remove after the content proof
-//! (BL111.2).
+//! * **Accepting and merging are written before they are believed.** [`Tracker::accept`] and
+//!   [`Tracker::transfer`] answer `Ok` only once the change is on disk, and the owners
+//!   ([`Created::accept`](super::Created), `Created::absorb`) only change their own lists after
+//!   that answer. A refused acceptance leaves the result pending and claimed, and the flow that
+//!   applies it (`import::apply`, `PendingAdoption::apply`) calls it **last** and undoes itself:
+//!   the project is as it was. A refused merge leaves both records as they were, so nobody loses
+//!   ownership. What a failed write cannot say is whether it reached the disk; every follow-up
+//!   is safe either way (a discard only removes a file whose entry it still finds), so the worst
+//!   outcome is a file that stays, never one that is deleted under an owner.
+//! * **The lease outlives a failed write.** A process lets go of its lease only after the ledger
+//!   without it is written. Otherwise a write that failed would leave the disk listing claims
+//!   of an owner nobody can see as alive, and the next reader would reap it and `recover` would
+//!   remove files a live process owns.
+//! * **A state file without its lock is damage.** No lock and no state is "no ledger"; a state
+//!   that lists claims with no `ledger.lock` is seen as a fault (after a few looks in a row, so
+//!   the one-look races of creating and emptying a ledger are not mistaken for it) and refuses:
+//!   `recover` removes nothing, a discard keeps the files, a status says `available: false`. The
+//!   path that creates a ledger (a new adoption) takes a fresh lock and keeps reading the state:
+//!   it never treats the claims as gone.
+//!
+//! A destructor still cannot report: a bare [`Created`](super::Created) dropped without
+//! `accept` or `remove` is accepted best effort. Nothing that changes a project relies on it.
 //!
 //! Limits, stated honestly: the lease is an advisory lock of a **local** filesystem (network
 //! filesystems may not provide it), a **hostile** writer of the same user is out of scope, and a

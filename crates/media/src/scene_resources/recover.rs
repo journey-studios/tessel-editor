@@ -25,7 +25,7 @@ use serde_json::{Value, json};
 use tessel_editor_core::jobs::{CancelToken, JobError};
 
 use super::claims::{Item, Ledger, Stamp, process_owner};
-use super::cleanup::{CleanupReport, remove_dir, remove_file, take_leases};
+use super::cleanup::{CleanupReport, remove_dir, remove_file_unless_cancelled, take_leases};
 
 /// What a recovery found and did.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -65,9 +65,10 @@ pub fn recover(workspace: &Path, token: &CancelToken) -> Result<Recovery, JobErr
 
 /// [`recover`] that tells `progress(done, total)` how far it is, counted in orphan **files**
 /// (the work that reads bytes): once with `done == 0` when the files are known, then after each
-/// one is decided. Cancellation is honoured **between files**: the content check of one file (the
-/// cleanup shared with every discard) is not interrupted, so a cancel waits for the file being
-/// hashed; the ones not reached stay orphans for the next run.
+/// one is decided. Cancellation is honoured **between files and between blocks of the hash** of
+/// the file being checked: a cancel during a large file stops after the block being read, leaves
+/// that file untouched and claimed, and the error carries the partial report plus
+/// `undecidedFiles` (that file and the ones not reached). They stay orphans for the next run.
 pub fn recover_with(
     workspace: &Path,
     token: &CancelToken,
@@ -125,10 +126,13 @@ pub fn recover_with(
     };
     let mut handled = Vec::new();
     let mut cancelled = None;
+    // Orphan files whose content check was not reached or was interrupted: still claimed.
+    let mut undecided = 0;
     progress(0, files.len());
     for (index, (path, stamp, root)) in files.iter().enumerate() {
         if let Err(error) = token.check() {
             cancelled = Some(error);
+            undecided = files.len() - index;
             break;
         }
         let leased_here = root.as_ref().is_some_and(|root| leased.contains(root));
@@ -143,7 +147,15 @@ pub fn recover_with(
         }
         // Under the root lease nothing can reuse the file, and it has no holder, so the content
         // check runs without the ledger lock.
-        remove_file(path, stamp.as_ref(), &mut recovery.report);
+        // The hash of a large file looks at the token between blocks: a cancel during it stops
+        // here with the file untouched and still claimed, so it is counted as not reached.
+        if let Err(error) =
+            remove_file_unless_cancelled(path, stamp.as_ref(), token, &mut recovery.report)
+        {
+            cancelled = Some(error);
+            undecided = files.len() - index;
+            break;
+        }
         handled.push(path.clone());
         progress(index + 1, files.len());
     }
@@ -154,8 +166,12 @@ pub fn recover_with(
             if tracker
                 .entries()
                 .any(|(key, entry)| key == path && entry.holders.is_empty())
+                && let Err(why) = tracker.forget(path)
             {
-                tracker.forget(path);
+                recovery.report.kept.push(format!(
+                    "`{}`: the claims ledger could not record that it was handled ({why})",
+                    path.display()
+                ));
             }
         }
     }
@@ -166,6 +182,7 @@ pub fn recover_with(
         return Err(error.with_details(json!({
             "reapedHolders": recovery.reaped_holders,
             "orphans": recovery.orphans,
+            "undecidedFiles": undecided,
             "cleanup": recovery.report.to_json(),
         })));
     }
@@ -187,7 +204,12 @@ pub fn recover_with(
             continue;
         }
         remove_dir(&dir, &mut recovery.report);
-        tracker.forget(&dir);
+        if let Err(why) = tracker.forget(&dir) {
+            recovery.report.kept.push(format!(
+                "`{}`: the claims ledger could not record that it was handled ({why})",
+                dir.display()
+            ));
+        }
     }
     Ok(recovery)
 }
@@ -272,7 +294,9 @@ mod tests {
             };
             let ledger = Ledger::of(workspace);
             let mut tracker = ledger.lock_creating();
-            tracker.create_file(holder, path.clone(), &root, Some(stamp));
+            tracker
+                .create_file(holder, path.clone(), &root, Some(stamp))
+                .unwrap();
             tracker.abandon(holder, &path);
             paths.push(path);
         }
@@ -318,6 +342,60 @@ mod tests {
         let rest = recover(dir.path(), &CancelToken::default()).unwrap();
         assert_eq!(rest.report.removed_files, 2, "{rest:?}");
         assert_eq!(claimed(dir.path()), 0);
+    }
+
+    /// The hash of a large orphan is the only slow step of a recovery. A cancel that arrives while
+    /// it runs must stop it between blocks, not wait for the whole file (a 2 GiB sparse file takes
+    /// seconds to hash; the cancel comes after a few milliseconds).
+    #[test]
+    fn cancelling_during_the_hash_of_a_large_file_stops_it_and_keeps_the_file_claimed() {
+        let dir = Staging::create(&std::env::temp_dir(), "recover-large").unwrap();
+        let root = dir.path().join("scenes/s/assets");
+        fs::create_dir_all(&root).unwrap();
+        let root = fs::canonicalize(&root).unwrap();
+        let path = root.join("big.bin");
+        let file = fs::File::create(&path).unwrap();
+        file.set_len(2 << 30).unwrap();
+        drop(file);
+        let metadata = fs::metadata(&path).unwrap();
+        // A hash that cannot match: the file would be kept if the check ever finished.
+        let stamp = Stamp {
+            len: metadata.len(),
+            device: metadata.dev(),
+            inode: metadata.ino(),
+            sha256: "0".repeat(64),
+        };
+        let holder = next_holder();
+        let ledger = Ledger::of(dir.path());
+        {
+            let mut tracker = ledger.lock_creating();
+            tracker
+                .create_file(holder, path.clone(), &root, Some(stamp))
+                .unwrap();
+            tracker.abandon(holder, &path);
+        }
+
+        let token = CancelToken::default();
+        let started = std::time::Instant::now();
+        let error = std::thread::scope(|scope| {
+            scope.spawn(|| {
+                std::thread::sleep(std::time::Duration::from_millis(40));
+                token.cancel();
+            });
+            recover_with(dir.path(), &token, &mut |_, _| {}).unwrap_err()
+        });
+        assert!(error.is_cancelled(), "{error:?}");
+        let details = error.details.expect("the partial report travels with it");
+        assert_eq!(details["undecidedFiles"], 1, "{details}");
+        assert_eq!(details["cleanup"]["removedFiles"], 0, "{details}");
+        assert_eq!(
+            details["cleanup"]["kept"],
+            json!([]),
+            "decided nothing: {details}"
+        );
+        assert!(path.exists(), "untouched");
+        assert_eq!(claimed(dir.path()), 1, "still claimed for the next run");
+        eprintln!("cancelled the large hash after {:?}", started.elapsed());
     }
 
     #[test]

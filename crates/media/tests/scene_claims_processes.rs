@@ -14,6 +14,11 @@
 //!   process ID: after `SIGKILL` the claims are reaped, the orphans are kept until a result reuses
 //!   them or `recover` verifies and removes them, and what a live process still relies on is
 //!   never recovered;
+//! * an acceptance the ledger could not write is refused (BL111.2): the process that was refused
+//!   stays alive for the ledger (its lease is not let go while the disk still lists its claims),
+//!   so another process never reaps it and removes what it still owns, and after `SIGKILL` the
+//!   refused result is an orphan while an accepted one never is; a ledger whose lock was deleted
+//!   is damage that refuses, not an empty ledger that lets `recover` act;
 //! * a file rewritten after its holder died is kept, an unreadable ledger refuses before any
 //!   copy, and two processes cycling adopt/discard on one workspace end with the workspace as it
 //!   was.
@@ -104,10 +109,15 @@ fn child_role() {
                     "kept": report.kept.len()}),
                 );
             }
-            "accept" => {
-                drop(held.take().unwrap().release());
-                say(json!({"accepted": true}));
-            }
+            "accept" => match held.as_mut().unwrap().accept() {
+                Ok(()) => {
+                    held = None;
+                    say(json!({"accepted": true}));
+                }
+                // Refused: still owned and claimed here, to be discarded by the next command.
+                Err(error) => say(json!({"accepted": false, "code": error.code,
+                    "phase": error.details.as_ref().and_then(|d| d["phase"].as_str())})),
+            },
             "cycle" => {
                 let rounds: usize = words.next().unwrap().parse().unwrap();
                 let (mut done, mut busy) = (0, 0);
@@ -332,7 +342,7 @@ fn a_file_two_live_processes_share_survives_the_first_discard_in_both_directions
             // Two files and the three folders they sit in.
             assert_eq!(gone["shared"], 5, "{gone}");
             world.assert_intact();
-            drop(mine.provisional().release());
+            mine.provisional().accept().unwrap();
         } else {
             let gone = mine.provisional().discard();
             assert_eq!(gone.removed_files, 0, "{gone:?}");
@@ -379,7 +389,7 @@ fn an_accepted_file_is_never_removed_by_the_other_process() {
             assert_eq!(report.removed_files, 0, "{report:?}");
         } else {
             let mut mine = world.adopt();
-            drop(mine.provisional().release());
+            mine.provisional().accept().unwrap();
             let answer = peer.ask("adopt");
             assert_eq!(answer["reused"], 2, "{answer}");
             let gone = peer.ask("discard");
@@ -480,7 +490,7 @@ fn reusing_what_a_crashed_process_left_makes_the_new_holder_the_owner_and_accept
     assert_eq!(recovery.orphans, 0, "{recovery:?}");
     world.assert_intact();
 
-    drop(mine.provisional().release());
+    mine.provisional().accept().unwrap();
     world.assert_intact();
     world.assert_no_claims();
 }
@@ -596,4 +606,135 @@ fn a_dead_holder_does_not_keep_a_live_one_from_being_the_last_and_recovery_ignor
     assert_eq!(tree(&world.workspace), before);
     world.assert_no_claims();
     living.quit();
+}
+
+// ------------------------------------------------------- acceptance and damage (BL111.2) --
+
+/// Makes the ledger folder read-only: opening its lock still works, every write fails.
+#[cfg(unix)]
+fn set_ledger_mode(workspace: &Path, mode: u32) {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(
+        workspace.join(".tessel-claims"),
+        fs::Permissions::from_mode(mode),
+    )
+    .unwrap();
+}
+
+/// Whether a read-only folder really refuses writes here (a process running as root is not
+/// stopped by the mode, and then these cases cannot be provoked).
+#[cfg(unix)]
+fn modes_are_enforced(workspace: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    let probe = workspace.join("probe-dir");
+    fs::create_dir_all(&probe).unwrap();
+    fs::set_permissions(&probe, fs::Permissions::from_mode(0o555)).unwrap();
+    let refused = fs::File::create(probe.join("x")).is_err();
+    fs::set_permissions(&probe, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::remove_dir_all(&probe).unwrap();
+    refused
+}
+
+/// The peer holds a pending result and is refused its acceptance because the ledger cannot be
+/// written; the ledger is writable again when this returns. `None` when modes are not enforced.
+#[cfg(unix)]
+fn peer_refused_acceptance(world: &World) -> Option<Peer> {
+    if !modes_are_enforced(&world.sandbox.root) {
+        eprintln!("skipped: this user is not stopped by a read-only folder");
+        return None;
+    }
+    let mut peer = Peer::spawn(world);
+    assert_eq!(peer.ask("adopt")["copied"], 2);
+    set_ledger_mode(&world.workspace, 0o555);
+    let answer = peer.ask("accept");
+    set_ledger_mode(&world.workspace, 0o755);
+    assert_eq!(answer["accepted"], false, "{answer}");
+    assert_eq!(answer["code"], "claims_unavailable", "{answer}");
+    assert_eq!(answer["phase"], "accept", "{answer}");
+    Some(peer)
+}
+
+#[cfg(unix)]
+#[test]
+fn a_process_refused_its_acceptance_stays_alive_for_the_ledger_and_is_not_recovered_from() {
+    let world = world("refused-alive");
+    let Some(mut peer) = peer_refused_acceptance(&world) else {
+        return;
+    };
+    // The write that did not happen would have emptied the ledger: it still lists the peer's
+    // claims, so the peer must still count as alive. Letting its lease go first would make this
+    // recovery reap it and remove files a live process owns.
+    let recovery = recover(&world.workspace, &CancelToken::default()).unwrap();
+    assert_eq!(recovery.reaped_holders, 0, "{recovery:?}");
+    assert_eq!(recovery.report.removed_files, 0, "{recovery:?}");
+    world.assert_intact();
+    let status = claims_status(&world.workspace);
+    assert_eq!(status["orphans"], 0, "{status}");
+    assert_eq!(status["owners"].as_array().unwrap().len(), 1, "{status}");
+
+    // It was refused, so the project never took the files: the peer discards, and they go.
+    let gone = peer.ask("discard");
+    assert_eq!(gone["removedFiles"], 2, "{gone}");
+    world.assert_no_claims();
+    peer.quit();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_refused_result_whose_process_is_killed_is_an_orphan_and_only_then_recoverable() {
+    let world = world("refused-killed");
+    let Some(peer) = peer_refused_acceptance(&world) else {
+        return;
+    };
+    peer.crash();
+    let status = claims_status(&world.workspace);
+    assert!(status["orphans"].as_u64().unwrap() >= 2, "{status}");
+    world.assert_intact();
+    let recovery = recover(&world.workspace, &CancelToken::default()).unwrap();
+    assert_eq!(recovery.report.removed_files, 2, "{recovery:?}");
+    assert!(!world.backdrop().exists() && !world.figure().exists());
+    world.assert_no_claims();
+}
+
+#[test]
+fn an_accepted_result_whose_process_is_killed_is_never_recovered() {
+    let world = world("accepted-killed");
+    let mut peer = Peer::spawn(&world);
+    assert_eq!(peer.ask("adopt")["copied"], 2);
+    assert_eq!(peer.ask("accept")["accepted"], true);
+    peer.crash();
+    let recovery = recover(&world.workspace, &CancelToken::default()).unwrap();
+    assert_eq!(recovery.orphans, 0, "{recovery:?}");
+    assert_eq!(recovery.report.removed_files, 0, "{recovery:?}");
+    world.assert_intact();
+    world.assert_no_claims();
+}
+
+#[test]
+fn a_ledger_whose_lock_was_deleted_refuses_and_removes_nothing_whoever_is_alive() {
+    let world = world("dangling");
+    let mut peer = Peer::spawn(&world);
+    assert_eq!(peer.ask("adopt")["copied"], 2);
+    let ledger = world.workspace.join(".tessel-claims");
+    fs::remove_file(ledger.join("ledger.lock")).unwrap();
+
+    let status = claims_status(&world.workspace);
+    assert_eq!(status["available"], false, "{status}");
+    assert!(
+        status["fault"].as_str().unwrap().contains("ledger.lock"),
+        "{status}"
+    );
+    let error = recover(&world.workspace, &CancelToken::default()).unwrap_err();
+    assert_eq!(error.code, "claims_unavailable", "{error:?}");
+    world.assert_intact();
+
+    // Not even once the only holder is gone: nothing can be proved about a ledger like this.
+    peer.crash();
+    let error = recover(&world.workspace, &CancelToken::default()).unwrap_err();
+    assert_eq!(error.code, "claims_unavailable", "{error:?}");
+    world.assert_intact();
+    assert!(
+        ledger.join("claims.json").is_file(),
+        "left for a person to look at"
+    );
 }

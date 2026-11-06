@@ -16,7 +16,8 @@ and the shared job history carries their result, progress and typed errors; clai
 read-only and lists the orphan entries without removing a file; recover removes only the orphans,
 reports the job's progress in files and leaves the workspace as it was; a living process's holder
 is not recovered; a ledger that cannot be read makes recover fail with `claims_unavailable` and
-removes nothing; a file edited after the crash is kept and the job warns; the jobs dialog and the
+removes nothing; a file edited after the crash is kept and the job warns; a ledger whose lock was deleted is
+damage (`available:false`, `recover` fails closed, nothing removed); the jobs dialog and the
 `jobs` node show the jobs, and a finished job refuses `job.cancel` with a typed error.
 
 It does NOT prove pixels (the monitor runtime is not used), the cancel arriving in the middle of a recovery (deterministic in the lib
@@ -235,6 +236,22 @@ def main():
         check('recover fails with the typed code and removes nothing',
               failed['state'] == 'failed' and failed['error']['code'] == 'claims_unavailable'
               and tree(workspace) == copied, failed)
+
+        # --- a ledger whose lock was deleted is damage, not an empty ledger (BL111.2) -----------
+        shutil.rmtree(workspace / '.tessel-claims')
+        shutil.rmtree(workspace / 'scenes')
+        victim = other_editor(workspace, 'lockless')
+        victim.crash()
+        (workspace / '.tessel-claims/ledger.lock').unlink()
+        copied = tree(workspace)
+        claims = final_job(op({'op': 'scene.resources.claims'}))
+        check('claims reports the lockless ledger as damaged, not empty',
+              claims['state'] == 'succeeded' and claims['result']['available'] is False
+              and 'ledger.lock' in (claims['result']['fault'] or ''), claims)
+        lockless = final_job(op({'op': 'scene.resources.recover'}))
+        check('recover on a lockless ledger fails closed and removes nothing',
+              lockless['state'] == 'failed' and lockless['error']['code'] == 'claims_unavailable'
+              and tree(workspace) == copied and (assets / 'hero.png').is_file(), lockless)
 
         # --- controls: the jobs dialog and the semantic cancel ----------------------------------
         opened = ok({'command': 'invoke', 'target': 'flow.jobs', 'action': 'open'})

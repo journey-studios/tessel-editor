@@ -43,6 +43,10 @@ const VERSION: u64 = 1;
 /// How many times a lock is retaken when the lock file it got was unlinked meanwhile (or the
 /// open raced with that unlink).
 const ATTEMPTS: usize = 64;
+/// Consecutive looks that find the state without its lock before that is called damage, and the
+/// pause between looks.
+const DANGLING_SEEN: usize = 5;
+const DANGLING_PAUSE: std::time::Duration = std::time::Duration::from_millis(2);
 
 fn relock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     // Every change under these locks is one assignment: a panic leaves consistent data.
@@ -349,27 +353,35 @@ impl Tracker {
     }
 
     /// The result that listed `keys` was accepted: the project owns them now, for every holder.
-    pub(in crate::scene_resources) fn accept<'a>(&mut self, keys: impl Iterator<Item = &'a Path>) {
-        if self.fault.is_some() {
-            return;
-        }
+    ///
+    /// `Ok` means the entries are **gone from the disk**. `Err` is the reason they may not be:
+    /// the caller must not tell anyone the result was accepted (the entries stay claimed by this
+    /// process, so nothing removes them while it lives). What a failed answer cannot say is
+    /// whether the write reached the disk; a caller that discards after it is still safe, because
+    /// a discard only removes files whose entry it still finds, so a leak is the worst outcome.
+    pub(in crate::scene_resources) fn accept<'a>(
+        &mut self,
+        keys: impl Iterator<Item = &'a Path>,
+    ) -> Result<(), String> {
+        self.guard()?;
         for key in keys {
             self.dirty |= self.entries.remove(key).is_some();
         }
         self.flush();
+        self.guard()
     }
 
     /// Merges the holder `from` into `to` for the entries at `keys` (two results of one
-    /// operation becoming one).
+    /// operation becoming one). `Ok` only when the merge is on disk: on `Err` the caller keeps
+    /// both lists as they were, so the entries stay held by `from` (or by `to`, when the write
+    /// did happen) and nobody loses ownership.
     pub(in crate::scene_resources) fn transfer<'a>(
         &mut self,
         from: HolderId,
         to: HolderId,
         keys: impl Iterator<Item = &'a Path>,
-    ) {
-        if self.fault.is_some() {
-            return;
-        }
+    ) -> Result<(), String> {
+        self.guard()?;
         for key in keys {
             if let Some(entry) = self.entries.get_mut(key)
                 && entry.holders.remove(&from)
@@ -379,14 +391,23 @@ impl Tracker {
             }
         }
         self.flush();
+        self.guard()
+    }
+
+    /// The fault of this tracker as an error, `Ok` when it can be trusted.
+    fn guard(&self) -> Result<(), String> {
+        match &self.fault {
+            Some(why) => Err(why.clone()),
+            None => Ok(()),
+        }
     }
 
     /// Drops the entry at `key` whatever its holders: recovery decided about it.
-    pub(in crate::scene_resources) fn forget(&mut self, key: &Path) {
-        if self.fault.is_none() {
-            self.dirty |= self.entries.remove(key).is_some();
-            self.flush();
-        }
+    pub(in crate::scene_resources) fn forget(&mut self, key: &Path) -> Result<(), String> {
+        self.guard()?;
+        self.dirty |= self.entries.remove(key).is_some();
+        self.flush();
+        self.guard()
     }
 
     // --- persistence ---------------------------------------------------------------------
@@ -484,10 +505,14 @@ impl Tracker {
     }
 
     /// Keeps the owners in step with the entries: this process's lease exists while a holder of
-    /// this process is listed (before the entries naming it are written) and is let go of when
-    /// the last one is gone; an owner that holds nothing any more is not listed. Answers whether
-    /// the list of owners changed.
-    fn sync_lease(&mut self) -> Result<bool, String> {
+    /// this process is listed (taken before the entries naming it are written). Answers whether
+    /// the list of owners changed and whether the lease is no longer needed.
+    ///
+    /// The lease is **not** let go of here: it is released by [`Tracker::flush`] only once the
+    /// ledger without this process has been written. Releasing it first would let any other
+    /// process reap this one as dead while the ledger on disk (the write failed) still lists its
+    /// claims, and `recover` would then remove what a live process, or an accepted result, owns.
+    fn sync_lease(&mut self) -> Result<(bool, bool), String> {
         let me = process_owner();
         let before = self.owners.len();
         let holding: BTreeSet<u128> = self
@@ -501,6 +526,7 @@ impl Tracker {
             .retain(|owner, _| *owner == me || holding.contains(owner));
         let mut live = relock(&self.inner.live);
         let mut changed = self.owners.len() != before;
+        let mut release = false;
         if holding.contains(&me) {
             if live.is_none() {
                 *live = Some(take_lease(&self.inner.dir, me)?);
@@ -515,23 +541,32 @@ impl Tracker {
                 changed = true;
             }
         } else {
-            if let Some(lease) = live.take() {
-                let _ = fs::remove_file(&lease.path);
-            }
+            release = live.is_some();
             changed |= self.owners.remove(&me).is_some();
         }
-        Ok(changed)
+        Ok((changed, release))
+    }
+
+    /// Lets go of this process's lease (it holds nothing in this ledger any more).
+    fn release_lease(&self) {
+        if let Some(lease) = relock(&self.inner.live).take() {
+            let _ = fs::remove_file(&lease.path);
+        }
     }
 
     /// Writes the ledger when something changed (or removes the file when it is empty). A
-    /// failure marks the tracker faulty: what it still answers is "kept", never "removable".
+    /// failure marks the tracker faulty: what it still answers is "kept", never "removable", and
+    /// the lease stays, because the disk still lists this process's claims.
     fn flush(&mut self) {
         if self.lock.is_none() || self.fault.is_some() {
             return;
         }
-        let result = self.sync_lease().and_then(|changed| {
+        let result = self.sync_lease().and_then(|(changed, release)| {
             if self.dirty || changed {
                 self.write()?;
+            }
+            if release {
+                self.release_lease();
             }
             Ok(())
         });
@@ -612,6 +647,7 @@ impl DiskLock {
     /// `Ok(None)` when there is no ledger and `create` is not set.
     fn acquire(dir: &Path, create: bool) -> Result<Option<Self>, String> {
         let path = dir.join(LOCK);
+        let mut dangling = 0;
         for _ in 0..ATTEMPTS {
             if create {
                 match fs::create_dir(dir) {
@@ -635,7 +671,16 @@ impl DiskLock {
             {
                 Ok(file) => file,
                 Err(error) if error.kind() == io::ErrorKind::NotFound && !create => {
-                    return Ok(None);
+                    // No lock file normally means no ledger. A state file without its lock is
+                    // not "empty": it lists claims nobody can serialise changes to.
+                    match look_for_damage(dir, &mut dangling) {
+                        Look::Empty => return Ok(None),
+                        Look::Again => {
+                            std::thread::sleep(DANGLING_PAUSE);
+                            continue;
+                        }
+                        Look::Damaged => return Err(damaged(dir)),
+                    }
                 }
                 // The folder was removed between creating it and opening the lock: again.
                 Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
@@ -666,6 +711,42 @@ impl DiskLock {
             dir.display()
         ))
     }
+}
+
+enum Look {
+    /// No lock and no state: there is no ledger.
+    Empty,
+    /// The state is there without the lock, but not for long enough to call it damage.
+    Again,
+    Damaged,
+}
+
+/// Whether the lock is missing **and** the state file is there, on `DANGLING_SEEN` looks in a
+/// row (`seen` counts them). Both legitimate races are one look long: a creator that makes the
+/// lock a moment after this looked, and the process that emptied the ledger removing the state
+/// before the lock. A ledger really missing its lock stays that way, and then the answer is a
+/// fault (fail closed), never "empty".
+fn look_for_damage(dir: &Path, seen: &mut usize) -> Look {
+    if fs::symlink_metadata(dir.join(STATE)).is_err() {
+        *seen = 0;
+        return Look::Empty;
+    }
+    *seen += 1;
+    if *seen < DANGLING_SEEN {
+        Look::Again
+    } else if fs::symlink_metadata(dir.join(LOCK)).is_err() {
+        Look::Damaged
+    } else {
+        *seen = 0;
+        Look::Again
+    }
+}
+
+fn damaged(dir: &Path) -> String {
+    format!(
+        "`{}` exists but its `{LOCK}` is missing: the claims ledger is damaged (the lock was deleted); nothing was changed, restore `{LOCK}` or remove `{DIR}` once no Tessel is running",
+        dir.join(STATE).display()
+    )
 }
 
 // --- leases ------------------------------------------------------------------------------
