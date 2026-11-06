@@ -198,6 +198,155 @@ fn reusing_an_orphan_makes_the_new_holder_decide_about_it() {
 }
 
 #[test]
+fn the_last_holder_keeps_its_claim_until_the_removal_is_done() {
+    let dir = workspace("claims-begin-leave");
+    let canonical = fs::canonicalize(dir.path()).unwrap();
+    let ledger = Ledger::of(dir.path());
+    let (one, two, path) = (next_holder(), next_holder(), key("begin-leave"));
+    let mut tracker = ledger.lock_creating();
+    tracker
+        .create_file(one, path.clone(), &root(), None)
+        .unwrap();
+    assert!(tracker.join(two, &path));
+    // Not the last: it leaves at once, as `leave` does.
+    assert_eq!(tracker.begin_leave(one, &path), Leave::Shared);
+    // The last: told so, with the entry (and its owner) still on disk for whatever happens next.
+    assert_eq!(
+        tracker.begin_leave(two, &path),
+        Leave::Last(Item::File(None))
+    );
+    drop(tracker);
+    let on_disk = fs::read_to_string(state_path(&canonical)).unwrap();
+    assert!(
+        on_disk.contains("begin-leave"),
+        "a process killed here leaves the claim: {on_disk}"
+    );
+    assert_eq!(
+        ledger.lock().leave(two, &path),
+        Leave::Last(Item::File(None))
+    );
+    assert!(
+        !state_path(&canonical).exists(),
+        "the claim goes once the removal is done"
+    );
+}
+
+#[test]
+fn leaving_for_good_is_refused_before_removing_when_the_ledger_cannot_be_written() {
+    let dir = workspace("claims-begin-leave-unwritable");
+    let canonical = fs::canonicalize(dir.path()).unwrap();
+    let ledger = Ledger::of(dir.path());
+    let (holder, bystander, path) = (next_holder(), next_holder(), key("begin-unwritable"));
+    let mut tracker = ledger.lock_creating();
+    tracker
+        .create_file(holder, path.clone(), &root(), None)
+        .unwrap();
+    tracker
+        .create_file(bystander, key("bystander"), &root(), None)
+        .unwrap();
+    drop(tracker);
+    // A folder where the temporary file goes: the next write fails.
+    fs::create_dir(canonical.join(".tessel-claims/claims.json.tmp")).unwrap();
+    assert!(matches!(
+        ledger.lock().begin_leave(holder, &path),
+        Leave::Unverifiable(_)
+    ));
+    fs::remove_dir(canonical.join(".tessel-claims/claims.json.tmp")).unwrap();
+    assert_eq!(
+        ledger.lock().begin_leave(holder, &path),
+        Leave::Last(Item::File(None)),
+        "the claim is still there once the ledger works again"
+    );
+    ledger.lock().leave(holder, &path);
+    ledger.lock().leave(bystander, &key("bystander"));
+}
+
+#[test]
+fn waiting_for_a_lock_nobody_lets_go_of_is_bounded() {
+    let dir = workspace("claims-lock-bound");
+    let canonical = fs::canonicalize(dir.path()).unwrap();
+    let ledger = Ledger::of(dir.path());
+    let (holder, path) = (next_holder(), key("lock-bound"));
+    ledger
+        .lock_creating()
+        .create_file(holder, path.clone(), &root(), None)
+        .unwrap();
+    // Another open file description holding the lock is what a stopped process does.
+    let stuck = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(canonical.join(".tessel-claims/ledger.lock"))
+        .unwrap();
+    stuck.lock().unwrap();
+    let started = std::time::Instant::now();
+    let tracker = ledger.lock();
+    let waited = started.elapsed();
+    assert!(
+        tracker
+            .fault()
+            .is_some_and(|why| why.contains("does not let go")),
+        "{:?}",
+        tracker.fault()
+    );
+    assert!(
+        waited < std::time::Duration::from_secs(10),
+        "it gave up instead of waiting forever: {waited:?}"
+    );
+    drop(tracker);
+    stuck.unlock().unwrap();
+    drop(stuck);
+    assert_eq!(
+        ledger.lock().leave(holder, &path),
+        Leave::Last(Item::File(None)),
+        "the claim was untouched by the refusal"
+    );
+}
+
+#[test]
+fn a_caller_that_must_not_wait_looks_once_and_never_waits_for_a_held_lock() {
+    let dir = workspace("claims-lock-nowait");
+    let canonical = fs::canonicalize(dir.path()).unwrap();
+    let ledger = Ledger::of(dir.path());
+    let (holder, path) = (next_holder(), key("lock-nowait"));
+    ledger
+        .lock_creating()
+        .create_file(holder, path.clone(), &root(), None)
+        .unwrap();
+    let stuck = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(canonical.join(".tessel-claims/ledger.lock"))
+        .unwrap();
+    stuck.lock().unwrap();
+    let started = std::time::Instant::now();
+    let tracker = ledger.try_lock();
+    let waited = started.elapsed();
+    assert!(
+        tracker
+            .fault()
+            .is_some_and(|why| why.contains("not waited for")),
+        "{:?}",
+        tracker.fault()
+    );
+    // Far below the 1.5 s of a waiting caller (and its poll); 1 s only keeps a loaded machine honest.
+    assert!(
+        waited < std::time::Duration::from_secs(1),
+        "it did not wait: {waited:?}"
+    );
+    drop(tracker);
+    stuck.unlock().unwrap();
+    drop(stuck);
+    // Free again: the same call gets the lock at once, and the claim was untouched.
+    let mut tracker = ledger.try_lock();
+    assert!(tracker.fault().is_none(), "{:?}", tracker.fault());
+    assert_eq!(
+        tracker.leave(holder, &path),
+        Leave::Last(Item::File(None)),
+        "the claim was untouched by the refusal"
+    );
+}
+
+#[test]
 fn an_unreadable_ledger_refuses_and_vouches_for_nothing() {
     let dir = workspace("claims-fault");
     let canonical = fs::canonicalize(dir.path()).unwrap();

@@ -509,10 +509,27 @@ impl Created {
     /// whatever it did to accept the result and discard or retry; discarding is safe in either
     /// case (it finds entries still there and removes, or finds none and keeps the files).
     pub(crate) fn accept(&mut self) -> Result<(), String> {
+        self.accept_waiting(true)
+    }
+
+    /// [`Created::accept`] for a caller that must not block (the window's tick): a ledger lock
+    /// that another process holds at that instant is not waited for. It answers `Err` like any
+    /// ledger that cannot record the acceptance, and the record keeps everything.
+    pub(crate) fn accept_nowait(&mut self) -> Result<(), String> {
+        self.accept_waiting(false)
+    }
+
+    /// `wait` says whether the ledger lock may be waited for (bounded, see `ledger::LOCK_WAIT`).
+    fn accept_waiting(&mut self, wait: bool) -> Result<(), String> {
         let mut failure = None;
         let mut accepted: Vec<PathBuf> = Vec::new();
         for (ledger, keys) in by_ledger(self.files.iter().chain(&self.dirs)) {
-            match ledger.lock().accept(keys.iter().map(|key| key.as_path())) {
+            let mut tracker = if wait {
+                ledger.lock()
+            } else {
+                ledger.try_lock()
+            };
+            match tracker.accept(keys.iter().map(|key| key.as_path())) {
                 Ok(()) => accepted.push(ledger.dir().to_path_buf()),
                 Err(why) => {
                     failure.get_or_insert(why);
@@ -544,10 +561,16 @@ impl Created {
             // lease, so a claim cannot slip in between this answer and the unlink below.
             // A root that stayed busy cannot be touched: the claim stays (as an orphan) so that
             // `recover` takes the file back later, instead of forgetting a file left behind.
+            //
+            // The last holder is *not* written out before the file is dealt with (F1): the entry
+            // (and with it this process's lease) stays on disk through the SHA-256 and the
+            // unlink, and is dropped only afterwards. A process killed in the middle of hashing a
+            // large file therefore leaves an orphan claim that `recover` takes back, never a
+            // file the ledger does not list.
             let verdict = if leases.blocked(&file.path) {
                 file.ledger.lock().abandon(holder, &file.key)
             } else {
-                file.ledger.lock().leave(holder, &file.key)
+                file.ledger.lock().begin_leave(holder, &file.key)
             };
             match verdict {
                 Leave::Untracked => {
@@ -570,9 +593,11 @@ impl Created {
                     "`{}`: its root is busy; it stays claimed for recovery",
                     file.path.display()
                 )),
-                Leave::Last(Item::Dir) => {}
-                Leave::Last(Item::File(stamp)) => {
-                    remove_file(&file.path, stamp.as_ref(), &mut report);
+                Leave::Last(item) => {
+                    if let Item::File(stamp) = &item {
+                        remove_file(&file.path, stamp.as_ref(), &mut report);
+                    }
+                    finish_leave(file, holder, &mut report);
                 }
             }
         }
@@ -613,10 +638,16 @@ fn leave_dir(dir: &Owned, holder: HolderId, report: &mut CleanupReport) {
     let verdict = if tracker.has_below(&dir.key) {
         tracker.abandon(holder, &dir.key)
     } else {
-        tracker.leave(holder, &dir.key)
+        tracker.begin_leave(holder, &dir.key)
     };
     match verdict {
-        Leave::Untracked | Leave::Last(Item::File(_)) => {}
+        Leave::Untracked => {}
+        Leave::Last(item) => {
+            if item == Item::Dir {
+                remove_dir(&dir.path, report);
+            }
+            drop_claim(&mut tracker, dir, holder, report);
+        }
         Leave::Shared => report.shared.push(format!(
             "`{}`: another result still relies on it",
             dir.path.display()
@@ -629,8 +660,26 @@ fn leave_dir(dir: &Owned, holder: HolderId, report: &mut CleanupReport) {
             "`{}`: the claims ledger cannot vouch for it ({why})",
             dir.path.display()
         )),
-        Leave::Last(Item::Dir) => remove_dir(&dir.path, report),
     }
+}
+
+/// Drops the claim of `owned` after what it listed was dealt with (removed or deliberately
+/// kept). When the ledger cannot record that, the claim stays on disk, held by this live process:
+/// `recover` finds an entry whose file is gone (or still there and provably ours) once the process
+/// ends, so it is reported but never a lost file.
+fn drop_claim(tracker: &mut Tracker, owned: &Owned, holder: HolderId, report: &mut CleanupReport) {
+    if let Leave::Unverifiable(why) = tracker.leave(holder, &owned.key) {
+        report.kept.push(format!(
+            "`{}`: it was handled, but the claims ledger could not record that ({why}); the claim stays for recovery",
+            owned.path.display()
+        ));
+    }
+}
+
+/// [`drop_claim`] for a file, taking the ledger lock for just that step.
+fn finish_leave(file: &Owned, holder: HolderId, report: &mut CleanupReport) {
+    let mut tracker = file.ledger.lock();
+    drop_claim(&mut tracker, file, holder, report);
 }
 
 /// A bare record that is dropped without [`Created::accept`] or [`Created::remove`] is treated as
@@ -1042,6 +1091,16 @@ impl Provisional {
     pub fn accept(&mut self) -> Result<(), JobError> {
         self.created
             .accept()
+            .map_err(|why| accept_unavailable(&why))
+    }
+
+    /// [`Provisional::accept`] for the window's tick, which never waits for the ledger lock: one
+    /// held by another process at that instant refuses the acceptance (`claims_unavailable`,
+    /// `details.phase = "accept"`, `details.why` says it was busy) instead of holding the tick
+    /// up. Everything else is as in `accept`: nothing was promised and the result is still owned.
+    pub fn accept_nowait(&mut self) -> Result<(), JobError> {
+        self.created
+            .accept_nowait()
             .map_err(|why| accept_unavailable(&why))
     }
 

@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
+use tessel_editor_core::jobs::ResultState;
 use tessel_editor_core::{CommandError, EditorState, headless};
 use tessel_editor_media::host::{MediaHost, RendererFactory};
 use tessel_editor_media::tools::Tools;
@@ -261,6 +262,16 @@ fn a_prepared_result_for_a_replaced_project_is_discarded() {
     assert!(
         state.library.items.is_empty(),
         "nothing leaked into the new project"
+    );
+    // F4: the answer was `Ok`, but the project used none of it: it is not "applied".
+    assert_eq!(
+        host.registry().get(&prepare).unwrap().result_state,
+        ResultState::Discarded
+    );
+    assert_eq!(
+        host.registry().get(&import).unwrap().result_state,
+        ResultState::Applied,
+        "the import before it was applied"
     );
 }
 

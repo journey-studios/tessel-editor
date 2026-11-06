@@ -461,13 +461,40 @@ pub fn describe_report(report: &Value) -> String {
     report.to_string().chars().take(160).collect()
 }
 
+/// What the status bar says when a discard job ended. A discard that could not take everything
+/// back (an item `kept`, a root that stayed busy) is not a plain success: it says what stays,
+/// as an error, because that is the part a person has to act on (BL112, F5).
+fn describe_discard(cleanup: &Value) -> (String, bool) {
+    let kept = cleanup["kept"].as_array().map_or(0, Vec::len);
+    let busy = cleanup["busyRoots"].as_u64().unwrap_or(0);
+    if kept == 0 && busy == 0 {
+        return ("Resultado descartado".to_string(), false);
+    }
+    let mut text = String::from("Resultado descartado, mas ");
+    if kept > 0 {
+        text.push_str(&format!("{kept} item(ns) permaneceram no disco"));
+        if let Some(first) = cleanup["kept"][0].as_str() {
+            text.push_str(&format!(" ({first})"));
+        }
+    }
+    if busy > 0 {
+        if kept > 0 {
+            text.push_str("; ");
+        }
+        text.push_str(&format!(
+            "{busy} pasta(s) ocupada(s) ficaram para recuperação"
+        ));
+    }
+    (text, true)
+}
+
 /// What the status bar says when a background job finishes.
 pub fn describe_job_event(event: &Value) -> (String, bool) {
     let kind = event["kind"].as_str().unwrap_or("job");
     if kind == "discard" {
         // The files of a result nobody applied are back (or the reason they were not).
         return match event["state"].as_str() {
-            Some("succeeded") => ("Resultado descartado".to_string(), false),
+            Some("succeeded") => describe_discard(&event["result"]["cleanup"]),
             _ => {
                 let message = event["error"]["message"].as_str().unwrap_or("falhou");
                 (format!("Descarte falhou: {message}"), true)
@@ -658,6 +685,30 @@ mod tests {
             ("Resultado descartado".to_string(), false)
         );
         assert!(describe_job_event(&json!({ "kind": "discard", "state": "failed" })).1);
+    }
+
+    /// F5: a discard that left something behind is not announced as a plain success.
+    #[test]
+    fn a_discard_that_kept_something_says_so_and_a_clean_one_does_not() {
+        let clean = json!({ "kind": "discard", "state": "succeeded",
+            "result": { "cleanup": { "removedFiles": 2, "kept": [], "shared": ["a"], "busyRoots": 0 } } });
+        assert_eq!(
+            describe_job_event(&clean),
+            ("Resultado descartado".to_string(), false),
+            "shared files belong to someone else: not a leftover"
+        );
+        let kept = json!({ "kind": "discard", "state": "succeeded",
+            "result": { "cleanup": { "removedFiles": 0, "kept": ["`/w/a.png`: its content changed"], "busyRoots": 0 } } });
+        let (text, error) = describe_job_event(&kept);
+        assert!(error, "{text}");
+        assert!(
+            text.contains("1 item(ns)") && text.contains("a.png"),
+            "{text}"
+        );
+        let busy = json!({ "kind": "discard", "state": "succeeded",
+            "result": { "cleanup": { "kept": [], "busyRoots": 2 } } });
+        let (text, error) = describe_job_event(&busy);
+        assert!(error && text.contains("2 pasta(s)"), "{text}");
     }
 
     #[test]

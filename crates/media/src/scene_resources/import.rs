@@ -399,7 +399,7 @@ pub fn apply(
     state: &mut EditorState,
     prepared: PreparedSceneImport,
 ) -> Result<Value, CommandError> {
-    try_apply(state, prepared).map_err(|rejected| {
+    try_apply_waiting(state, prepared, true).map_err(|rejected| {
         // The removal happens here, where blocking is allowed. A refused acceptance discards
         // with a report (safe whether or not the failed write reached the disk: a file whose
         // claim is gone is kept, never removed) and says what that did.
@@ -421,10 +421,22 @@ pub struct RejectedImport {
     pub prepared: PreparedSceneImport,
 }
 
-/// [`apply`] without the removal: a refusal comes back with the copied files still owned.
+/// [`apply`] without the removal: a refusal comes back with the copied files still owned. This is
+/// the window's tick, so it never waits for the claims ledger lock: one held by another process
+/// at that instant refuses the acceptance (`claims_unavailable`) and the project stays as it was.
 pub fn try_apply(
     state: &mut EditorState,
+    prepared: PreparedSceneImport,
+) -> Result<Value, Box<RejectedImport>> {
+    try_apply_waiting(state, prepared, false)
+}
+
+/// [`try_apply`]; with `wait` the acceptance may wait (bounded) for the ledger lock, for a caller
+/// that is allowed to block ([`apply`]).
+fn try_apply_waiting(
+    state: &mut EditorState,
     mut prepared: PreparedSceneImport,
+    wait: bool,
 ) -> Result<Value, Box<RejectedImport>> {
     if state.project.id != prepared.project {
         return Err(Box::new(RejectedImport {
@@ -456,10 +468,12 @@ pub fn try_apply(
         // when the ledger says so. A failure here rolls the whole transaction back (project,
         // undo history and revision), so a refused acceptance never leaves scenes attached to
         // files that a recovery could take back.
-        prepared
-            .owned
-            .accept()
-            .map_err(|error| refused_accept(error, None, "no scene was attached"))
+        let accepted = if wait {
+            prepared.owned.accept()
+        } else {
+            prepared.owned.accept_nowait()
+        };
+        accepted.map_err(|error| refused_accept(error, None, "no scene was attached"))
     });
     if let Err(error) = outcome {
         // The project is as it was. A refused acceptance means the files are still claimed, so

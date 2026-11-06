@@ -448,3 +448,64 @@ impl Drop for ClaimsScratch {
         let _ = std::fs::remove_dir_all(&self.0);
     }
 }
+
+/// F5: the status line keeps the reason a result was refused when the discard job that took it
+/// ends, and says both when that discard left something behind.
+#[test]
+fn a_discard_never_hides_why_its_result_was_refused() {
+    let mut workflow = workflow::Workflow::new();
+    let refused = json!({"job": "job-3", "state": "failed", "kind": "scene-adopt",
+        "error": {"code": "claims_unavailable", "message": "the ledger said no",
+            "details": {"discard_job": "job-9", "phase": "accept"}}});
+    let (text, error) = flows::describe_job_event(&refused);
+    assert_eq!(
+        workflow.remember_refusal(&refused, text.clone(), error),
+        (text.clone(), true),
+        "the refusal itself reads as it always did"
+    );
+
+    let clean = json!({"job": "job-9", "state": "succeeded", "kind": "discard",
+        "result": {"cleanup": {"removedFiles": 2, "kept": [], "busyRoots": 0}}});
+    let (line, line_error) = flows::describe_job_event(&clean);
+    assert_eq!(line, "Resultado descartado");
+    assert_eq!(
+        workflow.remember_refusal(&clean, line, line_error),
+        (text.clone(), true),
+        "a clean discard keeps saying why the result was refused"
+    );
+
+    // Remembered once: the same discard cannot hide a later message again.
+    let (line, line_error) = flows::describe_job_event(&clean);
+    assert_eq!(
+        workflow.remember_refusal(&clean, line.clone(), line_error),
+        (line, false)
+    );
+
+    // A discard that kept files says both.
+    workflow.remember_refusal(&refused, text.clone(), true);
+    let kept = json!({"job": "job-9", "state": "succeeded", "kind": "discard",
+        "result": {"cleanup": {"kept": ["`/w/a.png`: its content changed"], "busyRoots": 0}}});
+    let (line, line_error) = flows::describe_job_event(&kept);
+    let (both, both_error) = workflow.remember_refusal(&kept, line.clone(), line_error);
+    assert!(both_error);
+    assert!(both.starts_with(&text) && both.ends_with(&line), "{both}");
+}
+
+/// An explicit `job.discard` is not a refusal: its `job_discarded` event is not remembered, so the
+/// discard that follows keeps its own line.
+#[test]
+fn an_explicit_discard_is_not_remembered_as_a_refusal() {
+    let mut workflow = workflow::Workflow::new();
+    let discarded = json!({"job": "job-3", "state": "failed", "kind": "scene-attach",
+        "error": {"code": "job_discarded", "message": "gone",
+            "details": {"discard_job": "job-9"}}});
+    let (text, error) = flows::describe_job_event(&discarded);
+    workflow.remember_refusal(&discarded, text, error);
+    let clean = json!({"job": "job-9", "state": "succeeded", "kind": "discard",
+        "result": {"cleanup": {"removedFiles": 0, "kept": [], "busyRoots": 0}}});
+    let (line, line_error) = flows::describe_job_event(&clean);
+    assert_eq!(
+        workflow.remember_refusal(&clean, line.clone(), line_error),
+        (line, false)
+    );
+}

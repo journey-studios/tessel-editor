@@ -265,6 +265,11 @@ pub struct MediaHost {
     scene_resources: SceneResourceSession,
     /// Discard jobs [`MediaHost::poll`] already told the window about.
     reported_discards: HashSet<JobId>,
+    /// `(original, discard job)` for a result discarded **before** [`MediaHost::poll`] had
+    /// reported its job. The slot of such a job leaves `pending` with the discard, so the tick
+    /// would never say how it ended: whoever waits for that job (a chain of jobs, a dialog's
+    /// report) would wait forever. `poll` reports each once, as a failure `job_discarded`.
+    discarded_unreported: Vec<(JobId, JobId)>,
 }
 
 type ProxyKey = (String, Option<String>, u32, ProxyFormat);
@@ -358,6 +363,7 @@ impl MediaHost {
             proxy_assets: HashMap::new(),
             scene_resources: SceneResourceSession::default(),
             reported_discards: HashSet::new(),
+            discarded_unreported: Vec::new(),
         }
     }
 
@@ -465,23 +471,46 @@ impl MediaHost {
                 }
             });
         }
+        events.extend(self.discarded_before_report());
         events.extend(self.finished_discards());
         self.schedule_prepare(state);
         self.schedule_proxies(state);
         events
     }
 
+    /// One `failed` event (`job_discarded`) for every job whose result was discarded before the
+    /// tick reported the job itself, so a chain or a dialog waiting for that job learns it ended.
+    /// The discard job has its own event, reported when it ends.
+    fn discarded_before_report(&mut self) -> Vec<Value> {
+        std::mem::take(&mut self.discarded_unreported)
+            .into_iter()
+            .filter_map(|(original, discard)| {
+                let info = self.registry.get(&original)?;
+                let error = CommandError::new(
+                    "job_discarded",
+                    format!(
+                        "The result of job `{original}` was discarded before it was applied; nothing was changed"
+                    ),
+                )
+                .details(json!({ "discard_job": discard }));
+                Some(json!({ "job": original, "state": "failed", "kind": info.kind.label(),
+                    "error": error.to_json()["error"] }))
+            })
+            .collect()
+    }
+
     /// One event for every discard job that ended since the last call, so a window learns that the
     /// files of a discarded result are back without watching the job list.
     fn finished_discards(&mut self) -> Vec<Value> {
         let mut events = Vec::new();
-        for info in self.registry.list() {
-            if info.kind != JobKind::Discard
-                || !info.state.is_final()
-                || !self.reported_discards.insert(info.id.clone())
-            {
-                continue;
-            }
+        // Only the discard jobs not reported yet are cloned: this runs on every tick of the
+        // window, and a finished job carries its whole result.
+        let reported = &self.reported_discards;
+        let ended = self.registry.matching(|info| {
+            info.kind == JobKind::Discard && info.state.is_final() && !reported.contains(&info.id)
+        });
+        for info in ended {
+            self.reported_discards.insert(info.id.clone());
             let mut event = json!({ "job": info.id, "state": info.state.label(), "kind": "discard",
                 "result": info.result });
             if let Some(error) = &info.error {
@@ -1652,6 +1681,11 @@ impl MediaHost {
         self.auto_assets.remove(id);
         let pending = slot.as_ref().and_then(take);
         let discard = spawn_discard(&self.registry, id, pending);
+        if self.interactive && slot.is_some() {
+            // `poll` never saw this job finish: it reports the end (see the field).
+            self.discarded_unreported
+                .push((id.to_string(), discard.clone()));
+        }
         if self.interactive || !flag(request, "wait", true) {
             let info = self.registry.get(&discard).map(|info| info.to_json());
             return Ok(
@@ -1828,9 +1862,14 @@ fn apply(
     let Some(pending) = pending else {
         return Ok(None);
     };
-    let outcome = apply_pending(registry, id, pending, state, decode_inline);
+    // `took` is what the project did with the result, said by the arm that did it: `Ok` and
+    // "applied" are not the same thing. An import can change the project and still fail to decode
+    // what it brought (applied, with an error), and a decoded or proxy result that is stale
+    // answers `Ok` without changing anything (discarded).
+    let mut took = false;
+    let outcome = apply_pending(registry, id, pending, state, decode_inline, &mut took);
     // A result that was refused is gone (or already claimed by the discard job it was handed to).
-    registry.settle(id, outcome.is_ok());
+    registry.settle(id, took);
     outcome
 }
 
@@ -1863,12 +1902,27 @@ fn defer_discard(
     error
 }
 
+/// An error of a step that ran **after** the project took the result: it says so in
+/// `details.applied`, so a caller never reads "failed" as "nothing changed".
+fn applied_but(mut error: CommandError) -> CommandError {
+    let mut details = match error.details.take().map(|details| *details) {
+        Some(details @ Value::Object(_)) => details,
+        _ => json!({}),
+    };
+    details["applied"] = json!(true);
+    error.details(details)
+}
+
+/// Applies `pending` to the project. `took` is set the moment the project has taken the result
+/// (so it answers `true` even if a later step of the same arm fails) and stays `false` when
+/// nothing of it was used.
 fn apply_pending(
     registry: &JobRegistry,
     id: &str,
     pending: Pending,
     state: &mut EditorState,
     decode_inline: bool,
+    took: &mut bool,
 ) -> Result<Option<Value>, CommandError> {
     match pending {
         Pending::Import {
@@ -1877,12 +1931,14 @@ fn apply_pending(
             prepare: decode,
         } => {
             let mut report = import::commit(state, &items, folder.as_deref())?;
+            // The assets are in the project from here on, whatever the decoding below does.
+            *took = true;
             if decode
                 && decode_inline
                 && let Ok(workspace) = workspace(state)
             {
                 let cache = Cache::new(&workspace);
-                let tools = Tools::discover()?;
+                let tools = Tools::discover().map_err(|error| applied_but(error.into()))?;
                 let items: Vec<(String, MediaKind, Asset)> = report["items"]
                     .as_array()
                     .into_iter()
@@ -1900,7 +1956,7 @@ fn apply_pending(
                     decoded = decode_all(&tools, &cache, &items, ctx)?;
                     Ok(Value::Null)
                 });
-                outcome.map_err(CommandError::from)?;
+                outcome.map_err(|error| applied_but(error.into()))?;
                 report["decoded"] = json!(decoded.iter().map(|(id, ..)| id).collect::<Vec<_>>());
                 for (id, _, outcome) in decoded {
                     state.set_decoded(&id, outcome);
@@ -1919,6 +1975,7 @@ fn apply_pending(
                 }
                 Ok(())
             })?;
+            *took = true;
             Ok(Some(
                 json!({ "action": "media.relink", "assets": ids, "changed": true }),
             ))
@@ -1930,6 +1987,7 @@ fn apply_pending(
                 &prepared.plan,
                 &prepared.replacements,
             )?;
+            *took = true;
             Ok(Some(report))
         }
         Pending::Proxies { project, items } => {
@@ -1953,6 +2011,8 @@ fn apply_pending(
                     stale.push(id);
                 }
             }
+            // Everything stale: the answer is `Ok` but the project used none of it.
+            *took = !applied.is_empty();
             Ok(Some(
                 json!({ "action": "media.preview_proxy", "applied": applied, "stale": stale }),
             ))
@@ -1976,6 +2036,7 @@ fn apply_pending(
                 state.set_decoded(&id, decoded);
                 applied.push(id);
             }
+            *took = !applied.is_empty();
             Ok(Some(
                 json!({ "action": "media.prepare", "applied": applied, "stale": stale }),
             ))
@@ -1999,6 +2060,7 @@ fn apply_pending(
             let installed = session
                 .install(*map)
                 .map_err(|error| CommandError::new(error.code(), error.to_string()))?;
+            *took = true;
             Ok(Some(
                 json!({ "action": "scene.resources.resolve", "installed": true,
                 "scene": installed.scene_id, "generation": installed.generation.0,
@@ -2025,13 +2087,19 @@ fn apply_pending(
                 source: SceneSource::Admitted(scene),
             }))?;
             report["resources"] = resources;
+            *took = true;
             Ok(Some(report))
         }
         Pending::SceneImport(prepared) if decode_inline => {
-            Ok(Some(scene_import::apply(state, *prepared)?))
+            let report = scene_import::apply(state, *prepared)?;
+            *took = true;
+            Ok(Some(report))
         }
         Pending::SceneImport(prepared) => match scene_import::try_apply(state, *prepared) {
-            Ok(report) => Ok(Some(report)),
+            Ok(report) => {
+                *took = true;
+                Ok(Some(report))
+            }
             Err(rejected) => {
                 let rejected = *rejected;
                 let message = format!(
@@ -2051,19 +2119,31 @@ fn apply_pending(
         },
         Pending::SceneAdopt(pending) if decode_inline => {
             pending.apply(state)?;
+            *took = true;
             Ok(None)
         }
         Pending::SceneAdopt(pending) => match pending.settle(state) {
-            Ok(()) => Ok(None),
+            Ok(()) => {
+                *took = true;
+                Ok(None)
+            }
             Err(stale) => {
                 let stale = *stale;
-                let message = format!(
-                    "Scene `{}` changed while its resources were adopted ({}); the files this adoption copied are being removed by a background job",
-                    stale.pending.scene(),
-                    stale.why
-                );
-                // A ledger refusal is not staleness: `claims_unavailable` with the ledger's details.
+                // A ledger refusal is not staleness: `claims_unavailable` with the ledger's details,
+                // and a message that does not claim the scene changed (it did not).
                 let refusal = stale.refusal_error();
+                let message = match &refusal {
+                    Some(refusal) => format!(
+                        "The resources of scene `{}` were not confirmed: {}; the files this adoption copied are being removed by a background job",
+                        stale.pending.scene(),
+                        refusal.message
+                    ),
+                    None => format!(
+                        "Scene `{}` changed while its resources were adopted ({}); the files this adoption copied are being removed by a background job",
+                        stale.pending.scene(),
+                        stale.why
+                    ),
+                };
                 Err(defer_discard(
                     registry,
                     id,
@@ -2086,27 +2166,188 @@ fn apply_pending(
                 ));
             }
             *state = *candidate;
+            *took = true;
             Ok(Some(summary))
+        }
+    }
+}
+
+/// Gives a result that owns files to a discard job, **never** dropping it on the caller's thread.
+///
+/// A job whose slot is already filled but which is not final yet (the body returned, the
+/// registry has not marked it finished: a window of microseconds) cannot be claimed by
+/// `begin_discard`. The result then waits on a thread of its own for the job to end and is claimed
+/// or dropped there, so a caller that must not block (the window's) never hashes or unlinks.
+fn hand_over(registry: &JobRegistry, id: &str, pending: Pending) {
+    match registry.begin_discard(id) {
+        Ok(_) => {
+            spawn_discard(registry, id, Some(pending));
+        }
+        Err(_) => {
+            let (registry, id) = (registry.clone(), id.to_string());
+            defer_until_final(registry.clone(), id.clone(), pending, move |pending| {
+                if registry.begin_discard(&id).is_ok() {
+                    spawn_discard(&registry, &id, Some(pending));
+                }
+                // Refused for good (nothing pending to claim): `pending` is dropped here, on this
+                // helper thread, which is where a removal may block.
+            });
+        }
+    }
+}
+
+/// Runs `then(payload)` on a thread of its own once job `id` is final (or gone from the registry).
+/// `payload` is dropped there too if `then` does not consume it: never on the calling thread.
+fn defer_until_final<T: Send + 'static>(
+    registry: JobRegistry,
+    id: String,
+    payload: T,
+    then: impl FnOnce(T) + Send + 'static,
+) {
+    std::thread::spawn(move || {
+        while registry.wait(&id, Duration::from_secs(60)).is_none() && registry.get(&id).is_some() {
+        }
+        then(payload);
+    });
+}
+
+impl MediaHost {
+    /// Blocks until every discard job still queued or running has ended.
+    ///
+    /// A host without a window is driven by a script that ends with its input: the process must
+    /// not leave while a `job.discard {wait:false}` is still taking files back (BL112). A job
+    /// waits only for what has to run: discard jobs are never cancelled.
+    fn wait_for_discards(&self) {
+        let active = self
+            .registry
+            .matching(|info| info.kind == JobKind::Discard && !info.state.is_final());
+        for info in active {
+            while self
+                .registry
+                .wait(&info.id, Duration::from_secs(60))
+                .is_none()
+                && self.registry.get(&info.id).is_some()
+            {}
         }
     }
 }
 
 impl Drop for MediaHost {
     fn drop(&mut self) {
-        // A window never deletes on its own thread: results that own files go to discard jobs,
-        // which finish on their own threads. A host without a window drops them in place, so the
-        // files are back before the CLI process exits.
+        // A host without a window waits for the discard jobs it started and drops what is left in
+        // place, so the files are back before the CLI process exits.
         if !self.interactive {
+            self.wait_for_discards();
             return;
         }
+        // A window never deletes on its own thread: results that own files go to discard jobs,
+        // which finish on their own threads.
         for (id, slot) in std::mem::take(&mut self.pending) {
             let Some(pending) = take(&slot).filter(Pending::owns_files) else {
                 continue;
             };
-            if self.registry.begin_discard(&id).is_ok() {
-                spawn_discard(&self.registry, &id, Some(pending));
-            }
+            hand_over(&self.registry, &id, pending);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::mpsc;
+
+    use super::*;
+
+    /// Reports the thread it was dropped on.
+    struct DroppedOn(mpsc::Sender<std::thread::ThreadId>);
+
+    impl Drop for DroppedOn {
+        fn drop(&mut self) {
+            let _ = self.0.send(std::thread::current().id());
+        }
+    }
+
+    /// F6 (BL112.2): a result whose job is not final yet cannot be claimed; it must wait on another
+    /// thread, and be dropped there, not on the thread that let go of the host.
+    #[test]
+    fn a_result_of_a_job_that_is_not_final_is_never_dropped_on_the_callers_thread() {
+        let registry = JobRegistry::new(2);
+        let release = tessel_editor_core::jobs::CancelToken::new();
+        let hold = release.clone();
+        let job = registry.spawn(JobKind::Proxy, "not final yet", move |_| {
+            while !hold.is_cancelled() {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            Ok(Value::Null)
+        });
+        while registry.get(&job).unwrap().state != JobState::Running {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        let (sender, dropped) = mpsc::channel();
+        let me = std::thread::current().id();
+        defer_until_final(
+            registry.clone(),
+            job.clone(),
+            DroppedOn(sender),
+            |_payload| {},
+        );
+        assert!(
+            dropped.recv_timeout(Duration::from_millis(100)).is_err(),
+            "nothing is dropped while the job is not final"
+        );
+        release.cancel();
+        let thread = dropped
+            .recv_timeout(Duration::from_secs(10))
+            .expect("dropped once the job ended");
+        assert_ne!(thread, me, "dropped on the helper thread");
+    }
+
+    /// The same path through the hand-over itself: refused by `begin_discard` (the job is not
+    /// final), so the result goes to the waiting thread instead of the caller's scope.
+    #[test]
+    fn hand_over_defers_a_result_it_cannot_claim_yet() {
+        let registry = JobRegistry::new(2);
+        let release = tessel_editor_core::jobs::CancelToken::new();
+        let hold = release.clone();
+        let job = registry.spawn(JobKind::Proxy, "not final yet", move |ctx| {
+            ctx.hold_result();
+            while !hold.is_cancelled() {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            Ok(Value::Null)
+        });
+        while registry.get(&job).unwrap().state != JobState::Running {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        // `begin_discard` refuses a running job (`job_running`): this is the case being covered.
+        assert_eq!(
+            registry.begin_discard(&job).unwrap_err().code,
+            "job_running"
+        );
+        hand_over(&registry, &job, Pending::Relink(Vec::new()));
+        assert_eq!(
+            registry.get(&job).unwrap().result_state,
+            tessel_editor_core::jobs::ResultState::Pending,
+            "nothing claimed it while the job ran"
+        );
+        release.cancel();
+        // Once the job is final the waiting thread claims the result and a discard job ends it.
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while registry.get(&job).unwrap().result_state
+            != tessel_editor_core::jobs::ResultState::Discarded
+        {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the result was never handed to a discard job"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(
+            registry
+                .matching(|info| info.kind == JobKind::Discard)
+                .len(),
+            1,
+            "exactly one discard job took the result"
+        );
     }
 }
 

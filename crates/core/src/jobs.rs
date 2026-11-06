@@ -559,6 +559,18 @@ impl JobRegistry {
             .collect()
     }
 
+    /// The jobs for which `keep` answers `true`, in creation order. Only those are cloned (a
+    /// finished job carries its whole `result` JSON), which matters for a caller that looks at the
+    /// registry on every tick of a window and wants a handful of jobs out of many.
+    pub fn matching(&self, mut keep: impl FnMut(&JobInfo) -> bool) -> Vec<JobInfo> {
+        self.lock()
+            .jobs
+            .iter()
+            .filter(|slot| keep(&slot.info))
+            .map(|slot| slot.info.clone())
+            .collect()
+    }
+
     pub fn active(&self) -> Vec<JobInfo> {
         self.list()
             .into_iter()
@@ -910,6 +922,56 @@ mod tests {
         );
         registry.prune(0);
         assert!(registry.get(&failed).is_none());
+
+        // Cancelled for real: the body held a result, then observed the token and ended with
+        // `cancelled`. The cancellation (not a failure) is what clears the hold.
+        let started = CancelToken::new();
+        let seen = started.clone();
+        let cancelled = registry.spawn(JobKind::Import, "stopped", move |ctx| {
+            ctx.hold_result();
+            seen.cancel();
+            while !ctx.is_cancelled() {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            Err(JobError::cancelled())
+        });
+        while !started.is_cancelled() {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        registry.cancel(&cancelled).unwrap();
+        let info = registry.wait(&cancelled, Duration::from_secs(5)).unwrap();
+        assert_eq!(info.state, JobState::Cancelled);
+        assert_eq!(info.result_state, ResultState::None);
+        assert_eq!(
+            registry.begin_discard(&cancelled).unwrap_err().code,
+            "job_nothing_to_discard"
+        );
+        registry.prune(0);
+        assert!(registry.get(&cancelled).is_none());
+    }
+
+    #[test]
+    fn matching_clones_only_the_jobs_it_keeps() {
+        let registry = JobRegistry::new(2);
+        let ids: Vec<JobId> = (0..3)
+            .map(|index| {
+                registry.spawn(JobKind::Hash, &format!("hash {index}"), move |_| {
+                    Ok(json!({ "index": index }))
+                })
+            })
+            .collect();
+        for id in &ids {
+            registry.wait(id, Duration::from_secs(5)).unwrap();
+        }
+        let mut looked = 0;
+        let kept = registry.matching(|info| {
+            looked += 1;
+            info.label == "hash 1"
+        });
+        assert_eq!(looked, 3, "every job is looked at, under the lock");
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].id, ids[1]);
+        assert_eq!(kept[0].result.as_ref().unwrap()["index"], 1);
     }
 
     #[test]

@@ -214,6 +214,7 @@ fn child_role() {
         std::io::stdout().flush().unwrap();
     };
     let (mut blockers, mut result_job, mut discard_job) = (None, String::new(), String::new());
+    let mut _held: Option<fs::File> = None;
     say(json!({"event": "ready", "pid": std::process::id()}));
     for line in std::io::stdin().lock().lines() {
         let line = line.unwrap();
@@ -244,6 +245,32 @@ fn child_role() {
                 discard_job = answer["job"].as_str().unwrap().to_string();
                 say(json!({"state": answer["state"], "discard": discard_job,
                     "discardState": format!("{:?}", registry.get(&discard_job).unwrap().state).to_lowercase()}));
+            }
+            // The discard job has started removing: it reached its `cleanup` stage, which it sets
+            // as the first thing it does, before it takes the root lease and hashes the files.
+            "hashing" => {
+                let deadline = Instant::now() + Duration::from_secs(30);
+                loop {
+                    let info = registry.get(&discard_job).unwrap();
+                    if info.state == JobState::Running && info.stage == "cleanup" {
+                        break;
+                    }
+                    assert!(Instant::now() < deadline, "the discard job never started");
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                say(json!({"hashing": true}));
+            }
+            // Takes the ledger's lock and keeps it, as a process does that is stopped in the
+            // middle of a read-modify-write.
+            "hold_ledger" => {
+                let file = fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(workspace.join(".tessel-claims/ledger.lock"))
+                    .unwrap();
+                file.lock().unwrap();
+                _held = Some(file);
+                say(json!({"held": true}));
             }
             // The window's tick.
             "poll" => say(json!({"events": host.poll(&mut state)})),
@@ -510,6 +537,77 @@ fn killing_the_process_with_a_queued_discard_leaves_orphans_that_recover_takes_b
     drop(bystander);
 }
 
+/// A world whose backdrop is a valid PNG followed by `extra` bytes of padding (the transport only
+/// reads the header): hashing it takes long enough to be interrupted on purpose.
+fn big_world(name: &str, extra: usize) -> World {
+    let sandbox = Sandbox::new(&format!("te-discard-claims-{name}"));
+    let workspace = sandbox.root.join("ws");
+    fs::create_dir_all(&workspace).unwrap();
+    let mut document = fixture();
+    let mut big = png(64, 36, 10);
+    big.resize(big.len() + extra, 0);
+    let backdrop = sandbox.source_file("assets/backdrop.png", &big);
+    let figure = sandbox.source_file("assets/figure.png", &png(32, 32, 20));
+    restate(&mut document, "backdrop", "assets/backdrop.png", &backdrop);
+    restate(&mut document, "figure", "assets/figure.png", &figure);
+    let bundle = sandbox.root.join("bundle.json");
+    fs::write(&bundle, document.to_string()).unwrap();
+    World {
+        scene: scene(document),
+        sandbox,
+        workspace,
+        bundle,
+    }
+}
+
+/// F1 (BL094.4). The discard of a result takes the claim out of the ledger only **after** the file
+/// is proven and removed. Killed while it hashes a large file, the process leaves the claim
+/// behind (as an orphan, because the lease dies with it) and `recover` takes the file back; the
+/// earlier order dropped the claim first and left a file nobody listed, forever.
+#[test]
+fn killing_the_process_while_its_discard_hashes_a_large_file_leaves_a_claim_recover_takes_back() {
+    // 128 MiB: well over a second to hash in debug, still several hundred ms in release, against
+    // the 150 ms the test waits after the job reports that it started.
+    let world = big_world("kill-hashing", 128 << 20);
+    let mut peer = Peer::spawn(&world);
+    peer.ask("adopt");
+    let discarding = peer.ask("discard");
+    assert_eq!(discarding["state"], "discarding", "{discarding}");
+    assert_eq!(peer.ask("hashing")["hashing"], true);
+    std::thread::sleep(Duration::from_millis(150));
+    peer.crash();
+
+    let [backdrop, _figure] = world.files("street");
+    assert!(
+        backdrop.is_file(),
+        "the large file was still being hashed: it is still there"
+    );
+    // Whatever is still on disk is listed, as an orphan: nothing is a file the ledger does not know.
+    let orphans = claims_of(&world.workspace, "street");
+    for file in world.files("street") {
+        if file.exists() {
+            let canonical = fs::canonicalize(&file).unwrap();
+            assert!(
+                orphans
+                    .iter()
+                    .any(|entry| entry["path"].as_str().map(Path::new) == Some(&canonical)),
+                "`{}` exists but is not claimed: {orphans:?} {:?}",
+                file.display(),
+                tree(&world.workspace)
+            );
+        }
+    }
+    assert!(orphans.iter().all(|entry| entry["orphan"] == true));
+    let recovery = recover(&world.workspace, &CancelToken::default()).unwrap();
+    assert!(recovery.report.removed_files >= 1, "{recovery:?}");
+    world.assert_gone("street");
+    assert!(
+        claims_of(&world.workspace, "street").is_empty(),
+        "{:?}",
+        tree(&world.workspace)
+    );
+}
+
 #[test]
 fn a_result_the_window_accepted_is_never_recovered_after_the_process_is_killed() {
     let world = world("kill-accepted");
@@ -631,6 +729,103 @@ fn a_refused_result_whose_process_is_killed_is_an_orphan_the_ledger_can_recover_
     world.assert_gone("street");
     world.assert_intact("bystander");
     drop(bystander);
+}
+
+fn signal(name: &str, pid: u32) {
+    let status = Command::new("kill")
+        .arg(format!("-{name}"))
+        .arg(pid.to_string())
+        .status()
+        .unwrap();
+    assert!(status.success(), "kill -{name} {pid}");
+}
+
+/// BL112.3, hypothesis confirmed and fixed. The window's tick accepts a result, which writes the
+/// ledger under its `flock`. Another process stopped (`SIGSTOP`) while it holds that lock kept the
+/// tick waiting for as long as it stayed stopped. A first fix bounded the wait at 1.5 s, which is
+/// still above the tick's 100 ms ceiling, so the tick now **does not wait at all**: it looks once
+/// (`Ledger::try_lock`), finds the lock held, and the ledger is reported unavailable. The
+/// acceptance is refused like any other ledger failure (nothing applied, the result still claimed
+/// and handed to a discard job) and the tick comes back at once. The bounded wait remains for
+/// callers that may block (jobs, the CLI).
+#[test]
+fn a_peer_stopped_while_holding_the_ledger_lock_cannot_freeze_the_tick() {
+    let world = world("sigstop");
+    let mut state = project_with_scene(&world.sandbox, &world.workspace, &world.bundle);
+    let mut host = MediaHost::new().interactive();
+    let registry = host.registry().clone();
+    let started = run(
+        &mut state,
+        &mut host,
+        json!({"op":"scene.resources.adopt","scene":"street","source":world.sandbox.src}),
+    )
+    .unwrap();
+    let job = started["job"].as_str().unwrap().to_string();
+    wait_final(&registry, &job);
+    let (summary, revision) = (state.summary(), state.project.revision);
+
+    let mut peer = Peer::spawn(&world);
+    assert_eq!(peer.ask("hold_ledger")["held"], true);
+    let pid = peer.pid;
+    signal("STOP", pid);
+    // Without the bound the tick below never returns; the watchdog resumes the peer after 20 s so
+    // that a regression fails the assertion on the elapsed time instead of hanging the suite.
+    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let finished = done.clone();
+    let watchdog = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while Instant::now() < deadline {
+            if finished.load(std::sync::atomic::Ordering::SeqCst) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let _ = Command::new("kill")
+            .args(["-CONT", &pid.to_string()])
+            .status();
+    });
+    let blockers = Blockers::hold(&registry);
+
+    let tick = Instant::now();
+    let events = host.poll(&mut state);
+    let elapsed = tick.elapsed();
+    // Not the 1.5 s of the bounded wait either: the tick does not wait for the lock at all. A full
+    // second keeps a loaded machine honest while still failing for any wait on the lock.
+    assert!(
+        elapsed < Duration::from_secs(1),
+        "the tick was held for {elapsed:?} by a stopped peer"
+    );
+    let failed = events
+        .iter()
+        .find(|event| event["job"] == job.as_str())
+        .unwrap_or_else(|| panic!("the refused result is reported: {events:?}"));
+    assert_eq!(failed["state"], "failed", "{failed}");
+    assert_eq!(failed["error"]["code"], "claims_unavailable", "{failed}");
+    let details = &failed["error"]["details"];
+    assert_eq!(details["phase"], "accept", "{failed}");
+    assert!(
+        details["why"]
+            .as_str()
+            .is_some_and(|why| why.contains("not waited for")),
+        "the reason is that the tick does not wait for the lock: {failed}"
+    );
+    // Nothing was applied, and the result is still owned (the discard job is queued).
+    assert_eq!(state.summary(), summary);
+    assert_eq!(state.project.revision, revision);
+    let discard = details["discard_job"].as_str().unwrap().to_string();
+    assert_eq!(registry.get(&discard).unwrap().state, JobState::Queued);
+    world.assert_intact("street");
+
+    // The peer comes back and dies: the lock is free, the discard job removes what is ours.
+    done.store(true, std::sync::atomic::Ordering::SeqCst);
+    watchdog.join().unwrap();
+    signal("CONT", pid);
+    peer.crash();
+    blockers.release();
+    let ended = poll_until_reported(&mut host, &mut state, &discard);
+    assert_eq!(ended["state"], "succeeded", "{ended}");
+    assert_eq!(ended["result"]["cleanup"]["removedFiles"], 2, "{ended}");
+    world.assert_gone("street");
 }
 
 // ----------------------------------------------------- in-process: the import and the CLI --

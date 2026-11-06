@@ -27,7 +27,7 @@ use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Map, Value, json};
 
@@ -47,6 +47,15 @@ const ATTEMPTS: usize = 64;
 /// pause between looks.
 const DANGLING_SEEN: usize = 5;
 const DANGLING_PAUSE: std::time::Duration = std::time::Duration::from_millis(2);
+/// How long a caller that may block (a job, the CLI) waits for `ledger.lock` before calling the
+/// ledger unavailable (BL112.3), and how often it looks while waiting. The lock is held for
+/// microseconds; this only matters when a holder is stopped or stuck.
+///
+/// **Not for the window's tick**: 1.5 s is far above its 100 ms ceiling. The tick never waits:
+/// it opens the ledger with [`Ledger::try_lock`] (`Duration::ZERO`), looks once and, when another
+/// process holds the lock at that instant, treats the ledger as unavailable (BL112.3).
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_millis(1500);
+const LOCK_POLL: std::time::Duration = std::time::Duration::from_micros(500);
 
 /// Recovers a poisoned process-local mutex without discarding the persisted ledger.
 fn relock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -114,12 +123,19 @@ impl Ledger {
 
     /// Opens what exists. A workspace with no ledger yields a tracker with nothing in it.
     pub(in crate::scene_resources) fn lock(&self) -> Tracker {
-        Tracker::open(&self.0, false)
+        Tracker::open(&self.0, false, LOCK_WAIT)
+    }
+
+    /// [`Ledger::lock`] for a caller that must not wait (the window's tick): when another process
+    /// holds `ledger.lock` right now the tracker is faulted (`fault()` says it was busy, not
+    /// waited for) and nothing is read or changed, exactly like any other unavailable ledger.
+    pub(in crate::scene_resources) fn try_lock(&self) -> Tracker {
+        Tracker::open(&self.0, false, std::time::Duration::ZERO)
     }
 
     /// Opens the ledger, creating it when it is not there yet: for whoever is about to claim.
     pub(in crate::scene_resources) fn lock_creating(&self) -> Tracker {
-        Tracker::open(&self.0, true)
+        Tracker::open(&self.0, true, LOCK_WAIT)
     }
 }
 
@@ -149,7 +165,7 @@ struct DiskLock {
 
 impl Tracker {
     /// Acquires coordination, validates state and reaps dead leases; any failure stays a fault.
-    fn open(inner: &Arc<Inner>, create: bool) -> Self {
+    fn open(inner: &Arc<Inner>, create: bool, wait: std::time::Duration) -> Self {
         let mut tracker = Self {
             inner: Arc::clone(inner),
             lock: None,
@@ -159,7 +175,7 @@ impl Tracker {
             fault: None,
             dirty: false,
         };
-        match DiskLock::acquire(&inner.dir, create) {
+        match DiskLock::acquire(&inner.dir, create, wait) {
             Ok(Some(lock)) => {
                 tracker.lock = Some(lock);
                 match tracker.load() {
@@ -319,6 +335,33 @@ impl Tracker {
         };
         self.flush();
         self.unless_unwritten(leave)
+    }
+
+    /// Like [`Tracker::leave`], but when `holder` is the **last** one the entry is **not**
+    /// removed: the answer `Last` is given with the claim (and so this process's lease) still on
+    /// disk. The caller proves and removes the file, then calls [`Tracker::leave`] again to drop
+    /// the entry. A process that dies in between (`SIGKILL` during the hash of a large file) leaves
+    /// an orphan entry that `recover` takes back, instead of a file nobody lists. The entry is not
+    /// changed for `Last`, but the ledger is **rewritten as it is**: a ledger that cannot be
+    /// written answers `Unverifiable` here, before anything is removed, exactly as `leave` does
+    /// (fail closed). A holder that is not the last one is removed at once, as in `leave`.
+    pub(in crate::scene_resources) fn begin_leave(
+        &mut self,
+        holder: HolderId,
+        key: &Path,
+    ) -> Leave {
+        if let Some(why) = &self.fault {
+            return Leave::Unverifiable(why.clone());
+        }
+        match self.entries.get(key) {
+            Some(entry) if !entry.holders.iter().any(|other| *other != holder) => {
+                let item = entry.item.clone();
+                self.dirty = true;
+                self.flush();
+                self.unless_unwritten(Leave::Last(item))
+            }
+            _ => self.leave(holder, key),
+        }
     }
 
     /// `holder` gives up the entry at `key` but the entry stays even when nobody else holds it:
@@ -650,11 +693,17 @@ impl Drop for Tracker {
 }
 
 impl DiskLock {
-    /// Takes the ledger lock, waiting for it (holders keep it for one read-modify-write).
-    /// `Ok(None)` when there is no ledger and `create` is not set.
-    fn acquire(dir: &Path, create: bool) -> Result<Option<Self>, String> {
+    /// Takes the ledger lock, waiting for it up to `wait` (holders keep it for one
+    /// read-modify-write); `Duration::ZERO` looks once and never waits. `Ok(None)` when there is
+    /// no ledger and `create` is not set.
+    fn acquire(
+        dir: &Path,
+        create: bool,
+        wait: std::time::Duration,
+    ) -> Result<Option<Self>, String> {
         let path = dir.join(LOCK);
         let mut dangling = 0;
+        let deadline = Instant::now() + wait;
         for _ in 0..ATTEMPTS {
             if create {
                 match fs::create_dir(dir) {
@@ -699,8 +748,28 @@ impl DiskLock {
                 }
                 Err(error) => return Err(format!("open `{}`: {error}", path.display())),
             };
-            match file.lock() {
-                Ok(()) => {}
+            // Bounded (BL112.3): the lock is held for one read-modify-write, microseconds. A holder
+            // that is stopped (`SIGSTOP`) or stuck keeps it for as long as it lives, and a caller
+            // that waits forever is a stuck caller. The window's tick (where `accept` runs)
+            // does not wait at all: its wait is zero. Past the bound the ledger is reported
+            // unavailable, which every caller already handles by
+            // failing closed: an acceptance is refused (the result stays claimed and goes to a
+            // discard job), a removal keeps the file, a recovery removes nothing.
+            match lock_within(&file, deadline) {
+                Ok(true) => {}
+                Ok(false) if wait.is_zero() => {
+                    return Err(format!(
+                        "`{}` is held by another process right now; not waited for (the window's tick must not block)",
+                        path.display()
+                    ));
+                }
+                Ok(false) => {
+                    return Err(format!(
+                        "`{}` is held by another process that does not let go of it (stopped or stuck?); gave up after {:?}",
+                        path.display(),
+                        wait
+                    ));
+                }
                 // A lock file that was unlinked and is being reclaimed can refuse (EINVAL on
                 // macOS): it is the same case as one that turned out to be unlinked.
                 Err(error) if error.kind() == io::ErrorKind::InvalidInput => {
@@ -717,6 +786,23 @@ impl DiskLock {
             "`{}` is being created and removed too quickly to be locked",
             dir.display()
         ))
+    }
+}
+
+/// Takes the exclusive lock of `file`, waiting until `deadline`. `Ok(false)` when it was still
+/// held by then.
+fn lock_within(file: &File, deadline: Instant) -> io::Result<bool> {
+    loop {
+        match file.try_lock() {
+            Ok(()) => return Ok(true),
+            Err(TryLockError::WouldBlock) => {
+                if Instant::now() >= deadline {
+                    return Ok(false);
+                }
+                std::thread::sleep(LOCK_POLL);
+            }
+            Err(TryLockError::Error(error)) => return Err(error),
+        }
     }
 }
 

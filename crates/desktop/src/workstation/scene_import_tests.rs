@@ -1034,3 +1034,88 @@ fn an_attach_failure_without_an_id_has_a_readable_scene_label() {
         }
     }
 }
+
+/// F3 (BL094.6): a `job.discard` that reaches the attach job before the window's tick used to take
+/// its slot away, so the tick never reported the job: the chain stayed `running` for good and
+/// `scene_import_busy` refused every new attach until the window was restarted.
+#[gpui_kit::test]
+fn discarding_the_attach_job_before_the_tick_ends_the_chain_instead_of_leaving_it_running(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = fixture(cx);
+    let authoring = Authoring::new("discard-attach");
+    project(&view, cx, &authoring);
+    let answer = run_attach(
+        &view,
+        cx,
+        attach(
+            &authoring,
+            &[("source", &authoring.folder().to_string_lossy())],
+        ),
+    )
+    .unwrap();
+    let job = answer["import"]["job"]
+        .as_str()
+        .expect("the chain waits for the attach job")
+        .to_string();
+
+    // The attach job ends in the background; no tick has run, so nothing reported it.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let report = view.read_with(cx, |view, _| view.jobs_report());
+        let info = report["all"]
+            .as_array()
+            .and_then(|jobs| jobs.iter().find(|info| info["id"] == job.as_str()))
+            .cloned()
+            .expect("the attach job is in the registry");
+        if matches!(
+            info["state"].as_str(),
+            Some("succeeded" | "failed" | "cancelled")
+        ) {
+            assert_eq!(info["result_state"], "pending", "{info}");
+            break;
+        }
+        assert!(Instant::now() < deadline, "the attach job never ended");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(import_state(&view, cx)["state"], "running");
+
+    // The discard arrives first.
+    let discarded = view
+        .update(cx, |view, cx| {
+            view.run_op(&json!({"op":"job.discard","job":job}), cx)
+        })
+        .expect("job.discard is accepted");
+    let OpReply::Done(discarded) = discarded else {
+        panic!("job.discard answers at once");
+    };
+    assert_eq!(discarded["state"], "discarding", "{discarded}");
+
+    // The tick reports the job that was discarded, and the chain ends instead of waiting for it.
+    let state = settle(&view, cx);
+    assert_eq!(state["state"], "failed", "{state}");
+    assert_eq!(state["error"]["step"], "attach", "{state}");
+    assert_eq!(state["error"]["code"], "job_discarded", "{state}");
+    assert!(scene_ids(&view, cx).is_empty(), "nothing was attached");
+    assert_eq!(undo_depth(&view, cx), 0);
+    let report = view.read_with(cx, |view, _| view.jobs_report());
+    assert!(
+        report["recent"].as_array().unwrap().iter().any(|event| {
+            event["job"] == job.as_str() && event["error"]["code"] == "job_discarded"
+        }),
+        "the event of the discarded job is in the history: {report}"
+    );
+
+    // The window is not stuck: a new attach is accepted and runs to the end.
+    run_attach(
+        &view,
+        cx,
+        attach(
+            &authoring,
+            &[("source", &authoring.folder().to_string_lossy())],
+        ),
+    )
+    .expect("the chain is no longer busy");
+    assert_eq!(settle(&view, cx)["state"], "loaded");
+    assert_eq!(scene_ids(&view, cx).len(), 1);
+}

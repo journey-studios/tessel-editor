@@ -347,7 +347,7 @@ impl PendingAdoption {
     /// The removal reads and hashes every file it takes back, so a caller that must not block
     /// (the window's tick) uses [`PendingAdoption::settle`] and removes from a job instead.
     pub fn apply(self, state: &EditorState) -> Result<(), CommandError> {
-        let Err(stale) = self.settle(state) else {
+        let Err(stale) = self.settle_waiting(state, true) else {
             return Ok(());
         };
         let StaleAdoption {
@@ -385,12 +385,22 @@ impl PendingAdoption {
 
     /// [`apply`](PendingAdoption::apply) without the removal: accepted, the files are the
     /// project's; refused, the adoption comes back **still owning its files** (and still claimed)
-    /// so the caller can remove them wherever it may block (BL094, BL112). Reads no file.
+    /// so the caller can remove them wherever it may block (BL094, BL112). Reads and hashes no
+    /// resource file; accepting does read and write the workspace's `claims.json` under its
+    /// `flock`, without waiting for it: this is the window's tick, so a lock that another
+    /// process holds at that instant makes the ledger unavailable for this call (BL112.3)
+    /// instead of holding the tick up.
     ///
     /// Two refusals: the project no longer fits (`refusal` is `None`), or the ledger could not
     /// record the acceptance (`refusal` is the `claims_unavailable` error and nothing was
     /// accepted). In both the result stays the owner until it is discarded.
-    pub fn settle(mut self, state: &EditorState) -> Result<(), Box<StaleAdoption>> {
+    pub fn settle(self, state: &EditorState) -> Result<(), Box<StaleAdoption>> {
+        self.settle_waiting(state, false)
+    }
+
+    /// [`settle`](PendingAdoption::settle); with `wait` the acceptance may wait (bounded) for
+    /// the ledger lock, for a caller that is allowed to block (`apply`).
+    fn settle_waiting(mut self, state: &EditorState, wait: bool) -> Result<(), Box<StaleAdoption>> {
         if let Some(why) = self.target.mismatch(state) {
             return Err(Box::new(StaleAdoption {
                 why,
@@ -398,7 +408,12 @@ impl PendingAdoption {
                 pending: self,
             }));
         }
-        match self.owned.accept() {
+        let accepted = if wait {
+            self.owned.accept()
+        } else {
+            self.owned.accept_nowait()
+        };
+        match accepted {
             Ok(()) => Ok(()),
             Err(error) => Err(Box::new(StaleAdoption {
                 why: UNCONFIRMED,

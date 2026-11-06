@@ -331,6 +331,55 @@ fn a_settle_the_ledger_refuses_returns_the_adoption_still_owning_and_claiming_it
 }
 
 #[test]
+fn a_settle_never_waits_for_a_ledger_lock_another_process_holds() {
+    // BL112.3: `settle` runs on the window's tick, whose ceiling is 100 ms. The bounded wait of
+    // the ledger lock (1.5 s) belongs to callers that may block; the tick looks once and refuses.
+    let mut world = world("settle-busy");
+    let _bystander = world.bystander();
+    let (pending, backdrop) = pending_adoption(&mut world);
+    let summary = world.destination.summary();
+    // Another open file description holding the lock is what a stopped process does.
+    let stuck = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(world.ledger().join("ledger.lock"))
+        .unwrap();
+    stuck.lock().unwrap();
+
+    let started = std::time::Instant::now();
+    let stale = *pending
+        .settle(&world.destination)
+        .expect_err("the ledger is busy: the acceptance cannot be recorded");
+    let waited = started.elapsed();
+
+    // Far below the 1.5 s a waiting caller would take; 1 s only keeps a loaded machine honest.
+    assert!(
+        waited < std::time::Duration::from_secs(1),
+        "the tick did not wait for the lock: {waited:?}"
+    );
+    let error = stale
+        .refusal_error()
+        .expect("a ledger refusal, not staleness");
+    assert_eq!(error.code, "claims_unavailable", "{error:?}");
+    assert_eq!(error.details.as_ref().unwrap()["phase"], "accept");
+    assert!(
+        error.details.as_ref().unwrap()["why"]
+            .as_str()
+            .is_some_and(|why| why.contains("not waited for")),
+        "{error:?}"
+    );
+    assert_eq!(world.destination.summary(), summary);
+    assert!(backdrop.is_file(), "nothing was removed on the tick");
+
+    // Once the holder lets go, the owner that came back is still claimed and removes its files.
+    stuck.unlock().unwrap();
+    drop(stuck);
+    let report = stale.pending.discard();
+    assert_eq!(report.removed_files, 2, "{report:?}");
+    assert!(!backdrop.exists());
+}
+
+#[test]
 fn an_acceptance_that_succeeds_makes_the_files_nobodys_to_recover() {
     let mut world = world("adopt-ok");
     let _bystander = world.bystander();
