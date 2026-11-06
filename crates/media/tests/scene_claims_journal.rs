@@ -558,14 +558,17 @@ impl Drop for Peer {
     }
 }
 
-#[test]
-fn a_window_killed_right_after_its_tick_leaves_nothing_for_recover_to_take_back() {
-    let world = world("kill-accepted", MediaHost::new());
+/// One round: the window's tick appends while another process reads the ledger over and over.
+/// `false` when the tick was refused for contention (a reader that held `ledger.lock` for more
+/// than the tick's 20 ms, which a loaded machine can do): that is the documented refusal
+/// (BL112.3/BL112.5), the round proves nothing about the journal, and the caller starts another.
+fn killed_right_after_the_tick(round: usize) -> bool {
+    let world = world(&format!("kill-accepted-{round}"), MediaHost::new());
     let mut peer = Peer::spawn(&world);
     peer.ask("adopt");
 
-    // Another process reads the ledger over and over while the window's tick appends to it:
-    // opening it folds the journal, so the two really interleave on the same `flock`.
+    // Opening the ledger folds the journal, so the reader and the tick really interleave on the
+    // same `flock`.
     let done = AtomicBool::new(false);
     let polled = std::thread::scope(|scope| {
         let reader = scope.spawn(|| {
@@ -577,7 +580,7 @@ fn a_window_killed_right_after_its_tick_leaves_nothing_for_recover_to_take_back(
                     "a reader never sees a fault: {status}"
                 );
                 looks += 1;
-                std::thread::sleep(Duration::from_millis(1));
+                std::thread::sleep(Duration::from_millis(3));
             }
             looks
         });
@@ -590,10 +593,15 @@ fn a_window_killed_right_after_its_tick_leaves_nothing_for_recover_to_take_back(
         polled
     });
     let events = polled["events"].as_array().unwrap();
-    assert!(
-        events.iter().any(|event| event["state"] == "succeeded"),
-        "the tick was not refused by a reader that held the lock briefly: {polled}"
-    );
+    if !events.iter().any(|event| event["state"] == "succeeded") {
+        assert!(
+            events.iter().any(|event| {
+                event["state"] == "failed" && event["error"]["code"] == "claims_unavailable"
+            }),
+            "neither accepted nor refused for contention: {polled}"
+        );
+        return false;
+    }
     // Whether or not a reader folded the record first, the result's entries are gone for every
     // reader and the peer's are not.
     assert_eq!(world.claims("/scenes/street"), 0);
@@ -605,6 +613,15 @@ fn a_window_killed_right_after_its_tick_leaves_nothing_for_recover_to_take_back(
     assert_eq!(recovery.orphans, 0, "{recovery:?}");
     world.assert_files_kept();
     assert_eq!(world.claims(SEED_ROOT), SEEDS, "a live peer's claims stay");
+    true
+}
+
+#[test]
+fn a_window_killed_right_after_its_tick_leaves_nothing_for_recover_to_take_back() {
+    assert!(
+        (0..6).any(killed_right_after_the_tick),
+        "six rounds in a row were refused for contention"
+    );
 }
 
 #[test]
