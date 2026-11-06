@@ -5,8 +5,7 @@
 Lib **V**, `scripts/media`/`scripts/render` **V**, UI **V** (diálogo Tarefas, linha de progresso na barra de status,
 cancelar; `flow.jobs`). `job.discard` (BL094/BL112): lib/host **V** (testes abaixo), CLI headless **V** (processo JSONL real
 `tessel-media`, 20 checks), janela **V no escopo de jobs** (instância própria, só requisições semânticas, 19 checks: o tick
-entrega a remoção a um job e a janela segue respondendo). Sem pixels (jobs não desenham na viewport), sem ponteiro, sem
-dois processos (BL111). Ver "Evidência por superfície" abaixo.
+entrega a remoção a um job e a janela segue respondendo). Dois processos reais (BL111, S2): ver "Junção com claims persistentes". Sem pixels (jobs não desenham na viewport) e sem ponteiro. Ver "Evidência por superfície" abaixo.
 
 ## Contrato
 
@@ -104,7 +103,9 @@ matriz (F040–F042); `jobs.rs` e `scene_resources/mod.rs` mesclaram sem sobrepo
 | Janela (binário `target/debug/tessel-editor`, HOME curto e socket próprios, só `op`/`get`/`invoke`) | adopt de 128 MiB torna-se obsoleto (cena removida durante o job); a linha do tempo observada é `none → pending → discarding → discarded`; enquanto descarta: arquivos e dono presentes, `job.discard`/`job.commit` → `job_discarding`, `job.cancel` do job de descarte → `job_not_cancellable`, diálogo Tarefas abre e fecha, sem mutação; depois: arquivos e pasta removidos, evento `discard` único no `recent`, evento do apply com `details.discard_job`; resultado já aplicado → `job_applied` sem mudar bytes | 19/19 |
 | Responsividade da janela | uma segunda conexão pede `get jobs` a cada ~20 ms; os pedidos rodam na thread principal da janela (`window.update`). Tetos fixados antes da medição: ocioso p99 ≤ 100 ms; durante a remoção p99 ≤ 100 ms e máx ≤ 250 ms. Duas execuções: durante a remoção 173/177 respostas em ~4,3 s, p50 0,7–0,8 ms, p99 1,5–1,6 ms, máx 1,5–2,7 ms; ocioso máx 38–43 ms (1ª resposta após aquecimento) | verde |
 | Controle negativo | (a) o mesmo pedido cronometrado enquanto suspendemos **o próprio processo** da janela por 1,5 s mede 1508–1548 ms (a sonda enxerga uma janela parada; nenhuma operação do editor bloqueia a thread de propósito: `wait:true` volta na hora na janela). (b) Mutação temporária no host (`SceneAdopt … if decode_inline \|\| true`, remoção inline no tick) reprova a prova nativa (a transição `discarding` some; a execução parou na 1ª reprovação após ~64 s com a thread presa); revertida | reprova com a mutação |
-| Runtime/Chrome (`TESSEL_REQUIRE_RUNTIME=1`, sob lock de GPU) | workspace `cargo test`: 1076 passam, 0 falham, 9 ignorados, 65 suítes (inclui render `scene_export` 11 de S3, `scene_frames` 8 e `scene_seam` 28 de S4); `./scripts/runtime test` 93/93 | verde |
+| Runtime/Chrome (`TESSEL_REQUIRE_RUNTIME=1`, sob lock de GPU) | workspace `cargo test` no head integrado com S2 (`main` `ac04dca`): 1152 passam, 0 falham, 9 ignorados, 71 suítes (inclui `job_discard_claims` 10 novos); `./scripts/runtime test` 93/93. Antes da junção (head `008af90` + `e296b36`): 1076/0/9, 65 suítes | verde |
+
+Repetição da prova nativa no head integrado com S2 (`job-discard-proof.py`, 39/39: JSONL 20, janela 19): durante a remoção 161 respostas em ~4,5 s, p50 0,8 ms, p99 16,4 ms, máx 16,9 ms (teto 100/250 ms; a primeira execução tinha p99 1,5 ms: variação de carga, não mudança de teto); controle negativo mediu 1512,8 ms.
 
 Medição 256 MiB reexecutada no head integrado: `job.discard` voltou em **68 µs** (debug) / **64 µs** (release), o pior `poll`
 57 µs / 31 µs e o job terminou em **8,6 s** (debug) / **0,58 s** (release). Relatório gerado da prova nativa:
@@ -117,22 +118,37 @@ Windows/Linux, dois processos (BL111) e escritor hostil. `job.discard` sob deman
 observável: o tick aplica um resultado atual em ≤ 250 ms, então o descarte sob demanda de um resultado pendente é provado
 pela lib/host (host interativo sem tick) e pelo JSONL; na janela a prova é o descarte do obsoleto e a recusa do aplicado.
 
-**Harmonização com S2/BL111** (sem tomar a posse de S2): a costura que S2 precisa manter é `PendingAdoption::settle`
-(aceita: solta o registro, sem ler arquivo; recusa: devolve a adoção **ainda dona** dos arquivos e das claims) +
-`discard()` (única remoção). `PendingAdoption::apply` = `settle` + remoção inline (lib/CLI); `import::apply` = `try_apply` +
-`drop`. Testes em `scene_cleanup_ownership.rs` (`settle_accepts_without_touching_a_file…`,
-`a_refused_settle_returns_the_adoption_still_owning_its_copies…`, `apply_is_settle_plus_the_removal…`) e
-`scene_import_cleanup.rs::try_apply_refuses_without_removing…` devem continuar verdes com claims persistentes; uma claim
-persistida só pode ser liberada no aceite (sem I/O pesado no tick) ou no fim do job de descarte, e o job de descarte
-deve liberar a claim mesmo em pânico (`DiscardGuard` já marca o original `discarded`).
+### Junção com claims persistentes e aceite fallível (BL094.3, merge de `main` `ac04dca`, S2)
+
+A integração com a S2 (ledger `.tessel-claims/`, lease por processo, `Provisional::accept` fallível) é **semântica**:
+o resultado recusado continua dono até o descarte terminar, e nenhuma aceitação é silenciosa.
+
+* `PendingAdoption::settle` e `import::try_apply` aceitam com `Provisional::accept` (sem ler arquivo; o aceite só grava o ledger).
+  No import o aceite é o **último passo** do closure de `state.transaction`: uma recusa desfaz projeto, undo e revisão.
+  Não existe mais `Provisional::release` nem aceitação por `Drop` como prova (o `Drop` do `Created` avulso aceita só na melhor tentativa).
+* Recusa por obsolescência **ou** do ledger devolve o resultado **ainda dono dos arquivos e das claims**: `StaleAdoption{why, refusal,
+  pending}` / `RejectedImport{error, prepared}`. O host entrega-o ao job `discard` (que guarda o dono e as claims até terminar,
+  inclusive em pânico por `DiscardGuard`). Uma recusa do ledger mantém o código `claims_unavailable` e `details.phase = "accept"`,
+  com `details.discard_job`; obsolescência segue `stale_result`. Chamadores que podem bloquear (`apply`, `job.commit` da CLI)
+  descartam no próprio fluxo e anexam `details.cleanup`.
+* Para outro processo, o resultado em `queued`/`running` de descarte é um titular **vivo** (lease mantida): `claims` o lista sem
+  `orphan`, `recover` não toca. Ao terminar, o job remove só o que nenhum outro resultado usa (um arquivo reaproveitado por
+  outro processo permanece, listado em `shared`). `SIGKILL` com o descarte na fila deixa órfãos que só `recover` recolhe,
+  depois da prova de conteúdo; um resultado **aceito** nunca é recolhido.
+
+Testes: `crates/media/tests/job_discard_claims.rs` (10, dois deles com o host de uma janela em processo real re-executado),
+`scene_claims_integrity.rs::a_settle_the_ledger_refuses_returns_the_adoption_still_owning_and_claiming_its_files`,
+`scene_cleanup_ownership.rs` (`settle`/`apply`), `scene_import_cleanup.rs::try_apply_refuses_without_removing…`. Mutações que
+reprovam: aceite ignorado no `settle` de adopt (2 testes), aceite ignorado no `try_apply` de import (2), código da recusa perdido
+no host (3). Provas nativas repetidas no head integrado: `job-discard-proof.py` 39/39 e `scene-claims-proof.py` 23/23.
+Limite: a recusa de aceite não é exercida pela janela nativa (só pelo host interativo, sem pixels).
 
 Todo trabalho escreve num `Staging` (pasta no mesmo volume do destino) e **publica por rename** só depois de
 verificar; falha ou cancelamento removem o staging e preservam o destino anterior e os originais.
 
 ## Limites
 
-Sem retomada: um export/pacote interrompido reinicia. `job.discard`: o ownership é do processo (claims em memória; dois
-processos: BL111/S2) e um descarte em andamento no momento em que o processo termina deixa os arquivos (como uma queda).
+Sem retomada: um export/pacote interrompido reinicia. `job.discard`: o ownership entre processos é o ledger de claims (BL111, S2); um descarte em andamento no momento em que o processo termina (inclusive `SIGKILL`) deixa os arquivos como órfãos que `scene.resources.recover` recolhe, sem tocar o que foi aceito.
 Um job `discard` espera um slot (máx. 2 jobs por host); ele fica `queued` e o resultado `discarding` enquanto isso. A prova de «a UI não trava» é por tempo de resposta do
 `import` (job devolvido em < 400 ms com FFmpeg artificialmente lento, `async_host.rs`) e pelo teste do desktop que aplica o
 import no tick; não há medição de quadros por segundo da janela durante o job. Ver o

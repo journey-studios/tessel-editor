@@ -94,7 +94,7 @@ fn discarding_the_first_adoption_keeps_the_files_the_second_one_reused_and_accep
     first.provisional().discard();
     assert_intact(&workspace, &sandbox);
 
-    drop(second.provisional().release());
+    second.provisional().accept().unwrap();
     assert_intact(&workspace, &sandbox);
     assert_no_claims(&workspace);
 }
@@ -106,7 +106,7 @@ fn accepting_the_second_adoption_first_and_discarding_the_first_after_keeps_the_
     let mut second = adopt_into(&scene, &workspace, &sandbox.src);
     assert_reuse_only(&second);
 
-    drop(second.provisional().release());
+    second.provisional().accept().unwrap();
     let report = first.provisional().discard();
     assert_intact(&workspace, &sandbox);
     assert!(
@@ -123,7 +123,7 @@ fn accepting_the_first_adoption_keeps_the_files_when_the_second_one_that_reused_
     let mut second = adopt_into(&scene, &workspace, &sandbox.src);
     assert_reuse_only(&second);
 
-    drop(first.provisional().release());
+    first.provisional().accept().unwrap();
     second.provisional().discard();
     assert_intact(&workspace, &sandbox);
 }
@@ -136,7 +136,7 @@ fn discarding_the_second_adoption_and_then_accepting_the_first_keeps_the_files()
 
     second.provisional().discard();
     assert_intact(&workspace, &sandbox);
-    drop(first.provisional().release());
+    first.provisional().accept().unwrap();
     assert_intact(&workspace, &sandbox);
 }
 
@@ -146,7 +146,7 @@ fn dropping_an_adoption_an_accepted_one_had_reused_leaves_the_accepted_files() {
     // files and is dropped unapplied. The files were never the second one's.
     let (sandbox, scene, workspace) = world("accepted-then-dropped");
     let mut first = adopt_into(&scene, &workspace, &sandbox.src);
-    drop(first.provisional().release());
+    first.provisional().accept().unwrap();
     drop(first);
 
     let mut second = adopt_into(&scene, &workspace, &sandbox.src);
@@ -201,7 +201,7 @@ fn three_holders_keep_the_files_until_the_last_one_leaves_or_one_accepts() {
     let mut second = adopt_into(&scene, &workspace, &sandbox.src);
     let mut third = adopt_into(&scene, &workspace, &sandbox.src);
     second.provisional().discard();
-    drop(third.provisional().release());
+    third.provisional().accept().unwrap();
     first.provisional().discard();
     assert_intact(&workspace, &sandbox);
     assert_no_claims(&workspace);
@@ -249,7 +249,7 @@ fn a_root_that_was_there_before_keeps_the_accepted_files_when_the_first_one_is_d
     let mut first = adopt_into(&scene, &workspace, &sandbox.src);
     let mut second = adopt_into(&scene, &workspace, &sandbox.src);
 
-    drop(second.provisional().release());
+    second.provisional().accept().unwrap();
     first.provisional().discard();
     assert_intact(&workspace, &sandbox);
     assert_eq!(fs::read(root.join("assets/notes.txt")).unwrap(), b"mine");
@@ -266,7 +266,7 @@ fn the_same_workspace_spelled_differently_is_still_one_owner_of_each_file() {
 
     first.provisional().discard();
     assert_intact(&workspace, &sandbox);
-    drop(second.provisional().release());
+    second.provisional().accept().unwrap();
     assert_intact(&workspace, &sandbox);
 }
 
@@ -403,7 +403,7 @@ fn results_sharing_a_folder_across_threads_never_lose_an_accepted_file() {
                     };
                     barrier.wait();
                     if index == accepter {
-                        drop(adoption.provisional().release());
+                        adoption.provisional().accept().unwrap();
                     } else {
                         adoption.provisional().discard();
                     }

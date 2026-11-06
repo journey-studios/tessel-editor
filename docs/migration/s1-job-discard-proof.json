@@ -206,8 +206,8 @@
     "window closed with results pending (test only)"
   ],
   "binaries": {
-    "editor": "target/debug/tessel-editor",
-    "media": "target/debug/tessel-media"
+    "editor": "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-cd8467e7/target/debug/tessel-editor",
+    "media": "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-cd8467e7/target/debug/tessel-media"
   },
   "pad_mib": 128,
   "ceilings_ms": {
@@ -217,18 +217,18 @@
     "control_min_stall": 1000.0
   },
   "jsonl": {
-    "jsonl_exit_with_pending_seconds": 2.15
+    "jsonl_exit_with_pending_seconds": 2.35
   },
   "window_results": {
     "idle": {
       "n": 60,
-      "p50_ms": 0.4,
-      "p99_ms": 42.6,
-      "max_ms": 42.6
+      "p50_ms": 0.5,
+      "p99_ms": 45.9,
+      "max_ms": 45.9
     },
     "control": {
       "suspended_window_ms": 1500,
-      "probe_saw_ms": 1507.9
+      "probe_saw_ms": 1512.8
     },
     "timeline": [
       "none",
@@ -237,13 +237,15 @@
       "discarded"
     ],
     "during_discard": {
-      "n": 172,
-      "p50_ms": 0.7,
-      "p99_ms": 1.5,
-      "max_ms": 1.5
+      "n": 161,
+      "p50_ms": 0.8,
+      "p99_ms": 16.4,
+      "max_ms": 16.9
     },
-    "discard_window_seconds": 4.3
+    "discard_window_seconds": 4.45
   },
   "ok": true,
+  "editor": "target/debug/tessel-editor",
+  "media": "target/debug/tessel-media",
   "generator": "scripts/job-discard-proof.py (run under scripts/directed-scene-proof/with-gpu-lock.py)"
 }

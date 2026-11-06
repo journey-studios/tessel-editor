@@ -55,7 +55,7 @@ use tessel_editor_core::{CommandError, EditorState};
 
 use super::adopt::adopt;
 use super::base::{self, MANAGED_DIR, ResourceBase};
-use super::cleanup::{CleanupReport, Provisional, same_folder};
+use super::cleanup::{CleanupReport, Provisional, refused_accept, same_folder, with_cleanup};
 use crate::directed_resources::{Options, Progress, Published};
 
 /// One scene of the import and where it will live.
@@ -67,6 +67,7 @@ pub struct PlannedScene {
 }
 
 impl PlannedScene {
+    /// Reports an ID collision resolved during planning, before any file was copied.
     pub fn renamed(&self) -> bool {
         self.from != self.to
     }
@@ -99,6 +100,7 @@ pub struct PreparedSceneImport {
 }
 
 impl PreparedSceneImport {
+    /// Reports per-scene transport facts while retaining the ownership record in memory.
     pub fn to_json(&self) -> Value {
         json!({
             "scenes": self.scenes.iter().map(|scene| json!({
@@ -123,6 +125,7 @@ impl PreparedSceneImport {
     }
 }
 
+/// Reserves existing managed scene directories using case-insensitive names.
 fn taken_folders(workspace: &Path) -> Vec<String> {
     fs::read_dir(workspace.join(MANAGED_DIR))
         .map(|entries| {
@@ -150,6 +153,7 @@ fn free_id(wanted: &str, is_taken: impl Fn(&str) -> bool) -> String {
         .unwrap_or_else(|| wanted.to_string())
 }
 
+/// Selects requested attached scenes, refusing unknown IDs before preparing any resource.
 fn select<'a>(
     source: &'a EditorState,
     wanted: &[String],
@@ -263,7 +267,15 @@ pub fn prepare_observed(
             on_progress,
             on_published,
             &mut prepared.owned,
-        )?;
+        );
+        let done = match done {
+            Ok(done) => done,
+            Err(error) if error.code == "claims_unavailable" => {
+                let report = prepared.owned.discard();
+                return Err(with_cleanup(error, &report));
+            }
+            Err(error) => return Err(error),
+        };
         if done.not_carried > 0 {
             prepared.warnings.push(format!(
                 "scene `{}` names {} file(s) that no version carries yet (preserved sections, unreferenced assets); the scene arrives with them listed, not copied",
@@ -279,6 +291,7 @@ pub fn prepare_observed(
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Carries one scene and transfers its durable claims to the import only after a successful merge.
 fn prepare_scene(
     source: &EditorState,
     workspace: &Path,
@@ -350,7 +363,14 @@ fn prepare_scene(
     )?;
     // Ownership comes from what `adopt` itself created, not from a look at the disk beforehand:
     // a folder that another operation made in between is not ours to remove.
-    owned.absorb(adopted.provisional().release());
+    // The transfer is written to the ledger before anything moves in memory. When that fails
+    // `mine` still owns what the adoption copied, so it is discarded (and says what that did)
+    // instead of being forgotten, and `owned` keeps what earlier scenes copied.
+    let mut mine = adopted.provisional();
+    if let Err(error) = owned.absorb(&mut mine) {
+        let report = mine.discard();
+        return Err(with_cleanup(error, &report));
+    }
     Ok(PreparedScene {
         planned: planned.clone(),
         bundle,
@@ -361,6 +381,7 @@ fn prepare_scene(
     })
 }
 
+/// Identifies the scene whose resources cannot be carried without pretending the import succeeded.
 fn unavailable(scene: &str, why: &str) -> JobError {
     JobError::new(
         "missing_media",
@@ -379,8 +400,14 @@ pub fn apply(
     prepared: PreparedSceneImport,
 ) -> Result<Value, CommandError> {
     try_apply(state, prepared).map_err(|rejected| {
-        // The removal happens here, as `prepared` drops with the files it still owns.
+        // The removal happens here, where blocking is allowed. A refused acceptance discards
+        // with a report (safe whether or not the failed write reached the disk: a file whose
+        // claim is gone is kept, never removed) and says what that did.
         let RejectedImport { error, prepared } = *rejected;
+        if error.code == "claims_unavailable" {
+            let report = prepared.discard();
+            return with_import_cleanup(error, &report);
+        }
         drop(prepared);
         error
     })
@@ -425,16 +452,48 @@ pub fn try_apply(
                 source: SceneSource::Bundle(scene.bundle.clone()),
             }))?;
         }
-        Ok(())
+        // The last step, after everything that can fail: the files become the project's only
+        // when the ledger says so. A failure here rolls the whole transaction back (project,
+        // undo history and revision), so a refused acceptance never leaves scenes attached to
+        // files that a recovery could take back.
+        prepared
+            .owned
+            .accept()
+            .map_err(|error| refused_accept(error, None, "no scene was attached"))
     });
     if let Err(error) = outcome {
+        // The project is as it was. A refused acceptance means the files are still claimed, so
+        // `prepared` goes back still owning them (BL094): the caller discards them wherever it
+        // may block, and a refusal never leaves a file unowned.
         return Err(Box::new(RejectedImport { error, prepared }));
     }
-    let report = json!({ "action": "project.import_scenes", "changed": !prepared.scenes.is_empty(),
-        "result": prepared.to_json() });
-    // Accepted: the files belong to the project now.
-    prepared.owned.release();
-    Ok(report)
+    // The last step of the transaction already accepted the files (the claims left the ledger):
+    // nothing remains for `prepared` to remove when it drops.
+    Ok(
+        json!({ "action": "project.import_scenes", "changed": !prepared.scenes.is_empty(),
+        "result": prepared.to_json() }),
+    )
+}
+
+/// `error` with what discarding the refused import did, for a caller that may block. Only a
+/// refused acceptance (`claims_unavailable`) has a report to attach; other refusals keep their words.
+fn with_import_cleanup(mut error: CommandError, report: &CleanupReport) -> CommandError {
+    if error.code != "claims_unavailable" {
+        return error;
+    }
+    let mut details = match error.details.take().map(|details| *details) {
+        Some(details @ Value::Object(_)) => details,
+        _ => json!({}),
+    };
+    details["cleanup"] = report.to_json();
+    if !report.kept.is_empty() {
+        error.message = format!(
+            "{}; left in place: {}",
+            error.message,
+            report.kept.join("; ")
+        );
+    }
+    error.details(details)
 }
 
 #[cfg(test)]
