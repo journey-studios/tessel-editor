@@ -583,7 +583,8 @@ export class Compositor {
    * The rig of a scene layer. Scenes without splats are a pure function of the scene file, so
    * the rig (geometry, materials and therefore the shader program) is kept for the entry it was
    * built from and for this context. Scenes with splats lease meshes from the asset store and
-   * are rebuilt per frame: their cost is the Spark sort, not the rig.
+   * are rebuilt per frame (the leases are what is not kept: the store lends the same Spark meshes
+   * again, BL131): their cost is the Spark sort, not the rig.
    */
   async sceneRig(id, entry, assets, keep) {
     if (!this.retain || SceneRig.hasSplatObjects(entry.scene)) {

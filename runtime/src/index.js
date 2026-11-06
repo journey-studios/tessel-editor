@@ -112,6 +112,7 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
     options.sceneSamples = Number.isInteger(message.scene_samples) ? message.scene_samples : undefined;
     if (options.sceneSamples !== undefined) compositor?.setSceneSamples(options.sceneSamples);
     compositor?.setRetain(options.retain);
+    assets.setRetainSplatMeshes(options.retain);
     if (!options.retain) assets.dropTextures();
   };
 

@@ -51,6 +51,20 @@ export const disposeSharedSplatMesh = (mesh) => {
   mesh.dispose();
 };
 
+/**
+ * Gives a lent mesh back in the state a new one has (BL131): not in any scene, no transform of the
+ * use it just served. Every borrower sets the pose it needs, but one that only sets some of it must
+ * never inherit the rest from the last use (a different position, scale, spin or matrix).
+ */
+export const resetLentMesh = (mesh) => {
+  mesh.removeFromParent();
+  mesh.matrixAutoUpdate = true;
+  mesh.matrix.identity();
+  mesh.position.set(0, 0, 0);
+  mesh.quaternion.identity();
+  mesh.scale.set(1, 1, 1);
+};
+
 export class SplatStage {
   constructor(renderer) {
     // minSortIntervalMs 0: a sort is never deferred to a timer, which `settle` relies on.
