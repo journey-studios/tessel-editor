@@ -60,8 +60,19 @@ seus claims) e o registro do job **permanecem até o fim do job discard**: `prun
 host sem janela espera e devolve também `discarded` e `cleanup:{removedFiles,removedFolders,kept,shared,busyRoots}`
 (`wait:false` devolve `state:"discarding"` na hora); o host interativo responde sempre na hora e `poll()` entrega um
 evento `{job, kind:"discard", state, result}` uma única vez. `discarded` quer dizer **o descarte terminou**, não que tudo foi
-removido: o que ficou (`kept`, raiz ocupada, ledger indisponível) está em `result.cleanup`, a barra de status da janela o diz
-(BL094.8) e a claim do que ficou segue retida por este processo até `recover`.
+removido: o que ficou (`kept`, raiz ocupada, ledger indisponível) está em `result.cleanup` e a barra de status da janela o diz
+(BL094.8). O que acontece com a **claim** do que ficou depende do motivo, e não é uma garantia única (N4):
+
+1. **Ledger indisponível ao soltar a claim** (`finish_leave`/`leave` não conseguem gravar): o arquivo foi tratado, mas a entrada
+   continua gravada e **retida por este processo vivo**; `recover` a resolve depois que o processo acaba (arquivo já removido:
+   a entrada some; arquivo ainda lá e provadamente nosso: removido). `kept` pode nomear o mesmo caminho que `removedFiles`.
+2. **Raiz ocupada** (a lease de publicação está com outra adoção): o descarte usa `abandon`, a entrada fica **órfã na hora**
+   (sem dono vivo) e `recover` a recolhe quando quiser, sem esperar este processo acabar.
+3. **Arquivo reescrito** (o SHA-256/metadata não confere, `kept` por hash): o arquivo **não é removido** e a claim é solta junto
+   com o resto do descarte. A partir daí `recover` **não o enxerga mais**: ele fica no disco, de quem o reescreveu, sem aviso
+   posterior. A única notícia é o `kept` do relatório do descarte.
+
+Nenhum dos três casos promete que `recover` limpará o arquivo: só o 1 e o 2 deixam entrada para ele.
 
 | Erro tipado | Quando (nada muda) |
 |---|---|
@@ -166,6 +177,27 @@ F4 e tudo de BL112.3 abaixo, que aguardam os gates do coordenador.
 | BL112.4 (F7) | `finished_discards` clonava o registro inteiro a cada tick; `prune` sem chamador de produção | `JobRegistry::matching` clona só o que casa; o risco do `prune` fica registrado (abaixo) | `jobs.rs` (`matching_clones_only_the_jobs_it_keeps`; cancelado de verdade não guarda resultado) | executado (antecessor) |
 | F8 | docs/contrato incorretos | esta página, F040, matriz e `backlog.md`; docstring de `adopt.rs` | leitura | n/a |
 
+### Segunda revisão (R2, [5802069640](https://github.com/journey-studios/tessel-editor/pull/6#pullrequestreview-5802069640))
+
+Revisão por leitura estática: "resolvido" abaixo é pela leitura e **nenhuma prova foi executada para este head**. Os testes novos
+estão escritos e aguardam os gates (`fmt`, `check`, `clippy`, `test`, `build`, árvore do core, prova nativa, mutações).
+
+| Item | Achado | Correção (onde) | Prova escrita (não executada) |
+|---|---|---|---|
+| N1 (BL112.3, BL112.5) | o tick olhava uma vez e recusava resultado válido por contenção do próprio processo, culpando "outro processo" | `Ledger::try_lock` espera `TICK_WAIT` = 20 ms (`ledger.rs`); mensagem neutra; seção "O lock do ledger no tick" acima | `claims/tests.rs` (3), `scene_claims_integrity.rs` (2), `job_discard_claims.rs` (`SIGSTOP`, teto 100 ms) |
+| N2 (BL094.5) | o EOF esperava sem limite atrás de jobs que não são descarte | `wait_for_discards` chama `cancel_all` (pula `discard`) antes de esperar, só com descarte ativo (`host.rs`) | `job_discard.rs`: `end_of_input_cancels_what_is_not_a_discard_instead_of_waiting_behind_it`, `end_of_input_with_no_discard_active_cancels_nothing` (em processo: não há operação de produção que prenda um slot sem FFmpeg) |
+| N3 (BL094.5) | asserção falha com descarte na fila travava a suíte | `impl Drop for Blockers` (cancela o token) em `job_discard.rs` e `job_discard_claims.rs` | `a_failed_assertion_while_the_slots_are_held_reports_instead_of_hanging_the_suite` (pânico controlado com `catch_unwind`, relógio de 30 s) e `blockers_that_are_dropped_instead_of_released_give_their_slots_back` |
+| N4 | `jobs.md` dizia que a claim de tudo o que ficou segue retida até `recover` | os três casos descritos na seção do descarte, acima | leitura |
+| N5 (BL094.8) | a barra dizia que o arquivo removido "permaneceu no disco" | `describe_discard` (`flows.rs`): "não foram concluídos", `arquivo(s) removido(s)` à parte, até 3 motivos | `flows.rs` (2) |
+| N6 | BL111.2 ainda dizia "junção com a S1 não incorporada" | uma linha em `backlog.md`, com autorização do coordenador | leitura |
+| N7 (BL094.10) | `job.commit` antes do tick deixava a cadeia em `running` (como F3) | `committed_unreported` em `MediaHost`: `poll` entrega uma vez o evento do job (`host.rs`) | `job_discard.rs` (2) e `scene_import_tests.rs::committing_the_attach_job_before_the_tick_still_moves_the_chain_on` |
+
+Mutações a rodar quando houver slot de execução (nenhuma foi executada): `begin_leave` → `leave` em `remove`; `try_lock` com
+`Duration::ZERO` (reprova o teste do holder de 2 ms) e com `LOCK_WAIT` (reprova os tetos de 100 ms); `took = is_ok()` em
+`apply_pending`; remover o `drop(media)` do `tessel-media`; remover `cancel_all` de `wait_for_discards` (o teste de N2 passa a
+estourar o relógio de 30 s); remover o `Drop` de `Blockers` (o de N3 passa a estourar o relógio); remover o `push` de
+`committed_unreported` (os de N7 reprovam).
+
 **Por que o teste de F4 usa um processo.** O decode que segue um `job.commit` descobre o FFmpeg por conta própria
 (`Tools::discover()`, não as ferramentas do host) e o crate proíbe `unsafe` (então o teste não altera o ambiente do próprio
 processo). `job_commit_state.rs` roda o `tessel-media` real com `TESSEL_FFMPEG` apontando a um wrapper que funciona até um arquivo
@@ -177,28 +209,41 @@ forçava a falha e foi retirada.
 (`reported_discards`/`finished_discards` precisam dele no registro). Registrar a decisão antes de ligar; hoje o registro cresce
 na sessão, como já crescia.
 
-**O lock do ledger no tick (BL112.3).** `accept` roda na thread da janela e escreve `claims.json` sob `ledger.lock`. A primeira
-correção limitou a espera a 1,5 s, que **ainda excede o teto de 100 ms** do tick. Agora o tick **não espera**:
-`Ledger::try_lock` olha uma vez (`Duration::ZERO`); se outro processo segura o lock naquele instante, o ledger fica indisponível
-só para essa chamada (`fault`: "held by another process right now; not waited for") e o aceite é **recusado** como qualquer outra
-falha do ledger: projeto, undo e revisão intactos, o resultado continua dono e vai para um job `discard`
-(`claims_unavailable`, `details.phase="accept"`, `details.why`). Quem pode bloquear (job de descarte, `apply`/`job.commit` da
-CLI, `recover`, `claims`) segue com a espera limitada de 1,5 s (`LOCK_WAIT`). O que o tick **ainda** faz na thread da UI: ler e
-reescrever `claims.json` (microssegundos a poucos ms; a prova nativa mede só a latência de pedidos, p99 1,5–16 ms) e, apenas numa
-corrida com o processo que esvazia o ledger, as repetições da abertura (pausas de 1–2 ms, no máximo 64 tentativas). Isso não é um
-orçamento medido do tick com um ledger grande: é o custo herdado da S2.
+**O lock do ledger no tick (BL112.3, R2/N1).** `accept` roda na thread da janela e escreve `claims.json` sob `ledger.lock`.
+A primeira correção limitou a espera a 1,5 s (`LOCK_WAIT`), que **excede o teto de 100 ms** do tick. A segunda fez o tick
+olhar uma vez (`Duration::ZERO`), mas `flock` conflita entre descritores **do mesmo processo** (cada `Tracker` abre o seu): um
+job `discard` (duas gravações por arquivo), uma adoção ou um `recover` do outro slot segurando o ledger por microssegundos
+recusava um resultado **válido**, o descarte removia a cópia e a mensagem culpava "outro processo". Agora o tick espera um
+orçamento **fixo de 20 ms** (`TICK_WAIT`, olhando a cada `LOCK_POLL` de 500 µs; quatro vezes abaixo do teto): contenção de
+microssegundos de qualquer origem é absorvida e só um holder que não solta (processo parado, travado) esgota o orçamento. Então
+o ledger fica indisponível só para essa chamada (`fault`: "held right now by a holder that did not let go of it; gave up after
+20ms", sem apontar quem) e o aceite é **recusado** como qualquer outra falha do ledger: projeto, undo e revisão intactos, o
+resultado continua dono e vai para um job `discard` (`claims_unavailable`, `details.phase="accept"`, `details.why`). Quem pode
+bloquear (job de descarte, `apply`/`job.commit` da CLI, `recover`, `claims`) segue com a espera limitada de 1,5 s. O que o
+tick **ainda** faz na thread da UI: ler e reescrever `claims.json` (`O(entradas)`, sem `fsync`; a prova nativa mede só a latência
+de pedidos, p99 1,5–16 ms) e, apenas numa corrida com o processo que esvazia o ledger, as repetições da abertura (pausas de
+1–2 ms, no máximo 64 tentativas; com as entradas do próprio resultado o ledger não fica vazio, então não ocorre na prática, mas
+**não foi medido**).
 
-* **Custo aceito (BL112.5, pendente):** sob contenção real (outro editor no mesmo workspace segurando o lock por microssegundos),
-  o tick recusa em vez de esperar, e um resultado válido vira `claims_unavailable`. Nada se perde: o descarte devolve só os
-  arquivos que são nossos e o usuário repete a operação. A alternativa, manter o resultado `pending` e repetir o aceite no tick
-  seguinte até um prazo, evita a recusa mas muda a máquina de estados do `poll`; fica registrada, sem implementação.
-* **Prova (escrita, não executada):** `claims/tests.rs::a_caller_that_must_not_wait_looks_once_and_never_waits_for_a_held_lock`
-  (lock segurado por outro descritor; `try_lock` volta com `fault` em < 1 s e a claim permanece),
-  `scene_claims_integrity.rs::a_settle_never_waits_for_a_ledger_lock_another_process_holds` (`settle` recusa em < 1 s e o dono volta
-  ainda dono) e `job_discard_claims.rs::a_peer_stopped_while_holding_the_ledger_lock_cannot_freeze_the_tick` (peer real em
-  `SIGSTOP`; o tick volta em < 1 s, `why` "not waited for"; o teste do antecessor aceitava até 8 s e a mensagem "gave up"). O teto
-  de 1 s é folga para máquina carregada: uma espera de 1,5 s reprova os três. A espera limitada de quem pode bloquear segue
-  coberta por `waiting_for_a_lock_nobody_lets_go_of_is_bounded` (executado pelo antecessor).
+* **Disponibilidade, honestamente (BL112.5, pendente):** o orçamento de 20 ms cobre a contenção curta. Um holder que segura o
+  lock além disso (outro editor parado, um ledger enorme) ainda recusa um resultado válido e **a cópia inteira é removida**:
+  "nada se perde" não vale para o trabalho do usuário, só para a integridade (o descarte devolve apenas o que é nosso). A
+  alternativa, manter o resultado `pending` e repetir o aceite no tick seguinte até um prazo, evita a recusa mas muda a máquina
+  de estados do `poll`; fica registrada, sem implementação.
+* **Medição pendente (BL112.3):** o custo de ler/reescrever `claims.json` no tick com um ledger de 1 mil e de 10 mil entradas
+  **não foi medido**. Se passar de 100 ms é bloqueio genuíno e o aceite precisa sair da thread da UI (muda a arquitetura); hoje
+  não há evidência disso.
+* **Prova (escrita, não executada):** em `claims/tests.rs`: `the_tick_budget_is_fixed_and_well_below_the_ui_ceiling`
+  (orçamento entre 10 e 25 ms e ≤ ¼ do teto), `a_tick_that_finds_the_lock_held_for_a_moment_by_this_process_gets_it` (holder de
+  2 ms em outra thread, solto só depois que o tick começou a olhar: olhar uma vez recusa) e
+  `a_tick_that_finds_the_lock_stuck_gives_up_inside_its_budget_with_a_neutral_reason` (≥ 20 ms e < 100 ms, sem culpar "outro
+  processo"); em `scene_claims_integrity.rs`: `a_settle_rides_out_a_ledger_lock_another_job_of_this_process_holds_for_a_moment`
+  e `a_settle_gives_up_inside_the_tick_budget_when_the_ledger_lock_stays_held`; e em `job_discard_claims.rs`:
+  `a_peer_stopped_while_holding_the_ledger_lock_cannot_freeze_the_tick` (peer real em `SIGSTOP`; o tick inteiro < 100 ms,
+  `why` "gave up after"). Os tetos de 1 s, que aceitavam dez vezes o limite, foram trocados por 100 ms; em máquina muito
+  carregada eles podem falhar sem regressão (repetir antes de concluir). Mutações a rodar: `try_lock` com `Duration::ZERO`
+  reprova o teste do holder de 2 ms; `try_lock` com `LOCK_WAIT` reprova os de teto de 100 ms. A espera limitada de quem pode
+  bloquear segue coberta por `waiting_for_a_lock_nobody_lets_go_of_is_bounded` (executado pelo antecessor).
 
 Todo trabalho escreve num `Staging` (pasta no mesmo volume do destino) e **publica por rename** só depois de
 verificar; falha ou cancelamento removem o staging e preservam o destino anterior e os originais.
@@ -210,7 +255,8 @@ Um descarte interrompido (inclusive `SIGKILL`) **no meio do hash/remoção** dei
 entrada só sai depois do arquivo), então `scene.resources.recover` recolhe o arquivo depois que a lease do processo morto some,
 sem tocar o que foi aceito. Isso vale **só depois** da correção desta PR: a redação anterior ("deixa os arquivos como órfãos")
 descrevia uma ordem em que a entrada saía antes do hash e era falsa para esse intervalo. O fim de entrada (EOF) de uma CLI
-espera os descartes ativos (BL094.5); o encerramento da **janela** não espera (BL112.6, pendente): o job morre com o processo e a
+espera os descartes ativos (BL094.5) e, **antes de esperar**, cancela os jobs que não são descarte (N2: eles ocupam os 2 slots atrás
+dos quais o descarte espera e o resultado deles seria jogado fora na saída; sem descarte ativo nada é cancelado); o encerramento da **janela** não espera (BL112.6, pendente): o job morre com o processo e a
 claim fica para `recover`.
 Um job `discard` espera um slot (máx. 2 jobs por host); ele fica `queued` e o resultado `discarding` enquanto isso. A prova de «a UI não trava» é por tempo de resposta do
 `import` (job devolvido em < 400 ms com FFmpeg artificialmente lento, `async_host.rs`) e pelo teste do desktop que aplica o

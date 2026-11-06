@@ -389,8 +389,9 @@ Evidência por superfície do descarte em job (integração S1 + S3 + S4): lib/h
 remoção medida (detalhes e limites em [F025](jobs.md#evidência-por-superfície-integração-s1--s3--s4-a-validar-até-a-revisão)).
 **Costura S1 x S2 (já incorporada, ver "Junção com a S1" acima e BL094.3):** `PendingAdoption::settle` devolve a adoção
 recusada ainda dona de arquivos e claims; `apply` é `settle` + remoção inline e só a remoção (`discard`) lê/hasheia
-**recursos**. O aceite, em si, lê e grava `claims.json` sob `flock`: no tick da janela (`settle`, `import::try_apply`) **sem
-esperar** o lock (um lock que outro processo segura naquele instante recusa o aceite com `claims_unavailable`, BL112.3);
+**recursos**. O aceite, em si, lê e grava `claims.json` sob `flock`: no tick da janela (`settle`, `import::try_apply`) esperando o
+lock só **20 ms** (um lock ainda ocupado depois disso, por outro processo ou por outro job deste, recusa o aceite com
+`claims_unavailable`, BL112.3/N1);
 em quem pode bloquear (`apply`, `job.commit` da CLI, jobs) a espera é limitada a 1,5 s. Um dono persistente de claims precisa
 manter essas propriedades (testes `settle_*`/`apply_is_settle_*`).
 
