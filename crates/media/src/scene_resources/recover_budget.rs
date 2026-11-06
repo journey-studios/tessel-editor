@@ -11,9 +11,9 @@
 //!   spans the lock was held, so `total` and `longest` are what `recover` kept the ledger for
 //!   (an upper bound by the observer's granularity; its own brief locks can delay `recover` by at
 //!   most one `LOCK_POLL`).
-//! * **tick run** (no observer): a thread claims an entry (the job side, not timed) and accepts it
-//!   the way the tick does, `Ledger::accept` with the tick's budget (BL112.7: the real path, not a
-//!   `Tracker` standing in for it), every ~1 ms. Ticks that start before `recover` are the control
+//! * **tick run** (no observer): a thread claims [`SPARE`] entries before the run (the job side,
+//!   not timed) and accepts one every ~1 ms the way the tick does, `Ledger::accept` with the
+//!   tick's budget (BL112.7: the real path, not a `Tracker` standing in for it). Ticks that start before `recover` are the control
 //!   (same ledger, same load, nobody holding); ticks that start while it runs are the
 //!   measurement. A refusal ("gave up after") counts, with how long it took to say it.
 //! * `0` orphans is the control run, `1`, `10` and `100` are the bounded sizes (no 10 000-orphan
@@ -36,7 +36,7 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 use tessel_editor_core::jobs::CancelToken;
 
-use super::claims::{Ledger, Stamp, next_holder};
+use super::claims::{HolderId, Ledger, Stamp, next_holder};
 use super::recover::recover_with;
 use crate::fsx::{Staging, hash_file};
 
@@ -151,23 +151,63 @@ struct Tick {
     ledger_bytes: u64,
 }
 
-/// What the window's tick does to the ledger, every ~1 ms, until `stop`: a result claims an entry
-/// (the job side, not timed: it may wait for the lock), then the tick accepts it exactly as
-/// `Created::accept_nowait` does (`Ledger::accept` with the tick's budget). A refused acceptance
-/// is discarded by the job side, as the host does, so nothing is left claimed.
-fn tick(ledger: &Ledger, claims: &Path, running: &AtomicBool, stop: &AtomicBool) -> Vec<Tick> {
+/// Entries claimed before the run starts (by [`claim_spares`], before any thread runs: every claim
+/// rewrites the ledger, so claiming them on the ticking thread would still be going on when
+/// `recover` starts), so that the ticks of the measurement accept something
+/// that was claimed *earlier*, as the real tick does, instead of waiting for the lock to claim it.
+/// Few enough to keep a 100-orphan ledger under the inline limit (the path of the small ledger).
+const SPARE: usize = 160;
+
+/// The claims of the result whose acceptance the ticks will ask for.
+fn claim_spares(ledger: &Ledger) -> (HolderId, Vec<PathBuf>) {
     let holder = next_holder();
     let root = PathBuf::from("/te-budget");
-    let mut ticks = Vec::new();
-    let mut index = 0u64;
-    while !stop.load(Ordering::Relaxed) {
-        let key = PathBuf::from(format!("/te-budget/tick-{index}"));
-        index += 1;
-        ledger
-            .lock_creating()
+    let spare: Vec<PathBuf> = (0..SPARE)
+        .map(|index| PathBuf::from(format!("/te-budget/tick-{index}")))
+        .collect();
+    let mut tracker = ledger.lock_creating();
+    for key in &spare {
+        tracker
             .create_file(holder, key.clone(), &root, None)
             .unwrap();
-        let during = running.load(Ordering::Relaxed);
+    }
+    drop(tracker);
+    (holder, spare)
+}
+
+/// What the window's tick does to the ledger, every ~1 ms, until `stop`: it accepts the entry a
+/// result claimed earlier, exactly as `Created::accept_nowait` does (`Ledger::accept` with the
+/// tick's budget). The claims are made before the run (the job side: they may wait for the lock,
+/// and a claim made *while* `recover` holds it would only start the clock after the hold ended,
+/// which would make a refused tick impossible to observe). If the spares run out the tick claims
+/// one more, and that tick counts as the control. A refused acceptance is discarded by the job
+/// side, as the host does, so nothing is left claimed.
+fn tick(
+    ledger: &Ledger,
+    claims: &Path,
+    holder: HolderId,
+    mut spare: Vec<PathBuf>,
+    running: &AtomicBool,
+    stop: &AtomicBool,
+) -> Vec<Tick> {
+    let root = PathBuf::from("/te-budget");
+    spare.reverse();
+    let mut ticks = Vec::new();
+    let mut index = SPARE as u64;
+    while !stop.load(Ordering::Relaxed) {
+        let (key, claimed_now) = spare.pop().map_or_else(
+            || {
+                let key = PathBuf::from(format!("/te-budget/tick-{index}"));
+                index += 1;
+                ledger
+                    .lock_creating()
+                    .create_file(holder, key.clone(), &root, None)
+                    .unwrap();
+                (key, true)
+            },
+            |key| (key, false),
+        );
+        let during = running.load(Ordering::Relaxed) && !claimed_now;
         let started = Instant::now();
         let refused = ledger
             .accept(std::iter::once(key.as_path()), false)
@@ -184,6 +224,10 @@ fn tick(ledger: &Ledger, claims: &Path, running: &AtomicBool, stop: &AtomicBool)
         });
         std::thread::sleep(Duration::from_millis(1));
     }
+    // What was claimed and never accepted goes, so that only the bystander is left.
+    ledger
+        .accept(spare.iter().map(PathBuf::as_path), true)
+        .unwrap();
     ticks
 }
 
@@ -212,11 +256,15 @@ fn recover_once(count: usize, hold: bool, ticks: bool) -> Run {
     let canonical = fs::canonicalize(dir.path()).unwrap();
     let lock = canonical.join(".tessel-claims/ledger.lock");
     let claims = canonical.join(".tessel-claims/claims.json");
+    let spares = ticks.then(|| claim_spares(&ledger));
     let (running, stop) = (AtomicBool::new(false), AtomicBool::new(false));
 
     let (wall, spans, observed) = std::thread::scope(|scope| {
         let watcher = hold.then(|| scope.spawn(|| observe(&lock, &stop)));
-        let ticker = ticks.then(|| scope.spawn(|| tick(&ledger, &claims, &running, &stop)));
+        let (ledger, claims, running, stop) = (&ledger, &claims, &running, &stop);
+        let ticker = spares.map(|(holder, spare)| {
+            scope.spawn(move || tick(ledger, claims, holder, spare, running, stop))
+        });
         // Control ticks first: the same ledger and load, no recovery yet.
         std::thread::sleep(Duration::from_millis(30));
         running.store(true, Ordering::Relaxed);
