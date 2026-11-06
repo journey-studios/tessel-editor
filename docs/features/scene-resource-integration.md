@@ -159,8 +159,8 @@ Peças (`scene_resources::cleanup`):
   e o que ele só **reaproveita** de outro resultado. Vem de `Adoption::created`, calculado pelo
   próprio `adopt` (o `create_dir` que teve sucesso e as subpastas que não existiam antes), não de
   um `exists()` anterior que outra operação pode invalidar.
-- `Provisional` é o **dono** enquanto o resultado não foi aceito: remove ao cair; `release()`
-  entrega ao projeto; `discard()` remove e devolve o `CleanupReport`.
+- `Provisional` é o **dono** enquanto o resultado não foi aceito: remove ao cair; `accept()`
+  (falível, BL111.2) entrega ao projeto; `discard()` remove e devolve o `CleanupReport`.
 - **Nenhum `Clone`** em `PreparedSceneImport`, `Adoption`, `PendingAdoption`, `Created` nem
   `Provisional`: uma cópia cairia depois e apagaria a pasta do consumidor que ficou com o original.
 - A remoção toma o mesmo `RootLease` (cooperativo) da publicação, com espera limitada. Raiz
@@ -180,11 +180,15 @@ com chave por **caminho canônico** (`ws/../ws` e `ws` são o mesmo dono). Regra
 - Descartar um registro remove um arquivo só se ele é o **último** titular de algo que um
   resultado pendente criou. Se outro titular ainda existe, o arquivo fica e o relatório lista em
   `shared` (também em `to_json`); o último a sair leva tudo, inclusive as pastas.
-- **Aceitar** é soltar o registro (`Provisional::release` seguido do `drop` do `Created`, ou o
-  `drop` de um `Created` avulso): as entradas somem do registro e os arquivos passam a ser do
-  projeto. Daí em diante nenhum descarte, em nenhuma ordem, os toca.
+- **Aceitar** é `Provisional::accept`, **explícito e falível** (BL111.2): as entradas somem do
+  ledger em disco e só então o registro se esvazia; os arquivos passam a ser do projeto e nenhum
+  descarte, em nenhuma ordem, os toca. `Ok` quer dizer "gravado". Em `Err`
+  (`claims_unavailable`, `details.phase = "accept"`) o resultado **não** foi aceito: continua
+  claimado e do titular. Um `Created` avulso solto continua sendo aceito, só que na melhor
+  tentativa (destrutor não relata): nenhum fluxo que altera projeto depende disso.
 - Uma raiz que já existia antes (sem entrada) nunca é removida por ninguém. `absorb` (import de
-  várias cenas) transfere as reivindicações ao registro que absorve.
+  várias cenas) transfere as reivindicações ao registro que absorve, **gravando a transferência
+  antes de mover as listas** (falha devolve os dois registros intactos).
 - Ordem de travas: lease da raiz → trava do registro. `create_folders` só toma a trava do registro.
 - Entre processos: ver "Ownership entre processos (BL111)".
 
@@ -229,12 +233,27 @@ editor, CLI ou job que abra o mesmo workspace.
   - Descarte cuja saída não pôde ser gravada (`Leave::Unverifiable`) mantém o arquivo e a
     claim (titular vivo) e informa em `kept`; o `recover` leva o órfão depois que o dono sai.
     Arquivo de titular vivo ou aceito nunca é removido por esses caminhos.
-  - **Aberto e bloqueado** (BL111.2b–d, ver abaixo): aceitar (drop do registro) e fundir dois
-    registros (`absorb`) ainda não devolvem erro; falha de gravação exatamente aí deixa as
-    claims no disco até o dono morrer e um `recover` posterior poderia apagar arquivo já
-    aceito. Isto **não** está fechado nesta entrega. A cópia em curso não pode ser interrompida
-    pelo observador; os arquivos seguintes são copiados e desfeitos um a um, sem arquivo sem
-    claim e sem remoção sem prova (BL111.3).
+  - `after_changes` por **juntar-se** a um arquivo/pasta de outro resultado, ou por **fundir**
+    (`absorb`): o resultado é recusado e descartado onde o ledger permite; a transferência é
+    gravada antes de mover qualquer lista, então ninguém perde o dono.
+  - `accept` (BL111.2): a gravação da aceitação falhou. `import::apply` chama `accept` como
+    **último passo dentro de `state.transaction`**: o erro reverte o projeto (cenas, histórico e
+    revisão como estavam) e o resultado é descartado sob prova (o que o ledger não deixa
+    registrar saindo fica, claimado, e vai em `details.cleanup.kept`). `PendingAdoption::apply`
+    faz o mesmo sem projeto a reverter. Se a gravação falha mas chegou ao disco, o descarte acha
+    a entrada já sem titular e **mantém** o arquivo: o pior resultado é arquivo que fica, nunca
+    arquivo apagado sob um dono.
+  - **A lease sobrevive a uma gravação que falhou**: o processo só solta `live/<token>` depois de
+    gravar o ledger sem ele. Soltar antes faria o próximo leitor reapá-lo como morto enquanto o
+    disco ainda lista suas claims, e `recover` removeria arquivo de processo vivo.
+  - **`claims.json` sem `ledger.lock` é dano, não ledger vazio**: sem lock e sem estado é "sem
+    ledger"; com estado e sem lock (visto em 5 olhadas seguidas, para não confundir as corridas
+    de uma olhada de criar/esvaziar o ledger) é `fault` e tudo recusa: `recover` não remove nada,
+    descarte mantém, `claims` diz `available:false`. O caminho que cria (nova adoção) toma um
+    lock novo e segue lendo o estado: nunca trata as claims como inexistentes.
+  - Limite aberto (BL111.3): a cópia em curso não pode ser interrompida pelo observador
+    `on_published`; os arquivos seguintes são copiados e desfeitos um a um, sem arquivo sem claim
+    e sem remoção sem prova. Seguro, só desperdiça trabalho.
 - Sem entradas nem owners o ledger inteiro é removido: workspace sem resultado pendente fica
   idêntico a um que nunca teve ledger.
 - `recover(workspace, token)` (lib) devolve `Recovery { reaped_holders, orphans, report }`:
@@ -262,8 +281,10 @@ arbitrário: não há como apontar o `recover` para uma pasta que o projeto não
 | `scene.resources.recover` | `hash` | Remove só **órfãos** (sem titular vivo), após a mesma prova de conteúdo de todo cleanup (BL097), sob o lease de cada raiz; faz o hash fora da trava do ledger | `{action, workspace, recovery:{reapedHolders, orphans, cleanup:{removedFiles, removedFolders, kept, shared, busyRoots}}}`. Cada arquivo mantido vira `warnings` do job. Erros (no job: `error.code`; esperando com `wait:true` chegam como `job_failed` com `details.job_code`): `claims_unavailable` (nada removido), `cancelled` (`details` leva o relatório parcial; o que já saiu continua removido e sem claim); `no_workspace` é recusa imediata, sem job |
 
 Progresso do `recover`: etapa `recover`, `total` = arquivos órfãos, `done` = arquivos decididos.
-Cancelamento (`job.cancel`) vale **entre arquivos**: o hash do arquivo em curso (cleanup
-compartilhado com todo descarte) não é interrompido; o que não foi alcançado continua órfão e claimado. Os
+Cancelamento (`job.cancel`) vale **entre arquivos e entre blocos do hash** do arquivo em curso
+(BL111.2): o hash lê em blocos de 1 MiB e consulta o token antes de cada um; cancelar no meio
+deixa aquele arquivo intacto e claimado e o erro (`details`) traz o relatório parcial e
+`undecidedFiles` (ele e os não alcançados). Descartes comuns (destrutor) continuam sem cancelamento. Os
 tipos de job existentes foram reaproveitados de propósito (`preflight`/`hash`) para não tocar o enum
 de `core::jobs`, que a frente S1 também altera; o rótulo (`Scene resources claims`,
 `Recover scene resources`) e a resposta dizem o que o job faz.
@@ -284,45 +305,40 @@ os claims deixa um órfão que o `recover` verifica e pode remover; Windows não
 
 ### BL111.2: fechamento de aceitar e fundir
 
-Estado: **BLOQUEADO por recurso**. O disco livre foi medido em 11,66 GiB, abaixo do piso de 12
-GiB da tarefa; nenhum build, teste ou gate rodou no head integrado, e nada abaixo foi
-implementado. O desenho foi derivado da leitura de `cleanup.rs`, `ledger.rs`, `import.rs`,
-`adopt.rs` e `EditorState::transaction`.
+Estado: **implementado e provado localmente** (a validar na revisão). Proveniência: `f8ae1c8`
+(PR #9) → merge `dbde018` → fix `7a24a7b` (falha de claim após a cópia) → docs `a23bb1e` → merge
+de `main` `e296b36` (S3 `ResourceSnapshot` e S4 `asset.identity`) no head integrado; as linhas de
+backlog e matriz foram mescladas linha a linha (BL109 e BL102/BL102b ficam com o estado da main).
 
-Proveniência da integração (local, **sem gates**): `f8ae1c8` (PR #9, fast-forward) → merge
-`dbde018` com `08ae71f` (main `2bc340d` + `bf62b26`; conflito só em `docs/backlog.md`, mantidas as
-linhas S2 de `f8ae1c8` e S3 da main) → diff de `532dad1` reaplicado como commit limpo `7a24a7b`
-(o commit `532dad1` original tem trailer indevido e não é publicado). Evidência da correção em
-`532dad1`, medida pelo coordenador na base anterior: media inteiro, claims 12, falha 6, clippy do
-media verdes. Nada disso foi repetido no head integrado.
-
-Invariante que precisa valer: o resultado só é aplicado/aceito se a aceitação foi **gravada**; se
-não foi, o estado do projeto volta ao anterior e os arquivos continuam pertencendo ao titular
-(pendentes), de modo que um `recover` posterior pode levá-los sem tocar em nada aceito.
-
-| Subcaso | Hoje | Fechamento proposto | Prova exigida |
+| Subcaso | Antes | Agora | Prova |
 |---|---|---|---|
-| (b) aceitar | `Drop for Created` chama `Tracker::accept`, que ignora falha (`fault`) | `Created::accept(self) -> Result<(), JobError>` e `Tracker::accept -> Result<(), String>` (Err quando o `flush` falha); remover o efeito do `Drop` para aceitar (o `Drop` passa a só abandonar sem apagar entradas). `import::apply` e a adoção passam a chamar `accept` como **último passo dentro do closure** de `state.transaction`: um Err reverte o estado (`restore_exact`) e o resultado volta a ser descartado, sem sucesso falso | teste que bloqueia `claims.json.tmp` na aceitação: `apply` devolve erro, o projeto está igual (revisão, cenas, undo), o arquivo permanece; depois o titular morre e `recover` — **dois processos reais** — não toca o arquivo aceito porque nunca foi aceito, e a variante com aceite gravado também não o toca |
-| (c) fundir | `absorb` consome `other` e ignora falha do `transfer` | `absorb -> Result<(), (Created, JobError)>`: `transfer` grava antes de mover as listas em memória; em falha `other` volta intacto ao chamador (`import.rs`), que descarta os dois registros | teste que bloqueia `claims.json.tmp` na fusão; memória e disco continuam concordando sobre quem é o titular |
-| (d) `claims.json` sem `ledger.lock` | `acquire(create=false)` devolve `Ok(None)` e o ledger "vazio" é aceito | em `Tracker::open`, `None` com `claims.json` presente vira `fault` (falha fechada, distinta de ledger inexistente); conferir antes a ordem de remoção de quem esvazia o ledger (estado antes do lock) para não confundir com a corrida legítima | teste próprio: workspace com `claims.json` e sem `ledger.lock` → `adopt` recusa `before_changes`, `recover` recusa, descarte mantém |
+| (b) aceitar | `Drop for Created` chamava `Tracker::accept`, que ignora `fault` | `Tracker::accept -> Result`, `Created::accept`, `Provisional::accept -> Result<(), JobError>`; `Provisional::release` foi removido; `import::apply` e `PendingAdoption::apply` aceitam como último passo; erro reverte o projeto | `scene_claims_integrity.rs`: import e adoção com `claims.json.tmp` bloqueado → `claims_unavailable/accept`, projeto idêntico (resumo, revisão, `can_undo`), arquivos mantidos e claimados, `recover` não toca titular vivo; `scene_claims_processes.rs`: aceite recusado + `SIGKILL` → órfão recuperável; aceite gravado + `SIGKILL` → `recover` não remove nada |
+| (c) fundir | `absorb` consumia `other` e ignorava o `transfer` | `Created::absorb(&mut other) -> Result`: transferência gravada **antes** de mover listas; em falha `other` fica intacto e `import.rs` o descarta com relatório | `a_merge_the_ledger_cannot_write_fails_and_nobody_loses_ownership`: `prepare` falha com `after_changes`, as claims continuam com o titular original (1 titular, não órfã) |
+| (d) `claims.json` sem `ledger.lock` | `acquire(create=false)` → `Ok(None)` ("vazio") | `look_for_damage`: estado sem lock em 5 olhadas seguidas → `fault` | unidade (`a_state_file_without_its_lock...`, corrida `emptying_and_refilling...` com 3 escritores e 1 leitor: nunca dano), `scene_claims_integrity` e dois processos (`recover` recusa mesmo depois do `SIGKILL`, `claims.json` preservado) |
+| lease x gravação falha (achado novo) | `sync_lease` soltava `live/<token>` **antes** de gravar | solta depois da gravação; falha mantém a lease | unidade (`a_failed_write_never_gives_up_the_lease...`) e dois processos (`a_process_refused_its_acceptance_stays_alive...`) |
+| hash de recover | cancelamento só entre arquivos | `remove_file_unless_cancelled` passa o token ao hash (lê em blocos de 1 MiB e consulta antes de cada um); cancelar no meio deixa o arquivo intacto e claimado e o erro traz o relatório parcial + `undecidedFiles` | `cancelling_during_the_hash_of_a_large_file...` (arquivo esparso de 2 GiB cancelado após 40 ms) |
 
-Direção segura: se a aceitação chegou ao disco e o erro ainda assim foi devolvido (rename ok,
-sincronização falhou), o resultado é revertido e o arquivo fica sem entrada, ou seja, vaza em vez
-de ser apagado. Nunca o contrário. Isto não depende de retry em memória, PID ou marca em memória.
+Mutação (cada regra antiga reintroduzida, teste correspondente falha; resultados em
+`docs/migration/s2-integrity-mutations.md`): aceitar ignorando a gravação, fundir movendo antes e
+ignorando o `transfer`, soltar a lease antes de gravar, estado sem lock como ledger vazio, hash do
+`recover` sem o token.
 
-Cancelamento do hash de arquivo grande (BL112): `recover` só consulta o token entre arquivos. Para
-torná-lo cancelável no caminho compartilhado, o hash de `cleanup::remove_file` e do `recover`
-deve ler em blocos consultando `CancelToken`; um cancelamento no meio vira "mantido" (não prova
-identidade, não remove). Não implementado.
+Direção segura: se a aceitação chegou ao disco e o erro ainda assim foi devolvido, o descarte
+seguinte encontra a entrada já removida e mantém o arquivo (vaza em vez de apagar). Nunca o
+contrário; não depende de retry em memória, PID ou marca em memória.
 
-#### Harmonização com a S1 (PR #6, head `3c5383e`)
+#### Junção com a S1 (PR #6, head `008af90`), conferida e **não incorporada**
 
-Não incorporada. A S1 mantém o ownership até o descarte assíncrono terminar; o ponto de junção é
-`Provisional::discard`/`Created::remove`, que continuam síncronos aqui. Depois do merge, testar em
-conjunto: `job_discard` (o titular continua vivo e com claim durante o descarte; `recover` de um
-segundo processo não leva o que o descarte ainda processa), `scene_adopt_host`,
-`scene_import_cleanup` e as claims. A S1 declara `JobKind::Discard` (não lido aqui); `claims`/`recover` reaproveitam `preflight` e
-`hash` justamente para não colidir. Confirmar no merge.
+Um `git merge-tree` do head desta PR contra `t3/observable-job-discard` só conflita em
+`docs/backlog.md` e `docs/features/README.md`; `adopt.rs`, `cleanup.rs` e `mod.rs` mesclam sozinhos
+(a S1 ainda não vê `import.rs` mudado aqui, então a junção de `try_apply` é **semântica**). Ao
+integrar: (1) a S1 usa `drop(self.owned.release())` em `settle` e `try_apply`: trocar por
+`self.owned.accept()`; um `Err` volta como `Err(StaleAdoption {..})`/`RejectedImport` com o
+resultado **ainda dono** dos arquivos, e o descarte segue como job `discard` (é exatamente o
+contrato daqui: o resultado fica pendente e claimado); (2) mover o `accept` para dentro do
+closure de `state.transaction` em `try_apply`; (3) `Provisional::absorb` agora recebe `&mut
+Provisional` e devolve `Result`; (4) testes da S1 que usem `release()` passam a `accept().unwrap()`.
+`Provisional::discard`/`Created::remove` seguem síncronos, o ponto de junção do descarte assíncrono.
 
 #### `before_changes` x `after_changes`
 
@@ -330,6 +346,7 @@ segundo processo não leva o que o descarte ainda processa), `scene_adopt_host`,
 |---|---|---|---|---|---|
 | `before_changes` | ledger ilegível, de versão mais nova, caminho não UTF-8 | nada foi alterado | sim | ausentes | ausente |
 | `after_changes` (claim de arquivo/pasta publicada não gravada) | gravação falhou depois de copiar | o arquivo sem claim foi desfeito sob prova; nunca "nada foi alterado" | sim | sim: o que foi desfeito e o que a prova ou o ledger não deixou remover | relatório do descarte do restante do resultado |
+| `accept` | a gravação da aceitação falhou (último passo de `import::apply`/`PendingAdoption::apply`) | o resultado **não** foi aceito e o projeto está como estava; arquivos mantidos, ainda claimados | sim | ausentes | relatório do descarte (o que o ledger não deixou registrar fica em `kept`) |
 | `after_changes` (juntar-se a arquivo/pasta de outro resultado) | o ledger falhou ao registrar a dependência | o resultado foi recusado e descartado onde o ledger permite | sim | ausentes | relatório do descarte |
 
 ### Identidade por conteúdo (BL097)
@@ -391,15 +408,16 @@ Comandos (todos pelo helper `cargo-serial.py`):
 | lib + host (BL089/BL096) | `crates/media/tests/scene_import_cleanup.rs` (29) | adopt registra só o que criou; adopt em pasta existente e cancelado preservam o do usuário; dono remove ao cair e `release` mantém; import cancelado na 2ª cena, logo após o último arquivo, falho na 2ª cena e descartado sem apply deixam o workspace idêntico; apply mantém e `undo` não toca arquivos; projeto trocado e workspace trocado tornam stale e limpam; attach recusado tarde limpa e preserva a cena do usuário; destino pré-existente e arquivo reaproveitado ficam; arquivo trocado fica; raiz ocupada fica; host descartado sem commit limpa; `job.commit` após `project.open` de cópia é stale; `PendingAdoption` aceito/projeto trocado/workspace trocado/cena destacada/revisão trocada/não aplicado; import e adopt para a mesma cena nas duas ordens, dois imports (`street-2`) e nenhuma reivindicação vazada |
 | lib (BL096/BL097/BL095) | `crates/media/tests/scene_cleanup_ownership.rs` (23 + 1 medição ignorada) | aceitar/descartar em ordens opostas, três titulares, raiz pré-existente, grafia `ws/../ws`, outra cena, relatório `shared`, arquivo acrescentado na pasta do primeiro, segundo cancelado, estresse com threads; reescrita no lugar de mesmo tamanho, mtime restaurado, 1 byte, acréscimo, mesmos bytes, arquivo ilegível; `panic` em `materialize` e em `adopt` |
 | host (R5) | `crates/media/tests/scene_adopt_host.rs` (13) | adopt imediato como antes; `job.commit` no mesmo projeto; projeto trocado, cópia aberta de outro workspace, cena destacada e bundle trocado são stale e limpam; host descartado limpa; pasta existente preservada; dois jobs para a mesma cena; janela interativa aplica no `poll` e reporta falha |
-| lib (unidade) | `scene_resources::claims` (10) | ledger em disco: sobrevive a trackers e some vazio; lease preso mantém titular vivo mesmo com PID inventado; lease solto remove titular mesmo com PID vivo; último a sair; transferência; órfão reaproveitado; ledger ilegível ou de versão nova recusa |
-| **dois processos reais (BL111)** | `crates/media/tests/scene_claims_processes.rs` (11 + papel filho) | o binário de teste é reexecutado como segundo processo (`TESSEL_CLAIMS_ROLE`) e usa `adopt` de verdade: arquivo compartilhado sobrevive ao descarte de qualquer um, nos dois sentidos; último titular leva tudo; aceito nunca é removido pelo outro; ledger inconfiável recusa antes de copiar; ciclos de adopt/discard concorrentes deixam o workspace como estava; `SIGKILL` do titular vira órfão sem remover nada; reaproveitar o órfão (aceitar/descartar); `recover` remove só o órfão; arquivo reescrito depois da morte fica; titular vivo não é recuperado |
-| lib (unidade, BL111.1) | `scene_resources::recover` (3) | progresso em arquivos órfãos e ledger removido no fim; cancelar entre arquivos mantém o resto claimado, devolve o relatório parcial e uma nova execução termina; ledger ilegível recusa (`claims_unavailable`), nada removido, `claims` informa `available:false` |
+| lib (unidade) | `scene_resources::claims` (21) | ledger em disco: sobrevive a trackers e some vazio; lease preso mantém titular vivo mesmo com PID inventado; lease solto remove titular mesmo com PID vivo; último a sair; transferência; órfão reaproveitado; ledger ilegível ou de versão nova recusa; aceitar/fundir/esquecer recusam ledger com falha e devolvem erro quando a gravação falha, deixando entrada e titular como estavam; a lease não é solta quando a gravação falha; estado sem lock é dano (e pasta sem estado é ledger vazio); esvaziar e recriar em paralelo nunca é dano |
+| **dois processos reais (BL111)** | `crates/media/tests/scene_claims_processes.rs` (15 + papel filho) | o binário de teste é reexecutado como segundo processo (`TESSEL_CLAIMS_ROLE`) e usa `adopt` de verdade: arquivo compartilhado sobrevive ao descarte de qualquer um, nos dois sentidos; último titular leva tudo; aceito nunca é removido pelo outro; ledger inconfiável recusa antes de copiar; ciclos de adopt/discard concorrentes deixam o workspace como estava; `SIGKILL` do titular vira órfão sem remover nada; reaproveitar o órfão (aceitar/descartar); `recover` remove só o órfão; arquivo reescrito depois da morte fica; titular vivo não é recuperado; aceite recusado: processo vivo segue dono (lease mantida) e não é recuperado, `SIGKILL` depois → órfão recuperável; aceite gravado + `SIGKILL` → `recover` não remove; ledger sem lock recusa mesmo com o titular morto |
+| **aceitar/fundir (BL111.2)** | `crates/media/tests/scene_claims_integrity.rs` (7) | `import::apply` e `PendingAdoption::apply` com a gravação bloqueada: erro `claims_unavailable/accept`, projeto idêntico, arquivos mantidos e claimados; aceite gravado continua anexando; fusão com gravação bloqueada falha sem perder o dono; ledger sem lock recusa tudo |
+| lib (unidade, BL111.1) | `scene_resources::recover` (4) | progresso em arquivos órfãos e ledger removido no fim; cancelar entre arquivos e no meio do hash de um arquivo grande (2 GiB esparso) mantém o resto claimado, devolve o relatório parcial e uma nova execução termina; ledger ilegível recusa (`claims_unavailable`), nada removido, `claims` informa `available:false` |
 | **JSONL real (BL111.1)** | `crates/media/tests/scene_claims_jsonl.rs` (6) | processos `tessel-media`: titular morto por `SIGKILL` → `claims` lista órfãos sem remover arquivo e declara `readOnly:false`; `recover` como job (`wait:false`, `done==total`) remove só os órfãos e restaura o workspace; titular vivo não é recuperado (e `job.commit` mantém); arquivo reescrito fica e o job avisa; ledger ilegível → `available:false` e `claims_unavailable` sem remover; sem workspace → `no_workspace`; fim ordenado da sessão não deixa claims |
-| janela (BL111.1) | `workflow_tests.rs` (1) e `scripts/scene-claims-proof.py` | recusa sem workspace sem iniciar job; as duas operações voltam com job e o tick reporta o resultado; ledger ilegível falha com `claims_unavailable` na janela. A prova nativa dirige a janela própria por `op`/`get`/`invoke` com um segundo `tessel-media` real morto por `SIGKILL` |
+| janela (BL111.1) | `workflow_tests.rs` (1) e `scripts/scene-claims-proof.py` | recusa sem workspace sem iniciar job; as duas operações voltam com job e o tick reporta o resultado; ledger ilegível falha com `claims_unavailable` na janela. A prova nativa dirige a janela própria por `op`/`get`/`invoke` com um segundo `tessel-media` real morto por `SIGKILL`; 23 checks, inclusive o ledger sem `ledger.lock` (`available:false`, `recover` recusa e nada é removido) |
 | lib (unidade) | `scene_resources::*` e `directed_resources::lease` | bases, colisão de caixa, sessão/orçamento, lease |
 | regressão | `scene_project_guards`, `directed_resources*`, `package`, `interchange`, `import` | as guardas de pacote incompleto continuam valendo para o que não é transportado |
 
-Sem prova (não executado): Windows, escritor hostil concorrente, filesystem de rede, disco cheio real, cancelamento no meio do hash de um arquivo, botão de recuperação na janela, pixels/renderer, FFmpeg real além da suíte existente do
+Sem prova (não executado): Windows, escritor hostil concorrente, filesystem de rede, disco cheio real, cancelamento do `on_published` (BL111.3), botão de recuperação na janela, pixels/renderer, FFmpeg real além da suíte existente do
 crate, o custo do hash em build de release e a limpeza com raiz ocupada além de 200 ms.
 
 ## Consumidor integrado e prova de restauração
