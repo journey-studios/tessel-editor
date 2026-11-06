@@ -4,9 +4,10 @@
 // WHY this module does no domain work: camera, hierarchy, animation, sockets and draw order are
 // resolved by the core and arrive as numbers. Here a plan is only *checked* (is it a plan this
 // runtime can draw whole?) and *executed* (a perspective camera, one textured plane per layer,
-// in the order the plan lists them, and the Gaussian splats of Spark behind them, placed by the
-// node's world matrix). Anything the plan does not carry (light, weather, effects, rigs, data
-// maps) is refused with a typed error, never approximated.
+// in the order the plan lists them, and the Gaussian splats of Spark painted between them where the
+// plan's `afterLayers` says, each placed by its node's world matrix, which must be a similarity).
+// Anything the plan does not carry (light, weather, effects, rigs, data maps, a splat matrix with a
+// non-uniform or mirrored scale) is refused with a typed error, never approximated.
 //
 // The checks are pure (no GL, no DOM), so they run under `node --test` without a browser.
 
@@ -42,6 +43,41 @@ export const DIRECTED_SCENE_CAPABILITIES = {
   capabilities: SCENE_CAPABILITIES,
   resource_identity: ['generation', 'asset_id', 'revision_id', 'content_hash'],
   resource_kinds: ['still', 'splat'],
+};
+
+/**
+ * Relative tolerance of the similarity test of a splat's world matrix; the same number as the core's
+ * `SPLAT_SIMILARITY_TOLERANCE` (crates/core/src/scene_plan/validate.rs), and the guard below the
+ * same rule as its `splat_matrix_fault`, which the core already applies to every plan it builds or
+ * reads: this one covers a plan that reaches the runtime by another road.
+ */
+export const SPLAT_SIMILARITY_TOLERANCE = 1e-6;
+
+/**
+ * Why a column-major world matrix is not a similarity (rotation, one positive uniform scale,
+ * translation), or `null`. Spark 2.4.0 decomposes a splat's matrix and keeps `(sx + sy + sz) / 3`
+ * as its only scale, with no shear: anything else would be drawn as another picture than the plan's,
+ * so it is refused instead of approximated (BL123).
+ */
+export const splatMatrixFault = (m) => {
+  if (m[3] !== 0 || m[7] !== 0 || m[11] !== 0 || m[15] !== 1) return 'the matrix is not affine';
+  const axes = [
+    [m[0], m[1], m[2]],
+    [m[4], m[5], m[6]],
+    [m[8], m[9], m[10]],
+  ];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const lengths = axes.map((axis) => Math.sqrt(dot(axis, axis)));
+  const mean = (lengths[0] + lengths[1] + lengths[2]) / 3;
+  if (!Number.isFinite(mean) || lengths.some((length) => !(length > 1e-12))) return 'the scale is degenerate';
+  if (lengths.some((length) => Math.abs(length - mean) > SPLAT_SIMILARITY_TOLERANCE * mean)) return 'the scale is not uniform';
+  for (const [a, b] of [[0, 1], [0, 2], [1, 2]]) {
+    if (Math.abs(dot(axes[a], axes[b])) > SPLAT_SIMILARITY_TOLERANCE * mean * mean) return 'the axes are sheared';
+  }
+  const [x, y, z] = axes;
+  const cross = [y[1] * z[2] - y[2] * z[1], y[2] * z[0] - y[0] * z[2], y[0] * z[1] - y[1] * z[0]];
+  if (dot(x, cross) < 0) return 'the transform is mirrored';
+  return null;
 };
 
 // The camera planes of the origin's runtime (ThreeSceneRuntime: PerspectiveCamera(50, aspect, 0.1, 1000)).
@@ -227,7 +263,16 @@ export const parseDirectedLayer = (layer) => {
     if (held.format !== 'spz') throw invalid(`${at}/assetId`, 'a splat reads an spz');
     const after = integerAt(entry.afterLayers, `${at}/afterLayers`);
     if (after > planes.length) throw invalid(`${at}/afterLayers`, `expected at most ${planes.length} (the number of layers)`);
-    return { nodeId, assetId, after, world: matrixAt(found.node.worldMatrix, `${nodeAt}/worldMatrix`) };
+    const world = matrixAt(found.node.worldMatrix, `${nodeAt}/worldMatrix`);
+    const fault = splatMatrixFault(world);
+    if (fault) {
+      throw new RuntimeError(
+        'unsupported',
+        `The splat \`${nodeId}\` cannot be drawn as planned: ${fault} (a splat takes a rotation, one positive uniform scale and a translation)`,
+        { unsupported: 'splat_transform', node: nodeId, reason: fault, pointer: `${nodeAt}/worldMatrix` },
+      );
+    }
+    return { nodeId, assetId, after, world };
   });
   const listed = new Set(splats.map((splat) => splat.nodeId));
   for (const [nodeId, { node }] of nodes) {

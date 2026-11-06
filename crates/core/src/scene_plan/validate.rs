@@ -12,9 +12,13 @@ use super::model::{Capability, Domain, PlanLayer, PlanNode, PlanSplat, ScenePlan
 use super::{PLAN_VERSION, PlanError};
 
 /// Where each splat falls among the layers: the index of the first layer (plan order) whose node
-/// origin is strictly nearer to the camera than the splat node's origin, else `layers.len()`.
-/// Depth is the distance along the camera's viewing direction (`target - position`), taken at the
-/// node's world-matrix translation. Splats the nodes list but `splats` does not name are skipped.
+/// origin is in front of the camera and strictly nearer to it than the splat node's origin, else
+/// `layers.len()`. Depth is the distance along the camera's viewing direction
+/// (`target - position`), taken at the node's world-matrix translation (a dot product, not
+/// normalised: only the order and the sign matter). A layer at depth `<= 0` is on or behind the
+/// camera plane: it is not visible, so it must not count as "nearer" than anything (BL124). A splat
+/// that is itself on or behind the camera has no layer in front of it and takes `layers.len()`.
+/// Splats the nodes list but `splats` does not name are skipped.
 pub(super) fn derive_splat_slots(
     camera: &CameraState,
     nodes: &[PlanNode],
@@ -49,10 +53,56 @@ pub(super) fn derive_splat_slots(
             let splat_depth = depth(id);
             layer_depths
                 .iter()
-                .position(|layer| *layer < splat_depth)
+                .position(|layer| *layer > 0.0 && *layer < splat_depth)
                 .unwrap_or(layers.len())
         })
         .collect()
+}
+
+/// Relative tolerance of the similarity test of a splat's world matrix: column lengths may differ
+/// from their mean, and column directions from orthogonality, by this fraction. The matrices come
+/// from products of rotations and scales in `f64`, so honest ones are off by ~1e-12; Spark averages
+/// the three axis lengths into one scale (`SplatTransformer.updateFromMatrix`), so anything past
+/// this is an approximation the picture would carry without saying so (BL123).
+pub const SPLAT_SIMILARITY_TOLERANCE: f64 = 1e-6;
+
+/// Why the world matrix of a splat node is not a similarity (rotation, one positive uniform scale
+/// and a translation), or `None` when it is. Spark 2.4.0 draws a splat from the decomposed matrix
+/// with `scale = (sx + sy + sz) / 3` and no shear, so a non-uniform scale, a mirror or a shear
+/// would be drawn as something else than the plan says; the core refuses them instead.
+pub(super) fn splat_matrix_fault(matrix: &[f64; 16]) -> Option<&'static str> {
+    let m = matrix;
+    if m[3] != 0.0 || m[7] != 0.0 || m[11] != 0.0 || m[15] != 1.0 {
+        return Some("the matrix is not affine");
+    }
+    let axes = [[m[0], m[1], m[2]], [m[4], m[5], m[6]], [m[8], m[9], m[10]]];
+    let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let lengths = axes.map(|axis| dot(axis, axis).sqrt());
+    let mean = (lengths[0] + lengths[1] + lengths[2]) / 3.0;
+    if !mean.is_finite() || lengths.iter().any(|length| *length <= 1e-12) {
+        return Some("the scale is degenerate");
+    }
+    if lengths
+        .iter()
+        .any(|length| (length - mean).abs() > SPLAT_SIMILARITY_TOLERANCE * mean)
+    {
+        return Some("the scale is not uniform");
+    }
+    for (a, b) in [(0, 1), (0, 2), (1, 2)] {
+        if dot(axes[a], axes[b]).abs() > SPLAT_SIMILARITY_TOLERANCE * mean * mean {
+            return Some("the axes are sheared");
+        }
+    }
+    let [x, y, z] = axes;
+    let cross = [
+        y[1] * z[2] - y[2] * z[1],
+        y[2] * z[0] - y[0] * z[2],
+        y[0] * z[1] - y[1] * z[0],
+    ];
+    if dot(x, cross) < 0.0 {
+        return Some("the transform is mirrored");
+    }
+    None
 }
 
 /// What a plan with this content asks of a runtime: ascending, without repeats.
@@ -118,6 +168,14 @@ impl ScenePlan {
     /// Checks the plan against its own contract. `Ok` means a runtime can execute it as listed.
     /// Reports the first violation, with a JSON Pointer into the plan.
     pub fn validate(&self) -> Result<(), PlanError> {
+        self.validate_structure()?;
+        self.check_splat_transforms()
+    }
+
+    /// Every invariant except the similarity of the splat matrices, which depends on the frame and
+    /// not on the shot: a `PlanTimeline` template is validated with this so that one frame whose
+    /// splat is mirrored does not become the error of every frame of the shot.
+    pub(super) fn validate_structure(&self) -> Result<(), PlanError> {
         if self.version != PLAN_VERSION {
             return Err(PlanError::UnsupportedVersion {
                 found: u64::from(self.version),
@@ -139,6 +197,26 @@ impl ScenePlan {
         }
         self.check_unsupported(&index)?;
         self.check_uninterpreted()
+    }
+
+    /// A splat is drawn by Spark from its decomposed world matrix, which keeps one uniform scale
+    /// only: a node whose matrix (own scale or an ancestor's) is not a similarity is refused with
+    /// the node and the reason, never drawn as an approximation (BL123). Image planes are unaffected:
+    /// they take the whole matrix.
+    pub(super) fn check_splat_transforms(&self) -> Result<(), PlanError> {
+        for node in self
+            .nodes
+            .iter()
+            .filter(|node| node.kind == NodeKind::Splat)
+        {
+            if let Some(reason) = splat_matrix_fault(&node.world_matrix.0) {
+                return Err(PlanError::SplatTransform {
+                    node_id: node.id.clone(),
+                    reason,
+                });
+            }
+        }
+        Ok(())
     }
 
     fn check_output_and_camera(&self) -> Result<(), PlanError> {
@@ -323,6 +401,12 @@ impl ScenePlan {
                     format!("asset {} is not in resources", layer.asset_id),
                 ));
             };
+            if resource.is_splat() {
+                return Err(PlanError::invalid(
+                    format!("{at}/assetId"),
+                    "an image plane reads a png, not an spz",
+                ));
+            }
             if resource.alpha != layer.alpha {
                 return Err(PlanError::invalid(
                     format!("{at}/alpha"),

@@ -7,7 +7,9 @@
 //! about the camera, the animation or the matrices is computed again here. What the plan adds:
 //!
 //! - the **draw order** of the image planes, with the alpha mode of each layer, and the **splat
-//!   nodes** (Spark, S7) a runtime draws behind them with the node's world matrix;
+//!   nodes** (Spark, S7), each with the slot among the planes where a runtime paints it
+//!   (`afterLayers`) and drawn with the node's world matrix, which must be a similarity (rotation,
+//!   one positive uniform scale, translation: anything else is refused, never approximated);
 //! - the stable list of **resources** the frame requires, keyed by the bundle's `assetId`
 //!   (the identity; paths, revisions and hashes travel as metadata only);
 //! - a **version** and the **capabilities** a runtime must have to execute it (`requires`);

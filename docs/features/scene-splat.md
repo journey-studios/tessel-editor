@@ -7,10 +7,13 @@
 
 Lib, runtime e CLI headless **V no corpus sintético** (Chrome real, SwiftShader); pacote **V**
 (diretório e arquivo, sem as origens); export **V** com cópia privada do `spz` aprovado (S3/BL109, integrado).
-Monitor nativo (WKWebView) **V no corpus independente do S10** (`scripts/scene-splat-native-proof.py`, 119/119
-checks, instância própria, só pedidos semânticos). Cor guardada do splat (BL019-F1) **corrigida** e provada
-com controle negativo. Luz, clima, rigs e mapas de dados em nó `splat` continuam **recusados** por
-`unsupported`, com o nome do domínio. Aceite independente do S10: ver [Aceite S10](#aceite-independente-s10-pr-8).
+Monitor nativo (WKWebView): a prova `scripts/scene-splat-native-proof.py` (119 checks, instância própria, só pedidos
+semânticos) passou numa árvore **suja** de um head anterior; **não** vale para o head atual. A repetição, com árvore
+limpa depois do commit, com head e hashes reais, é registrada no corpo da PR e no comentário da entrega, nunca neste
+arquivo (que mudaria o head provado). Cor guardada do splat (BL019-F1) **corrigida** e provada com controle negativo.
+Luz, clima, rigs e mapas de dados em nó `splat` continuam **recusados** por `unsupported`, com o nome do domínio;
+uma matriz de splat que não é semelhança (escala não uniforme ou espelhada, cisalhamento) também (BL123). Aceite
+independente do S10: ver [Aceite S10](#aceite-independente-s10-pr-8); **BL121 continua BLOCKED**.
 
 ## Objetivo e limites
 
@@ -37,17 +40,44 @@ não entram numa cena dirigida: o bundle declara `spz` (F040 verifica o cabeçal
 - Forma de fio: a chave `splats` só existe com splat. Plano sem splat mantém os bytes do golden
   de PR4 (teste); a leitura aceita a chave ausente e `[]`. `PLAN_VERSION` não mudou.
 - Invariantes novos de `validate`: `splats` igual aos nós `splat` (ponteiro `/splats`,
-  `/splats/N/assetId`, `/splats/N/afterLayers` recalculado do próprio plano), recurso `spz` do próprio asset; recurso `spz` com `used_by` exato.
+  `/splats/N/assetId`, `/splats/N/afterLayers` recalculado do próprio plano), recurso `spz` do próprio asset; recurso `spz` com `used_by` exato;
+  uma camada de imagem **nunca** lê um recurso `spz` (`/layers/N/assetId`, BL126); a matriz de mundo de um nó `splat` é uma semelhança
+  (abaixo).
 - Mudança de contrato: `Domain::Splat` deixou de existir (antes: todo nó `splat` tornava o plano
   parcial). `Domain::ALL` tem 13 domínios; `Capability::ALL`, 9.
+
+## Matriz do splat: só semelhança (BL123)
+
+O Spark 2.4.0 (`covSplats` padrão `false`) desenha um splat pela matriz decomposta com
+`escala = (sx + sy + sz) / 3`, sem cisalhamento (`SplatTransformer.updateFromMatrix`; conferido no pacote
+`@sparkjsdev/spark` travado). Um plano irmão recebe a matriz inteira. Por isso `{2,1,1}` no nó ou num ancestral seria
+desenhado com escala isotrópica 1,33 (pai espelhado `{-1,1,1}`: média 1/3; pai não uniforme + filho rotacionado: cisalhamento
+perdido), e o pixel divergiria do plano em preview, `scene.render`, pacote e export, sem erro. O contrato do runtime é "recusado
+com erro tipado, nunca aproximado": o **core** recusa a matriz que não é rotação + uma escala uniforme positiva + translação.
+
+- Erro: `PlanError::SplatTransform { node_id, reason }`, código `unsupported`, `details { unsupported: "splat_transform", node, reason }`.
+  Razões: `the scale is not uniform`, `the transform is mirrored` (determinante negativo; dois espelhos são uma rotação e passam),
+  `the axes are sheared`, `the scale is degenerate`, `the matrix is not affine`.
+- Tolerância explícita: `SPLAT_SIMILARITY_TOLERANCE = 1e-6` (relativa: comprimento das colunas e ortogonalidade). Matrizes honestas
+  erram ~1e-12; o runtime tem a mesma constante.
+- Onde: `ScenePlan::build_with` (que `PlanTimeline` repete **por frame**: `at_frame` recalcula as matrizes e confere de novo, e o molde do
+  tiro não carrega a recusa de um frame aos demais), `ScenePlan::validate` (logo `from_json`, `SceneSlots::prepare`) e uma guarda no
+  runtime (`parseDirectedLayer`, mesmo código `unsupported`) para um plano que chegue por outro caminho. Um plano parcial
+  (`allow_partial`) não contorna: não é domínio, é a matriz.
+- Limite: canais de desempenho não animam escala (só valor estático), então na prática a recusa vale para todos os frames do tiro; a
+  verificação por frame é a defesa que não depende disso. Não há suporte aproximado nem `covSplats` (exigiria `extSplats`).
 
 ## Ordem de pintura e limites do Spark
 
 O **core** decide quem está na frente de quem (o runtime só executa): `after_layers` é o índice, na
-ordem dos `layers`, do primeiro plano cuja origem de nó está **estritamente mais perto da câmera**
-que a origem do nó do splat (profundidade = distância ao longo de `target − position`, na
-translação da `world_matrix`); se nenhum está, `layers.len()`. `0` = atrás de todos os planos,
-`layers.len()` = na frente de todos. Profundidade igual não é "mais perto": o splat é pintado depois.
+ordem dos `layers`, do primeiro plano **visível** (profundidade `> 0`) cuja origem de nó está
+**estritamente mais perto da câmera** que a origem do nó do splat (profundidade = produto escalar de
+`posição do nó − câmera` com `target − position`, na translação da `world_matrix`); se nenhum está,
+`layers.len()`. `0` = atrás de todos os planos, `layers.len()` = na frente de todos. Profundidade igual
+não é "mais perto": o splat é pintado depois. **Um plano com profundidade `<= 0` (no plano da câmera ou
+atrás dela) é invisível e nunca conta como mais perto** (BL124): câmera em z=9, plano A em z=12 (atrás),
+plano B opaco em z=-2 e splat em z=0 dão `afterLayers = 2` (antes: `0`, e B cobria o splat). Um splat
+que ele mesmo está atrás da câmera não tem plano visível à frente e fica em `layers.len()`.
 O validador recalcula o valor só com o plano (câmera, matrizes, layers): outro valor é
 `invalid_plan` em `/splats/N/afterLayers`.
 
@@ -57,6 +87,11 @@ para a câmera exata do pedido (`settle`); por fim os planos restantes. Um plano
 reordenado por profundidade: só o splat é encaixado. Entre splats da mesma fatia a ordem é a do
 Spark por câmera (a ordem de `splats` não é ordem de pintura).
 
+Ordem de pintura **não monotônica em profundidade** (ex.: `[A prof. 5, B prof. 20]`, splat em 10): a regra pega o
+**primeiro** plano da lista mais perto que o splat (A, índice 0), então o slot é 0 e B, mais longe porém pintado depois
+na lista, cobre o splat. É coerente com a regra escrita (o plano nunca é reordenado por profundidade), é um limite
+assumido e está registrado em BL122.
+
 Limites assumidos: a decisão usa a **origem do nó** (um plano grande atravessado pela nuvem ou um
 splat que cruza um plano não é partido; o splat inteiro fica de um lado do plano). Planos com alfa
 mostram o splat pelo alfa; um plano opaco que está na frente o esconde. Não há conversão de
@@ -65,27 +100,36 @@ lateralidade (o mesmo `.spz` e a mesma câmera do runtime de Spark existente).
 ## Cor (BL019-F1)
 
 O compositor escreve o espaço de trabalho como está (`outputColorSpace = LinearSRGBColorSpace`, para
-que imagens cheguem intactas). O Spark 2.4.0 liga `encodeLinear` sempre que a saída não é sRGB e
-decodifica a cor do splat com sRGB→linear, que ninguém recodifica: `(230,49,49)` saía `(203,7,7)`
-(achado do S10 no caminho de projeto existente; o caminho dirigido usa o mesmo palco). Correção em
-`runtime/src/splat-stage.js` (`keepStoredColour`): após o `onBeforeRender` do próprio Spark, o
-uniform `encodeLinear` é mantido em `false` — só no material do Spark. Imagens não passam por esse
-material. Efeito: a cor guardada é a mostrada, nos dois caminhos (projeto e cena dirigida).
+que imagens cheguem intactas). Todo quadro de splat é desenhado num **render target**, e para um render target o
+Spark 2.4.0 **não** olha `renderer.outputColorSpace`: usa `THREE.ColorManagement.workingColorSpace` (linear;
+`SparkRenderer.ts`, espaço de saída do desenho), então liga `encodeLinear` a cada desenho e decodifica a cor do splat com
+sRGB→linear, que ninguém recodifica: `(230,49,49)` saía `(203,7,7)` (achado do S10 no caminho de projeto
+existente; o caminho dirigido usa o mesmo palco). Correção em `runtime/src/splat-stage.js` (`keepStoredColour`): após o
+`onBeforeRender` do próprio Spark, o uniform `encodeLinear` é mantido em `false` — só no material do Spark. Imagens não
+passam por esse material. Efeito: a cor guardada é a mostrada, **nos dois caminhos** (projeto `scene` e cena dirigida); o
+caminho de projeto também mudou de cor ([F030](spark.md)).
 Reprodução e controle negativo: `runtime/test/directed-scene-splats.test.mjs` ("BL019-F1"): sem a
 correção falha com `rgb(202,7,7)` no centro; com ela, a diferença ao armazenado é ≤ 6 e o plano de
 imagem na mesma cena fica a ≤ 1. O vermelho puro `(255,0,0)` não vê o defeito (0 e 1 são invariantes
-da conversão), por isso os testes antigos passavam.
+da conversão), por isso os testes antigos passavam. O teste de Chrome do caminho de projeto depende do harness S10
+(`baseline_splat_colour`); no repositório só o caminho dirigido tem teste.
 
 ## Recursos e orçamento
 
 - O host (`SceneSlots`) carrega um splat como `asset.load` `kind: "splat"`, `meta.format: "spz"`
   e a mesma extensão aditiva `scene` (identidade). Antes de gastar um slot, o host abre o
   cabeçalho (`core::splat::inspect`): um arquivo que não é SPZ é `resource_mismatch`.
-- Orçamento: arquivo + 16 bytes por splat, no host e no runtime (`sceneEntryBytes`). Figuras
-  continuam em `largura × altura × 4`.
-- Cada quadro empresta uma malha ao splat (`splatLease`) e a devolve ao terminar ou ao ser
-  abortado; o mesmo arquivo em dois nós dá duas malhas, liberadas com o quadro. Perda de contexto
-  reconstrói das bytes guardadas.
+- Orçamento de memória: arquivo + 16 bytes por splat, **uma vez por recurso**, no host e no runtime (`sceneEntryBytes`):
+  é o que o arquivo decodificado ocupa. Figuras continuam em `largura × altura × 4`.
+- Decodificação compartilhada (BL125): cada quadro empresta uma malha por nó (`splatLease`) e a devolve ao terminar ou ao
+  ser abortado. A primeira malha é a do próprio recurso; as demais são `SplatMesh` sobre os **mesmos** `packedSplats`
+  (`shareSplatMesh`): N nós de um arquivo decodificam 1 vez, não N−1 por quadro (antes: 40 nós de 1 M de splats = 39
+  decodes por quadro, ~624 MB fora do orçamento). Ao devolver, a malha emprestada solta os dados sem descartá-los. Perda de
+  contexto reconstrói das bytes guardadas.
+- Orçamento de desenho por quadro (BL125): ordenar e desenhar custa por **nó**, não por arquivo. O quadro soma, sobre
+  os nós `splat`, os splats do arquivo de cada um e é recusado com `resource_budget` acima de `8 Mi` splats (`LIMITS.frameSplats`
+  no runtime, `DEFAULT_FRAME_SPLATS` no host, mesmo número; `details`: `frame_splats`, `limit`/`max_frame_splats`), antes
+  de qualquer empréstimo ou slot. O valor é um teto de segurança, não uma medição de custo por quadro (não medida).
 - Export (S3/BL109, integrado): o `spz` aprovado entra no conjunto de recursos exigidos do job
   (`required_assets` vem do plano), é copiado e conferido por SHA-256 para a cópia privada 0444 do próprio
   estágio e o renderer lê a cópia, não o original. Arquivos do diretório do bundle que o manifesto não aprovou
@@ -111,10 +155,10 @@ Ver a seção de resultados abaixo e `docs/backlog.md` (BL025).
 
 | Superfície | Teste | Prova |
 |---|---|---|
-| Core (lib) | `crates/core/tests/scene_plan_splat.rs` | plano/matriz/recurso/capacidade, JSON sem splat idêntico, canais de desempenho, recusas de luz/clima/rig, tampering |
-| Runtime puro | `runtime/test/directed-scene-splats.test.mjs` (1–4, 11) | parser do plano, recusas com ponteiro, identidade do recurso, orçamento |
-| Runtime em Chrome | mesmo arquivo (5–10) | posição por oráculo pinhole independente, splat entre planos por profundidade (atrás, na frente, entre dois), cor guardada vs. imagem (BL019-F1), ordem/repetição/frio, compartilhamento, recusas tipadas, perda de contexto |
-| Host/render | `crates/render/tests/scene_splat_frames.rs` | frame headless 0 e 24 contra oráculo, mesmo hash em qualquer ordem, arquivo não-SPZ, export = `scene.render` quadro a quadro e MP4 verificado |
+| Core (lib) | `crates/core/tests/scene_plan_splat.rs` (+ unitário em `scene_plan/timeline.rs`) | plano/matriz/recurso/capacidade, JSON sem splat idêntico, canais de desempenho, recusas de luz/clima/rig, tampering (inclui plano de imagem lendo `spz`, BL126), matriz que não é semelhança (BL123) no nó, em ancestral, espelhado, cisalhado, degenerado, no leitor e por frame, plano atrás da câmera (BL124) |
+| Runtime puro | `runtime/test/directed-scene-splats.test.mjs` | parser do plano, recusas com ponteiro, identidade do recurso, orçamento, guarda de semelhança com a mesma tolerância do core |
+| Runtime em Chrome | mesmo arquivo | posição por oráculo pinhole independente, splat entre planos por profundidade (atrás, na frente, entre dois), **dois splats de arquivos e contagens diferentes em slots distintos, cada um sobre os seus planos e sob o seguinte, em ordem trocada e repetida (T1/BL127)**, cor guardada vs. imagem (BL019-F1), ordem/repetição/frio, **40 nós de um arquivo = 1 decodificação e recusa por soma de splats (BL125)**, recusas tipadas, perda de contexto |
+| Host/render | `crates/render/tests/scene_splat_frames.rs` | frame headless 0 e 24 contra oráculo, mesmo hash em qualquer ordem, arquivo não-SPZ, export = `scene.render` quadro a quadro e MP4 verificado, orçamento por soma de splats dos nós (40 nós, sem nuvem grande) |
 | Pacote | `crates/media/tests/scene_splat_package.rs` | adoção, pacote (dir e arquivo), restauração sem origens, mesmo hash, replanejamento |
 
 ### Provas adicionadas na recuperação (S3/S4 integrados)
@@ -154,12 +198,19 @@ não foi relaxada e o oráculo não foi tocado: é **BL120** (emenda do S10, for
 documento. Controle negativo da correção de cor: com `keepStoredColour` desligado o mesmo harness volta a medir
 `(203,7,7)`, `(7,149,15)`, `(104,11,149)` e as fases de cor falham.
 
+O PR #8 já não é draft (head `a848007`; o harness e `tolerances.json`, `amendments: []`, não mudaram desde `0d95be1`).
+Uma recomputação independente com o `expected.json` do PR #8 (mistura gaussiana `a·frente + (1−a)·trás`) dá distâncias de canal à
+cor da frente de 17, 21, 27, 17, **42, 50** nos frames 0, 12, 23, 24, 36, 47: a regra de 40 reprova os frames 36 e 47 com
+qualquer renderer correto, o que sustenta a hipótese de BL120 (emenda do S10, que decide; este PR não toca em tolerância nem
+harness). **Nada disso transforma FAIL em PASS**: `splat_render`, `splat_export` e `splat_package` seguem FAIL e `full_av`/áudio
+BLOCKED.
+
 `full_av` precisa do mix de áudio do S9 (`scene.export` ainda recusa o bundle com áudio): fica BLOCKED e não conta
 como pass. As fases `splat_*` devem ser reexecutadas (BL121) com o merge de S7 e S9 e a emenda BL120.
 
 ### Correções da revisão PR13
 
-A timeline recalcula `afterLayers` após atualizar câmera e matrizes em cada frame; o slot do
+Rodada 1: a timeline recalcula `afterLayers` após atualizar câmera e matrizes em cada frame; o slot do
 frame molde não é reutilizado quando a câmera muda a ordem de profundidade. A regressão
 `timeline_recomputes_splat_order_when_the_camera_orbits_past_the_planes` exige mudança de slot,
 compara os planos em cache com `ScenePlan::build` e valida cada plano.
@@ -167,9 +218,29 @@ A derivação retorna imediatamente sem splats; com splats, indexa os nós uma v
 buscas lineares repetidas. Isso preserva o caminho de planos sem splats. O script nativo lê
 o corpus uma só vez com UTF-8 explícito e grava seu relatório em UTF-8.
 
-Integração com main6f7a944: conflito apenas na matriz, preservando F043 e F048. No código
-integrado passaram fmt/clippy workspace, scene_plan_splat10, scene_splat_package1,
-scene_splat_frames8 com Chrome real/runtime obrigatório e build desktop. Prova nativa
-repetida:119/119, instância própria sob lockGPU e piso12GiB
-(`/tmp/tessel-s7-main-native.json`). Os FAILs de composição e gates de áudio/S10 continuam
-abertos; esta atualização não altera oráculo/tolerâncias nem constitui aceite completo.
+Rodada 2 (revisão independente, [review 5800820718](https://github.com/journey-studios/tessel-editor/pull/13#pullrequestreview-5800820718)):
+
+| Finding | Reproduzido? | Correção | Prova |
+|---|---|---|---|
+| F1 escala não uniforme/espelhada/cisalhada aproximada em silêncio (BL123) | Confirmado na fonte do Spark 2.4.0 instalado (`SplatTransformer.updateFromMatrix`, média das escalas, sem cisalhamento) | Recusa tipada no core (`SplatTransform`), por frame na timeline, no leitor e guarda no runtime | `a_splat_whose_matrix_is_not_a_similarity_is_refused_never_approximated`, `the_reader_refuses...`, `a_frame_cut_from_a_template...`, `BL123` do runtime |
+| F2 plano atrás da câmera tira o slot (BL124) | Reproduzido: câmera z=9, A z=12, B z=-2, splat z=0 dava `0` (esperado `2`); mutação da correção falha o teste | `derive_splat_slots` ignora camadas com profundidade `<= 0` | `a_plane_behind_the_camera_does_not_take_the_splats_slot`, `the_timeline_ignores_a_plane_the_camera_flies_past` |
+| F3 N nós de um arquivo: N−1 decodificações/quadro fora do orçamento (BL125) | Confirmado por leitura de `splatLease` (decodificação por empréstimo extra); a mutação sem compartilhamento reprova o teste, que agora mede 40 nós ⇒ 1 `PackedSplats` | `packedSplats` compartilhados + teto de splats por quadro somando por nó, no host e no runtime | `BL125` (Chrome), `a_frame_is_budgeted_by_the_splats_every_node_draws...` (host) |
+| F4 plano de imagem lendo `spz` passava `validate` (BL126) | Reproduzido pelo caso de adulteração; mutação falha o teste | `check_layers` recusa recurso `spz` | caso novo em `a_plan_that_lies_about_its_splats...` |
+| F5 backlog/matriz/comentários contraditórios | Confirmado por leitura | Backlog, matriz, F030, comentários de `scene_plan/mod.rs`, `directed-scene.js` e `splat-stage.js` (explicação de `encodeLinear`) reconciliados | revisão |
+| T1 falta de pixels com dois splats em slots distintos (BL127) | n/a (teste ausente) | teste de Chrome com arquivos e contagens diferentes, ordem trocada e repetida; mutação (todos os splats no slot 0) o reprova | `T1` do runtime |
+
+Integração com main6f7a944: conflito apenas na matriz, preservando F043 e F048.
+
+#### Estado de validação desta rodada (escrito vs executado)
+
+Tudo o que a tabela acima diz de "mutação reprova", e os números abaixo, vêm da execução do autor da correção
+numa árvore **suja** sobre o head `6a0bdd5`, antes do commit: são **atribuídos**, não repetidos no head commitado.
+
+| Item | Estado |
+|---|---|
+| `cargo fmt` (conferido de novo ao commitar), `check`, `clippy -D warnings` | atribuído: passaram na árvore suja; fmt reconferido com `rustfmt --check` |
+| `tessel-editor-core`: `scene_plan_splat` (15), unitário da timeline (1), `scene_splat_frames` do orçamento (1) | atribuído: passaram |
+| Runtime em Chrome real (`directed-scene-splats.test.mjs`, 15) e mutações de F1/F2/F3/F4/T1 | atribuído: passaram; mutações reprovaram os testes novos |
+| `cargo test --workspace` | **não concluiu**: abortou em `playback_follows_the_audio_clock_or_says_why_it_cannot` (a asserção do `sample_rate` do dispositivo de áudio esperava 48000 e o AirPods mediu 24000); falha do ambiente/teste, não do splat; o PR #12 corrige a asserção e não foi importado aqui |
+| Restante de `scene_splat_frames`, `scene_splat_package`, `media`, `desktop` (exceto o teste acima) e prova nativa do monitor | **pendentes** neste head; a prova nativa de 119 checks é de outro head sujo e não vale |
+| Harness S10 (`splat_*`, `full_av`) | **BLOCKED/FAIL** como antes (BL120/BL121); nada alterado |

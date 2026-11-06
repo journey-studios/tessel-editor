@@ -13,7 +13,7 @@ import { closeVideo, frameCount, openVideo, proveVideo, readFrame } from './nati
 import { RuntimeError, expandPattern } from './protocol.js';
 import { LIMITS, RetentionCounters, rgbaBytes } from './retention.js';
 import { splatFileName } from './splat-format.js';
-import { loadSplatMesh } from './splat-stage.js';
+import { disposeSharedSplatMesh, loadSplatMesh, shareSplatMesh } from './splat-stage.js';
 
 const FRAME_CACHE_LIMIT = 16;
 // Preview-proxy frames are small (a 540p picture is ~2 MiB decoded), and a scrub that turns back
@@ -392,7 +392,9 @@ export class AssetStore {
 
   /**
    * A splat mesh for one scene to draw. A mesh has a single parent, so the asset's own mesh goes
-   * to the first taker and further takers (two objects, or layers of one frame) decode their own.
+   * to the first taker and further takers (two objects, or nodes of one frame) get another mesh over
+   * the packed splats that mesh decoded: one decode and one upload per file however many nodes use
+   * it (BL125). The shared data stays owned by the asset's own mesh and goes with it.
    */
   async splatLease(id) {
     const entry = this.get(id);
@@ -415,8 +417,8 @@ export class AssetStore {
         },
       };
     }
-    const mesh = await loadSplatMesh(entry.bytes, entry.fileName, entry.label);
-    return { mesh, release: () => mesh.dispose() };
+    const mesh = shareSplatMesh(entry.mesh);
+    return { mesh, release: () => disposeSharedSplatMesh(mesh) };
   }
 
   /** Spark keeps splat data in textures of the WebGL context; after a loss they are rebuilt from the bytes. */

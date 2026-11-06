@@ -506,6 +506,16 @@ export class Compositor {
       materialOf: (alpha, index, texture) => this.sceneMaterial(frame.order, alpha, index, texture, keep),
       keep,
     });
+    // What the frame will sort and draw: every node counts the splats of its file, however many nodes
+    // share one decode (the data is shared, the draw is not). Refused before any lease or draw.
+    const frameSplats = spec.splats.reduce((total, splat) => total + (bound.get(splat.assetId).entry.count ?? 0), 0);
+    if (frameSplats > this.limits.frameSplats) {
+      throw new RuntimeError(
+        'resource_budget',
+        `The frame would draw ${frameSplats} splats across ${spec.splats.length} splat nodes (limit ${this.limits.frameSplats})`,
+        { frame_splats: frameSplats, nodes: spec.splats.length, limit: this.limits.frameSplats },
+      );
+    }
     // Splats are leased from the asset store for this frame only (a mesh has one parent, and the
     // GPU side is rebuilt from the kept bytes after a lost context); `keep` hands them back when
     // the frame ends, drawn, failed or cancelled.

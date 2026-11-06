@@ -292,8 +292,9 @@ pub struct PlanSplat {
     pub asset_id: String,
     /// How many of `layers` (in plan order) are painted before this splat: `0` is behind every
     /// plane, `layers.len()` in front of every plane. It is the index of the first layer whose
-    /// node origin is strictly nearer to the camera than the splat node's origin (depth along
-    /// the camera's viewing direction), else `layers.len()`. Derived from the plan alone
+    /// node origin is in front of the camera (depth `> 0`) and strictly nearer to it than the splat
+    /// node's origin (depth along the camera's viewing direction), else `layers.len()`: a layer
+    /// on or behind the camera is invisible and never counts. Derived from the plan alone
     /// (`derive_splat_slots`); a plan that states another value is refused.
     pub after_layers: usize,
 }

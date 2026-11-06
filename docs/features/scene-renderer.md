@@ -78,7 +78,7 @@ Todos com `code` estável, sem desenho parcial:
 | `resource_unresolved` | sem entrada no mapa, slot não carregado, arquivo ausente ou raiz ilegível |
 | `resource_mismatch` | revisão/hash difere do plano, tamanho difere, ou o tipo não é o do plano (`still` para PNG; `splat` `.spz` para splat — o host recusa antes um arquivo que não é SPZ) |
 | `resource_stale` | geração mais velha que a em uso, ou slot de outra identidade/geração |
-| `resource_budget` | slots/bytes além do orçamento (host: 32 slots, 512 MiB; runtime: 64 e 768 MiB). Um splat conta os bytes do arquivo mais 16 bytes por splat, nos dois lados |
+| `resource_budget` | slots/bytes além do orçamento (host: 32 slots, 512 MiB; runtime: 64 e 768 MiB). Um splat conta os bytes do arquivo mais 16 bytes por splat, uma vez por recurso, nos dois lados. Além disso o quadro soma os splats de cada nó `splat` (arquivo compartilhado conta por nó) e é recusado acima de 8 Mi (`details.frame_splats`; host `DEFAULT_FRAME_SPLATS`, runtime `LIMITS.frameSplats`), BL125 |
 | `resource_path_invalid` | caminho relativo no mapa ou link que sai da raiz aprovada |
 | `bundle_invalid` | importação ou gates (`edit_join_issues` + `temporal_issues`) do bundle (`details.issues`) |
 | `cancelled` | frame substituído por outro mais novo (último ganha) ou `frame.cancel` |

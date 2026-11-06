@@ -83,6 +83,21 @@ fn add_splat_node(
         }));
 }
 
+fn set_node(doc: &mut Value, scene: &str, node: &str, key: &str, value: Value) {
+    let nodes = definition_mut(doc, scene)["nodes"].as_array_mut().unwrap();
+    nodes.iter_mut().find(|n| n["id"] == node).unwrap()[key] = value;
+}
+
+fn scale(x: f64, y: f64, z: f64) -> Value {
+    json!({ "x": x, "y": y, "z": z })
+}
+
+/// A rotation of `degrees` about z, as the quaternion the bundle stores.
+fn about_z(degrees: f64) -> Value {
+    let half = degrees.to_radians() / 2.0;
+    json!({ "x": 0, "y": 0, "z": half.sin(), "w": half.cos() })
+}
+
 fn with_splat(base: &str, scene: &str, parent: &str) -> Value {
     let mut doc = parse(base);
     add_asset(&mut doc, "cloud", "splats/cloud.spz");
@@ -407,6 +422,22 @@ fn a_plan_that_lies_about_its_splats_is_refused_with_the_pointer() {
         }),
         "/splats/0/assetId",
     );
+    // An image plane (and its layer) reads the spz of a splat: only the runtime used to refuse it.
+    assert_invalid(
+        tampered(&plan, |wire| {
+            for node in wire["nodes"].as_array_mut().unwrap() {
+                if node["id"] == "figure" {
+                    node["assetId"] = json!("cloud");
+                }
+            }
+            for layer in wire["layers"].as_array_mut().unwrap() {
+                if layer["nodeId"] == "figure" {
+                    layer["assetId"] = json!("cloud");
+                }
+            }
+        }),
+        "/layers/1/assetId",
+    );
     // A splat that is also drawn as a layer.
     assert_invalid(
         tampered(&plan, |wire| {
@@ -475,4 +506,276 @@ fn timeline_recomputes_splat_order_when_the_camera_orbits_past_the_planes() {
         slots.len() > 1,
         "camera must cross a depth ordering boundary"
     );
+}
+
+fn refused_transform(error: PlanError, node: &str) -> &'static str {
+    match error {
+        PlanError::SplatTransform { node_id, reason } => {
+            assert_eq!(node_id, node);
+            reason
+        }
+        other => panic!("expected SplatTransform, got {other:?}"),
+    }
+}
+
+/// BL123: Spark keeps one uniform scale per splat (`(sx + sy + sz) / 3`, no shear), so a plan whose
+/// splat matrix is anything else than a similarity is refused with the node and the reason, from
+/// the node's own scale or from an ancestor's, instead of drawn approximated.
+#[test]
+fn a_splat_whose_matrix_is_not_a_similarity_is_refused_never_approximated() {
+    let cases: [(&str, &str, Value, &str); 5] = [
+        (
+            "own non-uniform scale",
+            "cloud-node",
+            scale(2.0, 1.0, 1.0),
+            "the scale is not uniform",
+        ),
+        (
+            "own mirror",
+            "cloud-node",
+            scale(-1.0, 1.0, 1.0),
+            "the transform is mirrored",
+        ),
+        (
+            "mirrored parent",
+            "root",
+            scale(-1.0, 1.0, 1.0),
+            "the transform is mirrored",
+        ),
+        (
+            "non-uniform parent",
+            "root",
+            scale(1.0, 3.0, 1.0),
+            "the scale is not uniform",
+        ),
+        (
+            "collapsed axis",
+            "cloud-node",
+            scale(1.0, 0.0, 1.0),
+            "the scale is degenerate",
+        ),
+    ];
+    for (name, target, value, reason) in cases {
+        let mut doc = with_splat(RECIPES, "scene-a", "root");
+        set_node(&mut doc, "scene-a", target, "localScale", value);
+        let scene = import(doc);
+        let error = ScenePlan::build(&scene, 0).unwrap_err();
+        assert_eq!(error.code(), "unsupported", "{name}");
+        assert_eq!(error.details().unwrap()["node"], "cloud-node", "{name}");
+        assert_eq!(refused_transform(error, "cloud-node"), reason, "{name}");
+        // The timeline answers like `build`, and a partial plan is no way around it.
+        assert_eq!(
+            PlanTimeline::new(&scene).build(0).unwrap_err().to_string(),
+            ScenePlan::build(&scene, 0).unwrap_err().to_string(),
+            "{name}"
+        );
+        let partial = ScenePlan::build_with(
+            &scene,
+            0,
+            PlanOptions {
+                allow_partial: true,
+            },
+        );
+        assert!(
+            matches!(partial, Err(PlanError::SplatTransform { .. })),
+            "{name}"
+        );
+    }
+
+    // A parent that scales non-uniformly while the child is rotated shears the child: refused too.
+    let mut doc = with_splat(RECIPES, "scene-a", "root");
+    set_node(
+        &mut doc,
+        "scene-a",
+        "root",
+        "localScale",
+        scale(1.0, 2.0, 1.0),
+    );
+    set_node(
+        &mut doc,
+        "scene-a",
+        "cloud-node",
+        "localRotation",
+        about_z(45.0),
+    );
+    let error = ScenePlan::build(&import(doc), 0).unwrap_err();
+    assert!(
+        matches!(error, PlanError::SplatTransform { .. }),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn rotation_with_uniform_positive_scale_and_two_mirrors_are_still_drawn() {
+    // Uniform scale 2.5 on the node and 2 on the parent, a rotated node: a similarity.
+    let mut doc = with_splat(RECIPES, "scene-a", "root");
+    set_node(
+        &mut doc,
+        "scene-a",
+        "root",
+        "localScale",
+        scale(2.0, 2.0, 2.0),
+    );
+    set_node(
+        &mut doc,
+        "scene-a",
+        "cloud-node",
+        "localScale",
+        scale(2.5, 2.5, 2.5),
+    );
+    set_node(
+        &mut doc,
+        "scene-a",
+        "cloud-node",
+        "localRotation",
+        about_z(37.0),
+    );
+    let plan = ScenePlan::build(&import(doc), 0).expect("rotation + uniform scale is a similarity");
+    assert_eq!(plan.validate(), Ok(()));
+    // Two mirrors make a half turn (determinant +1): not a reflection.
+    let mut doc = with_splat(RECIPES, "scene-a", "root");
+    set_node(
+        &mut doc,
+        "scene-a",
+        "root",
+        "localScale",
+        scale(-1.0, 1.0, 1.0),
+    );
+    set_node(
+        &mut doc,
+        "scene-a",
+        "cloud-node",
+        "localScale",
+        scale(-1.0, 1.0, 1.0),
+    );
+    ScenePlan::build(&import(doc), 0).expect("a double mirror is a rotation");
+}
+
+#[test]
+fn the_reader_refuses_a_splat_matrix_that_is_not_a_similarity_and_the_timeline_checks_each_frame() {
+    // A plan from outside whose splat matrix was stretched after the fact.
+    let plan = ScenePlan::build(&import(with_splat(RECIPES, "scene-a", "root")), 0).unwrap();
+    let stretched = tampered(&plan, |wire| {
+        for node in wire["nodes"].as_array_mut().unwrap() {
+            if node["id"] == "cloud-node" {
+                node["worldMatrix"][0] = json!(2.0);
+            }
+        }
+    });
+    assert!(
+        matches!(stretched, Err(PlanError::SplatTransform { .. })),
+        "{stretched:?}"
+    );
+    assert_eq!(plan.validate(), Ok(()));
+
+    // A performance channel never animates a scale (only a static value), so a refusal is the
+    // same for every frame of the shot and the timeline answers exactly as `build` does, in any order.
+    let mut doc = with_splat(SOCKETS, "scene-rig", "arm");
+    set_node(
+        &mut doc,
+        "scene-rig",
+        "stage",
+        "localScale",
+        scale(2.0, 1.0, 1.0),
+    );
+    let scene = import(doc);
+    let timeline = PlanTimeline::new(&scene);
+    for frame in [24, 0, 47, 12] {
+        let fresh = ScenePlan::build(&scene, frame);
+        assert!(
+            matches!(fresh, Err(PlanError::SplatTransform { .. })),
+            "frame {frame}"
+        );
+        assert_eq!(timeline.build(frame), fresh, "frame {frame}");
+    }
+}
+
+/// BL124: a layer on or behind the camera is invisible, so it never counts as "nearer".
+#[test]
+fn a_plane_behind_the_camera_does_not_take_the_splats_slot() {
+    // Camera (2, 1, 9) looking at (0, 1, 0). Layers in plan order: `backdrop`, `figure`.
+    let slot_of = |backdrop: [f64; 3], figure: [f64; 3], splat: [f64; 3]| -> usize {
+        let at = |p: [f64; 3]| json!({ "x": p[0], "y": p[1], "z": p[2] });
+        let mut doc = with_splat(RECIPES, "scene-a", "root");
+        set_node(
+            &mut doc,
+            "scene-a",
+            "backdrop",
+            "localPosition",
+            at(backdrop),
+        );
+        set_node(&mut doc, "scene-a", "figure", "localPosition", at(figure));
+        set_node(
+            &mut doc,
+            "scene-a",
+            "cloud-node",
+            "localPosition",
+            at(splat),
+        );
+        let plan = ScenePlan::build(&import(doc), 0).unwrap();
+        assert_eq!(
+            plan.validate(),
+            Ok(()),
+            "the validator derives the same slot"
+        );
+        assert_eq!(ScenePlan::from_json(&plan.to_json()), Ok(plan.clone()));
+        plan.splats[0].after_layers
+    };
+    // The review's case: `backdrop` is behind the camera (z 12), `figure` (z -2) is opaque and
+    // farther than the splat (z 0). The splat is painted after both: 2, not 0.
+    assert_eq!(
+        slot_of([0.0, 0.0, 12.0], [0.5, 0.0, -2.0], [0.5, 0.0, 0.0]),
+        2
+    );
+    // Only the plane in front of the camera counts: `figure` (z 0) is nearer than a splat at z -5.
+    assert_eq!(
+        slot_of([0.0, 0.0, 12.0], [0.5, 0.0, 0.0], [0.5, 0.0, -5.0]),
+        1
+    );
+    // Control: with both planes in front the first layer that is nearer decides, as before.
+    assert_eq!(
+        slot_of([0.0, 0.0, -2.0], [0.5, 0.0, 0.0], [0.5, 0.0, -5.0]),
+        0
+    );
+    // A splat that is itself behind the camera has nothing in front of it.
+    assert_eq!(
+        slot_of([0.0, 0.0, -2.0], [0.5, 0.0, 0.0], [0.5, 0.0, 12.0]),
+        2
+    );
+}
+
+#[test]
+fn the_timeline_ignores_a_plane_the_camera_flies_past() {
+    // The camera dollies 12 units along its view: it starts in front of both planes and ends past
+    // them, with the splat (farthest) still ahead of it only part of the way.
+    let mut doc = with_splat(RECIPES, "scene-a", "root");
+    set_node(
+        &mut doc,
+        "scene-a",
+        "cloud-node",
+        "localPosition",
+        json!({ "x": 0.0, "y": 1.0, "z": -6.0 }),
+    );
+    doc["cameraClips"][0]["segments"] = json!([
+        { "recipe": "dollyIn", "durationFrames": 100, "from": "initial", "distanceSceneUnits": 12.0, "easing": "linear" }
+    ]);
+    doc["cameraClips"][0]["layers"] = json!([]);
+    let scene = import(doc);
+    let timeline = PlanTimeline::new(&scene);
+    let mut slots = Vec::new();
+    for frame in [0, 20, 40, 60, 80, 99, 10, 70] {
+        let plan = timeline.build(frame).unwrap();
+        assert_eq!(plan.validate(), Ok(()), "frame {frame}");
+        assert_eq!(
+            Ok(plan.clone()),
+            ScenePlan::build(&scene, frame),
+            "frame {frame}"
+        );
+        slots.push((frame, plan.splats[0].after_layers));
+    }
+    // Before the flight the splat (z -6) is behind both planes; after it every plane and the splat
+    // are behind the camera and nothing is "nearer": the slot is the end of the layers.
+    assert_eq!(slots[0], (0, 0));
+    assert_eq!(slots[5], (99, 2));
+    assert!(slots.iter().any(|(_, slot)| *slot == 0) && slots.iter().any(|(_, slot)| *slot == 2));
 }

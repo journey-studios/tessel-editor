@@ -45,3 +45,9 @@ o plano ([F037](scene-plan.md)) carrega a matriz de mundo do nó e a câmera ava
 Medido em SwiftShader (CPU); ordem de composição entre splats e planos transparentes segue as
 limitações documentadas do Spark (splats ordenados entre si, planos pela ordem do plano).
 Outros formatos do Spark (`.ksplat`, `.sog`) não têm prova aqui e não são aceitos.
+
+Cor (BL019-F1): o desenho vai a um render target e, nele, o Spark 2.4.0 usa `ColorManagement.workingColorSpace`
+(linear) para ligar `encodeLinear`, o que escurecia a cor guardada. `keepStoredColour`
+(`runtime/src/splat-stage.js`) mantém o uniform em `false` só no material do Spark, depois do `onBeforeRender` do
+próprio Spark. **Isto também muda a cor do caminho de projeto (`scene`)**, não só o da cena dirigida: um splat do
+projeto agora mostra a cor guardada. Detalhes e prova em [scene-splat.md](scene-splat.md#cor-bl019-f1).

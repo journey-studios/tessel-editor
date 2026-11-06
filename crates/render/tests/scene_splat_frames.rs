@@ -340,6 +340,57 @@ fn a_file_that_is_not_an_spz_is_refused_before_spark_sees_it_and_the_renderer_ke
     let _ = fs::remove_dir_all(root);
 }
 
+/// BL125: many nodes may read one small file, but the host counts the splats each node draws
+/// (decode is shared, sort and draw are not), so N nodes of a big cloud cannot slip under a budget
+/// that counted the file once. Host only: no runtime, no Chrome, no big cloud.
+#[test]
+fn a_frame_is_budgeted_by_the_splats_every_node_draws_not_by_the_file_once() {
+    use tessel_editor_render::scene::SceneSlots;
+
+    const NODES: usize = 40;
+    const SPLATS: u64 = 1500;
+    let root = scratch("many-nodes");
+    let path = write_bundle(&root, true);
+    let mut bundle: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    let nodes = bundle["sceneDefinitions"][0]["nodes"]
+        .as_array_mut()
+        .unwrap();
+    let template = nodes
+        .iter()
+        .find(|node| node["id"] == "cloud-node")
+        .unwrap()
+        .clone();
+    for index in 1..NODES {
+        let mut twin = template.clone();
+        twin["id"] = json!(format!("cloud-node-{index}"));
+        nodes.push(twin);
+    }
+    fs::write(&path, serde_json::to_vec_pretty(&bundle).unwrap()).unwrap();
+    let plan = ScenePlan::build(&scene_at(&path), 0).unwrap();
+    assert_eq!(plan.splats.len(), NODES);
+    assert_eq!(plan.resource("cloud").unwrap().used_by.len(), NODES);
+    let map = SceneResourceMap::from_root(1, &plan, &root).unwrap();
+
+    // One node of the file would fit; the forty together are NODES * SPLATS.
+    let drawn = NODES as u64 * SPLATS;
+    let mut tight = SceneSlots::default().with_frame_splats(drawn - 1);
+    let refusal = tight.prepare(&plan, &map).unwrap_err();
+    assert_eq!(refusal.code, "resource_budget", "{refusal:?}");
+    let details = refusal.details.clone().unwrap();
+    assert_eq!(details["frame_splats"], drawn);
+    assert_eq!(details["max_frame_splats"], drawn - 1);
+    assert_eq!(tight.occupied(), 0, "a refused frame holds no slot");
+
+    let mut exact = SceneSlots::default().with_frame_splats(drawn);
+    let accepted = exact.prepare(&plan, &map).unwrap();
+    assert_eq!(
+        accepted.loads.len(),
+        3,
+        "the file loads once: two pictures and one splat file"
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
 // ------------------------------------------------------------------------ export --
 
 struct Session {

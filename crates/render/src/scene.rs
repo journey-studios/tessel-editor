@@ -34,6 +34,10 @@ pub const DIRECTED_FEATURE: &str = "directed_scene";
 pub const DEFAULT_SLOTS: usize = 32;
 /// Decoded RGBA bytes (`width * height * 4`) the host lets its slots hold at once.
 pub const DEFAULT_BYTE_BUDGET: u64 = 512 * 1024 * 1024;
+/// Splats a frame may draw in all, the sum over its splat *nodes* of the splats of the file each
+/// reads (a file used by many nodes counts once per node: each is sorted and drawn, even though the
+/// decode is shared). The runtime's `LIMITS.frameSplats` is the same number.
+pub const DEFAULT_FRAME_SPLATS: u64 = 8 * 1024 * 1024;
 
 fn error(code: &str, message: impl Into<String>) -> BackendError {
     BackendError::new(code, message)
@@ -288,6 +292,7 @@ impl Prepared {
 pub struct SceneSlots {
     slots: Vec<Slot>,
     byte_budget: u64,
+    frame_splats: u64,
     clock: u64,
     /// Highest generation any map has used.
     generation: u64,
@@ -322,9 +327,16 @@ impl SceneSlots {
                 })
                 .collect(),
             byte_budget,
+            frame_splats: DEFAULT_FRAME_SPLATS,
             clock: 0,
             generation: 0,
         }
+    }
+
+    /// The most splats one frame may draw across all its splat nodes (see `DEFAULT_FRAME_SPLATS`).
+    pub fn with_frame_splats(mut self, limit: u64) -> Self {
+        self.frame_splats = limit;
+        self
     }
 
     pub fn generation(&self) -> u64 {
@@ -552,6 +564,7 @@ impl SceneSlots {
         resources: &SceneResourceMap,
     ) -> Result<Vec<(&'a PlanResource, Identity, PathBuf, u64)>, BackendError> {
         let mut wanted = Vec::new();
+        let mut frame_splats: u64 = 0;
         for resource in &plan.resources {
             let asset_id = &resource.asset_id;
             let resolved = resources.get(asset_id).ok_or_else(|| {
@@ -586,10 +599,16 @@ impl SceneSlots {
             }
             let bytes = if resource.is_splat() {
                 match splat::inspect(&resolved.path) {
-                    Ok(info) if info.format == SplatFormat::Spz => splat_bytes(
-                        std::fs::metadata(&resolved.path).map_or(0, |meta| meta.len()),
-                        info.count,
-                    ),
+                    Ok(info) if info.format == SplatFormat::Spz => {
+                        // Every node that reads the file sorts and draws all of its splats.
+                        let nodes = resource.used_by.len().max(1) as u64;
+                        frame_splats =
+                            frame_splats.saturating_add(info.count.saturating_mul(nodes));
+                        splat_bytes(
+                            std::fs::metadata(&resolved.path).map_or(0, |meta| meta.len()),
+                            info.count,
+                        )
+                    }
                     _ => {
                         return Err(error(
                             "resource_mismatch",
@@ -616,6 +635,18 @@ impl SceneSlots {
                 resolved.path.clone(),
                 bytes,
             ));
+        }
+        if frame_splats > self.frame_splats {
+            return Err(error(
+                "resource_budget",
+                format!(
+                    "The frame would draw {frame_splats} splats across its splat nodes; the host allows {}",
+                    self.frame_splats
+                ),
+            )
+            .with_details(json!({
+                "frame_splats": frame_splats, "max_frame_splats": self.frame_splats,
+            })));
         }
         Ok(wanted)
     }

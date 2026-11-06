@@ -1,6 +1,6 @@
 // Gaussian splats in the directed-scene layer (S7, BL025 subset): the plan carries the splat nodes
 // (world matrix, `spz` resource, `splats` capability) and the runtime only draws them with Spark
-// behind the image planes. The first half is pure (no GL); the second draws real pixels in
+// between the image planes where the plan says. The first half is pure (no GL); the second draws real pixels in
 // headless Chrome (SwiftShader). Skipped, loudly, without Chrome or the bundle
 // (TESSEL_REQUIRE_RUNTIME=1 makes that a failure).
 //
@@ -15,6 +15,7 @@ import { test } from 'node:test';
 import {
   DIRECTED_SCENE_CAPABILITIES,
   SCENE_CAPABILITIES,
+  SPLAT_SIMILARITY_TOLERANCE,
   parseDirectedLayer,
   resolveSceneResources,
 } from '../src/directed-scene.js';
@@ -145,6 +146,38 @@ test('a plan that hides, mislabels or under-declares its splats is refused with 
   assert.deepEqual([error.code, error.details.pointer], ['invalid_plan', '/layers/0/assetId']);
 });
 
+test('BL123: a splat whose matrix is not a similarity is refused, never approximated', () => {
+  // Spark keeps (sx + sy + sz) / 3 and no shear: these matrices would be drawn as another picture.
+  const scaled = (sx, sy, sz) => [sx, 0, 0, 0, 0, sy, 0, 0, 0, 0, sz, 0, 1, 2, 3, 1];
+  const turned = (scale, degrees) => {
+    const [c, s] = [Math.cos((degrees * Math.PI) / 180) * scale, Math.sin((degrees * Math.PI) / 180) * scale];
+    return [c, s, 0, 0, -s, c, 0, 0, 0, 0, scale, 0, 1, 2, 3, 1];
+  };
+  const build = (world) => {
+    const plan = splatPlan({ splats: [['cloud-node', 'cloud', 1, 2, 3]], resources: [splatResource('cloud')] });
+    plan.nodes[0].worldMatrix = world;
+    return plan;
+  };
+  const refused = (world, reason) => {
+    const error = refusal(() => parseDirectedLayer(directedLayer(build(world), [])));
+    assert.equal(error.code, 'unsupported', `${reason}: ${error.message}`);
+    assert.deepEqual([error.details.unsupported, error.details.node, error.details.reason], ['splat_transform', 'cloud-node', reason]);
+    assert.equal(error.details.pointer, '/nodes/0/worldMatrix');
+  };
+  refused(scaled(2, 1, 1), 'the scale is not uniform');
+  refused(scaled(1, 3, 1), 'the scale is not uniform');
+  refused(scaled(-1, 1, 1), 'the transform is mirrored');
+  refused(scaled(1, 0, 1), 'the scale is degenerate');
+  refused([1, 0, 0, 0, 0.6, 0.8, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], 'the axes are sheared');
+  refused(scaled(1, 1, 1).map((value, index) => (index === 3 ? 0.5 : value)), 'the matrix is not affine');
+  // The same tolerance as the core's, and what a similarity may be: rotation, one positive scale, a translation.
+  assert.equal(SPLAT_SIMILARITY_TOLERANCE, 1e-6);
+  for (const world of [scaled(1, 1, 1), scaled(2.5, 2.5, 2.5), turned(2, 37), scaled(-1, -1, 1), scaled(1, 1 + 1e-9, 1)]) {
+    assert.deepEqual(parseDirectedLayer(directedLayer(build(world), [])).splats[0].world, world);
+  }
+  refused(scaled(1, 1 + 1e-3, 1), 'the scale is not uniform');
+});
+
 test('light, weather and rigs still make the plan unsupported even when splats are drawable', () => {
   const plan = splatPlan({ splats: [['cloud-node', 'cloud', 0, 0, 0]], resources: [splatResource('cloud')] });
   plan.complete = false;
@@ -210,6 +243,8 @@ const spzFiles = (t, clouds) => {
   paths.plyCloud = write('cloud.ply', encodePly(clouds.cloud ?? Object.values(clouds)[0]));
   paths.green = write('green.png', flat(4, 4, [0, 255, 0]));
   paths.stored = write('stored.png', flat(4, 4, [230, 49, 49]));
+  paths.blue = write('blue.png', flat(4, 4, [0, 0, 255]));
+  paths.yellow = write('yellow.png', flat(4, 4, [255, 255, 0]));
   return paths;
 };
 
@@ -408,12 +443,13 @@ test('the picture is a function of the plan: out of order, repeated and after a 
   }
 });
 
-test('two nodes may share one file; the file is decoded for each and released with the frame', async (t) => {
+test('two nodes may share one file: one decode, two meshes, released with the frame', async (t) => {
   if (skipUnavailable(t, assert)) return;
   const paths = spzFiles(t, { cloud: [BLOB([0, 0, 0], RED)] });
   const runtime = await directedRuntime(paths);
   try {
     const refs = await loadScene(runtime, paths);
+    await watchLeases(runtime);
     const plan = splatPlan({
       splats: [['left', 'cloud', -2, 0, 0], ['right', 'cloud', 2, 0, 0]],
       resources: [splatResource('cloud', { usedBy: ['left', 'right'] })],
@@ -422,8 +458,127 @@ test('two nodes may share one file; the file is decoded for each and released wi
     assert.ok(isRed(first.probes[0]) && isRed(first.probes[1]), `both nodes draw: ${show(first.probes[0])} ${show(first.probes[1])}`);
     assert.ok(isBlack(first.probes[2]));
     assert.equal(first.source.directed_scene_splats, 2);
+    assert.deepEqual(await leases(runtime), { meshes: 2, decodes: 1 }, 'two meshes over one set of packed splats');
     // A second frame finds the asset's own mesh free again (the lease was given back).
     assert.equal(done(await draw(runtime, plan, refs, [project(-2, 0)])).hash, first.hash);
+  } finally {
+    await runtime.close();
+  }
+});
+
+// Which packed splats each lease of the frame drew from: a decode makes a new PackedSplats, a share reuses it.
+const watchLeases = (runtime) =>
+  runtime.page.evaluate(() => {
+    const store = window.TesselRuntime.debug.assets;
+    const lend = store.splatLease.bind(store);
+    window.__leases = [];
+    store.splatLease = async (id) => {
+      const lease = await lend(id);
+      window.__leases.push(lease.mesh.packedSplats);
+      return lease;
+    };
+  });
+
+const leases = (runtime) =>
+  runtime.page.evaluate(() => {
+    const seen = window.__leases;
+    window.__leases = [];
+    return { meshes: seen.length, decodes: new Set(seen).size };
+  });
+
+test('BL125: N nodes of one file decode it once and are budgeted by what they draw', async (t) => {
+  if (skipUnavailable(t, assert)) return;
+  const NODES = 40;
+  const paths = spzFiles(t, { cloud: [BLOB([0, 0, 0], RED, 0.15)] });
+  const runtime = await directedRuntime(paths);
+  try {
+    const refs = await loadScene(runtime, paths);
+    await watchLeases(runtime);
+    const column = (index) => -4.5 + (index % 10);
+    const row = (index) => -1.5 + Math.floor(index / 10);
+    const nodes = Array.from({ length: NODES }, (_, index) => [`n${index}`, 'cloud', column(index), row(index), 0]);
+    const plan = splatPlan({
+      splats: nodes,
+      resources: [splatResource('cloud', { usedBy: nodes.map(([id]) => id) })],
+    });
+    const probes = [project(column(0), row(0)), project(column(39), row(39)), project(0.5, 0)];
+    const all = done(await draw(runtime, plan, refs, probes));
+    assert.ok(isRed(all.probes[0]) && isRed(all.probes[1]), `first and last node draw: ${show(all.probes[0])} ${show(all.probes[1])}`);
+    assert.ok(isBlack(all.probes[2]), 'between two columns: nothing');
+    assert.equal(all.source.directed_scene_splats, NODES);
+    assert.deepEqual(await leases(runtime), { meshes: NODES, decodes: 1 }, 'forty nodes, one decode');
+
+    // The frame is budgeted by every node's splats (each is sorted and drawn), not by the file once.
+    await runtime.page.evaluate((limit) => window.TesselRuntime.debug.setLimits({ frameSplats: limit }), NODES - 1);
+    const refused = await draw(runtime, plan, refs, probes);
+    assert.equal(refused.type, 'frame.failed');
+    assert.equal(refused.error.code, 'resource_budget');
+    assert.deepEqual([refused.error.details.frame_splats, refused.error.details.limit, refused.error.details.nodes], [NODES, NODES - 1, NODES]);
+    assert.deepEqual(await leases(runtime), { meshes: 0, decodes: 0 }, 'a refused frame leased nothing');
+    await runtime.page.evaluate((limit) => window.TesselRuntime.debug.setLimits({ frameSplats: limit }), NODES);
+    assert.equal(done(await draw(runtime, plan, refs, probes)).hash, all.hash, 'at the limit the same picture is drawn');
+  } finally {
+    await runtime.close();
+  }
+});
+
+test('T1: two splats of different files in different slots are each over their own planes and under the next', async (t) => {
+  if (skipUnavailable(t, assert)) return;
+  const MAGENTA = [255, 0, 255];
+  const paths = spzFiles(t, {
+    cloudA: [BLOB([0, 0, 0], RED, 1)],
+    // Another file with another count: two splats on the same spot.
+    cloudB: [BLOB([0, 0, 0], MAGENTA, 1), BLOB([0, 0.05, 0], MAGENTA, 1)],
+  });
+  const runtime = await directedRuntime(paths);
+  try {
+    const refs = {};
+    const put = async (slot, assetId, loader) => {
+      const loaded = await loader;
+      assert.equal(loaded.state, 'ready', JSON.stringify(loaded.error));
+      refs[assetId] = reference(assetId, slot);
+    };
+    await put('slot-a', 'cloudA', runtime.load(splatAsset('slot-a', paths.cloudA, 'cloudA')));
+    await put('slot-b', 'cloudB', runtime.load(splatAsset('slot-b', paths.cloudB, 'cloudB')));
+    await put('slot-far', 'far', runtime.load(sceneAsset('slot-far', paths.green, 'far')));
+    await put('slot-mid', 'mid', runtime.load(sceneAsset('slot-mid', paths.blue, 'mid')));
+    await put('slot-near', 'near', runtime.load(sceneAsset('slot-near', paths.yellow, 'near')));
+    const a = [-1.5, 0, -1.5];
+    const b = [1.5, 0, 1];
+    const pictures = [pictureResource('far', 4, 4), pictureResource('mid', 4, 4), pictureResource('near', 4, 4)];
+    // far (green, fills the frame) < A < mid (blue band across both) < B < near (yellow, over B's right side).
+    const planes = [
+      ['far', 'far', 0, 0, -3, 40, 40],
+      ['mid', 'mid', 0, 0, 0, 6, 1],
+      ['near', 'near', 2.7, 0, 2, 1, 1],
+    ];
+    const plan = (order) =>
+      splatPlan({
+        splats: order.map((id) => (id === 'a' ? ['a', 'cloudA', ...a] : ['b', 'cloudB', ...b])),
+        planes,
+        resources: [splatResource('cloudA', { usedBy: ['a'] }), splatResource('cloudB', { usedBy: ['b'] }), ...pictures],
+      });
+    const probes = [
+      project(a[0], a[1], 0), // A's centre is under the mid band
+      project(a[0], 0.9, a[2]), // above the band: A over the far plane
+      project(b[0], b[1], 0), // B's centre is over the mid band, left of the near plane
+      project(2.7, 0, 2), // the near plane over B's right side
+      project(-4.5, 3, -3), // only the far plane
+    ];
+    const frame = done(await draw(runtime, plan(['a', 'b']), refs, probes));
+    const [aUnder, aAbove, bOver, nearOver, farOnly] = frame.probes;
+    assert.ok(aUnder[2] > 200 && aUnder[0] < 40, `A is under the mid plane (blue): ${show(aUnder)}`);
+    assert.ok(aAbove[0] > aAbove[1] + 40 && aAbove[0] > 60, `A is over the far plane above the band: ${show(aAbove)}`);
+    assert.ok(bOver[0] > 200 && bOver[2] > 200 && bOver[1] < 60, `B is over the mid plane (magenta): ${show(bOver)}`);
+    assert.ok(nearOver[0] > 200 && nearOver[1] > 200 && nearOver[2] < 60, `the near plane is over B (yellow): ${show(nearOver)}`);
+    assert.ok(isGreen(farOnly), `the far plane fills the rest: ${show(farOnly)}`);
+    assert.equal(frame.source.directed_scene_splats, 2);
+    // What decides is the plan's slot, not the order of the list nor the frame history.
+    const swapped = done(await draw(runtime, plan(['b', 'a']), refs, probes));
+    assert.equal(swapped.hash, frame.hash, 'the list order of the splats is not a paint order');
+    const once = done(await draw(runtime, splatPlan({ splats: [['a', 'cloudA', ...a]], planes, resources: [splatResource('cloudA', { usedBy: ['a'] }), ...pictures] }), refs, probes));
+    assert.notEqual(once.hash, frame.hash);
+    assert.equal(done(await draw(runtime, plan(['a', 'b']), refs, probes)).hash, frame.hash, 'and after another frame in between');
   } finally {
     await runtime.close();
   }

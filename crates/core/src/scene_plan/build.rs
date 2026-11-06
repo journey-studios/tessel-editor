@@ -316,7 +316,9 @@ impl<'a> Prepared<'a> {
         })
     }
 
-    /// The validated plan of the frame. Its parts that do not depend on the frame (`source`,
+    /// The plan of the frame, structurally validated (`validate_structure`: the similarity of the
+    /// splat matrices is the caller's per-frame check, `check_splat_transforms`, so that a shot's
+    /// template never carries one frame's refusal to the others). Its parts that do not depend on the frame (`source`,
     /// `output`, kinds, parents, assets, `layers`, `resources`, `requires`, `unsupported`,
     /// `uninterpreted`) are what `ScenePlan::at_frame` reuses.
     pub(super) fn assemble(
@@ -369,7 +371,7 @@ impl<'a> Prepared<'a> {
         // WHY validate what was just built: the invariants (draw order, resource list, requires)
         // are what a runtime relies on, so a build that would break them fails here, loudly,
         // instead of shipping a plan that `from_json_str` would later refuse.
-        plan.validate()?;
+        plan.validate_structure()?;
         Ok(plan)
     }
 }
@@ -410,7 +412,9 @@ impl ScenePlan {
         let frame = scene.bundle().evaluate_frame(edit_frame)?;
         let prepared = Prepared::new(scene, &frame)?;
         prepared.refuse_unsupported(options)?;
-        prepared.assemble(scene, &frame)
+        let plan = prepared.assemble(scene, &frame)?;
+        plan.check_splat_transforms()?;
+        Ok(plan)
     }
 
     /// This plan moved to another frame of the same shot: what the frame changes (times, camera,
@@ -449,6 +453,9 @@ impl ScenePlan {
         for (splat, slot) in plan.splats.iter_mut().zip(slots) {
             splat.after_layers = slot;
         }
+        // The same refusal as `build_with` gives for this frame (the template may be of a frame
+        // whose splat matrices were fine).
+        plan.check_splat_transforms()?;
         Ok(plan)
     }
 }
