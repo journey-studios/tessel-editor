@@ -78,6 +78,7 @@ codifica em AAC com a mesma duração do vídeo. Nada é simulado.
 | `AudioPlan::Mix(DirectedAudioMix)` | terceira saída do plano de áudio do snapshot (`NoSources`, `Omitted`, `Mix`); `AudioPlan::mix()` |
 | `DirectedAudioMix::plan(&AudioMix, &SceneExportSchedule)` | posiciona o mix no export: `audio_window_invalid`, `audio_window_short` |
 | `output_samples / mix_samples / silence_tail_samples / origin()` | tamanho do stream, parte lida do arquivo, cauda de silêncio e segundo do arquivo da amostra 0 (`Option<Ratio>`: `None` só se a fração reduzida passar de `i64`; o cursor e o JSON a trazem inteira) |
+| JSON do tempo exato (`num`, `den`, `seconds`) | `num`/`den` são números JSON até `i64` e **texto decimal** (string) acima disso, por exemplo início `1/3` a 29,97 fps depois de ~10 000 s; `seconds` é `f64`. Nenhum consumidor deste repositório lê esses campos e a API Rust não muda; quem os ler de fora deve aceitar número ou string |
 | `cursor(rate) -> SourceCursor`, `SourceCursor::at(n) -> SourcePosition{base, fraction}` | posição exata (inteiros de 128 bits) da amostra `n` em um arquivo de `rate` Hz; `fraction == 0.0` ⇒ cópia exata |
 | `check_source(&SourceFacts) -> SourceSpan` | regras do arquivo: canais, taxa, cobertura da janela declarada (tolerância de 1 ms da origem) e do trecho (`unsupported`, `audio_source_short`, `details.rule`) |
 | `MAX_MIX_SECONDS` | teto de 6 h do mix; `plan` recusa acima com `audio_too_long` |
@@ -299,6 +300,41 @@ sem ponteiro: `scripts/scene-export-audio-ui-proof.py` **45/45** sobre `target/d
 (SHA-256 `bb35d75ac8f905a6c73b070f5cf079071c91b9a61b3d25b9cf99ff2b845d2685`; relatório JSON, que não traz o head, SHA-256
 `6521c4a5c21f05436a9a4dc9bea3c2ddbee2e96bc9b2fab87909c91c5ca13afd`, igual ao anterior porque só lista os checks). O S10 vivo
 **não** foi rodado: o FAIL registrado de `audio_export`/`audio_package_export` continua FAIL (BL121).
+
+**Gate integrado pós-`main` `141259e` (PR #12 mergeada), cabeça `31e0c34`** (`697ab0a` + `main` `141259e`; árvore
+`875498bff7c630d3d02f282c9671b4febcff6ba3`, limpa em cada gate). O merge só se sobrepõe a `docs/backlog.md` e
+`docs/features/README.md` (linhas S6/F034 da `main` e S9/F042A desta PR preservadas). Executado nesta rodada, sem
+atribuição, sob o lock de GPU (`with-gpu-lock.py`) com Cargo seriado (`cargo-serial.py`), `TESSEL_REQUIRE_RUNTIME=1`,
+Chrome real, piso de 12 GiB amostrado a cada 2 s (mínimo registrado 13,25 GiB; nenhum aborto). Cada gate tem log próprio com
+cabeçalho (head, árvore, status, comando, cwd, UTC, espaço livre) e rodapé (saída, espaço mínimo, veredito) em
+`/tmp/tessel-pr11-integrated-gates-resume/` (`MANIFEST.sha256`; o runner `run_gates.py` tem SHA-256
+`8636e3b680025c7f16922e56063e7b919e633c579682d3a1b987383eca1220d9`). A tentativa anterior abortou antes do `fmt` por falta de disco
+(`ABORTED_LOW_DISK_BEFORE_START`) e **não conta como PASS nem como FAIL**; os 1210/0/9 de `6e5f3f3` são base antiga.
+
+| Gate | Resultado |
+|---|---|
+| `runtime setup` (`pnpm install --frozen-lockfile` + build, do próprio checkout) | exit 0 |
+| `cargo fmt --all -- --check`; `check --workspace --all-targets --locked`; `clippy --workspace --all-targets --locked -- -D warnings` | exit 0 |
+| core `scene_export::audio` (unidade) / core `scene_export` | 11 / 21 passaram |
+| mídia `scene_export_audio` / mídia `scene_export` / render `scene_export` (Chrome real) | 29 / 11 / 12 passaram |
+| S6: `scene_edit` 29, `scene_edit_oracle` 7, `scene_edit_properties` 33, `scene_edit_session` 8, `scene_interaction` 22 | 99 passaram |
+| desktop `-p tessel-editor --bins` (205 testes; era 201 antes do merge da S6) | 205 passaram, 0 falharam |
+| `test --workspace --no-fail-fast --locked` | **1263 passed, 0 failed, 9 ignored** em 78 binários (core lib 225; as 9 `ignored` são medições longas, ZIP64 e fases de aceite com lock explícito, listadas no log) |
+| `build -p tessel-editor`, `build -p tessel-editor-core --bin tessel-headless`, `cargo tree -p tessel-editor-core` | exit 0; a árvore do core não lista gpui nem wry |
+| Mutações M1–M9, aplicadas uma a uma e revertidas (árvore limpa conferida depois de cada uma) | todas reprovaram o teste certo: M1 `a_cancel_in_the_middle_of_the_copy…`; M2 `a_cancel_right_after_the_copy…`; M3 `a_cancel_in_the_middle_of_the_mix…`; M4/M5 `a_hook_that_fails_or_panics…`; M6 2 testes (`exact_arithmetic_reports_overflow…`, `a_non_decimal_start_and_a_late_range…`); M7/M8 `a_decimal_keeps_twelve_places…`; M9 4 testes |
+| Prova nativa 45/45 (`scripts/scene-export-audio-ui-proof.py`): binário próprio, HOME curto, socket próprio, só `get/set/invoke/op`, sem janela por coordenadas | 45 checks, 0 falhas |
+
+Prova nativa, sidecar coletado na execução (`native.sidecar.json`): head `31e0c34`, árvore limpa, binário
+`mbx/targets/…/debug/tessel-editor` SHA-256 `886b448fef0a63496154c96b78c37effd473cdccdd4c5df0d8b76c8e632cbc71` (igual antes e depois),
+script SHA-256 `2a3a2a6b1a9b73c789847acdb8bae354dde64be5bd0476d57e846a90bbd45daf`, relatório JSON SHA-256
+`6521c4a5c21f05436a9a4dc9bea3c2ddbee2e96bc9b2fab87909c91c5ca13afd` (o mesmo de antes: o JSON só lista os checks e não traz head,
+por isso o head e o binário vêm do sidecar e o console está em `27-native-proof.log`).
+
+Limites desta execução, declarados: o gate nº 11 do runner pediu `-p tessel-editor --lib`, mas o desktop é um crate binário
+(`no library targets found`, FAIL de especificação, mantido no log); o mesmo gate foi repetido como `--bins` (nº 28, 205/0) no
+mesmo head limpo. Não rodei `./scripts/runtime test` (o JavaScript do runtime não mudou), o S10 vivo (BL121 continua BLOCKED e o
+FAIL histórico de `audio_export`/`audio_package_export` não é revertido), transporte (BL016.1), fonte > 48 kHz (BL016.3), ponteiro
+físico (BL043) nem som ouvido (BL046). O harness da S10 na PR #8 segue em correção.
 
 **Gate final da integração anterior** (cabeça `989bfe3` = `c9833bb` + merge de `origin/main` `e296b36`, sem código novo depois do merge;
 conflito só nas linhas F041/F042/F042A da matriz). Com `TESSEL_REQUIRE_RUNTIME=1`, Chrome real e sob o lock de GPU:
