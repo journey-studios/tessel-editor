@@ -13,22 +13,32 @@ codifica em AAC com a mesma duração do vídeo. Nada é simulado.
   `[from, from+frames)` lê, portanto, o arquivo a partir de `editStartSeconds + from/scene_rate`.
 - **Tempo**: a amostra `n` (48 kHz) da saída lê o instante `editStartSeconds + from/scene_rate + n/48000`.
   Os segundos do bundle viram a fração decimal exata que o autor escreveu (`0.1` é `1/10`); nenhum `f64`
-  entra na conta. Fonte em outra taxa (`44100`, `32000`, …) é lida na posição fracionária
+  entra na conta. Janela e trecho são comparados **na grade de 48 kHz, em inteiros** (`round(t × 48000)`,
+  empate para longe de zero): `8/24 s` é `1/3`, que nenhum decimal escreve, e o `0.3333333333333333` do autor
+  são as mesmas 16 000 amostras, enquanto uma janela com 1 amostra a menos (`15999/48000`) continua recusada
+  (BL016.6). Fonte em outra taxa (`44100`, `32000`, …) é lida na posição fracionária
   `tempo × rate`, com interpolação linear entre os dois frames vizinhos; em 48 kHz a cópia é exata,
   amostra a amostra.
 - **Duração**: o stream tem exatamente `round(frames_saída / fps_saída × 48000)` amostras, igual ao
   vídeo (como no export de projeto, F029). Em conversão de frame rate o vídeo pode passar de meio frame
   além do trecho de edição: essa cauda é **silêncio declarado** (`silence_tail_samples`, aviso
   `audio_silence_tail`), nunca som lido fora da janela.
-- **Canais**: mono vira estéreo centrado a −3 dB (`1/√2`, o mesmo do FFmpeg da origem e do mixer do
-  projeto); estéreo passa inalterado. Amostras float não finitas viram silêncio; acima de fundo de escala
-  são limitadas e contadas (`measured.clipped`).
+- **Canais**: mono vira estéreo centrado a −3 dB (`1/√2`: lei de **potência constante**, a do mixer do
+  projeto e a que esta entrega escolheu; ver "Lei do mono × oráculo da S10" abaixo); estéreo passa inalterado. Amostras float não finitas viram silêncio; acima de fundo de escala
+  são limitadas e contadas (`measured.clipped`). PCM16 é decodificado por `/32768` e codificado por `×32768`
+  (o inverso exato): um PCM16 estéreo a 48 kHz sai **bit a bit** igual em toda a faixa, extremos `-32768`/`32767`
+  incluídos (BL016.8); só uma fonte float mapeia fundo de escala para `32767`, como o mixer do projeto.
 - **`audio:false`** (ou preset sem áudio) omite o mix com o aviso `audio_omitted` e `audio.declared`/`omitted`
   no resultado, como antes. Sem `audio` declarado: sem stream e aviso `no_audio_sources`.
 - **Recusado, nunca aproximado**:
   - trecho fora da janela declarada → `audio_window_short` (o mix pela metade passaria por pronto);
   - segundos que a conta exata não comporta → `audio_window_invalid`;
-  - arquivo curto para o trecho → `audio_source_short`;
+  - arquivo que não cobre a **janela declarada**, mesmo quando cobre o trecho pedido → `audio_source_short`
+    (`details.rule: "window"`); o trecho que ultrapassa o próprio arquivo é a mesma recusa com
+    `details.rule: "range"` (BL016.7, política abaixo);
+  - mix acima de **6 h** (`6 × 3600 × 48000` amostras, o teto do export de projeto; também é o que cabe no
+    `data` de 32 bits do WAV, 4,147 GB < 4 GiB) → `audio_too_long`, **ao planejar**, antes de existir job,
+    staging ou byte gravado (BL016.10); o job ainda recusa o que um chamador sem plano trouxesse;
   - formato fora de WAV PCM16/float32, 1–2 canais, 8–48 kHz (24 bits, ADPCM, surround, MP3, 96 kHz…) →
     `unsupported`, **antes** de existir job. Acima de 48 kHz não há filtro passa-baixa: recusa em vez de
     aliasing;
@@ -40,10 +50,16 @@ codifica em AAC com a mesma duração do vídeo. Nada é simulado.
   (`render_audio_private`); o original nunca é relido durante o job. Consequências:
   - troca de mesmo tamanho depois do `resolve` → `resource_changed` (`details.resource: "audio-mix"`, `expected` e
     `got` com SHA-256 e bytes) **antes de qualquer frame** e antes de qualquer amostra;
+  - troca **depois do pedido aceito** que mude o cabeçalho (outro formato, canais, taxa, duração, nem WAV, outro
+    tamanho) → o preflight do job compara o cabeçalho com o que o pedido aceitou (`freeze`) e falha com o mesmo
+    `resource_changed` (`details.resource: "audio-mix"`, `blockers[0]` com o motivo), nunca com o veredito do
+    cabeçalho novo (`unsupported`, `audio_source_short`); antes do pedido, o veredito do cabeçalho vale e o pedido é
+    recusado com ele (`unsupported`/`audio_source_short`), sem job (BL016.9);
   - alteração do original **durante** o job fica isolada: o MP4 reflete os bytes aprovados;
   - o job confere a cópia (`verify_intact`: tamanho e mtime) depois de misturar e antes de finalizar;
-  - sucesso, falha e cancelamento removem só o staging do próprio job (cópia e `mix.wav` incluídos); staging alheio
-    e o original nunca são tocados.
+  - sucesso, falha e cancelamento (no meio da cópia, logo depois dela e no meio do mix) removem só o staging do próprio
+    job (cópia e `mix.wav` incluídos); staging alheio e o original nunca são tocados. Cada ponto é provado com o job
+    **retido** nele (ver "Pontos de observação" abaixo), não por tempo.
 - **Não faz**: tocar som, dispositivo, TTS, mix de narração, ganho de monitor, `mixMuted`, formatos
   comprimidos, sample rate > 48 kHz, ZIP/pacote do áudio (o pacote de recursos já o carrega, F040).
 
@@ -57,7 +73,8 @@ codifica em AAC com a mesma duração do vídeo. Nada é simulado.
 | `DirectedAudioMix::plan(&AudioMix, &SceneExportSchedule)` | posiciona o mix no export: `audio_window_invalid`, `audio_window_short` |
 | `output_samples / mix_samples / silence_tail_samples / origin()` | tamanho do stream, parte lida do arquivo, cauda de silêncio e segundo do arquivo da amostra 0 (`Ratio`) |
 | `cursor(rate) -> SourceCursor`, `SourceCursor::at(n) -> SourcePosition{base, fraction}` | posição exata (inteiros de 128 bits) da amostra `n` em um arquivo de `rate` Hz; `fraction == 0.0` ⇒ cópia exata |
-| `check_source(&SourceFacts) -> SourceSpan` | regras do arquivo: canais, taxa, quadros suficientes (`unsupported`, `audio_source_short`) |
+| `check_source(&SourceFacts) -> SourceSpan` | regras do arquivo: canais, taxa, cobertura da janela declarada (tolerância de 1 ms da origem) e do trecho (`unsupported`, `audio_source_short`, `details.rule`) |
+| `MAX_MIX_SECONDS` | teto de 6 h do mix; `plan` recusa acima com `audio_too_long` |
 
 `SceneExportSnapshot::capture` chama `DirectedAudioMix::plan` depois do cronograma; `summary()["audio"]` traz
 `{included:true, declared:["audio"], mix:{path, sha256, window, source_start, samples, mixed_samples,
@@ -75,6 +92,24 @@ mistura acontecem no job (thread própria, estágios `snapshot` e `audio` com pr
 O job copia, **depois** mistura a cópia (falha cedo, antes dos frames) em `mix.wav` dentro do staging, que some em
 sucesso, falha ou cancelamento. `render_audio` (identidade por SHA-256 e leitura do caminho recebido) segue público;
 `render_audio_private` é o mesmo stream para o arquivo que já é a cópia do job.
+
+### Pontos de observação do job (testes determinísticos)
+
+`SceneFrameRenderer` tem três ganchos com implementação vazia por padrão (mais o `max_size`, que já existia); o job os
+chama em pontos exatos e **nada do que um gancho faz alcança os bytes que o job lê** (o renderer real não os implementa):
+
+| Gancho | Quando | Uso nos testes |
+|---|---|---|
+| `resources_frozen()` | a cópia privada terminou e nada foi lido dela | reescrever o original; reter o job antes do 1º passo do mix |
+| `copy_progressed(bytes)` | depois de cada pedaço (1 MiB) gravado na cópia, estágio `snapshot` | reter o job no meio da cópia |
+| `mix_stepped(done, steps)` | depois de cada passo de 1 s do mix gravado e contado, estágio `audio` | reter o job entre dois passos |
+| `max_size()` (já existia) | primeira conversa do job com o renderer, antes do preflight dele | trocar o arquivo depois do pedido aceito |
+
+Reter o job é determinístico: enquanto parado, `job.get` é fato (`stage`, `done`/`total`) e o staging tem o que o ponto
+implica; o teste então cancela e libera. Substitui a versão anterior, que consultava `stage == "snapshot"` com 46 MiB e
+dependia da velocidade do disco (o cancelamento podia chegar depois da cópia). O que isto **não** prova: nenhum
+cancelamento durante um único `read`/`write` do SO nem com o disco lento; prova que cada estágio observa o cancelamento
+entre as unidades e que o `Staging` limpa só o que é do job, qualquer que seja o ponto.
 
 ### Fluxo Rust sem UI
 
@@ -103,9 +138,10 @@ let result = headless::execute_ext(&mut state, None, Some(&mut host), &json!({
 |---|---|---|
 | `audio_window_short` | trecho além de `editEndSecondsExclusive − editStartSeconds` | recusado antes do job; nada muda |
 | `audio_window_invalid` | tempo do bundle que a conta exata não comporta | idem |
-| `audio_source_short` | o arquivo não tem quadros para o trecho | idem (cabeçalho) ou bloqueio no preflight |
+| `audio_source_short` | o arquivo é menor que `editEndSecondsExclusive` (a origem tolera 1 ms) ou não tem quadros para o trecho | idem (cabeçalho) ou bloqueio no preflight |
+| `audio_too_long` | mix de mais de 6 h | recusado ao planejar; nada muda, nenhum byte gravado |
 | `unsupported` | formato/canais/taxa fora do suportado; narração com áudio pedido | idem |
-| `resource_unresolved`, `resource_missing`, `resource_changed` | mix fora do mapa, sumido ou trocado | bloqueio no preflight; `resource_changed` (troca de mesmo tamanho incluída) falha o job antes dos frames, com as duas identidades |
+| `resource_unresolved`, `resource_missing`, `resource_changed` | mix fora do mapa, sumido ou trocado | bloqueio no preflight (mix sumido: job `preflight_failed` com `blockers[0].code: resource_missing`); `resource_changed` falha o job antes dos frames com o código tipado: com as duas identidades quando a troca é de mesmo tamanho e mesmo cabeçalho (estágio `snapshot`), com `blockers[0]` quando o tamanho ou o cabeçalho mudou desde o pedido (preflight) |
 | `disk_full` | staging sem espaço para vídeo + WAV + AAC + cópias | bloqueio no preflight, antes de escrever |
 | `encoder_unavailable` | FFmpeg sem `aac` | bloqueio no preflight |
 
@@ -130,7 +166,17 @@ direto, HOME curto, socket próprio), somente `get`/`set`/`invoke`/`op` (sem pon
 
 ## Evidências e status
 
-Status: **a validar na integração** (implementado, com as provas abaixo, incluindo a janela real; sem som ouvido).
+Status: **a validar na integração** (implementado, sem som ouvido). As linhas "executado" abaixo são a evidência da
+rodada anterior (head `836d8cb`, revisada). A rodada de correção F1–F10 (BL016.6–.10) está **escrita e não
+executada**: o disco da máquina caiu abaixo do piso de 12 GiB antes de qualquer `cargo`, e nenhum teste novo ou
+alterado foi compilado. Não conte as contagens "escritas" como PASS; os gates da correção constam em BL016.6–.10.
+
+| Rodada de correção (BL016.6–.10) | Escrito, **não executado** |
+|---|---|
+| Core, unidade (7) | `a_window_is_compared_on_the_48k_grid_not_as_float_seconds` (1–2000 quadros a 24 fps escritos como `f64`, e 1 amostra a menos), `a_source_shorter_than_the_window_is_refused_even_when_the_range_fits` (tolerância de 1 ms exata a 48 k, 44,1 k e `1/10`), `six_hours_of_audio_plan_and_one_frame_more_is_refused_before_any_write` (valor, nenhum WAV de 4 GiB) |
+| Core, integração (21) | `a_window_written_as_the_float_of_the_range_is_that_range_and_one_sample_less_is_not` |
+| Mídia, FFmpeg (28) | `a_48k_pcm16_stereo_source_is_copied_bit_for_bit_across_the_whole_16_bit_range` (rampa de fundo de escala, extremos, offset); `a_source_shorter_than_its_window_is_refused_for_every_range_the_origin_would_refuse`, `the_window_the_file_covers_exports_and_a_range_past_it_is_refused_by_the_window`, `an_offset_window_longer_than_the_file_is_refused_like_the_origin_does`; `rewriting_the_original_between_the_copy_and_the_mix_cannot_reach_a_sample` (via `SceneFrameRenderer::resources_frozen`); `a_cancel_in_the_middle_of_the_copy_…` (retido após o 1º pedaço, cópia parcial), `a_cancel_right_after_the_copy_and_before_the_mix_…`, `a_cancel_in_the_middle_of_the_mix_…` (retido após 2 de 4 passos; só o próprio staging some, inclusive o `mix.wav` pela metade); `a_header_that_changed_after_the_request_is_resource_changed_whatever_it_became` (5 trocas) |
+| Mutações a fazer (e reverter) | comparação em segundos `f64` (F1); `render_private` lendo `audio_resource(export)` (F4); escala `32767` no PCM16 (F3); sem a regra da janela (F2); sem `ctx.check()` no laço do mix (o teste de cancelamento no meio do mix deve falhar); sem `token.check()` entre pedaços da cópia (idem, cópia) |
 
 | Superfície | Evidência |
 |---|---|
@@ -146,8 +192,15 @@ Status: **a validar na integração** (implementado, com as provas abaixo, inclu
 - AAC é com perda: o espectro e a duração são medidos, a amostra exata é provada no stream que entra no
   encoder (`mix.wav`), não no MP4.
 - Conversão de taxa é interpolação linear (sem passa-baixa); fonte > 48 kHz é recusada.
-- Mono com −3 dB (convenção da origem/FFmpeg); a origem usa `atrim` sem teto em `editEnd` no render Node,
+- Mono com −3 dB: ver "Lei do mono" abaixo. A origem usa `atrim` sem teto em `editEnd` no render Node,
   enquanto o transporte web para nele — aqui o teto é regra (recusa trecho fora da janela).
+- **Política da fonte curta (BL016.7, decidida pela origem).** `node/render.ts` (`muxAudio`) recusa com `AUDIO_SHORT`
+  quando `duration(fonte) + 0.001 < editEndSecondsExclusive`, e o `renderBundle` da origem só renderiza o bundle
+  **inteiro** (`RenderOptions` não tem `from`/`frames`). O trecho parcial é uma extensão deste editor: ele **herda a
+  mesma recusa** em vez de aceitar sub-trechos de um bundle que a origem recusaria. A regra é exata em inteiros
+  (a tolerância de 1 ms vale como no original, não é epsilon de float). Adicionalmente, o trecho nunca lê além do
+  arquivo (`audio_source_short`, `details.rule: "range"`): amostras não são inventadas dentro da tolerância.
+  Consequência para o corpus da S10 (WAV de 8 s, janela `[1, 9)`): recusado, como a origem o recusaria.
 - A cópia privada dobra o espaço do WAV no staging e custa uma leitura + escrita antes do primeiro frame (como as
   imagens, BL109); `verify_intact` não refaz o hash. O original que mudou **depois** da cópia não é detectado:
   é isolado, e o vídeo reflete os bytes aprovados.
@@ -160,37 +213,46 @@ Status: **a validar na integração** (implementado, com as provas abaixo, inclu
 
 ### Aceite independente da S10 (PR #8, `proof.py` em `c03b41e`) — divergência de semântica, não de qualidade
 
-Rodado com o binário desta branch, sem alterar verificadores nem tolerâncias, sob o lock de GPU:
+Rodado com o binário da PR #11 antes das correções desta rodada, sem alterar verificadores nem tolerâncias, sob o lock de GPU:
 `tolerances_frozen` 6/6, `corpus` 32/32, `controls_audio` 26/26, `baseline_audio` 46/46, `audio_off` 70/70 (o
 `audio:false` e a política de aviso passam no corpus da S10); `audio_export` **FAIL** e `audio_package_export`
-**FAIL/abortado**. A causa é a **suposição A1** do oráculo da S10 (`oracle.py`: "mix[0] ↔ editStartSeconds", o
-arquivo começa em `editStartSeconds` da linha do tempo e antes disso há silêncio), que contradiz a origem:
+**FAIL/abortado**. Esse FAIL é o resultado registrado daquela rodada; **não** é PASS, e nenhuma execução posterior
+a reverteu: o aceite vivo da S10 segue bloqueado até a correção independente do oráculo e a integração. A causa é a
+**suposição A1** do oráculo da S10 (`oracle.py`: "mix[0] ↔ editStartSeconds", o arquivo começa em `editStartSeconds`
+da linha do tempo e antes disso há silêncio), que contradiz a origem:
 
 - origem (`packages/scene-engine/src/transport/audio-window.ts`): `editSecondsToSourceTime(t) = editStartSeconds + t`,
   o WAV é a **fonte inteira** e a janela escolhe um trecho dela; `node/render.ts` recusa com `AUDIO_SHORT` quando
-  `duration(source) < editEndSecondsExclusive`. É o que esta entrega implementa.
-- o `mix.wav` do corpus da S10 tem 8 s com janela `[1, 9)`: pela regra da origem ele é **curto** (`audio_source_short`,
-  `file_frames 352800`, `needed_through 396899` no caso `audio24_window_b`) e o bundle seria recusado pela própria
-  origem.
+  `duration(source) + 0.001 < editEndSecondsExclusive`. É o que esta entrega implementa.
+- o `mix.wav` do corpus da S10 tem 8 s com janela `[1, 9)`: pela regra da origem ele é **curto** e o bundle
+  seria recusado pela própria origem (`8 + 0.001 < 9`).
 
 Medido de forma independente (ffmpeg decodifica o MP4 do `audio24_window_a`, janelas de 100 ms): 440 Hz de 0 a
 0,25 s, silêncio até 0,75 s, 880 Hz até 2,25 s, 1320 Hz a −6 dB depois — exatamente o que a regra da origem prevê
 para `from=18` (0,75 s) com `editStart=1,0` (arquivo em 1,75 s…); o oráculo da S10 espera o contrário (silêncio, 440 Hz
-em 0,25 s). Nenhum dos dois lados foi ajustado para passar: a decisão é do coordenador (BL016.5). Para fechar o aceite
-vivo sem mudar o contrato da origem a S10 precisa de um WAV que cubra `[0, editEnd)` com o tom no tempo de arquivo
-(ou de assumir A1 como contrato novo, o que muda o core e esta doc); as fases `audio_export` e `audio_package_export`
-só viram PASS quando o oráculo e a origem concordarem.
+em 0,25 s). Essa medição é do binário anterior às correções desta rodada; com BL016.7 aquele bundle (arquivo de
+8 s, janela `[1, 9)`) é recusado por inteiro com `audio_source_short`, como a origem o recusaria.
 
-**Decisão do coordenador (BL016.5).** A leitura do pin da origem `d6adac15c61f4ef582a7ec259397b2e025d1f059`
+**Decidido (BL016.5 — fonte).** A leitura do pin da origem `d6adac15c61f4ef582a7ec259397b2e025d1f059`
 (`git show`, só leitura) confirma `packages/scene-engine/src/transport/audio-window.ts` →
-`editStartSeconds + editSeconds` e `node/render.ts:246-248` → `AUDIO_SHORT` quando a duração do arquivo é menor que
-`editEndSecondsExclusive`. Fica a regra da origem; o oráculo da S10 (A1) é corrigido por **outra tarefa** já iniciada,
-e o core não muda para fazer uma fixture errada passar. Enquanto o oráculo não for corrigido, os FAIL de
-`audio_export` e `audio_package_export` acima permanecem registrados como estão. Esta entrega não altera o harness
-da S10 nem as tolerâncias. A prova da janela (`scripts/scene-export-audio-ui-proof.py`) usa o `bundle.audio.json`
-com janela `[0, 4)`, onde as duas semânticas coincidem.
+`editStartSeconds + editSeconds` e `node/render.ts` `muxAudio` → `AUDIO_SHORT` quando `duration + 0.001 <
+editEndSecondsExclusive`. Fica a regra da origem; o core não muda para fazer uma fixture errada passar, e esta
+frente não altera o harness da S10 nem as tolerâncias. **Pendente (BL016.5 — emenda do oráculo, S10/PR #8):** corrigir
+A1 e o WAV do corpus (um arquivo que cubra `[0, editEnd)` com o tom no tempo de arquivo, ou janela coerente com ele) e
+repetir `audio_export`/`audio_package_export`; até lá os FAIL acima ficam registrados como estão. A prova da janela
+(`scripts/scene-export-audio-ui-proof.py`) usa o `bundle.audio.json` com janela `[0, 4)` e um WAV de 4 s, onde as duas
+semânticas coincidem e a fonte cobre a janela.
 
-Nota de execução do coordenador: a prova nativa 45/45 da integração local foi rodada com `--min-free-gib 8`, abaixo do piso autorizado de 12 GiB. O resultado técnico foi preservado, mas não satisfaz o gate operacional e deve ser repetido no head final com >=12 GiB. O script agora recusa piso menor que 12 ou não finito; duas sondas de CLI confirmam a recusa antes de iniciar app/mídia.
+### Lei do mono × oráculo da S10 (aviso ao coordenador/S10; sem paridade inventada)
+
+Esta entrega converte mono em estéreo com ganho `1/√2` (−3 dB) por canal. **Referência da origem:** o grafo de áudio
+(`packages/scene-engine/src/node/audio-graph.ts`, `aformat=…:channel_layouts=stereo`) deixa o upmix ao rematrix padrão
+do FFmpeg, que usa o nível de centro `1/√2`. Medido com o FFmpeg local sobre o mesmo filtro: mono
+`10000, 20000, -20000, 30000` → estéreo `7071, 14142, -14142, 21213` em ambos os canais. O mixer do projeto
+(`crates/core/src/audio.rs`) usa pan de potência constante, que no centro dá o mesmo ganho (`cos(π/4) = 1/√2`). Um oráculo que espere 0 dB no mono (cópia do valor nos dois canais)
+descreve outra lei que não é a da origem nem a deste editor; ajustar esse oráculo (ou documentá-lo como contrato novo,
+o que mudaria o core e este texto) é decisão da S10, não parte desta frente. Teste desta lei:
+`a_44k_mono_source_is_interpolated_at_exact_positions_and_centred`.
 
 **Gate final da integração** (cabeça `989bfe3` = `c9833bb` + merge de `origin/main` `e296b36`, sem código novo depois do merge;
 conflito só nas linhas F041/F042/F042A da matriz). Com `TESSEL_REQUIRE_RUNTIME=1`, Chrome real e sob o lock de GPU:

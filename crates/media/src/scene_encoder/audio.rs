@@ -16,7 +16,9 @@
 //!   long mix is as cheap as a short one.
 //! * The conversion is the one the core describes: linear interpolation between the two source
 //!   frames around the exact position, an exact copy when the position falls on a frame (a 48 kHz
-//!   source), mono centred at −3 dB (the `1/√2` the origin's FFmpeg graph and the project mixer use),
+//!   source, and then in **every** sample of a PCM16 stereo file: its encoder scale is the inverse of its
+//!   decoder scale, `32768`, so `20000` stays `20000` and `-32768` stays `-32768`; a float32 source keeps
+//!   the project mixer's `32767`), mono centred at −3 dB (the `1/√2` the origin's FFmpeg graph and the project mixer use),
 //!   declared silence for the tail.
 //!
 //! Nothing here plays anything: it produces and verifies samples. Hearing them is out of scope.
@@ -252,10 +254,11 @@ impl WavWriter {
             .file
             .into_inner()
             .map_err(|error| io_error(path, error.error()))?;
-        let data = u32::try_from(self.data_bytes)
-            .map_err(|_| JobError::new("audio_too_long", "The mix exceeds the 4 GiB WAV limit"))?;
+        let too_long = || JobError::new("audio_too_long", "The mix exceeds the 4 GiB WAV limit");
+        let data = u32::try_from(self.data_bytes).map_err(|_| too_long())?;
+        let riff = data.checked_add(36).ok_or_else(too_long)?;
         file.seek(SeekFrom::Start(4)).map_err(map)?;
-        file.write_all(&(36 + data).to_le_bytes()).map_err(map)?;
+        file.write_all(&riff.to_le_bytes()).map_err(map)?;
         file.seek(SeekFrom::Start(40)).map_err(map)?;
         file.write_all(&data.to_le_bytes()).map_err(map)?;
         file.sync_all().map_err(map)
@@ -342,7 +345,35 @@ pub fn render_private(
     out: &Path,
     ctx: &JobContext,
 ) -> Result<MixReport, JobError> {
+    render_private_observed(mix, approved, out, ctx, &mut |_, _| Ok(()))
+}
+
+/// [`render_private`] that tells `observe(done, steps)` after each one-second step is written
+/// (and counted in the job's progress), before the next step starts. An error from `observe`
+/// fails the mix. It changes nothing in the stream: it is the point where a caller can act at an
+/// exact step (the export job forwards it to the renderer's `mix_stepped`), so a cancel or a
+/// rewrite of a file lands between two known steps instead of at a guessed time.
+pub fn render_private_observed(
+    mix: &DirectedAudioMix,
+    approved: &ApprovedResource,
+    out: &Path,
+    ctx: &JobContext,
+    observe: &mut dyn FnMut(u64, u64) -> Result<(), JobError>,
+) -> Result<MixReport, JobError> {
     ctx.check()?;
+    // The core refuses what exceeds the ceiling when it plans (`audio_too_long`); this is the guard
+    // for a caller that did not plan, so no byte of an unfinishable WAV is ever written.
+    if mix
+        .output_samples()
+        .checked_mul(4)
+        .and_then(|bytes| bytes.checked_add(36))
+        .is_none_or(|bytes| bytes > u64::from(u32::MAX))
+    {
+        return Err(JobError::new(
+            "audio_too_long",
+            "The mix exceeds the 4 GiB WAV limit",
+        ));
+    }
     let (layout, span) = check_layout(mix, &approved.path).map_err(|error| match error {
         InspectError::Unsupported(error) => {
             let details = error.details.map_or(Value::Null, |boxed| *boxed);
@@ -357,12 +388,19 @@ pub fn render_private(
     let mut writer = WavWriter::create(out)?;
     let channels = usize::from(layout.facts.channels);
     let last_frame = layout.facts.frames - 1;
+    // A PCM16 file is decoded by `/ 32768`, so it is encoded by `* 32768` (the exact inverse: a
+    // copy at 48 kHz stays bit for bit, BL016.8); only a float file maps full scale to `32767`.
+    let scale = match layout.facts.format {
+        WavFormat::Pcm16 => 32768.0f32,
+        WavFormat::Float32 => 32767.0f32,
+    };
     debug_assert!(span.first + span.frames <= layout.facts.frames);
     let steps = mix.output_samples().div_ceil(CHUNK_SAMPLES);
     ctx.stage("audio", steps);
     let (mut clipped, mut peak, mut energy) = (0u64, 0f32, 0f64);
     let mut bytes: Vec<u8> = Vec::with_capacity(CHUNK_SAMPLES as usize * 4);
     let mut start = 0u64;
+    let mut done = 0u64;
     while start < mix.output_samples() {
         ctx.check()?;
         let end = (start + CHUNK_SAMPLES).min(mix.output_samples());
@@ -403,7 +441,10 @@ pub fn render_private(
                     }
                     peak = peak.max(value.abs());
                     energy += f64::from(value).powi(2);
-                    let quantised = (value.clamp(-1.0, 1.0) * 32767.0).round() as i16;
+                    let quantised = (value.clamp(-1.0, 1.0) * scale)
+                        .round()
+                        .clamp(f32::from(i16::MIN), f32::from(i16::MAX))
+                        as i16;
                     bytes.extend_from_slice(&quantised.to_le_bytes());
                 }
             }
@@ -413,7 +454,9 @@ pub fn render_private(
         bytes.resize(bytes.len() + silent as usize * 4, 0);
         writer.write(&bytes, out)?;
         start = end;
+        done += 1;
         ctx.advance(1);
+        observe(done, steps)?;
     }
     writer.finish(out)?;
     let measured = mix.mix_samples();

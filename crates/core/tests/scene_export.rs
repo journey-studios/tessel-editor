@@ -505,6 +505,32 @@ fn a_range_outside_the_declared_window_is_refused_with_its_numbers() {
 }
 
 #[test]
+fn a_window_written_as_the_float_of_the_range_is_that_range_and_one_sample_less_is_not() {
+    // BL016.6: 8 frames at 24 fps are exactly 1/3 s; the author's `0.3333333333333333` is 3.3e-17 s
+    // below the third as a number, and the same 16 000 samples on the 48 kHz grid.
+    let state = project_with(with_window(0.0, 8.0 / 24.0));
+    let request = json!({"scene":"street","preset":"fullhd","from":0,"frames":8});
+    let planned = capture(&state, request.clone()).unwrap();
+    assert_eq!(mix_of(&planned).output_samples(), 16_000);
+    // The window's own frames work for every length the scene has, at an offset of the file.
+    for frames in [1, 3, 4, 13, 32, 40] {
+        let state = project_with(with_window(2.0, 2.0 + f64::from(frames) / 24.0));
+        capture(
+            &state,
+            json!({"scene":"street","preset":"fullhd","from":0,"frames":frames}),
+        )
+        .unwrap_or_else(|error| panic!("{frames} frames: {error:?}"));
+    }
+    // One sample (1/48000 s) less than the range needs is refused, with the sample counts.
+    let state = project_with(with_window(0.0, 15_999.0 / 48_000.0));
+    let refused = capture(&state, request).unwrap_err();
+    assert_eq!(refused.code, "audio_window_short");
+    let details = refused.details.as_ref().unwrap();
+    assert_eq!(details["window_samples"], "15999");
+    assert_eq!(details["range_end_samples"], "16000");
+}
+
+#[test]
 fn a_window_that_exact_time_cannot_hold_is_refused() {
     let state = project_with(with_window(0.0, 1e30));
     let refused = capture(

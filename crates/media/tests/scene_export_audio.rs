@@ -19,9 +19,9 @@ use std::f64::consts::PI;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -251,6 +251,51 @@ fn ramp_stereo(frames: usize) -> Vec<i16> {
         .collect()
 }
 
+/// Stereo PCM16 that sweeps the whole 16-bit range, extremes included (`-32768`, `32767`), the
+/// left channel up and the right channel down: every value above 16384 is where `/32768` then
+/// `*32767` loses a step (`20000` → `19999`).
+fn full_scale_stereo(frames: usize) -> Vec<i16> {
+    (0..frames)
+        .flat_map(|index| {
+            let left = -32768 + (index * 65_535 / (frames - 1)) as i32;
+            [left as i16, (-1 - left) as i16]
+        })
+        .collect()
+}
+
+#[test]
+fn a_48k_pcm16_stereo_source_is_copied_bit_for_bit_across_the_whole_16_bit_range() {
+    // BL016.8: the contract is "exact copy", so no value may move, above −6 dBFS least of all.
+    let work = Work::new("fullscale");
+    let frames = 4 * 48_000;
+    let source = full_scale_stereo(frames);
+    assert_eq!((source[0], source[1]), (-32768, 32767));
+    assert_eq!(
+        (source[2 * frames - 2], source[2 * frames - 1]),
+        (32767, -32768)
+    );
+    assert!(source.iter().any(|sample| *sample == 20_000));
+    let mix = pcm16(2, 48_000, &source);
+    let state = demo_state(&bundle_with_mix(&mix, (0.0, 4.0)));
+    let file = work.path("mix.wav");
+    fs::write(&file, &mix).unwrap();
+    // The whole file, then the same file read from the middle of the window.
+    for (from, frames_out, first_frame) in [(0, 96, 0usize), (48, 48, 96_000)] {
+        let plan = snapshot(
+            &state,
+            json!({"scene":"street","preset":tiny(),"from":from,"frames":frames_out}),
+        )
+        .unwrap();
+        let out = work.path(&format!("out-{from}.wav"));
+        let report = render(&plan, &approved(&file, &mix), &out).unwrap();
+        let samples = read_stereo(&out);
+        let wanted = &source[2 * first_frame..2 * first_frame + samples.len()];
+        let moved = samples.iter().zip(wanted).filter(|(a, b)| a != b).count();
+        assert_eq!(moved, 0, "{moved} of {} samples moved", samples.len());
+        assert_eq!(report.clipped, 0);
+    }
+}
+
 #[test]
 fn a_48k_stereo_source_is_copied_sample_for_sample_from_the_window_offset() {
     let work = Work::new("copy");
@@ -322,7 +367,7 @@ fn a_44k_mono_source_is_interpolated_at_exact_positions_and_centred() {
         let position = (48_000 + n) as f64 * 44_100.0 / 48_000.0;
         let (base, fraction) = (position.floor() as usize, position.fract());
         let value = at(base) + (at(base + 1) - at(base)) * fraction;
-        let expected = (value * std::f64::consts::FRAC_1_SQRT_2 * 32767.0).round();
+        let expected = (value * std::f64::consts::FRAC_1_SQRT_2 * 32768.0).round();
         for channel in 0..2 {
             let actual = f64::from(samples[2 * n + channel]);
             assert!(
@@ -483,8 +528,29 @@ enum Fault {
     /// BL109: rewrite the approved original mix, same size and other bytes, once the first frame
     /// is asked for (the mix was already read by then; the picture is still being drawn).
     TamperMix,
+    /// BL109/BL016.9: rewrite the original the moment the job's private copy exists, *before* the
+    /// mix reads anything. Only a mix drawn from the copy survives it.
+    TamperAfterCopy,
+    /// Stop the job right after the copy (before the mix) until the test releases it, so a
+    /// cancel lands exactly at the start of the `audio` step.
+    ParkAfterCopy,
+    /// Stop the job after the first chunk of the private copy was written, until the test
+    /// releases it: the cancel lands in the middle of the copy, whatever the disk's speed.
+    ParkCopyChunk,
+    /// Stop the job once the mix has written this many one-second steps, until the test
+    /// releases it: the cancel lands between two known steps of the mix.
+    ParkMixStep(u64),
+    /// BL016.9: replace the mix with `swap` when the job first talks to the renderer, which is
+    /// after the request was accepted (`freeze` read the header) and before the job's preflight.
+    SwapAtStart,
     /// Slow frames, so a test can cancel the job while it renders.
     Slow,
+}
+
+/// The two ends of a park: the job says it arrived, the test says go.
+struct Gate {
+    parked: mpsc::Sender<()>,
+    release: Arc<Mutex<mpsc::Receiver<()>>>,
 }
 
 struct StillRenderer {
@@ -492,11 +558,56 @@ struct StillRenderer {
     drawn: Arc<AtomicU64>,
     fault: Fault,
     victim: PathBuf,
+    gate: Arc<Gate>,
+    swap: Arc<Mutex<Option<Vec<u8>>>>,
+    /// `ParkCopyChunk` parks at the first chunk only.
+    parked_in_copy: bool,
+}
+
+impl StillRenderer {
+    /// Tells the test the job is here and holds it until the test releases it.
+    fn park(&self) {
+        let _ = self.gate.parked.send(());
+        self.gate
+            .release
+            .lock()
+            .unwrap()
+            .recv_timeout(Duration::from_secs(60))
+            .expect("the test releases the parked job");
+    }
 }
 
 impl SceneFrameRenderer for StillRenderer {
     fn max_size(&mut self) -> Result<Option<u32>, JobError> {
+        if self.fault == Fault::SwapAtStart
+            && let Some(bytes) = self.swap.lock().unwrap().take()
+        {
+            fs::write(&self.victim, bytes).unwrap();
+        }
         Ok(None)
+    }
+
+    fn resources_frozen(&mut self) -> Result<(), JobError> {
+        match self.fault {
+            Fault::TamperAfterCopy => same_size_garbage(&self.victim),
+            Fault::ParkAfterCopy => self.park(),
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn copy_progressed(&mut self, _bytes: u64) {
+        if self.fault == Fault::ParkCopyChunk && !self.parked_in_copy {
+            self.parked_in_copy = true;
+            self.park();
+        }
+    }
+
+    fn mix_stepped(&mut self, done: u64, _steps: u64) -> Result<(), JobError> {
+        if self.fault == Fault::ParkMixStep(done) {
+            self.park();
+        }
+        Ok(())
     }
 
     fn render(&mut self, job: &FrameJob) -> Result<RenderedFrame, JobError> {
@@ -522,6 +633,11 @@ struct Lab {
     base: PathBuf,
     drawn: Arc<AtomicU64>,
     tools: Tools,
+    /// Arrives when a `ParkAfterCopy` job is parked; `release` lets it go on.
+    parked: mpsc::Receiver<()>,
+    release: mpsc::Sender<()>,
+    /// What a `SwapAtStart` job writes over the mix when it starts.
+    swap: Arc<Mutex<Option<Vec<u8>>>>,
 }
 
 impl Lab {
@@ -636,12 +752,23 @@ fn lab_with(name: &str, mix: &[u8], window: (f64, f64), fault: Fault) -> Option<
     let drawn = Arc::new(AtomicU64::new(0));
     let counter = drawn.clone();
     let victim = base.join("audio/mix.wav");
+    let (parked, parked_rx) = mpsc::channel();
+    let (release, release_rx) = mpsc::channel();
+    let gate = Arc::new(Gate {
+        parked,
+        release: Arc::new(Mutex::new(release_rx)),
+    });
+    let swap: Arc<Mutex<Option<Vec<u8>>>> = Arc::default();
+    let swap_for_renderer = swap.clone();
     let factory: Arc<SceneRendererFactory> = Arc::new(move || {
         Ok(Box::new(StillRenderer {
             png: frame.clone(),
             drawn: counter.clone(),
             fault,
             victim: victim.clone(),
+            gate: gate.clone(),
+            swap: swap_for_renderer.clone(),
+            parked_in_copy: false,
         }))
     });
     let mut lab = Lab {
@@ -651,6 +778,9 @@ fn lab_with(name: &str, mix: &[u8], window: (f64, f64), fault: Fault) -> Option<
         base,
         drawn,
         tools,
+        parked: parked_rx,
+        release,
+        swap,
     };
     lab.ok(json!({"op":"scene.attach","id":"street","bundle":bundle_with_mix(mix, window)}));
     let base = lab.base.clone();
@@ -826,19 +956,70 @@ fn a_mix_no_export_can_use_is_refused_before_any_job_or_frame() {
 }
 
 #[test]
-fn a_range_the_window_or_the_file_cannot_cover_is_refused() {
-    // The file holds 2 s but the bundle declares a 4 s window: the range past 2 s has no sound.
+fn a_source_shorter_than_its_window_is_refused_for_every_range_the_origin_would_refuse() {
+    // BL016.7, the origin's rule (`node/render.ts`, `AUDIO_SHORT`): the file must cover the whole
+    // declared window, `duration + 1 ms >= editEndSecondsExclusive`, whatever range is exported.
+    // The file holds 2 s and the bundle declares a 4 s window: no range of it exports, not even
+    // the first second, which the file does cover.
     let mix = two_tone(48_000, 2, 440.0, 880.0);
     let Some(mut lab) = lab("e2e-short", &mix, (0.0, 4.0)) else {
         return;
     };
+    for (name, from, frames) in [("first.mp4", 0, 24), ("late.mp4", 40, 24)] {
+        let error = lab.export(name, tiny(), from, frames).unwrap_err();
+        assert_eq!(error.code, "audio_source_short", "{}", error.message);
+        assert_eq!(error.details.as_ref().unwrap()["rule"], "window");
+        assert!(!lab.work.path(name).exists());
+    }
+    assert!(lab.leftovers().is_empty());
+    assert_eq!(lab.drawn.load(Ordering::SeqCst), 0, "no frame was drawn");
+    // The same refusal from the preflight operation, and `audio:false` never needed the file.
+    let preflight = lab
+        .run(
+            json!({"op":"scene.export.preflight","scene":"street","preset":tiny(),
+            "from":0,"frames":8,"destination":lab.work.path("p.mp4")}),
+        )
+        .unwrap_err();
+    assert_eq!(preflight.code, "audio_source_short");
+    let destination = lab.work.path("silent.mp4");
+    lab.ok(
+        json!({"op":"scene.export","scene":"street","preset":tiny(),"from":0,"frames":8,
+        "audio":false,"destination":destination,"wait":true}),
+    );
+}
+
+#[test]
+fn the_window_the_file_covers_exports_and_a_range_past_it_is_refused_by_the_window() {
+    // A file that is exactly its 2 s window exports its range, and a range that leaves the window
+    // is `audio_window_short`, not a half-mixed file.
+    let mix = two_tone(48_000, 2, 440.0, 880.0);
+    let Some(mut lab) = lab("e2e-window", &mix, (0.0, 2.0)) else {
+        return;
+    };
     lab.export("fits.mp4", tiny(), 0, 24).unwrap();
     let error = lab.export("late.mp4", tiny(), 40, 24).unwrap_err();
-    assert_eq!(error.code, "audio_source_short", "{}", error.message);
+    assert_eq!(error.code, "audio_window_short", "{}", error.message);
     assert!(!lab.work.path("late.mp4").exists());
     assert!(lab.leftovers().is_empty());
-    let drawn = lab.drawn.load(Ordering::SeqCst);
-    assert_eq!(drawn, 24, "only the accepted export drew frames");
+    assert_eq!(
+        lab.drawn.load(Ordering::SeqCst),
+        24,
+        "only the accepted export drew frames"
+    );
+}
+
+#[test]
+fn an_offset_window_longer_than_the_file_is_refused_like_the_origin_does() {
+    // The shape the S10 corpus has: 8 s of file and a window [1, 9). The origin refuses it
+    // (`8 + 0.001 < 9`), however small the range, and so does this export.
+    let mix = two_tone(48_000, 8, 440.0, 880.0);
+    let Some(mut lab) = lab("e2e-offset-short", &mix, (1.0, 9.0)) else {
+        return;
+    };
+    let error = lab.export("a.mp4", tiny(), 0, 24).unwrap_err();
+    assert_eq!(error.code, "audio_source_short", "{}", error.message);
+    assert_eq!(lab.drawn.load(Ordering::SeqCst), 0);
+    assert!(!lab.work.path("a.mp4").exists());
 }
 
 #[test]
@@ -1103,4 +1284,208 @@ fn preflight_counts_the_mix_and_its_private_copy_without_touching_the_destinatio
     assert_eq!(lab.drawn.load(Ordering::SeqCst), 0);
     assert!(!lab.work.path("with.mp4").exists());
     assert_clean(&lab);
+}
+
+// ---------------------------------------------------------------------------------------------
+// BL016.9: the original rewritten *between* the copy and the mix; cancellation around the copy;
+// a header that changed between the request and the job.
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn rewriting_the_original_between_the_copy_and_the_mix_cannot_reach_a_sample() {
+    // The sound comes from the job's private copy. The original is rewritten (same size, other bytes)
+    // after the copy exists and before the mix reads a single sample: a mix that read the original
+    // again would carry the garbage, and the tones below would not be where they must be.
+    let mix = two_tone(48_000, 4, 440.0, 880.0);
+    let Some(mut lab) = lab_with("e2e-after-copy", &mix, (0.0, 4.0), Fault::TamperAfterCopy) else {
+        return;
+    };
+    let original = lab.base.join("audio/mix.wav");
+    let result = lab.export("after-copy.mp4", tiny(), 36, 24).unwrap();
+    assert_eq!(result["verification"]["ok"], true, "{result}");
+    assert_ne!(
+        fs::read(&original).unwrap(),
+        mix,
+        "the original really was rewritten before the mix"
+    );
+    assert_eq!(result["audio"]["source"]["sha256"], sha(&mix));
+    assert_eq!(result["audio"]["measured"]["clipped"], 0);
+    let samples = lab.decoded_audio(&lab.work.path("after-copy.mp4"));
+    assert_tone(&samples, 0.05, 0.40, 440.0, 880.0);
+    assert_tone(&samples, 0.60, 0.95, 880.0, 440.0);
+    assert_clean(&lab);
+}
+
+/// The destination folder holds the other export's staging and the original mix; a cancelled job
+/// must leave exactly those.
+fn assert_only_the_foreign_staging_remains(lab: &Lab, foreign: &Path, mix: &[u8], name: &str) {
+    assert!(!lab.work.path(name).exists(), "nothing was published");
+    assert_eq!(
+        lab.leftovers(),
+        [foreign.file_name().unwrap().to_string_lossy().into_owned()]
+    );
+    assert_eq!(fs::read(foreign.join("keep")).unwrap(), b"theirs");
+    assert_eq!(fs::read(lab.base.join("audio/mix.wav")).unwrap(), mix);
+    assert_eq!(lab.drawn.load(Ordering::SeqCst), 0, "no frame was drawn");
+}
+
+/// Starts a scene export that parks (see `Fault`), waits until it is parked and returns the job.
+/// While parked the job is at a known point, so what `job.get` says is a fact, not a race.
+fn start_parked(lab: &mut Lab, name: &str, frames: u32) -> (String, PathBuf) {
+    let destination = lab.work.path(name);
+    let started = lab.ok(json!({"op":"scene.export","scene":"street","preset":tiny(),
+        "from":0,"frames":frames,"destination":destination,"wait":false}));
+    let job = started["job"].as_str().unwrap().to_string();
+    lab.parked
+        .recv_timeout(Duration::from_secs(60))
+        .expect("the job reached the point it parks at");
+    (job, destination)
+}
+
+/// Cancels the parked job, lets it go on and returns what the job ended as.
+fn cancel_parked(lab: &mut Lab, job: &str) -> Value {
+    lab.ok(json!({"op":"job.cancel","job":job}));
+    lab.release.send(()).unwrap();
+    let info = lab.ok(json!({"op":"job.wait","job":job,"timeout_ms":60000}));
+    assert_eq!(info["state"], "cancelled", "{info}");
+    info
+}
+
+#[test]
+fn a_cancel_in_the_middle_of_the_copy_removes_only_its_own_staging() {
+    // BL016.9. 12 s of stereo is more than one 1 MiB copy chunk, and the job is parked after the
+    // first chunk is written: the copy is provably unfinished, with no dependence on timing.
+    let mix = pcm16(2, 48_000, &ramp_stereo(12 * 48_000));
+    assert!(mix.len() > 2 << 20);
+    let Some(mut lab) = lab_with("e2e-cancel-copy", &mix, (0.0, 4.0), Fault::ParkCopyChunk) else {
+        return;
+    };
+    let foreign = lab.work.path(".tessel-staging-scene-export-foreign-2");
+    fs::create_dir_all(&foreign).unwrap();
+    fs::write(foreign.join("keep"), b"theirs").unwrap();
+    let (job, destination) = start_parked(&mut lab, "cancel-copy.mp4", 24);
+    let parked = lab.ok(json!({"op":"job.get","job":job}));
+    assert_eq!(parked["stage"], "snapshot", "{parked}");
+    let (done, total) = (parked["done"].as_u64().unwrap(), parked["total"].as_u64());
+    assert!(done > 0 && Some(done) < total, "a partial copy: {parked}");
+    let own: Vec<String> = lab
+        .leftovers()
+        .into_iter()
+        .filter(|name| !name.contains("foreign"))
+        .collect();
+    assert_eq!(own.len(), 1, "the job's own staging exists: {own:?}");
+    let info = cancel_parked(&mut lab, &job);
+    assert_eq!(info["stage"], "snapshot", "it never left the copy: {info}");
+    assert!(!destination.exists());
+    assert_only_the_foreign_staging_remains(&lab, &foreign, &mix, "cancel-copy.mp4");
+}
+
+#[test]
+fn a_cancel_right_after_the_copy_and_before_the_mix_removes_only_its_own_staging() {
+    // The job is parked once its private copy exists: staging holds the copy, no sample was read.
+    let mix = two_tone(48_000, 4, 440.0, 880.0);
+    let Some(mut lab) = lab_with("e2e-cancel-audio", &mix, (0.0, 4.0), Fault::ParkAfterCopy) else {
+        return;
+    };
+    let foreign = lab.work.path(".tessel-staging-scene-export-foreign-3");
+    fs::create_dir_all(&foreign).unwrap();
+    fs::write(foreign.join("keep"), b"theirs").unwrap();
+    let (job, _) = start_parked(&mut lab, "cancel-audio.mp4", 24);
+    let own: Vec<String> = lab
+        .leftovers()
+        .into_iter()
+        .filter(|name| !name.contains("foreign"))
+        .collect();
+    assert_eq!(
+        own.len(),
+        1,
+        "the job's own staging exists while parked: {own:?}"
+    );
+    cancel_parked(&mut lab, &job);
+    assert_only_the_foreign_staging_remains(&lab, &foreign, &mix, "cancel-audio.mp4");
+}
+
+#[test]
+fn a_cancel_in_the_middle_of_the_mix_removes_only_its_own_staging() {
+    // BL016.9. 4 s of output are four one-second steps; the job is parked after the second is
+    // written (and counted), so half of the mix is on disk when the cancel arrives.
+    let mix = two_tone(48_000, 4, 440.0, 880.0);
+    let Some(mut lab) = lab_with("e2e-cancel-mix", &mix, (0.0, 4.0), Fault::ParkMixStep(2)) else {
+        return;
+    };
+    let foreign = lab.work.path(".tessel-staging-scene-export-foreign-4");
+    fs::create_dir_all(&foreign).unwrap();
+    fs::write(foreign.join("keep"), b"theirs").unwrap();
+    let (job, destination) = start_parked(&mut lab, "cancel-mix.mp4", 96);
+    let parked = lab.ok(json!({"op":"job.get","job":job}));
+    assert_eq!(parked["stage"], "audio", "{parked}");
+    assert_eq!(
+        (parked["done"].as_u64(), parked["total"].as_u64()),
+        (Some(2), Some(4))
+    );
+    let own: Vec<String> = lab
+        .leftovers()
+        .into_iter()
+        .filter(|name| !name.contains("foreign"))
+        .collect();
+    assert_eq!(own.len(), 1, "the job's own staging exists: {own:?}");
+    let staging = lab.work.path(&own[0]);
+    let half = fs::metadata(staging.join("mix.wav")).unwrap().len();
+    assert!(
+        half >= 44 + 48_000 * 4,
+        "the steps already written are on disk: {half} bytes"
+    );
+    let info = cancel_parked(&mut lab, &job);
+    assert_eq!(info["stage"], "audio", "it never left the mix: {info}");
+    assert!(!destination.exists());
+    assert!(
+        !staging.exists(),
+        "the half-written mix went with its staging"
+    );
+    assert_only_the_foreign_staging_remains(&lab, &foreign, &mix, "cancel-mix.mp4");
+}
+
+#[test]
+fn a_header_that_changed_after_the_request_is_resource_changed_whatever_it_became() {
+    // `freeze` accepted this file's header when the request came in. A different file with the same
+    // size, put there before the job starts, must say what happened (the file changed), not what
+    // the new header would have been on its own (`unsupported`, `audio_source_short`).
+    let mix = two_tone(48_000, 4, 440.0, 880.0);
+    let Some(mut lab) = lab_with("e2e-header", &mix, (0.0, 4.0), Fault::SwapAtStart) else {
+        return;
+    };
+    let data = mix.len() - 44;
+    let swaps: [(&str, Vec<u8>); 5] = [
+        // Valid, but 2 s of stereo: the header alone would be `audio_source_short`.
+        ("stereo-2s", pcm16(2, 48_000, &vec![0i16; data / 2])),
+        // 24-bit: `unsupported` on its own.
+        ("int24", wav(1, 24, 1, 48_000, &vec![0u8; data])),
+        // Not a WAV at all.
+        ("not-a-wav", vec![b'x'; mix.len()]),
+        // Another valid mix that still covers the window: only the header differs.
+        ("mono-24k", pcm16(1, 24_000, &vec![0i16; data / 2])),
+        // Another size.
+        ("truncated", mix[..mix.len() - 4].to_vec()),
+    ];
+    for (name, bytes) in swaps {
+        if name != "truncated" {
+            assert_eq!(bytes.len(), mix.len(), "{name} has the same size");
+        }
+        fs::write(lab.base.join("audio/mix.wav"), &mix).unwrap();
+        *lab.swap.lock().unwrap() = Some(bytes);
+        let out = format!("{name}.mp4");
+        let error = lab.export(&out, tiny(), 0, 24).unwrap_err();
+        assert_eq!(error.code, "resource_changed", "{name}: {}", error.message);
+        let details = error.details.as_ref().expect("the report");
+        assert_eq!(details["resource"], "audio-mix", "{name}");
+        assert_eq!(details["blockers"][0]["code"], "resource_changed", "{name}");
+        assert_eq!(details["blockers"][0]["asset"], "audio-mix");
+        assert_eq!(
+            lab.drawn.load(Ordering::SeqCst),
+            0,
+            "{name}: before any frame"
+        );
+        assert!(!lab.work.path(&out).exists(), "{name}");
+        assert_clean(&lab);
+    }
 }

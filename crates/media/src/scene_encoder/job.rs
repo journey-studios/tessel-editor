@@ -47,6 +47,9 @@ pub struct SceneExport {
     pub resources: FrozenResources,
     pub destination: PathBuf,
     pub replace: bool,
+    /// The header of the mix as `freeze` judged it. The job's preflight reads it again and a
+    /// different header is a different file (`resource_changed`), never a new verdict on this one.
+    audio_header: Option<audio::WavLayout>,
 }
 
 fn resolve_error(error: &ResolveError) -> CommandError {
@@ -95,16 +98,18 @@ impl SceneExport {
                 .resolve_asset(scene, asset)
                 .map_err(|error| resolve_error(&error).target(asset.as_str()))?;
         }
+        let mut audio_header = None;
         if let Some(mix) = snapshot.audio().mix() {
             let approved = resources
                 .resolve(scene, &ResourceKey::AudioMix)
                 .map_err(|error| resolve_error(&error).target("audio-mix"))?;
             // Only the header, and only to refuse what no mix could ever use (not a WAV, 24-bit,
-            // surround, 96 kHz, too short for the range) before a job exists. A file that cannot be
+            // surround, 96 kHz, shorter than its window) before a job exists. A file that cannot be
             // opened is the job's preflight to report, like a vanished image.
-            if let Err(InspectError::Unsupported(error)) = audio::check_layout(mix, &approved.path)
-            {
-                return Err(error.target("audio-mix"));
+            match audio::check_layout(mix, &approved.path) {
+                Ok((layout, _)) => audio_header = Some(layout),
+                Err(InspectError::Unsupported(error)) => return Err(error.target("audio-mix")),
+                Err(InspectError::Unreadable(_)) => {}
             }
         }
         Ok(Self {
@@ -112,6 +117,7 @@ impl SceneExport {
             resources,
             destination,
             replace,
+            audio_header,
         })
     }
 }
@@ -325,9 +331,34 @@ fn audio_blockers(
             return;
         }
     }
-    if let Err(error) = audio::check_layout(mix, &approved.path) {
-        blockers.push(audio(blocker(error.code(), error.message())));
+    // Size alone does not say the file is the approved one: a same-size swap can change the
+    // header. The header `freeze` accepted is the one this job was asked for, so any other header
+    // (readable or not as a mix) is the file having changed since, and says so (BL016.9).
+    match (
+        audio::check_layout(mix, &approved.path),
+        export.audio_header,
+    ) {
+        (Ok((layout, _)), Some(frozen)) if layout != frozen => {
+            blockers.push(audio(changed_header(&format!(
+                "its WAV header now says {} frames at {} Hz, {} channel(s)",
+                layout.facts.frames, layout.facts.sample_rate, layout.facts.channels
+            ))));
+        }
+        (Err(error), Some(_)) => blockers.push(audio(changed_header(&format!(
+            "it no longer qualifies as the mix ({}: {})",
+            error.code(),
+            error.message()
+        )))),
+        (Err(error), None) => blockers.push(audio(blocker(error.code(), error.message()))),
+        (Ok(_), _) => {}
     }
+}
+
+fn changed_header(why: &str) -> Value {
+    blocker(
+        "resource_changed",
+        format!("The audio mix is not the file that was approved: {why}"),
+    )
 }
 
 trait WithAsset {
@@ -505,16 +536,24 @@ pub fn run(
     ctx.check()?;
     let report = preflight(export, tools, max_size);
     if report["ok"] != true {
-        let code = match report["blockers"][0]["code"].as_str() {
+        let first_blocker = &report["blockers"][0];
+        let code = match first_blocker["code"].as_str() {
             Some("disk_full") => "disk_full",
             Some("destination_exists") => "destination_exists",
+            // The mix swapped for another file is the one change the job names like the
+            // identity check that follows would: the same code whichever step sees it first.
+            Some("resource_changed") if first_blocker["asset"] == "audio-mix" => "resource_changed",
             _ => "preflight_failed",
         };
         let first = report["blockers"][0]["message"]
             .as_str()
             .unwrap_or("Export blocked")
             .to_string();
-        return Err(JobError::new(code, first).with_details(report));
+        let mut details = report;
+        if code == "resource_changed" {
+            details["resource"] = json!("audio-mix");
+        }
+        return Err(JobError::new(code, first).with_details(details));
     }
     ctx.advance(1);
 
@@ -542,9 +581,13 @@ pub fn run(
         &keys,
         &staging.path().join("resources"),
         ctx.token(),
-        |bytes| ctx.advance(bytes),
+        |bytes| {
+            ctx.advance(bytes);
+            renderer.copy_progressed(bytes);
+        },
     )
     .map_err(|error| as_disk_full(error, staging.path()))?;
+    renderer.resources_frozen()?;
 
     // The mix is rendered next, from the private copy only: a swapped, unreadable or too-short
     // file fails here, before a single frame is drawn, and the encoder is handed a finished
@@ -555,7 +598,10 @@ pub fn run(
                 .resolve(snapshot.scene_id(), &ResourceKey::AudioMix)
                 .map_err(JobError::from)?;
             let wav = staging.path().join("mix.wav");
-            let report = audio::render_private(mix, &approved, &wav, ctx)
+            let report =
+                audio::render_private_observed(mix, &approved, &wav, ctx, &mut |done, steps| {
+                    renderer.mix_stepped(done, steps)
+                })
                 .map_err(|error| as_disk_full(error, staging.path()))?;
             frozen.verify_intact()?;
             Some((wav, report, approved))

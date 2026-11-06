@@ -25,8 +25,14 @@
 //! ## Refused, never approximated
 //!
 //! * the exported range must lie inside the declared window (`audio_window_short`): a half-mixed file
-//!   would pass for a finished one;
-//! * the file must hold every frame the range reads (`audio_source_short`);
+//!   would pass for a finished one. The comparison is made on the output's own 48 kHz grid, in
+//!   integers: a bundle that wrote `0.3333333333333333` for `8/24` s is the whole of those 8 frames,
+//!   and a window one sample shorter is still refused (BL016.6);
+//! * the file must hold every frame of the **declared window**, not only the part this range reads
+//!   (`audio_source_short`): the origin refuses a source shorter than `editEndSecondsExclusive` before
+//!   rendering any range of it (BL016.7);
+//! * the stream must fit a PCM16 WAV and the project export's 6 hours (`audio_too_long`), refused
+//!   here, before a byte is written (BL016.10);
 //! * only PCM16 / float32 WAV with 1 or 2 channels at 8–48 kHz (`unsupported`): up-conversion is
 //!   linear, and there is no low-pass for a down-conversion, so a source above 48 kHz is refused
 //!   instead of aliased.
@@ -45,6 +51,9 @@ use super::schedule::SceneExportSchedule;
 
 /// Rate of the exported stream: the project export's rate, so both exports share one mix contract.
 pub const MIX_RATE: u32 = MIX_SAMPLE_RATE;
+/// Longest stream one export mixes: the project export's ceiling (`MAX_AUDIO_SECONDS`). Six hours of
+/// 48 kHz stereo PCM16 is 4.147 GB, under the 4 GiB a RIFF `data` size can name.
+pub const MAX_MIX_SECONDS: u64 = 6 * 3600;
 /// Slowest source accepted.
 pub const MIN_SOURCE_RATE: u32 = 8_000;
 /// Fastest source accepted: faster needs a low-pass this slice does not have.
@@ -114,6 +123,16 @@ fn decimal(value: f64) -> Option<Ratio> {
     Ratio::new(numerator, denominator)
 }
 
+/// `time` seconds on the 48 kHz grid: the nearest sample boundary, ties away from zero, in `i128`
+/// so that no window the bundle can write overflows. This is the only place a window and a range
+/// are compared: never as seconds in `f64`, which is how `0.3333333333333333 < 8/24` happens.
+fn grid(time: Ratio) -> i128 {
+    let numerator = i128::from(time.num()) * i128::from(MIX_RATE);
+    let denominator = i128::from(time.den());
+    let sign = if numerator < 0 { -1 } else { 1 };
+    (numerator * 2 + denominator * sign) / (denominator * 2)
+}
+
 fn seconds(value: f64, field: &str) -> Result<Ratio, CommandError> {
     decimal(value).ok_or_else(|| {
         invalid(
@@ -138,12 +157,14 @@ impl DirectedAudioMix {
         let from_time = schedule.scene_rate.frame_to_time(schedule.from);
         let range_end = schedule.scene_rate.frame_to_time(schedule.to());
         let window_length = window_end.sub(window_start).ok_or_else(overflow)?;
-        if range_end > window_length {
+        let (window_samples, range_end_samples) = (grid(window_length), grid(range_end));
+        if range_end_samples > window_samples {
             return Err(invalid(
                 "audio_window_short",
                 format!(
-                    "The audio window covers {:.3} s of edit time but the range reaches {:.3} s: \
-                     export a shorter range or pass `audio: false`",
+                    "The audio window covers {window_samples} samples ({:.6} s) of edit time but the \
+                     range reaches {range_end_samples} samples ({:.6} s): export a shorter range or \
+                     pass `audio: false`",
                     window_length.to_f64(),
                     range_end.to_f64()
                 ),
@@ -151,6 +172,8 @@ impl DirectedAudioMix {
             .details(json!({
                 "window_start": window_start.to_json(), "window_end": window_end.to_json(),
                 "range_end": range_end.to_json(), "hint": "audio: false",
+                "window_samples": window_samples.to_string(),
+                "range_end_samples": range_end_samples.to_string(),
             })));
         }
         let origin = window_start.add(from_time).ok_or_else(overflow)?;
@@ -169,6 +192,22 @@ impl DirectedAudioMix {
             .ok_or_else(overflow)?,
         )?
         .max(1);
+        if output_samples > MAX_MIX_SECONDS * u64::from(MIX_RATE) {
+            return Err(invalid(
+                "audio_too_long",
+                format!(
+                    "The audio of one export is limited to {} hours; this range mixes {} samples \
+                     ({:.2} h at {MIX_RATE} Hz): export a shorter range or pass `audio: false`",
+                    MAX_MIX_SECONDS / 3600,
+                    output_samples,
+                    output_samples as f64 / f64::from(MIX_RATE) / 3600.0
+                ),
+            )
+            .details(json!({
+                "samples": output_samples, "max_samples": MAX_MIX_SECONDS * u64::from(MIX_RATE),
+                "max_seconds": MAX_MIX_SECONDS, "hint": "audio: false",
+            })));
+        }
         let range_samples = samples(range_end.sub(from_time).ok_or_else(overflow)?)?.max(1);
         Ok(Self {
             relative_path: audio.mix_relative_path.clone(),
@@ -234,6 +273,32 @@ impl DirectedAudioMix {
                 facts,
             ));
         }
+        // The origin's rule (`node/render.ts`, `AUDIO_SHORT`): the source must cover the whole
+        // declared window, `duration + 1 ms >= editEndSecondsExclusive`, whatever part of it one
+        // export reads. Exact in integers: `frames/rate + 1/1000 < end` is
+        // `frames*1000*d + rate*d < n*rate*1000` for `end = n/d`.
+        let (end_num, end_den) = (
+            i128::from(self.window_end.num()),
+            i128::from(self.window_end.den()),
+        );
+        let rate = i128::from(facts.sample_rate);
+        if i128::from(facts.frames) * 1000 * end_den + rate * end_den < end_num * rate * 1000 {
+            return Err(invalid(
+                "audio_source_short",
+                format!(
+                    "The mix file holds {} frames ({:.3} s at {} Hz) but the declared window ends at \
+                     {:.3} s: the source must cover the whole window, not only the exported range",
+                    facts.frames,
+                    facts.frames as f64 / f64::from(facts.sample_rate),
+                    facts.sample_rate,
+                    self.window_end.to_f64()
+                ),
+            )
+            .details(json!({
+                "file_frames": facts.frames, "sample_rate": facts.sample_rate,
+                "window_end": self.window_end.to_json(), "rule": "window",
+            })));
+        }
         let cursor = self.cursor(facts.sample_rate)?;
         let first = cursor.at(0).base;
         let last = cursor.at(self.mix_samples - 1).base;
@@ -252,6 +317,7 @@ impl DirectedAudioMix {
             )
             .details(json!({
                 "file_frames": facts.frames, "needed_through": last, "sample_rate": facts.sample_rate,
+                "rule": "range",
             })));
         }
         Ok(SourceSpan { first, frames })
@@ -332,11 +398,15 @@ mod tests {
     }
 
     fn mix(origin: Ratio, samples: u64) -> DirectedAudioMix {
+        mix_ending(origin, samples, Ratio::from_int(10))
+    }
+
+    fn mix_ending(origin: Ratio, samples: u64, window_end: Ratio) -> DirectedAudioMix {
         DirectedAudioMix {
             relative_path: "a.wav".into(),
             pcm_hash: String::new(),
             window_start: Ratio::ZERO,
-            window_end: Ratio::from_int(10),
+            window_end,
             origin,
             output_samples: samples,
             mix_samples: samples,
@@ -385,7 +455,8 @@ mod tests {
 
     #[test]
     fn a_source_must_cover_the_range_and_have_a_supported_shape() {
-        let mix = mix(Ratio::from_int(1), 48_000);
+        // Window [0, 2): the file is the 2 s the window names, and this export reads its second half.
+        let mix = mix_ending(Ratio::from_int(1), 48_000, Ratio::from_int(2));
         let facts = SourceFacts {
             format: WavFormat::Pcm16,
             sample_rate: 48_000,
@@ -399,14 +470,15 @@ mod tests {
                 frames: 48_000
             }
         );
+        // One frame short: inside the origin's 1 ms tolerance for the window, but the range reads
+        // that frame, so the samples are not invented.
         let short = SourceFacts {
             frames: 95_999,
             ..facts
         };
-        assert_eq!(
-            mix.check_source(&short).unwrap_err().code,
-            "audio_source_short"
-        );
+        let refused = mix.check_source(&short).unwrap_err();
+        assert_eq!(refused.code, "audio_source_short");
+        assert_eq!(refused.details.as_ref().unwrap()["rule"], "range");
         for bad in [
             SourceFacts {
                 channels: 6,
@@ -429,6 +501,121 @@ mod tests {
                 mix.check_source(&bad).unwrap_err().code,
                 "unsupported",
                 "{bad:?}"
+            );
+        }
+    }
+
+    /// BL016.7: the origin refuses a source shorter than `editEndSecondsExclusive` whatever range is
+    /// rendered (`duration + 0.001 < editEnd`); this export reads 100 samples at the start of a 4 s
+    /// window, so only the window rule can refuse the short files below.
+    #[test]
+    fn a_source_shorter_than_the_window_is_refused_even_when_the_range_fits() {
+        let mix = mix_ending(Ratio::ZERO, 100, Ratio::from_int(4));
+        let file = |frames: u64, sample_rate: u32| SourceFacts {
+            format: WavFormat::Pcm16,
+            sample_rate,
+            channels: 2,
+            frames,
+        };
+        // The whole window, and exactly 1 ms less (the origin's tolerance: `3.999 + 0.001 < 4` is false).
+        assert!(mix.check_source(&file(192_000, 48_000)).is_ok());
+        assert!(mix.check_source(&file(192_000 - 48, 48_000)).is_ok());
+        // One frame beyond the tolerance is short.
+        let refused = mix.check_source(&file(192_000 - 49, 48_000)).unwrap_err();
+        assert_eq!(refused.code, "audio_source_short");
+        assert_eq!(refused.details.as_ref().unwrap()["rule"], "window");
+        // A 2 s file for a [0, 4) window, the case the limited export used to accept.
+        let refused = mix.check_source(&file(96_000, 48_000)).unwrap_err();
+        assert_eq!(refused.code, "audio_source_short");
+        // Same decision at another rate: 44.1 kHz, the tolerance is 44.1 frames (floor 44 passes).
+        assert!(mix.check_source(&file(176_400, 44_100)).is_ok());
+        assert!(mix.check_source(&file(176_400 - 44, 44_100)).is_ok());
+        assert!(mix.check_source(&file(176_400 - 45, 44_100)).is_err());
+        // A window that is not a whole second is compared exactly too (0.1 = 1/10).
+        let tenth = mix_ending(Ratio::ZERO, 100, Ratio::new(1, 10).unwrap());
+        assert!(tenth.check_source(&file(4_800, 48_000)).is_ok());
+        assert!(tenth.check_source(&file(4_800 - 48, 48_000)).is_ok());
+        assert!(tenth.check_source(&file(4_800 - 49, 48_000)).is_err());
+    }
+
+    fn schedule(frames: u64) -> SceneExportSchedule {
+        use crate::preset::{Fit, Geometry};
+        use crate::time::Rate;
+        let rate = Rate::new(24, 1).unwrap();
+        SceneExportSchedule {
+            scene_rate: rate,
+            output_rate: rate,
+            from: 0,
+            edit_frames: frames,
+            frames,
+            geometry: Geometry {
+                render: (320, 180),
+                output: (320, 180),
+                fit: Fit::Contain,
+            },
+        }
+    }
+
+    fn declared(start: f64, end: f64) -> AudioMix {
+        AudioMix {
+            mix_relative_path: "a.wav".into(),
+            edit_start_seconds: start,
+            edit_end_seconds_exclusive: end,
+            source_pcm_hash_sha256: None,
+        }
+    }
+
+    /// BL016.10: six hours is the ceiling, refused when the export is planned (nothing written, no
+    /// 4 GiB generated here: the schedule is a value, not a render).
+    #[test]
+    fn six_hours_of_audio_plan_and_one_frame_more_is_refused_before_any_write() {
+        let six_hours_of_frames = 6 * 3600 * 24;
+        let window = declared(0.0, 30_000.0);
+        let planned =
+            DirectedAudioMix::plan(&window, &schedule(six_hours_of_frames)).expect("6 h fits");
+        assert_eq!(planned.output_samples(), 6 * 3600 * 48_000);
+        // The WAV `data` size and `36 + data` still fit a u32 at the ceiling.
+        assert!(planned.output_samples() * 4 + 36 <= u64::from(u32::MAX));
+        let refused =
+            DirectedAudioMix::plan(&window, &schedule(six_hours_of_frames + 1)).unwrap_err();
+        assert_eq!(refused.code, "audio_too_long");
+        let details = refused.details.as_ref().unwrap();
+        assert_eq!(details["max_seconds"], 6 * 3600);
+        assert_eq!(details["samples"], 6 * 3600 * 48_000 + 2_000);
+    }
+
+    /// BL016.6: `8/24` s is `1/3`, which no decimal writes; the author's `0.3333333333333333` is the
+    /// same 16 000 samples on the 48 kHz grid, and a window one sample shorter is not.
+    #[test]
+    fn a_window_is_compared_on_the_48k_grid_not_as_float_seconds() {
+        let eight_frames = schedule(8);
+        // The decimal the author wrote is below the exact third by 3.3e-17 s: a comparison in
+        // seconds refuses the whole range, and the grid does not.
+        assert!(decimal(0.3333333333333333).unwrap() < Ratio::new(1, 3).unwrap());
+        DirectedAudioMix::plan(&declared(0.0, 0.3333333333333333), &eight_frames).unwrap();
+        // One sample (1/48000 s) less than the 16 000 the range needs.
+        let refused =
+            DirectedAudioMix::plan(&declared(0.0, 15_999.0 / 48_000.0), &eight_frames).unwrap_err();
+        assert_eq!(refused.code, "audio_window_short");
+        assert_eq!(refused.details.as_ref().unwrap()["window_samples"], "15999");
+        assert_eq!(
+            refused.details.as_ref().unwrap()["range_end_samples"],
+            "16000"
+        );
+        // A start offset moves the window, not the range: [1, 1 + 1/3) is a window of one third.
+        DirectedAudioMix::plan(&declared(1.0, 1.0 + 8.0 / 24.0), &eight_frames).unwrap();
+        // Every whole-frame duration of a 24 fps scene, written the way a float would write it.
+        for frames in 1..=2_000u64 {
+            let seconds = frames as f64 / 24.0;
+            DirectedAudioMix::plan(&declared(0.0, seconds), &schedule(frames))
+                .unwrap_or_else(|error| panic!("{frames} frames, {seconds}: {error:?}"));
+            let shorter = (frames * 2_000 - 1) as f64 / 48_000.0;
+            assert_eq!(
+                DirectedAudioMix::plan(&declared(0.0, shorter), &schedule(frames))
+                    .unwrap_err()
+                    .code,
+                "audio_window_short",
+                "{frames} frames, {shorter}"
             );
         }
     }
