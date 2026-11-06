@@ -2,13 +2,14 @@
 //!
 //! ```text
 //! .tessel-claims/
-//!   ledger.lock     exclusive flock held for the length of one read-modify-write
+//!   ledger.lock     exclusive flock held for a Tracker scope, possibly several writes
 //!   claims.json     owners and entries (version 1), replaced by an atomic rename
 //!   live/<token>    one per owner process, flocked for as long as that process lives
 //! ```
 //!
-//! WHY two kinds of lock. `ledger.lock` serialises *changes* (it is held for microseconds, never
-//! across hashing or a lease wait). `live/<token>` is the **lease** that says an owner is still
+//! WHY two kinds of lock. `ledger.lock` serialises *changes*. A Tracker may keep it across a
+//! batch of ledger rewrites, so a healthy recovery can hold it longer than the tick budget.
+//! `live/<token>` is the **lease** that says an owner is still
 //! there: the kernel releases it when the process ends, however it ends, so a second process that
 //! can take it knows the owner is gone. Neither depends on a process ID (see `mod.rs`).
 //!
@@ -765,13 +766,13 @@ impl DiskLock {
                 }
                 Err(error) => return Err(format!("open `{}`: {error}", path.display())),
             };
-            // Bounded (BL112.3): the lock is held for one read-modify-write, microseconds. A holder
-            // that is stopped (`SIGSTOP`) or stuck keeps it for as long as it lives, and a caller
+            // Bounded (BL112.3): healthy recovery can hold this lock across several full ledger
+            // rewrites. A stopped (`SIGSTOP`) or stuck holder can keep it longer, and a caller
             // that waits forever is a stuck caller. The window's tick (where `accept` runs)
             // waits `TICK_WAIT` only. Past the bound the ledger is reported unavailable,
             // which every caller already handles by failing closed: an acceptance is refused (the
             // result stays claimed and goes to a discard job), a removal keeps the file, a
-            // recovery removes nothing. The message does not say who holds it: another process
+            // recovery fails with its partial report. The message does not say who holds it: another process
             // and another job of this one look the same.
             match lock_within(&file, deadline) {
                 Ok(true) => {}
