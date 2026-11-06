@@ -384,7 +384,10 @@ fn playback_follows_the_audio_clock_or_says_why_it_cannot(cx: &mut TestAppContex
     match report["clock"].as_str().unwrap() {
         // A machine with an output device: the sample clock drives the playhead.
         "audio_device" => {
-            assert_eq!(report["audio"]["output"]["sample_rate"], 48_000, "{report}");
+            // The device's own rate, whatever the machine's default output is (44.1/48/96 kHz, or
+            // 24 kHz for a Bluetooth headset): the test must not depend on which one is plugged in.
+            let rate = report["audio"]["output"]["sample_rate"].as_u64();
+            assert!(rate.is_some_and(|rate| rate >= 8_000), "{report}");
             assert!(report["audio"]["latency_ms"].as_f64().unwrap() >= 0.0);
             assert_eq!(
                 report["audio"]["heard"], false,
@@ -422,7 +425,7 @@ fn playback_follows_the_audio_clock_or_says_why_it_cannot(cx: &mut TestAppContex
     let moved = tick_playback(&view, cx, |report| {
         report["frame"].as_i64().unwrap_or(0) > 30
     });
-    assert!(moved["frame"].as_i64().unwrap() >= 30, "{moved}");
+    assert!(moved["frame"].as_i64().unwrap() > 30, "{moved}");
     assert_eq!(moved["state"], "playing");
 
     let stopped = op(&view, cx, json!({"op":"playback.stop"})).unwrap();

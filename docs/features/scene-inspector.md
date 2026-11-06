@@ -20,8 +20,9 @@ provas são distintas e nenhuma substitui a outra.
 
 Na aba **Cena** do inspector da janela (ao lado de **Clipe**), editar uma cena dirigida já anexada
 (F036): escolher a cena, ver a árvore de entidades, selecionar uma entidade por ID e editar as
-**8 propriedades tipadas do catálogo** (`position`, `rotation`, `scale`, `width`, `height`,
-`start/position`, `start/target`, `start/fov`) com valor vivo e candidato, reset quando o catálogo
+**propriedades tipadas do catálogo** (`position`, `rotation`, `scale`, `width`, `height`,
+`renderOrder` e `start/position`, `start/target`, `start/fov`; os componentes `position/x` ... não são
+linhas próprias: cada eixo já é um slider, ver [F034](scene-edit.md)) com valor vivo e candidato, reset quando o catálogo
 define um padrão, erro tipado visível e controles indisponíveis com o motivo na tela.
 
 Não acrescenta regra de domínio. O catálogo, a validação, o candidato do gesto, a entrada única de
