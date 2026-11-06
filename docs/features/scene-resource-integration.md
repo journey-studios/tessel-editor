@@ -214,8 +214,27 @@ editor, CLI ou job que abra o mesmo workspace.
   `recover` remove após a mesma prova de conteúdo de qualquer cleanup (BL097).
 - Um processo nunca remove arquivo aceito (sem entrada), nem entrada que outro titular vivo usa,
   nem arquivo que não é mais o publicado (identidade/hash diferente → `kept` com motivo).
-- Falha fechada: ledger ilegível, de versão mais nova ou não gravável → `adopt` recusa com
-  `claims_unavailable` **antes de copiar**; descarte mantém o arquivo e informa.
+- Falha fechada, e **quando** falhou decide o que se pode afirmar (`details.phase`):
+  - `before_changes`: ledger ilegível, de versão mais nova, ou caminho do workspace que não é
+    UTF-8 → `adopt` recusa com `claims_unavailable` **antes de copiar**; "nada foi alterado"
+    é verdadeiro.
+  - `after_changes`: o ledger abriu e passou na verificação inicial, mas uma gravação falhou
+    **depois** de arquivos já copiados (disco, permissão, `claims.json.tmp` inutilizável). A
+    garantia inicial não cobre isso. `adopt` não retorna sucesso: o arquivo (e as pastas ainda
+    vazias feitas para ele) cuja claim não foi gravada é desfeito na hora, sob o lease da raiz,
+    após a prova de identidade e SHA-256; o resultado já registrado é descartado; o erro lista
+    `details.takenBack`, `details.kept` e `details.cleanup`. Nunca diz "nada foi alterado".
+  - O sucesso de `create_file`/`create_dir` só vale com a claim **gravada**; o ledger nunca
+    lista um arquivo que não foi mantido, e nenhum arquivo copiado fica sem dono.
+  - Descarte cuja saída não pôde ser gravada (`Leave::Unverifiable`) mantém o arquivo e a
+    claim (titular vivo) e informa em `kept`; o `recover` leva o órfão depois que o dono sai.
+    Arquivo de titular vivo ou aceito nunca é removido por esses caminhos.
+  - **Aberto e bloqueado** (BL111.2b–d, ver abaixo): aceitar (drop do registro) e fundir dois
+    registros (`absorb`) ainda não devolvem erro; falha de gravação exatamente aí deixa as
+    claims no disco até o dono morrer e um `recover` posterior poderia apagar arquivo já
+    aceito. Isto **não** está fechado nesta entrega. A cópia em curso não pode ser interrompida
+    pelo observador; os arquivos seguintes são copiados e desfeitos um a um, sem arquivo sem
+    claim e sem remoção sem prova (BL111.3).
 - Sem entradas nem owners o ledger inteiro é removido: workspace sem resultado pendente fica
   idêntico a um que nunca teve ledger.
 - `recover(workspace, token)` (lib) devolve `Recovery { reaped_holders, orphans, report }`:
@@ -262,6 +281,56 @@ Limites: o lease é `flock` advisory de **filesystem local** (NFS/SMB podem não
 escritor hostil do mesmo usuário está fora de escopo (BL079); queda do SO não é sincronizada
 (rename atômico, sem `fsync`); processo que morre depois de o projeto aceitar mas antes de soltar
 os claims deixa um órfão que o `recover` verifica e pode remover; Windows não foi provado.
+
+### BL111.2: fechamento de aceitar e fundir
+
+Estado: **BLOQUEADO por recurso**. O disco livre foi medido em 11,66 GiB, abaixo do piso de 12
+GiB da tarefa; nenhum build, teste ou gate rodou no head integrado, e nada abaixo foi
+implementado. O desenho foi derivado da leitura de `cleanup.rs`, `ledger.rs`, `import.rs`,
+`adopt.rs` e `EditorState::transaction`.
+
+Proveniência da integração (local, **sem gates**): `f8ae1c8` (PR #9, fast-forward) → merge
+`dbde018` com `08ae71f` (main `2bc340d` + `bf62b26`; conflito só em `docs/backlog.md`, mantidas as
+linhas S2 de `f8ae1c8` e S3 da main) → diff de `532dad1` reaplicado como commit limpo `7a24a7b`
+(o commit `532dad1` original tem trailer indevido e não é publicado). Evidência da correção em
+`532dad1`, medida pelo coordenador na base anterior: media inteiro, claims 12, falha 6, clippy do
+media verdes. Nada disso foi repetido no head integrado.
+
+Invariante que precisa valer: o resultado só é aplicado/aceito se a aceitação foi **gravada**; se
+não foi, o estado do projeto volta ao anterior e os arquivos continuam pertencendo ao titular
+(pendentes), de modo que um `recover` posterior pode levá-los sem tocar em nada aceito.
+
+| Subcaso | Hoje | Fechamento proposto | Prova exigida |
+|---|---|---|---|
+| (b) aceitar | `Drop for Created` chama `Tracker::accept`, que ignora falha (`fault`) | `Created::accept(self) -> Result<(), JobError>` e `Tracker::accept -> Result<(), String>` (Err quando o `flush` falha); remover o efeito do `Drop` para aceitar (o `Drop` passa a só abandonar sem apagar entradas). `import::apply` e a adoção passam a chamar `accept` como **último passo dentro do closure** de `state.transaction`: um Err reverte o estado (`restore_exact`) e o resultado volta a ser descartado, sem sucesso falso | teste que bloqueia `claims.json.tmp` na aceitação: `apply` devolve erro, o projeto está igual (revisão, cenas, undo), o arquivo permanece; depois o titular morre e `recover` — **dois processos reais** — não toca o arquivo aceito porque nunca foi aceito, e a variante com aceite gravado também não o toca |
+| (c) fundir | `absorb` consome `other` e ignora falha do `transfer` | `absorb -> Result<(), (Created, JobError)>`: `transfer` grava antes de mover as listas em memória; em falha `other` volta intacto ao chamador (`import.rs`), que descarta os dois registros | teste que bloqueia `claims.json.tmp` na fusão; memória e disco continuam concordando sobre quem é o titular |
+| (d) `claims.json` sem `ledger.lock` | `acquire(create=false)` devolve `Ok(None)` e o ledger "vazio" é aceito | em `Tracker::open`, `None` com `claims.json` presente vira `fault` (falha fechada, distinta de ledger inexistente); conferir antes a ordem de remoção de quem esvazia o ledger (estado antes do lock) para não confundir com a corrida legítima | teste próprio: workspace com `claims.json` e sem `ledger.lock` → `adopt` recusa `before_changes`, `recover` recusa, descarte mantém |
+
+Direção segura: se a aceitação chegou ao disco e o erro ainda assim foi devolvido (rename ok,
+sincronização falhou), o resultado é revertido e o arquivo fica sem entrada, ou seja, vaza em vez
+de ser apagado. Nunca o contrário. Isto não depende de retry em memória, PID ou marca em memória.
+
+Cancelamento do hash de arquivo grande (BL112): `recover` só consulta o token entre arquivos. Para
+torná-lo cancelável no caminho compartilhado, o hash de `cleanup::remove_file` e do `recover`
+deve ler em blocos consultando `CancelToken`; um cancelamento no meio vira "mantido" (não prova
+identidade, não remove). Não implementado.
+
+#### Harmonização com a S1 (PR #6, head `3c5383e`)
+
+Não incorporada. A S1 mantém o ownership até o descarte assíncrono terminar; o ponto de junção é
+`Provisional::discard`/`Created::remove`, que continuam síncronos aqui. Depois do merge, testar em
+conjunto: `job_discard` (o titular continua vivo e com claim durante o descarte; `recover` de um
+segundo processo não leva o que o descarte ainda processa), `scene_adopt_host`,
+`scene_import_cleanup` e as claims. A S1 declara `JobKind::Discard` (não lido aqui); `claims`/`recover` reaproveitam `preflight` e
+`hash` justamente para não colidir. Confirmar no merge.
+
+#### `before_changes` x `after_changes`
+
+| `details.phase` | Quando | O que se pode afirmar | `why` | `takenBack` / `kept` | `cleanup` |
+|---|---|---|---|---|---|
+| `before_changes` | ledger ilegível, de versão mais nova, caminho não UTF-8 | nada foi alterado | sim | ausentes | ausente |
+| `after_changes` (claim de arquivo/pasta publicada não gravada) | gravação falhou depois de copiar | o arquivo sem claim foi desfeito sob prova; nunca "nada foi alterado" | sim | sim: o que foi desfeito e o que a prova ou o ledger não deixou remover | relatório do descarte do restante do resultado |
+| `after_changes` (juntar-se a arquivo/pasta de outro resultado) | o ledger falhou ao registrar a dependência | o resultado foi recusado e descartado onde o ledger permite | sim | ausentes | relatório do descarte |
 
 ### Identidade por conteúdo (BL097)
 
