@@ -14,6 +14,10 @@
 //!   the result are handled exactly as with a small ledger, and the claims of others survive;
 //! * the blocking caller (the CLI's `job.commit`) takes the same path, keeps the same result, and
 //!   keeps the refusal code and its `details.phase` when the record cannot be written;
+//! * an **import** whose acceptance cannot be written rolls the project back (no scene, no undo
+//!   step, the same revision), keeps the claims of what it copied through the discard that cannot
+//!   prove them, and loses nothing: `recover` leaves them while the window lives and takes them
+//!   back once it is gone;
 //! * **recovery**: a window process killed with `SIGKILL` right after its tick (the journal is
 //!   still there, nobody folded it) leaves nothing for `recover` of another process to remove;
 //!   what it accepted stays, and the claims of a live peer are untouched. A reader hammering the
@@ -264,32 +268,45 @@ fn the_tick_accepts_an_adoption_in_a_large_ledger_with_one_record_and_leaves_the
     );
 }
 
+impl World {
+    /// A host project with nothing attached, and a source project that has the scene `street`:
+    /// returns the import job, finished and waiting for the window's tick.
+    fn import(&mut self) -> String {
+        let (document, bases) = self.source_project();
+        let mut state = EditorState::demo();
+        headless::execute(&mut state, &json!({"op":"project.create","name":"host"})).unwrap();
+        persist::save(&mut state, &self.workspace.join("host.tessel.json")).unwrap();
+        self.state = state;
+        let started = self
+            .run(json!({"op":"project.import_scenes","source":document,"scene_bases":bases,"wait":false}))
+            .unwrap();
+        let job = started["job"].as_str().unwrap().to_string();
+        let registry = self.host.registry().clone();
+        registry.wait(&job, Duration::from_secs(30)).unwrap();
+        job
+    }
+
+    /// The project to import from, saved beside the bundle, and where its scene's files are.
+    fn source_project(&self) -> (PathBuf, Value) {
+        let mut source = EditorState::demo();
+        headless::execute(&mut source, &json!({"op":"project.create","name":"source"})).unwrap();
+        headless::execute(
+            &mut source,
+            &json!({"op":"scene.attach","id":"street","path":self.bundle}),
+        )
+        .unwrap();
+        let document = self.sandbox.root.join("source/source.tessel.json");
+        fs::create_dir_all(document.parent().unwrap()).unwrap();
+        persist::save(&mut source, &document).unwrap();
+        (document, json!({ "street": self.sandbox.src }))
+    }
+}
+
 #[test]
 fn the_tick_applies_an_import_in_a_large_ledger_with_one_record_and_the_project_is_as_a_rewrite_leaves_it()
  {
     let mut world = world("import", MediaHost::new().interactive());
-    let mut state = EditorState::demo();
-    headless::execute(&mut state, &json!({"op":"project.create","name":"host"})).unwrap();
-    persist::save(&mut state, &world.workspace.join("host.tessel.json")).unwrap();
-    world.state = state;
-    let mut source = EditorState::demo();
-    headless::execute(&mut source, &json!({"op":"project.create","name":"source"})).unwrap();
-    headless::execute(
-        &mut source,
-        &json!({"op":"scene.attach","id":"street","path":world.bundle}),
-    )
-    .unwrap();
-    let document = world.sandbox.root.join("source/source.tessel.json");
-    fs::create_dir_all(document.parent().unwrap()).unwrap();
-    persist::save(&mut source, &document).unwrap();
-
-    let bases = json!({ "street": world.sandbox.src });
-    let started = world
-        .run(json!({"op":"project.import_scenes","source":document,"scene_bases":bases,"wait":false}))
-        .unwrap();
-    let job = started["job"].as_str().unwrap().to_string();
-    let registry = world.host.registry().clone();
-    registry.wait(&job, Duration::from_secs(30)).unwrap();
+    let job = world.import();
     let before = fs::read(world.state_file()).unwrap();
 
     let event = world.tick(&job);
@@ -392,6 +409,67 @@ fn a_journal_that_cannot_be_written_refuses_the_acceptance_and_changes_nothing()
     fs::remove_dir(world.journal()).unwrap();
 }
 
+#[test]
+fn an_import_whose_journal_cannot_be_written_rolls_the_project_back_and_keeps_the_claims() {
+    let mut world = world("import-fails", MediaHost::new().interactive());
+    let job = world.import();
+    let (summary, revision, can_undo) = (
+        world.state.summary(),
+        world.state.project.revision,
+        world.state.history.can_undo(),
+    );
+    assert!(
+        world.state.scenes.is_empty() && !can_undo,
+        "a bare host project"
+    );
+    assert!(
+        world.claims("/scenes/street") >= 2,
+        "the import claimed its files"
+    );
+    fs::create_dir(world.journal()).unwrap();
+
+    let event = world.tick(&job);
+    assert_eq!(event["state"], "failed", "{event}");
+    assert_eq!(event["error"]["code"], "claims_unavailable", "{event}");
+    let details = &event["error"]["details"];
+    assert_eq!(details["phase"], "accept", "{event}");
+    assert!(
+        details["why"]
+            .as_str()
+            .is_some_and(|why| why.contains("claims.journal")),
+        "{event}"
+    );
+    let discard = details["discard_job"].as_str().unwrap().to_string();
+
+    // The transaction of the import is undone as a whole: no scene, no undo step, no new
+    // revision: the project is as it was.
+    assert!(world.state.scenes.is_empty(), "the scene was not attached");
+    assert!(!world.state.history.can_undo(), "and no undo step was left");
+    assert_eq!(world.state.summary(), summary);
+    assert_eq!(world.state.project.revision, revision);
+
+    // The ledger cannot be read while the folder is there, so the discard keeps what it cannot
+    // prove is its own: files and claims stay, held by this live window.
+    let ended = world.tick(&discard);
+    assert_eq!(ended["state"], "succeeded", "{ended}");
+    assert_eq!(ended["result"]["cleanup"]["removedFiles"], 0, "{ended}");
+    world.assert_files_kept();
+    let state = fs::read_to_string(world.state_file()).unwrap();
+    assert!(
+        state.contains("backdrop.png") && state.contains("figure.png"),
+        "still claimed"
+    );
+    fs::remove_dir(world.journal()).unwrap();
+
+    // The ledger works again: the entries are held by a live window, so a recovery leaves them.
+    let recovery = recover(&world.workspace, &CancelToken::default()).unwrap();
+    assert_eq!(recovery.report.removed_files, 0, "{recovery:?}");
+    assert_eq!(recovery.orphans, 0, "{recovery:?}");
+    world.assert_files_kept();
+    assert!(world.claims("/scenes/street") >= 2, "still claimed");
+    assert_eq!(world.claims(SEED_ROOT), SEEDS);
+}
+
 // ----------------------------------------------------------------------- the blocking caller --
 
 #[test]
@@ -449,7 +527,16 @@ fn child_role() {
         var("TESSEL_JOURNAL_SRC"),
         var("TESSEL_JOURNAL_BUNDLE"),
     );
-    let mut state = project_with_scene(&workspace, &bundle);
+    // With `TESSEL_JOURNAL_IMPORT` the window has a bare host project and imports that project.
+    let import = std::env::var_os("TESSEL_JOURNAL_IMPORT").map(PathBuf::from);
+    let mut state = if import.is_some() {
+        let mut state = EditorState::demo();
+        headless::execute(&mut state, &json!({"op":"project.create","name":"host"})).unwrap();
+        persist::save(&mut state, &workspace.join("host.tessel.json")).unwrap();
+        state
+    } else {
+        project_with_scene(&workspace, &bundle)
+    };
     let mut host = MediaHost::new().interactive();
     let registry = host.registry().clone();
     let say = |value: Value| {
@@ -472,6 +559,25 @@ fn child_role() {
                 registry.wait(&job, Duration::from_secs(30)).unwrap();
                 say(json!({"job": job}));
             }
+            "import" => {
+                let started = headless::execute_ext(
+                    &mut state,
+                    None,
+                    Some(&mut host),
+                    &json!({"op":"project.import_scenes","source":import.as_ref().unwrap(),
+                        "scene_bases":{"street":source},"wait":false}),
+                )
+                .unwrap();
+                let job = started["job"].as_str().unwrap().to_string();
+                registry.wait(&job, Duration::from_secs(30)).unwrap();
+                say(json!({"job": job}));
+            }
+            // What the window's project looks like now.
+            "project" => say(json!({
+                "scenes": state.scenes.len(),
+                "revision": state.project.revision,
+                "can_undo": state.history.can_undo(),
+            })),
             // The window's tick.
             "poll" => say(json!({"events": host.poll(&mut state)})),
             "quit" => {
@@ -493,12 +599,26 @@ struct Peer {
 
 impl Peer {
     fn spawn(world: &World) -> Self {
-        let mut child = Command::new(std::env::current_exe().unwrap())
+        Self::start(world, None)
+    }
+
+    /// A window that has a bare host project and imports the project saved at `document`.
+    fn importing(world: &World, document: &Path) -> Self {
+        Self::start(world, Some(document))
+    }
+
+    fn start(world: &World, import: Option<&Path>) -> Self {
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
             .args(["child_role", "--exact", "--nocapture", "--test-threads=1"])
             .env(ROLE, "1")
             .env("TESSEL_JOURNAL_WS", &world.workspace)
             .env("TESSEL_JOURNAL_SRC", &world.sandbox.src)
-            .env("TESSEL_JOURNAL_BUNDLE", &world.bundle)
+            .env("TESSEL_JOURNAL_BUNDLE", &world.bundle);
+        if let Some(document) = import {
+            command.env("TESSEL_JOURNAL_IMPORT", document);
+        }
+        let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -543,6 +663,20 @@ impl Peer {
         self.next()
     }
 
+    /// The window's tick until it reports `job`.
+    fn tick(&mut self, job: &str) -> Value {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            let polled = self.ask("poll");
+            let events = polled["events"].as_array().unwrap();
+            if let Some(event) = events.iter().find(|event| event["job"] == job) {
+                return event.clone();
+            }
+            assert!(Instant::now() < deadline, "`{job}` was never reported");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
     /// `SIGKILL`: nothing in the victim runs again.
     fn crash(mut self) {
         self.child.kill().unwrap();
@@ -558,11 +692,48 @@ impl Drop for Peer {
     }
 }
 
+/// What one round of [`killed_right_after_the_tick`] came to.
+#[derive(Debug, PartialEq, Eq)]
+enum Round {
+    /// The tick accepted the result: the round proves what it is for.
+    Accepted,
+    /// The tick was refused because a reader held `ledger.lock` for more than its 20 ms.
+    Contention,
+}
+
+/// Whether a refusal's `details.why` says the ledger lock was held past the tick's budget (the
+/// words of `DiskLock::acquire`) and nothing else: a write that failed, a damaged file or a path
+/// that cannot be written are also `claims_unavailable`, and none of them is contention.
+fn is_contention(why: &str) -> bool {
+    why.contains("is held right now by a holder that did not let go of it")
+        && why.contains("gave up after")
+}
+
+/// Reads what the window's tick reported. A refusal for contention is documented (BL112.3,
+/// BL112.5) and proves nothing about the journal; **any other** refusal, and anything that is
+/// neither an acceptance nor a refusal, is an error: it would be an intermittent failure of the
+/// journal that a retry must never hide.
+fn judge(events: &[Value]) -> Result<Round, String> {
+    if events.iter().any(|event| event["state"] == "succeeded") {
+        return Ok(Round::Accepted);
+    }
+    for event in events {
+        if event["state"] == "failed" && event["error"]["code"] == "claims_unavailable" {
+            let why = event["error"]["details"]["why"].as_str().unwrap_or("");
+            return if is_contention(why) {
+                Ok(Round::Contention)
+            } else {
+                Err(format!("refused, but not for contention: {event}"))
+            };
+        }
+    }
+    Err(format!("neither accepted nor refused: {events:?}"))
+}
+
 /// One round: the window's tick appends while another process reads the ledger over and over.
-/// `false` when the tick was refused for contention (a reader that held `ledger.lock` for more
-/// than the tick's 20 ms, which a loaded machine can do): that is the documented refusal
-/// (BL112.3/BL112.5), the round proves nothing about the journal, and the caller starts another.
-fn killed_right_after_the_tick(round: usize) -> bool {
+/// [`Round::Contention`] when the tick was refused because a reader held `ledger.lock` for more
+/// than the tick's 20 ms, which a loaded machine can do: the caller starts another round.
+fn killed_right_after_the_tick(round: usize) -> Round {
     let world = world(&format!("kill-accepted-{round}"), MediaHost::new());
     let mut peer = Peer::spawn(&world);
     peer.ask("adopt");
@@ -593,14 +764,10 @@ fn killed_right_after_the_tick(round: usize) -> bool {
         polled
     });
     let events = polled["events"].as_array().unwrap();
-    if !events.iter().any(|event| event["state"] == "succeeded") {
-        assert!(
-            events.iter().any(|event| {
-                event["state"] == "failed" && event["error"]["code"] == "claims_unavailable"
-            }),
-            "neither accepted nor refused for contention: {polled}"
-        );
-        return false;
+    match judge(events) {
+        Ok(Round::Accepted) => {}
+        Ok(Round::Contention) => return Round::Contention,
+        Err(why) => panic!("{why}"),
     }
     // Whether or not a reader folded the record first, the result's entries are gone for every
     // reader and the peer's are not.
@@ -613,15 +780,64 @@ fn killed_right_after_the_tick(round: usize) -> bool {
     assert_eq!(recovery.orphans, 0, "{recovery:?}");
     world.assert_files_kept();
     assert_eq!(world.claims(SEED_ROOT), SEEDS, "a live peer's claims stay");
-    true
+    Round::Accepted
 }
 
 #[test]
 fn a_window_killed_right_after_its_tick_leaves_nothing_for_recover_to_take_back() {
-    assert!(
-        (0..6).any(killed_right_after_the_tick),
-        "six rounds in a row were refused for contention"
+    let mut refused = 0;
+    for round in 0..6 {
+        match killed_right_after_the_tick(round) {
+            Round::Accepted => {
+                eprintln!("rounds refused for contention before the accepted one: {refused}");
+                return;
+            }
+            Round::Contention => refused += 1,
+        }
+    }
+    panic!("{refused} rounds in a row were refused for contention");
+}
+
+fn failed(code: &str, why: &str) -> Value {
+    json!({"job": "j", "state": "failed", "error": {"code": code, "details": {"why": why}}})
+}
+
+const HELD: &str = "`/ws/.tessel-claims/ledger.lock` is held right now by a holder that did not let go of it; gave up after 20ms";
+
+#[test]
+fn only_a_lock_held_past_the_budget_is_contention_and_anything_else_fails_the_round() {
+    let accepted = json!({"job": "j", "state": "succeeded"});
+    assert_eq!(judge(std::slice::from_ref(&accepted)), Ok(Round::Accepted));
+    assert_eq!(
+        judge(&[json!({"job": "other", "state": "running"}), accepted]),
+        Ok(Round::Accepted)
     );
+    assert_eq!(
+        judge(&[failed("claims_unavailable", HELD)]),
+        Ok(Round::Contention)
+    );
+
+    // An intermittent failure of the journal looks like any other `claims_unavailable`; the
+    // retry of the contention case must not hide it.
+    for why in [
+        "`/ws/.tessel-claims/claims.journal`: No space left on device (os error 28)",
+        "`/ws/.tessel-claims/claims.journal`: Is a directory (os error 21)",
+        "`/ws/.tessel-claims/claims.journal` is not a claims journal: a record without `accept`",
+        "`/ws/.tessel-claims` is being created and removed too quickly to be locked",
+        "",
+    ] {
+        let error = judge(&[failed("claims_unavailable", why)])
+            .expect_err(&format!("`{why}` is not contention"));
+        assert!(error.contains("not for contention"), "{error}");
+    }
+    // Other failures, and silence, are not a refusal for contention either.
+    assert!(judge(&[failed("stale_result", HELD)]).is_err());
+    assert!(
+        judge(&[json!({"job": "j", "state": "failed", "error": {"code": "claims_unavailable"}})])
+            .is_err()
+    );
+    assert!(judge(&[]).is_err());
+    assert!(judge(&[json!({"job": "j", "state": "running"})]).is_err());
 }
 
 #[test]
@@ -656,4 +872,56 @@ fn a_window_killed_before_any_reader_folds_its_record_is_still_not_recovered() {
     world.assert_files_kept();
     assert!(!world.journal().exists(), "folded by the reader");
     assert_eq!(world.claims(SEED_ROOT), SEEDS);
+}
+
+/// The same refusal in a real window: the import is rolled back there, its files stay claimed by
+/// the live window, a recovery of another process leaves them, and once the window is gone the
+/// recovery takes them back (the project never referenced them).
+#[test]
+fn an_import_refused_for_its_journal_is_kept_while_its_window_lives_and_recovered_after() {
+    let world = world("import-peer", MediaHost::new());
+    let (document, _) = world.source_project();
+    let mut peer = Peer::importing(&world, &document);
+    let bare = peer.ask("project");
+    assert_eq!(bare["scenes"], 0, "{bare}");
+
+    let job = peer.ask("import")["job"].as_str().unwrap().to_string();
+    assert!(
+        world.claims("/scenes/street") >= 2,
+        "the import claimed its files"
+    );
+    fs::create_dir(world.journal()).unwrap();
+
+    let event = peer.tick(&job);
+    assert_eq!(event["state"], "failed", "{event}");
+    assert_eq!(event["error"]["code"], "claims_unavailable", "{event}");
+    assert_eq!(event["error"]["details"]["phase"], "accept", "{event}");
+    let discard = event["error"]["details"]["discard_job"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(
+        peer.ask("project"),
+        bare,
+        "the window's project is as it was"
+    );
+    let ended = peer.tick(&discard);
+    assert_eq!(ended["state"], "succeeded", "{ended}");
+    assert_eq!(ended["result"]["cleanup"]["removedFiles"], 0, "{ended}");
+    world.assert_files_kept();
+    fs::remove_dir(world.journal()).unwrap();
+
+    // The window lives: its claims are not orphans, so nothing is taken back.
+    let recovery = recover(&world.workspace, &CancelToken::default()).unwrap();
+    assert_eq!(recovery.report.removed_files, 0, "{recovery:?}");
+    assert_eq!(recovery.orphans, 0, "{recovery:?}");
+    world.assert_files_kept();
+
+    // The window is gone: the files are orphans nobody references, and recovery removes them.
+    peer.crash();
+    let recovery = recover(&world.workspace, &CancelToken::default()).unwrap();
+    assert_eq!(recovery.report.removed_files, 2, "{recovery:?}");
+    world.assert_files_gone();
+    assert_eq!(world.claims("/scenes/street"), 0);
+    assert_eq!(world.claims(SEED_ROOT), SEEDS, "a live peer's claims stay");
 }

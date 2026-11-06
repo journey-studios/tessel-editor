@@ -1180,3 +1180,383 @@ fn concurrent_acceptances_and_compactions_never_lose_or_resurrect_an_entry() {
         "every entry that was accepted is gone, and only those"
     );
 }
+
+// --- the journal and more than one holder, a transfer, a crash during compaction (BL112.7) -----
+
+#[test]
+fn a_shared_entry_accepted_through_the_journal_is_nobodys_for_the_holder_that_leaves_after() {
+    let world = large("claims-journal-shared-after", &["shared-after"]);
+    let path = key("shared-after");
+    let second = next_holder();
+    assert!(world.ledger.lock().join(second, &path), "two holders");
+
+    world
+        .ledger
+        .accept([path.as_path()].into_iter(), false)
+        .unwrap();
+    assert!(
+        journal_path(&world.canonical).exists(),
+        "nobody folded the record yet"
+    );
+
+    // The one that did not accept finds the entry gone: what it relied on is the project's now,
+    // so it must not remove it. Either order of the two leaves is the same answer.
+    let mut tracker = world.ledger.lock();
+    assert_eq!(tracker.begin_leave(second, &path), Leave::Untracked);
+    assert_eq!(tracker.leave(world.result, &path), Leave::Untracked);
+    drop(tracker);
+    assert!(!on_disk_text(&world.canonical).contains("shared-after"));
+}
+
+#[test]
+fn a_holder_that_left_before_the_journal_acceptance_leaves_nothing_to_remove_either() {
+    let world = large("claims-journal-shared-before", &["shared-before"]);
+    let path = key("shared-before");
+    let second = next_holder();
+    assert!(world.ledger.lock().join(second, &path));
+    assert_eq!(
+        world.ledger.lock().leave(second, &path),
+        Leave::Shared,
+        "the creator still holds it"
+    );
+
+    world
+        .ledger
+        .accept([path.as_path()].into_iter(), false)
+        .unwrap();
+
+    let mut tracker = world.ledger.lock();
+    assert_eq!(tracker.begin_leave(world.result, &path), Leave::Untracked);
+    assert_eq!(tracker.leave(second, &path), Leave::Untracked);
+}
+
+#[test]
+fn a_transfer_followed_by_a_journal_acceptance_hands_the_entries_of_the_new_holder_over() {
+    let world = large("claims-journal-transfer", &["moved-a", "moved-b"]);
+    let (a, b) = (key("moved-a"), key("moved-b"));
+    let to = next_holder();
+    world
+        .ledger
+        .lock()
+        .transfer(world.result, to, [a.as_path(), b.as_path()].into_iter())
+        .unwrap();
+    assert!(
+        !journal_path(&world.canonical).exists(),
+        "a transfer is a rewrite, not an acceptance"
+    );
+
+    // The accepted keys are the ones of the holder they were transferred to.
+    world
+        .ledger
+        .accept([a.as_path(), b.as_path()].into_iter(), false)
+        .unwrap();
+    let mut tracker = world.ledger.lock();
+    assert!(tracker.fault().is_none(), "{:?}", tracker.fault());
+    assert_eq!(tracker.entries().count(), world.bulk);
+    assert_eq!(tracker.begin_leave(to, &a), Leave::Untracked);
+    assert_eq!(tracker.begin_leave(world.result, &b), Leave::Untracked);
+}
+
+#[test]
+fn a_transfer_after_a_journal_acceptance_does_not_bring_the_entry_back() {
+    let world = large("claims-journal-transfer-late", &["moved-late"]);
+    let path = key("moved-late");
+    world
+        .ledger
+        .accept([path.as_path()].into_iter(), false)
+        .unwrap();
+    assert!(journal_path(&world.canonical).exists());
+
+    // The other record is absorbed after this one was accepted: it finds nothing to move and
+    // does not write the entry back.
+    let to = next_holder();
+    world
+        .ledger
+        .lock()
+        .transfer(world.result, to, [path.as_path()].into_iter())
+        .unwrap();
+    let tracker = world.ledger.lock();
+    assert_eq!(tracker.entries().count(), world.bulk);
+    assert!(tracker.entries().all(|(entry, _)| entry != path));
+}
+
+/// Two records on one large ledger, as the real operations hold them: `created` made a folder,
+/// `joined` relies on it, and a third record made a folder of its own and was absorbed.
+mod records {
+    use super::*;
+    use crate::scene_resources::cleanup::Created;
+
+    fn folder(world: &Large, name: &str) -> PathBuf {
+        let path = world.canonical.join(name);
+        fs::create_dir_all(&path).unwrap();
+        path
+    }
+
+    fn assert_one_record_of(world: &Large, names: &[&str]) {
+        let journal = fs::read_to_string(journal_path(&world.canonical)).unwrap();
+        assert_eq!(journal.lines().count(), 1, "one record: {journal}");
+        assert!(journal.ends_with('\n'), "complete: {journal}");
+        for name in names {
+            assert!(journal.contains(name), "`{name}` in {journal}");
+        }
+    }
+
+    #[test]
+    fn a_result_accepted_through_the_journal_leaves_the_folder_to_the_record_that_relied_on_it() {
+        let world = large("claims-journal-records", &[]);
+        let shared = folder(&world, "shared-folder");
+        let (mut first, mut second) = (Created::default(), Created::default());
+        let ledger = first.bind(&world.canonical);
+        second.bind(&world.canonical);
+        {
+            let mut tracker = ledger.lock();
+            first
+                .dir_with(&mut tracker, shared.clone(), shared.clone())
+                .unwrap();
+            second
+                .join_dir_with(&mut tracker, shared.clone(), shared.clone())
+                .unwrap();
+        }
+        let before = fs::read(state_path(&world.canonical)).unwrap();
+
+        first.accept_nowait().unwrap();
+        assert_eq!(
+            fs::read(state_path(&world.canonical)).unwrap(),
+            before,
+            "the acceptance appended, it did not rewrite"
+        );
+        assert_one_record_of(&world, &["shared-folder"]);
+
+        // The record that only relied on it is discarded afterwards: not its folder any more.
+        let report = second.remove();
+        assert_eq!(report.removed_dirs, 0, "{report:?}");
+        assert!(shared.is_dir(), "the accepted folder stays");
+        assert_eq!(world.ledger.lock().entries().count(), world.bulk);
+    }
+
+    #[test]
+    fn a_record_discarded_before_the_acceptance_leaves_the_folder_to_the_one_that_accepts() {
+        let world = large("claims-journal-records-first", &[]);
+        let shared = folder(&world, "shared-first");
+        let (mut first, mut second) = (Created::default(), Created::default());
+        let ledger = first.bind(&world.canonical);
+        second.bind(&world.canonical);
+        {
+            let mut tracker = ledger.lock();
+            first
+                .dir_with(&mut tracker, shared.clone(), shared.clone())
+                .unwrap();
+            second
+                .join_dir_with(&mut tracker, shared.clone(), shared.clone())
+                .unwrap();
+        }
+
+        let report = second.remove();
+        assert_eq!(report.removed_dirs, 0, "{report:?}");
+        assert!(shared.is_dir(), "the creator still holds it");
+        assert!(
+            !journal_path(&world.canonical).exists(),
+            "a discard is never an acceptance: nothing is appended"
+        );
+
+        first.accept_nowait().unwrap();
+        assert_one_record_of(&world, &["shared-first"]);
+        assert!(shared.is_dir());
+        assert_eq!(world.ledger.lock().entries().count(), world.bulk);
+    }
+
+    #[test]
+    fn an_absorbed_record_is_accepted_through_the_journal_with_what_it_absorbed() {
+        let world = large("claims-journal-absorb", &[]);
+        let (one, two) = (
+            folder(&world, "absorbed-one"),
+            folder(&world, "absorbed-two"),
+        );
+        let (mut keeper, mut absorbed) = (Created::default(), Created::default());
+        let ledger = keeper.bind(&world.canonical);
+        absorbed.bind(&world.canonical);
+        {
+            let mut tracker = ledger.lock();
+            keeper
+                .dir_with(&mut tracker, one.clone(), one.clone())
+                .unwrap();
+            absorbed
+                .dir_with(&mut tracker, two.clone(), two.clone())
+                .unwrap();
+        }
+        keeper.absorb(&mut absorbed).unwrap();
+        assert!(absorbed.is_empty(), "everything moved to the keeper");
+        let before = fs::read(state_path(&world.canonical)).unwrap();
+
+        keeper.accept_nowait().unwrap();
+        assert_eq!(fs::read(state_path(&world.canonical)).unwrap(), before);
+        assert_one_record_of(&world, &["absorbed-one", "absorbed-two"]);
+
+        // Nothing is left to take back for either of them, and nothing was removed.
+        let report = absorbed.remove();
+        assert!(report.is_clean() && report.removed_dirs == 0, "{report:?}");
+        let tracker = world.ledger.lock();
+        assert_eq!(tracker.entries().count(), world.bulk);
+        drop(tracker);
+        assert!(one.is_dir() && two.is_dir());
+    }
+}
+
+#[test]
+fn leaving_and_accepting_nothing_never_append_to_the_journal() {
+    let world = large("claims-journal-no-append", &["left-a", "left-b"]);
+    let (a, b) = (key("left-a"), key("left-b"));
+    let mut tracker = world.ledger.lock();
+    assert_eq!(
+        tracker.begin_leave(world.result, &a),
+        Leave::Last(Item::File(None))
+    );
+    assert_eq!(tracker.abandon(world.result, &b), Leave::Abandoned);
+    drop(tracker);
+    // Accepting what no entry names (a refusal found nothing to hand over), or nothing at all.
+    world
+        .ledger
+        .accept(std::iter::empty::<&Path>(), false)
+        .unwrap();
+    world
+        .ledger
+        .accept([key("never-claimed").as_path()].into_iter(), false)
+        .unwrap();
+
+    let journal = fs::read_to_string(journal_path(&world.canonical)).unwrap_or_default();
+    assert!(
+        !journal.contains("left-a") && !journal.contains("left-b"),
+        "only an acceptance is ever recorded: {journal}"
+    );
+    assert!(
+        !journal.contains("\"accept\":[]"),
+        "no empty record: {journal}"
+    );
+}
+
+fn on_disk_text(canonical: &Path) -> String {
+    fs::read_to_string(state_path(canonical)).unwrap_or_default()
+}
+
+/// The state with the acceptance already folded in, and the journal that carried it still there:
+/// what a crash between the rename of the state and the removal of the journal leaves.
+#[test]
+fn a_journal_left_after_its_state_was_written_is_replayed_without_effect_or_resurrection() {
+    let world = large("claims-journal-crash-replay", &["crash-a", "crash-b"]);
+    let (a, b) = (key("crash-a"), key("crash-b"));
+    world
+        .ledger
+        .accept([a.as_path(), b.as_path()].into_iter(), false)
+        .unwrap();
+    let journal = journal_path(&world.canonical);
+    let record = fs::read(&journal).unwrap();
+    // Folded: the state no longer has the keys, the journal is gone.
+    assert_eq!(world.ledger.lock().entries().count(), world.bulk);
+    assert!(!on_disk_text(&world.canonical).contains("crash-a"));
+    assert!(!journal.exists());
+
+    // The crash: the journal is still there beside the compacted state. Each reader that opens
+    // the ledger replays it to the same ledger (a second crash during that fold is the same
+    // case again), and the entries it names stay gone.
+    for _ in 0..2 {
+        fs::write(&journal, &record).unwrap();
+        let tracker = world.ledger.lock();
+        assert!(tracker.fault().is_none(), "{:?}", tracker.fault());
+        assert_eq!(tracker.entries().count(), world.bulk);
+        drop(tracker);
+        assert!(!journal.exists(), "folded again");
+    }
+
+    // Whoever claims one of those paths anew opens the ledger first, which folds the old record
+    // **before** the claim is written: the record cannot remove the new claim, and the new claim
+    // does not bring the old holder back.
+    fs::write(&journal, &record).unwrap();
+    let again = next_holder();
+    world
+        .ledger
+        .lock_creating()
+        .create_file(again, a.clone(), &root(), None)
+        .unwrap();
+    assert!(!journal.exists(), "folded before the claim was written");
+    let entry = on_disk(&world.ledger, &a).expect("claimed anew");
+    assert!(entry.holders.contains(&again) && !entry.holders.contains(&world.result));
+    assert!(
+        on_disk(&world.ledger, &b).is_none(),
+        "and `b` is still gone"
+    );
+    assert_eq!(world.ledger.lock().entries().count(), world.bulk + 1);
+}
+
+/// Makes the removal of a file fail without touching its content: `chflags uchg` (macOS user
+/// immutable flag, no privileges). Cleared when dropped, so a failed assertion cannot leave a
+/// file nobody can delete.
+#[cfg(target_os = "macos")]
+struct Immutable(PathBuf);
+
+#[cfg(target_os = "macos")]
+impl Immutable {
+    fn set(path: &Path) -> Self {
+        Self::flag("uchg", path);
+        Self(path.to_path_buf())
+    }
+
+    fn flag(flag: &str, path: &Path) {
+        let status = std::process::Command::new("/usr/bin/chflags")
+            .arg(flag)
+            .arg(path)
+            .status()
+            .unwrap();
+        assert!(status.success(), "chflags {flag} {}", path.display());
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for Immutable {
+    fn drop(&mut self) {
+        let _ = std::process::Command::new("/usr/bin/chflags")
+            .arg("nouchg")
+            .arg(&self.0)
+            .status();
+    }
+}
+
+/// The real crash window, driven through the production code: the state is renamed into place,
+/// then the removal of the journal fails (the file cannot be unlinked), so the opener answers a
+/// fault with the compacted state and the journal both on disk. A later opener replays the same
+/// journal to the same ledger.
+#[cfg(target_os = "macos")]
+#[test]
+fn a_compaction_that_cannot_remove_the_journal_after_the_rename_is_completed_by_the_next_reader() {
+    let world = large("claims-journal-unlink-fails", &["unlink-a", "unlink-b"]);
+    let (a, b) = (key("unlink-a"), key("unlink-b"));
+    world
+        .ledger
+        .accept([a.as_path(), b.as_path()].into_iter(), false)
+        .unwrap();
+    let journal = journal_path(&world.canonical);
+    let record = fs::read(&journal).unwrap();
+    let stuck = Immutable::set(&journal);
+
+    let tracker = world.ledger.lock();
+    let fault = tracker
+        .fault()
+        .expect("the journal could not be removed: a fault, never a success")
+        .to_string();
+    assert!(fault.contains("claims.journal"), "{fault}");
+    drop(tracker);
+    // Between the rename and the unlink: the state has the acceptance, the journal is still there.
+    let state = on_disk_text(&world.canonical);
+    assert!(
+        !state.contains("unlink-a") && !state.contains("unlink-b"),
+        "{state}"
+    );
+    assert_eq!(fs::read(&journal).unwrap(), record);
+
+    drop(stuck);
+    let tracker = world.ledger.lock();
+    assert!(tracker.fault().is_none(), "{:?}", tracker.fault());
+    assert_eq!(tracker.entries().count(), world.bulk);
+    drop(tracker);
+    assert!(!journal.exists(), "the next reader removed it");
+    assert!(on_disk(&world.ledger, &a).is_none() && on_disk(&world.ledger, &b).is_none());
+}
