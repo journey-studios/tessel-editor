@@ -17,7 +17,9 @@ use std::time::{Duration, Instant};
 use tessel_editor_core::backend::{
     AssetStatus, BackendError, BackendEvent, Capabilities, FrameResult, RenderBackend, RequestId,
 };
-use tessel_editor_core::bridge::{BridgeBackend, Transport};
+use tessel_editor_core::bridge::{
+    BridgeBackend, FEATURE_ASSET_IDENTITY, LoadIdentity, Transport, stamp_asset_load,
+};
 use tessel_editor_core::scene_plan::{Capability, ScenePlan};
 
 use crate::scene::{
@@ -73,6 +75,15 @@ pub struct SceneRenderer<T: Transport> {
     finished: BTreeMap<RequestId, Result<FrameResult, BackendError>>,
     /// Loads the runtime refused, by slot. Taken by the wait that needs the slot.
     load_failures: BTreeMap<String, BackendError>,
+    /// The runtime listed `asset.identity`: loads are stamped and only their echo counts (BL102b).
+    identified: bool,
+    /// Next `asset.request`. Never reset, not even by a restart of the runtime: a number is used
+    /// once per renderer, so a late answer of an earlier process can never match a later load.
+    next_request: u64,
+    /// The identity of the last `asset.load` sent for each slot (only when `identified`).
+    loads: BTreeMap<String, LoadIdentity>,
+    /// `asset.state` messages refused because they did not answer the load that holds the slot.
+    refused_asset_states: u64,
     context_lost: bool,
     timeout: Duration,
 }
@@ -92,6 +103,10 @@ impl<T: Transport> SceneRenderer<T> {
             next_revision: 1,
             finished: BTreeMap::new(),
             load_failures: BTreeMap::new(),
+            identified: false,
+            next_request: 1,
+            loads: BTreeMap::new(),
+            refused_asset_states: 0,
             context_lost: false,
             timeout: DEFAULT_TIMEOUT,
         }
@@ -108,6 +123,21 @@ impl<T: Transport> SceneRenderer<T> {
 
     pub fn capabilities(&self) -> Option<&Capabilities> {
         self.capabilities.as_ref()
+    }
+
+    /// Whether the connected runtime negotiated `asset.identity`: its loads are stamped and its
+    /// `asset.state` answers are checked against the load that holds the slot (BL102b). `false`
+    /// before the handshake and for a runtime that does not list the feature, which keeps the
+    /// ordinary slot-only behaviour.
+    pub fn asset_identity(&self) -> bool {
+        self.identified
+    }
+
+    /// How many `asset.state` answers were refused since the renderer was created: the answer of
+    /// a load another one replaced in its slot, or one that repeats no identity although the
+    /// feature was negotiated. They never reach the book of slots.
+    pub fn refused_asset_states(&self) -> u64 {
+        self.refused_asset_states
     }
 
     /// Starts the handshake if it has not happened and checks the runtime can draw scenes.
@@ -128,6 +158,8 @@ impl<T: Transport> SceneRenderer<T> {
                 .flatten()
                 .filter_map(|name| name.as_str().and_then(Capability::parse))
                 .collect();
+            // Negotiated, not assumed: a runtime that does not list the feature is sent no new field.
+            self.identified = capabilities.supports(FEATURE_ASSET_IDENTITY);
             self.capabilities = Some(capabilities);
         }
         self.capabilities
@@ -148,11 +180,20 @@ impl<T: Transport> SceneRenderer<T> {
         self.ensure_ready()?;
         plan.require_capabilities(&self.supported)
             .map_err(|failure| plan_error(&failure))?;
-        let prepared = self.slots.prepare(plan, resources)?;
+        let mut prepared = self.slots.prepare(plan, resources)?;
         for release in &prepared.releases {
             self.backend.transport_mut().send(release)?;
+            if let Some(slot) = release["id"].as_str() {
+                self.loads.remove(slot);
+            }
         }
-        for load in &prepared.loads {
+        for load in &mut prepared.loads {
+            if self.identified {
+                let request = self.next_request;
+                self.next_request += 1;
+                let identity = stamp_asset_load(&mut load.message, request);
+                self.loads.insert(load.slot.clone(), identity);
+            }
             self.backend.transport_mut().send(&load.message)?;
         }
         let pending: Vec<String> = prepared
@@ -233,6 +274,7 @@ impl<T: Transport> SceneRenderer<T> {
         for release in self.slots.release_all() {
             self.backend.transport_mut().send(&release)?;
         }
+        self.loads.clear();
         Ok(())
     }
 
@@ -243,6 +285,8 @@ impl<T: Transport> SceneRenderer<T> {
         self.supported.clear();
         self.finished.clear();
         self.load_failures.clear();
+        self.loads.clear();
+        self.identified = false;
         self.context_lost = false;
     }
 
@@ -285,18 +329,47 @@ impl<T: Transport> SceneRenderer<T> {
         self.absorb(event)
     }
 
+    /// Whether an `asset.state` of `slot` may change the book. Without the negotiated feature
+    /// every answer does, as before. With it, only the one that repeats the identity of the load
+    /// that holds the slot now: the page answers loads in its own order, so a `ready` (or the
+    /// `cancelled`) of a load the slot was taken from can arrive after its successor was sent and
+    /// would otherwise release the frame before the successor's picture is there (BL102b).
+    fn answers_current_load(&mut self, slot: &str, echo: Option<&serde_json::Value>) -> bool {
+        if !self.identified {
+            return true;
+        }
+        let answered = self
+            .loads
+            .get(slot)
+            .zip(echo)
+            .is_some_and(|(identity, echo)| identity.answered_by(echo));
+        if !answered {
+            self.refused_asset_states += 1;
+        }
+        answered
+    }
+
     fn absorb(&mut self, event: BackendEvent) -> Result<(), BackendError> {
         match event {
             BackendEvent::Asset {
                 id,
                 status: AssetStatus::Ready(_),
-            } => self.slots.mark_ready(id.as_str()),
+                echo,
+            } => {
+                if self.answers_current_load(id.as_str(), echo.as_ref()) {
+                    self.slots.mark_ready(id.as_str());
+                }
+            }
             BackendEvent::Asset {
                 id,
                 status: AssetStatus::Failed(error),
+                echo,
             } => {
-                self.slots.mark_failed(id.as_str());
-                self.load_failures.insert(id.as_str().to_string(), error);
+                if self.answers_current_load(id.as_str(), echo.as_ref()) {
+                    self.loads.remove(id.as_str());
+                    self.slots.mark_failed(id.as_str());
+                    self.load_failures.insert(id.as_str().to_string(), error);
+                }
             }
             BackendEvent::FrameDone(result) => {
                 self.finished.insert(result.id, Ok(result));
@@ -311,6 +384,8 @@ impl<T: Transport> SceneRenderer<T> {
                 self.slots.reset();
                 self.capabilities = None;
                 self.supported.clear();
+                self.loads.clear();
+                self.identified = false;
                 self.context_lost = false;
                 return Err(BackendError::new("backend_unavailable", reason));
             }
