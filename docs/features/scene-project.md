@@ -61,8 +61,8 @@ ordem de anexação. Cada `scene.*` é um `SceneCommand` dentro de `Command::Sce
 | `scene.edit` | `scene`, `ops[]` (`{"set","value"}`/`{"reset"}` da F034), `dry_run?` | lote atômico via `scene_edit::apply`/`dry_run` | "Edit scene" (uma entrada por lote) |
 | `scene.list` | — | `id`, `name`, `bundle_id`, `revision_id`, contagens | — |
 | `scene.describe` | `scene` | fps, duração, definições/nós, instâncias, shots, clipes, notices, famílias adiadas em uso, chaves de entrada desconhecidas | — |
-| `scene.catalog` | — | as 8 propriedades (`path`, `kind`, `unit`, `range`, `default`, `applies_to`, `origin`) | — |
-| `scene.properties` | `scene`, `prefix?` | cada propriedade aplicável com o valor atual | — |
+| `scene.catalog` | — | as 21 propriedades (as 8 originais primeiro; `path`, `kind`, `unit`, `range`, `default`, `applies_to`, `origin`) | — |
+| `scene.properties` | `scene`, `prefix?`, `components?` | cada propriedade aplicável com o valor atual; `components: true` acrescenta `position/x` ... (F034, negociado por `scene.capabilities.edit`) | — |
 | `scene.get` | `scene`, `property` (caminho canônico) | uma propriedade | — |
 | `scene.camera` | `scene`, **um de** `frame` · `time` (`{"num","den"}` exato) · `clip`+`clip_frame` | câmera via `evaluate_camera` / `camera_at_clip_frame` (mapeamento shot→instância→clipe incluso) | — |
 | `scene.plan`, `scene.tree`, `scene.evaluate`, `scene.select`, `scene.selection`, `scene.gesture.*` | ver [F039](scene-interaction.md) | Árvore/seleção, câmera e nós por frame, gesto com candidato isolado; status e evidências em F039 | Só commit é edição |

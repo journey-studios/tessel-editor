@@ -13,6 +13,7 @@ use serde_json::Value;
 
 use crate::directed_scene::{DirectedScene, Entity, EntityKind, ImportError, Limits};
 
+use super::camera_keys::{MovementConversion, convert_first_movement};
 use super::catalog::{CameraProperty, NodeProperty, PropertySpec};
 use super::error::{
     CANDIDATE_REJECTED, DOCUMENT_MISMATCH, EditError, LocalizedIssue, NO_DEFAULT, NOT_APPLICABLE,
@@ -48,10 +49,13 @@ pub struct EditSummary {
     /// Set then restore is `false`; the candidate's JSON may still spell a restored number
     /// differently from the original (`1` and `1.0`).
     pub modified: bool,
+    /// Movements a write turned into keyframes (a camera start that changed), in batch order.
+    /// Empty for every other batch.
+    pub conversions: Vec<MovementConversion>,
 }
 
 impl EditSummary {
-    fn new(changes: Vec<PropertyChange>) -> Self {
+    fn new(changes: Vec<PropertyChange>, conversions: Vec<MovementConversion>) -> Self {
         let mut net: HashMap<String, (PropertyValue, PropertyValue)> = HashMap::new();
         for change in &changes {
             net.entry(change.property.path())
@@ -59,7 +63,11 @@ impl EditSummary {
                 .or_insert((change.before, change.after));
         }
         let modified = net.values().any(|(first, last)| first != last);
-        Self { changes, modified }
+        Self {
+            changes,
+            modified,
+            conversions,
+        }
     }
 
     /// Ops that changed a value.
@@ -89,6 +97,8 @@ struct Located {
     /// JSON Pointer of the property's own field.
     field: String,
     spec: &'static PropertySpec,
+    /// Position in `cameraClips` when the property belongs to a camera clip.
+    clip_slot: Option<usize>,
 }
 
 /// Resolves IDs to JSON Pointers. IDs cannot change in an edit (the catalog has no property that
@@ -117,6 +127,7 @@ impl<'a> Locator<'a> {
         let scene = self.scene;
         let bundle = scene.bundle();
         let spec = property.spec();
+        let mut clip_slot = None;
         let entity = match property {
             PropertyRef::Node {
                 scene_id, node_id, ..
@@ -183,6 +194,7 @@ impl<'a> Locator<'a> {
                     )
                     .with_id(clip_id.as_str()));
                 };
+                clip_slot = Some(clip_index);
                 format!("/cameraClips/{clip_index}")
             }
         };
@@ -195,6 +207,7 @@ impl<'a> Locator<'a> {
             field: format!("{entity}/{}", spec.document_field),
             entity,
             spec,
+            clip_slot,
         })
     }
 }
@@ -215,10 +228,13 @@ fn verify_id(document: &Value, pointer: &str, expected: &str) -> Result<(), Edit
 }
 
 fn read_value(document: &Value, located: &Located) -> Result<PropertyValue, EditError> {
-    document
-        .pointer(&located.field)
-        .and_then(|value| PropertyValue::read_json(located.spec.kind, value))
-        .ok_or_else(|| mismatch(format!("`{}` holds no readable value", located.field)))
+    match document.pointer(&located.field) {
+        Some(value) => PropertyValue::read_json(located.spec.kind, value),
+        // An optional field the bundle leaves out reads as the catalog's default (`renderOrder`).
+        None if located.spec.optional => located.spec.default,
+        None => None,
+    }
+    .ok_or_else(|| mismatch(format!("`{}` holds no readable value", located.field)))
 }
 
 fn write_value(
@@ -226,9 +242,24 @@ fn write_value(
     located: &Located,
     value: &PropertyValue,
 ) -> Result<(), EditError> {
-    let written = document
-        .pointer_mut(&located.field)
-        .is_some_and(|slot| value.write_json(slot));
+    let written = match document.pointer_mut(&located.field) {
+        Some(slot) => value.write_json(slot),
+        None if located.spec.optional => {
+            // The field is absent: add it to the node or clip object that owns it.
+            let mut slot = Value::Null;
+            let owner = document
+                .pointer_mut(&located.entity)
+                .and_then(Value::as_object_mut);
+            match owner {
+                Some(owner) if value.write_json(&mut slot) => {
+                    owner.insert(located.spec.document_field.to_string(), slot);
+                    true
+                }
+                _ => false,
+            }
+        }
+        None => false,
+    };
     if written {
         return Ok(());
     }
@@ -302,6 +333,7 @@ pub fn apply_with(
     let mut locator = Locator::new(scene);
     let mut changes = Vec::with_capacity(ops.len());
     let mut touched: Vec<(usize, String)> = Vec::new();
+    let mut conversions: Vec<MovementConversion> = Vec::new();
 
     for (index, op) in ops.iter().enumerate() {
         let property = op.property();
@@ -323,6 +355,15 @@ pub fn apply_with(
             })?,
         };
         if before != after {
+            // The origin's write of a camera start: the first movement becomes keys, from the
+            // start the clip has right now, before the start moves. A write that changes nothing
+            // converts nothing (the document is left alone).
+            if let (true, Some(slot)) = (located.spec.converts_first_movement, located.clip_slot) {
+                let base = &scene.bundle().camera_clips[slot];
+                let converted = convert_first_movement(&mut work, &located.entity, base, index)
+                    .map_err(fail)?;
+                conversions.extend(converted);
+            }
             write_value(&mut work, &located, &after).map_err(fail)?;
             touched.push((index, located.entity));
         }
@@ -343,7 +384,7 @@ pub fn apply_with(
     }
     Ok(EditOutcome {
         candidate,
-        summary: EditSummary::new(changes),
+        summary: EditSummary::new(changes, conversions),
     })
 }
 
@@ -394,14 +435,27 @@ pub fn read_property(
 
 /// Every property that applies to the scene's nodes and camera clips, with its current value:
 /// nodes in document order (scene by scene), then clips. What an inspector lists, with no
-/// selection involved.
+/// selection involved. Components (`position/x`) are not listed: they restate their parent; see
+/// `properties_with_components`.
 pub fn properties_of(scene: &DirectedScene) -> Vec<PropertyInfo> {
+    list_properties(scene, false)
+}
+
+/// `properties_of` plus the component properties (`position/x`, `start/target/z`, ...), after the
+/// properties the same node or clip lists on its own.
+pub fn properties_with_components(scene: &DirectedScene) -> Vec<PropertyInfo> {
+    list_properties(scene, true)
+}
+
+fn list_properties(scene: &DirectedScene, components: bool) -> Vec<PropertyInfo> {
     let bundle = scene.bundle();
+    let listed = |spec: &PropertySpec| components || spec.component.is_none();
     let mut properties = Vec::new();
     for graph in &bundle.scenes {
         for node in graph.nodes() {
             for property in NodeProperty::ALL {
-                if property.spec().applies_to.accepts_node(node.kind) {
+                let spec = property.spec();
+                if listed(spec) && spec.applies_to.accepts_node(node.kind) {
                     properties.push(PropertyRef::node(graph.id(), &node.id, property));
                 }
             }
@@ -409,7 +463,9 @@ pub fn properties_of(scene: &DirectedScene) -> Vec<PropertyInfo> {
     }
     for clip in &bundle.camera_clips {
         for property in CameraProperty::ALL {
-            properties.push(PropertyRef::camera(&clip.id, property));
+            if listed(property.spec()) {
+                properties.push(PropertyRef::camera(&clip.id, property));
+            }
         }
     }
     let mut locator = Locator::new(scene);

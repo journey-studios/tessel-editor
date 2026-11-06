@@ -78,6 +78,15 @@ fn spec_json(spec: &PropertySpec) -> Value {
         "default": spec.default.as_ref().map(|value| value.to_json()),
         "document_field": spec.document_field,
         "origin": spec.origin.as_str(),
+        // The property this one is a component of (`position` for `position/x`), or null.
+        "component_of": spec.component.map(|component| json!({
+            "parent": component.parent.spec().name,
+            "index": component.index,
+        })),
+        // An absent field in the bundle reads as `default`.
+        "optional": spec.optional,
+        // A change first turns the clip's first movement into keyframes (the origin's write).
+        "converts_first_movement": spec.converts_first_movement,
     })
 }
 
@@ -211,6 +220,16 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
                 "scene.gesture.cancel", "scene.gesture.status",
             ],
             "max_scenes": MAX_SCENES,
+            // Additive contract of the property catalog (docs/features/scene-edit.md): a caller
+            // that does not read it still gets the original eight properties unchanged.
+            "edit": {
+                "catalog_version": 2,
+                "components": true,
+                "render_order": true,
+                "camera_start_conversion": "origin-keyframes",
+                "batch": "atomic",
+                "properties_option_components": true,
+            },
             "scope": scope_json(),
         })),
         SceneCommand::Catalog => {
@@ -223,9 +242,18 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
             }))
         }
         SceneCommand::Describe { scene } => Ok(describe(attached(book, &scene)?)),
-        SceneCommand::Properties { scene, path_prefix } => {
+        SceneCommand::Properties {
+            scene,
+            path_prefix,
+            components,
+        } => {
             let entry = attached(book, &scene)?;
-            let properties: Vec<Value> = scene_edit::properties_of(&entry.scene)
+            let listed = if components {
+                scene_edit::properties_with_components(&entry.scene)
+            } else {
+                scene_edit::properties_of(&entry.scene)
+            };
+            let properties: Vec<Value> = listed
                 .into_iter()
                 .filter(|info| {
                     path_prefix

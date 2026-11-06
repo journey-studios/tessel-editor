@@ -50,7 +50,7 @@ Lib V significa testes do modelo demo, não um motor real de edição.
 | F031 | [Cena dirigida: importar, consultar e regravar render-bundle 1.0](directed-scene.md) | P | P | P | Parcial¹⁰ | `directed_scene::DirectedScene`; inteiros extremos recusados sem panic; adapters pendentes |
 | F032 | [Oráculo de equivalência da migração (BB10/E0)](migration-oracle.md) | N/A⁹ | N/A⁹ | N/A⁹ | Parcial⁹ | `oracle.mjs verify` (55) + `extended.mjs verify` (47); 49 testes Node e 15 testes Rust estendidos passaram |
 | F033 | [Cena dirigida: tempo, câmera e gate temporal (BB03)](scene-temporal.md) | P | P | P | Parcial¹¹ | `Bundle::evaluate_camera`, `evaluate_frame`, `DirectedScene::temporal_issues`; orçamento agregado de FOV; adapters pendentes |
-| F034 | [Catálogo de propriedades e edição atômica de cenas (BB04)](scene-edit.md) | P | P | P | Parcial¹² | `scene_edit::{catalog, apply, dry_run}`; importação e gates compartilhados |
+| F034 | [Catálogo de propriedades e edição atômica de cenas (BB04)](scene-edit.md) | P | P | P | Parcial¹² | `scene_edit::{catalog, apply, dry_run}`; S6 (a validar): componentes `X/Y/Z`, `renderOrder`, pose inicial com conversão do 1º movimento, oráculo fixo |
 | F035 | [Animação de nós e matrizes de mundo (BB03)](scene-animation.md) | P | P | P | Parcial¹³ | `Bundle::{evaluate_frame, node_timeline, evaluate_instance_nodes, performance_plan}` |
 | F036 | [Cenas no projeto, histórico e CLI](scene-project.md) | P | P | V | V | `Command::Scene` / `scene.*`; schema 2 com cenas, undo compartilhado, contagem de bytes em cache |
 | F037 | [Plano avaliado da cena dirigida](scene-plan.md) | Parcial | V | V | V | `ScenePlan`, `scene.plan` com gates e candidato de gesto; `PlanTimeline` reutilizável com equivalência testada na lib (R6); adotada no export F042, ganho real ainda não medido; 60 checks headless do plano; renderer F041 |
@@ -121,11 +121,15 @@ unitário adicional cobre abaixo/no/acima dos cinco limiares de junção (não �
 Animação de nós está integrada na F035; UI/CLI permanecem pendentes. Não é `finalizeBundle`
 completo para domínios adiados. [Contrato](scene-temporal.md).
 
-¹² 8 propriedades tipadas de nó/câmera, edição por ID, lote atômico e dry-run, validados
-por 29 testes públicos e 1 doctest via Cargo. `apply` e `dry_run` executam importador e
-gates estruturais/temporais da F033; falhas não alteram a entrada. Ainda sem integração
-com histórico/documento, CLI ou UI; não certifica render/domínios adiados.
-[Contrato e divergências de escrita da câmera](scene-edit.md).
+¹² 21 propriedades tipadas de nó/câmera (as 8 originais, `renderOrder` inteiro e 12 componentes
+`X/Y/Z`), edição por ID, lote atômico, reset/no-op definidos e dry-run. `apply` e `dry_run`
+executam importador e gates estruturais/temporais da F033; falhas não alteram a entrada.
+Escrever `start/position` converte o primeiro movimento em keys como a origem, comparado
+frame a frame com um oráculo fixo (24 casos gerados pela própria `setProperties`). Evidência S6,
+**a validar** pelo coordenador: 59 testes de lib (29+25+5), 5 de sessão JSONL/executável
+`tessel-headless` e testes do inspector; sem captura nativa nem ponteiro físico. Sem editor geral
+de keyframes; não certifica render/domínios adiados.
+[Contrato, conversão e oráculo](scene-edit.md).
 
 ¹³ Avaliação de `cycle`/`event`/`static`, hierarquia e matrizes animadas, com 29 testes
 públicos. Comparação com 4 casos válidos, 11 variantes e 20 payloads recusados gerados na

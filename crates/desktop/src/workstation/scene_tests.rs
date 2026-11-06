@@ -421,6 +421,31 @@ fn the_semantic_set_is_the_same_edit_as_the_slider_and_one_undo_entry(cx: &mut T
 }
 
 #[gpui_kit::test]
+fn render_order_is_a_whole_number_property_set_reset_and_undone_like_any_other(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = mounted(cx, FIGURE);
+    let order = "scene/scene-a/node/figure/renderOrder";
+    let shown = node(&view, cx, &property_node(order));
+    assert_eq!(shown["state"]["kind"], json!("integer"), "{shown}");
+    assert_eq!(shown["fields"][0]["step"].as_f64(), Some(1.0), "{shown}");
+    // A component path restates its parent and is not a second control.
+    assert!(
+        view.read_with(cx, |view, cx| view
+            .tree_node(&property_node("scene/scene-a/node/figure/position/x"), cx))
+            .is_none()
+    );
+
+    // A typed value is rounded to the whole number the bundle stores.
+    run_set(&view, cx, &property_node(order), "value", Raw::Number(4.4)).unwrap();
+    assert_eq!(document_value(&view, cx, order), PropertyValue::Integer(4));
+    assert_eq!(undo_depth(&view, cx), 1);
+
+    run_scene_undo(&view, cx);
+    assert_eq!(document_value(&view, cx, order), PropertyValue::Integer(1));
+}
+
+#[gpui_kit::test]
 fn a_gesture_begun_through_the_socket_is_shown_as_a_candidate_and_can_be_cancelled(
     cx: &mut TestAppContext,
 ) {

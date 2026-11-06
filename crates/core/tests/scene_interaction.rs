@@ -156,7 +156,7 @@ fn node_of<'a>(frame: &'a Value, id: &str) -> &'a Value {
 // ---- tree and selection -------------------------------------------------------------------
 
 #[test]
-fn the_tree_lists_entities_by_address_and_the_catalog_stays_at_eight() {
+fn the_tree_lists_entities_by_address_and_the_catalog_keeps_its_first_eight() {
     let mut state = street();
     let before = observable(&state);
 
@@ -262,7 +262,31 @@ fn the_tree_lists_entities_by_address_and_the_catalog_stays_at_eight() {
     );
 
     let catalog = ok(&mut state, json!({"op":"scene.catalog"}));
-    assert_eq!(catalog["count"], 8, "this slice adds no property");
+    // S6 appends `renderOrder` and the components; the original eight keep their place.
+    assert_eq!(catalog["count"], 21);
+    let names: Vec<&str> = catalog["properties"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .take(8)
+        .map(|property| property["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "position",
+            "rotation",
+            "scale",
+            "width",
+            "height",
+            "start/position",
+            "start/target",
+            "start/fov"
+        ]
+    );
+    // The tree's `editable` list names the component paths too.
+    assert!(editable.contains(&json!("scene/scene-a/node/figure/position/x")));
+    assert!(editable.contains(&json!("scene/scene-a/node/figure/renderOrder")));
 }
 
 #[test]

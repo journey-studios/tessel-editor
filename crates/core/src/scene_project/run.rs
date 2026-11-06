@@ -88,6 +88,26 @@ pub(super) fn changes_json(summary: &EditSummary) -> Vec<Value> {
         .collect()
 }
 
+/// Adds `conversions` to an edit answer when the batch turned movements into keyframes. Absent
+/// otherwise, so the answer of every other batch keeps the shape it always had.
+pub(super) fn with_conversions(mut answer: Value, summary: &EditSummary) -> Value {
+    if !summary.conversions.is_empty() {
+        let conversions: Vec<Value> = summary
+            .conversions
+            .iter()
+            .map(|conversion| {
+                json!({
+                    "index": conversion.index, "clip": conversion.clip,
+                    "segment": conversion.segment, "recipe": conversion.recipe,
+                    "keys": conversion.keys,
+                })
+            })
+            .collect();
+        answer["conversions"] = Value::Array(conversions);
+    }
+    answer
+}
+
 impl EditorState {
     /// Runs one `scene.*` command. Reached through `EditorState::execute`.
     pub(crate) fn apply_scene(&mut self, command: SceneCommand) -> Result<Value, CommandError> {
@@ -200,27 +220,36 @@ impl EditorState {
             if summary.modified {
                 self.scenes.check_replacement_size(id, &outcome.candidate)?;
             }
-            return Ok(json!({
-                "action": "scene.edit", "scene": id, "dry_run": true, "changed": false,
-                "would_change": summary.modified, "changed_ops": summary.changed_count(),
-                "changes": changes_json(&summary),
-            }));
+            return Ok(with_conversions(
+                json!({
+                    "action": "scene.edit", "scene": id, "dry_run": true, "changed": false,
+                    "would_change": summary.modified, "changed_ops": summary.changed_count(),
+                    "changes": changes_json(&summary),
+                }),
+                &summary,
+            ));
         }
         if !summary.modified {
             // WHY not replace with the equal candidate: it may spell a restored number
             // differently (`1` vs `1.0`), and a command that changes nothing must not dirty the
             // project nor leave an undo entry.
-            return Ok(json!({
-                "action": "scene.edit", "scene": id, "dry_run": false, "changed": false,
-                "noop": true, "changed_ops": summary.changed_count(),
-                "changes": changes_json(&summary),
-            }));
+            return Ok(with_conversions(
+                json!({
+                    "action": "scene.edit", "scene": id, "dry_run": false, "changed": false,
+                    "noop": true, "changed_ops": summary.changed_count(),
+                    "changes": changes_json(&summary),
+                }),
+                &summary,
+            ));
         }
         self.scenes.replace_scene(id, outcome.candidate)?;
-        Ok(json!({
-            "action": "scene.edit", "scene": id, "dry_run": false, "changed": true,
-            "noop": false, "changed_ops": summary.changed_count(),
-            "changes": changes_json(&summary),
-        }))
+        Ok(with_conversions(
+            json!({
+                "action": "scene.edit", "scene": id, "dry_run": false, "changed": true,
+                "noop": false, "changed_ops": summary.changed_count(),
+                "changes": changes_json(&summary),
+            }),
+            &summary,
+        ))
     }
 }

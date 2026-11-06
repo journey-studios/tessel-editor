@@ -691,6 +691,26 @@ fn state_of(pose: CameraPose, velocity: Vec3, fov_velocity: f64) -> CameraState 
     }
 }
 
+/// The pose a single movement ends on when it starts on `start` (`segmentEndPose`). Pure and
+/// stateless, for callers that rewrite a movement (scene editing turns a recipe into keys).
+pub fn movement_end_pose(
+    start: &CameraPose,
+    segment: &CameraSegment,
+) -> Result<CameraPose, TemporalError> {
+    segment_end_pose(start, segment)
+}
+
+/// The pose a single movement has at `local` (0..durationFrames-1) of itself when it starts on
+/// `start`: the arithmetic the resolver uses, so a conversion can reproduce it frame by frame
+/// (`poseOfMovementAt`).
+pub fn movement_pose_at(
+    start: &CameraPose,
+    segment: &CameraSegment,
+    local: u64,
+) -> Result<CameraPose, TemporalError> {
+    interpolate_segment(start, segment, local)
+}
+
 /// A camera clip laid out for evaluation: build it once, ask for as many frames as you like in
 /// any order. Every answer is a pure function of the clip and the frame, so asking twice, or
 /// out of order, gives the same bits.

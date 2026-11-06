@@ -1,9 +1,9 @@
 //! The catalog of editable properties: stable paths, type, unit, default, range, applicability.
 //!
-//! Scope of this first slice (BB04): the 3D transform of a scene node, the measures of an image
-//! plane and the start pose of a camera clip. Lighting, weather, effects, rig, path and the
-//! keys of a camera movement are not here; the catalog grows by adding entries, not by a
-//! generic setter.
+//! Scope (BB04): the 3D transform of a scene node, the measures and `renderOrder` of an image
+//! plane and the start pose of a camera clip, each vector also addressable one component at a
+//! time (`position/x`). Lighting, weather, effects, rig, path and the keys of a camera movement
+//! are not here; the catalog grows by adding entries, not by a generic setter.
 //!
 //! WHY a static catalog and not a trait object per property: every entry is data (what a
 //! inspector, a CLI `describe` and a batch validator all need), and the importer stays the only
@@ -13,7 +13,7 @@
 use crate::directed_scene::{INVALID_TYPE, INVALID_VALUE, NodeKind, Quat, Vec3};
 
 use super::error::EditError;
-use super::value::{PropertyValue, ValueKind};
+use super::value::{MAX_SAFE_INT, PropertyValue, ValueKind};
 
 /// Unit of a number, or of each component of a vector.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -128,10 +128,11 @@ pub enum OriginRelation {
     /// The origin has a command for it (`setStart.target`/`fovDeg`) but no property path; the
     /// path is this catalog's, spelled in the origin's grammar.
     CommandOnly,
-    /// Same path as the origin's, but a narrower write: the origin first turns the clip's first
-    /// movement into keyframes so the rest of the path stays where it was; here only the
-    /// initial pose changes. Preserving the path needs temporal evaluation (BB03).
-    PathNarrowerWrite,
+    /// Same path and the same write as the origin's: before the start moves, the clip's first
+    /// movement is turned into keyframes that make the same frames, so only the beginning of the
+    /// path moves and the rest stays where it was (see `camera_keys`). Compared with the origin
+    /// by the fixed oracle in `docs/migration/fixtures/scene-edit`.
+    PathEquivalentWrite,
 }
 
 impl OriginRelation {
@@ -139,7 +140,7 @@ impl OriginRelation {
         match self {
             Self::EditorOnly => "editor-only",
             Self::CommandOnly => "command-only",
-            Self::PathNarrowerWrite => "path-narrower-write",
+            Self::PathEquivalentWrite => "path-equivalent-write",
         }
     }
 }
@@ -153,6 +154,14 @@ pub enum NodeProperty {
     Width,
     /// Image planes only.
     Height,
+    /// Image planes only: the order the runtime draws them in (back to front).
+    RenderOrder,
+    PositionX,
+    PositionY,
+    PositionZ,
+    ScaleX,
+    ScaleY,
+    ScaleZ,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -160,6 +169,12 @@ pub enum CameraProperty {
     StartPosition,
     StartTarget,
     StartFov,
+    StartPositionX,
+    StartPositionY,
+    StartPositionZ,
+    StartTargetX,
+    StartTargetY,
+    StartTargetZ,
 }
 
 /// Identifies a catalog entry.
@@ -169,11 +184,24 @@ pub enum PropertyId {
     Camera(CameraProperty),
 }
 
+/// A property that is one component of a vector property (`position/x` of `position`).
+///
+/// Writing a component is writing the parent with that component replaced: same applicability,
+/// same checks, same side effects (a camera start component converts the first movement exactly
+/// as the whole vector does). It exists so a slider, a script or a gizmo axis can address one
+/// number without sending the other two.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ComponentOf {
+    pub parent: PropertyId,
+    /// 0, 1, 2 for `x`, `y`, `z`.
+    pub index: usize,
+}
+
 /// One property of the catalog.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PropertySpec {
     pub id: PropertyId,
-    /// What follows the target in the path: `position`, `start/fov`.
+    /// What follows the target in the path: `position`, `position/x`, `start/fov`.
     pub name: &'static str,
     pub kind: ValueKind,
     pub unit: Unit,
@@ -183,9 +211,18 @@ pub struct PropertySpec {
     /// no default size; a camera has no default pose), so a reset is refused, not guessed.
     pub default: Option<PropertyValue>,
     pub applies_to: Applicability,
-    /// The key of the node or clip object in the bundle's JSON that stores the property.
+    /// The key of the node or clip object in the bundle's JSON that stores the property
+    /// (`localPosition/x` for a component: a path inside the object).
     pub document_field: &'static str,
     pub origin: OriginRelation,
+    /// `Some` for a component of a vector property; `None` for a property in its own right.
+    pub component: Option<ComponentOf>,
+    /// The bundle may leave the field out, and an absent field reads as `default` (`renderOrder`).
+    /// Writing the default over an absent field leaves the document untouched.
+    pub optional: bool,
+    /// A write that changes the value first turns the first movement of the clip into keyframes
+    /// (the origin's `start/position` write).
+    pub converts_first_movement: bool,
 }
 
 const EVERY_NODE: &[NodeKind] = &[NodeKind::Group, NodeKind::ImagePlane, NodeKind::Splat];
@@ -213,6 +250,18 @@ const FIELD_OF_VIEW: NumberRange = NumberRange {
     }),
 };
 
+/// `[-(2^53 - 1), 2^53 - 1]`: the integers the bundle (and the origin's JS numbers) hold exactly.
+const SAFE_INTEGER: NumberRange = NumberRange {
+    min: Some(Limit {
+        value: -(MAX_SAFE_INT as f64),
+        inclusive: true,
+    }),
+    max: Some(Limit {
+        value: MAX_SAFE_INT as f64,
+        inclusive: true,
+    }),
+};
+
 static NODE_POSITION: PropertySpec = PropertySpec {
     id: PropertyId::Node(NodeProperty::Position),
     name: "position",
@@ -223,6 +272,9 @@ static NODE_POSITION: PropertySpec = PropertySpec {
     applies_to: Applicability::Node(EVERY_NODE),
     document_field: "localPosition",
     origin: OriginRelation::EditorOnly,
+    component: None,
+    optional: false,
+    converts_first_movement: false,
 };
 
 // A quaternion, not Euler angles: that is what the bundle stores and composes. Its length must
@@ -237,6 +289,9 @@ static NODE_ROTATION: PropertySpec = PropertySpec {
     applies_to: Applicability::Node(EVERY_NODE),
     document_field: "localRotation",
     origin: OriginRelation::EditorOnly,
+    component: None,
+    optional: false,
+    converts_first_movement: false,
 };
 
 static NODE_SCALE: PropertySpec = PropertySpec {
@@ -249,6 +304,9 @@ static NODE_SCALE: PropertySpec = PropertySpec {
     applies_to: Applicability::Node(EVERY_NODE),
     document_field: "localScale",
     origin: OriginRelation::EditorOnly,
+    component: None,
+    optional: false,
+    converts_first_movement: false,
 };
 
 static NODE_WIDTH: PropertySpec = PropertySpec {
@@ -261,6 +319,9 @@ static NODE_WIDTH: PropertySpec = PropertySpec {
     applies_to: Applicability::Node(IMAGE_PLANES),
     document_field: "widthSceneUnits",
     origin: OriginRelation::EditorOnly,
+    component: None,
+    optional: false,
+    converts_first_movement: false,
 };
 
 static NODE_HEIGHT: PropertySpec = PropertySpec {
@@ -273,6 +334,9 @@ static NODE_HEIGHT: PropertySpec = PropertySpec {
     applies_to: Applicability::Node(IMAGE_PLANES),
     document_field: "heightSceneUnits",
     origin: OriginRelation::EditorOnly,
+    component: None,
+    optional: false,
+    converts_first_movement: false,
 };
 
 static CAMERA_START_POSITION: PropertySpec = PropertySpec {
@@ -284,7 +348,10 @@ static CAMERA_START_POSITION: PropertySpec = PropertySpec {
     default: None,
     applies_to: Applicability::CameraClip,
     document_field: "initialPosition",
-    origin: OriginRelation::PathNarrowerWrite,
+    origin: OriginRelation::PathEquivalentWrite,
+    component: None,
+    optional: false,
+    converts_first_movement: true,
 };
 
 static CAMERA_START_TARGET: PropertySpec = PropertySpec {
@@ -297,6 +364,9 @@ static CAMERA_START_TARGET: PropertySpec = PropertySpec {
     applies_to: Applicability::CameraClip,
     document_field: "initialTarget",
     origin: OriginRelation::CommandOnly,
+    component: None,
+    optional: false,
+    converts_first_movement: false,
 };
 
 static CAMERA_START_FOV: PropertySpec = PropertySpec {
@@ -309,9 +379,192 @@ static CAMERA_START_FOV: PropertySpec = PropertySpec {
     applies_to: Applicability::CameraClip,
     document_field: "initialFovDeg",
     origin: OriginRelation::CommandOnly,
+    component: None,
+    optional: false,
+    converts_first_movement: false,
 };
 
-static CATALOG: [&PropertySpec; 8] = [
+/// The draw order of an image plane. The bundle leaves it out for 0, and a composition pass that
+/// covers the node overrides it (`Bundle::paint_order`); the catalog stores the node's own value.
+static NODE_RENDER_ORDER: PropertySpec = PropertySpec {
+    id: PropertyId::Node(NodeProperty::RenderOrder),
+    name: "renderOrder",
+    kind: ValueKind::Integer,
+    unit: Unit::Unitless,
+    range: Some(SAFE_INTEGER),
+    default: Some(PropertyValue::Integer(0)),
+    applies_to: Applicability::Node(IMAGE_PLANES),
+    document_field: "renderOrder",
+    origin: OriginRelation::EditorOnly,
+    component: None,
+    optional: true,
+    converts_first_movement: false,
+};
+
+/// One component of a vector property. A `const fn` so the twelve entries below stay data: the
+/// only things that differ are the names, the index and the neutral value of the component.
+const fn component_spec(
+    parent: &'static PropertySpec,
+    id: PropertyId,
+    name: &'static str,
+    document_field: &'static str,
+    index: usize,
+    default: Option<PropertyValue>,
+) -> PropertySpec {
+    PropertySpec {
+        id,
+        name,
+        kind: ValueKind::Number,
+        unit: parent.unit,
+        range: None,
+        default,
+        applies_to: parent.applies_to,
+        document_field,
+        origin: parent.origin,
+        component: Some(ComponentOf {
+            parent: parent.id,
+            index,
+        }),
+        optional: false,
+        converts_first_movement: parent.converts_first_movement,
+    }
+}
+
+const ZERO: Option<PropertyValue> = Some(PropertyValue::Number(0.0));
+const ONE: Option<PropertyValue> = Some(PropertyValue::Number(1.0));
+
+macro_rules! node_component {
+    ($item:ident, $parent:ident, $variant:ident, $name:literal, $field:literal, $index:literal, $default:expr) => {
+        static $item: PropertySpec = component_spec(
+            &$parent,
+            PropertyId::Node(NodeProperty::$variant),
+            $name,
+            $field,
+            $index,
+            $default,
+        );
+    };
+}
+
+macro_rules! camera_component {
+    ($item:ident, $parent:ident, $variant:ident, $name:literal, $field:literal, $index:literal) => {
+        static $item: PropertySpec = component_spec(
+            &$parent,
+            PropertyId::Camera(CameraProperty::$variant),
+            $name,
+            $field,
+            $index,
+            None,
+        );
+    };
+}
+
+node_component!(
+    NODE_POSITION_X,
+    NODE_POSITION,
+    PositionX,
+    "position/x",
+    "localPosition/x",
+    0,
+    ZERO
+);
+node_component!(
+    NODE_POSITION_Y,
+    NODE_POSITION,
+    PositionY,
+    "position/y",
+    "localPosition/y",
+    1,
+    ZERO
+);
+node_component!(
+    NODE_POSITION_Z,
+    NODE_POSITION,
+    PositionZ,
+    "position/z",
+    "localPosition/z",
+    2,
+    ZERO
+);
+node_component!(
+    NODE_SCALE_X,
+    NODE_SCALE,
+    ScaleX,
+    "scale/x",
+    "localScale/x",
+    0,
+    ONE
+);
+node_component!(
+    NODE_SCALE_Y,
+    NODE_SCALE,
+    ScaleY,
+    "scale/y",
+    "localScale/y",
+    1,
+    ONE
+);
+node_component!(
+    NODE_SCALE_Z,
+    NODE_SCALE,
+    ScaleZ,
+    "scale/z",
+    "localScale/z",
+    2,
+    ONE
+);
+camera_component!(
+    CAMERA_START_POSITION_X,
+    CAMERA_START_POSITION,
+    StartPositionX,
+    "start/position/x",
+    "initialPosition/x",
+    0
+);
+camera_component!(
+    CAMERA_START_POSITION_Y,
+    CAMERA_START_POSITION,
+    StartPositionY,
+    "start/position/y",
+    "initialPosition/y",
+    1
+);
+camera_component!(
+    CAMERA_START_POSITION_Z,
+    CAMERA_START_POSITION,
+    StartPositionZ,
+    "start/position/z",
+    "initialPosition/z",
+    2
+);
+camera_component!(
+    CAMERA_START_TARGET_X,
+    CAMERA_START_TARGET,
+    StartTargetX,
+    "start/target/x",
+    "initialTarget/x",
+    0
+);
+camera_component!(
+    CAMERA_START_TARGET_Y,
+    CAMERA_START_TARGET,
+    StartTargetY,
+    "start/target/y",
+    "initialTarget/y",
+    1
+);
+camera_component!(
+    CAMERA_START_TARGET_Z,
+    CAMERA_START_TARGET,
+    StartTargetZ,
+    "start/target/z",
+    "initialTarget/z",
+    2
+);
+
+// The first eight entries and their order are the original catalog; later ones are only appended,
+// so an index or a listing written against the first slice keeps meaning the same thing.
+static CATALOG: [&PropertySpec; 21] = [
     &NODE_POSITION,
     &NODE_ROTATION,
     &NODE_SCALE,
@@ -320,20 +573,41 @@ static CATALOG: [&PropertySpec; 8] = [
     &CAMERA_START_POSITION,
     &CAMERA_START_TARGET,
     &CAMERA_START_FOV,
+    &NODE_RENDER_ORDER,
+    &NODE_POSITION_X,
+    &NODE_POSITION_Y,
+    &NODE_POSITION_Z,
+    &NODE_SCALE_X,
+    &NODE_SCALE_Y,
+    &NODE_SCALE_Z,
+    &CAMERA_START_POSITION_X,
+    &CAMERA_START_POSITION_Y,
+    &CAMERA_START_POSITION_Z,
+    &CAMERA_START_TARGET_X,
+    &CAMERA_START_TARGET_Y,
+    &CAMERA_START_TARGET_Z,
 ];
 
-/// Every property the editor can change by ID, in a stable order.
+/// Every property the editor can change by ID, in a stable order: the first slice's eight, then
+/// `renderOrder`, then the components.
 pub fn catalog() -> &'static [&'static PropertySpec] {
     &CATALOG
 }
 
 impl NodeProperty {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 12] = [
         Self::Position,
         Self::Rotation,
         Self::Scale,
         Self::Width,
         Self::Height,
+        Self::RenderOrder,
+        Self::PositionX,
+        Self::PositionY,
+        Self::PositionZ,
+        Self::ScaleX,
+        Self::ScaleY,
+        Self::ScaleZ,
     ];
 
     pub fn spec(self) -> &'static PropertySpec {
@@ -343,6 +617,13 @@ impl NodeProperty {
             Self::Scale => &NODE_SCALE,
             Self::Width => &NODE_WIDTH,
             Self::Height => &NODE_HEIGHT,
+            Self::RenderOrder => &NODE_RENDER_ORDER,
+            Self::PositionX => &NODE_POSITION_X,
+            Self::PositionY => &NODE_POSITION_Y,
+            Self::PositionZ => &NODE_POSITION_Z,
+            Self::ScaleX => &NODE_SCALE_X,
+            Self::ScaleY => &NODE_SCALE_Y,
+            Self::ScaleZ => &NODE_SCALE_Z,
         }
     }
 
@@ -354,17 +635,33 @@ impl NodeProperty {
 }
 
 impl CameraProperty {
-    pub const ALL: [Self; 3] = [Self::StartPosition, Self::StartTarget, Self::StartFov];
+    pub const ALL: [Self; 9] = [
+        Self::StartPosition,
+        Self::StartTarget,
+        Self::StartFov,
+        Self::StartPositionX,
+        Self::StartPositionY,
+        Self::StartPositionZ,
+        Self::StartTargetX,
+        Self::StartTargetY,
+        Self::StartTargetZ,
+    ];
 
     pub fn spec(self) -> &'static PropertySpec {
         match self {
             Self::StartPosition => &CAMERA_START_POSITION,
             Self::StartTarget => &CAMERA_START_TARGET,
             Self::StartFov => &CAMERA_START_FOV,
+            Self::StartPositionX => &CAMERA_START_POSITION_X,
+            Self::StartPositionY => &CAMERA_START_POSITION_Y,
+            Self::StartPositionZ => &CAMERA_START_POSITION_Z,
+            Self::StartTargetX => &CAMERA_START_TARGET_X,
+            Self::StartTargetY => &CAMERA_START_TARGET_Y,
+            Self::StartTargetZ => &CAMERA_START_TARGET_Z,
         }
     }
 
-    /// `name` is what follows `start/` in the path.
+    /// `name` is what follows `start/` in the path (`fov`, `position/x`).
     pub fn from_start_name(name: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|property| {
             property
@@ -407,8 +704,13 @@ impl PropertySpec {
                 format!("`{}` must be finite", self.name),
             ));
         }
-        if let (Some(range), PropertyValue::Number(number)) = (self.range, value)
-            && !range.contains(*number)
+        let number = match value {
+            PropertyValue::Number(number) => Some(*number),
+            PropertyValue::Integer(integer) => Some(*integer as f64),
+            _ => None,
+        };
+        if let (Some(range), Some(number)) = (self.range, number)
+            && !range.contains(number)
         {
             return Err(EditError::new(
                 INVALID_VALUE,
