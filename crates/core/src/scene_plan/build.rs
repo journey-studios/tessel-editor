@@ -440,6 +440,15 @@ impl ScenePlan {
             node.local_matrix = state.local_matrix;
             node.world_matrix = state.world_matrix;
         }
+        let ids: Vec<&str> = plan
+            .splats
+            .iter()
+            .map(|splat| splat.node_id.as_str())
+            .collect();
+        let slots = derive_splat_slots(&plan.camera, &plan.nodes, &plan.layers, &ids);
+        for (splat, slot) in plan.splats.iter_mut().zip(slots) {
+            splat.after_layers = slot;
+        }
         Ok(plan)
     }
 }

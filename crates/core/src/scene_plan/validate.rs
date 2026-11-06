@@ -21,15 +21,19 @@ pub(super) fn derive_splat_slots(
     layers: &[PlanLayer],
     splats: &[&str],
 ) -> Vec<usize> {
+    if splats.is_empty() {
+        return Vec::new();
+    }
+    let by_id: HashMap<&str, &PlanNode> =
+        nodes.iter().map(|node| (node.id.as_str(), node)).collect();
     let forward = [
         camera.target.x - camera.position.x,
         camera.target.y - camera.position.y,
         camera.target.z - camera.position.z,
     ];
     let depth = |id: &str| -> f64 {
-        nodes
-            .iter()
-            .find(|node| node.id == id)
+        by_id
+            .get(id)
             .map(|node| {
                 let m = &node.world_matrix.0;
                 (m[12] - camera.position.x) * forward[0]

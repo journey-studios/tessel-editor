@@ -87,7 +87,8 @@ def main():
     if h.free_gib("/tmp") < MIN_FREE_GIB:
         print(f"only {h.free_gib('/tmp'):.1f} GiB free under /tmp; this proof needs {MIN_FREE_GIB}")
         return 2
-    expected = json.loads((corpus / "expected.json").read_text())["splat"]
+    expected_doc = json.loads((corpus / "expected.json").read_text(encoding="utf-8"))
+    expected = expected_doc["splat"]
     width, height = expected["renderSize"]
     cases = expected["cases"]
     lifecycle = load_lifecycle()
@@ -120,7 +121,7 @@ def main():
         if not check("monitor.show_scene", ok, body):
             return 1
 
-        background = tuple(json.loads((corpus / "expected.json").read_text())["palette"]["background"])
+        background = tuple(expected_doc["palette"]["background"])
         for frame in FRAMES:
             case = cases[str(frame)]
             label = f"frame {frame}"
@@ -186,7 +187,7 @@ def main():
     report["failures"] = failures
     print(f"\n{len(checks) - len(failures)}/{len(checks)} checks passed")
     if args.out:
-        pathlib.Path(args.out).write_text(json.dumps(report, indent=1))
+        pathlib.Path(args.out).write_text(json.dumps(report, indent=1), encoding="utf-8")
     print(json.dumps({"checks": len(checks), "failures": failures}))
     return 1 if failures else 0
 

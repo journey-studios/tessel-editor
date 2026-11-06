@@ -444,3 +444,35 @@ fn a_runtime_without_the_splats_capability_refuses_the_plan_by_name() {
     let plain = ScenePlan::build(&import(parse(RECIPES)), 0).unwrap();
     assert_eq!(plain.require_capabilities(&before_s7), Ok(()));
 }
+
+#[test]
+fn timeline_recomputes_splat_order_when_the_camera_orbits_past_the_planes() {
+    let mut doc = parse(RECIPES);
+    add_asset(&mut doc, "cloud", "splats/cloud.spz");
+    add_splat_node(
+        &mut doc,
+        "scene-a",
+        "root",
+        "cloud-node",
+        "cloud",
+        [0.5, 0.0, -1.0],
+    );
+    doc["cameraClips"][0]["segments"] = json!([{
+        "recipe":"orbit", "durationFrames":120, "from":"initial",
+        "yawDeg":180, "pitchDeg":0, "easing":"linear"
+    }]);
+    doc["cameraClips"][0]["layers"] = json!([]);
+    let scene = import(doc);
+    let timeline = PlanTimeline::new(&scene);
+    let mut slots = std::collections::BTreeSet::new();
+    for frame in [0, 30, 60, 90, 119] {
+        let plan = timeline.build(frame).unwrap();
+        plan.validate().unwrap();
+        assert_eq!(plan, ScenePlan::build(&scene, frame).unwrap());
+        slots.insert(plan.splats[0].after_layers);
+    }
+    assert!(
+        slots.len() > 1,
+        "camera must cross a depth ordering boundary"
+    );
+}

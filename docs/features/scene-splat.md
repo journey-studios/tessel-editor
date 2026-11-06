@@ -156,3 +156,13 @@ documento. Controle negativo da correção de cor: com `keepStoredColour` deslig
 
 `full_av` precisa do mix de áudio do S9 (`scene.export` ainda recusa o bundle com áudio): fica BLOCKED e não conta
 como pass. As fases `splat_*` devem ser reexecutadas (BL121) com o merge de S7 e S9 e a emenda BL120.
+
+### Correções da revisão PR13
+
+A timeline recalcula `afterLayers` após atualizar câmera e matrizes em cada frame; o slot do
+frame molde não é reutilizado quando a câmera muda a ordem de profundidade. A regressão
+`timeline_recomputes_splat_order_when_the_camera_orbits_past_the_planes` exige mudança de slot,
+compara os planos em cache com `ScenePlan::build` e valida cada plano.
+A derivação retorna imediatamente sem splats; com splats, indexa os nós uma vez para evitar
+buscas lineares repetidas. Isso preserva o caminho de planos sem splats. O script nativo lê
+o corpus uma só vez com UTF-8 explícito e grava seu relatório em UTF-8.
