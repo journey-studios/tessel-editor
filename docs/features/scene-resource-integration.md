@@ -387,9 +387,19 @@ para um novo anexo); um `job` finalizado e nunca confirmado exige `job.commit` o
 Evidência por superfície do descarte em job (integração S1 + S3 + S4): lib/host (`job_discard`, `scene_adopt_host`,
 `scene_import_cleanup`, `scene_cleanup_ownership`), processo JSONL real e janela própria com a latência dos pedidos durante a
 remoção medida (detalhes e limites em [F025](jobs.md#evidência-por-superfície-integração-s1--s3--s4-a-validar-até-a-revisão)).
-**Costura para BL111/S2:** `PendingAdoption::settle` devolve a adoção recusada ainda dona de arquivos e claims;
-`apply` é `settle` + remoção inline e só a remoção (`discard`) lê/hasheia. Um dono persistente de claims precisa manter essas
-propriedades (testes `settle_*`/`apply_is_settle_*`); nada de S2 foi incorporado aqui.
+**Costura S1 x S2 (já incorporada, ver "Junção com a S1" acima e BL094.3):** `PendingAdoption::settle` devolve a adoção
+recusada ainda dona de arquivos e claims; `apply` é `settle` + remoção inline e só a remoção (`discard`) lê/hasheia
+**recursos**. O aceite, em si, lê e grava `claims.json` sob `flock`: no tick da janela (`settle`, `import::try_apply`) **sem
+esperar** o lock (um lock que outro processo segura naquele instante recusa o aceite com `claims_unavailable`, BL112.3);
+em quem pode bloquear (`apply`, `job.commit` da CLI, jobs) a espera é limitada a 1,5 s. Um dono persistente de claims precisa
+manter essas propriedades (testes `settle_*`/`apply_is_settle_*`).
+
+**Descarte e claims (BL094.4, F1):** o último titular de um arquivo **não** sai do ledger antes do arquivo: `Tracker::begin_leave`
+responde `Last` com a entrada (e a lease deste processo) ainda gravada; o job prova (SHA-256), remove e só então chama `leave`
+para soltar a entrada. `SIGKILL` no meio do hash de um arquivo grande deixa uma claim órfã que `recover` recolhe, nunca um
+arquivo que o ledger não lista. Se o ledger não consegue registrar a saída depois do arquivo tratado, a claim fica (dono vivo,
+`kept` no relatório) e `recover` a resolve quando o processo terminar. `discarded` em `result_state` quer dizer "o descarte
+terminou", não "tudo foi removido": o que ficou está em `result.cleanup.kept`.
 
 ## UI e CLI da janela
 

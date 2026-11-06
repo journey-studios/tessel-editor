@@ -59,7 +59,9 @@ seus claims) e o registro do job **permanecem até o fim do job discard**: `prun
 `pending`/`discarding`. Resposta: `{action:"job.discard", job:<job discard>, discards:<job original>, state, ...}`;
 host sem janela espera e devolve também `discarded` e `cleanup:{removedFiles,removedFolders,kept,shared,busyRoots}`
 (`wait:false` devolve `state:"discarding"` na hora); o host interativo responde sempre na hora e `poll()` entrega um
-evento `{job, kind:"discard", state, result}` uma única vez.
+evento `{job, kind:"discard", state, result}` uma única vez. `discarded` quer dizer **o descarte terminou**, não que tudo foi
+removido: o que ficou (`kept`, raiz ocupada, ledger indisponível) está em `result.cleanup`, a barra de status da janela o diz
+(BL094.8) e a claim do que ficou segue retida por este processo até `recover`.
 
 | Erro tipado | Quando (nada muda) |
 |---|---|
@@ -114,7 +116,8 @@ Medição 256 MiB reexecutada no head integrado: `job.discard` voltou em **68 µ
 
 **Não provado:** pixels/estética (nada novo é desenhado), quadros por segundo e tempo de pintura (só latência de pedidos),
 seletor nativo de arquivos, janela fechada com resultados pendentes (só o `Drop` por teste), build release da janela,
-Windows/Linux, dois processos (BL111) e escritor hostil. `job.discard` sob demanda **bem-sucedido** na janela não é
+Windows/Linux e escritor hostil. Dois processos reais **são** provados desde a junção (BL094.3, `job_discard_claims.rs`; seção
+abaixo): o que segue não provado é o encerramento da **janela** com um descarte em andamento (`cx.quit()` não espera, BL112.6). `job.discard` sob demanda **bem-sucedido** na janela não é
 observável: o tick aplica um resultado atual em ≤ 250 ms, então o descarte sob demanda de um resultado pendente é provado
 pela lib/host (host interativo sem tick) e pelo JSONL; na janela a prova é o descarte do obsoleto e a recusa do aplicado.
 
@@ -123,7 +126,9 @@ pela lib/host (host interativo sem tick) e pelo JSONL; na janela a prova é o de
 A integração com a S2 (ledger `.tessel-claims/`, lease por processo, `Provisional::accept` fallível) é **semântica**:
 o resultado recusado continua dono até o descarte terminar, e nenhuma aceitação é silenciosa.
 
-* `PendingAdoption::settle` e `import::try_apply` aceitam com `Provisional::accept` (sem ler arquivo; o aceite só grava o ledger).
+* `PendingAdoption::settle` e `import::try_apply` aceitam com `Provisional::accept_nowait` (não lê nem calcula hash de recurso; o
+  aceite lê e grava `claims.json` sob `flock` e, **no tick, não espera** esse lock: ver "Fechamento do descarte", BL112.3).
+  `apply`/`job.commit` da CLI usam `Provisional::accept`, com espera limitada.
   No import o aceite é o **último passo** do closure de `state.transaction`: uma recusa desfaz projeto, undo e revisão.
   Não existe mais `Provisional::release` nem aceitação por `Drop` como prova (o `Drop` do `Created` avulso aceita só na melhor tentativa).
 * Recusa por obsolescência **ou** do ledger devolve o resultado **ainda dono dos arquivos e das claims**: `StaleAdoption{why, refusal,
@@ -143,12 +148,70 @@ reprovam: aceite ignorado no `settle` de adopt (2 testes), aceite ignorado no `t
 no host (3). Provas nativas repetidas no head integrado: `job-discard-proof.py` 39/39 e `scene-claims-proof.py` 23/23.
 Limite: a recusa de aceite não é exercida pela janela nativa (só pelo host interativo, sem pixels).
 
+### Fechamento do descarte (revisão independente da PR #6, achados 1–8)
+
+Cada item corrige um achado da revisão [5800801032](https://github.com/journey-studios/tessel-editor/pull/6#pullrequestreview-5800801032).
+**Executado** é o que o antecessor rodou, conforme o registro do coordenador (core, media 70, claims 12, EOF 2, desktop 5;
+sem log por teste, e não reexecutado nesta entrega). **Escrito, não executado** é o que ainda não passou por Cargo: os testes de
+F4 e tudo de BL112.3 abaixo, que aguardam os gates do coordenador.
+
+| Item | Achado | Correção (onde) | Prova | Estado da prova |
+|---|---|---|---|---|
+| BL094.4 (F1) | `SIGKILL` no hash deixa arquivo sem claim | `Tracker::begin_leave` (`ledger.rs`) devolve `Last` com a entrada ainda gravada; `Created::remove`/`leave_dir` provam, removem e só depois `leave` (`drop_claim`) | `claims/tests.rs` (2: `begin_leave` mantém a claim e falha fechado com ledger sem escrita); `job_discard_claims.rs::killing_the_process_while_its_discard_hashes_a_large_file…` (peer real, 128 MiB, `SIGKILL` em `hashing`, `recover` recolhe) | executado (antecessor) |
+| BL094.5 (F2) | `job.discard {wait:false}` + EOF encerra a CLI com o descarte em curso | `Drop` de host sem janela espera os jobs `discard` ativos (`wait_for_discards`); `tessel-media` solta o host **antes** de `process::exit` | `job_discard_exit.rs` (2, processo `tessel-media` real, 64 MiB: EOF e linha recusada com saída 1) | executado (antecessor) |
+| BL094.6 (F3) | `job.discard` do job de uma cadeia de anexo antes do tick a deixa em `running` | `discarded_unreported` em `MediaHost`: `poll` emite uma vez um evento `failed` `job_discarded` (com `details.discard_job`) do job original | `scene_import_tests.rs::discarding_the_attach_job_before_the_tick_ends_the_chain…` (a cadeia termina `failed`, um novo anexo é aceito) | executado (antecessor) |
+| BL094.7 (F4) | `result_state` derivado de `is_ok()` | `apply_pending` diz o que o projeto fez (`took`); um erro depois de aplicar leva `details.applied = true` | `async_host.rs` (preparo obsoleto → `discarded`, import anterior → `applied`); `job_commit_state.rs` (processo real: import aplicado, decode falha, `applied`, e `job.discard` → `job_applied`) | **escrito, não compilado nem executado** |
+| BL094.8 (F5) | status e eventos escondem `kept`/recusa | `describe_discard` (`flows.rs`) e `Workflow::remember_refusal` (`workflow.rs`); a recusa do ledger não diz mais que a cena mudou (`host.rs`) | `flows.rs` e `workflow_tests.rs` (3) | executado (antecessor) |
+| BL112.2 (F6) | `Drop` interativo podia remover na thread da UI numa corrida curta | `hand_over`/`defer_until_final` (`host.rs`): o resultado espera o job ficar final **numa thread própria** e é reivindicado ou solto lá | `host.rs` (2 testes de unidade: soltura fora da thread do chamador, um único job `discard`) | executado (antecessor) |
+| BL112.4 (F7) | `finished_discards` clonava o registro inteiro a cada tick; `prune` sem chamador de produção | `JobRegistry::matching` clona só o que casa; o risco do `prune` fica registrado (abaixo) | `jobs.rs` (`matching_clones_only_the_jobs_it_keeps`; cancelado de verdade não guarda resultado) | executado (antecessor) |
+| F8 | docs/contrato incorretos | esta página, F040, matriz e `backlog.md`; docstring de `adopt.rs` | leitura | n/a |
+
+**Por que o teste de F4 usa um processo.** O decode que segue um `job.commit` descobre o FFmpeg por conta própria
+(`Tools::discover()`, não as ferramentas do host) e o crate proíbe `unsafe` (então o teste não altera o ambiente do próprio
+processo). `job_commit_state.rs` roda o `tessel-media` real com `TESSEL_FFMPEG` apontando a um wrapper que funciona até um arquivo
+existir: o job de import roda de verdade e o commit encontra o FFmpeg indisponível. A versão em processo (com `with_tools`) não
+forçava a falha e foi retirada.
+
+**`prune` (BL112.4, risco latente).** Nada em produção chama `JobRegistry::prune`; os testes mostram que ele preserva
+`pending`/`discarding`. Se alguém o ligar, um job `discard` já final pode ser removido **antes** de `poll` reportá-lo
+(`reported_discards`/`finished_discards` precisam dele no registro). Registrar a decisão antes de ligar; hoje o registro cresce
+na sessão, como já crescia.
+
+**O lock do ledger no tick (BL112.3).** `accept` roda na thread da janela e escreve `claims.json` sob `ledger.lock`. A primeira
+correção limitou a espera a 1,5 s, que **ainda excede o teto de 100 ms** do tick. Agora o tick **não espera**:
+`Ledger::try_lock` olha uma vez (`Duration::ZERO`); se outro processo segura o lock naquele instante, o ledger fica indisponível
+só para essa chamada (`fault`: "held by another process right now; not waited for") e o aceite é **recusado** como qualquer outra
+falha do ledger: projeto, undo e revisão intactos, o resultado continua dono e vai para um job `discard`
+(`claims_unavailable`, `details.phase="accept"`, `details.why`). Quem pode bloquear (job de descarte, `apply`/`job.commit` da
+CLI, `recover`, `claims`) segue com a espera limitada de 1,5 s (`LOCK_WAIT`). O que o tick **ainda** faz na thread da UI: ler e
+reescrever `claims.json` (microssegundos a poucos ms; a prova nativa mede só a latência de pedidos, p99 1,5–16 ms) e, apenas numa
+corrida com o processo que esvazia o ledger, as repetições da abertura (pausas de 1–2 ms, no máximo 64 tentativas). Isso não é um
+orçamento medido do tick com um ledger grande: é o custo herdado da S2.
+
+* **Custo aceito (BL112.5, pendente):** sob contenção real (outro editor no mesmo workspace segurando o lock por microssegundos),
+  o tick recusa em vez de esperar, e um resultado válido vira `claims_unavailable`. Nada se perde: o descarte devolve só os
+  arquivos que são nossos e o usuário repete a operação. A alternativa, manter o resultado `pending` e repetir o aceite no tick
+  seguinte até um prazo, evita a recusa mas muda a máquina de estados do `poll`; fica registrada, sem implementação.
+* **Prova (escrita, não executada):** `claims/tests.rs::a_caller_that_must_not_wait_looks_once_and_never_waits_for_a_held_lock`
+  (lock segurado por outro descritor; `try_lock` volta com `fault` em < 1 s e a claim permanece),
+  `scene_claims_integrity.rs::a_settle_never_waits_for_a_ledger_lock_another_process_holds` (`settle` recusa em < 1 s e o dono volta
+  ainda dono) e `job_discard_claims.rs::a_peer_stopped_while_holding_the_ledger_lock_cannot_freeze_the_tick` (peer real em
+  `SIGSTOP`; o tick volta em < 1 s, `why` "not waited for"; o teste do antecessor aceitava até 8 s e a mensagem "gave up"). O teto
+  de 1 s é folga para máquina carregada: uma espera de 1,5 s reprova os três. A espera limitada de quem pode bloquear segue
+  coberta por `waiting_for_a_lock_nobody_lets_go_of_is_bounded` (executado pelo antecessor).
+
 Todo trabalho escreve num `Staging` (pasta no mesmo volume do destino) e **publica por rename** só depois de
 verificar; falha ou cancelamento removem o staging e preservam o destino anterior e os originais.
 
 ## Limites
 
-Sem retomada: um export/pacote interrompido reinicia. `job.discard`: o ownership entre processos é o ledger de claims (BL111, S2); um descarte em andamento no momento em que o processo termina (inclusive `SIGKILL`) deixa os arquivos como órfãos que `scene.resources.recover` recolhe, sem tocar o que foi aceito.
+Sem retomada: um export/pacote interrompido reinicia. `job.discard`: o ownership entre processos é o ledger de claims (BL111, S2).
+Um descarte interrompido (inclusive `SIGKILL`) **no meio do hash/remoção** deixa a claim do último titular gravada (BL094.4: a
+entrada só sai depois do arquivo), então `scene.resources.recover` recolhe o arquivo depois que a lease do processo morto some,
+sem tocar o que foi aceito. Isso vale **só depois** da correção desta PR: a redação anterior ("deixa os arquivos como órfãos")
+descrevia uma ordem em que a entrada saía antes do hash e era falsa para esse intervalo. O fim de entrada (EOF) de uma CLI
+espera os descartes ativos (BL094.5); o encerramento da **janela** não espera (BL112.6, pendente): o job morre com o processo e a
+claim fica para `recover`.
 Um job `discard` espera um slot (máx. 2 jobs por host); ele fica `queued` e o resultado `discarding` enquanto isso. A prova de «a UI não trava» é por tempo de resposta do
 `import` (job devolvido em < 400 ms com FFmpeg artificialmente lento, `async_host.rs`) e pelo teste do desktop que aplica o
 import no tick; não há medição de quadros por segundo da janela durante o job. Ver o
