@@ -203,3 +203,10 @@ gpui/wry; R10 `export_audio_policy` 17/17. A prova da janela real foi repetida c
 (SHA-256 `2ab2541bb8080e93bb8e059c9e7c60fe1167f587a437a33a1471a12da3485a35`; relatório JSON SHA-256
 `6521c4a5c21f05436a9a4dc9bea3c2ddbee2e96bc9b2fab87909c91c5ca13afd`). Isto substitui a execução anterior com piso 8 GiB como
 gate; `--min-free-gib` 8, 11.99, `nan` e `inf` são recusados com status 2 antes de iniciar app ou mídia.
+
+Integração com main6f7a944 (claims persistentes e attach por sessão): conflito restrito à
+matriz, preservando F042/F042A e F043 da base. Fmt/clippy workspace passaram, assim como
+scene_export_audio20, scene_export11, attach_job/process e claims_integrity. Render
+scene_export12 passou com Chrome real/runtime obrigatório sob lockGPU; build desktop passou.
+Prova nativa repetida no código integrado:45/45, piso12GiB, áudio ligado/desligado e snapshot
+privado preservados (`/tmp/tessel-s9-main-native.json`). Isso não conclui o aceite S10.

@@ -148,6 +148,12 @@ impl From<JobError> for CommandError {
             "verification_failed" => "verification_failed",
             "destination_exists" => "destination_exists",
             "permission_denied" => "permission_denied",
+            // The bundle importer's vocabulary (`scene.attach`), so the same refusal reads the
+            // same whether it came from the command or from the job that prepared it.
+            "bundle_unreadable" => "bundle_unreadable",
+            "bundle_too_large" => "bundle_too_large",
+            "invalid_json" => "invalid_json",
+            "invalid_bundle" => "invalid_bundle",
             "resource_changed" => "resource_changed",
             "resource_missing" => "resource_missing",
             // The mix of a directed scene export (F042A) and the resolver errors a job can surface:

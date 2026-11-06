@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use super::*;
+use crate::workstation::OpReply;
 use crate::workstation::flows::{self, FlowKind};
 use crate::workstation::input_tests::fixture;
 use core::prelude::v1::test;
@@ -45,7 +46,7 @@ fn succeeded(job: &str, extra: Value) -> Value {
 // ---- the dialogs send what a script sends (no window) ----
 
 #[test]
-fn the_attach_dialog_sends_scene_attach_with_only_the_fields_that_were_filled() {
+fn the_attach_dialog_starts_the_attach_job_with_only_the_fields_that_were_filled() {
     let full = flows::build_request(
         FlowKind::AttachScene,
         &values(&[
@@ -59,14 +60,17 @@ fn the_attach_dialog_sends_scene_attach_with_only_the_fields_that_were_filled() 
     .unwrap();
     assert_eq!(
         full,
-        json!({ "op": "scene.attach", "path": "/b/render-bundle.json", "id": "street", "name": "Rua" })
+        json!({ "op": "scene.attach.start", "path": "/b/render-bundle.json", "id": "street", "name": "Rua" })
     );
     let bare = flows::build_request(
         FlowKind::AttachScene,
         &values(&[("bundle", "/b/x.json"), ("id", " "), ("name", "")]),
     )
     .unwrap();
-    assert_eq!(bare, json!({ "op": "scene.attach", "path": "/b/x.json" }));
+    assert_eq!(
+        bare,
+        json!({ "op": "scene.attach.start", "path": "/b/x.json" })
+    );
     let error =
         flows::build_request(FlowKind::AttachScene, &values(&[("bundle", "  ")])).unwrap_err();
     assert_eq!(error.code, "missing_argument");
@@ -227,6 +231,118 @@ fn a_step_that_cannot_start_is_recorded_on_the_step_it_was() {
     assert_eq!(report["state"], "failed");
     assert_eq!(report["error"]["step"], "adopt");
     assert_eq!(report["error"]["code"], "base_not_absolute");
+}
+
+fn attached_event(job: &str, scene: &str, needs_folder: Option<bool>) -> Value {
+    let mut applied = json!({ "action": "scene.attach", "scene": scene, "changed": true });
+    if let Some(needs_folder) = needs_folder {
+        applied["resources"] = json!({ "files": 2, "needs_folder": needs_folder });
+    }
+    succeeded(job, json!({ "applied": applied }))
+}
+
+fn attaching(source: Option<&str>) -> SceneImport {
+    let mut plan = plan(source, source.is_some());
+    plan.scene = String::new();
+    let mut chain = SceneImport::attaching(
+        plan,
+        json!({ "op": "scene.attach.start", "path": "/b.json" }),
+    );
+    chain.bind("job-1".into());
+    chain
+}
+
+#[test]
+fn an_attach_chain_starts_with_the_attach_job_and_learns_the_scene_id_from_its_answer() {
+    let mut chain = attaching(Some("/authored"));
+    assert_eq!(chain.request()["op"], "scene.attach.start");
+    assert!(chain.is_running());
+    assert_eq!(chain.to_json()["scene"], Value::Null, "not attached yet");
+    assert_eq!(chain.to_json()["attached"], Value::Null);
+    assert_eq!(
+        chain.receive(&attached_event("job-9", "other", Some(true))),
+        Received::Ignored
+    );
+    assert_eq!(
+        chain.receive(&attached_event("job-1", "scene-1", Some(true))),
+        Received::Next
+    );
+    assert_eq!(chain.scene(), "scene-1", "the core's generated ID");
+    assert_eq!(chain.request()["op"], "scene.resources.adopt");
+    assert_eq!(chain.request()["scene"], "scene-1");
+    assert_eq!(chain.to_json()["done"], json!(["attach"]));
+    assert_eq!(chain.to_json()["attached"]["resources"]["files"], 2);
+}
+
+#[test]
+fn an_attach_without_a_folder_stops_attached_when_files_are_needed_and_loads_when_none_are() {
+    let mut needs = attaching(None);
+    assert_eq!(
+        needs.receive(&attached_event("job-1", "street", Some(true))),
+        Received::Attached
+    );
+    assert_eq!(needs.to_json()["state"], "attached");
+    assert!(!needs.is_running());
+
+    // A host that does not say keeps the old behavior: attach alone.
+    let mut silent = attaching(None);
+    assert_eq!(
+        silent.receive(&attached_event("job-1", "street", None)),
+        Received::Attached
+    );
+
+    // BL101: nothing to load from a folder, so loading is implied and goes straight to resolve.
+    let mut data = attaching(None);
+    assert_eq!(
+        data.receive(&attached_event("job-1", "street", Some(false))),
+        Received::Next
+    );
+    assert_eq!(
+        data.request(),
+        json!({ "op": "scene.resources.resolve", "scene": "street" })
+    );
+    assert_eq!(data.to_json()["load"], true);
+    data.bind("job-2".into());
+    assert_eq!(
+        data.receive(&succeeded(
+            "job-2",
+            json!({ "applied": { "installed": true } })
+        )),
+        Received::Loaded
+    );
+    assert_eq!(data.to_json()["done"], json!(["attach", "resolve"]));
+}
+
+#[test]
+fn a_refused_or_cancelled_attach_job_fails_on_the_attach_step_with_its_typed_code() {
+    let mut refused = attaching(Some("/authored"));
+    let event = json!({ "job": "job-1", "state": "failed", "kind": "import",
+        "error": { "code": "invalid_bundle", "message": "INVALID_VALUE: needs at least 1 item(s)",
+            "details": { "issues": [{ "path": "/assets" }] } } });
+    assert_eq!(refused.receive(&event), Received::Failed);
+    let report = refused.to_json();
+    assert_eq!(report["state"], "failed");
+    assert_eq!(report["error"]["step"], "attach");
+    assert_eq!(report["error"]["code"], "invalid_bundle");
+    assert_eq!(report["done"], json!([]), "nothing was attached");
+    assert_eq!(report["scene"], Value::Null);
+
+    let mut stale = attaching(None);
+    let event = json!({ "job": "job-1", "state": "failed", "kind": "import",
+        "error": { "code": "stale_result", "message": "The open project changed" } });
+    assert_eq!(stale.receive(&event), Received::Failed);
+    assert_eq!(stale.to_json()["error"]["code"], "stale_result");
+
+    let mut cancelled = attaching(None);
+    let event = json!({ "job": "job-1", "state": "cancelled", "kind": "import" });
+    assert_eq!(cancelled.receive(&event), Received::Failed);
+    assert_eq!(cancelled.to_json()["error"]["code"], "cancelled");
+    assert_eq!(cancelled.to_json()["error"]["step"], "attach");
+
+    let mut nameless = attaching(None);
+    let event = succeeded("job-1", json!({ "applied": { "action": "scene.attach" } }));
+    assert_eq!(nameless.receive(&event), Received::Failed);
+    assert_eq!(nameless.to_json()["error"]["code"], "internal_error");
 }
 
 // ---- the window, the real host, real files ----
@@ -398,12 +514,13 @@ fn a_valid_file_attaches_adopts_loads_selects_and_asks_the_monitor(cx: &mut Test
         started.elapsed() < Duration::from_secs(2),
         "the UI thread only attached and started a job: {answer}"
     );
-    // The bundle went through the core: attached at once, one undo entry, before any job ends.
-    assert_eq!(scene_ids(&view, cx), vec!["street".to_string()]);
-    assert_eq!(undo_depth(&view, cx), 1);
-    assert_eq!(answer["attach"]["scene"], "street");
+    // The UI thread only started the attach job: nothing is read or attached until the tick.
+    assert!(scene_ids(&view, cx).is_empty(), "{answer}");
+    assert_eq!(undo_depth(&view, cx), 0);
+    assert_eq!(answer["changed"], false);
     let running = import_state(&view, cx);
     assert_eq!(running["state"], "running", "{running}");
+    assert_eq!(running["step"], "attach", "{running}");
     assert!(running["job"].is_string());
     assert!(
         !installed(&view, cx),
@@ -411,6 +528,10 @@ fn a_valid_file_attaches_adopts_loads_selects_and_asks_the_monitor(cx: &mut Test
     );
 
     let done = settle(&view, cx);
+    // Read before anything else runs an operation (that would replace the status line).
+    let activity = view.read_with(cx, |view, _| {
+        view.activity.as_ref().map(|a| (a.text.clone(), a.error))
+    });
     assert_eq!(done["state"], "loaded", "{done}");
     assert_eq!(done["error"], Value::Null, "{done}");
     let steps: Vec<&str> = done["done"]
@@ -425,6 +546,9 @@ fn a_valid_file_attaches_adopts_loads_selects_and_asks_the_monitor(cx: &mut Test
         "{done}"
     );
 
+    // The core attached the admitted scene when the job was applied: one undo entry.
+    assert_eq!(scene_ids(&view, cx), vec!["street".to_string()]);
+    assert_eq!(undo_depth(&view, cx), 1);
     // Real files in the project, verified and loaded under this project's generation.
     for file in ["sky.png", "mid.png", "hero.png"] {
         assert!(
@@ -454,7 +578,7 @@ fn a_valid_file_attaches_adopts_loads_selects_and_asks_the_monitor(cx: &mut Test
             "only the test window's missing WebView is what keeps the monitor from being available"
         );
     });
-    // Both jobs are in the shared job history, in order, like any other job.
+    // Every job is in the shared job history, in order, like any other job.
     let kinds: Vec<String> = view.read_with(cx, |view, _| {
         view.jobs_report()["recent"]
             .as_array()
@@ -464,16 +588,20 @@ fn a_valid_file_attaches_adopts_loads_selects_and_asks_the_monitor(cx: &mut Test
             .map(|event| event["result"]["action"].as_str().unwrap_or("").to_string())
             .collect()
     });
-    assert_eq!(kinds, ["scene.resources.adopt", "scene.resources.resolve"]);
+    assert_eq!(
+        kinds,
+        [
+            "scene.attach.start",
+            "scene.resources.adopt",
+            "scene.resources.resolve"
+        ]
+    );
     // The monitor was asked: it either took the request or said why not, never silence.
     let shown = done["done"].as_array().unwrap().contains(&json!("show"));
     assert!(
         shown || done["presentation_error"]["step"] == "show",
         "{done}"
     );
-    let activity = view.read_with(cx, |view, _| {
-        view.activity.as_ref().map(|a| (a.text.clone(), a.error))
-    });
     assert!(
         activity
             .as_ref()
@@ -483,7 +611,7 @@ fn a_valid_file_attaches_adopts_loads_selects_and_asks_the_monitor(cx: &mut Test
 }
 
 #[gpui_kit::test]
-fn an_invalid_bundle_is_refused_before_anything_changes(cx: &mut TestAppContext) {
+fn an_invalid_bundle_is_refused_by_the_attach_job_before_anything_changes(cx: &mut TestAppContext) {
     let (view, cx) = fixture(cx);
     let authoring = Authoring::new("invalid");
     project(&view, cx, &authoring);
@@ -491,34 +619,47 @@ fn an_invalid_bundle_is_refused_before_anything_changes(cx: &mut TestAppContext)
 
     // Valid JSON that is not a render-bundle, and text that is not JSON.
     let broken = authoring.folder().join("broken.json");
-    for (content, expected) in [
-        (r#"{"bundleVersion": 99}"#, "invalid_bundle"),
-        ("{ not json", "invalid_json"),
-    ] {
-        fs::write(&broken, content).unwrap();
-        let error = run_attach(
+    let missing = authoring.folder().join("nowhere.json");
+    fs::write(&missing, "").unwrap();
+    fs::remove_file(&missing).unwrap();
+    let cases = [
+        (r#"{"bundleVersion": 99}"#, broken.clone(), "invalid_bundle"),
+        ("{ not json", broken.clone(), "invalid_json"),
+        ("", missing, "bundle_unreadable"),
+    ];
+    for (content, path, expected) in cases {
+        if !content.is_empty() {
+            fs::write(&path, content).unwrap();
+        }
+        // The dialog closes: the bundle is read by a job, so its refusal is the node's error.
+        run_attach(
             &view,
             cx,
             vec![
-                ("bundle", broken.to_string_lossy().into()),
+                ("bundle", path.to_string_lossy().into()),
                 ("id", "street".into()),
                 ("source", authoring.folder().to_string_lossy().into()),
             ],
         )
-        .unwrap_err();
-        assert_eq!(error.code, expected, "{content}: {error:?}");
+        .expect("a readable request starts the job");
+        let failed = settle(&view, cx);
+        assert_eq!(failed["state"], "failed", "{content}: {failed}");
+        assert_eq!(failed["error"]["step"], "attach", "{failed}");
+        assert_eq!(failed["error"]["code"], expected, "{failed}");
+        assert_eq!(failed["scene"], Value::Null, "{failed}");
     }
-    let missing = authoring.folder().join("nowhere.json");
+
+    // A request the host refuses before it becomes a job stays in the dialog.
     let error = run_attach(
         &view,
         cx,
         vec![
-            ("bundle", missing.to_string_lossy().into()),
-            ("id", "street".into()),
+            ("bundle", broken.to_string_lossy().into()),
+            ("id", "bad id!".into()),
         ],
     )
     .unwrap_err();
-    assert_eq!(error.code, "bundle_unreadable");
+    assert_eq!(error.code, "invalid_id", "{error:?}");
 
     assert!(scene_ids(&view, cx).is_empty(), "no scene was attached");
     assert_eq!(undo_depth(&view, cx), 0, "no history entry");
@@ -526,12 +667,14 @@ fn an_invalid_bundle_is_refused_before_anything_changes(cx: &mut TestAppContext)
         view.read_with(cx, |view, _| view.state.project.revision),
         revision
     );
-    assert_eq!(import_state(&view, cx)["state"], "idle", "no chain started");
     assert!(
         !authoring.workspace().join("scenes").exists(),
         "no resource folder was created"
     );
     assert!(!installed(&view, cx));
+    // The failed chain is over: the next one is not busy.
+    run_attach(&view, cx, attach(&authoring, &[])).unwrap();
+    assert_eq!(settle(&view, cx)["state"], "attached");
 }
 
 #[gpui_kit::test]
@@ -665,7 +808,11 @@ fn a_managed_file_altered_after_adoption_fails_the_reload_without_approving_it(
     bytes[last] ^= 0xFF;
     fs::write(&managed, bytes).unwrap();
 
-    submit(&view, cx, FlowKind::SceneResources, &[("scene", "street")]).unwrap();
+    let started = submit(&view, cx, FlowKind::SceneResources, &[("scene", "street")]).unwrap();
+    assert_eq!(
+        started["changed"], false,
+        "starting a job has not changed the project"
+    );
     let failed = settle(&view, cx);
     assert_eq!(failed["state"], "failed", "{failed}");
     assert_eq!(failed["error"]["step"], "resolve");
@@ -679,9 +826,14 @@ fn attaching_without_a_folder_selects_the_scene_and_loads_nothing(cx: &mut TestA
     let authoring = Authoring::new("attach-only");
     project(&view, cx, &authoring);
     run_attach(&view, cx, attach(&authoring, &[])).unwrap();
-    let state = import_state(&view, cx);
+    let state = settle(&view, cx);
     assert_eq!(state["state"], "attached", "{state}");
     assert_eq!(state["job"], Value::Null);
+    assert_eq!(
+        state["attached"]["resources"],
+        json!({ "files": 3, "needs_folder": true }),
+        "the host says this scene needs its files: nothing is loaded without a folder"
+    );
     assert!(!installed(&view, cx));
     view.read_with(cx, |view, _| {
         assert_eq!(view.scene_active_id().as_deref(), Some("street"));
@@ -689,6 +841,88 @@ fn attaching_without_a_folder_selects_the_scene_and_loads_nothing(cx: &mut TestA
     });
     let activity = view.read_with(cx, |view, _| view.activity.as_ref().map(|a| a.text.clone()));
     assert!(activity.is_some_and(|text| text.contains("recursos não carregados")));
+}
+
+/// A scene that needs no file (BL101): its assets are declared and nothing uses them, because
+/// the format requires one declared asset at least.
+fn data_only_bundle(authoring: &Authoring) -> String {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/migration/fixtures/bundles/valid-minimal-continuous.bundle.json");
+    let mut document: Value = serde_json::from_str(&fs::read_to_string(source).unwrap()).unwrap();
+    document["sceneDefinitions"][0]["nodes"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|node| node["type"] == "group");
+    let path = authoring.folder().join("data.bundle.json");
+    fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
+    path.to_string_lossy().into()
+}
+
+fn attach_data_only(
+    view: &Entity<Workstation>,
+    cx: &mut VisualTestContext,
+    bundle: String,
+) -> Value {
+    run_attach(
+        view,
+        cx,
+        vec![
+            ("bundle", bundle),
+            ("id", "data".into()),
+            ("show", "yes".into()),
+        ],
+    )
+    .unwrap();
+    settle(view, cx)
+}
+
+#[gpui_kit::test]
+fn a_scene_that_needs_no_files_loads_without_a_folder(cx: &mut TestAppContext) {
+    let (view, cx) = fixture(cx);
+    let authoring = Authoring::new("data-only");
+    project(&view, cx, &authoring);
+    let bundle = data_only_bundle(&authoring);
+
+    let done = attach_data_only(&view, cx, bundle);
+    assert_eq!(done["state"], "loaded", "{done}");
+    assert_eq!(done["error"], Value::Null, "{done}");
+    let steps: Vec<&str> = done["done"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert_eq!(&steps[..3], ["attach", "resolve", "select"], "{done}");
+    assert_eq!(
+        done["attached"]["resources"],
+        json!({ "files": 0, "needs_folder": false })
+    );
+    view.read_with(cx, |view, _| {
+        assert!(view.workflow.scene_resources().get("data").is_some());
+        assert_eq!(view.scene_active_id().as_deref(), Some("data"));
+    });
+    assert!(
+        !authoring.workspace().join("scenes").exists(),
+        "no folder was needed, none was created"
+    );
+}
+
+#[gpui_kit::test]
+fn a_scene_that_needs_no_files_loads_even_in_a_project_that_was_never_saved(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = fixture(cx);
+    let authoring = Authoring::new("data-only-unsaved");
+    assert!(
+        view.read_with(cx, |view, _| view.state.project.workspace.is_none()),
+        "the fixture project was never saved"
+    );
+    let bundle = data_only_bundle(&authoring);
+    let done = attach_data_only(&view, cx, bundle);
+    assert_eq!(done["state"], "loaded", "{done}");
+    assert!(view.read_with(cx, |view, _| {
+        view.workflow.scene_resources().get("data").is_some()
+    }));
 }
 
 #[gpui_kit::test]
@@ -711,12 +945,12 @@ fn a_second_chain_waits_for_the_running_one_and_a_wrong_scene_changes_nothing(
     assert_eq!(busy.code, "scene_import_busy");
     let busy_attach = run_attach(&view, cx, attach(&authoring, &[])).unwrap_err();
     assert_eq!(busy_attach.code, "scene_import_busy");
+    assert_eq!(settle(&view, cx)["state"], "loaded");
     assert_eq!(
         scene_ids(&view, cx).len(),
         1,
         "a refused attach attached nothing"
     );
-    assert_eq!(settle(&view, cx)["state"], "loaded");
 
     let depth = undo_depth(&view, cx);
     let unknown = submit(&view, cx, FlowKind::SceneResources, &[("scene", "ghost")]).unwrap_err();
@@ -746,9 +980,9 @@ fn without_a_workspace_the_attach_is_kept_and_the_load_says_why_it_could_not_sta
             &[("source", &authoring.folder().to_string_lossy())],
         ),
     )
-    .expect("the attach worked; the load's refusal is on the node");
+    .expect("the attach job starts; the load's refusal is on the node");
+    let state = settle(&view, cx);
     assert_eq!(scene_ids(&view, cx), vec!["street".to_string()]);
-    let state = import_state(&view, cx);
     assert_eq!(state["state"], "failed", "{state}");
     assert_eq!(state["error"]["step"], "adopt");
     assert_eq!(state["error"]["code"], "no_workspace", "{state}");
@@ -783,4 +1017,20 @@ fn the_scene_flows_are_in_the_automation_tree_and_the_header(cx: &mut TestAppCon
     assert_eq!(button["label"], "Anexar cena");
     assert_eq!(button["kind"], "button");
     assert_eq!(import_state(&view, cx), json!({ "state": "idle" }));
+}
+
+#[test]
+fn an_attach_failure_without_an_id_has_a_readable_scene_label() {
+    for id in ["", "street"] {
+        let mut request = plan(None, true);
+        request.scene = id.to_string();
+        let mut chain = SceneImport::attaching(request, json!({"op":"scene.attach.start"}));
+        chain.fail(&CommandError::new("invalid_bundle", "invalid bundle"));
+        let summary = chain.summary();
+        assert!(!summary.contains("«»"), "{summary}");
+        assert!(summary.contains("invalid bundle"), "{summary}");
+        if !id.is_empty() {
+            assert!(summary.contains("«street»"), "{summary}");
+        }
+    }
 }
