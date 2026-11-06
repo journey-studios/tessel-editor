@@ -41,8 +41,8 @@ desconhecidos, então o transporte reaproveita `asset.load`, `asset.release`, `f
 | Onde | Acréscimo |
 |---|---|
 | `ready.capabilities.features` | `"directed_scene"`. Um runtime que não lista não recebe o layer (o host recusa antes: `backend_unavailable` com o comando de rebuild) |
-| `ready.capabilities.directed_scene` | `{ layer_kind, plan_kind: "tessel-scene-plan", plan_versions: [1], capabilities: [8 nomes de Capability::as_str], resource_identity: ["generation","asset_id","revision_id","content_hash"], resource_kinds: ["still"] }`. Os 8 nomes são exatamente `Capability::ALL` (teste) |
-| `asset.load` → `asset.scene` | `{ asset_id, revision_id, content_hash, generation }`. Só para `kind: "still"`; vincula o **slot** (o `asset.id` do runtime) à identidade |
+| `ready.capabilities.directed_scene` | `{ layer_kind, plan_kind: "tessel-scene-plan", plan_versions: [1], capabilities: [9 nomes de Capability::as_str], resource_identity: ["generation","asset_id","revision_id","content_hash"], resource_kinds: ["still","splat"] }`. Os 9 nomes (com `splats`, F044) são exatamente `Capability::ALL` (teste) |
+| `asset.load` → `asset.scene` | `{ asset_id, revision_id, content_hash, generation }`. Para `kind: "still"` (PNG) e `kind: "splat"` (`meta.format: "spz"`, F044); vincula o **slot** (o `asset.id` do runtime) à identidade |
 | `frame.render` → `plan.layers[]` | `kind: "directed_scene"`, `scene_plan` (o `ScenePlan::to_json()` inteiro) e `resources: [{ asset_id, slot, revision_id, content_hash, generation }]` |
 | `ready.capabilities.layers` | **Não** muda: lista os tipos do plano comum; o gate é `features` |
 | Telemetria | `frame.done.source.directed_scene_layers`; `cache`/`debug.retention`: `scene_resources`, `scene_generation` |
@@ -76,9 +76,9 @@ Todos com `code` estável, sem desenho parcial:
 | `unsupported_plan_version` | `planVersion` ≠ 1 (checado antes de ler outros campos) |
 | `unsupported` | plano parcial (`complete: false`; `details.domains`) ou `requires` que o runtime não anuncia (`details.missing`) |
 | `resource_unresolved` | sem entrada no mapa, slot não carregado, arquivo ausente ou raiz ilegível |
-| `resource_mismatch` | revisão/hash difere do plano, tamanho difere, ou não é `still` |
+| `resource_mismatch` | revisão/hash difere do plano, tamanho difere, ou o tipo não é o do plano (`still` para PNG; `splat` `.spz` para splat — o host recusa antes um arquivo que não é SPZ) |
 | `resource_stale` | geração mais velha que a em uso, ou slot de outra identidade/geração |
-| `resource_budget` | slots/bytes além do orçamento (host: 32 slots, 512 MiB RGBA; runtime: 64 e 768 MiB) |
+| `resource_budget` | slots/bytes além do orçamento (host: 32 slots, 512 MiB; runtime: 64 e 768 MiB). Um splat conta os bytes do arquivo mais 16 bytes por splat, nos dois lados |
 | `resource_path_invalid` | caminho relativo no mapa ou link que sai da raiz aprovada |
 | `bundle_invalid` | importação ou gates (`edit_join_issues` + `temporal_issues`) do bundle (`details.issues`) |
 | `cancelled` | frame substituído por outro mais novo (último ganha) ou `frame.cancel` |
@@ -197,7 +197,7 @@ em execução serializada.
   sai opaco). Alpha de saída é trabalho futuro de BL008.
 - **Sem desempate por profundidade**: a ordem do plano é a ordem de pintura, de propósito.
 - **Sem cache de resultado de frame dirigido**: cada frame é redesenhado (medir em BL064 antes de otimizar).
-- **Só imagens estáticas** (`still`/PNG nos testes); vídeo, splat, luz, clima, rigs, efeitos continuam recusados
+- **Imagens estáticas e splats SPZ** (F044); vídeo, luz, clima, rigs, efeitos continuam recusados
   como domínio não avaliado.
 - **O hash do conteúdo não é verificado aqui.** O runtime compara o que o mapa declara com o que o plano exige;
   provar que os bytes têm aquele hash é do adaptador que materializa/verifica (N/`media`).

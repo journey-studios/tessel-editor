@@ -32,10 +32,15 @@ pub enum Capability {
     OpaqueAlpha,
     /// The draw order of at least one layer comes from a composition pass, not from `renderOrder`.
     CompositionPassOrder,
+    /// Gaussian splats (`ScenePlan::splats`): drawn by the runtime's Spark pass, each at its
+    /// `after_layers` slot among the image planes, with the node's world matrix and the camera of
+    /// the plan. A runtime that does
+    /// not list it refuses the plan (`unsupported` + `missing`), never draws it without the splats.
+    Splats,
 }
 
 impl Capability {
-    pub const ALL: [Capability; 8] = [
+    pub const ALL: [Capability; 9] = [
         Self::Camera,
         Self::NodeTransforms,
         Self::Sockets,
@@ -44,6 +49,7 @@ impl Capability {
         Self::StraightAlpha,
         Self::OpaqueAlpha,
         Self::CompositionPassOrder,
+        Self::Splats,
     ];
 
     /// The spelling used on the wire.
@@ -57,6 +63,7 @@ impl Capability {
             Self::StraightAlpha => "straightAlpha",
             Self::OpaqueAlpha => "opaqueAlpha",
             Self::CompositionPassOrder => "compositionPassOrder",
+            Self::Splats => "splats",
         }
     }
 
@@ -90,13 +97,10 @@ pub enum Domain {
     NormalMap,
     SceneDepth,
     Relief,
-    /// A Gaussian-splat node: it has a transform and an asset, but no state of its own is
-    /// evaluated here (splat lighting, weather and effects are BL025).
-    Splat,
 }
 
 impl Domain {
-    pub const ALL: [Domain; 14] = [
+    pub const ALL: [Domain; 13] = [
         Self::Weather,
         Self::WeatherKeys,
         Self::Lighting,
@@ -110,7 +114,6 @@ impl Domain {
         Self::NormalMap,
         Self::SceneDepth,
         Self::Relief,
-        Self::Splat,
     ];
 
     /// The sections of a node that are read from the raw document: the bundle's own key names.
@@ -139,7 +142,6 @@ impl Domain {
             Self::NormalMap => "normalMap",
             Self::SceneDepth => "sceneDepth",
             Self::Relief => "relief",
-            Self::Splat => "splat",
         }
     }
 
@@ -149,7 +151,7 @@ impl Domain {
 
     /// Whether the domain is declared on a node (and so carries a `subject`).
     pub fn is_node_level(self) -> bool {
-        matches!(self, Self::Splat) || Self::NODE_SECTIONS.contains(&self)
+        Self::NODE_SECTIONS.contains(&self)
     }
 }
 
@@ -278,7 +280,25 @@ impl PlanLayer {
     }
 }
 
-/// A texture the frame requires. The identity is `asset_id`; `relative_path` is where the bundle
+/// A Gaussian-splat node to draw (S7, BL025 subset). The node's world matrix is in `nodes`, like
+/// a layer's: the plan lists *which* nodes are splats and the asset each one reads, in the document
+/// order of the nodes. Each splat says where it falls in the layers' painter's order
+/// (`after_layers`); among splats of one slot Spark orders them per camera, so the list order
+/// carries no paint order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlanSplat {
+    pub node_id: String,
+    /// The `spz` resource the node reads.
+    pub asset_id: String,
+    /// How many of `layers` (in plan order) are painted before this splat: `0` is behind every
+    /// plane, `layers.len()` in front of every plane. It is the index of the first layer whose
+    /// node origin is strictly nearer to the camera than the splat node's origin (depth along
+    /// the camera's viewing direction), else `layers.len()`. Derived from the plan alone
+    /// (`derive_splat_slots`); a plan that states another value is refused.
+    pub after_layers: usize,
+}
+
+/// A texture or splat file the frame requires. The identity is `asset_id`; `relative_path` is where the bundle
 /// declared it (relative to the bundle folder, never absolute) and, like `revision_id` and
 /// `content_hash`, is metadata for whoever resolves and verifies the file. The plan does not
 /// check that the file exists: resolving is the resource manifest's job (BL009).
@@ -293,8 +313,16 @@ pub struct PlanResource {
     pub height_px: f64,
     pub alpha: AssetAlpha,
     pub color_space: AssetColorSpace,
-    /// The image planes that use it, in the document order of the nodes.
+    /// The nodes that use it (image planes for a `png`, splats for an `spz`), in the document
+    /// order of the nodes.
     pub used_by: Vec<String>,
+}
+
+impl PlanResource {
+    /// Whether the resource is a Gaussian-splat file (`spz`) and not a picture.
+    pub fn is_splat(&self) -> bool {
+        self.format == AssetFormat::Spz
+    }
 }
 
 /// The evaluated plan of one edit frame. See the module documentation.
@@ -314,7 +342,10 @@ pub struct ScenePlan {
     pub nodes: Vec<PlanNode>,
     /// The image planes, back to front.
     pub layers: Vec<PlanLayer>,
-    /// The textures the layers need, ascending by `asset_id` (bytewise): the stable list a
+    /// The splat nodes, in document order; each is drawn at its `after_layers` slot among the layers. Empty for a scene without
+    /// splats, and then absent from the wire form (S7: plans without splats keep their bytes).
+    pub splats: Vec<PlanSplat>,
+    /// The textures and splat files the frame needs, ascending by `asset_id` (bytewise): the stable list a
     /// resource manifest is asked about.
     pub resources: Vec<PlanResource>,
     /// What a runtime needs to execute the plan; ascending, without repeats.

@@ -34,6 +34,12 @@ Spark **2.4.0** fixado em `runtime/package.json` com Three.js 0.187.0. Sem CDN: 
 - `cargo test -p tessel-editor-render --test frames` (7) e `crates/render/tests/export.rs` (2).
 - `scripts/live-proof.py`: 56/56 na janela macOS real (splat incluso).
 
+## Splat numa cena dirigida (F044)
+
+O mesmo Spark, o mesmo estágio e o mesmo `settle` desenham um splat de um plano de cena dirigida:
+o plano ([F037](scene-plan.md)) carrega a matriz de mundo do nó e a câmera avaliadas e o recurso
+`spz` aprovado; o runtime só os desenha. Contrato e limites em [scene-splat.md](scene-splat.md).
+
 ## Limites
 
 Medido em SwiftShader (CPU); ordem de composição entre splats e planos transparentes segue as

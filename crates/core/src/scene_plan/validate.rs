@@ -6,15 +6,56 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use crate::directed_scene::{AssetAlpha, AssetFormat, NodeAnimation, NodeKind, Vec3};
+use crate::directed_scene::{AssetAlpha, AssetFormat, CameraState, NodeAnimation, NodeKind, Vec3};
 
-use super::model::{Capability, Domain, PlanLayer, PlanNode, ScenePlan, UnsupportedDomain};
+use super::model::{Capability, Domain, PlanLayer, PlanNode, PlanSplat, ScenePlan};
 use super::{PLAN_VERSION, PlanError};
+
+/// Where each splat falls among the layers: the index of the first layer (plan order) whose node
+/// origin is strictly nearer to the camera than the splat node's origin, else `layers.len()`.
+/// Depth is the distance along the camera's viewing direction (`target - position`), taken at the
+/// node's world-matrix translation. Splats the nodes list but `splats` does not name are skipped.
+pub(super) fn derive_splat_slots(
+    camera: &CameraState,
+    nodes: &[PlanNode],
+    layers: &[PlanLayer],
+    splats: &[&str],
+) -> Vec<usize> {
+    let forward = [
+        camera.target.x - camera.position.x,
+        camera.target.y - camera.position.y,
+        camera.target.z - camera.position.z,
+    ];
+    let depth = |id: &str| -> f64 {
+        nodes
+            .iter()
+            .find(|node| node.id == id)
+            .map(|node| {
+                let m = &node.world_matrix.0;
+                (m[12] - camera.position.x) * forward[0]
+                    + (m[13] - camera.position.y) * forward[1]
+                    + (m[14] - camera.position.z) * forward[2]
+            })
+            .unwrap_or(f64::INFINITY)
+    };
+    let layer_depths: Vec<f64> = layers.iter().map(|layer| depth(&layer.node_id)).collect();
+    splats
+        .iter()
+        .map(|id| {
+            let splat_depth = depth(id);
+            layer_depths
+                .iter()
+                .position(|layer| *layer < splat_depth)
+                .unwrap_or(layers.len())
+        })
+        .collect()
+}
 
 /// What a plan with this content asks of a runtime: ascending, without repeats.
 pub(super) fn derive_requires(
     nodes: &[PlanNode],
     layers: &[PlanLayer],
+    splats: &[PlanSplat],
     animation: &NodeAnimation,
 ) -> Vec<Capability> {
     let mut found = BTreeSet::from([Capability::Camera, Capability::NodeTransforms]);
@@ -30,6 +71,9 @@ pub(super) fn derive_requires(
     }
     if !layers.is_empty() {
         found.insert(Capability::ImagePlanes);
+    }
+    if !splats.is_empty() {
+        found.insert(Capability::Splats);
     }
     for layer in layers {
         found.insert(match layer.alpha {
@@ -79,8 +123,11 @@ impl ScenePlan {
         self.check_output_and_camera()?;
         let index = self.check_nodes()?;
         self.check_layers(&index)?;
+        self.check_splats(&index)?;
         self.check_resources()?;
-        if derive_requires(&self.nodes, &self.layers, &self.animation) != self.requires {
+        if derive_requires(&self.nodes, &self.layers, &self.splats, &self.animation)
+            != self.requires
+        {
             return Err(PlanError::invalid(
                 "/requires",
                 "must list exactly the capabilities the content needs, ascending",
@@ -291,6 +338,59 @@ impl ScenePlan {
         Ok(())
     }
 
+    fn check_splats(&self, index: &HashMap<&str, usize>) -> Result<(), PlanError> {
+        let nodes: Vec<&str> = self
+            .nodes
+            .iter()
+            .filter(|node| node.kind == NodeKind::Splat)
+            .map(|node| node.id.as_str())
+            .collect();
+        let listed: Vec<&str> = self
+            .splats
+            .iter()
+            .map(|splat| splat.node_id.as_str())
+            .collect();
+        if nodes != listed {
+            return Err(PlanError::invalid(
+                "/splats",
+                "must list every splat node exactly once, in node order",
+            ));
+        }
+        let derived = derive_splat_slots(&self.camera, &self.nodes, &self.layers, &listed);
+        for (position, splat) in self.splats.iter().enumerate() {
+            let at = format!("/splats/{position}");
+            if splat.after_layers != derived[position] {
+                return Err(PlanError::invalid(
+                    format!("{at}/afterLayers"),
+                    "must be the number of layers painted before the splat, from the camera depth of the node origins",
+                ));
+            }
+            let node = &self.nodes[index[splat.node_id.as_str()]];
+            if node.asset_id.as_deref() != Some(splat.asset_id.as_str()) {
+                return Err(PlanError::invalid(
+                    format!("{at}/assetId"),
+                    "differs from the asset of the node",
+                ));
+            }
+            match self.resource(&splat.asset_id) {
+                Some(resource) if resource.is_splat() => {}
+                Some(_) => {
+                    return Err(PlanError::invalid(
+                        format!("{at}/assetId"),
+                        "a splat reads an spz resource",
+                    ));
+                }
+                None => {
+                    return Err(PlanError::invalid(
+                        format!("{at}/assetId"),
+                        format!("asset {} is not in resources", splat.asset_id),
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn check_resources(&self) -> Result<(), PlanError> {
         if self
             .resources
@@ -316,10 +416,10 @@ impl ScenePlan {
                     "must stay inside the bundle folder (no absolute path, no `..`)",
                 ));
             }
-            if resource.format != AssetFormat::Png {
+            if !matches!(resource.format, AssetFormat::Png | AssetFormat::Spz) {
                 return Err(PlanError::invalid(
                     format!("{at}/format"),
-                    "an image plane reads a png",
+                    "an image plane reads a png and a splat an spz",
                 ));
             }
             if resource.width_px == 0
@@ -334,7 +434,12 @@ impl ScenePlan {
                 .nodes
                 .iter()
                 .filter(|node| {
-                    node.kind == NodeKind::ImagePlane
+                    let kind = if resource.is_splat() {
+                        NodeKind::Splat
+                    } else {
+                        NodeKind::ImagePlane
+                    };
+                    node.kind == kind
                         && node.asset_id.as_deref() == Some(resource.asset_id.as_str())
                 })
                 .map(|node| node.id.as_str())
@@ -343,7 +448,7 @@ impl ScenePlan {
             if expected.is_empty() || listed != expected {
                 return Err(PlanError::invalid(
                     format!("{at}/usedBy"),
-                    "must be the image planes that use the asset, in node order, and not empty",
+                    "must be the nodes that use the asset (image planes for a png, splats for an spz), in node order, and not empty",
                 ));
             }
         }
@@ -361,23 +466,16 @@ impl ScenePlan {
             let at = format!("/unsupported/{position}");
             match &entry.subject {
                 Some(node_id) => {
-                    let Some(&node_position) = index.get(node_id.as_str()) else {
+                    if !index.contains_key(node_id.as_str()) {
                         return Err(PlanError::invalid(
                             format!("{at}/subject"),
                             format!("unknown node {node_id}"),
                         ));
-                    };
+                    }
                     if !entry.domain.is_node_level() {
                         return Err(PlanError::invalid(
                             format!("{at}/subject"),
                             "a scene-level domain has no subject",
-                        ));
-                    }
-                    let is_splat = self.nodes[node_position].kind == NodeKind::Splat;
-                    if entry.domain == Domain::Splat && !is_splat {
-                        return Err(PlanError::invalid(
-                            format!("{at}/subject"),
-                            "the splat domain names splat nodes only",
                         ));
                     }
                 }
@@ -392,22 +490,6 @@ impl ScenePlan {
                         ));
                     }
                 }
-            }
-        }
-        for node in self
-            .nodes
-            .iter()
-            .filter(|node| node.kind == NodeKind::Splat)
-        {
-            let wanted = UnsupportedDomain {
-                domain: Domain::Splat,
-                subject: Some(node.id.clone()),
-            };
-            if !self.unsupported.contains(&wanted) {
-                return Err(PlanError::invalid(
-                    "/unsupported",
-                    format!("splat node {} is not evaluated and must be listed", node.id),
-                ));
             }
         }
         Ok(())

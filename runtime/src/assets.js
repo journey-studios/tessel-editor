@@ -157,6 +157,7 @@ export class AssetStore {
       const refusal = this.sceneRefusal(descriptor, entry);
       if (refusal) {
         entry.bitmap?.close?.();
+        entry.mesh?.dispose();
         throw refusal;
       }
     }
@@ -178,9 +179,18 @@ export class AssetStore {
     return this.sceneEntries().length;
   }
 
-  /** Decoded RGBA bytes held for directed-scene pictures (the CPU side; GPU textures have their own budget). */
+  /**
+   * What a directed-scene resource holds on the CPU side (GPU textures have their own budget): the
+   * decoded RGBA of a picture; for a splat file the kept bytes plus its packed splats (16 bytes each).
+   */
+  sceneEntryBytes(entry) {
+    if (entry.kind === 'splat' || entry.bytes) return (entry.bytes?.byteLength ?? 0) + (entry.count ?? 0) * 16;
+    return rgbaBytes(entry.width, entry.height);
+  }
+
+  /** Bytes held for directed-scene resources, except the one under `exceptId`. */
   sceneResourceBytes(exceptId = null) {
-    return this.sceneEntries(exceptId).reduce((bytes, entry) => bytes + rgbaBytes(entry.width, entry.height), 0);
+    return this.sceneEntries(exceptId).reduce((bytes, entry) => bytes + this.sceneEntryBytes(entry), 0);
   }
 
   /**
@@ -190,8 +200,8 @@ export class AssetStore {
    */
   admitScene({ id, kind, scene }) {
     const identity = parseSceneIdentity(scene);
-    if (kind !== 'still') {
-      throw new RuntimeError('unsupported_format', `Directed-scene resources are still images, not \`${kind}\``, { asset: id });
+    if (kind !== 'still' && kind !== 'splat') {
+      throw new RuntimeError('unsupported_format', `Directed-scene resources are still images or splats, not \`${kind}\``, { asset: id });
     }
     if (identity.generation < this.sceneGeneration) {
       throw new RuntimeError(
@@ -224,7 +234,7 @@ export class AssetStore {
   }
 
   /** After the bytes arrived: what `admitScene` could not know (the world moved on while loading, the size). */
-  sceneRefusal({ id, scene }, entry) {
+  sceneRefusal({ id, kind, scene }, entry) {
     const identity = parseSceneIdentity(scene);
     if (identity.generation < this.sceneGeneration) {
       return new RuntimeError('resource_stale', `\`${identity.assetId}\` finished loading after its generation was replaced`, {
@@ -235,7 +245,7 @@ export class AssetStore {
     }
     const countRefusal = this.sceneEntryRefusal(id, identity);
     if (countRefusal) return countRefusal;
-    const bytes = this.sceneResourceBytes(id) + rgbaBytes(entry.width, entry.height);
+    const bytes = this.sceneResourceBytes(id) + this.sceneEntryBytes({ ...entry, kind });
     if (bytes > this.limits.sceneResourceBytes) {
       return new RuntimeError(
         'resource_budget',
@@ -375,7 +385,7 @@ export class AssetStore {
     const count = mesh.packedSplats.numSplats;
     // The bytes stay so the GPU side can be rebuilt after a lost context (see dropGpu).
     return {
-      entry: { bytes, fileName, label, mesh, leased: false },
+      entry: { bytes, fileName, label, mesh, leased: false, count },
       meta: { splat_count: count, format: fileName.split('.').pop() },
     };
   }

@@ -6,12 +6,13 @@
 //! performance channels) and on the existing graph (`SceneGraph`, `Bundle::paint_order`); nothing
 //! about the camera, the animation or the matrices is computed again here. What the plan adds:
 //!
-//! - the **draw order** of the image planes, with the alpha mode of each layer;
+//! - the **draw order** of the image planes, with the alpha mode of each layer, and the **splat
+//!   nodes** (Spark, S7) a runtime draws behind them with the node's world matrix;
 //! - the stable list of **resources** the frame requires, keyed by the bundle's `assetId`
 //!   (the identity; paths, revisions and hashes travel as metadata only);
 //! - a **version** and the **capabilities** a runtime must have to execute it (`requires`);
 //! - the **domains the frame declares and nobody evaluates** (lighting, weather, rigs, effects,
-//!   paths, reveal, data maps, splats), refused with a typed error, or listed when the caller
+//!   paths, reveal, data maps), refused with a typed error, or listed when the caller
 //!   explicitly accepts a partial plan; and the fields the importer kept without interpreting.
 //!
 //! `ScenePlan::build` lays the scene out again for every frame. For many frames of one scene (an
@@ -49,7 +50,7 @@ pub use build::PlanOptions;
 pub use error::PlanError;
 pub use model::{
     Capabilities, Capability, Domain, PlanFrame, PlanLayer, PlanNode, PlanOutput, PlanParent,
-    PlanResource, PlanSource, ScenePlan, UninterpretedField, UninterpretedReason,
+    PlanResource, PlanSource, PlanSplat, ScenePlan, UninterpretedField, UninterpretedReason,
     UnsupportedDomain, capabilities,
 };
 pub use timeline::PlanTimeline;

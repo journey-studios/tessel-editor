@@ -37,6 +37,24 @@ export class SplatStage {
     // minSortIntervalMs 0: a sort is never deferred to a timer, which `settle` relies on.
     // autoUpdate false: only `settle` sorts, for the camera of the frame in flight.
     this.spark = new SparkRenderer({ renderer, minSortIntervalMs: 0, autoUpdate: false });
+    this.keepStoredColour();
+  }
+
+  /**
+   * BL019-F1: the compositor writes the working colour space as it is (`outputColorSpace` is
+   * LinearSRGBColorSpace so that images reach the picture untouched). Spark turns on `encodeLinear`
+   * whenever the output is not sRGB and decodes each splat colour with sRGB->linear, which nothing
+   * re-encodes here: a stored (230,49,49) was drawn as (203,7,7). A splat colour is an sRGB value
+   * like a picture's, so the uniform is held at false after Spark's own per-draw update and the
+   * stored colour is the displayed one. This touches only Spark's splat material.
+   */
+  keepStoredColour() {
+    const spark = this.spark;
+    const original = spark.onBeforeRender.bind(spark);
+    spark.onBeforeRender = (...args) => {
+      original(...args);
+      spark.uniforms.encodeLinear.value = false;
+    };
   }
 
   attach(scene) {

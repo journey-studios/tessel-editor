@@ -6,8 +6,10 @@
 //! round-trip test keeps them honest.
 //!
 //! Every optional field is written (`null` when absent) and required on read, and an unknown key
-//! is refused: a plan that carried data this build ignores would not round-trip. New data means a
-//! new `PLAN_VERSION`, which `from_json` refuses by version before it reads anything else.
+//! is refused: a plan that carried data this build ignores would not round-trip. New data that
+//! changes meaning means a new `PLAN_VERSION`, which `from_json` refuses by version before it
+//! reads anything else. The one additive exception is `splats` (S7): written only when the scene
+//! has splat nodes, so plans without splats are byte-identical to before.
 //! Numbers are the exact `f64`s (`serde_json/float_roundtrip`); times are exact reduced ratios.
 //! Keys come out in `serde_json`'s map order (sorted), so equal plans give equal text.
 
@@ -20,7 +22,7 @@ use crate::time::Ratio;
 
 use super::model::{
     Capability, Domain, PlanFrame, PlanLayer, PlanNode, PlanOutput, PlanParent, PlanResource,
-    PlanSource, ScenePlan, UninterpretedField, UninterpretedReason, UnsupportedDomain,
+    PlanSource, PlanSplat, ScenePlan, UninterpretedField, UninterpretedReason, UnsupportedDomain,
 };
 use super::{OUTPUT_COLOR_SPACE, PLAN_KIND, PLAN_VERSION, PlanError};
 
@@ -78,6 +80,14 @@ fn layer_json(layer: &PlanLayer) -> Value {
     })
 }
 
+fn splat_json(splat: &PlanSplat) -> Value {
+    json!({
+        "nodeId": splat.node_id,
+        "assetId": splat.asset_id,
+        "afterLayers": splat.after_layers,
+    })
+}
+
 fn resource_json(resource: &PlanResource) -> Value {
     json!({
         "assetId": resource.asset_id,
@@ -105,7 +115,7 @@ impl ScenePlan {
             } => json!({ "status": "animated", "trackIds": track_ids, "channels": channels }),
         };
         let camera = &self.camera;
-        json!({
+        let mut wire = json!({
             "kind": PLAN_KIND,
             "planVersion": self.version,
             "complete": self.is_complete(),
@@ -152,7 +162,14 @@ impl ScenePlan {
                 "pointer": field.pointer,
                 "reason": field.reason.as_str(),
             })).collect::<Vec<_>>(),
-        })
+        });
+        // WHY only when there are splats: the key is additive. A plan without splats keeps the
+        // exact bytes it had before S7 (the golden digests of the planner), and a runtime that
+        // does not know splats ignores an absent key but refuses `requires: ["splats"]`.
+        if !self.splats.is_empty() {
+            wire["splats"] = Value::Array(self.splats.iter().map(splat_json).collect());
+        }
+        wire
     }
 
     /// Compact JSON text of `to_json`.
@@ -445,6 +462,17 @@ fn read_layer(layer: &Obj<'_>) -> Result<PlanLayer, PlanError> {
     })
 }
 
+fn read_splat(splat: &Obj<'_>) -> Result<PlanSplat, PlanError> {
+    splat.only(&["nodeId", "assetId", "afterLayers"])?;
+    let after_layers = splat.integer("afterLayers")?;
+    Ok(PlanSplat {
+        node_id: splat.text("nodeId")?,
+        asset_id: splat.text("assetId")?,
+        after_layers: usize::try_from(after_layers)
+            .map_err(|_| splat.fail("afterLayers", "expected a non-negative integer"))?,
+    })
+}
+
 fn read_resource(resource: &Obj<'_>) -> Result<PlanResource, PlanError> {
     resource.only(&[
         "assetId",
@@ -528,6 +556,7 @@ impl ScenePlan {
             "animation",
             "nodes",
             "layers",
+            "splats",
             "resources",
             "unsupported",
             "uninterpreted",
@@ -641,6 +670,15 @@ impl ScenePlan {
                 .iter()
                 .map(read_layer)
                 .collect::<Result<Vec<_>, _>>()?,
+            // Optional (additive): absent means no splat nodes.
+            splats: if root.map.contains_key("splats") {
+                root.items("splats")?
+                    .iter()
+                    .map(read_splat)
+                    .collect::<Result<Vec<_>, _>>()?
+            } else {
+                Vec::new()
+            },
             resources: root
                 .items("resources")?
                 .iter()

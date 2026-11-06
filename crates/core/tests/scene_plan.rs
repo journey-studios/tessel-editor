@@ -21,7 +21,7 @@ use tessel_editor_core::directed_scene::{
 };
 use tessel_editor_core::scene_plan::{
     Capability, Domain, PLAN_KIND, PLAN_VERSION, PlanError, PlanOptions, ScenePlan,
-    UninterpretedReason, UnsupportedDomain, capabilities,
+    UninterpretedReason, capabilities,
 };
 use tessel_editor_core::time::Ratio;
 
@@ -80,41 +80,6 @@ fn layered_complete() -> Value {
         .unwrap()
         .retain(|asset| asset["assetId"] != "hero-surface");
     doc
-}
-
-/// A splat node under `parent`, with its own spz asset (the importer requires both).
-fn add_splat(doc: &mut Value, scene: &str, parent: &str) {
-    doc["assets"].as_array_mut().unwrap().push(json!({
-        "assetId": "cloud",
-        "revisionId": "cloud-r1",
-        "contentHash": "hash-cloud",
-        "relativePath": "splats/cloud.spz",
-        "format": "spz",
-        "widthPx": 1,
-        "heightPx": 1,
-        "alphaMode": "opaque",
-        "colorSpace": "srgb",
-    }));
-    let definition = doc["sceneDefinitions"]
-        .as_array_mut()
-        .unwrap()
-        .iter_mut()
-        .find(|definition| definition["id"] == scene)
-        .unwrap();
-    definition["nodes"].as_array_mut().unwrap().push(json!({
-        "id": "cloud-node",
-        "parentId": parent,
-        "type": "splat",
-        "assetRef": {
-            "assetId": "cloud",
-            "revisionId": "cloud-r1",
-            "contentHash": "hash-cloud",
-            "relativePath": "splats/cloud.spz",
-        },
-        "localPosition": { "x": 0, "y": 0, "z": 0 },
-        "localRotation": { "x": 0, "y": 0, "z": 0, "w": 1 },
-        "localScale": { "x": 1, "y": 1, "z": 1 },
-    }));
 }
 
 fn plan_of(scene: &DirectedScene, frame: i64) -> ScenePlan {
@@ -299,7 +264,12 @@ fn layers_are_back_to_front_with_the_composition_pass_first() {
         .map(|node| node.id.as_str())
         .collect();
     assert_eq!(layer_ids(&plan), painted);
-    assert_eq!(plan.requires, Capability::ALL.to_vec());
+    // Every capability but `splats`: this scene has no splat node (S7, `scene_plan_splat.rs`).
+    let without_splats: Vec<Capability> = Capability::ALL
+        .into_iter()
+        .filter(|capability| *capability != Capability::Splats)
+        .collect();
+    assert_eq!(plan.requires, without_splats);
 }
 
 #[test]
@@ -510,39 +480,6 @@ fn scene_level_domains_are_the_evaluators_own_list() {
     for domain in &expected {
         assert!(evaluator.contains(&domain.as_str()), "{domain:?}");
     }
-}
-
-#[test]
-fn a_splat_node_is_not_presumed_to_be_supported() {
-    let mut doc = parse(RECIPES);
-    add_splat(&mut doc, "scene-a", "root");
-    let scene = import(doc);
-    let error = ScenePlan::build(&scene, 0).unwrap_err();
-    assert_eq!(domains(&error), [(Domain::Splat, Some("cloud-node"))]);
-
-    // Asked for explicitly, the partial plan keeps the splat's transform for its children but
-    // does not make it a layer or a resource, and says it is not the whole picture.
-    let plan = ScenePlan::build_with(
-        &scene,
-        0,
-        PlanOptions {
-            allow_partial: true,
-        },
-    )
-    .unwrap();
-    assert!(!plan.is_complete());
-    assert_eq!(
-        plan.unsupported,
-        [UnsupportedDomain {
-            domain: Domain::Splat,
-            subject: Some("cloud-node".to_string()),
-        }]
-    );
-    assert_eq!(plan.node("cloud-node").unwrap().kind, NodeKind::Splat);
-    assert_eq!(layer_ids(&plan), ["backdrop", "figure"]);
-    assert_eq!(plan.required_asset_ids(), ["backdrop", "figure"]);
-    assert_eq!(plan.validate(), Ok(()));
-    assert_eq!(ScenePlan::from_json_str(&plan.to_json_string()), Ok(plan));
 }
 
 #[test]
@@ -967,34 +904,6 @@ fn a_plan_that_breaks_its_own_contract_is_refused() {
     );
 }
 
-#[test]
-fn a_partial_plan_cannot_hide_a_splat_from_its_unsupported_list() {
-    let mut doc = parse(RECIPES);
-    add_splat(&mut doc, "scene-a", "root");
-    let scene = import(doc);
-    let partial = ScenePlan::build_with(
-        &scene,
-        0,
-        PlanOptions {
-            allow_partial: true,
-        },
-    )
-    .unwrap();
-    assert_invalid(
-        tampered(&partial, |wire| {
-            wire["unsupported"] = json!([]);
-            wire["complete"] = json!(true);
-        }),
-        "/unsupported",
-    );
-    assert_invalid(
-        tampered(&partial, |wire| {
-            wire["unsupported"][0]["domain"] = json!("wormhole");
-        }),
-        "/unsupported/0/domain",
-    );
-}
-
 // ---- capabilities ----------------------------------------------------------------------------
 
 #[test]
@@ -1034,7 +943,6 @@ fn this_versions_capabilities_name_what_it_carries_and_refuses() {
         Domain::Rigs,
         Domain::Effects,
         Domain::Paths,
-        Domain::Splat,
         Domain::Surface,
     ] {
         assert!(caps.unsupported.contains(&domain), "{domain:?}");

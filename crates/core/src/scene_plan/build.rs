@@ -5,14 +5,14 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use serde_json::Value;
 
 use crate::directed_scene::{
-    AssetAlpha, Bundle, DirectedScene, FrameEvaluation, NodeKind, Parent, SceneGraph,
+    AssetAlpha, Bundle, CameraState, DirectedScene, FrameEvaluation, NodeKind, Parent, SceneGraph,
 };
 
 use super::model::{
     Domain, PlanFrame, PlanLayer, PlanNode, PlanOutput, PlanParent, PlanResource, PlanSource,
-    ScenePlan, UninterpretedField, UninterpretedReason, UnsupportedDomain,
+    PlanSplat, ScenePlan, UninterpretedField, UninterpretedReason, UnsupportedDomain,
 };
-use super::validate::derive_requires;
+use super::validate::{derive_requires, derive_splat_slots};
 use super::{PLAN_VERSION, PlanError};
 
 /// How `ScenePlan::build_with` treats a frame that declares domains the plan does not evaluate.
@@ -86,11 +86,10 @@ fn output_alpha(document: &Value) -> Result<AssetAlpha, PlanError> {
 /// Every declared domain of the frame's scene that the plan does not evaluate, sorted.
 ///
 /// Scene-level domains and `rigBind`/`reveal` come from the evaluator's own list
-/// (`unevaluated`); the node's data maps and the splat nodes are added here. The nodes' sections
+/// (`unevaluated`); the node's data maps are added here (splats are evaluated: S7). The nodes' sections
 /// are read from the raw document because the typed model does not keep them.
 fn unsupported_domains(
     unevaluated: &[&'static str],
-    graph: &SceneGraph,
     raw_nodes: &[Value],
 ) -> Vec<UnsupportedDomain> {
     let mut found: BTreeSet<UnsupportedDomain> = BTreeSet::new();
@@ -116,16 +115,6 @@ fn unsupported_domains(
                 });
             }
         }
-    }
-    for node in graph
-        .nodes()
-        .iter()
-        .filter(|node| node.kind == NodeKind::Splat)
-    {
-        found.insert(UnsupportedDomain {
-            domain: Domain::Splat,
-            subject: Some(node.id.clone()),
-        });
     }
     // The evaluator said a node section is declared; if the scan found no node for it, the domain
     // is still reported (without a subject) rather than dropped.
@@ -307,7 +296,7 @@ impl<'a> Prepared<'a> {
             .ok_or_else(|| PlanError::MalformedDocument {
                 pointer: format!("/sceneDefinitions/{definition_index}/nodes"),
             })?;
-        let unsupported = unsupported_domains(&frame.unevaluated, graph, raw_nodes);
+        let unsupported = unsupported_domains(&frame.unevaluated, raw_nodes);
         Ok(Self {
             definition_id,
             definition_index,
@@ -338,6 +327,7 @@ impl<'a> Prepared<'a> {
         let bundle = scene.bundle();
         let nodes = plan_nodes(frame, self.graph)?;
         let layers = plan_layers(bundle, frame, &self.definition_id)?;
+        let splats = plan_splats(&nodes, &layers, &frame.camera)?;
         let resources = plan_resources(bundle, &nodes)?;
         let uninterpreted = uninterpreted_fields(
             scene,
@@ -347,7 +337,7 @@ impl<'a> Prepared<'a> {
             &resources,
             self.definition,
         );
-        let requires = derive_requires(&nodes, &layers, &frame.node_animation);
+        let requires = derive_requires(&nodes, &layers, &splats, &frame.node_animation);
 
         let profile = &bundle.render_profile;
         let mapping = &frame.mapping;
@@ -370,6 +360,7 @@ impl<'a> Prepared<'a> {
             animation: frame.node_animation.clone(),
             nodes,
             layers,
+            splats,
             resources,
             requires,
             unsupported: self.unsupported.clone(),
@@ -534,14 +525,45 @@ fn plan_layers(
         .collect()
 }
 
-/// The textures the image planes use, deduplicated by `assetId` and ascending by it. The metadata
-/// comes from the bundle's `assets[]` record; the importer guarantees that the node's own
-/// `assetRef` equals it.
+/// The splat nodes, in document order, each with the asset it reads and the slot it takes among
+/// the layers. Their matrices stay in `nodes`; the runtime draws them with the camera of the plan.
+fn plan_splats(
+    nodes: &[PlanNode],
+    layers: &[PlanLayer],
+    camera: &CameraState,
+) -> Result<Vec<PlanSplat>, PlanError> {
+    let splat_nodes: Vec<&PlanNode> = nodes
+        .iter()
+        .filter(|node| node.kind == NodeKind::Splat)
+        .collect();
+    let ids: Vec<&str> = splat_nodes.iter().map(|node| node.id.as_str()).collect();
+    let slots = derive_splat_slots(camera, nodes, layers, &ids);
+    splat_nodes
+        .into_iter()
+        .zip(slots)
+        .map(|(node, after_layers)| {
+            let asset_id = node.asset_id.clone().ok_or_else(|| PlanError::Unresolved {
+                kind: "asset reference",
+                id: node.id.clone(),
+            })?;
+            Ok(PlanSplat {
+                node_id: node.id.clone(),
+                asset_id,
+                after_layers,
+            })
+        })
+        .collect()
+}
+
+/// The textures the image planes use and the splat files the splat nodes read, deduplicated by
+/// `assetId` and ascending by it. The metadata comes from the bundle's `assets[]` record; the
+/// importer guarantees that the node's own `assetRef` equals it (and that a plane reads a `png`,
+/// a splat an `spz`).
 fn plan_resources(bundle: &Bundle, nodes: &[PlanNode]) -> Result<Vec<PlanResource>, PlanError> {
     let mut resources: BTreeMap<String, PlanResource> = BTreeMap::new();
     for node in nodes
         .iter()
-        .filter(|node| node.kind == NodeKind::ImagePlane)
+        .filter(|node| matches!(node.kind, NodeKind::ImagePlane | NodeKind::Splat))
     {
         let Some(asset_id) = &node.asset_id else {
             return Err(PlanError::Unresolved {

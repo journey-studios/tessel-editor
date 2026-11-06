@@ -82,7 +82,7 @@ MIG marcado AUS/PLAN/“não migrar” não vira obrigação por aparecer no inv
 | BL022 | M1 | Completar cenas/direção de câmera: shots, receitas, segmentos, keys/easing e controles | Parcial | BL004–BL016 | — | Produção mínima editável/renderizável pelas três superfícies |
 | BL023 | M2 | Luzes, sombras, mapas e marcadores | Pendente | BB02–BB08/BB10 | — | Parâmetros e resultado equivalentes, com preview/export |
 | BL024 | M3 | Clima, partículas, grade e pós-produção | Pendente | Base e iluminação aplicável | — | Parâmetros animados no core; desenho no runtime e provas por efeito |
-| BL025 | M4 | Integração de splats com recursos/luz/clima de cena | Pendente | BL023/BL024 aplicáveis | — | Preservar câmera e composição; não reimplementar Spark básico |
+| BL025 | M4 | Integração de splats com recursos/luz/clima de cena | Parcial — subconjunto S7 a validar (PR da frente S7); luz/clima pendentes | BL023/BL024 aplicáveis (luz/clima) | S7 | Preservar câmera e composição; não reimplementar Spark básico. Subconjunto S7 (F044, [scene-splat.md](features/scene-splat.md)): nó `splat` com `spz` aprovado, matriz e câmera do avaliador, runtime só desenha (splat atrás dos planos); preview/headless/pacote/export com prova no corpus sintético (Chrome/SwiftShader); luz, clima, rigs e mapas de dados recusados por `unsupported`. Monitor nativo (WKWebView) a validar; imutabilidade das bytes no export depende de BL109 (S3) — BLOCKED até integrar; aceite independente S10 BLOCKED até esta PR |
 | BL026 | M5 | Takes, narração, legendas e fluxo de edição/mix | Pendente | BB03/BB04/BB06/BB09 | — | Fluxo programático e visual; TTS só se autorizado em BL037 |
 | BL027 | M6 | Rig, IK, paths e follow | Pendente | Base, BL039 | — | Pose/tempo comparados à origem e solver escolhido explícito |
 | BL028 | M7 | Efeitos/transições e edição de shots/gestos do piloto | Decisão | BL036 | — | Escopo/snapshot congelado; reabrir código além do catálogo antes de portar |
@@ -462,7 +462,7 @@ Plano e contratos: [wave-s1-s10-plan.md](migration/wave-s1-s10-plan.md). R1–R1
 | S4 | BL102 | Preparada para delegação | ack antigo de slot reutilizado recusado |
 | S5 | BL100/BL101 | Preparada para delegação | attach off-thread e recursos vazios |
 | S6 | BL004/BL005 | Preparada para delegação | catálogo e pose inicial equivalentes à origem |
-| S7 | BL025 (subconjunto) | Preparada para delegação | Spark dirigido em preview/pacote/export |
+| S7 | BL025 (subconjunto) | PR aberta, a validar | Spark dirigido em preview/pacote/export (F044); luz/clima/rig recusados; BL109 e aceite S10 BLOCKED |
 | S8 | BL015/BL042 | Preparada para delegação | gizmo de translação e comando semântico equivalentes |
 | S9 | BL016 | Preparada para delegação | mix offline dirigido e áudio no export |
 | S10 | BL019 (ampliação) | Preparada para delegação | provas independentes e controles negativos |
