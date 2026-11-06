@@ -291,3 +291,5 @@ Provas finais e limites em [round-mnop-report.md](../migration/round-mnop-report
 ## Correções da revisão PR #3
 
 `--bundle bundle.json` sem pai usa a pasta atual como raiz de recursos. O runtime revalida o número de recursos imediatamente antes do registro, além de geração e bytes; cargas concorrentes não ultrapassam sceneResourceEntries. `scene.plan` aplica admissão por referência, evitando cópia profunda do bundle por frame, com os mesmos gates.
+
+Integração de S4 com main `2bc340d` (S3): conflitos apenas no backlog/matriz, preservando identidade negociada e snapshot. Coordenador reconferiu fmt, check/clippy workspace, core, media/export 11/11, desktop/lifecycle 17/17, render scene_frames/scene_seam/scene_export com runtime obrigatório e lock GPU, build do editor e testes JS puros de identidade 6/6. Log local `/tmp/tessel-s4-main-gates.log`; revisão CodeRabbit continua pendente.
