@@ -765,6 +765,8 @@ impl Render for Workstation {
 }
 
 #[cfg(test)]
+mod audio_fades_tests;
+#[cfg(test)]
 mod dock_tests;
 #[cfg(test)]
 mod input_tests;
