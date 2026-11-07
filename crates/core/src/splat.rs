@@ -278,7 +278,7 @@ impl Extent {
 /// 24-bit fixed-point positions. `Err` carries a human message.
 pub fn measure(path: &Path) -> Result<Extent, String> {
     let info = inspect(path)?;
-    let step = (info.count / MEASURE_SAMPLES).max(1);
+    let step = info.count.div_ceil(MEASURE_SAMPLES).max(1);
     let positions = match info.format {
         SplatFormat::Splat => raw_positions(path, info.count, step)?,
         SplatFormat::Ply => ply_positions(path, step)?,

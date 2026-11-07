@@ -503,7 +503,7 @@ def main():
         sys.exit(f'only {free:.1f} GiB free; the floor is {MIN_FREE_GIB} GiB')
     # A short temporary directory: the socket path under a long one does not fit a Unix socket.
     tempfile.tempdir = '/tmp'
-    out = Path(args.out or tempfile.mkdtemp(prefix='bl144-proof-'))
+    out = Path(args.out or tempfile.mkdtemp(prefix='bl144-proof-')).resolve()
     out.mkdir(parents=True, exist_ok=True)
     fixtures = out / 'fixtures'
     try:

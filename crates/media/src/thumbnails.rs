@@ -217,6 +217,7 @@ fn one(
             height: size.1,
             png: Some(out.to_string_lossy().into_owned()),
         };
+        ctx.check()?;
         let frame = renderer
             .as_mut()
             .ok_or_else(|| JobError::new("backend_unavailable", "The renderer did not start"))?

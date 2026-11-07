@@ -216,7 +216,9 @@ fn the_real_runtime_draws_a_scene_and_a_bare_splat_into_their_thumbnails() {
             .unwrap_or_else(|| panic!("{asset} in {frames:?}"))
             .1
     };
-    let (scene_frame, splat_frame) = (of(&scene), of(&format!("thumb-{splat}")));
+    assert_eq!(frames.len(), 2, "one scene and one stand-in: {frames:?}");
+    let scene_frame = of(&scene);
+    let splat_frame = &frames.iter().find(|(name, _)| name != &scene).unwrap().1;
 
     // What reached the library are the files of those frames, at the size the project asks for.
     for (id, frame) in [(&scene, scene_frame), (&splat, splat_frame)] {

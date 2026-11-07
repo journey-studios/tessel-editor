@@ -1287,6 +1287,14 @@ fn a_job_the_user_cancelled_is_not_started_again_by_the_next_tick() {
         .unwrap()
         .id;
     ok(&mut host, &mut state, json!({"op":"job.cancel","job":job}));
+    let busy = headless::execute_ext(
+        &mut state,
+        None,
+        Some(&mut host),
+        &json!({"op":"media.thumbnails"}),
+    )
+    .unwrap_err();
+    assert_eq!(busy.code, "thumbnail_busy");
     script.hold.store(false, Ordering::SeqCst);
     script.release.store(true, Ordering::SeqCst);
     let registry = host.registry().clone();
@@ -1310,6 +1318,18 @@ fn a_job_the_user_cancelled_is_not_started_again_by_the_next_tick() {
         "the tick did not undo the user's cancel"
     );
     assert!(state.thumbnails.is_empty());
+
+    // An invalid request must not resume the user's cancelled job on the next tick.
+    let invalid = headless::execute_ext(
+        &mut state,
+        None,
+        Some(&mut host),
+        &json!({"op":"media.thumbnails","assets":["unknown"]}),
+    )
+    .unwrap_err();
+    assert_eq!(invalid.code, "unknown_element");
+    host.poll(&mut state);
+    assert_eq!(thumbnails(&host), 1);
 
     // Asking for them is a decision, and it goes through.
     let reply = ok(&mut host, &mut state, json!({"op":"media.thumbnails"}));

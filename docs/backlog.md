@@ -784,7 +784,7 @@ adaptou identidade/título, sem alterar rótulos nem handlers de desempenho.
 | BL144.9 | F053/revisão B | Harness e recursos: prova sobre `scripts/proof_surface.py` (cópia idêntica, blob `bb555f09…`, a integração com as PRs #20/#23 reconcilia), falhas por superfície, job realmente em andamento depois cancelado; sem miniaturas durante export; sem `state.clone` por tick | Corrigido, a validar (spec puro de Python 18/18 executado, com e sem `-O`; prova ao vivo e gates de Rust **não executados**; não há medição de custo por tick) | BL144 | Sub-agente PR #24 | Prova nativa e headless executam e passam; medição do custo por tick registrada |
 
 
-| BL144.10 | R2 | Export iniciado depois de miniatura e chamada explícita podiam disputar renderer | Corrigido por código, testes não executados | BL144 | Coordenador | Export cancela e responde renderer_busy/retryable até frame acabar; thumbnail explícita aguarda export |
+| BL144.10 | R2 | Export iniciado depois de miniatura ainda pode disputar renderer | Pendente; thumbnail explícita durante export é recusada com renderer_busy/retryable | BL144 | Coordenador | Coordenar export iniciado depois da miniatura sem desfazer cancelamento do usuário; provar limites com testes |
 | BL144.11 | R2 | Aspecto extremo excedia MAX_SIDE e conversão truncava tamanho | Corrigido por código, teste não executado | BL144 | Coordenador | Lados pares2..MAX_SIDE mesmo com entradasu32extremas |
 | BL144.12 | R2 | Spec do helper ausente na branch | Corrigido por cópia byteidêntica | BL140.6 | Coordenador | proof-surface.spec.py incluída,26/26 previamente no mesmo helper |
 | BL144.13 | R2 | Eixos/SPZ/PLY e orientaçãoSHARP ainda sem prova do renderer | Pendente | BL144.2/BL143 | Coordenador | Render de corpus e fonte real, não só unitário |
@@ -792,3 +792,11 @@ adaptou identidade/título, sem alterar rótulos nem handlers de desempenho.
 | BL144.15 | R2 | Erro de snapshot no agendamento pode ser engolido | Pendente | BL144 | Coordenador | Falha observável e sem retry por tick silencioso |
 
 BL144.10: preempção de export retirada; apenas thumbnail explícita durante export retorna renderer_busy/retryable. Export após thumbnail ainda pode sobrepor renderers: PENDENTE. Cancelamento do usuário não é desfeito por export. Commit c72cbde foi tentativa sem alteração de árvore; esta correção é o diff efetivo, ainda sem testes Rust por disco.
+
+### BL144 — complemento R2 do coordenador
+
+Helper comum atualizado: 28/28 testes Python, também com `-O`; spec de miniaturas 18/18, também com `-O`. Timeout aposenta o processo próprio, subclasses mantêm argumentos e falha no encerramento é registrada. Saída da prova usa caminho absoluto e captura nativa habilita inspeção de hashes. Não houve execução da prova ao vivo.
+
+BL144.6: amostragem usa divisão arredondada para cima para respeitar o teto de 20 mil posições. BL144.7: cancelamento é verificado imediatamente antes do render; pedido durante cancelamento é recusado com `thumbnail_busy/retryable`, sem aceitar uma retomada que seria perdida. Validação de ativos precede alteração da pausa. Pedidos com filtro/retry durante job atual também são recusados para não ignorar seu escopo. Testes escritos, não executados. BL144.9/.12: helper e sua spec incluídos. O teste de quadro identifica a stand-in sem pressupor seu ID interno antigo. BL144.10 continua pendente para export iniciado depois da miniatura.
+
+Sem Cargo, runtime ou render: cerca de 13 GiB livres, abaixo da margem de início de 16 GiB para preservar piso de 12 GiB. Matriz permanece I.

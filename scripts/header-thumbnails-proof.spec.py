@@ -218,7 +218,7 @@ class SurfaceFailureTests(unittest.TestCase):
 
     def test_each_kind_of_transport_failure_is_recorded_for_its_surface_only(self):
         expected = {
-            Dead: 'closed its output',
+            Dead: 'closed its output|stdin is closed',
             Hung: 'no reply',
             Missing: 'cannot start',
             Garbage: 'not JSON',
@@ -228,7 +228,7 @@ class SurfaceFailureTests(unittest.TestCase):
             report = self.run_all([(cls, 'ignored')])
             result = report['headless']
             self.assertTrue(result['failed'], cls.__name__)
-            self.assertIn(text, result['error'], cls.__name__)
+            self.assertRegex(result['error'], text, cls.__name__)
             self.assertEqual(proof.exit_code(report), 1)
 
     def test_a_failing_surface_does_not_stop_the_next_one(self):

@@ -601,6 +601,14 @@ impl MediaHost {
         state: &mut EditorState,
         request: &Value,
     ) -> Result<Value, CommandError> {
+        let wanted = strings(request, "assets")?;
+        if let Some(wanted) = &wanted {
+            for id in wanted {
+                if state.library.item(id).is_none() {
+                    return Err(CommandError::unknown_element("asset", id));
+                }
+            }
+        }
         if self.export_running() {
             return Err(CommandError::new(
                 "renderer_busy",
@@ -610,6 +618,19 @@ impl MediaHost {
         }
         if let Some((job, stamp)) = &self.thumb_job {
             if stamp.is_current(state) {
+                if wanted.is_some()
+                    || flag(request, "retry", false)
+                    || self
+                        .registry
+                        .get(job)
+                        .is_some_and(|info| info.cancel_requested)
+                {
+                    return Err(CommandError::new(
+                        "thumbnail_busy",
+                        "A thumbnail job is still ending or drawing; retry this request after it finishes",
+                    )
+                    .details(json!({ "retryable": true, "job": job })));
+                }
                 return Ok(json!({ "job": job, "state": "running", "reused": true }));
             }
             // The job in flight belongs to another project (or another opening of this one): it
@@ -624,14 +645,6 @@ impl MediaHost {
                 "deadline_seconds": thumbs::FRAME_TIMEOUT.as_secs() }));
         }
         self.thumb_paused = None;
-        let wanted = strings(request, "assets")?;
-        if let Some(wanted) = &wanted {
-            for id in wanted {
-                if state.library.item(id).is_none() {
-                    return Err(CommandError::unknown_element("asset", id));
-                }
-            }
-        }
         let targets: Vec<_> = state
             .thumbnail_targets(flag(request, "retry", false))
             .into_iter()
