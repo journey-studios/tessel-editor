@@ -37,6 +37,8 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 - [Plano de mídia, Spark, projetos e export](media-project-export-plan.md): plano aprovado (P01–P12).
 - [Relatório de mídia, projetos e export](media-project-export-report.md): status de P01–P12, arquivos,
   decisões, provas, métricas e lacunas. Setup de FFmpeg/Node/Chrome: [media-setup](media-setup.md).
+- [Cabeçalho do projeto e miniaturas reais de splat/cena](features/header-thumbnails.md): `project.header`,
+  `media.thumbnails`, identidade e cancelamento por projeto (BL144).
 - [Viewport multimídia e composição](features/viewport.md): contrato, CLI e evidências para imagem,
   vídeo, áudio (processado), texto e Three.js/splat.
 - [Relatório da fundação da viewport](viewport-foundation-report.md): arquivos, APIs, comandos, métricas e lacunas.

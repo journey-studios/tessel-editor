@@ -763,3 +763,18 @@ e renumera o contrato dela para um ID livre. Sem IDs novos de backlog: BL145 e B
 BL145.1 — resíduos 4502907216/4502916726: relatório de exceção usa assinatura compatível com Python 3.9; limite de leitura de atividade truncada documentado sem prometer CLI `get`. Sem mudança de Rust/runtime.
 
 Validação dos resíduos: spec 41/41 em Python 3.9.6 e 3.14.3, logs `/tmp/pr18-python39-final.log` e `/tmp/pr18-python314-final.log`; gates de produção anteriores preservados.
+
+## BL144 — cabeçalho do projeto aberto e miniaturas reais (F053, PR própria)
+
+Contrato e evidências: [features/header-thumbnails.md](features/header-thumbnails.md). Só estas linhas são da BL144; as de
+BL140–BL143 estão nas PRs #20–#23 (o coordenador integra o arquivo comum). A PR #18 (medidor) não foi tocada: o cabeçalho só
+adaptou identidade/título, sem alterar rótulos nem handlers de desempenho.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL144 | Filme SHARP | Depois de `project.open` pela CLI o cabeçalho continuava `North / Master`; miniaturas de splat/cena ficavam vazias na biblioteca | A validar (implementado em lib, headless e janela; revisão independente e merge pelo coordenador pendentes) | — | Cursor Sonnet 5.5; coordenador revisa | Cabeçalho = `Projeto / Sequência` do aberto (`project.header`, `status.header`, `node:13`); splat e cena com miniatura real em job/adaptador, cancelado e nunca aplicado a outro projeto. Evidência: testes core 7+5, media 8, runtime real 1, GPUI 3, `header-thumbnails-proof.py` headless 53/53 e janela 56/56 + 2 capturas |
+| BL144.1 | F053 | Imagem parada e vídeo continuam com glifo na biblioteca: a operação `media.thumbnail` (FFmpeg) existe mas não está ligada ao tile | Pendente | BL144 | — | Tile de imagem/vídeo mostra o quadro real pelo mesmo job/identidade, com prova de pixel |
+| BL144.2 | F053/BL143 | Depois da PR #23, o splat do SHARP seria desenhado sem a orientação da captura e a identidade da miniatura não inclui a captura | Pendente (bloqueada pela PR #23) | BL143 | — | Miniatura de um splat com captura usa a câmera/eixos dela e muda de identidade se a captura mudar |
+| BL144.3 | F053 | O cache de miniaturas só é invalidado por `VERSION`/`CACHE_VERSION`: reconstruir o runtime (`runtime/dist`) não refaz as imagens já guardadas | Limite documentado | BL144 | — | Impressão do runtime na identidade, ou comando de limpeza só das miniaturas |
+| BL144.4 | F053/UI | O monitor da janela isolada aparece preto nas capturas do `header-thumbnails-proof.py` (WebView do monitor sem quadro naquele instante); não afeta a feature, mas impede capturas completas | Pendente | — | — | Captura com o monitor desenhado, ou causa registrada |
+

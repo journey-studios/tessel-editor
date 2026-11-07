@@ -35,6 +35,8 @@ mostra agora o estado salvo/não salvo e as tarefas em andamento.
 | `clip.text` / `clip.camera` / `clip.property` | `clip`, e `text` / `position,target,fov,orbit` / `property`+`value` |
 | `sequence.length`, `preview.set`, `seek` | `frames`; `intent`; `frame` ou `time` |
 | `plan`, `render.frame`, `render.audio`, `capabilities`, `render.status`, `status` | ver [F021](viewport.md) |
+| `project.header` | sem campos: `{label, project, sequence, project_id, dirty, document}`, o texto do cabeçalho ([F053](header-thumbnails.md)) |
+| `media.thumbnails` | `assets?`, `retry?`, `wait?`: desenha as miniaturas de splat/cena que faltam ([F053](header-thumbnails.md)) |
 
 ```sh
 printf '%s\n' \
