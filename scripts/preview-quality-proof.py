@@ -157,11 +157,11 @@ class Editor:
             time.sleep(0.2)
         raise RuntimeError("the viewport never became ready")
 
-    def explicit(self, frame, timeout=600):
+    def explicit(self, frame, timeout=600, **fields):
         """`render.frame` until the media is decoded and loaded; returns the reply."""
         deadline = time.time() + timeout
         while time.time() < deadline:
-            reply = self.op({"op": "render.frame", "frame": frame})
+            reply = self.op({"op": "render.frame", "frame": frame, **fields})
             if reply.get("ok"):
                 return reply
             if (reply.get("error") or {}).get("code") not in ("media_preparing", "cancelled"):
@@ -242,6 +242,7 @@ def playback_run(editor, start, frames, xfades, inspect):
     quiet = wait_quiet_gpu()
     base = editor.render_status()
     base_requests = base["session"]["stats"]["requests"]
+    base_traced = base["session"]["trace"]["frames_total"]
     with GpuSampler() as gpu:
         started = editor.op({"op": "playback.start", "from": start})
         if not started.get("ok"):
@@ -258,7 +259,14 @@ def playback_run(editor, start, frames, xfades, inspect):
     end = report.get("frame", start)
     converge_ms, final_state = wait_final_quality(editor)
     status = editor.render_status()
-    traced = [f for f in status["session"]["trace"]["recent"] if f["id"] > base_requests]
+    trace = status["session"]["trace"]
+    # `recent` is a capped window: frames that fell out of it would read as dropped.
+    new_traced = trace["frames_total"] - base_traced
+    if new_traced > len(trace["recent"]):
+        return {"start": start, "frames_asked": frames,
+                "error": f"trace window truncated: {new_traced} new frames, {len(trace['recent'])} in `recent`; "
+                         "shorten this --playback run"}
+    traced = [f for f in trace["recent"] if f["id"] > base_requests]
     ordered = sorted((f for f in traced if f.get("interactive") and f.get("shown_frame") is not None), key=lambda f: f["done_ms"])
     # The picture of each position once: the refine after the stop redraws the last one, and is not playback.
     interactive, seen = [], set()
@@ -289,11 +297,15 @@ def playback_run(editor, start, frames, xfades, inspect):
         presented = (final_state["session"].get("presented") or {}).get("frame")
         if last.get("hash") and presented is not None:
             size = final_state.get("output") or {}
-            explicit = editor.op({"op": "render.frame", "frame": presented, "width": size.get("width"),
-                                  "height": size.get("height"), "probes": []})
+            explicit = editor.explicit(presented, width=size.get("width"), height=size.get("height"), probes=[])
             frame = (explicit.get("data") or {}).get("frame") or {}
-            result["refined_equals_explicit"] = {"frame": presented, "on_screen": last["hash"], "explicit": frame.get("hash"),
-                                                 "equal": last["hash"] == frame.get("hash")}
+            comparison = {"frame": presented, "on_screen": last["hash"], "explicit": frame.get("hash")}
+            if explicit.get("ok"):
+                comparison["equal"] = last["hash"] == frame.get("hash")
+            else:
+                # A request that failed compared nothing: it is not a refine mismatch.
+                comparison["error"] = explicit.get("error")
+            result["refined_equals_explicit"] = comparison
     return result
 
 
@@ -304,6 +316,11 @@ def scrub_run(editor, name, origin, span, hz, label):
     time.sleep(0.3)
     quiet = wait_quiet_gpu()
     out = os.path.join(editor.home, f"scrub-{name}.json")
+    # Repetitions share this path: a run that writes nothing must not report the previous metrics.
+    try:
+        os.remove(out)
+    except FileNotFoundError:
+        pass
     with GpuSampler() as gpu:
         proc = subprocess.run([sys.executable, os.path.join(ROOT, "scripts/seek-scrub-proof.py"), "--socket", editor.socket_path,
                                "--seconds", "2", "--hz", str(hz), "--span", str(span), "--json", out, "--settle-timeout", "30"],
@@ -378,6 +395,9 @@ def main():
                 line = " | ".join(f"{name}: shown {r['shown_frames']}/{r['clock_frames']} dropped {r['dropped_pct']}% "
                                   f"gap p50/p95 {r['interval_ms'].get('p50')}/{r['interval_ms'].get('p95')} draw p50 {r['runtime_render_ms'].get('p50')}"
                                   for name, r in run.get("regions", {}).items())
+                if run.get("error"):
+                    print(f"{args.label} playback {spec}#{rep} ERROR {run['error']}", flush=True)
+                    continue
                 print(f"{args.label} playback {spec}#{rep} gpu {run.get('gpu', {}).get('mean')} converge {run.get('converge_ms')} ms | {line}", flush=True)
         for spec in [s for s in args.scrub.split(",") if s]:
             name, origin, span, hz = spec.split(":")
