@@ -32,7 +32,7 @@ import tempfile
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from proof_surface import MIN_FREE_GIB, Headless, Native, ProofFailure, Recorder, free_gib  # noqa: E402
+from proof_surface import MIN_FREE_GIB, Headless, Native, ProofFailure, Recorder, free_gib, run_surface  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 PHRASE = 'Coração: não é só açaí, ÀS ÔNIBUS Ü'
@@ -217,7 +217,10 @@ def scenario(surface, check, scratch, fixtures):
         surface.set(f'inspector.{section}', 'expanded', 'false')
     surface.invoke('window.activate')
     path, reason = surface.capture(scratch / 'bl141-accented-title-window.png')
-    check(f'the native window was captured ({path})' if path else f'native capture unavailable: {reason}', True)
+    if path:
+        check(f'the native window was captured ({path})', True)
+    else:
+        check.skip('the native window was captured', reason)
     return path
 
 
@@ -227,41 +230,53 @@ def main():
     parser.add_argument('--headless', default=str(ROOT / 'target/debug/tessel-headless'))
     parser.add_argument('--out', default=str(ROOT / 'target/bl141-proof'))
     parser.add_argument('--report')
+    parser.add_argument('--require-capture', action='store_true',
+                        help='a missing OS window capture is a failure (default: an explicit SKIP)')
     args = parser.parse_args()
     if free_gib() < MIN_FREE_GIB:
         print(f'refusing to start: less than {MIN_FREE_GIB} GiB free', file=sys.stderr)
         return 2
+    report = {'surfaces': {}, 'error': None}
+
+    def finish(code):
+        if args.report:
+            try:
+                Path(args.report).write_text(json.dumps(report, indent=2))
+            except OSError as error:
+                print(f'could not write the report: {error}', file=sys.stderr)
+                return code or 1
+        return code
+
     out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
     fixtures = out / 'fixtures'
-    shutil.rmtree(fixtures, ignore_errors=True)
-    subprocess.run([str(ROOT / 'scripts/fixtures'), str(fixtures)], check=True, capture_output=True)
-    report = {'surfaces': {}}
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+        shutil.rmtree(fixtures, ignore_errors=True)
+        subprocess.run([str(ROOT / 'scripts/fixtures'), str(fixtures)], check=True, capture_output=True,
+                       timeout=600)
+    except (OSError, subprocess.SubprocessError) as error:
+        report['error'] = f'fixtures: {type(error).__name__}: {error}'
+        print(f"FAILED {report['error']}", file=sys.stderr)
+        return finish(1)
     failed = False
-    for cls in (Headless, Native):
-        home = tempfile.mkdtemp(prefix='tat') if cls is Native else None
-        surface = cls(args.headless if cls is Headless else args.editor, home)
-        check = Recorder(surface.name)
-        shot = None
-        try:
-            surface.prepare()
-            scratch = out / surface.name
-            shutil.rmtree(scratch, ignore_errors=True)
-            scratch.mkdir(parents=True)
-            shot = scenario(surface, check, scratch, fixtures)
-        except (ProofFailure, RuntimeError, AssertionError, StopIteration) as error:
+    complete = True
+    # One surface failing never stops the other, and the report is written either way.
+    for cls, binary in ((Headless, args.headless), (Native, args.editor)):
+        result = run_surface(cls, binary, lambda surface, check, scratch: scenario(surface, check, scratch,
+                                                                                  fixtures), out, 'tat')
+        report['surfaces'][result['name']] = result
+        failed = failed or result['failed']
+        complete = complete and result['complete']
+    print(json.dumps({name: f"{s['passed']}/{len(s['checks'])} passed, {s['skipped']} skipped"
+                      + (f", FAILED: {s['error']}" if s['failed'] else '')
+                      for name, s in report['surfaces'].items()}))
+    if not failed and not complete:
+        print('INCOMPLETE: at least one check was skipped (see the SKIP lines); this is not a full pass',
+              file=sys.stderr)
+        if args.require_capture:
             failed = True
-            print(f'FAILED [{surface.name}]: {error!r}', file=sys.stderr)
-        finally:
-            surface.stop()
-            if home:
-                shutil.rmtree(home, ignore_errors=True)
-        report['surfaces'][surface.name] = {'checks': check.checks, 'passed': sum(c['ok'] for c in check.checks),
-                                            'screenshot': shot}
-    print(json.dumps({name: f"{s['passed']}/{len(s['checks'])}" for name, s in report['surfaces'].items()}))
-    if args.report:
-        Path(args.report).write_text(json.dumps(report, indent=2))
-    return 1 if failed else 0
+    report['complete'] = complete and not failed
+    return finish(1 if failed else 0)
 
 
 if __name__ == '__main__':

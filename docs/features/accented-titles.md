@@ -5,14 +5,14 @@
 A camada de texto só desenhava ASCII: um título como "AÇÃO" virava PNG feito à mão. Agora um título aceita **ASCII
 imprimível + as letras latinas acentuadas do português e demais línguas do oeste europeu + pontuação tipográfica**
 (lista única em [`crates/core/src/text_coverage.txt`](../../crates/core/src/text_coverage.txt): `À Á Â Ã Ä Ç È É Ê Ë Ì Í Î Ï Ñ Ò Ó Ô Õ Ö Ù Ú Û Ü Ý`
-e minúsculas, `¿ ¡ « » ‘ ’ “ ” – — … º ª ° ·`). O resultado é o mesmo no monitor (WebView), no quadro headless
-(`render.frame`) e no vídeo exportado: é a mesma camada de texto do plano.
+e minúsculas, `¿ ¡ « » ‘ ’ “ ” – — … º ª ° ·`). O plano de texto é compartilhado pelo monitor (WebView) e pelo quadro headless
+(`render.frame`) e pelo vídeo exportado: é a mesma camada de texto do plano.
 
 **Fonte, determinismo e licença.** Nenhum arquivo de fonte é carregado e nenhuma fonte do sistema é consultada: o runtime
 desenha células de uma grade **5×7 própria do projeto** (`runtime/src/font.js`, MIT, a mesma [LICENSE](../../LICENSE) do
 repositório; a tabela de glifos já era do projeto). Um acento é uma **marca composta** sobre a letra maiúscula (agudo,
 grave, circunflexo, til e trema em 2 linhas acima; cedilha em 2 linhas abaixo). Como são células inteiras, o desenho é igual
-em qualquer máquina, motor e escala (Chrome e WKWebView). Não há fonte de terceiros a atribuir ([THIRD_PARTY_NOTICES](../../THIRD_PARTY_NOTICES.md)
+sem depender da fonte instalada; igualdade visual entre máquinas, escalas e Chrome/WKWebView não foi demonstrada. Não há fonte de terceiros a atribuir ([THIRD_PARTY_NOTICES](../../THIRD_PARTY_NOTICES.md)
 registra isso); uma fonte vetorial real, com métricas e minúsculas, continua [BL053](../backlog.md).
 
 Limites que **não mudaram** (layout preservado): um título é **uma linha**, centrada no quadro, com `size` = altura do corpo da
@@ -70,9 +70,11 @@ resultado pelo mesmo plano.
 | Lib | `crates/core/src/text.rs` (5 testes: NFC/NFD, cobertura inteira, marcas inválidas, controle, ASCII intacto), `content.rs`, `crates/core/tests/accented_titles.rs` (7: plano canônico, recusa com estado intacto, undo/repetição, `set clip_text:`, só título, salvar/reabrir NFD, processo `tessel-headless`) e `state/tree.rs` (nó só do título selecionado) | V |
 | Runtime | `runtime/test/pure.test.mjs` (cobertura = a mesma lista do core, marca sobre o corpo, NFC/NFD) e `runtime/test/accented-text-browser.test.mjs` (Chrome real: NFD = NFC sem passar pelo core, acento ≠ sem acento, til ≠ agudo ≠ grave, caixa desconhecida ≠ acento coberto; só hashes, os pixels estão abaixo) | V |
 | CLI headless | mesmo fluxo em `tessel-headless` (processo real) e `scripts/accented-titles-proof.py` (11 checks JSONL, sem janela) | V |
-| Monitor / quadro / export (pixels reais) | `crates/render/tests/accented_titles.rs` (Chrome + FFmpeg): AÇÃO tem a largura de ACAO, til ≥ 4 px acima e cedilha ≥ 4 px abaixo do mesmo corpo (±2 px), maiúscula = minúscula, NFD = NFC byte a byte; export H.264 do quadro: mesma caixa e pixels de glifo iguais ao `render.frame` (965 vs 966 acesos, caixas iguais) | V |
+| Monitor / quadro / export (pixels reais) | `crates/render/tests/accented_titles.rs` (Chrome + FFmpeg): AÇÃO tem a largura de ACAO, til ≥ 4 px acima e cedilha ≥ 4 px abaixo do mesmo corpo (±2 px), maiúscula = minúscula, NFD = NFC byte a byte; export H.264 do quadro: mesma caixa e comparação histórica com `render.frame` em Chrome headless (965 vs 966 acesos, caixas iguais); novos limites locais escritos, não executados por disco | V |
 | UI | `crates/desktop/src/workstation/title_text_tests.rs` (4 testes GPUI: seção/nó só para título, Enter = uma edição composta com undo, recusa restaura o campo e reporta, `set` externo chega ao campo; mutação sem `sync_title_text` derruba os 4) e `scripts/accented-titles-proof.py` na janela real própria (21 checks por `ui op/get/set/invoke`, `render.frame` PNG lido no script e captura nativa [`assets/bl141-accented-title-window.png`](assets/bl141-accented-title-window.png)) | V (sem digitar com teclado físico) |
 
 Limites: não houve digitação física no campo nem clique de coordenada (o teste GPUI aciona a entidade `Input`; o script usa `set`);
 a captura nativa mostra a janela, não substitui os testes de pixel; quebra de linha/alinhamento/multilinha não existem
-(BL141.1); só a cobertura listada (BL141.3: ampliar com fonte real = BL053).
+(BL141.1); só a cobertura listada (BL141.2: ampliar com fonte real = BL053).
+
+Revisão B: a comparação histórica do export aceitava divergências em1% do quadro incluindo fundo, portanto não comprovava igualdade pixel a pixel de glifos. O teste agora compara foreground e linhas dos acentos, com controle negativo de til→agudo; não reexecutado por disco abaixo do piso. A captura nativa existente não compara pixels com Chrome/export nem prova igualdade entre escalas. Eventos tardios de input são descartados quando o clipe exibido difere do selecionado; o reset Texto sem operação foi removido da apresentação. Provas usam run_surface e captura indisponível vira SKIP, nunca PASS.

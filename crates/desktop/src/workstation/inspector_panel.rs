@@ -54,6 +54,10 @@ impl Workstation {
         else {
             return;
         };
+        // An event from the old input must not edit the newly selected clip.
+        if self.title_text_shown.as_ref().map(|shown| shown.0.as_str()) != Some(clip.as_str()) {
+            return;
+        }
         let content = input.read(cx).value().to_string();
         let result = self.execute(
             Command::SetClipTextField {
@@ -349,7 +353,7 @@ impl Workstation {
             .text_size(px(12.))
             .text_color(t.text)
             .child(section.label)
-            .child(reset)
+            .when(section.id != "text", |row| row.child(reset))
     }
 
     pub(super) fn render_clip_inspector(

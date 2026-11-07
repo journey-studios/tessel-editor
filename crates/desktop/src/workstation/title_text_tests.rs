@@ -182,3 +182,15 @@ fn the_semantic_set_and_the_input_run_the_same_command(cx: &mut TestAppContext) 
         "a script's edit reaches the input"
     );
 }
+
+#[gpui_kit::test]
+fn a_delayed_input_event_cannot_write_into_a_different_selected_title(cx: &mut TestAppContext) {
+    let (view, cx) = fixture(cx);
+    select_title(&view, cx);
+    let before = model_text(&view, cx);
+    view.update(cx, |view, _| {
+        view.title_text_shown = Some(("previous-title".into(), "Old title".into()));
+    });
+    type_and_confirm(&view, cx, "Texto atrasado");
+    assert_eq!(model_text(&view, cx), before);
+}

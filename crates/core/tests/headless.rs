@@ -42,6 +42,19 @@ fn json_and_library_flows_have_the_same_state_and_reject_without_mutation() {
         .code,
         "desktop_required"
     );
+    // F049: the performance meter is window presentation; a session has nothing to measure.
+    for request in [
+        json!({"op":"invoke", "target":"toolbar.perf_meter", "action":"toggle"}),
+        json!({"op":"set", "target":"toolbar.perf_meter", "field":"visible", "value":true}),
+    ] {
+        assert_eq!(
+            headless::execute(&mut json_session, &request)
+                .unwrap_err()
+                .code,
+            "desktop_required"
+        );
+    }
+    assert_eq!(before, json_session.summary());
 }
 
 #[test]

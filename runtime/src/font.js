@@ -120,6 +120,9 @@ const MARKS = {
 };
 
 /** The text as the font sees it: NFC, so composed and decomposed spellings are one string. */
+const COVERED = new Set('ÀÁÂÃÄÇÈÉÊËÌÍÎÏÑÒÓÔÕÖÙÚÛÜÝàáâãäçèéêëìíîïñòóôõöùúûüý¿¡«»‘’“”–—…ºª°·');
+const COMBINING = new Set(['\u0300', '\u0301', '\u0302', '\u0303', '\u0308', '\u0327']);
+
 export const normalizeText = (text) => String(text).normalize('NFC');
 
 /**
@@ -128,8 +131,9 @@ export const normalizeText = (text) => String(text).normalize('NFC');
  */
 const glyphOf = (character) => {
   if (ROWS[character] ?? EXTRA[character]) return { body: ROWS[character] ?? EXTRA[character] };
-  const upper = ROWS[character.toUpperCase()];
+  const upper = /^[a-z]$/.test(character) ? ROWS[character.toUpperCase()] : null;
   if (upper && character.toUpperCase().length === 1) return { body: upper };
+  if (!COVERED.has(character)) return null;
   const [base, mark, ...rest] = [...character.normalize('NFD')];
   if (!mark || rest.length || !MARKS[mark]) return null;
   const letter = ROWS[base.toUpperCase()];
@@ -141,6 +145,7 @@ const characters = (text) => [...normalizeText(text)].map((character) => ({ char
 
 /** Whether the font has a glyph for this character (after NFC), false for the unknown box. */
 export const hasGlyph = (character) => {
+  if ([...String(character)].some((one) => !(/[ -~]/.test(one) || COVERED.has(one) || COMBINING.has(one)))) return false;
   const list = [...normalizeText(character)];
   return list.length > 0 && list.every((one) => glyphOf(one));
 };

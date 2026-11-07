@@ -14,10 +14,10 @@ use std::time::{Duration, Instant};
 
 use gpui_webview::WebView;
 
-use super::Workstation;
 use super::controls::glyph;
 use super::tokens::Tokens;
 use super::viewport_host::{FrameWaiter, PAGE_URL, SCHEME, ViewportHost};
+use super::{Geometry, Workstation};
 use crate::state::layout::PanelKind;
 use tessel_editor_core::CommandError;
 use tessel_editor_core::ops::RenderFrame;
@@ -253,7 +253,12 @@ impl Workstation {
 
 /// The framed picture area. `flex_1` so the monitor decides its size, which is
 /// also the box the native WebView follows when it resizes.
-pub fn render_viewport(t: &Tokens, content: ViewportContent) -> impl IntoElement + use<> {
+pub fn render_viewport(
+    t: &Tokens,
+    geometry: &Geometry,
+    content: ViewportContent,
+) -> impl IntoElement + use<> {
+    // The rectangle the native view covers: the debug meter keeps its card out of it (F049).
     let frame = div()
         .relative()
         .flex()
@@ -266,7 +271,8 @@ pub fn render_viewport(t: &Tokens, content: ViewportContent) -> impl IntoElement
         .overflow_hidden()
         .bg(t.app)
         .border_1()
-        .border_color(t.border);
+        .border_color(t.border)
+        .child(geometry.probe("viewport.frame"));
     match content {
         ViewportContent::Web(view) => frame.child(view),
         ViewportContent::Placeholder { icon, text } => frame.child(

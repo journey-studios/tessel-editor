@@ -104,3 +104,12 @@ test('splat file names follow the content format the core identified, then the e
   assert.equal(splatFileName(undefined, '/p/Scan.PLY'), 'asset.ply');
   assert.equal(splatFileName('mystery', '/p/noext'), 'asset.splat');
 });
+
+test('runtime glyph coverage rejects non-core letters even when Unicode folds them to ASCII', () => {
+  const coverage = readFileSync(new URL('../../crates/core/src/text_coverage.txt', import.meta.url), 'utf8').trim();
+  for (let code = 0; code < 0x250; code += 1) {
+    const ch = String.fromCodePoint(code);
+    assert.equal(hasGlyph(ch), (code >= 32 && code <= 126) || coverage.includes(ch), `U+${code.toString(16)}`);
+  }
+  for (const ch of ['K', 'ſ', 'ı', 'ÿ']) assert.equal(hasGlyph(ch), false, ch);
+});

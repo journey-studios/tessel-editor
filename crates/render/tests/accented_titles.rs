@@ -265,20 +265,38 @@ fn the_exported_video_shows_the_accented_title_the_monitor_shows() {
     ] {
         assert!(a.abs_diff(b) <= 2, "{side}: monitor {a}, video {b}");
     }
-    let agreeing = monitor
-        .lit
-        .iter()
-        .zip(&video.lit)
-        .filter(|(a, b)| a == b)
-        .count();
-    let total = monitor.lit.len();
     assert!(
-        agreeing * 100 >= total * 99,
-        "the glyph pixels agree: {agreeing} of {total}"
+        glyph_masks_agree(&monitor, &video),
+        "export differs on the glyph foreground or an accent row"
+    );
+    rig.set_title("AÇÁO");
+    let wrong_accent = rig.frame("wrong-accent");
+    assert!(
+        !glyph_masks_agree(&monitor, &wrong_accent),
+        "the comparison must reject a changed accent"
     );
     eprintln!(
         "title export: monitor lit {}, video lit {}, boxes {monitor_box:?} / {video_box:?}",
         monitor.count(),
         video.count()
     );
+}
+
+/// Compare the foreground and each row so the black background cannot hide a wrong accent.
+fn glyph_masks_agree(a: &Mask, b: &Mask) -> bool {
+    let differences = |left: &[bool], right: &[bool]| {
+        let union = left.iter().zip(right).filter(|(x, y)| **x || **y).count();
+        let changed = left.iter().zip(right).filter(|(x, y)| x != y).count();
+        (union, changed)
+    };
+    let (union, changed) = differences(&a.lit, &b.lit);
+    union > 0
+        && changed * 100 <= union * 2
+        && a.lit
+            .chunks(WIDTH as usize)
+            .zip(b.lit.chunks(WIDTH as usize))
+            .all(|(left, right)| {
+                let (union, changed) = differences(left, right);
+                changed <= 1 || changed * 100 <= union * 15
+            })
 }
