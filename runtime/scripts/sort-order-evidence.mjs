@@ -12,18 +12,27 @@
 // It drives the real worker (bridge v1, a real browser; `TESSEL_GL=gpu` is the machine's GPU, the
 // default here, `swiftshader` is software) and, per pace:
 //   1. draws every plan at the final quality (the *exact* pictures; the PNG of each is kept);
-//   2. settles on the first plan, then plays the plans in order at the pace, each as a `preview`
-//      frame (what the monitor asks for while the playhead moves; the order of the last finished sort is reused);
-//   3. compares each moving picture with the exact one of the same frame (largest and mean channel
-//      difference, share of pixels past 8/255, PSNR) and the way the picture changes from one frame to
-//      the next in both sequences (popping is a change the exact sequence does not have);
+//   2. settles on the first plan, then plays the plans in order, each as a `preview` frame (what the monitor
+//      asks for while the playhead moves; the order of the last finished sort is reused);
+//   3. compares each moving picture with the exact one of the same frame, over the whole picture (largest and mean
+//      channel difference, share of pixels past 8/255, PSNR) and over each 32x32 block (the worst block's mean
+//      difference: a whole-picture mean is diluted by every block the splats never reach), and the way the picture
+//      changes from one frame to the next in both sequences, per block as well;
 //   4. stops on the last plan and draws it at the final quality: it must be the exact picture, pixel
 //      for pixel (the refine the monitor does when the playhead stops).
 // MSAA is kept at `--preview-samples` (4 by default = no reduction) so that the only difference between
 // a moving picture and the exact one is the order the splats were painted in (BL129 measures MSAA).
-// Every frame is read back (the PNG), which waits for the GPU and so shortens the lag of the sort behind
-// the camera: a faster pace (`--pace-ms 16`) is the stress case. A report with `exact.max_vs_final` != 0
-// or `final_equals_exact` false is a failure; the rest is measurement.
+//
+// What this is not. Every frame is read back (the PNG), which waits for the GPU and for the sort, so a moving frame here
+// has far less sort lag than the monitor's: `--pace-ms` only spaces the requests and does not make this a stress
+// test (paces of 41.67, 16 and 10 ms gave the same data). It measures what reusing an order does to a picture given
+// the lag of this harness; it does not reproduce a real playback's lag, and it is not evidence that a picture does not
+// pop. Plans taken every 4, 8 or 16 frames (`s4`/`s8`/`s16`) approximate a larger camera movement between frames; they
+// are not a measured playback.
+//
+// The only failures are the invariants: the exact pictures changing with the order they are visited in, or the final
+// frame differing from the exact one (`exact.same_pictures_in_reverse_order`, `final_equals_exact`); the rest is measurement,
+// with no threshold of acceptance. Usage errors (a missing or unusable input) exit with status 2 before anything runs.
 import { spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -35,28 +44,56 @@ import { parseArgs } from 'node:util';
 import { png } from './perf/png.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const { values: opts } = parseArgs({
-  options: {
-    plans: { type: 'string' },
-    assets: { type: 'string' },
-    out: { type: 'string' },
-    size: { type: 'string', default: '960x540' },
-    'pace-ms': { type: 'string', default: '41.67' },
-    'preview-samples': { type: 'string', default: '4' },
-    sheet: { type: 'string', default: '4' },
-    dist: { type: 'string' },
-  },
-});
-for (const name of ['plans', 'assets', 'out']) {
-  if (!opts[name]) {
-    console.error(`--${name} is required (see the header of this file)`);
-    process.exit(2);
-  }
+const USAGE = 'usage: node runtime/scripts/sort-order-evidence.mjs --plans plans.json --assets assets.json --out DIR [--size 960x540] [--pace-ms 41.67[,16]] [--preview-samples 4] [--sheet 4]';
+/** A usage error: said on stderr and exit status 2, before the worker or the browser is started. */
+const usage = (message) => {
+  console.error(`sort-order-evidence: ${message}\n${USAGE}`);
+  process.exit(2);
+};
+let opts;
+try {
+  ({ values: opts } = parseArgs({
+    options: {
+      plans: { type: 'string' },
+      assets: { type: 'string' },
+      out: { type: 'string' },
+      size: { type: 'string', default: '960x540' },
+      'pace-ms': { type: 'string', default: '41.67' },
+      'preview-samples': { type: 'string', default: '4' },
+      sheet: { type: 'string', default: '4' },
+      dist: { type: 'string' },
+    },
+  }));
+} catch (error) {
+  usage(error.message);
 }
-const plans = JSON.parse(readFileSync(opts.plans, 'utf8'));
-const assets = JSON.parse(readFileSync(opts.assets, 'utf8'));
-const [width, height] = opts.size.split('x').map(Number);
+for (const name of ['plans', 'assets', 'out']) {
+  if (!opts[name]) usage(`--${name} is required (see the header of this file)`);
+}
+const readJson = (name) => {
+  try {
+    return JSON.parse(readFileSync(opts[name], 'utf8'));
+  } catch (error) {
+    return usage(`--${name} ${opts[name]} is not readable JSON: ${error.message}`);
+  }
+};
+const plans = readJson('plans');
+const assets = readJson('assets');
+// A moving frame is compared with the exact one of its own frame, and its change is measured from the frame before:
+// fewer than two plans measure nothing (and would only fail later, after the browser started, on an empty list).
+if (!Array.isArray(plans) || plans.length < 2) usage(`--plans must be an array of at least 2 render plans (consecutive frames), got ${Array.isArray(plans) ? plans.length : typeof plans}`);
+const unusablePlan = plans.findIndex((plan) => plan === null || typeof plan !== 'object' || !Number.isInteger(plan.frame) || !Array.isArray(plan.layers));
+if (unusablePlan >= 0) usage(`--plans[${unusablePlan}] is not a render plan (an object with an integer \`frame\` and \`layers\`; the \`result\` of {"op":"plan"})`);
+if (!Array.isArray(assets)) usage('--assets must be an array of asset.load descriptors');
+const unusableAsset = assets.findIndex((asset) => asset === null || typeof asset !== 'object' || typeof asset.id !== 'string');
+if (unusableAsset >= 0) usage(`--assets[${unusableAsset}] is not an asset.load descriptor (an object with a string \`id\`)`);
+const sizeMatch = /^(\d+)x(\d+)$/.exec(opts.size);
+if (!sizeMatch || Number(sizeMatch[1]) < 2 || Number(sizeMatch[2]) < 2) usage(`--size must be WIDTHxHEIGHT (at least 2x2), got ${JSON.stringify(opts.size)}`);
+const [width, height] = [Number(sizeMatch[1]), Number(sizeMatch[2])];
 const paces = opts['pace-ms'].split(',').map(Number);
+if (paces.some((pace) => !Number.isFinite(pace) || pace < 0)) usage(`--pace-ms must be numbers of milliseconds, got ${JSON.stringify(opts['pace-ms'])}`);
+if (![0, 2, 4].includes(Number(opts['preview-samples']))) usage(`--preview-samples must be 0, 2 or 4, got ${JSON.stringify(opts['preview-samples'])}`);
+if (!/^\d+$/.test(opts.sheet)) usage(`--sheet must be a count of frames, got ${JSON.stringify(opts.sheet)}`);
 mkdirSync(opts.out, { recursive: true });
 
 // --- a PNG decoder for what the worker writes (8-bit RGB/RGBA, no interlace) -------------------------
@@ -111,6 +148,45 @@ const decodePng = (buffer) => {
   return { width: header.width, height: header.height, pixels };
 };
 
+/** Side of the blocks of the local metric, in pixels. */
+const BLOCK = 32;
+
+/**
+ * Mean channel difference (0-255, alpha ignored) of every BLOCKxBLOCK block of two pictures of the same size, row by
+ * row. The splats of a scene fill a small part of the picture; a mean over all of it says little about the block
+ * where the order changed, which is what this keeps.
+ */
+const blockMeans = (a, b) => {
+  const columns = Math.ceil(a.width / BLOCK);
+  const rows = Math.ceil(a.height / BLOCK);
+  const sums = new Float64Array(columns * rows);
+  const counts = new Uint32Array(columns * rows);
+  for (let y = 0; y < a.height; y += 1) {
+    for (let x = 0; x < a.width; x += 1) {
+      const block = Math.floor(y / BLOCK) * columns + Math.floor(x / BLOCK);
+      const at = (y * a.width + x) * 4;
+      sums[block] += Math.abs(a.pixels[at] - b.pixels[at]) + Math.abs(a.pixels[at + 1] - b.pixels[at + 1]) + Math.abs(a.pixels[at + 2] - b.pixels[at + 2]);
+      counts[block] += 3;
+    }
+  }
+  return { columns, means: Array.from(sums, (sum, block) => sum / counts[block]) };
+};
+
+/** The worst block of a `blockMeans` (or of the difference of two), where it is and how many are past 2/255. */
+const worstBlock = ({ columns, means }) => {
+  let worst = 0;
+  means.forEach((value, block) => {
+    if (Math.abs(value) > Math.abs(means[worst])) worst = block;
+  });
+  return {
+    block_px: BLOCK,
+    worst: Number(means[worst].toFixed(3)),
+    at_px: [(worst % columns) * BLOCK, Math.floor(worst / columns) * BLOCK],
+    blocks_past_2: means.filter((value) => Math.abs(value) > 2).length,
+    blocks: means.length,
+  };
+};
+
 /** Channel differences of two pictures of the same size (alpha ignored). */
 const compare = (a, b) => {
   const count = a.width * a.height;
@@ -148,6 +224,7 @@ const compare = (a, b) => {
     past_8_pct: Number(((100 * past) / count).toFixed(3)),
     psnr: mse === 0 ? null : Number((10 * Math.log10((255 * 255) / mse)).toFixed(2)),
     identical: sum === 0,
+    local: worstBlock(blockMeans(a, b)),
   };
 };
 
@@ -246,10 +323,15 @@ for (const pace of paces) {
   // How much the picture changes from frame to frame, in the exact sequence and in the moving one.
   const temporal = moving.map((m, i) => {
     const previousMoving = i === 0 ? { picture: exactPictures[0].picture } : moving[i - 1];
+    // Per block too: how much more a block changes in the moving sequence than in the exact one (a block that
+    // jumps while the picture as a whole barely changes is what the whole-picture mean hides).
+    const exactChange = blockMeans(exactPictures[m.index].picture, exactPictures[m.index - 1].picture);
+    const movingChange = blockMeans(m.picture, previousMoving.picture);
     return {
       frame: m.frame,
       exact: compare(exactPictures[m.index].picture, exactPictures[m.index - 1].picture).mean,
       moving: compare(m.picture, previousMoving.picture).mean,
+      excess_local: worstBlock({ columns: exactChange.columns, means: movingChange.means.map((value, block) => value - exactChange.means[block]) }),
     };
   });
   const popping = temporal.map((t) => Number((t.moving - t.exact).toFixed(4)));
@@ -268,17 +350,22 @@ for (const pace of paces) {
       worst_past_8_pct: Math.max(...stats.map((s) => s.past_8_pct)),
       min_psnr: Math.min(...stats.map((s) => s.psnr ?? Infinity)),
       identical_frames: stats.filter((s) => s.identical).length,
+      // The worst 32x32 block of any frame: where the order made the picture differ most, not diluted by the rest of it.
+      worst_block_mean: Math.max(...stats.map((s) => s.local.worst)),
+      max_blocks_past_2: Math.max(...stats.map((s) => s.local.blocks_past_2)),
     },
     popping: {
-      note: 'mean change from the previous frame, moving minus exact (0 = the moving picture changes as the exact one does; a spike is a jump the exact sequence has not)',
+      note: 'whole-picture mean change from the previous frame, moving minus exact (a mean over blocks the splats never reach is diluted: read worst_block_excess; this harness reads every frame back, so it is not evidence about a real playback)',
       max: Math.max(...popping),
       min: Math.min(...popping),
       mean_abs: Number((popping.reduce((sum, v) => sum + Math.abs(v), 0) / popping.length).toFixed(4)),
       exact_mean_change: Number((temporal.reduce((sum, t) => sum + t.exact, 0) / temporal.length).toFixed(4)),
+      // The largest excess change of one 32x32 block between two frames, moving minus exact (0-255).
+      worst_block_excess: Math.max(...temporal.map((t) => Math.abs(t.excess_local.worst))),
     },
     final_equals_exact: refined.hash === exactPictures[last].hash,
     final_source: refined.source,
-    per_frame: stats.map((s, i) => ({ ...s, popping: popping[i] })),
+    per_frame: stats.map((s, i) => ({ ...s, popping: popping[i], popping_local: temporal[i].excess_local })),
   });
 
   // A contact sheet of the worst frames: exact | moving | difference x8, at half size.

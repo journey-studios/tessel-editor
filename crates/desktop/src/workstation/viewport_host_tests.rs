@@ -1064,6 +1064,27 @@ fn a_moving_playhead_keeps_drawing_reduced_frames_and_only_stopping_refines() {
 }
 
 #[test]
+fn an_unreadable_preview_sort_is_the_safe_order_and_says_so() {
+    use super::viewport_host::preview_sort_from_env as read;
+    assert_eq!(read(None), Ok(None), "unset keeps the runtime's default");
+    assert_eq!(read(Some("")), Ok(None));
+    assert_eq!(read(Some("  ")), Ok(None));
+    assert_eq!(read(Some("latest")), Ok(Some(PreviewSort::Latest)));
+    assert_eq!(read(Some(" Exact ")), Ok(Some(PreviewSort::Exact)));
+    // A typo of a rollback must not leave the reused order on: it is `exact`, with the reason to print.
+    for typo in ["exacto", "fast", "0", "on"] {
+        let (sort, warning) = read(Some(typo)).expect_err(typo);
+        assert_eq!(sort, PreviewSort::Exact, "{typo}");
+        assert!(
+            warning.contains("TESSEL_VIEWPORT_PREVIEW_SORT"),
+            "{warning}"
+        );
+        assert!(warning.contains(typo), "{warning}");
+        assert!(warning.contains("`exact`"), "{warning}");
+    }
+}
+
+#[test]
 fn splats_painted_in_an_earlier_cameras_order_are_labelled_and_replaced_by_the_exact_picture() {
     let state = titled_state("Titulo");
     let mut host = ready_host("sort-refine", &state);

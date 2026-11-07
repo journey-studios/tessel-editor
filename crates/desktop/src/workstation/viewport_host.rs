@@ -74,8 +74,12 @@ pub const PREVIEW_SCENE_SAMPLES_ENV: &str = "TESSEL_VIEWPORT_PREVIEW_SCENE_SAMPL
 /// `latest` or `exact`: how a splat scene of the monitor's interactive frames (playback and scrub,
 /// BL130) gets its draw order. `latest` paints with the order of the last finished sort and sorts for
 /// the camera behind the frame; the picture is replaced by the exact one when the playhead stops.
-/// `exact` waits for the sort of every frame (A/B and rollback). Unset keeps the runtime's default
-/// (`latest`). Explicit frames and export never read it: they wait for their own sort.
+/// `exact` waits for the sort of every frame (A/B and rollback). Unset (or empty) keeps the runtime's
+/// default (`latest`); any other value is a typo and is read as `exact`, the safe order, with a warning
+/// on stderr: a mistyped rollback must never leave the reused order on. This only orders splats: the
+/// MSAA of a preview frame (`TESSEL_VIEWPORT_PREVIEW_SCENE_SAMPLES`) and the proxies of a video stay as
+/// they are, and the monitor policy `monitor.preview.quality = original` is what draws an interactive
+/// frame at the original quality. Explicit frames and export never read it: they wait for their own sort.
 pub const PREVIEW_SORT_ENV: &str = "TESSEL_VIEWPORT_PREVIEW_SORT";
 
 /// Opt-ins read once when the host is created.
@@ -98,6 +102,25 @@ fn samples_from_env(name: &str) -> Option<u32> {
         .filter(|samples| [0, 2, 4].contains(samples))
 }
 
+/// The preview sort an environment value asks for: `Ok(None)` when it is unset or empty, and `Err(warning)`
+/// with the order that is used instead (`exact`) when it is neither name.
+pub(super) fn preview_sort_from_env(
+    value: Option<&str>,
+) -> Result<Option<PreviewSort>, (PreviewSort, String)> {
+    match value.map(str::trim) {
+        None | Some("") => Ok(None),
+        Some(text) => match PreviewSort::parse(text) {
+            Some(sort) => Ok(Some(sort)),
+            None => Err((
+                PreviewSort::Exact,
+                format!(
+                    "{PREVIEW_SORT_ENV}={text:?} is not `latest` or `exact`: using `exact` (every interactive frame waits for its own sort)"
+                ),
+            )),
+        },
+    }
+}
+
 impl HostOptions {
     pub fn from_env() -> Self {
         Self {
@@ -110,9 +133,15 @@ impl HostOptions {
                 .then_some(false),
             scene_samples: samples_from_env(SCENE_SAMPLES_ENV),
             preview_scene_samples: samples_from_env(PREVIEW_SCENE_SAMPLES_ENV),
-            preview_sort: std::env::var(PREVIEW_SORT_ENV)
-                .ok()
-                .and_then(|value| PreviewSort::parse(&value)),
+            preview_sort: match preview_sort_from_env(
+                std::env::var(PREVIEW_SORT_ENV).ok().as_deref(),
+            ) {
+                Ok(sort) => sort,
+                Err((sort, warning)) => {
+                    eprintln!("tessel-editor: {warning}");
+                    Some(sort)
+                }
+            },
         }
     }
 }
