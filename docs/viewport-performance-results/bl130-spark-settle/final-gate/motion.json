@@ -1,0 +1,67 @@
+{
+  "capture_exit": 0,
+  "capture_stderr": "",
+  "start": {
+    "ok": true,
+    "version": 1,
+    "data": {
+      "action": "playback.start",
+      "from": 160,
+      "state": "preparing"
+    }
+  },
+  "stop": {
+    "ok": true,
+    "version": 1,
+    "data": {
+      "action": "playback.stop",
+      "report": {
+        "state": "stopped",
+        "from": 160,
+        "frame": 282,
+        "fps": 24.0,
+        "clock": "audio_device",
+        "elapsed_ms": 5205.649042,
+        "lag_frames": 0,
+        "ticks": 232,
+        "skipped_frames": 0,
+        "max_gap_frames": 1,
+        "audio": {
+          "output": {
+            "name": "Alto-falantes (MacBook Pro)",
+            "host": "CoreAudio",
+            "sample_rate": 48000,
+            "channels": 2,
+            "sample_format": "F32",
+            "buffer": "default"
+          },
+          "open_ms": 88.601584,
+          "latency_ms": 10.666666,
+          "buffer_frames": 512,
+          "callbacks": 481,
+          "underruns": 0,
+          "late_callbacks": 0,
+          "device_underruns": 0,
+          "max_callback_gap_ms": 10.792,
+          "position_frames": 565348.356032,
+          "paused": false,
+          "finished": false,
+          "messages": [],
+          "heard": false
+        }
+      }
+    }
+  },
+  "final_ms": 411,
+  "source": {
+    "quality": "original",
+    "proxy_layers": 0,
+    "original_layers": 0,
+    "result_hits": 0,
+    "scene_samples": 4,
+    "reduced_scene_layers": 0,
+    "stale_sort_layers": 0
+  },
+  "recording_local_only": "/tmp/pr19-final/native-playback.mp4",
+  "recording_sha256": "e3c7a1bc752bb65313d64e5b7962dddd50fc346f4b29869f5cfcffb9f6a40cfc"
+}

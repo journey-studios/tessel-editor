@@ -6,7 +6,7 @@ import * as THREE from 'three';
 
 import { ASSET_IDENTITY_CAPABILITIES, assetEcho } from './asset-identity.js';
 import { AssetStore } from './assets.js';
-import { Compositor, describePixels } from './compositor.js';
+import { Compositor, DEFAULT_PREVIEW_SORT, describePixels } from './compositor.js';
 import { DIRECTED_SCENE_CAPABILITIES } from './directed-scene.js';
 import { RetentionCounters } from './retention.js';
 import { SPLAT_FORMATS } from './splat-format.js';
@@ -76,6 +76,7 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
       compositor = new Compositor(canvas, { retain: options.retain, resultCache: options.resultCache, counters });
       if (options.sceneSamples !== undefined) compositor.setSceneSamples(options.sceneSamples);
       if (options.previewSceneSamples !== undefined) compositor.setPreviewSceneSamples(options.previewSceneSamples);
+      if (options.previewSort !== undefined) compositor.setPreviewSort(options.previewSort);
     } catch (error) {
       throw error instanceof RuntimeError
         ? error
@@ -115,6 +116,11 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
     // Additive (BL129): MSAA of scene layers in `preview` frames; absent keeps the runtime's default.
     options.previewSceneSamples = Number.isInteger(message.preview_scene_samples) ? message.preview_scene_samples : undefined;
     if (options.previewSceneSamples !== undefined) compositor?.setPreviewSceneSamples(options.previewSceneSamples);
+    // Additive (BL130): how a splat scene of a `preview` frame is ordered. Every hello says it whole: absent is the
+    // default (`latest`), also on a later hello that follows one that asked for `exact`; a name that is not one of
+    // the two is `exact` (see `Compositor.setPreviewSort`).
+    options.previewSort = message.preview_sort ?? DEFAULT_PREVIEW_SORT;
+    compositor?.setPreviewSort(options.previewSort);
     compositor?.setRetain(options.retain);
     assets.setRetainSplatMeshes(options.retain);
     if (!options.retain) assets.dropTextures();
@@ -346,6 +352,7 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
     retention: () => ({
       retain: options.retain,
       presented: options.presented,
+      preview_sort: compositor?.previewSort ?? null,
       ...(compositor?.retained() ?? {}),
       texture_entries: assets.textureCount(),
       texture_bytes: assets.textureBytes(),
@@ -363,6 +370,8 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
       return { textures: info.memory.textures, geometries: info.memory.geometries, programs: info.programs?.length ?? 0 };
     },
     idle: () => renderQueue,
+    // Every SparkRenderer alive, to inject a failure into one or count them (tests and measurements).
+    splatStages: () => compositor?.liveStages() ?? [],
     // The store itself and the bounds, so a test can hold a frame at an await or shrink a budget.
     assets,
     setLimits: (limits) => {

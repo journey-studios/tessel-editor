@@ -1290,6 +1290,28 @@ fn finish_scene(rig: &mut Rig, id: RequestId, samples: u64, reduced: u64) {
     ));
 }
 
+/// A frame answer of a splat scene drawn at the final MSAA with `stale` layers painted in the order of
+/// an earlier camera's sort (BL130).
+fn sorted_frame(id: RequestId, revision: u64, stale: u64) -> FrameResult {
+    let mut result = frame(id, revision);
+    result.detail.source = Some(json!({ "quality": "preview", "proxy_layers": 0,
+        "original_layers": 0, "result_hits": 0, "scene_samples": 4,
+        "reduced_scene_layers": 0, "stale_sort_layers": stale }));
+    result
+}
+
+fn finish_sorted(rig: &mut Rig, id: RequestId, stale: u64) {
+    let revision = rig.session.revision();
+    rig.script
+        .borrow_mut()
+        .events
+        .push_back(BackendEvent::FrameDone(sorted_frame(id, revision, stale)));
+    assert!(matches!(
+        rig.session.pump(Duration::ZERO),
+        Some(SessionEvent::Frame(_))
+    ));
+}
+
 fn finish_at_current_revision(rig: &mut Rig, id: RequestId) -> Option<SessionEvent> {
     let revision = rig.session.revision();
     finish(rig, id, revision)
@@ -1401,6 +1423,73 @@ fn a_new_intent_during_the_refine_supersedes_it_and_the_monitor_never_stays_redu
             .is_some()
     );
     assert_eq!(rig.session.stats.refined, 2);
+}
+
+// ---- BL130: the Spark sort of a moving playhead and the refine to the exact order ----
+
+#[test]
+fn splats_painted_in_an_earlier_cameras_order_are_refined_when_the_playhead_stops() {
+    let (mut rig, first) = rig_rendering_preview();
+    // Full MSAA: the stale order is the only thing that makes this picture differ from the final one.
+    finish_sorted(&mut rig, first, 1);
+    assert!(
+        rig.session.refine_pending(),
+        "a picture with a reused order is on screen"
+    );
+    let later = Instant::now() + REFINE_DELAY + Duration::from_millis(10);
+    let on_screen = rig.session.presented;
+    let refined = rig
+        .session
+        .dispatch_refine(&rig.state, later)
+        .expect("the stopped monitor refines")
+        .unwrap();
+    assert_eq!(
+        rig.script.borrow().qualities.last(),
+        Some(&Quality::Original),
+        "the refine waits for the sort of its own camera"
+    );
+    assert_eq!(
+        rig.session.active_plan().and_then(|plan| plan.frame),
+        on_screen.and_then(|(_, frame)| frame),
+        "the position on screen is the one redrawn"
+    );
+    // The exact picture: nothing is left to refine.
+    finish_sorted(&mut rig, refined, 0);
+    assert!(!rig.session.refine_pending());
+    assert!(rig.session.dispatch_refine(&rig.state, later).is_none());
+}
+
+#[test]
+fn a_frame_whose_order_was_its_own_has_nothing_to_refine() {
+    let (mut rig, first) = rig_rendering_preview();
+    // The first frame of a scene (or a cut) waits for its own sort: preview quality, exact order.
+    finish_sorted(&mut rig, first, 0);
+    assert!(!rig.session.refine_pending());
+}
+
+#[test]
+fn an_explicit_frame_is_never_a_candidate_for_the_sort_refine() {
+    let (mut rig, first) = rig_rendering_preview();
+    finish_sorted(&mut rig, first, 2);
+    assert!(rig.session.refine_pending());
+    // `render.frame`, export and probes ask for the final quality: even an answer that claims a stale
+    // order (it cannot, the runtime waits for the sort) is not something the monitor would refine.
+    let id = rig
+        .session
+        .request_frame(&rig.state, plan(&rig, 3), output(), vec![])
+        .unwrap();
+    assert_eq!(
+        rig.script.borrow().qualities.last(),
+        Some(&Quality::Original)
+    );
+    assert!(!rig.session.refine_pending());
+    let revision = rig.session.revision();
+    rig.script
+        .borrow_mut()
+        .events
+        .push_back(BackendEvent::FrameDone(sorted_frame(id, revision, 2)));
+    rig.session.pump(Duration::ZERO);
+    assert!(!rig.session.refine_pending());
 }
 
 #[test]

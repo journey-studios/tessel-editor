@@ -1,0 +1,697 @@
+{
+ "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3 Pro, Unspecified Version)",
+ "runtime": {
+  "name": "tessel-three",
+  "version": "0.1.0",
+  "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3 Pro, Unspecified Version)",
+  "three": "187",
+  "spark": "2.4.0"
+ },
+ "size": [
+  960,
+  540
+ ],
+ "preview_scene_samples": 4,
+ "frames": [
+  40,
+  41,
+  42,
+  43,
+  44,
+  45,
+  46,
+  47,
+  48,
+  49,
+  50,
+  51,
+  52,
+  53,
+  54,
+  55,
+  56,
+  57,
+  58,
+  59,
+  60,
+  61,
+  62,
+  63
+ ],
+ "exact": {
+  "first_frame_source": {
+   "quality": "original",
+   "proxy_layers": 0,
+   "original_layers": 0,
+   "result_hits": 0,
+   "scene_samples": 4,
+   "reduced_scene_layers": 0,
+   "stale_sort_layers": 0
+  },
+  "same_pictures_in_reverse_order": true
+ },
+ "runs": [
+  {
+   "pace_ms": 41.67,
+   "frames_moving": 23,
+   "stale_frames": 23,
+   "render_ms": {
+    "median": 74.5
+   },
+   "versus_exact": {
+    "max_channel_delta": 49,
+    "mean_of_means": 0.0025,
+    "worst_mean": 0.0028,
+    "worst_past_8_pct": 0.006,
+    "min_psnr": 66.34,
+    "identical_frames": 0
+   },
+   "popping": {
+    "note": "mean change from the previous frame, moving minus exact (0 = the moving picture changes as the exact one does; a spike is a jump the exact sequence has not)",
+    "max": 0.0001,
+    "min": -0.0005,
+    "mean_abs": 0.0002,
+    "exact_mean_change": 0.9467
+   },
+   "final_equals_exact": true,
+   "final_source": {
+    "quality": "original",
+    "proxy_layers": 0,
+    "original_layers": 0,
+    "result_hits": 0,
+    "scene_samples": 4,
+    "reduced_scene_layers": 0,
+    "stale_sort_layers": 0
+   },
+   "per_frame": [
+    {
+     "frame": 41,
+     "stale_sort_layers": 1,
+     "render_ms": 77.4,
+     "max": 24,
+     "mean": 0.0025,
+     "p99": 0,
+     "past_8_pct": 0.003,
+     "psnr": 69.25,
+     "identical": false,
+     "popping": 0
+    },
+    {
+     "frame": 42,
+     "stale_sort_layers": 1,
+     "render_ms": 79.5,
+     "max": 27,
+     "mean": 0.0023,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 69.51,
+     "identical": false,
+     "popping": -0.0001
+    },
+    {
+     "frame": 43,
+     "stale_sort_layers": 1,
+     "render_ms": 77.8,
+     "max": 31,
+     "mean": 0.0023,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 68.91,
+     "identical": false,
+     "popping": -0.0001
+    },
+    {
+     "frame": 44,
+     "stale_sort_layers": 1,
+     "render_ms": 74.5,
+     "max": 25,
+     "mean": 0.0023,
+     "p99": 0,
+     "past_8_pct": 0.003,
+     "psnr": 69.54,
+     "identical": false,
+     "popping": 0
+    },
+    {
+     "frame": 45,
+     "stale_sort_layers": 1,
+     "render_ms": 66,
+     "max": 23,
+     "mean": 0.0026,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 68.65,
+     "identical": false,
+     "popping": -0.0003
+    },
+    {
+     "frame": 46,
+     "stale_sort_layers": 1,
+     "render_ms": 78.5,
+     "max": 30,
+     "mean": 0.0024,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 68.66,
+     "identical": false,
+     "popping": -0.0002
+    },
+    {
+     "frame": 47,
+     "stale_sort_layers": 1,
+     "render_ms": 82.2,
+     "max": 28,
+     "mean": 0.0022,
+     "p99": 0,
+     "past_8_pct": 0.003,
+     "psnr": 69.38,
+     "identical": false,
+     "popping": -0.0002
+    },
+    {
+     "frame": 48,
+     "stale_sort_layers": 1,
+     "render_ms": 72.7,
+     "max": 27,
+     "mean": 0.0025,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 68.24,
+     "identical": false,
+     "popping": -0.0003
+    },
+    {
+     "frame": 49,
+     "stale_sort_layers": 1,
+     "render_ms": 74.5,
+     "max": 32,
+     "mean": 0.0025,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 68.36,
+     "identical": false,
+     "popping": -0.0003
+    },
+    {
+     "frame": 50,
+     "stale_sort_layers": 1,
+     "render_ms": 74.4,
+     "max": 41,
+     "mean": 0.0025,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 66.75,
+     "identical": false,
+     "popping": -0.0002
+    },
+    {
+     "frame": 51,
+     "stale_sort_layers": 1,
+     "render_ms": 67.1,
+     "max": 23,
+     "mean": 0.0028,
+     "p99": 0,
+     "past_8_pct": 0.006,
+     "psnr": 67.55,
+     "identical": false,
+     "popping": -0.0005
+    },
+    {
+     "frame": 52,
+     "stale_sort_layers": 1,
+     "render_ms": 88.3,
+     "max": 27,
+     "mean": 0.0027,
+     "p99": 0,
+     "past_8_pct": 0.005,
+     "psnr": 67.65,
+     "identical": false,
+     "popping": -0.0002
+    },
+    {
+     "frame": 53,
+     "stale_sort_layers": 1,
+     "render_ms": 70.1,
+     "max": 34,
+     "mean": 0.0026,
+     "p99": 0,
+     "past_8_pct": 0.005,
+     "psnr": 67.99,
+     "identical": false,
+     "popping": 0.0001
+    },
+    {
+     "frame": 54,
+     "stale_sort_layers": 1,
+     "render_ms": 80,
+     "max": 23,
+     "mean": 0.0027,
+     "p99": 0,
+     "past_8_pct": 0.005,
+     "psnr": 68.11,
+     "identical": false,
+     "popping": 0.0001
+    },
+    {
+     "frame": 55,
+     "stale_sort_layers": 1,
+     "render_ms": 77.4,
+     "max": 34,
+     "mean": 0.0024,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 68.8,
+     "identical": false,
+     "popping": -0.0002
+    },
+    {
+     "frame": 56,
+     "stale_sort_layers": 1,
+     "render_ms": 69.8,
+     "max": 24,
+     "mean": 0.0024,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 68.77,
+     "identical": false,
+     "popping": 0
+    },
+    {
+     "frame": 57,
+     "stale_sort_layers": 1,
+     "render_ms": 68.2,
+     "max": 28,
+     "mean": 0.0027,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 68.79,
+     "identical": false,
+     "popping": -0.0002
+    },
+    {
+     "frame": 58,
+     "stale_sort_layers": 1,
+     "render_ms": 75.2,
+     "max": 30,
+     "mean": 0.0027,
+     "p99": 0,
+     "past_8_pct": 0.005,
+     "psnr": 68.12,
+     "identical": false,
+     "popping": -0.0002
+    },
+    {
+     "frame": 59,
+     "stale_sort_layers": 1,
+     "render_ms": 70.2,
+     "max": 30,
+     "mean": 0.0025,
+     "p99": 0,
+     "past_8_pct": 0.003,
+     "psnr": 68.55,
+     "identical": false,
+     "popping": 0
+    },
+    {
+     "frame": 60,
+     "stale_sort_layers": 1,
+     "render_ms": 73.9,
+     "max": 33,
+     "mean": 0.0023,
+     "p99": 0,
+     "past_8_pct": 0.003,
+     "psnr": 68.95,
+     "identical": false,
+     "popping": 0
+    },
+    {
+     "frame": 61,
+     "stale_sort_layers": 1,
+     "render_ms": 78,
+     "max": 34,
+     "mean": 0.0024,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 68.65,
+     "identical": false,
+     "popping": 0.0001
+    },
+    {
+     "frame": 62,
+     "stale_sort_layers": 1,
+     "render_ms": 72.2,
+     "max": 35,
+     "mean": 0.0025,
+     "p99": 0,
+     "past_8_pct": 0.005,
+     "psnr": 68,
+     "identical": false,
+     "popping": -0.0001
+    },
+    {
+     "frame": 63,
+     "stale_sort_layers": 1,
+     "render_ms": 67,
+     "max": 49,
+     "mean": 0.0025,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 66.34,
+     "identical": false,
+     "popping": -0.0003
+    }
+   ],
+   "sheet": {
+    "path": "/tmp/bl130/evidence/take/sheet-p41.67.png",
+    "frames": [
+     51,
+     52,
+     54,
+     57
+    ],
+    "columns": "exact | moving | |difference| x8"
+   }
+  },
+  {
+   "pace_ms": 16,
+   "frames_moving": 23,
+   "stale_frames": 23,
+   "render_ms": {
+    "median": 72.7
+   },
+   "versus_exact": {
+    "max_channel_delta": 49,
+    "mean_of_means": 0.0025,
+    "worst_mean": 0.0028,
+    "worst_past_8_pct": 0.006,
+    "min_psnr": 66.34,
+    "identical_frames": 0
+   },
+   "popping": {
+    "note": "mean change from the previous frame, moving minus exact (0 = the moving picture changes as the exact one does; a spike is a jump the exact sequence has not)",
+    "max": 0.0001,
+    "min": -0.0005,
+    "mean_abs": 0.0002,
+    "exact_mean_change": 0.9467
+   },
+   "final_equals_exact": true,
+   "final_source": {
+    "quality": "original",
+    "proxy_layers": 0,
+    "original_layers": 0,
+    "result_hits": 0,
+    "scene_samples": 4,
+    "reduced_scene_layers": 0,
+    "stale_sort_layers": 0
+   },
+   "per_frame": [
+    {
+     "frame": 41,
+     "stale_sort_layers": 1,
+     "render_ms": 71.9,
+     "max": 24,
+     "mean": 0.0025,
+     "p99": 0,
+     "past_8_pct": 0.003,
+     "psnr": 69.25,
+     "identical": false,
+     "popping": 0
+    },
+    {
+     "frame": 42,
+     "stale_sort_layers": 1,
+     "render_ms": 71.6,
+     "max": 27,
+     "mean": 0.0023,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 69.51,
+     "identical": false,
+     "popping": -0.0001
+    },
+    {
+     "frame": 43,
+     "stale_sort_layers": 1,
+     "render_ms": 76.7,
+     "max": 31,
+     "mean": 0.0023,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 68.91,
+     "identical": false,
+     "popping": -0.0001
+    },
+    {
+     "frame": 44,
+     "stale_sort_layers": 1,
+     "render_ms": 74,
+     "max": 25,
+     "mean": 0.0023,
+     "p99": 0,
+     "past_8_pct": 0.003,
+     "psnr": 69.54,
+     "identical": false,
+     "popping": 0
+    },
+    {
+     "frame": 45,
+     "stale_sort_layers": 1,
+     "render_ms": 72.7,
+     "max": 23,
+     "mean": 0.0026,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 68.65,
+     "identical": false,
+     "popping": -0.0003
+    },
+    {
+     "frame": 46,
+     "stale_sort_layers": 1,
+     "render_ms": 79.2,
+     "max": 30,
+     "mean": 0.0024,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 68.66,
+     "identical": false,
+     "popping": -0.0002
+    },
+    {
+     "frame": 47,
+     "stale_sort_layers": 1,
+     "render_ms": 79.4,
+     "max": 28,
+     "mean": 0.0022,
+     "p99": 0,
+     "past_8_pct": 0.003,
+     "psnr": 69.38,
+     "identical": false,
+     "popping": -0.0002
+    },
+    {
+     "frame": 48,
+     "stale_sort_layers": 1,
+     "render_ms": 70.7,
+     "max": 27,
+     "mean": 0.0025,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 68.24,
+     "identical": false,
+     "popping": -0.0003
+    },
+    {
+     "frame": 49,
+     "stale_sort_layers": 1,
+     "render_ms": 74.9,
+     "max": 32,
+     "mean": 0.0025,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 68.36,
+     "identical": false,
+     "popping": -0.0003
+    },
+    {
+     "frame": 50,
+     "stale_sort_layers": 1,
+     "render_ms": 68.4,
+     "max": 41,
+     "mean": 0.0025,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 66.75,
+     "identical": false,
+     "popping": -0.0002
+    },
+    {
+     "frame": 51,
+     "stale_sort_layers": 1,
+     "render_ms": 72.4,
+     "max": 23,
+     "mean": 0.0028,
+     "p99": 0,
+     "past_8_pct": 0.006,
+     "psnr": 67.55,
+     "identical": false,
+     "popping": -0.0005
+    },
+    {
+     "frame": 52,
+     "stale_sort_layers": 1,
+     "render_ms": 72.9,
+     "max": 27,
+     "mean": 0.0027,
+     "p99": 0,
+     "past_8_pct": 0.005,
+     "psnr": 67.65,
+     "identical": false,
+     "popping": -0.0002
+    },
+    {
+     "frame": 53,
+     "stale_sort_layers": 1,
+     "render_ms": 78.1,
+     "max": 34,
+     "mean": 0.0026,
+     "p99": 0,
+     "past_8_pct": 0.005,
+     "psnr": 67.99,
+     "identical": false,
+     "popping": 0.0001
+    },
+    {
+     "frame": 54,
+     "stale_sort_layers": 1,
+     "render_ms": 68.5,
+     "max": 23,
+     "mean": 0.0027,
+     "p99": 0,
+     "past_8_pct": 0.005,
+     "psnr": 68.11,
+     "identical": false,
+     "popping": 0.0001
+    },
+    {
+     "frame": 55,
+     "stale_sort_layers": 1,
+     "render_ms": 67.6,
+     "max": 34,
+     "mean": 0.0024,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 68.8,
+     "identical": false,
+     "popping": -0.0002
+    },
+    {
+     "frame": 56,
+     "stale_sort_layers": 1,
+     "render_ms": 69.6,
+     "max": 24,
+     "mean": 0.0024,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 68.77,
+     "identical": false,
+     "popping": 0
+    },
+    {
+     "frame": 57,
+     "stale_sort_layers": 1,
+     "render_ms": 80,
+     "max": 28,
+     "mean": 0.0027,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 68.79,
+     "identical": false,
+     "popping": -0.0002
+    },
+    {
+     "frame": 58,
+     "stale_sort_layers": 1,
+     "render_ms": 75.3,
+     "max": 30,
+     "mean": 0.0027,
+     "p99": 0,
+     "past_8_pct": 0.005,
+     "psnr": 68.12,
+     "identical": false,
+     "popping": -0.0002
+    },
+    {
+     "frame": 59,
+     "stale_sort_layers": 1,
+     "render_ms": 69.3,
+     "max": 30,
+     "mean": 0.0025,
+     "p99": 0,
+     "past_8_pct": 0.003,
+     "psnr": 68.55,
+     "identical": false,
+     "popping": 0
+    },
+    {
+     "frame": 60,
+     "stale_sort_layers": 1,
+     "render_ms": 74.4,
+     "max": 33,
+     "mean": 0.0023,
+     "p99": 0,
+     "past_8_pct": 0.003,
+     "psnr": 68.95,
+     "identical": false,
+     "popping": 0
+    },
+    {
+     "frame": 61,
+     "stale_sort_layers": 1,
+     "render_ms": 72.2,
+     "max": 34,
+     "mean": 0.0024,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 68.65,
+     "identical": false,
+     "popping": 0.0001
+    },
+    {
+     "frame": 62,
+     "stale_sort_layers": 1,
+     "render_ms": 73.3,
+     "max": 35,
+     "mean": 0.0025,
+     "p99": 0,
+     "past_8_pct": 0.005,
+     "psnr": 68,
+     "identical": false,
+     "popping": -0.0001
+    },
+    {
+     "frame": 63,
+     "stale_sort_layers": 1,
+     "render_ms": 65.7,
+     "max": 49,
+     "mean": 0.0025,
+     "p99": 0,
+     "past_8_pct": 0.004,
+     "psnr": 66.34,
+     "identical": false,
+     "popping": -0.0003
+    }
+   ],
+   "sheet": {
+    "path": "/tmp/bl130/evidence/take/sheet-p16.png",
+    "frames": [
+     51,
+     52,
+     54,
+     57
+    ],
+    "columns": "exact | moving | |difference| x8"
+   }
+  }
+ ]
+}

@@ -60,6 +60,19 @@ const imageTexture = (bitmap) => {
   return texture;
 };
 
+/**
+ * Which spare mesh a lease takes (BL130), as an index into `free` (-1: none, build one): the one this owner had last
+ * time, then one nobody owns, then one whose owner is not asking in this frame (`reserved`).
+ */
+export const spareFor = (free, owner, reserved) => {
+  const last = (test) => free.findLastIndex(test);
+  const own = owner === null ? -1 : last((spare) => spare.leaseOwner === owner);
+  if (own >= 0) return own;
+  const unowned = last((spare) => (spare.leaseOwner ?? null) === null);
+  if (unowned >= 0) return unowned;
+  return last((spare) => !reserved.has(spare.leaseOwner));
+};
+
 /** The meshes of one splat asset: `source` decoded the data, `free` are the ones no frame holds right now. */
 const splatPool = (source) => ({ source, free: [source] });
 
@@ -89,6 +102,8 @@ export class AssetStore {
     // Spark meshes handed back by a frame stay with their asset for the next one (BL131); off for the
     // per-frame create/dispose path (`hello.retain: false`).
     this.retainSplatMeshes = true;
+    // Owners the frame in flight will ask a mesh for (BL130): a spare of theirs is not lent to anyone else.
+    this.reservedOwners = new Set();
   }
 
   /** Called by the compositor when a frame starts: nothing is pinned yet. */
@@ -100,6 +115,15 @@ export class AssetStore {
   endFrame() {
     this.trimTextures();
     this.pinned.clear();
+    this.reservedOwners = new Set();
+  }
+
+  /**
+   * The owners (see `splatLease`) the frame in flight will ask a mesh for, known from its plan before the first
+   * lease: a spare owned by one of them is kept for it, whoever asks first.
+   */
+  reserveSplatOwners(owners) {
+    this.reservedOwners = new Set(owners);
   }
 
   /** The current entry of every asset id a frame used, to detect a replacement mid-frame. */
@@ -404,17 +428,26 @@ export class AssetStore {
    * which lends it again to the next frame: a mesh is a generator and its shader program, and building
    * those per use per frame was most of what a crossfade over a shared effect splat spent after the decode (BL131).
    * The data stays owned by the mesh that decoded it (`pool.source`) and goes with the asset.
+   *
+   * `owner` (BL130) names who the mesh is lent to. Spark orders splats per set of meshes, so an effect file shared
+   * by the two scenes of a crossfade must not swap meshes between them from one frame to the next, or no frame
+   * could reuse the order of the one before. A request takes, in this order: the spare it had last time; one
+   * nobody owns; one whose owner is not asking this frame (`reserveSplatOwners`); and otherwise a new mesh. A
+   * request without an owner (a directed scene) or from a new owner therefore never takes what a scene that is
+   * about to ask for it had, whatever order they ask in.
    */
-  async splatLease(id) {
+  async splatLease(id, owner = null) {
     const entry = this.get(id);
     const pool = entry.pool ?? (await this.rebuildSplatPool(id, entry));
-    let mesh = pool.free.pop();
+    const index = spareFor(pool.free, owner, this.reservedOwners);
+    let mesh = index >= 0 ? pool.free.splice(index, 1)[0] : undefined;
     if (mesh) {
       this.counters.add('splat_mesh_reused');
     } else {
       mesh = shareSplatMesh(pool.source);
       this.counters.add('splat_mesh_created');
     }
+    mesh.leaseOwner = owner;
     let lent = true;
     return {
       mesh,
