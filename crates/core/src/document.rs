@@ -176,6 +176,12 @@ fn clip_json(clip: &crate::state::timeline::Clip) -> Value {
         "camera",
         clip.camera.as_ref().map(Camera::to_json),
     );
+    if !clip.camera_keys.is_empty() {
+        map.insert(
+            "camera_keys".into(),
+            crate::camera_keys::keys_to_json(&clip.camera_keys),
+        );
+    }
     Value::Object(map)
 }
 
@@ -195,7 +201,14 @@ fn sequence_json(timeline: &Timeline) -> Value {
 impl EditorState {
     /// Smallest schema that can preserve this project's data when it is saved.
     pub fn document_schema_version(&self) -> u64 {
-        if self.scenes.has_document_data() {
+        if self.scenes.has_document_data()
+            || self.all_sequences().any(|timeline| {
+                timeline
+                    .clips
+                    .iter()
+                    .any(|clip| !clip.camera_keys.is_empty())
+            })
+        {
             SCHEMA_VERSION
         } else {
             LEGACY_SCHEMA_VERSION
@@ -762,6 +775,19 @@ fn parse_sequence(value: &Value, library: &Library) -> Result<Timeline, CommandE
             camera: match clip.get("camera") {
                 Some(camera) => Some(Camera::from_json(camera).map_err(|e| invalid(e.message))?),
                 None => None,
+            },
+            camera_keys: match clip.get("camera_keys") {
+                Some(keys) => {
+                    let keys = crate::camera_keys::keys_from_json(keys)
+                        .map_err(|e| invalid(format!("Clip `{clip_id}`: {}", e.message)))?;
+                    if kind != ClipKind::Scene {
+                        return Err(invalid(format!(
+                            "Clip `{clip_id}`: only scene clips carry camera keys"
+                        )));
+                    }
+                    keys
+                }
+                None => Vec::new(),
             },
         };
         // Reuses the editing rules (track kind, bounds, overlap): a document cannot smuggle in

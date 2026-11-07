@@ -4,6 +4,7 @@
 //! socket, becomes a [`Command`] and goes through [`EditorState::execute`].
 //! There is no second copy of this state anywhere.
 
+pub mod camera_edit;
 pub mod error;
 pub mod history;
 pub mod inspector;
@@ -258,6 +259,8 @@ pub enum Command {
         sequence: String,
         name: String,
     },
+    /// A `clip.camera_key*` edit of a scene clip's camera keyframes (BL140, see `camera_edit`).
+    CameraKeys(camera_edit::CameraKeysCommand),
     /// A `scene.*` operation on the directed scenes of the project (see `scene_project`).
     Scene(SceneCommand),
     /// One slider drag as a single undoable edit: begin, update (live preview), then commit
@@ -282,6 +285,7 @@ impl Command {
             Self::AddClip { .. } => "Add clip",
             Self::SetClipText { .. } => "Edit text",
             Self::SetClipCamera { .. } => "Edit camera",
+            Self::CameraKeys(_) => "Edit camera keys",
             Self::SetSequenceLength { .. } => "Sequence length",
             Self::AddSequence { .. } => "Add sequence",
             Self::ActivateSequence { .. } => return None,
@@ -552,6 +556,13 @@ impl EditorState {
             }
             Command::ResetSection { section } => {
                 let (clip, kind) = self.require_clip()?;
+                if section == "camera" && kind == ClipKind::Scene {
+                    // The camera section has no sliders: resetting it removes the keyframes.
+                    return self.apply_camera_keys(camera_edit::CameraKeysCommand::Replace {
+                        clip: clip.to_string(),
+                        keys: Vec::new(),
+                    });
+                }
                 self.inspector.reset_section(clip, kind, &section)
             }
             Command::SetProperty { property, value } => {
@@ -686,11 +697,19 @@ impl EditorState {
                 let Some(entry) = entry else {
                     return Err(CommandError::unknown_element("clip", &clip));
                 };
+                if camera.orbit != 0.0 && !entry.camera_keys.is_empty() {
+                    return Err(CommandError::new(
+                        "camera_orbit_conflict",
+                        "The clip has camera keys, which replace the orbit: clear them first",
+                    )
+                    .target(format!("clip:{id}")));
+                }
                 let changed = entry.camera != Some(camera);
                 entry.camera = Some(camera);
                 Ok(json!({ "target": format!("clip:{id}"), "field": "camera",
                     "value": camera.to_json(), "changed": changed }))
             }
+            Command::CameraKeys(command) => self.apply_camera_keys(command),
             Command::SetSequenceLength { frames } => self.timeline.set_length(frames),
             Command::SavePreset { preset } => self.save_preset(&preset),
             Command::DeletePreset { id } => self.delete_preset(&id),
@@ -1113,6 +1132,7 @@ impl EditorState {
             source_start,
             text,
             camera,
+            camera_keys: Vec::new(),
         });
         let mut outcome = outcome?;
         self.subject = Subject::Clip;

@@ -70,6 +70,8 @@ pub enum PropertyKind {
 pub enum Applies {
     Visual,
     Audio,
+    /// Scene clips only (their camera keyframes, BL140).
+    Scene,
 }
 
 impl Applies {
@@ -78,6 +80,7 @@ impl Applies {
             Self::Visual => matches!(kind, ClipKind::Video | ClipKind::Title | ClipKind::Scene),
             // A video clip carries its own sound: its levels are the same controls as an audio clip's.
             Self::Audio => matches!(kind, ClipKind::Audio | ClipKind::Video),
+            Self::Scene => kind == ClipKind::Scene,
         }
     }
 
@@ -85,6 +88,7 @@ impl Applies {
         match self {
             Self::Visual => "video and title clips",
             Self::Audio => "audio and video clips",
+            Self::Scene => "scene clips",
         }
     }
 }
@@ -150,6 +154,13 @@ pub const SECTIONS: &[SectionDef] = &[
         label: "Tempo",
         tab: InspectorTab::Video,
         applies: Applies::Visual,
+        expanded: true,
+    },
+    SectionDef {
+        id: "camera",
+        label: "Câmera",
+        tab: InspectorTab::Video,
+        applies: Applies::Scene,
         expanded: true,
     },
     SectionDef {

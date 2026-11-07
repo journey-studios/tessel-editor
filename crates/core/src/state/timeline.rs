@@ -6,6 +6,7 @@
 use serde_json::{Value, json};
 
 use super::error::CommandError;
+use crate::camera_keys::CameraKey;
 use crate::content::{Camera, TextSpec};
 use crate::id::Id;
 use crate::time::{Rate, Ratio};
@@ -98,6 +99,8 @@ pub struct Clip {
     pub text: Option<TextSpec>,
     /// Camera of a scene clip.
     pub camera: Option<Camera>,
+    /// Keyframes of a scene clip's camera (BL140), sorted by scene time; empty = no keyframes.
+    pub camera_keys: Vec<CameraKey>,
 }
 
 impl Clip {
@@ -261,6 +264,7 @@ impl Timeline {
                     source_start: Ratio::ZERO,
                     text: None,
                     camera: None,
+                    camera_keys: Vec::new(),
                 }
             };
         let mut title = clip(

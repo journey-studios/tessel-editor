@@ -1,0 +1,453 @@
+//! BL140: camera keyframes of a scene clip through the public library and the JSONL entry
+//! (`headless::execute`, the same call `tessel-headless` makes), without a window or a renderer.
+use std::io::Write;
+use std::path::PathBuf;
+use std::process::{Command as Process, Stdio};
+
+use serde_json::{Value, json};
+use tessel_editor_core::fixtures::{proof_requests, write_standard_set};
+use tessel_editor_core::{EditorState, headless};
+
+fn scratch(tag: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("tessel-camkeys-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    dir
+}
+
+/// The proof project with the scene clip's orbit switched off (keys replace the orbit).
+fn project(tag: &str) -> EditorState {
+    let set = write_standard_set(&scratch(tag)).unwrap();
+    let mut state = EditorState::demo();
+    for request in proof_requests(&set) {
+        headless::execute(&mut state, &request).unwrap();
+    }
+    run(
+        &mut state,
+        json!({"op":"clip.camera","clip":"c-scene","position":[0,1.2,5],"target":[0,0,0],"fov":50,"orbit":0}),
+    );
+    state
+}
+
+fn run(state: &mut EditorState, request: Value) -> Value {
+    headless::execute(state, &request).unwrap_or_else(|error| panic!("{request}: {error:?}"))
+}
+
+fn fail(state: &mut EditorState, request: Value) -> String {
+    headless::execute(state, &request)
+        .expect_err(&format!("{request} must fail"))
+        .code
+        .to_string()
+}
+
+fn key(time: i64, z: f64, fov: f64, easing: &str) -> Value {
+    json!({"op":"clip.camera_key","clip":"c-scene","time":time,
+        "position":[0,1.0,z],"target":[0,0,0],"fov":fov,"easing":easing})
+}
+
+fn camera_at(state: &mut EditorState, frame: i64) -> Value {
+    run(state, json!({"op":"plan","frame":frame}))["layers"][0]["camera"].clone()
+}
+
+fn z(camera: &Value) -> f64 {
+    camera["position"][2].as_f64().unwrap()
+}
+
+fn approx(a: f64, b: f64) {
+    assert!((a - b).abs() < 1e-9, "{a} != {b}");
+}
+
+#[test]
+fn keys_set_by_ops_drive_the_planned_camera_with_hold_and_interpolation() {
+    let mut state = project("drive");
+    run(&mut state, key(0, 10.0, 60.0, "linear"));
+    run(&mut state, key(2, 4.0, 40.0, "linear"));
+    // 24 fps: frame 0 = 0 s, frame 24 = 1 s, frame 47 ≈ 1.958 s.
+    approx(z(&camera_at(&mut state, 0)), 10.0);
+    let middle = camera_at(&mut state, 24);
+    approx(z(&middle), 7.0);
+    approx(middle["fov"].as_f64().unwrap(), 50.0);
+    approx(z(&camera_at(&mut state, 36)), 5.5);
+    // After the last key the camera holds it.
+    run(
+        &mut state,
+        json!({"op":"clip.camera_keys","clip":"c-scene","keys":[
+        {"time":0,"position":[0,1,10],"target":[0,0,0],"fov":60},
+        {"time":1,"position":[0,1,4],"target":[0,0,0],"fov":40}]}),
+    );
+    approx(z(&camera_at(&mut state, 47)), 4.0);
+}
+
+#[test]
+fn easing_shapes_the_segment_like_the_directed_evaluator() {
+    let mut state = project("easing");
+    run(&mut state, key(0, 10.0, 50.0, "easeOutCubic"));
+    run(&mut state, key(2, 2.0, 50.0, "linear"));
+    let eased = 1.0 - 0.5_f64.powi(3);
+    approx(z(&camera_at(&mut state, 24)), 10.0 + (2.0 - 10.0) * eased);
+    approx(
+        tessel_editor_core::directed_scene::apply_easing(0.5, "easeOutCubic").unwrap(),
+        eased,
+    );
+}
+
+#[test]
+fn trim_and_move_keep_each_key_on_its_picture() {
+    let mut state = project("trim");
+    run(&mut state, key(0, 10.0, 50.0, "linear"));
+    run(&mut state, key(2, 4.0, 50.0, "linear"));
+    // Trim the start to frame 12 (0.5 s): the first frame now shows scene time 0.5 s.
+    run(
+        &mut state,
+        json!({"op":"set","target":"trim:c-scene:start","field":"frame","value":12}),
+    );
+    let clip = state.timeline.clip("c-scene").unwrap().clone();
+    assert_eq!(clip.start, 12);
+    approx(z(&camera_at(&mut state, 12)), 8.5);
+    approx(z(&camera_at(&mut state, 36)), 5.5);
+    // Move the clip: the same moment of the scene keeps the same camera.
+    run(
+        &mut state,
+        json!({"op":"move","target":"clip:c-scene","args":{"frame":0}}),
+    );
+    assert_eq!(state.timeline.clip("c-scene").unwrap().start, 0);
+    approx(z(&camera_at(&mut state, 0)), 8.5);
+    approx(z(&camera_at(&mut state, 24)), 5.5);
+    // Trim the end: later keys are simply not reached.
+    run(
+        &mut state,
+        json!({"op":"set","target":"trim:c-scene:end","field":"frame","value":24}),
+    );
+    assert_eq!(state.timeline.clip("c-scene").unwrap().duration, 24);
+    assert_eq!(
+        state.timeline.clip("c-scene").unwrap().camera_keys.len(),
+        2,
+        "trimming never deletes keys"
+    );
+}
+
+#[test]
+fn clips_without_keys_keep_the_orbit_behaviour() {
+    let set = write_standard_set(&scratch("legacy")).unwrap();
+    let mut state = EditorState::demo();
+    for request in proof_requests(&set) {
+        headless::execute(&mut state, &request).unwrap();
+    }
+    let first = camera_at(&mut state, 0)["position"].clone();
+    let later = camera_at(&mut state, 24)["position"].clone();
+    assert_eq!(first, json!([0.0, 1.2, 5.0]));
+    assert_ne!(first, later, "the orbit still moves a clip without keys");
+}
+
+#[test]
+fn undo_and_redo_restore_the_keys_and_revision_moves() {
+    let mut state = project("undo");
+    let before = state.project.revision;
+    run(&mut state, key(0, 10.0, 50.0, "linear"));
+    run(&mut state, key(2, 4.0, 50.0, "linear"));
+    assert!(state.project.revision > before);
+    assert_eq!(state.timeline.clip("c-scene").unwrap().camera_keys.len(), 2);
+    run(&mut state, json!({"op":"history.undo"}));
+    assert_eq!(state.timeline.clip("c-scene").unwrap().camera_keys.len(), 1);
+    run(&mut state, json!({"op":"history.undo"}));
+    assert!(
+        state
+            .timeline
+            .clip("c-scene")
+            .unwrap()
+            .camera_keys
+            .is_empty()
+    );
+    run(&mut state, json!({"op":"history.redo"}));
+    run(&mut state, json!({"op":"history.redo"}));
+    assert_eq!(state.timeline.clip("c-scene").unwrap().camera_keys.len(), 2);
+    // The edit appears in the undo list under its own name.
+    let status = run(&mut state, json!({"op":"history.status"}));
+    assert!(status.to_string().contains("Edit camera keys"), "{status}");
+}
+
+#[test]
+fn rejected_edits_leave_the_state_untouched() {
+    let mut state = project("reject");
+    run(&mut state, key(0, 10.0, 50.0, "linear"));
+    run(&mut state, key(2, 4.0, 50.0, "linear"));
+    let keep = state.to_document(None);
+    let revision = state.project.revision;
+    let undo_depth = run(&mut state, json!({"op":"history.status"}));
+
+    let cases = [
+        // A straight path through the target, between two individually valid keys.
+        (key(4, -10.0, 50.0, "linear"), "invalid_value"),
+        // FOV, easing, time and position outside their domain.
+        (key(3, 4.0, 0.2, "linear"), "invalid_value"),
+        (key(3, 4.0, 50.0, "bounce"), "invalid_value"),
+        (
+            json!({"op":"clip.camera_key","clip":"c-scene","time":-1,"position":[0,1,5]}),
+            "invalid_value",
+        ),
+        (
+            json!({"op":"clip.camera_key","clip":"c-scene","time":100000,"position":[0,1,5]}),
+            "invalid_value",
+        ),
+        (
+            json!({"op":"clip.camera_key","clip":"c-scene","position":[0,1,5]}),
+            "invalid_value",
+        ),
+        (
+            json!({"op":"clip.camera_key","clip":"c-scene","time":3,"position":[0,5,0]}),
+            "invalid_value",
+        ),
+        // Wrong clip kind and unknown clip.
+        (
+            json!({"op":"clip.camera_key","clip":"c-img","time":1,"position":[0,1,5]}),
+            "not_applicable",
+        ),
+        (
+            json!({"op":"clip.camera_key","clip":"nope","time":1,"position":[0,1,5]}),
+            "unknown_element",
+        ),
+        // No key there to remove.
+        (
+            json!({"op":"clip.camera_key.remove","clip":"c-scene","time":1}),
+            "unknown_element",
+        ),
+        // Duplicate times in a replacement.
+        (
+            json!({"op":"clip.camera_keys","clip":"c-scene","keys":[
+                {"time":1,"position":[0,1,5]},{"time":1,"position":[0,1,6]}]}),
+            "invalid_value",
+        ),
+        // Keys replace the orbit: asking for both is refused.
+        (
+            json!({"op":"clip.camera","clip":"c-scene","position":[0,1,5],"orbit":30}),
+            "camera_orbit_conflict",
+        ),
+        // Capture outside the clip's frames.
+        (
+            json!({"op":"clip.camera_key.capture","clip":"c-scene","easing":"nope"}),
+            "invalid_value",
+        ),
+    ];
+    for (request, code) in cases {
+        assert_eq!(fail(&mut state, request.clone()), code, "{request}");
+    }
+    assert_eq!(state.to_document(None), keep);
+    assert_eq!(state.project.revision, revision);
+    assert_eq!(
+        run(&mut state, json!({"op":"history.status"})),
+        undo_depth,
+        "a rejected edit adds no undo entry"
+    );
+}
+
+#[test]
+fn keying_an_orbiting_clip_is_refused_until_the_orbit_is_cleared() {
+    let set = write_standard_set(&scratch("orbit")).unwrap();
+    let mut state = EditorState::demo();
+    for request in proof_requests(&set) {
+        headless::execute(&mut state, &request).unwrap();
+    }
+    assert_eq!(
+        fail(&mut state, key(0, 10.0, 50.0, "linear")),
+        "camera_orbit_conflict"
+    );
+    assert!(
+        state
+            .timeline
+            .clip("c-scene")
+            .unwrap()
+            .camera_keys
+            .is_empty()
+    );
+}
+
+#[test]
+fn capture_records_the_camera_shown_at_the_playhead() {
+    let mut state = project("capture");
+    run(&mut state, key(0, 10.0, 60.0, "linear"));
+    run(&mut state, key(2, 4.0, 40.0, "linear"));
+    run(&mut state, json!({"op":"seek","frame":24}));
+    let result = run(
+        &mut state,
+        json!({"op":"clip.camera_key.capture","clip":"c-scene","easing":"easeInOutCubic"}),
+    );
+    assert_eq!(result["count"], 3);
+    let keys = &state.timeline.clip("c-scene").unwrap().camera_keys;
+    approx(keys[1].time.to_f64(), 1.0);
+    approx(keys[1].position[2], 7.0);
+    approx(keys[1].fov, 50.0);
+    assert_eq!(keys[1].easing.label(), "easeInOutCubic");
+    // The picture at the playhead did not change: the new key sits on the old curve.
+    approx(z(&camera_at(&mut state, 24)), 7.0);
+    // Capturing twice at the same moment replaces the key instead of adding one.
+    let again = run(
+        &mut state,
+        json!({"op":"clip.camera_key.capture","clip":"c-scene"}),
+    );
+    assert_eq!(again["count"], 3);
+    // Outside the clip there is nothing to capture.
+    run(
+        &mut state,
+        json!({"op":"set","target":"trim:c-scene:start","field":"frame","value":30}),
+    );
+    run(&mut state, json!({"op":"seek","frame":3}));
+    assert_eq!(
+        fail(
+            &mut state,
+            json!({"op":"clip.camera_key.capture","clip":"c-scene"})
+        ),
+        "invalid_time"
+    );
+}
+
+#[test]
+fn target_style_edits_share_the_same_rules() {
+    let mut state = project("targets");
+    run(&mut state, key(0, 10.0, 50.0, "linear"));
+    run(&mut state, key(2, 4.0, 50.0, "linear"));
+    run(
+        &mut state,
+        json!({"op":"set","target":"camera_key:c-scene:1","field":"fov","value":35}),
+    );
+    run(
+        &mut state,
+        json!({"op":"set","target":"camera_key:c-scene:1","field":"easing","value":"easeOutCubic"}),
+    );
+    run(
+        &mut state,
+        json!({"op":"set","target":"camera_key:c-scene:0","field":"position_z","value":12}),
+    );
+    run(
+        &mut state,
+        json!({"op":"set","target":"camera_key:c-scene:1","field":"time","value":3.5}),
+    );
+    let keys = state.timeline.clip("c-scene").unwrap().camera_keys.clone();
+    approx(keys[1].fov, 35.0);
+    approx(keys[0].position[2], 12.0);
+    approx(keys[1].time.to_f64(), 3.5);
+    // A time that collides with another key, an out-of-range index and an unknown field fail.
+    assert_eq!(
+        fail(
+            &mut state,
+            json!({"op":"set","target":"camera_key:c-scene:1","field":"time","value":0})
+        ),
+        "invalid_value"
+    );
+    assert_eq!(
+        fail(
+            &mut state,
+            json!({"op":"set","target":"camera_key:c-scene:9","field":"fov","value":35})
+        ),
+        "unknown_element"
+    );
+    assert_eq!(
+        fail(
+            &mut state,
+            json!({"op":"set","target":"camera_key:c-scene:0","field":"colour","value":1})
+        ),
+        "unknown_field"
+    );
+    assert_eq!(state.timeline.clip("c-scene").unwrap().camera_keys.len(), 2);
+    run(
+        &mut state,
+        json!({"op":"invoke","target":"camera_key:c-scene:0","action":"remove"}),
+    );
+    assert_eq!(state.timeline.clip("c-scene").unwrap().camera_keys.len(), 1);
+}
+
+#[test]
+fn keys_survive_save_and_reopen_and_old_documents_still_open() {
+    let mut state = project("persist");
+    let plain = state.to_document(None);
+    assert_eq!(plain["schema_version"], 1, "no keys: the oldest schema");
+    run(&mut state, key(0, 10.0, 60.0, "easeInOutCubic"));
+    run(&mut state, key(2, 4.0, 40.0, "linear"));
+    let document = state.to_document(None);
+    assert_eq!(document["schema_version"], 2, "keys protect legacy readers");
+    let mut reopened = EditorState::from_document(&document, None).unwrap();
+    assert_eq!(
+        reopened.timeline.clip("c-scene").unwrap().camera_keys,
+        state.timeline.clip("c-scene").unwrap().camera_keys
+    );
+    for frame in [0, 7, 24, 40, 48] {
+        assert_eq!(
+            camera_at(&mut reopened, frame),
+            camera_at(&mut state, frame),
+            "frame {frame}"
+        );
+    }
+    // An older project (no `camera_keys`) loads with no keys.
+    let old = EditorState::from_document(&plain, None).unwrap();
+    assert!(old.timeline.clip("c-scene").unwrap().camera_keys.is_empty());
+    // A bad document is refused as a whole, never half read.
+    let mut broken = document.clone();
+    let clips = broken["sequences"][0]["clips"].as_array_mut().unwrap();
+    let scene = clips
+        .iter_mut()
+        .find(|clip| clip["id"] == "c-scene")
+        .unwrap();
+    scene["camera_keys"][1]["fov"] = json!(900);
+    assert!(EditorState::from_document(&broken, None).is_err());
+    let mut on_image = document.clone();
+    let clips = on_image["sequences"][0]["clips"].as_array_mut().unwrap();
+    let image = clips.iter_mut().find(|clip| clip["id"] == "c-img").unwrap();
+    image["camera_keys"] = json!([{"time":0,"position":[0,1,5]}]);
+    assert!(EditorState::from_document(&on_image, None).is_err());
+}
+
+#[test]
+fn keys_do_not_cost_the_frames_that_have_no_keyed_camera() {
+    // The still camera of a keyless clip is bit-identical to what an older editor planned.
+    let mut state = project("still");
+    let still = camera_at(&mut state, 24);
+    run(&mut state, key(0, 5.0, 50.0, "linear"));
+    run(
+        &mut state,
+        json!({"op":"clip.camera_keys","clip":"c-scene","keys":[]}),
+    );
+    assert_eq!(camera_at(&mut state, 24), still);
+}
+
+#[test]
+fn the_headless_process_runs_the_same_edit_flow() {
+    let set = write_standard_set(&scratch("process")).unwrap();
+    let mut lines: Vec<Value> = proof_requests(&set);
+    lines.extend([
+        json!({"op":"clip.camera","clip":"c-scene","position":[0,1.2,5],"target":[0,0,0],"fov":50,"orbit":0}),
+        key(0, 10.0, 60.0, "linear"),
+        key(2, 4.0, 40.0, "linear"),
+        // Rejected: the session goes on.
+        key(3, -10.0, 40.0, "linear"),
+        json!({"op":"plan","frame":24}),
+        json!({"op":"history.undo"}),
+        json!({"op":"plan","frame":24}),
+    ]);
+    let mut child = Process::new(env!("CARGO_BIN_EXE_tessel-headless"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    for line in &lines {
+        writeln!(stdin, "{line}").unwrap();
+    }
+    drop(stdin);
+    let output = child.wait_with_output().unwrap();
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "the rejected key fails the session"
+    );
+    let replies: Vec<Value> = String::from_utf8(output.stdout)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(replies.len(), lines.len());
+    let n = replies.len();
+    assert_eq!(replies[n - 4]["ok"], false);
+    assert_eq!(replies[n - 4]["error"]["code"], "invalid_value");
+    let planned = |reply: &Value| z(&reply["result"]["layers"][0]["camera"]);
+    approx(planned(&replies[n - 3]), 7.0);
+    // The undo removed the second key: the camera holds the first one.
+    approx(planned(&replies[n - 1]), 10.0);
+}

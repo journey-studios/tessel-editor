@@ -561,11 +561,7 @@ impl EditorState {
                 let mut layer =
                     resolver.asset_layer(item, asset, source_time, camera, layer_id, Some(clip))?;
                 if let Content::Scene { camera, .. } = &mut layer.content {
-                    let seconds = source_time
-                        .sub(clip.source_start)
-                        .unwrap_or(Ratio::ZERO)
-                        .to_f64();
-                    *camera = clip.camera.unwrap_or_default().at(seconds);
+                    *camera = self.clip_camera_at(clip, frame);
                 }
                 layer
             }
@@ -575,6 +571,33 @@ impl EditorState {
         layer.opacity = resolver.opacity(clip, frame);
         layer.blend = resolver.choice(clip, "blend");
         Ok(Some(layer))
+    }
+
+    /// Scene time (exact seconds) a clip reads at sequence `frame`: `source_start` plus the
+    /// elapsed clip time at its speed. The plan reports it as `scene_time`; camera keys use it.
+    pub fn clip_source_time(&self, clip: &Clip, frame: i64) -> Ratio {
+        Resolver {
+            state: self,
+            requires: Vec::new(),
+            warnings: Vec::new(),
+        }
+        .source_time(clip, frame)
+    }
+
+    /// The camera a scene clip shows at sequence `frame`: its keyframes (BL140) at scene time, or
+    /// without keys the still/orbiting camera counted from the clip start. One function for the
+    /// plan (so preview and export agree) and for capturing a key at the playhead.
+    pub fn clip_camera_at(&self, clip: &Clip, frame: i64) -> Camera {
+        let source_time = self.clip_source_time(clip, frame);
+        if let Some(camera) = crate::camera_keys::evaluate(&clip.camera_keys, source_time.to_f64())
+        {
+            return camera;
+        }
+        let seconds = source_time
+            .sub(clip.source_start)
+            .unwrap_or(Ratio::ZERO)
+            .to_f64();
+        clip.camera.unwrap_or_default().at(seconds)
     }
 
     fn plan_source(&self, asset_id: &Id, time: Ratio) -> Result<RenderPlan, CommandError> {
