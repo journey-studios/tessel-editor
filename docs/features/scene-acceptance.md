@@ -214,6 +214,31 @@ Com *squash* ou *rebase* da PR esse histórico some da `main` e `tolerances_froz
 deixa de ser obtível). Integre o PR #8 com **merge commit** (a prática do repositório: `Merge pull request #N`), nunca
 *squash* nem *rebase*; se isso não for possível, abra um BL para reancorar `ANCHOR` com uma rodada.
 
+## Emendas — rodada R5 (threads abertos do PR #8 no head `42faa3f`)
+
+Oito threads abertos depois da R4 (seis de revisão e dois do CodeRabbit, review `5810627514`). A R5 **só acrescenta** ao livro
+(R1–R4 e o baseline intactos, âncora `a848007` ancestral do `HEAD`) e **nenhuma regra do oráculo, verificador, controle, byte do corpus
+ou tolerância mudou**: as emendas tocam cinco arquivos fixados (`corpus.py`, `link.py`, `proof.py`, `ledger.py`, `export_verify.py`),
+todos de infraestrutura do harness. Hashes antes/depois no livro (`before` = `after` da R4). A rodada foi escrita **depois** do run
+vivo de `fd4bc8c` e diz isso; o aceite foi repetido do zero (abaixo). **A R5 não está aceita**: a evidência abaixo é do autor e depende da
+revisão independente final, que cabe a quem não é o autor.
+
+| Emenda | Thread | Achado e mudança |
+|---|---|---|
+| A16 `corpus.py` | `4500513488` | `--check` ignorava `--out` e dizia "byte-idêntico" para a pasta padrão. Agora `--check` julga a pasta de `--out` (a padrão sem ele) e imprime qual. Testes `CorpusCli` (CLI real, pasta temporária alterada: falha; a padrão intacta não mascara) |
+| A17 `link.py`, `proof.py` | `4500513496`, `4500513499` | **Hipótese confirmada** (prova abaixo): o Cargo só relinka o `tessel-render` por mudança nas crates do seu grafo (`core`, `media`, `render`; `desktop` e `audio` ficam de fora; `audio` é só dev-dependency do `render`), então editar `desktop`/`audio` deixava o binário correto mas "mais velho que as fontes" e `create` recusava. O guarda de mtime agora olha só as **entradas reais do build**: o fecho de crates do `render` lido dos manifestos (`tomllib`), sem `tests/`, `benches/` e `examples/`, mais `Cargo.toml`, `Cargo.lock` e `rust-toolchain.toml`; qualquer dúvida (sem leitor TOML, manifesto ilegível, dependência por caminho fora do repositório, `[patch]`/`[replace]`) cai para **todas** as crates (*fail-closed*). A atestação **não afrouxou**: os ids de árvore Git registrados continuam cobrindo `crates/`, `runtime/`, `scripts/`, `Cargo.*` e a toolchain inteiras, e o binário só é atestado com um mtime posterior à entrada mais nova (a recusa nomeia qual). O `proof.py` usava a resposta de todas as crates do `harness.binary_info` e bloquearia a mesma situação; agora julga pelas entradas reais e mantém a resposta mais larga no relatório (`older_than_any_crate_source`); `harness.py` não foi tocado. `tool_versions` roda com `cwd=ROOT` para o `rustup` ler `rust-toolchain.toml` do repositório e não um override da pasta de quem chama. Testes `LinkScope` (8: entrada relevante vs irrelevante num mini-repositório Git, `Cargo.lock`, manifesto ilegível, `cwd`) |
+| A18 `proof.py`, `export_verify.py` | `4500513504` | Sem FFmpeg/ffprobe/Node a sonda de versão levantava `OSError` depois de a fase ser classificada BLOCKED: traceback, saída 1 e nenhum relatório. Agora as sondas devolvem `"unavailable"`; fases só de dados passam, fases que dependem da ferramenta ficam BLOCKED (saída 3, nunca PASS) e o resumo e o relatório saem sempre. Testes `ToolsAbsent` (3) com o `main()` real e só `git` no `PATH` (sem GPU) |
+| A19 `ledger.py` | `4500542362` | `committed_versions()` lia o histórico de um clone raso como se fosse completo e uma reescrita do livro fora da janela rasa passava. Agora recusa (devolve `None`, e o check falha) quando `git rev-parse --is-shallow-repository` não é exatamente `false` (erro também falha fechado). Testes em **clone raso real** (`--depth 1`) e no repositório completo, e a mutação sem a guarda é pega |
+
+Sem emenda do livro (não são arquivos fixados): `proof.spec.py` fixa `sys.dont_write_bytecode` **antes** de importar o harness, roda
+os filhos com `-B` e `PYTHONDONTWRITEBYTECODE=1` e testa em uma cópia própria que nada cria `__pycache__` (`BytecodeFree`).
+**`-B` impede escrever bytecode, não ler um `.pyc` velho** cujo fonte tem o mesmo tamanho e o mesmo segundo de mtime (BL019-F11): por isso as
+mutações removem, antes e depois de cada uma, só os `__pycache__` deste checkout. O texto da linha de `link.py` neste documento passou a dizer o que o código
+faz: a atestação é **declaração do operador** de que o binário veio das entradas registradas, conferida contra os ids de
+árvore e os hashes atuais; **não prova qual build ou head gerou o binário** (o binário pode ser trocado antes do `create`) e não
+afirma build reproduzível nem causal (thread `4500542352`). Alegações equivalentes ("para este head", "por quem o construiu") foram
+trocadas nesta página e no corpo do PR.
+
 ## Proveniência das tolerâncias (F4)
 
 **Não afirmamos pré-registro nem aprovação.** O que o Git prova: `tolerances.json` foi commitado em `da0b593` (2026-11-05
@@ -266,7 +291,36 @@ Resultado **histórico** (`results.json`, harness `1b5953e`, SwiftShader, macOS 
 emendas, árvore com 1 arquivo sujo): saída 1, uma fase FAIL (cor do splat existente, abaixo) e sete BLOCKED. Ele **não
 descreve este head** e foi mantido como estava.
 
-Head do harness avaliado: **`fd4bc8c`** (rodada R4), que contém a `main` `09ad62d` (PR #17) por **merge commit** (`aee6091`),
+### Evidência da R5 (em andamento: pendente da revisão independente final)
+
+Head avaliado: **`3acc5d1`** (árvore `0fac7e47…`), limpo, filho de `ff15c8d` (selo da R5) sobre `42faa3f`, com a `main` `09ad62d`
+já integrada (`origin/main` não mudou). Os commits seguintes só mudam `docs/`. Manifesto: `/tmp/s10-evidence-r5/manifest.json`
+(SHA-256 `67e6a1a78337eebc4d8ee4c3491628c7202649caca5d5f15da47abc6b531e1b5`, no comentário do PR); cada passo registra comando, CWD, head, árvore, ambiente, UTC, saída, disco
+e hashes. Menor reserva de disco medida: 22,16 GiB (piso 12, entrada 16).
+
+| Etapa | Resultado |
+|---|---|
+| Gates Rust e runtime da R4 (fmt/check/clippy/test 1406/0/12, runtime 120/120, build, `cargo tree`) | **Reusados, não repetidos**: `reuse.py` provou que os ids de árvore de `crates/`, `runtime/`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `scripts/runtime`, `scripts/cargo` e `scripts/mbx` são **idênticos** em `3acc5d1`, `fd4bc8c` e `main` `09ad62d`, a `main` não andou e nada fora de `scripts/` (aceite e export) e `docs/` difere da `main`. O resultado vale como o da R4 |
+| `./scripts/runtime setup` e `cargo build -p tessel-editor-render --locked` (cargo-serial, trava de GPU, vigia de disco) | verdes; binário `b5dbadc5…2c885` |
+| Hipótese do thread `4500513496` no build real | confirmada: `touch` em `crates/desktop/src/main.rs` e `crates/audio/src/lib.rs`, o Cargo não relinka (`cmp` byte a byte e mesmo mtime), o guarda de **todas** as crates diz "velho" e o das entradas do render diz "não velho" (fecho `core`, `media`, `render`; entrada mais nova `crates/render/src/scene_renderer.rs`), e `link.py create` aceita; o teste `LinkScope` mostra o contrário para um arquivo realmente de entrada |
+| `proof.spec.py` (`python3 -B`, sem bytecode, árvore limpa) | **121 testes OK** (102 + 19 novos) |
+| Mutações da R5 (temporárias, revertidas, árvore limpa e sem `__pycache__` depois de cada) | **18/18 pegas** (M1 `--out` ignorado; M2–M7 escopo do mtime, `cwd`, `Cargo.lock`, fallback e `proof.py`; M8–M11 sondas e `ensure_tools`; M12–M14 bytecode; M15–M16 clone raso; M17–M18 livro); controle sem mutação passa |
+| `corpus.py --check` | byte-idêntico |
+| Livro (`verify_ledger`) e `link.py check` | todos os checks verdes; R5 e as 7 versões commitadas do livro são prefixo uma da outra |
+| **Harness completo vivo**, sem `--allow-stale-binary`, 24 fases | **24/24 PASS**, saída 0, `acceptance.acceptable = true`, 231 s, 2673 checks (`tolerances_frozen` 33, o resto como na R4: `corpus` 44, `camera_export` 301, `audio_export` 270, `full_av` 432…) |
+
+Binário atestado com `link.py create` pelo operador que o construiu, para as entradas registradas (ids de árvore e hashes de `runtime/dist`, `runtime.js` `8ee1c496…a0e9e27`, `index.html`
+`707fd90f…c484a6`); **não** é prova de qual build o gerou nem de build reproduzível.
+
+**Tentativa abortada preservada (não conta como PASS)**: no head `ff15c8d` a mutação R5-M11 (`ensure_tools` sem bloquear) travou por dez
+minutos: o filho do `main()` esperava a trava de GPU que o próprio passo já segurava. Interrompi só os processos desta tarefa, restaurei a
+árvore (`git checkout`), nenhum resultado foi contado e o run vivo que o roteiro iniciou em seguida foi encerrado antes de qualquer
+conclusão. A correção é de teste (`3acc5d1`: `--gpu-lock-held` e *timeout* de 300 s no `main()` sem ferramentas, sem arquivo fixado) e o
+executor de mutações passou a matar por *timeout* e registrar `timed_out` (nunca conta como pega). Depois disso todos os passos foram repetidos
+do zero no head `3acc5d1`. O primeiro `ledger-link-check` do roteiro também saiu 1 por **bug do meu roteiro** (tratou a lista de checks do livro como lista de falhas;
+todos os checks eram `true`); corrigido e repetido. Registros em `/tmp/s10-evidence-r5/aborted-attempt-1/` e nos passos.
+
+Evidência **anterior (R4)** — head avaliado: **`fd4bc8c`** (rodada R4), que contém a `main` `09ad62d` (PR #17) por **merge commit** (`aee6091`),
 sobre `7a26569`/`4c61de2`. Os commits seguintes só mudam `docs/`: as árvores Git de `crates/`, `runtime/`, `Cargo.toml`,
 `Cargo.lock` e `rust-toolchain.toml` do head avaliado são **idênticas às da `main` `09ad62d`** (`2565c250…`, `6ce41fe3…`,
 `692fdd1f…`, `f08c67e0…`, `58eef2cc…`), de modo que os gates de produção abaixo são os da `main` integrada; só `scripts/` e
@@ -286,7 +340,7 @@ de cada passo pesado de 16 GiB; a menor reserva medida foi 16,03 GiB.
 | Diferença JS contra a base (`b8598c7`) | `runtime/src/compositor.js`, `runtime/src/index.js` e `runtime/test/preview-samples.test.mjs` (PR #17), idênticos aos da `main` | `fd4bc8c` |
 | **Harness completo vivo**, sem `--allow-stale-binary`, 24 fases | **24/24 PASS**, saída 0, `acceptance.acceptable = true`, 316 s, orçamento de trabalho respeitado (30 MB) | `fd4bc8c` |
 
-Binário `tessel-render` atestado por `link.py` (por quem o construiu) **para as entradas deste head** (SHA-256 `d976f61b…cab97881`; `runtime.js` `8ee1c496…a0e9e27`; `index.html`
+Binário `tessel-render` da R4, atestado por `link.py` (declaração do operador) **para as entradas registradas** (SHA-256 `d976f61b…cab97881`; `runtime.js` `8ee1c496…a0e9e27`; `index.html`
 `707fd90f…c484a6`; `link.py check` mantém o vínculo ao `HEAD` depois dos commits só de docs porque nenhuma das entradas
 `crates`, `runtime`, `scripts`, `Cargo.*` e toolchain muda neles). Binário velho **nunca** foi aceito.
 
