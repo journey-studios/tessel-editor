@@ -49,8 +49,11 @@ const FEATURES = [
   'directed_scene',
   'asset.identity',
 ];
+// F052: announced only by a page that has an overlay surface (the desktop WebView), never by the
+// headless worker: a host sends `overlay.*` messages only to a runtime that says it can draw them.
+const OVERLAY_FEATURE = 'overlay.gizmo';
 
-export const createRuntime = ({ post, assetUrl, canvas }) => {
+export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
   const send = (message) => post({ v: BRIDGE_VERSION, ...message });
   const counters = new RetentionCounters();
   const assets = new AssetStore({ assetUrl, counters });
@@ -142,7 +145,7 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
         layers: LAYERS,
         formats: FORMATS,
         max_size: active.maxSize,
-        features: FEATURES,
+        features: overlay ? [...FEATURES, OVERLAY_FEATURE] : FEATURES,
         native_video: NATIVE_VIDEO,
         // Additive: what a `directed_scene` layer needs and how its resources are identified.
         directed_scene: DIRECTED_SCENE_CAPABILITIES,
@@ -268,6 +271,9 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
       // The host that owns the filesystem writes the file; the page only encodes it.
       if (output.png) message.png_data = canvas.toDataURL('image/png').split(',')[1];
       send(message);
+      // The canvas may have changed shape with this picture: the overlay re-checks that it still
+      // describes it (F052).
+      overlay?.refresh();
       if (options.presented) announcePresented(id, revision);
     } catch (error) {
       send({ type: 'frame.failed', id, revision, error: failureOf(error, lostDuringFrame()) });
@@ -300,6 +306,16 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
       cancelled.add(message.id);
     },
     'viewport.resize': () => {},
+    // F052 (additive, negotiated by the `overlay.gizmo` feature): the gizmo drawn over the picture.
+    ...Object.fromEntries(
+      ['overlay.enable', 'overlay.set', 'overlay.clear'].map((type) => [
+        type,
+        (message) => {
+          if (!overlay) throw new RuntimeError('unsupported', 'This page has no overlay surface');
+          overlay.receive(message);
+        },
+      ]),
+    ),
     dispose: () => {
       disposed = true;
       assets.releaseAll();

@@ -119,6 +119,8 @@ impl Workstation {
 
     /// Follows the editor state after a command.
     pub(super) fn viewport_sync(&mut self, cx: &mut Context<Self>) {
+        // A gizmo drag that nobody can finish is over before the monitor follows the state.
+        self.settle_gizmo_drag(cx);
         if let Some(scene) = self.viewport.directed_scene().map(str::to_owned) {
             let gesture = self
                 .state
@@ -139,12 +141,23 @@ impl Workstation {
         } else {
             self.viewport.sync(&self.state);
         }
+        // F052: the gizmo the page draws over the picture follows the same state.
+        self.overlay_refresh();
         self.viewport_flush(cx);
     }
 
     fn viewport_ipc(&mut self, raw: &str, cx: &mut Context<Self>) {
+        // F052: the overlay's own messages never reach the render session.
+        if let Ok(message) = serde_json::from_str::<serde_json::Value>(raw)
+            && self.overlay_ipc(&message, cx)
+        {
+            self.viewport_send(cx);
+            return;
+        }
         let before = self.viewport.ui_signature();
         self.viewport.on_ipc(raw, &self.state);
+        // The page may have said it is gone (lost context, runtime error, reload).
+        self.settle_gizmo_drag(cx);
         let restarted = serde_json::from_str::<serde_json::Value>(raw)
             .ok()
             .is_some_and(|message| {
@@ -188,6 +201,7 @@ impl Workstation {
     }
 
     fn viewport_tick(&mut self, cx: &mut Context<Self>) {
+        self.settle_gizmo_drag(cx);
         if self.viewport.tick(Instant::now()) {
             cx.notify();
         }
@@ -207,6 +221,7 @@ impl Workstation {
     /// Reloads the page, for a runtime that closed or a page that never started.
     pub fn viewport_reload(&mut self, cx: &mut Context<Self>) -> bool {
         let reloaded = self.viewport.begin_reload();
+        self.settle_gizmo_drag(cx);
         if let Some(view) = self.viewport_view.clone() {
             view.update(cx, |view, _| view.load_url(PAGE_URL));
         }
@@ -242,6 +257,14 @@ impl Workstation {
         self.viewport.on_screen = on_screen;
         if on_screen {
             self.viewport_sync(cx);
+        } else {
+            // A native view that is hidden gets no pointer-up: an open gizmo drag ends here.
+            self.cancel_gizmo_drag(
+                tessel_editor_core::scene_interaction::CancelReason::Hidden,
+                cx,
+            );
+            self.overlay_refresh();
+            self.viewport_send(cx);
         }
         if let Some(view) = self.viewport_view.clone() {
             view.update(cx, |view, _| {

@@ -31,15 +31,22 @@ mod address;
 mod command;
 mod frame;
 mod gesture;
+mod gizmo;
 mod selection;
 mod tree;
 
 pub use address::{
     ensure_exists, entity_json, entity_of_property, entity_path, exists, kind_label, parse_entity,
 };
-pub use command::{FrameAt, GestureCommand, SelectMode};
+pub use command::{
+    CancelReason, FrameAt, GestureCommand, GizmoCommand, PointerCommand, SelectMode,
+};
 pub use frame::frame_json;
 pub use gesture::{Gesture, GestureSlot, Invalidation};
+pub use gizmo::{
+    Anchor, CENTER_RADIUS, HANDLE_LENGTH, HIT_RADIUS, Handle, Hidden, Layout, OUTSIDE_LIMIT,
+    Overlay, Point, View, local_delta, movable, outline, pick_plane, world_origin,
+};
 pub use selection::{Dropped, MAX_SELECTION, SUMMARY_LIMIT, Selected, Selection};
 pub use tree::{MAX_TREE_DEPTH, tree_json};
 
@@ -49,6 +56,49 @@ pub use tree::{MAX_TREE_DEPTH, tree_json};
 pub struct SceneInteraction {
     pub(crate) selection: Selection,
     pub(crate) gesture: GestureSlot,
+    /// The pointer drag of the translation gizmo, if one is open. It always rides on `gesture`
+    /// (same ID); it only adds what the pointer needs. See `scene_project/gizmo.rs`.
+    pub(crate) drag: Option<Drag>,
+}
+
+/// What a gizmo drag remembers from the press so that every later position is computed from the
+/// press alone (never from the candidate it produced).
+#[derive(Debug, Clone)]
+pub struct Drag {
+    /// The gesture this drag feeds. A drag whose gesture is gone or replaced is dead.
+    pub(crate) gesture: String,
+    pub(crate) scene: String,
+    /// Address of the node being moved.
+    pub(crate) entity: String,
+    /// The edit frame the press was made at: the camera and the hierarchy of the whole drag.
+    pub(crate) frame: i64,
+    pub(crate) anchor: Anchor,
+    /// The node as evaluated at the press (its local/world matrices convert a world delta).
+    pub(crate) node: crate::scene_plan::PlanNode,
+    /// The document's `localPosition` at the press: the base every update adds to.
+    pub(crate) base_position: crate::directed_scene::Vec3,
+    /// The last world delta and position an update accepted.
+    pub(crate) last: Option<(crate::directed_scene::Vec3, crate::directed_scene::Vec3)>,
+}
+
+impl Drag {
+    pub fn gesture(&self) -> &str {
+        &self.gesture
+    }
+
+    pub fn handle(&self) -> Handle {
+        self.anchor.handle
+    }
+
+    /// The edit frame the drag was pressed at.
+    pub fn frame(&self) -> i64 {
+        self.frame
+    }
+
+    /// The scene (attachment ID) the drag edits.
+    pub fn scene(&self) -> &str {
+        &self.scene
+    }
 }
 
 impl SceneInteraction {
@@ -59,6 +109,11 @@ impl SceneInteraction {
     /// The gesture in progress, stale or not (`Gesture::invalidation` says which).
     pub fn gesture(&self) -> Option<&Gesture> {
         self.gesture.current()
+    }
+
+    /// The gizmo drag in progress, if any.
+    pub fn drag(&self) -> Option<&Drag> {
+        self.drag.as_ref()
     }
 
     /// The `scene_interaction` block of `EditorState::summary`, or `None` while there is nothing
@@ -73,6 +128,13 @@ impl SceneInteraction {
         Some(json!({
             "selection": selection.summary_json(book),
             "gesture": self.gesture().map(|gesture| gesture.to_json(book, revision)),
+            // F052: the pointer drag riding on that gesture, if the gizmo opened it.
+            "drag": self.drag().map(|drag| json!({
+                "gesture": drag.gesture(),
+                "handle": drag.handle().as_str(),
+                "scene": drag.scene,
+                "entity": drag.entity,
+            })),
         }))
     }
 }

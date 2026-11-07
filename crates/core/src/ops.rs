@@ -11,11 +11,14 @@ use serde_json::{Value, json};
 
 use crate::assets::{Asset, Declared, MediaKind, ProxyFormat};
 use crate::content::{Camera, TextSpec};
+use crate::directed_scene::Vec3;
 use crate::id::Id;
 use crate::plan::{PlanRequest, PlanTime, PreviewIntent};
 use crate::preview::PreviewMode;
 use crate::scene_edit::{PropertyRef, parse_batch};
-use crate::scene_interaction::{FrameAt, GestureCommand, SelectMode};
+use crate::scene_interaction::{
+    CancelReason, FrameAt, GestureCommand, GizmoCommand, Point, PointerCommand, SelectMode,
+};
 use crate::scene_project::{CameraAt, SceneCommand, SceneSource};
 use crate::state::timeline::{SequenceSettings, TrackKind};
 use crate::state::{Command, CommandError, EditorState, ProjectSettings, Raw};
@@ -623,6 +626,42 @@ fn scene_command(op: &str, request: &Value) -> Result<SceneCommand, CommandError
             gesture: string(request, "gesture")?.to_string(),
         }),
         "scene.gesture.status" => SceneCommand::Gesture(GestureCommand::Status),
+        // F052: the translation gizmo. Shape only; the geometry and every rule are the core's.
+        "scene.gizmo.state" => SceneCommand::Gizmo(GizmoCommand::State {
+            scene: scene()?,
+            at: frame_at(request)?,
+        }),
+        "scene.gizmo.hit" => SceneCommand::Gizmo(GizmoCommand::Hit {
+            scene: scene()?,
+            at: frame_at(request)?,
+            point: picture_point(request, "point")?,
+        }),
+        "scene.pointer.down" => SceneCommand::Gizmo(GizmoCommand::Pointer(PointerCommand::Down {
+            scene: scene()?,
+            at: frame_at(request)?,
+            point: picture_point(request, "point")?,
+            additive: optional_bool(request, "additive")?.unwrap_or(false),
+        })),
+        "scene.pointer.move" => SceneCommand::Gizmo(GizmoCommand::Pointer(PointerCommand::Move {
+            point: picture_point(request, "point")?,
+        })),
+        "scene.pointer.up" => SceneCommand::Gizmo(GizmoCommand::Pointer(PointerCommand::Up {
+            point: match request.get("point").filter(|raw| !raw.is_null()) {
+                Some(_) => Some(picture_point(request, "point")?),
+                None => None,
+            },
+        })),
+        "scene.pointer.cancel" => {
+            SceneCommand::Gizmo(GizmoCommand::Pointer(PointerCommand::Cancel {
+                reason: cancel_reason(request)?,
+            }))
+        }
+        "scene.translate" => SceneCommand::Gizmo(GizmoCommand::Translate {
+            scene: scene()?,
+            entity: string(request, "entity")?.to_string(),
+            at: frame_at(request)?,
+            delta: vector(request, "delta")?,
+        }),
         other => {
             return Err(CommandError::new(
                 "unknown_operation",
@@ -673,6 +712,61 @@ fn select_mode(request: &Value) -> Result<SelectMode, CommandError> {
         CommandError::invalid_value(
             format!("`{raw}` is not a selection mode"),
             json!({ "options": ["replace", "add", "remove", "toggle", "clear"] }),
+        )
+    })
+}
+
+/// `{ "u": 0..1, "v": 0..1 }`: a position on the picture. Range is the core's to judge (a press
+/// must be inside, a move may leave), so only the shape is checked here.
+fn picture_point(request: &Value, key: &str) -> Result<Point, CommandError> {
+    let bad = || {
+        invalid(format!(
+            "Field `{key}` must be {{\"u\": number, \"v\": number}}"
+        ))
+    };
+    let raw = request.get(key).ok_or_else(bad)?;
+    let object = raw.as_object().ok_or_else(bad)?;
+    if object.keys().any(|name| name != "u" && name != "v") {
+        return Err(bad());
+    }
+    Ok(Point {
+        u: raw.get("u").and_then(Value::as_f64).ok_or_else(bad)?,
+        v: raw.get("v").and_then(Value::as_f64).ok_or_else(bad)?,
+    })
+}
+
+/// `{ "x", "y", "z" }` numbers.
+fn vector(request: &Value, key: &str) -> Result<Vec3, CommandError> {
+    let bad = || {
+        invalid(format!(
+            "Field `{key}` must be {{\"x\": number, \"y\": number, \"z\": number}}"
+        ))
+    };
+    let raw = request.get(key).ok_or_else(bad)?;
+    let object = raw.as_object().ok_or_else(bad)?;
+    if object
+        .keys()
+        .any(|name| !["x", "y", "z"].contains(&name.as_str()))
+    {
+        return Err(bad());
+    }
+    let axis = |name: &str| raw.get(name).and_then(Value::as_f64).ok_or_else(bad);
+    Ok(Vec3 {
+        x: axis("x")?,
+        y: axis("y")?,
+        z: axis("z")?,
+    })
+}
+
+/// `api` unless the request says otherwise.
+fn cancel_reason(request: &Value) -> Result<CancelReason, CommandError> {
+    let Some(raw) = optional_string(request, "reason")? else {
+        return Ok(CancelReason::Api);
+    };
+    CancelReason::parse(&raw).ok_or_else(|| {
+        CommandError::invalid_value(
+            format!("`{raw}` is not a cancel reason"),
+            json!({ "options": ["escape", "blur", "pointer_cancel", "hidden", "unavailable", "api"] }),
         )
     })
 }

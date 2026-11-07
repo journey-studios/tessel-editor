@@ -4,6 +4,7 @@
 // Assets are fetched from the page's own origin: `/asset?p=<absolute path>`.
 
 import { createRuntime } from './index.js';
+import { attachOverlay } from './overlay.js';
 import { RUNTIME_VERSION } from './protocol.js';
 
 const transport = () => {
@@ -20,13 +21,21 @@ const transport = () => {
 };
 
 const canvas = document.getElementById('viewport');
+// F052: a 2D canvas over the picture for the gizmo; its pointer events go to the host as
+// `overlay.pointer`. Inert (pointer-events: none) until the host sends `overlay.enable`.
+const overlay = attachOverlay({ canvas, post: transport() });
 const runtime = createRuntime({
   post: transport(),
   assetUrl: (path) => `/asset?p=${encodeURIComponent(path)}`,
   canvas,
+  overlay,
 });
 
-window.TesselRuntime = { version: RUNTIME_VERSION, receive: runtime.receive, debug: runtime.debug };
+window.TesselRuntime = {
+  version: RUNTIME_VERSION,
+  receive: runtime.receive,
+  debug: { ...runtime.debug, overlay: overlay.debug },
+};
 
 // Tells a host that loads the page itself (the desktop WebView) that `receive` is ready, so it
 // does not send into a page that is still loading. The Node worker drops this message.

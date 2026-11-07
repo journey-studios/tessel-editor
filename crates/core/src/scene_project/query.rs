@@ -218,6 +218,10 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
                 "scene.tree", "scene.evaluate", "scene.plan", "scene.select", "scene.selection",
                 "scene.gesture.begin", "scene.gesture.update", "scene.gesture.commit",
                 "scene.gesture.cancel", "scene.gesture.status",
+                // F052 (docs/features/scene-gizmo.md): additive, negotiated by listing.
+                "scene.gizmo.state", "scene.gizmo.hit", "scene.pointer.down",
+                "scene.pointer.move", "scene.pointer.up", "scene.pointer.cancel",
+                "scene.translate",
             ],
             "max_scenes": MAX_SCENES,
             // Additive contract of the property catalog (docs/features/scene-edit.md): a caller
@@ -301,7 +305,8 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
         | SceneCommand::Plan { .. }
         | SceneCommand::Select { .. }
         | SceneCommand::Selection
-        | SceneCommand::Gesture(_) => Err(CommandError::new(
+        | SceneCommand::Gesture(_)
+        | SceneCommand::Gizmo(_) => Err(CommandError::new(
             "internal",
             "a scene command reached the read path that does not serve it",
         )),

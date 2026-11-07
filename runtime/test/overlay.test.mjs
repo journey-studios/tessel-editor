@@ -1,0 +1,181 @@
+// Pure rules of the gizmo overlay page (F052): the picture/pane mapping, the overlay payload check,
+// the hover rule and the pointer policy (coalescing, Escape, focus). No DOM and no browser; the
+// real pointer events on a real canvas are gizmo-overlay.test.mjs.
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+
+import {
+  PointerSession,
+  containRect,
+  drawOverlay,
+  hoverHandle,
+  insidePicture,
+  parseOverlay,
+  pictureInStep,
+  toPane,
+  toPicture,
+} from '../src/overlay.js';
+
+const overlayJson = (extra = {}) => ({
+  version: 1,
+  visible: true,
+  reason: null,
+  entity: 'scene/a/node/n',
+  origin: { u: 0.5, v: 0.5 },
+  handles: [
+    { id: 'x', kind: 'axis', from: { u: 0.5, v: 0.5 }, to: { u: 0.6, v: 0.5 } },
+    { id: 'y', kind: 'axis', from: { u: 0.5, v: 0.5 }, to: { u: 0.5, v: 0.35 } },
+    { id: 'screen', kind: 'center', from: { u: 0.5, v: 0.5 }, to: { u: 0.5, v: 0.5 } },
+  ],
+  outlines: [],
+  active: null,
+  aspect: 16 / 9,
+  metrics: { handle_length: 0.14, hit_radius: 0.025, center_radius: 0.03, unit: 'picture_height' },
+  ...extra,
+});
+
+test('the picture is the contained rectangle and points map both ways', () => {
+  // 16:9 picture in a 800x600 pane: full width, letterboxed vertically.
+  const rect = containRect({ width: 800, height: 600 }, { width: 160, height: 90 });
+  assert.deepEqual(rect, { x: 0, y: 75, width: 800, height: 450 });
+  assert.deepEqual(toPicture(rect, 400, 300), { u: 0.5, v: 0.5 });
+  assert.deepEqual(toPane(rect, { u: 0.25, v: 1 }), { x: 200, y: 525 });
+  // A tall pane pillarboxes the other way.
+  const tall = containRect({ width: 300, height: 900 }, { width: 160, height: 90 });
+  assert.deepEqual(tall, { x: 0, y: 365.625, width: 300, height: 168.75 });
+  assert.equal(insidePicture(toPicture(rect, 400, 20)), false, 'the bar is not the picture');
+  assert.equal(insidePicture({ u: 0, v: 1 }), true);
+  assert.equal(containRect({ width: 0, height: 10 }, { width: 1, height: 1 }), null);
+});
+
+test('an overlay payload is checked whole and never half accepted', () => {
+  const ok = parseOverlay(overlayJson());
+  assert.equal(ok.visible, true);
+  assert.equal(ok.handles.length, 3);
+  assert.equal(ok.handleRadius, 0.025);
+  assert.throws(() => parseOverlay(overlayJson({ version: 2 })), /version 2 is not supported/);
+  assert.throws(() => parseOverlay(overlayJson({ aspect: 0 })), /aspect/);
+  assert.throws(() => parseOverlay(overlayJson({ origin: { u: 'x', v: 0 } })), /origin/);
+  assert.throws(() => parseOverlay(overlayJson({ outlines: [{ entity: 'e', quad: [] }] })), /four points/);
+  assert.throws(() => parseOverlay(null), /object/);
+  // A hidden overlay is valid and has nothing to hit.
+  const hidden = parseOverlay(overlayJson({ visible: false, origin: null, handles: [] }));
+  assert.equal(hoverHandle(hidden, { u: 0.5, v: 0.5 }), null);
+});
+
+test('hover follows the core rule: the centre first, then the nearest axis within the radius', () => {
+  const overlay = parseOverlay(overlayJson());
+  assert.equal(hoverHandle(overlay, { u: 0.5, v: 0.5 }), 'screen');
+  assert.equal(hoverHandle(overlay, { u: 0.56, v: 0.5 }), 'x');
+  assert.equal(hoverHandle(overlay, { u: 0.5, v: 0.42 }), 'y');
+  assert.equal(hoverHandle(overlay, { u: 0.56, v: 0.5 + 0.02 }), 'x', 'inside the radius, off the line');
+  assert.equal(hoverHandle(overlay, { u: 0.56, v: 0.5 + 0.06 }), null, 'outside the radius');
+  assert.equal(hoverHandle(overlay, { u: 0.9, v: 0.9 }), null);
+});
+
+const record = () => {
+  const sent = [];
+  return { sent, session: new PointerSession((message) => sent.push(message)) };
+};
+
+test('moves are coalesced: the last position wins and the release carries its own', () => {
+  const { sent, session } = record();
+  session.down({ u: 0.5, v: 0.5 }, true);
+  session.move({ u: 0.51, v: 0.5 });
+  session.move({ u: 0.52, v: 0.5 });
+  session.move({ u: 0.53, v: 0.5 });
+  assert.equal(sent.length, 1, 'nothing is posted until the frame flushes');
+  assert.equal(session.flush(), true);
+  assert.equal(session.flush(), false, 'nothing pending after a flush');
+  session.move({ u: 0.54, v: 0.5 });
+  session.up({ u: 0.55, v: 0.5 });
+  assert.deepEqual(
+    sent.map((m) => [m.phase, m.point?.u]),
+    [['down', 0.5], ['move', 0.53], ['up', 0.55]],
+    'the pending move is superseded by the release position',
+  );
+  assert.equal(sent[0].additive, true);
+  assert.deepEqual(sent.map((m) => m.seq), [1, 2, 3], 'every message has the next sequence number');
+  assert.equal(sent.every((m) => m.type === 'overlay.pointer'), true);
+});
+
+test('Escape and every other cancel end the press: nothing more is posted until the next press', () => {
+  for (const reason of ['escape', 'blur', 'hidden', 'pointer_cancel']) {
+    const { sent, session } = record();
+    session.down({ u: 0.5, v: 0.5 });
+    session.move({ u: 0.6, v: 0.5 });
+    assert.equal(session.cancel(reason), true);
+    assert.equal(session.cancel(reason), false, 'a second cancel is nothing');
+    session.move({ u: 0.7, v: 0.5 });
+    assert.equal(session.flush(), false);
+    assert.equal(session.up({ u: 0.7, v: 0.5 }), false, 'the release of a cancelled press posts nothing');
+    assert.deepEqual(sent.map((m) => m.phase), ['down', 'cancel']);
+    assert.equal(sent[1].reason, reason);
+    assert.equal(sent[1].point, undefined);
+    // The button coming up readies the next press; so does a new press on its own.
+    session.release();
+    session.down({ u: 0.4, v: 0.4 });
+    assert.equal(sent.at(-1).phase, 'down');
+  }
+});
+
+test('a cancel with no press, a move with no press and a stray release post nothing', () => {
+  const { sent, session } = record();
+  assert.equal(session.cancel('escape'), false);
+  session.move({ u: 0.5, v: 0.5 });
+  assert.equal(session.flush(), false);
+  assert.equal(session.up({ u: 0.5, v: 0.5 }), false);
+  assert.deepEqual(sent, []);
+});
+
+test('drawing records the outline, the handles and the active one without touching the host', () => {
+  const calls = [];
+  const context = new Proxy({}, { get: (_, name) => (...args) => calls.push([String(name), ...args]), set: (_, name, value) => { calls.push(['set', String(name), value]); return true; } });
+  const rect = { x: 0, y: 75, width: 800, height: 450 };
+  const overlay = parseOverlay(
+    overlayJson({
+      active: { handle: 'x', gesture: 'g' },
+      outlines: [{ entity: 'e', quad: [{ u: 0.4, v: 0.4 }, { u: 0.6, v: 0.4 }, { u: 0.6, v: 0.6 }, { u: 0.4, v: 0.6 }] }],
+    }),
+  );
+  drawOverlay(context, rect, overlay, 'y');
+  const strokes = calls.filter(([name]) => name === 'stroke').length;
+  assert.ok(strokes >= 5, `outline + 2 axes (shadow and colour) + centre: got ${strokes}`);
+  // The active handle is drawn in the active colour.
+  assert.ok(calls.some(([name, key, value]) => name === 'set' && key === 'strokeStyle' && value === '#ffd60a'));
+  // A hidden overlay draws only outlines; nothing at all for null.
+  calls.length = 0;
+  drawOverlay(context, rect, parseOverlay(overlayJson({ visible: false })), null);
+  assert.equal(calls.filter(([name]) => name === 'arc').length, 0);
+  drawOverlay(context, rect, null);
+});
+
+test('the picture is in step with an overlay when the shapes agree to within one pixel of the short side', () => {
+  const landscape = parseOverlay(overlayJson({ aspect: 16 / 9 }));
+  assert.equal(pictureInStep(null, { width: 0, height: 0 }), true, 'no overlay, nothing to disagree with');
+  assert.equal(pictureInStep(landscape, { width: 160, height: 90 }), true);
+  assert.equal(pictureInStep(landscape, { width: 960, height: 540 }), true, 'a scaled preview of the same output');
+  // 1081x1921 previewed at 960 max: rounded to whole pixels, still the same shape.
+  const odd = parseOverlay(overlayJson({ aspect: 1081 / 1921 }));
+  assert.equal(pictureInStep(odd, { width: 540, height: 960 }), true);
+  assert.equal(pictureInStep(landscape, { width: 90, height: 160 }), false, 'portrait canvas, landscape overlay');
+  assert.equal(pictureInStep(landscape, { width: 160, height: 100 }), false);
+  assert.equal(pictureInStep(landscape, { width: 0, height: 0 }), false, 'an empty canvas holds no picture');
+});
+
+test('a pointer session echoes the stamp of the overlay it pressed on, and drops it when the press ends', () => {
+  const posted = [];
+  let current = { revision: 1 };
+  const session = new PointerSession((m) => posted.push(m), () => current);
+  session.down({ u: 0.5, v: 0.5 });
+  current = { revision: 2 };
+  session.move({ u: 0.6, v: 0.5 });
+  session.flush();
+  session.up({ u: 0.6, v: 0.5 });
+  assert.deepEqual(posted.map((m) => m.stamp), [{ revision: 1 }, { revision: 1 }, { revision: 1 }]);
+  // A cancel outside a press (a drag begun by a script) answers the overlay that is current now.
+  session.emit('cancel', { reason: 'escape' });
+  assert.deepEqual(posted.at(-1).stamp, { revision: 2 });
+  assert.equal(parseOverlay(overlayJson({ stamp: { revision: 9 } })).stamp.revision, 9);
+  assert.equal(parseOverlay(overlayJson()).stamp, null, 'an overlay without a stamp parses as null');
+});
