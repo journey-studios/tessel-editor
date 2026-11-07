@@ -187,7 +187,7 @@ pausa e o início do de 880 Hz (bordas em 1,0 s e 1,5 s do export); o gerador do
 borda tom/silêncio; `judge_audio` reprova um caso sem borda (`lag observable`); novo controle negativo congelado
 ("constant-envelope window") e controle positivo de `full_av`. Três testes novos (99 no total), incluindo a aritmética do
 deslocamento de 0,1 s: o tom puro deslocado continua igual, a janela com borda deslocada reprova `edge at` e `envelope lag`.
-O editor e os limiares não mudaram. O run vivo foi **repetido do zero** em binário reconstruído e reatestado para este head.
+O editor e os limiares não mudaram. O run vivo foi **repetido do zero** em binário reconstruído e reatestado pelo operador para as entradas registradas.
 
 ## Emendas — rodada R4 (revisão Sonnet 5.5 do head `7a26569`, 5810370582)
 
