@@ -266,3 +266,307 @@ fn relinking_a_capture_to_a_file_with_other_intrinsics_is_refused() {
     );
     assert!((capture_of(&state, &id).unwrap().vfov - 50.0).abs() < 1e-3);
 }
+
+fn warning_codes(item: &Value) -> Vec<String> {
+    item["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|warning| {
+            warning
+                .as_str()
+                .unwrap()
+                .split(':')
+                .next()
+                .unwrap()
+                .to_string()
+        })
+        .collect()
+}
+
+#[test]
+fn the_import_report_carries_the_capture_warnings_of_asset_add() {
+    let dir = temp("sharp-warnings");
+    let mut host = host();
+    let mut state = project(&mut host, &dir, "delta");
+    let cases = [
+        ("clean.ply", SharpSpec::default(), Vec::<&str>::new()),
+        (
+            "linear.ply",
+            SharpSpec {
+                color_space: Some(1),
+                points: SharpSpec::default().points[..4].to_vec(),
+                ..SharpSpec::default()
+            },
+            vec!["capture_linear_colors"],
+        ),
+        (
+            "no-version.ply",
+            SharpSpec {
+                version: None,
+                points: SharpSpec::default().points[..3].to_vec(),
+                ..SharpSpec::default()
+            },
+            vec!["capture_version"],
+        ),
+        (
+            "no-color-space.ply",
+            SharpSpec {
+                color_space: None,
+                points: SharpSpec::default().points[..2].to_vec(),
+                ..SharpSpec::default()
+            },
+            vec!["capture_color_space"],
+        ),
+        (
+            "writer-2.ply",
+            SharpSpec {
+                color_space: Some(1),
+                version: Some([2, 0, 0]),
+                points: SharpSpec::default().points[..1].to_vec(),
+                ..SharpSpec::default()
+            },
+            vec!["capture_linear_colors", "capture_version"],
+        ),
+    ];
+    let paths: Vec<PathBuf> = cases
+        .iter()
+        .map(|(name, spec, _)| ply(&dir, name, spec))
+        .collect();
+    let report = ok(
+        &mut host,
+        &mut state,
+        json!({"op":"media.import","paths":paths}),
+    );
+    assert_eq!(report["applied"]["imported"], 5, "{report}");
+    let items = report["applied"]["items"].as_array().unwrap();
+    for ((name, _, expected), item) in cases.iter().zip(items) {
+        assert_eq!(&warning_codes(item), expected, "{name}: {item}");
+    }
+    // `capture: ignore` drops the metadata, so there is nothing to warn about.
+    let ignored = ply(
+        &dir,
+        "ignored.ply",
+        &SharpSpec {
+            color_space: Some(1),
+            version: None,
+            points: SharpSpec::default().points[..2].to_vec(),
+            ..SharpSpec::default()
+        },
+    );
+    let report = ok(
+        &mut host,
+        &mut state,
+        json!({"op":"media.import","paths":[ignored],"capture":"ignore"}),
+    );
+    assert!(warning_codes(&report["applied"]["items"][0]).is_empty());
+}
+
+fn history_depth(state: &EditorState) -> Value {
+    state.history.to_json()["undo_depth"].clone()
+}
+
+#[test]
+fn a_duplicate_with_another_capture_choice_is_refused_and_changes_nothing() {
+    let dir = temp("sharp-conflict");
+    let mut host = host();
+    let mut state = project(&mut host, &dir, "epsilon");
+    let source = ply(&dir, "shot.ply", &SharpSpec::default());
+    let report = ok(
+        &mut host,
+        &mut state,
+        json!({"op":"media.import","paths":[source],"capture":"ignore"}),
+    );
+    let id = report["applied"]["items"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(capture_of(&state, &id).is_none());
+    ok(
+        &mut host,
+        &mut state,
+        json!({"op":"track.add","id":"t","name":"t","kind":"video"}),
+    );
+    ok(
+        &mut host,
+        &mut state,
+        json!({"op":"clip.add","id":"c","track":"t","asset":id,"start":0,"duration":48}),
+    );
+    let document = state.to_document(None);
+    let depth = history_depth(&state);
+
+    // The same bytes, now asking for the capture camera: refused with its reason, never `duplicate`.
+    let other = ply(
+        &dir,
+        "other.ply",
+        &SharpSpec {
+            points: SharpSpec::default().points[..3].to_vec(),
+            ..SharpSpec::default()
+        },
+    );
+    let report = ok(
+        &mut host,
+        &mut state,
+        json!({"op":"media.import","paths":[source,other]}),
+    );
+    let applied = &report["applied"];
+    assert_eq!(
+        applied["imported"], 1,
+        "the rest of the batch goes on: {report}"
+    );
+    assert_eq!(applied["failed"], 1, "{report}");
+    assert_eq!(applied["duplicates"], 0, "{report}");
+    let refused = &applied["items"][0];
+    assert_eq!(refused["status"], "failed", "{report}");
+    assert_eq!(refused["error"]["code"], "capture_conflict", "{report}");
+    assert_eq!(refused["error"]["details"]["existing_asset"], id.as_str());
+    assert_eq!(refused["error"]["details"]["existing_has_capture"], false);
+    assert_eq!(refused["error"]["details"]["requested_has_capture"], true);
+    assert!(
+        capture_of(&state, &id).is_none(),
+        "the existing asset is as it was"
+    );
+    assert_eq!(
+        state.timeline.clip("c").unwrap().media.unwrap().as_str(),
+        id
+    );
+
+    // Alone, the refusal is a whole no-op: the document and the undo history are untouched.
+    let before = state.to_document(None);
+    let depth_before = history_depth(&state);
+    let report = ok(
+        &mut host,
+        &mut state,
+        json!({"op":"media.import","paths":[source]}),
+    );
+    assert_eq!(report["applied"]["imported"], 0, "{report}");
+    assert_eq!(report["applied"]["failed"], 1, "{report}");
+    assert_eq!(state.to_document(None), before);
+    assert_eq!(history_depth(&state), depth_before);
+    assert_ne!(
+        history_depth(&state),
+        depth,
+        "(the batch above did add `other`)"
+    );
+    assert_ne!(state.to_document(None), document);
+
+    // The same choice is a plain duplicate, as before.
+    let report = ok(
+        &mut host,
+        &mut state,
+        json!({"op":"media.import","paths":[source],"capture":"ignore"}),
+    );
+    assert_eq!(report["applied"]["duplicates"], 1, "{report}");
+    assert_eq!(report["applied"]["failed"], 0, "{report}");
+    assert_eq!(report["applied"]["items"][0]["status"], "duplicate");
+    assert_eq!(state.to_document(None), before);
+
+    // And the other way round: with the camera, then asking to ignore it.
+    let kept = ply(
+        &dir,
+        "kept.ply",
+        &SharpSpec {
+            points: SharpSpec::default().points[..2].to_vec(),
+            ..SharpSpec::default()
+        },
+    );
+    let report = ok(
+        &mut host,
+        &mut state,
+        json!({"op":"media.import","paths":[kept]}),
+    );
+    let kept_id = report["applied"]["items"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(capture_of(&state, &kept_id).is_some());
+    let report = ok(
+        &mut host,
+        &mut state,
+        json!({"op":"media.import","paths":[kept],"capture":"ignore"}),
+    );
+    assert_eq!(
+        report["applied"]["items"][0]["error"]["code"], "capture_conflict",
+        "{report}"
+    );
+    assert!(
+        capture_of(&state, &kept_id).is_some(),
+        "its camera was kept"
+    );
+    let report = ok(
+        &mut host,
+        &mut state,
+        json!({"op":"media.import","paths":[kept]}),
+    );
+    assert_eq!(report["applied"]["duplicates"], 1, "{report}");
+}
+
+#[test]
+fn a_hostile_or_truncated_header_fails_that_file_alone_in_the_batch() {
+    let dir = temp("sharp-hostile");
+    let mut host = host();
+    let mut state = project(&mut host, &dir, "zeta");
+    let good = ply(&dir, "good.ply", &SharpSpec::default());
+    let header_with = |name: &str, find: &str, replace: &str| {
+        let path = ply(&dir, name, &SharpSpec::default());
+        let bytes = fs::read(&path).unwrap();
+        let marker = b"end_header\n";
+        let at = bytes
+            .windows(marker.len())
+            .position(|window| window == marker)
+            .unwrap()
+            + marker.len();
+        let header = String::from_utf8(bytes[..at].to_vec())
+            .unwrap()
+            .replacen(find, replace, 1);
+        let mut edited = header.into_bytes();
+        edited.extend_from_slice(&bytes[at..]);
+        fs::write(&path, edited).unwrap();
+        path
+    };
+    let overflow = header_with(
+        "overflow.ply",
+        "element vertex 5",
+        "element vertex 18446744073709551615",
+    );
+    let far_too_big = header_with(
+        "big.ply",
+        "element vertex 5",
+        "element vertex 1099511627776",
+    );
+    let truncated = ply(&dir, "truncated.ply", &SharpSpec::default());
+    let bytes = fs::read(&truncated).unwrap();
+    fs::write(&truncated, &bytes[..bytes.len() - 7]).unwrap();
+    let duplicate = header_with(
+        "duplicate.ply",
+        "element version 3\n",
+        "element version 3\nproperty uchar version\nelement version 3\n",
+    );
+
+    let before = state.library.items.len();
+    let report = ok(
+        &mut host,
+        &mut state,
+        json!({"op":"media.import","paths":[overflow, far_too_big, truncated, duplicate, good]}),
+    );
+    let applied = &report["applied"];
+    assert_eq!(applied["imported"], 1, "{report}");
+    assert_eq!(applied["failed"], 4, "{report}");
+    let items = applied["items"].as_array().unwrap();
+    let codes: Vec<&str> = items
+        .iter()
+        .map(|item| item["error"]["code"].as_str().unwrap_or("ok"))
+        .collect();
+    assert_eq!(
+        codes,
+        [
+            "invalid_asset",
+            "invalid_asset",
+            "invalid_asset",
+            "ambiguous_capture",
+            "ok"
+        ],
+        "{report}"
+    );
+    assert_eq!(state.library.items.len(), before + 1);
+}

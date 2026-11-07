@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 use tessel_editor_core::assets::{Asset, Identity, MediaKind, Storage};
 use tessel_editor_core::jobs::{JobContext, JobError};
-use tessel_editor_core::sharp::Choice;
+use tessel_editor_core::sharp::{Capture, Choice};
 use tessel_editor_core::state::Command;
 use tessel_editor_core::{CommandError, EditorState};
 
@@ -66,6 +66,9 @@ pub struct PreparedItem {
     pub asset: Option<Asset>,
     pub probe: Option<Value>,
     pub warnings: Vec<String>,
+    /// The SHARP capture this import resolved for the file (`None`: not a SHARP file, or
+    /// `capture: ignore`). A duplicate is compared with the library asset on it (BL143.6).
+    pub capture: Option<Capture>,
     pub error: Option<JobError>,
 }
 
@@ -79,6 +82,7 @@ impl PreparedItem {
             asset: None,
             probe: None,
             warnings: Vec::new(),
+            capture: None,
             error: Some(error),
         }
     }
@@ -181,6 +185,7 @@ fn prepare_one(
         asset: None,
         probe: Some(probed.to_json()),
         warnings: probed.warnings.clone(),
+        capture: probed.meta.capture,
         error: None,
     };
     let size = probed.size;
@@ -328,6 +333,41 @@ fn asset_id_for(state: &EditorState, name: &str, taken: &[String]) -> String {
         .unwrap_or(base)
 }
 
+/// A duplicate (same bytes already in the library) whose requested SHARP capture choice differs
+/// from what the existing asset kept: `capture: auto` over an asset imported with `ignore`, or
+/// `ignore` over one imported with its camera. Silently reporting `duplicate` would drop what the
+/// caller asked for, so the file is refused (`capture_conflict`) and nothing about the existing
+/// asset, its clips, the project or the undo history changes.
+fn capture_conflict(state: &EditorState, item: &PreparedItem) -> Option<JobError> {
+    let ItemStatus::Duplicate { of } = &item.status else {
+        return None;
+    };
+    // Ids of the same batch (`pending:<path>`) are not in the library: same request, same choice.
+    let existing = state.library.item(of)?.asset.as_ref()?;
+    if existing.meta.capture == item.capture {
+        return None;
+    }
+    let state_of = |capture: &Option<Capture>| if capture.is_some() { "with" } else { "without" };
+    Some(
+        JobError::new(
+            "capture_conflict",
+            format!(
+                "`{}` has the same bytes as library asset `{of}`, which was imported {} its \
+                 capture camera; this import asks for the other choice. Nothing changed: remove \
+                 `{of}` first, or import the file with the same `capture` choice",
+                item.source.display(),
+                state_of(&existing.meta.capture),
+            ),
+        )
+        .with_details(json!({
+            "existing_asset": of,
+            "existing_has_capture": existing.meta.capture.is_some(),
+            "requested_has_capture": item.capture.is_some(),
+            "requested": state_of(&item.capture),
+        })),
+    )
+}
+
 /// Registers every `Ready` item as ONE undo unit. Returns the per-file report.
 pub fn commit(
     state: &mut EditorState,
@@ -362,8 +402,17 @@ pub fn commit(
         })?;
     }
     let mut imported = 0;
+    let mut conflicts = 0;
     for item in items {
         let mut entry = item.to_json();
+        if let Some(error) = capture_conflict(state, item) {
+            entry["status"] = json!("failed");
+            entry["duplicate_of"] = Value::Null;
+            entry["error"] = error.to_json();
+            conflicts += 1;
+            report.push(entry);
+            continue;
+        }
         // A duplicate of a file earlier in the same batch points at the ID that file received.
         if let ItemStatus::Duplicate { of } = &item.status
             && let Some(source) = of.strip_prefix("pending:")
@@ -383,11 +432,13 @@ pub fn commit(
     let failed = items
         .iter()
         .filter(|item| item.status == ItemStatus::Failed)
-        .count();
+        .count()
+        + conflicts;
     let duplicates = items
         .iter()
         .filter(|item| matches!(item.status, ItemStatus::Duplicate { .. }))
-        .count();
+        .count()
+        - conflicts;
     Ok(
         json!({ "action": "media.import", "imported": imported, "duplicates": duplicates,
         "failed": failed, "items": report, "changed": imported > 0 }),

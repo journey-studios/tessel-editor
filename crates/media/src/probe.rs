@@ -230,8 +230,18 @@ pub fn probe_with(tools: &Tools, path: &Path, capture: Choice) -> Result<Probe, 
             None
         };
         let mut summary = json!({ "splat_format": info.format.label(), "splat_count": info.count });
+        // The same warnings `asset.add` reports (linearRGB colors, unknown writer version), in
+        // the `code: message` form the other probe warnings use, so `media.import` and the job
+        // report them too (BL143.7).
+        let mut warnings = Vec::new();
         if let Some(capture) = &capture {
             summary["capture"] = capture.to_document();
+            warnings.extend(
+                capture
+                    .warnings()
+                    .into_iter()
+                    .map(|(code, message)| format!("{code}: {message}")),
+            );
         }
         return Ok(Probe {
             kind: MediaKind::Splat,
@@ -244,7 +254,7 @@ pub fn probe_with(tools: &Tools, path: &Path, capture: Choice) -> Result<Probe, 
             size,
             has_audio: false,
             has_video: false,
-            warnings: Vec::new(),
+            warnings,
             summary,
         });
     }
