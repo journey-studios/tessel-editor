@@ -6,6 +6,7 @@
 
 use serde_json::{Value, json};
 
+use crate::perf::{self, PerfMeterCommand};
 use crate::plan::PreviewIntent;
 use crate::preview::PreviewMode;
 use crate::state::inspector::{InspectorTab, PropertyKind, property_def};
@@ -24,6 +25,8 @@ pub enum Parsed {
     /// A change to the dock; the server validates it against the live area.
     Layout(LayoutCommand),
     ToggleTheme,
+    /// Show, hide or toggle the debug performance meter (F049). Window state, like the theme.
+    PerfMeter(PerfMeterCommand),
     /// Reload the viewport page. A window concern: headless sessions have no page.
     ReloadViewport,
 }
@@ -85,6 +88,13 @@ pub fn parse_set(target: &str, field: &str, value: &Raw) -> Result<Parsed, Comma
         },
         ("dock", "layout") => {
             return Ok(Parsed::Layout(LayoutCommand::Load { json: value.text() }));
+        }
+        (perf::TARGET, "visible") => {
+            return Ok(Parsed::PerfMeter(if value.boolean()? {
+                PerfMeterCommand::Show
+            } else {
+                PerfMeterCommand::Hide
+            }));
         }
         _ => return parse_set_entity(target, field, value),
     };
@@ -254,6 +264,7 @@ pub fn parse_invoke(
     }
     let command = match (target, action) {
         ("toolbar.theme", "toggle") => return Ok(Parsed::ToggleTheme),
+        (perf::TARGET, "toggle") => return Ok(Parsed::PerfMeter(PerfMeterCommand::Toggle)),
         ("timeline.snap", "toggle") => Command::SetSnap {
             snap: !state.timeline.snap,
         },
@@ -606,7 +617,9 @@ mod tests {
         match parsed.unwrap() {
             Parsed::Run(command) => command,
             Parsed::Layout(command) => panic!("unexpected dock command {command:?}"),
-            Parsed::ToggleTheme | Parsed::ReloadViewport => panic!("unexpected window command"),
+            Parsed::ToggleTheme | Parsed::PerfMeter(_) | Parsed::ReloadViewport => {
+                panic!("unexpected window command")
+            }
         }
     }
 
@@ -722,7 +735,46 @@ mod tests {
             Parsed::ToggleTheme
         );
         assert_eq!(
+            parse_invoke(&state, &default_layout(), "toolbar.perf_meter", "toggle").unwrap(),
+            Parsed::PerfMeter(PerfMeterCommand::Toggle)
+        );
+        assert_eq!(
             parse_invoke(&state, &default_layout(), "clip:x", "explode")
+                .unwrap_err()
+                .code,
+            "unknown_action"
+        );
+    }
+
+    #[test]
+    fn the_perf_meter_is_toggled_shown_and_hidden_through_one_parser() {
+        let state = EditorState::default();
+        let set = |value: Raw| parse_set(perf::TARGET, "visible", &value);
+        assert_eq!(
+            set(Raw::Bool(true)).unwrap(),
+            Parsed::PerfMeter(PerfMeterCommand::Show)
+        );
+        assert_eq!(
+            set(Raw::Text("false".into())).unwrap(),
+            Parsed::PerfMeter(PerfMeterCommand::Hide)
+        );
+        // A value that is not a boolean is refused, and no other field exists.
+        assert_eq!(
+            set(Raw::Text("maybe".into())).unwrap_err().code,
+            "invalid_value"
+        );
+        assert_eq!(
+            parse_set(perf::TARGET, "size", &Raw::Number(1.0))
+                .unwrap_err()
+                .code,
+            "unknown_field"
+        );
+        assert_eq!(
+            parse_invoke(&state, &default_layout(), perf::TARGET, "toggle").unwrap(),
+            Parsed::PerfMeter(PerfMeterCommand::Toggle)
+        );
+        assert_eq!(
+            parse_invoke(&state, &default_layout(), perf::TARGET, "explode")
                 .unwrap_err()
                 .code,
             "unknown_action"

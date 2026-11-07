@@ -99,6 +99,14 @@ mata **somente** o editor que o próprio script abriu (nunca um `pgrep` por nome
 isolar o socket de outra instância do editor. `scripts/headless-flow-proof.py` faz o mesmo fluxo de mídia sem janela;
 `scripts/measure-render.py` mede preview/export e memória.
 
+## Medidor de desempenho (F049)
+
+`./scripts/ui get toolbar.perf_meter` lê o estado do medidor flutuante (`visible`, `shortcut`,
+`placement` e, só quando visível, o `readout`); `./scripts/ui invoke toolbar.perf_meter toggle` e
+`./scripts/ui set toolbar.perf_meter visible true|false` chamam o mesmo handler do atalho
+`⌘⇧D` (`Ctrl+Shift+D` fora do macOS) e do botão do cabeçalho. Contrato e limites em
+[perf-meter.md](features/perf-meter.md); a prova na janela real é `scripts/perf-meter-proof.py`.
+
 ## Headless access
 
 This page documents the **running window** adapter. For editing without any desktop process,

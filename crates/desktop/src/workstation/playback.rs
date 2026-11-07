@@ -238,6 +238,15 @@ impl Playback {
 }
 
 impl PlaybackState {
+    /// The frame of a clock that is *running*: `None` while paused, stopped or preparing. The
+    /// debug meter starts from this: a paused playback expects no frames.
+    pub fn running_frame(&self) -> Option<i64> {
+        self.active
+            .as_ref()
+            .filter(|active| !active.paused)
+            .map(|active| active.frame)
+    }
+
     pub fn is_playing(&self) -> bool {
         self.active.is_some() || self.preparing.is_some()
     }
@@ -307,7 +316,7 @@ impl Workstation {
         Ok(json!({ "action": "playback.start", "from": from, "state": "preparing" }))
     }
 
-    fn playback_begin(
+    pub(super) fn playback_begin(
         &mut self,
         from: i64,
         mixed: Result<Source, CommandError>,
@@ -348,6 +357,7 @@ impl Workstation {
             skipped: 0,
             max_gap: 0,
         });
+        self.perf_playback_started(from);
         let interval = Duration::from_secs_f64(1.0 / (fps * TICKS_PER_FRAME));
         cx.spawn(async move |this, cx| {
             loop {
@@ -418,6 +428,7 @@ impl Workstation {
         active.max_gap = active.max_gap.max(gap);
         if frame != active.frame {
             active.frame = frame;
+            self.perf_playback_clock(frame);
             // A plain playhead move: the same command as a click on the ruler, so the
             // monitor, the timeline and the inspector follow it with no special case.
             let _ = self.state.execute(Command::SetPlayhead {
@@ -432,6 +443,7 @@ impl Workstation {
     pub fn playback_stop(&mut self, cx: &mut Context<Self>) -> Value {
         self.playback.preparing = None;
         let mut report = self.playback.report();
+        self.perf_playback_stopped();
         if let Some(mut active) = self.playback.active.take() {
             // Asks the audio thread to release the device; it does that off this thread.
             match &mut active.audio {
@@ -470,6 +482,8 @@ impl Workstation {
         let fps = active.fps;
         active.wall.pause(fps);
         active.paused = true;
+        // Nothing is expected while paused: silence is a rest, not a stall (F049).
+        self.perf_playback_stopped();
         cx.notify();
         Ok(json!({ "action": "playback.pause", "report": self.playback.report() }))
     }
@@ -481,6 +495,10 @@ impl Workstation {
         }
         active.wall.resume();
         active.paused = false;
+        let frame = active.frame;
+        // The run restarts from the frame on screen; the pause is not a gap (F049). The meter
+        // keeps the counts of a playback that never paused (`Meter::playback_started`).
+        self.perf_playback_started(frame);
         cx.notify();
         Ok(json!({ "action": "playback.resume", "report": self.playback.report() }))
     }
@@ -505,6 +523,7 @@ impl Workstation {
         }
         active.wall.seek(frame as f64);
         active.frame = frame;
+        self.perf_playback_seeked(frame);
         let _ = self.state.execute(Command::SetPlayhead {
             frame: Raw::Number(frame as f64),
         });

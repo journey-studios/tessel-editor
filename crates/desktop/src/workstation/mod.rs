@@ -17,6 +17,7 @@ mod library_panel;
 mod media;
 mod monitor;
 mod ops;
+mod perf_meter;
 mod playback;
 mod scene_gesture;
 mod scene_import;
@@ -49,6 +50,7 @@ use self::dock::DockHost;
 use self::drag::{ClipPreview, Preview, TrackPreview, frame_at, insertion_at, row_at};
 pub use self::geometry::Geometry;
 pub use self::ops::OpReply;
+pub use self::perf_meter::{install_perf_meter, shortcut_label};
 use self::playback::PlaybackState;
 use self::scene_ui::SceneUi;
 use self::slider_gesture::SliderGesture;
@@ -116,6 +118,8 @@ pub struct Workstation {
     /// The directed-scene inspector's window state (see `scene_ui.rs`): presentation only, the
     /// scene, its selection and its gestures live in `EditorState`.
     scene_ui: SceneUi,
+    /// The debug performance meter (F049): off until asked for, and while off it keeps nothing.
+    perf: perf_meter::PerfState,
     focus: FocusHandle,
 }
 
@@ -276,6 +280,9 @@ impl Workstation {
         };
         let scene_ui = SceneUi::new(window, cx);
         let mut viewport = ViewportHost::new(page);
+        let perf = perf_meter::PerfState::new(cx);
+        viewport.attach_meter(perf.meter(), perf.clock());
+        cx.set_global(perf_meter::PerfTarget(cx.weak_entity()));
         let viewport_view = Self::build_viewport(&mut viewport, window, cx);
 
         if !cfg!(test) {
@@ -306,6 +313,7 @@ impl Workstation {
             playback: PlaybackState::default(),
             slider_gesture: SliderGesture::default(),
             scene_ui,
+            perf,
             focus: cx.focus_handle(),
         }
     }
@@ -406,6 +414,7 @@ impl Workstation {
                 theme: crate::theme::scheme_name(cx),
                 metrics: &metrics,
                 layout: &layout,
+                perf_meter: self.perf.visible(),
             },
         )
     }
@@ -416,6 +425,7 @@ impl Workstation {
             self.adopt_viewport(node);
             self.adopt_playback(node);
             self.adopt_scene(node);
+            self.adopt_perf(node);
         }
         // The scene inspector and the scene monitor seam are window state too.
         nodes.extend(self.scene_nodes());
@@ -444,6 +454,7 @@ impl Workstation {
         self.adopt_viewport(&mut node);
         self.adopt_playback(&mut node);
         self.adopt_scene(&mut node);
+        self.adopt_perf(&mut node);
         Some(node)
     }
 
@@ -725,7 +736,11 @@ impl Render for Workstation {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.update_viewport_visibility(cx);
         let t = Tokens::new(cx);
-        let status = self.render_status(&t);
+        let perf = self.render_perf(&t, cx);
+        let strip = perf
+            .strip
+            .map(|text| self.perf_strip(&t, text, cx).into_any_element());
+        let status = self.render_status(&t, strip);
         div()
             .id("workstation")
             .key_context("Workstation")
@@ -758,7 +773,10 @@ impl Render for Workstation {
                     .relative()
                     .flex_1()
                     .min_h(px(0.))
-                    .child(self.dock.area.clone()),
+                    .children(perf.area_probe)
+                    .child(self.dock.area.clone())
+                    .children(perf.overlay)
+                    .children(perf.recorder),
             )
             .child(status)
     }
@@ -768,6 +786,8 @@ impl Render for Workstation {
 mod dock_tests;
 #[cfg(test)]
 mod input_tests;
+#[cfg(test)]
+mod perf_tests;
 #[cfg(test)]
 mod scene_tests;
 #[cfg(test)]
