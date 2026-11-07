@@ -14,8 +14,12 @@ import sys
 import threading
 import time
 
-ROOT = "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-129bf52a"
-WORK = "/tmp/perf-inv"
+HERE = os.path.dirname(os.path.abspath(__file__))
+# Repository root: derived from this file (drivers/ -> investigation-2026-11-06/ -> viewport-performance-results/
+# -> docs/ -> repo), or given explicitly with TESSEL_REPO_ROOT. Never a developer's absolute path.
+ROOT = os.path.abspath(os.environ.get("TESSEL_REPO_ROOT") or os.path.join(HERE, *[os.pardir] * 4))
+# Scratch directory (binaries, runtimes, projects, results). Throwaway; TESSEL_PERF_INV_WORK overrides it.
+WORK = os.environ.get("TESSEL_PERF_INV_WORK") or "/tmp/perf-inv"
 RELEASE = f"{WORK}/tessel-editor-instr"
 DEBUG = f"{WORK}/tessel-editor-instr-debug"
 class _RT(dict):
@@ -251,7 +255,19 @@ def wait_assets(editor, project_assets=None, timeout=600):
     return None
 
 
+def scrub_script():
+    """`scripts/seek-scrub-proof.py` of the repository at ROOT; a clear error when ROOT is not a checkout."""
+    path = os.path.join(ROOT, "scripts", "seek-scrub-proof.py")
+    if not os.path.isfile(path):
+        raise RuntimeError(
+            f"seek-scrub-proof.py not found at {path}: ROOT={ROOT} is not a tessel-editor checkout "
+            "(set TESSEL_REPO_ROOT to the repository root)"
+        )
+    return path
+
+
 def dump(path, obj):
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w") as handle:
         json.dump(obj, handle, indent=1, default=str)
 
