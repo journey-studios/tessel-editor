@@ -790,3 +790,5 @@ adaptou identidade/título, sem alterar rótulos nem handlers de desempenho.
 | BL144.13 | R2 | Eixos/SPZ/PLY e orientaçãoSHARP ainda sem prova do renderer | Pendente | BL144.2/BL143 | Coordenador | Render de corpus e fonte real, não só unitário |
 | BL144.14 | R2 | BFS/identidade por paint/tick sem medição | Pendente | BL144 | Coordenador | Medir custo e restringir trabalho repetido se necessário |
 | BL144.15 | R2 | Erro de snapshot no agendamento pode ser engolido | Pendente | BL144 | Coordenador | Falha observável e sem retry por tick silencioso |
+
+BL144.10: preempção de export retirada; apenas thumbnail explícita durante export retorna renderer_busy/retryable. Export após thumbnail ainda pode sobrepor renderers: PENDENTE. Cancelamento do usuário não é desfeito por export. Commit c72cbde foi tentativa sem alteração de árvore; esta correção é o diff efetivo, ainda sem testes Rust por disco.

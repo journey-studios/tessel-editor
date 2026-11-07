@@ -602,10 +602,11 @@ impl MediaHost {
         request: &Value,
     ) -> Result<Value, CommandError> {
         if self.export_running() {
-            return Ok(
-                json!({ "action": "media.thumbnails", "state": "waiting", "reused": false,
-                "assets": [], "reason": "a video export owns the renderer" }),
-            );
+            return Err(CommandError::new(
+                "renderer_busy",
+                "A video export owns the renderer; retry thumbnails after the export finishes",
+            )
+            .details(json!({ "retryable": true })));
         }
         if let Some((job, stamp)) = &self.thumb_job {
             if stamp.is_current(state) {
@@ -1671,28 +1672,6 @@ impl MediaHost {
         self.finish(state, request, id, slot)
     }
 
-    /// Give explicit exports priority without starting a second renderer over a thumbnail
-    /// frame that cannot be interrupted. The caller can retry once its cancellation finishes.
-    fn reserve_export_renderer(&mut self, state: &EditorState) -> Result<(), CommandError> {
-        if let Some((job, _)) = &self.thumb_job
-            && self
-                .registry
-                .get(job)
-                .is_some_and(|info| !info.state.is_final())
-        {
-            let _ = self.registry.cancel(job);
-            self.thumb_paused = Some(state.thumbnail_stamp());
-            return Err(CommandError::new(
-                "renderer_busy",
-                "The thumbnail renderer is stopping for this export; retry after its job finishes",
-            )
-            .details(json!({ "waiting_for": job, "retryable": true,
-                "deadline_seconds": thumbs::FRAME_TIMEOUT.as_secs() })));
-        }
-        self.thumb_paused = None;
-        Ok(())
-    }
-
     fn export_start(
         &mut self,
         state: &mut EditorState,
@@ -1706,7 +1685,6 @@ impl MediaHost {
             )
         })?;
         let (snapshot, export) = Self::export_request(state, request)?;
-        self.reserve_export_renderer(state)?;
         let (id, slot) = self.start(JobKind::VideoExport, "Export video", move |ctx| {
             let tools = tools.get()?;
             let mut renderer = factory()?;
@@ -1734,7 +1712,6 @@ impl MediaHost {
             )
         })?;
         let export = self.freeze_scene_export(state, request)?;
-        self.reserve_export_renderer(state)?;
         let tools = self.tools.clone();
         let (id, slot) = self.start(JobKind::VideoExport, "Export scene", move |ctx| {
             let tools = tools.get()?;
