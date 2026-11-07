@@ -8,6 +8,7 @@ proof promises about its own report (M3 of the PR #25 review): an empty run is n
 `ok: false` and never a previous `ok: true`, a failed run keeps its diagnostics, children are always ended, and
 `final_evidence` is only true for the complete, clean run.
 """
+import ast
 import contextlib
 import importlib.util
 import io
@@ -84,6 +85,24 @@ class RecorderTests(unittest.TestCase):
 # ---- the proof's own report ---------------------------------------------------------------------------------
 
 SOURCE = Path(__file__).with_name("scene-gizmo-proof.py").read_text()
+
+
+def check_names_made_by(source):
+    """The literal first arguments of every `check('...', ...)` call in `source`: the checks the scenario really makes.
+
+    A parse, not a text search: the manifest (`_COMMON`, `REQUIRED`) holds the very same strings, so searching the text
+    for a name finds it there even when no `check` call uses it any more (thread 4504060124 of the PR #25 review).
+    Only a call counts; a string that is merely written somewhere does not."""
+    return {
+        node.args[0].value
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "check"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+    }
 
 
 class FakeSurface:
@@ -296,10 +315,28 @@ class MainTests(unittest.TestCase):
         self.assertEqual((code, report["ok"], report["surfaces_agree_on_the_drag"]), (1, False, False))
 
     def test_every_required_check_is_a_check_the_script_really_makes(self):
+        made = check_names_made_by(SOURCE)
+        self.assertTrue(made, "the scan found no check at all: it would pass for any manifest")
+        self.assertTrue(all(proof.REQUIRED.values()), "an empty manifest would pass vacuously")
         for surface, names in proof.REQUIRED.items():
             for name in names:
                 with self.subTest(surface=surface, name=name):
-                    self.assertIn(f"'{name}'", SOURCE, "a renamed check would make every run fail, or vanish from the manifest")
+                    self.assertIn(name, made, "a renamed check would make every run fail, or vanish from the manifest")
+
+    def test_a_name_that_only_the_manifest_holds_is_not_a_check_the_script_makes(self):
+        source = "REQUIRED = {'headless': ('kept', 'renamed away')}\ndef scenario(check):\n    check('kept', True)\n    check('new name', True)\n"
+        self.assertEqual(check_names_made_by(source), {"kept", "new name"})
+        self.assertIn("'renamed away'", source, "the text search the old test used still finds it")
+        self.assertNotIn("renamed away", check_names_made_by(source))
+
+    def test_renaming_one_check_of_the_real_script_without_the_manifest_is_caught(self):
+        name = proof.REQUIRED["headless"][0]
+        call = f"check('{name}'"
+        self.assertEqual(SOURCE.count(call), 1, "the check this test renames is made exactly once")
+        renamed = SOURCE.replace(call, "check('a name nobody requires'")
+        self.assertIn(f"'{name}'", renamed, "the manifest still names it, so a text search would not notice")
+        self.assertNotIn(name, check_names_made_by(renamed))
+        self.assertIn(name, check_names_made_by(SOURCE))
 
 
 class SurfaceListTests(unittest.TestCase):
