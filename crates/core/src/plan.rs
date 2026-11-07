@@ -162,6 +162,10 @@ pub struct Layer {
     pub transform: Transform,
     pub opacity: f64,
     pub blend: String,
+    /// A layer above this one provably covers the whole canvas with opaque pixels, so nothing of
+    /// this layer can reach the picture: a renderer may skip preparing and drawing it. It is a
+    /// hint for speed only; ignoring it gives the same pixels. See [`mark_occluded`].
+    pub occluded: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -220,6 +224,11 @@ fn layer_json(layer: &Layer) -> Value {
             "rotation": transform.rotation, "crop": transform.crop,
         },
     });
+    if layer.occluded {
+        // Additive and only present when true, so a plan without a hidden layer is byte-for-byte
+        // the one an older runtime understands.
+        value["occluded"] = json!(true);
+    }
     match &layer.content {
         Content::Image => {}
         Content::Video {
@@ -442,6 +451,7 @@ impl Resolver<'_> {
             transform: Transform::default(),
             opacity: 1.0,
             blend: "normal".to_string(),
+            occluded: false,
         })
     }
 }
@@ -454,6 +464,41 @@ impl EditorState {
             PreviewIntent::Sequence => self.plan_sequence(request.at),
             PreviewIntent::Source { asset, time } => self.plan_source(asset, *time),
         }
+    }
+
+    /// Assets that clips *starting* in the `frames` frames after the playhead will need: what a
+    /// playback has to have loaded before it reaches them. Sequence previews only (a source
+    /// preview never moves); hidden tracks and clips already on screen are not listed, those are
+    /// the current frame's own requirements. Order is by clip start, without repeats; frames the
+    /// planner refuses are skipped. Never mutates the state.
+    pub fn assets_ahead(&self, frames: i64) -> Vec<Id> {
+        if !matches!(self.preview, PreviewIntent::Sequence) || frames <= 0 {
+            return Vec::new();
+        }
+        let timeline = &self.timeline;
+        let from = timeline.playhead;
+        let to = from.saturating_add(frames).min(timeline.length);
+        let mut starts: Vec<i64> = timeline
+            .tracks
+            .iter()
+            .filter(|track| track.kind == TrackKind::Video && !track.hidden)
+            .flat_map(|track| timeline.clips_on(&track.id))
+            .map(|clip| clip.start)
+            .filter(|start| *start > from && *start <= to)
+            .collect();
+        starts.sort_unstable();
+        starts.dedup();
+        let mut assets: Vec<Id> = Vec::new();
+        for start in starts {
+            if let Ok(plan) = self.plan_sequence(PlanTime::Frame(start)) {
+                for asset in plan.requires {
+                    if !assets.contains(&asset) {
+                        assets.push(asset);
+                    }
+                }
+            }
+        }
+        assets
     }
 
     fn plan_sequence(&self, at: PlanTime) -> Result<RenderPlan, CommandError> {
@@ -493,6 +538,7 @@ impl EditorState {
                 layers.push(layer);
             }
         }
+        self.mark_occluded(&mut layers, timeline.width, timeline.height);
         Ok(RenderPlan {
             intent: PreviewIntent::Sequence,
             width: timeline.width,
@@ -504,6 +550,86 @@ impl EditorState {
             requires: resolver.requires,
             warnings: resolver.warnings,
         })
+    }
+
+    /// Flags the layers that a layer above them hides completely (see [`Layer::occluded`]).
+    ///
+    /// Conservative on purpose: a layer only hides what is below when it is certain to be opaque
+    /// over the whole canvas. That is the case for a picture whose format has no alpha channel
+    /// (`mp4`/`m4v` video, `jpg`/`jpeg` still) drawn at full opacity with the `normal` blend,
+    /// without rotation, whose cropped, scaled and moved rectangle contains the canvas. A
+    /// scene, text, waveform, PNG or any other source is never assumed opaque. Layers are bottom
+    /// to top, so the scan goes from the top and stops looking for a cover once one is found.
+    fn mark_occluded(&self, layers: &mut [Layer], width: u32, height: u32) {
+        let (canvas_w, canvas_h) = (f64::from(width), f64::from(height));
+        let mut covered = false;
+        for layer in layers.iter_mut().rev() {
+            layer.occluded = covered;
+            if !covered && self.covers_canvas(layer, canvas_w, canvas_h) {
+                covered = true;
+            }
+        }
+    }
+
+    /// Whether `layer` paints opaque pixels over the whole `canvas_w × canvas_h` canvas. The
+    /// geometry mirrors the runtime compositor: the source is fitted ("contain") to the canvas,
+    /// multiplied by `scale`, cropped by percentages of its own size and moved by percentages of
+    /// the canvas, y growing downwards.
+    fn covers_canvas(&self, layer: &Layer, canvas_w: f64, canvas_h: f64) -> bool {
+        // NaN is not "fully opaque".
+        if layer.opacity.is_nan() || layer.opacity < 1.0 || layer.blend != "normal" {
+            return false;
+        }
+        let transform = &layer.transform;
+        if transform.rotation.rem_euclid(360.0) != 0.0 || !transform.scale.is_finite() {
+            return false;
+        }
+        let known_opaque = match layer.content {
+            Content::Video { .. } => &["mp4", "m4v"][..],
+            Content::Image => &["jpg", "jpeg"][..],
+            _ => return false,
+        };
+        let Some(asset) = layer
+            .asset
+            .and_then(|id| self.library.item(id))
+            .and_then(|item| item.asset.as_ref())
+        else {
+            return false;
+        };
+        let Source::File { path } = &asset.source else {
+            return false;
+        };
+        let extension = std::path::Path::new(path)
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(str::to_ascii_lowercase);
+        if !extension.is_some_and(|extension| known_opaque.contains(&extension.as_str())) {
+            return false;
+        }
+        let (Some(source_w), Some(source_h)) = (asset.meta.width, asset.meta.height) else {
+            return false;
+        };
+        let (source_w, source_h) = (f64::from(source_w), f64::from(source_h));
+        if source_w <= 0.0 || source_h <= 0.0 || canvas_w <= 0.0 || canvas_h <= 0.0 {
+            return false;
+        }
+        let fit = (canvas_w / source_w).min(canvas_h / source_h) * transform.scale;
+        let (layer_w, layer_h) = (source_w * fit, source_h * fit);
+        let [left, right, top, bottom] = transform.crop.map(|percent| percent / 100.0);
+        let (center_x, center_y) = (
+            transform.x / 100.0 * canvas_w,
+            -transform.y / 100.0 * canvas_h,
+        );
+        let x0 = center_x - layer_w / 2.0 + left * layer_w;
+        let x1 = center_x + layer_w / 2.0 - right * layer_w;
+        let y1 = center_y + layer_h / 2.0 - top * layer_h;
+        let y0 = center_y - layer_h / 2.0 + bottom * layer_h;
+        // Less than 1/255 of a pixel of slack: float noise on an exact fit must not defeat it.
+        let slack = 1e-3;
+        x0 <= -canvas_w / 2.0 + slack
+            && x1 >= canvas_w / 2.0 - slack
+            && y0 <= -canvas_h / 2.0 + slack
+            && y1 >= canvas_h / 2.0 - slack
     }
 
     fn clip_layer(
@@ -531,6 +657,7 @@ impl EditorState {
                     transform: Transform::default(),
                     opacity: 1.0,
                     blend: "normal".to_string(),
+                    occluded: false,
                 }
             }
             ClipKind::Audio => return Ok(None),
@@ -640,6 +767,7 @@ impl EditorState {
                 transform: Transform::default(),
                 opacity: 1.0,
                 blend: "normal".to_string(),
+                occluded: false,
             }
         } else {
             resolver.asset_layer(

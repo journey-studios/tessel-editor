@@ -46,7 +46,7 @@ from it (`monitor.viewport` → `last_frame.source.proxy_layers`), the refine re
 `TESSEL_VIEWPORT_INSPECT=1` the picture on screen after the drag is byte-identical to an explicit render. It also runs
 `seek-scrub-proof.py` per variant. `scripts/proxy-soak.py` repeats drags (and a policy flip) for `--seconds` and samples the
 editor's resident memory. Read-only opt-ins in the environment: `TESSEL_VIEWPORT_RESULT_CACHE=0` (splat result cache off),
-`TESSEL_VIEWPORT_SCENE_SAMPLES=0|2|4` (MSAA of scene targets). `./scripts/ui invoke monitor.preview.quality` toggles the policy;
+`TESSEL_VIEWPORT_SCENE_SAMPLES=0|2|4` (MSAA of scene targets; the monitor defaults to 2, `4` restores full quality). `./scripts/ui invoke monitor.preview.quality` toggles the policy;
 `op preview.policy` reads/sets it; `op media.preview_proxy` builds the proxy by hand; `op render.status` carries `ui`
 (`repaints`/`skipped`, OPT04).
 

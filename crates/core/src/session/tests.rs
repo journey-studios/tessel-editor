@@ -1261,3 +1261,165 @@ fn an_edit_or_an_explicit_frame_drops_the_pending_refine() {
         .unwrap();
     assert!(!rig.session.refine_pending());
 }
+
+/// `rig()` plus a second still on the same track, starting at `start`: a cut the playhead has not
+/// reached yet.
+fn rig_with_cut(start: i64) -> Rig {
+    let mut rig = rig();
+    let image = rig
+        .state
+        .library
+        .item("img")
+        .unwrap()
+        .asset
+        .clone()
+        .unwrap();
+    rig.state
+        .execute(Command::AddAsset {
+            id: Some("next".into()),
+            name: "Next".into(),
+            kind: MediaKind::Still,
+            asset: Box::new(image),
+            folder: None,
+        })
+        .unwrap();
+    rig.state
+        .execute(Command::AddClip {
+            id: Some("c2".into()),
+            name: None,
+            track: "v1".into(),
+            asset: Some("next".into()),
+            start,
+            duration: 24,
+            source_start: None,
+            text: None,
+            camera: None,
+            properties: vec![],
+        })
+        .unwrap();
+    rig
+}
+
+#[test]
+fn assets_ahead_lists_clips_that_start_inside_the_window_only() {
+    let mut rig = rig_with_cut(60);
+    assert!(
+        rig.state.assets_ahead(24).is_empty(),
+        "frame 60 is past 0 + 24"
+    );
+    assert_eq!(rig.state.assets_ahead(60), vec![Id::lit("next")]);
+    assert!(rig.state.assets_ahead(0).is_empty());
+    // A clip that is already on screen is the current frame's own business, not "ahead".
+    rig.state
+        .execute(Command::SetPlayhead {
+            frame: crate::Raw::Number(60.0),
+        })
+        .unwrap();
+    assert!(rig.state.assets_ahead(24).is_empty());
+    rig.state
+        .execute(Command::SetPlayhead {
+            frame: crate::Raw::Number(40.0),
+        })
+        .unwrap();
+    assert_eq!(rig.state.assets_ahead(24), vec![Id::lit("next")]);
+}
+
+#[test]
+fn assets_ahead_is_empty_for_a_source_preview() {
+    let mut rig = rig_with_cut(60);
+    rig.state.preview = PreviewIntent::Source {
+        asset: Id::lit("img"),
+        time: crate::time::Ratio::new(0, 1).unwrap(),
+    };
+    assert!(rig.state.assets_ahead(120).is_empty());
+}
+
+#[test]
+fn prefetch_loads_ahead_without_a_frame_and_the_frame_that_needs_it_does_not_load_again() {
+    let mut rig = rig_with_cut(60);
+    rig.session.capabilities().unwrap();
+    let ahead = vec![Id::lit("next")];
+    assert_eq!(rig.session.prefetch(&rig.state, &ahead), 1);
+    assert_eq!(
+        rig.session.prefetch(&rig.state, &ahead),
+        0,
+        "already loading"
+    );
+    assert_eq!(rig.script.borrow().loaded, vec![Id::lit("next")]);
+    assert_eq!(rig.session.status().label(), "idle", "no frame, no status");
+    assert_eq!(rig.session.revision(), 0);
+    assert_eq!(rig.session.stats.requests, 0);
+    assert_eq!(rig.session.stats.prefetched, 1);
+
+    // The answer arrives with nothing waiting for it.
+    rig.script.borrow_mut().events.push_back(ready("next"));
+    assert_eq!(
+        rig.session.pump(Duration::ZERO),
+        Some(SessionEvent::Progress)
+    );
+    assert_eq!(rig.session.loaded_assets(), vec![Id::lit("next")]);
+
+    // The frame at the cut finds it ready: only the first clip's asset is loaded, and the frame
+    // is submitted as soon as that one is ready.
+    let id = rig
+        .session
+        .request_frame(&rig.state, plan(&rig, 60), output(), vec![])
+        .unwrap();
+    assert_eq!(rig.script.borrow().loaded, vec![Id::lit("next")]);
+    assert_eq!(rig.script.borrow().submitted.last(), Some(&(id, 1)));
+}
+
+#[test]
+fn a_frame_waiting_on_a_prefetch_in_flight_does_not_start_a_second_load() {
+    let mut rig = rig_with_cut(60);
+    rig.session.capabilities().unwrap();
+    rig.session.prefetch(&rig.state, &[Id::lit("next")]);
+    let id = rig
+        .session
+        .request_frame(&rig.state, plan(&rig, 60), output(), vec![])
+        .unwrap();
+    assert_eq!(rig.session.status().label(), "loading");
+    assert_eq!(rig.script.borrow().loaded, vec![Id::lit("next")]);
+    rig.script
+        .borrow_mut()
+        .events
+        .extend([ready("next"), BackendEvent::FrameDone(frame(id, 1))]);
+    rig.session.pump(Duration::ZERO);
+    assert_eq!(rig.session.status().label(), "rendering");
+    assert!(matches!(
+        rig.session.pump(Duration::ZERO),
+        Some(SessionEvent::Frame(_))
+    ));
+}
+
+#[test]
+fn a_prefetch_is_best_effort_and_never_a_failure() {
+    let mut rig = rig_with_cut(60);
+    // Before the runtime announced itself there is nothing to load into.
+    assert_eq!(rig.session.prefetch(&rig.state, &[Id::lit("next")]), 0);
+    rig.session.capabilities().unwrap();
+    assert_eq!(
+        rig.session
+            .prefetch(&rig.state, &[Id::lit("not-in-the-library")]),
+        0
+    );
+    rig.script.borrow_mut().fail_load = Some(BackendError::new("asset_unreadable", "gone"));
+    assert_eq!(rig.session.prefetch(&rig.state, &[Id::lit("next")]), 0);
+    assert_eq!(rig.session.status().label(), "idle");
+    // A runtime that refuses the load later is ignored unless a frame needs the asset.
+    rig.script.borrow_mut().fail_load = None;
+    assert_eq!(rig.session.prefetch(&rig.state, &[Id::lit("next")]), 1);
+    rig.script
+        .borrow_mut()
+        .events
+        .push_back(BackendEvent::Asset {
+            id: Id::lit("next"),
+            status: AssetStatus::Failed(BackendError::new("decode_failed", "bad")),
+        });
+    assert_eq!(
+        rig.session.pump(Duration::ZERO),
+        Some(SessionEvent::Progress)
+    );
+    assert_eq!(rig.session.status().label(), "idle");
+    assert!(rig.session.loaded_assets().is_empty());
+}

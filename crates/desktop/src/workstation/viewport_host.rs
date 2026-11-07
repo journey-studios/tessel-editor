@@ -29,6 +29,7 @@ use tessel_editor_core::bridge::{BridgeBackend, HelloOptions, Transport};
 use tessel_editor_core::headless::{backend_error, frame_geometry, frame_report, plan_summary};
 use tessel_editor_core::ops::RenderFrame;
 use tessel_editor_core::plan::{PlanRequest, RenderPlan};
+use tessel_editor_core::preview::ProxyCoverage;
 use tessel_editor_core::session::{Preview, SessionEvent, Status, ViewportSession};
 use tessel_editor_core::state::EditorState;
 use tessel_editor_core::trace::TraceHandle;
@@ -63,9 +64,24 @@ pub const TRACE_ENV: &str = "TESSEL_VIEWPORT_TRACE";
 pub const RETAIN_ENV: &str = "TESSEL_VIEWPORT_RETAIN";
 /// Set to `0` to make every splat scene frame sort and draw again (rollback of the result cache).
 pub const RESULT_CACHE_ENV: &str = "TESSEL_VIEWPORT_RESULT_CACHE";
-/// `0`, `2` or `4` MSAA samples for scene targets. Unset keeps the runtime's 4 (OPT07 measured
-/// fewer samples as a real gain on large splat scenes but a visible edge-quality trade).
+/// `0`, `2` or `4` MSAA samples for scene targets of the monitor. Unset means
+/// [`MONITOR_SCENE_SAMPLES`]: the interactive preview trades 4× edge smoothing for speed (a 1.18 M
+/// splat take costs ~52 ms at 4× and ~14 ms at 2× on the reference machine, see
+/// `docs/viewport-performance-splat-project-investigation.md`). Set `4` to get the runtime's
+/// full-quality target back. Export and headless renders do not go through this host and keep 4.
 pub const SCENE_SAMPLES_ENV: &str = "TESSEL_VIEWPORT_SCENE_SAMPLES";
+/// How far ahead of the playhead playback loads the assets of clips that are about to start.
+pub const PREFETCH_SECONDS: i64 = 2;
+/// MSAA samples of scene targets in the monitor when [`SCENE_SAMPLES_ENV`] is not set.
+pub const MONITOR_SCENE_SAMPLES: u32 = 2;
+
+/// The sample count the monitor asks for: the env value when it is one of 0/2/4, else the default.
+pub fn monitor_scene_samples(value: Option<&str>) -> u32 {
+    value
+        .and_then(|value| value.parse().ok())
+        .filter(|samples| [0, 2, 4].contains(samples))
+        .unwrap_or(MONITOR_SCENE_SAMPLES)
+}
 
 /// Opt-ins read once when the host is created.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -87,10 +103,9 @@ impl HostOptions {
             result_cache: std::env::var(RESULT_CACHE_ENV)
                 .is_ok_and(|value| value == "0")
                 .then_some(false),
-            scene_samples: std::env::var(SCENE_SAMPLES_ENV)
-                .ok()
-                .and_then(|value| value.parse().ok())
-                .filter(|samples| [0, 2, 4].contains(samples)),
+            scene_samples: Some(monitor_scene_samples(
+                std::env::var(SCENE_SAMPLES_ENV).ok().as_deref(),
+            )),
         }
     }
 }
@@ -177,6 +192,9 @@ pub struct ViewportHost {
     failure: Option<BackendError>,
     last_frame: Option<FrameResult>,
     output_size: Option<(u32, u32)>,
+    /// Proxy coverage of the sequence's videos as of the last sync: while some are pending the
+    /// monitor draws them from full-size frames, which is much slower, and says so.
+    proxy_coverage: ProxyCoverage,
     /// Whether the monitor is on screen; reported, and used to skip work while hidden.
     pub on_screen: bool,
     /// Messages from the page that changed what the monitor shows (and so repainted the window)
@@ -233,6 +251,7 @@ impl ViewportHost {
             failure: None,
             last_frame: None,
             output_size: None,
+            proxy_coverage: ProxyCoverage::default(),
             on_screen: true,
             directed: directed::DirectedViewport::default(),
             ui_repaints: 0,
@@ -363,6 +382,7 @@ impl ViewportHost {
         let trace = self.session.trace().clone();
         let sync_started = trace.start();
         self.session.set_preview_policy(state.preview_policy);
+        self.proxy_coverage = state.preview_policy.coverage(state);
         let planned = trace.start();
         let plan = state.plan(&PlanRequest::of(state));
         if let Some(started) = planned {
@@ -407,6 +427,27 @@ impl ViewportHost {
         };
         self.request_preview(state, plan, output);
         trace.span("sync", sync_started);
+    }
+
+    /// While the playhead moves: starts loading what clips about to start will need, so a cut or
+    /// crossfade does not stall its first frame on the fetch + decode of a large splat (see
+    /// [`ViewportSession::prefetch`]). Looks [`PREFETCH_SECONDS`] ahead. Best effort, never an error;
+    /// does nothing for a directed scene, a source preview or a runtime that is not ready.
+    /// Returns how many loads started.
+    pub fn prefetch_ahead(&mut self, state: &EditorState) -> usize {
+        if self.directed_scene().is_some() || !self.is_ready() {
+            return 0;
+        }
+        let frames = state
+            .timeline
+            .rate
+            .nominal_fps()
+            .saturating_mul(PREFETCH_SECONDS);
+        let assets = state.assets_ahead(frames);
+        if assets.is_empty() {
+            return 0;
+        }
+        self.session.prefetch(state, &assets)
     }
 
     /// The monitor's own frame. A frame already rendering is left to finish when only the
@@ -763,22 +804,33 @@ impl ViewportHost {
                     Status::Loading(_) => "Carregando mídia…".to_string(),
                     Status::Rendering(_) => "Renderizando…".to_string(),
                     _ => match &self.last_frame {
-                        Some(frame) => format!(
-                            "Three.js · {}×{} · {:.0} ms{}",
-                            frame.width,
-                            frame.height,
-                            frame.render_ms,
-                            // Never hide that the picture is a preview copy.
-                            if frame.detail.proxy_layers() > 0 {
-                                " · proxy"
-                            } else {
-                                ""
-                            }
-                        ),
+                        Some(frame) => {
+                            format!(
+                                "Three.js · {}×{} · {:.0} ms{}",
+                                frame.width,
+                                frame.height,
+                                frame.render_ms,
+                                // Never hide that the picture is a preview copy.
+                                if frame.detail.proxy_layers() > 0 {
+                                    " · proxy"
+                                } else {
+                                    ""
+                                }
+                            ) + &self.proxy_note()
+                        }
                         None => "Aguardando quadro".to_string(),
                     },
                 }
             }
+        }
+    }
+
+    /// Why playback may be slower than the picture's cost suggests: videos of the sequence whose
+    /// preview proxy is still being built are drawn from their full-size frames.
+    fn proxy_note(&self) -> String {
+        match self.proxy_coverage.pending {
+            0 => String::new(),
+            pending => format!(" · gerando proxy ({pending})"),
         }
     }
 
@@ -828,6 +880,7 @@ impl ViewportHost {
             "capabilities": capabilities,
             "session": summary,
             "ui": json!({ "repaints": self.ui_repaints, "skipped": self.ui_skipped }),
+            "proxy_coverage": self.proxy_coverage.to_json(),
             "last_frame": self.last_frame.as_ref().map(FrameResult::to_json),
         })
     }

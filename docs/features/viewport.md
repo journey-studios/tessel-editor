@@ -141,9 +141,33 @@ no runtime). **Só vale para cena parada**; em movimento nada muda (ver relatór
   `render.status.ui` (`repaints`, `skipped`). Não é FPS.
 - **OPT03, medido e removido:** segurar o próximo quadro do scrub até `frame.presented` (rAF) não deu ganho (tabela no
   relatório); o código foi retirado. `frame.presented` continua sendo só telemetria do `TESSEL_VIEWPORT_TRACE=1`.
-- **OPT07, opt-in:** `hello.scene_samples` / `TESSEL_VIEWPORT_SCENE_SAMPLES=0|2|4` troca MSAA das cenas (padrão 4). Com 1M em
-  órbita o quadro drenado vai de 35 → 27 (2) → 21 ms (0) com arestas visivelmente piores: **não** é o padrão e o
-  frame final/export segue o configurado.
+- **OPT07 → padrão do monitor (PERF-1):** `hello.scene_samples` / `TESSEL_VIEWPORT_SCENE_SAMPLES=0|2|4` troca o MSAA das
+  cenas. O **runtime** continua em 4 sem a opção (headless, export e `tessel-render` não mudam), mas o **monitor** pede
+  **2** por padrão (`MONITOR_SCENE_SAMPLES`); `TESSEL_VIEWPORT_SCENE_SAMPLES=4` devolve a qualidade cheia ao monitor.
+  Medido (máquina quase quieta, projeto splat 1,18 M): take 52 → 14 ms, crossfade 106 → 74 ms
+  ([investigação](../viewport-performance-splat-project-investigation.md)). A qualidade de borda não foi comparada
+  pixel a pixel: é uma troca declarada, só do preview interativo.
+
+### Carregamento antecipado, camadas cobertas e proxy pendente (PERF-2/3/4)
+
+- **Carregamento antecipado (PERF-2).** Durante a reprodução, a cada avanço do playhead o monitor chama
+  `EditorState::assets_ahead(2 s)` (clipes que **começam** na janela, sem os já visíveis) e
+  `ViewportSession::prefetch`, que envia `asset.load` dos que ainda não estão carregados, sem pedido de quadro, sem mudar
+  `status` nem `revision`. Um corte para uma cena de 1,18 M de splats custava ~230–260 ms no primeiro quadro que a usava
+  (fetch + decode); agora a carga corre durante os quadros anteriores. É melhor esforço: arquivo ausente ou falha do
+  runtime não vira erro (quem precisa do asset reporta). Só reprodução: scrub/seek não pré-carregam. Contador:
+  `session.stats.prefetched`.
+- **Camadas cobertas (PERF-3).** O plano marca `occluded` (aditivo, só aparece quando `true`) nas camadas que uma camada
+  acima esconde por completo: a de cima precisa ser **comprovadamente opaca** (vídeo `mp4`/`m4v` ou foto `jpg`/`jpeg`; PNG,
+  `mov`, cena, texto e forma de onda nunca são presumidos opacos), opacidade 1, mistura `normal`, sem rotação, com o
+  retângulo (fit "contain" × escala, corte e deslocamento) contendo o canvas. O runtime não prepara nem desenha camada
+  `occluded` (`frame.done.source.occluded_layers`); os pixels são os de desenhá-la (teste
+  `runtime/test/occlusion-browser.test.mjs`). `requires` não muda (o asset continua carregado).
+- **Proxy pendente (PERF-4).** `PreviewPolicy::coverage(state)` conta, uma vez por asset, os vídeos da sequência com proxy
+  pronto, pendente (ausente ou velho) e sem frames decodificados ainda. Enquanto houver pendente, o cabeçalho do monitor
+  acrescenta ` · gerando proxy (N)` (sem proxy, 4 vídeos 720p custam 105 ms por quadro contra 31 ms com proxy);
+  `render.status` traz `proxy_coverage` e `preview.policy` traz `sequence_coverage`. Política `original` nunca conta
+  pendente. O proxy continua sendo construído pelo job automático existente; nada bloqueia o play.
 
 ### Retenção de GPU no runtime
 

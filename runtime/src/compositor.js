@@ -334,6 +334,7 @@ export class Compositor {
     sources.proxy_layers = 0;
     sources.original_layers = 0;
     sources.result_hits = 0;
+    sources.occluded_layers = 0;
     const frame = { plan, width, height, assets, keep, aborted, used, timings, quality, sources };
 
     assets.beginFrame();
@@ -347,6 +348,13 @@ export class Compositor {
             layer: layer.id,
             supported: BLEND_MODES,
           });
+        }
+        // The core proved a layer above covers the canvas with opaque pixels: nothing of this one
+        // can reach the picture, so it is not prepared (decoded, uploaded, sorted) nor drawn. The
+        // pixels are the ones of drawing it; `order` is kept so the layers above keep their slots.
+        if (layer.occluded === true) {
+          sources.occluded_layers += 1;
+          continue;
         }
         const prepareStarted = performance.now();
         const prepared = await this.prepareLayer(layer, { ...frame, order });

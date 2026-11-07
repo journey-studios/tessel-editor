@@ -85,6 +85,8 @@ pub struct Stats {
     pub proxy_attached: u64,
     pub proxy_failed: u64,
     pub refined: u64,
+    /// Loads started ahead of any frame that needs them (see [`ViewportSession::prefetch`]).
+    pub prefetched: u64,
 }
 
 /// How long the monitor must be still before a proxy picture is replaced by the original.
@@ -147,6 +149,9 @@ pub struct ViewportSession<B: RenderBackend> {
     active: Option<Active>,
     pending: Option<Pending>,
     retain: Option<usize>,
+    /// Assets the monitor asked the runtime to load ahead of any frame that needs them (see
+    /// [`ViewportSession::prefetch`]); the retention release keeps them like a required asset.
+    prefetched: HashSet<Id>,
     policy: PreviewPolicy,
     /// What the runtime holds as the proxy of each loaded asset (the descriptor it was sent).
     proxies: HashMap<Id, Value>,
@@ -183,6 +188,7 @@ impl<B: RenderBackend> ViewportSession<B> {
             active: None,
             pending: None,
             retain: None,
+            prefetched: HashSet::new(),
             policy: PreviewPolicy::default(),
             proxies: HashMap::new(),
             refused: HashMap::new(),
@@ -432,6 +438,49 @@ impl<B: RenderBackend> ViewportSession<B> {
         self.pending.is_some()
     }
 
+    /// Starts loading `assets` that are not loaded or loading, without a frame waiting for them.
+    ///
+    /// WHY: a cut or crossfade into a scene whose splats were never loaded stalls the first frame
+    /// that draws it for the whole fetch + decode (≈ 200 ms for a 1.18 M splat PLY, measured in
+    /// `docs/viewport-performance-splat-project-investigation.md`). The monitor calls this while
+    /// the playhead is moving with the assets the sequence will need a moment ahead, so the load
+    /// overlaps the frames before the cut. It is best effort and never an error: a missing or
+    /// unreadable asset is reported by the frame that actually needs it, and nothing here
+    /// changes the status, the revision or the request in flight. Returns how many loads started.
+    pub fn prefetch(&mut self, state: &EditorState, assets: &[Id]) -> usize {
+        if self.capabilities.is_none() {
+            return 0;
+        }
+        let mut started = 0;
+        for asset in assets {
+            if self.assets.contains_key(asset) {
+                continue;
+            }
+            let Some(item) = state.library.item(asset) else {
+                continue;
+            };
+            let Ok(descriptor) = AssetDescriptor::from_item(item, self.demo_dir.as_deref()) else {
+                continue;
+            };
+            if descriptor
+                .files()
+                .into_iter()
+                .any(|file| !std::path::Path::new(&file).is_file())
+            {
+                continue;
+            }
+            if self.backend.load_asset(&descriptor).is_err() {
+                continue;
+            }
+            self.assets.insert(*asset, Slot::Loading);
+            self.loaded_from.insert(*asset, decoded_key(state, asset));
+            self.prefetched.insert(*asset);
+            self.stats.prefetched += 1;
+            started += 1;
+        }
+        started
+    }
+
     fn start(
         &mut self,
         state: &EditorState,
@@ -470,8 +519,12 @@ impl<B: RenderBackend> ViewportSession<B> {
         if let Some(limit) = self.retain
             && self.loaded_assets().len() > limit
         {
-            self.release_except(&required.iter().copied().collect());
+            let mut keep: HashSet<Id> = required.iter().copied().collect();
+            keep.extend(self.prefetched.iter().copied());
+            self.release_except(&keep);
         }
+        // From here on a prefetched asset that this frame needs is an ordinary one.
+        self.prefetched.retain(|asset| !required.contains(asset));
         // Explicit requests keep today's behaviour byte for byte; only the monitor's own
         // frames may skip the readback, and only when nothing asked for pixels.
         let monitor = origin != Origin::Explicit;
@@ -698,6 +751,7 @@ impl<B: RenderBackend> ViewportSession<B> {
                 self.assets.clear();
                 self.proxies.clear();
                 self.refused.clear();
+                self.prefetched.clear();
                 let error = BackendError::new("context_lost", "The graphics context was lost");
                 SessionEvent::Failed(self.fail(error))
             }
@@ -707,6 +761,7 @@ impl<B: RenderBackend> ViewportSession<B> {
             }
             BackendEvent::Closed(reason) => {
                 self.assets.clear();
+                self.prefetched.clear();
                 self.proxies.clear();
                 self.refused.clear();
                 self.capabilities = None;
@@ -844,6 +899,7 @@ impl<B: RenderBackend> ViewportSession<B> {
             self.assets.remove(&id);
             self.proxies.remove(&id);
             self.refused.remove(&id);
+            self.prefetched.remove(&id);
         }
     }
 
@@ -862,6 +918,7 @@ impl<B: RenderBackend> ViewportSession<B> {
     pub fn shutdown(&mut self) {
         self.cancel();
         self.assets.clear();
+        self.prefetched.clear();
         self.proxies.clear();
         self.refused.clear();
         self.capabilities = None;
@@ -880,6 +937,7 @@ impl<B: RenderBackend> ViewportSession<B> {
                 "cancelled": self.stats.cancelled, "dropped_stale": self.stats.dropped_stale,
                 "coalesced": self.stats.coalesced, "proxy_attached": self.stats.proxy_attached,
                 "proxy_failed": self.stats.proxy_failed, "refined": self.stats.refined,
+                "prefetched": self.stats.prefetched,
             },
             "preview_policy": self.policy.to_json(), "refine_pending": self.refine.is_some(),
             "proxy_error": self.proxy_error.as_ref().map(|(id, error)| json!({ "asset": id, "error": error.to_json() })),
