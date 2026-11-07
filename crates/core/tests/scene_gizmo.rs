@@ -1227,6 +1227,61 @@ fn a_release_of_a_live_but_stale_drag_settles_the_slider_and_is_refused() {
     assert!(state.scene_interaction.gesture().is_none());
 }
 
+/// "Live" means the drag's OWN gesture is the open one, not that some gesture is open. A gesture
+/// another command opens after the drag's own was cancelled belongs to that command: the stored,
+/// dead drag must not act on it (a move is `no_drag`, a release is a `noop`), must not settle it
+/// and must not leave the document different. Pins the `gesture.id() == drag.gesture` comparison
+/// of `SceneInteraction::live_drag`: "any open gesture makes the drag live" fails here.
+#[test]
+fn a_dead_drag_does_not_act_on_a_gesture_opened_after_its_own_ended() {
+    let mut state = street();
+    select(&mut state, FIGURE);
+    let shown = overlay(&mut state);
+    let down = press(&mut state, at(&handle(&shown, "x")["to"])).unwrap();
+    let dead = down["gesture"].clone();
+    ok(
+        &mut state,
+        json!({"op":"scene.gesture.cancel","gesture":dead}),
+    );
+    assert!(state.scene_interaction.drag().is_some(), "stored, but dead");
+
+    let other = ok(
+        &mut state,
+        json!({"op":"scene.gesture.begin","scene":"street","targets":[FIGURE]}),
+    );
+    assert_ne!(other["gesture"], dead, "a new gesture, not the drag's");
+    assert!(
+        state.scene_interaction.live_drag().is_none(),
+        "the drag's gesture is not the open one"
+    );
+    let before = observable(&state);
+
+    assert_eq!(
+        err(
+            &mut state,
+            json!({"op":"scene.pointer.move","point":point(0.6, 0.5)})
+        )
+        .code,
+        "no_drag"
+    );
+    let up = ok(&mut state, json!({"op":"scene.pointer.up"}));
+    assert_eq!(up["noop"], true);
+    assert_eq!(up["dragging"], false);
+    assert_eq!(observable(&state), before, "nothing was committed");
+    assert_eq!(
+        ok(&mut state, json!({"op":"scene.gesture.status"}))["active"],
+        true,
+        "the other gesture is still open: the dead drag neither committed nor cancelled it"
+    );
+    assert_eq!(
+        state
+            .scene_interaction
+            .gesture()
+            .map(|gesture| gesture.id()),
+        other["gesture"].as_str(),
+    );
+}
+
 #[test]
 fn a_press_while_another_gesture_is_open_is_refused_on_a_handle() {
     let mut state = street();
