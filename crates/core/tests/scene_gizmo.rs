@@ -1187,6 +1187,55 @@ fn an_edit_under_a_drag_invalidates_it_and_never_applies_the_old_candidate() {
     assert!(state.scene_interaction.gesture().is_none());
 }
 
+/// The move on a dead drag is refused BEFORE the pointer is resolved: a pointer whose eye ray runs
+/// along the dragged axis resolves to nothing (`degenerate_pointer`, a quiet `applied: false`), and
+/// that quiet answer must not hide that the drag can never apply. Without the liveness check up
+/// front the dead drag answered `ok` here and the page believed its drag was still going.
+#[test]
+fn a_move_on_a_dead_drag_is_refused_even_where_the_pointer_resolves_to_nothing() {
+    let mut state = street();
+    let camera = camera(&mut state);
+    select(&mut state, FIGURE);
+    let shown = overlay(&mut state);
+    let opened = press(&mut state, at(&handle(&shown, "z")["to"])).unwrap();
+    assert_eq!(
+        opened["handle"], "z",
+        "the press on the z handle's tip opens a z drag"
+    );
+    // The pixel whose eye ray is parallel to world -Z (the vanishing point of the z axis).
+    let (u, v) = camera.project([
+        camera.position[0],
+        camera.position[1],
+        camera.position[2] - 10.0,
+    ]);
+    let parallel = point(u, v);
+    let live = ok(
+        &mut state,
+        json!({"op":"scene.pointer.move","point":parallel}),
+    );
+    assert_eq!(
+        (live["applied"].clone(), live["reason"].clone()),
+        (json!(false), json!("degenerate_pointer")),
+        "control: on a live drag that pixel is the quiet degenerate answer"
+    );
+
+    ok(
+        &mut state,
+        json!({"op":"scene.edit","scene":"street","ops":[
+            {"set": format!("{BACKDROP}/position"), "value": {"x": 0, "y": 0, "z": -3}}]}),
+    );
+    let after_edit = observable(&state);
+    let stale = err(
+        &mut state,
+        json!({"op":"scene.pointer.move","point":parallel}),
+    );
+    assert_eq!(stale.code, "gesture_invalidated");
+    assert_eq!(observable(&state), after_edit);
+    ok(&mut state, json!({"op":"scene.pointer.cancel"}));
+    assert!(state.scene_interaction.drag().is_none());
+    assert!(state.scene_interaction.gesture().is_none());
+}
+
 #[test]
 fn a_gesture_settled_elsewhere_kills_the_drag_without_reviving_it() {
     let mut state = street();
