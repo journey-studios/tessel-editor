@@ -689,3 +689,5 @@ BL019-F5: a auditoria de emendas usa `git log --full-history` (commit `4c61de2`,
 ### S10 — R5 (threads abertos em `42faa3f`)
 
 Os oito threads abertos depois do `42faa3f` estão tratados na R5 (BL019-F12, A16–A19) com prova em `3acc5d1`; a R5 **não** está aceita até a revisão independente final. As revisões 5810597994 e 5810614005 são comentários, não aprovação formal; a R4 revisada por elas continua com evidência em BL121 (`fd4bc8c`). Nada em BL019 global muda: continua Parcial.
+
+BL019-F12 — resíduo CodeRabbit `4500782365`: redação da atestação alinhada à declaração do operador, conferida contra ids de árvore e hashes registrados. Correção só de documentação; arquivos fixados, R5 e gates não mudam. Revisão independente `5810901178` sem achados acionáveis no head `2995aa8`; aceite final aguarda o check deste ajuste.

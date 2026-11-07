@@ -24,7 +24,7 @@ Diretório: `scripts/directed-scene-acceptance/`.
 | `verify.py` | Verificadores: máscara/centroide/IoU/cor em imagem real, marcador ausente, splat (centroide, cor, r50, ordem, composição e sonda do splat de trás), áudio decodificado por ffmpeg (início, correlação, ganho pela lei de canais, canais de saída, silêncio, bordas, janela com borda), pacote lido por `zipfile`/diretório e hashes declarados (nomes e hashes exatos). |
 | `controls.py` | Entradas **certas e erradas** para cada verificador, em paisagem e retrato, em **todos** os quadros de splat, no regime PNG e **depois da cadeia FFmpeg do preset** (libx264 medium/high/crf18/yuv420p/BT.709 limitado). Controle negativo só passa se um check **nomeado** falhar; exceção do verificador reprova o controle. |
 | `proof.py` | Driver: fases, relatório JSON, bloco `acceptance`, política de saída (0–4). Reusa só a infraestrutura (`harness.py`, trava de GPU, `JsonlSession`) de `scripts/directed-scene-proof`. |
-| `link.py` | Atestação do binário: SHA-256 do `tessel-render`, hashes do `runtime/dist`, ids de árvore Git de `crates/`, `runtime/`, `scripts/`, `Cargo.*` e do toolchain. Atesta, por quem rodou `create` logo após o build, que o binário e o bundle no disco são os registrados para as entradas deste head e que nada mudou desde então; **não** prova que o build usou essas entradas, **nem** é prova de build reproduzível. A guarda de mtime do `create` e do `proof.py` olha só as entradas reais do binário (`crates/render` e suas dependências de caminho, `Cargo.*`, toolchain); os ids de árvore atestados continuam cobrindo todo `crates/`, `runtime/` e `scripts/`. |
+| `link.py` | Atestação do binário: SHA-256 do `tessel-render`, hashes do `runtime/dist`, ids de árvore Git de `crates/`, `runtime/`, `scripts/`, `Cargo.*` e do toolchain. Registra a declaração do operador logo após o build e confere os ids de árvore e os hashes registrados do binário e do bundle; **não** prova que o build usou essas entradas, **nem** é prova de build reproduzível. A guarda de mtime do `create` e do `proof.py` olha só as entradas reais do binário (`crates/render` e suas dependências de caminho, `Cargo.*`, toolchain); os ids de árvore atestados continuam cobrindo todo `crates/`, `runtime/` e `scripts/`. |
 | `sensitivity.py` | Calcula **só pelo modelo** o que cada regra enxerga e não enxerga (fator de tamanho de splat por regime, separação do splat de trás, menor erro de FOV, menor deslocamento de áudio) e quanto de cada tolerância a própria imagem correta do modelo consome. É a base das justificativas; não é aprovação dos números. |
 | `proof.spec.py` | 121 testes do próprio harness (sem GPU/Chrome), incluindo a cola das fases dependentes contra *fakes*, o ledger contra o Git (inclusive um clone raso real), o escopo da guarda de mtime em um mini-repositório real, o `main` real sem FFmpeg/Node e a ausência de `__pycache__` numa cópia, e mutações que o teste precisa pegar. |
 | `history/A1-audio-window/` | Registro imutável do estado anterior à emenda A1 e do FAIL histórico que a motivou. |
@@ -42,8 +42,8 @@ python3 scripts/directed-scene-proof/with-gpu-lock.py \
   python3 scripts/directed-scene-acceptance/proof.py --gpu-lock-held --report /tmp/s10.json
 ```
 
-Pré-requisitos das fases com imagem: `./scripts/runtime setup`, `tessel-render` compilado **e atestado para as entradas deste head**
-(`link.py create`, feito por quem construiu o binário), Chrome/SwiftShader e ffmpeg/ffprobe. Uma fase sem pré-requisito sai BLOCKED, nunca pass. Um binário
+Pré-requisitos das fases com imagem: `./scripts/runtime setup`, `tessel-render` compilado **e atestado**
+(`link.py create`, declaração do operador conferida contra os ids de árvore e os hashes registrados), Chrome/SwiftShader e ffmpeg/ffprobe. Uma fase sem pré-requisito sai BLOCKED, nunca pass. Um binário
 mais velho que as fontes, **sem atestação válida** ou atestado para outro head também é BLOCKED, a menos que se passe
 `--allow-stale-binary`; nesse caso (e com árvore suja) o resultado é só informativo (saída 4) e o relatório diz por quê.
 `--bin-render` aponta para uma cópia do binário (útil quando o cache de alvos do Cargo pode ser descartado no meio da
@@ -309,7 +309,7 @@ e hashes. Menor reserva de disco medida: 22,16 GiB (piso 12, entrada 16).
 | Livro (`verify_ledger`) e `link.py check` | todos os checks verdes; R5 e as 7 versões commitadas do livro são prefixo uma da outra |
 | **Harness completo vivo**, sem `--allow-stale-binary`, 24 fases | **24/24 PASS**, saída 0, `acceptance.acceptable = true`, 231 s, 2673 checks (`tolerances_frozen` 33, o resto como na R4: `corpus` 44, `camera_export` 301, `audio_export` 270, `full_av` 432…) |
 
-Binário atestado com `link.py create` pelo operador que o construiu, para as entradas registradas (ids de árvore e hashes de `runtime/dist`, `runtime.js` `8ee1c496…a0e9e27`, `index.html`
+Binário atestado com `link.py create` pelo operador logo após o build, com as entradas registradas (ids de árvore e hashes de `runtime/dist`, `runtime.js` `8ee1c496…a0e9e27`, `index.html`
 `707fd90f…c484a6`); **não** é prova de qual build o gerou nem de build reproduzível.
 
 **Tentativa abortada preservada (não conta como PASS)**: no head `ff15c8d` a mutação R5-M11 (`ensure_tools` sem bloquear) travou por dez
