@@ -363,6 +363,9 @@ pub struct FrameContext {
     pub quality: Option<String>,
     /// Layers drawn from a preview proxy (0 when the runtime does not say).
     pub proxy_layers: u64,
+    /// Splat layers painted in the draw order of an earlier camera (BL130): the picture is not the
+    /// exact one until the monitor's refine replaces it (0 when the runtime does not say).
+    pub stale_sort_layers: u64,
     /// MSAA samples of the scene targets (`source.scene_samples`, from runtimes that report it).
     pub msaa: Option<u64>,
     /// Scene layers drawn with fewer samples than the project asks for.
@@ -387,6 +390,7 @@ impl FrameContext {
                 .and_then(|source| source["quality"].as_str())
                 .map(String::from),
             proxy_layers: frame.detail.proxy_layers(),
+            stale_sort_layers: frame.detail.stale_sort_layers(),
             msaa: number(source, "scene_samples"),
             reduced_scene_layers: number(source, "reduced_scene_layers"),
             render_ms: frame.render_ms,
@@ -395,13 +399,19 @@ impl FrameContext {
         }
     }
 
-    /// `preview`, `original` or `preview + proxy` (a proxy picture is never presented as the original).
+    /// `preview`, `original`, `preview + proxy`, `preview + sort`...: a proxy picture or one with
+    /// splats in an earlier camera's order is never presented as the final quality.
     pub fn quality_label(&self) -> String {
-        match (self.quality.as_deref(), self.proxy_layers > 0) {
+        let base = match (self.quality.as_deref(), self.proxy_layers > 0) {
             (Some(quality), true) => format!("{quality} + proxy"),
             (Some(quality), false) => quality.to_string(),
             (None, true) => "proxy".to_string(),
             (None, false) => "qualidade indisponível".to_string(),
+        };
+        if self.stale_sort_layers > 0 {
+            format!("{base} + sort")
+        } else {
+            base
         }
     }
 }
@@ -711,6 +721,7 @@ impl Readout {
             "frame": frame.map(|frame| json!({
                 "width": frame.width, "height": frame.height,
                 "quality": frame.quality, "proxy_layers": frame.proxy_layers,
+                "stale_sort_layers": frame.stale_sort_layers,
                 "msaa": frame.msaa, "reduced_scene_layers": frame.reduced_scene_layers,
             })),
             "memory": {
@@ -1316,6 +1327,25 @@ mod tests {
         );
         assert_eq!(context.reduced_scene_layers, Some(2));
         assert_eq!(context.texture_bytes, Some(8_388_608));
+
+        assert_eq!(context.stale_sort_layers, 0);
+
+        // Splats in an earlier camera's order: the label says so, with or without a proxy.
+        let sorted = FrameContext::of(&done(
+            json!({ "quality": "original", "stale_sort_layers": 2 }),
+            Value::Null,
+        ));
+        assert_eq!(sorted.stale_sort_layers, 2);
+        assert_eq!(sorted.quality_label(), "original + sort");
+        let both = FrameContext::of(&done(
+            json!({ "quality": "preview", "proxy_layers": 1, "stale_sort_layers": 1 }),
+            Value::Null,
+        ));
+        assert_eq!(both.quality_label(), "preview + proxy + sort");
+        assert_eq!(
+            readout(Some(sorted), None).to_json()["frame"]["stale_sort_layers"],
+            2
+        );
 
         // A runtime without the newer fields: unknown, not zero.
         let older = FrameContext::of(&done(json!({ "quality": "original" }), Value::Null));

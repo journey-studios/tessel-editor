@@ -1500,6 +1500,92 @@ fn the_meter_counts_pictures_the_host_accepted_and_nothing_else() {
 }
 
 #[test]
+fn the_meter_reads_a_stale_sort_picture_and_its_exact_refine_as_two_pictures_of_one_frame() {
+    use tessel_editor_core::perf::{FrameContext, LossReading};
+    let state = titled_state("Um");
+    let (mut host, meter) = metered("meter-sort-refine", &state, true);
+    // Playback is running from frame 0, with nothing known to be on screen yet.
+    meter
+        .borrow_mut()
+        .playback_started(Duration::ZERO, 0, host.presented_frame());
+    let first = sent(&mut host).remove(0);
+    from_page(
+        &mut host,
+        &state,
+        frame_done_with_source(
+            first["id"].as_u64().unwrap(),
+            first["revision"].as_u64().unwrap(),
+            json!({"quality":"preview","proxy_layers":0,"original_layers":0,"result_hits":0,
+                "scene_samples":4,"reduced_scene_layers":0,"stale_sort_layers":1}),
+        ),
+    );
+    assert_eq!(meter.borrow().samples(), (0, 1));
+    assert_eq!(host.presented_frame(), Some(0));
+    let preview = FrameContext::of(host.last_frame().unwrap());
+    assert_eq!(preview.stale_sort_layers, 1);
+    assert_eq!(
+        preview.quality_label(),
+        "preview + sort",
+        "the card never shows a reused sort order as the final picture"
+    );
+
+    // The refine of the same frame is a second accepted picture: the monitor rate counts it, the
+    // dropped-frame count does not (frame 0 was presented once, and nothing was skipped).
+    assert!(host.refine(&state, Instant::now() + Duration::from_millis(400)));
+    let refine = sent(&mut host).remove(0);
+    from_page(
+        &mut host,
+        &state,
+        frame_done_with_source(
+            refine["id"].as_u64().unwrap(),
+            refine["revision"].as_u64().unwrap(),
+            json!({"quality":"original","proxy_layers":0,"original_layers":0,"result_hits":0,
+                "scene_samples":4,"reduced_scene_layers":0,"stale_sort_layers":0}),
+        ),
+    );
+    assert_eq!(meter.borrow().samples(), (0, 2), "the refine is a picture");
+    let exact = FrameContext::of(host.last_frame().unwrap());
+    assert_eq!(exact.quality_label(), "original");
+    match meter
+        .borrow()
+        .readout(Duration::from_secs(1), true, None, None)
+        .loss
+    {
+        LossReading::Live {
+            presented_frames,
+            lost,
+            span_frames,
+            ..
+        } => assert_eq!(
+            (presented_frames, lost, span_frames),
+            (1, 0, 1),
+            "the refine of a frame is not a second presented frame"
+        ),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_stale_answer_after_a_refine_is_not_a_picture_for_the_meter() {
+    let state = titled_state("Um");
+    let (mut host, meter) = metered("meter-stale-refine", &state, true);
+    let first = sent(&mut host).remove(0);
+    let (first_id, first_revision) = (
+        first["id"].as_u64().unwrap(),
+        first["revision"].as_u64().unwrap(),
+    );
+    from_page(&mut host, &state, frame_done(first_id, first_revision));
+    assert_eq!(meter.borrow().samples(), (0, 1));
+    // A late copy of the same answer (the request is no longer in flight) is ignored.
+    from_page(&mut host, &state, frame_done(first_id, first_revision));
+    assert_eq!(
+        meter.borrow().samples(),
+        (0, 1),
+        "a picture the host did not accept is not counted"
+    );
+}
+
+#[test]
 fn a_hidden_meter_keeps_no_samples_from_the_monitor() {
     let state = titled_state("Um");
     let (mut host, meter) = metered("meter-off", &state, false);
