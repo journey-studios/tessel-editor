@@ -1,3 +1,11 @@
+####################################################################################################
+#### ANNOTATIONS (added during the review of PR #14). Lines starting with '####' are NOT raw output;
+#### every other line is the unchanged raw output of the run. Validity per section:
+####   sweep_all, sweep2, scrub-*, ui-*: no failure marker (OP FAIL, 'scrub failed', Traceback, DISK LOW); this review did not re-validate their numbers.
+####   vid-b.log : INVALID (every clip.add failed; empty timeline measured) and ABORTED (DISK LOW).
+####   vid-c.log : valid for N=2 and N=4 (no failed op); ABORTED by DISK LOW after N=4, later counts not measured.
+#### Details are marked inside each section. No valid single-video (N=1) measurement exists in this log.
+####################################################################################################
 ### sweep_all.log
 sw-msaa0 40:60 0 gpu 42.1 49 single: n=74/74 drop=0.0% render p50/p95=14.0/17 r+d p50=24 iv p50/p95=44.96/48.98
 sw-msaa0 40:60 1 gpu 36.8 47 single: n=75/75 drop=0.0% render p50/p95=14/21 r+d p50=23 iv p50/p95=44.86/49.03
@@ -114,6 +122,13 @@ ui-debug play-sample {"rtt_ms": null, "cpu_pct_avg_incl_setup": 24.5, "gpui_rend
 ui-debug play-probe {"rtt_ms": {"n": 62, "mean": 13.52, "p50": 13.93, "p95": 26.26, "p99": 31.06, "max": 31.46}, "cpu_pct_avg_incl_setup": 59.7, "gpui_renders_per_s": 23.5, "gpui_render_interval_ms": {"n": 114, "mean": 42.98, "p50": 41.68, "p95": 45.9, "p99": 54.42, "max": 124.88}, "gpui_tick_ms": {"n": 114, "mean": 0.202, "p50": 0.208, "p95": 0.233, "p99": 0.252, "max": 0.401}, "gpui_render_fn_ms": {"n": 115, "mean": 0.06, "p50": 0.057, "p95": 0.08, "p99": 0.111, "max": 0.126}, "playback": {"elapsed_ms": 4727.6206250000005, "frame": 152, "lag_frames": 0, "skipped_frames": 1}}
 ui-debug xfade-probe {"rtt_ms": {"n": 50, "mean": 13.87, "p50": 15.41, "p95": 29.79, "p99": 31.76, "max": 31.76}, "cpu_pct_avg_incl_setup": 55.6, "gpui_renders_per_s": 22.8, "gpui_render_interval_ms": {"n": 79, "mean": 44.36, "p50": 41.67, "p95": 41.93, "p99": 54.2, "max": 225.04}, "gpui_tick_ms": {"n": 78, "mean": 0.2, "p50": 0.216, "p95": 0.267, "p99": 0.389, "max": 0.408}, "gpui_render_fn_ms": {"n": 80, "mean": 0.063, "p50": 0.062, "p95": 0.077, "p99": 0.1, "max": 0.167}, "playback": {"elapsed_ms": 3236.4495, "frame": 246, "lag_frames": 0, "skipped_frames": 6}}
 ### vid-b.log
+#### >>> vid-b: INVALID RUN. DO NOT READ 'vid-b N' AS A RESULT FOR N VIDEO CLIPS. <<<
+#### Every clip.add below (vc0..vc3) was rejected with invalid_value because the driver then sent source_start as a
+#### string ('0.0', '1.2', ...); the driver printed 'OP FAIL' and kept measuring. The 'vid-b 1' and 'vid-b 2' rows
+#### therefore measured a timeline WITHOUT video clips (consistent with the 0/1 ms header), not one and two
+#### clips. The committed drivers/s_video.py sends source_start as {num,den} and now stops on any rejected op.
+#### The run was also ABORTED: it ends at 'DISK LOW' before counts 3-4 (no N=4 row exists), after clip.add vc2/vc3 failed.
+#### The report's former N=1 rows came from these rows and were withdrawn; N=1 is NOT MEASURED (backlog BL136).
 imported True 1.2 s
 assets ['seg0', 'seg1', 'seg2', 'seg3'] [{"id": "seg0", "name": "seg0.mp4", "kind": "video", "state": "ok", "storage": "managed", "path": "/tmp/perf-inv/home-vid-b/project/media/cf7f605f3f612469e2ccc9e3a1f51a9154b6751aafb0a2b3ac667327240bd23b/seg0.mp4", "hash": "cf7f605f3f612469e2ccc9e3a1f51a9154b6751aafb0a2b3ac667327240bd23b", "size": 926210}]
 OP FAIL {'op': 'clip.add', 'id': 'vc0', 'track': 'vt0', 'asset': 'seg0', 'start': 0, 'duration': 104, 'source_start': '0.0'} {"ok": false, "version": 1, "error": {"code": "invalid_value", "message": "`source_start` is seconds: an integer or {\"num\":1,\"den\":24}", "details": {"expected": {"format": {"num": 1, "den": 24}}}}, "_ms": 0.23145799059420824}
@@ -129,7 +144,11 @@ vid-b 2 auto 1 shown 108 / 108 drop 0.0 hdr 0 1 iv 44.24 48.72 gpu 35.1 skipped 
 OP FAIL {'op': 'clip.add', 'id': 'vc2', 'track': 'vt2', 'asset': 'seg2', 'start': 0, 'duration': 104, 'source_start': '0.8'} {"ok": false, "version": 1, "error": {"code": "invalid_value", "message": "`source_start` is seconds: an integer or {\"num\":1,\"den\":24}", "details": {"expected": {"format": {"num": 1, "den": 24}}}}, "_ms": 0.149500003317371}
 OP FAIL {'op': 'clip.add', 'id': 'vc3', 'track': 'vt3', 'asset': 'seg3', 'start': 0, 'duration': 104, 'source_start': '0.4'} {"ok": false, "version": 1, "error": {"code": "invalid_value", "message": "`source_start` is seconds: an integer or {\"num\":1,\"den\":24}", "details": {"expected": {"format": {"num": 1, "den": 24}}}}, "_ms": 0.1275000104214996}
 DISK LOW 0.9534187316894531
+#### <<< end of the INVALID/ABORTED vid-b section >>>
 ### vid-c.log
+#### >>> vid-c: VALID for N=2 and N=4 (assets seg0/seg1 imported, no OP FAIL), but ABORTED. <<<
+#### The log ends at 'DISK LOW 0.453 GiB' right after the N=4 rows: the next count was not measured, so N=8 is NOT
+#### MEASURED (report section 8). The earlier vid-b disk-low abort shows the host was short on disk during both runs.
 imported True 0.6 s
 assets ['seg0', 'seg1'] [{"id": "seg0", "name": "seg0.mp4", "kind": "video", "state": "ok", "storage": "managed", "path": "/tmp/perf-inv/home-vid-c/project/media/cf7f605f3f612469e2ccc9e3a1f51a9154b6751aafb0a2b3ac667327240bd23b/seg0.mp4", "hash": "cf7f605f3f612469e2ccc9e3a1f51a9154b6751aafb0a2b3ac667327240bd23b", "size": 926210}]
 vid-c 2 original 0 shown 98 / 109 drop 10.1 hdr 44 54.0 iv 45.9 56.65 gpu 22.9 skipped 0
@@ -141,3 +160,4 @@ vid-c 4 original 1 shown 50 / 109 drop 54.1 hdr 83 146 iv 89.52 148.18 gpu 24.0 
 vid-c 4 auto 0 shown 106 / 111 drop 4.5 hdr 20 61 iv 42.06 80.7 gpu 26.1 skipped 0
 vid-c 4 auto 1 shown 104 / 109 drop 4.6 hdr 18 68 iv 42.13 95.54 gpu 26.1 skipped 0
 DISK LOW 0.45318603515625
+#### <<< end of vid-c: ABORTED by DISK LOW after N=4 (see the annotation at the top of the section) >>>

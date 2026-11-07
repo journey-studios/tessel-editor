@@ -9,6 +9,12 @@ o `SceneRig`. Com vídeos, o gargalo é outro (decodificação de quadro sob dem
 Duas alavancas medidas, ambas de preview, tiram a reprodução e o scrub do projeto de 18 fps / 10 fps
 para tempo real: **MSAA 0 durante movimento** e **ordenação de splats sem espera durante movimento**.
 
+**Estado posterior (revisão da PR #14).** Este relatório é de investigação e foi medido numa base anterior a `5ebb855`.
+Depois dele, a frente MSAA foi integrada (BL129, PR #17) e a malha compartilhada de efeitos também (BL131, PR #15); a ordenação
+sem espera (BL130) está na PR #19, ainda aberta. As tabelas **não** foram refeitas: cada frente re-mede antes de afirmar ganho.
+Na revisão, as linhas de **um vídeo (N = 1)** foram retiradas (vinham de uma execução inválida, ver as seções 5 e 8)
+e os drivers passaram a falhar de forma explícita (seção 11).
+
 Dados brutos, drivers e patch de instrumentação (não aplicado ao código) estão em
 [`viewport-performance-results/investigation-2026-11-06/`](viewport-performance-results/investigation-2026-11-06/).
 Contexto anterior: [viewport-performance-backlog.md](viewport-performance-backlog.md),
@@ -153,12 +159,15 @@ Com MSAA 4 o scrub entrega ~19 quadros/s com 3 quadros de atraso (≈ 125 ms) e 
 
 Projeto novo (`project.create` + `media.import`) com N trilhas de vídeo opacas, tela cheia, sobrepostas, sobre 2 fontes MP4
 H.264 de 6 s (offsets de fonte diferentes por trilha), 96 quadros reproduzidos, 2 repetições. `original` e `auto` (proxy) via
-`op preview.policy`. GPU média 22–36 %: **a GPU não é o gargalo aqui**.
+`op preview.policy`. GPU média 22–37 % (execução `vid-c`): **a GPU não é o gargalo aqui**.
+
+**Fonte das linhas:** só a execução `vid-c` (2 fontes, sem op rejeitada) sustenta as linhas de N = 2 e N = 4. A execução `vid-b`
+é **inválida** (todos os `clip.add` foram rejeitados e a linha de tempo estava vazia) e **abortada** por disco; `vid-c` também
+terminou abortada por disco depois de N = 4. Ambas estão marcadas em `raw-run-logs.txt`.
 
 | N vídeos | Política | Quadros perdidos | Intervalo p50 / p95 (ms) | Cabeçalho p50 / p95 (ms) |
 |---|---|---|---|---|
-| 1 | original | 0 % | 44,2 / 45,7 | 0 / 1 |
-| 1 | auto | 0 % | 44,0 / 45,8 | 0 / 1 |
+| 1 | — | **não medido** (as linhas anteriores vinham da execução `vid-b` inválida, sem clipes na linha de tempo) | — | — |
 | 2 | original | 0–10 % | 43,3–45,9 / 54–57 | 33–44 / 44–54 |
 | 2 | auto | 0 % | 43–44 / 50–54 | 13–14 / 21–32 |
 | 4 | original | **54–67 %** | 90–128 / 148–188 | **83–125 / 146–185** |
@@ -172,7 +181,8 @@ H.264 de 6 s (offsets de fonte diferentes por trilha), 96 quadros reproduzidos, 
 - Causa provável (leitura de código, não medida por etapa): `AssetStore.frameTexture` (`runtime/src/assets.js`) busca e
   decodifica cada quadro (`fetch` + `createImageBitmap`) **sob demanda no caminho do desenho, sem read-ahead**; cada camada paga
   4–10 ms de preparo (`layers[].ms`, p50 4) e a composição 5–9 ms. Não separei decodificação de upload por política.
-- Limites: 8 vídeos e o cenário misto (splat + vídeo) **não foram medidos** (seção 8).
+- Limites: N = 1, 8 vídeos e o cenário misto (splat + vídeo) **não foram medidos** (seção 8). Sem N = 1 válido não há linha de base de
+  "um vídeo" nem curva N = 1→4: o escalonamento acima só compara N = 2 e N = 4.
 
 ## 6. Fluidez da UI GPUI durante a reprodução (separada do monitor)
 
@@ -227,6 +237,9 @@ Release, projeto `tessel-splat-h`, instrumentado.
 
 ## 8. O que não foi medido, e por quê
 
+- **Vídeo com N = 1 (linha de base):** a única execução com N = 1 (`vid-b`) mediu uma linha de tempo vazia porque todo `clip.add` foi
+  rejeitado (`source_start` enviado como texto); foi preservada no log bruto com marcação e **retirada** das tabelas. Precisa de
+  nova execução com o driver corrigido (BL136); não foi repetida aqui porque a revisão corrigiu os drivers, não refez a medição pesada.
 - **Vídeo com N = 8 e cenário misto (splat + 2–4 vídeos):** o disco do host chegou a < 0,5 GiB livres (concorrência de outros processos);
   o job de decodificação travou em `media_preparing` e a execução foi abortada. Sem esses dois, a interação splat × vídeo
   (o caso mais provável do usuário) é **hipótese**.
@@ -264,7 +277,9 @@ elevar a resolução do preview (piora), tocar a cadência de `cx.notify()` (UI 
 
 ## 10. Linhas propostas para `docs/backlog.md` (IDs a definir pelo coordenador)
 
-Nada foi editado em `docs/backlog.md`. Fonte comum: este relatório.
+Proposta original, mantida como histórico. Os IDs reais estão registrados em `docs/backlog.md` (seção *Performance de preview*): BLxxx-1 → BL129,
+BLxxx-2 → BL130 (filho de BL031), BLxxx-3 → BL131, BLxxx-4 → BL132, BLxxx-5 → BL133, BLxxx-6 → BL136, BLxxx-7 → BL135, BLxxx-8 → BL137,
+BLxxx-9 → BL134, BLxxx-10 → BL136. Fonte comum: este relatório.
 
 | ID | Item | Estado proposto | Aceite |
 |---|---|---|---|
@@ -286,5 +301,14 @@ Nada foi editado em `docs/backlog.md`. Fonte comum: este relatório.
   (`TESSEL_PERF_PREVIEW_LONG`, modo *stale* e parâmetros do Spark via `globalThis.__TESSEL_EXP`).
   O modo *drain* é uma leitura 1×1 após o `send` (`DRAIN`).
 - `drivers/`: Python de apoio (`drv.py` abre o editor com `HOME` isolado e fala com o socket; `s_sweep.py` reprodução, `s_scrub.py` scrub,
-  `s_ui.py` UI, `s_video.py` vídeos). Caminhos `/tmp/perf-inv` fixos: são descartáveis, não parte do produto.
-- `raw-run-logs.txt`: saída bruta das execuções citadas acima.
+  `s_ui.py` UI, `s_video.py` vídeos, `mainthread.py` resumo da thread principal de um `sample`). A raiz do repositório vem do próprio
+  arquivo (`TESSEL_REPO_ROOT` a sobrescreve); o diretório de trabalho é `/tmp/perf-inv` (descartável, não parte do produto) ou
+  `TESSEL_PERF_INV_WORK`. **Contrato de falha** (revisão da PR #14): op rejeitada, espera que estoura (import, prontidão), `playback.start`
+  rejeitado, reprodução que nunca toca ou que não desenha, prova de scrub com saída não zero ou sem arquivo novo, cabeçalho de thread
+  principal ausente: cada um vira erro registrado em `errors` (com a resposta do editor), **nenhuma linha medida é gravada** para o que
+  não aconteceu, o amostrador de GPU e o editor são sempre parados e o arquivo parcial é salvo com `status` = `complete` | `partial` |
+  `failed` | `empty`; o código de saída só é 0 em `complete`. O arquivo de saída do scrub é apagado antes de cada prova.
+  Testes sem editor, GPU nem Rust: `python3 drivers/drivers.spec.py` (46 casos, inclui mutação de cada guarda).
+  Os drivers corrigidos **não** foram usados para refazer medições; as tabelas acima vêm dos drivers anteriores.
+- `raw-run-logs.txt`: saída bruta das execuções citadas acima, **com anotações** (linhas `####`) que marcam `vid-b` como inválida e abortada e
+  `vid-c` como válida para N = 2 e N = 4 e abortada por disco; as linhas brutas ficam intactas.

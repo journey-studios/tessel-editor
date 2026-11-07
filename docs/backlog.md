@@ -128,7 +128,7 @@ novas atribuições e mudanças de estado ficam neste arquivo.
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL031 | OPT07 | LOD/sort de Spark em movimento; MSAA já tem opt-in | Pendente | Experimento justificado | — | Ganho sustentado com qualidade/budget explícitos, sem promessa universal de 1–4 ms |
+| BL031 | OPT07 | LOD/sort de Spark em movimento; MSAA já tem opt-in. **Item pai** de BL129 (MSAA por movimento) e BL130 (ordenação sem espera): o estado dessas duas fatias vive **só** nas linhas delas, não aqui | Pendente (pai; LOD fora das duas fatias) | Experimento justificado; BL129, BL130 | — | Ganho sustentado com qualidade/budget explícitos, sem promessa universal de 1–4 ms. Fecha quando BL129 e BL130 estiverem fechados e o LOD tiver decisão própria; não ganha status duplicado da ordenação |
 | BL032 | OPT08 | Seek-to-photon físico | Bloqueado (hardware) | Câmera rápida/procedimento humano | — | Amostras e resolução temporal; rAF/hash não substituem fóton |
 | BL033 | OPT09 | Determinismo 3M e export UHD/SwiftShader não executados | A validar | Budget de GPU/disco/tempo | — | Pixels, cancelamento e recursos registrados; falha de ambiente explícita |
 | BL034 | OPT10 | Série longa, displays externos 120/240 Hz e carga concorrente | Bloqueado (hardware) | Displays/ambiente | — | Release, repetições, p50/p95/p99 e memória estável |
@@ -698,17 +698,18 @@ BL019-F12 — thread `4500760404`: requisito do spec documentado como Python >= 
 
 Relatório e medições: [viewport-performance-investigation-report.md](viewport-performance-investigation-report.md).
 Medido em release sobre `tessel-splat-h` (4 cenas de 1,18 M gaussianas) numa base anterior a `5ebb855`: cada frente
-deve **re-medir** antes de afirmar ganho. Relaciona-se a BL031/OPT07. Uma PR por item; revisão na própria PR.
+deve **re-medir** antes de afirmar ganho. BL129 e BL130 são filhos de BL031/OPT07 (um dono de status por fatia, sem renumerar branches). Uma PR por item; revisão na própria PR.
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL129 | PERF-1 | MSAA 0/2 durante reprodução e scrub; 4× em pausa, `render.frame` explícito e export | Pendente | — | — | Take A sem perda a 24 fps; scrub ≥ 40 quadros/s; explícito/export idênticos aos atuais; comparação visual MSAA 0 × 4 registrada |
-| BL130 | PERF-2 | Ordenação Spark sem espera em movimento e refino exato na pausa | Pendente | BL129 | — | Crossfade sem perda com MSAA 0; hash do quadro final = render explícito; sem popping em câmera animada |
-| BL131 | PERF-3 | Lease/malha compartilhada de assets de efeito entre camadas de crossfade | Pendente | — | — | `lease_decode` = 0 em quadros de 2 cenas com asset de efeito comum; teste de runtime |
+| BL129 | PERF-1 | MSAA 0/2 durante reprodução e scrub; 4× em pausa, `render.frame` explícito e export. Filho de BL031 | Implementado e integrado (PR #17, merge `09ad62d`); esta linha não revalida, a evidência está no corpo da PR e em `docs/features/playback.md`/`spark.md` | — | — | Take A sem perda a 24 fps; scrub ≥ 40 quadros/s; explícito/export idênticos aos atuais; comparação visual MSAA 0 × 4 registrada |
+| BL130 | PERF-2 | Ordenação Spark sem espera em movimento e refino exato na pausa. Filho de BL031 e **dono único do status** dessa fatia; a PR #19 (`t3/spark-settle-refinement`, aberta) usa este ID e registra o estado detalhado na própria linha BL130, que prevalece sobre esta quando integrada | Em andamento (PR #19 aberta) | BL129 (integrado) | — | Crossfade sem perda com MSAA 0; hash do quadro final = render explícito; sem popping em câmera animada |
+| BL131 | PERF-3 | Lease/malha compartilhada de assets de efeito entre camadas de crossfade | Implementado e integrado (PR #15, merge `01c0f9a`); a PR registra que a decodificação por quadro já estava resolvida por BL125 na base e que removeu a criação de gerador/programa por quadro, então o `lease_decode` ≈ 7 ms do §3 do relatório vem de uma base anterior | — | — | `lease_decode` = 0 em quadros de 2 cenas com asset de efeito comum; teste de runtime |
 | BL132 | PERF-4 | Pré-carga de splats antes de o playhead entrar na cena | Pendente | — | — | Entrada fria em take sem travada ≥ 2 quadros; memória e cancelamento medidos |
 | BL133 | PERF-5 | Read-ahead de quadros de vídeo na WebView | Pendente | — | — | 4 vídeos com proxy: p95 do intervalo ≤ 50 ms e perda ≤ 1 % |
 | BL134 | PERF-8 | `RETAINED_ASSETS` por peso/contagem de assets pesados | Pendente | — | — | Projeto com 17+ assets visuais sem recarga na segunda passada |
 | BL135 | PERF-7 | Cabeçalho do monitor não deve sugerir 16 ms quando o intervalo real é maior (`render_ms` exclui a cauda de GPU) | Decisão | — | — | Indicador de intervalo/perda separado de `render_ms`, texto explícito |
-| BL136 | PERF-6 | Medir 8 vídeos, cenário misto splat + vídeo, vertical e 0→600 a frio em disco folgado | Bloqueado (disco) | — | — | Mesmas tabelas das seções 3, 5 e 7 do relatório |
+| BL136 | PERF-6 | Medir **1 vídeo (linha de base N = 1, hoje inexistente: a execução `vid-b` era inválida)**, 8 vídeos, cenário misto splat + vídeo, vertical e 0→600 a frio em disco folgado | Bloqueado (disco) | BL136.1 | — | Mesmas tabelas das seções 3, 5 e 7 do relatório; N = 1 com `clip.add` aceito em todas as trilhas, pelo driver corrigido, e arquivo salvo com `status` = `complete` |
+| BL136.1 | PERF-6/drivers | Drivers da investigação (revisão da PR #14): `playback.start` rejeitado, espera de import/prontidão que estoura, `clip.add` rejeitado, JSON de scrub velho, raiz absoluta de desenvolvedor e `mainthread.py` sem cabeçalho produziam resultado falso ou perdiam o parcial; `vid-b` (inválido) e `vid-c` (abortado por disco) marcados no log bruto; linhas N = 1 retiradas do relatório | A validar (esta PR; `drivers/drivers.spec.py` com fakes, 46 casos, inclui mutação de cada guarda; os drivers corrigidos **não** refizeram nenhuma medição) | — | Sub-agente PR #14 | Mesmo driver usado na re-medição de BL136; revisão independente da PR #14 |
 | BL137 | PERF-9 | Build debug no uso diário (`bin/tessel-editor` 141 MB tem overflow-checks): entregar release | Decisão | — | Usuário | Release no dia a dia; RTT semântico < 2 ms |
 | BL138 | PERF-10 | Hipóteses sem medição: lote das duas cenas do crossfade, pular camadas com opacidade ≈ 0 | Pendente (hipótese) | BL130 | — | Experimento com ganho medido antes de implementar |
