@@ -186,25 +186,43 @@ Mesmas ops no `./scripts/headless` (JSONL), sem janela:
 
 ## Evidências e status
 
-Testes **declarados** no código do head `ba0d5dc` (contados na fonte, não executados quando este
-texto foi escrito). A coluna "Execução" é a única que vale como prova; o bloco "Execução no head"
-abaixo registra o que de fato rodou.
+Testes **declarados** no código (contados na fonte). A coluna "Execução" é a única que vale como
+prova; o bloco "Execução no head" abaixo registra o que de fato rodou.
 
 | Superfície | Teste declarado | Execução |
 |---|---|---|
-| Biblioteca/core | `crates/core/tests/scene_gizmo.rs` (32 funções de teste) e unit `state::tree` (`the_gizmo_node_exists_only_with_a_scene_and_follows_the_drag`): geometria contra oráculo próprio da câmera, arrasto ≡ `scene.translate`, uma entrada de undo, pai rotacionado/escalado, recusas invariantes, seleção por ponteiro, políticas de cancelamento | pendente (cargo bloqueado por disco) |
-| CLI headless | `a_json_lines_session_runs_the_whole_gizmo_flow_in_process` (`headless::run_session`, sem janela) e `scripts/scene-gizmo-proof.py` (superfície headless) | pendente |
-| Página/canvas | `runtime/test/overlay.test.mjs` (9, puros) e `runtime/test/gizmo-overlay.test.mjs` (9, Chrome real): mouse do puppeteer, pixels lidos do canvas, Escape, blur, hidden, `pointercancel`, resize durante o arrasto, hover, overlay inválido recusado inteiro | ver "Execução no head" |
-| Host/ponte | `viewport_host_tests` (3 novos): negociação do feature, deduplicação, reload esquece o overlay | pendente |
-| Janela (GPUI) | `scene_gizmo_tests` (17): mensagem → comando único, Escape/foco/oculto, mensagem velha silenciosa, invalidação | pendente |
-| Janela real (binário próprio, HOME curto, só `get`/`set`/`invoke`/`op`) | `scripts/scene-gizmo-proof.py` (superfície nativa) | pendente |
+| Biblioteca/core | `crates/core/tests/scene_gizmo.rs` (32 funções de teste) e unit `state::tree` (`the_gizmo_node_exists_only_with_a_scene_and_follows_the_drag`): geometria contra oráculo próprio da câmera, arrasto ≡ `scene.translate`, uma entrada de undo, pai rotacionado/escalado, recusas invariantes, seleção por ponteiro, políticas de cancelamento | BLOCKED (cargo, disco) |
+| CLI headless | `a_json_lines_session_runs_the_whole_gizmo_flow_in_process` (`headless::run_session`, sem janela) e `scripts/scene-gizmo-proof.py` (superfície headless) | BLOCKED (build, disco) |
+| Página/canvas | `runtime/test/overlay.test.mjs` (9, puros) e `runtime/test/gizmo-overlay.test.mjs` (9, Chrome real): mouse do puppeteer, pixels lidos do canvas, Escape, blur, hidden, `pointercancel`, resize durante o arrasto, hover, overlay inválido recusado inteiro | executado: 9/9 e 9/9 (ver "Execução no head") |
+| Host/ponte | `viewport_host_tests` (3 novos): negociação do feature, deduplicação, reload esquece o overlay | BLOCKED (build, disco) |
+| Janela (GPUI) | `scene_gizmo_tests` (17): mensagem → comando único, Escape/foco/oculto, mensagem velha silenciosa, invalidação | BLOCKED (build, disco) |
+| Janela real (binário próprio, HOME curto, só `get`/`set`/`invoke`/`op`) | `scripts/scene-gizmo-proof.py` (superfície nativa) | BLOCKED (build, disco) |
 
 ### Execução no head
 
-Nada rodou ainda. Os logs parciais de uma tentativa anterior (`/tmp/tessel-s8-final-evidence/logs`) são
-de uma árvore suja e de outro checkout, sem carimbo de head: **não são evidência** deste head.
+Head testado: `7936a36` (árvore `09e1bf31f291fb58a89981e9bfc48f97ae53488c`), árvore inteira limpa, Rust 1.99.1, disco livre ≈ 12,4 GiB
+(abaixo dos 16 GiB exigidos para qualquer build pesado). Logs em `/tmp/tessel-s8-recovered-evidence/logs/`.
 
-Status: **a validar**. Implementado e declarado testado; **sem gate executado** no head da PR e **sem
+| Verificação | Resultado |
+|---|---|
+| `cargo fmt --all -- --check` | passou |
+| `git diff --check` do commit `ba0d5dc` ao head | passou |
+| `scripts/scene-gizmo-proof.spec.py` (lógica pura da prova) | 7 testes, passou |
+| `./scripts/runtime setup` | passou (`runtime.js` 4129 KiB) |
+| `runtime/test/overlay.test.mjs` (puro) | 9/9 |
+| `runtime/test/gizmo-overlay.test.mjs` (Chrome real, sob o lock de GPU, `TESSEL_REQUIRE_RUNTIME=1`) | 9/9 |
+| Suíte completa do runtime (`pnpm test`, Chrome real, lock de GPU, `TESSEL_REQUIRE_RUNTIME=1`) | 166/166, 0 falhas, 0 pulados |
+| `cargo tree -p tessel-editor-core --locked --offline -e normal,build` | 14 linhas, sem `gpui`/`wry` |
+
+**BLOCKED (não executado, BL015.6):** `cargo check --workspace --all-targets`, `clippy -D warnings`,
+`cargo test --workspace --locked --no-fail-fast` (testes do core, GPUI e host), build de `tessel-editor` e
+`tessel-headless`, `scripts/scene-gizmo-proof.py` (headless e janela real) e a mutação dos testes. Motivo:
+disco livre abaixo de 16 GiB; o piso de 12 GiB não foi cruzado nem contornado. Nenhum binário foi
+construído, então não há hash de binário para este head. Os 166/166 de uma tentativa anterior em
+`/tmp/tessel-s8-final-evidence` eram de uma árvore suja e não valem como evidência.
+
+Status: **a validar**. Implementado; o runtime/página foi executado, mas os gates Rust e as provas
+nativas/headless estão **BLOCKED** no head da PR; **sem
 prova com ponteiro físico** nem captura visual do gizmo sobre a WKWebView (BL043/BL044). Limitações: só
 translação; um nó por vez; sem snapping; handles só em coordenadas de mundo (não locais); aspecto da
 imagem vem da câmera da cena.
