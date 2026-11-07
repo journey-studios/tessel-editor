@@ -81,15 +81,16 @@ pub struct Stats {
     /// Preview intents that replaced the pending slot instead of cancelling the frame in flight.
     pub coalesced: u64,
     /// Proxies the runtime confirmed, rejected (it then draws the original), and the
-    /// original-quality frames that replaced a proxy picture once the scrub settled.
+    /// final-quality frames that replaced a reduced picture (proxy or lighter MSAA) once the
+    /// playhead stopped.
     pub proxy_attached: u64,
     pub proxy_failed: u64,
     pub refined: u64,
 }
 
-/// How long the monitor must be still before a proxy picture is replaced by the original.
-/// WHY not immediately: a scrub that pauses for a tick would pay an original-quality render
-/// (the expensive one) for a picture it is about to replace.
+/// How long the monitor must be still before a reduced picture (proxy, or lighter MSAA) is
+/// replaced by the final-quality one. WHY not immediately: a scrub that pauses for a tick would
+/// pay a final-quality render (the expensive one) for a picture it is about to replace.
 pub const REFINE_DELAY: Duration = Duration::from_millis(200);
 
 /// Who asked for a frame; decides coalescing, readback and quality.
@@ -97,7 +98,8 @@ pub const REFINE_DELAY: Duration = Duration::from_millis(200);
 enum Origin {
     /// `render.frame`, proofs, export: original quality, answers with the data it asked for.
     Explicit,
-    /// The monitor following the playhead: may use proxies and coalesces.
+    /// The monitor following the playhead (playback and scrub): may use proxies and reduced scene
+    /// MSAA, and coalesces.
     Interactive,
     /// The monitor replacing a proxy picture with the original; superseded by any new intent.
     Refine,
@@ -383,12 +385,13 @@ impl<B: RenderBackend> ViewportSession<B> {
         ))
     }
 
-    /// Whether a proxy picture is on screen and an original one would replace it.
+    /// Whether a reduced picture (a proxy, or a scene drawn with fewer MSAA samples) is on screen
+    /// and a final-quality one would replace it.
     pub fn refine_pending(&self) -> bool {
         self.refine.is_some()
     }
 
-    /// Replaces a proxy picture with the original once the monitor has been still for
+    /// Replaces a reduced picture with the final-quality one once the monitor has been still for
     /// [`REFINE_DELAY`]. `None` when there is nothing to refine, something is in flight or the
     /// scrub has not settled yet (the caller asks again when [`refine_pending`](Self::refine_pending)).
     pub fn dispatch_refine(
@@ -477,8 +480,9 @@ impl<B: RenderBackend> ViewportSession<B> {
         let monitor = origin != Origin::Explicit;
         let inspect =
             !monitor || self.inspect_previews || output.png.is_some() || !probes.is_empty();
-        // Only the monitor's own scrub may be a proxy picture; anything that asks for pixels or
-        // is not the scrub (explicit, refine) is the original.
+        // Only the monitor's own interactive frame (playback, scrub) may be a reduced picture (a
+        // proxy, scene MSAA below the final count); anything that asks for pixels or is not that
+        // frame (explicit, export, refine) is the original.
         let quality = if interactive && output.png.is_none() && probes.is_empty() {
             self.policy.interactive_quality()
         } else {
@@ -773,13 +777,13 @@ impl<B: RenderBackend> ViewportSession<B> {
             return SessionEvent::Stale(frame.id);
         }
         let finished = self.active.take();
-        // A proxy picture is on screen: remember how to replace it with the original.
+        // A reduced picture is on screen (a proxy, or a scene with fewer MSAA samples): remember how
+        // to replace it with the final-quality one. Only the monitor's own interactive frames can
+        // be reduced; an explicit frame and the refine itself are the final quality by definition.
         self.refine = finished.as_ref().and_then(|active| {
-            (active.origin == Origin::Interactive && frame.detail.proxy_layers() > 0).then(|| {
-                Pending {
-                    plan: active.request.plan.clone(),
-                    output: active.request.output.clone(),
-                }
+            (active.origin == Origin::Interactive && frame.detail.is_reduced()).then(|| Pending {
+                plan: active.request.plan.clone(),
+                output: active.request.output.clone(),
             })
         });
         self.presented = finished.map(|active| (active.request.id, active.request.plan.frame));

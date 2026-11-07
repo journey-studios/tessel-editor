@@ -38,6 +38,10 @@ comando do clique na régua) e o áudio sai do mesmo plano (`plan_audio`) que o 
 `underruns` = `late_callbacks` (callback que chegou a mais de 1,75 período do anterior: jitter de agendamento) +
 `device_underruns` (o que o host declarou como `BufferUnderrun`).
 
+**Qualidade durante a reprodução (BL129):** os quadros do monitor enquanto o playhead anda são `Preview` (proxy de vídeo e, em
+cena com splat, MSAA 0 em vez de 4); ao pausar ou terminar, o quadro parado se refina sozinho para o final, sem ação do usuário.
+`render.frame` e export nunca usam o preview. Detalhes em [viewport.md](viewport.md#msaa-por-movimento-bl129).
+
 Gate de WebView: o WebView nativo pinta acima de qualquer elemento GPUI, então **qualquer diálogo aberto o esconde**
 (`monitor.viewport.state.on_screen=false`) e ele volta ao fechar; provado por requisições semânticas (sem coordenadas),
 junto com render após diálogo e após resize da janela. **Limite:** isso prova que a WebView sai de cima do diálogo e volta;
