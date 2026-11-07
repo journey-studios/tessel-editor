@@ -1,0 +1,40 @@
+{
+  "main": "b5ce9ba6eada31b0c7af6561069781cc6c3a8b21",
+  "pr_parent": "28db58c530c9196622325a53cd62cbb15d3f5204",
+  "conflicts": [
+    "docs/backlog.md"
+  ],
+  "rust_runtime_adjustments": false,
+  "fmt": "pass",
+  "ledger_audit": {
+    "passed": 26,
+    "failed": 0
+  },
+  "s10_spec_initial": {
+    "passed": 119,
+    "failed": 2,
+    "note": "Started before the merge commit existed; not a 121/121 pass"
+  },
+  "s10_failed_cases_after_merge": {
+    "passed": 2,
+    "failed": 0,
+    "cases": [
+      "ExitSemantics.test_data_phases_pass_and_a_dirty_tree_is_never_exit_0",
+      "ToolsAbsent.test_phases_that_need_a_tool_are_blocked_with_exit_3_never_a_pass"
+    ]
+  },
+  "preview_quality_spec": {
+    "passed": 9,
+    "failed": 0
+  },
+  "evidence_tool_spec": {
+    "passed": 5,
+    "failed": 0
+  },
+  "full_live_acceptance_rerun": false,
+  "logs": {
+    "/tmp/pr19-merge-s10-spec.log": "b68144b9851431f6a9450f82db7b4416db3534fb1e1315cbdd4f43e9c7cbd56b",
+    "/tmp/pr19-merge-s10-recheck.log": "634ac5d9325041ee1080f91574f2973ed6365da68bd5d6da629fb65b54b13c3f",
+    "/tmp/pr19-merge-evidence-spec.log": "bfd36d4b62806b7648d1dc4d389786ac81a8debbdc5974230b74959996e54d51"
+  }
+}

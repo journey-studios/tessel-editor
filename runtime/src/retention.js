@@ -12,6 +12,8 @@
 //   scene rig (no splat) Compositor.rigs         scene asset id + entry    release/load of the id, context loss, count LRU
 //   scene render target Compositor.targets       slot + size               size change, context loss, count/byte LRU
 //   splat mesh (spare)  AssetStore entry         the splat asset           release/load of the id, context loss, count per asset
+//   Spark stage         Compositor.stages        scene asset + nth layer   release/load of the scene id, context loss, count LRU, a failed sort
+//   Spark stage (shared) Compositor.splats       the one for exact draws   context loss, a failed sort (directed scenes, scenes past the stage budget)
 //
 // The one exception to "nothing here caches a picture" is the RESULT of a scene layer with splats
 // (compositor.js, `sceneResultKey`): its render target remembers the key of the picture it holds
@@ -48,6 +50,14 @@ export const LIMITS = {
    * frees them with the frame, as before.
    */
   splatMeshes: 16,
+  /**
+   * Spark stages (one SparkRenderer with its sorted splat data on the GPU) a frame may draw a moving
+   * playhead's splat scenes with, one per scene layer (BL130): what a crossfade draws with. It bounds the
+   * stages alive, not only the idle ones: a frame with more splat scene layers than this gives the stages to
+   * the first ones (those that already have one first) and draws the rest with the one shared stage, which
+   * always waits for the sort of its own camera. So at most `splatStages` + 1 SparkRenderers exist.
+   */
+  splatStages: 2,
 };
 
 /** Event counters of the retention layer; `delta` gives what one frame did. */
@@ -80,6 +90,12 @@ export class RetentionCounters {
       splat_decoded: 0,
       splat_mesh_created: 0,
       splat_mesh_reused: 0,
+      // Spark stages (BL130): built for a scene layer that had none, freed past the bound, thrown away after a
+      // failed sort, and splat scene layers that had no stage of their own this frame (drawn exact by the shared one).
+      stage_created: 0,
+      stage_evicted: 0,
+      stage_discarded: 0,
+      stage_shared_layers: 0,
     };
   }
 
@@ -145,6 +161,19 @@ export class LruCache {
     this.bytes -= entry.bytes;
     this.disposeValue(entry.value);
     return true;
+  }
+
+  /**
+   * Frees least-recently-used entries this frame did not touch until one more entry fits the count bound,
+   * so a new entry never makes the peak go past `maxEntries` while an idle one could have made room.
+   */
+  makeRoom() {
+    for (const key of [...this.entries.keys()]) {
+      if (this.entries.size < this.maxEntries) break;
+      if (this.used.has(key)) continue;
+      this.delete(key);
+      this.onEvict();
+    }
   }
 
   /** Frees least-recently-used entries the last frame did not touch until both bounds hold. */

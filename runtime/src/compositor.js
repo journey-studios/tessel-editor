@@ -148,6 +148,15 @@ const DEFAULT_SCENE_SAMPLES = 4;
  */
 const DEFAULT_PREVIEW_SCENE_SAMPLES = 0;
 export const SCENE_SAMPLE_CHOICES = [0, 2, 4];
+/**
+ * How a splat scene of a `preview` frame gets its draw order (BL130). `latest` draws with the order of the
+ * last finished Spark sort and sorts for the camera behind the frame, instead of waiting for that sort;
+ * a picture drawn like that says so (`source.stale_sort_layers`) and the monitor replaces it with an exact
+ * one when the playhead stops. `exact` waits for the sort for the frame's own camera, as `original` always
+ * does. A frame that asks for pixels (`render.frame`, export, probes) and the refine are `original`: exact.
+ */
+export const PREVIEW_SORT_CHOICES = ['latest', 'exact'];
+export const DEFAULT_PREVIEW_SORT = 'latest';
 
 const createLayerMaterial = (blend, texture, opacity, tint) =>
   new THREE.MeshBasicMaterial({
@@ -177,6 +186,7 @@ export class Compositor {
     this.resultCache = resultCache;
     this.sceneSamples = DEFAULT_SCENE_SAMPLES;
     this.previewSceneSamples = DEFAULT_PREVIEW_SCENE_SAMPLES;
+    this.previewSort = DEFAULT_PREVIEW_SORT;
     this.counters = counters;
     this.limits = limits;
     // Bumped when the context is lost: everything retained for the old one is dropped with it.
@@ -203,6 +213,12 @@ export class Compositor {
       maxBytes: limits.targetBytes,
       dispose: ({ target }) => disposeTarget(target),
       onEvict: evicted('target_evicted'),
+    });
+    // One Spark sort lineage per scene layer in flight (BL130, see `planLineages`).
+    this.stages = new LruCache({
+      maxEntries: limits.splatStages,
+      dispose: (stage) => stage.dispose(),
+      onEvict: evicted('stage_evicted'),
     });
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -257,6 +273,7 @@ export class Compositor {
     this.rigs.maxEntries = this.limits.rigs;
     this.targets.maxEntries = this.limits.targets;
     this.targets.maxBytes = this.limits.targetBytes;
+    this.stages.maxEntries = this.limits.splatStages;
   }
 
   /**
@@ -277,6 +294,19 @@ export class Compositor {
   setPreviewSceneSamples(samples) {
     if (!SCENE_SAMPLE_CHOICES.includes(samples) || samples === this.previewSceneSamples) return;
     this.previewSceneSamples = samples;
+  }
+
+  /**
+   * Order of the splats of a `preview` frame: `latest` or `exact` (see PREVIEW_SORT_CHOICES). A name that is
+   * neither is not guessed at: it is `exact`, the order that cannot show another camera's sort, and it is said so.
+   */
+  setPreviewSort(sort) {
+    if (PREVIEW_SORT_CHOICES.includes(sort)) {
+      this.previewSort = sort;
+      return;
+    }
+    console.warn(`Unknown preview_sort ${JSON.stringify(sort)} (use ${PREVIEW_SORT_CHOICES.join(' or ')}): using exact`);
+    this.previewSort = 'exact';
   }
 
   /** Samples of a splat scene layer for a frame of `quality`: the picture of a still, or of a moving playhead. */
@@ -300,6 +330,9 @@ export class Compositor {
       target_entries: this.targets.size,
       target_bytes: this.targets.bytes,
       result_entries: [...this.targets.entries.values()].filter(({ value }) => value.result).length,
+      // SparkRenderers alive: the lineages kept for moving frames and the one shared stage (BL130).
+      stage_entries: this.stages.size,
+      shared_stage_entries: this.splats ? 1 : 0,
     };
   }
 
@@ -310,7 +343,7 @@ export class Compositor {
    */
   dropRetained() {
     this.contextGeneration += 1;
-    for (const cache of [this.text, this.materials, this.rigs, this.targets]) {
+    for (const cache of [this.text, this.materials, this.rigs, this.targets, this.stages]) {
       try {
         cache.clear();
       } catch {
@@ -322,6 +355,7 @@ export class Compositor {
   /** An asset id was released or replaced: what was built from its old entry dies with it. */
   forgetAsset(id) {
     this.rigs.delete(id);
+    this.stages.deleteWhere((key) => key.startsWith(`${id}\u0000`));
     // A result built from this asset names its serial, so it could never be served again; clearing
     // it now only stops a dead picture from looking alive in the counters.
     for (const { value } of this.targets.entries.values()) {
@@ -364,10 +398,17 @@ export class Compositor {
     // for the ones drawn with fewer samples than the final count: the monitor refines such a picture
     // once the playhead stops). Both appear only when the frame has a scene layer.
     const sceneSamples = this.sceneSamplesFor(quality);
-    const frame = { plan, width, height, assets, keep, aborted, used, timings, quality, sources, sceneSamples };
+    // A moving playhead may draw a splat scene with the order of the last finished sort (BL130).
+    // Without retention no sort outlives its frame, so there is no order to reuse.
+    const motion = quality === 'preview' && this.previewSort === 'latest' && this.retain;
+    const frame = { plan, width, height, assets, keep, aborted, used, timings, quality, sources, sceneSamples, motion, lineages: new Map() };
 
     assets.beginFrame();
-    [this.text, this.materials, this.rigs, this.targets].forEach((cache) => cache.beginFrame());
+    // Which scene layers get a Spark stage of their own this frame, and who will ask for which mesh (BL130).
+    const assigned = this.planLineages(plan, assets);
+    frame.lineages = assigned.byOrder;
+    assets.reserveSplatOwners(assigned.owners);
+    [this.text, this.materials, this.rigs, this.targets, this.stages].forEach((cache) => cache.beginFrame());
     timings.prepare_ms = 0;
     try {
       for (const [order, layer] of plan.layers.entries()) {
@@ -415,7 +456,7 @@ export class Compositor {
     } finally {
       disposables.forEach((item) => item.dispose?.());
       assets.endFrame();
-      [this.text, this.materials, this.rigs, this.targets].forEach((cache) => cache.trim());
+      [this.text, this.materials, this.rigs, this.targets, this.stages].forEach((cache) => cache.trim());
     }
   }
 
@@ -423,6 +464,94 @@ export class Compositor {
   splatStage() {
     this.splats ??= new SplatStage(this.renderer);
     return this.splats;
+  }
+
+  /**
+   * The Spark state each splat scene layer of a plan sorts and draws with (BL130). A moving playhead draws a
+   * splat scene with the order of the last finished sort, which Spark can only do while the same set of splats
+   * is what it last sorted; one stage shared by every scene layer is handed a different scene by each layer of a
+   * crossfade, so each frame would change what it shows and none could reuse an order. A scene gets its own
+   * stage, a *lineage* keyed by its asset and by how many layers of that asset the plan already has (two layers
+   * of one scene are two lineages).
+   *
+   * Lineages are budgeted by `splatStages`, in the stages alive and not only the idle ones: a SparkRenderer
+   * holds the sorted splat data of its scene on the GPU, so a project with N scene layers must not make N of
+   * them. The layers that have a lineage already come first (a layer does not lose its order to one that has
+   * none), then the rest in plan order, up to the budget. Every other splat scene layer takes `lineage: null`,
+   * the one shared stage, and is drawn exact: it waits for the sort of its own camera, as before BL130 and as
+   * every non-moving frame does. Without retention there is nothing to keep a lineage in: all take the shared stage.
+   *
+   * `owners` are the mesh owners (`lineage#object index`) the granted layers will ask the asset store for, so
+   * that no other lease takes a spare of theirs (`AssetStore.reserveSplatOwners`).
+   */
+  planLineages(plan, assets) {
+    const byOrder = new Map();
+    const owners = [];
+    if (!this.retain) return { byOrder, owners };
+    const uses = new Map();
+    const wanted = [];
+    plan.layers.forEach((layer, order) => {
+      if (layer.kind !== 'scene') return;
+      const scene = assets.entries.get(layer.asset)?.scene;
+      if (!scene || !SceneRig.hasSplatObjects(scene)) return;
+      const nth = uses.get(layer.asset) ?? 0;
+      uses.set(layer.asset, nth + 1);
+      wanted.push({ order, lineage: `${layer.asset}\u0000${nth}`, scene });
+    });
+    const resident = wanted.filter(({ lineage }) => this.stages.entries.has(lineage));
+    const granted = new Set([...resident, ...wanted.filter((use) => !resident.includes(use))].slice(0, this.limits.splatStages));
+    for (const use of wanted) {
+      if (!granted.has(use)) {
+        byOrder.set(use.order, { lineage: null });
+        this.counters.add('stage_shared_layers');
+        continue;
+      }
+      // Refresh LRU order before beginFrame clears usage, leaving idle entries first for eviction.
+      this.stages.get(use.lineage);
+      byOrder.set(use.order, { lineage: use.lineage });
+      use.scene.objects.forEach((object, index) => {
+        if (object.type === 'splat') owners.push(`${use.lineage}#${index}`);
+      });
+    }
+    return { byOrder, owners };
+  }
+
+  /** The stage of a lineage from `planLineages`, made on first use; `null` is the one shared stage. */
+  stageOf(lineage) {
+    if (lineage === null) return this.splatStage();
+    let stage = this.stages.get(lineage);
+    if (!stage) {
+      // Room first: the peak is the budget, not the budget plus the idle stage the trim would free afterwards.
+      this.stages.makeRoom();
+      stage = new SplatStage(this.renderer);
+      this.stages.set(lineage, stage);
+      this.counters.add('stage_created');
+    }
+    return stage;
+  }
+
+  /**
+   * A stage whose sort failed is never used again (see `SplatStage.watchSort`): the next frame that needs the
+   * lineage (or the shared stage) builds a new SparkRenderer. The failure itself already went to the frame.
+   */
+  discardFailedStage(stage, lineage) {
+    if (!stage?.failed) return;
+    this.counters.add('stage_discarded');
+    try {
+      if (lineage === null) {
+        if (this.splats === stage) this.splats = null;
+        stage.dispose();
+      } else {
+        this.stages.delete(lineage);
+      }
+    } catch {
+      // The context is already gone; there is nothing left to free on it.
+    }
+  }
+
+  /** Every SparkRenderer alive (tests and measurements). */
+  liveStages() {
+    return [...[...this.stages.entries.values()].map(({ value }) => value), ...(this.splats ? [this.splats] : [])];
   }
 
   /** Spark's GPU state belongs to the lost context; the next splat frame builds a new stage. */
@@ -433,6 +562,11 @@ export class Compositor {
       // The context is already gone; there is nothing left to free on it.
     }
     this.splats = null;
+    try {
+      this.stages.clear();
+    } catch {
+      // Same: the stages' GPU state went with the context.
+    }
   }
 
   /** Marks an asset entry as read by the frame in flight and returns it. */
@@ -477,11 +611,16 @@ export class Compositor {
       }
       case 'scene': {
         const entry = this.entryFor(layer, frame);
+        const splatted = SceneRig.hasSplatObjects(entry.scene);
+        // Which Spark sort lineage this layer is (`null`: the shared, exact stage), decided from the whole plan.
+        const lineage = splatted ? (frame.lineages.get(frame.order)?.lineage ?? null) : null;
         // Only a splat scene is reduced: its raster is the cost, and MSAA hardly shows on it.
-        const sceneSamples = SceneRig.hasSplatObjects(entry.scene) ? frame.sceneSamples : this.sceneSamples;
+        const sceneSamples = splatted ? frame.sceneSamples : this.sceneSamples;
         // The lowest count of the frame's scene layers: the header must not claim more than the weakest layer got.
         frame.sources.scene_samples = Math.min(frame.sources.scene_samples ?? sceneSamples, sceneSamples);
         frame.sources.reduced_scene_layers = (frame.sources.reduced_scene_layers ?? 0) + (sceneSamples < this.sceneSamples ? 1 : 0);
+        // Splat layers drawn with the order of an earlier camera (`source.stale_sort_layers`): the refine replaces them too.
+        frame.sources.stale_sort_layers ??= 0;
         const key = this.sceneResultKey(layer, entry, frame);
         const { target, cached } = this.sceneTarget(frame.order, width, height, keep, sceneSamples);
         if (key && cached?.result === key) {
@@ -493,16 +632,28 @@ export class Compositor {
         // The target is about to hold another picture (or half of one if this frame is cancelled):
         // until the draw completes it matches no key.
         if (cached) cached.result = null;
-        const rig = await this.sceneRig(layer.asset, entry, assets, keep);
-        await rig.draw(this.renderer, target, {
-          camera: layer.camera,
-          time: layer.scene_time.seconds,
-          width,
-          height,
-          stage: rig.hasSplats ? this.splatStage() : null,
-          aborted,
-        });
-        if (key && cached && !aborted()) cached.result = key;
+        const rig = await this.sceneRig(layer.asset, entry, assets, keep, lineage);
+        let stage = null;
+        let drawn;
+        try {
+          stage = rig.hasSplats ? this.stageOf(lineage) : null;
+          drawn = await rig.draw(this.renderer, target, {
+            camera: layer.camera,
+            time: layer.scene_time.seconds,
+            width,
+            height,
+            stage,
+            aborted,
+            // Only a layer with a lineage reuses an order; the shared stage serves whatever scene comes next.
+            motion: frame.motion && lineage !== null,
+          });
+        } catch (error) {
+          this.discardFailedStage(stage, lineage);
+          throw error;
+        }
+        if (drawn.stale) frame.sources.stale_sort_layers += 1;
+        // A picture drawn with another camera's order is not the one this key names: it is never served as such.
+        if (key && cached && !aborted() && !drawn.stale) cached.result = key;
         return { texture: target.texture, width, height, fit: false, flipV: true };
       }
       case 'directed_scene':
@@ -566,7 +717,13 @@ export class Compositor {
       if (aborted()) throw new RuntimeError('cancelled', 'The frame was superseded');
     }
     const splatScenes = buildSplatScenes(spec, meshes);
-    await drawDirectedScene(this.renderer, target, { ...directed, splatScenes }, { stage: splatScenes.length > 0 ? this.splatStage() : null, aborted });
+    const stage = splatScenes.length > 0 ? this.splatStage() : null;
+    try {
+      await drawDirectedScene(this.renderer, target, { ...directed, splatScenes }, { stage, aborted });
+    } catch (error) {
+      this.discardFailedStage(stage, null);
+      throw error;
+    }
     frame.sources.directed_scene_layers = (frame.sources.directed_scene_layers ?? 0) + 1;
     if (splatScenes.length > 0) frame.sources.directed_scene_splats = (frame.sources.directed_scene_splats ?? 0) + spec.splats.length;
     return { texture: target.texture, width: size.width, height: size.height, fit: false, flipV: true };
@@ -620,9 +777,9 @@ export class Compositor {
    * are rebuilt per frame (the leases are what is not kept: the store lends the same Spark meshes
    * again, BL131): their cost is the Spark sort, not the rig.
    */
-  async sceneRig(id, entry, assets, keep) {
+  async sceneRig(id, entry, assets, keep, lineage = null) {
     if (!this.retain || SceneRig.hasSplatObjects(entry.scene)) {
-      return keep(await SceneRig.build(entry.scene, assets));
+      return keep(await SceneRig.build(entry.scene, assets, lineage));
     }
     const cached = this.rigs.get(id);
     if (cached && cached.entry === entry && cached.contextGeneration === this.contextGeneration) {
