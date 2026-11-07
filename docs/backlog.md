@@ -790,3 +790,9 @@ Validação dos resíduos: spec 41/41 em Python 3.9.6 e 3.14.3, logs `/tmp/pr18-
 BL143.8: independência/fidelidade do teste de cor não demonstradas; não promover a V sem render contra fonte primária. Novos testes receberam rustfmt apenas, disco insuficiente para Cargo.
 | BL140.8 | R2 / limite | Estender início pode produzir source_start negativo | Pendente | BL140.2 | Coordenador | Definir recusa/clamp conforme tipo sem deslocar conteúdo/câmera e cobrir por testes |
 BL140 R2: nenhum bloqueador identificado por leitura, sem compilação. Matriz F054 rebaixada aI até gates reais.
+
+| BL140.9 | OCR / helper | Timeout podia parear resposta tardia com pedido seguinte, subclasses perdiam args e crash após última resposta pareciaPASS | Corrigido; testes Python em execução | BL140.6 | Coordenador | Transporte envenenado/filho encerrado após timeout, args de subclasses, cleanup não silencia exitnãozero e INSPECT na prova nativa |
+
+BL140.9: helper28/28 normal e -O passam. Timeout encerra o filho próprio e não permite próximo pedido; subclass extra e crash após última resposta cobertos; Native INSPECT habilitado para provas, não benchmark. Sem Rust/render.
+
+BL140.6/BL143: callerSHARP convertido para run_surface e capturaSKIP, saída absoluta; merge20preserva helper28/28 canônico. Prova real permanece suspensa.

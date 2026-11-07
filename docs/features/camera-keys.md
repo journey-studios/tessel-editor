@@ -136,3 +136,5 @@ export; sem curva além dos três easings; o preview nativo (WKWebView) e o expo
 [viewport](viewport.md)) e a igualdade provada é a do plano e a de pixels entre `render.frame` e export.
 
 R2 de código não identificou bloqueador funcional neste head. Isso não recompila os testes nem valida UI/render: F054 fica I até gates. Extensão do início que produz source_start negativo permanece pendente (BL140.8), sem promoção de comportamento por leitura. Os subIDs propostos pela revisão que colidiam com cadastro existente foram mantidos no registro canônico do coordenador.
+
+Helper: subclasses Headless recebem extra; timeout torna transporte encerrado e termina somente o filho próprio; falha de processo após última resposta não é PASS. Native habilita INSPECT para provas de hash (não benchmark). Diretório de saída absoluto antes do wrapper de fixtures. Testes puros do helper reexecutados, sem Cargo.
