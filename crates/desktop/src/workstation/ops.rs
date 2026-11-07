@@ -71,6 +71,7 @@ impl Workstation {
         };
         match op {
             Op::Status => Ok(OpReply::Done(self.state.summary())),
+            Op::Header => Ok(OpReply::Done(self.state.header().to_json())),
             Op::Run(command) => self.execute(command, Source::Cli, cx).map(OpReply::Done),
             Op::CreateProject(settings) => {
                 // Build first, swap after (inside `create_project`): a rejected setting keeps

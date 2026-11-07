@@ -534,6 +534,7 @@ pub fn describe_job_event(event: &Value) -> (String, bool) {
         "restore" => "Restauração",
         "proxy" => "Preparo de mídia",
         "preflight" => "Verificação",
+        "thumbnail" => "Miniaturas",
         _ => "Tarefa",
     };
     match event["state"].as_str() {
@@ -705,6 +706,10 @@ mod tests {
         );
         assert!(error && text.contains("disco cheio"));
         assert!(!describe_job_event(&json!({ "kind": "import", "state": "cancelled" })).1);
+        assert_eq!(
+            describe_job_event(&json!({ "kind": "thumbnail", "state": "cancelled" })),
+            ("Miniaturas cancelada".to_string(), false)
+        );
         assert_eq!(
             describe_job_event(&json!({ "kind": "discard", "state": "succeeded" })),
             ("Resultado descartado".to_string(), false)
