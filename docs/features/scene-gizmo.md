@@ -26,8 +26,8 @@ independente. Esta PR não toca as PRs #20–#24: quem integrar por último conf
 **Procedência.** Retomada da entrega interrompida do gizmo (WIP somente leitura em
 `t3-b43670d3`, branch `t3/canvas-transform-gizmo`, commits `0074f8e` e `6084892`, que continuam como
 estavam). O WIP **não é prova**. O código foi adaptado sobre a `main` viva (`59b8efc`, commit
-`ba0d5dc`). Os gates foram executados em parte sobre o head `4120ca2` e a correção `aabb589` (ver
-"Evidências e status": o que rodou, o que falhou e foi corrigido, e o que continua BLOCKED).
+`ba0d5dc`). Os gates foram executados em duas rodadas (`4120ca2`/`aabb589`, depois o head de código `85d6aa7`; ver
+"Evidências e status": o que rodou, o que falhou e foi corrigido, e o que continua sem prova).
 
 ## Contrato do core / biblioteca
 
@@ -115,10 +115,19 @@ anunciado (`overlay.gizmo`) no contexto de **desktop**, ou numa página de teste
 canvas), e uma exceção do desenho vira um `error` próprio (`overlay_failed`): nunca `frame.failed`, e
 `done`/`presented`/export/headless não regridem.
 
-**Medição proporcional (não alegada como "custo 0"):** `runtime/scripts/perf/run.mjs --variants
-current,baseline --baseline-bundle <bundle da main>` (sob o lock de GPU) compara este head com um
-baseline sem overlay. As páginas do harness usam `__tesselPost`, portanto não têm overlay neste head: a
-comparação mede o custo residual do gate. **Não executada** (BLOCKED por disco, ver "Execução no head").
+**Medição proporcional (não alegada como "custo 0"):** `runtime/scripts/perf/run.mjs --engine chrome-swiftshader --suite bench
+--cases image,scene --variants current,baseline --baseline-bundle <bundle da main> --passes 3 --frames 120` (sob o lock de GPU),
+executada no head de código `85d6aa7` contra o bundle de `runtime/` extraído de `git archive 59b8efc` e construído fora do repositório.
+Chrome 157 com SwiftShader (CPU, **não** a GPU da janela); 3 passadas A/B/A, 120 quadros, 0 erros, 60,0 fps nas 12 execuções.
+O relógio do harness tem quantum de 0,1 ms. Resultado (média de `render` por passada, em ms): `image` baseline 0,222/0,252/0,266 e
+atual 0,267/0,249/0,162; `scene` baseline 0,219/0,206/0,202 e atual 0,207/0,210/0,207; p50 de 0,2 ms em todos; p95 entre 0,3 e 0,6 ms.
+**Leitura:** a diferença entre as variantes é menor que a oscilação entre passadas da mesma variante (a passada 3 de `image` atual foi a
+mais rápida); nada acima da resolução do relógio foi medido. As páginas do harness usam `__tesselPost` e **não têm overlay** neste
+head, então isto mede só o custo residual do portão de `refreshAfterFrame` (inativo = nenhum layout nem canvas): é evidência de que o
+portão não regride o quadro de preview, **não** de que o desenho do gizmo custa zero. O custo do adaptador (planos por move/tick) **não**
+foi medido em tempo: está provado em contagem pelos testes `a_drag_is_planned_once_per_move_by_the_core_and_never_again_by_the_sync`,
+`a_state_the_page_already_has_is_not_planned_again` e `playback_clears_the_overlay_once_and_plans_nothing_per_frame`, com as mutações
+correspondentes mortas (abaixo). Dados brutos e resumo: `/tmp/tessel-s8-finish-gates/perf/`.
 
 ### Arrasto morto
 
@@ -250,28 +259,34 @@ Mesmas ops no `./scripts/headless` (JSONL), sem janela:
 
 ## Evidências e status
 
-Testes **declarados** no código (contados na fonte). A coluna "Execução" é a única que vale como
-prova; o bloco "Execução no head" abaixo registra o que de fato rodou, com o manifesto
-`/tmp/tessel-s8-final-gates/manifest.txt` (comando, cwd, HEAD e árvore, ambiente, UTC, disco, saída, sha256 de cada log).
+Testes **declarados** no código (contados na fonte). A coluna "Execução" é a única que vale como prova; o bloco "Execução no head"
+registra o que de fato rodou, com o manifesto `/tmp/tessel-s8-finish-gates/manifest.txt` (comando, cwd, HEAD e árvore, ambiente, UTC,
+disco, saída, sha256 de cada log e das fontes, dos scripts e dos binários). A rodada anterior continua em
+`/tmp/tessel-s8-final-gates/manifest.txt` (preservada, com as falhas de então).
 
-| Superfície | Teste declarado | Execução |
+| Superfície | Teste declarado | Execução (head de código `85d6aa7`, árvore limpa) |
 |---|---|---|
-| Biblioteca/core | `crates/core/tests/scene_gizmo.rs` (37 testes): geometria contra oráculo próprio da câmera, arrasto ≡ `scene.translate`, uma entrada de undo, pai rotacionado/escalado, recusas invariantes, seleção por ponteiro, políticas de cancelamento, chave de memo do overlay, ramos `degenerate_axis`/`degenerate_pointer` em `Anchor`, fronteira de `OUTSIDE_LIMIT`, `replaced_by_press`, release sem arrasto que não liquida slider alheio (S1) | **37/37 executados** (`cargo test --workspace --no-fail-fast`, head `4120ca2`; o core não mudou depois) |
-| CLI headless | `a_json_lines_session_runs_the_whole_gizmo_flow_in_process` (`headless::run_session`, sem janela) e `scripts/scene-gizmo-proof.py` (superfície headless) | o teste em processo roda no `cargo test` do core (ok); o `tessel-headless` foi construído (hash no manifesto); **a prova `scene-gizmo-proof.py` NÃO foi executada** (BLOCKED, disco) |
-| Página/canvas | `runtime/test/overlay.test.mjs` (11, puros) e `runtime/test/gizmo-overlay.test.mjs` (15, Chrome real): mouse do puppeteer, pixels do canvas, Escape, blur, hidden, `pointercancel`, **captura perdida de verdade** (`releasePointerCapture`, com e sem move antes do release), botão direito/médio e segundo ponteiro, resize, hover, overlay inválido recusado inteiro; **M1**: overlay inativo sem layout/canvas, falha do desenho isolada do frame, página headless sem overlay | puros **11/11**; Chrome do gizmo **15/15** e suíte completa do runtime **174/174**, `skipped 0`, sob o lock de GPU, na árvore final (o teste 7 **falhou** na primeira rodada: ver "Falhas encontradas") |
-| Host/ponte | `viewport_host_tests` (52; 2 novos): portões e contadores do overlay, reload = época nova | **52/52** executados (parte dos 277 do `cargo test` do desktop, head `4120ca2`) |
-| Janela (GPUI) | `scene_gizmo_tests` (28): mensagem → comando único, Escape/foco/oculto, mensagem velha silenciosa, invalidação, **M2/M4**: runtime sem feature/overlay desligado/reprodução sem plano, adoção da resposta, uma computação por move, época e seleção no carimbo | primeira rodada: **3 FALHARAM** (defeito do teste, corrigido); depois da correção **28/28** (`cargo test -p tessel-editor scene_gizmo_tests`). A suíte inteira do workspace **não foi repetida** na árvore final (BLOCKED, disco) |
-| Janela real (binário próprio, HOME curto, só `get`/`set`/`invoke`/`op`) | `scripts/scene-gizmo-proof.py` (superfície nativa); a lógica do script (M3) tem `scripts/scene-gizmo-proof.spec.py` (28) | spec **28/28**; o `tessel-editor` foi construído (hash no manifesto); **a prova nativa NÃO foi executada** (BLOCKED, disco: o próprio script recusa abaixo de 12 GiB) |
+| Biblioteca/core | `crates/core/tests/scene_gizmo.rs` (38 testes): geometria contra oráculo próprio da câmera, arrasto ≡ `scene.translate`, uma entrada de undo, pai rotacionado/escalado, recusas invariantes, seleção por ponteiro, políticas de cancelamento, chave de memo do overlay, ramos `degenerate_axis`/`degenerate_pointer` em `Anchor`, fronteira de `OUTSIDE_LIMIT`, `replaced_by_press`, release sem arrasto que não liquida slider alheio (S1), move em arrasto morto recusado onde o ponteiro não resolve | **38/38** (`cargo test --workspace --no-fail-fast --locked`: 1556 passaram, 0 falharam, 12 `ignored` declarados de medição, `TESSEL_REQUIRE_RUNTIME=1`, sob o lock de GPU) |
+| CLI headless | `a_json_lines_session_runs_the_whole_gizmo_flow_in_process` (`headless::run_session`, sem janela) e `scripts/scene-gizmo-proof.py --surfaces headless` | o teste em processo roda no `cargo test` (ok); **prova headless 56/56** com o binário `tessel-headless` do head (hash no manifesto), `final_evidence: true` na execução das duas superfícies |
+| Página/canvas | `runtime/test/overlay.test.mjs` (11, puros) e `runtime/test/gizmo-overlay.test.mjs` (15, Chrome real): mouse do puppeteer, pixels do canvas, Escape, blur, hidden, `pointercancel`, **captura perdida de verdade** (`releasePointerCapture`, com e sem move antes do release), botão direito/médio e segundo ponteiro, resize, hover, overlay inválido recusado inteiro; **M1**: overlay inativo sem layout/canvas, falha do desenho isolada do frame, página headless sem overlay | puros **11/11** (repetido no head final); Chrome do gizmo **15/15** e suíte completa do runtime **174/174**, `skipped 0`, sob o lock de GPU (rodada anterior, árvore `aabb589`): as fontes e o `runtime/dist/runtime.js` do head final têm os **mesmos sha256** do manifesto anterior, então o Chrome não foi repetido |
+| Host/ponte | `viewport_host_tests` (52): portões e contadores do overlay, reload = época nova | **52/52** (parte dos 280 do desktop no `cargo test`) |
+| Janela (GPUI) | `scene_gizmo_tests` (28): mensagem → comando único, Escape/foco/oculto, mensagem velha silenciosa, invalidação, **M2/M4**: runtime sem feature/overlay desligado/reprodução sem plano, adoção da resposta, uma computação por move, época e seleção no carimbo | **28/28** no `cargo test --workspace` do head final |
+| Janela real (binário próprio, HOME curto, só `get`/`set`/`invoke`/`op`) | `scripts/scene-gizmo-proof.py` (superfície nativa); a lógica do script (M3) tem `scripts/scene-gizmo-proof.spec.py` (32) | **prova nativa 84/84** com o `tessel-editor` do head e o runtime construído (`final_evidence: true`: ambas as superfícies, árvore limpa, sem `--allow-dirty`); spec **32/32** |
+| Ponteiro físico, foco do teclado e captura sobre a WKWebView | — | **não observado** (BL043/BL044 seguem a validar; as ops `scene.pointer.*` são semânticas, não um mouse) |
 
-**Mutações direcionadas.** `scripts/scene-gizmo-proof.py`: 11 mutações da lógica da prova, 10 mortas e 1 sobrevivente
-equivalente (lista vazia de superfícies: a recusa de nome desconhecido já a recusa), registro em
-`/tmp/tessel-s8-m1-m4-evidence/logs/m3-mutations.log` (rodada anterior). **Nova, JS:** removido o guarda de release de `captureLost`
-em `overlay.js`; `gizmo-overlay.test.mjs` falha **no teste certo** (`a release right after a lost capture … is a cancel, never an up`)
-e o arquivo foi restaurado (hash igual ao corrigido; `logs/mut-chrome-release-lost-capture.log`). As mutações dos testes **Rust**
-(limite, ramos degenerados, `replaced_by_press`, `gesture_invalidated`) **não foram executadas**: cada teste descreve o que deve falhar
-se o ramo sumir, mas nenhum "morto" é alegado (BLOCKED, disco).
+**Mutações direcionadas (executadas).** 15 mutações de lógica, uma por vez, em árvore limpa, com o arquivo restaurado por `git checkout` e hash/árvore conferidos
+depois (`/tmp/tessel-s8-finish-gates/mutations.jsonl`, um log por mutação em `logs/mut-*.log`, diff aplicado no cabeçalho do log; um registro "morta" exige
+testes executados, falha do comando e o teste esperado entre os que falharam): `degenerate_axis`, `degenerate_pointer`, `OUTSIDE_LIMIT`, `replaced_by_press`,
+S1 (`is_idle_gizmo_release`), a checagem de vida no `pointer_move`, o portão `negotiated` do `overlay_pointer`, a retenção na reprodução, o memo, o portão de
+suporte do `overlay_refresh`, a adoção da resposta, `epoch` e `selection` do carimbo (Rust); o guarda de `active()` e o isolamento do `throw` em
+`refreshAfterFrame` (JS). **15 mortas pelo teste certo** no head final. **Uma sobreviveu na primeira rodada** (a checagem de vida no começo de `pointer_move`
+removida: nenhum teste falhou) e **não era equivalente**: num arrasto morto cujo ponteiro não resolve (raio paralelo ao eixo), a resposta era um `applied:
+false` quieto em vez de `gesture_invalidated`. O teste `a_move_on_a_dead_drag_is_refused_even_where_the_pointer_resolves_to_nothing` foi acrescentado e mata
+essa mutação (e a de `degenerate_pointer` também). O log da primeira rodada dessa mutação foi sobrescrito por minha reexecução com o mesmo nome (o registro
+`SURVIVED` e o sha256 do log antigo seguem em `mutations.jsonl`; as demais rodadas passaram a ter nome único). Mutações anteriores preservadas: as 11 da prova Python
+(M3) em `/tmp/tessel-s8-m1-m4-evidence/logs/m3-mutations.log` e a do guarda de captura perdida do `overlay.js` em `/tmp/tessel-s8-final-gates/logs/`.
 
-### Falhas encontradas ao executar pela primeira vez (e corrigidas, sem relaxar contrato)
+### Falhas encontradas ao executar (e corrigidas, sem relaxar contrato)
 
 Esta árvore nunca havia sido compilada com os testes: a execução achou o que a leitura não achou.
 
@@ -280,56 +295,53 @@ Esta árvore nunca havia sido compilada com os testes: a execução achou o que 
    Causa: o teste escondia o monitor escrevendo `viewport.on_screen = false`; o render que segue qualquer `update` recalcula
    `on_screen` a partir do layout (`update_viewport_visibility`) e religava o overlay antes da asserção. Defeito do **teste**, o código
    do adaptador estava certo. Correção: `monitor_hidden_by_dialog` esconde pelo caminho real (diálogo, render). Os contratos
-   (sem plano, sem seleção, press contado) não foram afrouxados. Log: `cargo-test.log` (3 FAILED) e `cargo-test-gizmo-fix1.log` (28 ok).
+   (sem plano, sem seleção, press contado) não foram afrouxados. Rodada anterior (`/tmp/tessel-s8-final-gates/logs/cargo-test.log`).
 2. **Um teste de Chrome falhava** (`a lost pointer capture … cancels the drag`): o Chrome headless dirigido por CDP não dispara
-   `lostpointercapture` após `releasePointerCapture` (sonda em `/tmp/tessel-s8-final-gates/probe-capture.mjs`: nem `gotpointercapture`/
-   `lostpointercapture` chegam), então a página continuava emitindo `move` e `up`, que o core confirmaria. Defeito **real** da página:
-   `overlay.js` agora confere `hasPointerCapture` no próximo move e no release e cancela (`pointer_cancel`). Teste novo para o release
-   sem move; o guarda do release foi mutado e o teste novo falhou.
+   `lostpointercapture` após `releasePointerCapture` (sonda em `/tmp/tessel-s8-final-gates/probe-capture.mjs`), então a página continuava emitindo `move` e `up`,
+   que o core confirmaria. Defeito **real** da página: `overlay.js` confere `hasPointerCapture` no próximo move e no release e cancela (`pointer_cancel`). Teste
+   novo para o release sem move; o guarda do release foi mutado e o teste novo falhou.
+3. **`cargo clippy --workspace --all-targets -- -D warnings` falhava** (3 diagnósticos, defeitos de estilo reais, sem mudança de comportamento):
+   `clippy::question_mark` em `pointer_move` (`scene_project/gizmo.rs`), e `useless_conversion` e `neg_multiply` em `crates/core/tests/scene_gizmo.rs`. Corrigidos
+   (commit `fix(gizmo): Satisfy clippy…`). Logs: `cargo-clippy.log`, `cargo-clippy-r2-explore.log` (falhas) e `cargo-clippy-final2.log` (passou).
+4. **A primeira prova nativa falhou** (`and shows the initial picture again`, 33 checks, `proof-native-and-headless.log`, relatório `proof-native-and-headless-FAIL1.json`):
+   defeito do **script**, não do produto. A linha de base de imagem era tirada logo depois de `monitor.show_scene`, no playhead da primeira exibição, mas o arrasto, o
+   commit e o undo acontecem no frame de edição; o `undo` correto nunca igualaria aquela imagem e o check "a imagem seguiu o candidato (o hash saiu da inicial)" era
+   verdadeiro pelo motivo errado (mudança de frame, não o arrasto). A linha de base passa a ser tirada depois do seek convergido (`record_baseline_picture`;
+   a primeira exibição fica em `shown_hash`). Quatro testes da spec fixam isso e **falham contra o script anterior**. Reexecução: 84/84.
+5. **Uma mutação sobreviveu** (acima): corrigida por teste novo.
 
 ### Execução no head
 
-Cabeçalho do manifesto: HEAD inicial `4120ca25a73ed6215f28f89a2317875c5989dd8a` (árvore `04c357d346195f4d4b230ba06d03b0eae6b6f60e`), base
-`main` `59b8efc` (a `main` viva continuava `59b8efc`: nada a integrar), `rustc 1.99.1`, `node v22.23.3`, Python 3.14.3, `TESSEL_REQUIRE_RUNTIME=1`,
-Cargo por `cargo-serial.py` e lock de GPU (`with-gpu-lock.py`, sem aninhar) nos comandos de Chrome. Disco livre na entrada: 16,32 GiB.
+Cabeçalho do manifesto (`/tmp/tessel-s8-finish-gates/env.txt`): HEAD inicial `89e4147` (árvore `2001010681ad…`, igual ao head da PR), base `main` `59b8efc` (a `main` viva continuava
+`59b8efc`: nada a integrar), `rustc 1.99.1`, `node v22.23.3`, Python 3.14.3, `TESSEL_REQUIRE_RUNTIME=1`, Cargo por `cargo-serial.py`, lock de GPU
+(`with-gpu-lock.py`) antes de **todo** gate que usa Chrome/runtime/janela, sem aninhar. Disco livre na entrada 19,43 GiB (≥ 16 para os pesados), mínimo durante as rodadas
+16,19 GiB (piso 12); nada foi limpo nem apagado (só os 549 MiB de ativos do perf, gerados por mim). O checkout T3 estava em `2401037` (não ancestral): o commit foi preservado em
+`backup/t3-66247c45-heritage-2401037` e a branch reorientada com `git reset --keep` em árvore limpa.
 
-| Verificação | Resultado |
+Commits de código desta rodada: `fix(gizmo): Satisfy clippy…`, `fix(gizmo): Compare the native pictures…`, `test(gizmo): Pin the dead-drag refusal…` (head de código `85d6aa7`).
+Os commits seguintes são só documentação (a equivalência de árvore fora de `docs/` está no manifesto).
+
+| Verificação (head de código `85d6aa7`, salvo indicação) | Resultado |
 |---|---|
-| `git diff --check 59b8efc 4120ca2`, `cargo fmt --all -- --check` | passaram |
-| `scripts/scene-gizmo-proof.spec.py` | 28 testes, passou |
-| `node --test runtime/test/overlay.test.mjs` | 11/11 |
-| `cargo check --workspace --all-targets --locked` | passou (head `4120ca2`) |
-| `./scripts/runtime setup` | passou |
-| `cargo test --workspace --no-fail-fast --locked` (head `4120ca2`) | **3 FALHAS** (desktop, acima); todos os demais binários passaram: core 285 unit + 37 gizmo e o resto, mídia, render (frames/exports reais com `TESSEL_REQUIRE_RUNTIME=1`) |
-| `cargo test -p tessel-editor scene_gizmo_tests` (após `aabb589`) | 28/28 |
-| `cargo build -p tessel-editor -p tessel-editor-core --locked` | passou; bins copiados na hora para `/tmp/tessel-s8-final-gates/bins` com sha256 antes e depois da cópia |
+| `git diff --check 59b8efc HEAD`, `cargo fmt --all -- --check` | passaram |
+| `scripts/scene-gizmo-proof.spec.py` | 32 testes, passou |
+| `node --test runtime/test/overlay.test.mjs`, `node --check` do teste de Chrome | 11/11; ok |
+| `./scripts/runtime setup` (checkout novo, sem `dist`) | passou; `runtime/dist/runtime.js` com o **mesmo sha256** do manifesto anterior |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | **passou** (depois dos 3 diagnósticos acima; primeira rodada falhou) |
+| `cargo test --workspace --no-fail-fast --locked` (lock de GPU, `TESSEL_REQUIRE_RUNTIME=1`) | **passou**: 1556 passaram, 0 falharam, 12 `ignored` declarados (medições); core 285 unit + 38 do gizmo, desktop 280 (28 do gizmo, 52 do host), render com Chrome real |
+| `cargo build -p tessel-editor -p tessel-editor-core --locked` | passou; os binários do head (`bins-final/`) têm **sha256 idêntico** aos de `fc999ef` (`bins/`): o diff de `fc999ef` a `85d6aa7` só toca testes e `scripts/` |
 | `cargo tree -p tessel-editor-core` | só `flate2`, `serde`, `serde_json`: sem `gpui`/`wry` |
-| `gizmo-overlay.test.mjs` (Chrome, lock de GPU) | rodada 1: 13/14 (teste 7 falhou); após a correção **15/15**, `skipped 0` |
-| suíte completa do runtime (`pnpm test`, Chrome, lock de GPU) na árvore final | **174/174**, `skipped 0`, `fail 0` |
+| `scripts/scene-gizmo-proof.py` (ambas as superfícies, `final_evidence: true`) | headless **56/56**, janela real **84/84** (HOME curto próprio, só `op`/`get`/`invoke`) |
+| medição M1/M2 (`perf/run.mjs`, baseline da `main`) | sem diferença acima da resolução do relógio (ver "Custo do overlay") |
+| mutações Rust/JS | 15/15 mortas no head final (acima) |
 
-**Limites declarados dessa execução.** (a) `cargo test --workspace` **não** rodou sob o lock de GPU: os testes de render do crate
-`render` abrem Chrome headless; o lock só cobriu os comandos de `runtime/`. (b) O `cargo test` completo foi feito **antes** da correção
-dos 3 testes; depois só o subconjunto do gizmo foi repetido. Os arquivos tocados pela correção são o módulo de testes do desktop e
-`overlay.js` (+ teste), então o restante do workspace não muda, mas isso é inferência, não execução. (c) Os binários vêm do código de
-`4120ca2` (o módulo de teste do desktop não entra no binário; o runtime é lido de `runtime/dist` em tempo de execução, não embutido).
+**Limites declarados dessa execução.** (a) Os binários usados pela prova foram construídos no head `fc999ef`; o hash idêntico no head final os atesta. (b) A prova nativa usa
+requisições semânticas; **nenhum ponteiro físico, foco do teclado nem captura de tela do gizmo sobre a WKWebView foi observado** (BL043/BL044). (c) O Chrome do gizmo (15/15) e a suíte
+do runtime (174/174) não foram repetidos: as fontes JS e o bundle são byte a byte os da rodada anterior (sha256 no manifesto). (d) A medição de perf roda em SwiftShader, não na GPU da janela.
 
-**BLOCKED (não executado):** `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace` repetido na árvore final,
-`scripts/scene-gizmo-proof.py` (headless e janela real: o script recusa abaixo de 12 GiB), medição M1/M2 com `runtime/scripts/perf/run.mjs`
-contra a baseline da `main`, mutações dos testes Rust, ponteiro físico (BL043/BL044). Motivo: o disco caiu de 16,32 GiB para 12,13 GiB só
-com o `cargo check`, o `cargo test` (o mais caro) e o `build`, terminou em 11,99 GiB (sob o piso de 12 GiB) e, ao fim, em ≈ 11,5 GiB por
-consumo de outros processos; nada foi apagado, limpo ou contornado. Cada gate bloqueado tem um registro `REFUSED_DISK` com log no manifesto.
-
-Procedimento da medição proporcional (M1/M2) para quando houver disco: construir o bundle da `main` (`59b8efc`)
-como baseline (extraindo `runtime/` de `git archive 59b8efc`, sem worktree) e rodar, sob `scripts/directed-scene-proof/with-gpu-lock.py`,
-`node runtime/scripts/perf/run.mjs --variants current,baseline --baseline-bundle <bundle da main>`; reportar a razão
-com o intervalo, nunca "custo 0"; o custo do adaptador (planos por move/tick) lê-se nos contadores `computed`/`adopted`/
-`memo_hits`/`held` de `monitor.viewport.state.overlay`. As páginas do harness usam `__tesselPost` e não têm overlay: a comparação mede
-o custo residual do gate, não o do desenho.
-
-Status: **a validar**. Implementado; o Rust compila e passa (core, host, 28 testes da janela depois da correção), a página passa 15/15 e o
-runtime 174/174 em Chrome real. **Faltam** clippy, a repetição do workspace na árvore final, a prova headless e a nativa por
-`scene-gizmo-proof.py`, a medição M1/M2 e as mutações Rust; **sem prova com ponteiro físico** nem captura visual do gizmo sobre a
-WKWebView (BL043/BL044). Limitações: só translação; um nó por vez; sem snapping; handles só em coordenadas de mundo (não locais);
+Status: **a validar**. Implementado e agora executado em quase todas as superfícies pedidas: core 38/38, host 52/52, janela GPUI 28/28, workspace 1556/0, clippy `-D warnings`, prova semântica
+headless 56/56 e da janela real 84/84, Chrome 15/15 e runtime 174/174, 15 mutações mortas. **Faltam** a prova com ponteiro físico, foco do teclado e captura do gizmo sobre a WKWebView
+(BL015.2, BL043/BL044) e o veredito do coordenador (revisão nova depois destes gates). Limitações: só translação; um nó por vez; sem snapping; handles só em coordenadas de mundo (não locais);
 aspecto da imagem vem da câmera da cena.
 
 Harmonização: **S4** (identidade de ativos) — o gizmo só endereça nós pelo `entity` do F039
