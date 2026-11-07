@@ -1,4 +1,4 @@
-//! F052 (BL015/BL042): the geometry of the translation gizmo of a directed scene: where its
+//! F055 (BL015/BL042): the geometry of the translation gizmo of a directed scene: where its
 //! handles are on the picture, which handle or image plane a pointer is over, and how far a drag
 //! along a handle moves the node. Pure functions over an evaluated [`ScenePlan`]: no window, no
 //! pointer device, no pixels, no GPUI. A runtime only *draws* what [`Overlay::to_json`] lists and

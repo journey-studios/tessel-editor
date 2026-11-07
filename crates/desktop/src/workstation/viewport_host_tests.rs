@@ -1688,7 +1688,7 @@ fn the_context_rows_come_from_the_last_finished_frame_and_msaa_is_absent_without
     assert_eq!(context.reduced_scene_layers, None);
 }
 
-// --- F052: the gizmo overlay ------------------------------------------------------------------
+// --- F055: the gizmo overlay ------------------------------------------------------------------
 
 fn gizmo_ready_message() -> Value {
     let mut message = ready_message();

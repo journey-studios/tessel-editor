@@ -141,13 +141,13 @@ impl Workstation {
         } else {
             self.viewport.sync(&self.state);
         }
-        // F052: the gizmo the page draws over the picture follows the same state.
+        // F055: the gizmo the page draws over the picture follows the same state.
         self.overlay_refresh();
         self.viewport_flush(cx);
     }
 
     fn viewport_ipc(&mut self, raw: &str, cx: &mut Context<Self>) {
-        // F052: the overlay's own messages never reach the render session.
+        // F055: the overlay's own messages never reach the render session.
         if let Ok(message) = serde_json::from_str::<serde_json::Value>(raw)
             && self.overlay_ipc(&message, cx)
         {

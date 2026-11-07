@@ -1,4 +1,4 @@
-//! F052: the desktop half of the translation gizmo, driven through the entry the page uses
+//! F055: the desktop half of the translation gizmo, driven through the entry the page uses
 //! (`overlay.pointer` messages) and the window's own Escape and focus paths.
 //!
 //! A GPUI test window has no WebView, so the canvas itself is `runtime/test/gizmo-overlay.test.mjs`

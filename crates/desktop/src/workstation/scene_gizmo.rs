@@ -1,4 +1,4 @@
-//! Desktop adapter of the translation gizmo (F052, BL015/BL042).
+//! Desktop adapter of the translation gizmo (F055, BL015/BL042).
 //!
 //! The gizmo is drawn and hit on a canvas INSIDE the monitor's WebView (`runtime/src/overlay.js`),
 //! never as a GPUI element over it (a native WebView paints above every GPUI element). This file

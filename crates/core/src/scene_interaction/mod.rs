@@ -128,7 +128,7 @@ impl SceneInteraction {
         Some(json!({
             "selection": selection.summary_json(book),
             "gesture": self.gesture().map(|gesture| gesture.to_json(book, revision)),
-            // F052: the pointer drag riding on that gesture, if the gizmo opened it.
+            // F055: the pointer drag riding on that gesture, if the gizmo opened it.
             "drag": self.drag().map(|drag| json!({
                 "gesture": drag.gesture(),
                 "handle": drag.handle().as_str(),

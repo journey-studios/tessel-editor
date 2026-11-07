@@ -1,4 +1,4 @@
-//! The gizmo overlay as the viewport host sees it (F052): the page draws it on a canvas of its
+//! The gizmo overlay as the viewport host sees it (F055): the page draws it on a canvas of its
 //! own over the picture, and this side only (a) switches it on for a directed scene, (b) sends
 //! the core's `Overlay` JSON when it changed and (c) counts what the page reports back.
 //!

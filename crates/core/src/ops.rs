@@ -626,7 +626,7 @@ fn scene_command(op: &str, request: &Value) -> Result<SceneCommand, CommandError
             gesture: string(request, "gesture")?.to_string(),
         }),
         "scene.gesture.status" => SceneCommand::Gesture(GestureCommand::Status),
-        // F052: the translation gizmo. Shape only; the geometry and every rule are the core's.
+        // F055: the translation gizmo. Shape only; the geometry and every rule are the core's.
         "scene.gizmo.state" => SceneCommand::Gizmo(GizmoCommand::State {
             scene: scene()?,
             at: frame_at(request)?,

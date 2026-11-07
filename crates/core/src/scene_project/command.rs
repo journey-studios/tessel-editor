@@ -169,7 +169,7 @@ pub enum SceneCommand {
     Selection,
     /// F039: the begin/update/commit/cancel cycle.
     Gesture(GestureCommand),
-    /// F052: the translation gizmo (overlay, hit test, pointer drag, semantic translate).
+    /// F055: the translation gizmo (overlay, hit test, pointer drag, semantic translate).
     Gizmo(GizmoCommand),
 }
 

@@ -266,7 +266,7 @@ impl Workstation {
             if !window.is_window_active() {
                 this.slider_focus_lost(cx);
                 this.scene_slider_focus_lost(cx);
-                // F052: a release may never arrive; a gizmo drag is cancelled, never committed.
+                // F055: a release may never arrive; a gizmo drag is cancelled, never committed.
                 this.cancel_gizmo_drag(
                     tessel_editor_core::scene_interaction::CancelReason::Blur,
                     cx,

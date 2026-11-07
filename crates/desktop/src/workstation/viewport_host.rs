@@ -245,7 +245,7 @@ struct Waiter {
 
 pub struct ViewportHost {
     directed: directed::DirectedViewport,
-    /// F052: the gizmo overlay the page draws over the picture.
+    /// F055: the gizmo overlay the page draws over the picture.
     overlay: OverlayHost,
     dist: Option<PathBuf>,
     session: ViewportSession<BridgeBackend<WebTransport>>,

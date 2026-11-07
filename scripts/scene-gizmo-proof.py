@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""F052 / BL015 / BL042 (S8) — the translation gizmo, proved on two separate surfaces with one scenario:
+"""F055 / BL015 / BL042 (S8) — the translation gizmo, proved on two separate surfaces with one scenario:
 
     python3 scripts/directed-scene-proof/with-gpu-lock.py \
         python3 scripts/scene-gizmo-proof.py [--editor target/debug/tessel-editor] \

@@ -1,4 +1,4 @@
-// The gizmo overlay of the directed-scene monitor (F052, BL015/BL042): drawn and hit on a 2D canvas
+// The gizmo overlay of the directed-scene monitor (F055, BL015/BL042): drawn and hit on a 2D canvas
 // that sits over the viewport canvas INSIDE the page, so it composes with the picture and can never
 // be an element of the host UI laid over a native WebView.
 //

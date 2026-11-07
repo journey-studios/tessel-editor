@@ -1,4 +1,4 @@
-// The gizmo overlay on a real page and a real canvas (F052): real mouse events from puppeteer, a
+// The gizmo overlay on a real page and a real canvas (F055): real mouse events from puppeteer, a
 // real 2D canvas whose pixels are read back, and the policy for Escape, blur, hidden, resize and
 // a lost pointer. The geometry itself is the core's; this proves the page half of the seam.
 import assert from 'node:assert/strict';

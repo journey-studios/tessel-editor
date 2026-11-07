@@ -1,4 +1,4 @@
-// Pure rules of the gizmo overlay page (F052): the picture/pane mapping, the overlay payload check,
+// Pure rules of the gizmo overlay page (F055): the picture/pane mapping, the overlay payload check,
 // the hover rule and the pointer policy (coalescing, Escape, focus). No DOM and no browser; the
 // real pointer events on a real canvas are gizmo-overlay.test.mjs.
 import assert from 'node:assert/strict';

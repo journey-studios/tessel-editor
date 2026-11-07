@@ -1,4 +1,4 @@
-//! Running the F052 gizmo commands (`scene.gizmo.state|hit`, `scene.pointer.*`, `scene.translate`)
+//! Running the F055 gizmo commands (`scene.gizmo.state|hit`, `scene.pointer.*`, `scene.translate`)
 //! against a project. The geometry (projection, hit test, drag math) is
 //! `scene_interaction::gizmo`; this file is the glue that needs `EditorState`: the selection, the
 //! gesture slot and `edit_scene`.

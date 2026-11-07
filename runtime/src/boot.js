@@ -21,7 +21,7 @@ const transport = () => {
 };
 
 const canvas = document.getElementById('viewport');
-// F052: a 2D canvas over the picture for the gizmo; its pointer events go to the host as
+// F055: a 2D canvas over the picture for the gizmo; its pointer events go to the host as
 // `overlay.pointer`. Inert (pointer-events: none) until the host sends `overlay.enable`.
 const overlay = attachOverlay({ canvas, post: transport() });
 const runtime = createRuntime({

@@ -218,7 +218,7 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
                 "scene.tree", "scene.evaluate", "scene.plan", "scene.select", "scene.selection",
                 "scene.gesture.begin", "scene.gesture.update", "scene.gesture.commit",
                 "scene.gesture.cancel", "scene.gesture.status",
-                // F052 (docs/features/scene-gizmo.md): additive, negotiated by listing.
+                // F055 (docs/features/scene-gizmo.md): additive, negotiated by listing.
                 "scene.gizmo.state", "scene.gizmo.hit", "scene.pointer.down",
                 "scene.pointer.move", "scene.pointer.up", "scene.pointer.cancel",
                 "scene.translate",

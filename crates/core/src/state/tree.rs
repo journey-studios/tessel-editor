@@ -546,7 +546,7 @@ fn build_monitor(state: &EditorState, nodes: &mut Vec<Node>) {
             .parent("region:monitor")
             .action("invoke"),
     );
-    // F052: the translation gizmo is drawn and hit on a canvas inside the page, so it has no
+    // F055: the translation gizmo is drawn and hit on a canvas inside the page, so it has no
     // control of its own to click: this node shows what the core holds for it, and the semantic
     // way to drive it is `scene.pointer.*` / `scene.translate` (`ui op`, `scripts/headless`).
     // Only with a scene attached, so the tree of a project without scenes is what it always was.

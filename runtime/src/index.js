@@ -49,7 +49,7 @@ const FEATURES = [
   'directed_scene',
   'asset.identity',
 ];
-// F052: announced only by a page that has an overlay surface (the desktop WebView), never by the
+// F055: announced only by a page that has an overlay surface (the desktop WebView), never by the
 // headless worker: a host sends `overlay.*` messages only to a runtime that says it can draw them.
 const OVERLAY_FEATURE = 'overlay.gizmo';
 
@@ -272,7 +272,7 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       if (output.png) message.png_data = canvas.toDataURL('image/png').split(',')[1];
       send(message);
       // The canvas may have changed shape with this picture: the overlay re-checks that it still
-      // describes it (F052).
+      // describes it (F055).
       overlay?.refresh();
       if (options.presented) announcePresented(id, revision);
     } catch (error) {
@@ -306,7 +306,7 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       cancelled.add(message.id);
     },
     'viewport.resize': () => {},
-    // F052 (additive, negotiated by the `overlay.gizmo` feature): the gizmo drawn over the picture.
+    // F055 (additive, negotiated by the `overlay.gizmo` feature): the gizmo drawn over the picture.
     ...Object.fromEntries(
       ['overlay.enable', 'overlay.set', 'overlay.clear'].map((type) => [
         type,
