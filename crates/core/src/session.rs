@@ -250,6 +250,11 @@ impl<B: RenderBackend> ViewportSession<B> {
         self.revision
     }
 
+    /// The sequence frame of the picture on screen (`None` for a source preview or nothing yet).
+    pub fn presented_frame(&self) -> Option<i64> {
+        self.presented.and_then(|(_, frame)| frame)
+    }
+
     pub fn loaded_assets(&self) -> Vec<Id> {
         let mut ids: Vec<Id> = self
             .assets

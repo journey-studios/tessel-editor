@@ -25,6 +25,7 @@ fn main() {
         .with_assets(gpui_kit::assets::AllAssets)
         .run(|cx: &mut App| {
             gpui_kit::init(cx);
+            workstation::install_perf_meter(cx);
             theme::apply(cx, true);
             cx.on_window_closed(|cx, _| {
                 if cx.windows().is_empty() {
