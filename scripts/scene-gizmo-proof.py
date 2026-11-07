@@ -27,6 +27,14 @@ read back from the canvas, opt-in `TESSEL_VIEWPORT_OVERLAY_ACK=1`), the monitor'
 is the committed picture after the release and the initial one after undo (hashes), and a dialog that hides the
 WebView cancels the open drag.
 
+What the report promises (M3 of the PR #25 review): the `--out` file is replaced at the START by `ok: false` and
+only a complete, clean run turns it into `ok: true`; ANY exception (including a missing binary, a dead child or a
+bad JSON line) leaves a fresh `ok: false` with the error, and Ctrl-C does too. A surface with zero checks, or
+without the checks it is required to have run (`REQUIRED`), fails; so does an empty or unknown `--surfaces`.
+`final_evidence` is true only for both surfaces, on a tree with no modified AND no untracked (non-ignored) file,
+without `--allow-dirty`. A failed run keeps its work directory (editor log, headless stderr, saved documents) and
+says where; a passing one removes it. The child processes are always ended (terminate, then kill).
+
 Not proven here, on purpose: a PHYSICAL pointer or a native drag on the WKWebView (BL043/BL044). The `scene.pointer.*`
 requests carry picture coordinates (u, v in 0..1), not screen coordinates; they exercise the same handlers the page's
 events do (`overlay.pointer`), but a synthetic request is not a mouse. The page's own mouse handling is proved with
@@ -44,6 +52,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 
 ROOT = Path(__file__).resolve().parent.parent
 CORPUS = ROOT / 'scripts/directed-scene-proof/corpus'
@@ -55,6 +64,32 @@ HERO_POSITION = f'{HERO}/position'
 SKY = 'scene/scene-a/node/sky'
 FRAME = 24  # the stage has slid and the hero sways: the node is animating here
 TOLERANCE = 1e-7
+SURFACES = ('headless', 'native')
+# Checks that run through hooks or at the end of the scenario: if the hook does not fire, they would vanish
+# without a trace and `passed` would only count the rest. A surface that did not run every one of these failed.
+_COMMON = (
+    'the corpus bundle loads',
+    'a selected node has a gizmo with x, y, z and screen handles',
+    'the overlay origin is where an independent pinhole puts the node',
+    'the release is one undo entry',
+    'the node now projects under the pointer (independent pinhole, plan read after the commit)',
+    'and it leaves the same saved document as the drag did',
+    'Escape with nothing to cancel is not an error',
+    'one undo takes the unrelated edit back',
+)
+REQUIRED = {
+    'headless': _COMMON,
+    'native': _COMMON + (
+        'the page announced `overlay.gizmo` and the overlay is on for the shown scene',
+        'the page acknowledged what it drew',
+        'the x axis is painted red and the y axis green on the canvas (alpha > 200)',
+        'the page drew the active handle of the drag',
+        'and shows the initial picture again',
+        'the open drag was cancelled by the hide (never committed)',
+        'the gizmo is drawn again for the selection',
+    ),
+}
+STOP_GRACE = 30  # seconds a child gets to exit by itself before it is terminated, then killed
 
 
 class ProofFailure(AssertionError):
@@ -88,10 +123,64 @@ def sha256(path):
     return digest.hexdigest()
 
 
-def clean_tracked_tree(root=ROOT):
-    status = subprocess.run(['git', 'status', '--porcelain', '--untracked-files=no'], cwd=root,
+def tree_status(root=ROOT):
+    """`(clean, porcelain)`: clean means NO modified/staged file and NO untracked file that is not ignored (a new
+    file the commit does not contain is not the head either)."""
+    status = subprocess.run(['git', 'status', '--porcelain', '--untracked-files=all'], cwd=root,
                             capture_output=True, text=True, check=True).stdout
     return status.strip() == '', status
+
+
+def git_head(root=ROOT):
+    return subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=root, capture_output=True, text=True,
+                          check=True).stdout.strip()
+
+
+def parse_surfaces(text):
+    """The surfaces to run, in canonical order. Empty, unknown and repeated names are refused: a run of nothing must
+    never be a pass."""
+    names = [name.strip() for name in text.split(',')]
+    if not text.strip() or any(not name for name in names):
+        raise RuntimeError(f'--surfaces is empty: nothing would be proved (known: {", ".join(SURFACES)})')
+    unknown = [name for name in names if name not in SURFACES]
+    if unknown:
+        raise RuntimeError(f'unknown surface {unknown} in --surfaces (known: {", ".join(SURFACES)})')
+    if len(set(names)) != len(names):
+        raise RuntimeError(f'--surfaces repeats a surface: {names}')
+    return [name for name in SURFACES if name in names]
+
+
+def missing_checks(name, checks, required=REQUIRED):
+    """What a finished surface was required to have run and did not (everything, when it ran nothing)."""
+    ran = {check['name'] for check in checks}
+    return [required_name for required_name in required[name] if required_name not in ran]
+
+
+def final_blockers(wanted, allow_dirty, clean):
+    """Why a passing run is still not final evidence (empty: it is)."""
+    blockers = []
+    if list(wanted) != list(SURFACES):
+        blockers.append(f'surfaces {wanted} are a subset of {list(SURFACES)}')
+    if allow_dirty:
+        blockers.append('--allow-dirty')
+    if not clean:
+        blockers.append('the tree has modified or untracked files')
+    return blockers
+
+
+def write_report(out, report):
+    """Atomically replaces `out`: a reader sees the old file or the new one, never half of one."""
+    if out is None:
+        return
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    temporary = out.with_name(out.name + '.tmp')
+    temporary.write_text(json.dumps(report, indent=2) + '\n')
+    os.replace(temporary, out)
+
+
+def describe(error):
+    return f'{type(error).__name__}: {error}'
 
 
 # ---- the independent pinhole: nothing here is the core's code ---------------------------------------------------
@@ -132,14 +221,42 @@ def project(camera, output, point):
 class Headless:
     name = 'headless'
 
-    def __init__(self, binary, _work):
-        self.process = subprocess.Popen([binary, '--empty'], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                        stderr=subprocess.DEVNULL, text=True, bufsize=1)
+    def __init__(self, binary, work):
+        self.stderr_path = os.path.join(work, 'headless.stderr.log')
+        self.stderr = open(self.stderr_path, 'w')
+        try:
+            self.process = subprocess.Popen([binary, '--empty'], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                            stderr=self.stderr, text=True, bufsize=1)
+        except BaseException:
+            self.stderr.close()
+            raise
+
+    def log_tail(self, size=600):
+        try:
+            return Path(self.stderr_path).read_text()[-size:]
+        except OSError:
+            return ''
+
+    def _gone(self, what):
+        code = self.process.poll()
+        return RuntimeError(f'tessel-headless {what}'
+                            + (f' (exited {code})' if code is not None else '') + f'; stderr: {self.log_tail()!r}')
 
     def raw(self, request):
-        self.process.stdin.write(json.dumps(request) + '\n')
-        self.process.stdin.flush()
-        return json.loads(self.process.stdout.readline())
+        if self.process.poll() is not None:
+            raise self._gone(f'is not running for `{request.get("op")}`')
+        try:
+            self.process.stdin.write(json.dumps(request) + '\n')
+            self.process.stdin.flush()
+        except OSError as error:
+            raise self._gone(f'closed its input ({error})') from error
+        line = self.process.stdout.readline()
+        if not line:
+            raise self._gone(f'closed its output answering `{request.get("op")}`')
+        try:
+            return json.loads(line)
+        except ValueError as error:
+            raise self._gone(f'answered a line that is not JSON ({error}): {line[:200]!r}') from error
 
     def op(self, request):
         return normalize(self.raw(request))
@@ -148,8 +265,32 @@ class Headless:
         pass
 
     def stop(self):
-        self.process.stdin.close()
-        self.process.wait(30)
+        """Ends the child whatever it does: EOF first, then terminate, then kill. Never returns with it alive."""
+        try:
+            try:
+                self.process.stdin.close()
+            except OSError:
+                pass
+            try:
+                self.process.wait(STOP_GRACE)
+            except subprocess.TimeoutExpired:
+                self.process.terminate()
+                try:
+                    self.process.wait(5)
+                except subprocess.TimeoutExpired:
+                    self.kill()
+        finally:
+            self.kill()
+            for stream in (self.process.stdout, self.stderr):
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+
+    def kill(self):
+        if self.process.poll() is None:
+            self.process.kill()
+            self.process.wait()
 
 
 def load_lifecycle():
@@ -188,7 +329,22 @@ class Native:
         time.sleep(0.8)
 
     def stop(self):
-        self.lab.stop()
+        try:
+            self.lab.stop()
+        finally:
+            self.kill()
+
+    def kill(self):
+        process = self.lab.process
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+
+    def log_tail(self, size=600):
+        try:
+            return Path(self.lab.log_path).read_text()[-size:]
+        except OSError:
+            return ''
 
 
 def scenario(surface, check, scratch, record):
@@ -524,17 +680,50 @@ def native_dialog(surface, check, record, context):
     record['stale_messages'] = (surface.viewport().get('overlay') or {}).get('stale')
 
 
-def run_surface(factory, binary, report, free_gib):
+class Deps:
+    """What `main` talks to. The real ones by default; a test swaps in fakes (no GPU, no editor, no repository)."""
+
+    def __init__(self, **overrides):
+        self.factories = {'headless': Headless, 'native': Native}
+        self.scenario = scenario
+        self.dialog = native_dialog
+        self.required = REQUIRED
+        self.free_gib = lambda: shutil.disk_usage('/tmp').free / 1024 ** 3
+        self.tree_status = tree_status
+        self.head = git_head
+        self.__dict__.update(overrides)
+
+
+def stop_surface(surface):
+    """Ends the surface's processes; the error (if any) as text. A failed stop never skips the kill."""
+    if surface is None:
+        return None
+    try:
+        surface.stop()
+        return None
+    except BaseException as error:
+        try:
+            surface.kill()
+        except BaseException:
+            pass
+        return describe(error)
+
+
+def run_surface(name, binary, report, deps):
     work = tempfile.mkdtemp(prefix='te-s8-', dir='/tmp')
     scratch = Path(work) / 'scratch'
     scratch.mkdir()
-    surface = factory(binary, work)
-    check = Recorder(surface.name)
+    check = Recorder(name)
     record = {}
-    report[surface.name] = {'checks': check.checks, 'work': work, 'record': record}
+    # `retained: true` until the run passed: the work directory (editor log, headless stderr, saved documents) is
+    # what explains a failure and is never deleted on one.
+    entry = report[name] = {'checks': check.checks, 'work': work, 'retained': True, 'record': record}
+    surface = None
+    succeeded = False
     try:
+        surface = deps.factories[name](binary, work)
         surface.prepare()
-        if surface.name == 'native':
+        if name == 'native':
             # The overlay checks run at the points of the scenario where they belong (see `scenario`).
             original = surface.op
 
@@ -546,80 +735,108 @@ def run_surface(factory, binary, report, free_gib):
                     native_selected(surface, check, record)
                 return result
             surface.op = wrapped
-        context = scenario(surface, check, scratch, record)
-        if surface.name == 'native':
-            if free_gib() < MIN_FREE_GIB:
+        context = deps.scenario(surface, check, scratch, record)
+        if name == 'native':
+            if deps.free_gib() < MIN_FREE_GIB:
                 raise ProofFailure('free space fell below the floor')
-            native_dialog(surface, check, record, context)
-    except ProofFailure as failure:
-        report[surface.name]['failure'] = str(failure)
+            deps.dialog(surface, check, record, context)
+        missing = missing_checks(name, check.checks, deps.required)
+        if missing:
+            raise ProofFailure(f'[{name}] required checks did not run ({len(check.checks)} ran): {missing}')
+        succeeded = True
+    except BaseException as failure:
+        entry['failure'] = describe(failure)
+        if surface is not None and hasattr(surface, 'log_tail'):
+            entry['log_tail'] = surface.log_tail()
         raise
     finally:
-        surface.stop()
-        shutil.rmtree(work, ignore_errors=True)
-    report[surface.name]['passed'] = len(check.checks)
+        stop_error = stop_surface(surface)
+        entry['passed'] = len(check.checks)
+        if stop_error:
+            entry['cleanup_error'] = stop_error
+        if succeeded and not stop_error:
+            shutil.rmtree(work, ignore_errors=True)
+            entry['retained'] = False
+    if stop_error:
+        raise RuntimeError(f'[{name}] the surface did not stop cleanly (work kept at {work}): {stop_error}')
 
 
-def main():
+def main(argv=None, deps=None):
+    deps = deps or Deps()
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--editor', default=str(ROOT / 'target/debug/tessel-editor'))
     parser.add_argument('--headless', default=str(ROOT / 'target/debug/tessel-headless'))
     parser.add_argument('--out')
-    parser.add_argument('--surfaces', default='headless,native', help='development only: a subset (never final evidence)')
+    parser.add_argument('--surfaces', default=','.join(SURFACES),
+                        help='development only: a subset (never final evidence)')
     parser.add_argument('--allow-dirty', action='store_true',
-                        help='skip the clean-tracked-tree requirement (development only; never final evidence)')
-    args = parser.parse_args()
-
-    def free_gib():
-        return shutil.disk_usage('/tmp').free / 1024 ** 3
-
-    clean, status = clean_tracked_tree()
-    head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
+                        help='skip the clean-tree requirement (development only; never final evidence)')
+    args = parser.parse_args(argv)
+    out = Path(args.out) if args.out else None
     report = {
-        'head': head, 'tracked_tree_clean': clean,
-        'binaries': {name: {'path': str(Path(path).resolve()), 'sha256': sha256(path)}
-                     for name, path in (('tessel-editor', args.editor), ('tessel-headless', args.headless))
-                     if Path(path).exists()},
+        'ok': False, 'final_evidence': False, 'error': 'the run did not finish',
         'input': 'semantic requests only (JSONL for headless; the direct binary\'s socket `op`/`get`/`invoke` for native); '
                  'picture coordinates (u, v), no screen coordinates, no physical pointer',
         'not_proven': ['a PHYSICAL pointer or a native drag on the WKWebView (BL043/BL044)',
                        'a screen capture of the gizmo over the WKWebView',
                        'the page\'s own mouse handling (proved in headless Chrome by runtime/test/gizmo-overlay.test.mjs)'],
     }
-    code = 0
+    # An old report is gone before anything else runs: a crash can never leave a previous `ok: true` standing.
+    if out is not None:
+        out.unlink(missing_ok=True)
+    write_report(out, report)
+    code = 1
+    interrupted = None
     try:
-        if free_gib() < MIN_FREE_GIB:
-            raise RuntimeError(f'only {free_gib():.1f} GiB free, need {MIN_FREE_GIB}')
-        if not clean and not args.allow_dirty:
-            raise RuntimeError(f'tracked files differ from HEAD; commit first:\n{status}')
-        report['min_free_gib_seen'] = round(free_gib(), 1)
-        wanted = args.surfaces.split(',')
+        wanted = parse_surfaces(args.surfaces)
         report['surfaces'] = wanted
-        if 'headless' in wanted:
-            run_surface(Headless, args.headless, report, free_gib)
-        if 'native' in wanted:
-            run_surface(Native, args.editor, report, free_gib)
-        if len(wanted) == 2:
+        clean, status = deps.tree_status()
+        report['head'] = deps.head()
+        report['tree_clean'] = clean
+        report['binaries'] = {name: {'path': str(Path(path).resolve()), 'sha256': sha256(path)}
+                              for name, path in (('tessel-editor', args.editor), ('tessel-headless', args.headless))
+                              if Path(path).exists()}
+        if deps.free_gib() < MIN_FREE_GIB:
+            raise RuntimeError(f'only {deps.free_gib():.1f} GiB free, need {MIN_FREE_GIB}')
+        if not clean and not args.allow_dirty:
+            raise RuntimeError(f'the tree differs from HEAD (modified or untracked); commit first:\n{status}')
+        report['min_free_gib_seen'] = round(deps.free_gib(), 1)
+        binaries = {'headless': args.headless, 'native': args.editor}
+        for name in wanted:
+            run_surface(name, binaries[name], report, deps)
+        if wanted == list(SURFACES):
             head_record, native_record = report['headless']['record'], report['native']['record']
             same = all(abs(head_record['world_delta'][axis] - native_record['world_delta'][axis]) < 1e-12 for axis in 'xyz')
             report['surfaces_agree_on_the_drag'] = same
             if not same:
                 raise ProofFailure('headless and native computed different world deltas for the same drag')
-        report['min_free_gib_seen'] = round(min(report['min_free_gib_seen'], free_gib()), 1)
+        report['min_free_gib_seen'] = round(min(report['min_free_gib_seen'], deps.free_gib()), 1)
+        blockers = final_blockers(wanted, args.allow_dirty, clean)
+        report['final_evidence_blockers'] = blockers
+        report['final_evidence'] = not blockers
         report['ok'] = True
-    except (ProofFailure, RuntimeError) as failure:
+        report.pop('error', None)
+        code = 0
+    except BaseException as failure:
         report['ok'] = False
-        report['error'] = str(failure)
-        code = 1
-        print(f'FAILED: {failure}', flush=True)
-    text = json.dumps(report, indent=2)
-    if args.out:
-        Path(args.out).write_text(text + '\n')
-    summary = {key: value for key, value in report.items() if key not in ('headless', 'native')}
-    for surface in ('headless', 'native'):
+        report['final_evidence'] = False
+        report['error'] = describe(failure)
+        if not isinstance(failure, (ProofFailure, RuntimeError)):
+            report['aborted'] = True
+            report['traceback'] = traceback.format_exc()[-4000:]
+        if not isinstance(failure, Exception):
+            interrupted = failure  # Ctrl-C and SystemExit still end the process, after the report is written
+        print(f'FAILED: {describe(failure)}', flush=True)
+    finally:
+        write_report(out, report)
+    summary = {key: value for key, value in report.items() if key not in SURFACES and key != 'traceback'}
+    for surface in SURFACES:
         if surface in report:
-            summary[surface] = {'checks': len(report[surface]['checks']), 'failure': report[surface].get('failure')}
+            summary[surface] = {'checks': len(report[surface]['checks']), 'failure': report[surface].get('failure'),
+                                'work': report[surface]['work'], 'retained': report[surface]['retained']}
     print(json.dumps(summary, indent=2))
+    if interrupted is not None:
+        raise interrupted
     return code
 
 
