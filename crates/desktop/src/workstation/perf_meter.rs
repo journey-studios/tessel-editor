@@ -234,6 +234,10 @@ impl Workstation {
             self.perf.visible = visible;
             self.perf.shown = None;
             self.perf.placement = Placement::Floating { y: CARD_MARGIN };
+            // A pending "the next paint is my own redraw" mark belongs to the state that set it:
+            // left behind, it would swallow the first frame the window really paints after the
+            // meter is shown again, since a hidden meter paints no recorder to spend it.
+            self.perf.own_redraw.set(false);
             if visible {
                 // Only a clock that is running counts: a paused playback is a rest (F049).
                 let playing = self.playback.running_frame();
@@ -475,9 +479,10 @@ impl Workstation {
         text: String,
         cx: &App,
     ) -> impl IntoElement + use<> {
-        // The one item of the status bar that gives way: it may shrink below its text
-        // (`min_w(0)`) and `truncate` then cuts it, so the job, the activity and the save state
-        // next to it stay whole and on one line even with the monitor maximized at 960 px.
+        // It may shrink below its text (`min_w(0)`) and `truncate` then cuts it. The activity
+        // and the jobs line do the same (`status_bar.rs`) with the same shrink factor, and the
+        // save state never shrinks: everything stays on one line inside the window, even at
+        // 960 px with the monitor maximized and a long error in the activity.
         div()
             .debug_selector(|| "perf-strip".to_string())
             .flex_shrink(1.)

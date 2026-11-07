@@ -318,6 +318,43 @@ fn hiding_cancels_the_rest_timer_and_nothing_wakes_while_hidden(cx: &mut TestApp
 }
 
 #[gpui_kit::test]
+fn a_hide_between_the_rest_timer_and_its_redraw_does_not_swallow_the_next_real_frame(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = fixture(cx);
+    toggle(&view, cx, PerfMeterCommand::Show);
+    paint(cx);
+    // The window comes to rest: the timer fires and marks the redraw it asks for as its own...
+    cx.executor().advance_clock(Duration::from_secs(3));
+    cx.run_until_parked();
+    // ...but the meter is hidden and shown again before that redraw is painted (nothing spent
+    // the mark: a hidden meter has no recorder in the window). The test platform draws the
+    // window when the update ends, and that is the first frame it really paints after showing:
+    // it is a frame, not the stale redraw the old mark described.
+    view.update(cx, |view, cx| {
+        view.execute_perf(PerfMeterCommand::Hide, Source::Cli, cx)
+            .unwrap();
+        view.execute_perf(PerfMeterCommand::Show, Source::Cli, cx)
+            .unwrap();
+    });
+    assert_eq!(
+        samples(&view, cx).0,
+        1,
+        "the first real frame after showing again was swallowed"
+    );
+    // The control: a redraw that really is the timer's own is still left out.
+    cx.executor().advance_clock(Duration::from_secs(3));
+    cx.run_until_parked();
+    cx.update(|window, cx| window.simulate_next_frame(cx));
+    cx.run_until_parked();
+    assert_eq!(
+        samples(&view, cx).0,
+        1,
+        "the timer's own redraw is not a frame"
+    );
+}
+
+#[gpui_kit::test]
 fn hiding_forgets_the_samples(cx: &mut TestAppContext) {
     let (view, cx) = fixture(cx);
     toggle(&view, cx, PerfMeterCommand::Show);
@@ -588,11 +625,111 @@ fn playback_counts_its_first_frame_only_if_the_monitor_was_showing_it(cx: &mut T
     assert_eq!(loss["presented_frames"], json!(1), "{loss}");
 }
 
+#[gpui_kit::test]
+fn a_replaced_project_is_not_a_picture_on_screen_when_the_meter_comes_on_or_playback_starts(
+    cx: &mut TestAppContext,
+) {
+    // The monitor showed frame 0 of the old project, which is then replaced (the same call the
+    // workstation makes when a project opens) before any picture of the new one arrives.
+    let (view, cx) = fixture(cx);
+    view.update(cx, |view, _| {
+        view.viewport.note_presented(Some(0));
+        view.viewport.reset_project();
+    });
+    assert_eq!(
+        view.read_with(cx, |view, _| view.viewport.presented_frame()),
+        None
+    );
+    toggle(&view, cx, PerfMeterCommand::Show);
+    start_playback(&view, cx, 0);
+    let loss = readout(&view, cx)["playback_loss"].clone();
+    assert_eq!(
+        loss["presented_frames"],
+        json!(0),
+        "frame 0 of the old project is not on screen: {loss}"
+    );
+
+    // The control: a picture of the new project at frame 0 is.
+    view.update(cx, |view, _| view.viewport.note_presented(Some(0)));
+    view.update(cx, |view, cx| {
+        view.playback_pause(cx).unwrap();
+    });
+    start_playback(&view, cx, 0);
+    let loss = readout(&view, cx)["playback_loss"].clone();
+    assert_eq!(loss["presented_frames"], json!(1), "{loss}");
+}
+
 // ---- the status bar
 
 fn status_bounds(cx: &mut VisualTestContext, selector: &'static str) -> Bounds<Pixels> {
     cx.debug_bounds(selector)
         .unwrap_or_else(|| panic!("`{selector}` is not on screen"))
+}
+
+/// What a failed command writes into the activity: the whole error text, however long.
+const LONG_ERROR: &str = "Não foi possível exportar: o arquivo de saída já existe e não pode ser substituído porque outro processo o mantém aberto; feche o outro programa, escolha outro nome ou outra pasta e tente exportar de novo (código export_target_busy, tentativa 3 de 3)";
+
+fn say(view: &Entity<Workstation>, cx: &mut VisualTestContext, text: &str, error: bool) {
+    view.update(cx, |view, cx| {
+        view.activity = Some(Activity {
+            source: Source::Cli,
+            text: text.to_string(),
+            error,
+        });
+        cx.notify();
+    });
+    settle(cx);
+}
+
+fn maximize_the_monitor(view: &Entity<Workstation>, cx: &mut VisualTestContext) {
+    for panel in [
+        PanelKind::Library,
+        PanelKind::Inspector,
+        PanelKind::Timeline,
+    ] {
+        hide(view, cx, panel);
+    }
+}
+
+/// The save state's width with a short activity: what "whole" means for it.
+fn saved_width(cx: &mut VisualTestContext) -> f32 {
+    f32::from(status_bounds(cx, "status-saved").size.width)
+}
+
+/// Every item of the status bar is inside the window and its right group, the activity is one
+/// line, and the save state is as wide as it is with a short activity (not squeezed or pushed).
+fn assert_the_bar_fits(cx: &mut VisualTestContext, whole_saved: f32, what: &str) {
+    let window = f32::from(cx.update(|window, _| window.viewport_size().width));
+    let activity = status_bounds(cx, "status-activity");
+    let saved = status_bounds(cx, "status-saved");
+    let right = status_bounds(cx, "status-right");
+    let mut items = vec![("activity", activity), ("saved", saved)];
+    if let Some(strip) = cx.debug_bounds("perf-strip") {
+        items.push(("strip", strip));
+    }
+    for (name, bounds) in items {
+        assert!(
+            f32::from(bounds.right()) <= f32::from(right.right()) + 0.5,
+            "{what}: {name} {bounds:?} sticks out of the right group {right:?}"
+        );
+        assert!(
+            f32::from(bounds.right()) <= window,
+            "{what}: {name} {bounds:?} is pushed past the window ({window})"
+        );
+        assert!(
+            f32::from(bounds.left()) >= 0.0,
+            "{what}: {name} {bounds:?} starts left of the window"
+        );
+    }
+    assert!(
+        f32::from(activity.size.height) < 20.0,
+        "{what}: the activity wrapped onto a second line: {activity:?}"
+    );
+    assert!(
+        (f32::from(saved.size.width) - whole_saved).abs() < 0.5,
+        "{what}: the save state was squeezed from {whole_saved} to {:?}",
+        saved.size
+    );
 }
 
 #[gpui_kit::test]
@@ -602,49 +739,119 @@ fn at_960_px_with_the_monitor_maximized_the_strip_gives_way_and_the_rest_stays_w
     let (view, cx) = fixture(cx);
     cx.simulate_resize(size(px(960.), px(640.)));
     toggle(&view, cx, PerfMeterCommand::Show);
-    for panel in [
-        PanelKind::Library,
-        PanelKind::Inspector,
-        PanelKind::Timeline,
-    ] {
-        hide(&view, cx, panel);
-    }
+    maximize_the_monitor(&view, cx);
+    say(&view, cx, "Salvo", false);
+    let whole = saved_width(cx);
     // A long activity next to the strip and the save state: the case that used to overflow.
-    view.update(cx, |view, cx| {
-        view.activity = Some(Activity {
-            source: Source::Cli,
-            text: "Exportação em andamento: renderizando o quadro 1234 de 4321".to_string(),
-            error: false,
-        });
-        cx.notify();
-    });
-    settle(cx);
+    say(
+        &view,
+        cx,
+        "Exportação em andamento: renderizando o quadro 1234 de 4321",
+        false,
+    );
     assert_eq!(
         node(&view, cx)["state"]["placement"],
         json!({"kind": "status_bar_strip"})
     );
-
-    let window = f32::from(cx.update(|window, _| window.viewport_size().width));
-    let strip = status_bounds(cx, "perf-strip");
-    let activity = status_bounds(cx, "status-activity");
-    let saved = status_bounds(cx, "status-saved");
-    let right = status_bounds(cx, "status-right");
-    for (name, bounds) in [("strip", strip), ("activity", activity), ("saved", saved)] {
-        assert!(
-            f32::from(bounds.right()) <= f32::from(right.right()) + 0.5,
-            "{name} {bounds:?} sticks out of the right group {right:?}"
-        );
-        assert!(
-            f32::from(bounds.right()) <= window,
-            "{name} {bounds:?} is pushed past the window ({window})"
-        );
-    }
+    assert_the_bar_fits(cx, whole, "strip and a long activity");
     assert!(
-        f32::from(activity.size.height) < 20.0,
-        "the activity wrapped onto a second line: {activity:?}"
-    );
-    assert!(
-        f32::from(strip.size.width) > 0.0,
+        f32::from(status_bounds(cx, "perf-strip").size.width) > 0.0,
         "the strip is still there, only cut"
     );
+}
+
+fn a_very_long_error_keeps_the_save_state_in_a_960_px_window(
+    cx: &mut TestAppContext,
+    meter: bool,
+    monitor_maximized: bool,
+) {
+    let (view, cx) = fixture(cx);
+    cx.simulate_resize(size(px(960.), px(640.)));
+    if meter {
+        toggle(&view, cx, PerfMeterCommand::Show);
+    }
+    if monitor_maximized {
+        maximize_the_monitor(&view, cx);
+    }
+    say(&view, cx, "Salvo", false);
+    let whole = saved_width(cx);
+    let short = f32::from(status_bounds(cx, "status-activity").size.width);
+    let what = format!(
+        "meter {}, monitor {}",
+        if meter { "shown" } else { "hidden" },
+        if monitor_maximized {
+            "maximized"
+        } else {
+            "in the layout"
+        }
+    );
+    say(&view, cx, LONG_ERROR, true);
+    assert_the_bar_fits(cx, whole, &what);
+    // The control: the long message has more room than the short one, so the bar cuts the
+    // message at the window and does not simply hide its activity.
+    assert!(
+        f32::from(status_bounds(cx, "status-activity").size.width) > short,
+        "{what}: the message is cut, not removed"
+    );
+    if meter && monitor_maximized {
+        assert!(
+            f32::from(status_bounds(cx, "perf-strip").size.width) > 0.0,
+            "{what}: the strip is cut, not removed"
+        );
+    }
+}
+
+// A failed command writes its whole message into the activity (`execute` and `execute_layout`),
+// and the meter may be hidden: nothing else in the bar can give way, so the activity itself must
+// be cut (one line, ellipsis) and the save state must stay whole and inside the window.
+
+#[gpui_kit::test]
+fn a_very_long_error_with_the_meter_hidden_keeps_the_save_state_in_the_window(
+    cx: &mut TestAppContext,
+) {
+    a_very_long_error_keeps_the_save_state_in_a_960_px_window(cx, false, false);
+}
+
+#[gpui_kit::test]
+fn a_very_long_error_with_the_meter_hidden_and_the_monitor_maximized_keeps_the_save_state(
+    cx: &mut TestAppContext,
+) {
+    a_very_long_error_keeps_the_save_state_in_a_960_px_window(cx, false, true);
+}
+
+#[gpui_kit::test]
+fn a_very_long_error_with_the_card_floating_keeps_the_save_state_in_the_window(
+    cx: &mut TestAppContext,
+) {
+    a_very_long_error_keeps_the_save_state_in_a_960_px_window(cx, true, false);
+}
+
+#[gpui_kit::test]
+fn a_very_long_error_next_to_the_strip_keeps_the_save_state_in_the_window(cx: &mut TestAppContext) {
+    a_very_long_error_keeps_the_save_state_in_a_960_px_window(cx, true, true);
+}
+
+/// The jobs line has the same rule as the activity: a long label is cut, not rigid.
+#[gpui_kit::test]
+fn a_very_long_job_label_never_pushes_the_save_state_out_of_a_960_px_window(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = fixture(cx);
+    cx.simulate_resize(size(px(960.), px(640.)));
+    say(&view, cx, "Salvo", false);
+    let whole = saved_width(cx);
+    let (release, wait) = std::sync::mpsc::channel();
+    view.update(cx, |view, _| {
+        view.workflow.spawn_blocked_job(LONG_ERROR, wait);
+    });
+    say(&view, cx, LONG_ERROR, true);
+    let jobs = status_bounds(cx, "status-jobs");
+    assert!(f32::from(jobs.size.width) > 0.0);
+    assert_the_bar_fits(cx, whole, "a long job label next to a long error");
+    let window = f32::from(cx.update(|window, _| window.viewport_size().width));
+    assert!(
+        f32::from(jobs.right()) <= window && f32::from(jobs.size.height) < 20.0,
+        "the jobs line {jobs:?} is cut to one line inside the window"
+    );
+    drop(release);
 }

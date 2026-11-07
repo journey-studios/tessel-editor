@@ -351,8 +351,8 @@ impl ViewportHost {
         }
     }
 
-    /// The sequence frame of the newest picture the monitor accepted (`None`: a source preview
-    /// or nothing yet).
+    /// The sequence frame of the newest picture the monitor accepted (`None`: a source preview,
+    /// nothing yet, or the project was replaced or the viewport reloaded since).
     pub fn presented_frame(&self) -> Option<i64> {
         self.presented
     }
@@ -426,6 +426,8 @@ impl ViewportHost {
         self.last_key = None;
         self.dirty = true;
         self.last_frame = None;
+        // The reloaded page shows nothing until its first new picture.
+        self.presented = None;
         true
     }
 
@@ -437,6 +439,8 @@ impl ViewportHost {
         self.access.borrow_mut().clear();
         self.last_key = None;
         self.last_frame = None;
+        // Frame IDs may now mean something else: what the monitor showed is not known anymore.
+        self.presented = None;
         self.dirty = true;
     }
 

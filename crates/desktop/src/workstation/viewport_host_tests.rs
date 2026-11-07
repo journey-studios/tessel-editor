@@ -1585,6 +1585,85 @@ fn a_stale_answer_after_a_refine_is_not_a_picture_for_the_meter() {
     );
 }
 
+/// The meter's reading of the dropped-frame count after a playback started at frame 0 with
+/// `on_screen` known to be showing (`presented_frames`, `lost`, `span_frames`).
+fn loss_after_starting_at_zero(
+    meter: &std::rc::Rc<std::cell::RefCell<tessel_editor_core::perf::Meter>>,
+    on_screen: Option<i64>,
+) -> (u64, u64, u64) {
+    use tessel_editor_core::perf::LossReading;
+    meter
+        .borrow_mut()
+        .playback_started(Duration::from_secs(1), 0, on_screen);
+    let reading = match meter
+        .borrow()
+        .readout(Duration::from_secs(2), true, None, None)
+        .loss
+    {
+        LossReading::Live {
+            presented_frames,
+            lost,
+            span_frames,
+            ..
+        } => (presented_frames, lost, span_frames),
+        other => panic!("{other:?}"),
+    };
+    // A second start of a running playback is ignored: end this one for the next reading.
+    meter.borrow_mut().playback_stopped(Duration::from_secs(2));
+    reading
+}
+
+#[test]
+fn replacing_the_project_or_reloading_the_viewport_forgets_the_picture_on_screen() {
+    let state = titled_state("Um");
+    let (mut host, meter) = metered("meter-forget", &state, true);
+    let present = |host: &mut ViewportHost| {
+        let (id, revision, _) = renders(&sent(host))[0];
+        from_page(host, &state, frame_done(id, revision));
+    };
+    present(&mut host);
+    assert_eq!(host.presented_frame(), Some(0));
+    // The control: with frame 0 on screen, a playback from 0 counts it as presented.
+    assert_eq!(
+        loss_after_starting_at_zero(&meter, host.presented_frame()).0,
+        1
+    );
+
+    // A new project: the monitor still has the old picture until a new one arrives, but what
+    // it showed is no longer known, so the meter must not count frame 0 as presented.
+    host.reset_project();
+    assert_eq!(
+        host.presented_frame(),
+        None,
+        "the project was replaced: no picture is known to be on screen"
+    );
+    assert_eq!(
+        loss_after_starting_at_zero(&meter, host.presented_frame()).0,
+        0
+    );
+    // The next picture of the new project is known again.
+    host.sync(&state);
+    present(&mut host);
+    assert_eq!(host.presented_frame(), Some(0));
+
+    // The same for a reload of the viewport page.
+    assert!(host.begin_reload());
+    assert_eq!(
+        host.presented_frame(),
+        None,
+        "the page reloaded: nothing is on screen until its first new picture"
+    );
+    assert_eq!(
+        loss_after_starting_at_zero(&meter, host.presented_frame()).0,
+        0
+    );
+    from_page(&mut host, &state, json!({"type":"page.ready"}));
+    let _ = sent(&mut host);
+    from_page(&mut host, &state, ready_message());
+    present(&mut host);
+    assert_eq!(host.presented_frame(), Some(0));
+}
+
 #[test]
 fn a_hidden_meter_keeps_no_samples_from_the_monitor() {
     let state = titled_state("Um");
