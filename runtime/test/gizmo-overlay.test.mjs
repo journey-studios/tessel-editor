@@ -29,7 +29,7 @@ const overlayJson = (extra = {}) => ({
 
 const open = async (t) => {
   if (skipUnavailable(t, assert)) return null;
-  const runtime = await openRuntime();
+  const runtime = await openRuntime({ overlay: true });
   t.after(() => runtime.close());
   const ready = await runtime.hello();
   assert.ok(ready.capabilities.features.includes('overlay.gizmo'), 'the page negotiates the overlay');
@@ -186,6 +186,59 @@ test('losing the window focus or the page visibility cancels, never commits', as
   }
 });
 
+test('only the primary button of the primary pointer presses; a secondary pointer neither starts nor ends a drag', async (t) => {
+  const runtime = await open(t);
+  if (!runtime) return;
+  await enable(runtime);
+  const rect = await picture(runtime);
+  const start = pane(rect, { u: 0.5, v: 0.5 });
+  await runtime.page.mouse.move(start.x, start.y);
+  for (const button of ['right', 'middle']) {
+    await runtime.page.mouse.down({ button });
+    await runtime.page.mouse.up({ button });
+  }
+  assert.deepEqual(pointerMessages(runtime), [], 'a right or middle button is not a gizmo press');
+
+  const secondary = (type) => runtime.page.evaluate((kind, x, y) => {
+    document.getElementById('overlay').dispatchEvent(new PointerEvent(kind, {
+      pointerId: 7, isPrimary: false, button: 0, clientX: x, clientY: y, bubbles: true,
+    }));
+  }, type, start.x, start.y);
+  await secondary('pointerdown');
+  await secondary('pointerup');
+  assert.deepEqual(pointerMessages(runtime), [], 'a second finger is not a gizmo press');
+
+  await runtime.page.mouse.down();
+  await secondary('pointerup');
+  await settle(runtime);
+  assert.deepEqual(pointerMessages(runtime).map((m) => m.phase), ['down'], 'it did not release the real press');
+  await runtime.page.mouse.up();
+  await settle(runtime);
+  assert.deepEqual(pointerMessages(runtime).map((m) => m.phase), ['down', 'up']);
+});
+
+test('a lost pointer capture (a real release of it, not a synthetic event) cancels the drag', async (t) => {
+  const runtime = await open(t);
+  if (!runtime) return;
+  await enable(runtime);
+  const rect = await picture(runtime);
+  const start = pane(rect, { u: 0.5, v: 0.5 });
+  await runtime.page.mouse.move(start.x, start.y);
+  await runtime.page.mouse.down();
+  const held = await runtime.page.evaluate(() => {
+    const surface = document.getElementById('overlay');
+    const had = surface.hasPointerCapture(1);
+    if (had) surface.releasePointerCapture(1);
+    return had;
+  });
+  assert.equal(held, true, 'the press captured the pointer (otherwise this test proves nothing)');
+  await runtime.page.mouse.move(start.x + 20, start.y);
+  await runtime.page.mouse.up();
+  await settle(runtime);
+  const phases = pointerMessages(runtime).map((m) => [m.phase, m.reason]);
+  assert.deepEqual(phases, [['down', undefined], ['cancel', 'pointer_cancel']]);
+});
+
 test('resizing during a drag does not end it: the same pointer keeps the same picture point', async (t) => {
   const runtime = await open(t);
   if (!runtime) return;
@@ -301,4 +354,84 @@ test('a canvas of another shape than the overlay describes draws nothing and tak
   const messages = pointerMessages(runtime);
   assert.deepEqual(messages.map((m) => m.phase), ['down', 'up']);
   assert.ok(Math.abs(messages[0].point.u - 0.5) < 1e-9 && Math.abs(messages[0].point.v - 0.5) < 1e-9);
+});
+
+// ---- M1 of the PR #25 review: the overlay costs nothing when off, never after the frame's answer ----
+
+const surfaceProbe = (runtime) => runtime.page.evaluate(() => {
+  // Counts every layout read of the overlay surface (what `redraw` does first) from now on.
+  const surface = window.TesselRuntime.debug.overlay?.surface;
+  if (!surface) return false;
+  window.__layoutReads = 0;
+  for (const name of ['clientWidth', 'clientHeight']) {
+    Object.defineProperty(surface, name, { configurable: true, get: () => { window.__layoutReads += 1; return 800; } });
+  }
+  return true;
+});
+const layoutReads = (runtime) => runtime.page.evaluate(() => window.__layoutReads);
+
+test('an overlay that is off does no layout and no canvas work for a frame (and the frame is unchanged)', async (t) => {
+  const runtime = await open(t);
+  if (!runtime) return;
+  assert.equal(await surfaceProbe(runtime), true);
+  const before = await runtime.page.evaluate(() => {
+    const surface = window.TesselRuntime.debug.overlay.surface;
+    return { width: surface.width, height: surface.height };
+  });
+  const done = await runtime.frame([]);
+  assert.equal(done.type, 'frame.done');
+  await settle(runtime);
+  assert.equal(await layoutReads(runtime), 0, 'a frame never reads the layout of an overlay that is off');
+  assert.equal(runtime.messages.filter((m) => m.type === 'overlay.layout').length, 0);
+  const after = await runtime.page.evaluate(() => {
+    const surface = window.TesselRuntime.debug.overlay.surface;
+    return { width: surface.width, height: surface.height };
+  });
+  assert.deepEqual(after, before, 'the overlay canvas was not resized');
+
+  // The probe is real: with the overlay on, the same frame does read the layout.
+  await runtime.send({ type: 'overlay.enable', enabled: true });
+  await runtime.page.evaluate(() => { window.__layoutReads = 0; });
+  await runtime.frame([]);
+  assert.ok((await layoutReads(runtime)) > 0, 'an active overlay is refreshed after the frame');
+});
+
+test('an overlay that fails after a frame is its own error: done and presented stand, no frame.failed', async (t) => {
+  const runtime = await open(t);
+  if (!runtime) return;
+  await runtime.hello({ telemetry: { presented: true } });
+  await runtime.send({ type: 'overlay.enable', enabled: true });
+  await runtime.page.evaluate(() => {
+    const surface = window.TesselRuntime.debug.overlay.surface;
+    Object.defineProperty(surface, 'clientWidth', { configurable: true, get: () => { throw new Error('layout exploded'); } });
+  });
+  runtime.messages.length = 0;
+  const done = await runtime.frame([], { id: 50 });
+  assert.equal(done.type, 'frame.done', 'the frame succeeded');
+  const presented = await runtime.waitFor((m) => m.type === 'frame.presented' && m.id === 50, 'frame.presented');
+  assert.equal(presented.id, 50);
+  const types = runtime.messages.map((m) => m.type);
+  assert.ok(!types.includes('frame.failed'), `no frame.failed after the success, got ${types}`);
+  const failure = runtime.messages.find((m) => m.type === 'error');
+  assert.equal(failure?.error.code, 'overlay_failed');
+  assert.match(failure.error.message, /layout exploded/);
+  // The next frame is still served.
+  await runtime.page.evaluate(() => delete window.TesselRuntime.debug.overlay.surface.clientWidth);
+  const next = await runtime.frame([], { id: 51 });
+  assert.equal(next.type, 'frame.done');
+});
+
+test('the headless page (no overlay surface) has no overlay.gizmo, no canvas and refuses overlay messages', async (t) => {
+  if (skipUnavailable(t, assert)) return;
+  const runtime = await openRuntime();
+  t.after(() => runtime.close());
+  const ready = await runtime.hello();
+  assert.ok(!ready.capabilities.features.includes('overlay.gizmo'), 'the worker never announces the overlay');
+  assert.equal(await runtime.page.evaluate(() => document.getElementById('overlay')), null);
+  assert.equal(await runtime.page.evaluate(() => window.TesselRuntime.debug.overlay), null);
+  const done = await runtime.frame([]);
+  assert.equal(done.type, 'frame.done');
+  await runtime.send({ type: 'overlay.enable', enabled: true });
+  const refused = await runtime.waitFor((m) => m.type === 'error', 'error');
+  assert.equal(refused.error.code, 'unsupported');
 });

@@ -209,6 +209,35 @@ export class PointerSession {
   }
 }
 
+/**
+ * What the runtime does with the overlay after a frame was sent and announced (F055, M1 of the
+ * PR #25 review). The overlay is OFF for every frame that is not a directed scene on the desktop
+ * monitor, and a frame is never reported as failed because of it:
+ *   * no overlay, or an inactive one: nothing is read, cleared or reported (`false`);
+ *   * the refresh throws: the host hears an `overlay_failed` error message, the frame stands.
+ * Returns whether the overlay was refreshed.
+ */
+export const refreshAfterFrame = (overlay, onError) => {
+  if (!overlay || !overlay.active()) return false;
+  try {
+    return overlay.refresh() !== false;
+  } catch (error) {
+    onError(error);
+    return false;
+  }
+};
+
+/**
+ * Whether this page is the desktop viewport: the one place that draws the gizmo. The WebView host
+ * (wry IPC) is, and a test page may ask for it with `?overlay=gizmo`. The headless Node worker
+ * serves the same bundle through puppeteer (`__tesselPost`) and never has an overlay surface: it
+ * would pay for a canvas nobody can see and announce a feature nobody can use.
+ */
+export const wantsOverlay = (win = window) => {
+  if (typeof win.__tesselPost === 'function') return new URLSearchParams(win.location?.search ?? '').get('overlay') === 'gizmo';
+  return Boolean(win.ipc && typeof win.ipc.postMessage === 'function');
+};
+
 const drawArrow = (context, from, to, color, width) => {
   context.lineCap = 'round';
   context.strokeStyle = PALETTE.shadow;
@@ -520,11 +549,17 @@ export const attachOverlay = ({ canvas, post, win = window, doc = document }) =>
   return {
     handles: (type) => type in handlers,
     receive: (message) => handlers[message.type](message),
-    // The runtime calls this after it drew a picture: the canvas may have changed shape.
+    // The runtime calls this after it drew (and announced) a picture: the canvas may have changed
+    // shape. Off, there is nothing on the overlay canvas and nothing to report, so it touches no
+    // layout, no canvas and no JSON.
     refresh: () => {
+      if (!enabled) return false;
       redraw();
-      if (enabled) reportLayout();
+      reportLayout();
+      return true;
     },
+    // Whether a frame has to bother the overlay at all (the runtime gates `refresh` on it).
+    active: () => enabled,
     destroy: () => {
       listeners.forEach((off) => off());
       observer?.disconnect();

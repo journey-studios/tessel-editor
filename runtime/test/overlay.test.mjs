@@ -12,8 +12,10 @@ import {
   insidePicture,
   parseOverlay,
   pictureInStep,
+  refreshAfterFrame,
   toPane,
   toPicture,
+  wantsOverlay,
 } from '../src/overlay.js';
 
 const overlayJson = (extra = {}) => ({
@@ -178,4 +180,37 @@ test('a pointer session echoes the stamp of the overlay it pressed on, and drops
   assert.deepEqual(posted.at(-1).stamp, { revision: 2 });
   assert.equal(parseOverlay(overlayJson({ stamp: { revision: 9 } })).stamp.revision, 9);
   assert.equal(parseOverlay(overlayJson()).stamp, null, 'an overlay without a stamp parses as null');
+});
+
+test('after a frame: no overlay or an inactive one is never touched; a throwing refresh is reported, not thrown', () => {
+  const calls = [];
+  const overlay = (active, refresh = () => true) => ({
+    active: () => active,
+    refresh: () => {
+      calls.push('refresh');
+      return refresh();
+    },
+  });
+  const errors = [];
+  const onError = (error) => errors.push(error.message);
+
+  assert.equal(refreshAfterFrame(null, onError), false);
+  assert.equal(refreshAfterFrame(overlay(false), onError), false);
+  assert.deepEqual(calls, [], 'inactive: refresh is not even called');
+
+  assert.equal(refreshAfterFrame(overlay(true), onError), true);
+  assert.deepEqual(calls, ['refresh']);
+
+  assert.equal(refreshAfterFrame(overlay(true, () => { throw new Error('layout exploded'); }), onError), false);
+  assert.deepEqual(errors, ['layout exploded'], 'the failure goes to the error channel');
+});
+
+test('only the desktop WebView page has an overlay surface; the worker page does not unless it asks', () => {
+  const win = (extra) => ({ location: { search: '' }, ...extra });
+  assert.equal(wantsOverlay(win({ ipc: { postMessage: () => {} } })), true, 'wry WebView');
+  assert.equal(wantsOverlay(win({ __tesselPost: () => {} })), false, 'headless worker (puppeteer)');
+  assert.equal(wantsOverlay(win({})), false, 'a page opened by hand');
+  assert.equal(wantsOverlay(win({ __tesselPost: () => {}, location: { search: '?overlay=gizmo' } })), true, 'a test page that asks');
+  assert.equal(wantsOverlay(win({ __tesselPost: () => {}, location: { search: '?overlay=other' } })), false);
+  assert.equal(wantsOverlay(win({ ipc: { postMessage: () => {} }, __tesselPost: () => {} })), false, 'the worker transport wins over a stray ipc');
 });

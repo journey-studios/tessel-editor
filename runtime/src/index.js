@@ -8,6 +8,7 @@ import { ASSET_IDENTITY_CAPABILITIES, assetEcho } from './asset-identity.js';
 import { AssetStore } from './assets.js';
 import { Compositor, DEFAULT_PREVIEW_SORT, describePixels } from './compositor.js';
 import { DIRECTED_SCENE_CAPABILITIES } from './directed-scene.js';
+import { refreshAfterFrame } from './overlay.js';
 import { RetentionCounters } from './retention.js';
 import { SPLAT_FORMATS } from './splat-format.js';
 import { SPARK_VERSION } from './splat-stage.js';
@@ -49,8 +50,9 @@ const FEATURES = [
   'directed_scene',
   'asset.identity',
 ];
-// F055: announced only by a page that has an overlay surface (the desktop WebView), never by the
-// headless worker: a host sends `overlay.*` messages only to a runtime that says it can draw them.
+// F055: announced only by a page that has an overlay surface (the desktop WebView, see
+// `wantsOverlay`), never by the headless worker (same bundle, no surface): a host sends `overlay.*`
+// messages only to a runtime that says it can draw them.
 const OVERLAY_FEATURE = 'overlay.gizmo';
 
 export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
@@ -271,10 +273,12 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       // The host that owns the filesystem writes the file; the page only encodes it.
       if (output.png) message.png_data = canvas.toDataURL('image/png').split(',')[1];
       send(message);
-      // The canvas may have changed shape with this picture: the overlay re-checks that it still
-      // describes it (F055).
-      overlay?.refresh();
       if (options.presented) announcePresented(id, revision);
+      // The canvas may have changed shape with this picture: an active overlay re-checks that it
+      // still describes it (F055). After `frame.done` and `frame.presented`, so it never delays
+      // them, and isolated: a failure here is the overlay's, never `frame.failed` after a success.
+      refreshAfterFrame(overlay, (error) =>
+        send({ type: 'error', error: toErrorJson(error, 'overlay_failed') }));
     } catch (error) {
       send({ type: 'frame.failed', id, revision, error: failureOf(error, lostDuringFrame()) });
     } finally {
