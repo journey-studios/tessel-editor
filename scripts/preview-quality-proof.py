@@ -214,12 +214,13 @@ class Editor:
 
 
 def final_quality(state):
-    """The picture on screen is the final one: nothing to refine and no scene below the final samples."""
+    """The picture on screen is the final one: nothing to refine, no proxy, reduced samples or stale sort."""
     session, last = state["session"], state.get("last_frame") or {}
     source = last.get("source") or {}
     return (state["phase"] == "ready" and session["status"] == "ready" and not session.get("pending")
             and not session.get("refine_pending") and last.get("revision") == session["revision"]
-            and not source.get("reduced_scene_layers") and not source.get("proxy_layers"))
+            and not source.get("reduced_scene_layers") and not source.get("proxy_layers")
+            and not source.get("stale_sort_layers"))
 
 
 FINAL_QUALITY_TIMEOUT_S = 30

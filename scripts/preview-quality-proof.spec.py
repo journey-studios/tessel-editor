@@ -64,6 +64,14 @@ def scrub(editor, waits, inspect=True):
 
 
 class FinalQualityTests(unittest.TestCase):
+    def test_stale_order_is_not_final_even_if_no_refine_remains(self):
+        state = screen()
+        state["session"]["refine_pending"] = False
+        state["last_frame"]["source"]["stale_sort_layers"] = 1
+        self.assertFalse(proof.final_quality(state))
+        state["last_frame"]["source"]["stale_sort_layers"] = 0
+        self.assertTrue(proof.final_quality(state))
+
     def test_a_scrub_whose_final_picture_never_comes_says_so_even_with_inspect(self):
         result = scrub(FakeEditor(), [(5, screen()), (None, screen())])
         self.assertIs(result["passed"], False, "the sub-script passed, but the refined picture was never there to compare")

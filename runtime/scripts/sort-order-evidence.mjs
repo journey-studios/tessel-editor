@@ -90,9 +90,12 @@ if (unusableAsset >= 0) usage(`--assets[${unusableAsset}] is not an asset.load d
 const sizeMatch = /^(\d+)x(\d+)$/.exec(opts.size);
 if (!sizeMatch || Number(sizeMatch[1]) < 2 || Number(sizeMatch[2]) < 2) usage(`--size must be WIDTHxHEIGHT (at least 2x2), got ${JSON.stringify(opts.size)}`);
 const [width, height] = [Number(sizeMatch[1]), Number(sizeMatch[2])];
-const paces = opts['pace-ms'].split(',').map(Number);
+const paceEntries = opts['pace-ms'].split(',');
+if (paceEntries.some((entry) => entry.trim() === '')) usage('--pace-ms must not contain empty entries');
+const paces = paceEntries.map(Number);
+if (new Set(paces).size !== paces.length) usage('--pace-ms must not repeat a pace (artifact paths must be unique)');
 if (paces.some((pace) => !Number.isFinite(pace) || pace < 0)) usage(`--pace-ms must be numbers of milliseconds, got ${JSON.stringify(opts['pace-ms'])}`);
-if (![0, 2, 4].includes(Number(opts['preview-samples']))) usage(`--preview-samples must be 0, 2 or 4, got ${JSON.stringify(opts['preview-samples'])}`);
+if (!/^(0|2|4)$/.test(opts['preview-samples'])) usage(`--preview-samples must be 0, 2 or 4, got ${JSON.stringify(opts['preview-samples'])}`);
 if (!/^[1-9]\d*$/.test(opts.sheet)) usage(`--sheet must be a count of frames, got ${JSON.stringify(opts.sheet)}`);
 mkdirSync(opts.out, { recursive: true });
 

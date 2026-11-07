@@ -71,3 +71,16 @@ test('an unavailable runtime worker fails the evidence run instead of leaving wa
   assert.equal(result.status, 1, result.stderr);
   assert.match(result.stderr, /evidence worker (error|closed|exited)/);
 });
+
+test('empty or duplicate paces and empty sample values are refused before artifacts exist', (t) => {
+  const plans = [planOf(1), planOf(2)];
+  for (const value of ['', '41.67,', '41.67,,16', ' ,16']) {
+    refused(run(t, { plans, extra: ['--pace-ms', value] }), /--pace-ms must not contain empty entries/);
+  }
+  for (const value of ['16,16', '16,16.0', '0,0']) {
+    refused(run(t, { plans, extra: ['--pace-ms', value] }), /--pace-ms must not repeat a pace/);
+  }
+  for (const value of ['', ' ', '04']) {
+    refused(run(t, { plans, extra: ['--preview-samples', value] }), /--preview-samples must be 0, 2 or 4/);
+  }
+});
