@@ -52,8 +52,10 @@ no projeto. Não há GPU, compositor nem hardware medidos aqui; o que cada núme
   imagem dele precisa chegar antes de qualquer mais nova (se uma mais nova chega primeiro, ele
   é um quadro perdido). Início de reprodução, seek e ligar o medidor no meio da reprodução
   usam a mesma regra; o adaptador informa o quadro de sequência da última imagem aceita
-  (`ViewportHost::presented_frame`). Sem imagem ainda, não há extensão para perder: `atraso`
-  conta os quadros devidos.
+  (`ViewportHost::presented_frame`), que **volta a `None`** quando o projeto é substituído
+  (`reset_project`) ou a página da viewport recarrega (`begin_reload`), até a primeira imagem
+  nova: o que o monitor mostrava deixa de ser conhecido. Sem imagem ainda, não há extensão para
+  perder: `atraso` conta os quadros devidos.
 - `Meter`: não registra nada enquanto desligado (`samples() == (0, 0)`,
   `next_wakeup() == None`). `enable(now, playing_from, on_screen)` recebe o quadro do relógio
   **só quando o relógio está rodando**: pausa não tem relógio (o silêncio é repouso, não
@@ -144,9 +146,22 @@ o monitor sem runtime).
   durante os paints: oito quadros no mesmo instante não recalculam; 249 ms depois, também
   não; 250 ms, exatamente um (`the_numbers_are_recomputed_at_four_hertz_at_most`). Recalcular
   a cada paint falha o teste.
-- Barra de status a 960 px com o monitor maximizado: a faixa do medidor **encolhe e trunca**
-  (`flex_shrink(1)`, `min_w(0)`, `truncate`); tarefas e atividade ficam inteiras e numa linha
-  e o rótulo salvo não sai da barra (`at_960_px_with_the_monitor_maximized_...`).
+- Barra de status: a faixa do medidor, a **atividade** e a linha de **tarefas** dividem o excesso
+  com o mesmo fator (`flex_shrink(1)`, `min_w(0)`, texto com `truncate`: uma linha, reticências,
+  nunca quebra nem fica rígida) e o rótulo de salvamento **nunca encolhe**. Uma atividade de erro
+  de ~250 caracteres (o `execute` grava a mensagem inteira) com o medidor escondido, como cartão,
+  ou como faixa, e um rótulo de tarefa igualmente longo, deixam o rótulo salvo com a mesma
+  largura de antes e tudo dentro de uma janela de 960 px
+  (`a_very_long_error_with_the_meter_hidden_...`, `..._card_floating_...`, `..._next_to_the_strip_...`,
+  `a_very_long_job_label_...`); numa janela de 640 px a faixa é cortada e não some
+  (`in_a_narrow_window_the_strip_is_cut_...`). O fator é 1 e não menor: com a soma dos fatores
+  abaixo de 1 o flexbox resolve só essa fração do excesso e a mensagem longa empurraria o rótulo
+  para fora (medido: com 0,25, 1551 px viraram 1304 px numa área de 724 px). A mensagem cortada
+  não tem dica com o texto completo (só o texto na barra e a CLI `get`).
+- A marca "o próximo paint é o redraw do próprio medidor" só vale para o estado que a gravou:
+  mostrar ou esconder o medidor a limpa. Antes ela sobrevivia a um esconder entre o disparo do
+  timer de repouso e o paint, e engolia o primeiro quadro real depois de reexibir
+  (`a_hide_between_the_rest_timer_and_its_redraw_does_not_swallow_the_next_real_frame`).
 
 ### Persistência
 
@@ -171,11 +186,32 @@ testadas sem GPUI; headless N/A). Não validado: ver [limites](#limites).
   quadro inicial só se o monitor o mostrava, faixa da barra de status a 960 px, três layouts,
   nenhum painel deslocado, clique atravessa o cartão, monitor conta só imagens aceitas, MSAA
   ausente fica omitido e a interação com o preview de ordem velha + refino (`+ sort`, duas
-  imagens do monitor, um quadro apresentado). No head `17d73f0`: 17 testes em `perf_tests.rs` e os dois
-  de interação com o refino/sort em `viewport_host_tests.rs`; `cargo test --workspace --locked` com
-  `TESSEL_REQUIRE_RUNTIME=1`: 1475 passados, 0 falhas, 12 ignorados (soma das linhas `test result`;
-  desktop 238, core 284), e o runtime em Chrome 148/148 sem skip.
-- **Janela real, head integrado `17d73f0`** (build **debug**, `--seconds 20 --rounds 3`,
+  imagens do monitor, um quadro apresentado). Desta rodada: erro longo (~250 caracteres) com o
+  medidor escondido, como cartão e como faixa, rótulo de tarefa longo, janela de 640 px,
+  marca de redraw própria após esconder entre o timer e o paint, e `presented_frame` esquecido por
+  `reset_project`/`begin_reload` no host (`replacing_the_project_or_reloading_the_viewport_...`) e
+  na estação (`a_replaced_project_is_not_a_picture_on_screen_...`). No head `0f5d9ae`: 25 testes em
+  `perf_tests.rs` (eram 17), 5 de alimentação do medidor em `viewport_host_tests.rs`;
+  `cargo test --workspace --locked` com `TESSEL_REQUIRE_RUNTIME=1`, sob o lock de GPU: 1484
+  passados, 0 falhas, 12 ignorados (soma das linhas `test result`; desktop 247, core 284, 38 em
+  `core::perf`). O runtime não mudou: a árvore `runtime/` é `639a3e0…` em `17d73f0` e em
+  `0f5d9ae` (`git rev-parse <head>:runtime`), assim como `Cargo.lock`, então vale o 148/148 sem
+  skip de `17d73f0` (Chrome real, `./scripts/runtime test`, não repetido).
+- **Janela real, head `0f5d9ae`** (build **debug** limpo, sha256 `ff87c682…` do binário;
+  `--seconds 20 --rounds 3`, driver `bb687062…`, binário próprio, HOME curto em `/tmp/pmp-*`, socket
+  próprio, só `get`/`set`/`invoke`/`op` pelo socket, sem coordenadas, sob o lock de GPU): **33 checks, 33 passaram,
+  0 falharam** (`ok: true`, `failures: []`, sem `aborted`). Mesma cobertura do `17d73f0` (escondido,
+  visível em repouso, três posições, pausa/retomada, 6 execuções de 20 s, projeto copiado por
+  caminho relativo com o negativo por `media.status`); o inspetor fechado levou o cartão para
+  `y=664` (antes 659). 4 capturas do PID do processo, conferidas a olho: cartão sobre o inspetor
+  durante a reprodução (`interface 25 fps · pior 62 ms`, `monitor 18 fps · pior 187 ms`, `perdidos 6
+  de 136 (4,4%)`, `preview + proxy`) e a faixa na barra de status com o monitor maximizado
+  (`UI 3,8 · monitor parado · perdidos n/d · render_ms 0 (CPU) · RSS 168 MiB`) ao lado da
+  atividade e do rótulo `salvo`. Este run **não** exerce a mensagem de erro longa (as capturas
+  são de uma janela de 1024 px com atividade curta): a geometria dela é provada pelos testes
+  GPUI, não por pixels nativos. O driver não teve exceção neste run; o caminho de exceção é provado
+  pelo spec (41 testes, normal e `-O`) com um editor falso, não por uma queda nativa provocada.
+- **Janela real, head integrado `17d73f0`, histórico (driver antigo)** (build **debug**, `--seconds 20 --rounds 3`,
   fixture H.264 de 768 quadros importada com `media.import`): 33 checks, todos passaram. Cobre
   medidor escondido (nó sem leitura, 0 pedidos de mudança de UI em 4 s), visível em repouso,
   pausado (`parado`; ligar o medidor pausado lê repouso, sem perdas), retomada sem a pausa no pior
@@ -191,6 +227,23 @@ testadas sem GPUI; headless N/A). Não validado: ver [limites](#limites).
   (asset sem hash, a preparação falha com "never hashed"); e um controle negativo que passava
   pelo motivo errado (`media_preparing`) e depois desenhava por ordem de execução (cache em
   memória), agora trocado por `media.status`. Spec do driver: 27 testes (normal e `-O`).
+- **Mutações dirigidas, reais, com log** (head `0f5d9ae`, `/tmp/pr18-final-residues/logs/mutations/`,
+  fora do repositório e efêmeras: um arquivo por mutação com o diff aplicado, o comando, a saída e
+  `restored_clean`; o arquivo é restaurado com `git checkout` e a árvore conferida a cada passo).
+  As 19 reprovam o teste que a protege: erro longo rígido (atividade e tarefas; só as tarefas),
+  faixa rígida, marca de redraw não limpa, `presented` mantido por `reset_project` e por
+  `begin_reload`, driver lendo o fim da janela depois do `stop`, `meter` só no braço ligado, sem
+  tratamento de exceção, falha que descarta o log, e as correções originais da PR (4 Hz, timer de
+  repouso mantido ao esconder, pausa lida como relógio rodando, resume que reinicia a execução,
+  sem âncora antes da primeira imagem, quadro inicial sempre apresentado, fixture sem margem,
+  cópia privada sem ligar a pasta, captura que mantém arquivo velho). **Duas não reprovaram na
+  primeira execução** (faixa rígida e marca de redraw), o que mostrou testes que passavam sem o
+  código que protegem; os testes foram corrigidos (a marca agora é armada no mesmo `update` que
+  esconde e mostra; a janela estreita faz a faixa, não a atividade, ceder) e a mutação foi
+  reexecutada e reprovou (a primeira execução, verde, está em `summary.json` da rodada anterior,
+  preservada em `mutations-prev/`). O texto anterior "mutações registradas na PR" **não tinha
+  log**: aquelas verificações foram por leitura (revisão independente), e só agora há mutações
+  executadas. Continua por leitura, sem mutante: o texto da documentação (a coluna `ui.repaints`).
 - **Janela real, execução anterior** (mesmo script, HOME isolado, cópia do projeto em `/tmp`,
   só requisições semânticas, captura com `screencapture -l` do PID do próprio processo). Em
   build release, **head 06afa80, anterior às correções da revisão** (histórico, não é
@@ -211,20 +264,31 @@ testadas sem GPUI; headless N/A). Não validado: ver [limites](#limites).
   alternadas desligado/ligado, H.264 1280×720 a 24 fps, preview 960×540). O que o app já contava sem o
   medidor (relatório do `playback.stop` e `monitor.viewport`):
 
-  | Execução | Perdidos (`skipped_frames`), média | Imagens aceitas em 8 s, média | Repaints da janela (`ui.repaints`) |
+  | Execução | Perdidos (`skipped_frames`), média | Imagens aceitas na janela (8 s; 20 s nas duas últimas linhas), média | Mudanças de interface por IPC (`ui.repaints`; **não** são paints da janela), média |
   |---|---|---|---|
   | build final, 3 rodadas | desligado 0 · ligado 0 | 190,7 · 192,0 | 182,7 · 182,0 |
   | build final, outra execução | desligado 0 · ligado 0 | 192,3 · 192,3 | 190,7 · 189,3 |
   | build final, com a correção da revisão | desligado 0 · ligado 0 | 192,3 · 192,0 | 188,0 · 187,0 |
   | build com contador de paint, 4 rodadas | desligado 1,5 (6, 0, 0, 0) · ligado 0,5 (1, 0, 0, 1) | 190,5 · 191,5 | 187,5 · 188,5 |
-  | **head `17d73f0`, build debug, 3 rodadas de 20 s** (por braço, 3 rodadas) | desligado 0,33 (0, 0, 1) · ligado 0 | 479,7 · 480,3 | 449,3 · 449,0 |
+  | head `17d73f0`, build debug, 3 rodadas de 20 s (driver **antigo**: lia as imagens depois do `playback.stop`; só o braço ligado fazia um `meter` a mais) | desligado 0,33 (0, 0, 1) · ligado 0 | 479,7 · 480,3 | 449,3 · 449,0 |
+  | **head `0f5d9ae`, build debug, 3 rodadas de 20 s** (driver novo: os dois braços leem o fim da janela antes de qualquer outro pedido e fazem os mesmos pedidos depois) | desligado 0,33 (0, 0, 1) · ligado 1,33 (0, 0, 4) | 478,3 · 474,3 | 344,0 · 341,7 |
 
-  As quatro primeiras linhas são de heads anteriores (8 s, build release) e valem como histórico.
-  Na linha do head `17d73f0` (debug, 20 s, 3 rodadas, `ticks` do relógio de reprodução 656,7
-  desligado e 626,0 ligado, 603 a 668 entre rodadas) não há diferença em perdas, imagens aceitas
-  nem pedidos de interface; a variação dos `ticks` entre rodadas é do tamanho da diferença entre os
-  braços, então nada se conclui sobre custo além de "não detectado nesta amostra". O medidor leu
-  perdas de 1, 0 e 0 em 482 a 484 quadros e o monitor entre 23,8 e 24,6 fps.
+  As quatro primeiras linhas e a do `17d73f0` são históricas (a do `17d73f0` foi medida com o driver
+  antigo, em que o braço ligado contava imagens até um pedido a mais depois da janela: ≈1 imagem em
+  480, 0,2 %, sempre na mesma direção; o driver novo remove esse viés). Na linha do head `0f5d9ae`
+  (debug, 20 s, 3 rodadas, mesma máquina compartilhada, que durante a medição tinha outros
+  processos `tessel-editor` de outras tarefas) as **imagens aceitas** diferem 0,8 % (478,3 contra
+  474,3) e os **perdidos** são 0, 0, 1 desligado e 0, 0, 4 ligado: a rodada 2 ligada teve 4
+  perdidos do relógio e 12 do medidor (2,5 %), uma amostra que não permite atribuir nada ao medidor.
+  O **`ticks` do relógio de reprodução** foi menor com o medidor ligado nas 3 rodadas (658, 647,
+  618 desligado; 600, 594, 592 ligado; média 641,0 contra 595,3, −7,1 %), e já fora menor no head
+  `17d73f0` (656,7 contra 626,0, −4,7 %). **Isto não está explicado:** a ordem dentro de cada
+  rodada é sempre desligado e depois ligado (uma deriva da máquina cairia sempre sobre o braço
+  ligado), o build é debug e a máquina é compartilhada; a mesma medição não mostra diferença
+  consistente em imagens aceitas nem em perdidos. Portanto **não se afirma custo nulo nem custo
+  medido**: a pendência é repetir em release, com a ordem alternada (ligado/desligado e
+  desligado/ligado) e a máquina ociosa (BL145). O medidor leu perdas de 5, 2 e 12 em 482 quadros e
+  o monitor entre 17,1 e 25,1 fps.
 
   A **taxa de quadros pintados da janela** com o medidor desligado só se mede com um contador
   externo: uma build local, **não commitada**, registrava cada paint da janela nos dois braços
@@ -260,4 +324,14 @@ testadas sem GPUI; headless N/A). Não validado: ver [limites](#limites).
   como zero, e a ausência de pedidos de quadro do medidor não é provada, só a ausência de
   pedidos de mudança de interface.
 - A medição de custo usou uma máquina sob carga de outras compilações; repetir em máquina
-  ociosa antes de afirmar mais que "sem diferença detectável".
+  ociosa antes de afirmar mais que "sem diferença detectável". O `ticks` do relógio de reprodução
+  foi menor com o medidor ligado (−7,1 % no head `0f5d9ae`, −4,7 % no `17d73f0`), sem explicação
+  provada: a ordem de cada rodada é fixa (desligado, depois ligado) e o build é debug. O
+  `skipped_frames` e o `max_gap_frames` do relatório do `playback.stop` cobrem também os pedidos
+  depois da janela (agora os mesmos nos dois braços), não só os 20 s.
+- Uma mensagem longa na barra de status é cortada com reticências e não tem dica com o texto
+  completo; a geometria vem dos testes GPUI (sem pixels), e nenhuma captura nativa mostra um erro
+  longo.
+- IDs: este contrato é **F049**, o mais antigo (implementado, 19 arquivos). A PR #20 (câmera por
+  keyframes, `camera-keys.md`) também registra F049; a decisão do coordenador é que ela use
+  **F050** se entrar depois. Esta PR não toca a PR #20 nem renumera nada.
