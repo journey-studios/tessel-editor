@@ -130,7 +130,7 @@ preferências para isso.
 Implementado e validado nas superfícies que se aplicam (UI e CLI da janela; lib com regras
 testadas sem GPUI; headless N/A). Não validado: ver [limites](#limites).
 
-- **Core:** 30 testes em `core::perf` (relógio falso: taxa, pior intervalo, repouso x parada,
+- **Core:** 32 testes em `core::perf` (relógio falso: taxa, pior intervalo, repouso x parada,
   perdas, janelas, `place`), mais parser, nó de árvore e `desktop_required` no headless.
 - **GPUI (geometria, não pixels):** `crates/desktop/src/workstation/perf_tests.rs` (12) e três
   testes de alimentação em `viewport_host_tests.rs`: atalho único e sem conflito, alterna com
