@@ -564,7 +564,8 @@ impl Created {
             // unlink, and is dropped only afterwards. A process killed in the middle of hashing a
             // large file therefore leaves an orphan claim that `recover` takes back, never a
             // file the ledger does not list.
-            let verdict = if leases.blocked(&file.path) {
+            let blocked = leases.block_reason(&file.path);
+            let verdict = if blocked.is_some() {
                 file.ledger.lock().abandon(holder, &file.key)
             } else {
                 file.ledger.lock().begin_leave(holder, &file.key)
@@ -587,8 +588,9 @@ impl Created {
                     file.path.display()
                 )),
                 Leave::Abandoned => report.kept.push(format!(
-                    "`{}`: its root is busy; it stays claimed for recovery",
-                    file.path.display()
+                    "`{}`: {}; it stays claimed for recovery",
+                    file.path.display(),
+                    blocked.as_deref().unwrap_or("its root is busy")
                 )),
                 Leave::Last(item) => {
                     if let Item::File(stamp) = &item {
@@ -863,25 +865,47 @@ fn merge(into: &mut Vec<Owned>, incoming: Vec<Owned>) {
     }
 }
 
-/// Leases held while removing, and the roots that could not be taken.
+/// Leases held while removing, and the roots whose lease could not be taken (and why).
 #[derive(Default)]
 pub(super) struct Leases {
     pub(super) held: Vec<RootLease>,
     busy: Vec<PathBuf>,
+    /// Roots whose lease failed for any reason other than another holder (a lock file that cannot
+    /// be opened, a root that cannot be read...), with the reason. Treated exactly like a busy
+    /// root: without the lease nothing below the root is touched (BL112.10).
+    unleased: Vec<(PathBuf, String)>,
 }
 
 impl Leases {
     /// Prevents removal below any root whose publication lease could not be acquired.
     pub(super) fn blocked(&self, path: &Path) -> bool {
-        self.busy.iter().any(|root| path.starts_with(root))
+        self.block_reason(path).is_some()
+    }
+
+    /// Why `path` may not be touched: its root's lease is held by someone else, or could not be
+    /// taken for another reason. `None` only when the lease of its root is held here (or its
+    /// root does not exist, so there is nothing below it).
+    pub(super) fn block_reason(&self, path: &Path) -> Option<String> {
+        if self.busy.iter().any(|root| path.starts_with(root)) {
+            return Some("its root is busy".to_string());
+        }
+        self.unleased
+            .iter()
+            .find(|(root, _)| path.starts_with(root))
+            .map(|(_, why)| format!("its root could not be leased ({why})"))
     }
 }
 
-/// Takes available root leases and records busy roots so their resources remain untouched.
+/// Takes the root leases and records the roots that could not be taken, so their resources stay
+/// untouched. **Fails closed (BL112.10):** a lease that is not held for *any* reason, not only
+/// `root_busy`, blocks everything below its root. The one root skipped is a root that does not
+/// exist: nothing can be below it, and an adoption cannot publish into it either (taking its
+/// lease needs the root to exist).
 pub(super) fn take_leases(roots: &[PathBuf], report: &mut CleanupReport) -> Leases {
     let mut leases = Leases::default();
     for root in roots {
-        if !root.is_dir() {
+        if matches!(fs::symlink_metadata(root), Err(error) if error.kind() == io::ErrorKind::NotFound)
+        {
             continue;
         }
         match acquire(root) {
@@ -890,8 +914,9 @@ pub(super) fn take_leases(roots: &[PathBuf], report: &mut CleanupReport) -> Leas
                 report.busy_roots += 1;
                 leases.busy.push(root.clone());
             }
-            // Gone or unreadable: removal below reports what it cannot do.
-            Err(_) => {}
+            Err(error) => leases
+                .unleased
+                .push((root.clone(), format!("{}: {}", error.code, error.message))),
         }
     }
     leases

@@ -16,11 +16,11 @@ use directed_resources_common::*;
 use serde_json::{Value, json};
 use tessel_editor_core::jobs::{CancelToken, JobError};
 use tessel_editor_core::{CommandError, EditorState, headless, persist};
-use tessel_editor_media::directed_resources::{Options, Progress, RootLease};
+use tessel_editor_media::directed_resources::{LEASE_FILE, Options, Progress, RootLease};
 use tessel_editor_media::host::MediaHost;
 use tessel_editor_media::scene_resources::import::{self, PreparedSceneImport};
 use tessel_editor_media::scene_resources::{
-    AdoptionTarget, PendingAdoption, ResourceBase, adopt, tracked_under,
+    AdoptionTarget, PendingAdoption, ResourceBase, adopt, recover, tracked_under,
 };
 
 /// Names a throwaway tree so a leftover can be told from another suite's (`te-r5-` prefix).
@@ -645,6 +645,51 @@ fn a_root_another_operation_holds_keeps_its_files_instead_of_forcing_them() {
         "the idle root was cleaned"
     );
     drop(lease);
+}
+
+/// BL112.10 (final gate review): only `root_busy` used to keep the files. Any other
+/// reason the lease of a root cannot be taken (here the lock file cannot be opened because a
+/// folder sits in its place) removed them without the lease, so an adoption that joined between
+/// the check and the unlink could lose the file it relies on. Now the file stays, the claim
+/// stays (an orphan `recover` takes back), and the report says why.
+#[test]
+fn a_root_whose_lease_fails_for_another_reason_keeps_its_files_claims_and_says_why() {
+    let fixture = import_fixture("lease-fault");
+    let prepared = fixture.prepared();
+    let root = fixture.scenes().join("street");
+    let lock = root.join(LEASE_FILE);
+    fs::create_dir(&lock).unwrap();
+    let claimed = tracked_under(&fixture.workspace);
+    assert!(claimed > 0);
+
+    let report = prepared.discard();
+    assert_eq!(report.busy_roots, 0, "nobody else holds it: {report:?}");
+    assert_eq!(report.removed_files, 2, "only the idle root's: {report:?}");
+    assert!(
+        root.join("assets/backdrop.png").is_file() && root.join("assets/figure.png").is_file(),
+        "not removed without the lease of its root"
+    );
+    assert!(
+        report
+            .kept
+            .iter()
+            .any(|entry| entry.contains("backdrop.png") && entry.contains("could not be leased")),
+        "the reason is reported: {report:?}"
+    );
+    assert!(
+        !fixture.scenes().join("market").exists(),
+        "the root whose lease was taken was cleaned"
+    );
+    assert!(
+        tracked_under(&fixture.workspace) > 0,
+        "the claims of the kept files stay for recovery"
+    );
+
+    fs::remove_dir(&lock).unwrap();
+    let recovery = recover(&fixture.workspace, &CancelToken::default()).unwrap();
+    assert!(recovery.report.removed_files > 0, "{recovery:?}");
+    assert!(!root.join("assets/backdrop.png").exists());
+    assert_eq!(tracked_under(&fixture.workspace), 0);
 }
 
 // ----------------------------------------------------------------------------- host --
