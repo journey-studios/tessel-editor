@@ -775,3 +775,6 @@ e renumera o contrato dela para um ID livre. Sem IDs novos de backlog: BL145 e B
 BL145.1 — resíduos 4502907216/4502916726: relatório de exceção usa assinatura compatível com Python 3.9; limite de leitura de atividade truncada documentado sem prometer CLI `get`. Sem mudança de Rust/runtime.
 
 Validação dos resíduos: spec 41/41 em Python 3.9.6 e 3.14.3, logs `/tmp/pr18-python39-final.log` e `/tmp/pr18-python314-final.log`; gates de produção anteriores preservados.
+
+| BL140.8 | R2 / limite | Estender início pode produzir source_start negativo | Pendente | BL140.2 | Coordenador | Definir recusa/clamp conforme tipo sem deslocar conteúdo/câmera e cobrir por testes |
+BL140 R2: nenhum bloqueador identificado por leitura, sem compilação. Matriz F054 rebaixada aI até gates reais.

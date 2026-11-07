@@ -134,3 +134,5 @@ abaixo. As execuções da coluna "Anterior" são do head `a5d9d19`, antes delas,
 Limites: sem ponteiro físico/clique de coordenada; a captura nativa mostra a janela, não substitui o teste de pixel do
 export; sem curva além dos três easings; o preview nativo (WKWebView) e o export (Chrome) são pilhas GL diferentes (ver
 [viewport](viewport.md)) e a igualdade provada é a do plano e a de pixels entre `render.frame` e export.
+
+R2 de código não identificou bloqueador funcional neste head. Isso não recompila os testes nem valida UI/render: F054 fica I até gates. Extensão do início que produz source_start negativo permanece pendente (BL140.8), sem promoção de comportamento por leitura. Os subIDs propostos pela revisão que colidiam com cadastro existente foram mantidos no registro canônico do coordenador.
