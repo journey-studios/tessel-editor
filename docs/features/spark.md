@@ -174,11 +174,15 @@ ordenação exata deixou de ser feita durante o gesto. Depois do playback o temp
 curso).
 
 Invariantes (executados): `render.frame` dos quadros 5, 60, 100, 193, 300 e 450 com o mesmo hash antes e depois
-(`--inspect`, só invariante, não medida); **o último quadro que o runtime devolveu ao monitor depois de parar o playback e depois de
-soltar o scrub tem o mesmo hash que o `render.frame` do mesmo quadro** (4 playbacks e 4 scrubs, take e crossfade;
-`final_source.stale_sort_layers` 0); export de 6 quadros de crossfade (190–195, `fullhd`) com o mesmo MD5 por quadro e o mesmo sha256 do
+(`--inspect`, só invariante, não medida); **o último quadro que o runtime devolveu ao monitor depois de parar o playback tem o mesmo hash que
+o `render.frame` do mesmo quadro** (4 playbacks, take e crossfade; `final_source.stale_sort_layers` 0). **Depois de soltar o scrub** a alegação anterior (quadros 20 e 150, 4 scrubs, hashes `adc70df7…`/`d9c627b2…`) está **retirada**: o subprocesso restaurava a origem antes da comparação. O que resta é `final-gate/release-frame-check.json`: 2 execuções (1 repetição por cenário: take no quadro 120, crossfade no quadro 250), com `--inspect`, hash na tela igual ao `render.frame` **do mesmo binário**, sem comparação com a base nesses quadros e sem medição de desempenho; export de 6 quadros de crossfade (190–195, `fullhd`) com o mesmo MD5 por quadro e o mesmo sha256 do
 arquivo antes e depois. **O hash é o do quadro lido pelo runtime (`frame.done.hash`), não uma captura dos pixels da tela**: a apresentação
 visual no monitor nativo **não foi verificada** por esta prova (revisão visual nativa pendente, BL130.6).
+
+**Proveniência (limite):** `final-gate/final.json`, `base.json` e `release-frame-check.json` guardam o caminho do binário e o `env`, mas **não** o commit/árvore
+de origem, o comando, o diretório nem a hora; `manifest.json` tem sha256 do binário e do runtime, não o commit. Que o binário medido saiu de `c4d3868` é
+dito em prosa (README do BL130), **não** provado por artefato, e os artefatos históricos não foram alterados para isso. Mitigação conferida em Git:
+`git diff c4d3868 11832a9 -- crates runtime/src` é vazio (a produção da `main` é a do fechamento). Fica registrado como fraqueza, não como proveniência retroativa.
 
 Câmera animada (`runtime/scripts/sort-order-evidence.mjs`, o worker real com `TESSEL_GL=gpu`, 960×540, planos reais de quadros
 consecutivos do projeto; cada quadro de movimento contra o exato do mesmo quadro). **Dado histórico, não aceitação:** a primeira versão
