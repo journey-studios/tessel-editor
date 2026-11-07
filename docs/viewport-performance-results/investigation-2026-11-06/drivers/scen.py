@@ -2,7 +2,10 @@
 """Scenario helpers of the performance investigation (see drv.py).
 
 Failure contract: a step that fails (an op rejected, a wait that times out, a playback that never starts) raises
-`DriverError`. Callers record it in `out["errors"]` through `guarded` and go on with the next measurement, or stop;
+`DriverError`. That covers the set-up of a session too (`window.activate`, `project.open`, every warm-up/origin `seek`
+and the `settle` after it, see `boot` and `seek_to`), not only the measured playback: a run is never recorded on top of
+a project that did not open or a monitor that did not settle. Callers record the error in `out["errors"]` through
+`guarded` and go on with the next measurement, or stop;
 `run_session` then always stops the editor and saves what was measured with `status` complete | partial | failed |
 empty, and a non-zero exit code unless it is `complete`. A result that is old, incomplete or empty never reaches the
 analysis as if it had been measured.
@@ -52,21 +55,52 @@ def log_len(ed):
     return len(read_perf_log(ed.perf_log))
 
 
+def seek_to(ed, frame, timeout=60, what="seek"):
+    """Move the playhead and wait until the monitor shows that frame; DriverError when the editor refuses the seek or
+    the monitor does not settle in `timeout` seconds (a measurement must never start from an unsettled monitor)."""
+    reply = ed.seek(frame)
+    if not isinstance(reply, dict) or not reply.get("ok"):
+        raise DriverError(f"{what}: seek to frame {frame} rejected", reply)
+    if not ed.settle(timeout):
+        raise DriverError(f"{what}: the monitor did not settle at frame {frame} within {timeout} s", reply)
+    return reply
+
+
+def boot(ed, project, warm=(), what="warm-up"):
+    """Common prelude of a session: socket ready, window active, project opened, takes visited (warm-up).
+
+    Every step is checked. Returns the boot time of the viewport in seconds."""
+    boot_s = ed.wait_socket()
+    require_ok(ed.activate(), "window.activate")
+    require_ok(ed.open_project(project)[0], f"project.open {project}")
+    time.sleep(0.8)
+    for frame in warm:
+        seek_to(ed, frame, 120, what)
+    return boot_s
+
+
 def start_editor(label, project=H, binary=RELEASE, runtime="instr", env=None, warm=True):
     ed = Editor(label, binary=binary, runtime=runtime, env=env)
-    boot = ed.wait_socket()
-    ed.activate()
-    ed.open_project(project)
-    return ed, boot
+    try:
+        boot_s = boot(ed, project)
+    except BaseException:
+        ed.stop()
+        raise
+    return ed, boot_s
 
 
 def pre_visit(ed, frames):
-    """Explicit renders (load every asset the frames need); returns per-frame seconds."""
+    """Explicit renders (load every asset the frames need); returns per-frame seconds. DriverError when a frame never
+    renders (timeout or an error other than 'media is still preparing') or the monitor does not settle."""
     out = {}
     for frame in frames:
         t, reply = ed.first_frame(frame)
-        out[frame] = round(t, 3) if t is not None else None
-    ed.settle()
+        if t is None:
+            raise DriverError(f"pre-visit: frame {frame} did not render before the timeout")
+        require_ok(reply, f"pre-visit: render.frame {frame}")
+        out[frame] = round(t, 3)
+    if not ed.settle():
+        raise DriverError("pre-visit: the monitor did not settle after the last frame")
     return out
 
 
@@ -74,7 +108,8 @@ def playback_run(ed, start, frames, label, extra_wait=0.6, status_poll=True):
     """One measured playback. Raises PlaybackError (never returns a half result) when any step fails; the GPU sampler
     is always stopped and a started playback is always stopped again."""
     require_ok(ed.op({"op": "seek", "frame": start}), "seek", PlaybackError)
-    ed.settle()
+    if not ed.settle():
+        raise PlaybackError(f"monitor did not settle at frame {start} within 60 s before run {label}")
     time.sleep(0.3)
     quiet = wait_quiet_gpu()
     n0 = log_len(ed)
@@ -247,9 +282,14 @@ def finalize(label, out, fatal=None):
 def run_session(label, out, make_editor, body):
     """Start the editor with make_editor(), run body(ed), stop the editor, save partial results whatever happened.
 
-    Returns the exit code. KeyboardInterrupt/SystemExit are saved as a failed run and re-raised afterwards."""
+    Returns the exit code. KeyboardInterrupt/SystemExit are saved as a failed run and re-raised afterwards. The previous
+    `results/<label>.json` is removed first, so if the final save fails (disk full) no file of another run is left
+    under this label."""
     ed = None
     fatal = None
+    stale = f"{WORK}/results/{label}.json"
+    if os.path.lexists(stale):  # a result of an earlier run with this label must not outlive a save that fails below
+        os.remove(stale)
     try:
         ed = make_editor()
         body(ed)

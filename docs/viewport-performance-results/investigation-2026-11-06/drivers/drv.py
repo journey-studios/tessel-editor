@@ -154,7 +154,7 @@ class Editor:
         raise RuntimeError("viewport never ready")
 
     def activate(self):
-        self.invoke("window.activate")
+        return self.invoke("window.activate")
 
     def open_project(self, path, timeout=300):
         t = time.time()

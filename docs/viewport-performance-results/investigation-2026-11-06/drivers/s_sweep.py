@@ -16,9 +16,7 @@ def main(argv=None):
         return Editor(a.label, binary=DEBUG if a.binary == "debug" else RELEASE, runtime=a.runtime, env=env)
 
     def body(ed):
-        ed.wait_socket(); ed.activate(); ed.open_project(a.project); time.sleep(0.8)
-        for fr in [int(x) for x in a.warm.split(",") if x]:
-            ed.seek(fr); ed.settle(120)
+        boot(ed, a.project, [int(x) for x in a.warm.split(",") if x])  # a failed step raises: nothing is measured
         for spec in a.runs.split(","):
             start, frames = [int(x) for x in spec.split(":")]
             for rep in range(a.reps):

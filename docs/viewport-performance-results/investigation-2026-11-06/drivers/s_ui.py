@@ -10,34 +10,64 @@ def cpu_s(pid):
 
 
 class Probe(threading.Thread):
+    """Round-trip probe (`get timeline.playhead` every 100 ms). A request that raises or is answered with an error
+    stops the thread and is kept in `self.error`; the phase turns it into a DriverError, so a truncated RTT list is never
+    summarised as if the probe had run the whole phase. `first` is set after the first sample (or the first failure)."""
+    period = 0.1
+
     def __init__(self, ed):
-        super().__init__(daemon=True); self.ed = ed; self.rtt = []; self.stop_ev = threading.Event()
+        super().__init__(daemon=True)
+        self.ed = ed; self.rtt = []; self.error = None; self.stop_ev = threading.Event(); self.first = threading.Event()
+
     def run(self):
-        while not self.stop_ev.is_set():
-            r = self.ed.get("timeline.playhead"); self.rtt.append(r["_ms"]); self.stop_ev.wait(0.1)
+        try:
+            while not self.stop_ev.is_set():
+                r = self.ed.get("timeline.playhead")
+                if not isinstance(r, dict) or not r.get("ok") or "_ms" not in r:
+                    raise DriverError("probe request get timeline.playhead rejected", r)
+                self.rtt.append(r["_ms"]); self.first.set(); self.stop_ev.wait(self.period)
+        except BaseException as exc:  # noqa: BLE001 - nothing may die silently in a thread
+            self.error = exc
+        finally:
+            self.first.set()
 
 
 def phase(ed, out, label, name, start, frames, probe=False, samp=False, play=True):
-    """One phase. A failed playback records the error and no entry: the phase is simply not measured."""
+    """One phase. A failed step (playback, seek/settle, the probe, `sample`) records the error and no entry: the phase is
+    simply not measured."""
     p = Probe(ed) if probe else None
     st = None
+    sample = {}
     cpu0, t0 = cpu_s(ed.pid), time.time()
     if samp:
         sp = f"{WORK}/results/{label}.{name}.sample.txt"
         def do():
-            time.sleep(1.5); subprocess.run(["sample", str(ed.pid), "2", "-file", sp], capture_output=True)
+            try:
+                time.sleep(1.5)
+                run = subprocess.run(["sample", str(ed.pid), "2", "-file", sp], capture_output=True, text=True)
+                if run.returncode != 0:
+                    sample["error"] = DriverError(f"sample exited {run.returncode}", {"stderr": (run.stderr or "")[-300:]})
+            except BaseException as exc:  # noqa: BLE001
+                sample["error"] = exc
         st = threading.Thread(target=do, daemon=True); st.start()
-    if p: p.start()
+    if p:
+        p.start(); p.first.wait(10)  # a probe that never answers is reported below, not summarised empty
     try:
         if play:
             res = playback_run(ed, start, frames, name)
         else:
-            ed.seek(start); ed.settle(); time.sleep(0.3)
+            seek_to(ed, start, 60, f"phase {name}"); time.sleep(0.3)
             res = {"rows": [], "trace_frames": []}
             time.sleep(4)
     finally:
         if p: p.stop_ev.set(); p.join(2)
         if st: st.join(10)
+    if p is not None and p.error is not None:
+        raise DriverError(f"phase {name}: the RTT probe died after {len(p.rtt)} samples: {type(p.error).__name__}: {p.error}", getattr(p.error, "reply", None))
+    if p is not None and not p.rtt:
+        raise DriverError(f"phase {name}: the RTT probe collected no sample")
+    if "error" in sample:
+        raise DriverError(f"phase {name}: the main-thread `sample` failed: {type(sample['error']).__name__}: {sample['error']}", getattr(sample["error"], "reply", None))
     cpu1, t1 = cpu_s(ed.pid), time.time()
     an = analyze_play(res) if play else {}
     entry = {"rtt_ms": summary(p.rtt) if p else None, "cpu_pct_avg_incl_setup": round((cpu1 - cpu0) / (t1 - t0) * 100, 1) if cpu0 is not None and cpu1 is not None else None,
@@ -60,10 +90,8 @@ def main(argv=None):
         return Editor(a.label, binary=DEBUG if a.binary == "debug" else RELEASE, runtime=a.runtime, env=env)
 
     def body(ed):
-        ed.wait_socket(); ed.activate(); ed.open_project(a.project); time.sleep(0.8)
-        for fr in [int(x) for x in a.warm.split(",") if x]:
-            ed.seek(fr); ed.settle(120)
-        ed.seek(40); ed.settle(); time.sleep(1)
+        boot(ed, a.project, [int(x) for x in a.warm.split(",") if x])  # a failed step raises: nothing is measured
+        seek_to(ed, 40, 60, "phases start"); time.sleep(1)
         for name, start, frames, kw in [("idle-probe", 40, 0, dict(probe=True, play=False)), ("play-sample", 40, 96, dict(samp=True)),
                                         ("play-probe", 40, 96, dict(probe=True)), ("xfade-probe", 170, 60, dict(probe=True))]:
             guarded(out, {"phase": name}, lambda: phase(ed, out, a.label, name, start, frames, **kw))

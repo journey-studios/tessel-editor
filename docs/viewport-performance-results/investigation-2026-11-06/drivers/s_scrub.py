@@ -15,6 +15,10 @@ def run_scrub(script, socket_path, hz, span, jf):
     p = subprocess.run([sys.executable, script, "--socket", socket_path, "--seconds", "2", "--hz", hz, "--span", span, "--json", jf, "--settle-timeout", "30"], capture_output=True, text=True)
     tail = {"stdout": p.stdout[-300:], "stderr": p.stderr[-300:]}
     if p.returncode != 0:
+        # The proof's own checks (>= 5 pictures in 2 s, converged, accepted > 0, playhead restored) are its verdict:
+        # the run is an error, and the JSON it may have written stays on disk for whoever reads the failure.
+        if os.path.isfile(jf):
+            tail["json_file"] = jf
         raise DriverError(f"scrub proof exited {p.returncode}", tail)
     if not os.path.isfile(jf):
         raise DriverError("scrub proof exited 0 but wrote no JSON", tail)
@@ -47,14 +51,13 @@ def main(argv=None):
         return Editor(a.label, binary=DEBUG if a.binary == "debug" else RELEASE, runtime=a.runtime, env=env)
 
     def body(ed):
-        ed.wait_socket(); ed.activate(); ed.open_project(a.project); time.sleep(0.8)
-        for fr in [int(x) for x in a.warm.split(",") if x]:
-            ed.seek(fr); ed.settle(120)
+        boot(ed, a.project, [int(x) for x in a.warm.split(",") if x])  # a failed step raises: nothing is measured
         for spec in a.drags.split(","):
             name, origin, span, hz = spec.split(":")
             for rep in range(a.reps):
                 def one():
-                    ed.seek(int(origin)); ed.settle(60); time.sleep(0.3)
+                    seek_to(ed, int(origin), 60, f"drag {name} origin")  # the JSON is labelled with this origin
+                    time.sleep(0.3)
                     wait_quiet_gpu()
                     n0 = log_len(ed)
                     jf = f"{WORK}/results/{a.label}.{name}.{rep}.scrub.json"

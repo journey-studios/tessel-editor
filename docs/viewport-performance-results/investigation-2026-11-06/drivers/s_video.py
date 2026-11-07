@@ -12,7 +12,14 @@ def wait_for(pred, seconds, step=0.3):
         time.sleep(step)
 
 
-def main(argv=None, free_gib=lambda: shutil.disk_usage('/tmp').free / 2**30):
+def work_free_gib():
+    """Free space of the volume that holds the editor home, project, media and proxies: WORK, which
+    TESSEL_PERF_INV_WORK can move away from /tmp."""
+    return shutil.disk_usage(WORK).free / 2**30
+
+
+def main(argv=None, free_gib=None):
+    free_gib = free_gib or work_free_gib
     ap = argparse.ArgumentParser()
     ap.add_argument("label"); ap.add_argument("--runtime", default="instr"); ap.add_argument("--binary", default="release")
     ap.add_argument("--env", default=""); ap.add_argument("--counts", default="1,2,4,8"); ap.add_argument("--assets", type=int, default=4)
@@ -36,9 +43,12 @@ def main(argv=None, free_gib=lambda: shutil.disk_usage('/tmp').free / 2**30):
             return r
 
         def media_assets():
-            return (ed.op({"op": "media.status"}).get("data") or {}).get("assets") or []
+            reply = ed.op({"op": "media.status"})
+            if not reply.get("ok"):
+                raise DriverError("op media.status rejected", reply)
+            return (reply.get("data") or {}).get("assets") or []
 
-        ed.wait_socket(); ed.activate()
+        ed.wait_socket(); require_ok(ed.activate(), "window.activate")
         ws = f"{ed.home}/project"; doc = f"{ws}/v.tessel.json"
         if a.mix:
             os.makedirs(ws, exist_ok=True)
@@ -101,7 +111,10 @@ def main(argv=None, free_gib=lambda: shutil.disk_usage('/tmp').free / 2**30):
                     if len(out.get("errors", [])) == errors_before:  # timed out without an exception
                         out.setdefault("errors", []).append({**ctx, "stage": "readiness", "kind": "not_ready", "ready_wait_s": round(prep, 1), "error": "media never became ready (render.frame not ok within 900 s); playback not measured"})
                     continue
-                ed.seek(base_start)
+                seek_reply = ed.seek(base_start)
+                if not seek_reply.get("ok"):
+                    out.setdefault("errors", []).append({**ctx, "stage": "seek", "kind": "seek_rejected", "reply": seek_reply, "error": f"the editor rejected the seek to frame {base_start}; playback not measured"})
+                    continue
                 if not ed.settle(120):
                     out.setdefault("errors", []).append({**ctx, "stage": "settle", "kind": "not_settled", "error": "the monitor did not settle at the playhead within 120 s; playback not measured"})
                     continue
