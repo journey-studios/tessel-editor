@@ -984,6 +984,13 @@ impl EditorState {
             .item(id)
             .ok_or_else(|| CommandError::unknown_element("media", id))?;
         let kind = item.kind;
+        if kind != MediaKind::Splat && asset.meta.capture.is_some() {
+            return Err(CommandError::new(
+                "invalid_asset",
+                "Only splat assets can carry a SHARP capture camera",
+            )
+            .target(id));
+        }
         let old = item.asset.as_ref().ok_or_else(|| {
             CommandError::new(
                 "asset_unavailable",

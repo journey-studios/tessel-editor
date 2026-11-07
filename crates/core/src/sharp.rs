@@ -329,7 +329,9 @@ fn build(
         ));
     }
     let centre = [f64::from(width) / 2.0, f64::from(height) / 2.0];
-    if (cx - centre[0]).abs() > PRINCIPAL_TOLERANCE_PX
+    if !cx.is_finite()
+        || !cy.is_finite()
+        || (cx - centre[0]).abs() > PRINCIPAL_TOLERANCE_PX
         || (cy - centre[1]).abs() > PRINCIPAL_TOLERANCE_PX
     {
         return Err(ambiguous(
@@ -779,11 +781,9 @@ fn read_capture(path: &Path) -> Result<Option<Capture>, CommandError> {
         let identity: Vec<f64> = (0..16)
             .map(|index| if index % 5 == 0 { 1.0 } else { 0.0 })
             .collect();
-        if extrinsic
-            .iter()
-            .zip(&identity)
-            .any(|(value, expected)| (value - expected).abs() > IDENTITY_TOLERANCE)
-        {
+        if extrinsic.iter().zip(&identity).any(|(value, expected)| {
+            !value.is_finite() || (value - expected).abs() > IDENTITY_TOLERANCE
+        }) {
             return Err(ambiguous(
                 "The `extrinsic` matrix is not the identity placeholder the SHARP writer emits: \
                  whether the splat is in camera or world coordinates is not stated",
@@ -1355,5 +1355,34 @@ mod tests {
         assert_eq!(whole(f64::NAN, 255.0), None);
         assert_eq!(whole(f64::INFINITY, f64::MAX), None);
         assert_eq!(whole(EXACT_F64, EXACT_F64), Some(1 << 53));
+    }
+    #[test]
+    fn nonfinite_principal_points_and_extrinsics_are_refused() {
+        let dir = temp("nonfinite");
+        for (value_index, value) in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY]
+            .into_iter()
+            .enumerate()
+        {
+            for index in [2, 5] {
+                let mut spec = SharpSpec::default();
+                spec.intrinsic.as_mut().unwrap()[index] = value;
+                let path = dir.join(format!("principal-{value_index}-{index}.ply"));
+                write_sharp_ply(&path, &spec).unwrap();
+                assert_eq!(
+                    read(&path, Choice::Auto).unwrap_err().code,
+                    "ambiguous_capture"
+                );
+            }
+            for index in 0..16 {
+                let mut spec = SharpSpec::default();
+                spec.extrinsic.as_mut().unwrap()[index] = value;
+                let path = dir.join(format!("extrinsic-{value_index}-{index}.ply"));
+                write_sharp_ply(&path, &spec).unwrap();
+                assert_eq!(
+                    read(&path, Choice::Auto).unwrap_err().code,
+                    "ambiguous_capture"
+                );
+            }
+        }
     }
 }

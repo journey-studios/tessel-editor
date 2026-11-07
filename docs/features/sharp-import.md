@@ -161,3 +161,5 @@ Limites: o FOV é vertical (proporção da sequência diferente da fonte muda o 
 splat com captura não herda câmera nem giro (BL143.2, mas `rotation` por objeto existe); sem seletor de `capture` na janela
 (BL143.3); cores linearRGB só avisam (BL139.color); o preview nativo (WKWebView) e o export (Chrome) são pilhas GL
 diferentes (ver [viewport](viewport.md)).
+
+R2: rejeitados centros principais e extrínseca não finitos; replace_asset agora aplica a mesma recusa de captura em ativo não-splat. Regressões escritas para NaN/Inf e preservação de estado, sem execução Rust por disco. O teste de cor do contrato não prova fidelidade de render nem independência total do oráculo; BL143.8 permanece pendente de comparação contra fonte real por caminho independente. F052 fica I até gates e provas reais.

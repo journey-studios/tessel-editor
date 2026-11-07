@@ -784,3 +784,7 @@ e renumera o contrato dela para um ID livre. Sem IDs novos de backlog: BL145 e B
 BL145.1 — resíduos 4502907216/4502916726: relatório de exceção usa assinatura compatível com Python 3.9; limite de leitura de atividade truncada documentado sem prometer CLI `get`. Sem mudança de Rust/runtime.
 
 Validação dos resíduos: spec 41/41 em Python 3.9.6 e 3.14.3, logs `/tmp/pr18-python39-final.log` e `/tmp/pr18-python314-final.log`; gates de produção anteriores preservados.
+
+| BL143.10 | R2 | NaN passava no centro principal e extrínseca e podia gerar documento ilegível | Corrigido por código, testes Rust não executados | BL143 | Coordenador | Rejeição tipada de todos os componentes não finitos |
+| BL143.11 | R2 | replace_asset não recusava captura em ativo não-splat | Corrigido por código, teste Rust não executado | BL143.9 | Coordenador | Mesma regra add/replace/load e estado intacto na recusa |
+BL143.8: independência/fidelidade do teste de cor não demonstradas; não promover a V sem render contra fonte primária. Novos testes receberam rustfmt apenas, disco insuficiente para Cargo.

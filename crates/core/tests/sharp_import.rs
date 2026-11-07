@@ -622,8 +622,17 @@ fn a_capture_on_an_asset_that_is_not_a_splat_is_refused_everywhere() {
             id: Some("img2".into()),
             name: "img2".into(),
             kind: MediaKind::Still,
-            asset: Box::new(asset),
+            asset: Box::new(asset.clone()),
             folder: None,
+        })
+        .unwrap_err();
+    assert_eq!(error.code, "invalid_asset");
+    assert_eq!(state.to_document(None), before);
+
+    let error = state
+        .execute(Command::ReplaceAsset {
+            asset_id: "img".into(),
+            asset: Box::new(asset),
         })
         .unwrap_err();
     assert_eq!(error.code, "invalid_asset");
