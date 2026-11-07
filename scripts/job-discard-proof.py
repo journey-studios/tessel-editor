@@ -29,6 +29,8 @@ the window does when the user closes it with results pending (the `Drop` is cove
 `job_discard` test, not observed here).
 """
 import argparse
+import collections
+import contextlib
 import hashlib
 import importlib.util
 import json
@@ -56,6 +58,8 @@ MIN_SAMPLES_DURING_DISCARD = 20
 # The control must stall the probe at least this long, else the probe cannot see a stall.
 CONTROL_MIN_STALL_MS = 1000.0
 PROBE_GAP_S = 0.02
+# How long a session's child gets to take pending files back and exit once its stdin is closed.
+CHILD_EXIT_S = 120
 
 
 def sha256(path):
@@ -100,6 +104,61 @@ def stats(values):
             'p99_ms': round(percentile(values, 0.99), 1), 'max_ms': round(max(values), 1)} if values else {'n': 0}
 
 
+# One probe answer. `sent` and `received` are `time.monotonic()` instants taken around the request;
+# `state` is the `jobs` payload the window computed when it finally answered.
+Sample = collections.namedtuple('Sample', 'sent received latency_ms state')
+
+
+def result_state_of(sample, job):
+    """What the window's own answer said about `job`; None when the job was not listed (yet)."""
+    if not sample.state:
+        return None
+    return next((entry['result_state'] for entry in sample.state['all'] if entry['id'] == job), None)
+
+
+def discard_window(samples, job):
+    """The monotonic span `(start, end)` of the discard, taken from instants, never from the state an
+    answer carries (BL112.12).
+
+    A request that is sent while the window is removing files and answered late is labelled with the
+    state of the moment the window finally replied: 'discarded'. Classifying by that label would drop
+    exactly the answers a stalled UI delays. So the span is bounded by when requests were SENT and
+    RECEIVED, wide on purpose:
+
+    * start: the send instant of the last request that was still answered before the discard began
+      (the first answer that says 'discarding' or 'discarded' comes after it). Everything sent from
+      then on may have run during the discard;
+    * end: the instant the first 'discarded' answer was received; the discard ended before the
+      window could produce it. With no such answer the span ends at the last answer.
+
+    Samples come in the order the (single) probe thread completed them, which is the order the
+    window handled them. None when no answer ever showed the discard began."""
+    states = [result_state_of(sample, job) for sample in samples]
+    began = next((i for i, state in enumerate(states) if state in ('discarding', 'discarded')), None)
+    if began is None:
+        return None
+    start = samples[began - 1].sent if began else samples[0].sent
+    done = next((i for i, state in enumerate(states) if state == 'discarded'), None)
+    end = samples[done].received if done is not None else samples[-1].received
+    return start, end
+
+
+def latencies_sent_within(samples, start, end):
+    """Every answer to a request SENT inside `[start, end]`, whatever state it came back labelled with."""
+    return [sample.latency_ms for sample in samples if start <= sample.sent <= end]
+
+
+def ceiling_verdict(latencies):
+    """The three conditions of the 'responsive while removing' ceiling, separately, so a control can show
+    that the latency ones fail on a stalled window without needing the sample count to be reached."""
+    return {
+        'enough_samples': len(latencies) >= MIN_SAMPLES_DURING_DISCARD,
+        'p99_ok': bool(latencies) and percentile(latencies, 0.99) <= DISCARD_P99_MS,
+        'max_ok': bool(latencies) and max(latencies) <= DISCARD_MAX_MS,
+        'stats': stats(latencies),
+    }
+
+
 class Report:
     def __init__(self):
         self.data = {'checks': [], 'input': 'JSONL on stdin / semantic IPC (socket); no pointer, no coordinates',
@@ -142,6 +201,26 @@ class Jsonl:
         self.process.wait(timeout=600)
         return time.perf_counter() - started
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *failure):
+        """Whatever ended the session (a check, an assert, a request that raised), THIS child does not
+        outlive it: stdin is closed so it discards what is pending and exits, and only a child that
+        does not exit in time is killed. Nothing else is touched, and it all happens before the caller
+        removes the workspace the child owns (BL112.12)."""
+        if self.process.poll() is None:
+            with contextlib.suppress(OSError):
+                self.process.stdin.close()
+            try:
+                self.process.wait(timeout=CHILD_EXIT_S)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait()
+        for stream in (self.process.stdin, self.process.stdout):
+            with contextlib.suppress(OSError):
+                stream.close()
+
 
 def scene_files(workspace):
     root = Path(workspace) / 'scenes/street/assets'
@@ -149,12 +228,19 @@ def scene_files(workspace):
 
 
 def jsonl_phase(binary, work, report, pad_mib):
+    """Every session is an entry of one ExitStack: however this function ends, each child it started
+    has been given EOF and has exited (or been killed) before the caller removes `work`."""
+    with contextlib.ExitStack() as sessions:
+        return jsonl_checks(binary, work, report, pad_mib, sessions)
+
+
+def jsonl_checks(binary, work, report, pad_mib, sessions):
     check = report.check
     results = {}
 
     def session(name):
         workspace = Path(work) / f'jsonl-{name}'
-        proc = Jsonl(binary)
+        proc = sessions.enter_context(Jsonl(binary))
         proc.ok({'op': 'project.create', 'name': name, 'dir': str(workspace)})
         return proc, workspace
 
@@ -254,7 +340,7 @@ class Probe:
 
     def __init__(self, lab):
         self.lab = lab
-        self.samples = []  # (monotonic, latency_ms, jobs_state)
+        self.samples = []  # Sample(sent, received, latency_ms, jobs_state)
         self.stop = threading.Event()
         self.thread = None
 
@@ -265,19 +351,22 @@ class Probe:
 
     def _run(self):
         while not self.stop.is_set():
+            sent = time.monotonic()
             started = time.perf_counter()
             try:
                 answer = self.lab.send({'version': 1, 'command': 'get', 'target': 'jobs'}, timeout=120)
             except OSError:
+                self.stop.wait(PROBE_GAP_S)
                 continue
             latency = (time.perf_counter() - started) * 1000
             state = answer.get('data', {}).get('state') if answer.get('ok') else None
-            self.samples.append((time.monotonic(), latency, state))
+            self.samples.append(Sample(sent, time.monotonic(), latency, state))
             self.stop.wait(PROBE_GAP_S)
 
     def end(self):
         self.stop.set()
-        self.thread.join(30)
+        if self.thread is not None:
+            self.thread.join(30)
         return self.samples
 
 
@@ -287,6 +376,7 @@ def window_phase(binary, work, report, pad_mib):
     home = tempfile.mkdtemp(prefix='te-s1-', dir='/tmp')
     os.environ['TESSEL_VIEWPORT_INSPECT'] = '1'
     lab = video.Editor(str(Path(binary).resolve()), home)
+    probe = None
 
     def send(request, timeout=60):
         return lab.send({'version': 1, **request}, timeout)
@@ -347,6 +437,30 @@ def window_phase(binary, work, report, pad_mib):
         check('control: a window that stops answering is measured as a stall by the same request',
               stall >= CONTROL_MIN_STALL_MS, results['control'])
         check('control: the window answers normally again afterwards', jobs()['all'] == [], jobs())
+
+        # The same suspension again, now seen by the probe and judged by the SAME functions that judge
+        # the discard (`latencies_sent_within` and `ceiling_verdict`, with the same ceilings), over the
+        # span we know exactly: from the SIGSTOP to the SIGCONT. A probe or a classifier that could
+        # not see a stalled window would let this pass; it must fail the latency ceilings.
+        control_probe = Probe(lab)
+        control_probe.start()
+        try:
+            wait_for(lambda: len(control_probe.samples) >= 3, 30, 'the control probe samples a healthy window')
+            # A request already in flight when the signal lands is stalled too: the span starts a
+            # little before the SIGSTOP so it is counted (a fast request in that margin is harmless).
+            stopped = time.monotonic() - 0.05
+            os.kill(lab.process.pid, signal.SIGSTOP)
+            time.sleep(1.5)
+            os.kill(lab.process.pid, signal.SIGCONT)
+            resumed = time.monotonic()
+            wait_for(lambda: any(sample.latency_ms >= CONTROL_MIN_STALL_MS for sample in control_probe.samples),
+                     30, 'the stalled request is answered')
+        finally:
+            control_samples = control_probe.end()
+        verdict = ceiling_verdict(latencies_sent_within(control_samples, stopped, resumed))
+        results['control_classifier'] = verdict
+        check('control: the classifier that judges the discard fails a suspended window on p99 and on max',
+              verdict['stats']['n'] >= 1 and not verdict['p99_ok'] and not verdict['max_ok'], verdict)
 
         # --- the stale result: the window's tick must not remove, a discard job does ---------------
         src = authored(work, 'w-src', pad_mib=pad_mib)
@@ -420,17 +534,29 @@ def window_phase(binary, work, report, pad_mib):
         again = refused({'op': 'job.discard', 'job': job})
         check('a discarded result is job_discarded', again['code'] == 'job_discarded', again)
 
-        # While the files were being removed, the window kept answering.
-        during = [latency for moment, latency, state in samples
-                  if state and next((e['result_state'] for e in state['all'] if e['id'] == job), None) == 'discarding']
+        # While the files were being removed, the window kept answering. A request is "during the
+        # discard" by WHEN IT WAS SENT (see `discard_window`), not by the state its answer carries:
+        # an answer delayed past the end comes back 'discarded' and is exactly the one that counts.
+        window = discard_window(samples, job)
+        check('the probe saw the discard begin (a window of instants can be drawn)', window is not None,
+              [(round(sample.latency_ms, 1), result_state_of(sample, job)) for sample in samples[-10:]])
+        start, end = window
+        during = latencies_sent_within(samples, start, end)
+        by_label = [sample.latency_ms for sample in samples if result_state_of(sample, job) == 'discarding']
         results['during_discard'] = stats(during)
-        moments = [m for m, _, s in samples if s and next(
-            (e['result_state'] for e in s['all'] if e['id'] == job), None) == 'discarding']
-        results['discard_window_seconds'] = round(moments[-1] - moments[0], 2) if moments else None
+        # The previous measurement (answers labelled 'discarding'), kept next to the new one so the
+        # difference between them is data, not a claim.
+        results['during_discard_by_answer_label'] = stats(by_label)
+        results['during_discard_answered_after_the_end'] = sum(
+            1 for sample in samples
+            if start <= sample.sent <= end and result_state_of(sample, job) == 'discarded')
+        results['discard_window_seconds'] = round(end - start, 2)
+        results['discard_window_basis'] = 'send/receive instants (time.monotonic), not the answer label'
         check(f'the probe sampled the window while it removed (>= {MIN_SAMPLES_DURING_DISCARD} answers)',
               len(during) >= MIN_SAMPLES_DURING_DISCARD, results['during_discard'])
+        verdict = ceiling_verdict(during)
         check(f'responsive while removing: p99 <= {DISCARD_P99_MS} ms and max <= {DISCARD_MAX_MS} ms',
-              percentile(during, 0.99) <= DISCARD_P99_MS and max(during) <= DISCARD_MAX_MS, results['during_discard'])
+              verdict['p99_ok'] and verdict['max_ok'], results['during_discard'])
 
         # The tick reports the end of the discard job on its next beat (250 ms), not at once.
         wait_for(lambda: any(event.get('kind') == 'discard' for event in jobs()['recent']), 10,
@@ -457,7 +583,11 @@ def window_phase(binary, work, report, pad_mib):
         return results
     finally:
         try:
-            lab.stop()
+            try:
+                if probe is not None:
+                    probe.end()  # a failed check must not leave it asking a window that is going away
+            finally:
+                lab.stop()
         finally:
             lab.log.close()
             report.data['window_results'] = results
