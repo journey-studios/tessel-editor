@@ -18,7 +18,7 @@
 //!   `runtime/test/gizmo-overlay.test.mjs` and the native proof (`docs/features/scene-gizmo.md`).
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use core::prelude::v1::test;
 use serde_json::{Value, json};
@@ -41,7 +41,7 @@ fn bundle(name: &str) -> Value {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../docs/migration/fixtures/bundles")
         .join(format!("{name}.bundle.json"));
-    serde_json::from_str(&fs::read_to_string(PathBuf::from(path)).unwrap()).unwrap()
+    serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
 }
 
 fn run(state: &mut EditorState, request: Value) -> Result<Value, CommandError> {
@@ -230,7 +230,7 @@ impl Camera {
         );
         let (d, e) = (dot(direction, offset), dot(ray, offset));
         // Minimise |origin + t d - (eye + s r)|: the standard two-line closest point.
-        (b * e - c * d) / (b * b - a * c) * -1.0
+        -((b * e - c * d) / (b * b - a * c))
     }
 
     /// The pointer position that, after grabbing the handle of the line `origin + t * direction`

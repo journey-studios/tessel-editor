@@ -550,13 +550,11 @@ impl EditorState {
         let drag = self.live_drag().ok_or_else(Self::no_drag)?;
         let point = point.checked(false)?;
         let gesture = self.scene_interaction.gesture.find(&drag.gesture)?;
-        if let Err(error) = self.ensure_live(gesture) {
-            // The scene moved under the drag (an undo, an edit elsewhere): it can never apply.
-            // The drag stays open (and its overlay draws as no drag) until the caller ends it
-            // with a release or a cancel, both of which settle the gesture under it; a drag that
-            // is dropped here would leave its gesture behind, blocking the next press.
-            return Err(error);
-        }
+        // The scene moved under the drag (an undo, an edit elsewhere): it can never apply.
+        // The drag stays open (and its overlay draws as no drag) until the caller ends it
+        // with a release or a cancel, both of which settle the gesture under it; a drag that
+        // is dropped here would leave its gesture behind, blocking the next press.
+        self.ensure_live(gesture)?;
         let mut answer = self.drag_update(&drag, point)?;
         answer["action"] = json!("scene.pointer");
         answer["phase"] = json!("move");
