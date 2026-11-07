@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
+use tessel_editor_core::jobs::ResultState;
 use tessel_editor_core::{CommandError, EditorState, headless};
 use tessel_editor_media::host::{MediaHost, RendererFactory};
 use tessel_editor_media::tools::Tools;
@@ -171,7 +172,12 @@ fn a_slow_import_never_blocks_the_caller_and_is_applied_once_on_poll() {
         json!({"op":"track.add","id":"during","name":"During","kind":"video"}),
     );
     assert!(state.project.revision > revision);
-    assert_eq!(host.registry().get(&job).unwrap().state.label(), "running");
+    // In flight, not necessarily started: the worker thread may not have been scheduled yet when
+    // the machine is busy (a `queued` job is just as unfinished as a `running` one).
+    assert!(
+        !host.registry().get(&job).unwrap().state.is_final(),
+        "the 0.6 s import cannot be over while the caller was only editing"
+    );
 
     let event = poll_until(&mut host, &mut state, &job);
     assert_eq!(event["state"], "succeeded", "{event}");
@@ -256,6 +262,16 @@ fn a_prepared_result_for_a_replaced_project_is_discarded() {
     assert!(
         state.library.items.is_empty(),
         "nothing leaked into the new project"
+    );
+    // F4: the answer was `Ok`, but the project used none of it: it is not "applied".
+    assert_eq!(
+        host.registry().get(&prepare).unwrap().result_state,
+        ResultState::Discarded
+    );
+    assert_eq!(
+        host.registry().get(&import).unwrap().result_state,
+        ResultState::Applied,
+        "the import before it was applied"
     );
 }
 

@@ -292,6 +292,153 @@ fn an_adoption_whose_acceptance_cannot_be_written_is_refused_and_keeps_its_files
 }
 
 #[test]
+fn a_settle_the_ledger_refuses_returns_the_adoption_still_owning_and_claiming_its_files() {
+    // The seam with `job.discard` (BL094/BL112): the window's tick does not remove, so a refused
+    // acceptance must hand the owner back instead of discarding or dropping it silently.
+    let mut world = world("settle-accept");
+    let _bystander = world.bystander();
+    let (pending, backdrop) = pending_adoption(&mut world);
+    let summary = world.destination.summary();
+    world.block_writes();
+
+    let stale = *pending
+        .settle(&world.destination)
+        .expect_err("not accepted: the ledger could not say the files are the project's");
+
+    assert!(stale.refusal.is_some(), "a ledger refusal, not staleness");
+    let error = stale.refusal_error().expect("project-facing error");
+    assert_eq!(error.code, "claims_unavailable", "{error:?}");
+    assert_eq!(error.details.as_ref().unwrap()["phase"], "accept");
+    assert_eq!(world.destination.summary(), summary);
+    assert!(
+        backdrop.is_file(),
+        "nothing was removed on the caller's thread"
+    );
+    world.unblock_writes();
+    let claimed = |world: &World| {
+        file_entries(&world.workspace)
+            .iter()
+            .filter(|entry| entry["path"].as_str().unwrap().contains("/lot/"))
+            .count()
+    };
+    assert_eq!(claimed(&world), 2, "still claimed by the returned owner");
+
+    // Off the UI thread the owner removes what only it created.
+    let report = stale.pending.discard();
+    assert_eq!(report.removed_files, 2, "{report:?}");
+    assert!(!backdrop.exists());
+    assert_eq!(claimed(&world), 0);
+}
+
+#[test]
+fn a_settle_gives_up_inside_the_tick_budget_when_the_ledger_lock_stays_held() {
+    // BL112.3: `settle` runs on the window's tick, whose ceiling is 100 ms. The bounded wait of
+    // the ledger lock (1.5 s) belongs to callers that may block; the tick waits a fixed 20 ms and
+    // refuses (the holder here is a descriptor that never lets go, like a stopped process).
+    let mut world = world("settle-busy");
+    let _bystander = world.bystander();
+    let (pending, backdrop) = pending_adoption(&mut world);
+    let summary = world.destination.summary();
+    // Another open file description holding the lock is what a stopped process does.
+    let stuck = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(world.ledger().join("ledger.lock"))
+        .unwrap();
+    stuck.lock().unwrap();
+
+    let started = std::time::Instant::now();
+    let stale = *pending
+        .settle(&world.destination)
+        .expect_err("the ledger is busy: the acceptance cannot be recorded");
+    let waited = started.elapsed();
+    eprintln!(
+        "BUDGET {}",
+        json!({"measure": "settle-holder-stuck-same-process",
+            "settleMs": waited.as_secs_f64() * 1000.0, "ceilingMs": 100})
+    );
+
+    // Held to the UI's ceiling, not to the 1.5 s a waiting caller would take.
+    assert!(
+        waited < std::time::Duration::from_millis(100),
+        "the tick waited beyond its ceiling for the lock: {waited:?}"
+    );
+    let error = stale
+        .refusal_error()
+        .expect("a ledger refusal, not staleness");
+    assert_eq!(error.code, "claims_unavailable", "{error:?}");
+    assert_eq!(error.details.as_ref().unwrap()["phase"], "accept");
+    assert!(
+        error.details.as_ref().unwrap()["why"]
+            .as_str()
+            .is_some_and(|why| why.contains("gave up after") && !why.contains("another process")),
+        "{error:?}"
+    );
+    assert_eq!(world.destination.summary(), summary);
+    assert!(backdrop.is_file(), "nothing was removed on the tick");
+
+    // Once the holder lets go, the owner that came back is still claimed and removes its files.
+    stuck.unlock().unwrap();
+    drop(stuck);
+    let report = stale.pending.discard();
+    assert_eq!(report.removed_files, 2, "{report:?}");
+    assert!(!backdrop.exists());
+}
+
+#[test]
+fn a_settle_rides_out_a_ledger_lock_another_job_of_this_process_holds_for_a_moment() {
+    // N1: a discard or an adoption of the other slot holds `ledger.lock` briefly, and
+    // `flock` conflicts between descriptors of the same process. The tick used to look once, so a
+    // valid result was refused, its copy removed and "another process" blamed.
+    let mut world = world("settle-moment");
+    let _bystander = world.bystander();
+    let (pending, backdrop) = pending_adoption(&mut world);
+    let lock_path = world.ledger().join("ledger.lock");
+    let ticking = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (held_tx, held_rx) = std::sync::mpsc::channel();
+    let other_job = {
+        let ticking = ticking.clone();
+        std::thread::spawn(move || {
+            let file = fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(lock_path)
+                .unwrap();
+            file.lock().unwrap();
+            held_tx.send(()).unwrap();
+            // Held until the tick has started, and 2 ms more.
+            while !ticking.load(std::sync::atomic::Ordering::SeqCst) {
+                std::thread::yield_now();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+            file.unlock().unwrap();
+        })
+    };
+    held_rx.recv().unwrap();
+    ticking.store(true, std::sync::atomic::Ordering::SeqCst);
+    let looked = std::time::Instant::now();
+    let settled = pending.settle(&world.destination);
+    eprintln!(
+        "BUDGET {}",
+        json!({"measure": "settle-holder-2ms-same-process",
+            "settleMs": looked.elapsed().as_secs_f64() * 1000.0, "ceilingMs": 100})
+    );
+    other_job.join().unwrap();
+    assert!(
+        settled.is_ok(),
+        "a holder that lets go within the budget does not cost the result: {:?}",
+        settled.err().map(|stale| stale.refusal_error())
+    );
+    assert!(backdrop.is_file(), "the accepted copy stays");
+    assert!(
+        file_entries(&world.workspace)
+            .iter()
+            .all(|entry| !entry["path"].as_str().unwrap().contains("/lot/")),
+        "and nobody is left to recover it: the acceptance was recorded"
+    );
+}
+
+#[test]
 fn an_acceptance_that_succeeds_makes_the_files_nobodys_to_recover() {
     let mut world = world("adopt-ok");
     let _bystander = world.bystander();

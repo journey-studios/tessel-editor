@@ -7,6 +7,7 @@
 //! [`super::flows`]; its fields, report and buttons are also nodes of the automation tree
 //! (`flow.*` opens, `dialog.*` fills, submits or cancels), so tests never click coordinates.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -20,7 +21,7 @@ use gpui_kit::component::{ActiveTheme, Sizable, WindowExt as _, h_flex, v_flex};
 use gpui_kit::*;
 use serde_json::{Value, json};
 use tessel_editor_core::headless::{Extension, run_project_op};
-use tessel_editor_core::jobs::{JobError, JobInfo};
+use tessel_editor_core::jobs::{JobError, JobInfo, ResultState};
 use tessel_editor_core::ops::ProjectOp;
 use tessel_editor_core::session::Renderer;
 use tessel_editor_core::{Command, CommandError};
@@ -71,9 +72,48 @@ pub struct Workflow {
     autosaved_revision: Option<u64>,
     /// The last scene attach/load chain (F043, `scene_import.rs`); its jobs finish on the tick.
     pub(super) scene_import: Option<SceneImport>,
+    /// Discard job -> the refusal that sent a result to it (`details.discard_job` of a failed
+    /// event). The discard's own event must not hide why the result was refused (F5).
+    refusals: HashMap<String, String>,
 }
 
 impl Workflow {
+    /// What the status bar says about `event`, given the refusals seen so far (F5).
+    ///
+    /// A result the project refused (`stale_result`, `claims_unavailable`) names the discard job
+    /// that now owns its files in `error.details.discard_job`; the refusal is remembered. When
+    /// that discard job ends, its line must not replace the reason: a clean discard keeps saying
+    /// why the result was refused, and one that left something behind says both.
+    pub(super) fn remember_refusal(
+        &mut self,
+        event: &Value,
+        text: String,
+        error: bool,
+    ) -> (String, bool) {
+        // `job_discarded` is the answer to an explicit `job.discard`, not a refusal.
+        if let Some(discard) = event["error"]["details"]["discard_job"].as_str()
+            && event["kind"] != "discard"
+            && event["error"]["code"] != "job_discarded"
+        {
+            self.refusals.insert(discard.to_string(), text.clone());
+            return (text, error);
+        }
+        if event["kind"] != "discard" {
+            return (text, error);
+        }
+        let Some(refusal) = event["job"]
+            .as_str()
+            .and_then(|job| self.refusals.remove(job))
+        else {
+            return (text, error);
+        };
+        if error {
+            (format!("{refusal}; {text}"), true)
+        } else {
+            (refusal, true)
+        }
+    }
+
     pub fn new() -> Self {
         // WHY a factory: an export drives its own headless renderer on its own thread, so it
         // never shares GPU state or frame timing with the live monitor's WebView.
@@ -103,6 +143,7 @@ impl Workflow {
             last_autosave: Instant::now(),
             autosaved_revision: None,
             scene_import: None,
+            refusals: HashMap::new(),
         }
     }
 
@@ -203,6 +244,7 @@ impl Workstation {
             for event in events {
                 self.flow_receive_report(&event);
                 let (text, error) = flows::describe_job_event(&event);
+                let (text, error) = self.workflow.remember_refusal(&event, text, error);
                 self.activity = Some(Activity {
                     source: Source::Cli,
                     text,
@@ -1018,7 +1060,7 @@ impl Render for JobsView {
         }
         let rows = jobs.into_iter().rev().take(12).map(|job| {
             let id = job.id.clone();
-            let running = !job.state.is_final();
+            let running = !job.state.is_final() && job.kind.is_cancellable();
             let this = self.workstation.clone();
             let cancel = running.then(|| {
                 Button::new(format!("job-cancel-{id}"))
@@ -1032,11 +1074,15 @@ impl Render for JobsView {
                         });
                     })
             });
-            let detail = match (&job.error, job.state.label()) {
+            let mut detail = match (&job.error, job.state.label()) {
                 (Some(error), _) => error.message.clone(),
                 (None, state) if job.stage.is_empty() => state.to_string(),
                 (None, state) => format!("{state} · {}", job.stage),
             };
+            // A result being discarded still owns its files until the discard job ends.
+            if job.result_state == ResultState::Discarding {
+                detail.push_str(" · descartando o resultado");
+            }
             v_flex()
                 .gap_1()
                 .child(

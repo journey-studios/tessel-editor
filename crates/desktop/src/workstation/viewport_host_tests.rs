@@ -932,6 +932,7 @@ fn the_handshake_asks_for_nothing_extra_unless_the_host_opted_in() {
     let options = HostOptions {
         trace: true,
         retain: Some(false),
+        preview_scene_samples: Some(0),
         ..HostOptions::default()
     };
     let mut host = ViewportHost::with_options(Ok(page("hello-opts")), options);
@@ -939,6 +940,124 @@ fn the_handshake_asks_for_nothing_extra_unless_the_host_opted_in() {
     let hello = &sent(&mut host)[0];
     assert_eq!(hello["retain"], false);
     assert_eq!(hello["telemetry"]["presented"], true);
+    assert_eq!(hello["preview_scene_samples"], 0);
+    assert!(
+        hello.get("scene_samples").is_none(),
+        "only what the host asked for"
+    );
+}
+
+fn frame_done_with_source(id: u64, revision: u64, source: Value) -> Value {
+    let mut done = frame_done(id, revision);
+    done["source"] = source;
+    done
+}
+
+#[test]
+fn a_scene_drawn_with_fewer_samples_is_labelled_and_replaced_by_the_final_picture_on_its_own() {
+    let state = titled_state("Titulo");
+    let mut host = ready_host("msaa-refine", &state);
+    let first = sent(&mut host).remove(0);
+    assert_eq!(
+        first["quality"], "preview",
+        "the monitor's own frame is the interactive quality"
+    );
+    from_page(
+        &mut host,
+        &state,
+        frame_done_with_source(
+            first["id"].as_u64().unwrap(),
+            first["revision"].as_u64().unwrap(),
+            json!({"quality":"preview","proxy_layers":0,"original_layers":0,"result_hits":0,
+                "scene_samples":2,"reduced_scene_layers":1}),
+        ),
+    );
+    // The quality is never hidden, and nothing is left for the user to ask.
+    assert!(
+        host.headline().ends_with(" · MSAA 2"),
+        "{}",
+        host.headline()
+    );
+    assert!(host.refine_pending());
+    assert!(
+        !host.refine(&state, Instant::now()),
+        "not before the monitor has been still"
+    );
+    assert!(host.refine(&state, Instant::now() + Duration::from_millis(400)));
+    let refine = sent(&mut host).remove(0);
+    assert_eq!(refine["type"], "frame.render");
+    assert!(
+        refine.get("quality").is_none(),
+        "the refine is a frame without `quality`: the final samples, byte for byte an explicit frame's request"
+    );
+    assert_eq!(refine["plan"], first["plan"], "the same position");
+    from_page(
+        &mut host,
+        &state,
+        frame_done_with_source(
+            refine["id"].as_u64().unwrap(),
+            refine["revision"].as_u64().unwrap(),
+            json!({"quality":"original","proxy_layers":0,"original_layers":0,"result_hits":0,
+                "scene_samples":4,"reduced_scene_layers":0}),
+        ),
+    );
+    assert!(!host.headline().contains("MSAA"), "{}", host.headline());
+    assert!(!host.refine_pending(), "the monitor is not stuck refining");
+    assert!(!host.refine(&state, Instant::now() + Duration::from_secs(1)));
+    assert_eq!(host.report()["session"]["stats"]["refined"], 1);
+}
+
+#[test]
+fn a_moving_playhead_keeps_drawing_reduced_frames_and_only_stopping_refines() {
+    let mut state = titled_state("Titulo");
+    let mut host = ready_host("msaa-play", &state);
+    let reduced = |id: u64, revision: u64| {
+        frame_done_with_source(
+            id,
+            revision,
+            json!({"quality":"preview","proxy_layers":0,"original_layers":0,"result_hits":0,
+                "scene_samples":0,"reduced_scene_layers":1}),
+        )
+    };
+    let first = sent(&mut host).remove(0);
+    from_page(
+        &mut host,
+        &state,
+        reduced(
+            first["id"].as_u64().unwrap(),
+            first["revision"].as_u64().unwrap(),
+        ),
+    );
+    // Playback: every tick moves the playhead; the frame it asks for is reduced and the refine of
+    // the previous picture is dropped, so nothing final-quality is drawn while it plays.
+    for frame in 1..=5 {
+        seek(&mut state, frame);
+        host.sync(&state);
+        let request = sent(&mut host)
+            .into_iter()
+            .find(|message| message["type"] == "frame.render")
+            .expect("a new position is drawn");
+        assert_eq!(request["quality"], "preview");
+        from_page(
+            &mut host,
+            &state,
+            reduced(
+                request["id"].as_u64().unwrap(),
+                request["revision"].as_u64().unwrap(),
+            ),
+        );
+        assert!(
+            host.headline().ends_with(" · MSAA 0"),
+            "{}",
+            host.headline()
+        );
+    }
+    assert_eq!(host.report()["session"]["stats"]["refined"], 0);
+    // It stops: one final frame, of the position on screen.
+    assert!(host.refine(&state, Instant::now() + Duration::from_millis(400)));
+    let refine = sent(&mut host).remove(0);
+    assert_eq!(refine["plan"]["frame"], 5);
+    assert!(refine.get("quality").is_none());
 }
 
 #[test]

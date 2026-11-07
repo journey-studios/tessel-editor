@@ -280,7 +280,8 @@ pub struct FrameDetail {
     /// and what the caches hold now, as the runtime reported it.
     pub cache: Option<Value>,
     /// What the layers were really read from: `{ quality, proxy_layers, original_layers,
-    /// result_hits, proxy_error? }`. `None` from a runtime that predates it.
+    /// result_hits, proxy_error?, scene_samples?, reduced_scene_layers? }`. `None` from a runtime
+    /// that predates it.
     pub source: Option<Value>,
 }
 
@@ -291,6 +292,29 @@ impl FrameDetail {
             .as_ref()
             .and_then(|source| source["proxy_layers"].as_u64())
             .unwrap_or(0)
+    }
+
+    /// Scene layers of this frame drawn with fewer MSAA samples than the final count (0 when
+    /// unknown, which is also what a runtime that predates the reduction reports: it never reduces).
+    pub fn reduced_scene_layers(&self) -> u64 {
+        self.source
+            .as_ref()
+            .and_then(|source| source["reduced_scene_layers"].as_u64())
+            .unwrap_or(0)
+    }
+
+    /// MSAA samples the scene layers of this frame were drawn with (`None`: no scene layer, or an
+    /// older runtime).
+    pub fn scene_samples(&self) -> Option<u64> {
+        self.source
+            .as_ref()
+            .and_then(|source| source["scene_samples"].as_u64())
+    }
+
+    /// Whether the picture is a lighter copy of what the final quality draws (a proxy, or a
+    /// scene with reduced MSAA): the monitor replaces it once the playhead stops.
+    pub fn is_reduced(&self) -> bool {
+        self.proxy_layers() > 0 || self.reduced_scene_layers() > 0
     }
 }
 

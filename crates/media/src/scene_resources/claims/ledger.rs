@@ -2,13 +2,15 @@
 //!
 //! ```text
 //! .tessel-claims/
-//!   ledger.lock     exclusive flock held for the length of one read-modify-write
+//!   ledger.lock     exclusive flock held for a Tracker scope, possibly several writes
 //!   claims.json     owners and entries (version 1), replaced by an atomic rename
+//!   claims.journal  acceptances not folded into claims.json yet (BL112.7), appended under the lock
 //!   live/<token>    one per owner process, flocked for as long as that process lives
 //! ```
 //!
-//! WHY two kinds of lock. `ledger.lock` serialises *changes* (it is held for microseconds, never
-//! across hashing or a lease wait). `live/<token>` is the **lease** that says an owner is still
+//! WHY two kinds of lock. `ledger.lock` serialises *changes*. A Tracker may keep it across a
+//! batch of ledger rewrites, so a healthy recovery can hold it longer than the tick budget.
+//! `live/<token>` is the **lease** that says an owner is still
 //! there: the kernel releases it when the process ends, however it ends, so a second process that
 //! can take it knows the owner is gone. Neither depends on a process ID (see `mod.rs`).
 //!
@@ -21,13 +23,52 @@
 //!   unlinked file notices (path and open file are not the same inode) and starts again.
 //! * Lock order across the module: root lease, then `ledger.lock`. Nothing waits for a root
 //!   lease while holding `ledger.lock`.
+//!
+//! # The journal (BL112.7)
+//!
+//! Accepting a result (the last step of applying it on the window's tick) only has to make the
+//! ledger say "these entries are the project's now". Rewriting `claims.json` for that costs
+//! `O(entries of the whole ledger)` (read, parse, build the JSON, serialize: 300 ms for 10 000
+//! entries in a debug build, against a ceiling of 100 ms). So a **large** ledger is accepted by
+//! appending one record to `claims.journal`, which costs `O(keys of the result)`:
+//!
+//! ```text
+//! {"accept":["/ws/scenes/a/assets/x.png","/ws/scenes/a/assets"]}\n
+//! ```
+//!
+//! The rules that keep it as safe as the rewrite:
+//!
+//! * **One reader.** The effective ledger is `claims.json` *minus* the keys of every complete
+//!   record of the journal. Every reader goes through [`Tracker`], which applies the journal when
+//!   it opens, so `recover`, a discard, a status and the next adoption all see an accepted entry
+//!   as gone. Nothing reads `claims.json` alone.
+//! * **Compaction before anything else.** A [`Tracker`] that found a journal rewrites
+//!   `claims.json` without those keys and only then removes the journal, **before it answers its
+//!   opener**. So nothing can claim a path anew while an old record for it is still on disk, and
+//!   a crash between the rename and the removal leaves a journal whose keys are already gone
+//!   (applying it again changes nothing). Compaction happens in jobs and the CLI, never on the
+//!   tick.
+//! * **Written before it is believed.** The tick answers `Ok` only after the record was written
+//!   in full under `ledger.lock`; a write that fails is undone (the file is cut back) and answers
+//!   `Err`, the result stays claimed and the caller reverts the project as for any refused
+//!   acceptance. A record whose writer died halfway has no newline: it never completed, so it is
+//!   not an acceptance (the project it belonged to was not saved either) and the next writer cuts
+//!   it off. A complete line that does not parse is damage: the ledger is a fault and fails
+//!   closed (`recover` removes nothing), because ignoring an acceptance would let `recover`
+//!   remove files the project references.
+//! * **Only for large ledgers.** Up to [`INLINE_LIMIT`] bytes of state and journal the tick
+//!   keeps rewriting inline (that costs a few milliseconds and keeps a workspace with nothing
+//!   pending looking as if it never had a ledger). Past it the cost of the rewrite would exceed
+//!   the budget, so the record is appended.
+//! * The tick never validates or reaps: it holds `ledger.lock` for one append. The lease of this
+//!   process stays listed until the next [`Tracker`] compacts and lets it go.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, btree_map};
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Map, Value, json};
 
@@ -38,6 +79,7 @@ pub const DIR: &str = ".tessel-claims";
 const LOCK: &str = "ledger.lock";
 const STATE: &str = "claims.json";
 const STATE_TMP: &str = "claims.json.tmp";
+const JOURNAL: &str = "claims.journal";
 const LIVE: &str = "live";
 const VERSION: u64 = 1;
 /// How many times a lock is retaken when the lock file it got was unlinked meanwhile (or the
@@ -47,6 +89,30 @@ const ATTEMPTS: usize = 64;
 /// pause between looks.
 const DANGLING_SEEN: usize = 5;
 const DANGLING_PAUSE: std::time::Duration = std::time::Duration::from_millis(2);
+/// Size of `claims.json` plus the journal, in bytes, up to which an acceptance still rewrites the
+/// ledger inline (BL112.7). The rewrite costs about 70 microseconds per KiB in a debug build
+/// (300 ms for 4.4 MB), so 64 KiB is a few milliseconds; past it the acceptance appends to the
+/// journal, whose cost does not depend on the ledger.
+pub(in crate::scene_resources) const INLINE_LIMIT: u64 = 64 * 1024;
+/// How long a caller that may block (a job, the CLI) waits for `ledger.lock` before calling the
+/// ledger unavailable (BL112.3), and how often it looks while waiting. Short writes usually
+/// release it quickly, but a healthy recovery can hold it longer while repeatedly rewriting
+/// the ledger for its orphans; the limit is not restricted to stopped or stuck holders.
+///
+/// **Not for the window's tick**: 1.5 s is far above its 100 ms ceiling. The tick waits only
+/// [`TICK_WAIT`] (see [`Ledger::accept`]).
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_millis(1500);
+/// How long the window's tick waits for `ledger.lock` (BL112.3, BL112.5): a fixed budget well
+/// below the UI's 100 ms ceiling, sized to ride out brief contention. A healthy recovery
+/// may keep the lock across several writes and exhaust this budget. `flock` conflicts between descriptors **of the same process** too (every
+/// [`Tracker`] opens its own), so a job of this process (a discard, an adoption, a recovery)
+/// holding the ledger for a moment is the common holder, not only another process: looking once
+/// refused valid results and discarded their copy for a brief contention. Past the
+/// budget the ledger is unavailable for that call (the acceptance is refused and the result goes
+/// to a discard job); the tick does not renew this lock-wait budget.
+pub(in crate::scene_resources) const TICK_WAIT: std::time::Duration =
+    std::time::Duration::from_millis(20);
+const LOCK_POLL: std::time::Duration = std::time::Duration::from_micros(500);
 
 /// Recovers a poisoned process-local mutex without discarding the persisted ledger.
 fn relock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -114,13 +180,130 @@ impl Ledger {
 
     /// Opens what exists. A workspace with no ledger yields a tracker with nothing in it.
     pub(in crate::scene_resources) fn lock(&self) -> Tracker {
-        Tracker::open(&self.0, false)
+        Tracker::open(&self.0, false, LOCK_WAIT)
+    }
+
+    /// [`Ledger::lock`] with the tick's budget: it waits at most [`TICK_WAIT`]. When `ledger.lock`
+    /// is still held after that (by another process, or by another job of this one) the tracker
+    /// is faulted (`fault()` says it was held and for how long it was waited for) and nothing is
+    /// read or changed, exactly like any other unavailable ledger. The window's tick itself no
+    /// longer opens a [`Tracker`] (it calls [`Ledger::accept`], which waits the same budget), so
+    /// this is what the tests of that budget use.
+    #[cfg(test)]
+    pub(in crate::scene_resources) fn try_lock(&self) -> Tracker {
+        self.lock_for(TICK_WAIT)
+    }
+
+    /// [`Ledger::try_lock`] with the budget chosen by the caller (tests of the budget itself).
+    #[cfg(test)]
+    pub(in crate::scene_resources) fn lock_for(&self, wait: std::time::Duration) -> Tracker {
+        Tracker::open(&self.0, false, wait)
     }
 
     /// Opens the ledger, creating it when it is not there yet: for whoever is about to claim.
     pub(in crate::scene_resources) fn lock_creating(&self) -> Tracker {
-        Tracker::open(&self.0, true)
+        Tracker::open(&self.0, true, LOCK_WAIT)
     }
+
+    /// The results that listed `keys` were accepted: the project owns them now (BL112.7).
+    ///
+    /// `wait` says whether the caller may block (a job, the CLI: [`LOCK_WAIT`]) or is the
+    /// window's tick ([`TICK_WAIT`]). The answer is [`Tracker::accept`]'s: `Ok` only once the
+    /// acceptance is on disk, `Err` (the ledger unavailable, held too long, unwritable) when it
+    /// is not, and then the entries stay claimed by this process.
+    ///
+    /// **The cost does not depend on the size of the ledger.** A small ledger is rewritten
+    /// inline, as before. A large one (more than [`INLINE_LIMIT`] bytes of state and journal) is
+    /// neither read nor parsed: the lock is taken and one record is appended to the journal (see
+    /// the module docs for why that is as safe as the rewrite). The ledger is not validated on
+    /// that path; every reader validates it when it opens, and a ledger that does not validate
+    /// refuses `recover`, so an acceptance written beside a damaged ledger removes no protection.
+    pub(in crate::scene_resources) fn accept<'a>(
+        &self,
+        keys: impl Iterator<Item = &'a Path>,
+        wait: bool,
+    ) -> Result<(), String> {
+        let wait = if wait { LOCK_WAIT } else { TICK_WAIT };
+        // No ledger: nothing is claimed, so nothing is left to hand over.
+        let Some(lock) = DiskLock::acquire(&self.0.dir, false, wait)? else {
+            return Ok(());
+        };
+        let mut size = 0;
+        for name in [STATE, JOURNAL] {
+            let path = self.0.dir.join(name);
+            match fs::metadata(&path) {
+                Ok(metadata) => size += metadata.len(),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                Err(error) => return Err(io_text(&path, &error)),
+            }
+        }
+        if size <= INLINE_LIMIT {
+            return Tracker::with_lock(&self.0, Some(lock)).accept(keys);
+        }
+        let result = append_accept(&self.0.dir, keys);
+        drop(lock);
+        result
+    }
+}
+
+/// `error` on `path`, as the ledger words it.
+fn io_text(path: &Path, error: &io::Error) -> String {
+    format!("`{}`: {error}", path.display())
+}
+
+/// Appends one `accept` record to the journal of `dir`, which the caller has locked. Written in
+/// full or not at all: a write that fails cuts the file back to where it was, and a torn tail left
+/// by a writer that died is cut off first (it never completed, so it was never an acceptance).
+fn append_accept<'a>(dir: &Path, keys: impl Iterator<Item = &'a Path>) -> Result<(), String> {
+    // A path that is not text was never written in the ledger (`insert` refuses it), so there is
+    // nothing to hand over for it.
+    let texts: Vec<&str> = keys.filter_map(Path::to_str).collect();
+    if texts.is_empty() {
+        return Ok(());
+    }
+    let path = dir.join(JOURNAL);
+    let mut record = serde_json::to_vec(&json!({ "accept": texts }))
+        .map_err(|error| format!("`{}`: {error}", path.display()))?;
+    record.push(b'\n');
+    let mut file = OpenOptions::new()
+        .read(true)
+        .append(true)
+        .create(true)
+        .open(&path)
+        .map_err(|error| io_text(&path, &error))?;
+    let end = complete_prefix(&mut file).map_err(|error| io_text(&path, &error))?;
+    if file
+        .metadata()
+        .map_err(|error| io_text(&path, &error))?
+        .len()
+        > end
+    {
+        file.set_len(end).map_err(|error| io_text(&path, &error))?;
+    }
+    if let Err(error) = file.write_all(&record) {
+        let _ = file.set_len(end);
+        return Err(io_text(&path, &error));
+    }
+    Ok(())
+}
+
+/// How many bytes of `file` end with its last newline: what follows is a record whose writer did
+/// not finish. Looks only at the end of the file unless a record is longer than one chunk.
+fn complete_prefix(file: &mut File) -> io::Result<u64> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut end = file.metadata()?.len();
+    let mut chunk = [0u8; 4096];
+    while end > 0 {
+        let start = end.saturating_sub(chunk.len() as u64);
+        let size = usize::try_from(end - start).unwrap_or(chunk.len());
+        file.seek(SeekFrom::Start(start))?;
+        file.read_exact(&mut chunk[..size])?;
+        if let Some(index) = chunk[..size].iter().rposition(|byte| *byte == b'\n') {
+            return Ok(start + index as u64 + 1);
+        }
+        end = start;
+    }
+    Ok(0)
 }
 
 /// The ledger, locked: no other process or thread changes it while this lives. Changes are
@@ -138,6 +321,9 @@ pub(in crate::scene_resources) struct Tracker {
     fault: Option<String>,
     /// Entries changed since they were written.
     dirty: bool,
+    /// A journal was found when the ledger was opened: `claims.json` is rewritten with it applied
+    /// (compaction) and the journal removed, before anything else changes the ledger.
+    journal: bool,
 }
 
 #[derive(Debug)]
@@ -149,8 +335,20 @@ struct DiskLock {
 
 impl Tracker {
     /// Acquires coordination, validates state and reaps dead leases; any failure stays a fault.
-    fn open(inner: &Arc<Inner>, create: bool) -> Self {
-        let mut tracker = Self {
+    fn open(inner: &Arc<Inner>, create: bool, wait: std::time::Duration) -> Self {
+        match DiskLock::acquire(&inner.dir, create, wait) {
+            Ok(lock) => Self::with_lock(inner, lock),
+            Err(why) => {
+                let mut tracker = Self::unopened(inner);
+                tracker.fault = Some(why);
+                tracker
+            }
+        }
+    }
+
+    /// A tracker that holds nothing and has read nothing.
+    fn unopened(inner: &Arc<Inner>) -> Self {
+        Self {
             inner: Arc::clone(inner),
             lock: None,
             owners: BTreeMap::new(),
@@ -158,20 +356,23 @@ impl Tracker {
             reaped: Vec::new(),
             fault: None,
             dirty: false,
-        };
-        match DiskLock::acquire(&inner.dir, create) {
-            Ok(Some(lock)) => {
-                tracker.lock = Some(lock);
-                match tracker.load() {
-                    Ok(()) => {
-                        tracker.reap();
-                        tracker.flush();
-                    }
-                    Err(why) => tracker.fault = Some(why),
+            journal: false,
+        }
+    }
+
+    /// [`Tracker::open`] for a caller that already took the lock (`None`: there is no ledger).
+    /// Reads the state, applies the journal, reaps dead leases and compacts, still under it.
+    fn with_lock(inner: &Arc<Inner>, lock: Option<DiskLock>) -> Self {
+        let mut tracker = Self::unopened(inner);
+        if let Some(lock) = lock {
+            tracker.lock = Some(lock);
+            match tracker.load() {
+                Ok(()) => {
+                    tracker.reap();
+                    tracker.flush();
                 }
+                Err(why) => tracker.fault = Some(why),
             }
-            Ok(None) => {}
-            Err(why) => tracker.fault = Some(why),
         }
         tracker
     }
@@ -321,6 +522,33 @@ impl Tracker {
         self.unless_unwritten(leave)
     }
 
+    /// Like [`Tracker::leave`], but when `holder` is the **last** one the entry is **not**
+    /// removed: the answer `Last` is given with the claim (and so this process's lease) still on
+    /// disk. The caller proves and removes the file, then calls [`Tracker::leave`] again to drop
+    /// the entry. A process that dies in between (`SIGKILL` during the hash of a large file) leaves
+    /// an orphan entry that `recover` takes back, instead of a file nobody lists. The entry is not
+    /// changed for `Last`, but the ledger is **rewritten as it is**: a ledger that cannot be
+    /// written answers `Unverifiable` here, before anything is removed, exactly as `leave` does
+    /// (fail closed). A holder that is not the last one is removed at once, as in `leave`.
+    pub(in crate::scene_resources) fn begin_leave(
+        &mut self,
+        holder: HolderId,
+        key: &Path,
+    ) -> Leave {
+        if let Some(why) = &self.fault {
+            return Leave::Unverifiable(why.clone());
+        }
+        match self.entries.get(key) {
+            Some(entry) if !entry.holders.iter().any(|other| *other != holder) => {
+                let item = entry.item.clone();
+                self.dirty = true;
+                self.flush();
+                self.unless_unwritten(Leave::Last(item))
+            }
+            _ => self.leave(holder, key),
+        }
+    }
+
     /// `holder` gives up the entry at `key` but the entry stays even when nobody else holds it:
     /// the file could not be removed now (its root is busy), so it must stay claimed, as an
     /// orphan, for [`recover`](super::super::recover) instead of being forgotten.
@@ -417,8 +645,51 @@ impl Tracker {
 
     // --- persistence ---------------------------------------------------------------------
 
-    /// Validates the persisted version and every entry before allowing any mutation.
+    /// Validates the persisted version and every entry before allowing any mutation, then
+    /// applies the journal to them.
     fn load(&mut self) -> Result<(), String> {
+        self.load_state()?;
+        self.replay_journal()
+    }
+
+    /// Applies the acceptances of the journal: the effective ledger is the state minus the keys
+    /// of every complete record. A last line without its newline is a record whose writer did not
+    /// finish (see the module docs): it is not an acceptance. Any other line that does not parse
+    /// is damage and the ledger is a fault, never silently shorter.
+    fn replay_journal(&mut self) -> Result<(), String> {
+        let path = self.inner.dir.join(JOURNAL);
+        let bytes = match fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(io_text(&path, &error)),
+        };
+        // The file is folded into the state (and removed) by the next write, even when it holds
+        // nothing but a torn record.
+        self.journal = true;
+        let bad = |why: &str| format!("`{}` is not a claims journal: {why}", path.display());
+        let complete = bytes
+            .iter()
+            .rposition(|byte| *byte == b'\n')
+            .map_or(&bytes[..0], |last| &bytes[..=last]);
+        for line in complete.split(|byte| *byte == b'\n') {
+            if line.is_empty() {
+                continue;
+            }
+            let record: Value =
+                serde_json::from_slice(line).map_err(|error| bad(&error.to_string()))?;
+            let keys = record
+                .get("accept")
+                .and_then(Value::as_array)
+                .ok_or_else(|| bad("a record without `accept`"))?;
+            for key in keys {
+                let key = key.as_str().ok_or_else(|| bad("a key that is not text"))?;
+                self.entries.remove(Path::new(key));
+            }
+        }
+        Ok(())
+    }
+
+    fn load_state(&mut self) -> Result<(), String> {
         let path = self.inner.dir.join(STATE);
         let bytes = match fs::read(&path) {
             Ok(bytes) => bytes,
@@ -568,7 +839,7 @@ impl Tracker {
             return;
         }
         let result = self.sync_lease().and_then(|(changed, release)| {
-            if self.dirty || changed {
+            if self.dirty || changed || self.journal {
                 self.write()?;
             }
             if release {
@@ -577,13 +848,30 @@ impl Tracker {
             Ok(())
         });
         self.dirty = false;
-        if let Err(why) = result {
-            self.fault = Some(why);
+        match result {
+            // The journal is folded into the state (and gone) once the write returned `Ok`.
+            Ok(()) => self.journal = false,
+            Err(why) => self.fault = Some(why),
+        }
+    }
+
+    /// Writes the state with the journal applied (it is already in memory), then removes the
+    /// journal. In that order: a crash in between leaves a journal whose keys the state no longer
+    /// has, and applying it again changes nothing.
+    fn write(&self) -> Result<(), String> {
+        self.write_state()?;
+        if !self.journal {
+            return Ok(());
+        }
+        let journal = self.inner.dir.join(JOURNAL);
+        match fs::remove_file(&journal) {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => Err(io_text(&journal, &error)),
+            _ => Ok(()),
         }
     }
 
     /// Atomically replaces ledger JSON, or removes it only when no entries or owners remain.
-    fn write(&self) -> Result<(), String> {
+    fn write_state(&self) -> Result<(), String> {
         let state = self.inner.dir.join(STATE);
         if self.entries.is_empty() && self.owners.is_empty() {
             return match fs::remove_file(&state) {
@@ -632,6 +920,7 @@ impl Drop for Tracker {
             let dir = &self.inner.dir;
             let _ = fs::remove_file(dir.join(STATE));
             let _ = fs::remove_file(dir.join(STATE_TMP));
+            let _ = fs::remove_file(dir.join(JOURNAL));
             // A lease file still there is of an owner that is alive but holds nothing yet let go
             // of it; its next look removes it and then the folder. Until then the ledger stays.
             let leases_gone = match fs::remove_dir(dir.join(LIVE)) {
@@ -650,11 +939,17 @@ impl Drop for Tracker {
 }
 
 impl DiskLock {
-    /// Takes the ledger lock, waiting for it (holders keep it for one read-modify-write).
-    /// `Ok(None)` when there is no ledger and `create` is not set.
-    fn acquire(dir: &Path, create: bool) -> Result<Option<Self>, String> {
+    /// Takes the ledger lock, waiting for it up to `wait`. A holder may keep it briefly or
+    /// across several writes during a healthy recovery; `Duration::ZERO` looks once and never waits. `Ok(None)` when there is
+    /// no ledger and `create` is not set.
+    fn acquire(
+        dir: &Path,
+        create: bool,
+        wait: std::time::Duration,
+    ) -> Result<Option<Self>, String> {
         let path = dir.join(LOCK);
         let mut dangling = 0;
+        let deadline = Instant::now() + wait;
         for _ in 0..ATTEMPTS {
             if create {
                 match fs::create_dir(dir) {
@@ -699,8 +994,23 @@ impl DiskLock {
                 }
                 Err(error) => return Err(format!("open `{}`: {error}", path.display())),
             };
-            match file.lock() {
-                Ok(()) => {}
+            // Bounded (BL112.3): healthy recovery can hold this lock across several full ledger
+            // rewrites. A stopped (`SIGSTOP`) or stuck holder can keep it longer, and a caller
+            // that waits forever is a stuck caller. The window's tick (where `accept` runs)
+            // waits `TICK_WAIT` only. Past the bound the ledger is reported unavailable,
+            // which every caller already handles by failing closed: an acceptance is refused (the
+            // result stays claimed and goes to a discard job), a removal keeps the file, a
+            // recovery fails with its partial report. The message does not say who holds it: another process
+            // and another job of this one look the same.
+            match lock_within(&file, deadline) {
+                Ok(true) => {}
+                Ok(false) => {
+                    return Err(format!(
+                        "`{}` is held right now by a holder that did not let go of it; gave up after {:?}",
+                        path.display(),
+                        wait
+                    ));
+                }
                 // A lock file that was unlinked and is being reclaimed can refuse (EINVAL on
                 // macOS): it is the same case as one that turned out to be unlinked.
                 Err(error) if error.kind() == io::ErrorKind::InvalidInput => {
@@ -717,6 +1027,23 @@ impl DiskLock {
             "`{}` is being created and removed too quickly to be locked",
             dir.display()
         ))
+    }
+}
+
+/// Takes the exclusive lock of `file`, waiting until `deadline`. `Ok(false)` when it was still
+/// held by then.
+fn lock_within(file: &File, deadline: Instant) -> io::Result<bool> {
+    loop {
+        match file.try_lock() {
+            Ok(()) => return Ok(true),
+            Err(TryLockError::WouldBlock) => {
+                if Instant::now() >= deadline {
+                    return Ok(false);
+                }
+                std::thread::sleep(LOCK_POLL);
+            }
+            Err(TryLockError::Error(error)) => return Err(error),
+        }
     }
 }
 

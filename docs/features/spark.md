@@ -57,6 +57,12 @@ O mesmo Spark, o mesmo estágio e o mesmo `settle` desenham um splat de um plano
 o plano ([F037](scene-plan.md)) carrega a matriz de mundo do nó e a câmera avaliadas e o recurso
 `spz` aprovado; o runtime só os desenha. Contrato e limites em [scene-splat.md](scene-splat.md).
 
+## MSAA em movimento (BL129)
+
+Enquanto o playhead anda (playback e scrub do monitor) uma cena com splat é desenhada com `preview_scene_samples` (padrão 0) em
+vez do MSAA final (padrão 4); ao parar, o monitor se refina sozinho para o final. `render.frame`, export, PNG e probes seguem
+o final. Contrato, bridge e provas em [viewport.md](viewport.md#msaa-por-movimento-bl129).
+
 ## Limites
 
 Medido em SwiftShader (CPU); ordem de composição entre splats e planos transparentes segue as

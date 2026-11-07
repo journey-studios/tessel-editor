@@ -1,0 +1,388 @@
+{
+  "assets": [
+    {
+      "alphaMode": "opaque",
+      "assetId": "bg",
+      "colorSpace": "srgb",
+      "contentHash": "558fc8a856d83df60ce44899c0e5213d8453090fa387d491a90dec3003118ed5",
+      "heightPx": 8,
+      "relativePath": "assets/bg.png",
+      "revisionId": "rev-1",
+      "widthPx": 8
+    },
+    {
+      "alphaMode": "opaque",
+      "assetId": "mk-red",
+      "colorSpace": "srgb",
+      "contentHash": "4e54755af584a124f801dfffef09c5f2130fcdce75decd93584cc8e364951f0a",
+      "heightPx": 8,
+      "relativePath": "assets/mk-red.png",
+      "revisionId": "rev-1",
+      "widthPx": 8
+    },
+    {
+      "alphaMode": "opaque",
+      "assetId": "mk-green",
+      "colorSpace": "srgb",
+      "contentHash": "dee88d164efad7fa8e8088196e50ad72504e37679632de90a2baa34071e5daf2",
+      "heightPx": 8,
+      "relativePath": "assets/mk-green.png",
+      "revisionId": "rev-1",
+      "widthPx": 8
+    },
+    {
+      "alphaMode": "opaque",
+      "assetId": "mk-blue",
+      "colorSpace": "srgb",
+      "contentHash": "7aed8931a61a3892f3ae2801a53b30079ce0bd6aeabb77fc7a14c9be48137032",
+      "heightPx": 8,
+      "relativePath": "assets/mk-blue.png",
+      "revisionId": "rev-1",
+      "widthPx": 8
+    },
+    {
+      "alphaMode": "opaque",
+      "assetId": "mk-yellow",
+      "colorSpace": "srgb",
+      "contentHash": "b41a584e38e01466fa107e540495416b5fff13001fe3b5cce61d3358d998877d",
+      "heightPx": 8,
+      "relativePath": "assets/mk-yellow.png",
+      "revisionId": "rev-1",
+      "widthPx": 8
+    }
+  ],
+  "bundleId": "s10-camera",
+  "cameraClips": [
+    {
+      "id": "cam-a",
+      "initialFovDeg": 30,
+      "initialPosition": {
+        "x": 0,
+        "y": 1,
+        "z": 9
+      },
+      "initialTarget": {
+        "x": 0,
+        "y": 0.5,
+        "z": 0
+      },
+      "segments": [
+        {
+          "distanceSceneUnits": 2.0,
+          "durationFrames": 16,
+          "easing": "easeInOutCubic",
+          "from": "initial",
+          "recipe": "dollyIn"
+        }
+      ]
+    },
+    {
+      "id": "cam-b",
+      "initialFovDeg": 50,
+      "initialPosition": {
+        "x": 0,
+        "y": 1,
+        "z": 8
+      },
+      "initialTarget": {
+        "x": 0,
+        "y": 0.5,
+        "z": 0
+      },
+      "segments": [
+        {
+          "distanceSceneUnits": 1.5,
+          "durationFrames": 16,
+          "easing": "easeOutCubic",
+          "from": "initial",
+          "recipe": "truckRight"
+        }
+      ]
+    },
+    {
+      "id": "cam-c",
+      "initialFovDeg": 75,
+      "initialPosition": {
+        "x": -1,
+        "y": 2,
+        "z": 7
+      },
+      "initialTarget": {
+        "x": 0.5,
+        "y": 0,
+        "z": 0
+      },
+      "segments": [
+        {
+          "distanceSceneUnits": 1.0,
+          "durationFrames": 8,
+          "easing": "linear",
+          "from": "initial",
+          "recipe": "dollyIn"
+        },
+        {
+          "durationFrames": 8,
+          "from": "previousEnd",
+          "recipe": "hold"
+        }
+      ]
+    }
+  ],
+  "compositionPasses": [],
+  "editDurationFrames": 48,
+  "fps": {
+    "denominator": 1,
+    "numerator": 24
+  },
+  "performanceTracks": [],
+  "renderProfile": {
+    "alphaMode": "straight",
+    "browserChannel": "synthetic-acceptance-s10",
+    "colorSpace": "srgb-display",
+    "fps": {
+      "denominator": 1,
+      "numerator": 24
+    },
+    "height": 360,
+    "premultiplyOnUpload": false,
+    "threeRevision": "0.187.0",
+    "videoCodec": "h264-yuv420p",
+    "width": 640
+  },
+  "revisionId": "rev-1",
+  "sceneDefinitions": [
+    {
+      "id": "scene-a",
+      "nodes": [
+        {
+          "id": "root",
+          "localPosition": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "w": 1,
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localScale": {
+            "x": 1.0,
+            "y": 1.0,
+            "z": 1.0
+          },
+          "parentId": null,
+          "type": "group"
+        },
+        {
+          "assetRef": {
+            "assetId": "bg",
+            "contentHash": "558fc8a856d83df60ce44899c0e5213d8453090fa387d491a90dec3003118ed5",
+            "relativePath": "assets/bg.png",
+            "revisionId": "rev-1"
+          },
+          "heightSceneUnits": 40,
+          "id": "bg",
+          "localPosition": {
+            "x": 0,
+            "y": 0,
+            "z": -12
+          },
+          "localRotation": {
+            "w": 1,
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localScale": {
+            "x": 1.0,
+            "y": 1.0,
+            "z": 1.0
+          },
+          "parentId": "root",
+          "renderOrder": 0,
+          "type": "imagePlane",
+          "widthSceneUnits": 40
+        },
+        {
+          "assetRef": {
+            "assetId": "mk-red",
+            "contentHash": "4e54755af584a124f801dfffef09c5f2130fcdce75decd93584cc8e364951f0a",
+            "relativePath": "assets/mk-red.png",
+            "revisionId": "rev-1"
+          },
+          "heightSceneUnits": 0.8,
+          "id": "mk_red",
+          "localPosition": {
+            "x": -2.0,
+            "y": 1.0,
+            "z": -1.0
+          },
+          "localRotation": {
+            "w": 1,
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localScale": {
+            "x": 1.0,
+            "y": 1.0,
+            "z": 1.0
+          },
+          "parentId": "root",
+          "renderOrder": 1,
+          "type": "imagePlane",
+          "widthSceneUnits": 1.2
+        },
+        {
+          "assetRef": {
+            "assetId": "mk-green",
+            "contentHash": "dee88d164efad7fa8e8088196e50ad72504e37679632de90a2baa34071e5daf2",
+            "relativePath": "assets/mk-green.png",
+            "revisionId": "rev-1"
+          },
+          "heightSceneUnits": 1.2,
+          "id": "mk_green",
+          "localPosition": {
+            "x": 1.6,
+            "y": 0.2,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 1,
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localScale": {
+            "x": 1.0,
+            "y": 1.0,
+            "z": 1.0
+          },
+          "parentId": "root",
+          "renderOrder": 2,
+          "type": "imagePlane",
+          "widthSceneUnits": 0.8
+        },
+        {
+          "assetRef": {
+            "assetId": "mk-blue",
+            "contentHash": "7aed8931a61a3892f3ae2801a53b30079ce0bd6aeabb77fc7a14c9be48137032",
+            "relativePath": "assets/mk-blue.png",
+            "revisionId": "rev-1"
+          },
+          "heightSceneUnits": 0.6,
+          "id": "mk_blue",
+          "localPosition": {
+            "x": 0.2,
+            "y": -0.9,
+            "z": 1.0
+          },
+          "localRotation": {
+            "w": 0.9762960071199334,
+            "x": 0,
+            "y": 0.21643961393810288,
+            "z": 0
+          },
+          "localScale": {
+            "x": 1.0,
+            "y": 1.0,
+            "z": 1.0
+          },
+          "parentId": "root",
+          "renderOrder": 3,
+          "type": "imagePlane",
+          "widthSceneUnits": 1.0
+        },
+        {
+          "assetRef": {
+            "assetId": "mk-yellow",
+            "contentHash": "b41a584e38e01466fa107e540495416b5fff13001fe3b5cce61d3358d998877d",
+            "relativePath": "assets/mk-yellow.png",
+            "revisionId": "rev-1"
+          },
+          "heightSceneUnits": 1.0,
+          "id": "mk_yellow",
+          "localPosition": {
+            "x": 3.0,
+            "y": 1.6,
+            "z": -3.0
+          },
+          "localRotation": {
+            "w": 1,
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localScale": {
+            "x": 1.0,
+            "y": 1.0,
+            "z": 1.0
+          },
+          "parentId": "root",
+          "renderOrder": 4,
+          "type": "imagePlane",
+          "widthSceneUnits": 1.6
+        }
+      ],
+      "rootNodeId": "root",
+      "schemaVersion": "1.0"
+    }
+  ],
+  "sceneInstances": [
+    {
+      "durationFrames": 48,
+      "id": "inst-a",
+      "performanceTrackIds": [],
+      "sceneDefinitionId": "scene-a"
+    }
+  ],
+  "schemaVersion": "1.0",
+  "shots": [
+    {
+      "cameraClipId": "cam-a",
+      "cameraInFrame": 0,
+      "editRange": {
+        "endFrameExclusive": 16,
+        "startFrame": 0
+      },
+      "id": "shot-a",
+      "instanceStartFrame": 0,
+      "intent": "s10 shot-a",
+      "sceneInstanceId": "inst-a"
+    },
+    {
+      "cameraClipId": "cam-b",
+      "cameraInFrame": 0,
+      "editRange": {
+        "endFrameExclusive": 32,
+        "startFrame": 16
+      },
+      "id": "shot-b",
+      "instanceStartFrame": 16,
+      "intent": "s10 shot-b",
+      "sceneInstanceId": "inst-a",
+      "transitionInto": {
+        "reason": "fov and move change",
+        "type": "cut"
+      }
+    },
+    {
+      "cameraClipId": "cam-c",
+      "cameraInFrame": 0,
+      "editRange": {
+        "endFrameExclusive": 48,
+        "startFrame": 32
+      },
+      "id": "shot-c",
+      "instanceStartFrame": 32,
+      "intent": "s10 shot-c",
+      "sceneInstanceId": "inst-a",
+      "transitionInto": {
+        "reason": "third camera",
+        "type": "cut"
+      }
+    }
+  ]
+}
