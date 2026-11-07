@@ -42,7 +42,7 @@ export rodam `ensure_prepared` antes. Não é preciso `media.prepare` manual (o 
 
 ## Descartar um resultado (`job.discard`, BL094/BL112)
 
-`job.wait` só espera o término e não aplica o resultado; `wait:true` aplica na chamada original somente no host não interativo.
+`job.wait` só espera o término e não aplica o resultado; `wait:true` (o padrão) aplica na chamada original somente no host não interativo.
 
 Um job que produz resultado para o projeto o **retém** (`ctx.hold_result()`): `job.get`/`job.list` trazem
 `result_state` = `none | pending | discarding | discarded | applied`.
@@ -273,12 +273,67 @@ filtro antigo, 522 (a diferença é uma resposta de fronteira); `during_discard_
 (`docs/migration/s1-job-discard-proof-final-gate.json`) leva as duas medições, o intervalo e a base. `scene-claims-proof.py` 23/23.
 O intervalo de 14 s (4,4 s nas medições anteriores) reflete a máquina compartilhada muito carregada (load 24–130), não uma
 mudança de teto; as latências ficaram iguais. Os binários, o `runtime/dist` e os scripts tiveram o mesmo SHA-256 antes e depois
-de cada prova (sidecars em `/tmp/pr6fix/native`, não versionados).
+de cada prova (sidecars em `/tmp/pr6fix/native`, não versionados; logs de workspace, clippy e build em `/tmp/pr6fix/gates`: `test.log`, `summary` e `head`, também não versionados).
 
 **Limites mantidos.** A prova nativa continua com ledger pequeno (o aceite grande é provado no host real e em dois processos);
 a falha de lease não foi provada com um adotante concorrente real (é persistente e dirigida); a corrida do descarte terminar no
 mesmo tick da recusa depende de tempo e foi coberta pela estrutura do lote, não provocada; BL112.5 (recusa por holder longo),
 BL112.6 e BL112.1 seguem como estavam; sem release, pixels, Windows ou NFS.
+
+**Saída das mutações Rust, honestamente.** As mutações Rust desse gate (lease, guarda de `recover`, falha do ledger, lote do `poll`)
+foram relatadas pelo autor e os scripts que as aplicam (`/tmp/pr6fix/mut.py`, `mut2.py`) só imprimem: **a saída não foi retida**. Não
+há log para reler; o que existe é o relato acima, o código dos testes que as matam e a releitura da revisão independente. As mutações
+**novas** deste fechamento (abaixo) são testes do próprio spec e deixam log (`/tmp/pr6n-logs/native/job-discard-spec*.log`). Os
+logs de workspace/clippy/build do gate ficaram em `/tmp/pr6fix/gates` (`test.log`, `summary`, `head`), não versionados.
+
+### Requisição que falha durante o descarte (BL112.12, CodeRabbit `4499357511`, revisão Sonnet `5809214591` N1/N2; a validar)
+
+**Defeito.** `Probe._run` capturava só `OSError` e descartava a requisição: nada era registrado e uma resposta que não é JSON
+(`ValueError`) **matava a thread da sonda em silêncio**. Com 20 respostas rápidas e uma requisição enviada durante o descarte que
+falhou, o veredito passava.
+
+**Contrato novo (só `scripts/job-discard-proof.py`; Rust, runtime e tetos 100/250 ms e 20 amostras inalterados).**
+
+* `Probe` registra **toda** requisição, na ordem em que terminou: `Sample(sent, received, latência, estado)` para respostas e
+  `Failure(sent, failed, latência, causa, erro)` para o resto. Causas: `timeout`, `network` (outros `OSError`), `protocol` (resposta que
+  não é JSON), `unexpected` (qualquer outra exceção), `rejected` (`ok:false`, também é amostra cronometrada) e `unfinished`
+  (requisição ainda no ar quando a sonda parou; `failed` nulo). A thread **continua** perguntando depois de uma falha.
+* Uma falha é julgada pelo **instante de envio**, como uma resposta tardia, nunca pelo estado de uma resposta (não há). Se qualquer
+  requisição **enviada dentro da janela** do descarte falhou, `judge_discard` reprova (`no request sent while it removed failed`),
+  qualquer que seja o número de respostas rápidas e os tetos. Falhas fora da janela são contadas e relatadas (`failed_outside_window`,
+  `probe.failures`), **não** julgadas. Sem resposta `discarded` o fim do descarte é desconhecido: a janela vai até o último instante
+  registrado, resposta ou falha.
+* Uma thread ainda viva depois de `PROBE_JOIN_S` **não é escondida**: `thread_alive_after_stop`, falha `unfinished` e o check
+  `the probe thread stopped` reprova. Resultado tardio depois do veredito não altera o registro.
+* O relatório (`window_results.probe`, `.discard_verdict`) leva contagens, causas, e para cada falha os instantes de envio e falha
+  (segundos desde o início da janela) e o texto do erro; só números finitos (`null` no lugar de NaN/infinito).
+  O mesmo `judge_discard` é chamado pela fase da janela e pelo spec, e roda também quando um check anterior já reprovou
+  (`probe` entra no relatório pelo `finally`).
+
+**Prova.** `scripts/job-discard-proof.spec.py` agora tem **27** testes (13 anteriores preservados + 14). Dirigem a `Probe` **real** com um
+`lab` falso que levanta `OSError`, `JSONDecodeError`, `socket.timeout`, devolve `ok:false` ou nunca responde, e julgam com o
+`judge_discard` **real**: 20+ respostas rápidas e **uma** falha na janela reprovam **no check das falhas** (não por outro motivo);
+a mesma amostra sem falha passa; falha antes do início ou depois do fim da janela passa e fica registrada; falha depois da última
+resposta sem `discarded` reprova; JSON do relatório sem NaN/infinito. **Mutantes no código-fonte** (cada um deve deixar de reprovar):
+registro removido, guarda removida, `except OSError` no lugar de `Exception` (thread morre), janela que ignora falhas, thread viva ignorada.
+Os tetos são zerados só dentro desses cenários (ruído de escalonamento não decide uma prova sobre falhas); um teste confere que os
+valores fixados (100/100/250/20) estão intactos.
+
+**N2 (spec do filho que ignora EOF).** O teste dormia 0,2 s esperando o filho falso gravar o PID; sob carga o filho morria antes de
+iniciar (`IndexError`). Agora espera, com teto de 60 s, o arquivo de PID existir antes de sair da sessão. Prova sob carga limitada,
+sem soak: 24 execuções **em paralelo** do teste (load ~17) 24/24; a suíte inteira 8 em paralelo 8/8 (27 testes cada).
+
+**Prova nativa refeita** (head `ffc71e9` + este delta, binários **novos** construídos neste worktree: nenhum binário anterior existia
+(`target` do worktree-fonte era um link quebrado) e o código Rust é idêntico ao de `683a511` — `git diff 683a511 ffc71e9 -- crates
+Cargo.toml Cargo.lock runtime` vazio —; sob o lock de GPU, entrada 34,1 GiB, piso 12): `job-discard-proof.py` **43/43** (os 41 de antes
+mais `the probe thread stopped` e `no request sent while it removed failed`), 0 falhas, 759 requisições, 0 falhas de requisição.
+Ocioso p99 37,1 ms; controle por pedido 1509,9 ms; controle pelo classificador n = 3, p99 = máx = 1489,1 ms (reprova); **durante o
+descarte 322 respostas em 8,7 s, p50 1,2 / p99 16,0 / máx 17,9 ms** (tetos inalterados). Esta máquina estava com load médio ~17; a
+janela é mais curta que a da rodada anterior (14 s) e uma resposta cruzou o fim (`during_discard_answered_after_the_end` 1), o que
+exercita o classificador por instante de envio de fato. `scene-claims-proof.py` **não** foi reexecutado: o script, o Rust e o
+runtime que ele usa não mudaram; seus 23/23 de `683a511` continuam sendo a evidência. JSON: [`s1-job-discard-proof-probe-failures.json`](../migration/s1-job-discard-proof-probe-failures.json)
+(o de `683a511`, 41/41, fica preservado). Sidecars e logs em `/tmp/pr6n-logs/native` (cmd, head, árvore, `dirty`, UTC, espaço livre, SHA-256 de binários,
+`runtime/dist` e scripts, iguais antes e depois de cada passo), não versionados.
 
 Todo trabalho escreve num `Staging` (pasta no mesmo volume do destino) e **publica por rename** só depois de
 verificar; falha ou cancelamento removem o staging e preservam o destino anterior e os originais.

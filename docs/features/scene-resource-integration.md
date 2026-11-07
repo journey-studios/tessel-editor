@@ -408,8 +408,9 @@ abaixo).** Um dono persistente de claims precisa manter essas propriedades (test
 **Problema (histórico, anterior ao diário).** Aceitar um resultado é o último passo da transação do projeto e roda na
 thread da janela. Reescrever `claims.json` para isso custava `O(entradas do ledger inteiro)` (ler, parsear, montar,
 serializar): **304–310 ms com 10 mil entradas em build debug** (head `9bb4d18`, medição preservada, **não** é o custo atual),
-contra o teto de 100 ms do tick (BL112.3). Com o diário, medido no head `dd36cc8` e de novo nos gates do fechamento, o mesmo
-aceite com 10 mil entradas custa **0,27–0,33 ms** (ver "Limites" e os gates em `docs/backlog.md`). O critério de 10 mil
+contra o teto de 100 ms do tick (BL112.3). Com o diário, o mesmo
+aceite com 10 mil entradas custa **0,27–0,33 ms**, valor **medido no head `dd36cc8`** e não remedido depois; nos gates do fechamento
+re-executou-se o teste de 10 mil entradas sob o teto de 100 ms, que só confirma o teto (o número não é impresso) (ver "Limites" e os gates em `docs/backlog.md`). O critério de 10 mil
 entradas continua e não foi relaxado; também não foi "resolvido" com ajuste de constante, build release, ignorar o teste ou só mover o flush para depois
 do `apply` (o aceite continuaria sendo `O(ledger)` na UI e o projeto passaria a apontar para arquivos antes de o ledger
 dizer que são dele).
@@ -437,7 +438,7 @@ parecendo nunca ter tido ledger.
 
 1. **Um só leitor.** O ledger efetivo é `claims.json` **menos** as chaves de todo registro completo do diário. Todo leitor
    (`recover`, descarte, `claims_status`, a próxima adoção, o `Tracker` de qualquer job) aplica o diário ao abrir; ninguém lê
-   `claims.json` sozinho. Por isso nenhum projeto referencia um arquivo que `recover` poderia remover: o aceite gravado vale
+   `claims.json` sozinho. Por isso, enquanto o sistema operacional entrega o diário, nenhum projeto referencia um arquivo que `recover` poderia remover: o aceite gravado vale
    para o primeiro leitor que o veja, inclusive o de um processo que acabou de morrer (`SIGKILL` logo depois do tick).
    **Contra queda do processo, não contra perda de energia:** como o estado, o diário não tem `fsync`; o que o `write_all`
    entregou ao sistema operacional sobrevive a um `SIGKILL`, mas um corte de energia pode perder o registro.
