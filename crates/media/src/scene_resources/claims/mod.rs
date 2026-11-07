@@ -9,8 +9,10 @@
 //! * A result that **reuses** an entry (or puts a new file in a folder that has one) joins it as
 //!   another holder, while it still holds the root lease of the publication, so no discard can
 //!   interleave between "I will reuse it" and "I rely on it".
-//! * **Accepting** a result ([`Tracker::accept`]) deletes its entries: from then on the files
-//!   belong to the project and nobody removes them, whichever holder leaves later.
+//! * **Accepting** a result ([`Ledger::accept`]) deletes its entries: from then on the files
+//!   belong to the project and nobody removes them, whichever holder leaves later. In a small
+//!   ledger that is a rewrite of `claims.json`; in a large one it is one appended record of
+//!   `claims.journal`, which every reader applies when it opens the ledger (BL112.7).
 //! * **Leaving** without accepting ([`Tracker::leave`]) removes the holder; only the last one
 //!   to leave is told it may delete, and only an entry that a pending result created exists at
 //!   all. What was in the workspace before, or was accepted, has no entry and is never removed.
@@ -58,7 +60,7 @@
 //! The registry is keyed by canonical paths, so one folder spelled two ways (`ws/../ws`, a
 //! link, a trailing `.`) is still one entry.
 //!
-//! * **Accepting and merging are written before they are believed.** [`Tracker::accept`] and
+//! * **Accepting and merging are written before they are believed.** [`Ledger::accept`] and
 //!   [`Tracker::transfer`] answer `Ok` only once the change is on disk, and the owners
 //!   ([`Created::accept`](super::Created), `Created::absorb`) only change their own lists after
 //!   that answer. A refused acceptance leaves the result pending and claimed, and the flow that

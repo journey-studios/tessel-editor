@@ -16,11 +16,11 @@ use directed_resources_common::*;
 use serde_json::{Value, json};
 use tessel_editor_core::jobs::{CancelToken, JobError};
 use tessel_editor_core::{CommandError, EditorState, headless, persist};
-use tessel_editor_media::directed_resources::{Options, Progress, RootLease};
+use tessel_editor_media::directed_resources::{LEASE_FILE, Options, Progress, RootLease};
 use tessel_editor_media::host::MediaHost;
 use tessel_editor_media::scene_resources::import::{self, PreparedSceneImport};
 use tessel_editor_media::scene_resources::{
-    AdoptionTarget, PendingAdoption, ResourceBase, adopt, tracked_under,
+    AdoptionTarget, PendingAdoption, ResourceBase, adopt, recover, tracked_under,
 };
 
 /// Names a throwaway tree so a leftover can be told from another suite's (`te-r5-` prefix).
@@ -504,6 +504,30 @@ fn an_import_prepared_for_another_project_is_discarded_by_apply() {
 }
 
 #[test]
+fn try_apply_refuses_without_removing_and_hands_the_files_back_owned() {
+    let mut fixture = import_fixture("try-apply");
+    let before = tree(&fixture.workspace);
+    let prepared = fixture.prepared();
+    assert!(fixture.scenes().join("street").is_dir());
+    fixture.destination.project.id = "another-project".to_string();
+
+    // The caller that must not block gets the refusal and the still-owned import (BL112)...
+    let rejected = *import::try_apply(&mut fixture.destination, prepared).unwrap_err();
+    assert_eq!(rejected.error.code, "stale_result");
+    assert!(fixture.destination.scenes.is_empty());
+    assert!(
+        fixture.scenes().join("street").is_dir(),
+        "nothing was removed by the refusal"
+    );
+    assert!(tracked_under(&fixture.workspace) > 0);
+    // ...and removes the files where blocking is allowed, with the report.
+    let report = rejected.prepared.discard();
+    assert!(report.is_clean(), "{report:?}");
+    assert_eq!(tree(&fixture.workspace), before);
+    assert_eq!(tracked_under(&fixture.workspace), 0);
+}
+
+#[test]
 fn the_same_project_opened_from_another_workspace_makes_the_import_stale() {
     let mut fixture = import_fixture("stale-workspace");
     let before = tree(&fixture.workspace);
@@ -623,6 +647,51 @@ fn a_root_another_operation_holds_keeps_its_files_instead_of_forcing_them() {
     drop(lease);
 }
 
+/// BL112.10 (final gate review): only `root_busy` used to keep the files. Any other
+/// reason the lease of a root cannot be taken (here the lock file cannot be opened because a
+/// folder sits in its place) removed them without the lease, so an adoption that joined between
+/// the check and the unlink could lose the file it relies on. Now the file stays, the claim
+/// stays (an orphan `recover` takes back), and the report says why.
+#[test]
+fn a_root_whose_lease_fails_for_another_reason_keeps_its_files_claims_and_says_why() {
+    let fixture = import_fixture("lease-fault");
+    let prepared = fixture.prepared();
+    let root = fixture.scenes().join("street");
+    let lock = root.join(LEASE_FILE);
+    fs::create_dir(&lock).unwrap();
+    let claimed = tracked_under(&fixture.workspace);
+    assert!(claimed > 0);
+
+    let report = prepared.discard();
+    assert_eq!(report.busy_roots, 0, "nobody else holds it: {report:?}");
+    assert_eq!(report.removed_files, 2, "only the idle root's: {report:?}");
+    assert!(
+        root.join("assets/backdrop.png").is_file() && root.join("assets/figure.png").is_file(),
+        "not removed without the lease of its root"
+    );
+    assert!(
+        report
+            .kept
+            .iter()
+            .any(|entry| entry.contains("backdrop.png") && entry.contains("could not be leased")),
+        "the reason is reported: {report:?}"
+    );
+    assert!(
+        !fixture.scenes().join("market").exists(),
+        "the root whose lease was taken was cleaned"
+    );
+    assert!(
+        tracked_under(&fixture.workspace) > 0,
+        "the claims of the kept files stay for recovery"
+    );
+
+    fs::remove_dir(&lock).unwrap();
+    let recovery = recover(&fixture.workspace, &CancelToken::default()).unwrap();
+    assert!(recovery.report.removed_files > 0, "{recovery:?}");
+    assert!(!root.join("assets/backdrop.png").exists());
+    assert_eq!(tracked_under(&fixture.workspace), 0);
+}
+
 // ----------------------------------------------------------------------------- host --
 
 fn host_world(name: &str) -> (Fixture, EditorState, MediaHost, PathBuf) {
@@ -676,6 +745,27 @@ fn an_import_job_nobody_commits_is_cleaned_when_the_host_goes_away() {
     );
     drop(host);
     assert_eq!(tree(&fixture.workspace), before);
+    assert!(state.scenes.is_empty());
+}
+
+#[test]
+fn job_discard_takes_a_finished_import_back_and_blocks_a_late_commit() {
+    let (fixture, mut state, mut host, document) = host_world("host-discard");
+    let before = tree(&fixture.workspace);
+    let job = start_import(&fixture, &mut state, &mut host, &document);
+    assert!(fixture.scenes().join("street").is_dir());
+
+    let answer = run(&mut state, &mut host, json!({"op":"job.discard","job":job})).unwrap();
+    assert_eq!(answer["state"], "discarded", "{answer}");
+    assert_eq!(answer["discarded"], "scene-import", "{answer}");
+    assert!(
+        answer["cleanup"]["removedFiles"].as_u64().unwrap() >= 2,
+        "{answer}"
+    );
+    assert_eq!(tree(&fixture.workspace), before);
+    assert_eq!(tracked_under(&fixture.workspace), 0);
+    let error = run(&mut state, &mut host, json!({"op":"job.commit","job":job})).unwrap_err();
+    assert_eq!(error.code, "job_discarded", "{error:?}");
     assert!(state.scenes.is_empty());
 }
 

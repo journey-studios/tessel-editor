@@ -681,3 +681,27 @@ fn a_relative_explicit_base_is_still_refused_for_a_scene_with_no_files() {
         .unwrap_err();
     assert_eq!(job_code(&error), "base_not_absolute", "{error:?}");
 }
+
+#[test]
+fn a_finished_attach_can_be_discarded_without_attaching_or_removing_its_bundle() {
+    let mut world = world("discard-attach", MediaHost::new());
+    let path = world.data_only();
+    let revision = world.state.project.revision;
+    let depth = world.undo_depth();
+    let started = world.ok(json!({"op":"scene.attach.start","path":path,"id":"late","wait":false}));
+    let job = started["job"].as_str().unwrap().to_string();
+    world.ok(json!({"op":"job.wait","job":job}));
+    let discarded = world.ok(json!({"op":"job.discard","job":job}));
+    assert_eq!(discarded["discarded"], "scene-attach");
+    assert!(path.is_file());
+    assert!(world.state.scenes.is_empty());
+    assert_eq!(world.state.project.revision, revision);
+    assert_eq!(world.undo_depth(), depth);
+    assert_eq!(
+        world
+            .run(json!({"op":"job.commit","job":job}))
+            .unwrap_err()
+            .code,
+        "job_discarded"
+    );
+}

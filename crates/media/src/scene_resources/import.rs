@@ -393,23 +393,69 @@ fn unavailable(scene: &str, why: &str) -> JobError {
 /// Attaches the prepared scenes as one undo step. A result that no longer fits the project (a
 /// different project or workspace is open) or that the project refuses (scene limit, byte budget,
 /// an ID taken meanwhile) leaves the project as it was and removes what [`prepare`] copied.
+///
+/// The removal hashes every file it takes back; a caller that must not block uses [`try_apply`].
 pub fn apply(
     state: &mut EditorState,
-    mut prepared: PreparedSceneImport,
+    prepared: PreparedSceneImport,
 ) -> Result<Value, CommandError> {
-    if state.project.id != prepared.project {
+    try_apply_waiting(state, prepared, true).map_err(|rejected| {
+        // The removal happens here, where blocking is allowed. A refused acceptance discards
+        // with a report (safe whether or not the failed write reached the disk: a file whose
+        // claim is gone is kept, never removed) and says what that did.
+        let RejectedImport { error, prepared } = *rejected;
+        if error.code == "claims_unavailable" {
+            let report = prepared.discard();
+            return with_import_cleanup(error, &report);
+        }
         drop(prepared);
-        return Err(CommandError::new(
-            "stale_result",
-            "The open project changed while the scenes were imported; nothing was attached",
-        ));
+        error
+    })
+}
+
+/// An import the project refused. It still owns the files [`prepare`] copied (BL094): dropping
+/// or discarding it removes them, which is the work to do wherever blocking is allowed.
+#[derive(Debug)]
+pub struct RejectedImport {
+    pub error: CommandError,
+    pub prepared: PreparedSceneImport,
+}
+
+/// [`apply`] without the removal: a refusal comes back with the copied files still owned. This is
+/// the window's tick, so it waits for the claims ledger lock only a fixed 20 ms: one still held
+/// after that (by another process or another job of this one) refuses the acceptance
+/// (`claims_unavailable`) and the project stays as it was.
+pub fn try_apply(
+    state: &mut EditorState,
+    prepared: PreparedSceneImport,
+) -> Result<Value, Box<RejectedImport>> {
+    try_apply_waiting(state, prepared, false)
+}
+
+/// [`try_apply`]; with `wait` the acceptance may wait (bounded) for the ledger lock, for a caller
+/// that is allowed to block ([`apply`]).
+fn try_apply_waiting(
+    state: &mut EditorState,
+    mut prepared: PreparedSceneImport,
+    wait: bool,
+) -> Result<Value, Box<RejectedImport>> {
+    if state.project.id != prepared.project {
+        return Err(Box::new(RejectedImport {
+            error: CommandError::new(
+                "stale_result",
+                "The open project changed while the scenes were imported; nothing was attached",
+            ),
+            prepared,
+        }));
     }
     if !same_folder(state.project.workspace.as_deref(), &prepared.workspace) {
-        drop(prepared);
-        return Err(CommandError::new(
-            "stale_result",
-            "The open project lives in another workspace than the one the scenes were imported into; nothing was attached",
-        ));
+        return Err(Box::new(RejectedImport {
+            error: CommandError::new(
+                "stale_result",
+                "The open project lives in another workspace than the one the scenes were imported into; nothing was attached",
+            ),
+            prepared,
+        }));
     }
     let outcome = state.transaction("Import scenes", |state| {
         for scene in &prepared.scenes {
@@ -423,38 +469,46 @@ pub fn apply(
         // when the ledger says so. A failure here rolls the whole transaction back (project,
         // undo history and revision), so a refused acceptance never leaves scenes attached to
         // files that a recovery could take back.
-        prepared
-            .owned
-            .accept()
-            .map_err(|error| refused_accept(error, None, "no scene was attached"))
+        let accepted = if wait {
+            prepared.owned.accept()
+        } else {
+            prepared.owned.accept_nowait()
+        };
+        accepted.map_err(|error| refused_accept(error, None, "no scene was attached"))
     });
     if let Err(error) = outcome {
-        // The project is as it was. A refused acceptance discards what the import copied (safe
-        // whether or not the failed write reached the disk: a file whose claim is gone is kept,
-        // never removed) and says what that did; any other refusal drops it the same way.
-        if error.code != "claims_unavailable" {
-            return Err(error);
-        }
-        let report = prepared.discard();
-        let mut refused = error;
-        let mut details = match refused.details.take().map(|details| *details) {
-            Some(details @ Value::Object(_)) => details,
-            _ => json!({}),
-        };
-        details["cleanup"] = report.to_json();
-        if !report.kept.is_empty() {
-            refused.message = format!(
-                "{}; left in place: {}",
-                refused.message,
-                report.kept.join("; ")
-            );
-        }
-        return Err(refused.details(details));
+        // The project is as it was. A refused acceptance means the files are still claimed, so
+        // `prepared` goes back still owning them (BL094): the caller discards them wherever it
+        // may block, and a refusal never leaves a file unowned.
+        return Err(Box::new(RejectedImport { error, prepared }));
     }
+    // The last step of the transaction already accepted the files (the claims left the ledger):
+    // nothing remains for `prepared` to remove when it drops.
     Ok(
         json!({ "action": "project.import_scenes", "changed": !prepared.scenes.is_empty(),
         "result": prepared.to_json() }),
     )
+}
+
+/// `error` with what discarding the refused import did, for a caller that may block. Only a
+/// refused acceptance (`claims_unavailable`) has a report to attach; other refusals keep their words.
+fn with_import_cleanup(mut error: CommandError, report: &CleanupReport) -> CommandError {
+    if error.code != "claims_unavailable" {
+        return error;
+    }
+    let mut details = match error.details.take().map(|details| *details) {
+        Some(details @ Value::Object(_)) => details,
+        _ => json!({}),
+    };
+    details["cleanup"] = report.to_json();
+    if !report.kept.is_empty() {
+        error.message = format!(
+            "{}; left in place: {}",
+            error.message,
+            report.kept.join("; ")
+        );
+    }
+    error.details(details)
 }
 
 #[cfg(test)]
