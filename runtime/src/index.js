@@ -278,7 +278,7 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       // still describes it (F055). After `frame.done` and `frame.presented`, so it never delays
       // them, and isolated: a failure here is the overlay's, never `frame.failed` after a success.
       refreshAfterFrame(overlay, (error) =>
-        send({ type: 'error', error: toErrorJson(error, 'overlay_failed') }));
+        send({ type: 'overlay.error', error: toErrorJson(error, 'overlay_failed') }));
     } catch (error) {
       send({ type: 'frame.failed', id, revision, error: failureOf(error, lostDuringFrame()) });
     } finally {

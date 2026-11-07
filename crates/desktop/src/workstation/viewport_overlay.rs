@@ -24,6 +24,7 @@ pub(super) struct OverlayHost {
     /// The last `overlay.set` payload sent, so an unchanged overlay is not sent again.
     last_sent: Option<String>,
     layout: Option<Value>,
+    failure: Option<Value>,
     drawn: Option<Value>,
     pointer_events: u64,
     /// Pointer messages and acks that answered an overlay other than the one the core would
@@ -194,6 +195,7 @@ impl ViewportHost {
     /// Counts and keeps what the page reports about the overlay. `true` if `message` was one.
     pub fn overlay_note(&mut self, message: &Value) -> bool {
         match message["type"].as_str() {
+            Some("overlay.error") => self.overlay.failure = Some(message["error"].clone()),
             Some("overlay.layout") => self.overlay.layout = Some(message.clone()),
             // An ack of an overlay that is no longer the current one says nothing about what is
             // on the page now (a reload or a replaced project may have happened since).
@@ -226,6 +228,7 @@ impl ViewportHost {
             "held": self.overlay.held,
             "epoch": self.overlay.epoch,
             "last_phase": self.overlay.last_phase,
+            "error": self.overlay.failure,
             "layout": self.overlay.layout,
             "drawn": self.overlay.drawn,
         })

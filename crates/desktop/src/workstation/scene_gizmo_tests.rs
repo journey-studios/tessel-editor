@@ -917,3 +917,19 @@ fn a_new_epoch_in_the_middle_of_a_drag_ends_it(cx: &mut TestAppContext) {
     );
     assert_eq!((figure_x(&view, cx), undo_depth(&view, cx)), before);
 }
+
+#[gpui_kit::test]
+fn an_overlay_error_is_consumed_without_failing_the_render_session(cx: &mut TestAppContext) {
+    let (view, cx) = mounted(cx);
+    view.update(cx, |view, cx| {
+        let before = view.viewport.ui_signature();
+        let supported = view.viewport.overlay_supported();
+        view.viewport_ipc(
+            r#"{"type":"overlay.error","error":{"code":"overlay_failed","message":"layout exploded"}}"#,
+            cx,
+        );
+        assert_eq!(view.viewport.ui_signature(), before);
+        assert_eq!(view.viewport.overlay_supported(), supported);
+        assert_eq!(view.viewport.report()["overlay"]["error"]["code"], "overlay_failed");
+    });
+}

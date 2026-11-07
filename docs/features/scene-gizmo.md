@@ -351,3 +351,5 @@ Harmonização: **S4** (identidade de ativos) — o gizmo só endereça nós pel
 
 Veja [arquitetura](../core-architecture.md), [interação de cenas](scene-interaction.md) e
 [template](_template.md).
+
+Uma falha de desenho é informada por `overlay.error` e registrada no relatório do overlay, sem invalidar a sessão de render.

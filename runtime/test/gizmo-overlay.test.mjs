@@ -433,7 +433,7 @@ test('an overlay that fails after a frame is its own error: done and presented s
   assert.equal(presented.id, 50);
   const types = runtime.messages.map((m) => m.type);
   assert.ok(!types.includes('frame.failed'), `no frame.failed after the success, got ${types}`);
-  const failure = runtime.messages.find((m) => m.type === 'error');
+  const failure = runtime.messages.find((m) => m.type === 'overlay.error');
   assert.equal(failure?.error.code, 'overlay_failed');
   assert.match(failure.error.message, /layout exploded/);
   // The next frame is still served.

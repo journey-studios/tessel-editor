@@ -146,7 +146,7 @@ impl Workstation {
         self.viewport_flush(cx);
     }
 
-    fn viewport_ipc(&mut self, raw: &str, cx: &mut Context<Self>) {
+    pub(super) fn viewport_ipc(&mut self, raw: &str, cx: &mut Context<Self>) {
         // F055: the overlay's own messages never reach the render session.
         if let Ok(message) = serde_json::from_str::<serde_json::Value>(raw)
             && self.overlay_ipc(&message, cx)

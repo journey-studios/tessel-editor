@@ -795,3 +795,7 @@ e renumera o contrato dela para um ID livre. Sem IDs novos de backlog: BL145 e B
 BL145.1 — resíduos 4502907216/4502916726: relatório de exceção usa assinatura compatível com Python 3.9; limite de leitura de atividade truncada documentado sem prometer CLI `get`. Sem mudança de Rust/runtime.
 
 Validação dos resíduos: spec 41/41 em Python 3.9.6 e 3.14.3, logs `/tmp/pr18-python39-final.log` e `/tmp/pr18-python314-final.log`; gates de produção anteriores preservados.
+
+BL015.6 — resíduo da review 5815446930: falha de refresh usa `overlay.error`, consumido pelo adapter fora da sessão de render; regressão GPUI pelo IPC real e Chrome verificam isolamento. Validação do ajuste pendente.
+
+Validação do isolamento de falha: teste GPUI `an_overlay_error_is_consumed_without_failing_the_render_session` 1/1; Chrome do gizmo 15/15, sem skips, bundle reconstruído. Logs `/tmp/s8-overlay-error-host.log` e `/tmp/s8-overlay-error-runtime.log`. Workspace 1556/0/12 e prova 56+84 continuam históricos do head `85d6aa7`, não reexecutados neste ajuste.
