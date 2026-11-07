@@ -286,6 +286,12 @@ impl GestureSlot {
         self.current.as_ref()
     }
 
+    /// The tag of this interaction session (opaque; see [`SessionTag`]). A new project is a new
+    /// session, so anything stamped with it cannot act on the next one.
+    pub fn session(&self) -> &str {
+        &self.session.0
+    }
+
     pub(crate) fn next_id(&mut self) -> String {
         self.issued += 1;
         format!("{ID_PREFIX}{}-{}", self.session.0, self.issued)

@@ -158,6 +158,13 @@ impl Workflow {
         self.flow.is_some() || self.jobs_open
     }
 
+    /// Tests only: a dialog is open, as far as `has_dialog` (the monitor's visibility) can tell.
+    /// A GPUI test window has no `Root`, which a real dialog needs.
+    #[cfg(test)]
+    pub(super) fn pretend_dialog_open(&mut self, open: bool) {
+        self.jobs_open = open;
+    }
+
     /// A job that runs until `release` is sent (or dropped), under any label: what the status
     /// bar's jobs line shows while it lasts.
     #[cfg(test)]
