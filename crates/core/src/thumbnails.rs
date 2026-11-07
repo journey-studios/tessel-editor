@@ -6,9 +6,13 @@
 //! is wanted and *whether a result still belongs*, so the window, the headless CLI and the
 //! tests apply one rule:
 //!
-//! - A thumbnail has an **identity**: kind, content hash, the picture size and the rule
-//!   version. Whatever differs is a different picture, so a relinked file never shows the old
-//!   thumbnail.
+//! - A thumbnail has an **identity**: kind, content hash, the picture size, the rule version
+//!   **and what the picture is drawn from besides its own file**: a scene is drawn with the
+//!   splats it names, so every asset it depends on (transitively, by asset ID) is part of the
+//!   identity with its kind and content hash, or with `missing` when the library lacks it. A
+//!   relinked splat, a splat imported after the scene failed to draw, a removed one: each is a
+//!   different identity, so a stale picture is never shown and a remembered failure is never
+//!   kept once its cause is gone. The identity is computed from the model, with no file read.
 //! - A result carries the **stamp** of the project it was rendered for (ID and editing
 //!   session). Reopening a document, even the same one, is a new session: a result of the
 //!   previous project is refused with `stale_result` and nothing is stored.
@@ -22,13 +26,15 @@ use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 
-use crate::assets::{Asset, MediaKind, Source};
-use crate::state::{CommandError, EditorState};
+use crate::assets::{MediaKind, Source};
+use crate::state::library::MediaItem;
+use crate::state::timeline::SequenceSettings;
+use crate::state::{CommandError, EditorState, ProjectSettings};
 
 /// Pixels across a rendered thumbnail; the height follows the sequence's aspect ratio.
 pub const WIDTH: u32 = 240;
 /// Bump when the way a thumbnail is drawn changes: every identity changes with it.
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 /// What draws a picture of itself only through the renderer.
 pub fn is_rendered(kind: MediaKind) -> bool {
@@ -97,19 +103,81 @@ impl ThumbnailBook {
     }
 }
 
-/// The identity of the picture `asset` would have as `kind`; `None` for what is not drawn
-/// through the renderer, has no file or was never hashed.
-fn identity_of(kind: MediaKind, asset: &Asset, size: (u32, u32)) -> Option<String> {
-    if !is_rendered(kind) || !matches!(asset.source, Source::File { .. }) {
+/// What a drawn asset needs besides its own file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Dependency {
+    pub id: String,
+    pub state: DependencyState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DependencyState {
+    /// In the library with a file whose content hash is known.
+    Hashed { kind: &'static str, hash: String },
+    /// In the library but not hashed yet (the import is still running): no identity until it is.
+    Unhashed,
+    /// Not in the library (or an entry with no media behind it).
+    Missing,
+}
+
+impl Dependency {
+    /// The part of an identity that names this dependency.
+    fn token(&self) -> String {
+        match &self.state {
+            DependencyState::Hashed { kind, hash } => format!("{}={kind}:{hash}", self.id),
+            DependencyState::Unhashed => format!("{}=unhashed", self.id),
+            DependencyState::Missing => format!("{}=missing", self.id),
+        }
+    }
+
+    pub fn is_missing(&self) -> bool {
+        self.state == DependencyState::Missing
+    }
+}
+
+/// The identity of the picture `item` would have; `None` for what is not drawn through the
+/// renderer, has no file, was never hashed, or depends on something that was not hashed yet.
+fn identity_of(state: &EditorState, item: &MediaItem, size: (u32, u32)) -> Option<String> {
+    let asset = item.asset.as_ref()?;
+    if !is_rendered(item.kind) || !matches!(asset.source, Source::File { .. }) {
         return None;
     }
     let hash = asset.identity.hash.as_deref()?;
+    let dependencies = state.thumbnail_dependencies(item.id.as_str());
+    if dependencies
+        .iter()
+        .any(|dependency| dependency.state == DependencyState::Unhashed)
+    {
+        return None;
+    }
+    let dependencies = if dependencies.is_empty() {
+        "-".to_string()
+    } else {
+        dependencies
+            .iter()
+            .map(Dependency::token)
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+    // How the picture is framed: a scene draws itself; a splat is framed by its measured box
+    // from the default view. A capture's own view (BL144.2) will take the place of `default`.
+    let framing = match item.kind {
+        MediaKind::Splat => "fit:default",
+        _ => "own",
+    };
     Some(format!(
-        "v{VERSION}|{}|{hash}|{}x{}",
-        kind.label(),
+        "v{VERSION}|{}|{hash}|{}x{}|deps={dependencies}|framing={framing}",
+        item.kind.label(),
         size.0,
         size.1
     ))
+}
+
+/// 64-bit FNV-1a, to derive short stable names. Not a security boundary.
+fn fnv64(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
+    })
 }
 
 /// Why a result was refused.
@@ -132,7 +200,107 @@ impl EditorState {
     /// The identity `id` would have right now.
     pub fn thumbnail_identity(&self, id: &str) -> Option<String> {
         let item = self.library.item(id)?;
-        identity_of(item.kind, item.asset.as_ref()?, self.thumbnail_size())
+        identity_of(self, item, self.thumbnail_size())
+    }
+
+    /// Everything the picture of `id` is drawn from besides its own file: the assets it names
+    /// (`meta.requires`), and theirs in turn, by asset ID in this library, sorted by ID. Cheap:
+    /// model lookups only, no file is read.
+    pub fn thumbnail_dependencies(&self, id: &str) -> Vec<Dependency> {
+        let mut found: BTreeMap<String, Dependency> = BTreeMap::new();
+        let mut queue: Vec<String> = self
+            .library
+            .item(id)
+            .and_then(|item| item.asset.as_ref())
+            .map(|asset| {
+                asset
+                    .meta
+                    .requires
+                    .iter()
+                    .map(|required| required.as_str().to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
+        while let Some(next) = queue.pop() {
+            if next == id || found.contains_key(&next) {
+                continue;
+            }
+            let state = match self
+                .library
+                .item(&next)
+                .and_then(|item| item.asset.as_ref().map(|asset| (item.kind, asset)))
+            {
+                None => DependencyState::Missing,
+                Some((kind, asset)) => {
+                    queue.extend(
+                        asset
+                            .meta
+                            .requires
+                            .iter()
+                            .map(|required| required.as_str().to_string()),
+                    );
+                    match asset.identity.hash.as_deref() {
+                        Some(hash) => DependencyState::Hashed {
+                            kind: kind.label(),
+                            hash: hash.to_string(),
+                        },
+                        None => DependencyState::Unhashed,
+                    }
+                }
+            };
+            found.insert(next.clone(), Dependency { id: next, state });
+        }
+        found.into_values().collect()
+    }
+
+    /// A private project that holds only what drawing `targets` needs: their assets and the
+    /// assets those depend on, in a sequence of the same canvas. The job draws from this, never
+    /// from a copy of the whole project (whose undo history would be copied with it), and never
+    /// touches the open project. Every target keeps the identity it was asked with.
+    pub fn thumbnail_snapshot(&self, targets: &[Target]) -> Result<EditorState, CommandError> {
+        let mut wanted: Vec<String> = Vec::new();
+        for target in targets {
+            wanted.push(target.asset.clone());
+            wanted.extend(
+                self.thumbnail_dependencies(&target.asset)
+                    .into_iter()
+                    .map(|dependency| dependency.id),
+            );
+        }
+        wanted.sort();
+        wanted.dedup();
+        let mut copy = EditorState::empty(&ProjectSettings {
+            name: self.project_name.clone(),
+            sequence: SequenceSettings {
+                id: self.timeline.id,
+                rate: self.timeline.rate,
+                length: self.timeline.length,
+                width: self.timeline.width,
+                height: self.timeline.height,
+            },
+            workspace: self.project.workspace.clone(),
+        })?;
+        copy.project.id = self.project.id.clone();
+        for id in &wanted {
+            if let Some(item) = self.library.item(id) {
+                copy.library.items.push(item.clone());
+            }
+        }
+        Ok(copy)
+    }
+
+    /// The ID of the one-object scene that stands in for the splat `splat` while its thumbnail
+    /// is drawn: short and stable (`thumb-` and 16 hex digits of the splat's ID, whatever the
+    /// length of that ID), and never the ID of an asset this project has.
+    pub fn thumbnail_stand_in_id(&self, splat: &str) -> String {
+        let base = format!("thumb-{:016x}", fnv64(splat.as_bytes()));
+        let mut id = base.clone();
+        let mut attempt = 2;
+        while self.library.item(&id).is_some() {
+            id = format!("{base}-{attempt}");
+            attempt += 1;
+        }
+        id
     }
 
     /// The thumbnail of `id`, only while it is still the picture of the asset as it is now.
@@ -162,7 +330,7 @@ impl EditorState {
             .items
             .iter()
             .filter_map(|item| {
-                let identity = identity_of(item.kind, item.asset.as_ref()?, (width, height))?;
+                let identity = identity_of(self, item, (width, height))?;
                 let id = item.id.as_str();
                 let done = self
                     .thumbnails

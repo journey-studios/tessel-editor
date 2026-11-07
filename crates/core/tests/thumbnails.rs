@@ -7,8 +7,9 @@ use std::path::PathBuf;
 
 use serde_json::{Value, json};
 use tessel_editor_core::fixtures::{StandardSet, proof_requests, write_standard_set};
+use tessel_editor_core::splat::measure;
 use tessel_editor_core::thumbnails::{Failure, Thumbnail, WIDTH, size_for};
-use tessel_editor_core::{CommandError, EditorState, headless};
+use tessel_editor_core::{CommandError, EditorState, Id, headless};
 
 fn temp(name: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("tessel-thumbs-{name}-{}", std::process::id()));
@@ -66,13 +67,20 @@ fn only_hashed_splats_and_scenes_are_wanted() {
         assert_eq!(state.thumbnail_report(id)["state"], "none", "{id}");
     }
 
-    // A file nobody hashed has no identity: the cache is addressed by content hash.
+    // A file nobody hashed has no identity: the cache is addressed by content hash. The scene
+    // is drawn with that splat, so it waits for the splat's hash too.
     state.library.items[3].asset.as_mut().unwrap().identity.hash = None;
     assert!(
         state.thumbnail_identity("cloud").is_none(),
         "the unhashed splat has no identity"
     );
-    assert_eq!(ids(&state, false), ["scn"]);
+    assert!(
+        state.thumbnail_identity("scn").is_none(),
+        "a scene waits for the hash of what it is drawn with"
+    );
+    assert!(ids(&state, false).is_empty());
+    state.library.items[3].asset.as_mut().unwrap().identity.hash = Some("late".into());
+    assert_eq!(ids(&state, false), ["cloud", "scn"]);
 }
 
 #[test]
@@ -286,4 +294,318 @@ fn the_header_follows_the_project_that_is_open() {
         ok(&mut reopened, json!({"op":"project.header"}))["label"],
         "Rain film / Cut two"
     );
+}
+
+fn set_hash(state: &mut EditorState, id: &str, hash: Option<&str>) {
+    let item = state
+        .library
+        .items
+        .iter_mut()
+        .find(|item| item.id == id)
+        .unwrap_or_else(|| panic!("no `{id}` in the library"));
+    item.asset.as_mut().unwrap().identity.hash = hash.map(str::to_string);
+}
+
+fn requires(state: &mut EditorState, id: &str, required: &[&str]) {
+    let item = state
+        .library
+        .items
+        .iter_mut()
+        .find(|item| item.id == id)
+        .unwrap_or_else(|| panic!("no `{id}` in the library"));
+    item.asset.as_mut().unwrap().meta.requires =
+        required.iter().map(|id| Id::new(id).unwrap()).collect();
+}
+
+/// A second splat, hashed, from the same file (the content is not what these tests are about).
+fn add_splat(state: &mut EditorState, set: &StandardSet, id: &str, hash: &str) {
+    ok(
+        state,
+        json!({"op":"asset.add","kind":"splat","id":id,"name":id,"path":set.splat}),
+    );
+    set_hash(state, id, Some(hash));
+}
+
+#[test]
+fn a_scene_picture_follows_the_splats_it_is_drawn_with_not_only_its_own_file() {
+    let dir = temp("deps");
+    let set = write_standard_set(&dir).unwrap();
+    let mut state = project(&set);
+    let scene_hash = "hash-of-scn";
+    let before = state.thumbnail_identity("scn").unwrap();
+    assert!(before.contains(scene_hash), "{before}");
+    assert!(before.contains("cloud=splat:hash-of-cloud"), "{before}");
+    let stamp = state.thumbnail_stamp();
+    state
+        .set_thumbnail(&stamp, "scn", picture(&state, "scn", "/cache/scn.png"))
+        .unwrap();
+    assert_eq!(state.thumbnail_report("scn")["state"], "ready");
+
+    // The scene file is byte for byte the same, but the splat it names was relinked: the picture
+    // that was ready is gone, the scene is wanted again, the old PNG is never shown.
+    set_hash(&mut state, "cloud", Some("relinked"));
+    assert_eq!(
+        state
+            .library
+            .item("scn")
+            .unwrap()
+            .asset
+            .as_ref()
+            .unwrap()
+            .identity
+            .hash
+            .as_deref(),
+        Some(scene_hash)
+    );
+    let relinked = state.thumbnail_identity("scn").unwrap();
+    assert_ne!(relinked, before);
+    assert!(state.thumbnail("scn").is_none());
+    assert_eq!(state.thumbnail_report("scn")["state"], "pending");
+    assert!(ids(&state, false).contains(&"scn".to_string()));
+    state.prune_thumbnails();
+    assert!(
+        state.thumbnails.is_empty(),
+        "the picture of the old splat is forgotten"
+    );
+
+    // Putting the same content back is the same picture again (deterministic, no counter).
+    set_hash(&mut state, "cloud", Some("hash-of-cloud"));
+    assert_eq!(state.thumbnail_identity("scn").unwrap(), before);
+}
+
+#[test]
+fn a_failure_for_a_missing_splat_ends_when_the_splat_arrives() {
+    let dir = temp("missing");
+    let set = write_standard_set(&dir).unwrap();
+    let mut state = project(&set);
+
+    // The splat is gone (removed, or never restored): the scene has an identity that says so.
+    let present = state.thumbnail_identity("scn").unwrap();
+    state.library.items.retain(|item| item.id != "cloud");
+    let missing = state.thumbnail_identity("scn").unwrap();
+    assert!(missing.contains("cloud=missing"), "{missing}");
+    assert_ne!(missing, present);
+    let dependencies = state.thumbnail_dependencies("scn");
+    assert_eq!(dependencies.len(), 1);
+    assert!(dependencies[0].is_missing());
+
+    let stamp = state.thumbnail_stamp();
+    state
+        .set_thumbnail_failure(
+            &stamp,
+            "scn",
+            Failure {
+                identity: missing.clone(),
+                code: "missing_dependency".into(),
+                message: "needs the splat `cloud`".into(),
+            },
+        )
+        .unwrap();
+    assert_eq!(state.thumbnail_report("scn")["state"], "failed");
+    assert!(
+        ids(&state, false).is_empty(),
+        "remembered, not asked for every tick"
+    );
+
+    // The splat is imported (not hashed yet: no identity, so nothing is drawn with half a fact).
+    ok(
+        &mut state,
+        json!({"op":"asset.add","kind":"splat","id":"cloud","name":"cloud","path":set.splat}),
+    );
+    assert!(state.thumbnail_identity("scn").is_none());
+    assert_eq!(state.thumbnail_report("scn")["state"], "none");
+    // ...and hashed: the scene is pending again, the old failure does not apply to it.
+    set_hash(&mut state, "cloud", Some("hash-of-cloud"));
+    assert_eq!(state.thumbnail_report("scn")["state"], "pending");
+    assert!(state.thumbnail_failure("scn").is_none());
+    assert!(ids(&state, false).contains(&"scn".to_string()));
+    state.prune_thumbnails();
+    assert!(state.thumbnails.is_empty(), "the failure was forgotten");
+}
+
+#[test]
+fn a_dependency_added_removed_or_reached_through_another_changes_the_identity() {
+    let dir = temp("graph");
+    let set = write_standard_set(&dir).unwrap();
+    let mut state = project(&set);
+    let base = state.thumbnail_identity("scn").unwrap();
+
+    // A second splat the scene now names: new dependency, new identity; the order of `requires`
+    // does not matter; removing it gives the first identity back.
+    add_splat(&mut state, &set, "dust", "hash-of-dust");
+    requires(&mut state, "scn", &["cloud", "dust"]);
+    let with_dust = state.thumbnail_identity("scn").unwrap();
+    assert_ne!(with_dust, base);
+    requires(&mut state, "scn", &["dust", "cloud"]);
+    assert_eq!(state.thumbnail_identity("scn").unwrap(), with_dust);
+    set_hash(&mut state, "dust", Some("another-dust"));
+    assert_ne!(state.thumbnail_identity("scn").unwrap(), with_dust);
+    set_hash(&mut state, "dust", Some("hash-of-dust"));
+    requires(&mut state, "scn", &["cloud"]);
+    assert_eq!(state.thumbnail_identity("scn").unwrap(), base);
+
+    // Transitive: the scene names `cloud`, and `cloud` names `dust` (a file that carries its own
+    // dependencies). Relinking `dust` changes what the scene is drawn from.
+    requires(&mut state, "cloud", &["dust"]);
+    let through = state.thumbnail_identity("scn").unwrap();
+    assert_ne!(through, base);
+    assert!(through.contains("dust=splat:hash-of-dust"), "{through}");
+    set_hash(&mut state, "dust", Some("relinked-dust"));
+    assert_ne!(state.thumbnail_identity("scn").unwrap(), through);
+
+    // A cycle in the model does not loop and does not list the asset as its own dependency.
+    requires(&mut state, "dust", &["scn"]);
+    let dependencies = state.thumbnail_dependencies("scn");
+    let names: Vec<_> = dependencies.iter().map(|d| d.id.as_str()).collect();
+    assert_eq!(names, ["cloud", "dust"]);
+}
+
+#[test]
+fn another_project_with_the_same_scene_file_but_other_splats_is_another_picture() {
+    let dir = temp("remap");
+    let set = write_standard_set(&dir).unwrap();
+    let first = project(&set);
+    let mut second = project(&set);
+
+    // Same scene bytes, same IDs, but the splat behind `cloud` is another file.
+    set_hash(&mut second, "cloud", Some("somebody-else"));
+    assert_ne!(
+        first.thumbnail_identity("scn"),
+        second.thumbnail_identity("scn")
+    );
+
+    // An interchange that renamed the splat (`cloud` -> `cloud-2`) and rewrote the scene's
+    // `requires` with the same map names the renamed asset, with its content.
+    let mut renamed = project(&set);
+    renamed
+        .library
+        .items
+        .iter_mut()
+        .find(|item| item.id == "cloud")
+        .unwrap()
+        .id = Id::new("cloud-2").unwrap();
+    requires(&mut renamed, "scn", &["cloud-2"]);
+    let identity = renamed.thumbnail_identity("scn").unwrap();
+    assert!(
+        identity.contains("cloud-2=splat:hash-of-cloud"),
+        "{identity}"
+    );
+    assert_ne!(Some(identity), first.thumbnail_identity("scn"));
+
+    // A scene whose `requires` still names `cloud` after the rename lacks it: said, not guessed.
+    requires(&mut renamed, "scn", &["cloud"]);
+    assert!(
+        renamed
+            .thumbnail_identity("scn")
+            .unwrap()
+            .contains("cloud=missing")
+    );
+}
+
+#[test]
+fn the_job_draws_from_a_small_private_project_not_from_a_copy_of_the_open_one() {
+    let dir = temp("snapshot");
+    let set = write_standard_set(&dir).unwrap();
+    let mut state = project(&set);
+    for zoom in 20..70 {
+        ok(
+            &mut state,
+            json!({"op":"clip.property","clip":"c-img","property":"zoom","value":zoom}),
+        );
+    }
+    let revision = state.project.revision;
+    let targets = state.thumbnail_targets(false);
+    let snapshot = state.thumbnail_snapshot(&targets).unwrap();
+
+    let held: Vec<_> = snapshot
+        .library
+        .items
+        .iter()
+        .map(|item| item.id.as_str())
+        .collect();
+    assert_eq!(held, ["cloud", "scn"], "only what the targets need");
+    assert!(snapshot.timeline.clips.is_empty() && snapshot.timeline.tracks.is_empty());
+    assert_eq!(snapshot.project.id, state.project.id);
+    assert_eq!(
+        (snapshot.timeline.width, snapshot.timeline.height),
+        (state.timeline.width, state.timeline.height)
+    );
+    for target in &targets {
+        assert_eq!(
+            snapshot.thumbnail_identity(&target.asset).as_deref(),
+            Some(target.identity.as_str()),
+            "the snapshot gives every target the identity it was asked with"
+        );
+    }
+    assert_eq!(
+        state.project.revision, revision,
+        "the open project is untouched"
+    );
+
+    // A target that is only a splat does not drag the scene in.
+    let only_splat: Vec<_> = targets.into_iter().filter(|t| t.asset == "cloud").collect();
+    let small = state.thumbnail_snapshot(&only_splat).unwrap();
+    assert_eq!(small.library.items.len(), 1);
+}
+
+#[test]
+fn the_stand_in_id_is_short_stable_and_never_an_existing_asset() {
+    let dir = temp("standin");
+    let set = write_standard_set(&dir).unwrap();
+    let mut state = project(&set);
+
+    let long_a = format!("{}a", "s".repeat(63));
+    let long_b = format!("{}b", "s".repeat(63));
+    assert_eq!(long_a.len(), 64);
+    let (a, b) = (
+        state.thumbnail_stand_in_id(&long_a),
+        state.thumbnail_stand_in_id(&long_b),
+    );
+    assert!(a.len() <= 64 && b.len() <= 64, "{a} / {b}");
+    assert_ne!(a, b, "ids that differ only at the tail do not collide");
+    assert_eq!(a, state.thumbnail_stand_in_id(&long_a), "deterministic");
+    assert!(Id::new(&a).is_ok(), "{a} is a valid asset ID");
+    assert_eq!(
+        state.thumbnail_stand_in_id("cloud").len(),
+        "thumb-".len() + 16
+    );
+
+    // An asset that already has that very ID: the stand-in takes the next free one.
+    let taken = state.thumbnail_stand_in_id("cloud");
+    add_splat(&mut state, &set, &taken, "hash-of-taken");
+    let next = state.thumbnail_stand_in_id("cloud");
+    assert_ne!(next, taken);
+    assert_eq!(next, format!("{taken}-2"));
+    assert!(Id::new(&next).is_ok());
+}
+
+#[test]
+fn a_splat_is_measured_the_same_from_splat_ply_and_spz() {
+    let dir = temp("measure");
+    let set = write_standard_set(&dir).unwrap();
+    let raw = measure(&set.splat).unwrap();
+    let ply = measure(&set.ply).unwrap();
+    let spz = measure(&set.spz).unwrap();
+    assert_eq!((raw.count, ply.count, spz.count), (4000, 4000, 4000));
+    for other in [&ply, &spz] {
+        for axis in 0..3 {
+            assert!(
+                (raw.min[axis] - other.min[axis]).abs() < 1.5e-3,
+                "{raw:?} / {other:?}"
+            );
+            assert!(
+                (raw.max[axis] - other.max[axis]).abs() < 1.5e-3,
+                "{raw:?} / {other:?}"
+            );
+        }
+    }
+    // The cloud is a unit-ish shell plus a ring of radius 1.6: centred, a few units across.
+    let center = raw.center();
+    assert!(center.iter().all(|c| c.abs() < 0.2), "{center:?}");
+    assert!((1.5..3.5).contains(&raw.radius()), "{}", raw.radius());
+
+    // Not a splat, not measurable: the error names the file.
+    let junk = dir.join("junk.splat");
+    fs::write(&junk, [1u8, 2, 3]).unwrap();
+    assert!(measure(&junk).unwrap_err().contains("Not a Gaussian splat"));
 }

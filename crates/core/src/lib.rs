@@ -32,6 +32,7 @@ pub mod scene_project;
 pub mod scene_resources;
 pub mod session;
 pub mod splat;
+pub mod splat_framing;
 pub mod state;
 pub mod thumbnails;
 pub mod time;
