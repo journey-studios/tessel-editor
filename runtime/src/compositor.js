@@ -138,6 +138,15 @@ const quadGeometry = (width, height, crop, flipV) => {
 
 /** MSAA samples of a scene layer's render target unless the host asks for another count. */
 const DEFAULT_SCENE_SAMPLES = 4;
+/**
+ * MSAA samples of a scene layer **with splats** in a `preview` frame (the monitor while the playhead
+ * moves: playback and scrub). Measured on a 1.18 M-gaussian scene: 0 samples is what makes 24 fps
+ * playback and a 40+ pictures/s scrub fit, and the picture differs from 4 samples by at most 8/255
+ * (translucent gaussians have no hard silhouette). A scene without splats is cheap and keeps its
+ * edges: it always draws at `sceneSamples`. A frame that asks for pixels (`render.frame`, export,
+ * probes, PNG) and the refine that follows a stop are `original` and always get `sceneSamples` (BL129).
+ */
+const DEFAULT_PREVIEW_SCENE_SAMPLES = 0;
 export const SCENE_SAMPLE_CHOICES = [0, 2, 4];
 
 const createLayerMaterial = (blend, texture, opacity, tint) =>
@@ -167,6 +176,7 @@ export class Compositor {
     // Reuse of a splat scene's picture when nothing it depends on changed (see sceneResultKey).
     this.resultCache = resultCache;
     this.sceneSamples = DEFAULT_SCENE_SAMPLES;
+    this.previewSceneSamples = DEFAULT_PREVIEW_SCENE_SAMPLES;
     this.counters = counters;
     this.limits = limits;
     // Bumped when the context is lost: everything retained for the old one is dropped with it.
@@ -260,6 +270,20 @@ export class Compositor {
     for (const { value } of this.targets.entries.values()) value.result = null;
   }
 
+  /**
+   * MSAA samples of splat scene targets in `preview` frames. Never more than the final count, so a host
+   * that lowers every frame (`setSceneSamples`) is not raised by this. 4 turns the reduction off.
+   */
+  setPreviewSceneSamples(samples) {
+    if (!SCENE_SAMPLE_CHOICES.includes(samples) || samples === this.previewSceneSamples) return;
+    this.previewSceneSamples = samples;
+  }
+
+  /** Samples of a splat scene layer for a frame of `quality`: the picture of a still, or of a moving playhead. */
+  sceneSamplesFor(quality) {
+    return quality === 'preview' ? Math.min(this.previewSceneSamples, this.sceneSamples) : this.sceneSamples;
+  }
+
   /** Turns the splat result cache on or off (A/B and rollback); what it holds is forgotten either way. */
   setResultCache(enabled) {
     this.resultCache = enabled;
@@ -336,7 +360,11 @@ export class Compositor {
     sources.proxy_layers = 0;
     sources.original_layers = 0;
     sources.result_hits = 0;
-    const frame = { plan, width, height, assets, keep, aborted, used, timings, quality, sources };
+    // MSAA of the scene layers of this frame (`source.scene_samples`, and `source.reduced_scene_layers`
+    // for the ones drawn with fewer samples than the final count: the monitor refines such a picture
+    // once the playhead stops). Both appear only when the frame has a scene layer.
+    const sceneSamples = this.sceneSamplesFor(quality);
+    const frame = { plan, width, height, assets, keep, aborted, used, timings, quality, sources, sceneSamples };
 
     assets.beginFrame();
     [this.text, this.materials, this.rigs, this.targets].forEach((cache) => cache.beginFrame());
@@ -449,8 +477,13 @@ export class Compositor {
       }
       case 'scene': {
         const entry = this.entryFor(layer, frame);
+        // Only a splat scene is reduced: its raster is the cost, and MSAA hardly shows on it.
+        const sceneSamples = SceneRig.hasSplatObjects(entry.scene) ? frame.sceneSamples : this.sceneSamples;
+        // The lowest count of the frame's scene layers: the header must not claim more than the weakest layer got.
+        frame.sources.scene_samples = Math.min(frame.sources.scene_samples ?? sceneSamples, sceneSamples);
+        frame.sources.reduced_scene_layers = (frame.sources.reduced_scene_layers ?? 0) + (sceneSamples < this.sceneSamples ? 1 : 0);
         const key = this.sceneResultKey(layer, entry, frame);
-        const { target, cached } = this.sceneTarget(frame.order, width, height, keep);
+        const { target, cached } = this.sceneTarget(frame.order, width, height, keep, sceneSamples);
         if (key && cached?.result === key) {
           this.counters.add('result_hit');
           frame.sources.result_hits += 1;
@@ -495,6 +528,7 @@ export class Compositor {
 
     const size = containSize(spec.output, width, height);
     // Its own slot space (`ds:`): a directed scene never shares a target, or a cached result, with a `scene` layer.
+    // It always draws at the final MSAA: the reduced preview is the project `scene` layer's (BL129).
     const { target, cached } = this.sceneTarget(`ds:${frame.order}`, size.width, size.height, keep);
     if (cached) cached.result = null;
     const textureOf = (assetId) => {
@@ -583,7 +617,8 @@ export class Compositor {
    * The rig of a scene layer. Scenes without splats are a pure function of the scene file, so
    * the rig (geometry, materials and therefore the shader program) is kept for the entry it was
    * built from and for this context. Scenes with splats lease meshes from the asset store and
-   * are rebuilt per frame: their cost is the Spark sort, not the rig.
+   * are rebuilt per frame (the leases are what is not kept: the store lends the same Spark meshes
+   * again, BL131): their cost is the Spark sort, not the rig.
    */
   async sceneRig(id, entry, assets, keep) {
     if (!this.retain || SceneRig.hasSplatObjects(entry.scene)) {
@@ -606,22 +641,22 @@ export class Compositor {
    * when it fits the byte budget; a target that does not (export-size scenes) is never retained,
    * so it can never serve a cached result either.
    */
-  sceneTarget(slot, width, height, keep) {
+  sceneTarget(slot, width, height, keep, samples = this.sceneSamples) {
     const create = () =>
       new THREE.WebGLRenderTarget(width, height, {
-        samples: this.sceneSamples,
+        samples,
         depthBuffer: true,
         colorSpace: THREE.NoColorSpace,
       });
-    const bytes = targetBytes(width, height, this.sceneSamples);
+    const bytes = targetBytes(width, height, samples);
     if (!this.retain || bytes > this.limits.targetBytes) return { target: keep(create()), cached: null };
     const key = `${slot}`;
     const cached = this.targets.get(key);
-    if (cached && cached.width === width && cached.height === height && cached.samples === this.sceneSamples) {
+    if (cached && cached.width === width && cached.height === height && cached.samples === samples) {
       this.counters.add('target_reused');
       return { target: cached.target, cached };
     }
-    const entry = { target: create(), width, height, samples: this.sceneSamples, result: null };
+    const entry = { target: create(), width, height, samples, result: null };
     this.targets.set(key, entry, bytes);
     this.counters.add('target_created');
     return { target: entry.target, cached: entry };
@@ -641,7 +676,7 @@ export class Compositor {
    * it, so they are not part of the key. Only scenes with splats are keyed: without Spark there
    * is no sort to skip and the draw is already well under a millisecond.
    */
-  sceneResultKey(layer, entry, { assets, used, width, height }) {
+  sceneResultKey(layer, entry, { assets, used, width, height, sceneSamples }) {
     if (!this.retain || !this.resultCache || !SceneRig.hasSplatObjects(entry.scene)) return null;
     const splats = [];
     for (const object of entry.scene.objects) {
@@ -658,7 +693,7 @@ export class Compositor {
       camera: layer.camera,
       time: animated ? layer.scene_time.seconds : null,
       size: [width, height],
-      samples: this.sceneSamples,
+      samples: sceneSamples,
       context: this.contextGeneration,
     });
   }

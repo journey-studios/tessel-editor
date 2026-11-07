@@ -517,12 +517,12 @@ fn build_monitor(state: &EditorState, nodes: &mut Vec<Node>) {
         source = source.disabled("Select a media item with a file to preview its source");
     }
     nodes.push(source);
-    // The policy stays visible in the tree: which quality the scrub draws is never hidden.
+    // The policy stays visible in the tree: which quality playback and scrub draw is never hidden.
     nodes.push(
         Node::new(
             "monitor.preview.quality",
             "toggle_button",
-            "Fast preview (proxy while scrubbing)",
+            "Fast preview (proxy and lighter MSAA while playing or scrubbing)",
         )
         .parent("region:monitor")
         .state("selected", state.preview_policy.mode == PreviewMode::Auto)

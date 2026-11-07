@@ -1,0 +1,429 @@
+{
+ "schema": "s10-amendments/1",
+ "about": "The one book of changes to the S10 oracle, verifiers, controls, corpus and tolerances (see ledger.py). Entries record what changed and why; they are not a pre-registration. Older numbers are never edited in place without a round.",
+ "pinned": [
+  "tolerances.json",
+  "oracle.py",
+  "corpus.py",
+  "verify.py",
+  "controls.py",
+  "corpus/expected.json"
+ ],
+ "baseline": {
+  "commit": "a8480074788dd8ee435c9e772b1ff44d067279ae",
+  "note": "The head of PR #8 as reviewed by the independent Opus review (pullrequestreview-5800808754). Before it, the first full run (results.json, harness 1b5953e) recorded the historical FAIL and BLOCKED results; that file is left untouched.",
+  "hashes": {
+   "tolerances.json": "696c3cd112dbfbefecd23e2849162be8df3a783d512a6f407b1369fe2ed1c722",
+   "oracle.py": "59240b24db0523a0a14518198550112d3f30e433a0135e6126b8ea82f8537ffb",
+   "corpus.py": "4681351226d9790937ead9c06d5e6e1c7c623662b703588d6f25449f9672621a",
+   "verify.py": "2aea5a286de6441a5201e725295861aeaf4785890fc5f3afffa9347d2ecc16b9",
+   "controls.py": "cabd701b64bae7783e6113451bddc5adbfd76172bb5a6aed694bf48171296f0f",
+   "corpus/expected.json": "71c9508b16d46ecb338b3e707f47d26235511fc986adf46e0b89381a91f4bad2"
+  }
+ },
+ "rounds": [
+  {
+   "id": "R1",
+   "reason": "Corrections the independent review of PR #8 required before any further live result: three oracle rules that would reject a correct editor (A1 audio window, A2 splat overlap, A3 mono gain), values the report did not pin, honest provenance, and controls that did not exercise every frame or orientation. No live result of the amended harness exists yet; the historical FAIL/BLOCKED results keep their meaning for the pre-amendment oracle.",
+   "applied": "together, in one commit, before any live run of the amended harness; the intermediate states between A1 and A5 never existed on their own",
+   "before": {
+    "tolerances.json": "696c3cd112dbfbefecd23e2849162be8df3a783d512a6f407b1369fe2ed1c722",
+    "oracle.py": "59240b24db0523a0a14518198550112d3f30e433a0135e6126b8ea82f8537ffb",
+    "corpus.py": "4681351226d9790937ead9c06d5e6e1c7c623662b703588d6f25449f9672621a",
+    "verify.py": "2aea5a286de6441a5201e725295861aeaf4785890fc5f3afffa9347d2ecc16b9",
+    "controls.py": "cabd701b64bae7783e6113451bddc5adbfd76172bb5a6aed694bf48171296f0f",
+    "corpus/expected.json": "71c9508b16d46ecb338b3e707f47d26235511fc986adf46e0b89381a91f4bad2"
+   },
+   "amendments": [
+    {
+     "id": "A1",
+     "finding": "F1 / BL016.5",
+     "files": [
+      "oracle.py",
+      "corpus.py",
+      "verify.py",
+      "corpus/expected.json"
+     ],
+     "change": "Audio window follows the origin: edit time t plays the WHOLE WAV at editStartSeconds + t (packages/scene-engine/src/transport/audio-window.ts, origin d6adac15), the WAV covers [0, editEndSecondsExclusive) and the window is the edit's length (node/render.ts AUDIO_SHORT / AUDIO_VIDEO_DURATION). Corpus version 2: 13 s mix, windows derived from the edit; the retired 8 s mix is kept byte for byte as the audio_short negative fixture.",
+     "motivating_result": "baseline_audio 46/46 never validated this rule (its own clip started at 24 with source 0); the live FAIL of audio_export attributed to PRs #11/#13 and the A1 draft in wave-resource-stop/S10 (preserved, not assumed complete)."
+    },
+    {
+     "id": "A2",
+     "finding": "F2 / BL120",
+     "files": [
+      "oracle.py",
+      "verify.py",
+      "tolerances.json",
+      "controls.py"
+     ],
+     "change": "At the centre of the back s-order splat the expected colour is the model's own over-composition (oracle.composite_at), judged within overlapBackCompositionDelta = 40 (the value the front rule always had; not widened) and still >= 80 from the back colour. The rule that required the front colour within 40 there is removed because the front gaussian is only 0.80 to 0.92 opaque at that point. All splat controls now run on every corpus frame.",
+     "motivating_result": "arithmetic on the model's own gaussians (frames 36 and 47 give 43.5 and 52.3 from the front colour); measured (198,161,68) / (190,163,75) in PR #13 against the composition (197,161,69) / (190,163,76) is attributed, not executed here."
+    },
+    {
+     "id": "A3",
+     "finding": "F3 / BL019-F3",
+     "files": [
+      "oracle.py",
+      "verify.py",
+      "corpus.py",
+      "corpus/expected.json",
+      "tolerances.json",
+      "controls.py"
+     ],
+     "change": "Expected export gain is the origin's channel law, not 0 dB: oracle.channel_gain_db (mono -> stereo = 1/sqrt(2) = -3.0103 dB per channel, because the origin's audio-graph.ts forces channel_layouts=stereo and FFmpeg's rematrix applies). Source channel count is recorded in the corpus; controls write the law-correct signal and a new negative control, 'mono source written at 0 dB', must fail. proof.spec.py re-derives the law by running the origin's own filter.",
+     "motivating_result": "PR #11 attributed -3 dB (citing the origin); the old harness expected 0 dB and its fake exporter wrote 0 dB."
+    },
+    {
+     "id": "A4",
+     "finding": "F5",
+     "files": [
+      "verify.py",
+      "tolerances.json"
+     ],
+     "change": "Numbers that lived in the verifier move into tolerances.json: minJudgedAreaPx 300, videoBackgroundExtraDelta 6, onsetSearchWindowSeconds 0.08, onsetThresholdFraction 0.35 (threshold now relative to the expected, law-scaled level). New: absentMarkerMaxPixels 20 (a marker the model puts outside the frame must leave at most 20 pixels). Values equal the literals they replace.",
+     "motivating_result": "review F5 and the low item on markers outside the frame."
+    },
+    {
+     "id": "A5",
+     "finding": "F4 / F5 / low items",
+     "files": [
+      "tolerances.json",
+      "controls.py",
+      "corpus.py",
+      "verify.py"
+     ],
+     "change": "Provenance reworded: tolerances.json claims Git ancestry from da0b593, not a pre-registration. Controls added: portrait 360x640@24 (camera), the retired A1 reading, mono at 0 dB; the wrong-hash control now calls verify.judge_declared_hashes instead of re-implementing the rule; corpus asserts the portrait judged-marker minimum.",
+     "motivating_result": "review F4/F5 and the low items."
+    }
+   ],
+   "after": {
+    "tolerances.json": "ac984043cc70427e9edc2d34448b49b07f1c5646addd7d1bae8875cbf7090a12",
+    "oracle.py": "d4b48696c6f0a3f857afa9e34169cbf2cf233955558873b7ccfe284914d98940",
+    "corpus.py": "5f1d6842d8e91114f749af734aee04afd30d87ecde21180abe2d10f86843ab80",
+    "verify.py": "fcc5ea307ee3359cb9cfe8b1504dbf8750e453f69a5985828e659b06bd9ca2b7",
+    "controls.py": "132e70c57ca8017a204252b2da4cb927714301d749015607b728cac0bd3621b4",
+    "corpus/expected.json": "3396851716c0cb7923a77cd5e343f6cf9d90ef67d8aff833b730e4e41681ba02"
+   }
+  },
+  {
+   "id": "R2",
+   "reason": "Second independent review of PR #8 (R2): the oracle's controls could not fail for the right reason in the video regime, the back splat escaped, the ledger could be reset, a stale binary, a dirty tree, an empty phase list or a mono output could still pass, and tolerances.json claimed a provenance Git cannot prove. The numbers themselves were not approved: they are argued (justifications, sensitivity) and the amendment is recorded before any live run of this harness.",
+   "applied": "together, in one commit, before any live run of the R2 harness; the earlier live results (results.json) belong to the pre-R1 oracle and keep their meaning. Git proves ancestry only: this record says what changed and why, it does not prove that nothing was run before it.",
+   "before": {
+    "tolerances.json": "ac984043cc70427e9edc2d34448b49b07f1c5646addd7d1bae8875cbf7090a12",
+    "oracle.py": "d4b48696c6f0a3f857afa9e34169cbf2cf233955558873b7ccfe284914d98940",
+    "corpus.py": "5f1d6842d8e91114f749af734aee04afd30d87ecde21180abe2d10f86843ab80",
+    "verify.py": "fcc5ea307ee3359cb9cfe8b1504dbf8750e453f69a5985828e659b06bd9ca2b7",
+    "controls.py": "132e70c57ca8017a204252b2da4cb927714301d749015607b728cac0bd3621b4",
+    "corpus/expected.json": "3396851716c0cb7923a77cd5e343f6cf9d90ef67d8aff833b730e4e41681ba02"
+   },
+   "pins": [
+    "proof.py",
+    "link.py",
+    "sensitivity.py",
+    "ledger.py",
+    "../directed-scene-proof/model.py",
+    "../directed-scene-proof/harness.py",
+    "../directed-scene-export-proof/export_verify.py",
+    "../directed-scene-export-proof/export_corpus.py"
+   ],
+   "amendments": [
+    {
+     "id": "A6",
+     "finding": "R2 review: back splat of the overlap pair / BL120",
+     "files": [
+      "oracle.py",
+      "corpus.py",
+      "verify.py",
+      "controls.py",
+      "tolerances.json",
+      "corpus/expected.json"
+     ],
+     "change": "At the centre of the back s-order splat the picture with and without the back splat differs by only 16 to 46 and an opaque disc of the half-intensity radius cannot be told from the gaussian there, so a missing or disc-shaped back splat escaped on most frames. The verifier reads, within backSplatSearchSigmas = 2 back sigmas, the pixel where the three hypotheses (gaussian, missing, opaque disc) differ most; the pixel is chosen by the model alone (oracle.back_separable_point), the picture must be nearest the gaussian composition, and the corpus refuses a frame whose separation is under backSplatSeparationMinDistance = 24 (the model gives 30 to 49). No calibration against a picture of the editor. New frozen negative controls: back splat missing, back splat drawn as an opaque disc.",
+     "motivating_result": "R2 review item 4. Arithmetic on the model's own gaussians (sensitivity.py back_splat); no editor picture was consulted. The R1 text of A2 gave the front opacity as 0.80 to 0.92: the exact values at the back centre are 0.761 to 0.920 (0.750 to 0.914 at the pixel the verifier reads) and frames 36 and 47 are below 0.80."
+    },
+    {
+     "id": "A7",
+     "finding": "R2 review: typed negative controls that fail on exceptions, controls in the video regime",
+     "files": [
+      "controls.py",
+      "verify.py",
+      "tolerances.json"
+     ],
+     "change": "A negative control passes only when a check named by its must_fail tokens fails; an exception of the verifier fails the control (positive or negative); a negative that names nothing is refused. Picture controls run twice, in the PNG regime and after the preset's own FFmpeg chain (libx264 medium, profile high, crf 18, yuv420p, BT.709 limited, applied by FFmpeg to the model's picture), judged with the video tolerances. Size errors are applied to one splat at a time (x1.5 and x2). The video regime is blind to x1.5 on 15 of 30 measurements (the radius rule's arithmetic, sensitivity.py splat_size): the controls declare it per splat as stance `blind` (it must NOT be detected; a stale declaration fails), `borderline` within 0.5 px of the limit as `either`, and x2 must be detected everywhere. No tolerance was changed to remove the blind spot. Portrait and absent-marker controls (360x640@0) run in both regimes with a positive and a negative control.",
+     "motivating_result": "R2 review items 2, 3 and 11: a x1.5 error escaped on 15 of 30 video measurements and the frozen `size x1.5` control applied to all splats hid it. Measured by sensitivity.py before any live run."
+    },
+    {
+     "id": "A8",
+     "finding": "R2 review: mono output must not pass / F3",
+     "files": [
+      "verify.py",
+      "controls.py",
+      "tolerances.json"
+     ],
+     "change": "The origin always writes stereo (aformat channel_layouts=stereo), so an output file with one channel is a regression: judge_audio checks the channel count against audio.outputChannels = 2 and no longer takes the expected channel count from the caller. The `mono output (the origin always writes stereo)` control is negative.",
+     "motivating_result": "R2 review item 9: the previous control accepted a mono output file at 0 dB as a pass for a mono source."
+    },
+    {
+     "id": "A9",
+     "finding": "R2 review: short-source negative control / BL016.7",
+     "files": [
+      "corpus.py",
+      "proof.py",
+      "corpus/expected.json"
+     ],
+     "change": "audio_short_source refuses every range of a source shorter than its window: the origin decides AUDIO_SHORT from the window before it reads the range. The fixture exports a range the file covers (file seconds 1 to 3) and one that reads past its end (5 to 9); each must answer audio_source_short with details.rule = window, name the 352800 frames the file holds and the 13.000 s the window ends at, create no file and leave nothing behind. The seam is probed on a valid bundle first (the short bundle is refused whether or not the mix works).",
+     "motivating_result": "Reading of origin d6adac15 node/render.ts 246-248 and of crates/core/src/scene_export/audio.rs (BL016.7)."
+    },
+    {
+     "id": "A10",
+     "finding": "R2 review: declared hashes called live / tautological checks",
+     "files": [
+      "verify.py",
+      "controls.py",
+      "corpus.py",
+      "proof.py",
+      "corpus/expected.json"
+     ],
+     "change": "verify.judge_declared_hashes demands exactly the corpus' asset names, each with the corpus hash (a wrong hash, a name missing from the declaration, an unknown or repeated name all fail). expected.json lists declaredAssets per bundle (written by corpus.py), and the corpus phase calls the verifier on every committed bundle with those names instead of names read from the bundle under test. Package controls include `asset name missing from the declaration` and `unknown asset name declared`.",
+     "motivating_result": "R2 review item 14."
+    },
+    {
+     "id": "A11",
+     "finding": "R2 review: provenance claims, ledger protection, binary and tree identity",
+     "files": [
+      "tolerances.json",
+      "ledger.py",
+      "link.py",
+      "proof.py",
+      "sensitivity.py",
+      "../directed-scene-proof/model.py",
+      "../directed-scene-proof/harness.py",
+      "../directed-scene-export-proof/export_verify.py",
+      "../directed-scene-export-proof/export_corpus.py"
+     ],
+     "change": "tolerances.json no longer claims a pre-registration, an approval or that numbers were `frozen before results`: its provenance states what Git proves (ancestry) and what is not claimed. The ledger is anchored to Git (ANCHOR, ancestry, baseline hashes held by Git, every committed version of amendments.json must be a prefix of the current one, so a reset or rewritten round is caught) and pins every file that decides a verdict, including the driver, link.py, sensitivity.py, this ledger and the read-only helpers whose code runs inside the verdict. link.py attests, right after the build, the binary, runtime/dist and the git tree ids of the build inputs; a binary whose link does not hold is BLOCKED, or informational (exit 4) under --allow-stale-binary. A dirty tree also makes a passing run informational (exit 4). An empty --phases, a --work that is not a directory and a run that ran nothing exit 2. The disk reserve is read on the volume of --work.",
+     "motivating_result": "R2 review items 1, 5, 6, 7, 8 and 10."
+    },
+    {
+     "id": "A12",
+     "finding": "R2 review: justification and sensitivity of every number",
+     "files": [
+      "tolerances.json",
+      "sensitivity.py",
+      "proof.py",
+      "corpus.py",
+      "oracle.py"
+     ],
+     "change": "Every number in tolerances.json has a justification with a basis (analytic, inherited, choice) and a text; a number nobody reads or argues fails (ledger.justification_gaps and proof.spec.py). sensitivity.py computes from the model alone what each rule can and cannot see: size factor detected per splat and regime, back-splat separation, the smallest FOV error of a sweep detected, the audio shift detected (3 ms), and how much of each tolerance the model's own correct picture uses (centroid 0.032 px PNG and 0.154 px after the codec; IoU at least 0.986 after the codec). Dead parameters were removed, literals of proof.py read from the tolerances. Texts that were not verifiable (`<0.1 px`, `SPZ quantisation <= 0.9`, `BT.601 versus BT.709 is not detected`) were replaced by measured values. The R2 review did not approve the numbers: the justification is documentation, not approval.",
+     "motivating_result": "R2 review item 5: `Nao aprovo nenhum numero`."
+    }
+   ],
+   "after": {
+    "tolerances.json": "6fb8ae0760206eabcc3401775ca81442652ab1012d4a003d0c9116c1b8963d9d",
+    "oracle.py": "8ac1a7ed6a2d8ac979c4b103ef2fba917347a2b5448d67bffb71f89c1a17af4e",
+    "corpus.py": "3f4b2d1c1e118facb577832c4eb656dd2bb381d48cbf7c7d1497f967f686c33a",
+    "verify.py": "8834574cb5a77f9ae6d7f47ec2bd28dc7a96f1e04b1ffd6b147cf6fc79cf9195",
+    "controls.py": "d41541ec7d599b43e6f677b114b2422ca85fc290388829788472180e9e71dad9",
+    "corpus/expected.json": "387c0b7c7dc3046de0258fec10598581646f37ae11d9b385ddf8d9391ba70e98",
+    "proof.py": "0d0dd91282c3eb20a44d6cb6e234f4b115658515eb3c269b1bb461f6824ae16a",
+    "link.py": "3d3aaca7d28aca3c129e9f4ec44c4c8fc67e1529a7f1b7b154e49b265648c635",
+    "sensitivity.py": "e4618d0d687e2c366e16e7af59b87ea170c063478000e57e7858a3ad0f45a4b2",
+    "ledger.py": "6a93dba974b4f006fecf187ebdc629a7abc84a2259152cb52fc2018825efb469",
+    "../directed-scene-proof/model.py": "322af021aceb5ae45d8b99992c126c5360faa243c571e5bf5db73c6c7991e9bd",
+    "../directed-scene-proof/harness.py": "b6da5243475c8ba7520b31209c68a8417e82d5ed2b626b0f970389d66d8059ec",
+    "../directed-scene-export-proof/export_verify.py": "6f0432c0c96231093724d912c01de629e0c5b1a2540fd852e0101a429d8e55a4",
+    "../directed-scene-export-proof/export_corpus.py": "20bbed3797586800f729269c826fd376deea1466c85d697bbcb2dccfc47dc00e"
+   }
+  },
+  {
+   "id": "R3",
+   "reason": "First live run of the R2 harness against editor binaries built from the integrated head (6073f1e, attested by link.py): 23 of 24 phases passed, including splat, audio at 24 fps and 30000/1001, package and short source; `full_av` failed only the envelope-lag check (+4800 samples, the edge of the 0.15 s search) while the sample-level correlation with the analytic signal was 1.0000, the gain -3.01 dB and every tone window right. The cause is in the corpus, not the editor: the `full` bundle's window was the first 2 s of the file, a single 440 Hz tone, whose envelope is constant, so the lag is unobservable and (440 Hz x 0.1 s = 44 whole cycles) a 0.1 s offset is invisible to the correlation too.",
+   "applied": "AFTER that live run, in a new commit: this round was made knowing the result of `full_av` (the live log is kept in the PR evidence, with the aborted attempts). It does not touch any tolerance and cannot make a failing editor pass: it only moves the `full` window to a stretch with edges, and makes a window without edges a failure of the harness. The R2 text 'before any live run' keeps its meaning for R2 only. The live run is repeated, from scratch, on binaries rebuilt and re-attested for this head.",
+   "before": {
+    "tolerances.json": "6fb8ae0760206eabcc3401775ca81442652ab1012d4a003d0c9116c1b8963d9d",
+    "oracle.py": "8ac1a7ed6a2d8ac979c4b103ef2fba917347a2b5448d67bffb71f89c1a17af4e",
+    "corpus.py": "3f4b2d1c1e118facb577832c4eb656dd2bb381d48cbf7c7d1497f967f686c33a",
+    "verify.py": "8834574cb5a77f9ae6d7f47ec2bd28dc7a96f1e04b1ffd6b147cf6fc79cf9195",
+    "controls.py": "d41541ec7d599b43e6f677b114b2422ca85fc290388829788472180e9e71dad9",
+    "corpus/expected.json": "387c0b7c7dc3046de0258fec10598581646f37ae11d9b385ddf8d9391ba70e98",
+    "proof.py": "0d0dd91282c3eb20a44d6cb6e234f4b115658515eb3c269b1bb461f6824ae16a",
+    "link.py": "3d3aaca7d28aca3c129e9f4ec44c4c8fc67e1529a7f1b7b154e49b265648c635",
+    "sensitivity.py": "e4618d0d687e2c366e16e7af59b87ea170c063478000e57e7858a3ad0f45a4b2",
+    "ledger.py": "6a93dba974b4f006fecf187ebdc629a7abc84a2259152cb52fc2018825efb469",
+    "../directed-scene-proof/model.py": "322af021aceb5ae45d8b99992c126c5360faa243c571e5bf5db73c6c7991e9bd",
+    "../directed-scene-proof/harness.py": "b6da5243475c8ba7520b31209c68a8417e82d5ed2b626b0f970389d66d8059ec",
+    "../directed-scene-export-proof/export_verify.py": "6f0432c0c96231093724d912c01de629e0c5b1a2540fd852e0101a429d8e55a4",
+    "../directed-scene-export-proof/export_corpus.py": "20bbed3797586800f729269c826fd376deea1466c85d697bbcb2dccfc47dc00e"
+   },
+   "pins": [],
+   "amendments": [
+    {
+     "id": "A13",
+     "finding": "R2 acceptance run: `full_av` envelope lag +4800 samples on a constant-envelope window",
+     "files": [
+      "corpus.py",
+      "corpus/expected.json",
+      "verify.py",
+      "controls.py",
+      "tolerances.json"
+     ],
+     "change": "corpus.py: the `full` bundle declares the audio window [2, 4) instead of [0, 2) (edit duration unchanged, 48 frames), so the analytic window holds the end of the 440 Hz tone, a 0.5 s gap and the start of the 880 Hz tone (edges at 1.0 s and 1.5 s of the export); the generator refuses any audio case without a tone/silence edge. verify.py: `judge_audio` fails a case whose analytic window has no edge ('lag observable'). controls.py: new frozen negative control 'constant-envelope window (no edge: an offset is not observable)' (listed in tolerances.json, no number changed) and a positive control for `full_av`. corpus/expected.json and bundle.full.json regenerated.",
+     "motivating_result": "Live run 3 of this head: `full_av` 418/422 checks, the four failures all 'envelope lag +4800 samples' (ch0/ch1, export and restored export). Same file, same editor: correlation 1.0000 at lag 0, gain -3.01 dB, 19 tone windows dominated by the expected frequency. Arithmetic: the 0.15 s search window and a constant envelope give an arbitrary edge value; 44 whole cycles in 0.1 s make a pure 440 Hz tone shift-invariant at that lag. The editor was not changed and the thresholds were not changed."
+    }
+   ],
+   "after": {
+    "tolerances.json": "8f150233f6f89669efafe133aed67fd33fbcc01da24fa3c035d1e427f9c409e3",
+    "oracle.py": "8ac1a7ed6a2d8ac979c4b103ef2fba917347a2b5448d67bffb71f89c1a17af4e",
+    "corpus.py": "f36a9d0982a9915f7f6772073bfafc8860ae968bc06f952116e8750d010821eb",
+    "verify.py": "033783db6452783675a1e8bf9bc4f57c34d37a16d863a0263b398beb3a2624bb",
+    "controls.py": "47d7025058052ef367ecc0342995531b80214c530b9e3accb8dc5f250f445392",
+    "corpus/expected.json": "b87443f8f9dbccd36b561890126ee3aae5c336a0f63730d03d26ed3975ecf838",
+    "proof.py": "0d0dd91282c3eb20a44d6cb6e234f4b115658515eb3c269b1bb461f6824ae16a",
+    "link.py": "3d3aaca7d28aca3c129e9f4ec44c4c8fc67e1529a7f1b7b154e49b265648c635",
+    "sensitivity.py": "e4618d0d687e2c366e16e7af59b87ea170c063478000e57e7858a3ad0f45a4b2",
+    "ledger.py": "6a93dba974b4f006fecf187ebdc629a7abc84a2259152cb52fc2018825efb469",
+    "../directed-scene-proof/model.py": "322af021aceb5ae45d8b99992c126c5360faa243c571e5bf5db73c6c7991e9bd",
+    "../directed-scene-proof/harness.py": "b6da5243475c8ba7520b31209c68a8417e82d5ed2b626b0f970389d66d8059ec",
+    "../directed-scene-export-proof/export_verify.py": "6f0432c0c96231093724d912c01de629e0c5b1a2540fd852e0101a429d8e55a4",
+    "../directed-scene-export-proof/export_corpus.py": "20bbed3797586800f729269c826fd376deea1466c85d697bbcb2dccfc47dc00e"
+   }
+  },
+  {
+   "id": "R4",
+   "reason": "Independent review of PR #8 at head 7a26569 (Sonnet 5.5, review 5810370582), finding L2 (also the OpenCodeReview thread 4500301244): the ledger listed the committed versions of amendments.json with `git log -- <file>`, whose default history simplification can drop the commit that carried a rewritten or reset book when a merge resolves a content conflict by keeping the other side. The promise 'every committed version reachable from HEAD is a prefix of the current book' did not hold for that path. ledger.py now reads `git log --full-history`. Review finding L1 (corpus.py write left stray files) is amended in the same round. R1, R2, R3 and the baseline are not edited, and neither is any oracle rule, verifier, control, corpus byte or tolerance.",
+   "applied": "after the R3 live result and after the live run of ad9e182 (24/24 PASS, recorded in the PR evidence): this round was written knowing that result, because the finding came from a review of that head. It changes how the book is audited (ledger.py) and how the corpus writer treats leftovers (corpus.py `write`); `build()` output and every file under corpus/ are unchanged. The live run of the 24 phases is repeated from scratch for the R4 head on the main that contains PR #17 (its result is in the PR evidence, not in this book, so the book never claims a result it cannot yet hold); the earlier live runs keep their meaning for their own heads.",
+   "before": {
+    "tolerances.json": "8f150233f6f89669efafe133aed67fd33fbcc01da24fa3c035d1e427f9c409e3",
+    "oracle.py": "8ac1a7ed6a2d8ac979c4b103ef2fba917347a2b5448d67bffb71f89c1a17af4e",
+    "corpus.py": "f36a9d0982a9915f7f6772073bfafc8860ae968bc06f952116e8750d010821eb",
+    "verify.py": "033783db6452783675a1e8bf9bc4f57c34d37a16d863a0263b398beb3a2624bb",
+    "controls.py": "47d7025058052ef367ecc0342995531b80214c530b9e3accb8dc5f250f445392",
+    "corpus/expected.json": "b87443f8f9dbccd36b561890126ee3aae5c336a0f63730d03d26ed3975ecf838",
+    "proof.py": "0d0dd91282c3eb20a44d6cb6e234f4b115658515eb3c269b1bb461f6824ae16a",
+    "link.py": "3d3aaca7d28aca3c129e9f4ec44c4c8fc67e1529a7f1b7b154e49b265648c635",
+    "sensitivity.py": "e4618d0d687e2c366e16e7af59b87ea170c063478000e57e7858a3ad0f45a4b2",
+    "ledger.py": "6a93dba974b4f006fecf187ebdc629a7abc84a2259152cb52fc2018825efb469",
+    "../directed-scene-proof/model.py": "322af021aceb5ae45d8b99992c126c5360faa243c571e5bf5db73c6c7991e9bd",
+    "../directed-scene-proof/harness.py": "b6da5243475c8ba7520b31209c68a8417e82d5ed2b626b0f970389d66d8059ec",
+    "../directed-scene-export-proof/export_verify.py": "6f0432c0c96231093724d912c01de629e0c5b1a2540fd852e0101a429d8e55a4",
+    "../directed-scene-export-proof/export_corpus.py": "20bbed3797586800f729269c826fd376deea1466c85d697bbcb2dccfc47dc00e"
+   },
+   "pins": [],
+   "amendments": [
+    {
+     "id": "A14",
+     "finding": "review 5810370582 L2 / OpenCodeReview 4500301244",
+     "files": [
+      "ledger.py"
+     ],
+     "change": "committed_versions() calls `git log --full-history --format=%H -- amendments.json`, so a version of the book that exists only on a side branch of a merge is still read and must be a prefix of the current one. Regression test Ledger.test_a_conflict_merge_cannot_hide_a_rewritten_book builds a real temporary Git repository (diverging branches, a content-conflict merge resolved by keeping the first parent's book) and requires the rewritten side-branch version to be listed. Removing --full-history fails it. The check, the anchor, the prefix rule and every message are unchanged.",
+     "motivating_result": "Reproduced by the reviewer in a toy repository (main commits R1,R2; a branch rewrites to R1x; the merge keeps the branch): the default log lists only the branch commit, --full-history lists both. Fail-closed for every verdict about the editor; an integrity gap in the book only for deliberately rewritten, graph-visible history."
+    },
+    {
+     "id": "A15",
+     "finding": "review 5810370582 L1 / OpenCodeReview 4500301238",
+     "files": [
+      "corpus.py"
+     ],
+     "change": "corpus.write() removes, before writing, only files that the directory's own provenance.json names, that build() no longer produces, whose bytes still hash to what provenance.json recorded and whose path stays inside the directory (and the folders that became empty). A file the caller added, a generated file edited afterwards, a name that leaves the folder and any folder without provenance.json are never deleted; --check keeps reporting them as `stray` so a person decides. build() and the bytes of corpus/ are unchanged (corpus/expected.json keeps its hash). Spec: CorpusWriter (2 tests, sentinel files).",
+     "motivating_result": "Removing or renaming an entry of build() and rerunning corpus.py left the old file, and --check then failed on `stray`; the documented step '(re)writes ./corpus' did not produce a corpus that passes its own check. Fail-closed, never a wrong verdict."
+    }
+   ],
+   "after": {
+    "tolerances.json": "8f150233f6f89669efafe133aed67fd33fbcc01da24fa3c035d1e427f9c409e3",
+    "oracle.py": "8ac1a7ed6a2d8ac979c4b103ef2fba917347a2b5448d67bffb71f89c1a17af4e",
+    "corpus.py": "38f95a43fead781fea1cdf42166607eff69113320fb3f56236b416db82380d9e",
+    "verify.py": "033783db6452783675a1e8bf9bc4f57c34d37a16d863a0263b398beb3a2624bb",
+    "controls.py": "47d7025058052ef367ecc0342995531b80214c530b9e3accb8dc5f250f445392",
+    "corpus/expected.json": "b87443f8f9dbccd36b561890126ee3aae5c336a0f63730d03d26ed3975ecf838",
+    "proof.py": "0d0dd91282c3eb20a44d6cb6e234f4b115658515eb3c269b1bb461f6824ae16a",
+    "link.py": "3d3aaca7d28aca3c129e9f4ec44c4c8fc67e1529a7f1b7b154e49b265648c635",
+    "sensitivity.py": "e4618d0d687e2c366e16e7af59b87ea170c063478000e57e7858a3ad0f45a4b2",
+    "ledger.py": "f304482273462ba72636ff9bb93bc152be0f5a99c64d5cd598edcff7402d5e4f",
+    "../directed-scene-proof/model.py": "322af021aceb5ae45d8b99992c126c5360faa243c571e5bf5db73c6c7991e9bd",
+    "../directed-scene-proof/harness.py": "b6da5243475c8ba7520b31209c68a8417e82d5ed2b626b0f970389d66d8059ec",
+    "../directed-scene-export-proof/export_verify.py": "6f0432c0c96231093724d912c01de629e0c5b1a2540fd852e0101a429d8e55a4",
+    "../directed-scene-export-proof/export_corpus.py": "20bbed3797586800f729269c826fd376deea1466c85d697bbcb2dccfc47dc00e"
+   }
+  },
+  {
+   "id": "R5",
+   "reason": "Review findings on PR #8 that the R4 left open. Five OpenCodeReview threads of review 5810593224 (4500513488 corpus.py --check ignores --out; 4500513496 link.py create compares mtimes with every crate; 4500513499 link.py tool_versions runs without cwd=ROOT; 4500513504 proof.py and export_verify.py: a missing FFmpeg or Node crashes the run after the BLOCKED classification; 4500513508 proof.spec.py sets the no-bytecode flag too late: the spec is not a pinned file, fixed in the same commit) and one CodeRabbit thread of review 5810627514 on head 42faa3f (4500542362: ledger.py reads a shallow clone as a complete history). The other two threads of that head (4500542352 scene-acceptance.md, 4500528888 backlog.md) are documentation and are not part of the book. Every finding is fail-closed or a reporting defect: none produces a PASS about the editor. R1, R2, R3, R4 and the baseline are not edited, and neither is any oracle rule, verifier, control, corpus byte or tolerance.",
+   "applied": "AFTER the live run of fd4bc8c (24/24 PASS, recorded in the PR evidence) and after the independent R4 review (5810597994) and the reconfirmation (5810614005): this round was written knowing those results, because the findings come from reviews of that head. It changes how the corpus CLI checks a folder (corpus.py), which files make a binary look stale and where the toolchain is read (link.py, proof.py), how a host without FFmpeg or Node is reported (proof.py, export_verify.py) and how the book's Git history is read (ledger.py). It cannot make a failing editor pass and no number moved. The live run of the 24 phases is repeated from scratch for the R5 head on a rebuilt binary attested for it (its result is in the PR evidence, not in this book, so the book never claims a result it cannot yet hold); earlier live runs keep their meaning for their own heads.",
+   "before": {
+    "tolerances.json": "8f150233f6f89669efafe133aed67fd33fbcc01da24fa3c035d1e427f9c409e3",
+    "oracle.py": "8ac1a7ed6a2d8ac979c4b103ef2fba917347a2b5448d67bffb71f89c1a17af4e",
+    "corpus.py": "38f95a43fead781fea1cdf42166607eff69113320fb3f56236b416db82380d9e",
+    "verify.py": "033783db6452783675a1e8bf9bc4f57c34d37a16d863a0263b398beb3a2624bb",
+    "controls.py": "47d7025058052ef367ecc0342995531b80214c530b9e3accb8dc5f250f445392",
+    "corpus/expected.json": "b87443f8f9dbccd36b561890126ee3aae5c336a0f63730d03d26ed3975ecf838",
+    "proof.py": "0d0dd91282c3eb20a44d6cb6e234f4b115658515eb3c269b1bb461f6824ae16a",
+    "link.py": "3d3aaca7d28aca3c129e9f4ec44c4c8fc67e1529a7f1b7b154e49b265648c635",
+    "sensitivity.py": "e4618d0d687e2c366e16e7af59b87ea170c063478000e57e7858a3ad0f45a4b2",
+    "ledger.py": "f304482273462ba72636ff9bb93bc152be0f5a99c64d5cd598edcff7402d5e4f",
+    "../directed-scene-proof/model.py": "322af021aceb5ae45d8b99992c126c5360faa243c571e5bf5db73c6c7991e9bd",
+    "../directed-scene-proof/harness.py": "b6da5243475c8ba7520b31209c68a8417e82d5ed2b626b0f970389d66d8059ec",
+    "../directed-scene-export-proof/export_verify.py": "6f0432c0c96231093724d912c01de629e0c5b1a2540fd852e0101a429d8e55a4",
+    "../directed-scene-export-proof/export_corpus.py": "20bbed3797586800f729269c826fd376deea1466c85d697bbcb2dccfc47dc00e"
+   },
+   "pins": [],
+   "amendments": [
+    {
+     "id": "A16",
+     "finding": "OpenCodeReview 4500513488 (review 5810593224)",
+     "files": [
+      "corpus.py"
+     ],
+     "change": "main() resolves one target (`--out` or the committed folder) and uses it for the write AND for --check; the answer names the folder it is about. Before, `--check --out DIR` always judged the committed corpus and printed 'byte-identical' without having looked at DIR. build(), write(), check() and the bytes of corpus/ are unchanged (corpus/expected.json keeps its hash). Spec: CorpusCli (2 tests: a real CLI run over a temporary folder altered by one byte exits 1 while the committed corpus is still identical; a folder never generated is not 'byte-identical').",
+     "motivating_result": "Confirmed by reading main(): `check(CORPUS_DIR)` ignored args.out. Fail-closed for every verdict about the editor (the corpus phase reads the committed folder); a wrong answer of a convenience command."
+    },
+    {
+     "id": "A17",
+     "finding": "OpenCodeReview 4500513496 and 4500513499 (review 5810593224)",
+     "files": [
+      "link.py",
+      "proof.py"
+     ],
+     "change": "link.py: (1) the mtime guard of `create` follows the render binary's real inputs: Cargo.toml, Cargo.lock, rust-toolchain.toml and the crates of `render_crates` (crates/render and its transitive path dependencies read from the Cargo manifests, not a fixed list), without their tests/, benches/ and examples/ (which `cargo build -p` does not compile; kept when the manifest names one). When the closure cannot be computed (no TOML reader, unreadable manifest, a path outside the repository, [patch]/[replace]) it falls back to every crate, as before. The refusal names the newest input. The attestation itself is NOT scoped: the recorded and checked tree ids still cover all of crates/, runtime/, scripts/, Cargo.* and the toolchain, the binary and runtime/dist hashes are unchanged, and a clean tree is still required. (2) tool_versions() runs rustc and node with cwd=ROOT, so rustup reads the repository's rust-toolchain.toml whatever the caller's directory. (3) `dist_hashes`/`check` resolve the default bundle at call time (so a test can point them at a temporary repository). proof.py: Context.binary judged staleness with harness.binary_info, which compares with the `.rs` of EVERY crate (the check that actually blocked a run); it now uses link.older_than_inputs and keeps the wider answer in the report as `older_than_any_crate_source`. harness.py is not touched. Spec: LinkScope (8 tests in a real mini repository: edits in desktop, audio and tests do not refuse; each real input refuses and is named; a dependency added later widens the set; an unreadable manifest, a path outside the repository or a patch table fall back to every crate; the tree-id check still breaks on a desktop change; tool_versions from another directory), StaleBinary (2 tests).",
+     "motivating_result": "Hypothesis of 4500513496 confirmed by reasoning and measured in the PR evidence: Cargo fingerprints only the crates of the dependency graph, so an edit or checkout of a file in crates/desktop or crates/audio leaves a rebuilt tessel-render untouched (no relink, same mtime) while `create` and proof.py compared its mtime with that file and refused with advice ('rebuild') that cannot work. Touching the binary would also bless a binary that really is stale, so the scope of the inputs changed, not the mechanism. 4500513499 confirmed: rustc -V was the only call without cwd=ROOT."
+    },
+    {
+     "id": "A18",
+     "finding": "OpenCodeReview 4500513504 (review 5810593224)",
+     "files": [
+      "proof.py",
+      "../directed-scene-export-proof/export_verify.py"
+     ],
+     "change": "export_verify.tool_versions() records 'unavailable' for a tool that cannot be started (OSError) instead of raising: the fallback was written for this and could not be reached. proof.py: new tool_output() does the same for `node --version` in runtime_identity(), and environment() also guards the FFmpeg probe, so main() always reaches its SUMMARY, writes the --report and returns the documented status. Phases that need FFmpeg still call ensure_tools() first and are BLOCKED (exit 3); data-only phases may pass (exit 0, or 4 on a dirty tree). Nothing can pass because a tool is missing. Spec: ToolsAbsent (3 tests: the real main() with FFmpeg, ffprobe and Node absent: corpus and models PASS with the report saying 'unavailable'; controls and export phases BLOCKED, exit 3, none PASS; the probes themselves).",
+     "motivating_result": "Confirmed by running the real main() with FFmpeg and Node absent: before, environment() raised FileNotFoundError after the phases and the process ended with a traceback and exit 1, without SUMMARY or report. The mutation that removes the guards fails ToolsAbsent."
+    },
+    {
+     "id": "A19",
+     "finding": "CodeRabbit 4500542362 (review 5810627514, head 42faa3f)",
+     "files": [
+      "ledger.py"
+     ],
+     "change": "committed_versions() asks `git rev-parse --is-shallow-repository` first and returns None (verify_ledger then fails 'Git history of the book is readable') unless Git answers exactly `false`; an error, a shallow repository or an old Git that does not know the question all fail closed. The complete-repository path is unchanged. Before, `--full-history` over a shallow clone listed what the clone holds and omitted, without error, a side branch that rewrote the book. Spec: Ledger shallow tests build a real repository with a content-conflict merge, clone it with --depth 1 and in full, show that the shallow clone lacks the rewritten commit and that the old code returned a list without it, and require None for the shallow clone, for every answer other than `false`, and the side-branch version in the complete clone.",
+     "motivating_result": "Validated with real Git (git clone --depth 1 of a repository whose rewritten side-branch commit is only reachable through a merge): the shallow clone does not contain the commit and the pre-R5 code returned a plausible list without it. The anchor-ancestor check already failed closed in such a clone; this makes the book check itself refuse it."
+    }
+   ],
+   "after": {
+    "tolerances.json": "8f150233f6f89669efafe133aed67fd33fbcc01da24fa3c035d1e427f9c409e3",
+    "oracle.py": "8ac1a7ed6a2d8ac979c4b103ef2fba917347a2b5448d67bffb71f89c1a17af4e",
+    "corpus.py": "adb847e46a2376f98893712ba38bdef00f994243618d70ca2742e4a52397758b",
+    "verify.py": "033783db6452783675a1e8bf9bc4f57c34d37a16d863a0263b398beb3a2624bb",
+    "controls.py": "47d7025058052ef367ecc0342995531b80214c530b9e3accb8dc5f250f445392",
+    "corpus/expected.json": "b87443f8f9dbccd36b561890126ee3aae5c336a0f63730d03d26ed3975ecf838",
+    "proof.py": "51bd998cec8a91f1bb27364afaa9c1964420733e90da19d83f55b9aeba0b057f",
+    "link.py": "268e1197a2ca8fa2cc078727045a155585859a9229ddef1524e1957f5577a701",
+    "sensitivity.py": "e4618d0d687e2c366e16e7af59b87ea170c063478000e57e7858a3ad0f45a4b2",
+    "ledger.py": "4dead68e9187ca2e4d11902cc04917b1e0e1533f11ce8bc87dfd333ea8bf4cd8",
+    "../directed-scene-proof/model.py": "322af021aceb5ae45d8b99992c126c5360faa243c571e5bf5db73c6c7991e9bd",
+    "../directed-scene-proof/harness.py": "b6da5243475c8ba7520b31209c68a8417e82d5ed2b626b0f970389d66d8059ec",
+    "../directed-scene-export-proof/export_verify.py": "d1741797e78663323b100c997fad537669e5a0350650920f5bd93a586e4c6dcd",
+    "../directed-scene-export-proof/export_corpus.py": "20bbed3797586800f729269c826fd376deea1466c85d697bbcb2dccfc47dc00e"
+   }
+  }
+ ]
+}

@@ -11,6 +11,7 @@
 //   layer material      Compositor.materials     blend + layer slot        context loss, count LRU
 //   scene rig (no splat) Compositor.rigs         scene asset id + entry    release/load of the id, context loss, count LRU
 //   scene render target Compositor.targets       slot + size               size change, context loss, count/byte LRU
+//   splat mesh (spare)  AssetStore entry         the splat asset           release/load of the id, context loss, count per asset
 //
 // The one exception to "nothing here caches a picture" is the RESULT of a scene layer with splats
 // (compositor.js, `sceneResultKey`): its render target remembers the key of the picture it holds
@@ -40,6 +41,13 @@ export const LIMITS = {
    * this is refused (`resource_budget`) before anything is drawn. The host applies the same number.
    */
   frameSplats: 8 * 1024 * 1024,
+  /**
+   * Spark meshes kept spare per splat asset between frames (BL131). A mesh is a generator, not data
+   * (the packed splats are shared): what it saves is rebuilding that generator and its shader program
+   * for every use every frame. A frame that uses more of one file than this builds the rest and
+   * frees them with the frame, as before.
+   */
+  splatMeshes: 16,
 };
 
 /** Event counters of the retention layer; `delta` gives what one frame did. */
@@ -67,6 +75,11 @@ export class RetentionCounters {
       result_hit: 0,
       result_miss: 0,
       result_invalidated: 0,
+      // Splat files decoded again after the load (a lost context), and the Spark meshes lent per
+      // use: `created` shares the asset's packed splats, `reused` came back from an earlier frame.
+      splat_decoded: 0,
+      splat_mesh_created: 0,
+      splat_mesh_reused: 0,
     };
   }
 

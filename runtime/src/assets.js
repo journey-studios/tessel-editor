@@ -13,7 +13,7 @@ import { closeVideo, frameCount, openVideo, proveVideo, readFrame } from './nati
 import { RuntimeError, expandPattern } from './protocol.js';
 import { LIMITS, RetentionCounters, rgbaBytes } from './retention.js';
 import { splatFileName } from './splat-format.js';
-import { disposeSharedSplatMesh, loadSplatMesh, shareSplatMesh } from './splat-stage.js';
+import { disposeSharedSplatMesh, loadSplatMesh, resetLentMesh, shareSplatMesh } from './splat-stage.js';
 
 const FRAME_CACHE_LIMIT = 16;
 // Preview-proxy frames are small (a 540p picture is ~2 MiB decoded), and a scrub that turns back
@@ -60,6 +60,9 @@ const imageTexture = (bitmap) => {
   return texture;
 };
 
+/** The meshes of one splat asset: `source` decoded the data, `free` are the ones no frame holds right now. */
+const splatPool = (source) => ({ source, free: [source] });
+
 export class AssetStore {
   constructor({ assetUrl, counters = new RetentionCounters(), limits = LIMITS }) {
     this.assetUrl = assetUrl;
@@ -83,6 +86,9 @@ export class AssetStore {
     // Highest project generation a scene resource (`descriptor.scene`) has announced. A resource of
     // a lower one belongs to a world that was replaced: it is refused and what it left is released.
     this.sceneGeneration = 0;
+    // Spark meshes handed back by a frame stay with their asset for the next one (BL131); off for the
+    // per-frame create/dispose path (`hello.retain: false`).
+    this.retainSplatMeshes = true;
   }
 
   /** Called by the compositor when a frame starts: nothing is pinned yet. */
@@ -260,7 +266,7 @@ export class AssetStore {
     this.loading.delete(id);
     const entry = this.entries.get(id);
     if (!entry) return;
-    entry.mesh?.dispose();
+    this.endSplatPool(entry);
     this.disposeTextures(entry);
     entry.bitmap?.close?.();
     entry.frames?.forEach((frame) => frame.bitmap.close());
@@ -385,40 +391,101 @@ export class AssetStore {
     const count = mesh.packedSplats.numSplats;
     // The bytes stay so the GPU side can be rebuilt after a lost context (see dropGpu).
     return {
-      entry: { bytes, fileName, label, mesh, leased: false, count },
+      entry: { bytes, fileName, label, mesh, pool: splatPool(mesh), count },
       meta: { splat_count: count, format: fileName.split('.').pop() },
     };
   }
 
   /**
-   * A splat mesh for one scene to draw. A mesh has a single parent, so the asset's own mesh goes
-   * to the first taker and further takers (two objects, or nodes of one frame) get another mesh over
-   * the packed splats that mesh decoded: one decode and one upload per file however many nodes use
-   * it (BL125). The shared data stays owned by the asset's own mesh and goes with it.
+   * A Spark mesh for one scene (or one node) to draw, for the length of a frame. A mesh has a single
+   * parent and its own transform, so each use in flight needs its own; they all read the packed splats
+   * the asset decoded once, which is why using a file twice (two scenes of a crossfade, several nodes)
+   * costs no decode and one set of GPU textures (BL125). `release` gives the mesh back to the asset,
+   * which lends it again to the next frame: a mesh is a generator and its shader program, and building
+   * those per use per frame was most of what a crossfade over a shared effect splat spent after the decode (BL131).
+   * The data stays owned by the mesh that decoded it (`pool.source`) and goes with the asset.
    */
   async splatLease(id) {
     const entry = this.get(id);
-    if (!entry.mesh) {
-      const mesh = await loadSplatMesh(entry.bytes, entry.fileName, entry.label);
-      if (this.entries.get(id) !== entry) {
-        mesh.dispose();
-        throw new RuntimeError('cancelled', `Asset \`${id}\` was released while loading`, { asset: id });
+    const pool = entry.pool ?? (await this.rebuildSplatPool(id, entry));
+    let mesh = pool.free.pop();
+    if (mesh) {
+      this.counters.add('splat_mesh_reused');
+    } else {
+      mesh = shareSplatMesh(pool.source);
+      this.counters.add('splat_mesh_created');
+    }
+    let lent = true;
+    return {
+      mesh,
+      release: () => {
+        // A second release must not put one mesh in two hands.
+        if (!lent) return;
+        lent = false;
+        this.takeBackSplatMesh(entry, pool, mesh);
+      },
+    };
+  }
+
+  /** The decoded data of an asset whose GPU side was dropped (lost context): decoded once, from the kept bytes. */
+  async rebuildSplatPool(id, entry) {
+    entry.rebuilding ??= (async () => {
+      try {
+        const mesh = await loadSplatMesh(entry.bytes, entry.fileName, entry.label);
+        this.counters.add('splat_decoded');
+        if (this.entries.get(id) !== entry) {
+          mesh.dispose();
+          throw new RuntimeError('cancelled', `Asset \`${id}\` was released while loading`, { asset: id });
+        }
+        entry.mesh = mesh;
+        entry.pool = splatPool(mesh);
+        return entry.pool;
+      } finally {
+        entry.rebuilding = null;
       }
-      entry.mesh = mesh;
+    })();
+    return entry.rebuilding;
+  }
+
+  /** A frame is done with a lent mesh: spare it for the next one, or free it if its asset or the budget says so. */
+  takeBackSplatMesh(entry, pool, mesh) {
+    resetLentMesh(mesh);
+    const isSource = mesh === pool.source;
+    if (entry.pool !== pool) {
+      // The asset was released or lost its GPU side while this mesh was out: its data is already gone.
+      if (!isSource) disposeSharedSplatMesh(mesh);
+      return;
     }
-    if (!entry.leased) {
-      entry.leased = true;
-      const { mesh } = entry;
-      return {
-        mesh,
-        release: () => {
-          mesh.removeFromParent();
-          entry.leased = false;
-        },
-      };
-    }
-    const mesh = shareSplatMesh(entry.mesh);
-    return { mesh, release: () => disposeSharedSplatMesh(mesh) };
+    const spare = this.retainSplatMeshes && pool.free.length < this.limits.splatMeshes;
+    if (isSource || spare) pool.free.push(mesh);
+    else disposeSharedSplatMesh(mesh);
+  }
+
+  /** Frees every mesh of an asset's pool, the data last: shared meshes only drop their reference to it. */
+  endSplatPool(entry) {
+    const { pool } = entry;
+    if (!pool) return;
+    entry.pool = null;
+    entry.mesh = null;
+    pool.free.forEach((mesh) => {
+      if (mesh !== pool.source) disposeSharedSplatMesh(mesh);
+    });
+    pool.free.length = 0;
+    pool.source.dispose();
+  }
+
+  /** `hello.retain`: with it off, spare meshes are freed now and every mesh is freed as the frame ends (the owner stays). */
+  setRetainSplatMeshes(retain) {
+    this.retainSplatMeshes = retain;
+    if (retain) return;
+    this.entries.forEach(({ pool }) => {
+      if (!pool) return;
+      pool.free = pool.free.filter((mesh) => {
+        if (mesh === pool.source) return true;
+        disposeSharedSplatMesh(mesh);
+        return false;
+      });
+    });
   }
 
   /** Spark keeps splat data in textures of the WebGL context; after a loss they are rebuilt from the bytes. */
@@ -426,10 +493,7 @@ export class AssetStore {
     this.entries.forEach((entry) => {
       // Textures of the lost context are gone with it; they are made again from the bitmaps.
       this.disposeTextures(entry);
-      if (entry.kind !== 'splat') return;
-      entry.mesh?.dispose();
-      entry.mesh = null;
-      entry.leased = false;
+      if (entry.kind === 'splat') this.endSplatPool(entry);
     });
     this.pinned.clear();
     this.generation += 1;

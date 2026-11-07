@@ -65,7 +65,8 @@
 //! only runs where a file is actually removed, never for a result that is accepted, and a
 //! cancelled import has already rolled back most of its files before this runs. A destructor
 //! that drops a large result therefore pays about as much as copying it again; callers that must
-//! not block (a UI thread) should discard from a job (BL094).
+//! not block (a UI thread) discard from a job (`job.discard`, BL094): `MediaHost` moves the result
+//! into a `discard` job, which keeps this owner (and its claims) until it has finished.
 //!
 //! Removal first takes the same cooperative [`RootLease`] the publication used, so it cannot
 //! interleave with another Tessel operation working in that root. A root that stays busy is
@@ -508,10 +509,24 @@ impl Created {
     /// whatever it did to accept the result and discard or retry; discarding is safe in either
     /// case (it finds entries still there and removes, or finds none and keeps the files).
     pub(crate) fn accept(&mut self) -> Result<(), String> {
+        self.accept_waiting(true)
+    }
+
+    /// [`Created::accept`] for a caller that must not block (the window's tick): a ledger lock
+    /// still held after the tick's fixed budget (20 ms) is not waited for any longer. It answers
+    /// `Err` like any ledger that cannot record the acceptance, and the record keeps everything.
+    pub(crate) fn accept_nowait(&mut self) -> Result<(), String> {
+        self.accept_waiting(false)
+    }
+
+    /// `wait` says whether the ledger lock may be waited for (bounded, see `ledger::LOCK_WAIT`).
+    fn accept_waiting(&mut self, wait: bool) -> Result<(), String> {
         let mut failure = None;
         let mut accepted: Vec<PathBuf> = Vec::new();
         for (ledger, keys) in by_ledger(self.files.iter().chain(&self.dirs)) {
-            match ledger.lock().accept(keys.iter().map(|key| key.as_path())) {
+            // One lock per ledger, whatever the size of the ledger (BL112.7): a large one is
+            // not read, see `Ledger::accept`.
+            match ledger.accept(keys.iter().map(|key| key.as_path()), wait) {
                 Ok(()) => accepted.push(ledger.dir().to_path_buf()),
                 Err(why) => {
                     failure.get_or_insert(why);
@@ -543,10 +558,17 @@ impl Created {
             // lease, so a claim cannot slip in between this answer and the unlink below.
             // A root that stayed busy cannot be touched: the claim stays (as an orphan) so that
             // `recover` takes the file back later, instead of forgetting a file left behind.
-            let verdict = if leases.blocked(&file.path) {
+            //
+            // The last holder is *not* written out before the file is dealt with (F1): the entry
+            // (and with it this process's lease) stays on disk through the SHA-256 and the
+            // unlink, and is dropped only afterwards. A process killed in the middle of hashing a
+            // large file therefore leaves an orphan claim that `recover` takes back, never a
+            // file the ledger does not list.
+            let blocked = leases.block_reason(&file.path);
+            let verdict = if blocked.is_some() {
                 file.ledger.lock().abandon(holder, &file.key)
             } else {
-                file.ledger.lock().leave(holder, &file.key)
+                file.ledger.lock().begin_leave(holder, &file.key)
             };
             match verdict {
                 Leave::Untracked => {
@@ -566,12 +588,15 @@ impl Created {
                     file.path.display()
                 )),
                 Leave::Abandoned => report.kept.push(format!(
-                    "`{}`: its root is busy; it stays claimed for recovery",
-                    file.path.display()
+                    "`{}`: {}; it stays claimed for recovery",
+                    file.path.display(),
+                    blocked.as_deref().unwrap_or("its root is busy")
                 )),
-                Leave::Last(Item::Dir) => {}
-                Leave::Last(Item::File(stamp)) => {
-                    remove_file(&file.path, stamp.as_ref(), &mut report);
+                Leave::Last(item) => {
+                    if let Item::File(stamp) = &item {
+                        remove_file(&file.path, stamp.as_ref(), &mut report);
+                    }
+                    finish_leave(file, holder, &mut report);
                 }
             }
         }
@@ -612,10 +637,16 @@ fn leave_dir(dir: &Owned, holder: HolderId, report: &mut CleanupReport) {
     let verdict = if tracker.has_below(&dir.key) {
         tracker.abandon(holder, &dir.key)
     } else {
-        tracker.leave(holder, &dir.key)
+        tracker.begin_leave(holder, &dir.key)
     };
     match verdict {
-        Leave::Untracked | Leave::Last(Item::File(_)) => {}
+        Leave::Untracked => {}
+        Leave::Last(item) => {
+            if item == Item::Dir {
+                remove_dir(&dir.path, report);
+            }
+            drop_claim(&mut tracker, dir, holder, report);
+        }
         Leave::Shared => report.shared.push(format!(
             "`{}`: another result still relies on it",
             dir.path.display()
@@ -628,8 +659,26 @@ fn leave_dir(dir: &Owned, holder: HolderId, report: &mut CleanupReport) {
             "`{}`: the claims ledger cannot vouch for it ({why})",
             dir.path.display()
         )),
-        Leave::Last(Item::Dir) => remove_dir(&dir.path, report),
     }
+}
+
+/// Drops the claim of `owned` after what it listed was dealt with (removed or deliberately
+/// kept). When the ledger cannot record that, the claim stays on disk, held by this live process:
+/// `recover` finds an entry whose file is gone (or still there and provably ours) once the process
+/// ends, so it is reported but never a lost file.
+fn drop_claim(tracker: &mut Tracker, owned: &Owned, holder: HolderId, report: &mut CleanupReport) {
+    if let Leave::Unverifiable(why) = tracker.leave(holder, &owned.key) {
+        report.kept.push(format!(
+            "`{}`: it was handled, but the claims ledger could not record that ({why}); the claim stays for recovery",
+            owned.path.display()
+        ));
+    }
+}
+
+/// [`drop_claim`] for a file, taking the ledger lock for just that step.
+fn finish_leave(file: &Owned, holder: HolderId, report: &mut CleanupReport) {
+    let mut tracker = file.ledger.lock();
+    drop_claim(&mut tracker, file, holder, report);
 }
 
 /// A bare record that is dropped without [`Created::accept`] or [`Created::remove`] is treated as
@@ -816,25 +865,47 @@ fn merge(into: &mut Vec<Owned>, incoming: Vec<Owned>) {
     }
 }
 
-/// Leases held while removing, and the roots that could not be taken.
+/// Leases held while removing, and the roots whose lease could not be taken (and why).
 #[derive(Default)]
 pub(super) struct Leases {
     pub(super) held: Vec<RootLease>,
     busy: Vec<PathBuf>,
+    /// Roots whose lease failed for any reason other than another holder (a lock file that cannot
+    /// be opened, a root that cannot be read...), with the reason. Treated exactly like a busy
+    /// root: without the lease nothing below the root is touched (BL112.10).
+    unleased: Vec<(PathBuf, String)>,
 }
 
 impl Leases {
     /// Prevents removal below any root whose publication lease could not be acquired.
     pub(super) fn blocked(&self, path: &Path) -> bool {
-        self.busy.iter().any(|root| path.starts_with(root))
+        self.block_reason(path).is_some()
+    }
+
+    /// Why `path` may not be touched: its root's lease is held by someone else, or could not be
+    /// taken for another reason. `None` only when the lease of its root is held here (or its
+    /// root does not exist, so there is nothing below it).
+    pub(super) fn block_reason(&self, path: &Path) -> Option<String> {
+        if self.busy.iter().any(|root| path.starts_with(root)) {
+            return Some("its root is busy".to_string());
+        }
+        self.unleased
+            .iter()
+            .find(|(root, _)| path.starts_with(root))
+            .map(|(_, why)| format!("its root could not be leased ({why})"))
     }
 }
 
-/// Takes available root leases and records busy roots so their resources remain untouched.
+/// Takes the root leases and records the roots that could not be taken, so their resources stay
+/// untouched. **Fails closed (BL112.10):** a lease that is not held for *any* reason, not only
+/// `root_busy`, blocks everything below its root. The one root skipped is a root that does not
+/// exist: nothing can be below it, and an adoption cannot publish into it either (taking its
+/// lease needs the root to exist).
 pub(super) fn take_leases(roots: &[PathBuf], report: &mut CleanupReport) -> Leases {
     let mut leases = Leases::default();
     for root in roots {
-        if !root.is_dir() {
+        if matches!(fs::symlink_metadata(root), Err(error) if error.kind() == io::ErrorKind::NotFound)
+        {
             continue;
         }
         match acquire(root) {
@@ -843,8 +914,9 @@ pub(super) fn take_leases(roots: &[PathBuf], report: &mut CleanupReport) -> Leas
                 report.busy_roots += 1;
                 leases.busy.push(root.clone());
             }
-            // Gone or unreadable: removal below reports what it cannot do.
-            Err(_) => {}
+            Err(error) => leases
+                .unleased
+                .push((root.clone(), format!("{}: {}", error.code, error.message))),
         }
     }
     leases
@@ -1041,6 +1113,17 @@ impl Provisional {
     pub fn accept(&mut self) -> Result<(), JobError> {
         self.created
             .accept()
+            .map_err(|why| accept_unavailable(&why))
+    }
+
+    /// [`Provisional::accept`] for the window's tick, which waits for the ledger lock only a fixed
+    /// 20 ms (`ledger::TICK_WAIT`): one still held after that (another process, or another job of
+    /// this one) refuses the acceptance (`claims_unavailable`, `details.phase = "accept"`,
+    /// `details.why` says it was held and for how long it was waited for) instead of holding the
+    /// tick up. Everything else is as in `accept`: nothing was promised and the result is still owned.
+    pub fn accept_nowait(&mut self) -> Result<(), JobError> {
+        self.created
+            .accept_nowait()
             .map_err(|why| accept_unavailable(&why))
     }
 

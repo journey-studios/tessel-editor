@@ -165,7 +165,14 @@ Peças (`scene_resources::cleanup`):
 - **Nenhum `Clone`** em `PreparedSceneImport`, `Adoption`, `PendingAdoption`, `Created` nem
   `Provisional`: uma cópia cairia depois e apagaria a pasta do consumidor que ficou com o original.
 - A remoção toma o mesmo `RootLease` (cooperativo) da publicação, com espera limitada. Raiz
-  ocupada → os arquivos ficam e o relatório diz (`busy_roots`, `kept`). Um arquivo trocado por
+  ocupada → os arquivos ficam e o relatório diz (`busy_roots`, `kept`). **Falha fechada (BL112.10):**
+  qualquer outro motivo para não obter o lease (o arquivo de lock não abre, a raiz não é legível)
+  tem o mesmo efeito: arquivo **e** claim ficam (a claim vira órfã que `recover` recolhe depois), nada
+  é desfeito sem o lease, e `kept` diz o motivo (`its root could not be leased (código: mensagem)`).
+  Só uma raiz que **não existe** é pulada: nada pode estar abaixo dela, e uma adoção também não pode
+  publicar nela (tomar o lease exige a raiz). `recover` aplica a mesma regra a cada raiz de órfãos.
+  Limite: a falha de lease é provada de forma dirigida (uma pasta no lugar do arquivo de lock), não
+  com um adotante concorrente real; a garantia vem de não haver `unlink` sem lease. Um arquivo trocado por
   outro programa (identidade ou conteúdo diferente) ou uma pasta ainda com conteúdo também ficam,
   nunca `remove_dir_all`. Isto **não** é defesa contra escritor hostil do mesmo usuário (BL079).
 - `tracked_under(root)` (pública, para testes e diagnóstico) lista as reivindicações vivas sob
@@ -203,6 +210,7 @@ editor, CLI ou job que abra o mesmo workspace.
 .tessel-claims/
   ledger.lock     flock exclusivo durante uma leitura-modificação-escrita
   claims.json     versão 1: owners + entries, trocado por rename atômico
+  claims.journal  aceites ainda não dobrados em claims.json (BL112.7); só existe num ledger grande
   live/<token>    um por processo dono, com flock mantido enquanto o processo vive
 ```
 
@@ -282,7 +290,7 @@ arbitrário: não há como apontar o `recover` para uma pasta que o projeto não
 | Operação | Tipo do job | Efeito | Resposta / erros |
 |---|---|---|---|
 | `scene.resources.claims` | `preflight` | **Não é só leitura**: abrir o ledger faz o *reap* dos titulares cujo lease sumiu e remove um ledger que ficou vazio. Nunca remove nem lê o conteúdo de arquivo de recurso | `{action, readOnly:false, effects, workspace, available, fault, owners[], reaped[], orphans, entries[]}`. Ledger ilegível **não falha**: `available:false` com `fault` |
-| `scene.resources.recover` | `hash` | Remove só **órfãos** (sem titular vivo), após a mesma prova de conteúdo de todo cleanup (BL097), sob o lease de cada raiz; faz o hash fora da trava do ledger | `{action, workspace, recovery:{reapedHolders, orphans, cleanup:{removedFiles, removedFolders, kept, shared, busyRoots}}}`. Cada arquivo mantido vira `warnings` do job. Erros (no job: `error.code`; esperando com `wait:true` chegam como `job_failed` com `details.job_code`): `claims_unavailable` (pode ocorrer após remoções; `details` contém o relatório parcial), `cancelled` (`details` leva o relatório parcial; o que já saiu continua removido e sem claim); `no_workspace` é recusa imediata, sem job |
+| `scene.resources.recover` | `hash` | Remove só **órfãos** (sem titular vivo), após a mesma prova de conteúdo de todo cleanup (BL097), sob o lease de cada raiz; faz o hash fora da trava do ledger | `{action, workspace, recovery:{reapedHolders, orphans, cleanup:{removedFiles, removedFolders, kept, shared, busyRoots}}}`. Cada arquivo mantido vira `warnings` do job. Erros (no job: `error.code`; esperando com `wait:true` chegam como `job_failed` com `details.job_code`): `claims_unavailable` (pode ocorrer após remoções; `details` contém o relatório parcial), `cancelled` (`details` leva o relatório parcial e `undecidedFiles`; o que já saiu continua removido e sem claim; se o ledger também falhou ao registrar os órfãos tratados, o código continua `cancelled` e a falha vem em `details.claimsFault` e em `cleanup.kept`, BL112.11; um ledger inutilizável quando **nada** foi tratado não troca o cancelamento por `claims_unavailable`); `no_workspace` é recusa imediata, sem job |
 
 Progresso do `recover`: etapa `recover`, `total` = arquivos órfãos, `done` = arquivos decididos.
 Cancelamento (`job.cancel`) vale **entre arquivos e entre blocos do hash** do arquivo em curso
@@ -331,18 +339,16 @@ Direção segura: se a aceitação chegou ao disco e o erro ainda assim foi devo
 seguinte encontra a entrada já removida e mantém o arquivo (vaza em vez de apagar). Nunca o
 contrário; não depende de retry em memória, PID ou marca em memória.
 
-#### Junção com a S1 (PR #6, head `008af90`), conferida e **não incorporada**
+#### Junção com a S1 (PR #6, head `008af90` + `main` `ac04dca`), **incorporada**
 
-Um `git merge-tree` do head desta PR contra `t3/observable-job-discard` só conflita em
-`docs/backlog.md` e `docs/features/README.md`; `adopt.rs`, `cleanup.rs` e `mod.rs` mesclam sozinhos
-(a S1 ainda não vê `import.rs` mudado aqui, então a junção de `try_apply` é **semântica**). Ao
-integrar: (1) a S1 usa `drop(self.owned.release())` em `settle` e `try_apply`: trocar por
-`self.owned.accept()`; um `Err` volta como `Err(StaleAdoption {..})`/`RejectedImport` com o
-resultado **ainda dono** dos arquivos, e o descarte segue como job `discard` (é exatamente o
-contrato daqui: o resultado fica pendente e claimado); (2) mover o `accept` para dentro do
-closure de `state.transaction` em `try_apply`; (3) `Provisional::absorb` agora recebe `&mut
-Provisional` e devolve `Result`; (4) testes da S1 que usem `release()` passam a `accept().unwrap()`.
-`Provisional::discard`/`Created::remove` seguem síncronos, o ponto de junção do descarte assíncrono.
+Os conflitos textuais foram `adopt.rs`, `import.rs`, `docs/backlog.md` e `docs/features/README.md`; a junção é semântica:
+(1) `settle` e `try_apply` da S1 trocaram `drop(self.owned.release())` por `self.owned.accept()` fallível; um `Err` volta como
+`StaleAdoption{refusal: Some(..)}` / `RejectedImport` com o resultado **ainda dono** dos arquivos e das claims; (2) o `accept`
+do import é o último passo de `state.transaction` em `try_apply`; (3) `Provisional::absorb(&mut)` segue como em S2;
+(4) o host entrega a recusa ao job `discard` mantendo `claims_unavailable`/`phase=accept` e `details.discard_job`
+(`apply`/`job.commit` bloqueantes descartam com `details.cleanup`). `Provisional::discard`/`Created::remove` seguem síncronos:
+são o trabalho do job. Provas e mutações: [F025](jobs.md#junção-com-claims-persistentes-e-aceite-fallível-bl0943-merge-de-main-ac04dca-s2)
+e `crates/media/tests/job_discard_claims.rs`.
 
 #### `before_changes` x `after_changes`
 
@@ -365,22 +371,130 @@ e o 5 um escritor ainda ganharia (cooperativo, não é defesa contra escritor ho
 Custo: uma leitura SHA-256 de cada arquivo que será de fato removido, nunca de resultado aceito.
 Medição (`measure_discarding_a_result_with_a_large_file`, ignorado por padrão, build de **debug**,
 este disco): descartar um resultado com um arquivo de 256 MiB levou 8,7 s (~29 MiB/s). Em
-release o SHA-256 é bem mais rápido, mas **não foi medido**. Em consequência, descartar um
-resultado grande num destrutor da thread de UI bloqueia; a saída é `job.discard` (BL094,
-pendente).
+release o mesmo descarte levou 0,66 s (medido em BL112, no job de descarte). Descartar um
+resultado grande num destrutor da thread de UI bloquearia; por isso a janela usa `job.discard`
+(BL094/BL112, [F025](jobs.md)): o tick de `poll()` e o `Drop` do host interativo entregam o resultado a um
+job `discard`, que mantém o dono dos arquivos até terminar, e `job.discard {job}` descarta sob pedido.
 
 ### Host (`MediaHost`)
 
 `scene_adopt` captura o `AdoptionTarget` (projeto, workspace, cena, revisão do bundle) **antes**
 de iniciar o job; o resultado vira `Pending::SceneAdopt(Box<PendingAdoption>)`. `apply` (via
 `poll` ou `job.commit`) aceita só se tudo continua igual; senão responde `stale_result` com o
-motivo (projeto, workspace, cena ou revisão) e remove. Host descartado = `Drop` remove. A API
+motivo (projeto, workspace, cena ou revisão) e remove: na lib e no host sem janela, na hora
+(`PendingAdoption::apply`); no tick da janela por um job `discard` (`PendingAdoption::settle` devolve o
+resultado ainda dono dos arquivos; o erro traz `details.discard_job`). Host descartado = `Drop` remove (host
+interativo: por job de descarte). A API
 `SceneExport` da R1 em `host.rs` não foi tocada.
 
 Fora do que se faz: revisão do projeto que muda por edições não relacionadas não invalida um
 import (ele só acrescenta cenas); `undo` do import desfaz o projeto, não os arquivos (a pasta fica
-para um novo anexo); um `job` finalizado e nunca confirmado continua exigindo `job.commit` ou o
-descarte do host (`job.discard`, BL094, segue pendente).
+para um novo anexo); um `job` finalizado e nunca confirmado exige `job.commit` ou `job.discard`
+(F025), ou o descarte do host.
+
+Evidência por superfície do descarte em job (integração S1 + S3 + S4): lib/host (`job_discard`, `scene_adopt_host`,
+`scene_import_cleanup`, `scene_cleanup_ownership`), processo JSONL real e janela própria com a latência dos pedidos durante a
+remoção medida (detalhes e limites em [F025](jobs.md#evidência-por-superfície-integração-s1--s3--s4-a-validar-até-a-revisão)).
+**Costura S1 x S2 (já incorporada, ver "Junção com a S1" acima e BL094.3):** `PendingAdoption::settle` devolve a adoção
+recusada ainda dona de arquivos e claims; `apply` é `settle` + remoção inline e só a remoção (`discard`) lê/hasheia
+**recursos**. O aceite é `Ledger::accept` (um só caminho para o tick e para quem pode bloquear): no tick da janela
+(`settle`, `import::try_apply`) espera o lock só **20 ms** (um lock ainda ocupado depois disso, por outro processo ou por
+outro job deste, recusa o aceite com `claims_unavailable`, BL112.3/N1); em quem pode bloquear (`apply`, `job.commit` da CLI,
+jobs) a espera é limitada a 1,5 s. **O custo do aceite não depende do tamanho do ledger (BL112.7, ver "Diário de aceites"
+abaixo).** Um dono persistente de claims precisa manter essas propriedades (testes `settle_*`/`apply_is_settle_*`).
+
+### Diário de aceites (BL112.7)
+
+**Problema (histórico, anterior ao diário).** Aceitar um resultado é o último passo da transação do projeto e roda na
+thread da janela. Reescrever `claims.json` para isso custava `O(entradas do ledger inteiro)` (ler, parsear, montar,
+serializar): **304–310 ms com 10 mil entradas em build debug** (head `9bb4d18`, medição preservada, **não** é o custo atual),
+contra o teto de 100 ms do tick (BL112.3). Com o diário, o mesmo
+aceite com 10 mil entradas custa **0,27–0,33 ms**, valor **medido no head `dd36cc8`** e não remedido depois; nos gates do fechamento
+re-executou-se o teste de 10 mil entradas sob o teto de 100 ms, que só confirma o teto (o número não é impresso) (ver "Limites" e os gates em `docs/backlog.md`). O critério de 10 mil
+entradas continua e não foi relaxado; também não foi "resolvido" com ajuste de constante, build release, ignorar o teste ou só mover o flush para depois
+do `apply` (o aceite continuaria sendo `O(ledger)` na UI e o projeto passaria a apontar para arquivos antes de o ledger
+dizer que são dele).
+
+**Alternativas.** (1) *Aceite assíncrono / duas fases:* o tick só marcaria "aceito" e um worker gravaria depois. Descartado:
+até o worker terminar, o projeto referencia arquivos que o ledger ainda lista como órfãos em potencial, e `recover` de outro
+processo os removeria; reverter o projeto depois de aplicado exige uma segunda máquina de estados no `poll` (a mesma que o
+BL112.5 deixou de lado). (2) *Reserva/transição reversível* (mover as entradas para um estado "aceitando" e confirmar
+depois): ainda é uma reescrita `O(ledger)` ou um segundo arquivo com as mesmas regras de leitura única; é o diário com mais
+estados. (3) **Diário por acréscimo (escolhido):** uma gravação `O(chaves do resultado)` sob o mesmo `ledger.lock`, lida por
+todo leitor antes de qualquer outra coisa. É o menor que mantém as quatro regras abaixo sem mudar a máquina de estados dos
+jobs, o contrato do `poll` nem os códigos da CLI.
+
+**Formato.** Um ledger cujo `claims.json` + `claims.journal` passa de `INLINE_LIMIT` (64 KiB, ~500 entradas) é aceito
+**acrescentando uma linha** a `claims.journal`, sem ler nem parsear `claims.json`:
+
+```text
+{"accept":["/ws/scenes/a/assets/x.png","/ws/scenes/a/assets"]}\n
+```
+
+Até o limite o aceite continua inline (reescreve o estado, poucos milissegundos), e um workspace sem nada pendente continua
+parecendo nunca ter tido ledger.
+
+**Invariantes.**
+
+1. **Um só leitor.** O ledger efetivo é `claims.json` **menos** as chaves de todo registro completo do diário. Todo leitor
+   (`recover`, descarte, `claims_status`, a próxima adoção, o `Tracker` de qualquer job) aplica o diário ao abrir; ninguém lê
+   `claims.json` sozinho. Por isso, enquanto o sistema operacional entrega o diário, nenhum projeto referencia um arquivo que `recover` poderia remover: o aceite gravado vale
+   para o primeiro leitor que o veja, inclusive o de um processo que acabou de morrer (`SIGKILL` logo depois do tick).
+   **Contra queda do processo, não contra perda de energia:** como o estado, o diário não tem `fsync`; o que o `write_all`
+   entregou ao sistema operacional sobrevive a um `SIGKILL`, mas um corte de energia pode perder o registro.
+   O projeto salvo pode persistir e ainda referenciar o arquivo; nesse caso, `recover` pode removê-lo como órfão.
+2. **Compactação antes de qualquer coisa.** O `Tracker` que encontra um diário reescreve `claims.json` sem essas chaves
+   (rename atômico) e só então remove o diário, **antes de responder a quem o abriu**. Assim ninguém reivindica um caminho
+   de novo enquanto um registro antigo dele ainda existe (o registro o aceitaria por engano), e uma queda entre o rename e a
+   remoção deixa um diário cujas chaves já não existem: reaplicar não muda nada (idempotente, sem campo de geração). A
+   compactação é feita em jobs/CLI/`recover`/status, **nunca no tick**. Por que a idempotência basta: uma reivindicação nova
+   só é gravada **depois** de a compactação do `Tracker` que a faz ter terminado (`with_lock` dobra o diário antes de
+   responder a quem abriu) ou, se o diário não pôde ser removido, o ledger é `fault` e nada é reivindicado; logo um registro
+   antigo nunca é aplicado depois de uma reivindicação nova do mesmo caminho, e uma queda entre o rename e a remoção só pode
+   repetir uma dobra que já foi feita.
+3. **Gravado antes de acreditado, e reversível.** O tick só responde `Ok` depois de o registro ser escrito inteiro sob o lock.
+   Uma escrita que falha é desfeita (`set_len` até onde o arquivo estava) e responde `Err`: o resultado continua dono e
+   claimado, o projeto, o undo e a revisão voltam ao que eram (o aceite é o último passo da transação) e o resultado vai
+   para um job `discard` (`claims_unavailable`, `details.phase="accept"`). Um registro cujo escritor morreu no meio não tem
+   `\n` final: nunca foi um aceite (o projeto a que pertencia também não foi salvo), não é lido e o próximo escritor o corta.
+   Uma linha **completa** que não parseia é dano: o ledger é `fault` e tudo recusa (`recover` não remove nada), porque ignorar
+   um aceite deixaria `recover` remover arquivo que o projeto referencia.
+4. **Dono vivo e claim até um destino terminal; descarte nunca apaga o aceito.** O aceite só remove as chaves **do próprio
+   resultado**; um resultado recusado, obsoleto (`stale_result`) ou descartado nunca grava registro, então o descarte segue
+   sob prova (hash) e `Leave` como antes e as claims de terceiros nunca são tocadas. A lease do processo continua listada
+   até o próximo `Tracker` compactar.
+
+**Concorrência e falha.** O registro é escrito sob `ledger.lock` (o mesmo `flock` de qualquer escrita), com a espera de 20 ms
+no tick; um holder longo recusa o aceite como antes (BL112.3/BL112.5). Aceites concorrentes e compactações nunca perdem nem
+ressuscitam uma entrada (teste de threads em `claims/tests.rs`; processo real em `scene_claims_journal.rs`).
+
+**Limites.** O tick não valida nem faz reap (isso é do próximo `Tracker`, fora da UI); o diário não tem `fsync`, como o
+estado; o limite de 64 KiB é uma decisão de custo, não de correção (os dois caminhos têm as mesmas regras); um leitor que
+compacta um diário grande paga `O(ledger)` fora da UI (jobs, CLI, `recover`, `claims`). O ganho só aparece com cerca de 500
+entradas pendentes ou mais (64 KiB): um ledger desse tamanho é um cenário de estresse, não o uso normal (um projeto típico
+tem poucas dezenas). **Pré-condição de qualquer mudança de formato (BL112.9):** o caminho grande de `Ledger::accept` só
+acrescenta e não confere a versão de `claims.json`; com um `version: 2` um app antigo acrescentaria um diário que o novo pode
+não conhecer, então a versão do estado precisa ser conferida nesse caminho antes de o formato mudar.
+
+**Provas do diário no fechamento da revisão independente (F2–F4).** `claims/tests.rs`: dois titulares da mesma chave, o
+aceite pelo diário e a saída do outro em qualquer ordem (`Untracked`, nada removido); `transfer` seguido de aceite (e
+`transfer` depois do aceite, sem trazer a entrada de volta); `Created::absorb` e um registro que só se apoiava na pasta
+(`Created::remove` mantém a pasta aceita) num ledger acima do limite; descarte, saída e aceite vazio nunca acrescentam; a
+queda entre o rename do estado e a remoção do diário, reaplicada duas vezes e seguida de uma reivindicação do mesmo caminho,
+e a mesma janela provocada **de verdade** (a remoção do diário falha por `chflags uchg`, só em macOS: o `Tracker` devolve
+falha, o estado já está compactado e o próximo leitor completa). `scene_claims_journal.rs`: um **import** (não só uma adoção)
+cujo diário não grava volta o projeto ao que era (sem cena, sem passo de undo, mesma revisão), mantém as claims pelo descarte
+que não consegue provar, e num processo-janela real o `recover` deixa os arquivos enquanto a janela vive e os recolhe depois
+do `SIGKILL`; a repetição do teste de `SIGKILL` só repete a rodada quando `details.why` diz que o lock foi segurado além do
+orçamento do tick (`is_contention`): qualquer outra recusa falha na hora, e um teste com eventos injetados fixa a diferença
+(falha de escrita, diretório no lugar, diário danificado e `claims_unavailable` sem motivo não são contenção).
+
+**Descarte e claims (BL094.4, F1):** o último titular de um arquivo **não** sai do ledger antes do arquivo: `Tracker::begin_leave`
+responde `Last` com a entrada (e a lease deste processo) ainda gravada; o job prova (SHA-256), remove e só então chama `leave`
+para soltar a entrada. `SIGKILL` no meio do hash de um arquivo grande deixa uma claim órfã que `recover` recolhe, nunca um
+arquivo que o ledger não lista. Se o ledger não consegue registrar a saída depois do arquivo tratado, a claim fica (dono vivo,
+`kept` no relatório) e `recover` a resolve quando o processo terminar. `discarded` em `result_state` quer dizer "o descarte
+terminou", não "tudo foi removido": o que ficou está em `result.cleanup.kept`.
 
 ## UI e CLI da janela
 

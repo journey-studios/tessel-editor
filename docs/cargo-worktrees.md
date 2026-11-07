@@ -16,10 +16,14 @@ Use these from any checkout of this project:
 ./scripts/cargo run --locked -p tessel-editor
 ```
 
-`scripts/cargo` delegates to `scripts/mbx`; it does not replace Cargo globally.
-Plain `cargo ...` still bypasses mbx. No mise install, global Cargo shim,
-rust-analyzer user configuration, shell startup file or application manifest
-was changed by this setup. The migration task owns its separate manifest changes.
+`scripts/cargo` delegates to `scripts/mbx`, which applies this project's budgets.
+
+Update 2026-11-06: this Mac also has the global Cargo shim from `mbx setup`, so
+plain `cargo ...` runs through mbx in new shells. The shim directory is prepended
+to `PATH` in `~/.zshenv` and `~/.profile`, and `mbx setup` wrote the rust-analyzer
+user configuration. The global budget is `gc.max_total_size = 8GiB`, the same as
+the wrapper. Other machines without the shim still bypass mbx with plain Cargo,
+so keep using `./scripts/cargo` here.
 
 To install the same version on another machine, use the official release archive
 or `cargo install mbx --version 1.29.2 --locked`. The wrapper resolves `mbx` from
@@ -80,6 +84,20 @@ mbx rejects those keys in repository `.mbx.toml`. `share_workspace_root=false`
 retains current checkout paths; do not turn it on casually, because it remaps
 source paths in diagnostics/debugging. Dependency reuse already works without it.
 
+## Debug info
+
+The workspace `dev` profile uses `debug = "line-tables-only"` and turns debug info
+off for dependencies. Backtraces keep file and line, but a debugger cannot inspect
+variables. To debug workspace crates locally, override it for one build (dependencies
+stay without debug info):
+
+```sh
+CARGO_PROFILE_DEV_DEBUG=true ./scripts/cargo build --locked
+```
+
+Measured on 2026-11-06 with `./scripts/cargo build --locked`: `target/debug` went
+from 2.8 GiB to 2.2 GiB and `tessel-editor` from 137 MiB to 120 MiB.
+
 ## Inspection and maintenance
 
 ```sh
@@ -96,7 +114,7 @@ not removed. No remote cache, credentials or CI upload was configured.
 
 `doctor` reported zero failures. It warned that APFS does not refresh access
 times here, so recency/unused-unit cleanup has limits; no filesystem settings
-were changed. The missing-global-shim warning is expected with project wrappers.
+were changed. At that time the missing-global-shim warning was expected.
 APFS clone restoration was detected as supported.
 
 ## Validation — 2026-11-04

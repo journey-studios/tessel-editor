@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 use async_channel::{Receiver, Sender};
 use serde_json::{Value, json};
 use tessel_editor_core::CommandError;
-use tessel_editor_core::backend::{BackendError, FrameResult, Output};
+use tessel_editor_core::backend::{BackendError, FrameDetail, FrameResult, Output};
 use tessel_editor_core::bridge::{BridgeBackend, HelloOptions, Transport};
 use tessel_editor_core::headless::{backend_error, frame_geometry, frame_report, plan_summary};
 use tessel_editor_core::ops::RenderFrame;
@@ -66,6 +66,11 @@ pub const RESULT_CACHE_ENV: &str = "TESSEL_VIEWPORT_RESULT_CACHE";
 /// `0`, `2` or `4` MSAA samples for scene targets. Unset keeps the runtime's 4 (OPT07 measured
 /// fewer samples as a real gain on large splat scenes but a visible edge-quality trade).
 pub const SCENE_SAMPLES_ENV: &str = "TESSEL_VIEWPORT_SCENE_SAMPLES";
+/// `0`, `2` or `4` MSAA samples of scene layers in the monitor's interactive frames (playback and
+/// scrub, BL129); the picture is refined to the final count when the playhead stops. Unset keeps the
+/// runtime's default; `4` turns the reduction off (A/B and rollback). Explicit frames and export
+/// never read it: they draw at the final count.
+pub const PREVIEW_SCENE_SAMPLES_ENV: &str = "TESSEL_VIEWPORT_PREVIEW_SCENE_SAMPLES";
 
 /// Opt-ins read once when the host is created.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -75,6 +80,15 @@ pub struct HostOptions {
     pub retain: Option<bool>,
     pub result_cache: Option<bool>,
     pub scene_samples: Option<u32>,
+    pub preview_scene_samples: Option<u32>,
+}
+
+/// A MSAA sample count the runtime accepts, from an environment value.
+fn samples_from_env(name: &str) -> Option<u32> {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .filter(|samples| [0, 2, 4].contains(samples))
 }
 
 impl HostOptions {
@@ -87,10 +101,8 @@ impl HostOptions {
             result_cache: std::env::var(RESULT_CACHE_ENV)
                 .is_ok_and(|value| value == "0")
                 .then_some(false),
-            scene_samples: std::env::var(SCENE_SAMPLES_ENV)
-                .ok()
-                .and_then(|value| value.parse().ok())
-                .filter(|samples| [0, 2, 4].contains(samples)),
+            scene_samples: samples_from_env(SCENE_SAMPLES_ENV),
+            preview_scene_samples: samples_from_env(PREVIEW_SCENE_SAMPLES_ENV),
         }
     }
 }
@@ -112,6 +124,23 @@ pub struct WebTransport {
     outbox: Rc<RefCell<VecDeque<String>>>,
     inbox: Rc<RefCell<VecDeque<Value>>>,
     access: Rc<RefCell<AssetAccess>>,
+}
+
+/// What the monitor's header adds when the picture is not the final quality: a proxy copy of a
+/// video, and/or a scene drawn with fewer MSAA samples (the refine replaces both once the playhead
+/// stops). Empty for a final-quality picture.
+fn reduced_label(detail: &FrameDetail) -> String {
+    let mut label = String::new();
+    if detail.proxy_layers() > 0 {
+        label.push_str(" · proxy");
+    }
+    if detail.reduced_scene_layers() > 0 {
+        match detail.scene_samples() {
+            Some(samples) => label.push_str(&format!(" · MSAA {samples}")),
+            None => label.push_str(" · MSAA"),
+        }
+    }
+    label
 }
 
 /// JSON is almost JavaScript: only these two separators are legal in JSON strings and not
@@ -206,6 +235,7 @@ impl ViewportHost {
                 presented: options.trace,
                 result_cache: options.result_cache,
                 scene_samples: options.scene_samples,
+                preview_scene_samples: options.preview_scene_samples,
             });
         let mut session =
             ViewportSession::new(backend).with_demo_dir(tessel_editor_render::demo_dir());
@@ -769,11 +799,7 @@ impl ViewportHost {
                             frame.height,
                             frame.render_ms,
                             // Never hide that the picture is a preview copy.
-                            if frame.detail.proxy_layers() > 0 {
-                                " · proxy"
-                            } else {
-                                ""
-                            }
+                            reduced_label(&frame.detail)
                         ),
                         None => "Aguardando quadro".to_string(),
                     },
