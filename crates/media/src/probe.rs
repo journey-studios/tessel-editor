@@ -8,6 +8,7 @@ use std::process::Command;
 use serde_json::{Value, json};
 use tessel_editor_core::assets::{AudioStream, MediaKind, Meta, SCENE_FORMAT, scene_requirements};
 use tessel_editor_core::jobs::JobError;
+use tessel_editor_core::sharp::{self, Choice};
 use tessel_editor_core::splat;
 use tessel_editor_core::time::{Rate, Ratio};
 
@@ -187,8 +188,16 @@ fn read_head(path: &Path, max: usize) -> Result<Vec<u8>, JobError> {
     Ok(buffer)
 }
 
-/// Splat and scene files first (the core parses them; FFprobe cannot), then FFprobe.
+/// Splat and scene files first (the core parses them; FFprobe cannot), then FFprobe. A SHARP
+/// splat keeps its capture camera (`Choice::Auto`), see [`probe_with`].
 pub fn probe(tools: &Tools, path: &Path) -> Result<Probe, JobError> {
+    probe_with(tools, path, Choice::Auto)
+}
+
+/// [`probe`] with the choice for the capture metadata of a SHARP PLY (BL143): `Auto` uses it when
+/// it is complete and refuses the file (`incomplete_capture`/`ambiguous_capture`) when it is not,
+/// `Ignore` imports the file as a plain splat.
+pub fn probe_with(tools: &Tools, path: &Path, capture: Choice) -> Result<Probe, JobError> {
     let metadata = std::fs::metadata(path).map_err(|error| io_error(path, &error))?;
     if !metadata.is_file() {
         return Err(unsupported(path, "not a regular file"));
@@ -209,18 +218,34 @@ pub fn probe(tools: &Tools, path: &Path) -> Result<Probe, JobError> {
         // Content decides: a `.splat` extension on a file that is not a multiple of 32 bytes,
         // or a generic PLY point cloud, is rejected rather than rendered as garbage.
         let info = splat::inspect(path).map_err(|message| unsupported(path, message))?;
+        let capture = if info.format == splat::SplatFormat::Ply {
+            sharp::read(path, capture).map_err(|error| {
+                let mut converted = JobError::new(error.code, error.message);
+                if let Some(details) = error.details {
+                    converted = converted.with_details(*details);
+                }
+                converted
+            })?
+        } else {
+            None
+        };
+        let mut summary = json!({ "splat_format": info.format.label(), "splat_count": info.count });
+        if let Some(capture) = &capture {
+            summary["capture"] = capture.to_document();
+        }
         return Ok(Probe {
             kind: MediaKind::Splat,
             meta: Meta {
                 splat_count: Some(info.count),
                 format: Some(info.format.label().into()),
+                capture,
                 ..Meta::default()
             },
             size,
             has_audio: false,
             has_video: false,
             warnings: Vec::new(),
-            summary: json!({ "splat_format": info.format.label(), "splat_count": info.count }),
+            summary,
         });
     }
     if head.first() == Some(&b'{') && size <= SCENE_MAX_BYTES {

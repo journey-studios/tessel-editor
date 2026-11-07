@@ -320,6 +320,9 @@ pub fn parse_invoke(
             clip: selected_scene_clip(state, target)?,
             easing: Easing::Linear,
         }),
+        ("camera.capture", "invoke") => Command::SetClipCameraFromCapture {
+            clip: selected_scene_clip(state, target)?,
+        },
         ("camera_keys.clear", "invoke") => Command::CameraKeys(CameraKeysCommand::Replace {
             clip: selected_scene_clip(state, target)?,
             keys: Vec::new(),

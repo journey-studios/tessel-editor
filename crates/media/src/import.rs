@@ -12,11 +12,12 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 use tessel_editor_core::assets::{Asset, Identity, MediaKind, Storage};
 use tessel_editor_core::jobs::{JobContext, JobError};
+use tessel_editor_core::sharp::Choice;
 use tessel_editor_core::state::Command;
 use tessel_editor_core::{CommandError, EditorState};
 
 use crate::fsx::{self, Staging, hash_file, io_error, safe_file_name};
-use crate::probe::{Probe, probe};
+use crate::probe::{Probe, probe_with};
 use crate::tools::Tools;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,6 +43,8 @@ pub struct ImportRequest {
     pub paths: Vec<PathBuf>,
     pub mode: ImportMode,
     pub folder: Option<String>,
+    /// What to do with the camera metadata of a SHARP splat (BL143).
+    pub capture: Choice,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -162,12 +165,13 @@ fn prepare_one(
     tools: &Tools,
     workspace: &Path,
     mode: ImportMode,
+    capture: Choice,
     known: &mut HashMap<String, String>,
     source: &Path,
     ctx: &JobContext,
 ) -> Result<PreparedItem, JobError> {
     let source = absolute(source);
-    let probed = probe(tools, &source)?;
+    let probed = probe_with(tools, &source, capture)?;
     let name = display_name(&source);
     let mut item = PreparedItem {
         source: source.clone(),
@@ -275,7 +279,15 @@ pub fn prepare(
     let mut items = Vec::new();
     for path in &request.paths {
         ctx.check()?;
-        let item = match prepare_one(tools, workspace, request.mode, &mut known, path, ctx) {
+        let item = match prepare_one(
+            tools,
+            workspace,
+            request.mode,
+            request.capture,
+            &mut known,
+            path,
+            ctx,
+        ) {
             Ok(item) => item,
             Err(error) if error.is_cancelled() => return Err(error),
             Err(error) => PreparedItem::failed(path, error),
@@ -443,7 +455,14 @@ pub fn relink_candidate(
     let candidate = absolute(candidate);
     let mut replacement = asset.clone();
     let mut warnings = Vec::new();
-    let probed = probe(tools, &candidate)?;
+    // A splat imported with its capture is compared with the candidate's; one imported without
+    // (`capture: ignore`, or a plain splat) stays without.
+    let capture = if asset.meta.capture.is_some() {
+        Choice::Auto
+    } else {
+        Choice::Ignore
+    };
+    let probed = probe_with(tools, &candidate, capture)?;
     let (hash, size) = hash_file(&candidate, ctx.token(), |_| {})?;
     let same_bytes = asset.identity.hash.as_deref() == Some(hash.as_str());
     if !same_bytes {
@@ -454,7 +473,8 @@ pub fn relink_candidate(
             && old.height == new.height
             && old.sample_rate == new.sample_rate
             && old.channels == new.channels
-            && old.splat_count == new.splat_count;
+            && old.splat_count == new.splat_count
+            && old.capture == new.capture;
         if !accept_changed || !comparable {
             return Err(JobError::new(
                 "relink_mismatch",

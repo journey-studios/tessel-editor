@@ -30,6 +30,7 @@ pub mod scene_plan;
 pub mod scene_project;
 pub mod scene_resources;
 pub mod session;
+pub mod sharp;
 pub mod splat;
 pub mod state;
 pub mod time;

@@ -235,6 +235,16 @@ fn probes(request: &Value) -> Result<Vec<(u32, u32)>, CommandError> {
         .collect()
 }
 
+/// `capture`: `auto` (default) or `ignore`, what to do with the camera metadata of a SHARP splat.
+pub fn capture_choice(request: &Value) -> Result<crate::sharp::Choice, CommandError> {
+    match request.get("capture") {
+        None | Some(Value::Null) => Ok(crate::sharp::Choice::Auto),
+        Some(Value::String(raw)) => crate::sharp::Choice::parse(raw)
+            .ok_or_else(|| invalid("`capture` is `auto` or `ignore`")),
+        Some(_) => Err(invalid("`capture` is `auto` or `ignore`")),
+    }
+}
+
 fn asset_add(request: &Value) -> Result<Command, CommandError> {
     let kind = kind_field(request)?;
     let name = string(request, "name")?.to_string();
@@ -246,6 +256,7 @@ fn asset_add(request: &Value) -> Result<Command, CommandError> {
         text: None,
         frames: request.get("frames").and_then(Value::as_i64),
         first: request.get("first").and_then(Value::as_i64),
+        capture: capture_choice(request)?,
     };
     let asset = if kind == MediaKind::Text {
         let spec = request
@@ -361,6 +372,9 @@ pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, Comm
         "clip.camera" => Command::SetClipCamera {
             clip: string(request, "clip")?.to_string(),
             camera: Camera::from_json(request)?,
+        },
+        "clip.camera_capture" => Command::SetClipCameraFromCapture {
+            clip: string(request, "clip")?.to_string(),
         },
         "clip.camera_key" => Command::CameraKeys(CameraKeysCommand::Set {
             clip: string(request, "clip")?.to_string(),
