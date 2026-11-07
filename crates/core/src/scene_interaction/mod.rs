@@ -116,6 +116,19 @@ impl SceneInteraction {
         self.drag.as_ref()
     }
 
+    /// The gizmo drag whose gesture is still the open one: the only kind a pointer command acts
+    /// on. A stored drag whose gesture something else settled (`scene.gesture.cancel`, a new
+    /// project) is dead: it stays stored until the next pointer command drops it, but it is not
+    /// "a drag in progress". One criterion for every reader (the pointer commands and the
+    /// settle rule of `EditorState::execute`), so they cannot disagree about a dead drag.
+    pub fn live_drag(&self) -> Option<&Drag> {
+        let drag = self.drag.as_ref()?;
+        self.gesture
+            .current()
+            .is_some_and(|gesture| gesture.id() == drag.gesture)
+            .then_some(drag)
+    }
+
     /// The `scene_interaction` block of `EditorState::summary`, or `None` while there is nothing
     /// to show (no selection, nothing dropped, no gesture), so the summary of a project that
     /// never used the scene tools is what it always was. Read-only: it reflects a selection that

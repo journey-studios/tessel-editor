@@ -182,9 +182,17 @@ ponteiro por Δ move o nó por Δ.
 
 ### Precisão das respostas (S1)
 
-- `scene.pointer.up` **sem arrasto aberto** é no-op (`noop: true`, `changed: false`) e **não** liquida
-  um gesto de slider do inspetor que outro tenha aberto; só o release de um arrasto do próprio gizmo
-  (ou `scene.translate`, uma edição real) o faz. Teste: `a_release_with_no_drag_does_not_commit_somebody_elses_slider_gesture`.
+- `scene.pointer.up` **sem arrasto vivo** é no-op (`noop: true`, `changed: false`) e **não** liquida
+  um gesto de slider do inspetor que outro tenha aberto; só o release de um arrasto vivo do próprio gizmo
+  (ou `scene.translate`, uma edição real) o faz. "Vivo" é um só critério, `SceneInteraction::live_drag`: o arrasto
+  guardado cujo gesto ainda é o aberto. Quem o lê é o `pointer_up` (e `move`/`cancel`) **e** a regra de liquidação de
+  `EditorState::execute` (`is_idle_gizmo_release`), então as duas não divergem: um arrasto cujo gesto outro comando encerrou
+  (`scene.gesture.cancel`) fica guardado até o próximo comando de ponteiro, mas está morto, o release dele é no-op e **não**
+  encerra o slider aberto depois (thread 4504060107 da PR #25). Um arrasto vivo, mesmo invalidado por uma edição
+  (`gesture_invalidated`), continua liquidando como toda edição. Testes:
+  `a_release_with_no_drag_does_not_commit_somebody_elses_slider_gesture`,
+  `a_release_of_a_dead_drag_does_not_commit_somebody_elses_slider_gesture` (histórico, revisão e gesto do slider intactos),
+  `a_release_of_a_live_drag_still_settles_the_slider_gesture`.
 - `scene.pointer.move` responde `changed: true` quando um arrasto **está aberto e foi recalculado**,
   mesmo que o ponto não tenha sido aplicado (`applied: false`: raio degenerado, o candidato anterior
   fica). `changed` não diz "o documento mudou" (`document_changed` é sempre `false` num move); leia `applied`.

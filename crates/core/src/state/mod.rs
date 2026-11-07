@@ -520,15 +520,18 @@ impl EditorState {
 
     /// A `scene.pointer.up` while no gizmo drag is open (a script, a release the page sends late)
     /// writes nothing, so it is not an edit that has to settle a slider gesture somebody else
-    /// opened: it never commits it (S1 of the PR #25 review). With a drag open it is the commit of
-    /// that drag and settles like every edit.
+    /// opened: it never commits it (S1 of the PR #25 review). With a *live* drag open it is the
+    /// commit of that drag and settles like every edit. "Live" is the criterion `pointer_up`
+    /// itself uses ([`SceneInteraction::live_drag`]): a drag whose gesture another command
+    /// settled (`scene.gesture.cancel`) is stored but dead, `pointer_up` answers `noop` for it,
+    /// so it must not settle the slider gesture either.
     fn is_idle_gizmo_release(&self, command: &Command) -> bool {
         matches!(
             command,
             Command::Scene(SceneCommand::Gizmo(GizmoCommand::Pointer(
                 PointerCommand::Up { .. }
             )))
-        ) && self.scene_interaction.drag().is_none()
+        ) && self.scene_interaction.live_drag().is_none()
     }
 
     fn apply(&mut self, command: Command) -> Result<Value, CommandError> {

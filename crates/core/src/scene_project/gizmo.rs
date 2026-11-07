@@ -206,14 +206,9 @@ impl EditorState {
     /// The drag in progress, or `None` after dropping one whose gesture is no longer the open
     /// one (another command settled it, the project was replaced): a dead drag never revives.
     fn live_drag(&mut self) -> Option<Drag> {
-        let drag = self.scene_interaction.drag.as_ref()?;
-        let alive = self
-            .scene_interaction
-            .gesture
-            .current()
-            .is_some_and(|gesture| gesture.id() == drag.gesture);
-        if alive {
-            return self.scene_interaction.drag.clone();
+        self.scene_interaction.drag.as_ref()?;
+        if let Some(drag) = self.scene_interaction.live_drag() {
+            return Some(drag.clone());
         }
         self.scene_interaction.drag = None;
         None

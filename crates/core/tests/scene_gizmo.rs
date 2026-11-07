@@ -1105,6 +1105,128 @@ fn a_release_with_no_drag_does_not_commit_somebody_elses_slider_gesture() {
     assert!(state.open_property_gesture().is_none());
 }
 
+/// The slider gesture of somebody else, opened (and, with `moved`, given a value: the preview
+/// is an edit of the document, so it bumps the project revision).
+fn open_slider_gesture(state: &mut EditorState, moved: bool) {
+    ok(
+        state,
+        json!({"op":"property.gesture.begin","property":"zoom"}),
+    );
+    if moved {
+        ok(state, json!({"op":"property.gesture.update","value":120}));
+    }
+    assert!(state.open_property_gesture().is_some());
+}
+
+/// S1 for a *dead* drag (thread 4504060107 of the PR #25 review): the stored drag whose gesture
+/// `scene.gesture.cancel` settled is not a drag in progress, `pointer_up` answers `noop` for it,
+/// so it must not settle (commit) the slider gesture a slider opened afterwards either. The
+/// settle rule and `pointer_up` have to read the same "live drag".
+#[test]
+fn a_release_of_a_dead_drag_does_not_commit_somebody_elses_slider_gesture() {
+    let mut state = EditorState::demo();
+    ok(
+        &mut state,
+        json!({"op":"scene.attach","id":"street","bundle":bundle(MINIMAL)}),
+    );
+    select(&mut state, FIGURE);
+    let shown = overlay(&mut state);
+    let down = press(&mut state, at(&handle(&shown, "x")["to"])).unwrap();
+    let gesture = down["gesture"].as_str().unwrap();
+    ok(
+        &mut state,
+        json!({"op":"scene.gesture.cancel","gesture":gesture}),
+    );
+    // The drag is stored but dead: its gesture is no longer the open one.
+    assert!(state.scene_interaction.drag().is_some());
+    assert!(state.scene_interaction.live_drag().is_none());
+
+    open_slider_gesture(&mut state, true);
+    let depth = undo_depth(&state);
+    let revision = state.project.revision;
+
+    let noop = ok(&mut state, json!({"op":"scene.pointer.up"}));
+    assert_eq!(noop["noop"], true);
+    assert_eq!(noop["dragging"], false);
+    assert!(
+        state.open_property_gesture().is_some(),
+        "a release of a dead drag wrote nothing: it leaves the slider gesture open"
+    );
+    assert_eq!(undo_depth(&state), depth, "no history entry was written");
+    assert_eq!(state.project.revision, revision);
+    // The dead drag is gone (it never revives), and the slider gesture is still the slider's.
+    assert!(state.scene_interaction.drag().is_none());
+    ok(&mut state, json!({"op":"property.gesture.commit"}));
+    assert_eq!(
+        undo_depth(&state),
+        depth + 1,
+        "the slider commits its own entry"
+    );
+}
+
+/// The other side of the same rule: a release of a *live* drag is the commit of that drag and
+/// still settles a slider gesture first, like every edit.
+#[test]
+fn a_release_of_a_live_drag_still_settles_the_slider_gesture() {
+    let mut state = EditorState::demo();
+    ok(
+        &mut state,
+        json!({"op":"scene.attach","id":"street","bundle":bundle(MINIMAL)}),
+    );
+    select(&mut state, FIGURE);
+    let shown = overlay(&mut state);
+    press(&mut state, at(&handle(&shown, "x")["to"])).unwrap();
+    open_slider_gesture(&mut state, false);
+    ok(
+        &mut state,
+        json!({"op":"scene.pointer.move","point":point(0.6, 0.5)}),
+    );
+    assert!(state.scene_interaction.live_drag().is_some());
+
+    let up = ok(&mut state, json!({"op":"scene.pointer.up"}));
+    assert_eq!(up["dragging"], false);
+    assert_eq!(up["noop"], false, "a live drag is committed: {up}");
+    assert_eq!(up["document_changed"], true);
+    assert!(
+        state.open_property_gesture().is_none(),
+        "the release of a live drag settles the slider gesture like any edit"
+    );
+    assert!(state.scene_interaction.drag().is_none());
+}
+
+/// A drag the document moved under (the slider's preview is an edit) is stale but still LIVE:
+/// its release keeps settling the slider gesture as an edit, and its own commit is refused with
+/// the typed code, as before. Only a drag whose gesture is no longer the open one is dead.
+#[test]
+fn a_release_of_a_live_but_stale_drag_settles_the_slider_and_is_refused() {
+    let mut state = EditorState::demo();
+    ok(
+        &mut state,
+        json!({"op":"scene.attach","id":"street","bundle":bundle(MINIMAL)}),
+    );
+    select(&mut state, FIGURE);
+    let shown = overlay(&mut state);
+    press(&mut state, at(&handle(&shown, "x")["to"])).unwrap();
+    open_slider_gesture(&mut state, true);
+    let depth = undo_depth(&state);
+    assert!(state.scene_interaction.live_drag().is_some());
+    assert!(state.gizmo_drag_is_dead());
+
+    let refused = err(&mut state, json!({"op":"scene.pointer.up"}));
+    assert_eq!(refused.code, "gesture_invalidated");
+    assert!(
+        state.open_property_gesture().is_none(),
+        "a live drag's release settles the slider gesture first, like any edit"
+    );
+    assert_eq!(
+        undo_depth(&state),
+        depth + 1,
+        "the slider's own entry, nothing of the drag"
+    );
+    assert!(state.scene_interaction.drag().is_none());
+    assert!(state.scene_interaction.gesture().is_none());
+}
+
 #[test]
 fn a_press_while_another_gesture_is_open_is_refused_on_a_handle() {
     let mut state = street();
