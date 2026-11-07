@@ -1811,3 +1811,69 @@ fn what_the_page_reports_is_counted_and_a_reload_forgets_the_overlay() {
     assert_eq!(after["pointer_events"], 0);
     assert_eq!(after["supported"], false);
 }
+
+/// M2 of the PR #25 review: what the adapter spends on the overlay is gated and counted.
+#[test]
+fn the_overlay_gates_and_counters_are_the_hosts_and_a_reload_resets_them() {
+    let state = empty_state();
+    let mut host = gizmo_host("overlay-gates", &state);
+    // Off: nothing is enabled, so the adapter has no reason to plan the scene.
+    assert!(!host.overlay_enabled());
+    assert!(!host.overlay_memo_hit("k"), "off: never a memo hit");
+    assert!(!host.overlay_hold(), "off: nothing to clear");
+    assert!(host.overlay_set_enabled(true));
+    assert!(host.overlay_enabled());
+    assert!(!host.overlay_memo_hit("k"), "nothing computed yet");
+    host.overlay_computed("k".to_string());
+    assert!(host.overlay_memo_hit("k"));
+    assert!(
+        !host.overlay_memo_hit("other"),
+        "another state is not a hit"
+    );
+    host.overlay_adopted("adopted".to_string());
+    assert!(host.overlay_memo_hit("adopted"));
+    let report = host.report()["overlay"].clone();
+    assert_eq!(
+        (
+            report["computed"].clone(),
+            report["adopted"].clone(),
+            report["memo_hits"].clone()
+        ),
+        (json!(1), json!(1), json!(2))
+    );
+    // Playback: cleared once, then nothing until a state is computed again.
+    let _ = sent(&mut host);
+    assert!(host.overlay_hold());
+    assert!(!host.overlay_hold(), "held: not cleared again every tick");
+    assert_eq!(kinds(&sent(&mut host)), ["overlay.clear"]);
+    assert!(
+        !host.overlay_memo_hit("adopted"),
+        "the page holds nothing now"
+    );
+    assert_eq!(host.report()["overlay"]["held"], true);
+    host.overlay_computed("again".to_string());
+    assert_eq!(host.report()["overlay"]["held"], false);
+}
+
+/// M4 of the PR #25 review: every page incarnation has its own epoch, which the adapter puts in
+/// the stamps it sends, so the queued messages of the page before a reload are never current.
+#[test]
+fn every_reload_of_the_page_is_a_new_overlay_epoch() {
+    let state = empty_state();
+    let mut host = gizmo_host("overlay-epoch", &state);
+    let first = host.overlay_epoch();
+    assert_eq!(host.overlay_epoch(), first, "reading it changes nothing");
+    assert!(host.overlay_set_enabled(true));
+    assert!(host.overlay_show(&overlay_payload(0.5)));
+    assert_eq!(
+        host.overlay_epoch(),
+        first,
+        "overlays of one page share its epoch"
+    );
+    assert!(host.begin_reload());
+    let second = host.overlay_epoch();
+    assert_ne!(second, first, "the reloaded page is another incarnation");
+    assert_eq!(host.report()["overlay"]["epoch"], second);
+    assert!(host.begin_reload());
+    assert_ne!(host.overlay_epoch(), second, "and so is the next one");
+}

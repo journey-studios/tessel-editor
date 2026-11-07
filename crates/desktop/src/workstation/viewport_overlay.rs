@@ -36,6 +36,22 @@ pub(super) struct OverlayHost {
     pretend: bool,
     sets: u64,
     last_phase: Option<String>,
+    /// What the adapter spent on the overlay (M2 of the PR #25 review), all in `overlay_report`:
+    /// `computed` = asked the core for `scene.gizmo.state` (plans the scene), `adopted` = took the
+    /// overlay a gizmo command already answered with (no second plan), `memo_hits` = the page
+    /// already had the overlay of this state, `held` = playback runs and the overlay is cleared.
+    computed: u64,
+    adopted: u64,
+    memo_hits: u64,
+    held: bool,
+    /// The key (`EditorState::gizmo_overlay_key`) of the overlay the page has: the same key means
+    /// the same overlay, so the core is not asked again. Reset with `last_sent`.
+    memo: Option<String>,
+    /// The incarnation of the page the overlay is for: bumped every time the page is forgotten
+    /// (reload, runtime gone). The adapter puts it in the stamp of every overlay, so a message
+    /// of the page before the reload never equals the stamp of the page after it, even when the
+    /// core's own stamp (scene, session, revision, frame) is the same (M4 of the PR #25 review).
+    epoch: u64,
 }
 
 impl OverlayHost {
@@ -77,6 +93,57 @@ impl ViewportHost {
         self.overlay.stale += 1;
     }
 
+    /// The incarnation of the page (see `OverlayHost::epoch`): part of every stamp the adapter sends.
+    pub fn overlay_epoch(&self) -> u64 {
+        self.overlay.epoch
+    }
+
+    /// Whether the page's overlay is on (it needs a runtime that announced the feature, so this
+    /// also says "supported"): the gate before any planning of the scene for it.
+    pub fn overlay_enabled(&self) -> bool {
+        self.overlay.enabled && self.overlay_supported()
+    }
+
+    /// The page already has the overlay `key` stands for: the core need not be asked. Counted.
+    pub fn overlay_memo_hit(&mut self, key: &str) -> bool {
+        let hit = self.overlay.enabled
+            && self.overlay_supported()
+            && self.overlay.memo.as_deref() == Some(key);
+        if hit {
+            self.overlay.memo_hits += 1;
+        }
+        hit
+    }
+
+    /// The core was asked for the overlay `key` stands for (and the answer is being sent).
+    pub fn overlay_computed(&mut self, key: String) {
+        self.overlay.computed += 1;
+        self.overlay.held = false;
+        self.overlay.memo = Some(key);
+    }
+
+    /// The overlay `key` stands for came with the answer of a gizmo command: no second plan.
+    pub fn overlay_adopted(&mut self, key: String) {
+        self.overlay.adopted += 1;
+        self.overlay.held = false;
+        self.overlay.memo = Some(key);
+    }
+
+    /// Playback runs: the picture moves every frame, so a gizmo laid out for one of them would be
+    /// drawn on the wrong place and planning it per tick would double the cost of a frame. The
+    /// page's overlay is cleared once and nothing is planned until the clock stops.
+    pub fn overlay_hold(&mut self) -> bool {
+        if self.overlay.held || !self.overlay.enabled || !self.overlay_supported() {
+            return false;
+        }
+        self.overlay.held = true;
+        self.overlay.memo = None;
+        self.overlay.last_sent = None;
+        self.overlay.last_stamp = None;
+        self.overlay_send(json!({ "type": "overlay.clear" }));
+        true
+    }
+
     /// Switches the page's overlay on or off. Returns whether anything was sent.
     pub fn overlay_set_enabled(&mut self, enabled: bool) -> bool {
         if enabled == self.overlay.enabled || (enabled && !self.overlay_supported()) {
@@ -84,6 +151,8 @@ impl ViewportHost {
         }
         self.overlay.enabled = enabled;
         self.overlay.last_sent = None;
+        self.overlay.memo = None;
+        self.overlay.held = false;
         if self.overlay_supported() {
             self.overlay_send(json!({ "type": "overlay.enable", "enabled": enabled }));
         }
@@ -110,10 +179,12 @@ impl ViewportHost {
     /// The page is gone or reloaded: it starts with the overlay off and nothing drawn.
     pub fn overlay_forget(&mut self) {
         let ack = self.overlay.ack;
+        let epoch = self.overlay.epoch + 1;
         #[cfg(test)]
         let pretend = self.overlay.pretend;
         self.overlay = OverlayHost {
             ack,
+            epoch,
             #[cfg(test)]
             pretend,
             ..OverlayHost::default()
@@ -149,6 +220,11 @@ impl ViewportHost {
             "sets": self.overlay.sets,
             "pointer_events": self.overlay.pointer_events,
             "stale": self.overlay.stale,
+            "computed": self.overlay.computed,
+            "adopted": self.overlay.adopted,
+            "memo_hits": self.overlay.memo_hits,
+            "held": self.overlay.held,
+            "epoch": self.overlay.epoch,
             "last_phase": self.overlay.last_phase,
             "layout": self.overlay.layout,
             "drawn": self.overlay.drawn,

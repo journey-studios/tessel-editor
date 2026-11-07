@@ -342,6 +342,13 @@ impl Workstation {
         if result.is_ok() && ordinary_preview {
             self.viewport.clear_directed();
         }
+        if let Ok(outcome) = &result
+            && outcome.get("overlay").is_some()
+        {
+            // F055: a gizmo command answered with the overlay of the state it left; the sync below
+            // reuses it instead of planning the scene again for the same state.
+            self.overlay_adopt(outcome);
+        }
         if result.is_ok() {
             // After a failed command the state is untouched, so the picture stays as it was.
             self.viewport_sync(cx);

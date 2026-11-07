@@ -54,18 +54,38 @@ impl Workstation {
         true
     }
 
+    /// The identity of the overlay the page must hold for `scene` at `frame`: the core's stamp
+    /// (scene, session, project revision, frame) plus two things only this side knows, the
+    /// incarnation of the page (a reload is a new one: the old page's queued messages never
+    /// equal it) and the selection the handles belong to (a message made against the overlay of
+    /// the previous selection is not the current one). The page only echoes it; the adapter only
+    /// compares it (M4 of the PR #25 review).
+    pub(super) fn overlay_stamp(&self, scene: &str, frame: i64) -> Value {
+        let mut stamp = self.state.gizmo_stamp(scene, frame);
+        stamp["epoch"] = json!(self.viewport.overlay_epoch());
+        stamp["selection"] = json!(self.state.gizmo_selection(scene));
+        stamp
+    }
+
     fn overlay_pointer(&mut self, message: &Value, cx: &mut gpui_kit::Context<Self>) {
         let Some(scene) = self.viewport.directed_scene().map(str::to_owned) else {
             return;
         };
         let phase = message["phase"].as_str().unwrap_or_default();
-        // A cancel is always honoured (it only discards). Anything else must answer the overlay
-        // the core would draw now: the page that sent it may be the one before a reload, the
-        // project before a replacement, or the frame before a seek. The core produced the stamp;
-        // this only compares.
+        // A move or release for a drag the core no longer holds (Escape raced it, or the press
+        // only selected a plane): nothing to do, no notice and nothing counted.
+        if matches!(phase, "move" | "up") && self.state.scene_interaction.drag().is_none() {
+            return;
+        }
+        // A cancel is always honoured (it only discards). Anything else must come from a page
+        // that negotiated the overlay and holds it on, and must answer the overlay the core would
+        // draw now: the page that sent it may be the one before a reload, the project before a
+        // replacement, the frame before a seek or the selection before a click in the tree. The
+        // core produced the stamp; this only compares.
         if phase != "cancel" {
-            let stamp = self.state.gizmo_stamp(&scene, self.state.timeline.playhead);
-            if message["stamp"] != stamp {
+            let negotiated = self.viewport.overlay_supported() && self.viewport.overlay_enabled();
+            let stamp = self.overlay_stamp(&scene, self.state.timeline.playhead);
+            if !negotiated || message["stamp"] != stamp {
                 self.viewport.overlay_note_stale();
                 // The page believes in a drag the overlay no longer describes: end it, so a
                 // release that will be refused too cannot leave it open.
@@ -102,7 +122,11 @@ impl Workstation {
     }
 
     /// Runs one pointer command through the shared handler and settles what a failure leaves.
-    fn overlay_run(&mut self, pointer: PointerCommand, cx: &mut gpui_kit::Context<Self>) {
+    pub(super) fn overlay_run(
+        &mut self,
+        pointer: PointerCommand,
+        cx: &mut gpui_kit::Context<Self>,
+    ) {
         let command = SceneCommand::Gizmo(GizmoCommand::Pointer(pointer));
         let Err(error) = self.scene_execute(command, Source::Gesture, cx) else {
             return;
@@ -159,18 +183,65 @@ impl Workstation {
         }
     }
 
+    /// A command that already answered with the overlay of the state it left (`overlay` in the
+    /// answer of `scene.pointer.*` and `scene.gizmo.state`) hands it to the page, so the sync that
+    /// follows finds it current instead of asking the core to plan the scene a second time for
+    /// the same state (M2 of the PR #25 review). Only when that overlay is the one the core would
+    /// draw now (same stamp) and the page holds the overlay on.
+    pub(super) fn overlay_adopt(&mut self, outcome: &Value) {
+        let overlay = &outcome["overlay"];
+        let Some(scene) = overlay["stamp"]["scene"].as_str() else {
+            return;
+        };
+        if !self.viewport.overlay_enabled()
+            || self.viewport.directed_scene() != Some(scene)
+            || self.playback.running_frame().is_some()
+        {
+            return;
+        }
+        let frame = self.state.timeline.playhead;
+        if overlay["stamp"] != self.state.gizmo_stamp(scene, frame) {
+            return;
+        }
+        let key = self.state.gizmo_overlay_key(scene, frame);
+        let mut overlay = overlay.clone();
+        overlay["stamp"] = self.overlay_stamp(scene, frame);
+        self.viewport.overlay_show(&overlay);
+        self.viewport.overlay_adopted(key);
+    }
+
     /// Keeps the page's overlay in step with the core: on for a directed scene that is on screen,
     /// off otherwise, and redrawn whenever the core's answer changed. Called with every viewport
-    /// sync, which every command already triggers.
+    /// sync, which every command already triggers, so everything that costs a plan of the scene
+    /// is behind a gate that costs none, in this order:
+    ///
+    /// 1. the page must have negotiated the overlay and hold it on (a runtime without
+    ///    `overlay.gizmo`, a hidden monitor, no directed scene: nothing is asked of the core);
+    /// 2. playback runs: the picture moves every frame, so the overlay is cleared once and nothing
+    ///    is planned per tick (no gizmo drawn in a place the moving picture left);
+    /// 3. the page already has the overlay of this very state (`gizmo_overlay_key`), or a command
+    ///    just answered with it ([`overlay_adopt`](Self::overlay_adopt)): nothing is planned.
+    ///
+    /// `PlanTimeline` is not used here on purpose: it borrows the scene and cannot outlive an
+    /// edit (its own contract), and an overlay is wanted once per state, not once per frame.
     pub(super) fn overlay_refresh(&mut self) {
         let scene = self.viewport.directed_scene().map(str::to_owned);
         let want = scene.is_some() && self.viewport.on_screen;
         self.viewport.overlay_set_enabled(want);
-        let (true, Some(scene)) = (want, scene) else {
+        let (true, Some(scene)) = (want && self.viewport.overlay_enabled(), scene) else {
             return;
         };
+        if self.playback.running_frame().is_some() {
+            self.viewport.overlay_hold();
+            return;
+        }
         let frame = self.state.timeline.playhead;
-        let stamp = self.state.gizmo_stamp(&scene, frame);
+        let key = self.state.gizmo_overlay_key(&scene, frame);
+        if self.viewport.overlay_memo_hit(&key) {
+            return;
+        }
+        self.viewport.overlay_computed(key);
+        let stamp = self.overlay_stamp(&scene, frame);
         let request = Command::Scene(SceneCommand::Gizmo(GizmoCommand::State {
             scene,
             at: FrameAt::Frame(frame),
@@ -179,7 +250,9 @@ impl Workstation {
         // (a plan error) simply has no overlay; the monitor reports that failure itself.
         match self.state.execute(request) {
             Ok(answer) => {
-                self.viewport.overlay_show(&answer["overlay"]);
+                let mut overlay = answer["overlay"].clone();
+                overlay["stamp"] = stamp;
+                self.viewport.overlay_show(&overlay);
             }
             Err(_) => {
                 self.viewport.overlay_show(&json!({

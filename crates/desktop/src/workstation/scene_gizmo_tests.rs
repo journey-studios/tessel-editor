@@ -12,7 +12,9 @@ use super::*;
 // The Kit's test macro expands to `#[test]`; the glob import above would resolve it to the Kit macro again.
 use core::prelude::v1::test;
 
-use tessel_editor_core::scene_interaction::{CancelReason, GizmoCommand, SelectMode};
+use tessel_editor_core::scene_interaction::{
+    CancelReason, GizmoCommand, Point, PointerCommand, SelectMode,
+};
 use tessel_editor_core::scene_project::{SceneCommand, SceneSource};
 
 const BUNDLE: &str = include_str!(
@@ -30,8 +32,17 @@ fn run(
     })
 }
 
-/// The fixture scene attached, shown on the monitor and the figure selected.
+/// The fixture scene attached, shown on the monitor and the figure selected, on a page that
+/// announced `overlay.gizmo` and holds the overlay on.
 fn mounted(cx: &mut TestAppContext) -> (Entity<Workstation>, &mut VisualTestContext) {
+    mounted_with(cx, true)
+}
+
+/// Same, on a runtime that does (`supported`) or does not announce `overlay.gizmo`.
+fn mounted_with(
+    cx: &mut TestAppContext,
+    supported: bool,
+) -> (Entity<Workstation>, &mut VisualTestContext) {
     let (view, cx) = fixture(cx);
     run(
         &view,
@@ -53,9 +64,12 @@ fn mounted(cx: &mut TestAppContext) -> (Entity<Workstation>, &mut VisualTestCont
         },
     )
     .unwrap();
-    view.update(cx, |view, _| {
+    view.update(cx, |view, cx| {
         view.viewport.pretend_directed_scene("street");
-        view.viewport.pretend_overlay_supported(true);
+        view.viewport.pretend_overlay_supported(supported);
+        // The sync every command triggers: it switches the page's overlay on (or, without the
+        // feature, leaves it off), as it would in the app.
+        view.viewport_sync(cx);
     });
     cx.run_until_parked();
     (view, cx)
@@ -90,8 +104,7 @@ fn tip_of(overlay: &Value, handle: &str) -> Value {
 /// echoes in every message.
 fn current_stamp(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> Value {
     view.read_with(cx, |view, _| {
-        view.state
-            .gizmo_stamp("street", view.state.timeline.playhead)
+        view.overlay_stamp("street", view.state.timeline.playhead)
     })
 }
 
@@ -218,8 +231,10 @@ fn losing_the_window_focus_cancels_the_drag_and_never_commits_it(cx: &mut TestAp
     assert_eq!((figure_x(&view, cx), undo_depth(&view, cx)), before);
 }
 
+// The wiring that hides the monitor (`update_viewport_visibility` -> this cancel) is the next
+// test, the dialog one: this one is the cancel itself and the idempotence of a second one.
 #[gpui_kit::test]
-fn a_hidden_monitor_cancels_the_drag(cx: &mut TestAppContext) {
+fn cancelling_with_the_hidden_reason_ends_the_drag_without_a_trace(cx: &mut TestAppContext) {
     let (view, cx) = mounted(cx);
     let before = (figure_x(&view, cx), undo_depth(&view, cx));
     start_drag(&view, cx);
@@ -301,6 +316,49 @@ fn an_edit_under_the_drag_ends_it_and_the_old_candidate_never_applies(cx: &mut T
         figure_x(&view, cx),
         before,
         "the candidate was never applied"
+    );
+}
+
+/// `overlay_run`'s own settle. A message of the page cannot reach it with the core refusing the
+/// gesture (the stamp carries the revision, so an edit makes the message stale first), but the
+/// handler is the shared one and a caller that bypasses the page's stamp (a script) gets the same
+/// settle: an edit that does NOT pass through `Workstation::execute` leaves the drag open for the
+/// next move to find out. Deleting the branch leaves the drag open and fails here.
+#[gpui_kit::test]
+fn a_move_the_core_refuses_as_invalidated_settles_the_drag_it_belonged_to(cx: &mut TestAppContext) {
+    let (view, cx) = mounted(cx);
+    let tip = start_drag(&view, cx);
+    let before = figure_x(&view, cx);
+    // Straight into the core: no `execute`, so no sync cancels the drag first.
+    view.update(cx, |view, _| {
+        tessel_editor_core::headless::execute(
+            &mut view.state,
+            &json!({"op":"scene.edit","scene":"street","ops":[
+                {"set": "scene/scene-a/node/figure/width", "value": 3.0}]}),
+        )
+    })
+    .unwrap();
+    assert!(dragging(&view, cx), "nothing has noticed yet");
+    view.update(cx, |view, cx| {
+        view.overlay_run(
+            PointerCommand::Move {
+                point: Point {
+                    u: tip["u"].as_f64().unwrap() + 0.08,
+                    v: tip["v"].as_f64().unwrap(),
+                },
+            },
+            cx,
+        )
+    });
+    cx.run_until_parked();
+    assert!(
+        !dragging(&view, cx),
+        "the invalidated drag is ended by the handler"
+    );
+    assert_eq!(
+        figure_x(&view, cx),
+        before,
+        "and its candidate never applied"
     );
 }
 
@@ -397,9 +455,10 @@ fn a_replaced_project_does_not_answer_to_the_old_projects_press(cx: &mut TestApp
         },
     )
     .unwrap();
-    view.update(cx, |view, _| {
+    view.update(cx, |view, cx| {
         view.viewport.pretend_directed_scene("street");
         view.viewport.pretend_overlay_supported(true);
+        view.viewport_sync(cx);
     });
     run(
         &view,
@@ -527,5 +586,321 @@ fn a_dialog_over_the_monitor_hides_the_page_and_cancels_the_drag(cx: &mut TestAp
     assert!(view.read_with(cx, |view, _| view.workflow.has_dialog()));
     assert!(!view.read_with(cx, |view, _| view.viewport.on_screen));
     assert!(!dragging(&view, cx));
+    assert_eq!((figure_x(&view, cx), undo_depth(&view, cx)), before);
+}
+
+// ---- M2: what the overlay costs, gated before any plan of the scene is built -------------------
+
+/// What the adapter spent on the overlay so far: `(computed, adopted, memo_hits, sets)`.
+fn spent(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> (u64, u64, u64, u64) {
+    view.read_with(cx, |view, _| {
+        let report = view.viewport.overlay_report();
+        let count = |name: &str| report[name].as_u64().unwrap();
+        (
+            count("computed"),
+            count("adopted"),
+            count("memo_hits"),
+            count("sets"),
+        )
+    })
+}
+
+fn sync(view: &Entity<Workstation>, cx: &mut VisualTestContext) {
+    view.update(cx, |view, cx| view.viewport_sync(cx));
+}
+
+fn seek(view: &Entity<Workstation>, cx: &mut VisualTestContext, frame: i64) {
+    view.update(cx, |view, cx| {
+        view.execute(
+            Command::SetPlayhead {
+                frame: tessel_editor_core::Raw::Number(frame as f64),
+            },
+            Source::Cli,
+            cx,
+        )
+    })
+    .unwrap();
+}
+
+#[gpui_kit::test]
+fn a_runtime_without_the_overlay_feature_is_never_planned_for(cx: &mut TestAppContext) {
+    let (view, cx) = mounted_with(cx, false);
+    for frame in [3, 4, 5, 6] {
+        seek(&view, cx, frame);
+        sync(&view, cx);
+    }
+    run(
+        &view,
+        cx,
+        SceneCommand::Select {
+            scene: Some("street".into()),
+            entities: vec![],
+            mode: SelectMode::Clear,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        spent(&view, cx),
+        (0, 0, 0, 0),
+        "no plan, no overlay.set, no memo: the gate is in front of the core"
+    );
+    assert!(!view.read_with(cx, |view, _| view.viewport.overlay_enabled()));
+}
+
+#[gpui_kit::test]
+fn an_overlay_that_is_off_does_not_plan_the_scene_either(cx: &mut TestAppContext) {
+    let (view, cx) = mounted(cx);
+    // The monitor is hidden (a dialog, another tab): the page has the overlay off.
+    view.update(cx, |view, _| view.viewport.on_screen = false);
+    sync(&view, cx);
+    assert!(!view.read_with(cx, |view, _| view.viewport.overlay_enabled()));
+    let before = spent(&view, cx);
+    for frame in [3, 4, 5] {
+        seek(&view, cx, frame);
+        sync(&view, cx);
+    }
+    assert_eq!(
+        spent(&view, cx),
+        before,
+        "nothing was computed while it was off"
+    );
+}
+
+#[gpui_kit::test]
+fn a_state_the_page_already_has_is_not_planned_again(cx: &mut TestAppContext) {
+    let (view, cx) = mounted(cx);
+    let first = spent(&view, cx);
+    assert!(first.0 >= 1, "the first sync asked the core");
+    for _ in 0..5 {
+        sync(&view, cx);
+    }
+    let again = spent(&view, cx);
+    assert_eq!(
+        (again.0, again.2, again.3),
+        (first.0, first.2 + 5, first.3),
+        "five syncs of the same state: five memo hits, no plan, no resend"
+    );
+    // Another selection is another overlay: planned once, then remembered.
+    run(
+        &view,
+        cx,
+        SceneCommand::Select {
+            scene: Some("street".into()),
+            entities: vec![],
+            mode: SelectMode::Clear,
+        },
+    )
+    .unwrap();
+    let cleared = spent(&view, cx);
+    assert_eq!(cleared.0, again.0 + 1, "a changed state is computed once");
+    sync(&view, cx);
+    assert_eq!(spent(&view, cx).0, cleared.0, "and then remembered");
+}
+
+#[gpui_kit::test]
+fn a_drag_is_planned_once_per_move_by_the_core_and_never_again_by_the_sync(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = mounted(cx);
+    let before = spent(&view, cx);
+    let tip = start_drag(&view, cx);
+    for step in 2..=6 {
+        pointer(
+            &view,
+            cx,
+            json!({"phase":"move","point":nudged(&tip, 0.01 * f64::from(step))}),
+        );
+    }
+    let after = spent(&view, cx);
+    assert_eq!(
+        after.0, before.0,
+        "the sync after each pointer command found the overlay the command answered with"
+    );
+    assert!(after.1 >= before.1 + 6, "press and six moves were adopted");
+    assert!(after.3 > before.3, "and the page was sent the overlays");
+}
+
+#[gpui_kit::test]
+fn playback_clears_the_overlay_once_and_plans_nothing_per_frame(cx: &mut TestAppContext) {
+    let (view, cx) = mounted(cx);
+    view.update(cx, |view, cx| {
+        view.playback.preparing = Some(super::playback::Preparing { from: 0 });
+        // No audio device in a test: the picture plays on the wall clock, silent.
+        view.playback_begin(0, Err(CommandError::new("audio_unavailable", "test")), cx);
+    });
+    assert!(view.read_with(cx, |view, _| view.playback.running_frame().is_some()));
+    let before = spent(&view, cx);
+    for frame in 1..=20 {
+        seek(&view, cx, frame);
+    }
+    let during = spent(&view, cx);
+    assert_eq!(
+        (during.0, during.1, during.3),
+        (before.0, before.1, before.3),
+        "twenty frames of playback: no plan of the scene for the overlay, nothing sent"
+    );
+    assert_eq!(
+        view.read_with(cx, |view, _| view.viewport.overlay_report()["held"].clone()),
+        json!(true)
+    );
+    // Stopped, the overlay of the frame it stopped at comes back.
+    view.update(cx, |view, cx| view.playback_stop(cx));
+    sync(&view, cx);
+    let stopped = spent(&view, cx);
+    assert_eq!(
+        stopped.0,
+        during.0 + 1,
+        "planned once, for the frame it stopped at"
+    );
+    assert_eq!(
+        view.read_with(cx, |view, _| view.viewport.overlay_report()["held"].clone()),
+        json!(false)
+    );
+}
+
+// ---- M4: a page that is gone, or not negotiated, does not act ---------------------------------
+
+#[gpui_kit::test]
+fn a_press_with_the_overlay_off_or_not_negotiated_selects_nothing_and_is_counted(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = mounted(cx);
+    let tip = tip_of(&overlay(&view, cx), "x");
+    let stamp = current_stamp(&view, cx);
+    // Off (monitor hidden): the stamp is the current one, and still the press is refused.
+    view.update(cx, |view, _| view.viewport.on_screen = false);
+    sync(&view, cx);
+    let counted = stale_count(&view, cx);
+    send(&view, cx, json!({"phase":"down","point":tip,"stamp":stamp}));
+    assert!(!dragging(&view, cx), "off: no drag opens");
+    assert_eq!(stale_count(&view, cx), counted + 1);
+    // On again, but the runtime lost the feature: refused as well.
+    view.update(cx, |view, _| {
+        view.viewport.on_screen = true;
+        view.viewport.pretend_overlay_supported(false);
+    });
+    send(&view, cx, json!({"phase":"down","point":tip,"stamp":stamp}));
+    assert!(!dragging(&view, cx), "not negotiated: no drag opens");
+    assert_eq!(stale_count(&view, cx), counted + 2);
+}
+
+#[gpui_kit::test]
+fn a_press_with_the_overlay_off_does_not_even_change_the_selection(cx: &mut TestAppContext) {
+    let (view, cx) = mounted(cx);
+    run(
+        &view,
+        cx,
+        SceneCommand::Select {
+            scene: Some("street".into()),
+            entities: vec![],
+            mode: SelectMode::Clear,
+        },
+    )
+    .unwrap();
+    let stamp = current_stamp(&view, cx);
+    let selected = |view: &Entity<Workstation>, cx: &mut VisualTestContext| {
+        view.read_with(cx, |view, _| view.state.gizmo_selection("street"))
+    };
+    assert!(selected(&view, cx).is_empty());
+    let middle = json!({"u":0.5,"v":0.5});
+    view.update(cx, |view, _| view.viewport.on_screen = false);
+    sync(&view, cx);
+    send(
+        &view,
+        cx,
+        json!({"phase":"down","point":middle,"stamp":stamp}),
+    );
+    assert!(
+        selected(&view, cx).is_empty(),
+        "a refused press does not select the plane it landed on"
+    );
+}
+
+/// The page before a reload still has messages in flight. The core's own stamp (scene, session,
+/// revision, frame) is the same on both sides of the reload, so only the epoch tells them apart.
+#[gpui_kit::test]
+fn a_message_of_the_page_before_a_reload_is_refused_though_the_core_stamp_is_the_same(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = mounted(cx);
+    let tip = tip_of(&overlay(&view, cx), "x");
+    let old = current_stamp(&view, cx);
+    let core_before = view.read_with(cx, |view, _| {
+        view.state
+            .gizmo_stamp("street", view.state.timeline.playhead)
+    });
+    // The lifecycle of a reload as the host runs it (`begin_reload` forgets the page's overlay,
+    // which is the call made here: a test window has no page to reload, and
+    // `viewport_host_tests` pins that the reload does it). The reloaded runtime announces the
+    // feature again and the monitor re-syncs. Nothing in the document changed.
+    view.update(cx, |view, cx| {
+        view.viewport.overlay_forget();
+        view.viewport.pretend_overlay_supported(true);
+        view.viewport_sync(cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        view.read_with(cx, |view, _| view
+            .state
+            .gizmo_stamp("street", view.state.timeline.playhead)),
+        core_before,
+        "the core cannot tell the two pages apart"
+    );
+    assert_ne!(
+        current_stamp(&view, cx),
+        old,
+        "the adapter can: a new epoch"
+    );
+    let counted = stale_count(&view, cx);
+    let before = (figure_x(&view, cx), undo_depth(&view, cx));
+    send(&view, cx, json!({"phase":"down","point":tip,"stamp":old}));
+    assert!(!dragging(&view, cx), "the old page's press opens no drag");
+    assert_eq!(stale_count(&view, cx), counted + 1, "and it is counted");
+    assert_eq!((figure_x(&view, cx), undo_depth(&view, cx)), before);
+    // The new page's own press, with the new epoch, works.
+    pointer(&view, cx, json!({"phase":"down","point":tip}));
+    assert!(dragging(&view, cx), "the page that is there now is served");
+}
+
+#[gpui_kit::test]
+fn a_press_made_against_the_previous_selection_is_not_the_current_one(cx: &mut TestAppContext) {
+    let (view, cx) = mounted(cx);
+    let tip = tip_of(&overlay(&view, cx), "x");
+    let old = current_stamp(&view, cx);
+    // The selection changes from the tree while the page's message is in flight.
+    run(
+        &view,
+        cx,
+        SceneCommand::Select {
+            scene: Some("street".into()),
+            entities: vec![],
+            mode: SelectMode::Clear,
+        },
+    )
+    .unwrap();
+    assert_ne!(current_stamp(&view, cx), old);
+    let counted = stale_count(&view, cx);
+    send(&view, cx, json!({"phase":"down","point":tip,"stamp":old}));
+    assert!(!dragging(&view, cx));
+    assert_eq!(stale_count(&view, cx), counted + 1);
+}
+
+#[gpui_kit::test]
+fn a_new_epoch_in_the_middle_of_a_drag_ends_it(cx: &mut TestAppContext) {
+    let (view, cx) = mounted(cx);
+    let before = (figure_x(&view, cx), undo_depth(&view, cx));
+    let tip = start_drag(&view, cx);
+    let old = current_stamp(&view, cx);
+    view.update(cx, |view, _| view.viewport.overlay_forget());
+    view.update(cx, |view, cx| view.viewport_sync(cx));
+    send(
+        &view,
+        cx,
+        json!({"phase":"move","point":nudged(&tip, 0.1),"stamp":old}),
+    );
+    assert!(
+        !dragging(&view, cx),
+        "the old page's move cancels, never continues"
+    );
     assert_eq!((figure_x(&view, cx), undo_depth(&view, cx)), before);
 }
