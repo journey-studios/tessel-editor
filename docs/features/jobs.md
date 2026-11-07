@@ -4,8 +4,8 @@
 
 Lib **V**, `scripts/media`/`scripts/render` **V**, UI **V** (diálogo Tarefas, linha de progresso na barra de status,
 cancelar; `flow.jobs`). `job.discard` (BL094/BL112): lib/host **V** (testes abaixo), CLI headless **V** (processo JSONL real
-`tessel-media`, 20 checks), janela **V no escopo de jobs** (instância própria, só requisições semânticas, 19 checks: o tick
-entrega a remoção a um job e a janela segue respondendo). Dois processos reais (BL111, S2): ver "Junção com claims persistentes". Sem pixels (jobs não desenham na viewport) e sem ponteiro. Ver "Evidência por superfície" abaixo.
+`tessel-media`, 20 checks), janela **V no escopo de jobs** (instância própria, só requisições semânticas, 19 checks na
+medição original e 21 no gate final, 41 no total: o tick entrega a remoção a um job e a janela segue respondendo). Dois processos reais (BL111, S2): ver "Junção com claims persistentes". Sem pixels (jobs não desenham na viewport) e sem ponteiro. Ver "Evidência por superfície" abaixo.
 
 ## Contrato
 
@@ -238,6 +238,45 @@ tick faz na thread da UI: tomar o lock (20 ms no máximo) e, num ledger pequeno,
   carregada eles podem falhar sem regressão (repetir antes de concluir). Mutações executadas (ver acima): `try_lock` com `Duration::ZERO`
   reprova o teste do holder de 2 ms; `try_lock` com `LOCK_WAIT` reprova os de teto de 100 ms. A espera limitada de quem pode
   bloquear segue coberta por `waiting_for_a_lock_nobody_lets_go_of_is_bounded` (executado pelo antecessor).
+
+### Fechamento do gate final da PR #6 (BL094.12, BL112.10–BL112.12; seis threads abertas, a validar)
+
+Seis threads ficaram abertas depois das revisões anteriores. Todas foram verificadas contra o código do head `1221ddd` antes
+de qualquer mudança: cinco achados eram válidos e foram corrigidos (cada um com regressão que a mutação mata) e um era
+documentação parcialmente já fechada. Nada do contrato do diário (BL112.7), da posse do job até o descarte, do rollback
+transacional, do orçamento de 20 ms do tick nem do tick de 10 mil entradas (< 100 ms) mudou; não houve mudança de escopo
+(motor completo/S10).
+
+| Thread | Veredito | Fechamento | Prova |
+|---|---|---|---|
+| CodeRabbit `4497296574` (`cleanup.rs:597`) | válido | falha de lease por **qualquer** motivo mantém arquivo e claim e diz o motivo (BL112.10); só raiz inexistente é pulada | `a_root_whose_lease_fails_for_another_reason_keeps_its_files_claims_and_says_why` (`scene_import_cleanup`) e `recover::…a_root_whose_lease_cannot_be_taken_for_another_reason…`; mutação `Err(_) => {}` mata os dois |
+| CodeRabbit `4497296585` (docs 304–310) | parcialmente já fechado em `44c3de4`; **sobra** corrigida | `jobs.md`, BL112.7 e a matriz já separavam o histórico do atual. Sobravam: o estado de BL112.3 ("bloqueio medido") e a seção "Problema" de F040 em tempo presente; agora dizem que 304–310 ms é o código **anterior ao diário** (head `9bb4d18`) e o atual é 0,27–0,33 ms (head `dd36cc8`) | leitura; o teto de 100 ms não é declarado atingido por texto: a medição é a de `scene_claims_budget.rs` (executada, não ignorada) |
+| OpenCodeReview `4498843850` (`scene_adopt_host.rs:361`) | válido (teste) | `World::unread` + `take_event`: o lote de um `poll` nunca perde o evento que ninguém pediu ainda (BL094.12) | `an_event_in_the_same_batch_is_kept_for_the_next_ask_not_dropped` (lote nas duas ordens, determinístico); mutação (voltar ao `find`) mata |
+| OpenCodeReview `4498843854` (`recover.rs:169`) | válido | a guarda de BL112.8 só com `handled` não vazio; cancelamento mantém `cancelled` e `undecidedFiles` com a falha do ledger ao lado em `details.claimsFault` e em `cleanup.kept` (BL112.11) | quatro testes dirigidos em `recover.rs` (antes do 1º, depois de parcial, raiz ocupada, `forget`/lock preso existentes); duas mutações mortas |
+| OpenCodeReview `4498843858` (`job-discard-proof.py:424`) | válido (média) | latência classificada pelo **instante de envio** dentro do intervalo `[último envio pré-descarte, 1º recebimento de `discarded`]`; controle `SIGSTOP` pelo mesmo classificador (BL112.12) | `scripts/job-discard-proof.spec.py` (13); o filtro antigo **aprova** a mesma amostra lenta (falso PASS demonstrado) e a nova a reprova |
+| OpenCodeReview `4498843863` (`job-discard-proof.py:156`) | válido | cada sessão JSONL fecha seu próprio filho (EOF, `kill` só dele) antes de a fase retornar; `Probe` parado no `finally` | `check` forçado: 0 filhos vivos, `eof` recebido, workspace intacto; mutações sem `ExitStack` e sem `kill` mortas |
+
+**Contrato de `recover` quando os dois erros coexistem (BL112.11).** O cancelamento do usuário continua `cancelled`, com
+`undecidedFiles` e o relatório parcial; a falha do ledger ao registrar os órfãos já tratados não substitui o código, vai em
+`details.claimsFault` e numa linha de `cleanup.kept` (`could not record that N orphan file(s) were handled`). Sem cancelamento a
+falha continua `claims_unavailable` com o relatório parcial, como em BL112.8. Escolha registrada: quem lê só `error.code` vê
+`cancelled` e precisa ler `claimsFault`/`kept` para saber que o ledger também falhou.
+
+**Prova nativa refeita (head de código `3f5f673`, build limpo depois das mutações, sob o lock de GPU).** `job-discard-proof.py`
+**41/41** checks (os 39 anteriores mais 2 novos: o intervalo do descarte é traçável e o controle `SIGSTOP` reprova o
+classificador; JSONL 20 + janela 21; **não** foi forçado a 39). Ocioso p99 34,6 ms (60 respostas); controle por pedido único
+1532,6 ms; controle pelo classificador: n = 2, p99 = máx = 1500,1 ms, reprova p99 e máx como deve; **durante o descarte:
+523 respostas em 14,12 s, p50 1,1 / p99 14,8 / máx 17,0 ms** (tetos p99 ≤ 100 ms e máx ≤ 250 ms, inalterados) e, pelo
+filtro antigo, 522 (a diferença é uma resposta de fronteira); `during_discard_answered_after_the_end` 0. O JSON
+(`docs/migration/s1-job-discard-proof-final-gate.json`) leva as duas medições, o intervalo e a base. `scene-claims-proof.py` 23/23.
+O intervalo de 14 s (4,4 s nas medições anteriores) reflete a máquina compartilhada muito carregada (load 24–130), não uma
+mudança de teto; as latências ficaram iguais. Os binários, o `runtime/dist` e os scripts tiveram o mesmo SHA-256 antes e depois
+de cada prova (sidecars em `/tmp/pr6fix/native`, não versionados).
+
+**Limites mantidos.** A prova nativa continua com ledger pequeno (o aceite grande é provado no host real e em dois processos);
+a falha de lease não foi provada com um adotante concorrente real (é persistente e dirigida); a corrida do descarte terminar no
+mesmo tick da recusa depende de tempo e foi coberta pela estrutura do lote, não provocada; BL112.5 (recusa por holder longo),
+BL112.6 e BL112.1 seguem como estavam; sem release, pixels, Windows ou NFS.
 
 Todo trabalho escreve num `Staging` (pasta no mesmo volume do destino) e **publica por rename** só depois de
 verificar; falha ou cancelamento removem o staging e preservam o destino anterior e os originais.

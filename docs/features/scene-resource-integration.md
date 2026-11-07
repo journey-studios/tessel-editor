@@ -165,7 +165,14 @@ Peças (`scene_resources::cleanup`):
 - **Nenhum `Clone`** em `PreparedSceneImport`, `Adoption`, `PendingAdoption`, `Created` nem
   `Provisional`: uma cópia cairia depois e apagaria a pasta do consumidor que ficou com o original.
 - A remoção toma o mesmo `RootLease` (cooperativo) da publicação, com espera limitada. Raiz
-  ocupada → os arquivos ficam e o relatório diz (`busy_roots`, `kept`). Um arquivo trocado por
+  ocupada → os arquivos ficam e o relatório diz (`busy_roots`, `kept`). **Falha fechada (BL112.10):**
+  qualquer outro motivo para não obter o lease (o arquivo de lock não abre, a raiz não é legível)
+  tem o mesmo efeito: arquivo **e** claim ficam (a claim vira órfã que `recover` recolhe depois), nada
+  é desfeito sem o lease, e `kept` diz o motivo (`its root could not be leased (código: mensagem)`).
+  Só uma raiz que **não existe** é pulada: nada pode estar abaixo dela, e uma adoção também não pode
+  publicar nela (tomar o lease exige a raiz). `recover` aplica a mesma regra a cada raiz de órfãos.
+  Limite: a falha de lease é provada de forma dirigida (uma pasta no lugar do arquivo de lock), não
+  com um adotante concorrente real; a garantia vem de não haver `unlink` sem lease. Um arquivo trocado por
   outro programa (identidade ou conteúdo diferente) ou uma pasta ainda com conteúdo também ficam,
   nunca `remove_dir_all`. Isto **não** é defesa contra escritor hostil do mesmo usuário (BL079).
 - `tracked_under(root)` (pública, para testes e diagnóstico) lista as reivindicações vivas sob
@@ -283,7 +290,7 @@ arbitrário: não há como apontar o `recover` para uma pasta que o projeto não
 | Operação | Tipo do job | Efeito | Resposta / erros |
 |---|---|---|---|
 | `scene.resources.claims` | `preflight` | **Não é só leitura**: abrir o ledger faz o *reap* dos titulares cujo lease sumiu e remove um ledger que ficou vazio. Nunca remove nem lê o conteúdo de arquivo de recurso | `{action, readOnly:false, effects, workspace, available, fault, owners[], reaped[], orphans, entries[]}`. Ledger ilegível **não falha**: `available:false` com `fault` |
-| `scene.resources.recover` | `hash` | Remove só **órfãos** (sem titular vivo), após a mesma prova de conteúdo de todo cleanup (BL097), sob o lease de cada raiz; faz o hash fora da trava do ledger | `{action, workspace, recovery:{reapedHolders, orphans, cleanup:{removedFiles, removedFolders, kept, shared, busyRoots}}}`. Cada arquivo mantido vira `warnings` do job. Erros (no job: `error.code`; esperando com `wait:true` chegam como `job_failed` com `details.job_code`): `claims_unavailable` (pode ocorrer após remoções; `details` contém o relatório parcial), `cancelled` (`details` leva o relatório parcial; o que já saiu continua removido e sem claim); `no_workspace` é recusa imediata, sem job |
+| `scene.resources.recover` | `hash` | Remove só **órfãos** (sem titular vivo), após a mesma prova de conteúdo de todo cleanup (BL097), sob o lease de cada raiz; faz o hash fora da trava do ledger | `{action, workspace, recovery:{reapedHolders, orphans, cleanup:{removedFiles, removedFolders, kept, shared, busyRoots}}}`. Cada arquivo mantido vira `warnings` do job. Erros (no job: `error.code`; esperando com `wait:true` chegam como `job_failed` com `details.job_code`): `claims_unavailable` (pode ocorrer após remoções; `details` contém o relatório parcial), `cancelled` (`details` leva o relatório parcial e `undecidedFiles`; o que já saiu continua removido e sem claim; se o ledger também falhou ao registrar os órfãos tratados, o código continua `cancelled` e a falha vem em `details.claimsFault` e em `cleanup.kept`, BL112.11; um ledger inutilizável quando **nada** foi tratado não troca o cancelamento por `claims_unavailable`); `no_workspace` é recusa imediata, sem job |
 
 Progresso do `recover`: etapa `recover`, `total` = arquivos órfãos, `done` = arquivos decididos.
 Cancelamento (`job.cancel`) vale **entre arquivos e entre blocos do hash** do arquivo em curso
@@ -398,10 +405,12 @@ abaixo).** Um dono persistente de claims precisa manter essas propriedades (test
 
 ### Diário de aceites (BL112.7)
 
-**Problema.** Aceitar um resultado é o último passo da transação do projeto e roda na thread da janela. Reescrever
-`claims.json` para isso custa `O(entradas do ledger inteiro)` (ler, parsear, montar, serializar): 304–310 ms com 10 mil
-entradas em build debug, contra o teto de 100 ms do tick (BL112.3). O critério de 10 mil entradas continua e não foi
-relaxado; também não foi "resolvido" com ajuste de constante, build release, ignorar o teste ou só mover o flush para depois
+**Problema (histórico, anterior ao diário).** Aceitar um resultado é o último passo da transação do projeto e roda na
+thread da janela. Reescrever `claims.json` para isso custava `O(entradas do ledger inteiro)` (ler, parsear, montar,
+serializar): **304–310 ms com 10 mil entradas em build debug** (head `9bb4d18`, medição preservada, **não** é o custo atual),
+contra o teto de 100 ms do tick (BL112.3). Com o diário, medido no head `dd36cc8` e de novo nos gates do fechamento, o mesmo
+aceite com 10 mil entradas custa **0,27–0,33 ms** (ver "Limites" e os gates em `docs/backlog.md`). O critério de 10 mil
+entradas continua e não foi relaxado; também não foi "resolvido" com ajuste de constante, build release, ignorar o teste ou só mover o flush para depois
 do `apply` (o aceite continuaria sendo `O(ledger)` na UI e o projeto passaria a apontar para arquivos antes de o ledger
 dizer que são dele).
 
