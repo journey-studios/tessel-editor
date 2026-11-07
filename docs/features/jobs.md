@@ -262,7 +262,7 @@ transacional, do orçamento de 20 ms do tick nem do tick de 10 mil entradas (< 1
 falha continua `claims_unavailable` com o relatório parcial, como em BL112.8. Escolha registrada: quem lê só `error.code` vê
 `cancelled` e precisa ler `claimsFault`/`kept` para saber que o ledger também falhou.
 
-**Prova nativa refeita (head de código `3f5f673`, build limpo depois das mutações, sob o lock de GPU).** `job-discard-proof.py`
+**Prova nativa refeita (head de código `683a511`, build limpo depois das mutações, sob o lock de GPU).** `job-discard-proof.py`
 **41/41** checks (os 39 anteriores mais 2 novos: o intervalo do descarte é traçável e o controle `SIGSTOP` reprova o
 classificador; JSONL 20 + janela 21; **não** foi forçado a 39). Ocioso p99 34,6 ms (60 respostas); controle por pedido único
 1532,6 ms; controle pelo classificador: n = 2, p99 = máx = 1500,1 ms, reprova p99 e máx como deve; **durante o descarte:
