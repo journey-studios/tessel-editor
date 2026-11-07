@@ -1027,6 +1027,14 @@ class EntryPointTests(unittest.TestCase):
 
 # ---- drv: the repository root ----------------------------------------------------------------------------------------
 
+class CountOrderTests(unittest.TestCase):
+    def test_invalid_counts_fail_before_opening_an_editor(self):
+        for counts in ("4,2", "2,2", "0", "-1", "bad", ""):
+            with self.subTest(counts=counts), self.assertRaises(SystemExit) as stopped:
+                s_video.main(["invalid-counts", "--counts=" + counts])
+            self.assertEqual(stopped.exception.code, 2)
+
+
 class RootTests(unittest.TestCase):
     def root_in_fresh_interpreter(self, env_extra=None, cwd=None):
         env = {k: v for k, v in os.environ.items() if k != "TESSEL_REPO_ROOT"}
@@ -1036,7 +1044,7 @@ class RootTests(unittest.TestCase):
 
     def test_root_is_derived_from_the_driver_file_whatever_the_cwd(self):
         with tempfile.TemporaryDirectory() as elsewhere:
-            self.assertEqual(self.root_in_fresh_interpreter(cwd=elsewhere), str(DRIVERS.parents[3]))
+            self.assertEqual(self.root_in_fresh_interpreter(cwd=elsewhere), os.path.abspath(os.path.join(DRIVERS, *[os.pardir] * 4)))
 
     @unittest.skipUnless(DRIVERS == HERE, "only the committed drivers live inside the repository")
     def test_root_is_the_repository_with_the_scrub_proof(self):

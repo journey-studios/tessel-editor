@@ -26,6 +26,12 @@ def main(argv=None, free_gib=None):
     ap.add_argument("--policies", default="original,auto"); ap.add_argument("--frames", type=int, default=96)
     ap.add_argument("--mix", action="store_true")
     a = ap.parse_args(argv)
+    try:
+        counts = [int(x) for x in a.counts.split(",")]
+    except ValueError:
+        ap.error("--counts must contain positive integers in strictly increasing order")
+    if not counts or any(x <= 0 for x in counts) or any(b <= a for a, b in zip(counts, counts[1:])):
+        ap.error("--counts must contain positive integers in strictly increasing order")
     env = dict(kv.split("=", 1) for kv in a.env.split(",") if kv)
     out = {"label": a.label, "args": vars(a), "runs": []}
 
@@ -77,7 +83,6 @@ def main(argv=None, free_gib=None):
             raise DriverError(f"imported assets not in state ok: {not_ok}")
         print("assets", assets, json.dumps(new_assets[:1])[:400], flush=True)
         tracks = 0
-        counts = [int(x) for x in a.counts.split(",")]
         base_start = 40 if a.mix else 0
         for target in counts:
             while tracks < target:

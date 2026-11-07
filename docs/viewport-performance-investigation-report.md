@@ -331,3 +331,7 @@ Fonte comum: este relatório.
   Os drivers corrigidos **não** foram usados para refazer medições; as tabelas acima vêm dos drivers anteriores.
 - `raw-run-logs.txt`: saída bruta das execuções citadas acima, **com anotações** (linhas `####`) que marcam `vid-b` como inválida e abortada e
   `vid-c` como válida para N = 2 e N = 4 e abortada por disco; as linhas brutas ficam intactas.
+
+### Limite da amostra de thread principal (§6)
+
+O `sample` de 2 s começa após um relógio fixo de 1,5 s desde o início da fase, sem verificar a sobreposição com `state=playing`. Pode incluir preparação e espera pela GPU; a indicação histórica “em reprodução” não comprova esse intervalo. Não se pode concluir ausência de saturação durante playback a partir dessa amostra. Não houve nova medição. O driver de vídeo exige `--counts` positivos e estritamente crescentes.
