@@ -38,8 +38,21 @@ proporção que a imagem-fonte, o enquadramento horizontal muda (a lente é a me
 **Nada é adivinhado.** Sem nenhum elemento de captura o arquivo é um splat comum (`capture: null`, eixos não especificados,
 câmera padrão). Com elementos, mas incompletos, é `incomplete_capture`; contraditórios (`fx` ≠ `fy` além de 0,1 %, ponto
 principal a mais de 1 px do centro, `intrinsic` com skew, `extrinsic` ≠ identidade, `frame` que não é `[1, n]`, `color_space` desconhecido, elemento com forma errada, FOV fora de 1–170°) são
-`ambiguous_capture`; bytes truncados são `invalid_asset`. A mensagem diz que `capture: ignore` importa o mesmo arquivo como
-splat comum. O erro **não muda nada** (documento, revisão, histórico).
+`ambiguous_capture`; bytes truncados — ou um cabeçalho que promete mais bytes do que um `u64` conta — são `invalid_asset`. A
+mensagem diz que `capture: ignore` importa o mesmo arquivo como splat comum. O erro **não muda nada** (documento, revisão,
+histórico).
+
+**Ausência antes de layout (BL143.5).** O cabeçalho é lido sem recusar nada: `list`, tipo desconhecido, contagem que não é
+número ou linha com tokens a mais ficam só registrados. Se nenhum elemento de captura existe, o resultado é `Ok(None)` e o
+arquivo vale pelas regras do leitor anterior (`splat::inspect`): o scanner nunca recusa um PLY comum por algo que ele aceitava.
+Com captura presente, tudo falha fechado: formato que não é `binary_little_endian`, `property` solta, linha `element`/`property`
+malformada (a `property` seguinte **não** cai no elemento anterior), elemento de captura ou `vertex` declarado duas vezes,
+elemento sem tamanho conhecido antes de uma captura (`list`, tipo desconhecido) — tudo `ambiguous_capture` com `details.defect`
+— e contagens/offsets que estouram `u64` ou passam do tamanho do arquivo — `invalid_asset`. A aritmética é `checked_*`; valores
+decodificados só viram inteiro por `whole()` (exato, na faixa), nunca por `as`.
+
+**`color_space` ausente (BL143.9).** Vale sRGB, e o aviso `capture_color_space` diz que foi suposto (`Capture.color_space_declared`,
+gravado no documento apenas quando `false`).
 
 ## Contrato do core / biblioteca
 
@@ -48,12 +61,21 @@ splat comum. O erro **não muda nada** (documento, revisão, histórico).
 
 - `Meta::capture` (em `assets`) guarda a captura do ativo; `Declared::capture` é a escolha do chamador.
 - `asset.add` (e `media.import`) aceitam `capture: "auto" | "ignore"` (padrão `auto`); valor inválido é `invalid_request`.
-  O resultado traz `asset.capture` (inclui `vfov`, `camera`, `orientation`, `up`) e `warnings` quando há.
+  O resultado traz `asset.capture` (inclui `vfov`, `camera`, `orientation`, `up`) e `warnings` quando há. O `media.import` leva os
+  mesmos avisos (`capture_linear_colors`, `capture_version`, `capture_color_space`) em `items[].warnings`, como `code: message`
+  (BL143.7).
+- **Duplicado com outra escolha de `capture` (BL143.6).** Mesmos bytes de um ativo já na biblioteca: se a captura resolvida é a
+  mesma, o item é `duplicate`, como sempre. Se difere (`auto` sobre um ativo importado com `ignore`, ou o inverso), o item é
+  recusado por arquivo com `capture_conflict` (`details`: `existing_asset`, `existing_has_capture`, `requested_has_capture`):
+  nenhuma transação, o ativo, seus clipes, o projeto e o undo ficam como estavam, e o resto do lote segue. Para trocar a escolha,
+  remova o ativo e importe de novo.
 - `clip.add` de um clipe de splat com captura sem `camera` explícito **grava** a câmera da captura em `clip.camera` (visível,
   editável, desfazível). Uma `camera` explícita vence.
 - `Command::SetClipCameraFromCapture` (`clip.camera_capture {clip}`): devolve a câmera da captura a um clipe de cena do splat.
-  `no_capture` se o ativo não tem captura, `camera_orbit_conflict` se o clipe tem chaves de câmera (BL140), no-op sem
-  entrada de undo, uma entrada de undo ("Use capture camera") quando muda.
+  `no_capture` se o ativo não tem captura (só um splat tem; uma captura em ativo de outro tipo é recusada ao registrar e ao abrir
+  o documento), `camera_keys_override` se o clipe tem chaves de câmera e a câmera da captura difere da do clipe (a captura tem
+  órbita 0: não é conflito de órbita; sob chaves seria uma entrada de undo inerte, BL143.9), no-op sem entrada de undo, uma
+  entrada de undo ("Use capture camera") quando muda.
 - `RenderPlan`: a camada de cena de um splat **com captura** leva `orientation:[180,0,0]` (omitido nos demais); a visualização
   de fonte (`preview.set source`) de um splat com captura usa a câmera da captura. É a mesma camada para monitor, `render.frame`
   e export.
@@ -114,14 +136,26 @@ sendo só uma entrada de caminhos; `capture` se escolhe por `media.import`/`asse
 
 | Superfície | Evidência | Estado |
 |---|---|---|
-| Lib | `crates/core/tests/sharp_import.rs` (6 testes: leitura, câmera e giro no plano, simples/ignore sem câmera, recusas com estado intacto + mesmo arquivo com `ignore`, restaurar/undo, salvar/reabrir/schema/FOV recalculado/documento inválido) + 6 unitários em `sharp.rs` + `runtime/test/pure.test.mjs` | V |
-| CLI headless | `crates/media/tests/sharp_import.rs` (3: job de import com falha por arquivo, salvar/reabrir/empacotar/restaurar, relink recusado) e `scripts/sharp-import-proof.py` (24 checks JSONL, processo `tessel-headless`) | V |
+| Lib | `crates/core/tests/sharp_import.rs` (6 testes: leitura, câmera e giro no plano, simples/ignore sem câmera, recusas com estado intacto + mesmo arquivo com `ignore`, restaurar/undo, salvar/reabrir/schema/FOV recalculado/documento inválido) + 6 unitários em `sharp.rs` + `runtime/test/pure.test.mjs` | V (anteriores à revisão) |
+| Lib (revisão, BL143.4–.9) | `sharp.rs`: 6 unitários novos (PLY comum, captura não localizável, duplicados/tokens extras, cabeçalho hostil, `color_space` ausente, `whole`); `sharp_import.rs`: 5 novos (PLY comum com `auto`/`ignore`, cabeçalho hostil, aviso de `color_space`, captura em ativo não splat, fidelidade de cor/enquadramento com oráculo independente e controles negativos) | **A validar — escritos, não executados** (disco abaixo do piso; só `rustfmt`) |
+| CLI headless | `crates/media/tests/sharp_import.rs` (3: job de import com falha por arquivo, salvar/reabrir/empacotar/restaurar, relink recusado) e `scripts/sharp-import-proof.py` (24 checks JSONL, processo `tessel-headless`) | V (anteriores à revisão) |
+| CLI headless (revisão) | `crates/media/tests/sharp_import.rs`: 3 novos (avisos no relatório do `media.import`, duplicado com outra escolha de `capture`, cabeçalho hostil/truncado por arquivo no lote) | **A validar — escritos, não executados** |
 | UI | `crates/desktop/.../sharp_capture_tests.rs` (2 GPUI) e `scripts/sharp-import-proof.py` na janela real própria (30 checks por `ui op/get/invoke`, 5 sondas de pixel nos lugares previstos, a importação simples do mesmo arquivo fora deles, captura nativa [`assets/bl143-sharp-import-window.png`](assets/bl143-sharp-import-window.png)) | V (sem clique de ponteiro) |
 | Pixels reais | `crates/render/tests/sharp_frames.rs` (Chrome + SwiftShader + Spark): cada gaussiana cai no pixel previsto **só pelas intrínsecas do arquivo** (pinhole calculado fora do código sob teste), idem na visualização de fonte, idem no vídeo exportado (H.264); sem o giro de eixos ou com a câmera virada para outro lado a prova falha (mutação executada: `ORIENTATION = [0,0,0]` derruba os dois testes de quadro) | V |
 
-Executado × atribuído: tudo acima foi executado nesta máquina com arquivos sintéticos. **Não** foi executado com uma saída real
-do SHARP (nenhum modelo roda aqui): o formato segue a fonte primária e o espelho sintético; a conferência com um PLY real é
-BL143.1. Sondas de pixel comparam cores dominantes sobre preto (cada gaussiana é um disco suave), não hashes.
+Executado × atribuído: as linhas marcadas **V** foram executadas antes da revisão, com arquivos sintéticos. As correções da
+revisão (BL143.4–.9) foram escritas sem rodar Cargo, build ou render, porque o disco livre estava abaixo do piso de segurança:
+só `rustfmt` e leitura. **Não** foi executado com uma saída real do SHARP (nenhum modelo roda aqui): o formato segue a fonte
+primária e o espelho sintético; a conferência com um PLY real é BL143.1. Um revisor leu o cabeçalho primário de quatro PLYs reais
+(1 179 648 pontos, 1672×941, fx=fy=1330,3168, cx 836, cy 470,5, `color_space` 0, versão 1.5.0, FOV vertical 38,955°): confirma o
+formato em parte, não a execução em Rust nem os pixels.
+
+**Cor (BL143.8).** As sondas de pixel antigas comparam a cor dominante sobre preto, o que **não detecta escurecimento**. O runtime
+já traz a correção BL019-F1; não se repete correção de cor sem prova. O teste novo `colours_and_framing_match_an_independent_oracle_...`
+mede erro de cor por canal e erro de enquadramento em pixels contra um leitor e um pinhole independentes, com controles negativos
+(escurecer, trocar R/B, espelhar, atrás da câmera). Ele cobre o contrato do **arquivo**, não renderiza. **Prova ausente:** comparar a
+leitura Rust do PLY real e um render com a imagem-fonte local (`input/t1-teatro.png`), por cor e enquadramento, só-leitura e fora do
+Git, quando houver disco; até lá BL143.8 fica bloqueado.
 
 Limites: o FOV é vertical (proporção da sequência diferente da fonte muda o corte horizontal); `tessel-scene` que referencia um
 splat com captura não herda câmera nem giro (BL143.2, mas `rotation` por objeto existe); sem seletor de `capture` na janela
