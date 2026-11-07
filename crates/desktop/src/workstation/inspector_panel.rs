@@ -5,6 +5,7 @@
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::accordion::Accordion;
+use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::scroll::ScrollableElement;
 use gpui_kit::component::select::Select;
 use gpui_kit::component::slider::Slider;
@@ -14,16 +15,17 @@ use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use super::Workstation;
 use super::controls::{
     TabSpec, TabStyle, command_tabs, glyph, property_row, quantize, tool_button, value_after_key,
 };
 use super::media::demo_image;
 use super::slider_gesture::{slider_key_up, slider_keys, slider_press};
 use super::tokens::Tokens;
+use super::{Source, Workstation};
 use crate::state::inspector::{
     InspectorTab, PropertyDef, PropertyKind, SECTIONS, SectionDef, Value, section_properties,
 };
+use crate::state::timeline::ClipKind;
 use crate::state::{Command, Raw};
 
 fn tab_label(tab: InspectorTab) -> &'static str {
@@ -42,6 +44,58 @@ fn format_number(value: f64, decimals: u32) -> String {
 const SLIDER_EPSILON: f32 = 1e-4;
 
 impl Workstation {
+    /// Writes the input's text into the selected title, through the shared command.
+    pub(super) fn commit_title_text(&mut self, input: &Entity<InputState>, cx: &mut Context<Self>) {
+        let Some(clip) = self
+            .state
+            .inspector_clip()
+            .filter(|entry| entry.kind == ClipKind::Title)
+            .map(|entry| entry.id.to_string())
+        else {
+            return;
+        };
+        let content = input.read(cx).value().to_string();
+        let result = self.execute(
+            Command::SetClipTextField {
+                clip: clip.clone(),
+                field: "content".to_string(),
+                value: Raw::Text(content),
+            },
+            Source::Gesture,
+            cx,
+        );
+        if result.is_err() {
+            // Refused: the model kept its text, so the input shows it again.
+            self.title_text_shown = None;
+            cx.notify();
+        }
+    }
+
+    /// Pushes the selected title's text into the input when the clip or its text changed.
+    fn sync_title_text(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let wanted = self
+            .state
+            .inspector_clip()
+            .filter(|entry| entry.kind == ClipKind::Title)
+            .and_then(|entry| {
+                entry
+                    .text
+                    .as_ref()
+                    .map(|text| (entry.id.to_string(), text.content.clone()))
+            });
+        let Some(wanted) = wanted else {
+            return;
+        };
+        if self.title_text_shown.as_ref() == Some(&wanted) {
+            return;
+        }
+        let content = wanted.1.clone();
+        // `set_value` does not emit `Change`/`Blur`, so this cannot loop.
+        self.title_text
+            .update(cx, |input, cx| input.set_value(content, window, cx));
+        self.title_text_shown = Some(wanted);
+    }
+
     fn property_control(
         &mut self,
         t: &Tokens,
@@ -200,6 +254,27 @@ impl Workstation {
         clip: &'static str,
     ) -> impl IntoElement + use<> {
         let mut body = div().flex().flex_col().w_full().py(px(4.)).bg(t.panel);
+        if section.id == "text" {
+            self.sync_title_text(window, cx);
+            return body
+                .child(
+                    div().px(px(10.)).py(px(4.)).child(
+                        Input::new(&self.title_text)
+                            .small()
+                            .aria_label("Texto do título"),
+                    ),
+                )
+                .child(
+                    div()
+                        .px(px(10.))
+                        .pb(px(4.))
+                        .text_size(px(10.))
+                        .text_color(t.faint)
+                        .child(
+                            "Enter confirma. ASCII e acentos do português (á é ã ç…); uma linha.",
+                        ),
+                );
+        }
         if section.id == "transform" {
             body = body.child(self.inspector_thumbnail(t));
         }
