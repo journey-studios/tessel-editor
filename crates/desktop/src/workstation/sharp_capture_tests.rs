@@ -165,6 +165,6 @@ fn the_button_restores_the_capture_camera_with_one_undo_step(cx: &mut TestAppCon
         invoke(&view, cx, "camera.capture", "invoke")
             .unwrap_err()
             .code,
-        "camera_orbit_conflict"
+        "camera_keys_override"
     );
 }

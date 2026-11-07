@@ -530,6 +530,12 @@ fn parse_library(value: &Value, base: Option<&Path>) -> Result<Library, CommandE
             Some(asset) => Some(parse_asset(asset, id, base)?),
             None => None,
         };
+        if kind != MediaKind::Splat && asset.as_ref().is_some_and(|a| a.meta.capture.is_some()) {
+            return Err(invalid(format!(
+                "Asset `{id}` is a {} but carries a SHARP capture: only splats do",
+                kind.label()
+            )));
+        }
         let image = item["demo_image"].as_str().and_then(demo_image);
         library
             .add_item(MediaItem {

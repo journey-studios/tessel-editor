@@ -114,6 +114,8 @@ pub struct Capture {
     /// Vertical field of view in degrees: `2 atan(H / (2 fy))`.
     pub vfov: f64,
     pub color_space: ColorSpace,
+    /// `false` when the file has no `color_space` element and sRGB is only assumed (a warning).
+    pub color_space_declared: bool,
     /// Writer version `[major, minor, patch]`; `None` when the file has no `version` element.
     pub version: Option<[u8; 3]>,
 }
@@ -172,6 +174,12 @@ impl Capture {
                 "The file stores linearRGB colors; the editor draws them as stored (BL139)".into(),
             ));
         }
+        if !self.color_space_declared {
+            warnings.push((
+                "capture_color_space",
+                "The file has no `color_space` element; sRGB is assumed".into(),
+            ));
+        }
         match self.version {
             Some([1, ..]) => {}
             Some(version) => warnings.push((
@@ -202,6 +210,7 @@ impl Capture {
             "source": "sharp", "axes": AXES, "up": SOURCE_UP, "orientation": ORIENTATION,
             "image": self.image, "fx": self.fx, "fy": self.fy, "cx": self.cx, "cy": self.cy,
             "vfov": self.vfov, "color_space": self.color_space.label(),
+            "color_space_declared": self.color_space_declared,
             "version": self.version,
             "camera": self.camera().to_json(),
         })
@@ -209,10 +218,15 @@ impl Capture {
 
     /// The part of [`Self::to_json`] that is stored in the project document.
     pub fn to_document(&self) -> Value {
-        json!({
+        let mut document = json!({
             "image": self.image, "fx": self.fx, "fy": self.fy, "cx": self.cx, "cy": self.cy,
             "color_space": self.color_space.label(), "version": self.version,
-        })
+        });
+        // Written only when it is not the default, so older documents stay byte-identical.
+        if !self.color_space_declared {
+            document["color_space_declared"] = json!(false);
+        }
+        document
     }
 
     /// Reads a stored capture, recomputing the derived field of view so a hand edit cannot
@@ -258,7 +272,13 @@ impl Capture {
                 Some(items)
             }
         };
-        let capture = build(
+        let color_space_declared = match value.get("color_space_declared") {
+            None | Some(Value::Null) => true,
+            Some(raw) => raw
+                .as_bool()
+                .ok_or("capture `color_space_declared` is true or false")?,
+        };
+        let mut capture = build(
             image,
             number("fx")?,
             number("fy")?,
@@ -268,6 +288,7 @@ impl Capture {
             version,
         )
         .map_err(|error| error.message)?;
+        capture.color_space_declared = color_space_declared;
         Ok(capture)
     }
 }
@@ -336,6 +357,7 @@ fn build(
         cy,
         vfov,
         color_space,
+        color_space_declared: true,
         version,
     })
 }
@@ -349,25 +371,72 @@ struct Property {
 #[derive(Debug, Clone)]
 struct Element {
     name: String,
-    count: u64,
+    /// `None` when the header's count is not a number.
+    count: Option<u64>,
     properties: Vec<Property>,
-    /// Byte offset of the element's data from the start of the file.
+    /// A `list` property: records without a fixed size, so nothing after them can be located.
+    has_list: bool,
+    /// The `element` or one of its `property` lines had missing or extra tokens.
+    malformed: bool,
+    /// Byte offset of the element's data; only set for the elements the capture needs.
     offset: u64,
 }
 
+/// Why the bytes of an element cannot be placed in the file.
+enum SpanError {
+    /// A list, an unknown type or a count that is not a number: the layout is not known.
+    Unknown(String),
+    /// The header claims more bytes than a `u64` can count.
+    Overflow(String),
+}
+
 impl Element {
-    fn record_size(&self) -> Result<u64, String> {
-        self.properties
-            .iter()
-            .map(|property| {
-                type_size(&property.kind).ok_or_else(|| {
-                    format!(
-                        "Property `{}` of element `{}` has the unsupported type `{}`",
-                        property.name, self.name, property.kind
-                    )
-                })
+    fn new(name: &str, count: Option<u64>, malformed: bool) -> Self {
+        Self {
+            name: name.to_string(),
+            count,
+            properties: Vec::new(),
+            has_list: false,
+            malformed,
+            offset: 0,
+        }
+    }
+
+    fn record_size(&self) -> Result<u64, SpanError> {
+        if self.has_list {
+            return Err(SpanError::Unknown(format!(
+                "Element `{}` has a list property: its records have no fixed size",
+                self.name
+            )));
+        }
+        self.properties.iter().try_fold(0u64, |sum, property| {
+            let size = type_size(&property.kind).ok_or_else(|| {
+                SpanError::Unknown(format!(
+                    "Property `{}` of element `{}` has the unsupported type `{}`",
+                    property.name, self.name, property.kind
+                ))
+            })?;
+            sum.checked_add(size).ok_or_else(|| {
+                SpanError::Overflow(format!(
+                    "Element `{}` has an impossible record size",
+                    self.name
+                ))
             })
-            .sum()
+        })
+    }
+
+    /// The bytes the element occupies, with checked arithmetic: a hostile header must not wrap.
+    fn span(&self) -> Result<u64, SpanError> {
+        let count = self.count.ok_or_else(|| {
+            SpanError::Unknown(format!("Element `{}` has no valid record count", self.name))
+        })?;
+        let record = self.record_size()?;
+        record.checked_mul(count).ok_or_else(|| {
+            SpanError::Overflow(format!(
+                "Element `{}` claims {count} records of {record} bytes: more than a file can hold",
+                self.name
+            ))
+        })
     }
 }
 
@@ -394,6 +463,15 @@ fn decode(kind: &str, bytes: &[u8]) -> f64 {
     }
 }
 
+/// A decoded value as an exact whole number in `0..=max`, or `None`: no truncation, no wrapping.
+fn whole(value: f64, max: f64) -> Option<u64> {
+    (value.is_finite() && value >= 0.0 && value.fract() == 0.0 && value <= max)
+        .then_some(value as u64)
+}
+
+/// `2^53`: the largest range where `f64` counts every integer.
+const EXACT_F64: f64 = 9_007_199_254_740_992.0;
+
 fn io_error(path: &Path, error: &std::io::Error) -> CommandError {
     CommandError::new(
         "asset_unreadable",
@@ -406,13 +484,27 @@ fn invalid(path: &Path, message: impl Into<String>) -> CommandError {
     CommandError::new("invalid_asset", message).target(path.to_string_lossy())
 }
 
-/// Parses the header into elements with their byte offsets.
-fn layout(path: &Path, reader: &mut impl BufRead) -> Result<Vec<Element>, CommandError> {
+/// What the header says, with every defect recorded instead of refused: whether a defect matters
+/// depends on whether the file has capture elements at all (BL143.5).
+struct Header {
+    elements: Vec<Element>,
+    binary: bool,
+    /// Bytes of the header, `end_header` line included.
+    length: u64,
+    /// A `property` that precedes every `element`.
+    stray_property: bool,
+}
+
+/// Parses the header. Only a file that is not a PLY at all fails here; a list, an unknown type or
+/// a malformed line is recorded and judged later, so a plain splat the previous reader accepts is
+/// never refused by this scanner.
+fn parse_header(path: &Path, reader: &mut impl BufRead) -> Result<Header, CommandError> {
     let mut consumed = 0usize;
     let mut elements: Vec<Element> = Vec::new();
     let mut line = String::new();
     let mut first = true;
     let mut binary = false;
+    let mut stray_property = false;
     loop {
         line.clear();
         let read = reader
@@ -436,48 +528,88 @@ fn layout(path: &Path, reader: &mut impl BufRead) -> Result<Vec<Element>, Comman
         let parts: Vec<&str> = text.split_whitespace().collect();
         match parts.as_slice() {
             ["format", name, ..] => binary = *name == "binary_little_endian",
-            ["element", name, count] => elements.push(Element {
-                name: (*name).to_string(),
-                count: count
-                    .parse()
-                    .map_err(|_| invalid(path, format!("Invalid count `{count}` of `{name}`")))?,
-                properties: Vec::new(),
-                offset: 0,
-            }),
-            ["property", "list", ..] => {
-                return Err(invalid(
-                    path,
-                    "A PLY with list properties is not a Gaussian splat",
+            ["element", name, count] => {
+                elements.push(Element::new(name, count.parse().ok(), false))
+            }
+            // Missing or extra tokens: still an element of its own, so the properties after it
+            // never fall into the previous one.
+            ["element", rest @ ..] => {
+                elements.push(Element::new(
+                    rest.first().copied().unwrap_or(""),
+                    None,
+                    true,
                 ));
             }
-            ["property", kind, name] => {
-                let element = elements
-                    .last_mut()
-                    .ok_or_else(|| invalid(path, "A `property` before any `element`"))?;
-                element.properties.push(Property {
+            ["property", "list", ..] => match elements.last_mut() {
+                Some(element) => element.has_list = true,
+                None => stray_property = true,
+            },
+            ["property", kind, name] => match elements.last_mut() {
+                Some(element) => element.properties.push(Property {
                     name: (*name).to_string(),
                     kind: (*kind).to_string(),
-                });
-            }
+                }),
+                None => stray_property = true,
+            },
+            ["property", ..] => match elements.last_mut() {
+                Some(element) => element.malformed = true,
+                None => stray_property = true,
+            },
             ["end_header"] => break,
             _ => {}
         }
     }
-    if !binary {
-        return Err(invalid(
-            path,
-            "Only `binary_little_endian` Gaussian PLY files are supported",
+    let length =
+        u64::try_from(consumed).map_err(|_| invalid(path, "The PLY header is too large"))?;
+    Ok(Header {
+        elements,
+        binary,
+        length,
+        stray_property,
+    })
+}
+
+fn is_capture(name: &str) -> bool {
+    CAPTURE_ELEMENTS.contains(&name)
+}
+
+/// A header defect that makes a file with capture elements unreadable (never reached for a plain
+/// splat): malformed lines and elements declared twice.
+fn header_defect(header: &Header) -> Option<(String, Value)> {
+    if header.stray_property {
+        return Some((
+            "The header has a `property` before any `element`".into(),
+            json!({ "defect": "stray_property" }),
         ));
     }
-    let mut offset = consumed as u64;
-    for element in &mut elements {
-        element.offset = offset;
-        let size = element
-            .record_size()
-            .map_err(|message| invalid(path, message))?;
-        offset += size * element.count;
+    if let Some(element) = header.elements.iter().find(|element| element.malformed) {
+        return Some((
+            format!(
+                "The header of element `{}` has missing or extra tokens, so which element its \
+                 properties belong to is not stated (malformed header)",
+                element.name
+            ),
+            json!({ "defect": "malformed", "element": element.name }),
+        ));
     }
-    Ok(elements)
+    for element in &header.elements {
+        let counted = header
+            .elements
+            .iter()
+            .filter(|other| other.name == element.name)
+            .count();
+        if counted > 1 && (is_capture(&element.name) || element.name == "vertex") {
+            return Some((
+                format!(
+                    "Element `{}` is declared {counted} times: which one holds the data is not \
+                     stated (duplicate element)",
+                    element.name
+                ),
+                json!({ "defect": "duplicate", "element": element.name, "count": counted }),
+            ));
+        }
+    }
+    None
 }
 
 /// Reads the capture metadata of `path` (an already identified Gaussian PLY).
@@ -486,6 +618,7 @@ fn layout(path: &Path, reader: &mut impl BufRead) -> Result<Vec<Element>, Comman
 /// * `Ok(Some(_))`: a complete, consistent SHARP capture.
 /// * `Err(incomplete_capture | ambiguous_capture)`: capture elements without a usable meaning;
 ///   nothing is guessed. [`Choice::Ignore`] turns every one of them into `Ok(None)`.
+/// * `Err(invalid_asset)`: a header that promises more bytes than exist (or than a `u64` counts).
 pub fn read(path: &Path, choice: Choice) -> Result<Option<Capture>, CommandError> {
     if choice == Choice::Ignore {
         return Ok(None);
@@ -510,19 +643,35 @@ fn read_capture(path: &Path) -> Result<Option<Capture>, CommandError> {
         .map_err(|error| io_error(path, &error))?
         .len();
     let mut reader = BufReader::new(file);
-    let elements = layout(path, &mut reader)?;
-    let present: Vec<&str> = elements
+    let mut header = parse_header(path, &mut reader)?;
+    // Absence first: a plain splat is judged by the previous reader's rules only, so a list, an
+    // unknown type or an odd line elsewhere in its header cannot make this scanner refuse it.
+    let present: Vec<String> = header
+        .elements
         .iter()
-        .map(|element| element.name.as_str())
-        .filter(|name| CAPTURE_ELEMENTS.contains(name))
+        .filter(|element| is_capture(&element.name))
+        .map(|element| element.name.clone())
         .collect();
-    if present.is_empty() {
+    let Some(last) = header
+        .elements
+        .iter()
+        .rposition(|element| is_capture(&element.name))
+    else {
         return Ok(None);
+    };
+    // From here the capture is present: whatever cannot be read exactly fails closed.
+    if !header.binary {
+        return Err(invalid(
+            path,
+            "Only `binary_little_endian` Gaussian PLY files are supported",
+        ));
     }
-    let find = |name: &str| elements.iter().find(|element| element.name == name);
+    if let Some((message, details)) = header_defect(&header) {
+        return Err(ambiguous(message, details).target(path.to_string_lossy()));
+    }
     let missing: Vec<&str> = ["intrinsic", "image_size"]
         .into_iter()
-        .filter(|name| find(name).is_none())
+        .filter(|name| !present.iter().any(|present| present == name))
         .collect();
     if !missing.is_empty() {
         return Err(CommandError::new(
@@ -537,16 +686,41 @@ fn read_capture(path: &Path) -> Result<Option<Capture>, CommandError> {
         .target(path.to_string_lossy())
         .details(json!({ "present": present, "missing": missing })));
     }
-    let end = elements
-        .last()
-        .map(|element| element.offset + element.record_size().unwrap_or(0) * element.count)
-        .unwrap_or(0);
-    if length < end {
+    // Place every element up to the last capture one. Elements after it do not matter.
+    let mut offset = header.length;
+    for element in &mut header.elements[..=last] {
+        element.offset = offset;
+        let span = match element.span() {
+            Ok(span) => span,
+            Err(SpanError::Unknown(message)) => {
+                return Err(ambiguous(
+                    format!("{message}; the capture elements cannot be located"),
+                    json!({ "defect": "layout", "element": element.name }),
+                )
+                .target(path.to_string_lossy()));
+            }
+            Err(SpanError::Overflow(message)) => return Err(invalid(path, message)),
+        };
+        offset = offset.checked_add(span).ok_or_else(|| {
+            invalid(
+                path,
+                format!(
+                    "Element `{}` ends beyond what a file can hold",
+                    element.name
+                ),
+            )
+        })?;
+    }
+    if length < offset {
         return Err(invalid(
             path,
-            format!("The PLY is truncated: the header promises {end} bytes, the file has {length}"),
+            format!(
+                "The PLY is truncated: the header promises {offset} bytes, the file has {length}"
+            ),
         ));
     }
+    let elements = &header.elements;
+    let find = |name: &str| elements.iter().find(|element| element.name == name);
     let mut values = |name: &str,
                       count: u64,
                       allowed: &[&str]|
@@ -554,7 +728,7 @@ fn read_capture(path: &Path) -> Result<Option<Capture>, CommandError> {
         let Some(element) = find(name) else {
             return Ok(None);
         };
-        let shaped = element.count == count
+        let shaped = element.count == Some(count)
             && element.properties.len() == 1
             && allowed.contains(&element.properties[0].kind.as_str());
         if !shaped {
@@ -562,7 +736,7 @@ fn read_capture(path: &Path) -> Result<Option<Capture>, CommandError> {
                 format!(
                     "Element `{name}` has {} records of ({}); the SHARP writer emits {count} of one \
                      {} property",
-                    element.count,
+                    element.count.unwrap_or(0),
                     element
                         .properties
                         .iter()
@@ -575,11 +749,18 @@ fn read_capture(path: &Path) -> Result<Option<Capture>, CommandError> {
             ));
         }
         let kind = &element.properties[0].kind;
-        let size = type_size(kind).unwrap_or(4) as usize;
+        let unreadable = || invalid(path, format!("Element `{name}` is too large to read"));
+        let size = type_size(kind)
+            .and_then(|size| usize::try_from(size).ok())
+            .ok_or_else(unreadable)?;
+        let wanted = usize::try_from(count)
+            .ok()
+            .and_then(|count| count.checked_mul(size))
+            .ok_or_else(unreadable)?;
         reader
             .seek(SeekFrom::Start(element.offset))
             .map_err(|error| io_error(path, &error))?;
-        let mut bytes = vec![0u8; size * count as usize];
+        let mut bytes = vec![0u8; wanted];
         reader
             .read_exact(&mut bytes)
             .map_err(|error| io_error(path, &error))?;
@@ -610,9 +791,11 @@ fn read_capture(path: &Path) -> Result<Option<Capture>, CommandError> {
             ));
         }
     }
-    let vertices = find("vertex").map_or(0, |element| element.count);
+    let vertices = find("vertex")
+        .and_then(|element| element.count)
+        .unwrap_or(0);
     if let Some(frame) = values("frame", 2, &["int", "int32", "uint", "uint32"])?
-        && (frame[0] != 1.0 || frame[1] != vertices as f64)
+        && (whole(frame[0], EXACT_F64) != Some(1) || whole(frame[1], EXACT_F64) != Some(vertices))
     {
         return Err(ambiguous(
             format!(
@@ -630,21 +813,35 @@ fn read_capture(path: &Path) -> Result<Option<Capture>, CommandError> {
             json!({ "disparity": disparity }),
         ));
     }
-    let color_space = match values("color_space", 1, &["uchar", "uint8"])? {
+    let declared = values("color_space", 1, &["uchar", "uint8"])?;
+    let color_space_declared = declared.is_some();
+    let color_space = match declared {
+        // No `color_space` element: sRGB is assumed, and the warning says so (BL143.9).
         None => ColorSpace::Srgb,
-        Some(code) => match code[0] as u8 {
-            0 => ColorSpace::Srgb,
-            1 => ColorSpace::LinearRgb,
-            other => {
+        Some(code) => match whole(code[0], 255.0) {
+            Some(0) => ColorSpace::Srgb,
+            Some(1) => ColorSpace::LinearRgb,
+            _ => {
                 return Err(ambiguous(
-                    format!("`color_space` is {other}; 0 is sRGB and 1 is linearRGB"),
-                    json!({ "color_space": other }),
+                    format!("`color_space` is {}; 0 is sRGB and 1 is linearRGB", code[0]),
+                    json!({ "color_space": code[0] }),
                 ));
             }
         },
     };
-    let version = values("version", 3, &["uchar", "uint8"])?
-        .map(|bytes| [bytes[0] as u8, bytes[1] as u8, bytes[2] as u8]);
+    let version = match values("version", 3, &["uchar", "uint8"])? {
+        None => None,
+        Some(bytes) => Some(
+            bytes
+                .iter()
+                .map(|value| whole(*value, 255.0).and_then(|value| u8::try_from(value).ok()))
+                .collect::<Option<Vec<u8>>>()
+                .and_then(|bytes| <[u8; 3]>::try_from(bytes).ok())
+                .ok_or_else(|| {
+                    ambiguous("`version` is not three bytes", json!({ "version": bytes }))
+                })?,
+        ),
+    };
     // The matrix is row-major `fx 0 cx / 0 fy cy / 0 0 1`: anything else is skew or a different model.
     let off_axis = [1usize, 3, 6, 7];
     if off_axis.iter().any(|index| intrinsic[*index] != 0.0) || intrinsic[8] != 1.0 {
@@ -653,18 +850,15 @@ fn read_capture(path: &Path) -> Result<Option<Capture>, CommandError> {
             json!({ "intrinsic": intrinsic }),
         ));
     }
-    let image = [size[0] as u32, size[1] as u32];
-    if size
-        .iter()
-        .any(|value| *value < 0.0 || value.fract() != 0.0)
-    {
+    let pixel = |value: f64| whole(value, f64::from(u32::MAX)).and_then(|v| u32::try_from(v).ok());
+    let (Some(width), Some(height)) = (pixel(size[0]), pixel(size[1])) else {
         return Err(ambiguous(
             "The image size is not made of whole non-negative pixels",
             json!({ "image_size": size }),
         ));
-    }
+    };
     build(
-        image,
+        [width, height],
         intrinsic[0],
         intrinsic[4],
         intrinsic[2],
@@ -672,7 +866,10 @@ fn read_capture(path: &Path) -> Result<Option<Capture>, CommandError> {
         color_space,
         version,
     )
-    .map(Some)
+    .map(|mut capture| {
+        capture.color_space_declared = color_space_declared;
+        Some(capture)
+    })
     .map_err(|error| error.target(path.to_string_lossy()))
 }
 
@@ -903,5 +1100,260 @@ mod tests {
         let mut bad = stored.clone();
         bad["fx"] = json!(-4.0);
         assert!(Capture::from_document(&bad).is_err());
+    }
+
+    /// Rewrites the ASCII header of a PLY and keeps its binary body untouched.
+    fn edit_header(path: &Path, edit: impl Fn(&str) -> String) {
+        let bytes = std::fs::read(path).unwrap();
+        let marker = b"end_header\n";
+        let at = bytes
+            .windows(marker.len())
+            .position(|window| window == marker)
+            .unwrap()
+            + marker.len();
+        let mut edited = edit(std::str::from_utf8(&bytes[..at]).unwrap()).into_bytes();
+        edited.extend_from_slice(&bytes[at..]);
+        std::fs::write(path, edited).unwrap();
+    }
+
+    fn sharp(dir: &Path, name: &str, spec: &SharpSpec) -> std::path::PathBuf {
+        let path = dir.join(format!("{name}.ply"));
+        write_sharp_ply(&path, spec).unwrap();
+        path
+    }
+
+    fn plain_spec() -> SharpSpec {
+        SharpSpec {
+            metadata: false,
+            ..SharpSpec::default()
+        }
+    }
+
+    #[test]
+    fn a_plain_splat_is_never_refused_for_what_the_previous_reader_accepts() {
+        let dir = temp("plain-odd");
+        // (name, text to find in the header, text that replaces it)
+        let variants = [
+            (
+                "list",
+                "end_header\n",
+                "element face 1\nproperty list uchar int vertex_indices\nend_header\n",
+            ),
+            (
+                "unknown-type",
+                "end_header\n",
+                "element extra 2\nproperty half weight\nend_header\n",
+            ),
+            (
+                "extra-tokens",
+                "end_header\n",
+                "element face 1 extra\nproperty uchar flag\nend_header\n",
+            ),
+            (
+                "bad-count",
+                "end_header\n",
+                "element face many\nproperty float w\nend_header\n",
+            ),
+            (
+                "stray-property",
+                "element vertex",
+                "property float stray\nelement vertex",
+            ),
+            (
+                "oversized-other-element",
+                "end_header\n",
+                "element huge 18446744073709551615\nproperty double d\nend_header\n",
+            ),
+        ];
+        for (name, find, replace) in variants {
+            let path = sharp(&dir, name, &plain_spec());
+            edit_header(&path, |header| header.replacen(find, replace, 1));
+            // The previous reader accepts it: that is the bar this scanner must not raise.
+            crate::splat::inspect(&path).unwrap_or_else(|error| panic!("{name}: {error}"));
+            for choice in [Choice::Auto, Choice::Ignore] {
+                assert_eq!(read(&path, choice).unwrap(), None, "{name} with {choice:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_capture_that_cannot_be_located_fails_closed_and_ignore_still_imports_it() {
+        let dir = temp("unlocatable");
+        for (name, insert) in [
+            (
+                "list",
+                "element face 1\nproperty list uchar int vertex_indices\n",
+            ),
+            ("unknown-type", "element extra 2\nproperty half weight\n"),
+            ("bad-count", "element face many\nproperty float w\n"),
+        ] {
+            // The odd element sits between the splat and the capture elements.
+            let path = sharp(&dir, name, &SharpSpec::default());
+            edit_header(&path, |header| {
+                header.replacen(
+                    "element extrinsic",
+                    &format!("{insert}element extrinsic"),
+                    1,
+                )
+            });
+            let error = read(&path, Choice::Auto).unwrap_err();
+            assert_eq!(error.code, "ambiguous_capture", "{name}: {error:?}");
+            assert!(error.message.contains("cannot be located"), "{name}");
+            assert_eq!(read(&path, Choice::Ignore).unwrap(), None, "{name}");
+        }
+    }
+
+    #[test]
+    fn duplicate_elements_and_extra_tokens_are_typed_errors_not_a_property_in_the_wrong_element() {
+        let dir = temp("duplicates");
+        let cases: [(&str, &str, &str, &str); 5] = [
+            (
+                "duplicate-intrinsic",
+                "element version 3\nproperty uchar version\n",
+                "element version 3\nproperty uchar version\nelement intrinsic 9\nproperty float intrinsic\n",
+                "duplicate element",
+            ),
+            (
+                "duplicate-vertex",
+                "element extrinsic",
+                "element vertex 1\nproperty float x\nelement extrinsic",
+                "duplicate element",
+            ),
+            (
+                // The `element` line is not skipped: its `property` would otherwise land in the
+                // previous element (`image_size`) and make a plausible, wrong layout.
+                "extra-token-element",
+                "element frame 2\n",
+                "element frame 2 extra\n",
+                "malformed header",
+            ),
+            (
+                "short-element",
+                "element frame 2\n",
+                "element frame\n",
+                "malformed header",
+            ),
+            (
+                "extra-token-property",
+                "property float disparity\n",
+                "property float disparity extra\n",
+                "malformed header",
+            ),
+        ];
+        for (name, find, replace, needle) in cases {
+            let path = sharp(&dir, name, &SharpSpec::default());
+            edit_header(&path, |header| header.replacen(find, replace, 1));
+            let error = read(&path, Choice::Auto).unwrap_err();
+            assert_eq!(error.code, "ambiguous_capture", "{name}: {error:?}");
+            assert!(error.message.contains(needle), "{name}: {}", error.message);
+            assert!(error.details.is_some(), "{name}: details");
+            assert_eq!(read(&path, Choice::Ignore).unwrap(), None, "{name}");
+        }
+        // The stray `property` of a capture file is refused too.
+        let path = sharp(&dir, "stray", &SharpSpec::default());
+        edit_header(&path, |header| {
+            header.replacen("element vertex", "property float stray\nelement vertex", 1)
+        });
+        assert_eq!(
+            read(&path, Choice::Auto).unwrap_err().code,
+            "ambiguous_capture"
+        );
+    }
+
+    #[test]
+    fn a_hostile_header_cannot_wrap_the_offsets_or_ask_for_a_huge_buffer() {
+        let dir = temp("hostile");
+        let huge_counts = [
+            u64::MAX.to_string(),
+            // 56 bytes per record: this one overflows only in the multiplication.
+            (u64::MAX / 56 + 1).to_string(),
+            // No overflow, a file that is simply far too small for what it promises.
+            (1u64 << 40).to_string(),
+        ];
+        for count in huge_counts {
+            let path = sharp(&dir, "vertex", &SharpSpec::default());
+            edit_header(&path, |header| {
+                header.replacen("element vertex 5", &format!("element vertex {count}"), 1)
+            });
+            let error = read(&path, Choice::Auto).unwrap_err();
+            assert_eq!(error.code, "invalid_asset", "{count}: {error:?}");
+            assert_eq!(read(&path, Choice::Ignore).unwrap(), None);
+        }
+        // A capture element that claims a gigantic count is refused before any read.
+        let path = sharp(&dir, "capture-count", &SharpSpec::default());
+        edit_header(&path, |header| {
+            header.replacen(
+                "element intrinsic 9",
+                "element intrinsic 18446744073709551615",
+                1,
+            )
+        });
+        assert_eq!(read(&path, Choice::Auto).unwrap_err().code, "invalid_asset");
+        // Many large elements before the capture add up past `u64`.
+        let path = sharp(&dir, "sum", &SharpSpec::default());
+        edit_header(&path, |header| {
+            header.replacen(
+                "element extrinsic",
+                "element a 9223372036854775807\nproperty uchar a\n\
+                 element b 9223372036854775807\nproperty uchar b\n\
+                 element c 9223372036854775807\nproperty uchar c\nelement extrinsic",
+                1,
+            )
+        });
+        assert_eq!(read(&path, Choice::Auto).unwrap_err().code, "invalid_asset");
+        // A truncated file stays a typed error at every cut inside the capture data.
+        let whole = sharp(&dir, "whole", &SharpSpec::default());
+        let bytes = std::fs::read(&whole).unwrap();
+        for cut in 1..40 {
+            let short = dir.join("short.ply");
+            std::fs::write(&short, &bytes[..bytes.len() - cut]).unwrap();
+            assert_eq!(
+                read(&short, Choice::Auto).unwrap_err().code,
+                "invalid_asset",
+                "{cut}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_missing_color_space_is_assumed_srgb_with_an_explicit_warning_that_survives_the_document() {
+        let dir = temp("no-color-space");
+        let path = sharp(
+            &dir,
+            "a",
+            &SharpSpec {
+                color_space: None,
+                ..SharpSpec::default()
+            },
+        );
+        let capture = read(&path, Choice::Auto).unwrap().unwrap();
+        assert_eq!(capture.color_space, ColorSpace::Srgb);
+        assert!(!capture.color_space_declared);
+        let codes: Vec<&str> = capture.warnings().iter().map(|(code, _)| *code).collect();
+        assert_eq!(codes, ["capture_color_space"]);
+        assert_eq!(capture.to_json()["color_space_declared"], false);
+        // The stored form keeps the fact, and a declared one stays byte-identical to before.
+        assert_eq!(
+            Capture::from_document(&capture.to_document()).unwrap(),
+            capture
+        );
+        let declared = read(&sharp(&dir, "b", &SharpSpec::default()), Choice::Auto)
+            .unwrap()
+            .unwrap();
+        assert!(declared.color_space_declared);
+        assert!(declared.to_document().get("color_space_declared").is_none());
+        assert!(declared.warnings().is_empty());
+    }
+
+    #[test]
+    fn a_decoded_value_is_only_a_whole_number_inside_its_range() {
+        assert_eq!(whole(0.0, 255.0), Some(0));
+        assert_eq!(whole(255.0, 255.0), Some(255));
+        assert_eq!(whole(256.0, 255.0), None);
+        assert_eq!(whole(-1.0, 255.0), None);
+        assert_eq!(whole(1.5, 255.0), None);
+        assert_eq!(whole(f64::NAN, 255.0), None);
+        assert_eq!(whole(f64::INFINITY, f64::MAX), None);
+        assert_eq!(whole(EXACT_F64, EXACT_F64), Some(1 << 53));
     }
 }

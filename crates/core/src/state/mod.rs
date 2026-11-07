@@ -428,7 +428,12 @@ impl EditorState {
         if clip.kind != ClipKind::Scene {
             return None;
         }
-        self.library.item(clip.media?)?.asset.as_ref()?.meta.capture
+        let item = self.library.item(clip.media?)?;
+        // Only a splat has a capture camera, whatever an asset description claims.
+        if item.kind != MediaKind::Splat {
+            return None;
+        }
+        item.asset.as_ref()?.meta.capture
     }
 
     fn clip_ref(&self, id: &str) -> Result<(Id, ClipKind), CommandError> {
@@ -758,10 +763,13 @@ impl EditorState {
                 else {
                     return Err(CommandError::unknown_element("clip", &clip));
                 };
-                if !entry.camera_keys.is_empty() {
+                // The capture camera has no orbit, so this is not an orbit conflict: with keys the
+                // clip camera is never drawn, and applying it would be an inert undo entry
+                // (the same refusal `clip.camera` gives, BL140.7).
+                if !entry.camera_keys.is_empty() && entry.camera != Some(camera) {
                     return Err(CommandError::new(
-                        "camera_orbit_conflict",
-                        "The clip has camera keys, which replace the base camera: clear them first",
+                        "camera_keys_override",
+                        "The clip has camera keys, which replace its camera: clear them first",
                     )
                     .target(target));
                 }
@@ -893,6 +901,18 @@ impl EditorState {
                     CommandError::new("unknown_element", "The library has no bin")
                 })?,
             };
+        // A capture camera is a property of a splat file (BL143): any other asset carrying one
+        // is a corrupt description, refused before it reaches the library or a plan.
+        if kind != MediaKind::Splat && asset.meta.capture.is_some() {
+            return Err(CommandError::new(
+                "invalid_asset",
+                format!(
+                    "A {} asset cannot carry a SHARP capture camera: only splats do",
+                    kind.label()
+                ),
+            )
+            .target(id.as_str()));
+        }
         // WHY: a scene that names a missing splat would fail only at render time; failing
         // at registration keeps the project free of dangling references.
         for required in &asset.meta.requires {

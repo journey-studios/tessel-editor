@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use tessel_editor_core::fixtures::{
-    SHARP_FIXTURE_VFOV, SharpSpec, write_sharp_ply, write_standard_set,
+    SHARP_FIXTURE_IMAGE, SHARP_FIXTURE_PIXELS, SHARP_FIXTURE_VFOV, SharpSpec, write_sharp_ply,
+    write_standard_set,
 };
 use tessel_editor_core::{EditorState, headless};
 
@@ -333,18 +334,25 @@ fn the_capture_camera_can_be_restored_and_every_step_undoes() {
     approx(state.timeline.clip("c").unwrap().camera.unwrap().fov, 30.0);
 
     // With camera keys the base camera is not what plays: the restore is refused until they go.
-    run(&mut state, json!({"op":"clip.camera_capture","clip":"c"}));
+    // The refusal is `camera_keys_override`, not an orbit conflict: the capture camera does not
+    // orbit, it would only be an inert undo entry under the keys (BL143.9).
+    run(
+        &mut state,
+        json!({"op":"clip.camera","clip":"c","position":[0,0,1],"target":[0,0,-1],"fov":50,"orbit":0}),
+    );
     run(
         &mut state,
         json!({"op":"clip.camera_key","clip":"c","time":0,"position":[0,0,0],
             "target":[0,0,-1],"fov":50}),
     );
-    run(
-        &mut state,
-        json!({"op":"clip.camera","clip":"c","position":[0,0,1],"target":[0,0,-1],"fov":50,"orbit":0}),
-    );
+    let before = state.to_document(None);
     let (code, _) = fail(&mut state, json!({"op":"clip.camera_capture","clip":"c"}));
-    assert_eq!(code, "camera_orbit_conflict");
+    assert_eq!(code, "camera_keys_override");
+    assert_eq!(
+        state.to_document(None),
+        before,
+        "the refusal changes nothing"
+    );
     let (code, _) = fail(
         &mut state,
         json!({"op":"clip.camera_capture","clip":"missing"}),
@@ -480,4 +488,326 @@ fn set_asset_capture(document: &mut Value, id: &str, edit: impl FnOnce(&mut Valu
     let assets = document["library"]["assets"].as_array_mut().unwrap();
     let asset = assets.iter_mut().find(|asset| asset["id"] == id).unwrap();
     edit(&mut asset["asset"]["meta"]["capture"]);
+}
+
+/// Puts `extra` header lines before `end_header`, keeping the binary body untouched.
+fn with_header_lines(path: &Path, extra: &str) {
+    let bytes = fs::read(path).unwrap();
+    let marker = b"end_header\n";
+    let at = bytes
+        .windows(marker.len())
+        .position(|window| window == marker)
+        .unwrap();
+    let mut edited = bytes[..at].to_vec();
+    edited.extend_from_slice(extra.as_bytes());
+    edited.extend_from_slice(&bytes[at..]);
+    fs::write(path, edited).unwrap();
+}
+
+#[test]
+fn a_plain_ply_with_an_odd_header_still_imports_with_auto_and_ignore() {
+    let dir = scratch("plain-odd");
+    let mut state = project();
+    let plain = SharpSpec {
+        metadata: false,
+        ..SharpSpec::default()
+    };
+    // What the previous reader accepted and the SHARP scanner must not start refusing:
+    // a list property, an unknown type, a line with extra tokens, a count that is not a number.
+    let headers = [
+        "element face 1\nproperty list uchar int vertex_indices\n",
+        "element extra 2\nproperty half weight\n",
+        "element face 1 extra\nproperty uchar flag\n",
+        "element face many\nproperty float w\n",
+    ];
+    for (index, lines) in headers.iter().enumerate() {
+        for capture in [None, Some("auto"), Some("ignore")] {
+            let path = ply(&dir, &format!("odd-{index}.ply"), &plain);
+            with_header_lines(&path, lines);
+            let id = format!("odd-{index}-{}", capture.unwrap_or("default"));
+            let result = add(&mut state, &id, &path, capture);
+            assert!(
+                result["asset"]["capture"].is_null(),
+                "{lines:?} with {capture:?}: {result}"
+            );
+            assert!(state.library.item(&id).is_some());
+        }
+    }
+}
+
+#[test]
+fn a_hostile_header_is_a_typed_error_and_the_project_stays_untouched() {
+    let dir = scratch("hostile");
+    let mut state = project();
+    let before = state.to_document(None);
+    for count in [
+        "18446744073709551615",
+        "4611686018427387904",
+        "1099511627776",
+    ] {
+        let path = ply(&dir, "hostile.ply", &SharpSpec::default());
+        let bytes = fs::read(&path).unwrap();
+        let header = String::from_utf8_lossy(&bytes[..200])
+            .replace("element vertex 5", &format!("element vertex {count}"));
+        let mut edited = header.into_bytes();
+        edited.extend_from_slice(&bytes[200..]);
+        fs::write(&path, edited).unwrap();
+        let (code, message) = fail(
+            &mut state,
+            json!({"op":"asset.add","kind":"splat","id":"bad","name":"bad","path":path}),
+        );
+        assert_eq!(code, "invalid_asset", "{count}: {message}");
+        assert_eq!(
+            state.to_document(None),
+            before,
+            "{count}: nothing registered"
+        );
+    }
+}
+
+#[test]
+fn a_missing_color_space_is_reported_with_its_own_warning() {
+    let dir = scratch("no-color-space");
+    let mut state = project();
+    let spec = SharpSpec {
+        color_space: None,
+        ..SharpSpec::default()
+    };
+    let result = add(&mut state, "shot", &ply(&dir, "a.ply", &spec), None);
+    assert_eq!(result["asset"]["capture"]["color_space"], "sRGB");
+    assert_eq!(result["asset"]["capture"]["color_space_declared"], false);
+    let codes: Vec<&str> = result["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|warning| warning["code"].as_str().unwrap())
+        .collect();
+    assert_eq!(codes, ["capture_color_space"]);
+}
+
+#[test]
+fn a_capture_on_an_asset_that_is_not_a_splat_is_refused_everywhere() {
+    use tessel_editor_core::assets::{Asset, Declared, MediaKind};
+    use tessel_editor_core::sharp::{self, Choice};
+    use tessel_editor_core::state::Command;
+
+    let dir = scratch("non-splat");
+    let set = write_standard_set(&dir.join("set")).unwrap();
+    let mut state = project();
+    add(
+        &mut state,
+        "shot",
+        &ply(&dir, "shot.ply", &SharpSpec::default()),
+        None,
+    );
+    run(
+        &mut state,
+        json!({"op":"asset.add","kind":"still","id":"img","name":"img","path":set.image}),
+    );
+
+    // Registration: a still that carries a capture camera never reaches the library.
+    let capture = sharp::read(&ply(&dir, "again.ply", &SharpSpec::default()), Choice::Auto)
+        .unwrap()
+        .unwrap();
+    let mut asset = Asset::probe(
+        MediaKind::Still,
+        &set.image.to_string_lossy(),
+        &Declared::default(),
+    )
+    .unwrap();
+    asset.meta.capture = Some(capture);
+    let before = state.to_document(None);
+    let error = state
+        .execute(Command::AddAsset {
+            id: Some("img2".into()),
+            name: "img2".into(),
+            kind: MediaKind::Still,
+            asset: Box::new(asset),
+            folder: None,
+        })
+        .unwrap_err();
+    assert_eq!(error.code, "invalid_asset");
+    assert_eq!(state.to_document(None), before);
+
+    // A document that says so is refused whole and changes nothing.
+    let doc = dir.join("doc.tessel.json");
+    run(&mut state, json!({"op":"project.save","path":doc}));
+    let mut saved = read(&doc);
+    let stored = find_asset(&saved, "shot")["asset"]["meta"]["capture"].clone();
+    set_asset_capture(&mut saved, "img", |capture| *capture = stored);
+    let forged = dir.join("forged.tessel.json");
+    fs::write(&forged, serde_json::to_vec(&saved).unwrap()).unwrap();
+    let mut target = EditorState::demo();
+    let before = target.to_document(None);
+    let (code, message) = fail(&mut target, json!({"op":"project.open","path":forged}));
+    assert_eq!(code, "invalid_document", "{message}");
+    assert!(message.contains("only splats"), "{message}");
+    assert_eq!(target.to_document(None), before);
+}
+
+// ---- BL143.8: a quantitative colour and framing check with an independent oracle ----------------
+//
+// Scope, honestly: this checks the *file contract* (what the PLY stores, what the editor reads from
+// it, where the camera of the file puts every point) in pure Rust, with no browser. It does NOT
+// render: the pixels of a real render against the real source PNG are still unproven (BL143.8).
+// The metric is what the old dominant-channel probe lacked: it moves when the colours are darkened.
+
+/// SH degree-0 constant of `ml-sharp`'s `rgb2sh`: `colour = 0.5 + C0 * f_dc`.
+const SH_C0: f64 = 0.282_094_791_773_878_14;
+
+/// A reader written for the test alone (the header by `split_whitespace`, the body by fixed
+/// offsets, the colour by the published formula): it shares no code with `sharp::read`.
+fn oracle_vertices(path: &Path) -> Vec<([f64; 3], [f64; 3])> {
+    let bytes = fs::read(path).unwrap();
+    let marker = b"end_header\n";
+    let at = bytes
+        .windows(marker.len())
+        .position(|window| window == marker)
+        .unwrap()
+        + marker.len();
+    let header = std::str::from_utf8(&bytes[..at]).unwrap();
+    let (mut count, mut names, mut in_vertex) = (0usize, Vec::<String>::new(), false);
+    for line in header.lines() {
+        match line.split_whitespace().collect::<Vec<_>>().as_slice() {
+            ["element", name, n] => {
+                in_vertex = *name == "vertex";
+                if in_vertex {
+                    count = n.parse().unwrap();
+                }
+            }
+            ["property", "float", name] if in_vertex => names.push((*name).to_string()),
+            _ => {}
+        }
+    }
+    let column = |name: &str| {
+        names
+            .iter()
+            .position(|candidate| candidate == name)
+            .unwrap()
+    };
+    let stride = names.len() * 4;
+    (0..count)
+        .map(|index| {
+            let record = &bytes[at + index * stride..at + (index + 1) * stride];
+            let value = |name: &str| {
+                let start = column(name) * 4;
+                f64::from(f32::from_le_bytes(
+                    record[start..start + 4].try_into().unwrap(),
+                ))
+            };
+            let colour =
+                |channel: usize| (0.5 + SH_C0 * value(&format!("f_dc_{channel}"))).clamp(0.0, 1.0);
+            (
+                [value("x"), value("y"), value("z")],
+                [colour(0), colour(1), colour(2)],
+            )
+        })
+        .collect()
+}
+
+struct Fidelity {
+    /// Largest per-channel difference to the intended colour, `0..=1`.
+    colour: f64,
+    /// Largest distance in pixels between the oracle's pinhole and the intended pixel.
+    oracle_pixels: f64,
+    /// The same for the editor's own camera model (`Capture::project_in_editor`).
+    editor_pixels: f64,
+}
+
+fn fidelity(dir: &Path, name: &str, written: &SharpSpec) -> Fidelity {
+    let intended = SharpSpec::default();
+    let path = ply(dir, &format!("{name}.ply"), written);
+    let capture = tessel_editor_core::sharp::read(&path, tessel_editor_core::sharp::Choice::Auto)
+        .unwrap()
+        .unwrap();
+    let [width, height] = SHARP_FIXTURE_IMAGE;
+    // The pinhole of the intended camera, from the constants of the fixture only.
+    let fy = f64::from(height) / 2.0 / (SHARP_FIXTURE_VFOV.to_radians() / 2.0).tan();
+    let (cx, cy) = (f64::from(width) / 2.0, f64::from(height) / 2.0);
+    let distance =
+        |a: [f64; 2], b: [f64; 2]| ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)).sqrt();
+    let mut result = Fidelity {
+        colour: 0.0,
+        oracle_pixels: 0.0,
+        editor_pixels: 0.0,
+    };
+    for (index, (position, colour)) in oracle_vertices(&path).into_iter().enumerate() {
+        for (got, want) in colour.iter().zip(intended.points[index].color) {
+            result.colour = result.colour.max((got - f64::from(want)).abs());
+        }
+        let want = SHARP_FIXTURE_PIXELS[index];
+        let seen = [
+            fy * position[0] / position[2] + cx,
+            fy * position[1] / position[2] + cy,
+        ];
+        result.oracle_pixels = result.oracle_pixels.max(distance(seen, want));
+        let editor = capture
+            .project_in_editor(position, capture.image)
+            .map_or(f64::INFINITY, |pixel| distance(pixel, want));
+        result.editor_pixels = result.editor_pixels.max(editor);
+    }
+    result
+}
+
+#[test]
+fn colours_and_framing_match_an_independent_oracle_and_the_metric_detects_errors() {
+    let dir = scratch("fidelity");
+    let honest = fidelity(&dir, "honest", &SharpSpec::default());
+    assert!(honest.colour < 1e-3, "colour error {}", honest.colour);
+    assert!(honest.oracle_pixels < 0.05, "{}", honest.oracle_pixels);
+    assert!(honest.editor_pixels < 0.05, "{}", honest.editor_pixels);
+
+    // Negative controls: each class of error must move the metric well past the tolerance.
+    let altered = |edit: &dyn Fn(&mut tessel_editor_core::fixtures::SharpPoint)| {
+        let mut spec = SharpSpec::default();
+        spec.points.iter_mut().for_each(edit);
+        spec
+    };
+    // A dominant-channel probe cannot see a darkened image; this metric does.
+    let darker = fidelity(
+        &dir,
+        "darker",
+        &altered(&|point| point.color = point.color.map(|channel| channel * 0.8)),
+    );
+    assert!(darker.colour > 0.15, "darkening: {}", darker.colour);
+    assert!(darker.oracle_pixels < 0.05, "darkening moves no pixel");
+    let swapped = fidelity(
+        &dir,
+        "swapped",
+        &altered(&|point| point.color = [point.color[2], point.color[1], point.color[0]]),
+    );
+    assert!(swapped.colour > 0.5, "red/blue swap: {}", swapped.colour);
+    // A vertical mirror (the missing axis turn, seen from the image) and a horizontal one.
+    let upside_down = fidelity(
+        &dir,
+        "upside-down",
+        &altered(&|p| p.position[1] = -p.position[1]),
+    );
+    assert!(
+        upside_down.oracle_pixels > 10.0,
+        "{}",
+        upside_down.oracle_pixels
+    );
+    assert!(
+        upside_down.editor_pixels > 10.0,
+        "{}",
+        upside_down.editor_pixels
+    );
+    assert!(
+        upside_down.colour < 1e-3,
+        "framing errors do not move colours"
+    );
+    let mirrored = fidelity(
+        &dir,
+        "mirrored",
+        &altered(&|p| p.position[0] = -p.position[0]),
+    );
+    assert!(mirrored.oracle_pixels > 10.0 && mirrored.editor_pixels > 10.0);
+    // A cloud behind the camera (z flipped) is nowhere: infinite for the editor's model.
+    let behind = fidelity(
+        &dir,
+        "behind",
+        &altered(&|p| p.position[2] = -p.position[2]),
+    );
+    assert!(behind.editor_pixels.is_infinite());
 }
