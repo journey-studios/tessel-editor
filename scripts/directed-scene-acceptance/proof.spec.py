@@ -915,6 +915,38 @@ class BinaryLink(unittest.TestCase):
 class Ledger(unittest.TestCase):
     """F5: edits to the oracle, verifier, controls, corpus or tolerances that no round records are caught."""
 
+    def test_a_conflict_merge_cannot_hide_a_rewritten_book(self):
+        import ledger
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory(prefix='s10-book-history-') as folder:
+            root = pathlib.Path(folder).resolve()
+            here = root / 'harness'
+            here.mkdir()
+            book = here / 'amendments.json'
+            def git(*args, check=True):
+                return subprocess.run(['git', '-C', folder, *args], capture_output=True, text=True, check=check)
+            def commit(text):
+                book.write_text(text)
+                git('add', '.')
+                git('commit', '-m', 'book')
+                return git('rev-parse', 'HEAD').stdout.strip()
+            git('init', '-b', 'main')
+            git('config', 'user.name', 'Ledger test')
+            git('config', 'user.email', 'ledger@example.invalid')
+            commit('{"rounds": []}')
+            git('checkout', '-b', 'side')
+            rewritten = commit('{"rounds": [{"id": "rewritten"}]}')
+            git('checkout', 'main')
+            good = '{"rounds": [{"id": "original"}]}'
+            commit(good)
+            merge = git('merge', '--no-ff', '--no-commit', 'side', check=False)
+            self.assertNotEqual(merge.returncode, 0, 'the test must exercise a content conflict')
+            commit(good)  # keep main contents while recording both parents
+            with patch.object(ledger, 'ROOT', root), patch.object(ledger, 'HERE', here):
+                versions = ledger.committed_versions()
+            self.assertIn(rewritten, [sha for sha, _ in versions],
+                          'a merge resolution must not hide the rewritten side-branch book')
+
     def test_the_repository_ledger_holds(self):
         import ledger
         failed = [(name, detail) for name, ok, detail in ledger.verify_ledger() if not ok]

@@ -680,3 +680,7 @@ Gates proporcionais: spec Python normal e `-O` 27/27, `py_compile`, build novo d
 Corrigida a borda apontada em 4499434886 e review 5809332490: sem resposta ociosa anterior, o começo da janela inclui envios falhos anteriores à primeira resposta de descarte. Spec com Probe real e mutação da borda antiga. Corrigido também o texto: judge_discard não roda se um check anterior abortar; finally preserva só o relatório bruto. Rust e a produção permanecem inalterados.
 
 Validação da borda: spec 28/28 normal e com `-O`; os dois modos incluem o teste novo e a mutação que restaura a borda antiga. Logs `/tmp/pr6-probe-boundary-spec.log` e `-O.log`. A prova nativa 43/43 anterior continua atribuída a `efba600`, sem repetir a janela neste patch de borda.
+
+### S10 — revisão Sonnet 5810370582, L2
+
+BL019-F5: a auditoria de emendas passa a usar `git log --full-history`. Regressão em Git temporário cria branches divergentes, merge com conflito e resolução que mantém o livro da primeira parent: a versão reescrita da segunda branch não pode sumir. Teste dirigido passou; remover --full-history o reprova. R4 do livro, integração com a main e revalidação viva ainda pendentes. A revisão considerou tolerâncias adequadas com cegueiras declaradas; isso não é pré-registro nem aprovação numérica do usuário.

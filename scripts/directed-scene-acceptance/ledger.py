@@ -76,7 +76,7 @@ def is_ancestor(commit, descendant="HEAD"):
 
 def committed_versions():
     """`[(commit, ledger dict)]` of every committed version of the book reachable from HEAD (newest first); None when Git cannot say."""
-    listed = _git("log", "--format=%H", "--", _relative("amendments.json"))
+    listed = _git("log", "--full-history", "--format=%H", "--", _relative("amendments.json"))
     if listed is None:
         return None
     versions = []
