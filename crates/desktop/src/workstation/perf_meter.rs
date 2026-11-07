@@ -201,6 +201,11 @@ impl PerfState {
     }
 
     #[cfg(test)]
+    pub fn own_redraw_pending(&self) -> bool {
+        self.own_redraw.get()
+    }
+
+    #[cfg(test)]
     pub fn wake_pending(&self) -> bool {
         self.wake_task.is_some()
     }
@@ -333,7 +338,7 @@ impl Workstation {
     }
 
     /// Wakes once when the window and the monitor came to rest, so "parado" replaces the numbers.
-    fn perf_wake(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn perf_wake(&mut self, cx: &mut Context<Self>) {
         #[cfg(test)]
         {
             self.perf.wakes += 1;

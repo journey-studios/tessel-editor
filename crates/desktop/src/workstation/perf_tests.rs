@@ -324,14 +324,19 @@ fn a_hide_between_the_rest_timer_and_its_redraw_does_not_swallow_the_next_real_f
     let (view, cx) = fixture(cx);
     toggle(&view, cx, PerfMeterCommand::Show);
     paint(cx);
-    // The window comes to rest: the timer fires and marks the redraw it asks for as its own...
+    // The window comes to rest (the clock moves, the executor is not run so no frame is drawn).
     cx.executor().advance_clock(Duration::from_secs(3));
-    cx.run_until_parked();
-    // ...but the meter is hidden and shown again before that redraw is painted (nothing spent
-    // the mark: a hidden meter has no recorder in the window). The test platform draws the
-    // window when the update ends, and that is the first frame it really paints after showing:
-    // it is a frame, not the stale redraw the old mark described.
+    // In one update: the rest timer fires and marks the redraw it asks for as its own, then the
+    // meter is hidden and shown again before that redraw is painted. Nothing spent the mark (a
+    // hidden meter has no recorder in the window). The test platform draws the window when the
+    // update ends: that is the first frame it really paints after showing, so it is a frame,
+    // not the stale redraw the old mark described.
     view.update(cx, |view, cx| {
+        view.perf_wake(cx);
+        assert!(
+            view.perf.own_redraw_pending(),
+            "the rest timer marks the redraw"
+        );
         view.execute_perf(PerfMeterCommand::Hide, Source::Cli, cx)
             .unwrap();
         view.execute_perf(PerfMeterCommand::Show, Source::Cli, cx)
@@ -344,9 +349,7 @@ fn a_hide_between_the_rest_timer_and_its_redraw_does_not_swallow_the_next_real_f
     );
     // The control: a redraw that really is the timer's own is still left out.
     cx.executor().advance_clock(Duration::from_secs(3));
-    cx.run_until_parked();
-    cx.update(|window, cx| window.simulate_next_frame(cx));
-    cx.run_until_parked();
+    view.update(cx, |view, cx| view.perf_wake(cx));
     assert_eq!(
         samples(&view, cx).0,
         1,
@@ -757,6 +760,29 @@ fn at_960_px_with_the_monitor_maximized_the_strip_gives_way_and_the_rest_stays_w
     assert!(
         f32::from(status_bounds(cx, "perf-strip").size.width) > 0.0,
         "the strip is still there, only cut"
+    );
+}
+
+/// In a window too narrow for the strip's whole line the strip is what gives way: cut, with
+/// the activity and the save state inside the window and the save state whole.
+#[gpui_kit::test]
+fn in_a_narrow_window_the_strip_is_cut_and_the_save_state_stays_whole(cx: &mut TestAppContext) {
+    let (view, cx) = fixture(cx);
+    cx.simulate_resize(size(px(1600.), px(640.)));
+    toggle(&view, cx, PerfMeterCommand::Show);
+    maximize_the_monitor(&view, cx);
+    say(&view, cx, "Salvo", false);
+    let whole = saved_width(cx);
+    let natural = f32::from(status_bounds(cx, "perf-strip").size.width);
+    assert!(natural > 300.0, "the strip's whole line is long: {natural}");
+
+    cx.simulate_resize(size(px(640.), px(640.)));
+    settle(cx);
+    assert_the_bar_fits(cx, whole, "a 640 px window");
+    let cut = f32::from(status_bounds(cx, "perf-strip").size.width);
+    assert!(
+        cut > 0.0 && cut < natural,
+        "the strip is cut from {natural} to {cut}"
     );
 }
 
