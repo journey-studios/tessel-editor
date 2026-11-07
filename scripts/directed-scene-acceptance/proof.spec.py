@@ -1516,8 +1516,10 @@ class ToolsAbsent(unittest.TestCase):
     def main(self, phases):
         report = self.tmp / "report.json"
         env = {"PATH": str(self.tmp / "bin"), "PYTHONDONTWRITEBYTECODE": "1", "HOME": os.environ.get("HOME", str(self.tmp))}
-        result = subprocess.run([sys.executable, "-B", str(self.tmp / "main.py"), "--phases", phases, "--report", str(report)],
-                                capture_output=True, text=True, env=env)
+        # `--gpu-lock-held`: this test runs without a GPU, and a phase that (wrongly) started would otherwise wait for the shared lock that
+        # the caller may hold; the timeout turns any such hang into a failure instead of a stalled run.
+        result = subprocess.run([sys.executable, "-B", str(self.tmp / "main.py"), "--gpu-lock-held", "--phases", phases, "--report", str(report)],
+                                capture_output=True, text=True, env=env, timeout=300)
         self.assertNotIn("Traceback", result.stderr + result.stdout)
         self.assertIn("SUMMARY", result.stdout)
         self.assertTrue(report.is_file(), "the report is written even when the host has no FFmpeg or Node")
