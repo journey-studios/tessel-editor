@@ -1222,5 +1222,57 @@ class SensitivityAnalysis(unittest.TestCase):
         self.assertEqual(len(report["rows"]), len(expected["splat"]["frames"]))
 
 
+class CorpusWriter(unittest.TestCase):
+    """L1: rewriting the corpus drops only the unchanged files of the generator's own earlier run, never the caller's data."""
+
+    def test_rewriting_removes_a_dropped_entry_of_its_own_earlier_run_and_leaves_the_caller_data(self):
+        import hashlib
+        with tempfile.TemporaryDirectory(prefix="s10-corpus-writer-") as folder:
+            root = pathlib.Path(folder).resolve()
+            target = root / "corpus"
+            shutil.copytree(corpus.CORPUS_DIR, target)
+            provenance = json.loads((target / "provenance.json").read_text(encoding="utf-8"))
+
+            def own(relative, data):
+                path = target / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(data)
+                provenance["files"][relative] = {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
+                return path
+
+            dropped = own("splat/sp-dropped.spz", b"an entry build() no longer lists")
+            dropped_alone = own("retired/only.bin", b"alone in its folder")
+            edited = own("splat/sp-edited.spz", b"as generated")
+            edited.write_bytes(b"edited by the maintainer afterwards")
+            outside = root / "outside.txt"
+            outside.write_bytes(b"not ours")
+            provenance["files"]["../outside.txt"] = {"sha256": hashlib.sha256(b"not ours").hexdigest(), "bytes": 7}
+            sentinel = target / "notes-by-the-caller.txt"
+            sentinel.write_bytes(b"sentinel")
+            (target / "provenance.json").write_text(json.dumps(provenance), encoding="utf-8")
+
+            corpus.write(target)
+
+            self.assertFalse(dropped.exists(), "an unchanged file of the earlier generation that build() dropped must go")
+            self.assertFalse(dropped_alone.exists() or dropped_alone.parent.exists(), "its now-empty folder goes too")
+            self.assertEqual(edited.read_bytes(), b"edited by the maintainer afterwards", "an edited file is the caller's")
+            self.assertEqual(sentinel.read_bytes(), b"sentinel")
+            self.assertEqual(outside.read_bytes(), b"not ours", "a recorded name that leaves the folder is ignored")
+            self.assertEqual(corpus.check(target), ["stray notes-by-the-caller.txt", "stray splat/sp-edited.spz"],
+                             "what was not ours is still reported by --check so a person decides")
+
+    def test_rewriting_into_a_folder_without_provenance_deletes_nothing(self):
+        with tempfile.TemporaryDirectory(prefix="s10-corpus-writer-") as folder:
+            target = pathlib.Path(folder) / "corpus"
+            target.mkdir()
+            keep = target / "anything.txt"
+            keep.write_bytes(b"caller data")
+            corpus.write(target)
+            self.assertEqual(keep.read_bytes(), b"caller data")
+            self.assertEqual(corpus.check(target), ["stray anything.txt"])
+            corpus.write(target)  # idempotent on the generator's own output
+            self.assertEqual(keep.read_bytes(), b"caller data")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)

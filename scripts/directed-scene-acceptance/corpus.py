@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Corpus and independent expectations for the S10 acceptance (BL019: splat, camera, audio, package, export).
 
-    python3 scripts/directed-scene-acceptance/corpus.py            # (re)writes ./corpus
+    python3 scripts/directed-scene-acceptance/corpus.py            # (re)writes ./corpus; drops only unchanged files of its own earlier run
     python3 scripts/directed-scene-acceptance/corpus.py --check    # fails on any difference or stray file
 
 Provenance: every byte is drawn here from scratch (solid-colour PNGs, SPZ v2 clouds of a few gaussians, a sine-tone WAV);
@@ -493,9 +493,41 @@ def build():
     return {**files, **json_files}
 
 
+def previously_generated(directory, wanted):
+    """Files an earlier run of this generator left in `directory` and `build()` no longer produces.
+
+    Only what the directory's own `provenance.json` names, and only when the bytes on disk are still the bytes it hashed: a file
+    the caller added, or edited after generation, is never ours to delete. A name that leaves the directory is ignored.
+    """
+    directory = pathlib.Path(directory).resolve()
+    try:
+        recorded = json.loads((directory / "provenance.json").read_text(encoding="utf-8")).get("files", {})
+    except (OSError, ValueError, AttributeError):
+        return []
+    ours = []
+    for relative, entry in sorted(recorded.items()) if isinstance(recorded, dict) else []:
+        path = (directory / relative).resolve()
+        if relative in wanted or directory not in path.parents or not path.is_file() or not isinstance(entry, dict):
+            continue
+        if entry.get("sha256") == sha256(path.read_bytes()):
+            ours.append(path)
+    return ours
+
+
 def write(directory):
+    """Writes the corpus; removes only the files of an earlier generation that `build()` dropped (see `previously_generated`).
+
+    Anything else already in `directory` stays and `check` reports it as `stray`: remove it by hand.
+    """
     directory = pathlib.Path(directory)
-    for relative, data in build().items():
+    wanted = build()
+    for path in previously_generated(directory, wanted):
+        path.unlink()
+        parent = path.parent
+        while parent != directory.resolve() and not any(parent.iterdir()):
+            parent.rmdir()
+            parent = parent.parent
+    for relative, data in wanted.items():
         path = directory / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
