@@ -7,7 +7,7 @@
 //! transaction on the caller's thread (`wait: true`, the default, does both in one call;
 //! `wait: false` returns a job ID and `job.commit` applies it when the job succeeded).
 //!
-//! Operations: `media.import|relink|search|status|prepare|thumbnail|waveform|proxy`,
+//! Operations: `media.import|relink|search|status|prepare|thumbnail|thumbnails|waveform|proxy`,
 //! `project.package_preflight|package|verify|restore|import|import_scenes`,
 //! `scene.attach.start` (F043: read/validate a bundle on a job, attach it as one undo step),
 //! `scene.resources.status|preflight|resolve|adopt|release|invalidate|claims|recover` (F040),
@@ -53,6 +53,7 @@ use tessel_editor_core::scene_project::{AdmittedScene, SceneCommand, SceneSource
 use tessel_editor_core::scene_resources::ResourceManifest;
 use tessel_editor_core::session::Renderer;
 use tessel_editor_core::state::{Command, ProjectStamp};
+use tessel_editor_core::thumbnails::Stamp as ThumbStamp;
 use tessel_editor_core::{CommandError, EditorState};
 
 use crate::derive::Cache;
@@ -67,6 +68,7 @@ use crate::scene_resources::{
     AdoptionTarget, Invalidation, LoadRequest, PendingAdoption, ResolvedResourceMap, ResourceBase,
     SceneResourceSession,
 };
+use crate::thumbnails::{self as thumbs, Made};
 use crate::tools::Tools;
 
 /// Builds the renderer one export drives. It runs on the export's own thread, so a session that
@@ -127,6 +129,12 @@ enum Pending {
         candidate: Box<EditorState>,
         summary: Value,
     },
+    /// Thumbnails of splats and scenes drawn for the project (and editing session) `stamp`
+    /// names; each applies only while its asset still has the identity it was drawn from.
+    Thumbnails {
+        stamp: ThumbStamp,
+        made: Vec<Made>,
+    },
 }
 
 impl Pending {
@@ -142,6 +150,7 @@ impl Pending {
             Self::SceneAttach { .. } => "scene-attach",
             Self::SceneAdopt(_) => "scene-adopt",
             Self::Open { .. } => "restored-project",
+            Self::Thumbnails { .. } => "thumbnails",
         }
     }
 
@@ -257,6 +266,9 @@ pub struct MediaHost {
     auto_assets: HashMap<JobId, AutoAssets>,
     /// The automatic "Build preview proxy" job in flight, if any.
     auto_proxy: Option<JobId>,
+    /// The thumbnail job in flight and the project it draws for (BL144). One at a time: it owns
+    /// a renderer. A job whose project is no longer the open one is cancelled by `poll`.
+    thumb_job: Option<(JobId, ThumbStamp)>,
     /// `(asset, hash, height, format)` whose proxy failed: not retried until one of them changes.
     proxy_failed: Vec<ProxyKey>,
     proxy_assets: HashMap<JobId, Vec<ProxyKey>>,
@@ -359,6 +371,7 @@ impl MediaHost {
             registry: JobRegistry::new(2),
             renderer: None,
             scene_renderer: None,
+            thumb_job: None,
             pending: HashMap::new(),
             interactive: false,
             auto_prepare: None,
@@ -422,6 +435,7 @@ impl MediaHost {
     /// or was cancelled changed nothing and is reported once. Call it from the UI thread's tick.
     pub fn poll(&mut self, state: &mut EditorState) -> Vec<Value> {
         self.scene_resources.observe_project(&state.project.id);
+        self.cancel_stale_thumbnails(state);
         let finished: Vec<JobId> = self
             .pending
             .keys()
@@ -443,6 +457,9 @@ impl MediaHost {
             }
             if self.auto_proxy.as_deref() == Some(id.as_str()) {
                 self.auto_proxy = None;
+            }
+            if self.thumb_job.as_ref().is_some_and(|(job, _)| *job == id) {
+                self.thumb_job = None;
             }
             let proxied = self.proxy_assets.remove(&id);
             let automatic = self.auto_assets.remove(&id);
@@ -483,7 +500,109 @@ impl MediaHost {
         events.extend(self.finished_discards());
         self.schedule_prepare(state);
         self.schedule_proxies(state);
+        self.schedule_thumbnails(state);
         events
+    }
+
+    /// Cancels the thumbnail job of a project that is no longer the open one (another project,
+    /// or the same document opened again). The job notices between targets and applies nothing;
+    /// even a result that slips through is refused by its stamp.
+    fn cancel_stale_thumbnails(&mut self, state: &EditorState) {
+        if let Some((job, stamp)) = &self.thumb_job
+            && !stamp.is_current(state)
+        {
+            let _ = self.registry.cancel(job);
+        }
+    }
+
+    /// Starts the one thumbnail job the open project needs (splats and scenes with no picture
+    /// yet), after the media is prepared: the renderer is the heavy part and runs alone.
+    fn schedule_thumbnails(&mut self, state: &EditorState) {
+        if !self.interactive
+            || self.thumb_job.is_some()
+            || self.auto_prepare.is_some()
+            || self.auto_proxy.is_some()
+            || state.project.workspace.is_none()
+        {
+            return;
+        }
+        let targets = state.thumbnail_targets(false);
+        if targets.is_empty() {
+            return;
+        }
+        let _ = self.thumbnail_job(state, targets, "Draw library thumbnails");
+    }
+
+    /// The job behind every thumbnail run, explicit or automatic.
+    fn thumbnail_job(
+        &mut self,
+        state: &EditorState,
+        targets: Vec<tessel_editor_core::thumbnails::Target>,
+        label: &str,
+    ) -> Result<(JobId, Slot), CommandError> {
+        let workspace = workspace(state)?;
+        let stamp = state.thumbnail_stamp();
+        let job_stamp = stamp.clone();
+        let snapshot = state.clone();
+        let factory = self.renderer.clone();
+        let (id, slot) = self.start(JobKind::Thumbnail, label, move |ctx| {
+            let cache = Cache::new(&workspace);
+            let made = thumbs::make(&snapshot, &targets, &cache, factory, ctx)?;
+            let ready = made
+                .iter()
+                .filter(|made| matches!(made, Made::Ready(..)))
+                .count();
+            let report = json!({ "action": "media.thumbnails",
+                "assets": made.iter().map(Made::asset).collect::<Vec<_>>(),
+                "ready": ready, "failed": made.len() - ready });
+            Ok((
+                Some(Pending::Thumbnails {
+                    stamp: job_stamp,
+                    made,
+                }),
+                report,
+            ))
+        });
+        if self.interactive {
+            self.thumb_job = Some((id.clone(), stamp));
+        }
+        Ok((id, slot))
+    }
+
+    /// `media.thumbnails {assets?, retry?}`: draws the thumbnails of splats and scenes that have
+    /// none (`assets` limits it, `retry` asks again for the ones that failed). A window answers
+    /// with the job and `poll` applies it; a CLI waits and applies it before answering.
+    fn thumbnails(
+        &mut self,
+        state: &mut EditorState,
+        request: &Value,
+    ) -> Result<Value, CommandError> {
+        if let Some((job, _)) = &self.thumb_job {
+            return Ok(json!({ "job": job, "state": "running", "reused": true }));
+        }
+        let wanted = strings(request, "assets")?;
+        if let Some(wanted) = &wanted {
+            for id in wanted {
+                if state.library.item(id).is_none() {
+                    return Err(CommandError::unknown_element("asset", id));
+                }
+            }
+        }
+        let targets: Vec<_> = state
+            .thumbnail_targets(flag(request, "retry", false))
+            .into_iter()
+            .filter(|target| {
+                wanted
+                    .as_ref()
+                    .is_none_or(|ids| ids.contains(&target.asset))
+            })
+            .collect();
+        if targets.is_empty() {
+            return Ok(json!({ "action": "media.thumbnails", "assets": [],
+                "reason": "no splat or scene needs a thumbnail" }));
+        }
+        let (id, slot) = self.thumbnail_job(state, targets, "Draw library thumbnails")?;
+        self.finish(state, request, id, slot)
     }
 
     /// One `failed` event (`job_discarded`) for every job whose result was discarded before the
@@ -769,6 +888,7 @@ impl MediaHost {
             "media.search" => self.search(state, request),
             "media.prepare" => self.prepare(state, request),
             "media.preview_proxy" => self.preview_proxy(state, request),
+            "media.thumbnails" => self.thumbnails(state, request),
             "media.thumbnail" | "media.waveform" | "media.proxy" => self.derive(state, op, request),
             "project.package_preflight" => self.package_preflight(state, request),
             "project.package" => self.package(state, request),
@@ -2033,6 +2153,34 @@ fn apply_pending(
             *took = !applied.is_empty();
             Ok(Some(
                 json!({ "action": "media.preview_proxy", "applied": applied, "stale": stale }),
+            ))
+        }
+        Pending::Thumbnails { stamp, made } => {
+            if !stamp.is_current(state) {
+                return Ok(Some(json!({ "action": "media.thumbnails", "stale": true,
+                    "reason": "another project is open now", "applied": [] })));
+            }
+            let (mut applied, mut failed, mut stale) = (Vec::new(), Vec::new(), Vec::new());
+            for made in made {
+                let asset = made.asset().to_string();
+                let stored = match made {
+                    Made::Ready(id, thumbnail) => state
+                        .set_thumbnail(&stamp, &id, thumbnail)
+                        .map(|()| applied.push(asset.clone())),
+                    Made::Failed(id, failure) => state
+                        .set_thumbnail_failure(&stamp, &id, failure)
+                        .map(|()| failed.push(asset.clone())),
+                };
+                if stored.is_err() {
+                    stale.push(asset);
+                }
+            }
+            state.prune_thumbnails();
+            // Failures are recorded (so they are not retried every tick) but are not pictures.
+            *took = !applied.is_empty() || !failed.is_empty();
+            Ok(Some(
+                json!({ "action": "media.thumbnails", "applied": applied,
+                "failed": failed, "stale": stale }),
             ))
         }
         Pending::Decoded { project, items } => {

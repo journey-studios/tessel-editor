@@ -182,6 +182,52 @@ impl Cache {
         Ok(dir.join("thumb.png"))
     }
 
+    /// A PNG picture of `asset` identified by `identity` (BL144: splat and scene thumbnails),
+    /// drawn by `render` into staging unless the cache already holds that exact picture. The
+    /// entry name carries a digest of the identity, so a different picture never reuses a path
+    /// (a window's image cache is keyed by path). Returns the PNG and whether the cache had it.
+    pub fn picture(
+        &self,
+        asset: &Asset,
+        identity: &str,
+        size: (u32, u32),
+        render: impl FnOnce(&Path) -> Result<(), JobError>,
+    ) -> Result<(PathBuf, bool), JobError> {
+        let name = format!(
+            "picture-{}x{}-{:08x}",
+            size.0,
+            size.1,
+            crc32fast::hash(identity.as_bytes())
+        );
+        let fingerprint = json!({ "cache": CACHE_VERSION, "identity": identity });
+        let dir = self.entry_dir(asset, &name)?;
+        if Self::valid(&dir, &fingerprint) && dir.join("thumb.png").is_file() {
+            return Ok((dir.join("thumb.png"), true));
+        }
+        let (dir, _, _) = self.ensure(asset, &name, fingerprint, |staging| {
+            let out = staging.join("thumb.png");
+            render(&out)?;
+            if !out.is_file() {
+                return Err(JobError::new(
+                    "render_failed",
+                    "The renderer reported success but wrote no picture",
+                ));
+            }
+            let got = png_size(&out)?;
+            if got != size {
+                return Err(JobError::new(
+                    "render_failed",
+                    format!(
+                        "The renderer drew {}x{}, the thumbnail needs {}x{}",
+                        got.0, got.1, size.0, size.1
+                    ),
+                ));
+            }
+            Ok(Value::Null)
+        })?;
+        Ok((dir.join("thumb.png"), false))
+    }
+
     /// Peaks (0..1) of the first audio stream in `buckets` equal slices of its duration.
     pub fn waveform(
         &self,

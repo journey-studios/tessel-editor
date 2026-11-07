@@ -421,7 +421,8 @@ pub fn status(state: &EditorState) -> Value {
                         FileState::Changed => "changed", FileState::NotFile => "n/a" },
                     "storage": asset.identity.storage.label(),
                     "path": match &asset.source { tessel_editor_core::assets::Source::File { path } => Some(path.clone()), _ => None },
-                    "hash": asset.identity.hash, "size": asset.identity.size })
+                    "hash": asset.identity.hash, "size": asset.identity.size,
+                    "thumbnail": state.thumbnail_report(item.id.as_str()) })
             })
         })
         .collect();
