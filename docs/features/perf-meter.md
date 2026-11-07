@@ -157,7 +157,7 @@ o monitor sem runtime).
   (`in_a_narrow_window_the_strip_is_cut_...`). O fator é 1 e não menor: com a soma dos fatores
   abaixo de 1 o flexbox resolve só essa fração do excesso e a mensagem longa empurraria o rótulo
   para fora (medido: com 0,25, 1551 px viraram 1304 px numa área de 724 px). A mensagem cortada
-  não tem dica com o texto completo (só o texto na barra e a CLI `get`).
+  não tem dica com o texto completo; a CLI `get` não expõe a atividade da barra, então um erro de gesto pode ficar disponível apenas no texto truncado.
 - A marca "o próximo paint é o redraw do próprio medidor" só vale para o estado que a gravou:
   mostrar ou esconder o medidor a limpa. Antes ela sobrevivia a um esconder entre o disparo do
   timer de repouso e o paint, e engolia o primeiro quadro real depois de reexibir

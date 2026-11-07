@@ -414,7 +414,7 @@ def record_abort(error):
 
     The checks and cost rounds collected so far stay in the report."""
     text = "".join(traceback.format_exception_only(type(error), error)).strip()
-    report["aborted"] = {"type": type(error).__name__, "message": str(error)[:500], "traceback": "".join(traceback.format_exception(error))[-2500:]}
+    report["aborted"] = {"type": type(error).__name__, "message": str(error)[:500], "traceback": "".join(traceback.format_exception(type(error), error, error.__traceback__))[-2500:]}
     check(f"the run completed without an exception ({type(error).__name__})", False, text)
 
 
