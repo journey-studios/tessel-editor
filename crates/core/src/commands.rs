@@ -6,7 +6,6 @@
 
 use serde_json::{Value, json};
 
-use crate::camera_keys::Easing;
 use crate::perf::{self, PerfMeterCommand};
 use crate::plan::PreviewIntent;
 use crate::preview::PreviewMode;
@@ -329,7 +328,7 @@ pub fn parse_invoke(
         ("monitor.reload", "invoke") => return Ok(Parsed::ReloadViewport),
         ("camera_keys.capture", "invoke") => Command::CameraKeys(CameraKeysCommand::Capture {
             clip: selected_scene_clip(state, target)?,
-            easing: Easing::Linear,
+            easing: None,
         }),
         ("camera_keys.clear", "invoke") => Command::CameraKeys(CameraKeysCommand::Replace {
             clip: selected_scene_clip(state, target)?,

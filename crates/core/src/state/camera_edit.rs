@@ -17,14 +17,24 @@ use crate::time::Ratio;
 /// One edit of a scene clip's camera keys.
 #[derive(Debug, Clone, PartialEq)]
 pub enum CameraKeysCommand {
-    /// Adds a key, or replaces the key at the same scene time.
-    Set { clip: String, key: CameraKey },
+    /// Adds a key, or replaces the key at the same scene time. `easing` `None` means "not said":
+    /// an existing key at that time keeps its easing, a new key uses `key.easing` (linear when
+    /// parsed from a request without one). `Some` is always respected.
+    Set {
+        clip: String,
+        key: CameraKey,
+        easing: Option<Easing>,
+    },
     /// Removes the key at exactly `time` (scene seconds).
     Remove { clip: String, time: Ratio },
     /// Replaces every key (an empty list removes them all).
     Replace { clip: String, keys: Vec<CameraKey> },
-    /// Records the camera the clip shows at the playhead as a key at that scene time.
-    Capture { clip: String, easing: Easing },
+    /// Records the camera the clip shows at the playhead as a key at that scene time. `easing`
+    /// `None` keeps the easing of the key already there, or is linear for a new key.
+    Capture {
+        clip: String,
+        easing: Option<Easing>,
+    },
     /// Edits one field of the `index`-th key (sorted by time): `time` (seconds, millisecond
     /// resolution), `easing`, `fov`, `position_x|y|z`, `target_x|y|z`.
     Field {
@@ -122,8 +132,19 @@ impl EditorState {
         command: CameraKeysCommand,
     ) -> Result<Value, CommandError> {
         let (clip_ref, candidate) = match command {
-            CameraKeysCommand::Set { clip, key } => {
+            CameraKeysCommand::Set {
+                clip,
+                mut key,
+                easing,
+            } => {
                 let mut keys = self.scene_clip(&clip)?.camera_keys.clone();
+                key.easing = match easing {
+                    Some(explicit) => explicit,
+                    None => keys
+                        .iter()
+                        .find(|existing| existing.time == key.time)
+                        .map_or(key.easing, |existing| existing.easing),
+                };
                 camera_keys::upsert(&mut keys, key);
                 (clip, keys)
             }
@@ -163,6 +184,11 @@ impl EditorState {
                 let time = self.clip_scene_time(entry, frame);
                 let camera = self.clip_camera_at(entry, frame);
                 let mut keys = entry.camera_keys.clone();
+                let easing = easing.unwrap_or_else(|| {
+                    keys.iter()
+                        .find(|existing| existing.time == time)
+                        .map_or(Easing::Linear, |existing| existing.easing)
+                });
                 camera_keys::upsert(&mut keys, CameraKey::from_camera(time, &camera, easing));
                 (clip, keys)
             }

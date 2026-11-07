@@ -264,19 +264,31 @@ impl Workstation {
         } else {
             "A câmera interpola entre as chaves; o easing vale para o trecho seguinte."
         };
+        // The same refusals `Capture` applies and the tree node announces as `disabled_reason`.
+        let capture_blocked = if orbiting {
+            Some("A câmera orbita: zere a órbita (clip.camera) antes de gravar chaves.")
+        } else if !inside {
+            Some("Mova o playhead sobre o clipe para gravar uma chave.")
+        } else {
+            None
+        };
         let add = Button::new("camera-key-add")
             .ghost()
             .xsmall()
             .icon(IconName::Plus)
             .label("Chave no playhead")
-            .tooltip("Grava a câmera atual no playhead como uma chave")
+            .tooltip(
+                capture_blocked
+                    .unwrap_or("Grava a câmera atual no playhead como uma chave")
+                    .to_string(),
+            )
             .accessibility_label("Adicionar chave de câmera no playhead")
-            .disabled(!inside)
+            .disabled(capture_blocked.is_some())
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.dispatch(
                     Command::CameraKeys(CameraKeysCommand::Capture {
                         clip: clip.to_string(),
-                        easing: Easing::Linear,
+                        easing: None,
                     }),
                     cx,
                 );

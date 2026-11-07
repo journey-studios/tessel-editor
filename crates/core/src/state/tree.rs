@@ -772,6 +772,8 @@ fn build_inspector(state: &EditorState, nodes: &mut Vec<Node>) {
 
 const NO_KEYS: &str = "The clip has no camera keys";
 const PLAYHEAD_OUTSIDE: &str = "Move the playhead over the clip to key its camera";
+const ORBIT_CONFLICT: &str =
+    "The camera orbits: set `orbit` to 0 (clip.camera) before keying it; keys replace the orbit";
 
 /// Camera keyframe controls of the selected scene clip (BL140): the capture/clear buttons and one
 /// node per key whose fields `set` edits and whose `remove` action deletes it.
@@ -794,7 +796,11 @@ fn build_camera_keys(
             state.clip_scene_time(clip, playhead).to_json(),
         )
         .action("invoke");
-    if !inside {
+    // The same refusals `Capture` applies, shown before the click instead of as a failing callback.
+    let orbiting = clip.camera.is_some_and(|camera| camera.orbit != 0.0);
+    if orbiting {
+        capture = capture.disabled(ORBIT_CONFLICT);
+    } else if !inside {
         capture = capture.disabled(PLAYHEAD_OUTSIDE);
     }
     nodes.push(capture);
@@ -835,7 +841,7 @@ fn build_camera_keys(
         .field(
             "fov",
             "number",
-            json!({ "min": 1, "max": 170, "unit": "degrees" }),
+            json!({ "min": 1, "max": 170, "max_exclusive": true, "unit": "degrees" }),
         )
         .action("remove");
         for axis in ["x", "y", "z"] {
@@ -963,6 +969,7 @@ mod tests {
             theme: "dark",
             metrics: &metrics,
             layout: &layout,
+            perf_meter: false,
         };
         let ids = |state: &EditorState| -> Vec<String> {
             nodes(state, &cx)
@@ -1007,6 +1014,46 @@ mod tests {
         assert_eq!(key["actions"][0]["action"], "remove");
         assert_eq!(node(&state, "inspector.camera")["state"]["modified"], true);
         assert_eq!(node(&state, "camera_keys.clear")["enabled"], true);
+    }
+
+    #[test]
+    fn capture_is_disabled_with_a_reason_while_the_camera_orbits() {
+        use crate::fixtures::{proof_requests, write_standard_set};
+        let dir = std::env::temp_dir().join(format!("tessel-tree-orbit-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let set = write_standard_set(&dir).unwrap();
+        let mut state = EditorState::demo();
+        for request in proof_requests(&set) {
+            crate::headless::execute(&mut state, &request).unwrap();
+        }
+        crate::headless::execute(
+            &mut state,
+            &json!({"op":"invoke","target":"clip:c-scene","action":"select"}),
+        )
+        .unwrap();
+        // The proof scene clip orbits (45 deg/s) and the playhead is over it.
+        let capture = node(&state, "camera_keys.capture");
+        assert_eq!(capture["enabled"], false);
+        assert!(
+            capture["disabled_reason"]
+                .as_str()
+                .unwrap()
+                .contains("orbit"),
+            "{capture}"
+        );
+        // The refusal the button announces is the one the command gives.
+        let refused = crate::headless::execute(
+            &mut state,
+            &json!({"op":"invoke","target":"camera_keys.capture","action":"invoke"}),
+        )
+        .unwrap_err();
+        assert_eq!(refused.code, "camera_orbit_conflict");
+        crate::headless::execute(
+            &mut state,
+            &json!({"op":"clip.camera","clip":"c-scene","position":[0,1.2,5],"orbit":0}),
+        )
+        .unwrap();
+        assert_eq!(node(&state, "camera_keys.capture")["enabled"], true);
     }
 
     #[test]
