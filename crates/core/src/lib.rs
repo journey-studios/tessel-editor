@@ -31,6 +31,7 @@ pub mod scene_resources;
 pub mod session;
 pub mod splat;
 pub mod state;
+pub mod text;
 pub mod time;
 pub mod trace;
 

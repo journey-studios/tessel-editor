@@ -6,8 +6,10 @@ use crate::state::error::CommandError;
 
 /// Text of a title clip, or of a text asset used as a source.
 ///
-/// Rendered by the runtime's built-in bitmap font (see `docs/features/viewport.md`):
-/// ASCII only, no shaping, no system fonts, so output does not depend on installed fonts.
+/// Rendered by the runtime's built-in bitmap font (see `docs/features/accented-titles.md`):
+/// printable ASCII plus the Portuguese/Western European accents of [`crate::text`], one line, no
+/// shaping, no system fonts, so output does not depend on installed fonts. `content` is always in
+/// NFC: a composed `ã` and `a` + U+0303 are the same text from every entry point.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextSpec {
     pub content: String,
@@ -26,7 +28,7 @@ impl TextSpec {
         color: impl Into<String>,
     ) -> Result<Self, CommandError> {
         let spec = Self {
-            content: content.into(),
+            content: crate::text::normalize(&content.into())?,
             size,
             color: color.into(),
         };
@@ -41,14 +43,12 @@ impl TextSpec {
                 json!({ "max_chars": TEXT_MAX_CHARS }),
             ));
         }
-        if let Some(ch) = self
-            .content
-            .chars()
-            .find(|ch| !ch.is_ascii() || ch.is_ascii_control())
-        {
+        // Every constructor normalizes; a stored spelling that is not NFC would break equality of
+        // composed and decomposed titles, so it is refused rather than silently kept.
+        if crate::text::normalize(&self.content)? != self.content {
             return Err(CommandError::new(
                 "unsupported_text",
-                format!("`{ch}` is outside the built-in ASCII bitmap font"),
+                "Text must be in its composed (NFC) spelling",
             ));
         }
         if !self.size.is_finite() || !(1.0..=100.0).contains(&self.size) {
@@ -210,14 +210,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn text_rejects_non_ascii_bad_size_and_bad_color() {
+    fn text_rejects_unsupported_characters_bad_size_and_bad_color() {
         assert!(TextSpec::new("TESSEL 01", 12.0, "#ff8800").is_ok());
         assert_eq!(
             TextSpec::new("", 12.0, "#ffffff").unwrap_err().code,
             "invalid_value"
         );
         assert_eq!(
-            TextSpec::new("café", 12.0, "#ffffff").unwrap_err().code,
+            TextSpec::new("preço €", 12.0, "#ffffff").unwrap_err().code,
+            "unsupported_text"
+        );
+        assert_eq!(
+            TextSpec::new("linha\nlinha", 12.0, "#ffffff")
+                .unwrap_err()
+                .code,
             "unsupported_text"
         );
         assert!(TextSpec::new("A", 0.0, "#ffffff").is_err());
