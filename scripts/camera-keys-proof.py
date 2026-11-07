@@ -173,19 +173,19 @@ def scenario(surface, check, scratch, fixtures):
     check('one undo brings the keys back', len(scene_clip(document())['camera_keys']) == 2)
 
     # --- the head trim at another speed keeps the picture (core rule, both surfaces) ---------------
-    # Keys 0 s (z 10) and 8 s (z 2): z = 10 - scene time. At 200 % frame 12 (0.5 s of timeline) reads
-    # scene time 1 s (z 9). Trimming the head to frame 6 (0.25 s) must not move that frame: an
-    # unscaled shift would make it read 1.25 s (z 8.75).
+    # Keys 0 s (z 10) and 8 s (z 2): z = 10 - scene time. At 200 % frame 24 (1 s of timeline) reads
+    # scene time 2 s (z 8). Trimming the head to frame 12 (0.5 s) must not move that frame: an
+    # unscaled shift would make it read 1.5 s (z 8.5), the bug of BL140.2.
     ok({'op': 'clip.camera_keys', 'clip': 'c-scene', 'keys': [
         {'time': 0, 'position': [0, 1.2, 10], 'target': [0, 0, 0], 'fov': 50, 'easing': 'linear'},
         {'time': 8, 'position': [0, 1.2, 2], 'target': [0, 0, 0], 'fov': 50, 'easing': 'linear'}]})
     ok({'op': 'clip.property', 'clip': 'c-scene', 'property': 'speed', 'value': 200})
-    check('at 200 % frame 12 reads scene time 1 s (z 9)', near(z(12), 9.0), z(12))
-    good, payload = surface.set('trim:c-scene:start', 'frame', 6)
+    check('at 200 % frame 24 reads scene time 2 s (z 8)', near(z(24), 8.0), z(24))
+    good, payload = surface.set('trim:c-scene:start', 'frame', 12)
     check('the head trim at 200 % is accepted', good, payload)
-    check('the head trim at 200 % keeps frame 12 on scene time 1 s (z 9, not 8.75)', near(z(12), 9.0), z(12))
+    check('the head trim at 200 % keeps frame 24 on scene time 2 s (z 8, not 8.5)', near(z(24), 8.0), z(24))
     good, payload = surface.set('trim:c-scene:start', 'frame', 0)
-    check('trimming the head back at the same speed restores the clip', good and near(z(12), 9.0), payload)
+    check('trimming the head back at the same speed restores the clip', good and near(z(24), 8.0), payload)
     ok({'op': 'clip.property', 'clip': 'c-scene', 'property': 'speed', 'value': 100})
 
     if surface.name != 'native':
