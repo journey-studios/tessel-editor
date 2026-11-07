@@ -94,6 +94,8 @@ class HeadlessTests(unittest.TestCase):
         surface = self.surface('import sys, time\nfor line in sys.stdin:\n    time.sleep(60)\n', timeout=0.5)
         with self.assertRaisesRegex(ps.SurfaceError, 'no reply'):
             surface.op({'op': 'plan'})
+        with self.assertRaisesRegex(ps.SurfaceError, 'already ended'):
+            surface.op({'op': 'next'})
 
     def test_a_broken_pipe_is_a_typed_error(self):
         surface = self.surface('import os\nos.close(0)\nimport time; time.sleep(30)\n', timeout=2)
@@ -190,6 +192,7 @@ class RunSurfaceTests(unittest.TestCase):
     def test_a_cleanup_failure_never_replaces_the_cause(self):
         class Dying(ps.Headless):
             def stop(self):
+                super().stop()
                 raise OSError('cleanup exploded')
 
         def scenario(surface, check, scratch):
@@ -302,6 +305,31 @@ class WindowIdTests(unittest.TestCase):
         with patch.object(ps.subprocess, 'run', return_value=done) as run:
             ps.window_id(1)
         self.assertEqual(run.call_args.kwargs['timeout'], ps.CAPTURE_TIMEOUT)
+
+
+class LifecycleRegressions(unittest.TestCase):
+    def test_subclasses_receive_the_headless_arguments(self):
+        class Child(ps.Headless):
+            pass
+        with tempfile.TemporaryDirectory(prefix='ps-subclass') as directory:
+            root = Path(directory)
+            script = fake_headless(root, ECHO)
+            def scenario(surface, check, scratch):
+                good, payload = surface.op({'op': 'echo'})
+                check('subclass answered', good and payload['echo'] == 'echo')
+            result = ps.run_surface(Child, sys.executable, scenario, root, extra=(script,))
+            self.assertFalse(result['failed'], result)
+
+    def test_crash_after_last_response_is_not_a_complete_pass(self):
+        with tempfile.TemporaryDirectory(prefix='ps-late-crash') as directory:
+            root = Path(directory)
+            script = fake_headless(root, 'import sys,json\nfor line in sys.stdin:\n    print(json.dumps({"ok":True,"result":{}}), flush=True)\n    sys.exit(7)\n')
+            def scenario(surface, check, scratch):
+                good, _ = surface.op({'op': 'last'})
+                check('last response', good)
+            result = ps.run_surface(ps.Headless, sys.executable, scenario, root, extra=(script,))
+            self.assertTrue(result['failed'], result)
+            self.assertFalse(result['complete'], result)
 
 
 if __name__ == '__main__':

@@ -251,7 +251,7 @@ def main():
                 return code or 1
         return code
 
-    out = Path(args.out)
+    out = Path(args.out).resolve()
     fixtures = out / 'fixtures'
     try:
         out.mkdir(parents=True, exist_ok=True)
