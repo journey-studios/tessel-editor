@@ -1,0 +1,325 @@
+== tolerances_frozen [data (tolerances committed before any result)]
+  PASS tolerances.json declares itself frozen before results
+  PASS the corpus was generated against exactly these tolerances (hash recorded in expected.json)
+  PASS git knows the commit that introduced tolerances.json
+  PASS tolerances.json is unchanged since it was committed (no silent tuning)
+  PASS every later change to tolerances.json is a recorded amendment
+  PASS scripts/directed-scene-acceptance/results.json: the tolerance commit precedes the first commit that holds this result
+== corpus [data (corpus determinism, provenance, pinned hashes)]
+  PASS committed corpus is byte-identical to what corpus.py writes
+  PASS provenance declares no private media
+  PASS assets/bg.png: hash matches provenance
+  PASS assets/mk-blue.png: hash matches provenance
+  PASS assets/mk-green.png: hash matches provenance
+  PASS assets/mk-red.png: hash matches provenance
+  PASS assets/mk-yellow.png: hash matches provenance
+  PASS audio/mix.wav: hash matches provenance
+  PASS bundle.audio-ntsc.json: hash matches provenance
+  PASS bundle.audio24.json: hash matches provenance
+  PASS bundle.camera-portrait.json: hash matches provenance
+  PASS bundle.camera.json: hash matches provenance
+  PASS bundle.full.json: hash matches provenance
+  PASS bundle.splat.json: hash matches provenance
+  PASS expected.json: hash matches provenance
+  PASS splat/sp-green.spz: hash matches provenance
+  PASS splat/sp-order.spz: hash matches provenance
+  PASS splat/sp-pair.spz: hash matches provenance
+  PASS splat/sp-purple.spz: hash matches provenance
+  PASS splat/sp-red.spz: hash matches provenance
+  PASS bundle audio24: expected.json pins its bytes
+  PASS bundle audio24: sourcePcmHashSha256 is the hash of the whole WAV file (the rule the resource gate enforces)
+  PASS bundle audio_ntsc: expected.json pins its bytes
+  PASS bundle audio_ntsc: sourcePcmHashSha256 is the hash of the whole WAV file (the rule the resource gate enforces)
+  PASS bundle camera: expected.json pins its bytes
+  PASS bundle camera_portrait: expected.json pins its bytes
+  PASS bundle full: expected.json pins its bytes
+  PASS bundle full: sourcePcmHashSha256 is the hash of the whole WAV file (the rule the resource gate enforces)
+  PASS bundle splat: expected.json pins its bytes
+  PASS the NTSC audio bundle carries the rational rate 30000/1001
+  PASS the corpus has camera frames in three shots (fov 30/50/75), both orientations, and splats in two shots
+  PASS every splat has at least 6 px of sigma and is isolated (asserted when the corpus is generated)
+== models [data (models vs origin oracle and analytic identities)]
+  PASS the camera model agrees with the origin oracle (scripts/directed-scene-proof/model.spec.py, read-only)
+  PASS the target projects to the exact centre of the picture
+  PASS a point at the vertical half-fov projects to the top edge (the fov is vertical)
+  PASS a point behind the camera does not project
+  PASS +x in the world is to the right of the picture
+  PASS a gaussian of sigma 0.3 at depth 8 has the closed-form screen sigma
+  PASS the splat centre uses pixel-index coordinates (the picture centre is (319.5, 179.5))
+  PASS the SPZ writer's header is NGSP, version 2, one point, SH degree 0, 12 fractional bits
+  PASS positions decode from the 24-bit fixed point within one step
+  PASS alpha 1.0 is stored as 255
+  PASS scale is stored as (ln sigma + 10) * 16 and decodes within one quantisation step
+  PASS the mix WAV is 8 s of mono 16-bit at 44.1 kHz
+  PASS the WAV samples equal the analytic tone table to one 16-bit step (first 0.1 s)
+  PASS tone table: 440 Hz at 1 s, silence at 2.2 s, 1320 Hz at 4.5 s
+  PASS frame 150 at 30000/1001 is exactly 5.005 s
+  PASS rational window: frame 18 at 24 fps with a 1 s mix offset is mix time -1/4 s
+== controls_audio [harness (audio verifier on right and wrong files; ffmpeg only)]
+  PASS positive: analytic window of audio24_window_a, AAC
+  PASS positive: analytic window of audio24_window_b, AAC
+  PASS positive: analytic window of audio_ntsc_window, AAC
+  PASS positive: stereo with the same signal on both channels
+  PASS negative: shifted 5 ms
+  PASS negative: shifted one frame
+  PASS negative: rate bug (44.1 kHz read as 48 kHz)
+  PASS negative: silent stream
+  PASS negative: gain -6 dB
+  PASS negative: mix offset ignored
+  PASS negative: export range ignored
+  PASS negative: tone swapped
+  PASS negative: truncated audio
+  PASS negative: no audio stream
+  PASS negative: NTSC treated as 30 fps
+  PASS the frozen negative control `shifted 5 ms` is exercised
+  PASS the frozen negative control `shifted one frame` is exercised
+  PASS the frozen negative control `rate bug (44.1 kHz read as 48 kHz)` is exercised
+  PASS the frozen negative control `silent stream` is exercised
+  PASS the frozen negative control `gain -6 dB` is exercised
+  PASS the frozen negative control `mix offset ignored` is exercised
+  PASS the frozen negative control `export range ignored` is exercised
+  PASS the frozen negative control `tone swapped` is exercised
+  PASS the frozen negative control `no audio stream` is exercised
+  PASS the frozen negative control `truncated audio` is exercised
+  PASS the frozen negative control `NTSC treated as 30 fps` is exercised
+== baseline_audio [tessel-render CLI: existing offline mixer vs the analytic oracle]
+  PASS audio24_window_a: the mixer reports 144000 frames at 48000 Hz
+  PASS audio24_window_a audio: exactly 1 audio stream
+  PASS audio24_window_a audio: 2 channel(s) are accepted
+  PASS audio24_window_a audio: sample rate 48000
+  PASS audio24_window_a audio: start_time within 0.025 s of zero (0.0000)
+  PASS audio24_window_a audio: duration 3.0000 s within 0.0225 s of 3.0000 s
+  PASS audio24_window_a audio ch0: at least 142920 samples
+  PASS audio24_window_a audio ch0: sample-level correlation with the analytic signal >= 0.97 (1.0000)
+  PASS audio24_window_a audio ch0: envelope lag +0 samples within 48
+  PASS audio24_window_a audio ch0: 20 tone window(s) judged, each dominated by its expected frequency (ratio >= 25)
+  PASS audio24_window_a audio ch0: gain -3.01 dB within +-1.0 dB of the expected -3.01 dB
+  PASS audio24_window_a audio ch0: 2 silent range(s) stay below RMS 0.004 (worst 0.00000)
+  PASS audio24_window_a audio ch0: on edge at 0.2500s vs 0.2500s (error +0.00 ms, limit 3 ms)
+  PASS audio24_window_a audio ch0: off edge at 2.2500s vs 2.2500s (error +0.00 ms, limit 3 ms)
+  PASS audio24_window_a audio ch0: on edge at 2.7500s vs 2.7500s (error +0.00 ms, limit 3 ms)
+  PASS audio24_window_a audio ch1: at least 142920 samples
+  PASS audio24_window_a audio ch1: sample-level correlation with the analytic signal >= 0.97 (1.0000)
+  PASS audio24_window_a audio ch1: envelope lag +0 samples within 48
+  PASS audio24_window_a audio ch1: 20 tone window(s) judged, each dominated by its expected frequency (ratio >= 25)
+  PASS audio24_window_a audio ch1: gain -3.01 dB within +-1.0 dB of the expected -3.01 dB
+  PASS audio24_window_a audio ch1: 2 silent range(s) stay below RMS 0.004 (worst 0.00000)
+  PASS audio24_window_a audio ch1: on edge at 0.2500s vs 0.2500s (error +0.00 ms, limit 3 ms)
+  PASS audio24_window_a audio ch1: off edge at 2.2500s vs 2.2500s (error +0.00 ms, limit 3 ms)
+  PASS audio24_window_a audio ch1: on edge at 2.7500s vs 2.7500s (error +0.00 ms, limit 3 ms)
+  PASS audio24_window_b: the mixer reports 192000 frames at 48000 Hz
+  PASS audio24_window_b audio: exactly 1 audio stream
+  PASS audio24_window_b audio: 2 channel(s) are accepted
+  PASS audio24_window_b audio: sample rate 48000
+  PASS audio24_window_b audio: start_time within 0.025 s of zero (0.0000)
+  PASS audio24_window_b audio: duration 4.0000 s within 0.0225 s of 4.0000 s
+  PASS audio24_window_b audio ch0: at least 190920 samples
+  PASS audio24_window_b audio ch0: sample-level correlation with the analytic signal >= 0.97 (1.0000)
+  PASS audio24_window_b audio ch0: envelope lag +0 samples within 48
+  PASS audio24_window_b audio ch0: 32 tone window(s) judged, each dominated by its expected frequency (ratio >= 25)
+  PASS audio24_window_b audio ch0: gain -3.02 dB within +-1.0 dB of the expected -3.01 dB
+  PASS audio24_window_b audio ch0: 1 silent range(s) stay below RMS 0.004 (worst 0.00000)
+  PASS audio24_window_b audio ch0: off edge at 2.5000s vs 2.5000s (error +0.00 ms, limit 3 ms)
+  PASS audio24_window_b audio ch0: on edge at 3.0000s vs 3.0000s (error +0.00 ms, limit 3 ms)
+  PASS audio24_window_b audio ch1: at least 190920 samples
+  PASS audio24_window_b audio ch1: sample-level correlation with the analytic signal >= 0.97 (1.0000)
+  PASS audio24_window_b audio ch1: envelope lag +0 samples within 48
+  PASS audio24_window_b audio ch1: 32 tone window(s) judged, each dominated by its expected frequency (ratio >= 25)
+  PASS audio24_window_b audio ch1: gain -3.02 dB within +-1.0 dB of the expected -3.01 dB
+  PASS audio24_window_b audio ch1: 1 silent range(s) stay below RMS 0.004 (worst 0.00000)
+  PASS audio24_window_b audio ch1: off edge at 2.5000s vs 2.5000s (error +0.00 ms, limit 3 ms)
+  PASS audio24_window_b audio ch1: on edge at 3.0000s vs 3.0000s (error +0.00 ms, limit 3 ms)
+== audio_off [tessel-render CLI: scene.export audio:false preserved]
+  PASS the file is readable by ffprobe/ffmpeg
+  PASS exactly one video stream
+  PASS codec h264, pixel format yuv420p
+  PASS resolution 640x360
+  PASS frame count: 72 frames decoded (not just declared)
+  PASS container nb_frames agrees with the decoded count
+  PASS r_frame_rate is exactly 24
+  PASS avg_frame_rate is exactly 24
+  PASS colour declared: BT.709, limited range
+  PASS every pts sits on the exact frame grid i/fps (to one container tick)
+  PASS the first pts is within one frame of zero
+  PASS duration 3 s = frames * den/num (to 1 ms)
+  PASS the result reports the frame count the file holds
+  PASS the result reports the exact rational rate of the file
+  PASS the result reports the output size of the file
+  PASS the result says audio included = False, and the file has no audio stream
+  PASS the result lists exactly the bundle's image/splat resources with the bundle's own hashes
+  PASS the file has exactly one video stream
+  PASS audio:false f18 mk_red: detected
+  PASS audio:false f18 mk_red: centroid within 1.25 px of the model (0.462)
+  PASS audio:false f18 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.970)
+  PASS audio:false f18 mk_red: interior colour at the model centroid within 12
+  PASS audio:false f18 mk_green: detected
+  PASS audio:false f18 mk_green: centroid within 1.25 px of the model (0.526)
+  PASS audio:false f18 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.973)
+  PASS audio:false f18 mk_green: interior colour at the model centroid within 12
+  PASS audio:false f18 mk_blue: detected
+  PASS audio:false f18 mk_blue: centroid within 1.25 px of the model (0.113)
+  PASS audio:false f18 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.949)
+  PASS audio:false f18 mk_blue: interior colour at the model centroid within 12
+  PASS audio:false f18 mk_yellow: detected
+  PASS audio:false f18 mk_yellow: centroid within 1.25 px of the model (0.524)
+  PASS audio:false f18 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.959)
+  PASS audio:false f18 mk_yellow: interior colour at the model centroid within 12
+  PASS audio:false f40 mk_red: detected
+  PASS audio:false f40 mk_red: centroid within 1.25 px of the model (0.462)
+  PASS audio:false f40 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.970)
+  PASS audio:false f40 mk_red: interior colour at the model centroid within 12
+  PASS audio:false f40 mk_green: detected
+  PASS audio:false f40 mk_green: centroid within 1.25 px of the model (0.526)
+  PASS audio:false f40 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.973)
+  PASS audio:false f40 mk_green: interior colour at the model centroid within 12
+  PASS audio:false f40 mk_blue: detected
+  PASS audio:false f40 mk_blue: centroid within 1.25 px of the model (0.112)
+  PASS audio:false f40 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.949)
+  PASS audio:false f40 mk_blue: interior colour at the model centroid within 12
+  PASS audio:false f40 mk_yellow: detected
+  PASS audio:false f40 mk_yellow: centroid within 1.25 px of the model (0.524)
+  PASS audio:false f40 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.959)
+  PASS audio:false f40 mk_yellow: interior colour at the model centroid within 12
+  PASS audio:false f89 mk_red: detected
+  PASS audio:false f89 mk_red: centroid within 1.25 px of the model (0.462)
+  PASS audio:false f89 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.970)
+  PASS audio:false f89 mk_red: interior colour at the model centroid within 12
+  PASS audio:false f89 mk_green: detected
+  PASS audio:false f89 mk_green: centroid within 1.25 px of the model (0.526)
+  PASS audio:false f89 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.973)
+  PASS audio:false f89 mk_green: interior colour at the model centroid within 12
+  PASS audio:false f89 mk_blue: detected
+  PASS audio:false f89 mk_blue: centroid within 1.25 px of the model (0.112)
+  PASS audio:false f89 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.949)
+  PASS audio:false f89 mk_blue: interior colour at the model centroid within 12
+  PASS audio:false f89 mk_yellow: detected
+  PASS audio:false f89 mk_yellow: centroid within 1.25 px of the model (0.524)
+  PASS audio:false f89 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.959)
+  PASS audio:false f89 mk_yellow: interior colour at the model centroid within 12
+  PASS audio:false: no audio stream, as asked (`audio:false`)
+  PASS scene.export with audio:false succeeds
+  PASS the result lists the declared audio as omitted and says why
+  PASS a typed `audio_omitted` warning is present
+== audio_export [S9 seam: scene.export mixed audio vs the analytic oracle (24 fps and 30000/1001)]
+  PASS the file is readable by ffprobe/ffmpeg
+  PASS exactly one video stream
+  PASS codec h264, pixel format yuv420p
+  PASS resolution 640x360
+  PASS frame count: 72 frames decoded (not just declared)
+  PASS container nb_frames agrees with the decoded count
+  PASS r_frame_rate is exactly 24
+  PASS avg_frame_rate is exactly 24
+  PASS colour declared: BT.709, limited range
+  PASS every pts sits on the exact frame grid i/fps (to one container tick)
+  PASS the first pts is within one frame of zero
+  PASS duration 3 s = frames * den/num (to 1 ms)
+  PASS the result reports the frame count the file holds
+  PASS the result reports the exact rational rate of the file
+  PASS the result reports the output size of the file
+  PASS the result says audio included = True, and the file has an audio stream
+  PASS the result lists exactly the bundle's image/splat resources with the bundle's own hashes
+  PASS the file has exactly one video stream
+  PASS audio24_window_a f18 mk_red: detected
+  PASS audio24_window_a f18 mk_red: centroid within 1.25 px of the model (0.462)
+  PASS audio24_window_a f18 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.970)
+  PASS audio24_window_a f18 mk_red: interior colour at the model centroid within 12
+  PASS audio24_window_a f18 mk_green: detected
+  PASS audio24_window_a f18 mk_green: centroid within 1.25 px of the model (0.526)
+  PASS audio24_window_a f18 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.973)
+  PASS audio24_window_a f18 mk_green: interior colour at the model centroid within 12
+  PASS audio24_window_a f18 mk_blue: detected
+  PASS audio24_window_a f18 mk_blue: centroid within 1.25 px of the model (0.113)
+  PASS audio24_window_a f18 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.949)
+  PASS audio24_window_a f18 mk_blue: interior colour at the model centroid within 12
+  PASS audio24_window_a f18 mk_yellow: detected
+  PASS audio24_window_a f18 mk_yellow: centroid within 1.25 px of the model (0.524)
+  PASS audio24_window_a f18 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.959)
+  PASS audio24_window_a f18 mk_yellow: interior colour at the model centroid within 12
+  PASS audio24_window_a f54 mk_red: detected
+  PASS audio24_window_a f54 mk_red: centroid within 1.25 px of the model (0.462)
+  PASS audio24_window_a f54 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.970)
+  PASS audio24_window_a f54 mk_red: interior colour at the model centroid within 12
+  PASS audio24_window_a f54 mk_green: detected
+  PASS audio24_window_a f54 mk_green: centroid within 1.25 px of the model (0.526)
+  PASS audio24_window_a f54 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.973)
+  PASS audio24_window_a f54 mk_green: interior colour at the model centroid within 12
+  PASS audio24_window_a f54 mk_blue: detected
+  PASS audio24_window_a f54 mk_blue: centroid within 1.25 px of the model (0.112)
+  PASS audio24_window_a f54 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.949)
+  PASS audio24_window_a f54 mk_blue: interior colour at the model centroid within 12
+  PASS audio24_window_a f54 mk_yellow: detected
+  PASS audio24_window_a f54 mk_yellow: centroid within 1.25 px of the model (0.524)
+  PASS audio24_window_a f54 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.959)
+  PASS audio24_window_a f54 mk_yellow: interior colour at the model centroid within 12
+  PASS audio24_window_a f89 mk_red: detected
+  PASS audio24_window_a f89 mk_red: centroid within 1.25 px of the model (0.462)
+  PASS audio24_window_a f89 mk_red: mask IoU >= 0.85 against the model's ray-cast mask (0.970)
+  PASS audio24_window_a f89 mk_red: interior colour at the model centroid within 12
+  PASS audio24_window_a f89 mk_green: detected
+  PASS audio24_window_a f89 mk_green: centroid within 1.25 px of the model (0.526)
+  PASS audio24_window_a f89 mk_green: mask IoU >= 0.85 against the model's ray-cast mask (0.973)
+  PASS audio24_window_a f89 mk_green: interior colour at the model centroid within 12
+  PASS audio24_window_a f89 mk_blue: detected
+  PASS audio24_window_a f89 mk_blue: centroid within 1.25 px of the model (0.112)
+  PASS audio24_window_a f89 mk_blue: mask IoU >= 0.85 against the model's ray-cast mask (0.949)
+  PASS audio24_window_a f89 mk_blue: interior colour at the model centroid within 12
+  PASS audio24_window_a f89 mk_yellow: detected
+  PASS audio24_window_a f89 mk_yellow: centroid within 1.25 px of the model (0.524)
+  PASS audio24_window_a f89 mk_yellow: mask IoU >= 0.85 against the model's ray-cast mask (0.959)
+  PASS audio24_window_a f89 mk_yellow: interior colour at the model centroid within 12
+  PASS audio24_window_a audio: exactly 1 audio stream
+  PASS audio24_window_a audio: 2 channel(s) are accepted
+  PASS audio24_window_a audio: sample rate 48000
+  PASS audio24_window_a audio: start_time within 0.025 s of zero (0.0000)
+  PASS audio24_window_a audio: duration 3.0080 s within 0.0225 s of 3.0000 s
+  PASS audio24_window_a audio ch0: at least 142920 samples
+  FAIL audio24_window_a audio ch0: sample-level correlation with the analytic signal >= 0.97 (-0.0000)  -> -6.329526721982883e-07
+  FAIL audio24_window_a audio ch0: envelope lag +7200 samples within 48  -> 7200
+  FAIL audio24_window_a audio ch0: 20 tone window(s) judged, each dominated by its expected frequency (ratio >= 25)  -> ['0.69s expects 440 Hz (ratio 0.0)', '0.79s expects 440 Hz (ratio 0.0)', '0.89s expects 440 Hz (ratio 0.0)']
+  FAIL audio24_window_a audio ch0: gain -4.38 dB within +-1.0 dB of the expected +0.00 dB  -> -4.375645678198222
+  FAIL audio24_window_a audio ch0: 2 silent range(s) stay below RMS 0.004 (worst 0.25000)  -> 0.2500049462844291
+  FAIL audio24_window_a audio ch0: on edge at 0.1700s vs 0.2500s (error -80.00 ms, limit 3 ms)  -> -0.07999999999999999
+  FAIL audio24_window_a audio ch0: off edge at 2.3310s vs 2.2500s (error +81.00 ms, limit 3 ms)  -> 0.08099999999999996
+  FAIL audio24_window_a audio ch0: on edge at 2.6720s vs 2.7500s (error -78.00 ms, limit 3 ms)  -> -0.07799999999999985
+  PASS audio24_window_a audio ch1: at least 142920 samples
+  FAIL audio24_window_a audio ch1: sample-level correlation with the analytic signal >= 0.97 (-0.0000)  -> -6.329526722911922e-07
+  FAIL audio24_window_a audio ch1: envelope lag +7200 samples within 48  -> 7200
+  FAIL audio24_window_a audio ch1: 20 tone window(s) judged, each dominated by its expected frequency (ratio >= 25)  -> ['0.69s expects 440 Hz (ratio 0.0)', '0.79s expects 440 Hz (ratio 0.0)', '0.89s expects 440 Hz (ratio 0.0)']
+  FAIL audio24_window_a audio ch1: gain -4.38 dB within +-1.0 dB of the expected +0.00 dB  -> -4.375645678198222
+  FAIL audio24_window_a audio ch1: 2 silent range(s) stay below RMS 0.004 (worst 0.25000)  -> 0.25000494594143524
+  FAIL audio24_window_a audio ch1: on edge at 0.1700s vs 0.2500s (error -80.00 ms, limit 3 ms)  -> -0.07999999999999999
+  FAIL audio24_window_a audio ch1: off edge at 2.3310s vs 2.2500s (error +81.00 ms, limit 3 ms)  -> 0.08099999999999996
+  FAIL audio24_window_a audio ch1: on edge at 2.6720s vs 2.7500s (error -78.00 ms, limit 3 ms)  -> -0.07799999999999985
+  PASS audio24_window_a: scene.export succeeds with the mix
+  PASS audio24_window_a: no `audio_omitted` warning when the mix is in the file
+  FAIL audio24_window_b: scene.export succeeds with the mix  -> {'code': 'audio_source_short', 'message': 'The mix file holds 352800 frames but this range reads up to frame 396899 (window 1.000-9.000 s at 44100 Hz)', 'target': 'audio-mix', 'details': {'file_frames': 352800, 'needed_through': 396899, 'sample_rate': 44100}}
+  FAIL Abort: scene.export failed for a reason other than the missing audio seam: {"code": "destination_exists", "message": "`/tmp/s10-acc-wp852mar/seam-probe/probe.mp4` already exists", "details": {"ok": false, "blockers": [{"code": "destination_exists", "message": "`/tmp/s10-acc-wp852mar/seam-probe/probe.mp4` already exists"}], "warnings": [], "summary": {"scene": "au", "bundle
+== audio_package_export [S9 seam: export with the mix from a restored project]
+  FAIL Abort: scene.export failed for a reason other than the missing audio seam: {"code": "destination_exists", "message": "`/tmp/s10-acc-wp852mar/seam-probe/probe.mp4` already exists", "details": {"ok": false, "blockers": [{"code": "destination_exists", "message": "`/tmp/s10-acc-wp852mar/seam-probe/probe.mp4` already exists"}], "warnings": [], "summary": {"scene": "au", "bundle
+
+SUMMARY
+  PASS     tolerances_frozen          6/6 checks
+  PASS     corpus                     32/32 checks
+  PASS     models                     16/16 checks
+  PASS     controls_audio             26/26 checks
+  PASS     baseline_audio             46/46 checks
+  PASS     audio_off                  70/70 checks
+  FAIL     audio_export               75/92 checks
+  FAIL     audio_package_export       
+  NOT RUN  controls_camera
+  NOT RUN  controls_splat
+  NOT RUN  controls_package
+  NOT RUN  camera_plan
+  NOT RUN  camera_render
+  NOT RUN  camera_export
+  NOT RUN  baseline_splat_geometry
+  NOT RUN  baseline_splat_colour
+  NOT RUN  package_portability
+  NOT RUN  package_tamper
+  NOT RUN  splat_plan
+  NOT RUN  splat_render
+  NOT RUN  splat_export
+  NOT RUN  splat_package
+  NOT RUN  full_av
+exit 1 (failures)
+report: /tmp/s10-a1/before-A1.json
