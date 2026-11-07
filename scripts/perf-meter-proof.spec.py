@@ -92,6 +92,99 @@ class PrivateCopyTests(unittest.TestCase):
         self.assertNotEqual(proof.fingerprint(str(self.document)), before, "a changed document")
 
 
+class FramePreparationTests(unittest.TestCase):
+    class Editor:
+        def __init__(self, answers):
+            self.answers = list(answers)
+            self.asked = 0
+
+        def op(self, request):
+            self.asked += 1
+            return self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
+
+    PREPARING = {"ok": False, "error": {"code": "media_preparing", "message": "wait"}}
+
+    def clock(self):
+        state = {"t": 0.0}
+        return (lambda seconds: state.__setitem__("t", state["t"] + seconds)), (lambda: state["t"])
+
+    def test_preparing_is_a_wait_and_the_frame_that_follows_is_the_answer(self):
+        editor = self.Editor([self.PREPARING, self.PREPARING, {"ok": True}])
+        sleep, now = self.clock()
+        self.assertTrue(proof.frame_when_prepared(editor, 10, sleep, now)["ok"])
+        self.assertEqual(editor.asked, 3)
+
+    def test_a_real_refusal_is_returned_at_once_not_retried(self):
+        missing = {"ok": False, "error": {"code": "media_missing"}}
+        editor = self.Editor([missing])
+        sleep, now = self.clock()
+        self.assertEqual(proof.error_code(proof.frame_when_prepared(editor, 10, sleep, now)), "media_missing")
+        self.assertEqual(editor.asked, 1)
+
+    def test_preparing_that_never_ends_stays_preparing_and_cannot_pass_either_check(self):
+        editor = self.Editor([self.PREPARING])
+        sleep, now = self.clock()
+        answer = proof.frame_when_prepared(editor, 3, sleep, now)
+        self.assertFalse(answer["ok"])
+        self.assertEqual(proof.error_code(answer), "media_preparing")  # the negative control rejects this too
+        self.assertGreater(editor.asked, 1)
+
+
+class FixtureImportTests(unittest.TestCase):
+    def test_wait_job_asks_again_until_the_job_ends(self):
+        states = iter(["queued", "running", "running", "succeeded"])
+
+        class Editor:
+            def op(self, request):
+                return {"ok": True, "data": {"state": next(states), "result_state": "applied"}}
+
+        state = {"t": 0.0}
+        info = proof.wait_job(Editor(), "job-1", 10, lambda s: state.__setitem__("t", state["t"] + s), lambda: state["t"])
+        self.assertEqual(info["state"], "succeeded")
+
+    def test_a_job_that_never_ends_is_returned_still_running_and_fails_the_fixture(self):
+        class Editor:
+            def op(self, request):
+                return {"ok": True, "data": {"state": "running"}}
+
+        state = {"t": 0.0}
+        info = proof.wait_job(Editor(), "job-1", 2, lambda s: state.__setitem__("t", state["t"] + s), lambda: state["t"])
+        self.assertEqual(info["state"], "running")
+
+    def test_only_identity_origin_may_hold_an_absolute_path(self):
+        prefix = "/tmp/w/rel"
+        ok = {"assets": [{"path": "media/clip.mp4", "identity": {"origin": prefix + "/media/clip.mp4"}}]}
+        self.assertEqual(proof.absolute_strings_outside_origin(ok, prefix), [])
+        leaked = {"assets": [{"path": prefix + "/media/clip.mp4", "identity": {"origin": prefix + "/x"}}]}
+        self.assertEqual(proof.absolute_strings_outside_origin(leaked, prefix), [prefix + "/media/clip.mp4"])
+        nested = {"a": [{"b": {"c": prefix + "/z"}}]}
+        self.assertEqual(proof.absolute_strings_outside_origin(nested, prefix), [prefix + "/z"])
+
+
+class MediaResolutionTests(unittest.TestCase):
+    def editor(self, assets, missing):
+        class Editor:
+            def op(self, request):
+                return {"ok": True, "data": {"assets": assets, "missing": missing}}
+
+        return Editor()
+
+    def test_a_resolved_asset_under_the_base_reads_ok_and_nothing_missing(self):
+        got = proof.media_resolution(self.editor([{"state": "ok", "path": "/w/copy/media/clip.mp4"}], 0), "/w/copy")
+        self.assertEqual(got, {"missing": 0, "states": ["ok"], "under_base": True})
+
+    def test_a_missing_asset_is_reported_missing_the_negative_controls_signal(self):
+        got = proof.media_resolution(self.editor([{"state": "missing", "path": "/w/naive/media/clip.mp4"}], 1), "/w/naive")
+        self.assertEqual((got["missing"], got["states"], got["under_base"]), (1, ["missing"], True))
+
+    def test_a_path_that_escaped_the_base_is_not_under_it(self):
+        got = proof.media_resolution(self.editor([{"state": "ok", "path": "/elsewhere/clip.mp4"}], 0), "/w/copy")
+        self.assertFalse(got["under_base"])
+
+    def test_no_assets_is_not_under_the_base(self):
+        self.assertFalse(proof.media_resolution(self.editor([], 0), "/w/copy")["under_base"])
+
+
 class StopReportTests(unittest.TestCase):
     def test_a_stopped_running_playback_answers_the_flat_report(self):
         flat = {"state": "stopped", "ticks": 400, "skipped_frames": 0}

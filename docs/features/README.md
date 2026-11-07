@@ -169,7 +169,7 @@ Veja [arquitetura](../core-architecture.md) e [template](_template.md).
 
 ¹⁵ Manifesto por assetId e materialização suportada (PNG/SPZ/mix) com preflight/rollback. 27 testes públicos core, 39 media e integração plano/manifesto passaram. Mapas/profundidade/relevo/narração apenas listados. Raízes precisam de controle exclusivo; PNG só cabeçalho. Guarda de pacote incompleto permanece. [Contrato](scene-resources.md).
 
-¹⁶ Medidor de debug (BL145): apresentação pura sobre a janela e o monitor vivos. UI e CLI da janela estão implementadas e cobertas por 12 testes GPUI de geometria (sem pixels), pelo atalho despachado pelo GPUI e por `scripts/perf-meter-proof.py` (ver o documento); a captura nativa e o custo medido ficam no relatório da PR. A CLI headless é N/A: não há janela nem WebView. Regras (amostragem, FPS, pior intervalo, perdas, posição) vivem em `core::perf` e são V sem GPUI.
+¹⁶ Medidor de debug (BL145): apresentação pura sobre a janela e o monitor vivos. UI e CLI da janela estão implementadas e cobertas por testes GPUI de geometria e de relógio controlado (sem pixels e sem `sleep`), pelo atalho despachado pelo GPUI e por `scripts/perf-meter-proof.py` (ver o documento; a execução anterior às correções da revisão é histórico, não evidência do head atual); a captura nativa e o custo medido ficam no relatório da PR. A CLI headless é N/A: não há janela nem WebView. Regras (amostragem, FPS, pior intervalo, perdas, posição) vivem em `core::perf` e são V sem GPUI.
 
 Integração R9/F039: 11 testes visuais GPUI reconferidos pelo coordenador após ligar Anexar ao diálogo F043. O agente reporta 50 capturas nativas e 188 testes desktop; captura do novo cabeçalho e gate global pendentes ([relatório](../migration/next-r9-report.md), BL104).
 

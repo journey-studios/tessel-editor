@@ -743,3 +743,13 @@ deve **re-medir** antes de afirmar ganho. BL129 e BL130 são filhos de BL031/OPT
 BL136.1 — resíduos OCR 4501976870/6883/6892: amostra `sample` com sobreposição de playback não comprovada explicitada no §6 (sem nova medição); `--counts` inválido recusado antes da sessão; expectativa de raiz no spec funciona em diretório temporário raso.
 
 Validação dos resíduos: spec 81/81 (inclui controle e mutações anteriores), log `/tmp/pr14-final-residues-spec.log`; sem Rust/runtime/medição nova.
+
+## PR18 — medidor de debug de desempenho (F049, head integrado `17d73f0` + docs/driver)
+
+Contrato e evidências: [features/perf-meter.md](features/perf-meter.md). Só estas duas linhas são da PR #18; não alteram
+as de BL129–BL139.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL145 | F049 | Medidor de debug de FPS/intervalo/perdas (atalho ⌘⇧D, cartão flutuante ou faixa na barra de status), regras em `core::perf` e leitura pela CLI da janela. Headless N/A (sem janela) | A validar (PR #18; implementado em lib e janela, revisão independente e merge pelo coordenador pendentes) | BL130 (rótulo `+ sort`, já na `main`) | Sub-agente PR #18 | Testes `core::perf` e GPUI no head, `cargo test --workspace` com `TESSEL_REQUIRE_RUNTIME=1`, runtime em Chrome sem skip e `perf-meter-proof.py` sem falha. **Limites mantidos:** taxa de paints da janela não medida (sem `--paint-probe`), custo medido só em debug com 3 rodadas (não prova custo nulo), atalho provado pelo despachante do GPUI e não por teclado físico |
+| BL145.1 | F049/revisão | 13 threads da revisão da PR #18 (CodeRabbit e OpenCodeReview): âncora do movimento e primeira imagem, quadro inicial só se apresentado, resume sem pausa, pausa sem relógio, relógio do executor e testes sem `sleep`, esconder cancela o timer, 4 Hz por contagem, faixa da barra a 960 px, `ui.repaints` não é paint, driver (caminho relativo, fixture dimensionado, relatório do `playback.stop`, falha de captura), interação com o preview `+ sort`/refino de BL130 | A validar (correções e testes no head; sem rebase, `main` integrada por merge) | BL145 | Sub-agente PR #18 | Cada achado tem teste que falha sem a correção (mutações registradas na PR); driver: spec 27 testes (normal e `-O`) e 3 execuções nativas anteriores que **falharam** por defeito do próprio driver (fixture sem hash, controle negativo por ordem de execução) preservadas, a 4ª com 33 checks |

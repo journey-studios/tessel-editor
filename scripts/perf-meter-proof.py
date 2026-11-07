@@ -13,7 +13,9 @@ exactly as in the original and the original is only read: its document hash and 
 compared before and after. The layouts and the cost are then measured on a synthetic H.264
 project made with FFmpeg, so the monitor really presents pictures; that project is saved with
 its clip INSIDE its folder (relative path) and measured from a private copy of itself, which
-proves the copy logic natively (a JSON-only copy is the negative control and must fail).
+proves the copy logic natively (a JSON-only copy is the negative control: `media.status` reports its
+media missing, while the private copy resolves it and `render.frame` draws). The clip is imported
+(`media.import`, hashed), because an asset that was only added can never be prepared.
 Everything goes through semantic requests (`get`, `set`, `invoke`, `op`); no pointer, no
 coordinates. It checks:
 
@@ -204,6 +206,56 @@ def private_copy(document, destination):
     return copied
 
 
+def error_code(answer):
+    error = (answer or {}).get("error")
+    return error.get("code") if isinstance(error, dict) else None
+
+
+def frame_when_prepared(editor, timeout=60.0, sleep=time.sleep, now=time.monotonic):
+    """`render.frame` 0, asked again while the host answers `media_preparing` (its media is still
+    being prepared: a wait, not a verdict). The last answer is returned; one that is still
+    `media_preparing` after `timeout` is a failure of the caller's check, not a pass."""
+    deadline = now() + timeout
+    while True:
+        answer = editor.op({"op": "render.frame", "frame": 0})
+        if answer.get("ok") or error_code(answer) != "media_preparing" or now() >= deadline:
+            return answer
+        sleep(0.5)
+
+
+def media_resolution(editor, base):
+    """What `media.status` says about the open project's media: how many are missing, their states and
+    whether every resolved path lies under `base` (the folder of the opened document)."""
+    data = editor.op({"op": "media.status"}).get("data") or {}
+    assets = data.get("assets") or []
+    root = os.path.realpath(base)
+    return {
+        "missing": data.get("missing"),
+        "states": [asset.get("state") for asset in assets],
+        "under_base": bool(assets) and all(os.path.realpath(str(asset.get("path"))).startswith(root + os.sep) or str(asset.get("path")).startswith(base + os.sep) for asset in assets),
+    }
+
+
+def wait_job(editor, job, timeout=120.0, sleep=time.sleep, now=time.monotonic):
+    """`job.wait` answers while the job still runs (a bounded wait), so ask again until it ends."""
+    deadline = now() + timeout
+    while True:
+        info = editor.op({"op": "job.wait", "job": job}).get("data") or {}
+        if info.get("state") not in ("queued", "running") or now() >= deadline:
+            return info
+        sleep(0.25)
+
+
+def absolute_strings_outside_origin(value, prefix, key=None):
+    """Strings under `prefix` anywhere in a saved document except `identity.origin`, which is an
+    informational record of where the file came from, not a path the editor resolves."""
+    if isinstance(value, dict):
+        return [hit for k, v in value.items() for hit in absolute_strings_outside_origin(v, prefix, k)]
+    if isinstance(value, list):
+        return [hit for v in value for hit in absolute_strings_outside_origin(v, prefix, key)]
+    return [value] if isinstance(value, str) and key != "origin" and prefix in value else []
+
+
 def synthetic_project(editor, work, frames):
     """A fresh 1280x720 24 fps project with one H.264 clip, so every playback tick draws a picture.
 
@@ -221,14 +273,23 @@ def synthetic_project(editor, work, frames):
     )
     if made.returncode != 0:
         return False, made.stderr[-300:], None
-    steps = [
-        {"op": "project.create", "name": "Perf meter proof", "sequence": "main", "rate": FPS, "width": 1280, "height": 720, "length": frames, "dir": folder},
-        {"op": "asset.add", "kind": "video", "id": "clip", "name": "Clip", "path": clip, "rate": FPS, "width": 1280, "height": 720, "duration": {"num": frames, "den": FPS}},
+    # `media.import` (not `asset.add`): a hashed asset can be decoded when the project is reopened.
+    # An asset that was only added has no hash, its private copy can never be prepared and
+    # `render.frame` answers `media_preparing` forever (the job fails: "never hashed").
+    created = editor.op({"op": "project.create", "name": "Perf meter proof", "sequence": "main", "rate": FPS, "width": 1280, "height": 720, "length": frames, "dir": folder})
+    if not created.get("ok"):
+        return False, str(created)[:300], None
+    imported = editor.op({"op": "media.import", "paths": [clip], "mode": "reference"})
+    if not imported.get("ok"):
+        return False, str(imported)[:300], None
+    finished = wait_job(editor, imported["data"]["job"])
+    if finished.get("state") != "succeeded" or finished.get("result_state") != "applied":
+        return False, f"import job: {finished.get('state')} {finished.get('result_state')} {finished.get('error')}", None
+    for step in [
         {"op": "track.add", "id": "t", "name": "T", "kind": "video"},
         {"op": "clip.add", "id": "c", "track": "t", "asset": "clip", "start": 0, "duration": frames},
         {"op": "project.save", "path": document},
-    ]
-    for step in steps:
+    ]:
         response = editor.op(step)
         if not response.get("ok"):
             return False, str(response)[:300], None
@@ -396,21 +457,27 @@ def main():
         if not ok:
             raise RuntimeError(f"no fixture: {why}")
         report["fixture_frames"] = frames
-        stored = json.dumps(json.load(open(saved)))
-        check("the fixture stores its clip relative to the document", '"media/clip.mp4"' in stored and os.path.join(work, "rel") not in stored, stored[:200])
+        document_json = json.load(open(saved))
+        stored = json.dumps(document_json)
+        absolute = absolute_strings_outside_origin(document_json, os.path.join(work, "rel"))
+        check("the fixture stores its clip relative to the document", '"media/clip.mp4"' in stored and not absolute, str(absolute)[:200] or stored[:200])
         # Negative control: only the JSON copied elsewhere cannot find its media...
         naive = os.path.join(work, "naive")
         os.makedirs(naive)
         naive_document = shutil.copyfile(saved, os.path.join(naive, os.path.basename(saved)))
         editor.op({"op": "project.open", "path": naive_document})
-        broken = editor.op({"op": "render.frame", "frame": 0})
-        check("a JSON-only copy cannot draw: the relative media path moved with the base (negative control)", not broken.get("ok"), str(broken)[:200])
+        broken = media_resolution(editor, naive)
+        check("a JSON-only copy cannot find its media: the relative path moved with the base (negative control)",
+              broken["missing"] == 1 and broken["under_base"] is True and broken["states"] == ["missing"], str(broken)[:300])
         # ...and the private copy draws, and is what the rest of the proof measures.
         before = fingerprint(saved)
         copy_document = private_copy(saved, os.path.join(work, "copy"))
         opened = editor.op({"op": "project.open", "path": copy_document})
         check("the private copy of the fixture opens", opened.get("ok"), str(opened)[:300])
-        frame = editor.op({"op": "render.frame", "frame": 0})
+        resolved = media_resolution(editor, os.path.dirname(copy_document))
+        check("the private copy resolves its media through the document's folder (relative path preserved)",
+              resolved["missing"] == 0 and resolved["under_base"] is True and resolved["states"] == ["ok"], str(resolved)[:300])
+        frame = frame_when_prepared(editor)
         check("a real frame renders from the private copy (relative media preserved)", frame.get("ok"), str(frame)[:300])
         check("the fixture's original folder was only read", fingerprint(saved) == before, before)
         settle(editor, 2.0)

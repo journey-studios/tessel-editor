@@ -41,12 +41,30 @@ no projeto. Não há GPU, compositor nem hardware medidos aqui; o que cada núme
 - `FrameClock`: taxa nos últimos 1 s (`RATE_WINDOW`) e **pior intervalo** dos últimos 5 s
   (`WORST_WINDOW`). Sem movimento esperado, 1 s sem quadros é **repouso** (`parado`), não
   "0 fps". Com movimento esperado (reprodução), o silêncio é uma **parada** e é lido como tal.
+  O intervalo de uma imagem corre desde a última imagem **ou** desde o início do movimento (o
+  que for mais recente); sem imagem anterior (medidor ligado durante a reprodução) a âncora do
+  movimento é a origem, então uma parada de 3 s antes da primeira imagem continua no pior
+  intervalo depois que as imagens chegam.
 - `PlaybackLoss`: quadros do relógio de reprodução que o monitor não apresentou
   (`perdidos de N (x%)`, `atraso`). Só existe durante a reprodução; fora dela é
-  "só em reprodução".
+  "só em reprodução". `start(frame, on_screen)`: o quadro inicial só conta como apresentado
+  se o monitor **estava mostrando esse quadro** (`on_screen == Some(frame)`); senão a própria
+  imagem dele precisa chegar antes de qualquer mais nova (se uma mais nova chega primeiro, ele
+  é um quadro perdido). Início de reprodução, seek e ligar o medidor no meio da reprodução
+  usam a mesma regra; o adaptador informa o quadro de sequência da última imagem aceita
+  (`ViewportHost::presented_frame`). Sem imagem ainda, não há extensão para perder: `atraso`
+  conta os quadros devidos.
 - `Meter`: não registra nada enquanto desligado (`samples() == (0, 0)`,
-  `next_wakeup() == None`).
-- `Readout` (`rows()`, `strip()`, `to_json()`), `FrameContext::of(&FrameResult)`.
+  `next_wakeup() == None`). `enable(now, playing_from, on_screen)` recebe o quadro do relógio
+  **só quando o relógio está rodando**: pausa não tem relógio (o silêncio é repouso, não
+  parada). `playback_started` de uma reprodução que já está rodando (um `playback.resume` sem
+  pausa) **não** reinicia a execução: as contagens de perdas sobrevivem. Os contadores vivem
+  em `core::perf`, compartilhados por biblioteca, headless (N/A, sem janela) e UI.
+- `Readout` (`rows()`, `strip()`, `to_json()`), `FrameContext::of(&FrameResult)`. O rótulo de
+  qualidade acrescenta `+ proxy` e `+ sort` (`source.stale_sort_layers`, BL130): uma imagem
+  com a ordem de splats de outra câmera nunca é apresentada como a final, e o refino que a
+  substitui conta como uma imagem nova do monitor, mas **não** como um segundo quadro
+  apresentado nas perdas.
 - `place(area, blocked)`: onde o cartão cabe longe do retângulo da WebView.
 
 O que não se sabe aparece como **indisponível**, nunca como zero. O MSAA e as camadas
@@ -112,12 +130,23 @@ o monitor sem runtime).
 - **Visível:** o texto é recalculado **no máximo a cada 250 ms (4 Hz)**, só a partir de
   quadros que já estavam sendo pintados, nunca por pedido do medidor. Não há temporizador
   contínuo. O único timer é de disparo único, armado depois de um paint, que acorda uma vez
-  para o redraw de "parado" e não rearma em repouso (a janela volta a dormir).
+  para o redraw de "parado" e não rearma em repouso (a janela volta a dormir). **Esconder o
+  medidor descarta a tarefa do timer** (cancela-o): nenhum despertar acontece escondido.
+- **Relógio:** o medidor lê o relógio do executor (`BackgroundExecutor::now`): o relógio real
+  no app e o controlado nos testes GPUI (`advance_clock`). Nenhum teste dorme.
 - Não pede quadros ao monitor, não dispara refino e não invalida cache: ele só **lê** o que o
   host já recebeu.
 - O contador de UI vive no paint, não num timer: o teste
-  `the_ui_rate_counts_frames_the_window_paints_and_not_timer_ticks` pinta 5 quadros, deixa o
-  relógio e o timer correrem, e confere que continuam 5.
+  `the_ui_rate_counts_frames_the_window_paints_and_not_timer_ticks` pinta 5 quadros, avança o
+  relógio controlado até o repouso (o timer dispara), e confere que continuam 5; o redraw de
+  "parado" não conta e o quadro seguinte conta (controle).
+- O limite de 4 Hz é afirmado **contando recálculos** (`refreshes`), com o relógio parado
+  durante os paints: oito quadros no mesmo instante não recalculam; 249 ms depois, também
+  não; 250 ms, exatamente um (`the_numbers_are_recomputed_at_four_hertz_at_most`). Recalcular
+  a cada paint falha o teste.
+- Barra de status a 960 px com o monitor maximizado: a faixa do medidor **encolhe e trunca**
+  (`flex_shrink(1)`, `min_w(0)`, `truncate`); tarefas e atividade ficam inteiras e numa linha
+  e o rótulo salvo não sai da barra (`at_960_px_with_the_monitor_maximized_...`).
 
 ### Persistência
 
@@ -130,17 +159,46 @@ preferências para isso.
 Implementado e validado nas superfícies que se aplicam (UI e CLI da janela; lib com regras
 testadas sem GPUI; headless N/A). Não validado: ver [limites](#limites).
 
-- **Core:** 32 testes em `core::perf` (relógio falso: taxa, pior intervalo, repouso x parada,
-  perdas, janelas, `place`), mais parser, nó de árvore e `desktop_required` no headless.
-- **GPUI (geometria, não pixels):** `crates/desktop/src/workstation/perf_tests.rs` (12) e três
-  testes de alimentação em `viewport_host_tests.rs`: atalho único e sem conflito, alterna com
+- **Core:** testes em `core::perf` (relógio falso: taxa, pior intervalo, repouso x parada,
+  perdas, janelas, `place`, quadro inicial só se apresentado, parada anterior à primeira imagem,
+  pausa, resume sem pausa, rótulo `+ sort`), mais parser, nó de árvore e `desktop_required`
+  no headless. No head integrado `17d73f0` (PR #18 + `main` 52bf9ba): 38 testes `core::perf::tests`.
+- **GPUI (geometria, não pixels, relógio controlado):** `crates/desktop/src/workstation/perf_tests.rs`
+  e testes de alimentação em `viewport_host_tests.rs`: atalho único e sem conflito, alterna com
   qualquer foco, o nó e o atalho compartilham estado, escondido não grava nada, a UI conta
-  quadros pintados e não ticks, 4 Hz, três layouts, nenhum painel deslocado, clique atravessa
-  o cartão, monitor conta só imagens aceitas, MSAA ausente fica omitido.
-- **Janela real:** `scripts/perf-meter-proof.py` (HOME isolado, cópia do projeto em `/tmp`,
+  quadros pintados e não ticks, 4 Hz por contagem de recálculos, esconder cancela o timer,
+  ligar o medidor com a reprodução pausada lê repouso, resume sem pausa mantém as perdas,
+  quadro inicial só se o monitor o mostrava, faixa da barra de status a 960 px, três layouts,
+  nenhum painel deslocado, clique atravessa o cartão, monitor conta só imagens aceitas, MSAA
+  ausente fica omitido e a interação com o preview de ordem velha + refino (`+ sort`, duas
+  imagens do monitor, um quadro apresentado). No head `17d73f0`: 17 testes em `perf_tests.rs` e os dois
+  de interação com o refino/sort em `viewport_host_tests.rs`; `cargo test --workspace --locked` com
+  `TESSEL_REQUIRE_RUNTIME=1`: 1475 passados, 0 falhas, 12 ignorados (soma das linhas `test result`;
+  desktop 238, core 284), e o runtime em Chrome 148/148 sem skip.
+- **Janela real, head integrado `17d73f0`** (build **debug**, `--seconds 20 --rounds 3`,
+  fixture H.264 de 768 quadros importada com `media.import`): 33 checks, todos passaram. Cobre
+  medidor escondido (nó sem leitura, 0 pedidos de mudança de UI em 4 s), visível em repouso,
+  pausado (`parado`; ligar o medidor pausado lê repouso, sem perdas), retomada sem a pausa no pior
+  intervalo (75,7 ms), `playback.resume` de reprodução rodando que mantém as contagens, três
+  posições (cartão `y=8`; inspetor fechado `y=659`; faixa da barra de status), uma execução
+  longa de 20 s por rodada (6 rodadas) e projeto copiado por caminho relativo: o negativo (só o
+  JSON copiado) tem a mídia `missing` em `media.status`; a cópia privada resolve a mídia pela pasta
+  do documento e `render.frame` desenha. Capturas próprias (`screencapture -l` do PID do processo):
+  4 PNGs conferidos a olho (cartão no inspetor durante a reprodução; faixa na barra com o monitor
+  maximizado). A taxa de paints da janela **não foi medida** (sem build com `--paint-probe`).
+  Execuções anteriores do mesmo head que **falharam** e foram corrigidas no driver, não no
+  produto (logs preservados): `media_preparing` para sempre porque o fixture usava `asset.add`
+  (asset sem hash, a preparação falha com "never hashed"); e um controle negativo que passava
+  pelo motivo errado (`media_preparing`) e depois desenhava por ordem de execução (cache em
+  memória), agora trocado por `media.status`. Spec do driver: 27 testes (normal e `-O`).
+- **Janela real, execução anterior** (mesmo script, HOME isolado, cópia do projeto em `/tmp`,
   só requisições semânticas, captura com `screencapture -l` do PID do próprio processo). Em
-  build release: 17 checks, todos passaram. Em repouso, escondido ou visível, o contador de
-  repaints do `monitor.viewport` não andou em 4 s (o medidor não pede quadros). Pausar é
+  build release, **head 06afa80, anterior às correções da revisão** (histórico, não é
+  evidência do head atual): 17 checks, todos passaram. Em repouso, escondido ou visível,
+  `ui.repaints` do `monitor.viewport` não andou em 4 s. Esse contador conta só mensagens IPC
+  que mudam a assinatura da interface, **não paints da janela** (o app pinta ≈3,8 quadros/s
+  em repouso): não prova que o medidor não pede quadros, só que nada pediu mudança de
+  interface. Pausar é
   repouso (`parado`, sem perdas) e, ao retomar, a pausa não vira intervalo (pior intervalo
   do monitor 84 ms). Posições: padrão = cartão flutuante em `y=8` (sobre o inspetor);
   inspetor fechado = cartão na ponta direita da timeline, abaixo da imagem; monitor
@@ -159,6 +217,14 @@ testadas sem GPUI; headless N/A). Não validado: ver [limites](#limites).
   | build final, outra execução | desligado 0 · ligado 0 | 192,3 · 192,3 | 190,7 · 189,3 |
   | build final, com a correção da revisão | desligado 0 · ligado 0 | 192,3 · 192,0 | 188,0 · 187,0 |
   | build com contador de paint, 4 rodadas | desligado 1,5 (6, 0, 0, 0) · ligado 0,5 (1, 0, 0, 1) | 190,5 · 191,5 | 187,5 · 188,5 |
+  | **head `17d73f0`, build debug, 3 rodadas de 20 s** (por braço, 3 rodadas) | desligado 0,33 (0, 0, 1) · ligado 0 | 479,7 · 480,3 | 449,3 · 449,0 |
+
+  As quatro primeiras linhas são de heads anteriores (8 s, build release) e valem como histórico.
+  Na linha do head `17d73f0` (debug, 20 s, 3 rodadas, `ticks` do relógio de reprodução 656,7
+  desligado e 626,0 ligado, 603 a 668 entre rodadas) não há diferença em perdas, imagens aceitas
+  nem pedidos de interface; a variação dos `ticks` entre rodadas é do tamanho da diferença entre os
+  braços, então nada se conclui sobre custo além de "não detectado nesta amostra". O medidor leu
+  perdas de 1, 0 e 0 em 482 a 484 quadros e o monitor entre 23,8 e 24,6 fps.
 
   A **taxa de quadros pintados da janela** com o medidor desligado só se mede com um contador
   externo: uma build local, **não commitada**, registrava cada paint da janela nos dois braços
@@ -175,7 +241,8 @@ testadas sem GPUI; headless N/A). Não validado: ver [limites](#limites).
   externo), com intervalo de 267 ms. Por isso a linha `interface` em repouso lê uma taxa
   pequena (`3,9 fps · pior 267 ms`) e não "parado". A origem desse repaint não foi
   investigada aqui.
-- **Captura nativa:** `/Users/wallyssonnunes/www/tessel-video-splat/previews/perf-meter-bl145/`
+- **Captura nativa, head `17d73f0`:** `/tmp/pr18/logs/native/shots/` (fora do repositório, efêmera).
+- **Captura nativa anterior (histórico):** `/Users/wallyssonnunes/www/tessel-video-splat/previews/perf-meter-bl145/`
   (`perf-meter-playing.png`, `-default.png`, `-inspector-closed.png`,
   `-monitor-maximized.png`, `-real-project.png`), fora do repositório.
 
@@ -188,6 +255,9 @@ testadas sem GPUI; headless N/A). Não validado: ver [limites](#limites).
 - O estado ligado/desligado não persiste (o app não guarda preferências de interface).
 - O atalho foi provado pelo despachante de teclas do GPUI (`simulate_keystrokes`), não por
   teclado físico; o mouse físico não foi exercitado (o botão do cabeçalho usa o mesmo handler).
-- O contador de paints independente (build local) não faz parte do produto.
+- O contador de paints independente (build local) não faz parte do produto. Sem ele
+  (`--paint-probe`), `perf-meter-proof.py` registra a taxa de paints como "not measured", nunca
+  como zero, e a ausência de pedidos de quadro do medidor não é provada, só a ausência de
+  pedidos de mudança de interface.
 - A medição de custo usou uma máquina sob carga de outras compilações; repetir em máquina
   ociosa antes de afirmar mais que "sem diferença detectável".
