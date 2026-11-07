@@ -598,6 +598,17 @@ impl EditorState {
         .source_time(clip, frame)
     }
 
+    /// Playback speed of `clip` as an exact ratio (`1` is 100 %): the value the picture, the
+    /// sound and the camera keys all read, and the one a head trim scales by.
+    pub fn clip_speed(&self, clip: &Clip) -> Ratio {
+        Resolver {
+            state: self,
+            requires: Vec::new(),
+            warnings: Vec::new(),
+        }
+        .speed_ratio(clip)
+    }
+
     /// The camera a scene clip shows at sequence `frame`: its keyframes (BL140) at scene time, or
     /// without keys the still/orbiting camera counted from the clip start. One function for the
     /// plan (so preview and export agree) and for capturing a key at the playhead.

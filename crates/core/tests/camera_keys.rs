@@ -6,6 +6,7 @@ use std::process::{Command as Process, Stdio};
 
 use serde_json::{Value, json};
 use tessel_editor_core::fixtures::{proof_requests, write_standard_set};
+use tessel_editor_core::time::Ratio;
 use tessel_editor_core::{EditorState, headless};
 
 fn scratch(tag: &str) -> PathBuf {
@@ -450,4 +451,337 @@ fn the_headless_process_runs_the_same_edit_flow() {
     approx(planned(&replies[n - 3]), 7.0);
     // The undo removed the second key: the camera holds the first one.
     approx(planned(&replies[n - 1]), 10.0);
+}
+
+fn layer(state: &mut EditorState, frame: i64, clip: &str) -> Value {
+    run(state, json!({"op":"plan","frame":frame}))["layers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|layer| layer["clip"] == clip)
+        .unwrap_or_else(|| panic!("no layer for `{clip}` at frame {frame}"))
+        .clone()
+}
+
+fn scene_z(state: &mut EditorState, frame: i64) -> f64 {
+    layer(state, frame, "c-scene")["camera"]["position"][2]
+        .as_f64()
+        .unwrap()
+}
+
+fn history(state: &mut EditorState) -> Value {
+    run(state, json!({"op":"history.status"}))
+}
+
+// ---- BL140.2: trimming the head at a speed other than 100 % -------------------------------
+
+#[test]
+fn head_trim_move_and_end_trim_keep_the_camera_and_scene_time_at_every_speed() {
+    for speed in [50, 100, 200] {
+        let mut state = project(&format!("speed-{speed}"));
+        run(
+            &mut state,
+            json!({"op":"clip.property","clip":"c-scene","property":"speed","value":speed}),
+        );
+        run(
+            &mut state,
+            json!({"op":"clip.camera_keys","clip":"c-scene","keys":[
+                {"time":0,"position":[0,1,10],"target":[0,0,0],"fov":50},
+                {"time":8,"position":[0,1,2],"target":[0,0,0],"fov":50}]}),
+        );
+        // Independent oracle: z falls 1 unit per second of scene time, and scene time runs at
+        // `speed` % of the 24 fps timeline from the clip start.
+        let expected =
+            |frame_in_clip: i64| 10.0 - frame_in_clip as f64 / 24.0 * speed as f64 / 100.0;
+        let frames = [12, 24, 36];
+        let mut times = Vec::new();
+        for frame in frames {
+            approx(scene_z(&mut state, frame), expected(frame));
+            times.push(layer(&mut state, frame, "c-scene")["scene_time"].clone());
+        }
+        run(
+            &mut state,
+            json!({"op":"set","target":"trim:c-scene:start","field":"frame","value":12}),
+        );
+        assert_eq!(state.timeline.clip("c-scene").unwrap().start, 12);
+        for (frame, time) in frames.iter().zip(&times) {
+            assert_eq!(
+                &layer(&mut state, *frame, "c-scene")["scene_time"],
+                time,
+                "speed {speed}%: scene time of frame {frame} moved after the head trim"
+            );
+            approx(scene_z(&mut state, *frame), expected(*frame));
+        }
+        // Moving the clip keeps its first picture: new frame 0 is old frame 12.
+        run(
+            &mut state,
+            json!({"op":"move","target":"clip:c-scene","args":{"frame":0}}),
+        );
+        assert_eq!(layer(&mut state, 0, "c-scene")["scene_time"], times[0]);
+        approx(scene_z(&mut state, 0), expected(12));
+        // Trimming the end changes no earlier frame.
+        run(
+            &mut state,
+            json!({"op":"set","target":"trim:c-scene:end","field":"frame","value":24}),
+        );
+        assert_eq!(layer(&mut state, 12, "c-scene")["scene_time"], times[1]);
+        approx(scene_z(&mut state, 12), expected(24));
+        assert_eq!(state.timeline.clip("c-scene").unwrap().camera_keys.len(), 2);
+    }
+}
+
+#[test]
+fn head_trim_keeps_video_and_audio_on_the_source_time_they_read() {
+    for speed in [50, 100, 200] {
+        let mut state = project(&format!("av-{speed}"));
+        run(
+            &mut state,
+            json!({"op":"clip.property","clip":"c-vid","property":"speed","value":speed}),
+        );
+        let frames = [36, 40, 47];
+        let before: Vec<Value> = frames
+            .iter()
+            .map(|frame| layer(&mut state, *frame, "c-vid")["source_time"].clone())
+            .collect();
+        run(
+            &mut state,
+            json!({"op":"set","target":"trim:c-vid:start","field":"frame","value":36}),
+        );
+        assert_eq!(state.timeline.clip("c-vid").unwrap().start, 36);
+        for (frame, time) in frames.iter().zip(&before) {
+            assert_eq!(
+                &layer(&mut state, *frame, "c-vid")["source_time"],
+                time,
+                "speed {speed}%: video frame {frame} reads a different source time after the trim"
+            );
+        }
+        // 12 frames at 24 fps are 0.5 s of timeline = speed/200 s of source; the unscaled shift
+        // (1/2 s) is wrong for any speed but 100 %.
+        assert_eq!(
+            state.timeline.clip("c-vid").unwrap().source_start,
+            Ratio::new(speed, 200).unwrap()
+        );
+    }
+    // The audio clip has no speed control: it keeps reading the same source time too.
+    let mut state = project("audio");
+    let tone = state.timeline.clip("c-tone").unwrap().clone();
+    let before = state.clip_source_time(&tone, 30);
+    run(
+        &mut state,
+        json!({"op":"set","target":"trim:c-tone:start","field":"frame","value":12}),
+    );
+    let trimmed = state.timeline.clip("c-tone").unwrap().clone();
+    assert_eq!(trimmed.start, 12);
+    assert_eq!(state.clip_source_time(&trimmed, 30), before);
+}
+
+// ---- BL140.3: omitting the easing is not choosing linear ----------------------------------
+
+#[test]
+fn upsert_and_capture_keep_the_easing_of_an_existing_key_unless_one_is_given() {
+    let mut state = project("easing-keep");
+    run(&mut state, key(0, 10.0, 50.0, "easeInOutCubic"));
+    run(&mut state, key(2, 4.0, 50.0, "linear"));
+    // Frame 12 is a quarter of the segment: easeInOutCubic gives 4 * 0.25^3 = 0.0625, linear 0.25.
+    approx(z(&camera_at(&mut state, 12)), 10.0 + (4.0 - 10.0) * 0.0625);
+
+    // Same time, no easing said: new pose, same easing; still two keys.
+    let moved = json!({"op":"clip.camera_key","clip":"c-scene","time":0,
+        "position":[0,1.0,12],"target":[0,0,0],"fov":50});
+    let result = run(&mut state, moved.clone());
+    assert_eq!(result["count"], 2);
+    let keys = state.timeline.clip("c-scene").unwrap().camera_keys.clone();
+    assert_eq!(keys[0].easing.label(), "easeInOutCubic");
+    approx(z(&camera_at(&mut state, 12)), 12.0 + (4.0 - 12.0) * 0.0625);
+    // Undo brings back the previous pose together with its easing.
+    run(&mut state, json!({"op":"history.undo"}));
+    let keys = state.timeline.clip("c-scene").unwrap().camera_keys.clone();
+    approx(keys[0].position[2], 10.0);
+    assert_eq!(keys[0].easing.label(), "easeInOutCubic");
+
+    // An explicit choice is respected, including `linear` over a cubic key.
+    let mut explicit = moved.clone();
+    explicit["easing"] = json!("linear");
+    run(&mut state, explicit);
+    let keys = state.timeline.clip("c-scene").unwrap().camera_keys.clone();
+    assert_eq!(keys[0].easing.label(), "linear");
+    approx(z(&camera_at(&mut state, 12)), 12.0 + (4.0 - 12.0) * 0.25);
+
+    // A new key without an easing is linear.
+    run(
+        &mut state,
+        json!({"op":"clip.camera_key","clip":"c-scene","time":1,"position":[0,1,6]}),
+    );
+    let keys = state.timeline.clip("c-scene").unwrap().camera_keys.clone();
+    assert_eq!(keys.len(), 3);
+    assert_eq!(keys[1].easing.label(), "linear");
+}
+
+#[test]
+fn capture_by_op_and_by_invoke_does_not_reset_the_easing_of_the_key_it_lands_on() {
+    let mut state = project("capture-easing");
+    run(&mut state, key(0, 10.0, 50.0, "easeOutCubic"));
+    run(&mut state, key(2, 4.0, 50.0, "linear"));
+    run(&mut state, json!({"op":"seek","frame":0}));
+    let depth = history(&mut state);
+    // The camera at frame 0 is exactly the key at 0 s: capturing again changes nothing and,
+    // above all, does not turn the cubic easing into linear (the UI button and `invoke` send
+    // no easing).
+    run(
+        &mut state,
+        json!({"op":"invoke","target":"clip:c-scene","action":"select"}),
+    );
+    let result = run(
+        &mut state,
+        json!({"op":"invoke","target":"camera_keys.capture","action":"invoke"}),
+    );
+    assert_eq!(result["changed"], false, "{result}");
+    let result = run(
+        &mut state,
+        json!({"op":"clip.camera_key.capture","clip":"c-scene"}),
+    );
+    assert_eq!(result["changed"], false, "{result}");
+    let keys = state.timeline.clip("c-scene").unwrap().camera_keys.clone();
+    assert_eq!(keys.len(), 2);
+    assert_eq!(keys[0].easing.label(), "easeOutCubic");
+    assert_eq!(
+        history(&mut state),
+        depth,
+        "a no-op capture adds no undo entry"
+    );
+    // The curve is still the cubic one: a quarter along gives 1 - 0.75^3.
+    approx(
+        z(&camera_at(&mut state, 12)),
+        10.0 + (4.0 - 10.0) * (1.0 - 0.75_f64.powi(3)),
+    );
+    // A capture on a new moment is linear unless told otherwise; an explicit easing sticks.
+    run(&mut state, json!({"op":"seek","frame":12}));
+    run(
+        &mut state,
+        json!({"op":"invoke","target":"camera_keys.capture","action":"invoke"}),
+    );
+    let keys = state.timeline.clip("c-scene").unwrap().camera_keys.clone();
+    assert_eq!(keys.len(), 3);
+    assert_eq!(keys[1].easing.label(), "linear");
+    run(
+        &mut state,
+        json!({"op":"clip.camera_key.capture","clip":"c-scene","easing":"easeInOutCubic"}),
+    );
+    let keys = state.timeline.clip("c-scene").unwrap().camera_keys.clone();
+    assert_eq!(keys.len(), 3);
+    assert_eq!(keys[1].easing.label(), "easeInOutCubic");
+}
+
+// ---- BL140.4: a reopened project cannot hold what editing refuses -------------------------
+
+#[test]
+fn the_loader_refuses_an_orbit_with_keys_like_editing_does_and_keeps_the_state() {
+    let mut state = project("loader-orbit");
+    run(&mut state, key(0, 10.0, 50.0, "linear"));
+    run(&mut state, key(2, 4.0, 50.0, "linear"));
+    let edit = fail(
+        &mut state,
+        json!({"op":"clip.camera","clip":"c-scene","position":[0,1,5],"orbit":30}),
+    );
+    let before = state.to_document(None);
+
+    let mut document = before.clone();
+    let clips = document["sequences"][0]["clips"].as_array_mut().unwrap();
+    let scene = clips
+        .iter_mut()
+        .find(|clip| clip["id"] == "c-scene")
+        .unwrap();
+    scene["camera"]["orbit"] = json!(30);
+    let error = EditorState::from_document(&document, None)
+        .err()
+        .expect("orbit + keys must not load");
+    assert_eq!(error.code, edit, "the loader and the edit give one code");
+    assert_eq!(error.code, "camera_orbit_conflict");
+    // The open project was not touched by the failed load.
+    assert_eq!(state.to_document(None), before);
+
+    // Keys in a schema 1 document would be dropped by a legacy reader: refused.
+    let mut legacy = before.clone();
+    legacy["schema_version"] = json!(1);
+    assert!(EditorState::from_document(&legacy, None).is_err());
+}
+
+// ---- BL140.7: inert edits and silent drops ------------------------------------------------
+
+#[test]
+fn clip_camera_on_a_keyed_clip_is_refused_instead_of_a_silent_undo_entry() {
+    let mut state = project("inert");
+    run(&mut state, key(0, 10.0, 50.0, "linear"));
+    run(&mut state, key(2, 4.0, 50.0, "linear"));
+    let before = state.to_document(None);
+    let depth = history(&mut state);
+    assert_eq!(
+        fail(
+            &mut state,
+            json!({"op":"clip.camera","clip":"c-scene","position":[0,2,7],"fov":40,"orbit":0})
+        ),
+        "camera_keys_override"
+    );
+    assert_eq!(state.to_document(None), before);
+    assert_eq!(history(&mut state), depth);
+    // The identical camera is a plain no-op, not an error and not an undo entry.
+    let same = run(
+        &mut state,
+        json!({"op":"clip.camera","clip":"c-scene","position":[0,1.2,5],"target":[0,0,0],"fov":50,"orbit":0}),
+    );
+    assert_eq!(same["changed"], false);
+    assert_eq!(history(&mut state), depth);
+    // Without keys the camera edit works again.
+    run(
+        &mut state,
+        json!({"op":"clip.camera_keys","clip":"c-scene","keys":[]}),
+    );
+    let changed = run(
+        &mut state,
+        json!({"op":"clip.camera","clip":"c-scene","position":[0,2,7],"fov":40,"orbit":0}),
+    );
+    assert_eq!(changed["changed"], true);
+}
+
+#[test]
+fn a_key_with_an_orbit_is_refused_instead_of_losing_the_field() {
+    let mut state = project("key-orbit");
+    let before = state.to_document(None);
+    assert_eq!(
+        fail(
+            &mut state,
+            json!({"op":"clip.camera_key","clip":"c-scene","time":1,"position":[0,1,5],"orbit":30})
+        ),
+        "camera_orbit_conflict"
+    );
+    assert_eq!(
+        fail(
+            &mut state,
+            json!({"op":"clip.camera_keys","clip":"c-scene","keys":[
+                {"time":1,"position":[0,1,5],"orbit":30}]})
+        ),
+        "camera_orbit_conflict"
+    );
+    assert_eq!(state.to_document(None), before);
+    // `orbit: 0` says nothing a key does not already mean.
+    run(
+        &mut state,
+        json!({"op":"clip.camera_key","clip":"c-scene","time":1,"position":[0,1,5],"orbit":0}),
+    );
+    assert_eq!(state.timeline.clip("c-scene").unwrap().camera_keys.len(), 1);
+}
+
+#[test]
+fn the_fov_range_is_one_up_to_but_excluding_170() {
+    let mut state = project("fov");
+    assert_eq!(
+        fail(&mut state, key(1, 5.0, 170.0, "linear")),
+        "invalid_value"
+    );
+    run(&mut state, key(1, 5.0, 169.9, "linear"));
+    run(&mut state, key(2, 5.0, 1.0, "linear"));
+    assert_eq!(
+        fail(&mut state, key(3, 5.0, 0.9, "linear")),
+        "invalid_value"
+    );
 }

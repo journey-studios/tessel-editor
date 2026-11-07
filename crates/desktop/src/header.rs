@@ -16,7 +16,8 @@ use serde_json::{Value, json};
 
 use crate::state::layout::{LayoutCommand, PanelKind};
 use crate::theme;
-use crate::workstation::{Source, Workstation};
+use crate::workstation::{Source, Workstation, shortcut_label};
+use tessel_editor_core::perf::PerfMeterCommand;
 
 /// Strip height; the native traffic lights are centred in it.
 pub const HEIGHT: f32 = 40.0;
@@ -142,6 +143,8 @@ impl Render for Header {
         let dark = theme::is_dark(cx);
         let colors = cx.theme().colors;
 
+        let perf_visible = self.workstation.read(cx).perf_visible();
+        let perf_label = format!("Medidor de FPS e debug ({})", shortcut_label());
         let compact = window.viewport_size().width < px(1040.);
         let actions = ACTIONS.iter().fold(
             Toolbar::new("header-actions").xsmall(),
@@ -196,6 +199,23 @@ impl Render for Header {
                     .accessibility_label("Restaurar o layout padrão")
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.run(LayoutCommand::Reset, window, cx);
+                    })),
+            )
+            .child(
+                Button::new("toolbar-perf")
+                    .ghost()
+                    .icon(IconName::Gauge)
+                    .tooltip(perf_label.clone())
+                    .accessibility_label(perf_label)
+                    .selected(perf_visible)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.workstation.update(cx, |workstation, cx| {
+                            let _ = workstation.execute_perf(
+                                PerfMeterCommand::Toggle,
+                                Source::Gesture,
+                                cx,
+                            );
+                        });
                     })),
             )
             .child(

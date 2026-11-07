@@ -135,15 +135,20 @@ fn time_field(request: &Value, key: &str) -> Result<Option<Ratio>, CommandError>
     })
 }
 
-fn easing_field(request: &Value) -> Result<Easing, CommandError> {
+/// `None` when the request does not say: omitting the easing is never a choice of `linear`.
+fn easing_field(request: &Value) -> Result<Option<Easing>, CommandError> {
     match request.get("easing").filter(|raw| !raw.is_null()) {
-        None => Ok(Easing::Linear),
-        Some(raw) => raw.as_str().and_then(Easing::parse).ok_or_else(|| {
-            CommandError::invalid_value(
-                "`easing` is not an option",
-                json!({ "options": Easing::labels() }),
-            )
-        }),
+        None => Ok(None),
+        Some(raw) => raw
+            .as_str()
+            .and_then(Easing::parse)
+            .map(Some)
+            .ok_or_else(|| {
+                CommandError::invalid_value(
+                    "`easing` is not an option",
+                    json!({ "options": Easing::labels() }),
+                )
+            }),
     }
 }
 
@@ -379,6 +384,7 @@ pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, Comm
         "clip.camera_key" => Command::CameraKeys(CameraKeysCommand::Set {
             clip: string(request, "clip")?.to_string(),
             key: CameraKey::from_json(request)?,
+            easing: easing_field(request)?,
         }),
         "clip.camera_key.remove" => Command::CameraKeys(CameraKeysCommand::Remove {
             clip: string(request, "clip")?.to_string(),

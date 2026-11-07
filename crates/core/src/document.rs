@@ -804,6 +804,26 @@ fn parse_sequence(value: &Value, library: &Library) -> Result<Timeline, CommandE
                             "Clip `{clip_id}`: only scene clips carry camera keys"
                         )));
                     }
+                    // The same rule `camera_keys` editing applies: keys replace the orbit, so a
+                    // reopened project cannot hold what an edit refuses.
+                    let orbiting = match clip.get("camera") {
+                        Some(camera) => {
+                            Camera::from_json(camera)
+                                .map_err(|e| invalid(e.message))?
+                                .orbit
+                                != 0.0
+                        }
+                        None => false,
+                    };
+                    if orbiting && !keys.is_empty() {
+                        return Err(CommandError::new(
+                            "camera_orbit_conflict",
+                            format!(
+                                "Clip `{clip_id}`: the camera orbits and the clip has camera keys, which replace the orbit"
+                            ),
+                        )
+                        .target(format!("clip:{clip_id}")));
+                    }
                     keys
                 }
                 None => Vec::new(),
@@ -818,6 +838,21 @@ fn parse_sequence(value: &Value, library: &Library) -> Result<Timeline, CommandE
     timeline.selected_clip = None;
     timeline.selected_track = None;
     Ok(timeline)
+}
+
+/// Whether any clip of any sequence stores a non-empty `camera_keys` list (BL140).
+fn has_camera_keys(doc: &Value) -> bool {
+    doc["sequences"].as_array().is_some_and(|sequences| {
+        sequences.iter().any(|sequence| {
+            sequence["clips"].as_array().is_some_and(|clips| {
+                clips.iter().any(|clip| {
+                    clip.get("camera_keys")
+                        .and_then(Value::as_array)
+                        .is_some_and(|keys| !keys.is_empty())
+                })
+            })
+        })
+    })
 }
 
 /// Validates the supported document versions. V1 has no scene storage; v2 protects it from
@@ -846,6 +881,11 @@ pub fn migrate(doc: Value) -> Result<Value, CommandError> {
     if version == LEGACY_SCHEMA_VERSION && doc.get("scenes").is_some() {
         return Err(invalid(
             "Directed scenes require project schema 2; schema 1 readers would discard them",
+        ));
+    }
+    if version == LEGACY_SCHEMA_VERSION && has_camera_keys(&doc) {
+        return Err(invalid(
+            "Camera keys require project schema 2; schema 1 readers would discard them",
         ));
     }
     if version == 0 {

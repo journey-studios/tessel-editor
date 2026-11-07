@@ -25,11 +25,9 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
-import tempfile
-import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from proof_surface import MIN_FREE_GIB, Headless, Native, ProofFailure, Recorder, free_gib  # noqa: E402
+from proof_surface import MIN_FREE_GIB, Headless, Native, ProofFailure, free_gib, run_surface  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 TOLERANCE = 1e-9
@@ -92,7 +90,7 @@ def scenario(surface, check, scratch, fixtures):
     ok(key(2, 4, fov=40))
     check('frame 0 is the first key', near(z(0), 10.0), z(0))
     check('1 s is halfway (linear): z 7, fov 50', near(z(24), 7.0) and near(camera(24)['fov'], 50.0), camera(24))
-    check('after the last key the camera holds it (z 4 at frame 47 ≈ 1.96 s: still on the way)',
+    check('frame 47 (≈ 1.96 s) is still on the way to the last key at 2 s (z between 4 and 4.3)',
           4.0 < z(47) < 4.3, z(47))
     saved = document()
     check('the saved document holds both keys and uses schema 2',
@@ -101,10 +99,31 @@ def scenario(surface, check, scratch, fixtures):
     check('two keys = two undo entries and the revision moved', depth1 == depth0 + 2 and revision1 > revision0,
           (depth0, depth1, revision0, revision1))
 
+    # --- hold: an instant strictly after the last key --------------------------------------------
+    # Two keys that end at 1 s; frames 36 (1.5 s) and 47 (≈ 1.96 s) are after the last one.
+    ok({'op': 'clip.camera_keys', 'clip': 'c-scene', 'keys': [
+        {'time': 0, 'position': [0, 1.2, 10], 'target': [0, 0, 0], 'fov': 60, 'easing': 'linear'},
+        {'time': 1, 'position': [0, 1.2, 4], 'target': [0, 0, 0], 'fov': 40, 'easing': 'linear'}]})
+    check('after the last key (1 s) the camera holds it exactly at frames 36 and 47 (z 4, fov 40)',
+          near(z(36), 4.0) and near(z(47), 4.0) and near(camera(47)['fov'], 40.0),
+          (camera(36), camera(47)))
+    ok({'op': 'clip.camera_keys', 'clip': 'c-scene', 'keys': [
+        {'time': 0, 'position': [0, 1.2, 10], 'target': [0, 0, 0], 'fov': 60, 'easing': 'linear'},
+        {'time': 2, 'position': [0, 1.2, 4], 'target': [0, 0, 0], 'fov': 40, 'easing': 'linear'}]})
+
     # --- easing ---------------------------------------------------------------------------------
     ok(key(0, 10, fov=60, easing='easeOutCubic'))
     check('easeOutCubic at half = 1 - 0.5^3 of the way (z = 10 - 6 * 0.875)', near(z(24), 10 - 6 * 0.875), z(24))
+    # Re-keying the same time WITHOUT an easing keeps the key's easing (omission is not `linear`).
+    omitted = key(0, 10, fov=60)
+    del omitted['easing']
+    ok(omitted)
+    check('a key set without an easing keeps the easing of the key it replaces',
+          scene_clip(document())['camera_keys'][0]['easing'] == 'easeOutCubic',
+          scene_clip(document())['camera_keys'][0])
     ok(key(0, 10, fov=60, easing='linear'))
+    check('an explicit easing is respected',
+          scene_clip(document())['camera_keys'][0]['easing'] == 'linear')
 
     # --- trim and move keep the keys on their picture -------------------------------------------
     good, payload = surface.set('trim:c-scene:start', 'frame', 12)
@@ -135,6 +154,9 @@ def scenario(surface, check, scratch, fixtures):
     refused(key(3, 4, easing='bounce'), 'invalid_value')
     refused({'op': 'clip.camera_key', 'clip': 'c-img', 'time': 1, 'position': [0, 1, 5]}, 'not_applicable')
     refused({'op': 'clip.camera', 'clip': 'c-scene', 'position': [0, 1, 5], 'orbit': 30}, 'camera_orbit_conflict')
+    refused({'op': 'clip.camera', 'clip': 'c-scene', 'position': [0, 2, 7], 'orbit': 0}, 'camera_keys_override')
+    refused({**key(3, 4), 'orbit': 30}, 'camera_orbit_conflict')
+    refused(key(3, 4, fov=170), 'invalid_value')    # the range is 1 up to, excluding, 170
     check('refused edits leave the document, revision and undo depth untouched',
           document() == before_doc and history() == before_history)
 
@@ -149,6 +171,22 @@ def scenario(surface, check, scratch, fixtures):
           good and payload['count'] == 0 and camera(24) == still, payload)
     ok({'op': 'history.undo'})
     check('one undo brings the keys back', len(scene_clip(document())['camera_keys']) == 2)
+
+    # --- the head trim at another speed keeps the picture (core rule, both surfaces) ---------------
+    # Keys 0 s (z 10) and 8 s (z 2): z = 10 - scene time. At 200 % frame 24 (1 s of timeline) reads
+    # scene time 2 s (z 8). Trimming the head to frame 12 (0.5 s) must not move that frame: an
+    # unscaled shift would make it read 1.5 s (z 8.5), the bug of BL140.2.
+    ok({'op': 'clip.camera_keys', 'clip': 'c-scene', 'keys': [
+        {'time': 0, 'position': [0, 1.2, 10], 'target': [0, 0, 0], 'fov': 50, 'easing': 'linear'},
+        {'time': 8, 'position': [0, 1.2, 2], 'target': [0, 0, 0], 'fov': 50, 'easing': 'linear'}]})
+    ok({'op': 'clip.property', 'clip': 'c-scene', 'property': 'speed', 'value': 200})
+    check('at 200 % frame 24 reads scene time 2 s (z 8)', near(z(24), 8.0), z(24))
+    good, payload = surface.set('trim:c-scene:start', 'frame', 12)
+    check('the head trim at 200 % is accepted', good, payload)
+    check('the head trim at 200 % keeps frame 24 on scene time 2 s (z 8, not 8.5)', near(z(24), 8.0), z(24))
+    good, payload = surface.set('trim:c-scene:start', 'frame', 0)
+    check('trimming the head back at the same speed restores the clip', good and near(z(24), 8.0), payload)
+    ok({'op': 'clip.property', 'clip': 'c-scene', 'property': 'speed', 'value': 100})
 
     if surface.name != 'native':
         return
@@ -175,7 +213,18 @@ def scenario(surface, check, scratch, fixtures):
         surface.set(f'inspector.{section}', 'expanded', 'false')
     ok({'op': 'seek', 'frame': 24})
     path, reason = surface.capture(scratch / 'bl140-camera-keys-window.png')
-    check(f'the native window was captured ({path})' if path else f'native capture unavailable: {reason}', True)
+    if path:
+        check(f'the native window was captured ({path})', True)
+    else:
+        # Not a pass: the report says SKIP and the run is `complete: false`.
+        check.skip('the native window OS capture', reason)
+    # The add button announces why it cannot work while the camera orbits (and the command agrees).
+    ok({'op': 'clip.camera_keys', 'clip': 'c-scene', 'keys': []})
+    ok({'op': 'clip.camera', 'clip': 'c-scene', 'position': [0, 1.2, 5], 'target': [0, 0, 0], 'fov': 50, 'orbit': 30})
+    good, capture = surface.get('camera_keys.capture')
+    check('the add button is disabled with a reason while the camera orbits',
+          good and capture['enabled'] is False and 'orbit' in str(capture.get('disabled_reason', '')), capture)
+    refused({'op': 'clip.camera_key.capture', 'clip': 'c-scene'}, 'camera_orbit_conflict')
     return path
 
 
@@ -185,41 +234,53 @@ def main():
     parser.add_argument('--headless', default=str(ROOT / 'target/debug/tessel-headless'))
     parser.add_argument('--out', default=str(ROOT / 'target/bl140-proof'))
     parser.add_argument('--report')
+    parser.add_argument('--require-capture', action='store_true',
+                        help='a missing OS window capture is a failure (default: an explicit SKIP)')
     args = parser.parse_args()
     if free_gib() < MIN_FREE_GIB:
         print(f'refusing to start: less than {MIN_FREE_GIB} GiB free', file=sys.stderr)
         return 2
+    report = {'surfaces': {}, 'error': None}
+
+    def finish(code):
+        if args.report:
+            try:
+                Path(args.report).write_text(json.dumps(report, indent=2))
+            except OSError as error:
+                print(f'could not write the report: {error}', file=sys.stderr)
+                return code or 1
+        return code
+
     out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
     fixtures = out / 'fixtures'
-    shutil.rmtree(fixtures, ignore_errors=True)
-    subprocess.run([str(ROOT / 'scripts/fixtures'), str(fixtures)], check=True, capture_output=True)
-    report = {'surfaces': {}}
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+        shutil.rmtree(fixtures, ignore_errors=True)
+        subprocess.run([str(ROOT / 'scripts/fixtures'), str(fixtures)], check=True, capture_output=True,
+                       timeout=600)
+    except (OSError, subprocess.SubprocessError) as error:
+        report['error'] = f'fixtures: {type(error).__name__}: {error}'
+        print(f"FAILED {report['error']}", file=sys.stderr)
+        return finish(1)
     failed = False
-    for cls in (Headless, Native):
-        home = tempfile.mkdtemp(prefix='tck') if cls is Native else None
-        surface = cls(args.headless if cls is Headless else args.editor, home)
-        check = Recorder(surface.name)
-        shot = None
-        try:
-            surface.prepare()
-            scratch = out / surface.name
-            shutil.rmtree(scratch, ignore_errors=True)
-            scratch.mkdir(parents=True)
-            shot = scenario(surface, check, scratch, fixtures)
-        except (ProofFailure, RuntimeError) as error:
+    complete = True
+    # One surface failing never stops the other, and the report is written either way.
+    for cls, binary in ((Headless, args.headless), (Native, args.editor)):
+        result = run_surface(cls, binary, lambda surface, check, scratch: scenario(surface, check, scratch,
+                                                                                  fixtures), out, 'tck')
+        report['surfaces'][result['name']] = result
+        failed = failed or result['failed']
+        complete = complete and result['complete']
+    print(json.dumps({name: f"{s['passed']}/{len(s['checks'])} passed, {s['skipped']} skipped"
+                      + (f", FAILED: {s['error']}" if s['failed'] else '')
+                      for name, s in report['surfaces'].items()}))
+    if not failed and not complete:
+        print('INCOMPLETE: at least one check was skipped (see the SKIP lines); this is not a full pass',
+              file=sys.stderr)
+        if args.require_capture:
             failed = True
-            print(f'FAILED [{surface.name}]: {error}', file=sys.stderr)
-        finally:
-            surface.stop()
-            if home:
-                shutil.rmtree(home, ignore_errors=True)
-        report['surfaces'][surface.name] = {'checks': check.checks, 'passed': sum(c['ok'] for c in check.checks),
-                                            'screenshot': shot}
-    print(json.dumps({name: f"{s['passed']}/{len(s['checks'])}" for name, s in report['surfaces'].items()}))
-    if args.report:
-        Path(args.report).write_text(json.dumps(report, indent=2))
-    return 1 if failed else 0
+    report['complete'] = complete and not failed
+    return finish(1 if failed else 0)
 
 
 if __name__ == '__main__':

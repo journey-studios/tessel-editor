@@ -158,6 +158,18 @@ impl Workflow {
         self.flow.is_some() || self.jobs_open
     }
 
+    /// A job that runs until `release` is sent (or dropped), under any label: what the status
+    /// bar's jobs line shows while it lasts.
+    #[cfg(test)]
+    pub(super) fn spawn_blocked_job(&self, label: &str, release: std::sync::mpsc::Receiver<()>) {
+        self.host
+            .registry()
+            .spawn(tessel_editor_core::jobs::JobKind::Hash, label, move |_| {
+                let _ = release.recv();
+                Ok(Value::Null)
+            });
+    }
+
     fn active_jobs(&self) -> Vec<JobInfo> {
         self.host
             .registry()

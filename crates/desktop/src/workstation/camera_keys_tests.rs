@@ -196,3 +196,34 @@ fn capture_is_disabled_with_a_reason_when_the_playhead_is_outside_the_clip(
     );
     assert_eq!(keys(&view, cx), 0);
 }
+
+#[gpui_kit::test]
+fn capture_is_disabled_with_a_reason_while_the_camera_orbits_and_its_button_matches(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = fixture(cx);
+    scene_project(&view, cx, "orbiting");
+    invoke(&view, cx, "clip:c-scene", "select").unwrap();
+    // Put the orbit back (the fixture keys a still camera) and the playhead over the clip.
+    op(
+        &view,
+        cx,
+        json!({"op":"clip.camera","clip":"c-scene","position":[0,1.2,5],"target":[0,0,0],
+            "fov":50,"orbit":30}),
+    )
+    .unwrap();
+    set(&view, cx, "timeline.playhead", "frame", Raw::Number(2.0)).unwrap();
+    let capture = node(&view, cx, "camera_keys.capture").unwrap();
+    assert_eq!(capture["enabled"], false);
+    assert!(
+        capture["disabled_reason"]
+            .as_str()
+            .unwrap()
+            .contains("orbit"),
+        "{capture}"
+    );
+    // The disabled node is not a callback that fails: the command's own refusal is the same code.
+    let error = invoke(&view, cx, "camera_keys.capture", "invoke").unwrap_err();
+    assert_eq!(error.code, "camera_orbit_conflict");
+    assert_eq!(keys(&view, cx), 0);
+}

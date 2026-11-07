@@ -615,7 +615,12 @@ impl EditorState {
                 Ok(outcome)
             }
             Command::TrimClip { clip, edge, frame } => {
-                let outcome = self.timeline.trim_clip(&clip, edge, frame)?;
+                // The head shift of a trim is counted in source time, which runs at the speed.
+                let speed = self
+                    .timeline
+                    .clip(&clip)
+                    .map_or(Ratio::from_int(1), |entry| self.clip_speed(entry));
+                let outcome = self.timeline.trim_clip(&clip, edge, frame, speed)?;
                 self.subject = Subject::Clip;
                 Ok(outcome)
             }
@@ -715,6 +720,16 @@ impl EditorState {
                     return Err(CommandError::new(
                         "camera_orbit_conflict",
                         "The clip has camera keys, which replace the orbit: clear them first",
+                    )
+                    .target(format!("clip:{id}")));
+                }
+                // WHY: with keys the clip camera is never drawn (the keys are the camera), so a
+                // different `clip.camera` would be an undo entry and `changed: true` that alter
+                // nothing visible. Refuse it; edit the keys, or clear them to use this camera.
+                if !entry.camera_keys.is_empty() && entry.camera != Some(camera) {
+                    return Err(CommandError::new(
+                        "camera_keys_override",
+                        "The clip has camera keys, which replace its camera: edit the keys or clear them first",
                     )
                     .target(format!("clip:{id}")));
                 }

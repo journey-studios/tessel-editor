@@ -141,6 +141,16 @@ impl CameraKey {
             .ok_or_else(|| {
                 time_error("Camera key `time` is seconds: an integer or {\"num\":1,\"den\":24}")
             })?;
+        // A key has no orbit (keys replace it): refuse the field instead of dropping it silently.
+        if let Some(orbit) = value.get("orbit").filter(|raw| !raw.is_null())
+            && orbit.as_f64() != Some(0.0)
+        {
+            return Err(CommandError::new(
+                "camera_orbit_conflict",
+                "A camera key has no `orbit`: keys replace the orbit (omit it or use 0)",
+            )
+            .details(json!({ "orbit": orbit })));
+        }
         let camera = Camera::from_json(value)?;
         let easing = match value.get("easing") {
             None | Some(Value::Null) => Easing::Linear,
