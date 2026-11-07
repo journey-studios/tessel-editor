@@ -47,7 +47,10 @@ from it (`monitor.viewport` → `last_frame.source.proxy_layers`), the refine re
 `seek-scrub-proof.py` per variant. `scripts/proxy-soak.py` repeats drags (and a policy flip) for `--seconds` and samples the
 editor's resident memory. Read-only opt-ins in the environment: `TESSEL_VIEWPORT_RESULT_CACHE=0` (splat result cache off),
 `TESSEL_VIEWPORT_SCENE_SAMPLES=0|2|4` (final MSAA of scene targets), `TESSEL_VIEWPORT_PREVIEW_SCENE_SAMPLES=0|2|4` (MSAA of a splat
-scene while the playhead moves; default 0, 4 turns the reduction off; BL129). `./scripts/ui invoke monitor.preview.quality` toggles the policy
+scene while the playhead moves; default 0, 4 turns the reduction off; BL129), `TESSEL_VIEWPORT_PREVIEW_SORT=latest|exact` (whether a splat
+frame of a moving playhead is drawn with the order of the last finished sort, default `latest`, or waits for its own, `exact`; BL130; the
+scrub/playback harness takes it through `--env`, and `--inspect` also compares the picture on screen after every scrub release with an
+explicit `render.frame`). `./scripts/ui invoke monitor.preview.quality` toggles the policy
 (proxy and lighter MSAA while playing/scrubbing, or the original always);
 `op preview.policy` reads/sets it; `op media.preview_proxy` builds the proxy by hand; `op render.status` carries `ui`
 (`repaints`/`skipped`, OPT04).

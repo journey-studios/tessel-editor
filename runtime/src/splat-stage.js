@@ -11,8 +11,14 @@ import { SparkRenderer, SplatMesh } from '@sparkjsdev/spark';
 import { RuntimeError } from './protocol.js';
 
 export const SPARK_VERSION = '2.4.0';
-/** Sort attempts before a frame is refused: a frame sorted for another viewpoint is never drawn. */
+/** Sorts a frame may start before it is refused: a frame sorted for another viewpoint is never drawn. */
 const MAX_SORT_ATTEMPTS = 400;
+/**
+ * Longest a frame waits for sorts it did not start (one a moving playhead left running) before it is refused.
+ * A sort is not a pass: it takes as long as the GPU readback and the worker take, which on a loaded machine
+ * or a software renderer is seconds, so the wait is bounded by time and not by polls.
+ */
+const MAX_SORT_WAIT_MS = 60_000;
 const SETTLE_DISTANCE = 1e-4;
 
 /** Decodes splat bytes into a mesh whose data is ready; Spark's own errors become decode_failed. */
@@ -105,19 +111,75 @@ export class SplatStage {
   /**
    * Sorts the splats of `scene` for `camera` and waits until the uploaded sort is that one, so a
    * frame reached by an out-of-order seek is the same image as one reached in order.
+   *
+   * `motion` (BL130) is for a frame of a moving playhead only (`quality: 'preview'`): the wait for the
+   * sort is what made a splat frame cost two sorts' worth of CPU and GPU readback on the critical path,
+   * so the frame is drawn at once with the order of the last finished sort and the sort for this
+   * camera runs behind it. That is only valid when Spark already holds an ordering for exactly this set
+   * of splats (same mapping): the order is for another viewpoint but indexes the same splats, whose
+   * positions are this frame's. Anything else (the first frame of a scene, a changed mapping, another
+   * scene's data still on display) is not drawn from the old data: it waits like an exact frame.
+   * Resolves `{ stale }`: whether the picture was drawn with an order that is not the one for this
+   * camera. The host replaces such a picture by an exact one when the playhead stops.
    */
-  async settle(scene, camera, aborted) {
+  async settle(scene, camera, aborted, { motion = false } = {}) {
     const target = camera.getWorldPosition(camera.position.clone());
-    for (let attempt = 0; attempt < MAX_SORT_ATTEMPTS; attempt += 1) {
+    // The first pass of the wait below, when the motion path already ran it.
+    let started = null;
+    if (motion) {
       if (aborted()) throw new RuntimeError('cancelled', 'The frame was superseded');
-      await this.spark.update({ scene, camera });
-      const idle = !(this.spark.sorting || this.spark.sortDirty);
-      if (idle && this.spark.sortedCenter.distanceTo(target) < SETTLE_DISTANCE) return;
+      // The part of `update` that does not wait (this frame's splats are generated, the sort for this
+      // camera starts) runs now; what is left of it is the sort, which this frame does not wait for.
+      started = this.spark.update({ scene, camera });
+      // A failure of that sort is not this frame's: an exact frame repeats the call and reports it.
+      started.catch(() => {});
+      if (this.holdsOrderFor()) return { stale: !this.isSortedFor(target) };
+    }
+    let sorts = 0;
+    const waitUntil = performance.now() + MAX_SORT_WAIT_MS;
+    for (;;) {
+      if (aborted()) throw new RuntimeError('cancelled', 'The frame was superseded');
+      // A sort already running (one a moving playhead left behind) is waited for, not fed: every
+      // `update` marks the sort dirty again, so asking while one runs keeps a new sort queued behind
+      // it and the order would never be idle for this camera.
+      if (started) {
+        // Nothing to reuse (first frame of a scene, other data on display): wait for its own sort,
+        // as an exact frame does, without a timer in between.
+        await started;
+        started = null;
+        sorts += 1;
+      } else if (!this.spark.sorting) {
+        if (sorts >= MAX_SORT_ATTEMPTS) break;
+        sorts += 1;
+        await this.spark.update({ scene, camera });
+      }
+      if (this.isSortedFor(target)) return { stale: false };
+      if (performance.now() > waitUntil) break;
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
     throw new RuntimeError(
       'render_failed',
-      `The splat sort did not settle after ${MAX_SORT_ATTEMPTS} passes for the requested camera; the frame was not drawn`,
+      `The splat sort did not settle after ${sorts} sorts for the requested camera; the frame was not drawn`,
+    );
+  }
+
+  /** The uploaded sort is the one for `target`, and none is running or wanted. */
+  isSortedFor(target) {
+    const idle = !(this.spark.sorting || this.spark.sortDirty);
+    return idle && this.spark.sortedCenter.distanceTo(target) < SETTLE_DISTANCE;
+  }
+
+  /**
+   * What is on display is this frame's own set of splats and an order already exists for it: the draw
+   * would use the splats just generated with the last finished sort. False while Spark still shows the
+   * splats of another mapping (it keeps them until a sort of the new one lands) or has never sorted.
+   */
+  holdsOrderFor() {
+    const spark = this.spark;
+    return (
+      spark.orderingTexture != null &&
+      Number.isFinite(spark.sortedCenter.x) &&
+      spark.display.mappingVersion === spark.latestMappingVersion
     );
   }
 

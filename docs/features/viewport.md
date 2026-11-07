@@ -103,14 +103,14 @@ O relatório diz `interactive_quality`, `export:"original"`, `explicit_frames:"o
 `proxy_ready` (com `proxy.{pattern,first,count,width,height,format}`), `proxy_missing` (ainda não gerado), `proxy_stale`
 (o proxy é de outros frames), `small_enough` (o original já não é maior que o proxy), `no_frames` (ainda não decodificado),
 `not_video`, `policy_original`. **A qualidade nunca fica escondida**: o cabeçalho do monitor ganha " · proxy" quando a
-imagem veio de um proxy (e " · MSAA n" quando uma cena com splat foi desenhada com menos amostras, BL129) e `last_frame.source` traz
-`{quality, proxy_layers, original_layers, result_hits, proxy_error?, scene_samples?, reduced_scene_layers?}`.
+imagem veio de um proxy (" · MSAA n" quando uma cena com splat foi desenhada com menos amostras, BL129, e " · sort" quando com a ordem de outro ponto de vista, BL130) e `last_frame.source` traz
+`{quality, proxy_layers, original_layers, result_hits, proxy_error?, scene_samples?, reduced_scene_layers?, stale_sort_layers?}`.
 
 Regras (as mesmas em lib/CLI/UI, `Quality` decidida na sessão):
 
 - Só o **quadro do scrub do monitor sem PNG nem probes** usa `Preview`. `render.frame`, export, PNG, probes e o quadro de
   refino usam `Original`. O export nunca vê o proxy (`Derived::for_export`; provado frame a frame, ver o relatório).
-- **Refino:** depois de uma imagem **reduzida** (de proxy, ou de cena com splat com MSAA menor; `FrameDetail::is_reduced`) ser aceita, a sessão guarda o plano; após `REFINE_DELAY` (200 ms) sem intenção
+- **Refino:** depois de uma imagem **reduzida** (de proxy, de cena com splat com MSAA menor ou com a ordem de outro ponto de vista; `FrameDetail::is_reduced`) ser aceita, a sessão guarda o plano; após `REFINE_DELAY` (200 ms) sem intenção
   nova um quadro `Original` não fundível o substitui (no desktop um timer de 220 ms, não o tick de 500 ms). Qualquer
   intenção, edição ou pedido explícito descarta o refino pendente (`session.refine_pending`, `stats.refined`).
 - **Geração do proxy:** o `MediaHost` agenda o job "Build preview proxy" depois do decode (`Cache::preview_frames`, FFmpeg
@@ -193,6 +193,27 @@ o raster. Imagens em `/Users/wallyssonnunes/www/tessel-video-splat/previews/perf
 - Não provado: outros conteúdos (cena com muita geometria opaca fora de splat não é reduzida por regra; um splat com silhueta
   dura pode mostrar serrilhado enquanto o playhead anda e se refina ao parar), outras máquinas/GPUs, e áudio ouvido (o projeto de teste
   rodou com as trilhas de áudio mudas, relógio de parede). O intervalo médio entre imagens no take A foi 41,6 ms (24,05/s).
+
+### Ordem dos splats por movimento (BL130)
+
+Cena **com splat** num quadro `Preview` (playback e scrub do monitor) não espera mais a ordenação para a câmera do quadro: é
+desenhada na hora com a ordem da última ordenação terminada **quando o Spark tem uma para exatamente os mesmos splats** (mesmo
+mapeamento); a ordenação para a câmera segue atrás. `hello.preview_sort` (`latest`, padrão; `exact` desfaz;
+`TESSEL_VIEWPORT_PREVIEW_SORT`) escolhe. O contrato do runtime (linhagem de ordem por camada de cena, afinidade de malhas, cache,
+limites e medição) está em [spark.md](spark.md#ordem-dos-splats-em-movimento-bl130).
+
+- **Mesma regra do BL129, sem controle novo:** a sessão trata `stale_sort_layers > 0` como quadro reduzido e agenda o refino
+  exato (quadro sem `quality`) depois de `REFINE_DELAY`; o cabeçalho diz " · sort" enquanto a imagem é a de ordem velha.
+  `render.frame`, export, PNG, probes, quadro explícito e o refino nunca usam a ordem velha (provado: hash do quadro na tela depois
+  de parar o playback e depois de soltar o scrub igual ao do `render.frame` do mesmo quadro; hash dos quadros explícitos e MD5 do
+  export iguais antes e depois). A política (`monitor.preview.quality = original`) mantém o quadro exato também em movimento.
+- **Superfícies:** lib (`bridge`, `FrameDetail`, sessão: testes no core), UI (rótulo no host desktop e prova na janela real pelo
+  harness semântico), CLI headless N/A (o quadro de preview só existe no monitor; `render.frame` e export da sessão JSONL seguem
+  exatos).
+- **Resultado:** `draw` p50 no runtime de 16 → 1 ms (take) e 43 → 1 ms (crossfade) com 1,18 M de gaussians por cena; 0 % de quadros
+  sem imagem; scrub de 39–42 para 50 imagens/s, atraso 1 → 0 quadro; **custo:** o quadro final depois de soltar o scrub chega ≈ 90 ms
+  mais tarde (262 → 355 ms). Tabela completa, invariantes e limites no spark.md e em
+  [bl130-spark-settle](../viewport-performance-results/bl130-spark-settle/README.md).
 
 ### Retenção de GPU no runtime
 
@@ -278,7 +299,7 @@ JSON por mensagem, campo `v: 1`. Host→página: `hello`, `asset.load`, `asset.r
 `context.lost`, `context.restored`, `closed`, `error`. Campo aditivo (compatível, v1):
 `frame.render.inspect:false` (ausente = ler e descrever, o que todo host antigo faz); `frame.done` ganha
 `inspected` e `timings.{settle_ms|readback_ms, describe_ms}`; sem leitura, `hash`/`mean` vêm `null`.
-Mais campos aditivos (BL129, ainda v1): `hello.preview_scene_samples` e `frame.done.source.scene_samples|reduced_scene_layers`. Mais campos aditivos (OPT01/02/07, ainda v1): `asset.proxy`, `frame.render.quality`, `frame.done.source`, `hello.result_cache`, `hello.scene_samples` e `capabilities.features` `asset.proxy`/`frame.quality`. Mais campos aditivos (entrega anterior, ainda v1): `hello.retain:false` (volta ao caminho de criar/descartar por quadro; ausente =
+Mais campos aditivos (BL130, ainda v1): `hello.preview_sort` (`"latest"`|`"exact"`; ausente = `latest` no runtime) e `frame.done.source.stale_sort_layers` (ausente = 0). Mais campos aditivos (BL129, ainda v1): `hello.preview_scene_samples` e `frame.done.source.scene_samples|reduced_scene_layers`. Mais campos aditivos (OPT01/02/07, ainda v1): `asset.proxy`, `frame.render.quality`, `frame.done.source`, `hello.result_cache`, `hello.scene_samples` e `capabilities.features` `asset.proxy`/`frame.quality`. Mais campos aditivos (entrega anterior, ainda v1): `hello.retain:false` (volta ao caminho de criar/descartar por quadro; ausente =
 retenção ligada) e `hello.telemetry.presented:true` (pede `frame.presented`, que **só** é enviada a quem pediu: o
 `decode_event` de um host antigo rejeita tipo desconhecido); `ready.capabilities.features`
 (`frame.presented`, `cache.telemetry`); `frame.done` ganha `timings.{prepare_ms, draw_ms, flush_ms}` e `cache`

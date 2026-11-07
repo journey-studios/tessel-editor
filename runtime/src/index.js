@@ -76,6 +76,7 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
       compositor = new Compositor(canvas, { retain: options.retain, resultCache: options.resultCache, counters });
       if (options.sceneSamples !== undefined) compositor.setSceneSamples(options.sceneSamples);
       if (options.previewSceneSamples !== undefined) compositor.setPreviewSceneSamples(options.previewSceneSamples);
+      if (options.previewSort !== undefined) compositor.setPreviewSort(options.previewSort);
     } catch (error) {
       throw error instanceof RuntimeError
         ? error
@@ -115,6 +116,9 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
     // Additive (BL129): MSAA of scene layers in `preview` frames; absent keeps the runtime's default.
     options.previewSceneSamples = Number.isInteger(message.preview_scene_samples) ? message.preview_scene_samples : undefined;
     if (options.previewSceneSamples !== undefined) compositor?.setPreviewSceneSamples(options.previewSceneSamples);
+    // Additive (BL130): how a splat scene of a `preview` frame is ordered; absent keeps the runtime's default (`latest`).
+    options.previewSort = typeof message.preview_sort === 'string' ? message.preview_sort : undefined;
+    if (options.previewSort !== undefined) compositor?.setPreviewSort(options.previewSort);
     compositor?.setRetain(options.retain);
     assets.setRetainSplatMeshes(options.retain);
     if (!options.retain) assets.dropTextures();

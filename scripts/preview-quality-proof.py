@@ -23,7 +23,7 @@ What it measures (the editor's own clock: `TESSEL_VIEWPORT_TRACE=1` stamps every
 * `scrub`: `seek-scrub-proof.py` per `NAME:ORIGIN:SPAN:HZ` (pictures per 2 s, gaps, lag, release to final).
 * `--hashes`: `render.frame` hashes of explicit frames (needs `--inspect`, i.e. TESSEL_VIEWPORT_INSPECT=1),
   to compare a base build with the new one; with `--inspect` the refined picture after a stop is also
-  compared with the explicit render of the same frame.
+  compared with the explicit render of the same frame, after every playback stop and every scrub release (BL130).
 
 Prints one JSON report on the last line. GPU utilisation (ioreg) and the load average are recorded per
 run: the GPU may be shared, so repeat the runs and read the spread, not one number.
@@ -233,6 +233,24 @@ def regions_of(xfades):
     return region
 
 
+def refined_comparison(editor, final_state):
+    """The picture on screen after a stop (`final_state`) against an explicit `render.frame` of the same frame."""
+    last = final_state.get("last_frame") or {}
+    presented = (final_state["session"].get("presented") or {}).get("frame")
+    if not last.get("hash") or presented is None:
+        return {"error": "no hash or presented frame on screen"}
+    size = final_state.get("output") or {}
+    explicit = editor.explicit(presented, width=size.get("width"), height=size.get("height"), probes=[])
+    frame = (explicit.get("data") or {}).get("frame") or {}
+    comparison = {"frame": presented, "on_screen": last["hash"], "explicit": frame.get("hash")}
+    if explicit.get("ok"):
+        comparison["equal"] = last["hash"] == frame.get("hash")
+    else:
+        # A request that failed compared nothing: it is not a refine mismatch.
+        comparison["error"] = explicit.get("error")
+    return comparison
+
+
 def playback_run(editor, start, frames, xfades, inspect):
     region = regions_of(xfades)
     editor.op({"op": "seek", "frame": start})
@@ -293,23 +311,11 @@ def playback_run(editor, start, frames, xfades, inspect):
                                    "dropped_pct": round(100 * (1 - shown / clock), 1),
                                    "interval_ms": summary(gaps), "runtime_render_ms": summary([f["runtime_render_ms"] for f in items])}
     if inspect and converge_ms is not None:
-        last = final_state.get("last_frame") or {}
-        presented = (final_state["session"].get("presented") or {}).get("frame")
-        if last.get("hash") and presented is not None:
-            size = final_state.get("output") or {}
-            explicit = editor.explicit(presented, width=size.get("width"), height=size.get("height"), probes=[])
-            frame = (explicit.get("data") or {}).get("frame") or {}
-            comparison = {"frame": presented, "on_screen": last["hash"], "explicit": frame.get("hash")}
-            if explicit.get("ok"):
-                comparison["equal"] = last["hash"] == frame.get("hash")
-            else:
-                # A request that failed compared nothing: it is not a refine mismatch.
-                comparison["error"] = explicit.get("error")
-            result["refined_equals_explicit"] = comparison
+        result["refined_equals_explicit"] = refined_comparison(editor, final_state)
     return result
 
 
-def scrub_run(editor, name, origin, span, hz, label):
+def scrub_run(editor, name, origin, span, hz, label, inspect=False):
     editor.op({"op": "seek", "frame": int(origin)})
     editor.wait_settled()
     wait_final_quality(editor)
@@ -330,13 +336,20 @@ def scrub_run(editor, name, origin, span, hz, label):
             report = json.load(handle)
     except Exception:
         return {"name": name, "error": (proc.stdout + proc.stderr)[-400:]}
-    return {"name": name, "hz": hz, "span": span, "gpu": gpu.report(), "gpu_quiet_before": quiet,
+    result = {"name": name, "hz": hz, "span": span, "gpu": gpu.report(), "gpu_quiet_before": quiet,
             "load_avg": round(os.getloadavg()[0], 1),
             "presentations_in_window": report.get("presentations_in_window"),
             "pictures_per_s": round(report["presentations_in_window"] / 2.0, 1) if report.get("presentations_in_window") is not None else None,
             "present_gap_ms": report.get("present_gap_ms"), "lag_frames": report.get("lag_frames"),
             "release_to_final_ms": report.get("release_to_final_ms"), "first_present_ms": report.get("first_present_ms"),
             "passed": proc.returncode == 0}
+    if inspect:
+        # The scrub is released and its sub-script waited for the final picture: it must be the explicit one.
+        converge_ms, final_state = wait_final_quality(editor)
+        if converge_ms is not None:
+            result["final_source"] = (final_state.get("last_frame") or {}).get("source")
+            result["refined_equals_explicit"] = refined_comparison(editor, final_state)
+    return result
 
 
 def main():
@@ -402,7 +415,7 @@ def main():
         for spec in [s for s in args.scrub.split(",") if s]:
             name, origin, span, hz = spec.split(":")
             for rep in range(args.reps):
-                run = scrub_run(editor, name, origin, span, hz, args.label)
+                run = scrub_run(editor, name, origin, span, hz, args.label, args.inspect)
                 run["rep"] = rep
                 report["scrub"].append(run)
                 print(f"{args.label} scrub {name}#{rep} pictures/s {run.get('pictures_per_s')} gap {run.get('present_gap_ms')} lag {run.get('lag_frames')} "

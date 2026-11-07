@@ -25,7 +25,7 @@ use async_channel::{Receiver, Sender};
 use serde_json::{Value, json};
 use tessel_editor_core::CommandError;
 use tessel_editor_core::backend::{BackendError, FrameDetail, FrameResult, Output};
-use tessel_editor_core::bridge::{BridgeBackend, HelloOptions, Transport};
+use tessel_editor_core::bridge::{BridgeBackend, HelloOptions, PreviewSort, Transport};
 use tessel_editor_core::headless::{backend_error, frame_geometry, frame_report, plan_summary};
 use tessel_editor_core::ops::RenderFrame;
 use tessel_editor_core::plan::{PlanRequest, RenderPlan};
@@ -71,6 +71,12 @@ pub const SCENE_SAMPLES_ENV: &str = "TESSEL_VIEWPORT_SCENE_SAMPLES";
 /// runtime's default; `4` turns the reduction off (A/B and rollback). Explicit frames and export
 /// never read it: they draw at the final count.
 pub const PREVIEW_SCENE_SAMPLES_ENV: &str = "TESSEL_VIEWPORT_PREVIEW_SCENE_SAMPLES";
+/// `latest` or `exact`: how a splat scene of the monitor's interactive frames (playback and scrub,
+/// BL130) gets its draw order. `latest` paints with the order of the last finished sort and sorts for
+/// the camera behind the frame; the picture is replaced by the exact one when the playhead stops.
+/// `exact` waits for the sort of every frame (A/B and rollback). Unset keeps the runtime's default
+/// (`latest`). Explicit frames and export never read it: they wait for their own sort.
+pub const PREVIEW_SORT_ENV: &str = "TESSEL_VIEWPORT_PREVIEW_SORT";
 
 /// Opt-ins read once when the host is created.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -81,6 +87,7 @@ pub struct HostOptions {
     pub result_cache: Option<bool>,
     pub scene_samples: Option<u32>,
     pub preview_scene_samples: Option<u32>,
+    pub preview_sort: Option<PreviewSort>,
 }
 
 /// A MSAA sample count the runtime accepts, from an environment value.
@@ -103,6 +110,9 @@ impl HostOptions {
                 .then_some(false),
             scene_samples: samples_from_env(SCENE_SAMPLES_ENV),
             preview_scene_samples: samples_from_env(PREVIEW_SCENE_SAMPLES_ENV),
+            preview_sort: std::env::var(PREVIEW_SORT_ENV)
+                .ok()
+                .and_then(|value| PreviewSort::parse(&value)),
         }
     }
 }
@@ -127,8 +137,8 @@ pub struct WebTransport {
 }
 
 /// What the monitor's header adds when the picture is not the final quality: a proxy copy of a
-/// video, and/or a scene drawn with fewer MSAA samples (the refine replaces both once the playhead
-/// stops). Empty for a final-quality picture.
+/// video, a scene drawn with fewer MSAA samples, and/or splats painted in the order of an earlier
+/// camera (the refine replaces all of them once the playhead stops). Empty for a final-quality picture.
 fn reduced_label(detail: &FrameDetail) -> String {
     let mut label = String::new();
     if detail.proxy_layers() > 0 {
@@ -139,6 +149,9 @@ fn reduced_label(detail: &FrameDetail) -> String {
             Some(samples) => label.push_str(&format!(" · MSAA {samples}")),
             None => label.push_str(" · MSAA"),
         }
+    }
+    if detail.stale_sort_layers() > 0 {
+        label.push_str(" · sort");
     }
     label
 }
@@ -236,6 +249,7 @@ impl ViewportHost {
                 result_cache: options.result_cache,
                 scene_samples: options.scene_samples,
                 preview_scene_samples: options.preview_scene_samples,
+                preview_sort: options.preview_sort,
             });
         let mut session =
             ViewportSession::new(backend).with_demo_dir(tessel_editor_render::demo_dir());

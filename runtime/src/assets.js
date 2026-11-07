@@ -404,17 +404,24 @@ export class AssetStore {
    * which lends it again to the next frame: a mesh is a generator and its shader program, and building
    * those per use per frame was most of what a crossfade over a shared effect splat spent after the decode (BL131).
    * The data stays owned by the mesh that decoded it (`pool.source`) and goes with the asset.
+   *
+   * `owner` (BL130) names who the mesh is lent to: the same owner gets the mesh it had last time while it is
+   * spare. Spark orders splats per set of meshes, so an effect file shared by the two scenes of a crossfade
+   * must not swap meshes between them from one frame to the next (a LIFO pool would), or no frame could
+   * reuse the order of the one before. A mesh nobody owns, or whose owner is not asking, is taken as before.
    */
-  async splatLease(id) {
+  async splatLease(id, owner = null) {
     const entry = this.get(id);
     const pool = entry.pool ?? (await this.rebuildSplatPool(id, entry));
-    let mesh = pool.free.pop();
+    const own = owner === null ? -1 : pool.free.findLastIndex((spare) => spare.leaseOwner === owner);
+    let mesh = own >= 0 ? pool.free.splice(own, 1)[0] : pool.free.pop();
     if (mesh) {
       this.counters.add('splat_mesh_reused');
     } else {
       mesh = shareSplatMesh(pool.source);
       this.counters.add('splat_mesh_created');
     }
+    mesh.leaseOwner = owner;
     let lent = true;
     return {
       mesh,

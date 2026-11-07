@@ -15,7 +15,10 @@ Spark **2.4.0** fixado em `runtime/package.json` com Three.js 0.187.0. Sem CDN: 
 - Estágio (`runtime/src/splat-stage.js`): um `SparkRenderer` por contexto WebGL
   (`minSortIntervalMs: 0`, `autoUpdate: false`). Um frame só é devolvido depois do **settle**: o
   loop chama `spark.update` até o sort terminar e o centro ordenado coincidir com a câmera do
-  pedido (tolerância 1e-4, máx. 400 passes; esgotar falha com `render_failed`).
+  pedido (tolerância 1e-4, máx. 400 ordenações iniciadas por este quadro e 60 s de espera por ordenações que outro quadro deixou
+  rodando; esgotar falha com `render_failed`). O `settle` só chama `update` com o sort ocioso: cada `update` suja o sort de novo, então
+  chamá-lo com um sort rodando mantém outro na fila e a ordem nunca ficaria ociosa para a câmera pedida. Quadro de movimento (BL130)
+  não espera: ver a seção abaixo.
 - Malhas emprestadas (BL125, BL131): cada uso de um asset num quadro (objeto de cena, nó de cena dirigida) recebe uma
   `SplatMesh` do asset (`AssetStore.splatLease`) com a própria transformação. Todas leem os **mesmos** `packedSplats`,
   decodificados uma vez: `SplatMesh.dispose()` descarta os dados compartilhados, então só a malha que os decodificou
@@ -48,6 +51,14 @@ Spark **2.4.0** fixado em `runtime/package.json` com Three.js 0.187.0. Sem CDN: 
 - Medição no editor release com o projeto de exemplo (hash dos quadros idêntico antes/depois, 1,87 → 0 programas Spark novos
   por quadro de crossfade, ≈ 0,5 ms de CPU por quadro, sem mudança mensurável de `render_ms`):
   [bl131-shared-effect-leases](../viewport-performance-results/bl131-shared-effect-leases/README.md).
+- `runtime/test/preview-sort.test.mjs` (BL130, Chrome real, 8 testes): o quadro de movimento usa a ordem velha só com o mesmo
+  mapeamento e avisa (`stale_sort_layers`), enquanto o primeiro quadro e o final são exatos; o quadro final é o mesmo
+  seja qual for a sequência de quadros de preview antes dele; um quadro de movimento nunca é servido do cache de resultado como o
+  exato; uma cena cujos splats mudaram nunca é desenhada com os dados velhos; um crossfade reaproveita a ordem de cada uma das duas
+  cenas mesmo com um arquivo de efeito compartilhado (a mutação sem afinidade de malha reprova só este teste: executada, restaurada com o mesmo sha256 do `dist`); `preview_sort: exact` mantém os quadros de preview exatos; cena sem splat nunca
+  é velha; perda de contexto não deixa ordem velha (o quadro depois da restauração é exato). Núcleo: `bridge` (`PreviewSort`,
+  `stale_sort_layers` ⇒ reduzido), sessão (refino de ordem velha; quadro explícito nunca candidato) e host desktop (rótulo
+  " · sort").
 - `cargo test -p tessel-editor-render --test frames` (7) e `crates/render/tests/export.rs` (2).
 - `scripts/live-proof.py`: 56/56 na janela macOS real (splat incluso).
 
@@ -62,6 +73,78 @@ o plano ([F037](scene-plan.md)) carrega a matriz de mundo do nó e a câmera ava
 Enquanto o playhead anda (playback e scrub do monitor) uma cena com splat é desenhada com `preview_scene_samples` (padrão 0) em
 vez do MSAA final (padrão 4); ao parar, o monitor se refina sozinho para o final. `render.frame`, export, PNG e probes seguem
 o final. Contrato, bridge e provas em [viewport.md](viewport.md#msaa-por-movimento-bl129).
+
+## Ordem dos splats em movimento (BL130)
+
+O `settle` acima custa a ordenação inteira (CPU + leitura da GPU) no caminho crítico de **cada** quadro: com 1 M de gaussians o quadro
+de playback/scrub levava ≈ 16 ms (take) e ≈ 43 ms (crossfade) de desenho no runtime. Enquanto o playhead anda (quadro `Preview`,
+`hello.preview_sort: "latest"`, o padrão) o quadro é desenhado **na hora com a ordem da última ordenação terminada** e a ordenação
+para a câmera do quadro roda atrás dele; ao parar, o refino do BL129 pede o quadro exato.
+
+- **Quando a ordem velha é segura** (`SplatStage.holdsOrderFor`): o Spark já tem uma textura de ordem **e** o que está em exibição é o
+  mapeamento mais recente (`display.mappingVersion === latestMappingVersion`): a ordem é de outro ponto de vista, mas indexa os
+  **mesmos** splats, cujas posições são as deste quadro. Primeiro quadro de uma cena, mapeamento mudado ou dados de outra cena
+  ainda em exibição não desenham com a ordem velha: esperam como o quadro exato.
+- **Uma linhagem de ordem por camada de cena** (`SplatStage` por `(asset da cena, n-ésima camada desse asset no quadro)`, `LruCache`
+  de `LIMITS.splatStages` = 2): um `SparkRenderer` compartilhado troca de mapeamento a cada camada de um crossfade e nunca tem uma
+  ordem válida para a seguinte. Com uma linhagem por cena cada camada reaproveita a própria ordem. `splatLease(id, owner)` devolve a
+  malha emprestada à mesma `owner` (`cena#índice`), senão as malhas do efeito compartilhado trocariam de cena e o mapeamento mudaria
+  a cada quadro. Cenas dirigidas (F048) ficam no estágio compartilhado e no `settle` exato; `retain:false` não tem linhagem (estágio compartilhado) e
+  também fica exato.
+- **O quadro avisa:** `frame.done.source.stale_sort_layers` (campo aditivo; ausente = 0) conta as camadas desenhadas com a ordem de
+  outro ponto de vista; `FrameDetail::is_reduced()` o conta, então a sessão agenda o refino exato (sem `quality`), e o cabeçalho
+  mostra " · sort". O sinal é conservador: câmera parada com a ordem ainda por refinar também conta. **Um quadro assim nunca entra
+  no cache de resultado** (a chave é a mesma do exato quando as amostras do preview são as finais).
+- **Reversão:** `hello.preview_sort: "exact"` / `TESSEL_VIEWPORT_PREVIEW_SORT=exact` volta ao `settle` exato em todo quadro.
+  `render.frame`, export, PNG, probes e o refino nunca usam a ordem velha (`quality` ausente ⇒ `motion` falso no runtime).
+
+Evidência (release, M3 Pro, GPU compartilhada, load average 14–44 de outros agentes, o mesmo projeto 1280×720/24 fps com splats
+de 1.179.648 gaussians nos dois lados, sem mídia nova; 3 sessões × 3 repetições; `scripts/preview-quality-proof.py`; tabelas e
+comandos em [bl130-spark-settle](../viewport-performance-results/bl130-spark-settle/README.md)):
+
+| Medida (média das repetições) | Antes (`main` com BL129/BL131) | `exact` (este PR, reversão) | `latest` (este PR, padrão) |
+|---|---|---|---|
+| Desenho no runtime, take (p50) | 16 ms | 17 ms | **1 ms** |
+| Desenho no runtime, crossfade (p50) | 43 ms | 48 ms | **1 ms** |
+| Take 24 fps, quadros sem imagem | 3,4 % (0–39) | 3,3 % (0–43) | **0 %** (0–0) |
+| Crossfade, quadros sem imagem | 8,0 % (0–21) | 17,9 % (7–36) | **0 %** (0–0) |
+| Scrub do take, imagens/s | 42,1 (38–46,5) | 37,8 (19,5–43,5) | **49,9** (49,5–50) |
+| Scrub do crossfade, imagens/s | 38,9 (35,5–42,5) | 33,6 (19,5–36,5) | **49,8** (49–50) |
+| Atraso do scrub (quadros, mediana) | 1 | 1 | **0** |
+| Parou → quadro final de volta (playback) | 297 ms | 327 ms | 304 ms |
+| Soltou o scrub → quadro final | 262 ms | 302 ms | **355 ms** |
+
+O custo do `latest` está na última linha: o quadro exato depois de soltar o scrub chega ≈ 90 ms mais tarde que antes, porque a
+ordenação exata deixou de ser feita durante o gesto. Depois do playback o tempo é o mesmo (a ordenação do último quadro já estava em
+curso).
+
+Invariantes (executados): `render.frame` dos quadros 5, 60, 100, 193, 300 e 450 com o mesmo hash antes e depois
+(`--inspect`, só invariante, não medida); **o quadro na tela depois de parar o playback e depois de soltar o scrub tem o mesmo hash
+que o `render.frame` do mesmo quadro** (4 playbacks e 4 scrubs, take e crossfade; `final_source.stale_sort_layers` 0); export de 6
+quadros de crossfade (190–195, `fullhd`) com o mesmo MD5 por quadro e o mesmo sha256 do arquivo antes e depois.
+
+Câmera animada, sem popping (`runtime/scripts/sort-order-evidence.mjs`, o worker real com `TESSEL_GL=gpu`, 960×540, planos reais de
+quadros consecutivos do projeto; cada quadro de movimento contra o exato do mesmo quadro): pior diferença média por canal
+0,0028–0,0384/255 em passos de 1 a 16 quadros, no máximo 0,088 % dos pixels acima de 8/255, PSNR ≥ 50,2 dB, e o "popping" (quanto a
+mudança de um quadro ao seguinte excede a da sequência exata) ≤ 0,0039/255 contra 0,95–10,0/255 de mudança real; o quadro final
+refinado é idêntico ao exato em todas as execuções. As diferenças ficam na região pequena do efeito brilhante (anel). O script
+termina com erro se a imagem exata mudar com a ordem de visita ou se o final não for igual ao exato.
+
+Limites (não esconder):
+
+- O quadro de movimento **não é** o exato: a diferença acima é medida, não zero. Quem exige o quadro exato em movimento usa
+  `exact`.
+- Uma corrida isolada da primeira versão (crossfade com `draw` p50 de 2,4 s e 78 % de quadros perdidos) **não se reproduziu** em
+  as dezenas de repetições seguintes (v2, v3 e a versão final); a hipótese (um `setTimeout(0)` limitado a ≈ 1 s numa página escondida) motivou trocar o timer por
+  esperar a promessa do `update` já iniciado, mas a causa não foi confirmada.
+- Em máquina carregada o `settle` exato demora segundos de relógio por ordenação (SwiftShader/CPU disputada): por isso o orçamento é
+  de ordenações e de tempo (60 s), não de voltas de `setTimeout`.
+- O PNG da ferramenta de evidência lê pixels e encurta o atraso da ordenação: a diferença medida lá é um limite superior do que o
+  monitor mostra, e o quadro de playback no editor real não é capturável por PNG (o campo `done` é a submissão, não a exibição).
+- GPU compartilhada e load average alto: leia a dispersão, não um número. Não existe script de trava de GPU neste repositório; a
+  serialização foi só de execução (uma sessão por vez) e `wait_quiet_gpu`.
+- Não medido: GPUs/máquinas além da M3 Pro, projetos com mais de 2 cenas simultâneas (`splatStages` = 2 evita crescer, e a terceira
+  camada cai no estágio compartilhado, exato), áudio ouvido.
 
 ## Limites
 

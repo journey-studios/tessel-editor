@@ -12,6 +12,7 @@
 //   scene rig (no splat) Compositor.rigs         scene asset id + entry    release/load of the id, context loss, count LRU
 //   scene render target Compositor.targets       slot + size               size change, context loss, count/byte LRU
 //   splat mesh (spare)  AssetStore entry         the splat asset           release/load of the id, context loss, count per asset
+//   Spark stage         Compositor.stages        scene asset + nth layer   release/load of the scene id, context loss, count LRU
 //
 // The one exception to "nothing here caches a picture" is the RESULT of a scene layer with splats
 // (compositor.js, `sceneResultKey`): its render target remembers the key of the picture it holds
@@ -48,6 +49,12 @@ export const LIMITS = {
    * frees them with the frame, as before.
    */
   splatMeshes: 16,
+  /**
+   * Spark stages (one SparkRenderer with its sorted splat data on the GPU) kept between frames, one per
+   * scene layer of a frame (BL130): what a crossfade draws with. A frame with more splat scene layers than
+   * this keeps all of them while it lasts and frees the least recently used afterwards.
+   */
+  splatStages: 2,
 };
 
 /** Event counters of the retention layer; `delta` gives what one frame did. */
@@ -80,6 +87,9 @@ export class RetentionCounters {
       splat_decoded: 0,
       splat_mesh_created: 0,
       splat_mesh_reused: 0,
+      // Spark stages (BL130): built for a scene layer that had none, and freed past the bound.
+      stage_created: 0,
+      stage_evicted: 0,
     };
   }
 

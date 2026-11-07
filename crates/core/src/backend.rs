@@ -280,8 +280,8 @@ pub struct FrameDetail {
     /// and what the caches hold now, as the runtime reported it.
     pub cache: Option<Value>,
     /// What the layers were really read from: `{ quality, proxy_layers, original_layers,
-    /// result_hits, proxy_error?, scene_samples?, reduced_scene_layers? }`. `None` from a runtime
-    /// that predates it.
+    /// result_hits, proxy_error?, scene_samples?, reduced_scene_layers?, stale_sort_layers? }`. `None`
+    /// from a runtime that predates it.
     pub source: Option<Value>,
 }
 
@@ -311,10 +311,20 @@ impl FrameDetail {
             .and_then(|source| source["scene_samples"].as_u64())
     }
 
-    /// Whether the picture is a lighter copy of what the final quality draws (a proxy, or a
-    /// scene with reduced MSAA): the monitor replaces it once the playhead stops.
+    /// Splat scene layers of this frame painted with the order of an earlier camera's sort instead of
+    /// waiting for their own (BL130): 0 when unknown, which is also what a runtime that predates the
+    /// reuse reports (it always waits).
+    pub fn stale_sort_layers(&self) -> u64 {
+        self.source
+            .as_ref()
+            .and_then(|source| source["stale_sort_layers"].as_u64())
+            .unwrap_or(0)
+    }
+
+    /// Whether the picture is not what the final quality draws (a proxy, a scene with reduced MSAA,
+    /// or splats painted in another camera's order): the monitor replaces it once the playhead stops.
     pub fn is_reduced(&self) -> bool {
-        self.proxy_layers() > 0 || self.reduced_scene_layers() > 0
+        self.proxy_layers() > 0 || self.reduced_scene_layers() > 0 || self.stale_sort_layers() > 0
     }
 }
 

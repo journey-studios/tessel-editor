@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
+use tessel_editor_core::bridge::PreviewSort;
 use tessel_editor_core::content::TextSpec;
 use tessel_editor_core::headless::create_project;
 use tessel_editor_core::ops::RenderFrame;
@@ -933,6 +934,7 @@ fn the_handshake_asks_for_nothing_extra_unless_the_host_opted_in() {
         trace: true,
         retain: Some(false),
         preview_scene_samples: Some(0),
+        preview_sort: Some(PreviewSort::Exact),
         ..HostOptions::default()
     };
     let mut host = ViewportHost::with_options(Ok(page("hello-opts")), options);
@@ -941,6 +943,7 @@ fn the_handshake_asks_for_nothing_extra_unless_the_host_opted_in() {
     assert_eq!(hello["retain"], false);
     assert_eq!(hello["telemetry"]["presented"], true);
     assert_eq!(hello["preview_scene_samples"], 0);
+    assert_eq!(hello["preview_sort"], "exact");
     assert!(
         hello.get("scene_samples").is_none(),
         "only what the host asked for"
@@ -1058,6 +1061,55 @@ fn a_moving_playhead_keeps_drawing_reduced_frames_and_only_stopping_refines() {
     let refine = sent(&mut host).remove(0);
     assert_eq!(refine["plan"]["frame"], 5);
     assert!(refine.get("quality").is_none());
+}
+
+#[test]
+fn splats_painted_in_an_earlier_cameras_order_are_labelled_and_replaced_by_the_exact_picture() {
+    let state = titled_state("Titulo");
+    let mut host = ready_host("sort-refine", &state);
+    let first = sent(&mut host).remove(0);
+    assert_eq!(first["quality"], "preview");
+    // Full MSAA, no proxy: the reused order is the only way this picture differs from the final one.
+    from_page(
+        &mut host,
+        &state,
+        frame_done_with_source(
+            first["id"].as_u64().unwrap(),
+            first["revision"].as_u64().unwrap(),
+            json!({"quality":"preview","proxy_layers":0,"original_layers":0,"result_hits":0,
+                "scene_samples":4,"reduced_scene_layers":0,"stale_sort_layers":1}),
+        ),
+    );
+    assert!(
+        host.headline().ends_with(" · sort"),
+        "the quality is never hidden: {}",
+        host.headline()
+    );
+    assert!(host.refine_pending());
+    assert!(
+        !host.refine(&state, Instant::now()),
+        "not before the monitor has been still"
+    );
+    assert!(host.refine(&state, Instant::now() + Duration::from_millis(400)));
+    let refine = sent(&mut host).remove(0);
+    assert!(
+        refine.get("quality").is_none(),
+        "the refine is a frame without `quality`: the runtime waits for the sort of its camera"
+    );
+    assert_eq!(refine["plan"], first["plan"], "the same position");
+    from_page(
+        &mut host,
+        &state,
+        frame_done_with_source(
+            refine["id"].as_u64().unwrap(),
+            refine["revision"].as_u64().unwrap(),
+            json!({"quality":"original","proxy_layers":0,"original_layers":0,"result_hits":0,
+                "scene_samples":4,"reduced_scene_layers":0,"stale_sort_layers":0}),
+        ),
+    );
+    assert!(!host.headline().contains("sort"), "{}", host.headline());
+    assert!(!host.refine_pending());
+    assert_eq!(host.report()["session"]["stats"]["refined"], 1);
 }
 
 #[test]
