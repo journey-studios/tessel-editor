@@ -13,6 +13,7 @@ pub mod content;
 pub mod directed_scene;
 pub mod document;
 pub mod fixtures;
+pub mod header;
 pub mod headless;
 pub mod id;
 pub mod interchange;
@@ -32,6 +33,7 @@ pub mod scene_resources;
 pub mod session;
 pub mod splat;
 pub mod state;
+pub mod thumbnails;
 pub mod time;
 pub mod trace;
 

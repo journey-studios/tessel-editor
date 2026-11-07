@@ -4,6 +4,17 @@ use std::process::{Command as Process, Stdio};
 use serde_json::{Value, json};
 use tessel_editor_core::{Command, EditorState, Raw, headless};
 
+/// The summary of one state without the random ID every new project gets (`header.project_id`),
+/// so two separately built states can be compared.
+fn comparable(state: &EditorState) -> Value {
+    let mut summary = state.summary();
+    summary["header"]
+        .as_object_mut()
+        .expect("the summary carries the header")
+        .remove("project_id");
+    summary
+}
+
 #[test]
 fn json_and_library_flows_have_the_same_state_and_reject_without_mutation() {
     let mut direct = EditorState::default();
@@ -20,7 +31,7 @@ fn json_and_library_flows_have_the_same_state_and_reject_without_mutation() {
         }),
     )
     .unwrap();
-    assert_eq!(direct.summary(), json_session.summary());
+    assert_eq!(comparable(&direct), comparable(&json_session));
     let before = json_session.summary();
     let error = headless::execute(
         &mut json_session,

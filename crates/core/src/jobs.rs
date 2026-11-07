@@ -32,6 +32,8 @@ pub enum JobKind {
     /// Read-only checks that touch files or tools (export and package preflight, package verify).
     Preflight,
     Proxy,
+    /// Library thumbnails of splats and scenes (BL144): one frame each, through the renderer.
+    Thumbnail,
     Package,
     Restore,
     ProjectImport,
@@ -49,6 +51,7 @@ impl JobKind {
             Self::Probe => "probe",
             Self::Preflight => "preflight",
             Self::Proxy => "proxy",
+            Self::Thumbnail => "thumbnail",
             Self::Package => "package",
             Self::Restore => "restore",
             Self::ProjectImport => "project-import",

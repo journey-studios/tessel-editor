@@ -95,6 +95,9 @@ pub struct EditorState {
     /// playhead: not in the document, not in an undo snapshot (so undo/redo never restores it),
     /// and empty in every project that is created or opened.
     pub scene_interaction: SceneInteraction,
+    /// BL144: library thumbnails of splats and scenes. Session state like the playhead: not in
+    /// the document, not in an undo snapshot, empty in every project that is created or opened.
+    pub thumbnails: crate::thumbnails::ThumbnailBook,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -344,6 +347,7 @@ impl EditorState {
             preview_policy: PreviewPolicy::default(),
             scenes: SceneBook::default(),
             scene_interaction: SceneInteraction::default(),
+            thumbnails: Default::default(),
         }
     }
 
@@ -375,6 +379,7 @@ impl EditorState {
             preview_policy: PreviewPolicy::default(),
             scenes: SceneBook::default(),
             scene_interaction: SceneInteraction::default(),
+            thumbnails: Default::default(),
         })
     }
 }
@@ -438,6 +443,7 @@ impl EditorState {
         let mut summary = json!({
             "demonstration": self.demonstration,
             "project": self.project_name,
+            "header": self.header().to_json(),
             // What an editor needs to show "saved / unsaved" without reading the files.
             "persistence": {
                 "document": self.project.document,

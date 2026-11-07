@@ -171,6 +171,7 @@ fn run_op(
 ) -> Result<Value, CommandError> {
     match op {
         Op::Status => Ok(state.summary()),
+        Op::Header => Ok(state.header().to_json()),
         Op::Run(command) => state.execute(command),
         Op::Project(op) => run_project_op(state, renderer, op),
         Op::CreateProject(settings) => create_project(state, renderer, &settings),
