@@ -44,7 +44,13 @@ pub fn is_rendered(kind: MediaKind) -> bool {
 /// The picture size for a sequence of `width` × `height`: [`WIDTH`] across, an even height.
 pub fn size_for(width: u32, height: u32) -> (u32, u32) {
     let height = (u64::from(WIDTH) * u64::from(height.max(1)) / u64::from(width.max(1))).max(2);
-    (WIDTH, (height as u32).next_multiple_of(2))
+    let maximum = crate::preset::MAX_SIDE;
+    if height > u64::from(maximum) {
+        let width = (u64::from(WIDTH) * u64::from(maximum) / height).max(2) as u32;
+        (width.next_multiple_of(2), maximum)
+    } else {
+        (WIDTH, (height as u32).next_multiple_of(2))
+    }
 }
 
 /// The project a result was rendered for. Taken when the job starts.
@@ -455,6 +461,13 @@ mod tests {
         assert_eq!(size_for(1080, 1920), (WIDTH, 426));
         assert_eq!(size_for(1000, 1000), (WIDTH, WIDTH));
         assert_eq!(size_for(0, 0).0, WIDTH);
+        for (width, height) in [(1, 8192), (8192, 1), (1, u32::MAX), (u32::MAX, 1)] {
+            let (w, h) = size_for(width, height);
+            assert!((2..=crate::preset::MAX_SIDE).contains(&w));
+            assert!((2..=crate::preset::MAX_SIDE).contains(&h));
+            assert_eq!(w % 2, 0);
+            assert_eq!(h % 2, 0);
+        }
     }
 
     #[test]

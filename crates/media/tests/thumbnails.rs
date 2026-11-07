@@ -1340,6 +1340,9 @@ fn the_tick_does_not_draw_thumbnails_while_a_video_export_owns_the_renderer() {
             Ok(json!({}))
         },
     );
+    let explicit = ok(&mut host, &mut state, json!({"op":"media.thumbnails"}));
+    assert_eq!(explicit["state"], "waiting");
+    assert_eq!(explicit["reused"], false);
     for _ in 0..30 {
         host.poll(&mut state);
         std::thread::sleep(Duration::from_millis(10));
@@ -1366,4 +1369,42 @@ fn the_tick_does_not_draw_thumbnails_while_a_video_export_owns_the_renderer() {
         2,
         "after the export, the thumbnails"
     );
+}
+
+#[test]
+fn an_export_cancels_a_thumbnail_and_does_not_start_a_second_renderer() {
+    let (dir, set) = setup("export-after-thumbnail");
+    let mut state = project(&dir, "film", &set);
+    let script = Arc::new(Script::default());
+    script.hold.store(true, Ordering::SeqCst);
+    let mut host = host(&script, true);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while script.frames.lock().unwrap().is_empty() {
+        host.poll(&mut state);
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let result = headless::execute_ext(
+        &mut state,
+        None,
+        Some(&mut host),
+        &json!({
+            "op":"export.start", "destination":dir.join("out.mp4"), "wait":false,
+            "preset":{"id":"p", "name":"P", "width":240, "height":136}
+        }),
+    );
+    // Always release the renderer double before judging, including when the request failed early.
+    script.release.store(true, Ordering::SeqCst);
+    assert_eq!(result.unwrap_err().code, "renderer_busy");
+    assert_eq!(script.built.load(Ordering::SeqCst), 1);
+    assert!(
+        !host
+            .registry()
+            .list()
+            .iter()
+            .any(|job| job.kind == tessel_editor_core::jobs::JobKind::VideoExport)
+    );
+    assert!(host.registry().list().iter().any(|job| job.kind
+        == tessel_editor_core::jobs::JobKind::Thumbnail
+        && job.cancel_requested));
 }

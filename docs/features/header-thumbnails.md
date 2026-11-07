@@ -164,3 +164,5 @@ cancelado = falha" e a regra da captura.
   árvore sem rótulo) valiam para o código anterior; **as mutações desta revisão ainda não foram executadas** (por exemplo,
   um host que reutiliza a sessão, uma identidade sem dependências, um enquadramento fixo): os testes foram escritos para
   falhar com elas, sem prova de execução.
+
+R2: tamanhos extremos agora cabem em MAX_SIDE com lados pares (mínimo2; aspecto extremo é aproximado). Chamadas explícitas de miniatura aguardam export ativo. Um export válido iniciado com miniatura ainda em curso cancela a miniatura e devolve renderer_busy/retryable até seu frame terminar, sem iniciar outro renderer; o chamador repete após concluir o cancelamento. A pausa automática é desfeita por uma nova solicitação explícita. Isso não é uma fila automática de export e deve ser tratado na UI/CLI como erro transitório. Testes escritos, não executados por disco. Spec do helper comum incluída nesta branch. SPZ/PLY e orientaçãoSHARP continuam a validar em runtime, custo de BFS por paint e falha de snapshot silenciosa seguem limites pendentes.
