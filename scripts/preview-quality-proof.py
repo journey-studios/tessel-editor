@@ -359,7 +359,7 @@ def scrub_run(editor, name, origin, span, hz, label, inspect=False):
         pass
     with GpuSampler() as gpu:
         proc = subprocess.run([sys.executable, os.path.join(ROOT, "scripts/seek-scrub-proof.py"), "--socket", editor.socket_path,
-                               "--seconds", "2", "--hz", str(hz), "--span", str(span), "--json", out, "--settle-timeout", "30"],
+                               "--seconds", "2", "--hz", str(hz), "--span", str(span), "--json", out, "--settle-timeout", "30", "--no-restore"],
                               capture_output=True, text=True)
     try:
         with open(out) as handle:

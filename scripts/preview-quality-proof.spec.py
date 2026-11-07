@@ -51,6 +51,7 @@ def scrub(editor, waits, inspect=True):
     """`scrub_run` with the waits it makes (before the scrub, after it) answered by `waits`."""
 
     def run_subscript(command, **_):
+        assert "--no-restore" in command, "compare the release frame, not a restored origin"
         out = command[command.index("--json") + 1]
         with open(out, "w") as handle:
             json.dump({"presentations_in_window": 100, "release_to_final_ms": 200}, handle)

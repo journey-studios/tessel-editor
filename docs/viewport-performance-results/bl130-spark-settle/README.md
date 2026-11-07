@@ -147,3 +147,7 @@ Nenhuma execução falhou ou excedeu o timeout final. Sob estas condições a ba
 Os quatro commits originais tiveram apenas seus trailers removidos, com árvore idêntica em cada par: [mapeamento](final-gate/history-map.json). Os SHAs históricos acima continuam descrevendo as mesmas árvores; o fechamento acrescenta os ajustes e as evidências. Capturas da revisão R2 confirmam dois quadros refinados nativos, sem validar movimento humano.
 
 Gravação nativa do playback real atravessando crossfade: `/tmp/pr19-final/native-playback.mp4` (somente local, sem imagens privadas no git). Inspeção de um frame confirma captura apenas da janela própria; avaliação humana de movimento permanece pendente. Stop/refino alcançou qualidade original em 411 ms; [metadados](final-gate/motion.json).
+
+Correção de proveniência do scrub: os hashes históricos da origem 20/150 não comprovavam o quadro de release, pois o subprocesso restaurava a origem antes da comparação. Essa alegação fica retirada. O harness isolado agora deixa o último quadro do gesto (`--no-restore`); a nova execução inspect fica registrada separadamente, sem contar como benchmark. Os tempos de release medidos pelo subprocesso antes da restauração continuam válidos.
+
+Nova prova de release: [release-frame-check.json](final-gate/release-frame-check.json), quadros 120 e 250, ambos iguais ao explícito e sem falhas. Uma repetição inspect por cenário; sem alegação de desempenho desta execução.

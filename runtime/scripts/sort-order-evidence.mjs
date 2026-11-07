@@ -93,7 +93,7 @@ const [width, height] = [Number(sizeMatch[1]), Number(sizeMatch[2])];
 const paces = opts['pace-ms'].split(',').map(Number);
 if (paces.some((pace) => !Number.isFinite(pace) || pace < 0)) usage(`--pace-ms must be numbers of milliseconds, got ${JSON.stringify(opts['pace-ms'])}`);
 if (![0, 2, 4].includes(Number(opts['preview-samples']))) usage(`--preview-samples must be 0, 2 or 4, got ${JSON.stringify(opts['preview-samples'])}`);
-if (!/^\d+$/.test(opts.sheet)) usage(`--sheet must be a count of frames, got ${JSON.stringify(opts.sheet)}`);
+if (!/^[1-9]\d*$/.test(opts.sheet)) usage(`--sheet must be a count of frames, got ${JSON.stringify(opts.sheet)}`);
 mkdirSync(opts.out, { recursive: true });
 
 // --- a PNG decoder for what the worker writes (8-bit RGB/RGBA, no interlace) -------------------------
@@ -235,17 +235,38 @@ const worker = spawn('node', [join(root, 'worker/worker.mjs')], {
 });
 const queue = [];
 const waiters = [];
+let workerFailure = null;
+const failWorker = (error) => {
+  workerFailure ??= error instanceof Error ? error : new Error(JSON.stringify(error));
+  for (const waiter of waiters.splice(0)) waiter.reject(workerFailure);
+};
+worker.on('error', failWorker);
+worker.on('exit', (code, signal) => failWorker(new Error(`evidence worker exited (${code ?? signal})`)));
+worker.stdin.on('error', failWorker);
+process.once('exit', () => worker.kill());
 createInterface({ input: worker.stdout }).on('line', (line) => {
-  const message = JSON.parse(line);
+  let message;
+  try { message = JSON.parse(line); } catch (error) { failWorker(error); return; }
+  if (message.type === 'error' || message.type === 'closed') {
+    failWorker(new Error(`evidence worker ${message.type}: ${JSON.stringify(message)}`));
+    return;
+  }
   const index = waiters.findIndex(({ predicate }) => predicate(message));
   if (index >= 0) waiters.splice(index, 1)[0].resolve(message);
   else queue.push(message);
 });
 const send = (message) => worker.stdin.write(`${JSON.stringify({ v: 1, ...message })}\n`);
 const waitFor = (predicate) => {
+  if (workerFailure) return Promise.reject(workerFailure);
   const index = queue.findIndex(predicate);
   if (index >= 0) return Promise.resolve(queue.splice(index, 1)[0]);
-  return new Promise((resolve) => waiters.push({ predicate, resolve }));
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => failWorker(new Error('evidence worker reply timed out after 60 s')), 60_000);
+    waiters.push({ predicate,
+      resolve: (value) => { clearTimeout(timer); resolve(value); },
+      reject: (error) => { clearTimeout(timer); reject(error); },
+    });
+  });
 };
 let nextId = 1;
 const frame = async (plan, png_path, quality) => {

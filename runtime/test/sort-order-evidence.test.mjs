@@ -52,6 +52,7 @@ test('assets, size, paces, samples and sheet that cannot be used are refused', (
   refused(run(t, { plans, extra: ['--size', '960'] }), /--size must be WIDTHxHEIGHT/);
   refused(run(t, { plans, extra: ['--pace-ms', 'fast'] }), /--pace-ms must be numbers/);
   refused(run(t, { plans, extra: ['--preview-samples', '3'] }), /--preview-samples must be 0, 2 or 4/);
+  refused(run(t, { plans, extra: ['--sheet', '0'] }), /--sheet must be a count/);
   refused(run(t, { plans, extra: ['--sheet=-1'] }), /--sheet must be a count/);
   refused(run(t, { plans, extra: ['--nope', '1'] }), /nope/);
 });
@@ -62,4 +63,11 @@ test('a missing required option is a usage error as well', (t) => {
     assert.equal(result.status, 2);
     assert.match(result.stderr, new RegExp(`--${name} is required`));
   }
+});
+
+test('an unavailable runtime worker fails the evidence run instead of leaving waiters pending', (t) => {
+  const result = run(t, { plans: [planOf(1), planOf(2)] });
+  assert.equal(result.error, undefined, 'must finish before the process timeout');
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stderr, /evidence worker (error|closed|exited)/);
 });
