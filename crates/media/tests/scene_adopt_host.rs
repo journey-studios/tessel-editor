@@ -25,6 +25,10 @@ struct World {
     state: EditorState,
     host: Option<MediaHost>,
     workspace: PathBuf,
+    /// Events a poll returned that no caller asked for yet (BL094.12). `poll` reports every finished job
+    /// once, so an event dropped here is gone for good (a discard job that finishes in the same
+    /// tick as the refusal that started it arrives in the same batch).
+    unread: Vec<Value>,
 }
 
 fn world(name: &str) -> World {
@@ -44,6 +48,7 @@ fn world_with(name: &str, host: MediaHost) -> World {
         state,
         host: Some(host),
         workspace,
+        unread: Vec::new(),
     };
     world.attach(&bundle);
     // Saved with the scene: a copy of this folder opened later is the same project and scene.
@@ -307,16 +312,50 @@ fn a_stale_job_does_not_remove_what_a_committed_one_reused() {
 
 // ------------------------------------------------------------------------------- poll --
 
+/// The event about `job` among `unread` and the `fresh` batch, in the order they were reported.
+/// Everything else is kept in `unread` for a later ask, never dropped.
+fn take_event(unread: &mut Vec<Value>, fresh: Vec<Value>, job: &str) -> Option<Value> {
+    unread.extend(fresh);
+    let at = unread.iter().position(|event| event["job"] == job)?;
+    Some(unread.remove(at))
+}
+
 fn poll_until_reported(world: &mut World, job: &str) -> Value {
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
         let host = world.host.as_mut().unwrap();
-        let events = host.poll(&mut world.state);
-        if let Some(event) = events.into_iter().find(|event| event["job"] == job) {
+        let fresh = host.poll(&mut world.state);
+        if let Some(event) = take_event(&mut world.unread, fresh, job) {
             return event;
         }
         assert!(Instant::now() < deadline, "the job was never reported");
         std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+/// The helper itself, with the batch that made the test timing-dependent: a refusal and the event
+/// of the discard job it started, reported by one poll. Asking for the refusal first must not lose
+/// the discard event, whatever the order of the batch (deterministic: no host, no clock).
+#[test]
+fn an_event_in_the_same_batch_is_kept_for_the_next_ask_not_dropped() {
+    let refusal = json!({"job": "job-1", "state": "failed"});
+    let discard = json!({"job": "job-2", "kind": "discard", "state": "succeeded"});
+    for batch in [
+        vec![refusal.clone(), discard.clone()],
+        vec![discard.clone(), refusal.clone()],
+    ] {
+        let mut unread = Vec::new();
+        assert_eq!(
+            take_event(&mut unread, batch, "job-1"),
+            Some(refusal.clone())
+        );
+        assert_eq!(
+            take_event(&mut unread, Vec::new(), "job-2"),
+            Some(discard.clone()),
+            "the second ask finds it without another poll"
+        );
+        assert!(unread.is_empty());
+        assert_eq!(take_event(&mut unread, Vec::new(), "job-2"), None);
     }
 }
 
