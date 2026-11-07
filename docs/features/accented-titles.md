@@ -78,3 +78,5 @@ a captura nativa mostra a janela, não substitui os testes de pixel; quebra de l
 (BL141.1); só a cobertura listada (BL141.2: ampliar com fonte real = BL053).
 
 Revisão B: a comparação histórica do export aceitava divergências em1% do quadro incluindo fundo, portanto não comprovava igualdade pixel a pixel de glifos. O teste agora compara foreground e linhas dos acentos, com controle negativo de til→agudo; não reexecutado por disco abaixo do piso. A captura nativa existente não compara pixels com Chrome/export nem prova igualdade entre escalas. Eventos tardios de input são descartados quando o clipe exibido difere do selecionado; o reset Texto sem operação foi removido da apresentação. Provas usam run_surface e captura indisponível vira SKIP, nunca PASS.
+
+R2 de código: corrigidos TreeContext.perf_meter no teste, comparação de action como objeto e paint explícito antes de ler o Input. O teste de export registra changed/union e pior fração de divergência por linha antes de qualquer tolerância; limites existentes mantidos. A matriz F050 fica I até gates compilados. Estas alterações receberam somente rustfmt/check de sintaxe, sem Cargo/render por disco.

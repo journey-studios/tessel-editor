@@ -1046,6 +1046,7 @@ mod tests {
                 theme: "dark",
                 metrics: &metrics,
                 layout: &layout,
+                perf_meter: false,
             };
             find(state, &cx, id)
         };
@@ -1074,7 +1075,7 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|a| a == "reset")
+                .any(|a| a["action"] == "reset")
         );
         // Another kind of clip has no text node.
         run(

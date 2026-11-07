@@ -30,6 +30,8 @@ fn select_title(view: &Entity<Workstation>, cx: &mut VisualTestContext) {
     view.update(cx, |view, cx| view.execute(command, Source::Cli, cx))
         .unwrap();
     cx.run_until_parked();
+    cx.update(|window, _| window.refresh());
+    cx.run_until_parked();
 }
 
 fn model_text(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> String {

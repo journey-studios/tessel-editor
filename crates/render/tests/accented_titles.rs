@@ -265,6 +265,33 @@ fn the_exported_video_shows_the_accented_title_the_monitor_shows() {
     ] {
         assert!(a.abs_diff(b) <= 2, "{side}: monitor {a}, video {b}");
     }
+    let union = monitor
+        .lit
+        .iter()
+        .zip(&video.lit)
+        .filter(|(a, b)| **a || **b)
+        .count();
+    let changed = monitor
+        .lit
+        .iter()
+        .zip(&video.lit)
+        .filter(|(a, b)| a != b)
+        .count();
+    let worst_row = monitor
+        .lit
+        .chunks(WIDTH as usize)
+        .zip(video.lit.chunks(WIDTH as usize))
+        .map(|(a, b)| {
+            let union = a.iter().zip(b).filter(|(a, b)| **a || **b).count();
+            let changed = a.iter().zip(b).filter(|(a, b)| a != b).count();
+            if union == 0 {
+                0.0
+            } else {
+                changed as f64 / union as f64
+            }
+        })
+        .fold(0.0_f64, f64::max);
+    eprintln!("glyph comparison changed={changed} union={union} worst_row_fraction={worst_row}");
     assert!(
         glyph_masks_agree(&monitor, &video),
         "export differs on the glyph foreground or an accent row"

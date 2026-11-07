@@ -777,3 +777,7 @@ BL141 — correção do coordenador após revisão B: main integrada por merge p
 | BL141.4 | RevisãoB | Evento tardio do input podia visar outro clipe; reset Texto sem operação | Corrigido por código, GPUI a validar | BL141 | Coordenador | Evento exibido para outroID não altera seleção atual; reset não é apresentado |
 | BL141.5 | RevisãoB | Falhas de transporte e capturaOS ausente mal reportadas | Corrigido, helper26/26, prova real suspensa | BL140.6 | Coordenador | Helper canônico e run_surface; SKIP explícito não conta PASS |
 | BL141.6 | RevisãoB | hasGlyph aceitava caracteres fora da cobertura core | Corrigido, pure9/9 | BL141 | Coordenador | Cobertura por faixa Unicode e dobramentos para ASCII não liberam glifo não suportado |
+
+| BL141.7 | R2 | Teste TreeContext faltava perf_meter e verificação de reset comparava objeto com string | Corrigido por código, sem compilação | BL141 | Coordenador | Incluir campo obrigatório e conferir action do objeto |
+| BL141.8 | R2 | Input pode ser lido antes de paint nos testes GPUI | Corrigido por código, GPUI a validar | BL141.4 | Coordenador | Refresh/paint após seleção e antes de input |
+BL141.3: diagnóstico changed/union/pior linha adicionado ao teste sem relaxar tolerância; render não executado. Matriz F050 rebaixada aI até gates.
