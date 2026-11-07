@@ -1,0 +1,101 @@
+{
+ "label": "release-frame-check",
+ "binary": "target/release/tessel-editor",
+ "env": {
+  "TESSEL_VIEWPORT_INSPECT": "1"
+ },
+ "playback": [],
+ "scrub": [
+  {
+   "name": "take",
+   "hz": "60",
+   "span": "100",
+   "gpu": {
+    "n": 7,
+    "mean": 40.4,
+    "max": 70
+   },
+   "gpu_quiet_before": true,
+   "load_avg": 10.8,
+   "presentations_in_window": 15,
+   "pictures_per_s": 7.5,
+   "present_gap_ms": {
+    "median": 122.8,
+    "p95": 133.4,
+    "max": 133.6
+   },
+   "lag_frames": {
+    "median": 6,
+    "p95": 7,
+    "max": 11
+   },
+   "release_to_final_ms": 639,
+   "first_present_ms": 224.2,
+   "passed": true,
+   "final_quality_ms": 2,
+   "final_source": {
+    "quality": "original",
+    "proxy_layers": 0,
+    "original_layers": 0,
+    "result_hits": 0,
+    "scene_samples": 4,
+    "reduced_scene_layers": 0,
+    "stale_sort_layers": 0
+   },
+   "refined_equals_explicit": {
+    "frame": 120,
+    "on_screen": "a22965c5fdb341fc",
+    "explicit": "a22965c5fdb341fc",
+    "equal": true
+   },
+   "rep": 0
+  },
+  {
+   "name": "xfade",
+   "hz": "60",
+   "span": "100",
+   "gpu": {
+    "n": 6,
+    "mean": 36.7,
+    "max": 50
+   },
+   "gpu_quiet_before": true,
+   "load_avg": 11.7,
+   "presentations_in_window": 15,
+   "pictures_per_s": 7.5,
+   "present_gap_ms": {
+    "median": 118.2,
+    "p95": 162.1,
+    "max": 162.2
+   },
+   "lag_frames": {
+    "median": 6,
+    "p95": 7,
+    "max": 8
+   },
+   "release_to_final_ms": 539,
+   "first_present_ms": 146.3,
+   "passed": true,
+   "final_quality_ms": 2,
+   "final_source": {
+    "quality": "original",
+    "proxy_layers": 0,
+    "original_layers": 0,
+    "result_hits": 0,
+    "scene_samples": 4,
+    "reduced_scene_layers": 0,
+    "stale_sort_layers": 0
+   },
+   "refined_equals_explicit": {
+    "frame": 250,
+    "on_screen": "b4d951986ef31cb6",
+    "explicit": "b4d951986ef31cb6",
+    "equal": true
+   },
+   "rep": 0
+  }
+ ],
+ "hashes": {},
+ "renderer": "Apple GPU",
+ "failures": []
+}
