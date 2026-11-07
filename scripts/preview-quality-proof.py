@@ -23,7 +23,12 @@ What it measures (the editor's own clock: `TESSEL_VIEWPORT_TRACE=1` stamps every
 * `scrub`: `seek-scrub-proof.py` per `NAME:ORIGIN:SPAN:HZ` (pictures per 2 s, gaps, lag, release to final).
 * `--hashes`: `render.frame` hashes of explicit frames (needs `--inspect`, i.e. TESSEL_VIEWPORT_INSPECT=1),
   to compare a base build with the new one; with `--inspect` the refined picture after a stop is also
-  compared with the explicit render of the same frame.
+  compared with the explicit render of the same frame, after every playback stop and every scrub release (BL130). The
+  hash is the one of the frame the runtime returned for the monitor (what `frame.done` measured), not a capture of
+  the screen's pixels.
+* A run in which the picture never became final quality after the stop or the release (30 s) records
+  `final_quality_timeout`, an `error` and `passed: false`, with or without `--inspect`; the report lists every such
+  run under `failures` and the script exits 1 if there is one.
 
 Prints one JSON report on the last line. GPU utilisation (ioreg) and the load average are recorded per
 run: the GPU may be shared, so repeat the runs and read the spread, not one number.
@@ -209,15 +214,20 @@ class Editor:
 
 
 def final_quality(state):
-    """The picture on screen is the final one: nothing to refine and no scene below the final samples."""
+    """The picture on screen is the final one: nothing to refine, no proxy, reduced samples or stale sort."""
     session, last = state["session"], state.get("last_frame") or {}
     source = last.get("source") or {}
     return (state["phase"] == "ready" and session["status"] == "ready" and not session.get("pending")
             and not session.get("refine_pending") and last.get("revision") == session["revision"]
-            and not source.get("reduced_scene_layers") and not source.get("proxy_layers"))
+            and not source.get("reduced_scene_layers") and not source.get("proxy_layers")
+            and not source.get("stale_sort_layers"))
 
 
-def wait_final_quality(editor, timeout=30):
+FINAL_QUALITY_TIMEOUT_S = 30
+
+
+def wait_final_quality(editor, timeout=FINAL_QUALITY_TIMEOUT_S):
+    """`(ms, state)` once the picture on screen is final quality; `(None, state)` if it never was within `timeout`."""
     started = time.perf_counter()
     while time.perf_counter() - started < timeout:
         state = editor.viewport()
@@ -227,10 +237,51 @@ def wait_final_quality(editor, timeout=30):
     return None, editor.viewport()
 
 
+def final_quality_outcome(editor, converge_ms, final_state, inspect, what):
+    """What a wait for the final picture after a stop or a release leaves in a run: never nothing.
+
+    A timeout is recorded as such (`final_quality_timeout`, an `error`, `passed: false`), with or without `--inspect`: the
+    refined picture was not there to compare, which is not a refine that matched. With `--inspect` and a final picture the
+    refined hash is compared with an explicit `render.frame` of the same frame, and a mismatch or a comparison that could
+    not be made also fails the run.
+    """
+    outcome = {"final_source": (final_state.get("last_frame") or {}).get("source")}
+    if converge_ms is None:
+        message = f"the picture on screen was not final quality {FINAL_QUALITY_TIMEOUT_S} s after {what}"
+        outcome.update({"final_quality_timeout": True, "error": message, "passed": False})
+        if inspect:
+            outcome["refined_equals_explicit"] = {"error": message}
+        return outcome
+    if inspect:
+        comparison = refined_comparison(editor, final_state)
+        outcome["refined_equals_explicit"] = comparison
+        if comparison.get("equal") is not True:
+            outcome["passed"] = False
+    return outcome
+
+
 def regions_of(xfades):
     def region(frame):
         return "xfade" if any(low <= frame < high for low, high in xfades) else "single"
     return region
+
+
+def refined_comparison(editor, final_state):
+    """The picture on screen after a stop (`final_state`) against an explicit `render.frame` of the same frame."""
+    last = final_state.get("last_frame") or {}
+    presented = (final_state["session"].get("presented") or {}).get("frame")
+    if not last.get("hash") or presented is None:
+        return {"error": "no hash or presented frame on screen"}
+    size = final_state.get("output") or {}
+    explicit = editor.explicit(presented, width=size.get("width"), height=size.get("height"), probes=[])
+    frame = (explicit.get("data") or {}).get("frame") or {}
+    comparison = {"frame": presented, "on_screen": last["hash"], "explicit": frame.get("hash")}
+    if explicit.get("ok"):
+        comparison["equal"] = last["hash"] == frame.get("hash")
+    else:
+        # A request that failed compared nothing: it is not a refine mismatch.
+        comparison["error"] = explicit.get("error")
+    return comparison
 
 
 def playback_run(editor, start, frames, xfades, inspect):
@@ -274,11 +325,10 @@ def playback_run(editor, start, frames, xfades, inspect):
         if f["shown_frame"] not in seen:
             seen.add(f["shown_frame"])
             interactive.append(f)
-    result = {"start": start, "frames_asked": frames, "end_frame": end, "gpu": gpu.report(), "gpu_quiet_before": quiet,
+    result = {"start": start, "frames_asked": frames, "end_frame": end, "passed": True, "gpu": gpu.report(), "gpu_quiet_before": quiet,
               "load_avg": round(os.getloadavg()[0], 1), "converge_ms": converge_ms, "regions": {},
               "refined_frames": status["session"]["stats"]["refined"] - base["session"]["stats"]["refined"],
               "playback": {k: report.get(k) for k in ("elapsed_ms", "frame", "lag_frames", "skipped_frames")}}
-    result["final_source"] = (final_state.get("last_frame") or {}).get("source")
     result["pictures"] = [[f["shown_frame"], f["done_ms"], f["runtime_render_ms"]] for f in interactive]
     for name in ("single", "xfade"):
         items = [f for f in interactive if start < f["shown_frame"] <= end and region(f["shown_frame"]) == name]
@@ -292,24 +342,11 @@ def playback_run(editor, start, frames, xfades, inspect):
         result["regions"][name] = {"clock_frames": clock, "shown_frames": shown,
                                    "dropped_pct": round(100 * (1 - shown / clock), 1),
                                    "interval_ms": summary(gaps), "runtime_render_ms": summary([f["runtime_render_ms"] for f in items])}
-    if inspect and converge_ms is not None:
-        last = final_state.get("last_frame") or {}
-        presented = (final_state["session"].get("presented") or {}).get("frame")
-        if last.get("hash") and presented is not None:
-            size = final_state.get("output") or {}
-            explicit = editor.explicit(presented, width=size.get("width"), height=size.get("height"), probes=[])
-            frame = (explicit.get("data") or {}).get("frame") or {}
-            comparison = {"frame": presented, "on_screen": last["hash"], "explicit": frame.get("hash")}
-            if explicit.get("ok"):
-                comparison["equal"] = last["hash"] == frame.get("hash")
-            else:
-                # A request that failed compared nothing: it is not a refine mismatch.
-                comparison["error"] = explicit.get("error")
-            result["refined_equals_explicit"] = comparison
+    result.update(final_quality_outcome(editor, converge_ms, final_state, inspect, "the playback stopped"))
     return result
 
 
-def scrub_run(editor, name, origin, span, hz, label):
+def scrub_run(editor, name, origin, span, hz, label, inspect=False):
     editor.op({"op": "seek", "frame": int(origin)})
     editor.wait_settled()
     wait_final_quality(editor)
@@ -323,20 +360,37 @@ def scrub_run(editor, name, origin, span, hz, label):
         pass
     with GpuSampler() as gpu:
         proc = subprocess.run([sys.executable, os.path.join(ROOT, "scripts/seek-scrub-proof.py"), "--socket", editor.socket_path,
-                               "--seconds", "2", "--hz", str(hz), "--span", str(span), "--json", out, "--settle-timeout", "30"],
+                               "--seconds", "2", "--hz", str(hz), "--span", str(span), "--json", out, "--settle-timeout", "30", "--no-restore"],
                               capture_output=True, text=True)
     try:
         with open(out) as handle:
             report = json.load(handle)
     except Exception:
         return {"name": name, "error": (proc.stdout + proc.stderr)[-400:]}
-    return {"name": name, "hz": hz, "span": span, "gpu": gpu.report(), "gpu_quiet_before": quiet,
+    result = {"name": name, "hz": hz, "span": span, "gpu": gpu.report(), "gpu_quiet_before": quiet,
             "load_avg": round(os.getloadavg()[0], 1),
             "presentations_in_window": report.get("presentations_in_window"),
             "pictures_per_s": round(report["presentations_in_window"] / 2.0, 1) if report.get("presentations_in_window") is not None else None,
             "present_gap_ms": report.get("present_gap_ms"), "lag_frames": report.get("lag_frames"),
             "release_to_final_ms": report.get("release_to_final_ms"), "first_present_ms": report.get("first_present_ms"),
             "passed": proc.returncode == 0}
+    # Always verify final quality; only the hash comparison requires inspect.
+    converge_ms, final_state = wait_final_quality(editor)
+    result["final_quality_ms"] = converge_ms
+    result.update(final_quality_outcome(editor, converge_ms, final_state, inspect, "the scrub was released"))
+    return result
+
+
+def failures_of(report):
+    """Every run that did not pass or carries an error, so that a report with a problem in it cannot read as a clean one."""
+    failures = []
+    for kind in ("playback", "scrub"):
+        for run in report[kind]:
+            if run.get("error") or run.get("passed") is False:
+                failures.append({"kind": kind, "run": run.get("spec") or run.get("name"), "rep": run.get("rep"),
+                                 "error": run.get("error") or "the run did not pass",
+                                 "final_quality_timeout": bool(run.get("final_quality_timeout"))})
+    return failures
 
 
 def main():
@@ -402,17 +456,21 @@ def main():
         for spec in [s for s in args.scrub.split(",") if s]:
             name, origin, span, hz = spec.split(":")
             for rep in range(args.reps):
-                run = scrub_run(editor, name, origin, span, hz, args.label)
+                run = scrub_run(editor, name, origin, span, hz, args.label, args.inspect)
                 run["rep"] = rep
                 report["scrub"].append(run)
                 print(f"{args.label} scrub {name}#{rep} pictures/s {run.get('pictures_per_s')} gap {run.get('present_gap_ms')} lag {run.get('lag_frames')} "
                       f"final {run.get('release_to_final_ms')} gpu {run.get('gpu', {}).get('mean')}", flush=True)
     finally:
         editor.stop()
+    report["failures"] = failures_of(report)
     if args.json:
         with open(args.json, "w") as handle:
             json.dump(report, handle, indent=1)
     print(json.dumps(report))
+    if report["failures"]:
+        print(f"{args.label}: {len(report['failures'])} run(s) failed or errored (see `failures` in the report)", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

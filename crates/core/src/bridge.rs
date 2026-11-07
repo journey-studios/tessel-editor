@@ -44,6 +44,34 @@ pub struct HelloOptions {
     /// BL129): 0, 2 or 4, where 4 turns the reduction off. `None` is the runtime's default (2);
     /// it never raises the count above `scene_samples`.
     pub preview_scene_samples: Option<u32>,
+    /// How a splat scene of a `preview` frame gets its draw order (BL130): `"latest"` paints with the
+    /// order of the last finished sort and sorts for the camera behind the frame, `"exact"` waits for
+    /// the sort of the frame's own camera. `None` is the runtime's default (`latest`).
+    pub preview_sort: Option<PreviewSort>,
+}
+
+/// See [`HelloOptions::preview_sort`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreviewSort {
+    Latest,
+    Exact,
+}
+
+impl PreviewSort {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PreviewSort::Latest => "latest",
+            PreviewSort::Exact => "exact",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        match text.trim().to_ascii_lowercase().as_str() {
+            "latest" => Some(PreviewSort::Latest),
+            "exact" => Some(PreviewSort::Exact),
+            _ => None,
+        }
+    }
 }
 
 /// Messages sent to the runtime.
@@ -68,6 +96,9 @@ pub fn hello_with(host: &str, options: HelloOptions) -> Value {
     }
     if let Some(samples) = options.preview_scene_samples {
         message["preview_scene_samples"] = json!(samples);
+    }
+    if let Some(sort) = options.preview_sort {
+        message["preview_sort"] = json!(sort.as_str());
     }
     message
 }
@@ -668,10 +699,12 @@ mod tests {
                 result_cache: Some(false),
                 scene_samples: Some(2),
                 preview_scene_samples: Some(0),
+                preview_sort: Some(PreviewSort::Exact),
             },
         );
         assert_eq!(with["retain"], false);
         assert_eq!(with["preview_scene_samples"].as_u64(), Some(0));
+        assert_eq!(with["preview_sort"], "exact");
         assert_eq!(with["telemetry"]["presented"], true);
         assert_eq!(
             (
@@ -684,6 +717,17 @@ mod tests {
         // The preview count is not in the message unless the host asks for it.
         let plain = hello_with("tessel-editor", HelloOptions::default());
         assert!(plain.get("preview_scene_samples").is_none());
+        assert!(plain.get("preview_sort").is_none());
+    }
+
+    #[test]
+    fn the_preview_sort_names_round_trip_and_anything_else_is_refused() {
+        for sort in [PreviewSort::Latest, PreviewSort::Exact] {
+            assert_eq!(PreviewSort::parse(sort.as_str()), Some(sort));
+        }
+        assert_eq!(PreviewSort::parse(" Exact "), Some(PreviewSort::Exact));
+        assert_eq!(PreviewSort::parse("fast"), None);
+        assert_eq!(PreviewSort::parse(""), None);
     }
 
     #[test]
@@ -870,5 +914,39 @@ mod tests {
         // A runtime that predates the field, and a frame without a scene layer, are never reduced.
         assert!(!decode(json!({"quality":"preview","proxy_layers":0})).is_reduced());
         assert!(!FrameDetail::default().is_reduced());
+    }
+
+    #[test]
+    fn a_splat_order_taken_from_an_earlier_camera_makes_the_picture_a_reduced_one() {
+        let decode = |source: Value| {
+            let done = json!({"v":1,"type":"frame.done","id":1,"revision":1,"width":2,"height":2,
+                "timings":{"render_ms":1.0,"total_ms":2.0}, "source": source});
+            let BackendEvent::FrameDone(frame) = decode_event(&done).unwrap() else {
+                panic!("expected a frame");
+            };
+            frame.detail
+        };
+        // Full MSAA, no proxy: the order alone is what the final picture differs in.
+        let stale = decode(
+            json!({"quality":"preview","proxy_layers":0,"scene_samples":4,
+            "reduced_scene_layers":0,"stale_sort_layers":2}),
+        );
+        assert_eq!(stale.stale_sort_layers(), 2);
+        assert!(
+            stale.is_reduced(),
+            "the monitor refines it when the playhead stops"
+        );
+        let exact = decode(
+            json!({"quality":"preview","proxy_layers":0,"scene_samples":4,
+            "reduced_scene_layers":0,"stale_sort_layers":0}),
+        );
+        assert!(!exact.is_reduced());
+        // A runtime that predates the field always waited for its sort: never stale.
+        let old = decode(
+            json!({"quality":"preview","proxy_layers":0,"scene_samples":4,"reduced_scene_layers":0}),
+        );
+        assert_eq!(old.stale_sort_layers(), 0);
+        assert!(!old.is_reduced());
+        assert_eq!(FrameDetail::default().stale_sort_layers(), 0);
     }
 }

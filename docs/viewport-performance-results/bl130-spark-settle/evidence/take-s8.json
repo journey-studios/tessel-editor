@@ -1,0 +1,311 @@
+{
+ "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3 Pro, Unspecified Version)",
+ "runtime": {
+  "name": "tessel-three",
+  "version": "0.1.0",
+  "renderer": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3 Pro, Unspecified Version)",
+  "three": "187",
+  "spark": "2.4.0"
+ },
+ "size": [
+  960,
+  540
+ ],
+ "preview_scene_samples": 4,
+ "frames": [
+  40,
+  48,
+  56,
+  64,
+  72,
+  80,
+  88,
+  96,
+  104,
+  112,
+  120,
+  128,
+  136,
+  144,
+  152,
+  160,
+  168,
+  176,
+  184
+ ],
+ "exact": {
+  "first_frame_source": {
+   "quality": "original",
+   "proxy_layers": 0,
+   "original_layers": 0,
+   "result_hits": 0,
+   "scene_samples": 4,
+   "reduced_scene_layers": 0,
+   "stale_sort_layers": 0
+  },
+  "same_pictures_in_reverse_order": true
+ },
+ "runs": [
+  {
+   "pace_ms": 41.67,
+   "frames_moving": 18,
+   "stale_frames": 18,
+   "render_ms": {
+    "median": 114.6
+   },
+   "versus_exact": {
+    "max_channel_delta": 149,
+    "mean_of_means": 0.0186,
+    "worst_mean": 0.0211,
+    "worst_past_8_pct": 0.051,
+    "min_psnr": 53.1,
+    "identical_frames": 0
+   },
+   "popping": {
+    "note": "mean change from the previous frame, moving minus exact (0 = the moving picture changes as the exact one does; a spike is a jump the exact sequence has not)",
+    "max": 0.0028,
+    "min": -0.0016,
+    "mean_abs": 0.0009,
+    "exact_mean_change": 5.6554
+   },
+   "final_equals_exact": true,
+   "final_source": {
+    "quality": "original",
+    "proxy_layers": 0,
+    "original_layers": 0,
+    "result_hits": 0,
+    "scene_samples": 4,
+    "reduced_scene_layers": 0,
+    "stale_sort_layers": 0
+   },
+   "per_frame": [
+    {
+     "frame": 48,
+     "stale_sort_layers": 1,
+     "render_ms": 125.1,
+     "max": 86,
+     "mean": 0.017,
+     "p99": 1,
+     "past_8_pct": 0.037,
+     "psnr": 56.42,
+     "identical": false,
+     "popping": 0.0028
+    },
+    {
+     "frame": 56,
+     "stale_sort_layers": 1,
+     "render_ms": 111.4,
+     "max": 113,
+     "mean": 0.0184,
+     "p99": 1,
+     "past_8_pct": 0.04,
+     "psnr": 55.02,
+     "identical": false,
+     "popping": -0.0009
+    },
+    {
+     "frame": 64,
+     "stale_sort_layers": 1,
+     "render_ms": 109.2,
+     "max": 149,
+     "mean": 0.0183,
+     "p99": 1,
+     "past_8_pct": 0.038,
+     "psnr": 54.59,
+     "identical": false,
+     "popping": -0.0004
+    },
+    {
+     "frame": 72,
+     "stale_sort_layers": 1,
+     "render_ms": 112.8,
+     "max": 105,
+     "mean": 0.018,
+     "p99": 1,
+     "past_8_pct": 0.038,
+     "psnr": 55.4,
+     "identical": false,
+     "popping": -0.001
+    },
+    {
+     "frame": 80,
+     "stale_sort_layers": 1,
+     "render_ms": 109.5,
+     "max": 114,
+     "mean": 0.0199,
+     "p99": 1,
+     "past_8_pct": 0.044,
+     "psnr": 53.46,
+     "identical": false,
+     "popping": -0.0009
+    },
+    {
+     "frame": 88,
+     "stale_sort_layers": 1,
+     "render_ms": 105.8,
+     "max": 87,
+     "mean": 0.0191,
+     "p99": 1,
+     "past_8_pct": 0.043,
+     "psnr": 54.82,
+     "identical": false,
+     "popping": -0.0016
+    },
+    {
+     "frame": 96,
+     "stale_sort_layers": 1,
+     "render_ms": 114.8,
+     "max": 93,
+     "mean": 0.0175,
+     "p99": 1,
+     "past_8_pct": 0.037,
+     "psnr": 55.79,
+     "identical": false,
+     "popping": -0.0005
+    },
+    {
+     "frame": 104,
+     "stale_sort_layers": 1,
+     "render_ms": 117.7,
+     "max": 138,
+     "mean": 0.0175,
+     "p99": 1,
+     "past_8_pct": 0.037,
+     "psnr": 54.97,
+     "identical": false,
+     "popping": 0
+    },
+    {
+     "frame": 112,
+     "stale_sort_layers": 1,
+     "render_ms": 114.7,
+     "max": 95,
+     "mean": 0.0172,
+     "p99": 1,
+     "past_8_pct": 0.035,
+     "psnr": 56.44,
+     "identical": false,
+     "popping": -0.0011
+    },
+    {
+     "frame": 120,
+     "stale_sort_layers": 1,
+     "render_ms": 109.7,
+     "max": 129,
+     "mean": 0.0195,
+     "p99": 1,
+     "past_8_pct": 0.046,
+     "psnr": 54.15,
+     "identical": false,
+     "popping": -0.0015
+    },
+    {
+     "frame": 128,
+     "stale_sort_layers": 1,
+     "render_ms": 118.3,
+     "max": 135,
+     "mean": 0.0196,
+     "p99": 1,
+     "past_8_pct": 0.043,
+     "psnr": 53.42,
+     "identical": false,
+     "popping": -0.0004
+    },
+    {
+     "frame": 136,
+     "stale_sort_layers": 1,
+     "render_ms": 113.8,
+     "max": 105,
+     "mean": 0.0205,
+     "p99": 1,
+     "past_8_pct": 0.045,
+     "psnr": 53.36,
+     "identical": false,
+     "popping": -0.0005
+    },
+    {
+     "frame": 144,
+     "stale_sort_layers": 1,
+     "render_ms": 104.2,
+     "max": 133,
+     "mean": 0.0182,
+     "p99": 1,
+     "past_8_pct": 0.036,
+     "psnr": 54.98,
+     "identical": false,
+     "popping": -0.0004
+    },
+    {
+     "frame": 152,
+     "stale_sort_layers": 1,
+     "render_ms": 106,
+     "max": 79,
+     "mean": 0.0182,
+     "p99": 1,
+     "past_8_pct": 0.039,
+     "psnr": 56.13,
+     "identical": false,
+     "popping": -0.0005
+    },
+    {
+     "frame": 160,
+     "stale_sort_layers": 1,
+     "render_ms": 126.3,
+     "max": 121,
+     "mean": 0.0184,
+     "p99": 1,
+     "past_8_pct": 0.04,
+     "psnr": 54.94,
+     "identical": false,
+     "popping": -0.0013
+    },
+    {
+     "frame": 168,
+     "stale_sort_layers": 1,
+     "render_ms": 124.3,
+     "max": 143,
+     "mean": 0.0181,
+     "p99": 1,
+     "past_8_pct": 0.039,
+     "psnr": 54.61,
+     "identical": false,
+     "popping": -0.0001
+    },
+    {
+     "frame": 176,
+     "stale_sort_layers": 1,
+     "render_ms": 115.4,
+     "max": 101,
+     "mean": 0.0187,
+     "p99": 1,
+     "past_8_pct": 0.039,
+     "psnr": 54.92,
+     "identical": false,
+     "popping": -0.0013
+    },
+    {
+     "frame": 184,
+     "stale_sort_layers": 1,
+     "render_ms": 114.6,
+     "max": 138,
+     "mean": 0.0211,
+     "p99": 1,
+     "past_8_pct": 0.051,
+     "psnr": 53.1,
+     "identical": false,
+     "popping": -0.0008
+    }
+   ],
+   "sheet": {
+    "path": "/tmp/bl130/evidence/take-s8/sheet-p41.67.png",
+    "frames": [
+     80,
+     128,
+     136,
+     184
+    ],
+    "columns": "exact | moving | |difference| x8"
+   }
+  }
+ ]
+}

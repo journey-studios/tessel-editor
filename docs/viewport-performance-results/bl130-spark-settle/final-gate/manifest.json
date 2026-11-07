@@ -1,0 +1,18 @@
+{
+  "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-df7b2504/target/release/tessel-editor": {
+    "sha256": "2061eda918d3f01d46b8e1abfecf4cc7fab8d9405c55339199116297b87f2af5",
+    "bytes": 36642816
+  },
+  "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-df7b2504/runtime/dist/runtime.js": {
+    "sha256": "da7a1ef483b754f32f29d8e030ef5870fe6e538e5f84db957d397c9eec5c7740",
+    "bytes": 4210164
+  },
+  "/tmp/pr19-final/base.json": {
+    "sha256": "000c39d07a2c618816c524184bcd4214eeb06d5030d99b1d57d3f6797421bdd7",
+    "bytes": 26557
+  },
+  "/tmp/pr19-final/final.json": {
+    "sha256": "a83f5e6a76b075eaf534133c3df3a0fbf5c5478d35929d9c2736f5aecc1ff080",
+    "bytes": 26487
+  }
+}

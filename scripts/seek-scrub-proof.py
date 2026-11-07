@@ -381,16 +381,17 @@ def run(editor, args):
     if args.pixel_proof:
         checks.update(pixel_proof(editor, result, live, release, final_state, base, final_frame))
 
-    # Put the playhead back, like the user left it, and wait for the monitor to follow.
-    editor.seek(original["frame"])
-    settle = time.monotonic() + 10
-    while time.monotonic() < settle:
-        state = editor.viewport()
-        if converged(state, original["frame"]):
-            break
-        time.sleep(0.02)
-    result["restored_playhead"] = editor.playhead()["frame"] == original["frame"]
-    checks["the playhead is back where it was"] = result["restored_playhead"]
+    if not getattr(args, "no_restore", False):
+        # Put the playhead back, like the user left it, and wait for the monitor to follow.
+        editor.seek(original["frame"])
+        settle = time.monotonic() + 10
+        while time.monotonic() < settle:
+            state = editor.viewport()
+            if converged(state, original["frame"]):
+                break
+            time.sleep(0.02)
+        result["restored_playhead"] = editor.playhead()["frame"] == original["frame"]
+        checks["the playhead is back where it was"] = result["restored_playhead"]
 
     result["checks"] = checks
     result["pass"] = all(checks.values())
@@ -443,6 +444,7 @@ def main():
     parser.add_argument("--settle-timeout", type=float, default=10.0)
     parser.add_argument("--poll-ms", type=float, default=10.0, help="gap between `get monitor.viewport` samples")
     parser.add_argument("--pixel-proof", action="store_true")
+    parser.add_argument("--no-restore", action="store_true", help="leave the last scrub frame for caller-side inspection (isolated sessions)")
     parser.add_argument("--json", help="also write the result here")
     args = parser.parse_args()
 
