@@ -7,11 +7,11 @@ vídeos, várias coisas, a perf cai, está em 16 ms e não está super fluida. �
 neste projeto é a GPU rasterizando 1,18 M de gaussianas com MSAA 4×, não a CPU, a ponte, o GPUI nem
 o `SceneRig`. Com vídeos, o gargalo é outro (decodificação de quadro sob demanda, sem read-ahead).
 Duas alavancas medidas, ambas de preview, tiram a reprodução e o scrub do projeto de 18 fps / 10 fps
-para tempo real: **MSAA 0 durante movimento** e **ordenação de splats sem espera durante movimento**.
+para tempo real: **MSAA 0 durante movimento** e **ordenação de splats sem espera durante movimento**. "Tempo real" aqui é só a cadência de quadros aceitos pelo host perto de 24 fps (§1); não é imagem vista na tela.
 
 **Estado posterior (revisão da PR #14).** Este relatório é de investigação e foi medido numa base anterior a `5ebb855`.
-Depois dele, a frente MSAA foi integrada (BL129, PR #17) e a malha compartilhada de efeitos também (BL131, PR #15); a ordenação
-sem espera (BL130) está na PR #19, ainda aberta. As tabelas **não** foram refeitas: cada frente re-mede antes de afirmar ganho.
+Depois dele, a frente MSAA foi integrada (BL129, PR #17), a malha compartilhada de efeitos também (BL131, PR #15) e a ordenação
+sem espera (BL130, PR #19, merge `11832a9`). As tabelas **não** foram refeitas: cada frente re-mede antes de afirmar ganho.
 Na revisão, as linhas de **um vídeo (N = 1)** foram retiradas (vinham de uma execução inválida, ver as seções 5 e 8)
 e os drivers passaram a falhar de forma explícita (seção 11).
 
@@ -39,8 +39,12 @@ Contexto anterior: [viewport-performance-backlog.md](viewport-performance-backlo
   - **sem drain** (`nd-*`, `scrub-*`, `ui-*`): o que o usuário vê; o runtime não força a GPU a terminar.
   - **drain** (`sw-*`): após cada quadro o runtime força a conclusão da GPU (`readPixels` 1×1). Mede o custo real
     por quadro (`render_ms` + `drain_ms`, coluna *r+d*) sem que um quadro absorva a cauda do anterior.
-- "Quadros perdidos" = quadros do relógio de reprodução (24 fps) que não geraram um quadro distinto na tela.
-  Intervalos vêm do relógio do host (`done_ms` do trace), p99 só quando o balde tem quadros suficientes.
+- "Quadros perdidos" = quadros do relógio de reprodução (24 fps) que não geraram um quadro distinto **aceito pelo host**.
+  O trace do host guarda por pedido `done_ms` (relógio do host quando a resposta do runtime foi aceita) e `shown_frame` (quadro
+  da sequência que a imagem aceita mostra); intervalos e perdas saem daí, p99 só quando o balde tem quadros suficientes.
+  São **estimativas do host**: aceito não é exibido. Não medem o que a tela mostrou nem o scan-out (não medido, §8, BL032/BL034),
+  e `presented_after_done_ms` (relógio da página, próximo *animation frame*, só quando o host opta) também não é pixel visto.
+  Toda conclusão de "tempo real" ou "fluido" neste relatório vale só até esse limite; o relatório não afirma pixels.
 
 ## 2. O que o "16 ms" mede
 
@@ -278,8 +282,10 @@ elevar a resolução do preview (piora), tocar a cadência de `cx.notify()` (UI 
 ## 10. Linhas propostas para `docs/backlog.md` (IDs a definir pelo coordenador)
 
 Proposta original, mantida como histórico. Os IDs reais estão registrados em `docs/backlog.md` (seção *Performance de preview*): BLxxx-1 → BL129,
-BLxxx-2 → BL130 (filho de BL031), BLxxx-3 → BL131, BLxxx-4 → BL132, BLxxx-5 → BL133, BLxxx-6 → BL136, BLxxx-7 → BL135, BLxxx-8 → BL137,
-BLxxx-9 → BL134, BLxxx-10 → BL136. Fonte comum: este relatório.
+BLxxx-2 → BL130 (filho de BL031; linha única, da PR #19), BLxxx-3 → BL131, BLxxx-4 → BL132, BLxxx-5 → BL133, BLxxx-6 → BL136, BLxxx-7 → BL135,
+BLxxx-8 → BL137, BLxxx-9 → BL134, BLxxx-10 → BL136. O rótulo `PERF-N` da coluna *Origem* do backlog é o N de `BLxxx-N` **deste §10** (não o # do §9):
+BL134 = PERF-9, BL137 = PERF-8, BL136 = PERF-6/PERF-10. BL138 (hipóteses #9 e #10 do §9) não vem de uma linha deste §10 e se rotula `§9 #9/#10`.
+Fonte comum: este relatório.
 
 | ID | Item | Estado proposto | Aceite |
 |---|---|---|---|
@@ -303,12 +309,22 @@ BLxxx-9 → BL134, BLxxx-10 → BL136. Fonte comum: este relatório.
 - `drivers/`: Python de apoio (`drv.py` abre o editor com `HOME` isolado e fala com o socket; `s_sweep.py` reprodução, `s_scrub.py` scrub,
   `s_ui.py` UI, `s_video.py` vídeos, `mainthread.py` resumo da thread principal de um `sample`). A raiz do repositório vem do próprio
   arquivo (`TESSEL_REPO_ROOT` a sobrescreve); o diretório de trabalho é `/tmp/perf-inv` (descartável, não parte do produto) ou
-  `TESSEL_PERF_INV_WORK`. **Contrato de falha** (revisão da PR #14): op rejeitada, espera que estoura (import, prontidão), `playback.start`
-  rejeitado, reprodução que nunca toca ou que não desenha, prova de scrub com saída não zero ou sem arquivo novo, cabeçalho de thread
-  principal ausente: cada um vira erro registrado em `errors` (com a resposta do editor), **nenhuma linha medida é gravada** para o que
-  não aconteceu, o amostrador de GPU e o editor são sempre parados e o arquivo parcial é salvo com `status` = `complete` | `partial` |
-  `failed` | `empty`; o código de saída só é 0 em `complete`. O arquivo de saída do scrub é apagado antes de cada prova.
-  Testes sem editor, GPU nem Rust: `python3 drivers/drivers.spec.py` (46 casos, inclui mutação de cada guarda).
+  `TESSEL_PERF_INV_WORK`; o guarda de disco do `s_video.py` mede o volume de `WORK`. **Contrato de falha** (revisões da PR #14): op rejeitada,
+  espera que estoura (import, prontidão, `settle`), `playback.start` rejeitado, reprodução que nunca toca ou que não desenha, prova de scrub
+  com saída não zero ou sem arquivo novo, cabeçalho de thread principal ausente ou sem amostras: cada um vira erro registrado em `errors`
+  (com a resposta do editor), **nenhuma linha medida é gravada** para o que não aconteceu, o amostrador de GPU e o editor são sempre
+  parados e o arquivo parcial é salvo com `status` = `complete` | `partial` | `failed` | `empty`; o código de saída só é 0 em `complete`.
+  Isso vale também para o **preparo da sessão** (`scen.boot`, `scen.seek_to`): `window.activate`, `project.open`, cada `seek` de
+  aquecimento ou de origem do arrasto e o `settle` seguinte são conferidos; falha no preparo encerra a sessão como `failed` (nada medido),
+  falha antes de uma execução descarta só essa execução. Uma thread de probe de RTT que morre, não amostra ou recebe erro, e um `sample` que
+  falha, descartam a fase (o RTT truncado não é gravado). O arquivo de saída do scrub é apagado antes de cada prova e o
+  `results/<label>.json` anterior antes de cada sessão.
+  Testes sem editor, GPU nem Rust, de qualquer diretório:
+  `python3 docs/viewport-performance-results/investigation-2026-11-06/drivers/drivers.spec.py` (80 casos; Python >= 3.9, também com `-O`).
+  **Escopo exato da prova:** os drivers reais rodam contra um editor, relógio e subprocessos **falsos** do contrato (`ok`, campos de
+  `viewport`); isso mostra que os drivers reagem às falhas, **não** como um editor real se comporta quando `project.open`, `seek` ou
+  `settle` falham. A lista `MUTANTS` do spec tem 63 mutantes (28 da primeira rodada, 35 da segunda); cada um apaga uma guarda numa cópia e
+  faz um teste nomeado falhar. É prova dessas 63 guardas, **não** promessa de que toda guarda ou linha tenha mutação.
   Os drivers corrigidos **não** foram usados para refazer medições; as tabelas acima vêm dos drivers anteriores.
 - `raw-run-logs.txt`: saída bruta das execuções citadas acima, **com anotações** (linhas `####`) que marcam `vid-b` como inválida e abortada e
   `vid-c` como válida para N = 2 e N = 4 e abortada por disco; as linhas brutas ficam intactas.
