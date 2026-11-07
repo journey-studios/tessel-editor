@@ -10,12 +10,12 @@ use crate::EditorState;
 use crate::preset::{self, Preset};
 use crate::state::CommandError;
 
-/// Whether the file carries the scene's own sound. Only [`Omitted`](Self::Omitted) is ever honoured:
-/// there is no mix of directed-scene audio yet, so asking for it on a scene that declares audio is
-/// an error rather than a silent video (see `SceneExportSnapshot::capture`).
+/// Whether the file carries the scene's own sound. The declared WAV mix is mixed into the file (F042A);
+/// what cannot be mixed (narration) is an error rather than a silent video, and the only way to a
+/// picture-only file is [`Omitted`](Self::Omitted) (see `SceneExportSnapshot::capture`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AudioChoice {
-    /// The default: the preset decides. A scene that declares audio is then refused.
+    /// The default: the preset decides. A scene that declares a mix then gets it in the file.
     #[default]
     Preset,
     /// `audio: false`: the caller knowingly exports video only.

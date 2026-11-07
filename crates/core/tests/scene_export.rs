@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use tessel_editor_core::scene_export::{
-    AudioChoice, AudioPlan, SceneExportSnapshot, SceneExportSpec,
+    AudioChoice, AudioPlan, DirectedAudioMix, SceneExportSnapshot, SceneExportSpec,
 };
 use tessel_editor_core::scene_plan::ScenePlan;
 use tessel_editor_core::time::Ratio;
@@ -301,33 +301,57 @@ fn invalid_requests_are_refused_without_touching_the_project() {
 }
 
 fn with_audio() -> Value {
+    with_window(0.0, 4.0)
+}
+
+fn with_window(start: f64, end: f64) -> Value {
     let mut raw = bundle();
     raw["audio"] = json!({
         "mixRelativePath": "audio/mix.wav",
-        "editStartSeconds": 0.0,
-        "editEndSecondsExclusive": 4.0,
+        "editStartSeconds": start,
+        "editEndSecondsExclusive": end,
         "sourcePcmHashSha256": "0".repeat(64),
     });
     raw
 }
 
+fn mix_of(snapshot: &SceneExportSnapshot) -> &DirectedAudioMix {
+    snapshot
+        .audio()
+        .mix()
+        .unwrap_or_else(|| panic!("no mix planned: {:?}", snapshot.audio()))
+}
+
 #[test]
-fn declared_audio_is_refused_unless_the_caller_exports_video_only_on_purpose() {
+fn a_declared_mix_is_planned_by_default_and_video_only_is_the_explicit_choice() {
     let state = project_with(with_audio());
-    let refused = capture(
+    let planned = capture(
         &state,
         json!({"scene":"street","preset":"fullhd","frames":4}),
     )
-    .unwrap_err();
-    assert_eq!(refused.code, "unsupported");
+    .unwrap();
+    let mix = mix_of(&planned);
+    // 4 frames at 24/1 = 1/6 s = 8000 samples of the 48 kHz stream, all of them read from the file.
     assert_eq!(
-        refused.details.as_ref().unwrap()["domains"],
-        json!(["audio"])
+        (
+            mix.output_samples(),
+            mix.mix_samples(),
+            mix.silence_tail_samples()
+        ),
+        (8_000, 8_000, 0)
     );
+    assert_eq!(mix.origin(), Some(Ratio::ZERO));
+    assert_eq!(mix.relative_path(), "audio/mix.wav");
+    let audio = planned.summary()["audio"].clone();
+    assert_eq!(audio["included"], true);
+    assert_eq!(audio["declared"], json!(["audio"]));
+    assert_eq!(audio["mix"]["samples"], 8_000);
     assert!(
-        refused.message.contains("audio: false"),
-        "{}",
-        refused.message
+        planned
+            .warnings()
+            .iter()
+            .all(|warning| warning["code"] != "audio_omitted"),
+        "a mixed export omits nothing"
     );
 
     let explicit = capture(
@@ -355,6 +379,194 @@ fn declared_audio_is_refused_unless_the_caller_exports_video_only_on_purpose() {
         json!({"id":"mute","name":"Mute","width":1920,"height":1080,"audio":{"enabled":false}});
     let by_preset = capture(&state, json!({"scene":"street","preset":silent,"frames":4})).unwrap();
     assert!(matches!(by_preset.audio(), AudioPlan::Omitted { .. }));
+}
+
+#[test]
+fn the_mix_follows_the_range_start_and_the_declared_window_offset() {
+    // The file plays at `editStartSeconds + t`: frame 24 of a 24 fps scene is t = 1 s.
+    let state = project_with(with_window(10.0, 14.0));
+    let snapshot = capture(
+        &state,
+        json!({"scene":"street","preset":"fullhd","from":24,"frames":24}),
+    )
+    .unwrap();
+    let mix = mix_of(&snapshot);
+    assert_eq!(mix.origin(), Some(Ratio::from_int(11)));
+    assert_eq!(mix.output_samples(), 48_000);
+    // Sample 0 is at file second 11, sample 24 000 half a second later (48 kHz source).
+    let cursor = mix.cursor(48_000).unwrap();
+    assert_eq!(cursor.at(0).base, 11 * 48_000);
+    assert_eq!(cursor.at(24_000).base, 11 * 48_000 + 24_000);
+    // A 44.1 kHz file is read at the exact fractional frame, with no drift: 1 s of output = 44 100.
+    let cursor = mix.cursor(44_100).unwrap();
+    assert_eq!(cursor.at(0).base, 11 * 44_100);
+    assert_eq!(cursor.at(48_000).base, 12 * 44_100);
+
+    // A decimal the author wrote is exact: 0.1 s starts at frame 4 800, not at a float neighbour.
+    let state = project_with(with_window(0.1, 4.1));
+    let snapshot = capture(
+        &state,
+        json!({"scene":"street","preset":"fullhd","from":0,"frames":24}),
+    )
+    .unwrap();
+    assert_eq!(mix_of(&snapshot).origin(), Ratio::new(1, 10));
+    assert_eq!(mix_of(&snapshot).cursor(48_000).unwrap().at(0).base, 4_800);
+}
+
+#[test]
+fn a_frame_rate_conversion_keeps_the_stream_as_long_as_the_video() {
+    let state = project_with(with_audio());
+    // 24 edit frames at 24 fps = 1 s; the 30 fps preset draws 30 frames: 48 000 samples exactly.
+    let thirty = json!({"id":"p30","name":"P30","width":640,"height":360,"fps":30});
+    let snapshot = capture(
+        &state,
+        json!({"scene":"street","preset":thirty,"from":40,"frames":24}),
+    )
+    .unwrap();
+    let mix = mix_of(&snapshot);
+    assert_eq!(snapshot.schedule().frames, 30);
+    assert_eq!(
+        (
+            mix.output_samples(),
+            mix.mix_samples(),
+            mix.silence_tail_samples()
+        ),
+        (48_000, 48_000, 0)
+    );
+    assert_eq!(mix.origin(), Ratio::new(5, 3));
+
+    // 2 edit frames (1/12 s) become 2.5 → 3 frames at 30 fps (0.1 s): the video is 800 samples
+    // longer than the sound the range holds, and that tail is declared silence, not borrowed sound.
+    let snapshot = capture(
+        &state,
+        json!({"scene":"street","preset":thirty,"from":0,"frames":2}),
+    )
+    .unwrap();
+    let mix = mix_of(&snapshot);
+    assert_eq!(snapshot.schedule().frames, 3);
+    assert_eq!(
+        (
+            mix.output_samples(),
+            mix.mix_samples(),
+            mix.silence_tail_samples()
+        ),
+        (4_800, 4_000, 800)
+    );
+    assert!(
+        snapshot
+            .warnings()
+            .iter()
+            .any(|warning| warning["code"] == "audio_silence_tail")
+    );
+
+    // NTSC output: 30000/1001 never drifts: 30 frames last exactly 1.001 s = 48 048 samples.
+    let ntsc = json!({"id":"n","name":"N","width":640,"height":360,
+        "fps":{"num":30000,"den":1001}});
+    let snapshot = capture(
+        &state,
+        json!({"scene":"street","preset":ntsc,"from":0,"frames":24}),
+    )
+    .unwrap();
+    assert_eq!(snapshot.schedule().frames, 30);
+    assert_eq!(mix_of(&snapshot).output_samples(), 48_048);
+}
+
+#[test]
+fn a_range_outside_the_declared_window_is_refused_with_its_numbers() {
+    // The window holds 1 s of edit time; the range reaches 2 s.
+    let state = project_with(with_window(0.0, 1.0));
+    let refused = capture(
+        &state,
+        json!({"scene":"street","preset":"fullhd","from":0,"frames":48}),
+    )
+    .unwrap_err();
+    assert_eq!(refused.code, "audio_window_short");
+    let details = refused.details.as_ref().unwrap();
+    assert_eq!(details["range_end"]["num"], 2);
+    assert_eq!(details["hint"], "audio: false");
+    // The same range fits when it stays inside the window, and video only never needed it.
+    capture(
+        &state,
+        json!({"scene":"street","preset":"fullhd","from":0,"frames":24}),
+    )
+    .unwrap();
+    capture(
+        &state,
+        json!({"scene":"street","preset":"fullhd","from":0,"frames":48,"audio":false}),
+    )
+    .unwrap();
+    // A start past the end of the window is the same refusal.
+    let refused = capture(
+        &state,
+        json!({"scene":"street","preset":"fullhd","from":30,"frames":2}),
+    )
+    .unwrap_err();
+    assert_eq!(refused.code, "audio_window_short");
+}
+
+#[test]
+fn a_window_written_as_the_float_of_the_range_is_that_range_and_one_sample_less_is_not() {
+    // BL016.6: 8 frames at 24 fps are exactly 1/3 s; the author's `0.3333333333333333` is 3.3e-17 s
+    // below the third as a number, and the same 16 000 samples on the 48 kHz grid.
+    let state = project_with(with_window(0.0, 8.0 / 24.0));
+    let request = json!({"scene":"street","preset":"fullhd","from":0,"frames":8});
+    let planned = capture(&state, request.clone()).unwrap();
+    assert_eq!(mix_of(&planned).output_samples(), 16_000);
+    // The window's own frames work for every length the scene has, at an offset of the file.
+    for frames in [1, 3, 4, 13, 32, 40] {
+        let state = project_with(with_window(2.0, 2.0 + f64::from(frames) / 24.0));
+        capture(
+            &state,
+            json!({"scene":"street","preset":"fullhd","from":0,"frames":frames}),
+        )
+        .unwrap_or_else(|error| panic!("{frames} frames: {error:?}"));
+    }
+    // One sample (1/48000 s) less than the range needs is refused, with the sample counts.
+    let state = project_with(with_window(0.0, 15_999.0 / 48_000.0));
+    let refused = capture(&state, request).unwrap_err();
+    assert_eq!(refused.code, "audio_window_short");
+    let details = refused.details.as_ref().unwrap();
+    assert_eq!(details["window_samples"], "15999");
+    assert_eq!(details["range_end_samples"], "16000");
+}
+
+#[test]
+fn a_window_that_exact_time_cannot_hold_is_refused() {
+    let state = project_with(with_window(0.0, 1e30));
+    let refused = capture(
+        &state,
+        json!({"scene":"street","preset":"fullhd","frames":4}),
+    )
+    .unwrap_err();
+    assert_eq!(refused.code, "audio_window_invalid");
+}
+
+#[test]
+fn declared_narration_is_still_refused_and_never_stands_in_for_the_mix() {
+    let mut raw = with_audio();
+    raw["narration"] = json!({"tracks": [], "caption": {}});
+    let state = project_with(raw);
+    let refused = capture(
+        &state,
+        json!({"scene":"street","preset":"fullhd","frames":4}),
+    )
+    .unwrap_err();
+    assert_eq!(refused.code, "unsupported");
+    assert_eq!(
+        refused.details.as_ref().unwrap()["domains"],
+        json!(["narration"])
+    );
+    let video_only = capture(
+        &state,
+        json!({"scene":"street","preset":"fullhd","frames":4,"audio":false}),
+    )
+    .unwrap();
+    assert_eq!(
+        video_only.audio(),
+        &AudioPlan::Omitted {
+            declared: vec!["audio", "narration"]
+        }
+    );
 }
 
 #[test]

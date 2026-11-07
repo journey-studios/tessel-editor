@@ -1,0 +1,819 @@
+{
+ "project": "tessel-splat-h (private; 1280x720, 24 fps), crossfade frames 186-200, other frames 183-185 and 201-203",
+ "method": "interactive seek path, 960x540, WKWebView, release binary, isolated HOME; 5 measured passes of 21 frames per run after one warm pass; runs interleaved before/after",
+ "runs": {
+  "msaa0": {
+   "cross": {
+    "before": {
+     "runs": 4,
+     "frames": 300,
+     "render_ms": {
+      "mean_per_run": [
+       39.93,
+       39.47,
+       39.2,
+       39.17
+      ],
+      "pooled_mean": 39.44
+     },
+     "drain_ms": {
+      "mean_per_run": [
+       7.68,
+       7.53,
+       7.51,
+       7.61
+      ],
+      "pooled_mean": 7.58
+     },
+     "settle_ms": {
+      "mean_per_run": [
+       31.21,
+       30.85,
+       30.72,
+       30.59
+      ],
+      "pooled_mean": 30.84
+     },
+     "spark_generate_cpu_ms": {
+      "mean_per_run": [
+       0.65,
+       0.59,
+       0.71,
+       0.69
+      ],
+      "pooled_mean": 0.66
+     },
+     "rig_build_ms": {
+      "mean_per_run": [
+       0.17,
+       0.21,
+       0.28,
+       0.25
+      ],
+      "pooled_mean": 0.23
+     },
+     "lease_total_ms": {
+      "mean_per_run": [
+       0.08,
+       0.07,
+       0.07,
+       0.11
+      ],
+      "pooled_mean": 0.08
+     },
+     "spark_programs_created_per_frame": 1.87,
+     "decodes_in_measured_frames": 0,
+     "splat_mesh_created_counter": 0,
+     "splat_mesh_reused_counter": 0,
+     "gpu_util_mean_per_run": [
+      42,
+      40,
+      42,
+      38
+     ],
+     "load1_at_start_per_run": [
+      4.4,
+      4.6,
+      4.4,
+      3.8
+     ]
+    },
+    "after": {
+     "runs": 4,
+     "frames": 300,
+     "render_ms": {
+      "mean_per_run": [
+       38.85,
+       39.67,
+       39.72,
+       39.56
+      ],
+      "pooled_mean": 39.45
+     },
+     "drain_ms": {
+      "mean_per_run": [
+       7.53,
+       7.88,
+       7.84,
+       7.71
+      ],
+      "pooled_mean": 7.74
+     },
+     "settle_ms": {
+      "mean_per_run": [
+       30.31,
+       30.79,
+       31.09,
+       30.88
+      ],
+      "pooled_mean": 30.77
+     },
+     "spark_generate_cpu_ms": {
+      "mean_per_run": [
+       0.15,
+       0.24,
+       0.19,
+       0.21
+      ],
+      "pooled_mean": 0.2
+     },
+     "rig_build_ms": {
+      "mean_per_run": [
+       0.16,
+       0.11,
+       0.11,
+       0.11
+      ],
+      "pooled_mean": 0.12
+     },
+     "lease_total_ms": {
+      "mean_per_run": [
+       0,
+       0.01,
+       0,
+       0.03
+      ],
+      "pooled_mean": 0.01
+     },
+     "spark_programs_created_per_frame": 0.0,
+     "decodes_in_measured_frames": 0,
+     "splat_mesh_created_counter": 0,
+     "splat_mesh_reused_counter": 1740,
+     "gpu_util_mean_per_run": [
+      42,
+      43,
+      44,
+      43
+     ],
+     "load1_at_start_per_run": [
+      4.4,
+      4.3,
+      4.2,
+      3.9
+     ]
+    }
+   },
+   "single": {
+    "before": {
+     "runs": 4,
+     "frames": 120,
+     "render_ms": {
+      "mean_per_run": [
+       23.33,
+       23.6,
+       23.6,
+       22.63
+      ],
+      "pooled_mean": 23.29
+     },
+     "drain_ms": {
+      "mean_per_run": [
+       9.5,
+       9.93,
+       9.97,
+       8.7
+      ],
+      "pooled_mean": 9.53
+     },
+     "settle_ms": {
+      "mean_per_run": [
+       13.07,
+       13.0,
+       12.97,
+       13.2
+      ],
+      "pooled_mean": 13.06
+     },
+     "spark_generate_cpu_ms": {
+      "mean_per_run": [
+       0.2,
+       0.27,
+       0.03,
+       0.1
+      ],
+      "pooled_mean": 0.15
+     },
+     "rig_build_ms": {
+      "mean_per_run": [
+       0.13,
+       0.03,
+       0.03,
+       0.07
+      ],
+      "pooled_mean": 0.07
+     },
+     "lease_total_ms": {
+      "mean_per_run": [
+       0,
+       0,
+       0,
+       0
+      ],
+      "pooled_mean": 0
+     },
+     "spark_programs_created_per_frame": 0.0,
+     "decodes_in_measured_frames": 0,
+     "splat_mesh_created_counter": 0,
+     "splat_mesh_reused_counter": 0,
+     "gpu_util_mean_per_run": [
+      42,
+      40,
+      42,
+      38
+     ],
+     "load1_at_start_per_run": [
+      4.4,
+      4.6,
+      4.4,
+      3.8
+     ]
+    },
+    "after": {
+     "runs": 4,
+     "frames": 120,
+     "render_ms": {
+      "mean_per_run": [
+       23.63,
+       23.6,
+       23.0,
+       23.07
+      ],
+      "pooled_mean": 23.32
+     },
+     "drain_ms": {
+      "mean_per_run": [
+       9.8,
+       9.97,
+       9.5,
+       9.5
+      ],
+      "pooled_mean": 9.69
+     },
+     "settle_ms": {
+      "mean_per_run": [
+       13.17,
+       13.1,
+       13.03,
+       13.0
+      ],
+      "pooled_mean": 13.07
+     },
+     "spark_generate_cpu_ms": {
+      "mean_per_run": [
+       0,
+       0.1,
+       0.13,
+       0.13
+      ],
+      "pooled_mean": 0.09
+     },
+     "rig_build_ms": {
+      "mean_per_run": [
+       0.03,
+       0.23,
+       0.13,
+       0
+      ],
+      "pooled_mean": 0.1
+     },
+     "lease_total_ms": {
+      "mean_per_run": [
+       0,
+       0,
+       0,
+       0
+      ],
+      "pooled_mean": 0
+     },
+     "spark_programs_created_per_frame": 0.0,
+     "decodes_in_measured_frames": 0,
+     "splat_mesh_created_counter": 0,
+     "splat_mesh_reused_counter": 360,
+     "gpu_util_mean_per_run": [
+      42,
+      43,
+      44,
+      43
+     ],
+     "load1_at_start_per_run": [
+      4.4,
+      4.3,
+      4.2,
+      3.9
+     ]
+    }
+   }
+  },
+  "msaa4": {
+   "cross": {
+    "before": {
+     "runs": 2,
+     "frames": 90,
+     "render_ms": {
+      "mean_per_run": [
+       86.33,
+       87.36
+      ],
+      "pooled_mean": 86.84
+     },
+     "drain_ms": {
+      "mean_per_run": [
+       25.91,
+       25.49
+      ],
+      "pooled_mean": 25.7
+     },
+     "settle_ms": {
+      "mean_per_run": [
+       59.42,
+       60.76
+      ],
+      "pooled_mean": 60.09
+     },
+     "spark_generate_cpu_ms": {
+      "mean_per_run": [
+       0.82,
+       0.67
+      ],
+      "pooled_mean": 0.74
+     },
+     "rig_build_ms": {
+      "mean_per_run": [
+       0.13,
+       0.2
+      ],
+      "pooled_mean": 0.17
+     },
+     "lease_total_ms": {
+      "mean_per_run": [
+       0.09,
+       0.07
+      ],
+      "pooled_mean": 0.08
+     },
+     "spark_programs_created_per_frame": 1.87,
+     "decodes_in_measured_frames": 0,
+     "splat_mesh_created_counter": 0,
+     "splat_mesh_reused_counter": 0,
+     "gpu_util_mean_per_run": [
+      83,
+      73
+     ],
+     "load1_at_start_per_run": [
+      4.0,
+      4.6
+     ]
+    },
+    "after": {
+     "runs": 2,
+     "frames": 90,
+     "render_ms": {
+      "mean_per_run": [
+       88.47,
+       87.11
+      ],
+      "pooled_mean": 87.79
+     },
+     "drain_ms": {
+      "mean_per_run": [
+       26.22,
+       25.78
+      ],
+      "pooled_mean": 26.0
+     },
+     "settle_ms": {
+      "mean_per_run": [
+       61.33,
+       60.4
+      ],
+      "pooled_mean": 60.87
+     },
+     "spark_generate_cpu_ms": {
+      "mean_per_run": [
+       0.33,
+       0.31
+      ],
+      "pooled_mean": 0.32
+     },
+     "rig_build_ms": {
+      "mean_per_run": [
+       0.11,
+       0.16
+      ],
+      "pooled_mean": 0.13
+     },
+     "lease_total_ms": {
+      "mean_per_run": [
+       0.02,
+       0.02
+      ],
+      "pooled_mean": 0.02
+     },
+     "spark_programs_created_per_frame": 0.0,
+     "decodes_in_measured_frames": 0,
+     "splat_mesh_created_counter": 0,
+     "splat_mesh_reused_counter": 522,
+     "gpu_util_mean_per_run": [
+      83,
+      77
+     ],
+     "load1_at_start_per_run": [
+      3.9,
+      4.6
+     ]
+    }
+   },
+   "single": {
+    "before": {
+     "runs": 2,
+     "frames": 36,
+     "render_ms": {
+      "mean_per_run": [
+       46.83,
+       46.61
+      ],
+      "pooled_mean": 46.72
+     },
+     "drain_ms": {
+      "mean_per_run": [
+       32.78,
+       32.72
+      ],
+      "pooled_mean": 32.75
+     },
+     "settle_ms": {
+      "mean_per_run": [
+       13.28,
+       13.39
+      ],
+      "pooled_mean": 13.33
+     },
+     "spark_generate_cpu_ms": {
+      "mean_per_run": [
+       0.28,
+       0.11
+      ],
+      "pooled_mean": 0.19
+     },
+     "rig_build_ms": {
+      "mean_per_run": [
+       0,
+       0
+      ],
+      "pooled_mean": 0
+     },
+     "lease_total_ms": {
+      "mean_per_run": [
+       0,
+       0
+      ],
+      "pooled_mean": 0
+     },
+     "spark_programs_created_per_frame": 0.0,
+     "decodes_in_measured_frames": 0,
+     "splat_mesh_created_counter": 0,
+     "splat_mesh_reused_counter": 0,
+     "gpu_util_mean_per_run": [
+      83,
+      73
+     ],
+     "load1_at_start_per_run": [
+      4.0,
+      4.6
+     ]
+    },
+    "after": {
+     "runs": 2,
+     "frames": 36,
+     "render_ms": {
+      "mean_per_run": [
+       46.89,
+       46.0
+      ],
+      "pooled_mean": 46.44
+     },
+     "drain_ms": {
+      "mean_per_run": [
+       32.83,
+       32.11
+      ],
+      "pooled_mean": 32.47
+     },
+     "settle_ms": {
+      "mean_per_run": [
+       13.22,
+       13.33
+      ],
+      "pooled_mean": 13.28
+     },
+     "spark_generate_cpu_ms": {
+      "mean_per_run": [
+       0.06,
+       0.11
+      ],
+      "pooled_mean": 0.08
+     },
+     "rig_build_ms": {
+      "mean_per_run": [
+       0.11,
+       0.06
+      ],
+      "pooled_mean": 0.08
+     },
+     "lease_total_ms": {
+      "mean_per_run": [
+       0,
+       0
+      ],
+      "pooled_mean": 0
+     },
+     "spark_programs_created_per_frame": 0.0,
+     "decodes_in_measured_frames": 0,
+     "splat_mesh_created_counter": 0,
+     "splat_mesh_reused_counter": 108,
+     "gpu_util_mean_per_run": [
+      83,
+      77
+     ],
+     "load1_at_start_per_run": [
+      3.9,
+      4.6
+     ]
+    }
+   }
+  }
+ },
+ "hash_identity": {
+  "explicit": {
+   "frames": 95,
+   "identical_before_after_and_across_passes": true,
+   "hash_by_frame": {
+    "1": "e06a3c41d8587d35",
+    "2": "b83939c90483b768",
+    "3": "5d81adb113ba3402",
+    "4": "d71e6f8decfdc87c",
+    "5": "d64ea0612003aac5",
+    "6": "cdb48ac68653e078",
+    "7": "3c1fbc90abf80176",
+    "8": "5a5b9324a51d82a4",
+    "180": "8e79c8d97f982a8a",
+    "181": "1ec245e8251f4354",
+    "182": "70cdffdd3d17745c",
+    "183": "b3e42a2172337c59",
+    "184": "a9f0763b23525aff",
+    "185": "25a2e061a59ed88a",
+    "186": "b71d0d0bdef786c9",
+    "187": "2ef58b805c8ceb7c",
+    "188": "58fa581a445ccd46",
+    "189": "5c52b3a92a235bb6",
+    "190": "479592036b348bd6",
+    "191": "7c6b544f9ef24397",
+    "192": "39a841485a2b4885",
+    "193": "65bad546acc28c04",
+    "194": "918d2a183eab37dd",
+    "195": "b957ca57784c3691",
+    "196": "4043a0147863e26f",
+    "197": "6d4c70f3342064e9",
+    "198": "37d4716df41d9ee9",
+    "199": "ffd7e70bc52fdd62",
+    "200": "c309e4469135f469",
+    "201": "f395122989c1d0e6",
+    "202": "d49ac4c8b14f79e3",
+    "203": "d3bee3a0e6ef1549",
+    "204": "cad1dc6f4fe93b82",
+    "205": "965dc5ec45eda7b5",
+    "262": "8ee66776ae8a097a",
+    "263": "1c17b96443a7ffcb",
+    "264": "91d84b46ff449b47",
+    "265": "92841ca8f1cd695e",
+    "266": "98d9d977286e0450",
+    "267": "ee95d703a22e5f1f",
+    "268": "4125e0420355c811",
+    "269": "ca476f229623ba0d",
+    "270": "19cf8366f58a7d53",
+    "271": "a54ffbc76cfc359a",
+    "272": "256e29b7de6449f4",
+    "273": "5b5a1ce22d4e44d1",
+    "274": "d813d5945b2f18c6",
+    "275": "10bd18b8862bf921",
+    "276": "2cca35f8de6720dc",
+    "277": "080442eb162ba25e",
+    "278": "43f3e3137562d13f",
+    "279": "e5087890b57d73d0",
+    "280": "63da85287a585b0d",
+    "281": "1ec6ee25e8bceb89",
+    "282": "2d904e2e7be08fa2",
+    "283": "8d3889999d25eeb2",
+    "284": "939f0eb61b39bd54",
+    "285": "e2e1ec7eb928e8f9",
+    "286": "940d0b704f35b502",
+    "287": "4ff6a003fceb5feb",
+    "288": "68167a711cbe709b",
+    "300": "2fc61bb00b19972d",
+    "301": "fbbff3635ad8d85a",
+    "302": "d462ac9961ebf212",
+    "303": "366037dba2e0ca42",
+    "405": "f06f76f775e52142",
+    "406": "cc47ab403bdd5cc2",
+    "407": "113eb90c64928f1e",
+    "408": "7af4ffd8a78f314c",
+    "409": "a60480ce7decb3e0",
+    "410": "95a01c161d292532",
+    "411": "8490fc39d1121b48",
+    "412": "b0092782da0c12d0",
+    "413": "ce41f13e34d3cafc",
+    "414": "360b1ffb0bb7c3e0",
+    "415": "7ec5b7a66737e687",
+    "416": "6bf54880108d2a33",
+    "417": "233e0afc2c03afa8",
+    "418": "7a7a393aff18b713",
+    "419": "d534725fffb4b7bd",
+    "420": "ce52d0180a7259ab",
+    "421": "79c2f41e2fcf5ab5",
+    "422": "c6d4c384428fbd3b",
+    "423": "4dc38cc6e1b1bc94",
+    "424": "33a7b3e285e96411",
+    "425": "123e93b7f11aa83b",
+    "426": "adf429f056452de6",
+    "427": "0b38d4eb93e91b5f",
+    "428": "e2bbaea21e60e14a",
+    "429": "5fc7808a8181b7ef",
+    "430": "6bac86c0de99f350",
+    "500": "a8a89924965cb292",
+    "501": "48dc3342458a57fd",
+    "502": "759f907df58be3c0",
+    "503": "5f8c5b42c7dc328c"
+   }
+  },
+  "seek0": {
+   "frames": 79,
+   "identical_before_after_and_across_passes": true,
+   "hash_by_frame": {
+    "180": "9d77d158e3659dc6",
+    "181": "7195d0b6c8d3f057",
+    "182": "4a4558fec01f895c",
+    "183": "a65cc0506a3e211f",
+    "184": "f4f1219471f8a28a",
+    "185": "7f5505b223d5a864",
+    "186": "8c711ec1750d73c2",
+    "187": "59aa20794146cd29",
+    "188": "d490fe434ee474ff",
+    "189": "be231e256810d41e",
+    "190": "797c6ce9a2756051",
+    "191": "3bfbf686c30bd6a5",
+    "192": "a799af50e7eaab5a",
+    "193": "a2bfedaef048c272",
+    "194": "f7867992fdb8ebb7",
+    "195": "637d876fb7af8ac2",
+    "196": "d3468a4d0086a085",
+    "197": "bb5a6b58f9b919ff",
+    "198": "9a939e262c333ba7",
+    "199": "6d84823ad66254b7",
+    "200": "d1ebada498ab3ca5",
+    "201": "d817809755269e5b",
+    "202": "a81c183d3e6a8a92",
+    "203": "fd7005661d88596a",
+    "204": "d4747f987e0af2f5",
+    "205": "e4bea0fdac94d9f2",
+    "262": "a8ff2af0c62713bf",
+    "263": "3aa1d6e31bed7eda",
+    "264": "d73180240006a207",
+    "265": "6d568f4311ecd9c2",
+    "266": "3083da63609341c7",
+    "267": "852cd9f934d69276",
+    "268": "1e22ced682298375",
+    "269": "184a8a868e0fea28",
+    "270": "c2e32936b7f99869",
+    "271": "b3d02d142c45d411",
+    "272": "b882916c63898ce8",
+    "273": "57882cc2a328d20e",
+    "274": "e5a57e190cdf1232",
+    "275": "a49806b78ed56a0e",
+    "276": "17946c66659043ab",
+    "277": "84c36262e694efb2",
+    "278": "2489cf83a5898e5b",
+    "279": "615cc19868e17ed3",
+    "280": "45268407362a7c02",
+    "281": "c4b2c7295d87c1ec",
+    "282": "6567323e4fa07f5d",
+    "283": "75a0c3696574f5ae",
+    "284": "9525e65b6a30a0ac",
+    "285": "9f547908201738c9",
+    "286": "c5f9bcd20e856416",
+    "287": "e3bd830ec11fa63c",
+    "288": "994d49722d6a67d3",
+    "405": "2edb5fc628532086",
+    "406": "89283861731f9355",
+    "407": "b63ef4b9082e2be6",
+    "408": "ce8118f482dc9905",
+    "409": "43cceefc3fa3400d",
+    "410": "5fb9ce140689a9d1",
+    "411": "3affeba738669592",
+    "412": "79e628fec6405ae1",
+    "413": "ccb76ef1df42f687",
+    "414": "1274ab394cbdaa66",
+    "415": "8eb5f18aea391c2b",
+    "416": "16385be85e24a723",
+    "417": "19d366d4efcc8e98",
+    "418": "39a56379d3e7472f",
+    "419": "6c0231acd9dd7200",
+    "420": "5e3719084420afc0",
+    "421": "bdce384fd1077ef9",
+    "422": "974779b332ff9a02",
+    "423": "9792db11e0b93e6b",
+    "424": "50daa2f38bc84e8b",
+    "425": "a0d0fd41f89c55f3",
+    "426": "942fb11c19d9d22f",
+    "427": "d33783f85ef5bb76",
+    "428": "020eaf58b79741b6",
+    "429": "ee3aa51f6cdc8f9b",
+    "430": "7f07842508b3c26a"
+   }
+  },
+  "seek4": {
+   "frames": 79,
+   "identical_before_after_and_across_passes": true,
+   "hash_by_frame": {
+    "180": "b3d2d3ea5ddee9b2",
+    "181": "9608089c26e3c9ef",
+    "182": "b80f77ea971187ca",
+    "183": "56dae5960d3f9ca3",
+    "184": "97a5e06981901aad",
+    "185": "51589f5b2939402f",
+    "186": "643d456d7264a693",
+    "187": "b60fdc1895ce7580",
+    "188": "6dff237993eb80ae",
+    "189": "035c06505fd126a4",
+    "190": "3b413aacdbcd5856",
+    "191": "ddb17fb3c800034c",
+    "192": "366b918b0d84aa77",
+    "193": "3e73a598b1a9fdb8",
+    "194": "2079cd930158c580",
+    "195": "47f403051dd3b284",
+    "196": "0cc3a0dbe140c04b",
+    "197": "df05f5d793e17657",
+    "198": "ba52c4510f423666",
+    "199": "ab48df10b72aec50",
+    "200": "3dac19218e36ab5e",
+    "201": "22809b525a13fece",
+    "202": "69f5eb3e61e9dad1",
+    "203": "c67529659673627b",
+    "204": "c1d9ea24a7c43fab",
+    "205": "6bd5539cae48de8c",
+    "262": "69fc629212cd4a74",
+    "263": "fc44825e961df300",
+    "264": "c6f4fa6b0a6c0da7",
+    "265": "cd4e6b19c4bd422e",
+    "266": "7b5591533391ed06",
+    "267": "8bd48e230c2c3703",
+    "268": "f4f1015820807bcf",
+    "269": "1966a97836ef400b",
+    "270": "8422339dc491a5ac",
+    "271": "2cc94a0388b94370",
+    "272": "9ef4ae4456b165d5",
+    "273": "099739019c24cc2e",
+    "274": "7ba3b7dba62f895c",
+    "275": "4ddcd345c5211d27",
+    "276": "762c055c1a1d9eb9",
+    "277": "832639b2106e5a4b",
+    "278": "0aa486f54c349b33",
+    "279": "e1507afd3e2447a9",
+    "280": "89041c21bfa5ad48",
+    "281": "76376d33e0ae9ede",
+    "282": "29229ed2e15148f7",
+    "283": "de2f884218fa93b5",
+    "284": "f108c58ad1689159",
+    "285": "7a76608d3f7a673c",
+    "286": "928a34ca5baa508f",
+    "287": "80a836e8a96a3eb4",
+    "288": "e134c64545eb296b",
+    "405": "b41a10ff5381c21f",
+    "406": "37e8ae55dd66ff59",
+    "407": "a1a05433af6cd2a0",
+    "408": "67931135279f65e3",
+    "409": "75dd517330e77982",
+    "410": "a2a482b918200b33",
+    "411": "cab8594a82a39678",
+    "412": "37956cea230d2299",
+    "413": "afec4083c4245d3c",
+    "414": "17ceaa8ba3c27bfa",
+    "415": "a4f52ed84ac24d23",
+    "416": "91e0cd75e3e6a028",
+    "417": "624c91dfcab68a50",
+    "418": "a8792506b47d1fdf",
+    "419": "488b8fbeb80ca762",
+    "420": "da22545a616b407e",
+    "421": "c84ea1ebbe64fcef",
+    "422": "cb235a8a3ebf67b7",
+    "423": "25f45ca7eb21a5e7",
+    "424": "c2f7732666f83c01",
+    "425": "caa560d4890b75f1",
+    "426": "a5c6bad2599710bc",
+    "427": "cf9ed3a9f0ea57ac",
+    "428": "e2289eff5533c60b",
+    "429": "5b5554770b405d27",
+    "430": "a8765d80b02641a3"
+   }
+  }
+ }
+}

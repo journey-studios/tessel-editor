@@ -61,6 +61,12 @@ runs in `render`: run `./scripts/ui invoke window.activate` before observing or 
 (`screencapture -l <window id>` is the native capture used for evidence). `scripts/live-proof.py`
 drives the full flow and asserts pixels over this socket.
 
+`scripts/scene-edit-proof.py` (S6, [F034](features/scene-edit.md)) starts the direct binary with its own short `HOME` and drives it
+only with `ui op|get|set` of that binary (`scene.edit`, `scene.camera`, `history.undo`, `project.save`, the inspector's
+`set scene.property:<path>`); it runs the same scenario against `tessel-headless` (JSONL, no window) and reports the two
+surfaces separately. Run it under `scripts/directed-scene-proof/with-gpu-lock.py`; it refuses to start with fewer than 12 GiB
+free or with tracked changes (unless `--allow-dirty`, never for final evidence).
+
 ## Flows and dialogs
 
 No coordinates and no native picker are needed: `invoke flow.import` opens the dialog, `set dialog.field.paths

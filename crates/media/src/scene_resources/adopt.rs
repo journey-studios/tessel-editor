@@ -339,25 +339,31 @@ impl PendingAdoption {
     /// Keeps the files when the project, its workspace and the scene still match; otherwise
     /// removes them and answers `stale_result`. An adoption changes no project data, so nothing
     /// else is applied.
-    pub fn apply(mut self, state: &EditorState) -> Result<(), CommandError> {
-        let Some(why) = self.target.mismatch(state) else {
-            // Explicit and fallible: the files are the project's only once the ledger says so.
-            // A refusal discards (safe whether or not the failed write reached the disk) and
-            // reports what that did; nothing in the project was changed by an adoption.
-            return match self.owned.accept() {
-                Ok(()) => Ok(()),
-                Err(error) => {
-                    let report = self.discard();
-                    Err(refused_accept(
-                        error,
-                        Some(&report),
-                        "the adoption was not confirmed",
-                    ))
-                }
-            };
+    ///
+    /// Acceptance is explicit and fallible: the files are the project's only once the claims
+    /// ledger says so. A ledger that refuses discards (safe whether or not the failed write
+    /// reached the disk) and answers `claims_unavailable` with what that did.
+    ///
+    /// The removal reads and hashes every file it takes back, so a caller that must not block
+    /// (the window's tick) uses [`PendingAdoption::settle`] and removes from a job instead.
+    pub fn apply(self, state: &EditorState) -> Result<(), CommandError> {
+        let Err(stale) = self.settle_waiting(state, true) else {
+            return Ok(());
         };
-        let scene = self.target.scene.clone();
-        let report = self.discard();
+        let StaleAdoption {
+            why,
+            refusal,
+            pending,
+        } = *stale;
+        let scene = pending.target.scene.clone();
+        let report = pending.discard();
+        if let Some(error) = refusal {
+            return Err(refused_accept(
+                error,
+                Some(&report),
+                "the adoption was not confirmed",
+            ));
+        }
         let mut kept = String::new();
         if !report.shared.is_empty() {
             kept.push_str(&format!(
@@ -377,9 +383,80 @@ impl PendingAdoption {
         ))
     }
 
+    /// [`apply`](PendingAdoption::apply) without the removal: accepted, the files are the
+    /// project's; refused, the adoption comes back **still owning its files** (and still claimed)
+    /// so the caller can remove them wherever it may block (BL094, BL112). Reads and hashes no
+    /// resource file; accepting takes the workspace's ledger `flock` without waiting for it
+    /// (this is the window's tick, so a lock that another process holds at that instant makes
+    /// the ledger unavailable for this call, BL112.3, instead of holding the tick up) and, in a
+    /// large ledger, appends one record to its journal instead of rewriting it, so the cost does
+    /// not depend on the size of the ledger (BL112.7).
+    ///
+    /// Two refusals: the project no longer fits (`refusal` is `None`), or the ledger could not
+    /// record the acceptance (`refusal` is the `claims_unavailable` error and nothing was
+    /// accepted). In both the result stays the owner until it is discarded.
+    pub fn settle(self, state: &EditorState) -> Result<(), Box<StaleAdoption>> {
+        self.settle_waiting(state, false)
+    }
+
+    /// [`settle`](PendingAdoption::settle); with `wait` the acceptance may wait (bounded) for
+    /// the ledger lock, for a caller that is allowed to block (`apply`).
+    fn settle_waiting(mut self, state: &EditorState, wait: bool) -> Result<(), Box<StaleAdoption>> {
+        if let Some(why) = self.target.mismatch(state) {
+            return Err(Box::new(StaleAdoption {
+                why,
+                refusal: None,
+                pending: self,
+            }));
+        }
+        let accepted = if wait {
+            self.owned.accept()
+        } else {
+            self.owned.accept_nowait()
+        };
+        match accepted {
+            Ok(()) => Ok(()),
+            Err(error) => Err(Box::new(StaleAdoption {
+                why: UNCONFIRMED,
+                refusal: Some(error),
+                pending: self,
+            })),
+        }
+    }
+
+    /// The scene this adoption was started for.
+    pub fn scene(&self) -> &str {
+        &self.target.scene
+    }
+
     /// Removes what the adoption created without looking at the project.
     pub fn discard(self) -> CleanupReport {
         self.owned.discard()
+    }
+}
+
+/// Why a result that fits the project is still refused: the ledger would not record the acceptance.
+const UNCONFIRMED: &str = "the claims ledger could not record that the result was accepted";
+
+/// An adoption that was not accepted ([`PendingAdoption::settle`]). It still owns what it copied:
+/// dropping or discarding it removes those files, which is the work to do off the UI thread.
+#[derive(Debug)]
+pub struct StaleAdoption {
+    /// Why it was not accepted, in words.
+    pub why: &'static str,
+    /// Set when the project fit but the ledger refused the acceptance (`claims_unavailable`,
+    /// `details.phase = "accept"`); `None` for a result that no longer fits the project.
+    pub refusal: Option<JobError>,
+    pub pending: PendingAdoption,
+}
+
+impl StaleAdoption {
+    /// The project-facing `claims_unavailable` error of a ledger refusal, for a caller that
+    /// hands `pending` to a discard job instead of removing it here; `None` for plain staleness.
+    pub fn refusal_error(&self) -> Option<CommandError> {
+        self.refusal
+            .as_ref()
+            .map(|error| refused_accept(error.clone(), None, "the adoption was not confirmed"))
     }
 }
 

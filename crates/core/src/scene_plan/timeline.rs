@@ -207,6 +207,9 @@ mod tests {
     const MINIMAL: &str = include_str!(
         "../../../../docs/migration/fixtures/bundles/valid-minimal-continuous.bundle.json"
     );
+    const RECIPES: &str = include_str!(
+        "../../../../docs/migration/fixtures/bundles/valid-camera-recipes-layers.bundle.json"
+    );
     const SOCKETS: &str = include_str!(
         "../../../../docs/migration/fixtures/bundles/valid-graph-sockets-performance.bundle.json"
     );
@@ -231,5 +234,60 @@ mod tests {
             "{error:?}"
         );
         assert_eq!(error.code(), "invalid_plan");
+    }
+
+    /// BL123: the template of a shot is cut to each frame, and the cut re-checks the splat matrices
+    /// of *that* frame: a template made of a frame whose splat was a similarity does not let a frame
+    /// whose splat is not one through, and a template never carries the refusal of one frame.
+    #[test]
+    fn a_frame_cut_from_a_template_is_checked_for_its_own_splat_matrices() {
+        let mut raw: serde_json::Value = serde_json::from_str(RECIPES).unwrap();
+        raw["assets"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({
+                "assetId": "cloud", "revisionId": "cloud-r1", "contentHash": "hash-cloud",
+                "relativePath": "splats/cloud.spz", "format": "spz", "widthPx": 1, "heightPx": 1,
+                "alphaMode": "opaque", "colorSpace": "srgb",
+            }));
+        let node = |scale: f64| {
+            serde_json::json!({
+                "id": "cloud-node", "parentId": "root", "type": "splat",
+                "assetRef": { "assetId": "cloud", "revisionId": "cloud-r1", "contentHash": "hash-cloud",
+                    "relativePath": "splats/cloud.spz" },
+                "localPosition": { "x": 0, "y": 0, "z": 0 },
+                "localRotation": { "x": 0, "y": 0, "z": 0, "w": 1 },
+                "localScale": { "x": scale, "y": 1, "z": 1 },
+            })
+        };
+        let scene_with = |scale: f64| {
+            let mut doc = raw.clone();
+            doc["sceneDefinitions"][0]["nodes"]
+                .as_array_mut()
+                .unwrap()
+                .push(node(scale));
+            DirectedScene::import_value(doc).unwrap()
+        };
+        let uniform = scene_with(1.0);
+        let stretched = scene_with(2.0);
+        let frame = uniform.bundle().evaluate_frame(0).unwrap();
+        let stretched_frame = stretched.bundle().evaluate_frame(0).unwrap();
+        let template = Prepared::new(&uniform, &frame)
+            .unwrap()
+            .assemble(&uniform, &frame)
+            .unwrap();
+        // The template is structurally valid and is not poisoned by the stretched scene's frame.
+        let stretched_template = Prepared::new(&stretched, &stretched_frame)
+            .unwrap()
+            .assemble(&stretched, &stretched_frame)
+            .expect("the template does not check the per-frame similarity");
+        assert!(template.at_frame(&frame).is_ok());
+        let error = template.at_frame(&stretched_frame).unwrap_err();
+        assert!(
+            matches!(&error, PlanError::SplatTransform { node_id, .. } if node_id == "cloud-node"),
+            "{error:?}"
+        );
+        assert_eq!(error.code(), "unsupported");
+        assert!(stretched_template.at_frame(&frame).is_ok());
     }
 }

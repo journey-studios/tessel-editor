@@ -26,8 +26,8 @@ Dar a quem automatiza e à futura UI, sobre uma cena dirigida já anexada (F036)
 4. um **ciclo de gesto** com candidato de preview separado do documento, que no commit vira
    **um lote** na pilha de undo existente.
 
-Não acrescenta regra a `directed_scene` nem a `scene_edit`: o catálogo continua com as **8
-propriedades**, o lote continua passando por importador + gates estrutural e temporal, e o histórico
+Não acrescenta regra a `directed_scene` nem a `scene_edit`: o catálogo é o de [F034](scene-edit.md) (nesta fatia eram **8
+propriedades**; a ampliação S6 para 21 entradas não muda este contrato), o lote continua passando por importador + gates estrutural e temporal, e o histórico
 continua sendo o snapshot de `EditorState`. Fora, de propósito: render/preview visual, handles e
 hit-testing (BB08), inspector (BL014), a árvore de automação da UI (`state/tree.rs`), sockets do
 desktop, composição de dois tipos de gesto (esta, de cena, e a de propriedades da frente L, que o

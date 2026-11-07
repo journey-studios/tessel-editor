@@ -79,7 +79,7 @@ test('a capability the runtime does not have is named; the ones it has are the c
   assert.deepEqual(error.details.missing, ['normalMaps', 'hdr']);
   // Advertised to the host in `ready`, spelled as `Capability::as_str` in the core.
   assert.deepEqual(DIRECTED_SCENE_CAPABILITIES.capabilities, SCENE_CAPABILITIES);
-  assert.equal(SCENE_CAPABILITIES.length, 8);
+  assert.equal(SCENE_CAPABILITIES.length, 9);
   assert.deepEqual(DIRECTED_SCENE_CAPABILITIES.resource_identity, ['generation', 'asset_id', 'revision_id', 'content_hash']);
 });
 

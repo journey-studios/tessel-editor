@@ -548,3 +548,62 @@ fn preflight_counts_the_private_copy_in_the_space_it_asks_for() {
     assert!(copy > 0, "{report}");
     assert!(report["estimate"]["staging_bytes"].as_u64().unwrap() >= copy);
 }
+
+/// BL094 x BL109: `job.discard` gives up a result nobody applied; an export never has one (its
+/// file is published by the job itself), so discarding its job is refused by code and removes
+/// nothing: not the exported file, not the originals the snapshot read.
+#[test]
+fn an_export_job_has_nothing_to_discard_and_the_discard_removes_nothing() {
+    let Some(mut ok) = lab_in("discard-ok", Fault::None, true, true) else {
+        return;
+    };
+    let started = ok.export("kept.mp4", 6, false).unwrap();
+    let job = started["job"].as_str().unwrap().to_string();
+    let waited = ok.ok(json!({"op":"job.wait","job":job,"timeout_ms":60000}));
+    assert_eq!(waited["state"], "succeeded", "{waited}");
+    assert_eq!(waited["result_state"], "none", "{waited}");
+    let published = ok.work.join("kept.mp4");
+    let exported = fs::read(&published).unwrap();
+    let original = fs::read(ok.base.join("assets/sky.png")).unwrap();
+
+    let refused = ok.run(json!({"op":"job.discard","job":job})).unwrap_err();
+    assert_eq!(
+        refused.code, "job_nothing_to_discard",
+        "{}",
+        refused.message
+    );
+    assert_eq!(
+        fs::read(&published).unwrap(),
+        exported,
+        "the export is kept"
+    );
+    assert_eq!(fs::read(ok.base.join("assets/sky.png")).unwrap(), original);
+    let after = ok.ok(json!({"op":"job.get","job":job}));
+    assert_eq!(after["result_state"], "none", "a refusal changes nothing");
+    assert!(ok.leftovers().is_empty(), "{:?}", ok.leftovers());
+
+    // A job that failed on a changed resource (S3) has none either, and the changed original is
+    // not repaired, removed or taken for a discardable result.
+    let Some(mut changed) = lab_in("discard-changed", Fault::None, true, true) else {
+        return;
+    };
+    let victim = changed.base.join("assets/mid.png");
+    same_size_garbage(&victim);
+    let tampered = fs::read(&victim).unwrap();
+    let started = changed.export("never.mp4", 6, false).unwrap();
+    let job = started["job"].as_str().unwrap().to_string();
+    let waited = changed.ok(json!({"op":"job.wait","job":job,"timeout_ms":60000}));
+    assert_eq!(waited["state"], "failed", "{waited}");
+    assert_eq!(waited["error"]["code"], "resource_changed", "{waited}");
+    let refused = changed
+        .run(json!({"op":"job.discard","job":job}))
+        .unwrap_err();
+    assert_eq!(
+        refused.code, "job_nothing_to_discard",
+        "{}",
+        refused.message
+    );
+    assert_eq!(fs::read(&victim).unwrap(), tampered);
+    assert!(!changed.work.join("never.mp4").exists());
+    assert!(changed.leftovers().is_empty(), "{:?}", changed.leftovers());
+}

@@ -384,7 +384,10 @@ fn playback_follows_the_audio_clock_or_says_why_it_cannot(cx: &mut TestAppContex
     match report["clock"].as_str().unwrap() {
         // A machine with an output device: the sample clock drives the playhead.
         "audio_device" => {
-            assert_eq!(report["audio"]["output"]["sample_rate"], 48_000, "{report}");
+            // The device's own rate, whatever the machine's default output is (44.1/48/96 kHz, or
+            // 24 kHz for a Bluetooth headset): the test must not depend on which one is plugged in.
+            let rate = report["audio"]["output"]["sample_rate"].as_u64();
+            assert!(rate.is_some_and(|rate| rate >= 8_000), "{report}");
             assert!(report["audio"]["latency_ms"].as_f64().unwrap() >= 0.0);
             assert_eq!(
                 report["audio"]["heard"], false,
@@ -422,7 +425,7 @@ fn playback_follows_the_audio_clock_or_says_why_it_cannot(cx: &mut TestAppContex
     let moved = tick_playback(&view, cx, |report| {
         report["frame"].as_i64().unwrap_or(0) > 30
     });
-    assert!(moved["frame"].as_i64().unwrap() >= 30, "{moved}");
+    assert!(moved["frame"].as_i64().unwrap() > 30, "{moved}");
     assert_eq!(moved["state"], "playing");
 
     let stopped = op(&view, cx, json!({"op":"playback.stop"})).unwrap();
@@ -447,4 +450,65 @@ impl Drop for ClaimsScratch {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
+}
+
+/// F5: the status line keeps the reason a result was refused when the discard job that took it
+/// ends, and says both when that discard left something behind.
+#[test]
+fn a_discard_never_hides_why_its_result_was_refused() {
+    let mut workflow = workflow::Workflow::new();
+    let refused = json!({"job": "job-3", "state": "failed", "kind": "scene-adopt",
+        "error": {"code": "claims_unavailable", "message": "the ledger said no",
+            "details": {"discard_job": "job-9", "phase": "accept"}}});
+    let (text, error) = flows::describe_job_event(&refused);
+    assert_eq!(
+        workflow.remember_refusal(&refused, text.clone(), error),
+        (text.clone(), true),
+        "the refusal itself reads as it always did"
+    );
+
+    let clean = json!({"job": "job-9", "state": "succeeded", "kind": "discard",
+        "result": {"cleanup": {"removedFiles": 2, "kept": [], "busyRoots": 0}}});
+    let (line, line_error) = flows::describe_job_event(&clean);
+    assert_eq!(line, "Resultado descartado");
+    assert_eq!(
+        workflow.remember_refusal(&clean, line, line_error),
+        (text.clone(), true),
+        "a clean discard keeps saying why the result was refused"
+    );
+
+    // Remembered once: the same discard cannot hide a later message again.
+    let (line, line_error) = flows::describe_job_event(&clean);
+    assert_eq!(
+        workflow.remember_refusal(&clean, line.clone(), line_error),
+        (line, false)
+    );
+
+    // A discard that kept files says both.
+    workflow.remember_refusal(&refused, text.clone(), true);
+    let kept = json!({"job": "job-9", "state": "succeeded", "kind": "discard",
+        "result": {"cleanup": {"kept": ["`/w/a.png`: its content changed"], "busyRoots": 0}}});
+    let (line, line_error) = flows::describe_job_event(&kept);
+    let (both, both_error) = workflow.remember_refusal(&kept, line.clone(), line_error);
+    assert!(both_error);
+    assert!(both.starts_with(&text) && both.ends_with(&line), "{both}");
+}
+
+/// An explicit `job.discard` is not a refusal: its `job_discarded` event is not remembered, so the
+/// discard that follows keeps its own line.
+#[test]
+fn an_explicit_discard_is_not_remembered_as_a_refusal() {
+    let mut workflow = workflow::Workflow::new();
+    let discarded = json!({"job": "job-3", "state": "failed", "kind": "scene-attach",
+        "error": {"code": "job_discarded", "message": "gone",
+            "details": {"discard_job": "job-9"}}});
+    let (text, error) = flows::describe_job_event(&discarded);
+    workflow.remember_refusal(&discarded, text, error);
+    let clean = json!({"job": "job-9", "state": "succeeded", "kind": "discard",
+        "result": {"cleanup": {"removedFiles": 0, "kept": [], "busyRoots": 0}}});
+    let (line, line_error) = flows::describe_job_event(&clean);
+    assert_eq!(
+        workflow.remember_refusal(&clean, line.clone(), line_error),
+        (line, false)
+    );
 }

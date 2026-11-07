@@ -19,7 +19,7 @@ O plano **não reimplementa** câmera, animação nem matrizes: usa `Bundle::eva
 
 Fora do escopo desta entrega (listado no plano como **domínio não avaliado**, nunca omitido):
 luz, clima, efeitos, rigs, caminhos, `reveal`, mapas de dados dos nós (`surface`, `normalMap`,
-`sceneDepth`, `relief`) e nós `splat`. Também fora: IO, GPUI, resolução/leitura de arquivos,
+`sceneDepth`, `relief`). Nós `splat` entram desde [F048](scene-splat.md) (matriz e recurso aprovado; sem luz, clima ou rig). Também fora: IO, GPUI, resolução/leitura de arquivos,
 áudio/narração (BL016), os gates `temporal_issues()`/`edit_join_issues()` (o adapter que habilitar
 cenas deve chamá-los antes; o plano não os roda).
 
@@ -85,7 +85,7 @@ Evidência de custo e tamanho (medida, não suposta): ver "BL064 — medição" 
 | `nodes` | Todos os nós da definição, em ordem de documento: tipo, pai (nó ou socket), posição/rotação (Euler°)/escala locais, `local_matrix` e `world_matrix` (column-major, 16 números), `renderOrder` próprio, `asset_id`, tamanho em unidades de cena |
 | `layers` | Planos de imagem **de trás para frente**: nó, `asset_id`, `alpha` do asset, `render_order` próprio, `pass_order` (passe de composição) |
 | `resources` | Texturas requeridas, **ordenadas por `assetId` (bytes), sem repetição**: `revision_id`, `content_hash`, `relative_path`, formato, dimensões, alpha, espaço de cor, `used_by` (nós, em ordem de documento) |
-| `requires` | `Capability`s que o conteúdo exige: `camera`, `nodeTransforms`, `sockets`, `performanceChannels`, `imagePlanes`, `straightAlpha`, `opaqueAlpha`, `compositionPassOrder`. Ascendente. Um plano sem camada opaca não pede `opaqueAlpha` |
+| `requires` | `Capability`s que o conteúdo exige: `camera`, `nodeTransforms`, `sockets`, `performanceChannels`, `imagePlanes`, `straightAlpha`, `opaqueAlpha`, `compositionPassOrder`, `splats` (só com nó `splat`; F048). Ascendente. Um plano sem camada opaca não pede `opaqueAlpha` |
 | `unsupported` | `UnsupportedDomain { domain, subject }` ordenados; vazio no plano completo |
 | `uninterpreted` | Campos do bundle que o importador preservou e o plano não interpreta (JSON Pointer + motivo), ordenados por ponteiro |
 
@@ -94,8 +94,8 @@ Evidência de custo e tamanho (medida, não suposta): ver "BL064 — medição" 
 | Tema | Política |
 |---|---|
 | Identidade de asset | **`assetId`.** `relative_path` é metadado (declarado, relativo à pasta do bundle, nunca absoluto — o plano recusa `..`, absoluto e drive); `revision_id`/`content_hash` servem a quem resolve e verifica o arquivo. O plano **não verifica** se o arquivo existe (BL009) |
-| Domínios não avaliados | Declarados e não avaliados ⇒ `PlanError::Unsupported { domains }` (ordenado por `Domain` e nó). Escopo: `weather`, `weatherKeys`, `lighting`, `effects`, `weatherGround`, `rigs`, `paths` (lista do próprio avaliador, `unevaluated_sections`); `rigBind`, `reveal`, `surface`, `normalMap`, `sceneDepth`, `relief` por nó; `splat` por nó. `null` conta como não declarado, como no importador. Mapas de dados não variam no tempo (por isso o avaliador temporal não os lista), mas mudam o aspecto do plano: um plano que os ignorasse não seria o quadro |
-| Splat | **Não presumido.** Um nó `splat` tem transformação e asset, mas luz/clima/efeitos sobre splat são BL025. No plano parcial o nó continua em `nodes` (filhos dependem da matriz), mas não é camada nem recurso e consta em `unsupported` |
+| Domínios não avaliados | Declarados e não avaliados ⇒ `PlanError::Unsupported { domains }` (ordenado por `Domain` e nó). Escopo: `weather`, `weatherKeys`, `lighting`, `effects`, `weatherGround`, `rigs`, `paths` (lista do próprio avaliador, `unevaluated_sections`); `rigBind`, `reveal`, `surface`, `normalMap`, `sceneDepth`, `relief` por nó (também num nó `splat`: nomeados, nunca ignorados). `null` conta como não declarado, como no importador. Mapas de dados não variam no tempo (por isso o avaliador temporal não os lista), mas mudam o aspecto do plano: um plano que os ignorasse não seria o quadro |
+| Splat | **Desde F048.** Um nó `splat` com asset `spz` vira uma entrada de `splats` (`node_id`, `asset_id`, `after_layers`; ordem do documento), o recurso entra em `resources` (`PlanResource::is_splat`) e o plano exige `Capability::Splats`. A matriz de mundo e a câmera são as do avaliador, e a matriz tem de ser uma semelhança (rotação, uma escala uniforme positiva, translação): escala não uniforme ou espelhada, cisalhamento ou degenerada é `PlanError::SplatTransform` (`unsupported`), no build, por frame na timeline e em `validate`, nunca aproximada (BL123). `after_layers` (recalculado pelo validador) diz quantos planos são pintados antes do splat: o primeiro plano **visível** (profundidade `> 0`; atrás da câmera não conta, BL124) estritamente mais perto da câmera que a origem do nó o cobre; a ordem entre splats da mesma fatia é a do Spark por câmera. Luz, clima, rigs e mapas de dados continuam recusados por `unsupported`. A chave `splats` só existe no JSON quando há splat: planos sem splat mantêm os bytes (golden), e um runtime sem a capacidade recusa o plano pelo nome |
 | Campos não interpretados | Chave desconhecida (`UnknownField`) e seção declarada e mantida crua (`narration`, `outline`, `metadata`, `contactPlaneId`, `frameAudit`: `DeferredSection`) vão para `uninterpreted`, sem bloquear. **Escopo:** chaves do topo + definição de cena, instância, shot, clipe, trilhas, passes e assets que o frame usa; o plano de um frame não muda porque **outra** cena do bundle ganhou um campo |
 | Ordem de pintura | A de `Bundle::paint_order` (passe de composição > `renderOrder` > 0; empate = ordem de documento). `layers` copia as entradas para que a ordem seja conferível só pelo plano. Limite herdado: o desempate por profundidade da câmera do Three.js **não** é modelado |
 | Transparência | Do schema: `alpha` do asset da camada (`straight`/`opaque`) e `alphaMode` do `renderProfile`. Não há opacidade por nó no schema; nenhuma foi inventada |
@@ -105,11 +105,10 @@ Evidência de custo e tamanho (medida, não suposta): ver "BL064 — medição" 
 ### Invariantes (`validate`)
 
 Ids de nós únicos e resolvidos (pai ≠ si mesmo, sem ciclo); nó `imagePlane` com asset e tamanho
-positivo, `group` sem asset, `splat` com asset; uma camada por plano de imagem, de trás para frente
+positivo, `group` sem asset, `splat` com asset; `splats` igual aos nós `splat` na ordem do documento, cada um com o recurso `spz` do próprio asset (`/splats`, `/splats/N/assetId`); uma camada nunca lê `spz` (`/layers/N/assetId`, BL126); a matriz de um nó `splat` é uma semelhança; uma camada por plano de imagem, de trás para frente
 (ordem efetiva ascendente, empate pela ordem dos nós) e coerente com o nó e com o recurso;
-recursos ordenados, sem repetição, usados, `png`, caminho relativo seguro, `used_by` exato;
-`requires` igual ao derivado do conteúdo; `unsupported` ordenado, com nós existentes, e todo nó
-`splat` listado; `uninterpreted` ordenado; números finitos; saída com dimensões positivas e taxa
+recursos ordenados, sem repetição, usados, `png` (planos) ou `spz` (splats), caminho relativo seguro, `used_by` exato;
+`requires` igual ao derivado do conteúdo; `unsupported` ordenado, com nós existentes; `uninterpreted` ordenado; números finitos; saída com dimensões positivas e taxa
 representável. Na leitura: `kind` e versão primeiro, chave desconhecida ou ausente recusada (um
 plano que carregasse dados ignorados não faria round-trip), tempos só reduzidos, `complete` igual a
 `unsupported` vazio.
@@ -132,7 +131,7 @@ plano que carregasse dados ignorados não faria round-trip), tempos só reduzido
   plano não o importa e o manifesto não precisa importar o plano.
 - O manifesto de I continua dono de resolver caminhos, hashes e ausentes. Dados que o importador
   preserva e o plano não usa **não** viram recurso: aparecem em `uninterpreted`, ou em `unsupported`
-  (mapas de dados e splats, cujos assets o plano **não** lista como requeridos).
+  (mapas de dados, cujos assets o plano **não** lista como requeridos). Os `spz` dos splats são listados (F048).
 - Teste de integração `scene_plan_resources.rs` executado (BL063): em 4 bundles e 4 frames por bundle, todo
   `required_asset_ids()` é conhecido do manifesto do mesmo bundle.
 
