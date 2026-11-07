@@ -778,3 +778,5 @@ BL142 — revisão do coordenador: main integrada sem apagar medidor; helper can
 | BL142.3 | RevisãoB | Cobertura de fps fracionário e última amostra insuficiente | Testes escritos, não executados por disco | BL142 | Coordenador | Validar23.976/29.97 com tolerância por amostra; fonte subframe ainda pendente |
 | BL142.4 | OCR/revisãoB | Prova frágil de I/O/captura e checagem vazia em seno0 | Corrigido por código, prova real suspensa | BL140.6 | Coordenador | Helper canônico e atenuação em sinal nãozero, semPASS em captura ausente |
 | BL142.5 | RevisãoB | Link de áudio partia bullet do inventário | Corrigido | BL142 | Coordenador | Links preservados em bullets independentes |
+
+BL142.3 / R2: asserção estrita da última amostra e silêncio após o fim em fps fracionário escrita; não executada. F051 rebaixada aI até gates; não reutilizar os V anteriores como prova deste head.

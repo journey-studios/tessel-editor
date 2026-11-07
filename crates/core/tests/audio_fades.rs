@@ -299,6 +299,13 @@ fn fractional_frame_rates_keep_chunk_fades_within_one_sample_of_the_whole_mix() 
         let whole = mix(&state, 0, 120);
         let fade_samples = (12.0 * 48_000.0 * 1001.0 / f64::from(numerator)).round() as f32;
         let tolerance = LEVEL / fade_samples + 1e-7;
+        let end = ((60_i128 * 48_000 * 1001 + i128::from(numerator) / 2) / i128::from(numerator))
+            as usize;
+        assert!(
+            (left(&whole, end - 1) - LEVEL / fade_samples).abs() < 1e-8,
+            "fractional last fade sample at {numerator}/1001"
+        );
+        assert_eq!(left(&whole, end), 0.0, "silence immediately after the clip");
         let mut from = 0;
         while from < 120 {
             let frames = 7.min(120 - from);
