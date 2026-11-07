@@ -38,8 +38,12 @@ coordinates. It checks:
 product); without it the window-paint rate is reported as "not measured", never as zero. With
 --shots DIR it captures the window with `screencapture -l <window id of THIS process>`; a
 capture that fails (no window, `screencapture` exit status, missing or empty file) is a failed
-check and its path is not reported. Prints one JSON report on the last line. Exit status 1 on a
-failed check.
+check and its path is not reported. Prints one JSON report on the last line, whatever happens:
+it carries `ok` and the list of `failures`. An exception in the middle of the run (a missing key
+in an answer, a missing fixture) is recorded as a failed check (`aborted` has its traceback) with
+everything collected before it kept in the report; the editor is stopped and its log is closed
+first, a failed run keeps that log (`editor_log`, plus its tail) and `--keep` keeps the whole
+working directory. Exit status 1 on a failed check or an exception.
 """
 import hashlib
 import json
@@ -51,6 +55,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NODE = "toolbar.perf_meter"
@@ -165,11 +170,16 @@ class Editor:
         return path if done.returncode == 0 and written else None
 
     def stop(self):
-        self.process.terminate()
+        """Ends THIS process (never another editor) and closes its log so it can be collected."""
         try:
-            self.process.wait(10)
-        except subprocess.TimeoutExpired:
-            self.process.kill()
+            self.process.terminate()
+            try:
+                self.process.wait(10)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait(10)
+        finally:
+            self.log.close()
 
 
 def fixture_frames(seconds):
@@ -332,33 +342,36 @@ def stop_report(stopped):
     return report_, True
 
 
-def playback_run(editor, seconds, meter_on):
+def playback_run(editor, seconds, meter_on, sleep=time.sleep, wall=time.time):
     """Plays `seconds` from frame 0 and returns what the app counts around it.
 
-    The run is `ok` only when the playback was still running when the window closed; one that
-    ended early (fixture shorter than the window) is reported with the reason and no metrics are
-    taken from it."""
+    The two arms measure the same span: the viewport is read at `window_end` (before anything the
+    arms do differently) and pictures and UI changes are `end - mark`, and both arms then make the
+    same requests (`meter` node, `playback.status`, `playback.stop`), so the stop report covers the
+    same extra round trips too. Only the meter-on arm keeps what its node answered. The run is
+    `ok` only when the playback was still running when the window closed; one that ended early
+    (fixture shorter than the window) is reported with the reason and no metrics are taken from it."""
     editor.op({"op": "playback.stop"})
     editor.op({"op": "seek", "frame": 0})
-    time.sleep(1.0)
-    before = editor.viewport()
+    sleep(1.0)
     started = editor.op({"op": "playback.start", "from": 0})
     if not started.get("ok"):
         return {"error": str(started)[:200]}
-    deadline = time.time() + 30
-    while time.time() < deadline:
+    deadline = wall() + 30
+    while wall() < deadline:
         status = editor.op({"op": "playback.status"})["data"]
         if status.get("state") == "playing" and status.get("clock") != "starting":
             break
-        time.sleep(0.1)
+        sleep(0.1)
     mark = editor.viewport()
-    window_start = time.time() * 1000
-    time.sleep(seconds)
-    window_end = time.time() * 1000
-    live = editor.meter() if meter_on else None
+    window_start = wall() * 1000
+    sleep(seconds)
+    window_end = wall() * 1000
+    end = editor.viewport()
+    node = editor.meter()
+    live = node if meter_on else None
     still_playing = (editor.op({"op": "playback.status"}).get("data") or {}).get("state") == "playing"
     stopped = editor.op({"op": "playback.stop"})
-    after = editor.viewport()
     played, ended_early = stop_report(stopped)
     stats = lambda state: state["session"]["stats"]
     ui = lambda state: (state.get("ui") or {}).get("repaints", 0)
@@ -369,8 +382,8 @@ def playback_run(editor, seconds, meter_on):
         "ticks": played.get("ticks"),
         "skipped_frames": played.get("skipped_frames"),
         "max_gap_frames": played.get("max_gap_frames"),
-        "pictures_accepted": stats(after)["accepted"] - stats(mark)["accepted"],
-        "ui_repaints": ui(after) - ui(mark),
+        "pictures_accepted": stats(end)["accepted"] - stats(mark)["accepted"],
+        "ui_repaints": ui(end) - ui(mark),
     }
     if not result["ok"]:
         result["error"] = "playback ended before the measurement window (fixture too short): not a measurement"
@@ -396,6 +409,49 @@ def mean(runs, arm, key):
     return round(sum(values) / len(values), 2) if values else None
 
 
+def record_abort(error):
+    """An exception raised mid-run is a failed check with its reason, never a bare traceback.
+
+    The checks and cost rounds collected so far stay in the report."""
+    text = "".join(traceback.format_exception_only(type(error), error)).strip()
+    report["aborted"] = {"type": type(error).__name__, "message": str(error)[:500], "traceback": "".join(traceback.format_exception(error))[-2500:]}
+    check(f"the run completed without an exception ({type(error).__name__})", False, text)
+
+
+def conclude(editor, work, keep_all, log_tail=2000):
+    """Own cleanup, then the verdict the report carries. Never raises.
+
+    The editor is stopped (its log is closed) BEFORE anything is deleted. A run with a failed check
+    or an exception keeps the editor's log (copied next to the work directory, which is then
+    removed) and puts its tail in the report; `--keep` keeps the whole work directory. A clean run
+    leaves nothing behind. Returns the part of the report this adds."""
+    extra = {}
+    if editor is not None:
+        try:
+            editor.stop()
+        except Exception as error:  # a stuck editor must not hide the verdict
+            check("the editor stopped cleanly", False, error)
+    failed = bool(failures)
+    log_path = editor.log_path if editor is not None else None
+    if log_path and os.path.isfile(log_path) and (failed or keep_all):
+        with open(log_path, errors="replace") as handle:
+            extra["editor_log_tail"] = handle.read()[-log_tail:]
+    if keep_all:
+        extra["kept"] = work
+    else:
+        if failed and log_path and os.path.isfile(log_path):
+            saved = os.path.join(tempfile.gettempdir(), f"{os.path.basename(work)}.editor.log")
+            try:
+                shutil.copyfile(log_path, saved)
+                extra["editor_log"] = saved
+            except OSError as error:
+                extra["editor_log_error"] = str(error)
+        shutil.rmtree(work, ignore_errors=True)
+    extra["ok"] = not failures
+    extra["failures"] = list(failures)
+    return extra
+
+
 def main():
     project = arg("--project")
     binary = os.path.abspath(arg("--binary", os.path.join(ROOT, "target/release/tessel-editor")))
@@ -416,8 +472,10 @@ def main():
     os.makedirs(home)
     # --paint-probe: only for a build that logs `PAINT <ms>` per window paint (a local, uncommitted
     # instrument): it gives the interface rate with the meter hidden, which the meter itself cannot.
-    editor = Editor(binary, home, {"TESSEL_PERF_PROBE": "1"} if "--paint-probe" in sys.argv else None)
+    editor = None
+    interrupted = None
     try:
+        editor = Editor(binary, home, {"TESSEL_PERF_PROBE": "1"} if "--paint-probe" in sys.argv else None)
         editor.wait_ready()
         report["binary"] = binary
         settle(editor)
@@ -601,13 +659,17 @@ def main():
             report["playing_shot"] = editor.shot(shots, "perf-meter-playing")
             editor.op({"op": "playback.stop"})
             editor.set(NODE, "visible", False)
+    except BaseException as error:  # KeyboardInterrupt too: the report is still printed, then it is re-raised
+        record_abort(error)
+        if not isinstance(error, Exception):
+            interrupted = error
     finally:
-        editor.stop()
-        if "--keep" in sys.argv:
+        report.update(conclude(editor, work, "--keep" in sys.argv))
+        if report.get("kept"):
             print("kept", work)
-        else:
-            shutil.rmtree(work, ignore_errors=True)
-    print(json.dumps(report))
+        print(json.dumps(report))
+    if interrupted is not None:
+        raise interrupted
     return 1 if failures else 0
 
 
