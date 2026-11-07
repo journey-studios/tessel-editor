@@ -51,21 +51,33 @@ ruído (a faixa maior do `exact` coincide com as sessões de load 36–44): a di
 - Hash do `render.frame` dos quadros 5, 60, 100, 193, 300 e 450 **igual** antes e depois:
   `d64ea0612003aac5 4632654380285dee 2f7fea6510a0df39 65bad546acc28c04 2fc61bb00b19972d 9f806dd28d080ad5`
   (`runs/inspect2-base.log`, `runs/inspect2-new.log`).
-- Quadro na tela depois de parar o playback = `render.frame` do mesmo quadro (`refined_equals_explicit.equal: true`) nas 4 paradas
+- **O hash é o do quadro que o runtime devolveu (`frame.done.hash` do último quadro aceito pelo monitor), não uma captura dos pixels da
+  tela.** A apresentação na janela nativa não foi verificada por estas provas (BL130.6, revisão visual nativa pendente).
+- Último quadro devolvido depois de parar o playback = `render.frame` do mesmo quadro (`refined_equals_explicit.equal: true`) nas 4 paradas
   (`40:60` e `181:30`, 2 repetições, antes e depois), com `final_source.stale_sort_layers` 0.
-- Quadro na tela depois de soltar o scrub = `render.frame` do mesmo quadro: take (quadro 20, `adc70df7ad9c472d`) e crossfade (quadro 150,
+- Último quadro devolvido depois de soltar o scrub = `render.frame` do mesmo quadro: take (quadro 20, `adc70df7ad9c472d`) e crossfade (quadro 150,
   `d9c627b2d86f1134`), 2 repetições cada, **o mesmo hash antes e depois** (`runs/inspect3-*.log`; a comparação no scrub é do harness
   novo, `refined_comparison`).
 - Export de 6 quadros de crossfade (190–195, `fullhd`, `export.start` pela janela real): `framemd5` idêntico por quadro e **arquivo
   idêntico** (436.972 bytes, mesmo sha256) antes e depois (`runs/export-*.log`).
 
-## Câmera animada, sem popping (`evidence/*.json`)
+## Diferença entre o quadro de movimento e o exato (câmera animada; `evidence/*.json`)
 
 `runtime/scripts/sort-order-evidence.mjs` com `TESSEL_GL=gpu` (worker real, 960×540), planos reais de quadros consecutivos (câmera
-animada) do take (`take`, passos `s4/s8/s16` = 4, 8 e 16 quadros por passo) e do crossfade: cada quadro de movimento (ordem de outra
-câmera, `stale_sort_layers` 1) é comparado com o quadro exato do mesmo quadro.
+animada) do take (`take`, passos `s4/s8/s16`) e do crossfade: cada quadro de movimento (ordem de outra câmera, `stale_sort_layers` 1) é
+comparado com o quadro exato do mesmo quadro.
 
-| Execução | Quadros | Pior diferença média por canal | Pior % de pixels > 8/255 | PSNR mínimo | Popping máximo | Final = exato |
+**O que isto não é.** A ferramenta lê cada quadro como PNG, o que espera a GPU e a ordenação: o atraso de ordenação que o monitor
+tem aqui é **menor**, então os números **não são um limite superior** do que um playback mostra. Mudar o ritmo não o estressa: os
+ritmos 41,67, 16 e 10 ms deram **exatamente os mesmos dados** (só o `render_ms` muda, executado de novo nesta revisão, `evidence/local-*.json`).
+Os passos `s4/s8/s16` (4, 8 e 16 quadros entre planos) **aproximam** um movimento de câmera maior; não são um playback medido. Não há
+afirmação de "sem popping" nem critério de aceite novo.
+
+### Dado histórico (primeira versão da ferramenta; `evidence/take*.json`, `evidence/xfade.json`)
+
+Só médias do quadro inteiro. Mantido como histórico, sem aceite: a média é diluída pelos blocos que os splats nunca alcançam.
+
+| Execução | Quadros | Pior diferença média por canal | Pior % de pixels > 8/255 | PSNR mínimo | "Popping" máximo (média do quadro) | Final = exato |
 |---|---|---|---|---|---|---|
 | `take` (passo 1) | 23 | 0,0028 | 0,006 | 66,3 dB | 0,0001 | sim |
 | `take-s4` | 22 | 0,0109 | 0,027 | 56,5 dB | 0,0015 | sim |
@@ -73,12 +85,48 @@ câmera, `stale_sort_layers` 1) é comparado com o quadro exato do mesmo quadro.
 | `take-s16` | 10 | 0,0384 | 0,088 | 50,2 dB | 0,0027 | sim |
 | `xfade` | 21 | 0,0061 | 0,015 | 63,5 dB | 0,0004 | sim |
 
-(diferença em 0–255; "popping" = quanto a mudança de um quadro ao seguinte excede a da sequência exata, contra 0,95–10,0 de mudança
-real do exato; o canal máximo isolado chega a 149/255 em poucos pixels do anel brilhante do efeito). As mesmas imagens exatas são
-iguais visitadas em ordem inversa (`same_pictures_in_reverse_order: true`), então a ordem de visita não muda o exato.
+### Diferença local por bloco (esta revisão; `evidence/local-*.json`, mesmos planos e assets, ritmos 41,67/16/10)
+
+A ferramenta agora mede por bloco de 32×32 (510 blocos por quadro): a média do pior bloco de cada quadro e, para a mudança de um quadro
+ao seguinte, o quanto o pior bloco do quadro de movimento excede a mudança do exato (`worst_block_excess`). Valores 0–255.
+
+| Execução | Quadros | Pior bloco (média) | Blocos > 2/255 (máx. por quadro) | Canal máximo isolado | Pior excesso de mudança por bloco | Média do quadro inteiro (pior) | Final = exato |
+|---|---|---|---|---|---|---|---|
+| `take` (passo 1) | 23 | 0,241 | 0 | 49 | 0,094 | 0,0028 | sim |
+| `take-s4` | 22 | 0,751 | 0 | 115 | 0,345 | 0,0109 | sim |
+| `take-s8` | 18 | 1,283 | 0 | 149 | 0,631 | 0,0211 | sim |
+| `take-s16` | 10 | 1,632 | 0 | 145 | 0,627 | 0,0384 | sim |
+| `xfade` | 21 | 0,420 | 0 | 47 | 0,104 | 0,0061 | sim |
+
+Leitura: as médias do quadro inteiro se reproduzem (mesmo dado de antes) e no pior bloco a diferença cresce com o passo, de 0,24 a 1,63
+de 255; nenhum bloco passa de 2/255 em média, e o canal isolado chega a 149/255 em poucos pixels. Isto descreve **este harness**
+(planos de quadros consecutivos, GPU do M3 Pro, o mesmo projeto); não prova que o movimento não tem salto visível numa janela e **não
+substitui a revisão visual nativa, que continua pendente** (BL130.6). As mesmas imagens exatas são iguais visitadas em ordem inversa
+(`same_pictures_in_reverse_order: true` nas 5 execuções) e o quadro final refinado é idêntico ao exato em todas (`final_equals_exact`).
+Esta repetição só serve para imagem (e o `render_ms` do harness, abaixo): `draw` e imagens/s do editor release não foram repetidos.
+
+## Provas desta revisão (correções pós-revisão independente)
+
+Medições acima = o que o PR já tinha mais a repetição local; o que mudou abaixo é de **correção**, provado por testes de Chrome real
+(não por benchmark), cada um com mutação que o reprova: ver [spark.md](../../features/spark.md#evidência).
+
+- Ordenação que rejeita (BL130.5): erro observável no pedido seguinte, estágio descartado e substituído, exato sem esperar 60 s,
+  sem `unhandledrejection` (`splat-failures.test.mjs`, 6 testes).
+- Orçamento de estágios vivos e fallback exato com 3 e 4 cenas (BL130.2, `splat-lineages.test.mjs`).
+- Empréstimos sem dono e dono novo não roubam a malha de outra linhagem (BL130.7).
+- Tempo esgotado do refino do scrub reprova (BL130.8, `scripts/preview-quality-proof.spec.py`) e a ferramenta de evidência recusa < 2 planos
+  (status 2, `sort-order-evidence.test.mjs`).
+- **Caminho quente (quadro de movimento), medição focada, não o benchmark completo:** o quadro de movimento com estágio vivo e ordem
+  reaproveitável ainda retorna antes de qualquer espera nova (o que mudou nele: uma checagem de falha, o `catch` que registra em vez de
+  engolir e a reserva de donos de malha); a espera do quadro exato passou a acordar pelo fim da ordenação e a conferir cancelamento e
+  orçamento a cada 25 ms. O que se mediu foi a mediana de `render_ms` de cada quadro de movimento da ferramenta de evidência (inclui a
+  leitura do PNG; GPU do M3 Pro, máquina carregada, `clippy` do workspace rodando em paralelo): `take` 74,5 ms (`e5447cb`) → 70,9 ms,
+  `xfade` 112,3 → 102,3 ms (ritmo 41,67). Isto mostra que não houve regressão **nessa leitura**; **não** repete a tabela de `draw` p50 /
+  imagens por segundo do editor release (1 ms, 50/s), que continua sendo a do `e5447cb` (não repetida: nenhuma volta do editor release
+  foi feita nesta revisão).
 
 ## Limites e pendências
 
-Ver [spark.md](../../features/spark.md#ordem-dos-splats-em-movimento-bl130) (corrida de 2,4 s não reproduzida, leitura de PNG que
-encurta o atraso, `done` é submissão e não exibição, GPU compartilhada sem trava de GPU no repositório, mais de 2 cenas, áudio não
-ouvido).
+Ver [spark.md](../../features/spark.md#ordem-dos-splats-em-movimento-bl130): corrida de 2,4 s não reproduzida (BL130.1), leitura de PNG que
+encurta o atraso, `done` é submissão e não exibição, **revisão visual nativa pendente (BL130.6)**, GPU compartilhada sem trava de GPU no
+repositório (BL130.3), mais de 2 cenas sem medição de memória/latência com cenas grandes (BL130.2), áudio não ouvido.

@@ -198,21 +198,30 @@ o raster. Imagens em `/Users/wallyssonnunes/www/tessel-video-splat/previews/perf
 
 Cena **com splat** num quadro `Preview` (playback e scrub do monitor) não espera mais a ordenação para a câmera do quadro: é
 desenhada na hora com a ordem da última ordenação terminada **quando o Spark tem uma para exatamente os mesmos splats** (mesmo
-mapeamento); a ordenação para a câmera segue atrás. `hello.preview_sort` (`latest`, padrão; `exact` desfaz;
-`TESSEL_VIEWPORT_PREVIEW_SORT`) escolhe. O contrato do runtime (linhagem de ordem por camada de cena, afinidade de malhas, cache,
+mapeamento); a ordenação para a câmera segue atrás. `hello.preview_sort` (`latest`, padrão; `exact` desfaz **só a ordem**;
+`TESSEL_VIEWPORT_PREVIEW_SORT`) escolhe. Cada `hello` diz a ordem inteira (ausente = `latest`; nome desconhecido = `exact`, com aviso;
+no editor o mesmo vale para a variável de ambiente). O contrato do runtime (linhagem de ordem por camada de cena, afinidade de malhas, cache,
 limites e medição) está em [spark.md](spark.md#ordem-dos-splats-em-movimento-bl130).
 
 - **Mesma regra do BL129, sem controle novo:** a sessão trata `stale_sort_layers > 0` como quadro reduzido e agenda o refino
   exato (quadro sem `quality`) depois de `REFINE_DELAY`; o cabeçalho diz " · sort" enquanto a imagem é a de ordem velha.
-  `render.frame`, export, PNG, probes, quadro explícito e o refino nunca usam a ordem velha (provado: hash do quadro na tela depois
-  de parar o playback e depois de soltar o scrub igual ao do `render.frame` do mesmo quadro; hash dos quadros explícitos e MD5 do
-  export iguais antes e depois). A política (`monitor.preview.quality = original`) mantém o quadro exato também em movimento.
+  `render.frame`, export, PNG, probes, quadro explícito e o refino nunca usam a ordem velha (provado: hash do último quadro que o
+  runtime devolveu ao monitor depois de parar o playback e depois de soltar o scrub igual ao do `render.frame` do mesmo quadro; hash dos
+  quadros explícitos e MD5 do export iguais antes e depois). **O hash é o do quadro lido pelo runtime, não dos pixels da tela**: a
+  apresentação no monitor nativo não foi verificada (revisão visual nativa pendente, BL130.6). `preview_sort: exact` mantém só a
+  ordenação exata: o quadro de preview ainda pode ter MSAA reduzido e proxy de vídeo; a política (`monitor.preview.quality = original`)
+  é a que mantém o quadro com a qualidade original também em movimento.
+- **Falha da ordenação (BL130.5):** uma ordenação do Spark que falha deixa o estágio inutilizável; o runtime o descarta, falha o quadro com
+  a causa sem esperar o orçamento de 60 s e o pedido seguinte ordena num estágio novo (spark.md, "Ordenação que falha"). O monitor trata
+  como qualquer `frame.failed`.
+- **Mais de 2 cenas (BL130.2):** no máximo 2 estágios de ordem vivos por plano (mais o compartilhado); as demais camadas de cena com splat
+  esperam a própria ordenação (exatas, nunca `stale`).
 - **Superfícies:** lib (`bridge`, `FrameDetail`, sessão: testes no core), UI (rótulo no host desktop e prova na janela real pelo
   harness semântico), CLI headless N/A (o quadro de preview só existe no monitor; `render.frame` e export da sessão JSONL seguem
   exatos).
 - **Resultado:** `draw` p50 no runtime de 16 → 1 ms (take) e 43 → 1 ms (crossfade) com 1,18 M de gaussians por cena; 0 % de quadros
   sem imagem; scrub de 39–42 para 50 imagens/s, atraso 1 → 0 quadro; **custo:** o quadro final depois de soltar o scrub chega ≈ 90 ms
-  mais tarde (262 → 355 ms). Tabela completa, invariantes e limites no spark.md e em
+  mais tarde (262 → 355 ms). O quadro de movimento não é o exato; a diferença por bloco está no README da medição, sem afirmar "sem popping". Tabela completa, invariantes e limites no spark.md e em
   [bl130-spark-settle](../viewport-performance-results/bl130-spark-settle/README.md).
 
 ### Retenção de GPU no runtime
@@ -299,7 +308,7 @@ JSON por mensagem, campo `v: 1`. Host→página: `hello`, `asset.load`, `asset.r
 `context.lost`, `context.restored`, `closed`, `error`. Campo aditivo (compatível, v1):
 `frame.render.inspect:false` (ausente = ler e descrever, o que todo host antigo faz); `frame.done` ganha
 `inspected` e `timings.{settle_ms|readback_ms, describe_ms}`; sem leitura, `hash`/`mean` vêm `null`.
-Mais campos aditivos (BL130, ainda v1): `hello.preview_sort` (`"latest"`|`"exact"`; ausente = `latest` no runtime) e `frame.done.source.stale_sort_layers` (ausente = 0). Mais campos aditivos (BL129, ainda v1): `hello.preview_scene_samples` e `frame.done.source.scene_samples|reduced_scene_layers`. Mais campos aditivos (OPT01/02/07, ainda v1): `asset.proxy`, `frame.render.quality`, `frame.done.source`, `hello.result_cache`, `hello.scene_samples` e `capabilities.features` `asset.proxy`/`frame.quality`. Mais campos aditivos (entrega anterior, ainda v1): `hello.retain:false` (volta ao caminho de criar/descartar por quadro; ausente =
+Mais campos aditivos (BL130, ainda v1): `hello.preview_sort` (`"latest"`|`"exact"`; ausente = `latest` no runtime, em cada `hello`; outro valor = `exact`) e `frame.done.source.stale_sort_layers` (ausente = 0). Mais campos aditivos (BL129, ainda v1): `hello.preview_scene_samples` e `frame.done.source.scene_samples|reduced_scene_layers`. Mais campos aditivos (OPT01/02/07, ainda v1): `asset.proxy`, `frame.render.quality`, `frame.done.source`, `hello.result_cache`, `hello.scene_samples` e `capabilities.features` `asset.proxy`/`frame.quality`. Mais campos aditivos (entrega anterior, ainda v1): `hello.retain:false` (volta ao caminho de criar/descartar por quadro; ausente =
 retenção ligada) e `hello.telemetry.presented:true` (pede `frame.presented`, que **só** é enviada a quem pediu: o
 `decode_event` de um host antigo rejeita tipo desconhecido); `ready.capabilities.features`
 (`frame.presented`, `cache.telemetry`); `frame.done` ganha `timings.{prepare_ms, draw_ms, flush_ms}` e `cache`
