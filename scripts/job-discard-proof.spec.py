@@ -330,6 +330,14 @@ class ProbeFailureTests(unittest.TestCase):
         self.assertTrue(failed.startswith(FAILED_CHECK), f'failed on another check: {failed}')
         return results, report, probe
 
+    def test_a_failed_send_before_the_first_discarding_answer_is_not_lost(self):
+        script = [OSError('first request reset')] + ['discarding'] * 25 + ['discarded'] * 2
+        results, _, _ = self.assert_fails_on_failed_request(load_proof(), script)
+        self.assertEqual(len(results['discard_verdict']['failed_in_window']), 1)
+        mutation = ("    if began == 0:\n        start = min([start] + [failure.sent for failure in failures])\n", "")
+        failed, *_ = run_scenario(load_proof(mutation), script)
+        self.assertIsNone(failed, 'the old boundary wrongly passes this failed request')
+
     def test_a_healthy_run_passes(self):
         failed, results, report, probe = run_scenario(load_proof(), NO_FAILURE)
         self.assertIsNone(failed, report.data['checks'][-3:])

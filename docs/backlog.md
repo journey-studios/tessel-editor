@@ -664,3 +664,9 @@ referencia…" de F040 agora vale só enquanto o sistema operacional entrega o d
 Gates proporcionais: spec Python normal e `-O` 27/27, `py_compile`, build novo de `tessel-editor`/`tessel-media` (Rust sem alteração: sem workspace completo, sem Node/Cargo test),
 `job-discard-proof.py` 43/43 sob o lock de GPU. `scene-claims-proof.py` 23/23 **não** reexecutado (não é afetado). Artefatos em `/tmp/pr6n-logs`.
 
+
+### BL112.12 — primeira resposta da sonda durante descarte
+
+Corrigida a borda apontada em 4499434886 e review 5809332490: sem resposta ociosa anterior, o começo da janela inclui envios falhos anteriores à primeira resposta de descarte. Spec com Probe real e mutação da borda antiga. Corrigido também o texto: judge_discard não roda se um check anterior abortar; finally preserva só o relatório bruto. Rust e a produção permanecem inalterados.
+
+Validação da borda: spec 28/28 normal e com `-O`; os dois modos incluem o teste novo e a mutação que restaura a borda antiga. Logs `/tmp/pr6-probe-boundary-spec.log` e `-O.log`. A prova nativa 43/43 anterior continua atribuída a `efba600`, sem repetir a janela neste patch de borda.

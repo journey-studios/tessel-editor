@@ -307,8 +307,8 @@ falhou, o veredito passava.
   `the probe thread stopped` reprova. Resultado tardio depois do veredito não altera o registro.
 * O relatório (`window_results.probe`, `.discard_verdict`) leva contagens, causas, e para cada falha os instantes de envio e falha
   (segundos desde o início da janela) e o texto do erro; só números finitos (`null` no lugar de NaN/infinito).
-  O mesmo `judge_discard` é chamado pela fase da janela e pelo spec, e roda também quando um check anterior já reprovou
-  (`probe` entra no relatório pelo `finally`).
+  O mesmo `judge_discard` é chamado pela fase da janela e pelo spec após os checks anteriores. Se um check anterior reprovar,
+  o veredito não é calculado; somente o relatório bruto da sonda é preservado pelo `finally`.
 
 **Prova.** `scripts/job-discard-proof.spec.py` agora tem **27** testes (13 anteriores preservados + 14). Dirigem a `Probe` **real** com um
 `lab` falso que levanta `OSError`, `JSONDecodeError`, `socket.timeout`, devolve `ok:false` ou nunca responde, e julgam com o
@@ -358,3 +358,5 @@ descartados sem I/O sobre o bundle original, sem alterar cenas/undo/revisão. A 
 sessão do attach e a devolução de ownership dos resultados de import/adopt foram preservadas.
 Regressão nova scene_attach_job passou; suítes de descarte/claims/attach/restore, clippy
 workspace/build/fmt passaram. Provas nativas no código integrado: import59/59, descarte39/39.
+
+Borda conservadora da janela: se a primeira resposta já indicar descarte, o início inclui também os envios falhos anteriores, pois nenhuma resposta anterior estabeleceu uma fronteira ociosa. O spec dirige a Probe real e demonstra que a borda antiga deixava passar a mesma falha.

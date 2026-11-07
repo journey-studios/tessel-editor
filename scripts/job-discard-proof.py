@@ -135,7 +135,8 @@ def discard_window(samples, job, failures=()):
 
     * start: the send instant of the last request that was still answered before the discard began
       (the first answer that says 'discarding' or 'discarded' comes after it). Everything sent from
-      then on may have run during the discard;
+      then on may have run during the discard. If the first answer already shows the discard,
+      include earlier failed sends too: no preceding answer established an idle boundary;
     * end: the instant the first 'discarded' answer was received; the discard ended before the
       window could produce it. With no such answer the end of the discard is unknown, so the span ends at
       the last instant the probe recorded, an answer or a failure (a request that failed after the last
@@ -148,6 +149,8 @@ def discard_window(samples, job, failures=()):
     if began is None:
         return None
     start = samples[began - 1].sent if began else samples[0].sent
+    if began == 0:
+        start = min([start] + [failure.sent for failure in failures])
     done = next((i for i, state in enumerate(states) if state == 'discarded'), None)
     if done is not None:
         return start, samples[done].received
