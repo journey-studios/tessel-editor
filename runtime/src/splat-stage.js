@@ -20,6 +20,8 @@ const MAX_SORT_ATTEMPTS = 400;
  */
 const MAX_SORT_WAIT_MS = 60_000;
 const SETTLE_DISTANCE = 1e-4;
+/** How often a wait for a sort looks at a cancel and at the budget; the sort itself wakes the wait the moment it ends. */
+const WAIT_POLL_MS = 25;
 
 /** Decodes splat bytes into a mesh whose data is ready; Spark's own errors become decode_failed. */
 export const loadSplatMesh = async (bytes, fileName, label) => {
@@ -77,6 +79,57 @@ export class SplatStage {
     // autoUpdate false: only `settle` sorts, for the camera of the frame in flight.
     this.spark = new SparkRenderer({ renderer, minSortIntervalMs: 0, autoUpdate: false });
     this.keepStoredColour();
+    // Why this stage can no longer be used, once it cannot (see `watchSort`); `null` while it is sound.
+    this.failure = null;
+    // Longest one frame waits for sorts (a field only so that a test can shorten it).
+    this.maxWaitMs = MAX_SORT_WAIT_MS;
+    this.watchSort();
+  }
+
+  /**
+   * Makes a failed sort observable. Spark 2.4.0's `driveSort` sets `sorting = true`, then awaits the depth
+   * readback and the sort worker with no cleanup: when either rejects, `sorting` stays true for good, so
+   * nothing is ever sorted again and a wait for an idle sort would spend its whole budget on an error that
+   * already happened. The rejection reaches the caller of `update` when that call ran the sort, and
+   * otherwise (the sort Spark chains after a finished one, or starts from its own timer) goes to
+   * `dropErrorIfDisposed`, which rethrows into a promise nobody holds: an unhandled rejection. Spark gives
+   * no way to reset that flag and nothing here writes to it: the stage is recorded as failed and the owner
+   * drops it (`failed`), so the next frame sorts from a new SparkRenderer and never from this state.
+   */
+  watchSort() {
+    const spark = this.spark;
+    spark.dropErrorIfDisposed = (error) => {
+      if (!spark.isDisposed) this.fail(error);
+    };
+  }
+
+  /** Records why the stage is unusable; the first cause is the one kept. */
+  fail(error) {
+    this.failure ??= error instanceof Error ? error : new Error(String(error));
+  }
+
+  get failed() {
+    return this.failure !== null;
+  }
+
+  /** A frame that asks a failed stage for a sort gets the failure, at once: it never waits for the sort that cannot finish. */
+  throwIfFailed() {
+    if (this.failure === null) return;
+    const message = this.failure?.message ?? String(this.failure);
+    throw new RuntimeError(
+      'render_failed',
+      `The splat sort failed (${message}); the sort state is dropped and the next frame sorts again from a new one`,
+      { cause: message },
+    );
+  }
+
+  /**
+   * `spark.update` for `camera`, whose failure is recorded on the stage instead of being thrown: callers
+   * check `throwIfFailed` after waiting, and a call nobody waits for (a moving frame's sort, a frame that
+   * was cancelled meanwhile) cannot leave an unhandled rejection behind.
+   */
+  begin(scene, camera) {
+    return this.spark.update({ scene, camera }).catch((error) => this.fail(error));
   }
 
   /**
@@ -123,44 +176,72 @@ export class SplatStage {
    * camera. The host replaces such a picture by an exact one when the playhead stops.
    */
   async settle(scene, camera, aborted, { motion = false } = {}) {
+    // A sort that already failed is this frame's failure too, whatever the frame is (and a moving one does
+    // not draw with the order of a sort that can never finish).
+    this.throwIfFailed();
     const target = camera.getWorldPosition(camera.position.clone());
+    const waitUntil = performance.now() + this.maxWaitMs;
     // The first pass of the wait below, when the motion path already ran it.
     let started = null;
     if (motion) {
       if (aborted()) throw new RuntimeError('cancelled', 'The frame was superseded');
       // The part of `update` that does not wait (this frame's splats are generated, the sort for this
       // camera starts) runs now; what is left of it is the sort, which this frame does not wait for.
-      started = this.spark.update({ scene, camera });
-      // A failure of that sort is not this frame's: an exact frame repeats the call and reports it.
-      started.catch(() => {});
+      // A failure of that sort is recorded on the stage: the next request for it gets the error.
+      started = this.begin(scene, camera);
       if (this.holdsOrderFor()) return { stale: !this.isSortedFor(target) };
     }
     let sorts = 0;
-    const waitUntil = performance.now() + MAX_SORT_WAIT_MS;
     for (;;) {
       if (aborted()) throw new RuntimeError('cancelled', 'The frame was superseded');
+      this.throwIfFailed();
       // A sort already running (one a moving playhead left behind) is waited for, not fed: every
       // `update` marks the sort dirty again, so asking while one runs keeps a new sort queued behind
       // it and the order would never be idle for this camera.
       if (started) {
         // Nothing to reuse (first frame of a scene, other data on display): wait for its own sort,
         // as an exact frame does, without a timer in between.
-        await started;
+        await this.waitSort(started, aborted, waitUntil);
         started = null;
         sorts += 1;
       } else if (!this.spark.sorting) {
         if (sorts >= MAX_SORT_ATTEMPTS) break;
         sorts += 1;
-        await this.spark.update({ scene, camera });
+        await this.waitSort(this.begin(scene, camera), aborted, waitUntil);
       }
       if (this.isSortedFor(target)) return { stale: false };
       if (performance.now() > waitUntil) break;
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
-    throw new RuntimeError(
-      'render_failed',
-      `The splat sort did not settle after ${sorts} sorts for the requested camera; the frame was not drawn`,
-    );
+    throw this.retire(`The splat sort did not settle after ${sorts} sorts for the requested camera; the frame was not drawn`);
+  }
+
+  /**
+   * Waits for `sort` (a `begin` promise, which never rejects) without letting it hold the frame: a frame that is
+   * cancelled stops waiting at once, a sort that does not finish within the budget fails the frame, and a sort that
+   * failed is reported as soon as it is recorded. The promise itself is never abandoned unobserved.
+   */
+  async waitSort(sort, aborted, waitUntil) {
+    let finished = false;
+    sort.then(() => {
+      finished = true;
+    });
+    while (!finished) {
+      if (aborted()) throw new RuntimeError('cancelled', 'The frame was superseded');
+      this.throwIfFailed();
+      if (performance.now() > waitUntil) throw this.retire(`The splat sort did not finish within ${this.maxWaitMs} ms; the frame was not drawn`);
+      await Promise.race([sort, new Promise((resolve) => setTimeout(resolve, WAIT_POLL_MS))]);
+    }
+    this.throwIfFailed();
+  }
+
+  /**
+   * Out of budget: whether the sort is slow or stuck is not known, and the next frame must not spend the same
+   * budget on it again, nor draw from what it left. The stage is recorded as failed; its owner replaces it.
+   */
+  retire(message) {
+    this.fail(new Error(message));
+    return new RuntimeError('render_failed', message);
   }
 
   /** The uploaded sort is the one for `target`, and none is running or wanted. */
