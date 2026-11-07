@@ -13,8 +13,8 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 - [Spark sob concorrência](features/spark-concurrency.md): diagnóstico da corrida do harness e gate determinístico de cancelamento; runtime intocado.
 - [Backlog compartilhado](backlog.md): registro único de pendências, responsáveis, dependências e aceite; obrigatório para todos os agentes.
 - [Inventário de migração do Scene Studio](migration/README.md): 121 itens classificados,
-- [Fade de entrada e saída em clipe de áudio (BL142)](features/audio-fades.md): rampa linear de ganho relativa ao clipe, mix em blocos = mix inteiro, sobreposição encurtada.
   evidências na origem, diferenças do branch piloto, matriz de migração e fatias sugeridas.
+- [Fade de entrada e saída em clipe de áudio (BL142)](features/audio-fades.md): rampa linear de ganho relativa ao clipe, mix em blocos = mix inteiro, sobreposição encurtada.
 - [Recursos da cena dirigida](features/scene-resources.md): manifesto, preflight e materialização inicial; identidade por assetId, transporte parcial e pacote ainda protegido pelas guardas.
 - [Interação de cenas dirigidas](features/scene-interaction.md): seleção, árvore, avaliação e gestos via comandos; gate local da rodada passou; inspector parcial em F039-UI.
 - [Plano avaliado de cena dirigida](features/scene-plan.md): contrato core → runtime e recursos por assetId; gate local da rodada passou; consumido pelo renderer F041.

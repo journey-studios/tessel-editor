@@ -430,6 +430,7 @@ impl ViewportHost {
                     let _ = reply.try_send(frame_report(&active.plan, &frame));
                 }
                 self.failure = None;
+                self.note_presented(active.edit_frame.as_i64());
                 self.directed.shown = Some((active.id, active.edit_frame));
                 self.last_frame = Some(frame);
             }

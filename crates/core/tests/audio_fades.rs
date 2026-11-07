@@ -102,7 +102,7 @@ fn a_fade_in_and_out_shape_the_clip_with_exact_samples() {
     // The 24-frame (48000 sample) fade-out starts 48000 samples before the end.
     assert!(near(left(&pcm, clip + 96_000 - 48_000), LEVEL));
     assert!(near(left(&pcm, clip + 96_000 - 24_000), LEVEL * 0.5));
-    assert!(near(left(&pcm, clip + 95_999), LEVEL / 48_000.0));
+    assert!((left(&pcm, clip + 95_999) - LEVEL / 48_000.0).abs() < 1e-8);
     assert_eq!(left(&pcm, clip + 96_000), 0.0, "silence after the clip");
     // The right channel stays empty with the pan hard left.
     assert_eq!(pcm.sample(clip + 40_000, 1), 0.0);
@@ -181,7 +181,7 @@ fn trimming_and_moving_the_clip_move_its_fades_with_its_edges() {
     let end = 48 * SAMPLES_PER_FRAME;
     assert!(near(left(&pcm, end - 24_000 - 1), LEVEL));
     assert!(near(left(&pcm, end - 12_000), LEVEL * 0.5));
-    assert!(near(left(&pcm, end - 1), LEVEL / 24_000.0));
+    assert!((left(&pcm, end - 1) - LEVEL / 24_000.0).abs() < 1e-8);
     assert_eq!(left(&pcm, end), 0.0);
     // Moving the clip by 10 frames carries both fades along.
     ok(
@@ -287,4 +287,35 @@ fn a_fade_is_one_undoable_edit_and_survives_save_and_reopen() {
     let segment = &reopened.plan_audio(0, 120).unwrap().segments[0];
     assert_eq!((segment.fade_in, segment.fade_out), (0, 48_000));
     assert_eq!(mix(&reopened, 0, 120).samples, mix(&state, 0, 120).samples);
+}
+
+#[test]
+fn fractional_frame_rates_keep_chunk_fades_within_one_sample_of_the_whole_mix() {
+    for numerator in [24_000_u32, 30_000] {
+        let mut state = project(&format!("fractional-{numerator}"));
+        state.timeline.rate = tessel_editor_core::time::Rate::new(numerator, 1001).unwrap();
+        fade(&mut state, "fade_in", 12);
+        fade(&mut state, "fade_out", 12);
+        let whole = mix(&state, 0, 120);
+        let fade_samples = (12.0 * 48_000.0 * 1001.0 / f64::from(numerator)).round() as f32;
+        let tolerance = LEVEL / fade_samples + 1e-7;
+        let mut from = 0;
+        while from < 120 {
+            let frames = 7.min(120 - from);
+            let chunk = mix(&state, from, frames);
+            let base = ((i128::from(from) * 48_000 * 1001 + i128::from(numerator) / 2)
+                / i128::from(numerator)) as usize;
+            for index in 0..chunk.frames() {
+                // Independently rounded frame boundaries may differ by one sample; the
+                // allowed amplitude error is one envelope step, not a fixed loose epsilon.
+                if base + index < whole.frames() {
+                    assert!(
+                        (left(&chunk, index) - left(&whole, base + index)).abs() <= tolerance,
+                        "rate {numerator}/1001 from {from} sample {index}"
+                    );
+                }
+            }
+            from += frames;
+        }
+    }
 }

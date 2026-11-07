@@ -94,3 +94,5 @@ maior por tipo de clipe — [BL142.1](../backlog.md); o fade é linear (sem curv
 fade — [BL142.2](../backlog.md); o fade aparece só sob **Áudio**/Fades para clipe de áudio (um clipe de vídeo continua
 vendo Entrada/Saída como opacidade em Tempo); nenhum sinal foi **ouvido** em dispositivo (`render.audio` e o export
 são mix offline; a escuta em hardware continua sem prova, como em F018).
+
+Revisão B: a prova usa o helper canônico da PR20, roda cada superfície com relatório/cleanup e marca captura indisponível comoSKIP. A checagem vazia no cruzamento zero do seno foi substituída por atenuação de uma janela com amostras nãozero. Testes de borda receberam tolerância discriminante e foram escritos casos23.976/29.97 com erro permitido baseado em uma amostra de envelope. Esses testes Rust e provas reais NÃO foram executados após a correção: disco abaixo do piso12GiB. Não há clipe subframe no modelo de timeline inteira; áudio-fonte menor que um quadro permanece um caso adicional a validar.
