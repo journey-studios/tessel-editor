@@ -2,28 +2,31 @@
 
 ## Objetivo e limites
 
-Um harness que julga o editor por **esperados calculados fora dele**, com **controles negativos** que precisam falhar e
-um **livro de emendas** que registra toda mudança do oráculo, dos verificadores, dos controles, do corpus e das
-tolerâncias. Cobre câmera, splat, áudio, pacote/restauração e export da cena dirigida. É uma frente de prova (BL019,
-ampliação S10): **não muda nenhum comportamento do editor**, não adiciona comando, nó de árvore, handler ou dependência.
+Um harness que julga o editor por **esperados calculados fora dele**, com **controles negativos** que precisam falhar pelo
+motivo certo e um **livro de emendas** que registra toda mudança do oráculo, dos verificadores, dos controles, do corpus,
+do driver e das tolerâncias. Cobre câmera, splat, áudio, pacote/restauração e export da cena dirigida. É uma frente de
+prova (BL019, ampliação S10): **não muda nenhum comportamento do editor**, não adiciona comando, nó de árvore, handler ou
+dependência.
 
 Superfícies (matriz F044): UI e CLI da janela são N/A (o harness dirige o processo `tessel-render`, não a janela; o
 export pela janela é do F042, `scripts/directed-scene-export-proof`). CLI headless e Lib são **Parcial**: o harness
 exercita as mesmas operações da lib (`scene.*`, `project.*`) pelo processo JSONL sem janela, mas não adiciona teste de
-unidade à lib, e as fases dependentes de S7/S9 só têm veredito vivo quando essas frentes forem aprovadas e integradas.
+unidade à lib.
 
 Diretório: `scripts/directed-scene-acceptance/`.
 
 | Arquivo | Papel |
 |---|---|
-| `tolerances.json` | Limites numéricos, controles negativos obrigatórios e política BLOCKED. Todo limiar que um verificador usa mora aqui (inclusive área mínima, folga de vídeo, janela e fração de borda do áudio). |
-| `amendments.json` + `ledger.py` | O livro de emendas: baseline verificado no Git, rodadas com motivo, achado, emendas e SHA-256 (antes/depois) dos seis arquivos fixados. `tolerances_frozen` falha se um arquivo fixado difere do último estado registrado. |
-| `oracle.py` | Modelo independente: projeção da câmera e máscara exata por ray-cast, centro/raio e composição `over` de gaussianas, tabela de tons, janela de áudio da origem e lei de canais. Não importa nada do editor. Escreve SPZ v2 e WAV. |
-| `corpus.py` | Gera `corpus/` de forma determinística (PNG de cor sólida, SPZ de 45–62 bytes, WAV senoidal de 44,1 kHz de 13 s, mais o WAV de 8 s da emenda A1 como fixture negativa) com `provenance.json`. |
-| `verify.py` | Verificadores: máscara/centroide/IoU/cor em imagem real, marcador ausente, splat (centroide, cor, r50, ordem e composição), áudio decodificado por ffmpeg (início, correlação, ganho pela lei de canais, silêncio, bordas), pacote lido por `zipfile`/diretório e hashes declarados. |
-| `controls.py` | Entradas **certas e erradas** para cada verificador, em paisagem e retrato, em **todos** os quadros de splat; áudio sempre na forma que a lei de canais prescreve. Cada controle congelado em `tolerances.json` precisa ser exercitado e falhar. |
-| `proof.py` | Driver: fases, relatório JSON, política de saída. Reusa só a infraestrutura (`harness.py`, trava de GPU, `JsonlSession`) de `scripts/directed-scene-proof`. |
-| `proof.spec.py` | 50 testes do próprio harness (sem GPU/Chrome), incluindo a cola das fases dependentes contra *fakes* e mutações que o teste precisa pegar. |
+| `tolerances.json` | Limites numéricos, controles negativos obrigatórios, política BLOCKED e, para **cada número**, uma justificativa com base (`analytic`, `inherited` ou `choice`) e texto. Todo limiar que um verificador usa mora aqui. |
+| `amendments.json` + `ledger.py` | O livro de emendas: baseline verificado no Git (`ANCHOR`), rodadas R1–R3 com motivo, achado, emendas e SHA-256 (antes/depois) dos 14 arquivos fixados. `tolerances_frozen` falha se um arquivo fixado difere do último estado registrado, se o livro não só cresce em relação ao histórico do Git ou se um número fica sem justificativa. |
+| `oracle.py` | Modelo independente: projeção da câmera e máscara exata por ray-cast, centro/raio e composição `over` de gaussianas (inclusive a sonda do splat de trás), tabela de tons, janela de áudio da origem e lei de canais. Não importa nada do editor. Escreve SPZ v2 e WAV. |
+| `corpus.py` | Gera `corpus/` (versão 3) de forma determinística (PNG de cor sólida, SPZ de 45–62 bytes, WAV senoidal mono de 44,1 kHz de 13 s, mais o WAV de 8 s da emenda A1 como fixture negativa) com `provenance.json` e os ativos declarados por bundle. Recusa um quadro que não separe o splat de trás e uma janela de áudio sem borda. |
+| `verify.py` | Verificadores: máscara/centroide/IoU/cor em imagem real, marcador ausente, splat (centroide, cor, r50, ordem, composição e sonda do splat de trás), áudio decodificado por ffmpeg (início, correlação, ganho pela lei de canais, canais de saída, silêncio, bordas, janela com borda), pacote lido por `zipfile`/diretório e hashes declarados (nomes e hashes exatos). |
+| `controls.py` | Entradas **certas e erradas** para cada verificador, em paisagem e retrato, em **todos** os quadros de splat, no regime PNG e **depois da cadeia FFmpeg do preset** (libx264 medium/high/crf18/yuv420p/BT.709 limitado). Controle negativo só passa se um check **nomeado** falhar; exceção do verificador reprova o controle. |
+| `proof.py` | Driver: fases, relatório JSON, bloco `acceptance`, política de saída (0–4). Reusa só a infraestrutura (`harness.py`, trava de GPU, `JsonlSession`) de `scripts/directed-scene-proof`. |
+| `link.py` | Atestação do binário: SHA-256 do `tessel-render`, hashes do `runtime/dist`, ids de árvore Git de `crates/`, `runtime/`, `scripts/`, `Cargo.*` e do toolchain. Prova **qual head** gerou o binário usado; **não** é prova de build reproduzível. |
+| `sensitivity.py` | Calcula **só pelo modelo** o que cada regra enxerga e não enxerga (fator de tamanho de splat por regime, separação do splat de trás, menor erro de FOV, menor deslocamento de áudio) e quanto de cada tolerância a própria imagem correta do modelo consome. É a base das justificativas; não é aprovação dos números. |
+| `proof.spec.py` | 99 testes do próprio harness (sem GPU/Chrome), incluindo a cola das fases dependentes contra *fakes*, o ledger contra o Git e mutações que o teste precisa pegar. |
 | `history/A1-audio-window/` | Registro imutável do estado anterior à emenda A1 e do FAIL histórico que a motivou. |
 | `results.json` | Resultado **histórico** da primeira execução (harness `1b5953e`, árvore com 1 arquivo sujo, oráculo anterior às emendas). Não é aceite deste head e não foi reescrito. |
 
@@ -32,46 +35,47 @@ Diretório: `scripts/directed-scene-acceptance/`.
 ```text
 python3 scripts/directed-scene-acceptance/proof.py --list
 python3 scripts/directed-scene-acceptance/proof.py --phases tolerances_frozen,corpus,models,controls_camera
+./scripts/runtime setup
+./scripts/cargo build -p tessel-editor-render --locked
+python3 scripts/directed-scene-acceptance/link.py create --render target/debug/tessel-render   # logo após o build, árvore limpa
 python3 scripts/directed-scene-proof/with-gpu-lock.py \
   python3 scripts/directed-scene-acceptance/proof.py --gpu-lock-held --report /tmp/s10.json
 ```
 
-Pré-requisitos das fases com imagem: `./scripts/runtime setup`, `tessel-render` compilado
-(`./scripts/cargo build -p tessel-editor-render --locked`), Chrome/SwiftShader e ffmpeg/ffprobe. Uma fase sem
-pré-requisito sai BLOCKED, nunca pass. Um `tessel-render` **mais velho que as fontes** do checkout também é BLOCKED, a
-menos que se passe `--allow-stale-binary` (o relatório registra a escolha).
+Pré-requisitos das fases com imagem: `./scripts/runtime setup`, `tessel-render` compilado **e atestado para este head**
+(`link.py create`), Chrome/SwiftShader e ffmpeg/ffprobe. Uma fase sem pré-requisito sai BLOCKED, nunca pass. Um binário
+mais velho que as fontes, **sem atestação válida** ou atestado para outro head também é BLOCKED, a menos que se passe
+`--allow-stale-binary`; nesse caso (e com árvore suja) o resultado é só informativo (saída 4) e o relatório diz por quê.
+`--bin-render` aponta para uma cópia do binário (útil quando o cache de alvos do Cargo pode ser descartado no meio da
+execução; a atestação vale para o arquivo apontado).
 
 | Saída | Significado |
 |---|---|
-| `0` | toda fase selecionada rodou e passou |
+| `0` | toda fase selecionada rodou e passou. `acceptance.acceptable` só é verdadeiro com **as 24 fases**, árvore limpa, binário atestado e sem `--allow-stale-binary`; um subconjunto sai 0 mas o relatório diz "NOT AN ACCEPTANCE" |
 | `1` | pelo menos uma FAIL, ou o orçamento de 2 GiB estourou |
-| `2` | erro de uso ou pré-requisito recusado (fase desconhecida, corpus ausente, **disco abaixo de 12 GiB**: na partida ou entre fases) sem FAIL |
+| `2` | erro de uso ou pré-requisito recusado (fase desconhecida, `--phases` vazio, `--work` que não é pasta, corpus ausente, **disco abaixo de 12 GiB**: na partida ou entre fases, execução que não rodou nada) sem FAIL |
 | `3` | nenhuma FAIL, mas ao menos uma fase **BLOCKED**. BLOCKED nunca conta como pass **e nunca substitui uma FAIL** (uma fase com checagens reprovadas continua FAIL mesmo se um passo seguinte bloquear) |
+| `4` | nenhuma FAIL nem BLOCKED, mas a execução é **informativa** (árvore suja, binário velho ou sem atestação, `--allow-stale-binary`): não é aceite |
 
-`--work <dir>` aponta uma pasta **do chamador**: o harness cria e remove só o seu `s10-acc-*` dentro dela e nunca toca no
-resto (teste com arquivo sentinela). Cada fase e cada pedido usam diretórios próprios (`fresh`), de modo que um destino
-deixado por uma fase ou sonda nunca vira `destination_exists` em outra.
+FAIL tem prioridade no código de saída. `--work <dir>` aponta uma pasta **do chamador**: o harness cria e remove só o seu
+`s10-acc-*` dentro dela e nunca toca no resto (teste com arquivo sentinela); a reserva de disco é lida no volume de
+`--work`. Cada fase e cada pedido usam diretórios próprios (`fresh`), de modo que um destino deixado por uma fase ou sonda
+nunca vira `destination_exists` em outra.
 
 ### Fases
 
 | Grupo | Fases | O que prova |
 |---|---|---|
-| Dados | `tolerances_frozen`, `corpus`, `models` | ancestralidade Git das tolerâncias, livro de emendas íntegro (cadeia, baseline no Git, nenhum arquivo fixado editado fora do registro); corpus byte-idêntico ao gerador e com hashes pinados; modelos contra identidades analíticas e o oráculo da origem |
-| Controles | `controls_camera`, `controls_splat`, `controls_audio`, `controls_package` | cada verificador **aceita** a entrada certa e **recusa** cada entrada errada congelada (câmera em paisagem e retrato; splat nos seis quadros; áudio pela lei de canais) |
+| Dados | `tolerances_frozen`, `corpus`, `models` | ancestralidade Git das tolerâncias, livro de emendas íntegro (âncora, cadeia, baseline no Git, histórico só cresce, nenhum arquivo fixado editado fora do registro, toda tolerância justificada); corpus byte-idêntico ao gerador, com hashes pinados e ativos declarados; modelos contra identidades analíticas e o oráculo da origem |
+| Controles | `controls_camera`, `controls_splat`, `controls_audio`, `controls_package` | cada verificador **aceita** a entrada certa e **recusa pelo check nomeado** cada entrada errada congelada (câmera em paisagem e retrato; splat nos seis quadros, nos regimes PNG e vídeo, com cegueiras declaradas; áudio pela lei de canais, saída mono e janela sem borda) |
 | Câmera | `camera_plan`, `camera_render`, `camera_export` | pose/matriz do `scene.plan`; máscaras reais de `scene.render` contra o ray-cast, em 640×360 e 360×640 e FOV 30/50/75, incluindo marcador que o modelo põe fora do quadro; frames do MP4 de `scene.export` |
-| Baseline | `baseline_splat_geometry`, `baseline_splat_colour`, `baseline_audio` | o splat da camada de projeto e o mixer offline que **existem hoje** (o clipe do baseline de áudio agora lê o arquivo em `editStart + t`, como a origem) |
+| Baseline | `baseline_splat_geometry`, `baseline_splat_colour`, `baseline_audio` | o splat da camada de projeto e o mixer offline que **existem hoje** (o clipe do baseline de áudio lê o arquivo em `editStart + t`, como a origem) |
 | Áudio desligado e pacote | `audio_off`, `package_portability`, `package_tamper` | `audio:false` preservado; pacote lido por leitor que não é o do editor (manifesto sem `files` é falha), restauração com a origem apagada; pacote adulterado recusado sem criar pasta |
-| Seams dependentes | `splat_plan`, `splat_render`, `splat_export`, `splat_package` (S7), `audio_export`, `audio_package_export`, `audio_short_source` (S9), `full_av` (S7+S9) | os mesmos verificadores contra splat dirigido e áudio mixado no export; `audio_short_source` é o controle negativo vivo (fonte menor que a janela deve ser recusada com `audio_source_short`) |
+| Splat e áudio integrados (S7/S9) | `splat_plan`, `splat_render`, `splat_export`, `splat_package`, `audio_export`, `audio_package_export`, `audio_short_source`, `full_av` | os mesmos verificadores contra splat dirigido e áudio mixado no export; `audio_export` cobre 24 fps (duas janelas) e 30000/1001 (`audio_ntsc_window`); `audio_short_source` recusa **qualquer** faixa de uma fonte menor que a janela com `audio_source_short` (`details.rule == "window"`); `full_av` prova **splat e áudio na mesma cena e no mesmo export**, e de novo no projeto restaurado |
 
-### Seams aguardados
-
-| Frente | Sinal de ausência observado | Quando vira avaliação |
-|---|---|---|
-| S7 / BL025 | `scene.plan` de um bundle com nós `splat` responde `unsupported` com `details.domains` contendo `splat` | `ScenePlan` com referência aprovada, geração, matriz e câmera avaliadas; render/preview/export coincidentes |
-| S9 / BL016 | `scene.export` com `audio` padrão responde `unsupported` com `details.domains` contendo `audio` | mix do WAV do bundle no arquivo, mapeamento racional, janela da origem, lei de canais; `audio:false` omite com aviso |
-
-Os veredictos vivos de S7 e S9 só valem para **heads aprovados e integrados** (BL121). Rodar o harness contra um head
-em correção, ou contra *fakes*, não é aceite.
+S7 (PR #13) e S9 (PR #11) estão integrados na main que este branch contém (`6a0bdd5` e `836d8cb` são ancestrais), de modo que
+as fases vivas deixaram de ser "seams aguardados" e passaram a ter veredito próprio. O veredito só vale para o binário
+atestado do relatório (veja Evidências).
 
 ## Emendas — rodada R1 (livro em `amendments.json`)
 
@@ -90,23 +94,29 @@ A suposição anterior do oráculo (`mix[0]` ↔ `editStartSeconds`) contradizia
 | idem | 250–252 | recusa `AUDIO_VIDEO_DURATION` quando `editEnd − editStart` difere da duração da edição por mais de 1 ms |
 
 Corpus v2: mix de 13 s em tempo de arquivo, janelas derivadas da edição (`audio24` `[1, 13)`, NTSC `[0, 10,01)`,
-`full` `[0, 2)`), com assertivas do gerador para as duas regras. O WAV de 8 s anterior fica **byte a byte** como
-`mix-short.wav`, fixture do controle negativo vivo `audio_short_source`. O FAIL histórico (`audio_export` 75/92 contra a S9
-original e o `destination_exists` da sonda) está preservado em `history/A1-audio-window/` com os hashes anteriores. A
-causa era do oráculo, não do editor. O baseline de áudio 46/46 **nunca validou** esta regra (o clipe do baseline começava
-em 24 com fonte 0, o que satisfazia a suposição antiga); agora o clipe cobre a edição e lê o arquivo a partir de
-`editStartSeconds`. A emenda parcial preservada em `wave-resource-stop/S10` foi lida, conferida contra a origem e
-aplicada; o que não estava nela (A2–A5) foi acrescentado aqui.
+`full` `[0, 2)`; a janela de `full` mudou na rodada R3), com assertivas do gerador para as duas regras. O WAV de 8 s
+anterior fica **byte a byte** como `mix-short.wav`, fixture do controle negativo vivo `audio_short_source`. O FAIL
+histórico (`audio_export` 75/92 contra a S9 original e o `destination_exists` da sonda) está preservado em
+`history/A1-audio-window/` com os hashes anteriores. A causa era do oráculo, não do editor. O baseline de áudio 46/46
+**nunca validou** esta regra (o clipe do baseline começava em 24 com fonte 0, o que satisfazia a suposição antiga); agora o
+clipe cobre a edição e lê o arquivo a partir de `editStartSeconds`. A emenda parcial preservada em
+`wave-resource-stop/S10` foi lida, conferida contra a origem e aplicada; o que não estava nela (A2–A5) foi acrescentado aqui.
+
+A divergência **declarada** do editor com a origem na regra `AUDIO_VIDEO_DURATION` (a origem exige duração igual à da edição
+em 1 ms; o editor mantém o contrato de uma amostra exata e exporta o trecho dentro da janela) é a BL016.11, decisão do
+coordenador; o harness segue a regra estrita na janela do corpus e não mede a divergência.
 
 ### A2 — composição na mistura do splat (F2, BL120)
 
-No centro do splat de trás (`s-order`) a gaussiana da frente tem opacidade 0,80–0,92 conforme o quadro, então exigir ali a
-cor da frente dentro de 40 reprovava um render correto nos quadros 36 e 47 (distâncias 43,5 e 52,3 pela composição do
-próprio modelo; `proof.spec.py` reproduz isso). Agora: no centro da frente, a cor da frente dentro de 40 e ≥ 80 da cor de
-trás (inalterado); no centro de trás, a **composição `over` do oráculo** (`oracle.composite_at`) dentro dos mesmos 40
-(`overlapBackCompositionDelta`, **não alargado**) e ≥ 80 da cor própria de trás. Controles positivos e negativos (ordem
-trocada incluída) rodam em **todos** os `SPLAT_FRAMES`. Esta é a única lei de mistura modelada; luz linear e tonemapping
-continuam não modelados.
+No centro do splat de trás (`s-order`) a gaussiana da frente tem opacidade **0,761 a 0,920** conforme o quadro (0,750 a
+0,914 no pixel que o verificador lê), e não "0,80–0,92" como o texto da R1 dizia (o texto foi corrigido na R2; os quadros 36 e
+47 ficam abaixo de 0,80). Exigir ali a cor da frente dentro de 40 reprovava um render correto nos quadros 36 e 47
+(distâncias 43,5 e 52,3 pela composição do próprio modelo; `proof.spec.py` reproduz isso). Agora: no centro da frente, a cor
+da frente dentro de 40 e ≥ 80 da cor de trás (inalterado); no centro de trás, a **composição `over` do oráculo**
+(`oracle.composite_at`) dentro dos mesmos 40 (`overlapBackCompositionDelta`, **não alargado**) e ≥ 80 da cor própria de
+trás. Composições no pixel julgado: `(196,162,70)` e `(187,164,78)` nos quadros 36 e 47. Controles positivos e negativos
+(ordem trocada incluída) rodam em **todos** os `SPLAT_FRAMES`. Esta é a única lei de mistura modelada; luz linear e
+tonemapping continuam não modelados.
 
 ### A3 — lei de ganho de canais (F3, BL019-F3)
 
@@ -114,14 +124,15 @@ A lei esperada deixou de ser 0 dB. A origem força `aformat=...:channel_layouts=
 (`audio-graph.ts`), de modo que vale o *rematrix* padrão do FFmpeg: fonte mono entra em E e D a `1/√2` (−3,0103 dB), layout
 igual é intacto (`oracle.channel_gain_db`; qualquer outro par levanta erro em vez de ser adivinhado). `proof.spec.py`
 **rederiva o número executando o filtro da origem** no FFmpeg local, sem ler o renderizador. O fake "mix correto" e os
-controles gravam o sinal pela lei; um novo controle negativo, "mono source written at 0 dB", precisa falhar, e o limiar de
-borda passou a ser relativo ao nível esperado (já com a lei).
+controles gravam o sinal pela lei; um controle negativo, "mono source written at 0 dB", precisa falhar, e o limiar de
+borda é relativo ao nível esperado (já com a lei).
 
 ### A4 — limiares fora do verificador (F5)
 
 `minJudgedAreaPx` (300), `videoBackgroundExtraDelta` (6), `onsetSearchWindowSeconds` (0,08) e `onsetThresholdFraction`
 (0,35) saíram do código para `tolerances.json` com o mesmo valor. Novo: `absentMarkerMaxPixels` (20): um marcador que o modelo
-põe fora do quadro precisa deixar no máximo 20 pixels da sua cor (antes só era "não julgado").
+põe fora do quadro precisa deixar no máximo 20 pixels da sua cor (antes só era "não julgado"). Na R2 a medição virou
+verificável: 6,7% de 300 e 3,6% de 561 pixels na imagem correta do modelo.
 
 ### A5 — proveniência e controles (F4, F5, baixos)
 
@@ -129,17 +140,67 @@ Reescrita da proveniência (abaixo), controles de retrato (`360x640@24`, clipe d
 aposentada de A1, controle de hash declarado que agora **chama** `verify.judge_declared_hashes` em vez de reimplementar a
 regra, e asserção do gerador de que todo quadro de retrato julga ao menos um marcador.
 
+## Emendas — rodada R2 (segunda revisão independente do PR #8)
+
+Registrada **antes de qualquer execução viva do harness R2**, em um commit (`6073f1e`). O que o Git prova é ancestralidade:
+o registro diz o que mudou e por quê, não prova que nada o antecedeu. A revisão R2 **não aprovou nenhum número**; a rodada
+justifica e mede cada número (A12), não o aprova.
+
+| Emenda | Achado | Mudança |
+|---|---|---|
+| A6 | splat de trás do par de sobreposição escapava (BL120) | no centro de trás, com e sem o splat diferem só 16 a 46, e um disco opaco de meia intensidade não se distingue da gaussiana; o verificador lê, dentro de 2 sigmas de trás, o pixel em que as três hipóteses (gaussiana, ausente, disco opaco) mais diferem, escolhido **só pelo modelo** (`oracle.back_separable_point`); o corpus recusa quadro com separação < 24 (o modelo dá 30 a 49). Controles negativos: splat de trás ausente e desenhado como disco opaco |
+| A7 | controles que não falhavam pelo motivo certo; sem regime de vídeo | controle negativo passa só se um check **nomeado** falhar; exceção do verificador reprova o controle; controles rodam também **depois do libx264** do preset; erros de tamanho aplicados a um splat de cada vez (×1,5 e ×2). O regime de vídeo é **cego** a ×1,5 em 15 de 30 medições (aritmética da regra do raio): declarado por splat como `blind` (precisa NÃO ser detectado; declaração velha reprova), `borderline` (a 0,5 px do limite) como `either`, e ×2 precisa ser detectado sempre. Nenhuma tolerância foi mudada para remover a cegueira |
+| A8 | saída mono não podia passar | a origem sempre escreve estéreo; `judge_audio` confere `outputChannels = 2` |
+| A9 | `audio_short_source` aceitava faixa coberta pelo arquivo (R2-1) | a origem decide `AUDIO_SHORT` pela janela **antes** de olhar a faixa: toda faixa da fonte curta é recusada (`audio_source_short`, `details.rule == "window"`, 352800 quadros do arquivo e 13,000 s do fim da janela na mensagem), sem criar arquivo; a sonda roda antes num bundle válido |
+| A10 | hashes declarados "ao vivo" eram tautológicos | `judge_declared_hashes` exige exatamente os nomes e hashes do corpus (`declaredAssets`); controles de nome ausente e desconhecido |
+| A11 | alegações de proveniência, livro reiniciável, binário/árvore sem identidade | proveniência sem pré-registro nem aprovação; livro ancorado ao Git (`ANCHOR`, ancestral, baseline no Git, toda versão commitada de `amendments.json` é prefixo da atual); 14 arquivos fixados, incluindo driver, `link.py`, `sensitivity.py`, o livro e os auxiliares somente leitura; `link.py`; árvore suja ou binário velho torna a execução informativa (saída 4); `--phases` vazio, `--work` que não é pasta e execução que não rodou nada saem 2 |
+| A12 | justificativa e sensibilidade de cada número | cada número de `tolerances.json` tem justificativa com base e texto (número sem justificativa reprova); `sensitivity.py` mede; textos não verificáveis (`<0,1 px`, `SPZ quantisation <= 0.9`, `BT.601 versus BT.709 não é detectado`) foram trocados por valores medidos |
+
+### Sensibilidade (`sensitivity.py`, calculada só pelo modelo)
+
+| Regra | O que enxerga | O que não enxerga |
+|---|---|---|
+| tamanho de splat, PNG | fator ≥ 1,365 a 1,452 (30 medições) | nada: ×1,5 e ×2 são detectados em todas as medições |
+| tamanho de splat, vídeo (libx264) | fator ≥ 1,437 a 1,552 | ×1,5 em 15 de 30 medições (declarado); ×2 é detectado em todas |
+| splat de trás | separação 30 a 49 entre as três hipóteses; margem por hipótese 15 a 24,5 | — |
+| FOV da câmera | a partir de 0,25° (varredura 0,1 / 0,25 / 0,5 / 1 / 5°) | 0,1° |
+| deslocamento do áudio | a partir de 3 ms (varredura 1 a 6 ms) | 1 e 2 ms |
+| consumo da tolerância pela imagem **correta** | centroide 0,032 px (PNG) e 0,154 px (vídeo); IoU ≥ 0,986 (vídeo); o erro de raio usa no máximo 6,4% da folga permitida | — |
+
+Estes números **justificam** os limiares; não os aprovam. Uma tolerância "apertada" aqui é uma escolha do autor, argumentada.
+
+## Emendas — rodada R3 (depois do primeiro resultado vivo)
+
+Esta rodada foi feita **sabendo** o resultado de `full_av`; o livro diz isso (`applied`). Não toca nenhuma tolerância e não
+pode fazer passar um editor que falha.
+
+### A13 — `full_av` com janela sem borda (achado do primeiro run vivo)
+
+No primeiro run vivo do harness R2, contra binários do head integrado, 23 das 24 fases passaram. `full_av` reprovou 4 checks
+de 422 (canal 0 e 1, export e projeto restaurado): `envelope lag +4800 samples`, no limite da busca de 0,15 s, enquanto a
+correlação amostra a amostra com o sinal analítico era **1,0000**, o ganho −3,01 dB e as janelas de tom certas. Causa **no
+corpus, não no editor**: a janela do bundle `full` era o início do arquivo, um único tom de 440 Hz, cujo envelope é constante
+(o lag é arbitrário) e para o qual 0,1 s são 44 ciclos inteiros, de modo que nem a correlação enxerga esse deslocamento.
+
+Mudança: o bundle `full` declara a janela `[2, 4)` (mesma edição de 48 quadros), que contém o fim do tom de 440 Hz, uma
+pausa e o início do de 880 Hz (bordas em 1,0 s e 1,5 s do export); o gerador do corpus recusa qualquer caso de áudio sem
+borda tom/silêncio; `judge_audio` reprova um caso sem borda (`lag observable`); novo controle negativo congelado
+("constant-envelope window") e controle positivo de `full_av`. Três testes novos (99 no total), incluindo a aritmética do
+deslocamento de 0,1 s: o tom puro deslocado continua igual, a janela com borda deslocada reprova `edge at` e `envelope lag`.
+O editor e os limiares não mudaram. O run vivo foi **repetido do zero** em binário reconstruído e reatestado para este head.
+
 ## Proveniência das tolerâncias (F4)
 
-**Não afirmamos pré-registro.** O que o Git prova: `tolerances.json` foi commitado em `da0b593` (2026-11-05 20:20:57 -0300),
-seis segundos **antes** de `1b5953e` (o commit do código do harness), e esse segundo commit já continha o `FINDING` do
-`baseline_splat_colour`. Houve execuções de desenvolvimento antes do primeiro commit com um arquivo de resultado. Isso não
-prova que algum número foi ajustado, e também não prova o contrário. O que o harness verifica hoje é ancestralidade e o
-livro de emendas, e a fase diz isso no próprio nome dos checks.
+**Não afirmamos pré-registro nem aprovação.** O que o Git prova: `tolerances.json` foi commitado em `da0b593` (2026-11-05
+20:20:57 -0300), seis segundos **antes** de `1b5953e` (o commit do código do harness), e esse segundo commit já continha o
+`FINDING` do `baseline_splat_colour`. Houve execuções de desenvolvimento antes do primeiro commit com um arquivo de
+resultado. Isso não prova que algum número foi ajustado, e também não prova o contrário. O harness verifica ancestralidade e
+o livro de emendas, e a fase diz isso no próprio nome dos checks.
 
-Nenhuma emenda mudou um valor que já existia em `da0b593`; os valores novos trazem a justificativa `why…` no arquivo. O
-autor **não** rederivou os valores antigos de forma independente. **Revisão independente de todos os números por quem
-não é o autor é pré-requisito do próximo resultado vivo aceito**; ela não foi feita pelo autor e não é afirmada aqui.
+Nenhuma emenda mudou um valor que já existia em `da0b593`; os valores novos trazem justificativa no arquivo, e `sensitivity.py`
+mede o que cada regra vê. O autor **não** rederivou independentemente os valores antigos. **A revisão independente de todos
+os números por quem não é o autor continua pendente** (BL019-F4) e não é afirmada aqui: o aceite abaixo é "o harness, como
+escrito e justificado, passou", não "os números foram aprovados".
 
 ## API lib, CLI headless e UI
 
@@ -149,10 +210,13 @@ não é o autor é pré-requisito do próximo resultado vivo aceito**; ela não 
 
 ## Erros e invariantes
 
-- Arquivo fixado editado fora do livro: `tolerances_frozen` FAIL, com os arquivos e hashes divergentes.
+- Arquivo fixado editado fora do livro: `tolerances_frozen` FAIL, com os arquivos e hashes divergentes; livro reiniciado ou
+  reescrito em commits publicados: FAIL pelo histórico do Git.
+- Número de `tolerances.json` sem justificativa (ou justificativa sem número): `tolerances_frozen` FAIL.
 - Corpus adulterado (`--corpus <cópia>`): `corpus` FAIL, saída 1.
 - Pixel e áudio nunca são substituídos por schema/ffprobe: o áudio é decodificado para float PCM e comparado com o sinal
-  analítico, escalado pela lei de canais.
+  analítico, escalado pela lei de canais, com saída estéreo obrigatória e janela com borda.
+- Binário sem atestação válida para o head, árvore suja, subconjunto de fases: nunca "ACCEPTABLE".
 - Orçamento: `s10-acc-*` próprio, 2 GiB, recusa início com menos de 12 GiB livres e **para entre fases** se a reserva ou o
   orçamento forem violados (saída 2 sem FAIL; 1 com FAIL ou orçamento estourado).
 
@@ -161,10 +225,12 @@ não é o autor é pré-requisito do próximo resultado vivo aceito**; ela não 
 Áudio não é *ouvido* (amostras decodificadas, nenhum dispositivo); fótons e seek-to-photon; ponteiro físico; janela
 nativa; outras GPUs/plataformas/codecs (uma máquina, SwiftShader); opacidade parcial além da composição `over` do A2,
 escalas anisotrópicas, harmônicos esféricos, luz/clima de splat e oclusão por planos; frames/amostras bit a bit; relógio do
-editor e playback em dispositivo (BL046). O corpus de retrato julga um marcador em `@8`/`@15` e três ou quatro nos demais
-(assertiva do gerador). Independência: os oráculos não leem o destino, mas a lei de áudio e a janela vêm da leitura da
-**origem** (citada acima), e o oráculo de câmera reusa `scripts/directed-scene-proof/model.py`. A lista também sai no
-`not_claimed` do relatório.
+editor e playback em dispositivo (BL046); build reproduzível (a atestação identifica o binário e as entradas, não prova que
+outro build dá os mesmos bytes: dois builds das mesmas entradas de compilação nesta máquina deram hashes diferentes); aprovação independente dos
+números (BL019-F4); a divergência `AUDIO_VIDEO_DURATION` do editor (BL016.11). O corpus de retrato julga um marcador em
+`@8`/`@15` e três ou quatro nos demais (assertiva do gerador). Independência: os oráculos não leem o destino, mas a lei de
+áudio e a janela vêm da leitura da **origem** (citada acima), e o oráculo de câmera reusa `scripts/directed-scene-proof/model.py`.
+A lista também sai no `not_claimed` do relatório.
 
 ## Evidências e status
 
@@ -172,26 +238,51 @@ Resultado **histórico** (`results.json`, harness `1b5953e`, SwiftShader, macOS 
 emendas, árvore com 1 arquivo sujo): saída 1, uma fase FAIL (cor do splat existente, abaixo) e sete BLOCKED. Ele **não
 descreve este head** e foi mantido como estava.
 
-Este head (o relatório de uma execução não é commitado porque mudaria o head que ela descreve; hashes e saídas ficam no
-corpo do PR #8):
+Head do harness avaliado: `ad9e182` (R3), sobre `6073f1e` (R2), sobre a main `b8598c7`. As árvores Git de `crates/`, `runtime/`,
+`Cargo.toml`, `Cargo.lock` e `rust-toolchain.toml` são **idênticas** às de `6073f1e`: os gates Rust/runtime abaixo valem para este
+head porque só `scripts/directed-scene-acceptance/` (e docs) mudaram entre eles. O relatório de uma execução não é commitado
+porque mudaria o head que ela descreve; hashes e saídas ficam no corpo do PR #8 e em `/tmp/s10-evidence/` (manifesto).
 
-- **Executado:** `python3 scripts/directed-scene-acceptance/proof.spec.py`, 50 testes, OK, sem GPU. Mutações temporárias
-  confirmadas e revertidas: BLOCKED sobrescrevendo FAIL, `Workspace.close` removendo a base, lei de ganho 0 dB, regra antiga
-  de mistura, janela de áudio da suposição aposentada. Fases `tolerances_frozen`, `corpus`, `models`, `controls_camera`,
-  `controls_splat`, `controls_audio` e `controls_package` por `proof.py` (PASS, em árvore de trabalho ainda sem commit).
-- **NÃO executado nesta rodada:** nenhuma fase viva (`camera_*`, `baseline_*`, `audio_*`, `splat_*`, `full_av`, `package_*`)
-  e nenhum gate Cargo (fmt/check/clippy/test/build), porque o disco ficou abaixo do piso de 12 GiB; o próprio harness
-  recusou iniciar (saída 2, sem FAIL). O oráculo emendado **ainda não foi confrontado com um editor real**: as correções de
-  A1–A3 estão sustentadas pela leitura da origem, pela aritmética e pelo FFmpeg local, não por um export vivo.
-- O aceite vivo combinado (BL121) depende dos heads aprovados de S7 (PR #13) e S9 (PR #11); antes disso nada aqui é aceite.
+| Etapa | Resultado | Head |
+|---|---|---|
+| `proof.spec.py` | **99 testes OK**, sem GPU (`-B`, sem cache de bytecode) | `ad9e182` |
+| Mutações temporárias M01–M15 (modo mono aceito, controle sem tipo, exceção engolida, livro sem checagem de histórico, saída 0 informativa, fases vazias, faixa curta aceita, sonda do splat de trás ignorada, entre outras) | **15/15 pegas pelos testes pretendidos**, cada uma revertida, árvore limpa depois | `ad9e182` |
+| Fases de dados e controles por `proof.py` (7) | 7/7 PASS, saída 0 (`acceptable` falso: 7 de 24 fases) | `ad9e182` |
+| `cargo fmt --all -- --check`, `check --workspace --locked`, `clippy --workspace --all-targets --locked -D warnings` | verdes | `6073f1e` |
+| `cargo test --workspace --locked` | 1397 passados, 0 falhos | `6073f1e` |
+| `./scripts/runtime setup` e `./scripts/runtime test` | 113/113 (`node --test`) | `6073f1e` |
+| `cargo build -p tessel-editor -p tessel-editor-render --locked` | verde; o binário do harness foi **reconstruído e atestado** (`link.py`) em `ad9e182` | `6073f1e` / `ad9e182` |
+| **Harness completo vivo**, sem `--allow-stale-binary`, 24 fases | **24/24 PASS**, saída 0, `acceptance.acceptable = true`, 380 s, orçamento de trabalho respeitado (30 MB) | `ad9e182` |
 
-O PR #8 saiu de draft por autorização do usuário **para receber feedback**; isso não é aprovação nem aceite.
+Checks por fase no run vivo aceito: `tolerances_frozen` 25, `corpus` 44, `models` 25, `controls_camera` 30, `controls_splat` 230,
+`controls_audio` 21, `controls_package` 10, `camera_plan` 45, `camera_render` 261, `camera_export` 301,
+`baseline_splat_geometry` 13, `baseline_splat_colour` 6, `baseline_audio` 46, `audio_off` 70, `package_portability` 96,
+`package_tamper` 13, `splat_plan` 78, `splat_render` 173, `splat_export` 193, `splat_package` 177, `audio_export` 270,
+`audio_package_export` 94, `audio_short_source` 12, `full_av` 432 (splat e áudio na mesma cena e no mesmo export, e de novo
+restaurado).
 
-### Achado BL019-F1 — cor do splat escurecida no caminho existente
+Ambiente: macOS arm64, SwiftShader, ffmpeg/ffprobe 7.1.1, Node v22.23.3, rustc 1.99.1, Python 3.14.3. Binário
+`tessel-render` SHA-256 `af3da45d…2ea927`; `runtime.js` `56348035…954d6ff9`; `index.html` `707fd90f…c484a6`.
 
-O splat da camada de projeto (o único caminho com splat antes de S7) desenha o centro de um splat opaco com a cor
-armazenada passada por `sRGB→linear` e **sem** recodificação: stored `(230,49,49)` aparece como `(203,7,7)`, igual ao
-previsto por essa conversão (`diagnosis` do relatório histórico: distância ≤ 4 nas três cores). Causa observada no código: o
-compositor define `renderer.outputColorSpace = LinearSRGBColorSpace` (`runtime/src/compositor.js`) e o Spark liga
-`encodeLinear` quando `outputColorSpace !== SRGBColorSpace` (`@sparkjsdev/spark 2.4.0`). A geometria passa; o oráculo de cor
-não foi relaxado, e a fase fica FAIL até a decisão registrada em BL019/BL025.
+### Tentativas preservadas (nunca contam como PASS)
+
+1. **Run vivo 1** (`6073f1e`): fases até `package_portability` passaram; `package_tamper` e as seguintes saíram BLOCKED
+   ("binary not built") porque o diretório de alvos compartilhado do Cargo deste worktree foi descartado pelo cache durante a
+   execução (não por esta tarefa). Saída 3. Repetido com uma cópia privada do binário (`--bin-render`).
+2. **Run vivo 2**: abortado por mim antes de qualquer fase (a trava de GPU foi pedida duas vezes, uma por fora do `step.py` e
+   outra por dentro). Nenhuma fase rodou.
+3. **Run vivo 3** (`6073f1e`): 23 PASS e `full_av` FAIL 418/422 (A13 acima). Mantido como FAIL. Depois dele descobri que o
+   `__pycache__` do harness guardava bytecode velho de uma mutação revertida (mesmo tamanho, mesmo segundo de mtime); o `proof.py`
+   roda como `__main__` (sem pyc), mas os módulos auxiliares podem ter vindo do cache, **então este run não é aceito como
+   evidência de harness limpo**; o aceite acima rodou com `PYTHONDONTWRITEBYTECODE=1`, cache apagado, `proof.spec.py -B`, e as
+   mutações foram refeitas com `-B`.
+
+### Achado BL019-F1 — cor do splat escurecida no caminho existente (resolvido no S7)
+
+O splat da camada de projeto desenhava o centro de um splat opaco com a cor armazenada passada por `sRGB→linear` e **sem**
+recodificação: stored `(230,49,49)` aparecia como `(203,7,7)` (`diagnosis` do relatório histórico). Causa observada: o
+compositor define `renderer.outputColorSpace = LinearSRGBColorSpace` (`runtime/src/compositor.js`) e o Spark liga `encodeLinear`
+quando `outputColorSpace !== SRGBColorSpace` (`@sparkjsdev/spark 2.4.0`). O S7 corrigiu o caminho (`keepStoredColour` em
+`runtime/src/splat-stage.js`, BL019-F1); o oráculo de cor **não foi relaxado**, e `baseline_splat_colour` passa 6/6 neste head.
+
+O PR #8 saiu de draft por autorização do usuário **para receber feedback**; isso não é aprovação nem aceite de revisor.
