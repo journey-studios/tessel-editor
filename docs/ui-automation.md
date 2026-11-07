@@ -296,6 +296,10 @@ Nós da janela: `inspector.mode` (clip/scene), `scene.panel`, `scene.picker` (qu
 Um set de componente de propriedade usa begin/update/commit compartilhados (um undo).
 `ui op '{"op":"scene.resources.resolve","scene":"id","base":"/raiz/absoluta"}'` cria job; conferir job.get e aplicação antes de exibir. `monitor.show_scene {scene}` seleciona a apresentação; `scene.render` responde depois do frame real. `scene.plan` é a consulta core/headless. Inspeção de pixels não prova ponteiro ou aparência.
 
+### Gizmo de translação (F055)
+
+Nó `monitor.gizmo` (só com cena anexada): `get monitor.gizmo` devolve `selection`, `dragging`, `handle`, `gesture`; o overlay que a página recebeu e o que ela desenhou (com pixels amostrados por handle) estão em `get monitor.viewport` → `state.overlay`. Não há botão para clicar: `ui op '{"op":"scene.pointer.down","scene":"id","frame":N,"point":{"u":0.6,"v":0.5}}'` seguido de `scene.pointer.move`/`scene.pointer.up` (ou `scene.pointer.cancel` com `reason`) chega ao mesmo handler que as mensagens `overlay.pointer` da página, e `scene.translate` dá o mesmo resultado sem ponteiro. Coordenadas são da **imagem** (u, v em 0..1), não da tela: isto não é um ponteiro físico (BL043). Contrato em [scene-gizmo.md](features/scene-gizmo.md); `scripts/scene-gizmo-proof.py` usa só estas requisições.
+
 ### Importação visual de cena (F043, R2)
 
 Botão do cabeçalho: `node:26` (ícone `node:27`). Operações `flow.attach_scene` e `flow.scene_resources` abrem os diálogos; `dialog.field.*`/submit/cancel compartilham os handlers da UI. Nó `scene_import` expõe passo/job/done/error/presentation_error. A cadeia aguarda job concluído **e aplicado** antes de seguir para o monitor. A seleção nativa de arquivo ainda não tem prova; campos por caminho têm evidência semântica.

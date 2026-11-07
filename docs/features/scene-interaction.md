@@ -207,7 +207,7 @@ binário de debug; o teste `the_executable_keeps_gesture_ids_apart_…` automati
 
 ## UI e CLI da janela
 
-A janela executa os mesmos `scene.*` por `Op::Run(Command::Scene(..))`. Árvore/seleção/propriedades, Escape e confirmação por release estão em [F039-UI](scene-inspector.md). Socket e pixels foram exercitados no corpus da rodada M/N/O/P; testes GPUI injetam entrada, sem prova de ponteiro físico. Aparência e handles seguem pendentes (BL087/BL015).
+A janela executa os mesmos `scene.*` por `Op::Run(Command::Scene(..))`. Árvore/seleção/propriedades, Escape e confirmação por release estão em [F039-UI](scene-inspector.md). Socket e pixels foram exercitados no corpus da rodada M/N/O/P; testes GPUI injetam entrada, sem prova de ponteiro físico. Aparência segue pendente (BL087). O gizmo de translação (handles `x`/`y`/`z`/centro, arrasto = um gesto F039 = uma entrada de undo, `scene.translate`) está em [scene-gizmo.md](scene-gizmo.md) (F055, BL015, a validar); rotação/escala/snapping seguem pendentes (BL015.1).
 
 ## Evidências e status
 
