@@ -15,6 +15,8 @@ unidade à lib.
 
 Diretório: `scripts/directed-scene-acceptance/`.
 
+**Versão mínima do spec:** Python 3.11, com `tomllib` da biblioteca padrão. A suíte `proof.spec.py` verifica o escopo das dependências por esse parser; não é suportada em Python 3.9/3.10. O fallback do harness quando o parser TOML não está disponível continua conservador (considera todas as crates); ele não implica suporte do spec nessas versões. A execução registrada usou Python 3.14.3.
+
 | Arquivo | Papel |
 |---|---|
 | `tolerances.json` | Limites numéricos, controles negativos obrigatórios, política BLOCKED e, para **cada número**, uma justificativa com base (`analytic`, `inherited` ou `choice`) e texto. Todo limiar que um verificador usa mora aqui. |
