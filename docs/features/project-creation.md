@@ -32,7 +32,7 @@ mostra agora o estado salvo/não salvo e as tarefas em andamento.
 | `asset.add` | `kind`, `name`, `id?`, `path` ou `pattern`+`frames`+`rate` (frames numerados `%05d`), `text`, `folder?` |
 | `track.add` | `kind` (`video`/`audio`), `name`, `id?` |
 | `clip.add` | `track`, `asset?`, `start`, `duration`, `id?`, `source_start?`, `text?`, `camera?`, `properties?` |
-| `clip.text` / `clip.camera` / `clip.property` | `clip`, e `text` / `position,target,fov,orbit` / `property`+`value` |
+| `clip.text` / `clip.camera` / `clip.property` | `clip`, e `text` (`content` em NFC ou NFD, ASCII + acentos do português; [F050](accented-titles.md)) / `position,target,fov,orbit` / `property`+`value` |
 | `sequence.length`, `preview.set`, `seek` | `frames`; `intent`; `frame` ou `time` |
 | `plan`, `render.frame`, `render.audio`, `capabilities`, `render.status`, `status` | ver [F021](viewport.md) |
 

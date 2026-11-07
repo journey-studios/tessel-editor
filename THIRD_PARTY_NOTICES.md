@@ -16,6 +16,10 @@ are obtained by Cargo, not vendored into this repository. Lockfiles record the
 full dependency graph; binary distributions must retain the notices applicable
 to the dependencies included in them.
 
+The title font is the 5×7 bitmap glyph table in `runtime/src/font.js` (accents are marks composed on it): it is
+this project's own work under the MIT license. No third-party font file is bundled and no installed font is used,
+so there is no font notice to carry ([docs/features/accented-titles.md](docs/features/accented-titles.md)).
+
 FFmpeg and Chrome are external tools, not bundled here. ProUI is a visual
 reference; its commercial kit and original demo photographs are not distributed.
 The two demo PNGs are original procedural illustrations reproducible with

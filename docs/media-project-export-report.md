@@ -97,4 +97,4 @@ Tempos são de build debug em CPU: servem de ordem de grandeza, não de capacida
 10. Foco por teclado e atalhos sobre a WebView não têm comando semântico (só `dialog.*` e `invoke`); o gate de overlay cobre diálogos do app.
 11. Só macOS arm64, só H.264/AAC/MP4 SDR; sem HEVC/HDR/alpha, sem retomada de export, sem política de fontes redistribuíveis, sem empacotar/licenciar o FFmpeg.
 12. Presets: sem migração de versão de preset/documento (só v1).
-13. Fontes de texto: bitmap 5×7 do runtime (herdado da fundação).
+13. Fontes de texto: bitmap 5×7 do runtime (herdado da fundação); acentos do português desde o BL141 ([F050](features/accented-titles.md)); fonte vetorial real segue em BL053.
