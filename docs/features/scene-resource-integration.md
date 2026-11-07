@@ -440,8 +440,8 @@ parecendo nunca ter tido ledger.
    `claims.json` sozinho. Por isso nenhum projeto referencia um arquivo que `recover` poderia remover: o aceite gravado vale
    para o primeiro leitor que o veja, inclusive o de um processo que acabou de morrer (`SIGKILL` logo depois do tick).
    **Contra queda do processo, não contra perda de energia:** como o estado, o diário não tem `fsync`; o que o `write_all`
-   entregou ao sistema operacional sobrevive a um `SIGKILL`, mas um corte de energia pode perder o registro (e então o
-   projeto, que também não foi sincronizado, não o referencia mais).
+   entregou ao sistema operacional sobrevive a um `SIGKILL`, mas um corte de energia pode perder o registro.
+   O projeto salvo pode persistir e ainda referenciar o arquivo; nesse caso, `recover` pode removê-lo como órfão.
 2. **Compactação antes de qualquer coisa.** O `Tracker` que encontra um diário reescreve `claims.json` sem essas chaves
    (rename atômico) e só então remove o diário, **antes de responder a quem o abriu**. Assim ninguém reivindica um caminho
    de novo enquanto um registro antigo dele ainda existe (o registro o aceitaria por engano), e uma queda entre o rename e a

@@ -645,3 +645,7 @@ PR12 / BL005a: CodeRabbit r4494002899 corrigido no script de prova: condição d
 ### S7 — conclusão dos gates combinados após os abortos
 
 BL025 (subconjunto S7), BL127 e S7 validados; BL128 permanece Pendente: coordenador executou em `e7fd75f` workspace 1287/0/9 (81 resumos), builds, árvore do core, runtime 108/108 e provas nativas S7 129/129 e S9 45/45. Mínimo 13,69 GiB; logs `/tmp/te-pr13-coordinator-resume/`. Tentativas abortadas anteriores não contam como PASS. BL128 mantém o FAIL histórico. BL120/BL121/S10 seguem BLOCKED/FAIL; provas S7/S9 separadas não são `full_av`. Revisão Sonnet 5805273378 confirmou código e evidências; a reconferência 5805314926 confirmou as correções, restando apenas este texto de status, agora alinhado.
+
+### S1 — documentação da revisão 5809190890
+
+BL112.7: corrigida a garantia sobre perda de energia (4499357499): journal sem fsync só protege contra queda de processo; um projeto salvo pode sobreviver sem o aceite e o recover pode remover o arquivo como órfão. F025 agora distingue job.wait de wait:true, último titular de arquivo reutilizado e cleanup null; pipes da matriz escapados (4499357455/470/484/492). Prova de requisição falha (4499357511) permanece em correção; nenhum gate novo por estes textos.

@@ -42,23 +42,25 @@ export rodam `ensure_prepared` antes. Não é preciso `media.prepare` manual (o 
 
 ## Descartar um resultado (`job.discard`, BL094/BL112)
 
+`job.wait` só espera o término e não aplica o resultado; `wait:true` aplica na chamada original somente no host não interativo.
+
 Um job que produz resultado para o projeto o **retém** (`ctx.hold_result()`): `job.get`/`job.list` trazem
 `result_state` = `none | pending | discarding | discarded | applied`.
 
 ```text
-none ─(corpo guarda resultado)─> pending ──apply (poll/commit/wait)──> applied
+none ─(corpo guarda resultado)─> pending ──apply (poll/commit/wait:true)──> applied
                                     │  └─ aplicar recusado (stale) ──> discarded
                                     └─ job.discard ──> discarding ──(job discard terminou)──> discarded
 ```
 
 `job.discard {job, wait?}` reivindica o resultado **atomicamente** (`JobRegistry::begin_discard`): de dois chamadores
 só um ganha, e um `job.commit`/`poll` concorrente não leva mais o resultado. O resultado **move** para um job
-`discard` (tipo `discard`, **não cancelável**: `job.cancel` responde `job_not_cancellable`), que remove só os arquivos
-que o resultado criou (claims, SHA-256 e lease de F040) e informa o que ficou (`kept`/`shared`). O dono (o resultado, com
+`discard` (tipo `discard`, **não cancelável**: `job.cancel` responde `job_not_cancellable`), que pode remover arquivos
+criados pelo resultado ou reutilizados de outro resultado pendente, se for o último titular (claims, SHA-256 e lease de F040) e informa o que ficou (`kept`/`shared`). O dono (o resultado, com
 seus claims) e o registro do job **permanecem até o fim do job discard**: `prune` nunca descarta um job
 `pending`/`discarding`. Resposta: `{action:"job.discard", job:<job discard>, discards:<job original>, state, ...}`;
 host sem janela espera e devolve também `discarded` e `cleanup:{removedFiles,removedFolders,kept,shared,busyRoots}`
-(`wait:false` devolve `state:"discarding"` na hora); o host interativo responde sempre na hora e `poll()` entrega um
+(`cleanup` é `null` para resultados sem arquivos, como `SceneAttach`; `wait:false` devolve `state:"discarding"` na hora); o host interativo responde sempre na hora e `poll()` entrega um
 evento `{job, kind:"discard", state, result}` uma única vez. `discarded` quer dizer **o descarte terminou**, não que tudo foi
 removido: o que ficou (`kept`, raiz ocupada, ledger indisponível) está em `result.cleanup` e a barra de status da janela o diz
 (BL094.8). O que acontece com a **claim** do que ficou depende do motivo, e não é uma garantia única (N4):
