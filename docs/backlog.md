@@ -788,3 +788,5 @@ Validação dos resíduos: spec 41/41 em Python 3.9.6 e 3.14.3, logs `/tmp/pr18-
 | BL143.10 | R2 | NaN passava no centro principal e extrínseca e podia gerar documento ilegível | Corrigido por código, testes Rust não executados | BL143 | Coordenador | Rejeição tipada de todos os componentes não finitos |
 | BL143.11 | R2 | replace_asset não recusava captura em ativo não-splat | Corrigido por código, teste Rust não executado | BL143.9 | Coordenador | Mesma regra add/replace/load e estado intacto na recusa |
 BL143.8: independência/fidelidade do teste de cor não demonstradas; não promover a V sem render contra fonte primária. Novos testes receberam rustfmt apenas, disco insuficiente para Cargo.
+| BL140.8 | R2 / limite | Estender início pode produzir source_start negativo | Pendente | BL140.2 | Coordenador | Definir recusa/clamp conforme tipo sem deslocar conteúdo/câmera e cobrir por testes |
+BL140 R2: nenhum bloqueador identificado por leitura, sem compilação. Matriz F054 rebaixada aI até gates reais.
