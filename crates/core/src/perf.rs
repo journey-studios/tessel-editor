@@ -126,8 +126,13 @@ impl FrameClock {
 
     /// One frame presented at `at`.
     pub fn record(&mut self, at: Duration) {
-        let gap = self
-            .last
+        // While motion is expected the gap runs from the later of the last frame and the moment
+        // motion began: the rest before playback is not an interval between two pictures.
+        let since = match (self.last, self.anchor) {
+            (Some(last), Some(anchor)) if self.motion => Some(last.max(anchor)),
+            (last, _) => last,
+        };
+        let gap = since
             .filter(|last| at >= *last)
             .map(|last| at - last)
             // A pause longer than the rest threshold is two runs, not one huge interval.
@@ -886,6 +891,45 @@ mod tests {
         clock.record(at(100));
         assert_eq!(clock.idle_in(at(400)), Some(at(701)));
         assert_eq!(clock.idle_in(at(1100)), None, "already idle");
+    }
+
+    #[test]
+    fn the_rest_before_playback_is_not_the_worst_interval() {
+        let mut clock = FrameClock::default();
+        clock.record(at(100));
+        // A long rest, then play: the first picture is measured from the start of the motion.
+        clock.set_motion(true, at(30_000));
+        clock.record(at(30_040));
+        clock.record(at(30_080));
+        let (_, worst) = live(clock.reading(at(30_100)));
+        assert_eq!(worst, 40.0);
+    }
+
+    #[test]
+    fn a_pause_is_a_rest_and_resuming_does_not_record_it_as_a_gap() {
+        let mut meter = Meter::default();
+        meter.enable(at(0), Some(0));
+        meter.monitor_presented(at(10), Some(0));
+        meter.playback_clock(1);
+        meter.monitor_presented(at(50), Some(1));
+        // Pause: nothing is expected, so the silence turns into a rest.
+        meter.playback_stopped(at(60));
+        let paused = meter.readout(at(5_000), true, None, None);
+        assert_eq!(paused.monitor, Reading::Idle);
+        assert!(!paused.playing);
+        // Resume: the run restarts, and the first picture is measured from the resume.
+        meter.playback_started(at(9_000), 1);
+        for (step, frame) in [(9_040, 2), (9_080, 3), (9_120, 4)] {
+            meter.playback_clock(frame);
+            meter.monitor_presented(at(step), Some(frame));
+        }
+        let resumed = meter.readout(at(9_150), true, None, None);
+        match resumed.monitor {
+            Reading::Live {
+                worst_interval_ms, ..
+            } => assert!(worst_interval_ms < 100.0, "{worst_interval_ms}"),
+            other => panic!("{other:?}"),
+        }
     }
 
     #[test]

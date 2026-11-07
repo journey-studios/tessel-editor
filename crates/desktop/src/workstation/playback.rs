@@ -478,6 +478,8 @@ impl Workstation {
         let fps = active.fps;
         active.wall.pause(fps);
         active.paused = true;
+        // Nothing is expected while paused: silence is a rest, not a stall (F049).
+        self.perf_playback_stopped();
         cx.notify();
         Ok(json!({ "action": "playback.pause", "report": self.playback.report() }))
     }
@@ -489,6 +491,9 @@ impl Workstation {
         }
         active.wall.resume();
         active.paused = false;
+        let frame = active.frame;
+        // The run restarts from the frame on screen; the pause is not a gap (F049).
+        self.perf_playback_started(frame);
         cx.notify();
         Ok(json!({ "action": "playback.resume", "report": self.playback.report() }))
     }

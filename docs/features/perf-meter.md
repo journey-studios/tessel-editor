@@ -100,7 +100,9 @@ perdas, posicionamento) são da biblioteca e têm teste sem GPUI.
 | `RSS` | `memory-stats` do processo do editor | memória residente do editor | **não inclui** os processos WebContent/GPU do WebKit; não é memória de GPU |
 | `texturas` | `frame.done.cache.texture_bytes` do runtime | estimativa dos tamanhos RGBA das imagens retidas | **não é leitura de GPU** |
 
-Repouso: sem movimento, a linha lê `parado`. Valor indisponível lê `indisponível` (por exemplo,
+Repouso: uma fonte sem quadros por 1 s e sem movimento esperado lê `parado` (o `monitor`
+parado, inclusive em pausa). A `interface` só lê `parado` se a janela realmente não pintar:
+hoje o app pinta ≈4 quadros/s sozinho em repouso (ver o achado abaixo). Valor indisponível lê `indisponível` (por exemplo,
 o monitor sem runtime).
 
 ### Não distorce a medição
@@ -137,8 +139,10 @@ testadas sem GPUI; headless N/A). Não validado: ver [limites](#limites).
   o cartão, monitor conta só imagens aceitas, MSAA ausente fica omitido.
 - **Janela real:** `scripts/perf-meter-proof.py` (HOME isolado, cópia do projeto em `/tmp`,
   só requisições semânticas, captura com `screencapture -l` do PID do próprio processo). Em
-  build release: 15 checks, todos passaram. Em repouso, escondido ou visível, a janela fez
-  **0 repaints em 4 s**. Posições: padrão = cartão flutuante em `y=8` (sobre o inspetor);
+  build release: 17 checks, todos passaram. Em repouso, escondido ou visível, o contador de
+  repaints do `monitor.viewport` não andou em 4 s (o medidor não pede quadros). Pausar é
+  repouso (`parado`, sem perdas) e, ao retomar, a pausa não vira intervalo (pior intervalo
+  do monitor 84 ms). Posições: padrão = cartão flutuante em `y=8` (sobre o inspetor);
   inspetor fechado = cartão na ponta direita da timeline, abaixo da imagem; monitor
   maximizado = `status_bar_strip`. O projeto real de splats (1,18 M splats por cena)
   desenhou o quadro 0 com o medidor ligado (captura `-real-project.png`). Numa execução
@@ -153,6 +157,7 @@ testadas sem GPUI; headless N/A). Não validado: ver [limites](#limites).
   |---|---|---|---|
   | build final, 3 rodadas | desligado 0 · ligado 0 | 190,7 · 192,0 | 182,7 · 182,0 |
   | build final, outra execução | desligado 0 · ligado 0 | 192,3 · 192,3 | 190,7 · 189,3 |
+  | build final, com a correção da revisão | desligado 0 · ligado 0 | 192,3 · 192,0 | 188,0 · 187,0 |
   | build com contador de paint, 4 rodadas | desligado 1,5 (6, 0, 0, 0) · ligado 0,5 (1, 0, 0, 1) | 190,5 · 191,5 | 187,5 · 188,5 |
 
   A **taxa de quadros pintados da janela** com o medidor desligado só se mede com um contador
@@ -165,6 +170,11 @@ testadas sem GPUI; headless N/A). Não validado: ver [limites](#limites).
   por esta amostra pequena; a variação entre rodadas, numa máquina compartilhada com outras
   compilações (carga 24–44), é maior que qualquer efeito do medidor. Não prova custo nulo
   abaixo desse ruído.
+- **Achado, não causado pelo medidor:** em repouso o app pinta ≈3,8 quadros/s sozinho
+  (23 paints em 6 s com o medidor escondido e 23 com ele ligado, medidos com o contador
+  externo), com intervalo de 267 ms. Por isso a linha `interface` em repouso lê uma taxa
+  pequena (`3,9 fps · pior 267 ms`) e não "parado". A origem desse repaint não foi
+  investigada aqui.
 - **Captura nativa:** `/Users/wallyssonnunes/www/tessel-video-splat/previews/perf-meter-bl145/`
   (`perf-meter-playing.png`, `-default.png`, `-inspector-closed.png`,
   `-monitor-maximized.png`, `-real-project.png`), fora do repositório.

@@ -304,10 +304,17 @@ def main():
         report["rest_repaints_4s"]["shown"] = shown_rest
         check("shown at rest: the meter keeps no clock of its own (no repaints in 4 s)", shown_rest <= 1, shown_rest)
 
-        # --- the readout of a still window and of the monitor
+        # --- the readout of a still window and of the monitor. Every request above made the window
+        # paint (a real frame), so the readout is only "idle" after a quiet second without any.
+        time.sleep(1.6)
         state = editor.meter()
-        check("shown at rest: the interface reads 'idle', not zero", reading(state, "ui").get("state") in ("idle", "measuring", "live"), reading(state, "ui"))
-        check("a value that is not known is never zero", reading(state, "monitor").get("state") in ("idle", "live", "measuring", "unavailable"), reading(state, "monitor"))
+        ui, monitor = reading(state, "ui"), reading(state, "monitor")
+        # The app itself paints ~4 frames/s at rest with the meter hidden too (measured with the
+        # paint probe: 23 paints in 6 s hidden and shown alike), so the honest reading is either
+        # "idle" or a small live rate, never a zero and never a high one.
+        report["rest_ui_reading"] = ui
+        check("shown at rest: the interface reads 'idle' or a small live rate, never a zero", ui.get("state") == "idle" or (ui.get("state") == "live" and 0 < ui.get("fps", 0) < 10), ui)
+        check("at rest the monitor is idle or unavailable, and no rate is a zero", monitor.get("state") in ("idle", "unavailable") and ui.get("fps") != 0.0 and monitor.get("fps") != 0.0, monitor)
 
         # --- three layouts
         def layout(name):
@@ -340,6 +347,26 @@ def main():
                 run["round"] = index
                 report["cost"].append(run)
                 print(json.dumps(run), flush=True)
+        # --- pause is a rest and resume does not record the pause as a gap
+        editor.set(NODE, "visible", True)
+        settle(editor, 1.0)
+        editor.op({"op": "seek", "frame": 0})
+        time.sleep(1.0)
+        editor.op({"op": "playback.start", "from": 0})
+        time.sleep(2.5)
+        editor.op({"op": "playback.pause"})
+        time.sleep(1.8)
+        paused = editor.meter()["readout"]
+        check("paused: the monitor reads idle (parado), not a stall", paused["monitor"]["state"] == "idle" and paused["playback_loss"]["state"] == "not_playing", [paused["monitor"], paused["playback_loss"]])
+        editor.op({"op": "playback.resume"})
+        time.sleep(2.0)
+        resumed = editor.meter()["readout"]
+        worst = resumed["monitor"].get("worst_interval_ms", 0)
+        check("resumed: the pause is not the worst interval", resumed["monitor"]["state"] == "live" and worst < 1500, resumed["monitor"])
+        report["pause_resume"] = {"paused": paused["monitor"], "resumed": resumed["monitor"]}
+        editor.op({"op": "playback.stop"})
+        editor.set(NODE, "visible", False)
+
         editor.set(NODE, "visible", False)
 
         def mean(arm, key):
