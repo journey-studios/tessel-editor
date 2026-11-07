@@ -152,6 +152,42 @@ impl EditorState {
         })
     }
 
+    /// The addresses of the selected entities of `scene`, in selection order: what the handles
+    /// and outlines of an overlay belong to. An adapter puts it in its stamp, so a message made
+    /// against the overlay of the previous selection is not taken for the current one.
+    pub fn gizmo_selection(&self, scene: &str) -> Vec<String> {
+        self.scene_interaction
+            .selection
+            .entities_of(scene)
+            .map(entity_path)
+            .collect()
+    }
+
+    /// What [`gizmo_overlay`](Self::gizmo_overlay) is a function of, as one comparable string: the
+    /// stamp (scene, session, project revision, frame), the selected entities of the scene and,
+    /// while a drag is open, its gesture, the updates that gesture accepted (the candidate the
+    /// handles are laid out on) and whether it is dead. Two equal keys draw the same overlay, so
+    /// an adapter that already sent the overlay for a key does not need the core to plan the scene
+    /// again for it (M2 of the PR #25 review). Reads only; cheap (no plan).
+    pub fn gizmo_overlay_key(&self, scene: &str, frame: i64) -> String {
+        let selected = self.gizmo_selection(scene);
+        let drag = self.scene_interaction.drag.as_ref().map(|drag| {
+            let updates = self
+                .scene_interaction
+                .gesture
+                .current()
+                .filter(|gesture| gesture.id() == drag.gesture.as_str())
+                .map(|gesture| gesture.updates());
+            json!([drag.gesture, drag.scene, updates, self.gizmo_drag_is_dead()])
+        });
+        json!({
+            "stamp": self.gizmo_stamp(scene, frame),
+            "selection": selected,
+            "drag": drag,
+        })
+        .to_string()
+    }
+
     /// `true` when a drag is open whose gesture can no longer be applied (the scene was edited,
     /// replaced or detached under it, or its gesture was settled by something else). Nobody will
     /// release such a drag usefully; the adapter cancels it. Reads only.

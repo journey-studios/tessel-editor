@@ -28,7 +28,7 @@ use crate::content::{Camera, TextSpec};
 use crate::id::Id;
 use crate::plan::PreviewIntent;
 use crate::preview::{PreviewMode, PreviewPolicy};
-use crate::scene_interaction::SceneInteraction;
+use crate::scene_interaction::{GizmoCommand, PointerCommand, SceneInteraction};
 use crate::scene_project::{SceneBook, SceneCommand};
 use crate::time::Ratio;
 
@@ -504,7 +504,7 @@ impl EditorState {
             other => other,
         };
         // An edit never runs on top of a slider gesture that is still previewing.
-        if command.settles_property_gesture() {
+        if command.settles_property_gesture() && !self.is_idle_gizmo_release(&command) {
             self.settle_property_gesture();
         }
         let Some(label) = command.history_label() else {
@@ -516,6 +516,19 @@ impl EditorState {
             self.record_edit(label, before);
         }
         Ok(outcome)
+    }
+
+    /// A `scene.pointer.up` while no gizmo drag is open (a script, a release the page sends late)
+    /// writes nothing, so it is not an edit that has to settle a slider gesture somebody else
+    /// opened: it never commits it (S1 of the PR #25 review). With a drag open it is the commit of
+    /// that drag and settles like every edit.
+    fn is_idle_gizmo_release(&self, command: &Command) -> bool {
+        matches!(
+            command,
+            Command::Scene(SceneCommand::Gizmo(GizmoCommand::Pointer(
+                PointerCommand::Up { .. }
+            )))
+        ) && self.scene_interaction.drag().is_none()
     }
 
     fn apply(&mut self, command: Command) -> Result<Value, CommandError> {

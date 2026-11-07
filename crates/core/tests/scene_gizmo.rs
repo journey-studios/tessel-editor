@@ -24,9 +24,11 @@ use core::prelude::v1::test;
 use serde_json::{Value, json};
 use tessel_editor_core::directed_scene::Vec3;
 use tessel_editor_core::scene_interaction::{
-    CancelReason, FrameAt, GizmoCommand, Point, PointerCommand,
+    Anchor, CancelReason, FrameAt, GizmoCommand, Handle, OUTSIDE_LIMIT, Point, PointerCommand, View,
 };
+use tessel_editor_core::scene_plan::{PlanOptions, ScenePlan};
 use tessel_editor_core::scene_project::SceneCommand;
+use tessel_editor_core::state::property_gesture::GestureCommand;
 use tessel_editor_core::{Command, CommandError, EditorState, headless};
 
 const MINIMAL: &str = "valid-minimal-continuous";
@@ -896,6 +898,213 @@ fn refused_pointer_commands_leave_everything_as_it_was() {
     );
 }
 
+// --- T1 of the PR #25 review: the branches that were only argued from the source ------------------
+
+/// The projection the core drags with, for the plan the gizmo works on.
+fn view_of(state: &EditorState, frame: i64) -> View {
+    let scene = &state.scenes.get("street").unwrap().scene;
+    let plan = ScenePlan::build_with(
+        scene,
+        frame,
+        PlanOptions {
+            allow_partial: true,
+        },
+    )
+    .unwrap();
+    View::from_plan(&plan).unwrap()
+}
+
+/// `degenerate_axis` (a press) and `degenerate_pointer` (a move) are the two ways a pointer
+/// position fails to name a point on an axis: its eye ray runs ALONG the axis. A real pointer
+/// cannot get there by the `x` and `y` handles (an eye ray always has a forward component) and
+/// the centre handle wins every press that close to the centre on `z`, so the branch is
+/// exercised on `Anchor` itself: returning `Some(0.0)` instead of `None` fails here.
+#[test]
+fn an_anchor_refuses_a_press_or_a_move_whose_eye_ray_runs_along_its_axis() {
+    let mut state = street();
+    let camera = camera(&mut state);
+    let view = view_of(&state, 0);
+    let origin = [0.5, 0.0, 0.0];
+    // The pixel whose eye ray is parallel to world -Z: where the camera's own position moved
+    // along -Z lands on the picture (independent oracle projection).
+    let (u, v) = camera.project([
+        camera.position[0],
+        camera.position[1],
+        camera.position[2] - 10.0,
+    ]);
+    let parallel = Point { u, v };
+    let elsewhere = Point { u: 0.4, v: 0.6 };
+
+    assert!(
+        Anchor::begin(&view, origin, Handle::Z, parallel).is_none(),
+        "a press looking along the axis names no position (degenerate_axis)"
+    );
+    assert!(Anchor::begin(&view, origin, Handle::Z, elsewhere).is_some());
+    assert!(
+        Anchor::begin(&view, origin, Handle::X, parallel).is_some(),
+        "control: the same pixel is fine for an axis it is not parallel to"
+    );
+    assert!(Anchor::begin(&view, origin, Handle::Screen, parallel).is_some());
+
+    let anchor = Anchor::begin(&view, origin, Handle::Z, elsewhere).unwrap();
+    assert!(
+        anchor.delta(parallel).is_none(),
+        "a move looking along the axis cannot be resolved (degenerate_pointer)"
+    );
+    let delta = anchor.delta(Point { u: 0.45, v: 0.55 }).unwrap();
+    assert!(delta.x.is_finite() && delta.y.is_finite() && delta.z.is_finite());
+    assert_eq!(
+        (delta.x, delta.y),
+        (0.0, 0.0),
+        "a z drag moves along z only"
+    );
+}
+
+/// The limit is a boundary, not a magnitude: a pointer captured outside the picture may go as
+/// far as `OUTSIDE_LIMIT` picture sizes away and not one hair further.
+#[test]
+fn a_move_may_leave_the_picture_up_to_the_limit_and_not_past_it() {
+    let mut state = street();
+    select(&mut state, FIGURE);
+    let shown = overlay(&mut state);
+    press(&mut state, at(&handle(&shown, "x")["to"])).unwrap();
+    for (u, v) in [
+        (OUTSIDE_LIMIT, 0.5),
+        (-OUTSIDE_LIMIT, 0.5),
+        (0.5, OUTSIDE_LIMIT),
+        (0.5, -OUTSIDE_LIMIT),
+    ] {
+        ok(
+            &mut state,
+            json!({"op":"scene.pointer.move","point":point(u, v)}),
+        );
+    }
+    let candidate = observable(&state);
+    for (u, v) in [
+        (OUTSIDE_LIMIT + 1e-9, 0.5),
+        (-OUTSIDE_LIMIT - 1e-9, 0.5),
+        (0.5, OUTSIDE_LIMIT + 1e-9),
+        (0.5, -OUTSIDE_LIMIT - 1e-9),
+    ] {
+        let error = err(
+            &mut state,
+            json!({"op":"scene.pointer.move","point":point(u, v)}),
+        );
+        assert_eq!(error.code, "invalid_value", "({u}, {v})");
+    }
+    assert_eq!(
+        observable(&state),
+        candidate,
+        "a refused move changes nothing"
+    );
+    // The same rule through the typed point: strict for a press, bounded for a move, never NaN.
+    assert!(Point { u: 1.0, v: 0.0 }.checked(true).is_ok());
+    assert!(
+        Point {
+            u: 1.0 + 1e-9,
+            v: 0.0
+        }
+        .checked(true)
+        .is_err()
+    );
+    assert!(
+        Point {
+            u: OUTSIDE_LIMIT,
+            v: 0.0
+        }
+        .checked(false)
+        .is_ok()
+    );
+    assert!(
+        Point {
+            u: f64::NAN,
+            v: 0.0
+        }
+        .checked(false)
+        .is_err()
+    );
+    assert!(
+        Point {
+            u: 0.0,
+            v: f64::INFINITY
+        }
+        .checked(false)
+        .is_err()
+    );
+}
+
+#[test]
+fn a_press_over_an_open_drag_names_what_it_replaced_and_leaves_exactly_one_gesture() {
+    let mut state = street();
+    select(&mut state, FIGURE);
+    let shown = overlay(&mut state);
+    let before = observable(&state);
+    let first = press(&mut state, at(&handle(&shown, "x")["to"])).unwrap();
+    assert_eq!(
+        first["abandoned"],
+        Value::Null,
+        "nothing was open before it"
+    );
+    ok(
+        &mut state,
+        json!({"op":"scene.pointer.move","point":point(0.7, 0.6)}),
+    );
+    let second = press(&mut state, at(&handle(&shown, "y")["to"])).unwrap();
+    assert_eq!(
+        second["abandoned"],
+        json!({"gesture": first["gesture"], "reason": "replaced_by_press"})
+    );
+    let open = state.scene_interaction.gesture().unwrap().id().to_string();
+    assert_eq!(
+        json!(open.clone()),
+        second["gesture"],
+        "the new press owns the slot"
+    );
+    assert_eq!(state.scene_interaction.drag().unwrap().gesture(), open);
+    assert_eq!(
+        observable(&state),
+        before,
+        "the abandoned candidate left no trace"
+    );
+    ok(&mut state, json!({"op":"scene.pointer.cancel"}));
+    assert!(state.scene_interaction.gesture().is_none());
+}
+
+/// S1: the release of a gizmo drag is an edit (`Edit scene`), so every `scene.pointer.up` used to
+/// settle a slider gesture somebody else had open, even one that wrote nothing.
+#[test]
+fn a_release_with_no_drag_does_not_commit_somebody_elses_slider_gesture() {
+    let mut state = EditorState::demo();
+    ok(
+        &mut state,
+        json!({"op":"scene.attach","id":"street","bundle":bundle(MINIMAL)}),
+    );
+    let opened = state
+        .execute(tessel_editor_core::Command::PropertyGesture(
+            GestureCommand::Begin {
+                clip: None,
+                property: "zoom".to_string(),
+            },
+        ))
+        .unwrap();
+    assert!(opened["gesture"].is_u64());
+    assert!(state.open_property_gesture().is_some());
+
+    let noop = ok(&mut state, json!({"op":"scene.pointer.up"}));
+    assert_eq!(noop["noop"], true);
+    assert!(
+        state.open_property_gesture().is_some(),
+        "a release that wrote nothing leaves the slider gesture open"
+    );
+    // Control: a real edit does settle it (the rule the exception must not weaken).
+    ok(
+        &mut state,
+        json!({"op":"scene.translate","scene":"street","entity":FIGURE,"frame":0,
+               "delta":{"x":1,"y":0,"z":0}}),
+    );
+    assert!(state.open_property_gesture().is_none());
+}
+
 #[test]
 fn a_press_while_another_gesture_is_open_is_refused_on_a_handle() {
     let mut state = street();
@@ -1439,6 +1648,68 @@ fn the_overlay_stamp_names_scene_session_revision_and_frame() {
         first["session"],
         "a project of its own session: a stamp of the first never matches it"
     );
+}
+
+/// M2 of the PR #25 review: the key is what lets an adapter skip planning the scene again. Two
+/// equal keys must draw the same overlay, and anything the overlay is a function of must move it.
+#[test]
+fn the_overlay_key_moves_with_everything_the_overlay_depends_on_and_with_nothing_else() {
+    let mut state = street();
+    let key = |state: &EditorState, frame: i64| state.gizmo_overlay_key("street", frame);
+    let none = key(&state, 0);
+    assert_eq!(key(&state, 0), none, "pure: asking twice is the same key");
+    assert_eq!(state.gizmo_selection("street"), Vec::<String>::new());
+
+    select(&mut state, FIGURE);
+    assert_eq!(state.gizmo_selection("street"), vec![FIGURE.to_string()]);
+    let selected = key(&state, 0);
+    assert_ne!(selected, none, "a selection draws another overlay");
+    // Reading the overlay (a query) changes nothing the overlay depends on.
+    let shown = overlay(&mut state);
+    assert_eq!(key(&state, 0), selected);
+    assert_ne!(key(&state, 5), selected, "another frame");
+
+    // The state the key stands for is the state the overlay was computed from: an equal key
+    // has an equal overlay (the whole point of skipping the plan).
+    assert_eq!(overlay(&mut state), shown);
+
+    // A drag: the press opens it, every accepted update moves the candidate the handles sit on.
+    press(&mut state, at(&handle(&shown, "x")["to"])).unwrap();
+    let pressed = key(&state, 0);
+    let pressed_revision = state.gizmo_stamp("street", 0)["revision"].clone();
+    assert_ne!(pressed, selected, "an open drag draws as dragging");
+    ok(
+        &mut state,
+        json!({"op":"scene.pointer.move","point":point(0.7, 0.6)}),
+    );
+    let moved = key(&state, 0);
+    assert_ne!(moved, pressed, "an accepted update moves the candidate");
+    assert_eq!(
+        state.gizmo_stamp("street", 0)["revision"],
+        pressed_revision,
+        "and it is not a revision: the stamp alone could not tell"
+    );
+    ok(
+        &mut state,
+        json!({"op":"scene.pointer.cancel","reason":"escape"}),
+    );
+    assert_eq!(
+        key(&state, 0),
+        selected,
+        "a cancelled drag leaves the overlay of the selection"
+    );
+
+    // A committed edit and another project session are other overlays.
+    let before_edit = key(&state, 0);
+    ok(
+        &mut state,
+        json!({"op":"scene.edit","scene":"street","ops":[
+            {"set": format!("{BACKDROP}/position"), "value": {"x": 0, "y": 0, "z": -3}}]}),
+    );
+    assert_ne!(key(&state, 0), before_edit);
+    let mut other = street();
+    select(&mut other, FIGURE);
+    assert_ne!(key(&other, 0), selected);
 }
 
 #[test]
