@@ -16,7 +16,7 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
   evidências na origem, diferenças do branch piloto, matriz de migração e fatias sugeridas.
 - [Recursos da cena dirigida](features/scene-resources.md): manifesto, preflight e materialização inicial; identidade por assetId, transporte parcial e pacote ainda protegido pelas guardas.
 - [Interação de cenas dirigidas](features/scene-interaction.md): seleção, árvore, avaliação e gestos via comandos; gate local da rodada passou; inspector parcial em F039-UI.
-- [Gizmo de translação no canvas](features/scene-gizmo.md) (F055, S8/BL015/BL042): overlay e arrasto no core, canvas dentro da WebView, `scene.translate` equivalente; implementado e a validar: sem gate executado no head, sem ponteiro físico.
+- [Gizmo de translação no canvas](features/scene-gizmo.md) (F055, S8/BL015/BL042): overlay e arrasto no core, canvas dentro da WebView, `scene.translate` equivalente; implementado e a validar: workspace, clippy, Chrome e runtime executados no head de código `db02923` (prova nativa+headless desse head bloqueada por disco, ver BL015.6), sem ponteiro físico.
 - [Plano avaliado de cena dirigida](features/scene-plan.md): contrato core → runtime e recursos por assetId; gate local da rodada passou; consumido pelo renderer F041.
 - [Cenas no projeto e CLI](features/scene-project.md): attach, lotes, histórico, save/reopen
   e JSONL sem janela; inspector e render dirigido integrados; diálogo de anexar pendente.
