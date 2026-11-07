@@ -239,6 +239,27 @@ test('a lost pointer capture (a real release of it, not a synthetic event) cance
   assert.deepEqual(phases, [['down', undefined], ['cancel', 'pointer_cancel']]);
 });
 
+test('a release right after a lost capture (no move in between) is a cancel, never an up', async (t) => {
+  const runtime = await open(t);
+  if (!runtime) return;
+  await enable(runtime);
+  const rect = await picture(runtime);
+  const start = pane(rect, { u: 0.5, v: 0.5 });
+  await runtime.page.mouse.move(start.x, start.y);
+  await runtime.page.mouse.down();
+  const held = await runtime.page.evaluate(() => {
+    const surface = document.getElementById('overlay');
+    const had = surface.hasPointerCapture(1);
+    if (had) surface.releasePointerCapture(1);
+    return had;
+  });
+  assert.equal(held, true, 'the press captured the pointer (otherwise this test proves nothing)');
+  await runtime.page.mouse.up();
+  await settle(runtime);
+  const phases = pointerMessages(runtime).map((m) => [m.phase, m.reason]);
+  assert.deepEqual(phases, [['down', undefined], ['cancel', 'pointer_cancel']]);
+});
+
 test('resizing during a drag does not end it: the same pointer keeps the same picture point', async (t) => {
   const runtime = await open(t);
   if (!runtime) return;

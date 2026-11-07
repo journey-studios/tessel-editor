@@ -126,6 +126,21 @@ fn send(view: &Entity<Workstation>, cx: &mut VisualTestContext, message: Value) 
     consumed
 }
 
+/// Hides (or shows) the monitor the way the app does: a dialog is open, the next render runs
+/// `update_viewport_visibility` and the page goes off screen. Writing `viewport.on_screen`
+/// directly does not hold: the render that follows any update recomputes it from the layout.
+fn monitor_hidden_by_dialog(view: &Entity<Workstation>, cx: &mut VisualTestContext, hidden: bool) {
+    view.update(cx, |view, _| view.workflow.pretend_dialog_open(hidden));
+    cx.run_until_parked();
+    cx.update(|window, _| window.refresh());
+    cx.run_until_parked();
+    assert_eq!(
+        view.read_with(cx, |view, _| view.viewport.on_screen),
+        !hidden,
+        "the render followed the dialog"
+    );
+}
+
 fn dragging(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> bool {
     view.read_with(cx, |view, _| view.state.scene_interaction.drag().is_some())
 }
@@ -651,7 +666,7 @@ fn a_runtime_without_the_overlay_feature_is_never_planned_for(cx: &mut TestAppCo
 fn an_overlay_that_is_off_does_not_plan_the_scene_either(cx: &mut TestAppContext) {
     let (view, cx) = mounted(cx);
     // The monitor is hidden (a dialog, another tab): the page has the overlay off.
-    view.update(cx, |view, _| view.viewport.on_screen = false);
+    monitor_hidden_by_dialog(&view, cx, true);
     sync(&view, cx);
     assert!(!view.read_with(cx, |view, _| view.viewport.overlay_enabled()));
     let before = spent(&view, cx);
@@ -768,17 +783,15 @@ fn a_press_with_the_overlay_off_or_not_negotiated_selects_nothing_and_is_counted
     let tip = tip_of(&overlay(&view, cx), "x");
     let stamp = current_stamp(&view, cx);
     // Off (monitor hidden): the stamp is the current one, and still the press is refused.
-    view.update(cx, |view, _| view.viewport.on_screen = false);
+    monitor_hidden_by_dialog(&view, cx, true);
     sync(&view, cx);
     let counted = stale_count(&view, cx);
     send(&view, cx, json!({"phase":"down","point":tip,"stamp":stamp}));
     assert!(!dragging(&view, cx), "off: no drag opens");
     assert_eq!(stale_count(&view, cx), counted + 1);
     // On again, but the runtime lost the feature: refused as well.
-    view.update(cx, |view, _| {
-        view.viewport.on_screen = true;
-        view.viewport.pretend_overlay_supported(false);
-    });
+    monitor_hidden_by_dialog(&view, cx, false);
+    view.update(cx, |view, _| view.viewport.pretend_overlay_supported(false));
     send(&view, cx, json!({"phase":"down","point":tip,"stamp":stamp}));
     assert!(!dragging(&view, cx), "not negotiated: no drag opens");
     assert_eq!(stale_count(&view, cx), counted + 2);
@@ -803,7 +816,7 @@ fn a_press_with_the_overlay_off_does_not_even_change_the_selection(cx: &mut Test
     };
     assert!(selected(&view, cx).is_empty());
     let middle = json!({"u":0.5,"v":0.5});
-    view.update(cx, |view, _| view.viewport.on_screen = false);
+    monitor_hidden_by_dialog(&view, cx, true);
     sync(&view, cx);
     send(
         &view,

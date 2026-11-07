@@ -464,10 +464,27 @@ export const attachOverlay = ({ canvas, post, win = window, doc = document }) =>
     }
     session.down(point, event.shiftKey);
   });
+  // The capture the press took is gone (released by a script or taken by the browser) and no
+  // `lostpointercapture` told us: headless Chrome driven by CDP never fires it after a
+  // `releasePointerCapture`, so the event alone cannot be the only guard. The next pointer event
+  // finds out, and the press is cancelled, never carried on without the pointer it was following.
+  const captureLost = () => {
+    if (capturedPointer === null) return false;
+    try {
+      return !surface.hasPointerCapture(capturedPointer);
+    } catch {
+      return true;
+    }
+  };
+
   on(surface, 'pointermove', (event) => {
     if (!enabled) return;
     const point = pointOf(event);
     if (!point) return;
+    if (session.pressed && captureLost()) {
+      cancel('pointer_cancel');
+      return;
+    }
     if (session.pressed) {
       session.move(point);
       scheduleFlush();
@@ -483,6 +500,13 @@ export const attachOverlay = ({ canvas, post, win = window, doc = document }) =>
   on(surface, 'pointerup', (event) => {
     if (!event.isPrimary || event.button !== 0) return;
     const point = pointOf(event);
+    if (session.pressed && captureLost()) {
+      // The release of a press whose capture was lost is not a confirmation.
+      cancel('pointer_cancel');
+      session.release();
+      endCapture();
+      return;
+    }
     if (session.pressed && point) {
       if (frameRequest) {
         win.cancelAnimationFrame(frameRequest);
