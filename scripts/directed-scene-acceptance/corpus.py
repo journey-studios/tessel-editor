@@ -3,6 +3,7 @@
 
     python3 scripts/directed-scene-acceptance/corpus.py            # (re)writes ./corpus; drops only unchanged files of its own earlier run
     python3 scripts/directed-scene-acceptance/corpus.py --check    # fails on any difference or stray file
+    python3 scripts/directed-scene-acceptance/corpus.py --out DIR [--check]   # the same, on the folder DIR instead of ./corpus
 
 Provenance: every byte is drawn here from scratch (solid-colour PNGs, SPZ v2 clouds of a few gaussians, a sine-tone WAV);
 no photograph, no private media, nothing copied from the origin or from another proof's corpus. `expected.json` holds
@@ -554,13 +555,13 @@ def main():
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--out", default=None)
     args = parser.parse_args()
+    target = pathlib.Path(args.out) if args.out else CORPUS_DIR  # one target for the write and for --check: the folder that was named
     if args.check:
-        problems = check(CORPUS_DIR)
+        problems = check(target)
         for problem in problems:
             print(problem, file=sys.stderr)
-        print("corpus is byte-identical to the generator output" if not problems else f"{len(problems)} difference(s)")
+        print(f"corpus at {target} is byte-identical to the generator output" if not problems else f"{len(problems)} difference(s) in {target}")
         return 1 if problems else 0
-    target = pathlib.Path(args.out) if args.out else CORPUS_DIR
     write(target)
     print(f"corpus written to {target}")
     return 0

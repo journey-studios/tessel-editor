@@ -346,6 +346,84 @@
     "../directed-scene-export-proof/export_verify.py": "6f0432c0c96231093724d912c01de629e0c5b1a2540fd852e0101a429d8e55a4",
     "../directed-scene-export-proof/export_corpus.py": "20bbed3797586800f729269c826fd376deea1466c85d697bbcb2dccfc47dc00e"
    }
+  },
+  {
+   "id": "R5",
+   "reason": "Review findings on PR #8 that the R4 left open. Five OpenCodeReview threads of review 5810593224 (4500513488 corpus.py --check ignores --out; 4500513496 link.py create compares mtimes with every crate; 4500513499 link.py tool_versions runs without cwd=ROOT; 4500513504 proof.py and export_verify.py: a missing FFmpeg or Node crashes the run after the BLOCKED classification; 4500513508 proof.spec.py sets the no-bytecode flag too late: the spec is not a pinned file, fixed in the same commit) and one CodeRabbit thread of review 5810627514 on head 42faa3f (4500542362: ledger.py reads a shallow clone as a complete history). The other two threads of that head (4500542352 scene-acceptance.md, 4500528888 backlog.md) are documentation and are not part of the book. Every finding is fail-closed or a reporting defect: none produces a PASS about the editor. R1, R2, R3, R4 and the baseline are not edited, and neither is any oracle rule, verifier, control, corpus byte or tolerance.",
+   "applied": "AFTER the live run of fd4bc8c (24/24 PASS, recorded in the PR evidence) and after the independent R4 review (5810597994) and the reconfirmation (5810614005): this round was written knowing those results, because the findings come from reviews of that head. It changes how the corpus CLI checks a folder (corpus.py), which files make a binary look stale and where the toolchain is read (link.py, proof.py), how a host without FFmpeg or Node is reported (proof.py, export_verify.py) and how the book's Git history is read (ledger.py). It cannot make a failing editor pass and no number moved. The live run of the 24 phases is repeated from scratch for the R5 head on a rebuilt binary attested for it (its result is in the PR evidence, not in this book, so the book never claims a result it cannot yet hold); earlier live runs keep their meaning for their own heads.",
+   "before": {
+    "tolerances.json": "8f150233f6f89669efafe133aed67fd33fbcc01da24fa3c035d1e427f9c409e3",
+    "oracle.py": "8ac1a7ed6a2d8ac979c4b103ef2fba917347a2b5448d67bffb71f89c1a17af4e",
+    "corpus.py": "38f95a43fead781fea1cdf42166607eff69113320fb3f56236b416db82380d9e",
+    "verify.py": "033783db6452783675a1e8bf9bc4f57c34d37a16d863a0263b398beb3a2624bb",
+    "controls.py": "47d7025058052ef367ecc0342995531b80214c530b9e3accb8dc5f250f445392",
+    "corpus/expected.json": "b87443f8f9dbccd36b561890126ee3aae5c336a0f63730d03d26ed3975ecf838",
+    "proof.py": "0d0dd91282c3eb20a44d6cb6e234f4b115658515eb3c269b1bb461f6824ae16a",
+    "link.py": "3d3aaca7d28aca3c129e9f4ec44c4c8fc67e1529a7f1b7b154e49b265648c635",
+    "sensitivity.py": "e4618d0d687e2c366e16e7af59b87ea170c063478000e57e7858a3ad0f45a4b2",
+    "ledger.py": "f304482273462ba72636ff9bb93bc152be0f5a99c64d5cd598edcff7402d5e4f",
+    "../directed-scene-proof/model.py": "322af021aceb5ae45d8b99992c126c5360faa243c571e5bf5db73c6c7991e9bd",
+    "../directed-scene-proof/harness.py": "b6da5243475c8ba7520b31209c68a8417e82d5ed2b626b0f970389d66d8059ec",
+    "../directed-scene-export-proof/export_verify.py": "6f0432c0c96231093724d912c01de629e0c5b1a2540fd852e0101a429d8e55a4",
+    "../directed-scene-export-proof/export_corpus.py": "20bbed3797586800f729269c826fd376deea1466c85d697bbcb2dccfc47dc00e"
+   },
+   "pins": [],
+   "amendments": [
+    {
+     "id": "A16",
+     "finding": "OpenCodeReview 4500513488 (review 5810593224)",
+     "files": [
+      "corpus.py"
+     ],
+     "change": "main() resolves one target (`--out` or the committed folder) and uses it for the write AND for --check; the answer names the folder it is about. Before, `--check --out DIR` always judged the committed corpus and printed 'byte-identical' without having looked at DIR. build(), write(), check() and the bytes of corpus/ are unchanged (corpus/expected.json keeps its hash). Spec: CorpusCli (2 tests: a real CLI run over a temporary folder altered by one byte exits 1 while the committed corpus is still identical; a folder never generated is not 'byte-identical').",
+     "motivating_result": "Confirmed by reading main(): `check(CORPUS_DIR)` ignored args.out. Fail-closed for every verdict about the editor (the corpus phase reads the committed folder); a wrong answer of a convenience command."
+    },
+    {
+     "id": "A17",
+     "finding": "OpenCodeReview 4500513496 and 4500513499 (review 5810593224)",
+     "files": [
+      "link.py",
+      "proof.py"
+     ],
+     "change": "link.py: (1) the mtime guard of `create` follows the render binary's real inputs: Cargo.toml, Cargo.lock, rust-toolchain.toml and the crates of `render_crates` (crates/render and its transitive path dependencies read from the Cargo manifests, not a fixed list), without their tests/, benches/ and examples/ (which `cargo build -p` does not compile; kept when the manifest names one). When the closure cannot be computed (no TOML reader, unreadable manifest, a path outside the repository, [patch]/[replace]) it falls back to every crate, as before. The refusal names the newest input. The attestation itself is NOT scoped: the recorded and checked tree ids still cover all of crates/, runtime/, scripts/, Cargo.* and the toolchain, the binary and runtime/dist hashes are unchanged, and a clean tree is still required. (2) tool_versions() runs rustc and node with cwd=ROOT, so rustup reads the repository's rust-toolchain.toml whatever the caller's directory. (3) `dist_hashes`/`check` resolve the default bundle at call time (so a test can point them at a temporary repository). proof.py: Context.binary judged staleness with harness.binary_info, which compares with the `.rs` of EVERY crate (the check that actually blocked a run); it now uses link.older_than_inputs and keeps the wider answer in the report as `older_than_any_crate_source`. harness.py is not touched. Spec: LinkScope (8 tests in a real mini repository: edits in desktop, audio and tests do not refuse; each real input refuses and is named; a dependency added later widens the set; an unreadable manifest, a path outside the repository or a patch table fall back to every crate; the tree-id check still breaks on a desktop change; tool_versions from another directory), StaleBinary (2 tests).",
+     "motivating_result": "Hypothesis of 4500513496 confirmed by reasoning and measured in the PR evidence: Cargo fingerprints only the crates of the dependency graph, so an edit or checkout of a file in crates/desktop or crates/audio leaves a rebuilt tessel-render untouched (no relink, same mtime) while `create` and proof.py compared its mtime with that file and refused with advice ('rebuild') that cannot work. Touching the binary would also bless a binary that really is stale, so the scope of the inputs changed, not the mechanism. 4500513499 confirmed: rustc -V was the only call without cwd=ROOT."
+    },
+    {
+     "id": "A18",
+     "finding": "OpenCodeReview 4500513504 (review 5810593224)",
+     "files": [
+      "proof.py",
+      "../directed-scene-export-proof/export_verify.py"
+     ],
+     "change": "export_verify.tool_versions() records 'unavailable' for a tool that cannot be started (OSError) instead of raising: the fallback was written for this and could not be reached. proof.py: new tool_output() does the same for `node --version` in runtime_identity(), and environment() also guards the FFmpeg probe, so main() always reaches its SUMMARY, writes the --report and returns the documented status. Phases that need FFmpeg still call ensure_tools() first and are BLOCKED (exit 3); data-only phases may pass (exit 0, or 4 on a dirty tree). Nothing can pass because a tool is missing. Spec: ToolsAbsent (3 tests: the real main() with FFmpeg, ffprobe and Node absent: corpus and models PASS with the report saying 'unavailable'; controls and export phases BLOCKED, exit 3, none PASS; the probes themselves).",
+     "motivating_result": "Confirmed by running the real main() with FFmpeg and Node absent: before, environment() raised FileNotFoundError after the phases and the process ended with a traceback and exit 1, without SUMMARY or report. The mutation that removes the guards fails ToolsAbsent."
+    },
+    {
+     "id": "A19",
+     "finding": "CodeRabbit 4500542362 (review 5810627514, head 42faa3f)",
+     "files": [
+      "ledger.py"
+     ],
+     "change": "committed_versions() asks `git rev-parse --is-shallow-repository` first and returns None (verify_ledger then fails 'Git history of the book is readable') unless Git answers exactly `false`; an error, a shallow repository or an old Git that does not know the question all fail closed. The complete-repository path is unchanged. Before, `--full-history` over a shallow clone listed what the clone holds and omitted, without error, a side branch that rewrote the book. Spec: Ledger shallow tests build a real repository with a content-conflict merge, clone it with --depth 1 and in full, show that the shallow clone lacks the rewritten commit and that the old code returned a list without it, and require None for the shallow clone, for every answer other than `false`, and the side-branch version in the complete clone.",
+     "motivating_result": "Validated with real Git (git clone --depth 1 of a repository whose rewritten side-branch commit is only reachable through a merge): the shallow clone does not contain the commit and the pre-R5 code returned a plausible list without it. The anchor-ancestor check already failed closed in such a clone; this makes the book check itself refuse it."
+    }
+   ],
+   "after": {
+    "tolerances.json": "8f150233f6f89669efafe133aed67fd33fbcc01da24fa3c035d1e427f9c409e3",
+    "oracle.py": "8ac1a7ed6a2d8ac979c4b103ef2fba917347a2b5448d67bffb71f89c1a17af4e",
+    "corpus.py": "adb847e46a2376f98893712ba38bdef00f994243618d70ca2742e4a52397758b",
+    "verify.py": "033783db6452783675a1e8bf9bc4f57c34d37a16d863a0263b398beb3a2624bb",
+    "controls.py": "47d7025058052ef367ecc0342995531b80214c530b9e3accb8dc5f250f445392",
+    "corpus/expected.json": "b87443f8f9dbccd36b561890126ee3aae5c336a0f63730d03d26ed3975ecf838",
+    "proof.py": "51bd998cec8a91f1bb27364afaa9c1964420733e90da19d83f55b9aeba0b057f",
+    "link.py": "268e1197a2ca8fa2cc078727045a155585859a9229ddef1524e1957f5577a701",
+    "sensitivity.py": "e4618d0d687e2c366e16e7af59b87ea170c063478000e57e7858a3ad0f45a4b2",
+    "ledger.py": "4dead68e9187ca2e4d11902cc04917b1e0e1533f11ce8bc87dfd333ea8bf4cd8",
+    "../directed-scene-proof/model.py": "322af021aceb5ae45d8b99992c126c5360faa243c571e5bf5db73c6c7991e9bd",
+    "../directed-scene-proof/harness.py": "b6da5243475c8ba7520b31209c68a8417e82d5ed2b626b0f970389d66d8059ec",
+    "../directed-scene-export-proof/export_verify.py": "d1741797e78663323b100c997fad537669e5a0350650920f5bd93a586e4c6dcd",
+    "../directed-scene-export-proof/export_corpus.py": "20bbed3797586800f729269c826fd376deea1466c85d697bbcb2dccfc47dc00e"
+   }
   }
  ]
 }

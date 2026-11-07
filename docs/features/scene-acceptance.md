@@ -18,15 +18,15 @@ Diretório: `scripts/directed-scene-acceptance/`.
 | Arquivo | Papel |
 |---|---|
 | `tolerances.json` | Limites numéricos, controles negativos obrigatórios, política BLOCKED e, para **cada número**, uma justificativa com base (`analytic`, `inherited` ou `choice`) e texto. Todo limiar que um verificador usa mora aqui. |
-| `amendments.json` + `ledger.py` | O livro de emendas: baseline verificado no Git (`ANCHOR`), rodadas R1–R4 com motivo, achado, emendas e SHA-256 (antes/depois) dos 14 arquivos fixados. `tolerances_frozen` falha se um arquivo fixado difere do último estado registrado, se o livro não só cresce em relação ao **histórico completo** do Git (`git log --full-history`, inclusive o lado de um merge que a simplificação padrão do `git log` omite) ou se um número fica sem justificativa. |
+| `amendments.json` + `ledger.py` | O livro de emendas: baseline verificado no Git (`ANCHOR`), rodadas R1–R5 com motivo, achado, emendas e SHA-256 (antes/depois) dos 14 arquivos fixados. `tolerances_frozen` falha se um arquivo fixado difere do último estado registrado, se o livro não só cresce em relação ao **histórico completo** do Git (`git log --full-history`, inclusive o lado de um merge que a simplificação padrão do `git log` omite; um clone raso, que esconde commits sem avisar, é **recusado** e o histórico conta como ilegível) ou se um número fica sem justificativa. |
 | `oracle.py` | Modelo independente: projeção da câmera e máscara exata por ray-cast, centro/raio e composição `over` de gaussianas (inclusive a sonda do splat de trás), tabela de tons, janela de áudio da origem e lei de canais. Não importa nada do editor. Escreve SPZ v2 e WAV. |
-| `corpus.py` | Gera `corpus/` (versão 3) de forma determinística (reescrever remove só arquivos **da própria geração anterior**, com os bytes inalterados e nomeados no `provenance.json` da pasta; sobras de outra origem ficam e `--check` as reporta como `stray`) (PNG de cor sólida, SPZ de 45–62 bytes, WAV senoidal mono de 44,1 kHz de 13 s, mais o WAV de 8 s da emenda A1 como fixture negativa) com `provenance.json` e os ativos declarados por bundle. Recusa um quadro que não separe o splat de trás e uma janela de áudio sem borda. |
+| `corpus.py` | Gera `corpus/` (versão 3) de forma determinística (reescrever remove só arquivos **da própria geração anterior**, com os bytes inalterados e nomeados no `provenance.json` da pasta; sobras de outra origem ficam e `--check` as reporta como `stray`; `--check --out DIR` julga **a pasta indicada**, não sempre a commitada) (PNG de cor sólida, SPZ de 45–62 bytes, WAV senoidal mono de 44,1 kHz de 13 s, mais o WAV de 8 s da emenda A1 como fixture negativa) com `provenance.json` e os ativos declarados por bundle. Recusa um quadro que não separe o splat de trás e uma janela de áudio sem borda. |
 | `verify.py` | Verificadores: máscara/centroide/IoU/cor em imagem real, marcador ausente, splat (centroide, cor, r50, ordem, composição e sonda do splat de trás), áudio decodificado por ffmpeg (início, correlação, ganho pela lei de canais, canais de saída, silêncio, bordas, janela com borda), pacote lido por `zipfile`/diretório e hashes declarados (nomes e hashes exatos). |
 | `controls.py` | Entradas **certas e erradas** para cada verificador, em paisagem e retrato, em **todos** os quadros de splat, no regime PNG e **depois da cadeia FFmpeg do preset** (libx264 medium/high/crf18/yuv420p/BT.709 limitado). Controle negativo só passa se um check **nomeado** falhar; exceção do verificador reprova o controle. |
 | `proof.py` | Driver: fases, relatório JSON, bloco `acceptance`, política de saída (0–4). Reusa só a infraestrutura (`harness.py`, trava de GPU, `JsonlSession`) de `scripts/directed-scene-proof`. |
-| `link.py` | Atestação do binário: SHA-256 do `tessel-render`, hashes do `runtime/dist`, ids de árvore Git de `crates/`, `runtime/`, `scripts/`, `Cargo.*` e do toolchain. Prova **qual head** gerou o binário usado; **não** é prova de build reproduzível. |
+| `link.py` | Atestação do binário: SHA-256 do `tessel-render`, hashes do `runtime/dist`, ids de árvore Git de `crates/`, `runtime/`, `scripts/`, `Cargo.*` e do toolchain. Atesta, por quem rodou `create` logo após o build, que o binário e o bundle no disco são os registrados para as entradas deste head e que nada mudou desde então; **não** prova que o build usou essas entradas, **nem** é prova de build reproduzível. A guarda de mtime do `create` e do `proof.py` olha só as entradas reais do binário (`crates/render` e suas dependências de caminho, `Cargo.*`, toolchain); os ids de árvore atestados continuam cobrindo todo `crates/`, `runtime/` e `scripts/`. |
 | `sensitivity.py` | Calcula **só pelo modelo** o que cada regra enxerga e não enxerga (fator de tamanho de splat por regime, separação do splat de trás, menor erro de FOV, menor deslocamento de áudio) e quanto de cada tolerância a própria imagem correta do modelo consome. É a base das justificativas; não é aprovação dos números. |
-| `proof.spec.py` | 102 testes do próprio harness (sem GPU/Chrome), incluindo a cola das fases dependentes contra *fakes*, o ledger contra o Git e mutações que o teste precisa pegar. |
+| `proof.spec.py` | 121 testes do próprio harness (sem GPU/Chrome), incluindo a cola das fases dependentes contra *fakes*, o ledger contra o Git (inclusive um clone raso real), o escopo da guarda de mtime em um mini-repositório real, o `main` real sem FFmpeg/Node e a ausência de `__pycache__` numa cópia, e mutações que o teste precisa pegar. |
 | `history/A1-audio-window/` | Registro imutável do estado anterior à emenda A1 e do FAIL histórico que a motivou. |
 | `results.json` | Resultado **histórico** da primeira execução (harness `1b5953e`, árvore com 1 arquivo sujo, oráculo anterior às emendas). Não é aceite deste head e não foi reescrito. |
 
@@ -42,8 +42,8 @@ python3 scripts/directed-scene-proof/with-gpu-lock.py \
   python3 scripts/directed-scene-acceptance/proof.py --gpu-lock-held --report /tmp/s10.json
 ```
 
-Pré-requisitos das fases com imagem: `./scripts/runtime setup`, `tessel-render` compilado **e atestado para este head**
-(`link.py create`), Chrome/SwiftShader e ffmpeg/ffprobe. Uma fase sem pré-requisito sai BLOCKED, nunca pass. Um binário
+Pré-requisitos das fases com imagem: `./scripts/runtime setup`, `tessel-render` compilado **e atestado para as entradas deste head**
+(`link.py create`, feito por quem construiu o binário), Chrome/SwiftShader e ffmpeg/ffprobe. Uma fase sem pré-requisito sai BLOCKED, nunca pass. Um binário
 mais velho que as fontes, **sem atestação válida** ou atestado para outro head também é BLOCKED, a menos que se passe
 `--allow-stale-binary`; nesse caso (e com árvore suja) o resultado é só informativo (saída 4) e o relatório diz por quê.
 `--bin-render` aponta para uma cópia do binário (útil quando o cache de alvos do Cargo pode ser descartado no meio da
@@ -286,7 +286,7 @@ de cada passo pesado de 16 GiB; a menor reserva medida foi 16,03 GiB.
 | Diferença JS contra a base (`b8598c7`) | `runtime/src/compositor.js`, `runtime/src/index.js` e `runtime/test/preview-samples.test.mjs` (PR #17), idênticos aos da `main` | `fd4bc8c` |
 | **Harness completo vivo**, sem `--allow-stale-binary`, 24 fases | **24/24 PASS**, saída 0, `acceptance.acceptable = true`, 316 s, orçamento de trabalho respeitado (30 MB) | `fd4bc8c` |
 
-Binário `tessel-render` atestado por `link.py` **para este head** (SHA-256 `d976f61b…cab97881`; `runtime.js` `8ee1c496…a0e9e27`; `index.html`
+Binário `tessel-render` atestado por `link.py` (por quem o construiu) **para as entradas deste head** (SHA-256 `d976f61b…cab97881`; `runtime.js` `8ee1c496…a0e9e27`; `index.html`
 `707fd90f…c484a6`; `link.py check` mantém o vínculo ao `HEAD` depois dos commits só de docs porque nenhuma das entradas
 `crates`, `runtime`, `scripts`, `Cargo.*` e toolchain muda neles). Binário velho **nunca** foi aceito.
 

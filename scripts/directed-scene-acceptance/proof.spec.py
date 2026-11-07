@@ -3,6 +3,11 @@
 
     python3 scripts/directed-scene-acceptance/proof.spec.py
 
+Bytecode: the flag below is set BEFORE the first harness import and handed to every child (`-B` plus `PYTHONDONTWRITEBYTECODE`), so
+this spec, `proof.py` and what `proof.py` starts write no `__pycache__` even when you forget `-B`. That only stops WRITING: Python
+still READS an existing `.pyc` whose source has the same size and mtime second, so a reverted mutation can be served from a stale
+cache. Before a mutation run, remove the `__pycache__` folders of your own checkout (and only those).
+
 No GPU and no Chrome. The destination is replaced by fakes that answer the way the awaited seams are specified
 (`SEAMS` in proof.py), so the glue that no live phase can reach yet (S7 splat plan, S9 mixed export) is executed and
 judged here. This does NOT prove that the real fronts behave: that is `proof.py` against `tessel-render`.
@@ -11,6 +16,7 @@ import argparse
 import importlib.util
 import json
 import math
+import os
 import pathlib
 import shutil
 import subprocess
@@ -19,6 +25,7 @@ import tempfile
 import unittest
 from fractions import Fraction
 
+sys.dont_write_bytecode = True  # first, before any harness module is imported (an import writes its .pyc at that moment)
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
@@ -37,8 +44,8 @@ import corpus  # noqa: E402
 import oracle  # noqa: E402
 import verify  # noqa: E402
 
-PROOF = [sys.executable, str(HERE / "proof.py")]
-sys.dont_write_bytecode = True
+PROOF = [sys.executable, "-B", str(HERE / "proof.py")]
+CHILD_ENV = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}  # grandchildren (model.spec.py, git helpers) inherit it too
 import ledger  # noqa: E402
 import link  # noqa: E402
 import sensitivity  # noqa: E402
@@ -61,7 +68,7 @@ def tree_is_dirty():
 
 
 def run(*args):
-    return subprocess.run([*PROOF, *args], capture_output=True, text=True)
+    return subprocess.run([*PROOF, *args], capture_output=True, text=True, env=CHILD_ENV)
 
 
 class FakeChannel:
@@ -114,6 +121,12 @@ class ExitSemantics(unittest.TestCase):
         self.assertEqual(result.returncode, 4 if tree_is_dirty() else 0, result.stdout[-900:])
         if tree_is_dirty():
             self.assertIn("NOT AN ACCEPTANCE: the working tree is dirty", result.stdout)
+
+    def test_a_phase_that_starts_a_python_child_passes(self):
+        """`models` runs `model.spec.py` in a grandchild: the no-bytecode setting has to reach it too (see `BytecodeFree`)."""
+        result = run("--phases", "models")
+        self.assertEqual(result.returncode, 4 if tree_is_dirty() else 0, result.stdout[-600:])
+        self.assertIn("PASS     models", result.stdout)
 
     def test_an_empty_phase_selection_is_a_usage_error_never_a_green_run(self):
         for selection in ("", ",", " , "):
@@ -808,18 +821,36 @@ class WorkspaceSafety(unittest.TestCase):
 class StaleBinary(unittest.TestCase):
     """A binary older than the sources, or whose link to this head does not hold, is not accepted silently."""
 
-    def context(self, tmp, stale, allow, linked=True):
+    def context(self, tmp, stale, allow, linked=True, any_crate_stale=None):
+        """`stale`: the answer for the render build inputs (what decides); `any_crate_stale`: the older all-crates answer of the harness (what must not)."""
         binary = pathlib.Path(tmp) / "tessel-render"
         binary.write_bytes(b"x")
         ctx = make_context(tmp + "/w")
         ctx.args.bin_render = str(binary)
         ctx.args.allow_stale_binary = allow
-        real_info, real_check = proof.harness.binary_info, proof.link.check
-        proof.harness.binary_info = lambda path: {"path": str(path), "present": True, "older_than_sources": stale}
+        real_info, real_check, real_older = proof.harness.binary_info, proof.link.check, proof.link.older_than_inputs
+        wider = stale if any_crate_stale is None else any_crate_stale
+        proof.harness.binary_info = lambda path: {"path": str(path), "present": True, "older_than_sources": wider}
+        proof.link.older_than_inputs = lambda path: (stale, "crates/render/src/main.rs")
         proof.link.check = lambda path, key="render", dist=None: (linked, [] if linked else ["the binary on disk is not the one attested (sha256 differs)"], {"head": "h"})
         self.addCleanup(setattr, proof.harness, "binary_info", real_info)
         self.addCleanup(setattr, proof.link, "check", real_check)
+        self.addCleanup(setattr, proof.link, "older_than_inputs", real_older)
         return ctx
+
+    def test_an_edit_outside_the_render_inputs_does_not_make_a_fresh_binary_stale_but_stays_in_the_report(self):
+        with tempfile.TemporaryDirectory(prefix="s10-spec-") as tmp:
+            ctx = self.context(tmp, False, False, any_crate_stale=True)
+            self.assertTrue(ctx.binary("render").is_file())
+            self.assertEqual(ctx.informational, [])
+            self.assertIs(ctx.binaries["render"]["older_than_any_crate_source"], True, "the wider answer is kept next to the deciding one")
+            self.assertIs(ctx.binaries["render"]["older_than_sources"], False)
+
+    def test_an_edit_in_a_render_input_blocks_and_names_the_file(self):
+        with tempfile.TemporaryDirectory(prefix="s10-spec-") as tmp:
+            with self.assertRaises(proof.Blocked) as raised:
+                self.context(tmp, True, False, any_crate_stale=False).binary("render")
+            self.assertIn("crates/render/src/main.rs", raised.exception.reason)
 
     def test_a_stale_binary_blocks(self):
         with tempfile.TemporaryDirectory(prefix="s10-spec-") as tmp:
@@ -912,6 +943,163 @@ class BinaryLink(unittest.TestCase):
         self.assertTrue(any("is not a file" in r for r in reasons))
 
 
+class LinkScope(unittest.TestCase):
+    """The mtime guard of `link.py create` and `proof.py` is scoped to what the render binary is compiled from.
+
+    A real mini repository (workspace of five crates shaped like this one, committed, clean) with every mtime under the binary's; a
+    file is then made newer than the binary with `os.utime`, which is what a checkout or an edit does and what `cargo build` ignores
+    for a crate the binary does not depend on."""
+
+    OLD, BINARY, NEW = 1_000_000_000, 1_000_000_500, 1_000_001_000
+
+    MANIFESTS = {
+        "crates/core/Cargo.toml": '[package]\nname = "core"\n\n[dependencies]\nserde = "1"\n',
+        "crates/media/Cargo.toml": '[package]\nname = "media"\n\n[dependencies]\ncore = { path = "../core" }\n',
+        "crates/render/Cargo.toml": '[package]\nname = "render"\n\n[dependencies]\ncore = { path = "../core" }\nmedia = { path = "../media" }\n\n'
+                                    '[dev-dependencies]\naudio = { path = "../audio" }\n',
+        "crates/audio/Cargo.toml": '[package]\nname = "audio"\n',
+        "crates/desktop/Cargo.toml": '[package]\nname = "desktop"\n\n[dependencies]\ncore = { path = "../core" }\nrender = { path = "../render" }\n'
+                                     'media = { path = "../media" }\naudio = { path = "../audio" }\n',
+        "Cargo.toml": '[workspace]\nmembers = ["crates/audio", "crates/core", "crates/desktop", "crates/media", "crates/render"]\n',
+    }
+    SOURCES = ["crates/core/src/lib.rs", "crates/media/src/lib.rs", "crates/render/src/lib.rs", "crates/audio/src/lib.rs", "crates/desktop/src/main.rs",
+               "crates/desktop/tests/ui.rs", "crates/core/tests/plan.rs", "crates/render/tests/live.rs", "Cargo.lock", "rust-toolchain.toml",
+               "runtime/package.json", "runtime/src/a.js", "scripts/a.py", ".gitignore"]
+
+    def setUp(self):
+        from unittest.mock import patch
+        self.root = pathlib.Path(tempfile.mkdtemp(prefix="s10-link-scope-")).resolve()
+        self.addCleanup(shutil.rmtree, self.root, True)
+        for name, text in {**self.MANIFESTS, **{n: f"// {n}\n" for n in self.SOURCES}}.items():
+            (self.root / name).parent.mkdir(parents=True, exist_ok=True)
+            (self.root / name).write_text(text)
+        (self.root / ".gitignore").write_text("target/\nruntime/dist/\n")
+        for name in ("runtime.js", "index.html"):
+            (self.root / "runtime/dist").mkdir(parents=True, exist_ok=True)
+            (self.root / "runtime/dist" / name).write_text(name)
+        (self.root / "target").mkdir()
+        self.binary = self.root / "target/tessel-render"
+        self.binary.write_bytes(b"binary")
+        self.git("init", "-b", "main")
+        self.git("config", "user.name", "Link scope")
+        self.git("config", "user.email", "link@example.invalid")
+        self.git("add", ".")
+        self.git("commit", "-m", "tree")
+        self.settle()
+        for target, value in (("ROOT", self.root), ("RUNTIME_DIST", self.root / "runtime/dist"), ("tool_versions", lambda: {"rustc": "stub", "node": "stub"})):
+            patcher = patch.object(link, target, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def git(self, *args):
+        return subprocess.run(["git", "-C", str(self.root), *args], capture_output=True, text=True, check=True).stdout
+
+    def settle(self):
+        """Every tracked file old, the binary and the bundle newer than all of them (a fresh build)."""
+        for path in self.root.rglob("*"):
+            if path.is_file() and ".git" not in path.relative_to(self.root).parts and path != self.binary and "dist" not in path.parts:
+                os.utime(path, (self.OLD, self.OLD))
+        os.utime(self.binary, (self.BINARY, self.BINARY))
+        for name in link.DIST_FILES:
+            os.utime(self.root / "runtime/dist" / name, (self.BINARY, self.BINARY))
+
+    def touch(self, name):
+        os.utime(self.root / name, (self.NEW, self.NEW))
+
+    def create(self):
+        return link.create({"render": self.binary})
+
+    def test_a_fresh_binary_with_old_sources_is_linked(self):
+        ok, reasons = self.create()
+        self.assertEqual((ok, reasons), (True, []))
+        self.assertEqual(link.render_crates(self.root), ["crates/core", "crates/media", "crates/render"])
+
+    def test_an_edit_in_a_crate_the_binary_is_not_built_from_does_not_refuse_a_fresh_binary(self):
+        """desktop and audio are not render dependencies (a dev-dependency is not part of the binary), and tests are not compiled by `cargo build -p`."""
+        for name in ("crates/desktop/src/main.rs", "crates/desktop/tests/ui.rs", "crates/audio/src/lib.rs", "crates/audio/Cargo.toml",
+                     "crates/core/tests/plan.rs", "crates/render/tests/live.rs"):
+            with self.subTest(name):
+                self.touch(name)
+                ok, reasons = self.create()
+                self.assertEqual((ok, reasons), (True, []))
+                self.assertFalse(link.older_than_inputs(self.binary)[0])
+                self.settle()
+
+    def test_an_edit_in_any_real_input_refuses_and_names_the_file(self):
+        for name in ("crates/core/src/lib.rs", "crates/media/src/lib.rs", "crates/render/src/lib.rs", "crates/render/Cargo.toml",
+                     "Cargo.toml", "Cargo.lock", "rust-toolchain.toml"):
+            with self.subTest(name):
+                self.touch(name)
+                ok, reasons = self.create()
+                self.assertFalse(ok)
+                self.assertTrue(any("older than " + name in r for r in reasons), reasons)
+                self.assertEqual(link.older_than_inputs(self.binary), (True, name))
+                self.settle()
+
+    def test_a_dependency_added_later_widens_the_inputs(self):
+        """The inputs come from the manifests, not from a fixed list: once core depends on audio, an audio edit makes the binary stale."""
+        core = self.root / "crates/core/Cargo.toml"
+        core.write_text(core.read_text() + 'audio = { path = "../audio" }\n')
+        self.git("commit", "-am", "core uses audio")
+        self.settle()
+        self.assertIn("crates/audio", link.render_crates(self.root))
+        self.touch("crates/audio/src/lib.rs")
+        ok, reasons = self.create()
+        self.assertFalse(ok)
+        self.assertTrue(any("crates/audio/src/lib.rs" in r for r in reasons), reasons)
+
+    def test_a_manifest_that_cannot_be_read_falls_back_to_every_crate(self):
+        """Fail closed: when the closure is unknown the old, wider guard applies."""
+        (self.root / "crates/render/Cargo.toml").write_text("this is [not toml")
+        self.git("commit", "-am", "broken manifest")
+        self.settle()
+        self.assertIsNone(link.render_crates(self.root))
+        self.touch("crates/desktop/src/main.rs")
+        ok, reasons = self.create()
+        self.assertFalse(ok)
+        self.assertTrue(any("crates/desktop/src/main.rs" in r for r in reasons), reasons)
+
+    def test_a_path_outside_the_repository_or_a_patch_table_falls_back_to_every_crate(self):
+        core = self.root / "crates/core/Cargo.toml"
+        core.write_text(core.read_text() + 'outside = { path = "../../../elsewhere" }\n')
+        self.assertIsNone(link.render_crates(self.root))
+        core.write_text(self.MANIFESTS["crates/core/Cargo.toml"])
+        top = self.root / "Cargo.toml"
+        top.write_text(top.read_text() + '\n[patch.crates-io]\nserde = { path = "vendor/serde" }\n')
+        self.assertIsNone(link.render_crates(self.root))
+
+    def test_the_attestation_is_not_loosened_a_change_in_any_crate_still_breaks_check(self):
+        """Only the mtime guard is scoped: the tree ids recorded by `create` still cover all of crates/, runtime/ and scripts/."""
+        self.assertEqual(self.create(), (True, []))
+        document = json.loads(link.link_path(self.binary).read_text())
+        self.assertEqual(sorted(document["inputs"]), sorted(link.INPUTS))
+        (self.root / "crates/desktop/src/main.rs").write_text("// changed and committed\n")
+        self.git("commit", "-am", "desktop change")
+        ok, reasons, _ = link.check(self.binary, "render", self.root / "runtime/dist")
+        self.assertFalse(ok)
+        self.assertTrue(any("crates" in r for r in reasons), reasons)
+
+    def test_tool_versions_run_in_the_repository_not_in_the_callers_directory(self):
+        """rustup picks the toolchain by the CWD: from outside the repository the attestation would name the default toolchain."""
+        from unittest.mock import patch
+        patch.stopall()  # the stub of setUp must not hide the function under test
+        with tempfile.TemporaryDirectory(prefix="s10-tools-") as folder:
+            shims = pathlib.Path(folder) / "shims"
+            shims.mkdir()
+            for tool in ("rustc", "node"):
+                shim = shims / tool
+                shim.write_text('#!/bin/sh\necho "$(pwd -P)"\n')
+                shim.chmod(0o755)
+            outside = pathlib.Path(folder) / "elsewhere"
+            outside.mkdir()
+            here = os.getcwd()
+            os.chdir(outside)
+            self.addCleanup(os.chdir, here)
+            with patch.dict(os.environ, {"PATH": f"{shims}:{os.environ['PATH']}"}):
+                tools = link.tool_versions()
+        self.assertEqual(tools, {"rustc": str(link.ROOT.resolve()), "node": str(link.ROOT.resolve())})
+
+
 class Ledger(unittest.TestCase):
     """F5: edits to the oracle, verifier, controls, corpus or tolerances that no round records are caught."""
 
@@ -946,6 +1134,83 @@ class Ledger(unittest.TestCase):
                 versions = ledger.committed_versions()
             self.assertIn(rewritten, [sha for sha, _ in versions],
                           'a merge resolution must not hide the rewritten side-branch book')
+
+    @staticmethod
+    def conflicted_book_repo(folder):
+        """A real repository whose book was rewritten on a side branch that a content-conflict merge resolved away; returns (root, book dir, rewritten sha)."""
+        root = pathlib.Path(folder).resolve() / "origin"
+        here = root / "harness"
+        here.mkdir(parents=True)
+
+        def git(*args, check=True):
+            return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, check=check)
+
+        def commit(text):
+            (here / "amendments.json").write_text(text)
+            git("add", ".")
+            git("commit", "-m", "book")
+            return git("rev-parse", "HEAD").stdout.strip()
+        git("init", "-b", "main")
+        git("config", "user.name", "Ledger test")
+        git("config", "user.email", "ledger@example.invalid")
+        commit('{"rounds": []}')
+        git("checkout", "-b", "side")
+        rewritten = commit('{"rounds": [{"id": "rewritten"}]}')
+        git("checkout", "main")
+        good = '{"rounds": [{"id": "original"}]}'
+        commit(good)
+        git("merge", "--no-ff", "--no-commit", "side", check=False)
+        commit(good)
+        return root, here, rewritten
+
+    def test_a_shallow_clone_is_refused_instead_of_read_as_a_complete_history(self):
+        """`--full-history` cannot list what the clone does not hold: a CI checkout with `--depth` would pass 'the book only grows' without the side branch."""
+        import ledger
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory(prefix="s10-book-shallow-") as folder:
+            origin, here, rewritten = self.conflicted_book_repo(folder)
+            shallow, full = pathlib.Path(folder).resolve() / "shallow", pathlib.Path(folder).resolve() / "full"
+            for target, extra in ((shallow, ["--depth", "1"]), (full, [])):
+                subprocess.run(["git", "clone", "--quiet", *extra, f"file://{origin}", str(target)], capture_output=True, text=True, check=True)
+
+            def listed(clone, fake_shallow_answer=None):
+                real = ledger._git
+
+                def git(*args):
+                    if fake_shallow_answer is not None and args[:1] == ("rev-parse",):
+                        return fake_shallow_answer
+                    return real(*args)
+                with patch.object(ledger, "ROOT", clone), patch.object(ledger, "HERE", clone / "harness"), patch.object(ledger, "_git", git):
+                    return ledger.committed_versions()
+
+            # the premises, from real Git: the clone is shallow and does not even hold the rewritten commit
+            self.assertEqual(subprocess.run(["git", "-C", str(shallow), "rev-parse", "--is-shallow-repository"], capture_output=True, text=True).stdout.strip(), "true")
+            self.assertNotEqual(subprocess.run(["git", "-C", str(shallow), "cat-file", "-e", rewritten], capture_output=True).returncode, 0)
+            # the hole: without the guard the shallow clone yields a plausible list that lacks the rewritten version, with no error
+            hidden = listed(shallow, fake_shallow_answer=b"false\n")
+            self.assertIsNotNone(hidden)
+            self.assertNotIn(rewritten, [sha for sha, _ in hidden])
+            # the guard: explicit refusal, which verify_ledger reports as 'Git history of the book is readable' = FAIL
+            self.assertIsNone(listed(shallow))
+            # a complete clone keeps working and still lists the side-branch version
+            self.assertIn(rewritten, [sha for sha, _ in listed(full)])
+
+    def test_the_shallow_guard_fails_closed_when_git_cannot_say_false(self):
+        import ledger
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory(prefix="s10-book-shallow-") as folder:
+            origin, here, rewritten = self.conflicted_book_repo(folder)
+            real = ledger._git
+
+            def answering(answer):
+                return lambda *args: answer if args[:1] == ("rev-parse",) else real(*args)
+            with patch.object(ledger, "ROOT", origin), patch.object(ledger, "HERE", here):
+                for answer in (None, b"", b"true\n", b"--is-shallow-repository\n", b"maybe\n"):
+                    with self.subTest(answer=answer), patch.object(ledger, "_git", answering(answer)):
+                        self.assertIsNone(ledger.committed_versions())
+                with patch.object(ledger, "_git", answering(b"false\n")):
+                    self.assertIn(rewritten, [sha for sha, _ in ledger.committed_versions()])
+                self.assertIn(rewritten, [sha for sha, _ in ledger.committed_versions()], "the real git of a complete repository says false")
 
     def test_the_repository_ledger_holds(self):
         import ledger
@@ -1220,6 +1485,133 @@ class SensitivityAnalysis(unittest.TestCase):
         report = sensitivity.back_splat(expected)
         self.assertGreaterEqual(report["minSeparation"], verify.TOLERANCES["splat"]["backSplatSeparationMinDistance"])
         self.assertEqual(len(report["rows"]), len(expected["splat"]["frames"]))
+
+
+ABSENT_TOOLS_MAIN = """
+import importlib.util, sys
+sys.dont_write_bytecode = True
+ACC = {acc!r}
+sys.path.insert(0, ACC)
+spec = importlib.util.spec_from_file_location("s10_proof_without_tools", ACC + "/proof.py")
+module = importlib.util.module_from_spec(spec)
+sys.modules["s10_proof_without_tools"] = module
+spec.loader.exec_module(module)
+for owner in (module.verify, module.verify.ev):  # this host's FFmpeg is "not installed": the real main() does the rest
+    owner.FFMPEG, owner.FFPROBE = "/nonexistent/ffmpeg", "/nonexistent/ffprobe"
+sys.argv = ["proof.py", *sys.argv[1:]]
+sys.exit(module.main())
+"""
+
+
+class ToolsAbsent(unittest.TestCase):
+    """A host without FFmpeg/ffprobe/Node: the real `main()` keeps its contract (summary, report, exit status) and never a traceback."""
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="s10-no-tools-")).resolve()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        (self.tmp / "bin").mkdir()
+        (self.tmp / "bin" / "git").symlink_to(shutil.which("git"))  # the only tool on PATH: no node, no ffmpeg
+        (self.tmp / "main.py").write_text(ABSENT_TOOLS_MAIN.format(acc=str(HERE)))
+
+    def main(self, phases):
+        report = self.tmp / "report.json"
+        env = {"PATH": str(self.tmp / "bin"), "PYTHONDONTWRITEBYTECODE": "1", "HOME": os.environ.get("HOME", str(self.tmp))}
+        result = subprocess.run([sys.executable, "-B", str(self.tmp / "main.py"), "--phases", phases, "--report", str(report)],
+                                capture_output=True, text=True, env=env)
+        self.assertNotIn("Traceback", result.stderr + result.stdout)
+        self.assertIn("SUMMARY", result.stdout)
+        self.assertTrue(report.is_file(), "the report is written even when the host has no FFmpeg or Node")
+        return result, json.loads(report.read_text(encoding="utf-8"))
+
+    def test_data_only_phases_pass_and_the_report_says_the_tools_are_unavailable(self):
+        result, report = self.main("corpus,models")
+        self.assertEqual(result.returncode, 4 if tree_is_dirty() else 0, result.stdout[-600:])
+        self.assertEqual([p["status"] for p in report["phases"]], ["PASS", "PASS"])
+        self.assertEqual((report["environment"]["ffmpeg"], report["environment"]["ffprobe"], report["runtime_bundle"]["node"]),
+                         ("unavailable", "unavailable", "unavailable"))
+        self.assertEqual(report["exit_code"], result.returncode)
+
+    def test_phases_that_need_a_tool_are_blocked_with_exit_3_never_a_pass(self):
+        result, report = self.main("corpus,controls_camera,controls_audio,camera_export")
+        self.assertEqual(result.returncode, 3, result.stdout[-600:])
+        states = {p["phase"]: p for p in report["phases"]}
+        self.assertEqual(states["corpus"]["status"], "PASS")
+        for phase in ("controls_camera", "controls_audio", "camera_export"):
+            self.assertEqual(states[phase]["status"], "BLOCKED", phase)
+            self.assertIn("ffmpeg", states[phase]["blocked"]["reason"])
+        self.assertEqual(report["exit_code"], 3)
+        self.assertFalse(report["acceptance"]["acceptable"])
+
+    def test_the_tool_probes_themselves_tolerate_a_missing_binary(self):
+        real = (verify.ev.FFMPEG, verify.ev.FFPROBE)
+        verify.ev.FFMPEG, verify.ev.FFPROBE = "/nonexistent/ffmpeg", "/nonexistent/ffprobe"
+        self.addCleanup(lambda: setattr(verify.ev, "FFMPEG", real[0]))
+        self.addCleanup(lambda: setattr(verify.ev, "FFPROBE", real[1]))
+        self.assertEqual(verify.ev.tool_versions(), {"ffmpeg": "unavailable", "ffprobe": "unavailable"})
+        self.assertEqual(proof.environment()["ffmpeg"], "unavailable")
+        self.assertEqual(proof.tool_output("/nonexistent/node", "--version"), "unavailable")
+
+
+class CorpusCli(unittest.TestCase):
+    """`corpus.py --check` judges the folder it was told to, not always the committed one."""
+
+    @staticmethod
+    def cli(*args):
+        return subprocess.run([sys.executable, "-B", str(HERE / "corpus.py"), *args], capture_output=True, text=True, env=CHILD_ENV)
+
+    def test_check_with_out_reads_that_folder(self):
+        with tempfile.TemporaryDirectory(prefix="s10-corpus-cli-") as folder:
+            target = pathlib.Path(folder) / "elsewhere"
+            self.assertEqual(self.cli("--out", str(target)).returncode, 0)
+            clean = self.cli("--check", "--out", str(target))
+            self.assertEqual(clean.returncode, 0, clean.stderr)
+            self.assertIn(str(target), clean.stdout, "the answer names the folder it is about")
+            picture = target / "assets/mk-green.png"
+            data = bytearray(picture.read_bytes())
+            data[-20] ^= 0x01
+            picture.write_bytes(bytes(data))
+            altered = self.cli("--check", "--out", str(target))
+            self.assertEqual(altered.returncode, 1, "the committed corpus is identical, the named folder is not: the old CLI said 0 here")
+            self.assertIn("differs assets/mk-green.png", altered.stderr)
+            self.assertEqual(self.cli("--check").returncode, 0, "without --out the committed corpus is still the target and still identical")
+
+    def test_check_of_a_folder_that_was_never_generated_is_not_byte_identical(self):
+        with tempfile.TemporaryDirectory(prefix="s10-corpus-cli-") as folder:
+            result = self.cli("--check", "--out", str(pathlib.Path(folder) / "nothing"))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("missing expected.json", result.stderr)
+            self.assertNotIn("byte-identical", result.stdout)
+
+
+class BytecodeFree(unittest.TestCase):
+    """The spec and what it starts write no `__pycache__`, even when launched without `-B`/`PYTHONDONTWRITEBYTECODE`.
+
+    Done in a COPY of `scripts/`, so a cache in the real checkout can neither hide nor fake the result. This proves that nothing is
+    WRITTEN; it says nothing about READING: an existing `.pyc` with the same source size and mtime second is still trusted by Python."""
+
+    TESTS = ["ExitSemantics.test_unknown_phase_is_a_usage_error", "ExitSemantics.test_missing_binary_blocks_with_exit_3_and_never_passes",
+             "ExitSemantics.test_a_tampered_corpus_fails_with_exit_1", "ExitSemantics.test_a_phase_that_starts_a_python_child_passes"]
+
+    @staticmethod
+    def caches(root):
+        return sorted(str(p.relative_to(root)) for p in pathlib.Path(root).rglob("*") if p.name == "__pycache__" or p.suffix == ".pyc")
+
+    def test_the_spec_and_its_children_in_a_copy_create_no_pycache(self):
+        with tempfile.TemporaryDirectory(prefix="s10-bytecode-") as folder:
+            copy = pathlib.Path(folder).resolve() / "repo"
+            skip = shutil.ignore_patterns("__pycache__", "*.pyc")
+            shutil.copytree(HERE.parent, copy / "scripts", ignore=skip)
+            shutil.copytree(HERE.parent.parent / "docs/migration/fixtures", copy / "docs/migration/fixtures", ignore=skip)  # read by model.spec.py
+            env = {k: v for k, v in os.environ.items() if k != "PYTHONDONTWRITEBYTECODE"}  # the way the docstring says to run it: no -B, no variable
+            spec = copy / "scripts/directed-scene-acceptance/proof.spec.py"
+            result = subprocess.run([sys.executable, str(spec), *self.TESTS], capture_output=True, text=True, env=env, cwd=copy)
+            self.assertEqual(result.returncode, 0, result.stderr[-800:])
+            self.assertIn(f"Ran {len(self.TESTS)} tests", result.stderr)
+            self.assertEqual(self.caches(copy), [], "the spec, proof.py and model.spec.py wrote bytecode")
+            # control: the detector sees a write when nothing prevents it (an ordinary import of a harness module, without -B)
+            subprocess.run([sys.executable, "-c", "import sys; sys.path.insert(0, 'scripts/directed-scene-acceptance'); import oracle"],
+                           capture_output=True, text=True, env=env, cwd=copy, check=True)
+            self.assertTrue(self.caches(copy), "the check must be able to fail: a plain import writes a __pycache__")
 
 
 class CorpusWriter(unittest.TestCase):

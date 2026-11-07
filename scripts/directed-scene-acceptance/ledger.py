@@ -75,7 +75,14 @@ def is_ancestor(commit, descendant="HEAD"):
 
 
 def committed_versions():
-    """`[(commit, ledger dict)]` of every committed version of the book reachable from HEAD (newest first); None when Git cannot say."""
+    """`[(commit, ledger dict)]` of every committed version of the book reachable from HEAD (newest first); None when Git cannot say.
+
+    A shallow clone (a CI checkout with `--depth`) cannot say: `git log` stops silently at the boundary, so a side branch that rewrote
+    the book would simply be missing from the list. Anything but a plain `false` from Git (a shallow repository, an error, an old Git that
+    does not know the question) is refused, and `verify_ledger` reports the history as unreadable."""
+    shallow = _git("rev-parse", "--is-shallow-repository")
+    if shallow is None or shallow.strip() != b"false":
+        return None
     listed = _git("log", "--full-history", "--format=%H", "--", _relative("amendments.json"))
     if listed is None:
         return None

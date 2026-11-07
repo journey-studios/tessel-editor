@@ -17,6 +17,8 @@ Exit status (0 only when the selected phases passed on a clean, attested run, no
        `scene.export`) is absent, or a binary is not linked to this head. BLOCKED is NOT a pass and never replaces a FAIL
     4  informational, NOT acceptance: every selected phase passed, but the tree is dirty, `--allow-stale-binary` was used, or a binary
        is not linked to this head under that flag. The report says which, under `acceptance`
+    A host without FFmpeg/ffprobe or Node still gets its SUMMARY, its `--report` and one of the statuses above (the report's `environment` and
+    `runtime_bundle.node` say "unavailable"): phases that need FFmpeg are BLOCKED (3), data-only phases may pass; nothing passes for lack of a tool.
 
 Groups, and what each proves (docs/features/scene-acceptance.md):
   * data / controls  -> tolerance ancestry and the amendment ledger, corpus determinism, models checked against analytic identities and the
@@ -200,13 +202,18 @@ class Context:
         if not path.is_file():
             raise Blocked(f"binary not built: {path}", f"build it with the serialized helper: {RENDER_HINT}", "BL019")
         info = harness.binary_info(path)
+        # `binary_info` compares with the `.rs` of EVERY crate, so an edit in desktop/audio (not built into this binary, and `cargo build`
+        # would not relink it) would call a fresh binary stale forever. Staleness is judged against the render build inputs (`link.py`);
+        # the wider answer stays in the report next to it. The attestation below still covers every tree of the repository.
+        info["older_than_any_crate_source"] = info.get("older_than_sources")
+        info["older_than_sources"], info["newest_render_input"] = link.older_than_inputs(path)
         linked, reasons, details = link.check(path, key)
         info["link"] = {"holds": linked, "reasons": reasons, **details}
         self.binaries[key] = info
         allowed = getattr(self.args, "allow_stale_binary", False)
         problems = list(reasons)
         if info.get("older_than_sources"):
-            problems.append("older than the sources of this checkout")
+            problems.append(f"older than {info.get('newest_render_input')}, an input of the render build")
         if problems and not allowed:
             raise Blocked(f"{path} is not attested for this head ({'; '.join(problems)}): a result would describe a different build",
                           f"rebuild from a clean head ({RENDER_HINT}), run `python3 scripts/directed-scene-acceptance/link.py create --render {path}`, "
@@ -1150,16 +1157,30 @@ PHASES = [
 
 
 # ---------------------------------------------------------------------------------- report
+def tool_output(*command):
+    """First line a tool prints, or "unavailable" when it is not installed, cannot run or says nothing: a report describes the host
+    it ran on and is never lost because a tool the data-only phases do not need is absent (the phases that need it are BLOCKED)."""
+    try:
+        run = subprocess.run(list(command), capture_output=True, text=True)
+    except OSError:
+        return "unavailable"
+    return (run.stdout.strip().splitlines() or ["unavailable"])[0]
+
+
 def runtime_identity():
     dist = ROOT / "runtime" / "dist"
     files = {name: sha256_file(dist / name) for name in ("runtime.js", "index.html") if (dist / name).is_file()}
-    node = subprocess.run(["node", "--version"], capture_output=True, text=True).stdout.strip()
+    node = tool_output("node", "--version")
     package = ROOT / "runtime" / "package.json"
     return {"dist": files, "node": node, "package_json_sha256": sha256_file(package) if package.is_file() else None}
 
 
 def environment():
-    return {"python": platform.python_version(), "platform": platform.platform(), "machine": platform.machine(), **verify.ev.tool_versions(),
+    try:
+        tools = verify.ev.tool_versions()
+    except Exception:  # noqa: BLE001 - never lose the report to a probe; "unavailable" says what could not be read
+        tools = {"ffmpeg": "unavailable", "ffprobe": "unavailable"}
+    return {"python": platform.python_version(), "platform": platform.platform(), "machine": platform.machine(), **tools,
             "free_gib_tmp": round(free_gib("/tmp"), 1)}
 
 
