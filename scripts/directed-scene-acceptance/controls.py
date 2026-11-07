@@ -3,13 +3,17 @@
 A verifier that has never failed proves nothing. Each control builds an input that is right (positive) or wrong in exactly
 one known way (negative) *without the editor*: pictures from the model's own rasteriser, audio from the analytic tone
 table encoded by FFmpeg, packages written by Python's zipfile. A negative control passes (`ok`) only when the verifier
-reports at least one failed check on it; a positive control only when it reports none.
+reports a failed check of the kind it names (`must_fail`) and did not raise; a positive control only when it reports none.
+Picture controls run in two regimes: the picture as the renderer writes it (PNG) and the same picture after the export's own
+FFmpeg chain (4:2:0 BT.709 limited range, libx264), each judged with its own tolerances.
 """
 import copy
 import json
 import math
 import pathlib
+import subprocess
 import sys
+import tempfile
 from fractions import Fraction
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -20,21 +24,48 @@ import verify  # noqa: E402
 
 
 class Control:
-    def __init__(self, name, should_pass):
-        self.name, self.should_pass = name, should_pass
+    """One control. A negative control names the check(s) that have to fail (`must_fail`, substrings of check names): any other
+    failure would be accepted, including a verifier that crashed or one that failed on something unrelated. An exception of the
+    verifier fails the control, positive or negative: a verifier that raised has not judged the input.
+
+    `stance` of a negative control: `detect` (the named check must fail), `blind` (the rule's own arithmetic says its tolerance
+    cannot see this error: the named check must NOT fail, and if it does the declaration is stale and the control fails; recorded
+    as a blind spot, never as a detection) or `either` (the error is within the guard band of the rule's limit: no claim, only
+    `raised` fails; recorded as such)."""
+
+    def __init__(self, name, should_pass, must_fail=(), stance="detect"):
+        if not should_pass and not must_fail:
+            raise ValueError(f"negative control `{name}` must name the check that has to fail")
+        if stance not in ("detect", "blind", "either") or (should_pass and stance != "detect"):
+            raise ValueError(f"bad stance {stance!r} for control `{name}`")
+        self.name, self.should_pass, self.must_fail, self.stance = name, should_pass, tuple(must_fail), stance
         self.collector = verify.Collector()
+        self.raised = None
 
     def result(self):
         failed = self.collector.failed()
-        return {"control": self.name, "should_pass": self.should_pass, "failed_checks": failed[:6],
-                "ok": (not failed) if self.should_pass else bool(failed)}
+        named = [name for name in failed if any(token in name for token in self.must_fail)]
+        if self.raised is not None:
+            ok = False
+        elif self.should_pass:
+            ok = not failed
+        elif self.stance == "blind":
+            ok = not named
+        elif self.stance == "either":
+            ok = True
+        else:
+            ok = bool(named)
+        return {"control": self.name, "should_pass": self.should_pass, "must_fail": list(self.must_fail), "failed_checks": failed[:6],
+                "named_failed": named[:3], "raised": None if self.raised is None else f"{type(self.raised).__name__}: {self.raised}",
+                "stance": self.stance, "detected": bool(named), "ok": ok}
 
 
-def run_control(name, should_pass, body):
-    control = Control(name, should_pass)
+def run_control(name, should_pass, body, must_fail=(), stance="detect"):
+    control = Control(name, should_pass, must_fail, stance)
     try:
         body(control.collector)
-    except Exception as error:  # noqa: BLE001 - a verifier that raises on a defective input has failed to judge it
+    except Exception as error:  # noqa: BLE001 - the verifier raised: it has not judged the input, so the control fails whatever its sign
+        control.raised = error
         control.collector.check(f"verifier raised {type(error).__name__}", False, error)
     return control.result()
 
@@ -59,6 +90,36 @@ def flip_horizontal(rgb, width, height):
     return bytes(out)
 
 
+# ---------------------------------------------------------------------------------- video regime
+VIDEO_TAG = " (video regime)"
+CHAIN = "format=rgb24,scale=flags=accurate_rnd+full_chroma_int:out_color_matrix=bt709:out_range=tv,format=yuv420p,setsar=1"
+
+
+def video_roundtrip(rgb, width, height):
+    """The picture after the export's own FFmpeg chain (`tolerances.json` `video`): RGB -> BT.709 limited-range 4:2:0 -> libx264
+    medium, profile high, crf 18 -> decoded back by the same BT.709 decoder the live phases use. One intra frame: the motion and
+    rate control of a real 48-frame export are NOT rehearsed. A real codec on the model's picture, not an export of the editor."""
+    video = verify.TOLERANCES["video"]
+    with tempfile.TemporaryDirectory(prefix="s10-video-") as tmp:
+        path = pathlib.Path(tmp) / "frame.mp4"
+        run = subprocess.run([verify.FFMPEG, "-v", "error", "-nostdin", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{width}x{height}", "-r", "24",
+                              "-i", "-", "-vf", CHAIN, "-frames:v", "1", "-c:v", "libx264", "-preset", video["preset"], "-profile:v", video["profile"],
+                              "-pix_fmt", "yuv420p", "-crf", str(video["crf"]), *verify.COLOR_TAGS, "-movflags", "+faststart", str(path)],
+                             input=rgb, capture_output=True)
+        if run.returncode != 0:
+            raise RuntimeError(run.stderr.decode()[-300:])
+        frames = list(verify.ev.decode(path, width, height))
+    if len(frames) != 1:
+        raise RuntimeError(f"expected one decoded frame, got {len(frames)}")
+    return frames[0]
+
+
+def regimes():
+    """`[(tag, video flag, transform)]`: the PNG regime (the picture as the renderer writes it) and the video regime."""
+    return [("", False, lambda rgb, w, h: rgb), (VIDEO_TAG, True, video_roundtrip)]
+
+
+# ---------------------------------------------------------------------------------- cameras
 def camera_picture(bundle, frame, width, height, palette, state=None):
     state = state or oracle.frame_state(bundle, frame)
     nodes = oracle.nodes_of(bundle)
@@ -66,9 +127,13 @@ def camera_picture(bundle, frame, width, height, palette, state=None):
     return paint(width, height, palette["background"], layers)
 
 
+GEOMETRY = ("centroid within", "mask IoU")  # what a camera geometry error has to trip: the position or the shape of a marker
+
+
 def camera_controls(expected, bundle, portrait_bundle=None):
-    """Controls on 640x360@8 and, when the portrait bundle is given, on 360x640@24 (three judged markers, the truck of cam-b half done): a verifier that
-    only ever failed on landscape would say nothing about the portrait profile."""
+    """Controls on 640x360@8 and, when the portrait bundle is given, on 360x640@24 (three judged markers, the truck of cam-b half
+    done) and 360x640@0 (a marker outside the frame): a verifier that only ever failed on landscape would say nothing about the
+    portrait profile. EVERY control runs in the PNG regime and in the video regime (4:2:0 chroma, `video=True` tolerances)."""
     palette = expected["palette"]
     results = []
     # the camera clip index is the clip the frame's shot plays (shot-a -> cam-a at frame 8; shot-b -> cam-b at frame 24, where the truck is half done): a mutation of
@@ -79,12 +144,6 @@ def camera_controls(expected, bundle, portrait_bundle=None):
     for bundle, width, height, frame, clip, tag in targets:
         case = expected["camera"]["cases"][f"{width}x{height}@{frame}"]
         exact = verify.exact_masks_for(bundle, case)
-
-        def judge(rgb, case=case, exact=exact, width=width, height=height):
-            return lambda p: verify.judge_camera_frame(p, rgb, width, height, exact, case, palette)
-
-        def picture(b, f=frame, state=None, width=width, height=height):
-            return camera_picture(b, f, width, height, palette, state)
 
         def mutated(change, bundle=bundle):
             copy_bundle = copy.deepcopy(bundle)
@@ -97,45 +156,99 @@ def camera_controls(expected, bundle, portrait_bundle=None):
         def dolly_reversed(b, clip=clip):
             b["cameraClips"][clip]["segments"][0]["distanceSceneUnits"] *= -1
 
-        results.append(run_control(f"positive: the model's own rasterised picture{tag}", True, judge(picture(bundle))))
-        results.append(run_control(f"negative: fov +5 deg{tag}", False, judge(picture(mutated(fov_plus_five)))))
-        results.append(run_control(f"negative: dolly direction reversed{tag}", False, judge(picture(mutated(dolly_reversed)))))
-        results.append(run_control(f"negative: mirrored x{tag}", False, judge(flip_horizontal(picture(bundle), width, height))))
-        results.append(run_control(f"negative: camera one frame late{tag}", False, judge(picture(bundle, frame - 1))))
-
-        def horizontal_fov(p, bundle=bundle, frame=frame, case=case, exact=exact, width=width, height=height):
+        def horizontal_fov_picture(bundle=bundle, frame=frame, width=width, height=height):
             state = oracle.frame_state(bundle, frame)
             state["camera"] = dict(state["camera"])
             state["camera"]["fovDeg"] = math.degrees(2 * math.atan(math.tan(math.radians(state["camera"]["fovDeg"]) / 2) * height / width))
-            return verify.judge_camera_frame(p, camera_picture(bundle, frame, width, height, palette, state), width, height, exact, case, palette)
+            return camera_picture(bundle, frame, width, height, palette, state)
 
-        results.append(run_control(f"negative: vertical fov used as horizontal{tag}", False, horizontal_fov))
+        pictures = [
+            ("positive: the model's own rasterised picture", True, (), lambda b=bundle, f=frame, w=width, h=height: camera_picture(b, f, w, h, palette)),
+            ("negative: fov +5 deg", False, GEOMETRY, lambda m=mutated, b=fov_plus_five, f=frame, w=width, h=height: camera_picture(m(b), f, w, h, palette)),
+            ("negative: dolly direction reversed", False, GEOMETRY, lambda m=mutated, b=dolly_reversed, f=frame, w=width, h=height: camera_picture(m(b), f, w, h, palette)),
+            ("negative: mirrored x", False, GEOMETRY, lambda b=bundle, f=frame, w=width, h=height: flip_horizontal(camera_picture(b, f, w, h, palette), w, h)),
+            ("negative: camera one frame late", False, GEOMETRY, lambda b=bundle, f=frame, w=width, h=height: camera_picture(b, f - 1, w, h, palette)),
+            ("negative: vertical fov used as horizontal", False, GEOMETRY, horizontal_fov_picture),
+        ]
+        for regime_tag, video, transform in regimes():
+            for name, should_pass, must_fail, make in pictures:
+                def body(p, make=make, transform=transform, video=video, case=case, exact=exact, width=width, height=height):
+                    return verify.judge_camera_frame(p, transform(make(), width, height), width, height, exact, case, palette, video=video)
+
+                results.append(run_control(f"{name}{tag}{regime_tag}", should_pass, body, must_fail))
+    if portrait_bundle is not None:
+        # a marker the model puts outside the frame (360x640@0: mk_yellow): the picture the model draws leaves nothing of it, and a
+        # blob of its colour where the model has none must be reported, in 4:2:0 as well, where the edge of a present marker can
+        # fall on the blend line of an absent colour (review R2-13)
+        case = expected["camera"]["cases"]["360x640@0"]
+        absent = [name for name, marker in case["markers"].items() if marker["area"] == 0]
+        exact = verify.exact_masks_for(portrait_bundle, case)
+
+        def clean():
+            return camera_picture(portrait_bundle, 0, 360, 640, palette)
+
+        def stray_blob():
+            picture = bytearray(clean())
+            for x in range(40):
+                for y in range(40):
+                    base = ((600 + y) * 360 + 300 + x) * 3
+                    picture[base:base + 3] = bytes(palette["markers"][absent[0]])
+            return bytes(picture)
+
+        for regime_tag, video, transform in regimes():
+            def judge_stray(p, make, transform=transform, video=video):
+                return verify.judge_camera_frame(p, transform(make(), 360, 640), 360, 640, exact, case, palette, video=video)
+
+            results.append(run_control(f"positive: a frame with a marker outside the picture, nothing stray (portrait 360x640@0){regime_tag}", True,
+                                       lambda p, jc=judge_stray: jc(p, clean)))
+            results.append(run_control(f"negative: marker colour where the model has none (portrait 360x640@0){regime_tag}", False,
+                                       lambda p, jc=judge_stray: jc(p, stray_blob), ("absent from the picture",)))
     return results
 
 
 # ---------------------------------------------------------------------------------- splats
 def splat_picture(expected_case, palette, width, height, mutate=None):
-    """Composites the model's gaussians back to front with the 'over' operator on the flat background."""
+    """Composites the model's gaussians back to front with the 'over' operator on the flat background. An entry with `disc: true`
+    is drawn as an opaque disc of its half-intensity radius instead of a gaussian (a control: a renderer without the falloff)."""
     entries = [dict(e) for e in expected_case["splats"]]
     if mutate:
         entries = mutate(entries)
-    background = [float(c) for c in palette["background"]]
     rgb = bytearray(bytes(palette["background"]) * (width * height))
     for entry in sorted(entries, key=lambda e: -e["depth"]):
         sigma = entry["sigmaPx"]
         radius = int(4 * sigma) + 2
         for y in range(max(0, int(entry["y"]) - radius), min(height, int(entry["y"]) + radius + 1)):
             for x in range(max(0, int(entry["x"]) - radius), min(width, int(entry["x"]) + radius + 1)):
-                alpha = math.exp(-((x - entry["x"]) ** 2 + (y - entry["y"]) ** 2) / (2 * sigma * sigma))
+                squared = (x - entry["x"]) ** 2 + (y - entry["y"]) ** 2
+                alpha = (1.0 if squared <= entry["r50Px"] ** 2 else 0.0) if entry.get("disc") else math.exp(-squared / (2 * sigma * sigma))
                 base = (y * width + x) * 3
                 for channel in range(3):
                     rgb[base + channel] = int(round(rgb[base + channel] * (1 - alpha) + entry["color"][channel] * alpha))
     return bytes(rgb)
 
 
-def splat_controls(expected, bundle):
-    """Every control runs on EVERY frame the corpus judges (`expected["splat"]["frames"]`): the overlap of the two order splats
-    changes with the camera, and a positive control on one frame cannot show that another frame is not rejected."""
+def isolated_splats(case):
+    """The splats the verifier judges one by one (every splat but the two of the overlap pair)."""
+    return [(e["node"], e["index"]) for e in case["splats"] if e["asset"] != "sp-order"]
+
+
+GUARD_PX = 0.5  # the radius scan resolves 0.25 px: a size error this close to the rule's limit is neither claimed visible nor blind
+
+
+def size_error_state(entry, video, factor):
+    """What the half-intensity-radius rule's own arithmetic says about a splat drawn `factor` times too big. The error is
+    `(factor - 1) * r50` and the rule tolerates `relative * r50 + absolutePx` (the regime's numbers). `visible`: the error exceeds the
+    tolerance by more than `GUARD_PX`, the rule must report it; `blind`: it is below it by more than `GUARD_PX`, the rule cannot see it
+    (a declared blind spot, never a detection); `borderline`: within the guard, not claimed either way."""
+    rule = verify.TOLERANCES["splat"]["videoHalfIntensityRadius" if video else "halfIntensityRadius"]
+    margin = (factor - 1) * entry["r50Px"] - (rule["relative"] * entry["r50Px"] + rule["absolutePx"])
+    return "visible" if margin > GUARD_PX else "blind" if margin < -GUARD_PX else "borderline"
+
+
+def splat_controls(expected, bundle, work=None):
+    """Every control runs on EVERY frame the corpus judges (`expected["splat"]["frames"]`), in the PNG regime and in the video
+    regime. Size errors are also applied to ONE splat at a time (x1.5 and x2): applied to all of them, one detection hides the
+    rest, and the rule's tolerance is blind to x1.5 on the smaller ones in the video regime (`size_error_state`)."""
     palette = expected["palette"]
     width, height = expected["splat"]["renderSize"]
     results = []
@@ -150,13 +263,25 @@ def splat_controls(expected, bundle):
             e["color"] = [e["color"][2], e["color"][1], e["color"][0]]
         return entries
 
-    def bigger(entries):
-        for e in entries:
-            e["sigmaPx"] *= 1.5
-        return entries
+    def scaled(factor, only=None):
+        def change(entries):
+            for e in entries:
+                if only is None or (e["node"], e["index"]) == only:
+                    e["sigmaPx"] *= factor
+            return entries
+        return change
 
     def missing(entries):
         return [e for e in entries if e["node"] != "s-green"]
+
+    def back_missing(entries):
+        return [e for e in entries if not (e["node"] == "s-order" and e["index"] == 1)]
+
+    def back_as_disc(entries):
+        for e in entries:
+            if e["node"] == "s-order" and e["index"] == 1:
+                e["disc"] = True  # an opaque disc of the half-intensity radius: no gaussian falloff
+        return entries
 
     def swap_order(entries):
         for e in entries:
@@ -174,18 +299,34 @@ def splat_controls(expected, bundle):
             out.append(e)
         return out
 
+    everywhere = (("centroid shifted 4 px", shift, ("centroid within",)),
+                  ("colour channels swapped", swap_channels, ("centre colour within",)),
+                  ("front and back order swapped", swap_order, ("s-order",)),
+                  ("size x1.5", scaled(1.5), ("half-intensity radius",)),
+                  ("splat missing", missing, ("a splat is drawn near",)),
+                  ("back splat missing", back_missing, ("back splat is present",)),
+                  ("back splat drawn as an opaque disc", back_as_disc, ("back splat is present",)),
+                  ("node transform ignored", transform_ignored, ("centroid within", "half-intensity radius")))
     for frame in expected["splat"]["frames"]:
         case = expected["splat"]["cases"][str(frame)]
-        tag = f" @f{frame}"
+        entries = {(e["node"], e["index"]): e for e in case["splats"]}
+        for regime_tag, video, transform in regimes():
+            tag = f" @f{frame}{regime_tag}"
 
-        def judge(rgb, case=case):
-            return lambda p: verify.judge_splat_frame(p, rgb, width, height, case, palette)
+            def judge(make, case=case, transform=transform, video=video):
+                return lambda p: verify.judge_splat_frame(p, transform(make(), width, height), width, height, case, palette, video=video)
 
-        results.append(run_control(f"positive: the model's own gaussians composited over the flat background{tag}", True,
-                                   judge(splat_picture(case, palette, width, height))))
-        for name, change in (("centroid shifted 4 px", shift), ("colour channels swapped", swap_channels), ("front and back order swapped", swap_order),
-                             ("size x1.5", bigger), ("splat missing", missing), ("node transform ignored", transform_ignored)):
-            results.append(run_control(f"negative: {name}{tag}", False, judge(splat_picture(case, palette, width, height, change))))
+            results.append(run_control(f"positive: the model's own gaussians composited over the flat background{tag}", True,
+                                       judge(lambda case=case: splat_picture(case, palette, width, height))))
+            for name, change, must_fail in everywhere:
+                results.append(run_control(f"negative: {name}{tag}", False, judge(lambda case=case, change=change: splat_picture(case, palette, width, height, change)), must_fail))
+            for node, index in isolated_splats(case):
+                for factor, label in ((1.5, "size x1.5 of each splat alone"), (2.0, "size x2 of each splat alone")):
+                    state = size_error_state(entries[(node, index)], video, factor)
+                    results.append(run_control(f"negative: {label}: {node}[{index}]{tag}", False,
+                                               judge(lambda case=case, change=scaled(factor, (node, index)): splat_picture(case, palette, width, height, change)),
+                                               (f"{node}[{index}]: half-intensity radius",),
+                                               stance={"visible": "detect", "blind": "blind", "borderline": "either"}[state]) | {"size_state": state})
     return results
 
 
@@ -238,35 +379,37 @@ def audio_controls(expected, bundles, work):
     def shift(k):
         return ([0.0] * k + exact)[:n]
 
-    results.append(run_control("positive: mono output, no channel conversion (0 dB)", True, judge_file(case_id, "mono", [exact])))
-    results.append(run_control("negative: mono source written at 0 dB (channel law ignored)", False, judge_file(case_id, "unlawful", [exact, exact])))
-    results.append(run_control("negative: shifted 5 ms", False, judge_file(case_id, "shift5ms", stereo(shift(240)))))
-    results.append(run_control("negative: shifted one frame", False, judge_file(case_id, "shift1frame", stereo(shift(2000)))))
+    def negative(name, make, must_fail):
+        results.append(run_control(f"negative: {name}", False, make, must_fail))
+
+    # the origin always writes stereo (its graph forces `channel_layouts=stereo`): a mono file is a regression, not a variant
+    negative("mono output (the origin always writes stereo)", judge_file(case_id, "mono", [exact]), ("the origin always writes",))
+    negative("mono source written at 0 dB (channel law ignored)", judge_file(case_id, "unlawful", [exact, exact]), ("gain",))
+    negative("shifted 5 ms", judge_file(case_id, "shift5ms", stereo(shift(240))), ("edge at",))
+    negative("shifted one frame", judge_file(case_id, "shift1frame", stereo(shift(2000))), ("edge at",))
     table = table_of(expected)
     start = Fraction(bundle["audio"]["editStartSeconds"]).limit_denominator(1000)
     origin = float(oracle.source_time_of(oracle.frames_to_seconds(case["from"], Fraction(24)), start))
     mix_44k = [table.value(origin + k / 44100) for k in range(int(case["durationSecondsFloat"] * 44100))]  # 44.1 kHz read as 48 kHz
-    results.append(run_control("negative: rate bug (44.1 kHz read as 48 kHz)", False, judge_file(case_id, "ratebug", stereo(mix_44k))))
-    results.append(run_control("negative: silent stream", False, judge_file(case_id, "silent", [[0.0] * n, [0.0] * n])))
-    results.append(run_control("negative: gain -6 dB", False, judge_file(case_id, "gain", stereo(exact, 0.5))))
-    results.append(run_control("negative: mix offset ignored", False,
-                               judge_file(case_id, "offset", stereo(window(expected, bundles, case_id, edit_start=Fraction(0))))))
-    results.append(run_control("negative: retired A1 reading (mix[0] plays at editStartSeconds)", False,
-                               judge_file(case_id, "retiredA1", stereo(window(expected, bundles, case_id, edit_start=-start)))))
-    results.append(run_control("negative: export range ignored", False, judge_file(case_id, "range", stereo(window(expected, bundles, case_id, first=0)))))
+    negative("rate bug (44.1 kHz read as 48 kHz)", judge_file(case_id, "ratebug", stereo(mix_44k)), ("sample-level correlation",))
+    negative("silent stream", judge_file(case_id, "silent", [[0.0] * n, [0.0] * n]), ("gain", "tone window"))
+    negative("gain -6 dB", judge_file(case_id, "gain", stereo(exact, 0.5)), ("gain",))
+    negative("mix offset ignored", judge_file(case_id, "offset", stereo(window(expected, bundles, case_id, edit_start=Fraction(0)))), ("sample-level correlation", "edge at"))
+    negative("retired A1 reading (mix[0] plays at editStartSeconds)", judge_file(case_id, "retiredA1", stereo(window(expected, bundles, case_id, edit_start=-start))),
+             ("sample-level correlation", "edge at"))
+    negative("export range ignored", judge_file(case_id, "range", stereo(window(expected, bundles, case_id, first=0))), ("sample-level correlation", "edge at"))
     swapped = oracle.ToneTable([(a, b, {440: 880, 880: 440}.get(hz, hz), amp) for a, b, hz, amp in table.segments], table.duration)
-    results.append(run_control("negative: tone swapped", False, judge_file(case_id, "swapped", stereo(window(expected, bundles, case_id, table=swapped)))))
-    results.append(run_control("negative: truncated audio", False, judge_file(case_id, "truncated", stereo(exact[: int(n * 0.6)]))))
+    negative("tone swapped", judge_file(case_id, "swapped", stereo(window(expected, bundles, case_id, table=swapped))), ("tone window",))
+    negative("truncated audio", judge_file(case_id, "truncated", stereo(exact[: int(n * 0.6)])), ("duration", "samples"))
 
     def no_audio(p):
         path = work / f"{case_id}-noaudio.mp4"
         verify.write_video_only(path, case["frames"], case["fps"])
         return verify.judge_audio(p, path, case, bundle, label="", video_seconds=case["durationSecondsFloat"])
 
-    results.append(run_control("negative: no audio stream", False, no_audio))
-    ntsc = expected["audio"]["cases"]["audio_ntsc_window"]
+    negative("no audio stream", no_audio, ("decodable audio stream",))
     wrong = window(expected, bundles, "audio_ntsc_window", fps=Fraction(30))
-    results.append(run_control("negative: NTSC treated as 30 fps", False, judge_file("audio_ntsc_window", "ntsc-as-30", stereo(wrong))))
+    negative("NTSC treated as 30 fps", judge_file("audio_ntsc_window", "ntsc-as-30", stereo(wrong)), ("edge at",))
     return results
 
 
@@ -275,29 +418,48 @@ def package_controls(expected, corpus_dir, work):
     import zipfile
     corpus_dir, work = pathlib.Path(corpus_dir), pathlib.Path(work)
     assets = expected["assets"]
+    bundle_file = corpus_dir / expected["bundles"]["camera"]["file"]
+    declared = {a["relativePath"]: a for a in json.loads(bundle_file.read_text(encoding="utf-8"))["assets"]}
+    declared_assets = {path: info for path, info in assets.items() if path in declared}  # what the camera bundle declares (images, no mix)
     archive = work / "good.zip"
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_STORED) as handle:
         for relative in assets:
             handle.writestr(f"project/{relative}", (corpus_dir / relative).read_bytes())
+
+    def bundle():
+        return json.loads(bundle_file.read_text(encoding="utf-8"))
+
     results = [run_control("positive: a bundle that declares the corpus hash of every asset", True,
-                           lambda p: verify.judge_declared_hashes(p, json.loads((corpus_dir / "bundle.camera.json").read_text()), assets)),
+                           lambda p: verify.judge_declared_hashes(p, bundle(), declared_assets)),
                run_control("positive: a package with every asset", True, lambda p: verify.judge_package(p, archive, assets))]
     victim = "assets/mk-green.png"
 
     flipped = work / "flipped.zip"
     verify.tamper_zip(archive, flipped, lambda info, data: bytes([data[0] ^ 1]) + data[1:] if info.filename.endswith(victim) else data)
-    results.append(run_control("negative: asset byte flipped inside the package", False, lambda p: verify.judge_package(p, flipped, assets)))
+    results.append(run_control("negative: asset byte flipped inside the package", False, lambda p: verify.judge_package(p, flipped, assets), ("byte-identical",)))
 
     removed = work / "removed.zip"
     verify.tamper_zip(archive, removed, lambda info, data: None if info.filename.endswith(victim) else data)
-    results.append(run_control("negative: asset removed from the package", False, lambda p: verify.judge_package(p, removed, assets)))
+    results.append(run_control("negative: asset removed from the package", False, lambda p: verify.judge_package(p, removed, assets), ("byte-identical",)))
 
     def wrong_declared_hash(p):
-        bundle = json.loads((corpus_dir / "bundle.camera.json").read_text())
-        bundle["assets"][1]["contentHash"] = "0" * 64
-        return verify.judge_declared_hashes(p, bundle, assets)
+        changed = bundle()
+        changed["assets"][1]["contentHash"] = "0" * 64
+        return verify.judge_declared_hashes(p, changed, declared_assets)
 
-    results.append(run_control("negative: wrong hash declared in the bundle", False, wrong_declared_hash))
+    def missing_declaration(p):
+        changed = bundle()
+        changed["assets"] = [a for a in changed["assets"] if not a["relativePath"].endswith("mk-green.png")]
+        return verify.judge_declared_hashes(p, changed, declared_assets)
+
+    def unknown_declaration(p):
+        changed = bundle()
+        changed["assets"].append(dict(changed["assets"][0], relativePath="assets/not-in-the-corpus.png", assetId="intruder"))
+        return verify.judge_declared_hashes(p, changed, declared_assets)
+
+    results.append(run_control("negative: wrong hash declared in the bundle", False, wrong_declared_hash, ("declares exactly",)))
+    results.append(run_control("negative: asset name missing from the declaration", False, missing_declaration, ("declares exactly",)))
+    results.append(run_control("negative: unknown asset name declared", False, unknown_declaration, ("declares exactly",)))
     directory = work / "dir-package"
     for relative in assets:
         target = directory / relative
@@ -310,6 +472,6 @@ def package_controls(expected, corpus_dir, work):
 
 def load(corpus_dir=None):
     corpus_dir = pathlib.Path(corpus_dir or corpus_module.CORPUS_DIR)
-    expected = json.loads((corpus_dir / "expected.json").read_text())
-    bundles = {k: json.loads((corpus_dir / v["file"]).read_text()) for k, v in expected["bundles"].items()}
+    expected = json.loads((corpus_dir / "expected.json").read_text(encoding="utf-8"))
+    bundles = {k: json.loads((corpus_dir / v["file"]).read_text(encoding="utf-8")) for k, v in expected["bundles"].items()}
     return expected, bundles, corpus_dir

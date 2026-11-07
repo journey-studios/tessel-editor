@@ -2,7 +2,10 @@
 
 WHY this file exists: the destination (core, runtime, Spark, FFmpeg adapters) must be judged by numbers it did not
 produce. Everything here is closed-form maths written from the public definitions (pinhole camera, isotropic
-gaussian, SPZ v2 layout, rational frame times, sine tones) without reading the Rust or the runtime:
+gaussian, SPZ v2 layout, rational frame times, sine tones). Nothing in this file calls or reads the code of the destination
+(core, runtime, FFmpeg adapters); two numbers come from outside knowledge and are named where they are used: the origin's
+window and channel rules (read in the origin, pinned `d6adac15`) and, in `proof.py`'s `baseline_audio` only, the project
+layer's own documented pan law:
 
   * camera: poses come from `scripts/directed-scene-proof/model.py` (validated against the origin oracle by its
     `model.spec.py`, read-only); this file adds the picture-space consequences (exact projected masks of flat
@@ -189,6 +192,49 @@ def splat_screen(frame, width, height, node, splat, node_scale):
 def half_intensity_radius(sigma_px):
     """Radius at which a gaussian drops to half of its peak: r50 = sigma * sqrt(2 ln 2)."""
     return sigma_px * math.sqrt(2 * math.log(2))
+
+
+def composite_with_disc_at(entries, background, x, y, disc):
+    """`composite_at` with the entry `disc = (node, index)` drawn as an opaque disc of its half-intensity radius (alpha 1 inside,
+    0 outside) instead of a gaussian: a renderer without the gaussian falloff."""
+    colour = [float(c) for c in background]
+    for entry in sorted(entries, key=lambda e: -e["depth"]):
+        if (entry["node"], entry["index"]) == disc:
+            alpha = 1.0 if (x - entry["x"]) ** 2 + (y - entry["y"]) ** 2 <= entry["r50Px"] ** 2 else 0.0
+        else:
+            alpha = splat_alpha(entry, x, y)
+        colour = [c * (1 - alpha) + k * alpha for c, k in zip(colour, entry["color"])]
+    return tuple(int(round(c)) for c in colour)
+
+
+def back_separable_point(entries, background, search_sigmas, node="s-order", back_index=1):
+    """The pixel where three hypotheses about the BACK splat of the overlap pair give the most different pictures, so that one
+    measurement can tell them apart: it is drawn as a gaussian (the model), it is missing, or it is an opaque disc of its
+    half-intensity radius (no falloff).
+
+    At the back centre the front gaussian is only partly opaque (0.75-0.92 over the six frames) and hides most of the back
+    colour: with and without the back splat the picture differs by 16-46 there, and a disc is indistinguishable from the gaussian.
+    The pixel searched is the one, within `search_sigmas` back sigmas of the back centre, that maximises the smaller of
+    `distance(drawn, missing)` and `distance(drawn, disc)` (max-channel distance between the `over` compositions; ties: first in
+    scan order, rows then columns). Chosen by the model alone, no measurement of the editor takes part. Returns the pixel, the
+    three compositions and `separation` (that smaller distance)."""
+    back = next(e for e in entries if e["node"] == node and e["index"] == back_index)
+    without = [e for e in entries if not (e["node"] == node and e["index"] == back_index)]
+    radius = int(search_sigmas * back["sigmaPx"])
+    cx, cy = int(round(back["x"])), int(round(back["y"]))
+    best = None
+    for dy in range(-radius, radius + 1):
+        for dx in range(-radius, radius + 1):
+            if dx * dx + dy * dy > radius * radius:
+                continue
+            x, y = cx + dx, cy + dy
+            drawn = composite_at(entries, background, x, y)
+            missing = composite_at(without, background, x, y)
+            disc = composite_with_disc_at(entries, background, x, y, (node, back_index))
+            separation = min(max(abs(a - b) for a, b in zip(drawn, missing)), max(abs(a - b) for a, b in zip(drawn, disc)))
+            if best is None or separation > best["separation"]:
+                best = {"x": x, "y": y, "drawn": drawn, "missing": missing, "disc": disc, "separation": separation}
+    return best
 
 
 def dot_splat_file(splats):

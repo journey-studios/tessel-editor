@@ -6,16 +6,22 @@
     # GPU phases (Chrome/SwiftShader) under the shared bench lock, taken by the wrapper:
     python3 scripts/directed-scene-proof/with-gpu-lock.py python3 scripts/directed-scene-acceptance/proof.py --gpu-lock-held --report /tmp/s10.json
 
-Exit status (never 0 unless every selected phase ran and passed):
-    0  all selected phases PASS
-    1  at least one FAIL
-    3  no FAIL, but at least one phase is BLOCKED: a dependency (front S7: splat in the directed scene; front S9: the audio
-       mix in `scene.export`) is absent. BLOCKED is NOT a pass, and it never replaces a FAIL of the same phase.
-    2  usage / prerequisite error of the harness itself (disk reserve under 12 GiB, unknown phase, missing corpus)
+Exit status (0 only when the selected phases passed on a clean, attested run, not merely green):
+    0  every selected phase ran and PASSED, the working tree is clean, no `--allow-stale-binary`, and every binary is linked to this
+       head (`link.py`). A subset of phases exits 0 too; the report's `acceptance.acceptable` is true only when ALL phases were selected,
+       and only that run can be quoted as an acceptance result
+    1  at least one FAIL (or the work budget was exceeded). FAIL wins over every other status
+    2  usage / prerequisite error of the harness itself (empty or unknown phase list, `--work` is not a directory, disk reserve under
+       12 GiB on the volume of `--work`, missing corpus)
+    3  no FAIL, but at least one phase is BLOCKED: a dependency (front S7: splat in the directed scene; front S9: the audio mix in
+       `scene.export`) is absent, or a binary is not linked to this head. BLOCKED is NOT a pass and never replaces a FAIL
+    4  informational, NOT acceptance: every selected phase passed, but the tree is dirty, `--allow-stale-binary` was used, or a binary
+       is not linked to this head under that flag. The report says which, under `acceptance`
 
 Groups, and what each proves (docs/features/scene-acceptance.md):
-  * data / controls  -> tolerances frozen before results, corpus determinism, models checked against analytic identities and the
-                        origin oracle, and the verifiers *failing* on known-wrong inputs (positive and negative controls)
+  * data / controls  -> tolerance ancestry and the amendment ledger, corpus determinism, models checked against analytic identities and the
+                        origin oracle, and the verifiers *failing* on known-wrong inputs (positive and negative controls, in the PNG
+                        and in the codec regime)
   * camera_*         -> the camera as pictures (exact ray-cast masks) through plan, scene.render and scene.export
   * baseline_*       -> the splat model and the audio oracle against the runtime paths that exist today (project scene layer,
                         offline mixer), so the verifiers are trusted before the dependent fronts land
@@ -55,6 +61,7 @@ def _load(name, path):
 import controls  # noqa: E402
 import corpus as corpus_module  # noqa: E402
 import ledger  # noqa: E402
+import link  # noqa: E402
 import oracle  # noqa: E402
 import verify  # noqa: E402
 
@@ -64,6 +71,7 @@ HARNESS_VERSION = 1
 MIN_FREE_GIB = 12
 WORK_BUDGET_BYTES = 2 * 1024 ** 3
 TOL = verify.TOLERANCES
+ANALYTIC = TOL["camera"]["matrixAbsolute"]  # double precision: closed-form identities of the models
 PRESET_H = {"id": "s10-360p", "name": "S10 640x360", "width": 640, "height": 360}
 PRESET_V = {"id": "s10-360v", "name": "S10 360x640", "width": 360, "height": 640}
 RENDER_HINT = "./scripts/cargo build -p tessel-editor-render --locked"
@@ -74,7 +82,8 @@ NOT_CLAIMED = [
     "the native window: socket and UI flows of scene.export are R10's (scripts/directed-scene-export-proof); this harness drives the tessel-render process only",
     "other GPUs, platforms and codecs: one machine, SwiftShader GL unless --gl gpu, libx264/aac as found by ffmpeg",
     "partial opacity blending, anisotropic splat scales, spherical harmonics, splat lighting/weather/effects (BL025 beyond the subset), splats occluded by planes",
-    "bit-exact frames or samples: pictures are judged by masks, centroids and tolerances fixed beforehand; audio by correlation, edges and spectra",
+    "bit-exact frames or samples: pictures are judged by masks, centroids and the tolerances of tolerances.json (each with its justification and sensitivity, none approved by a reviewer); audio by correlation, edges and spectra",
+    "a reproducible build: link.py attests that the binary and runtime bundle on disk are the ones recorded for this head's build inputs, by whoever ran it right after the build",
     "the editor's own clock/seek behaviour and playback in a device (BL046)",
 ]
 
@@ -88,25 +97,39 @@ SEAMS = {
 
 # ---------------------------------------------------------------------------------- environment
 def free_gib(path="/tmp"):
+    """Free GiB on the volume that holds `path` (the nearest existing ancestor when `path` does not exist yet)."""
+    path = pathlib.Path(path)
+    while not path.exists() and path != path.parent:
+        path = path.parent
     stat = os.statvfs(path)
     return stat.f_bavail * stat.f_frsize / 1024 ** 3
 
 
+class WorkspaceError(Exception):
+    """A prerequisite of the harness itself (not a result about the editor): `main` turns it into exit status 2."""
+
+
 class Workspace:
-    """Own temporary directory: budget 2 GiB, refuses under 12 GiB free, removes only itself.
+    """Own temporary directory: budget 2 GiB, refuses under 12 GiB free on ITS volume, removes only itself.
 
     `base` (`--work`) is a directory the caller owns and may already fill with their own files: the harness never writes into
     it directly and never removes it. Everything it creates lives in an `s10-acc-*` directory it makes inside `base` (default
-    `/tmp`), and `close()` removes exactly that directory."""
+    `/tmp`), and `close()` removes exactly that directory. The reserve is read on the volume of `base`, which is where the files
+    go (the default `/tmp` is only the volume of the default). `base` that exists and is not a directory is a `WorkspaceError`."""
 
     def __init__(self, keep=False, base=None):
-        if free_gib() < MIN_FREE_GIB:
-            print(f"refusing to start: {free_gib():.1f} GiB free under /tmp, need {MIN_FREE_GIB}", file=sys.stderr)
-            raise SystemExit(2)  # a prerequisite refusal, not a FAIL of the editor (exit 1)
         self.keep = keep
         self.base = pathlib.Path(base) if base else pathlib.Path("/tmp")
-        self.base.mkdir(parents=True, exist_ok=True)
-        self.path = pathlib.Path(tempfile.mkdtemp(prefix="s10-acc-", dir=self.base))
+        if self.base.exists() and not self.base.is_dir():
+            raise WorkspaceError(f"--work {self.base} exists and is not a directory")
+        free = free_gib(self.base)
+        if free < MIN_FREE_GIB:  # a prerequisite refusal, not a FAIL of the editor (exit 1)
+            raise WorkspaceError(f"{free:.1f} GiB free on the volume of {self.base}, need {MIN_FREE_GIB}")
+        try:
+            self.base.mkdir(parents=True, exist_ok=True)
+            self.path = pathlib.Path(tempfile.mkdtemp(prefix="s10-acc-", dir=self.base))
+        except OSError as error:
+            raise WorkspaceError(f"cannot create the work directory inside {self.base}: {error}") from error
 
     scope = None  # the running phase: every directory of a phase lives under its own subtree
 
@@ -128,6 +151,9 @@ class Workspace:
 
     def bytes_used(self):
         return harness.tree_bytes(self.path)
+
+    def free_gib(self):
+        return free_gib(self.base)
 
     def within_budget(self):
         return self.bytes_used() <= WORK_BUDGET_BYTES
@@ -159,6 +185,7 @@ class Context:
         self.args, self.work, self.exp, self.bundles = args, work, expected, bundles
         self.corpus_dir = pathlib.Path(args.corpus).resolve() if args.corpus else corpus_module.CORPUS_DIR
         self.binaries = {}
+        self.informational = []  # why a run that passed every phase is still not an acceptance (exit 4)
         self.gpu_taken = args.gpu_lock_held
         self.cache = {}
         self.palette = expected["palette"]
@@ -173,10 +200,21 @@ class Context:
         if not path.is_file():
             raise Blocked(f"binary not built: {path}", f"build it with the serialized helper: {RENDER_HINT}", "BL019")
         info = harness.binary_info(path)
+        linked, reasons, details = link.check(path, key)
+        info["link"] = {"holds": linked, "reasons": reasons, **details}
         self.binaries[key] = info
-        if info.get("older_than_sources") and not getattr(self.args, "allow_stale_binary", False):
-            raise Blocked(f"{path} is older than the sources of this checkout (a result would describe a different build)",
-                          f"rebuild it ({RENDER_HINT}), or pass --allow-stale-binary and the report will say so", "BL019")
+        allowed = getattr(self.args, "allow_stale_binary", False)
+        problems = list(reasons)
+        if info.get("older_than_sources"):
+            problems.append("older than the sources of this checkout")
+        if problems and not allowed:
+            raise Blocked(f"{path} is not attested for this head ({'; '.join(problems)}): a result would describe a different build",
+                          f"rebuild from a clean head ({RENDER_HINT}), run `python3 scripts/directed-scene-acceptance/link.py create --render {path}`, "
+                          "or pass --allow-stale-binary (the run is then informational, exit 4, never an acceptance)", "BL019")
+        if problems:
+            note = f"binary {path} used under --allow-stale-binary although: {'; '.join(problems)}"
+            if note not in self.informational:
+                self.informational.append(note)
         return path
 
     def open(self, name, bundle_key, scene="proof", resolve=True, gpu=True, base=None):
@@ -322,30 +360,34 @@ def git(*args):
 
 
 def phase_tolerances_frozen(ctx, p):
-    """What this phase proves is bookkeeping, and says so: the tolerances' first commit is an ancestor of every result file, and
-    no pinned file (tolerances, oracle, corpus, verifiers, controls) differs from the state the amendment ledger last recorded.
-    It does NOT prove that the numbers were fixed before every result."""
+    """Bookkeeping, and it says so. It proves: the tolerances file makes no pre-registration claim, the corpus was generated against
+    these exact tolerances, every number has a justification and a basis, the amendment ledger is anchored to Git (anchor ancestry,
+    baseline hashes, append-only history, every deciding file pinned), and no pinned file differs from the last recorded state.
+    It does NOT prove that any number was fixed before a result, nor that a reviewer approved it."""
     path = HERE / "tolerances.json"
-    data = json.loads(path.read_text())
-    frozen = data.get("frozenFrom", {})
-    p.check("tolerances.json states what Git proves (ancestry from a named commit) and does not claim a pre-registration",
-            bool(frozen.get("commit")) and "frozenBeforeResults" not in data, frozen)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    p.check("tolerances.json is schema s10-tolerances/2", data.get("schema") == "s10-tolerances/2", data.get("schema"))
+    p.check("tolerances.json makes no pre-registration or approval claim (no `frozenBeforeResults`, no `frozenFrom`; the provenance block disclaims both)",
+            "frozenBeforeResults" not in data and "frozenFrom" not in data and "None of these numbers is claimed" in data.get("provenance", {}).get("claim", ""),
+            sorted(data))
     p.check("the corpus was generated against exactly these tolerances (hash recorded in expected.json)",
             ctx.exp["tolerancesSha256"] == sha256_file(path), (ctx.exp["tolerancesSha256"], sha256_file(path)))
+    unjustified, stale, malformed = ledger.justification_gaps(data)
+    p.check("every number in tolerances.json has a justification with a basis (analytic, inherited or choice) and a text", not unjustified and not malformed,
+            {"unjustified": unjustified[:6], "malformed": malformed[:6]})
+    p.check("no justification describes a number that is not in tolerances.json (a dead parameter's argument)", not stale, stale[:6])
     rel = str(path.relative_to(ROOT))
     introduced = git("log", "--diff-filter=A", "--format=%H", "--", rel).splitlines()
-    if not p.check("git knows the commit that introduced tolerances.json", bool(introduced), "not committed yet"):
-        return
-    first = introduced[-1]
-    p.metrics["introduced_in"] = first
-    p.check("the commit named in tolerances.json is the commit that introduced it", first == frozen.get("commit"), (first, frozen.get("commit")))
+    if p.check("git knows the commit that introduced tolerances.json", bool(introduced), "not committed yet"):
+        first = introduced[-1]
+        p.metrics["introduced_in"] = first
+        for name in [str(f.relative_to(ROOT)) for f in HERE.glob("results*.json")]:
+            earliest = git("log", "--diff-filter=A", "--format=%H", "--", name).splitlines()
+            ok = bool(earliest) and subprocess.run(["git", "merge-base", "--is-ancestor", first, earliest[-1]], cwd=ROOT).returncode == 0
+            p.check(f"{name}: the commit that introduced the tolerances is an ancestor of the first commit that holds this result (ancestry only: it says nothing about when the numbers were chosen)",
+                    ok, earliest[-1:] or "result not committed")
     for name, ok, detail in ledger.verify_ledger():
         p.check(f"amendment ledger: {name}", ok, detail)
-    results = [str(f.relative_to(ROOT)) for f in HERE.glob("results*.json")]
-    for name in results:
-        earliest = git("log", "--diff-filter=A", "--format=%H", "--", name).splitlines()
-        ok = bool(earliest) and subprocess.run(["git", "merge-base", "--is-ancestor", first, earliest[-1]], cwd=ROOT).returncode == 0
-        p.check(f"{name}: the tolerance commit is an ancestor of the first commit that holds this result (ancestry, not pre-registration)", ok, earliest[-1:] or "result not committed")
     book = ledger.load()
     p.metrics["amendments"] = [a | {"round": r["id"]} for r in book["rounds"] for a in r["amendments"]]
     p.metrics["ledger_baseline"] = book["baseline"]["commit"]
@@ -356,17 +398,22 @@ def phase_tolerances_frozen(ctx, p):
 def phase_corpus(ctx, p):
     problems = corpus_module.check(ctx.corpus_dir)
     p.check("committed corpus is byte-identical to what corpus.py writes", not problems, problems)
-    provenance = json.loads((ctx.corpus_dir / "provenance.json").read_text())
+    provenance = json.loads((ctx.corpus_dir / "provenance.json").read_text(encoding="utf-8"))
     p.check("provenance declares no private media", provenance["private_media"] is False)
     for name, entry in provenance["files"].items():
         p.check(f"{name}: hash matches provenance", sha256_file(ctx.corpus_dir / name) == entry["sha256"])
     for key, entry in ctx.exp["bundles"].items():
         p.check(f"bundle {key}: expected.json pins its bytes", sha256_file(ctx.corpus_dir / entry["file"]) == entry["sha256"])
         bundle = ctx.bundles[key]
+        # the same verifier the package controls exercise, called on the bundles the editor will read: exact names, exact hashes. The names
+        # come from expected.json (written by corpus.py), not from the bundle under test, so a name missing from the declaration, an unknown
+        # or repeated one, or a wrong hash all fail; the hashes are the corpus' own, taken from the pinned bytes
+        wanted = {path: ctx.exp["assets"][path] for path in entry["declaredAssets"]}
+        verify.judge_declared_hashes(p, bundle, wanted, label=f"bundle {key}: ")
         for asset in bundle["assets"]:
             file_hash = sha256_file(ctx.corpus_dir / asset["relativePath"])
-            if file_hash != asset["contentHash"]:
-                p.check(f"bundle {key}: {asset['assetId']} declares the real hash", False, (file_hash, asset["contentHash"]))
+            if file_hash != ctx.exp["assets"].get(asset["relativePath"], {}).get("sha256"):
+                p.check(f"bundle {key}: {asset['assetId']} is the file expected.json pins", False, file_hash)
         if "audio" in bundle:
             p.check(f"bundle {key}: sourcePcmHashSha256 is the hash of the whole WAV file (the rule the resource gate enforces)",
                     bundle["audio"]["sourcePcmHashSha256"] == sha256_file(ctx.corpus_dir / bundle["audio"]["mixRelativePath"]))
@@ -375,8 +422,11 @@ def phase_corpus(ctx, p):
             {c["shot"] for c in ctx.exp["camera"]["cases"].values()} == {"shot-a", "shot-b", "shot-c"}
             and {tuple(c["size"]) for c in ctx.exp["camera"]["cases"].values()} == {(640, 360), (360, 640)}
             and {c["shot"] for c in ctx.exp["splat"]["cases"].values()} == {"shot-a", "shot-b"})
-    p.check("every splat has at least 6 px of sigma and is isolated (asserted when the corpus is generated)",
-            all(s["sigmaPx"] >= 6 for c in ctx.exp["splat"]["cases"].values() for s in c["splats"]))
+    p.check(f"every splat has at least {TOL['splat']['minScreenSigmaPx']} px of sigma (asserted when the corpus is generated)",
+            all(s["sigmaPx"] >= TOL["splat"]["minScreenSigmaPx"] for c in ctx.exp["splat"]["cases"].values() for s in c["splats"]))
+    p.check("every splat frame stores a back-splat probe whose three hypotheses are separated by at least the frozen minimum",
+            all(c["backProbe"]["separation"] >= TOL["splat"]["backSplatSeparationMinDistance"] for c in ctx.exp["splat"]["cases"].values()),
+            {k: c["backProbe"]["separation"] for k, c in ctx.exp["splat"]["cases"].items()})
     p.metrics["corpus"] = {"version": ctx.exp["corpusVersion"], "bundles": {k: e["sha256"] for k, e in ctx.exp["bundles"].items()}}
 
 
@@ -385,17 +435,17 @@ def phase_models(ctx, p):
     p.check("the camera model agrees with the origin oracle (scripts/directed-scene-proof/model.spec.py, read-only)", run.returncode == 0, run.stderr[-300:])
     camera = {"position": [0, 0.5, 8], "target": [0, 0.5, 0], "fovDeg": 50}
     centre = oracle.project(camera, 640, 360, [0, 0.5, 0])
-    p.check("the target projects to the exact centre of the picture", abs(centre[0] - 320) < 1e-9 and abs(centre[1] - 180) < 1e-9 and abs(centre[2] - 8) < 1e-9, centre)
+    p.check("the target projects to the exact centre of the picture", abs(centre[0] - 320) < ANALYTIC and abs(centre[1] - 180) < ANALYTIC and abs(centre[2] - 8) < ANALYTIC, centre)
     top = oracle.project(camera, 640, 360, [0, 0.5 + 8 * math.tan(math.radians(25)), 0])
-    p.check("a point at the vertical half-fov projects to the top edge (the fov is vertical)", abs(top[1]) < 1e-9, top)
+    p.check("a point at the vertical half-fov projects to the top edge (the fov is vertical)", abs(top[1]) < ANALYTIC, top)
     p.check("a point behind the camera does not project", oracle.project(camera, 640, 360, [0, 0.5, 20]) is None)
     right = oracle.project(camera, 640, 360, [1, 0.5, 0])
     p.check("+x in the world is to the right of the picture", right[0] > 320, right)
     frame = {"camera": camera, "worldMatrices": {"n": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]}}
     shot = oracle.splat_screen(frame, 640, 360, {"id": "n"}, {"position": [0, 0.5, 0], "sigma": 0.3}, (1, 1, 1))
     expect = oracle.quantised_sigma(0.3) * (180 / math.tan(math.radians(25))) / 8
-    p.check("a gaussian of sigma 0.3 at depth 8 has the closed-form screen sigma", abs(shot["sigma_px"] - expect) < 1e-9, (shot["sigma_px"], expect))
-    p.check("the splat centre uses pixel-index coordinates (the picture centre is (319.5, 179.5))", abs(shot["x"] - 319.5) < 1e-9 and abs(shot["y"] - 179.5) < 1e-9, shot)
+    p.check("a gaussian of sigma 0.3 at depth 8 has the closed-form screen sigma", abs(shot["sigma_px"] - expect) < ANALYTIC, (shot["sigma_px"], expect))
+    p.check("the splat centre uses pixel-index coordinates (the picture centre is (319.5, 179.5))", abs(shot["x"] - 319.5) < ANALYTIC and abs(shot["y"] - 179.5) < ANALYTIC, shot)
     import gzip
     import struct
     raw = gzip.decompress(oracle.spz_v2([{"position": (1.5, -2.25, 0.5), "color": (240, 150, 30), "alpha": 1.0, "sigma": 0.3}]))
@@ -445,7 +495,44 @@ def phase_models(ctx, p):
             oracle.export_time_of(Fraction(7, 4), Fraction(24), 1, 18) == 0 and oracle.export_time_of(Fraction(7, 4), Fraction(24), 1, 18) != Fraction(2))
 
 
-NEGATIVE_DOMAIN = {"camera": "camera", "splat": "splat", "audio": "audio", "package": "package"}
+def control_base(name):
+    """`negative: fov +5 deg @f12 (video regime)` -> (`fov +5 deg`, regime, frame): the frozen name, the regime and the frame of a control."""
+    base = name[len("negative: "):] if name.startswith("negative: ") else name
+    regime = "video" if base.endswith(controls.VIDEO_TAG) else "png"
+    base = base[:-len(controls.VIDEO_TAG)] if regime == "video" else base
+    frame = None
+    if " @f" in base:
+        base, _, tail = base.rpartition(" @f")
+        frame = tail
+    return base, regime, frame
+
+
+def frozen_coverage(domain, frozen, names, frames):
+    """Frozen negative controls that no control of `names` exercises, in every regime (and every judged frame for the splat)."""
+    seen = {}
+    for name in names:
+        base, regime, frame = control_base(name)
+        for wanted in frozen:
+            if base == wanted or base.startswith(wanted + " (") or base.startswith(wanted + ": "):
+                seen.setdefault((wanted, regime), set()).add(frame)
+    regimes = ("png", "video") if domain in ("camera", "splat") else ("png",)
+    missing = []
+    for wanted in frozen:
+        for regime in regimes:
+            got = seen.get((wanted, regime), set())
+            if not got or (domain == "splat" and {str(f) for f in frames} - got):
+                missing.append(f"{wanted} [{regime}]")
+    return missing
+
+
+def describe_control(result):
+    if result["raised"]:
+        return f"the verifier raised: {result['raised']}"
+    if result["should_pass"]:
+        return result["failed_checks"][:3]
+    if result["stance"] == "blind":
+        return f"declared blind spot no longer holds: {result['named_failed']}"
+    return f"no check named {list(result['must_fail'])} failed; failed instead: {result['failed_checks'][:2]}" if result["failed_checks"] else "the verifier accepted a known-wrong input"
 
 
 def controls_phase(domain, runner):
@@ -455,12 +542,20 @@ def controls_phase(domain, runner):
         expected, bundles, corpus_dir = controls.load(ctx.corpus_dir)
         results = runner(expected, bundles, corpus_dir, work)
         for result in results:
-            p.check(result["control"] if result["ok"] else result["control"] + (" (positive: must pass)" if result["should_pass"] else " (negative: must fail)"),
-                    result["ok"], result["failed_checks"][:3] if result["should_pass"] else "the verifier accepted a known-wrong input")
-        negatives = " | ".join(r["control"] for r in results if not r["should_pass"])
-        for name in TOL[domain].get("negativeControlsMustFail", []):
-            p.check(f"the frozen negative control `{name}` is exercised", name in negatives, negatives)
-        p.metrics["controls"] = [{k: r[k] for k in ("control", "should_pass", "ok")} for r in results]
+            kind = "positive: must pass" if result["should_pass"] else f"negative: must fail `{'`/`'.join(result['must_fail'])}`" + (
+                "" if result["stance"] == "detect" else f", stance {result['stance']}")
+            p.check(f"{result['control']} ({kind})" if not result["ok"] else result["control"], result["ok"], describe_control(result))
+        missing = frozen_coverage(domain, TOL[domain].get("negativeControlsMustFail", []), [r["control"] for r in results if not r["should_pass"]],
+                                  expected["splat"]["frames"])
+        p.check(f"every frozen negative control of `{domain}` is exercised in every regime" + (" and on every judged frame" if domain == "splat" else ""), not missing, missing[:6])
+        negatives = [r for r in results if not r["should_pass"]]
+        p.check(f"at least one positive and one negative control ran ({len(results) - len(negatives)} positive, {len(negatives)} negative)",
+                0 < len(negatives) < len(results))
+        p.metrics["controls"] = [{k: r[k] for k in ("control", "should_pass", "stance", "detected", "ok")} | ({"size_state": r["size_state"]} if "size_state" in r else {})
+                                 for r in results]
+        # what the controls say a rule can NOT see is published, never folded into a pass count
+        p.metrics["blind_spots"] = [r["control"] for r in negatives if r["stance"] == "blind"]
+        p.metrics["not_claimed_borderline"] = [r["control"] for r in negatives if r["stance"] == "either"]
     return phase
 
 
@@ -501,7 +596,7 @@ def phase_camera_plan(ctx, p):
                 have = nodes[name]["worldMatrix"]
                 diff = max(abs(a - b) for a, b in zip(have, matrix))
                 worst_matrix = max(worst_matrix, diff)
-                p.check(f"frame {case['frame']}: world matrix of {name} equals the model", diff <= 1e-9, diff)
+                p.check(f"frame {case['frame']}: world matrix of {name} equals the model (<= {TOL['camera']['matrixAbsolute']})", diff <= TOL["camera"]["matrixAbsolute"], diff)
         p.metrics["worst_pose_error"] = worst_pose
         p.metrics["worst_matrix_error"] = worst_matrix
     finally:
@@ -562,7 +657,7 @@ def _baseline_splat_render(ctx):
         wanted.append((node, position, scale))
     background = [c / 255 for c in ctx.palette["background"]] + [1.0]
     (work / "scene.tessel-scene.json").write_text(json.dumps({"format": "tessel-scene", "version": 1, "background": background, "objects": [
-        {"type": "splat", "asset": n, "position": list(pos), "scale": sc} for n, pos, sc in wanted]}))
+        {"type": "splat", "asset": n, "position": list(pos), "scale": sc} for n, pos, sc in wanted]}), encoding="utf-8")
     channel = Channel(harness.JsonlSession(binary, ["--gl", ctx.args.gl]))
     try:
         must(channel, {"op": "project.create", "name": "baseline-splat", "sequence": "main", "rate": 24, "width": 640, "height": 360, "length": 48, "dir": str(work / "ws")})
@@ -751,9 +846,9 @@ def phase_package_tamper(ctx, p):
             ("an asset removed", lambda info, data: None if info.filename.endswith(victim) else data),
             ("the mix replaced by another file of the same name", lambda info, data: b"RIFF" + data[4:-8] + b"\x00" * 8 if info.filename.endswith("mix.wav") else data),
         ]
-        for name, change in cases:
-            bad = work / f"bad-{abs(hash(name))}.zip"
-            folder = work / f"bad-{abs(hash(name))}-restored"
+        for number, (name, change) in enumerate(cases):
+            bad = work / f"bad-{number}.zip"
+            folder = work / f"bad-{number}-restored"
             verify.tamper_zip(archive, bad, change)
             for operation, request in (("project.verify", {"op": "project.verify", "path": str(bad)}),
                                        ("project.restore", {"op": "project.restore", "path": str(bad), "folder": str(folder)})):
@@ -766,11 +861,11 @@ def phase_package_tamper(ctx, p):
     bad_dir = work / "bad-hash"
     shutil.copytree(ctx.corpus_dir, bad_dir)
     bundle_path = bad_dir / ctx.exp["bundles"]["audio24"]["file"]
-    bundle = json.loads(bundle_path.read_text())
+    bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
     for asset in bundle["assets"]:
         if asset["assetId"] == "mk-green":
             asset["contentHash"] = "0" * 64
-    bundle_path.write_text(json.dumps(bundle))
+    bundle_path.write_text(json.dumps(bundle), encoding="utf-8")
     binary = ctx.binary("render")
     channel = Channel(harness.JsonlSession(binary, ["--gl", ctx.args.gl]))
     try:
@@ -809,7 +904,7 @@ def phase_splat_plan(ctx, p):
             camera = plan["camera"]
             got = [camera["position"][a] for a in "xyz"] + [camera["target"][a] for a in "xyz"] + [camera["fovDeg"]]
             want = case["camera"]["position"] + case["camera"]["target"] + [case["camera"]["fovDeg"]]
-            p.check(f"frame {frame}: camera equals the model", all(abs(g - w) <= 1e-9 + 1e-12 * abs(w) for g, w in zip(got, want)), (got, want))
+            p.check(f"frame {frame}: camera equals the model", all(abs(g - w) <= TOL["camera"]["poseAbsolute"] + TOL["camera"]["poseRelative"] * abs(w) for g, w in zip(got, want)), (got, want))
             nodes = {n["id"]: n for n in plan["nodes"]}
             state = oracle.frame_state(ctx.bundles["splat"], frame)
             for node_id, *_ in corpus_module.SPLAT_NODES:
@@ -817,7 +912,7 @@ def phase_splat_plan(ctx, p):
                 if not p.check(f"frame {frame}: the plan carries splat node {node_id}", have is not None and have.get("kind") == "splat", have):
                     continue
                 diff = max(abs(a - b) for a, b in zip(have["worldMatrix"], state["worldMatrices"][node_id]))
-                p.check(f"frame {frame}: world matrix of {node_id} equals the model (rotation, translation, scale)", diff <= 1e-9, diff)
+                p.check(f"frame {frame}: world matrix of {node_id} equals the model (rotation, translation, scale; <= {TOL['camera']['matrixAbsolute']})", diff <= TOL["camera"]["matrixAbsolute"], diff)
             assets = {n["id"]: n.get("assetId") for n in plan["nodes"]}
             wanted = {node_id: asset for node_id, asset, *_ in corpus_module.SPLAT_NODES}
             p.check(f"frame {frame}: every splat node points at its own splat asset", all(assets.get(k) == v for k, v in wanted.items()),
@@ -875,7 +970,7 @@ def phase_splat_package(ctx, p):
             return
         must(second, {"op": "project.open", "path": str(documents[0])}, 120)
         must(second, {"op": "scene.resources.resolve", "scene": "sp"}, 120)
-        for frame in (12, 36):
+        for frame in ctx.exp["splat"]["frames"]:
             png = work / f"restored-{frame}.png"
             render_png(second, "sp", frame, (640, 360), png)
             rgb = verify.png_to_rgb(png, 640, 360)
@@ -952,29 +1047,43 @@ def phase_audio_package_export(ctx, p):
 
 
 def phase_audio_short_source(ctx, p):
-    """Negative control against the destination: a source WAV shorter than the declared window must be refused, not exported.
+    """Negative control against the destination: a source WAV shorter than the declared window is refused for EVERY range, not exported.
 
-    Fixture `audio/mix-short.wav` (8 s) under a bundle declaring the window [1, 13): the origin (`node/render.ts`, AUDIO_SHORT)
-    refuses a source that does not cover the window. The range below reads file seconds 5-9 (one second past the end), so the
-    destination must answer `audio_source_short`, write no file and leave nothing behind. This case used to be an accidental
-    fixture of the retired assumption A1 and failed the real export for the wrong reason; it is now deliberate."""
+    Fixture `audio/mix-short.wav` (8 s) under a bundle declaring the window [1, 13). The origin (`node/render.ts`, `AUDIO_SHORT`) refuses
+    `duration + 1 ms < editEndSecondsExclusive` before it looks at the range, so a range the file does cover (file seconds 1-3) is refused
+    too, and so is one that reads past its end (file seconds 5-9). Each must answer `audio_source_short`, write no file and leave nothing
+    behind. The seam is detected on a VALID bundle first (the short one is refused whether or not the mix is supported, so it cannot tell
+    a missing S9 from a working one)."""
     ensure_tools()
     case = ctx.exp["audio"]["shortSource"]
+    probe, _ = ctx.open("audio-short-seam", "audio24", scene="au")
+    try:
+        require_audio(ctx, probe, "au")  # BLOCKED while the seam is absent
+    finally:
+        probe.close()
     channel, work = ctx.open("audio-short-source", case["bundle"], scene="sh")
     try:
-        require_audio(ctx, channel, "sh")  # BLOCKED while the seam is absent; a range inside the file exports
-        destination = work / "short.mp4"
-        ok, body = channel({"op": "scene.export", "scene": "sh", "preset": PRESET_H, "destination": str(destination),
-                            "from": case["from"], "frames": case["frames"]}, 300)
-        p.check("scene.export of a range that reads past the end of the source is refused", not ok, body if ok else "")
-        code = body.get("code") if isinstance(body, dict) else None
-        p.check(f"the refusal is the typed `{case['expectedCode']}` (not a generic or unrelated failure)", (not ok) and code == case["expectedCode"], code)
-        p.check("no file is created at the destination", not destination.exists(), str(destination))
-        leftovers = sorted(x.name for x in work.iterdir() if x.name not in ("ws",) and x != destination and x.suffix in (".mp4", ".wav", ".m4a", ".part"))
-        p.check("nothing else is left next to the destination (no partial output, no staged mix)", not leftovers, leftovers)
-        message = (body.get("message") if isinstance(body, dict) else "") or ""
-        p.check("the refusal names the numbers (frames held by the file and read by the range)", any(ch.isdigit() for ch in message), message[:160])
-        p.metrics["short_source"] = {"file_seconds": case["fileSeconds"], "reads_through_seconds": case["readsThroughSeconds"], "code": code}
+        metrics = []
+        for number, entry in enumerate(case["ranges"]):
+            label = entry["name"]
+            destination = work / f"short-{number}.mp4"
+            ok, body = channel({"op": "scene.export", "scene": "sh", "preset": PRESET_H, "destination": str(destination),
+                                "from": entry["from"], "frames": entry["frames"]}, 300)
+            p.check(f"{label}: scene.export is refused", not ok, body if ok else "")
+            code = body.get("code") if isinstance(body, dict) else None
+            p.check(f"{label}: the refusal is the typed `{case['expectedCode']}` (not a generic or unrelated failure)", (not ok) and code == case["expectedCode"], code)
+            details = (body.get("details") if isinstance(body, dict) else None) or {}
+            p.check(f"{label}: the refusal comes from the declared-window rule, which does not look at the range (details.rule = window)",
+                    isinstance(details, dict) and details.get("rule") == "window", details)
+            message = (body.get("message") if isinstance(body, dict) else "") or ""
+            p.check(f"{label}: the refusal names the {case['fileFrames']} frames the file holds and the {case['windowEndSeconds']:.3f} s the window ends at",
+                    str(case["fileFrames"]) in message and f"{case['windowEndSeconds']:.3f}" in message, message[:200])
+            p.check(f"{label}: no file is created at the destination", not destination.exists(), str(destination))
+            leftovers = sorted(str(x.relative_to(work)) for x in work.rglob("*") if x.is_file() and x.suffix in (".mp4", ".wav", ".m4a", ".part")
+                               and "ws" not in x.relative_to(work).parts)
+            p.check(f"{label}: nothing else is left (no partial output, no staged mix)", not leftovers, leftovers)
+            metrics.append({"range": label, "code": code, "message": message[:200]})
+        p.metrics["short_source"] = {"file_seconds": case["fileSeconds"], "file_frames": case["fileFrames"], "window_end_seconds": case["windowEndSeconds"], "ranges": metrics}
     finally:
         channel.close()
 
@@ -988,13 +1097,28 @@ def phase_full_av(ctx, p):
         require_audio(ctx, channel, "full")
         case = ctx.exp["audio"]["cases"]["full_av"]
         ok, body, metrics = export_and_verify(p, ctx, channel, "full", "full", work / "full.mp4", 0, 48, PRESET_H, audio=None, kind="splat",
-                                              judge_frames=ctx.exp["splat"]["frames"][:4], audio_case=case, audio_expected=True, label="full")
+                                              judge_frames=ctx.exp["splat"]["frames"], audio_case=case, audio_expected=True, label="full")
         p.check("scene.export of the splat + audio scene succeeds", ok, body)
         p.metrics["export"] = metrics
     finally:
         channel.close()
     archive, restored, work = restore_flow(ctx, p, "full", "pkg-full", scene="full")
     verify.judge_package(p, archive, package_assets(ctx, "full"), label="package: ")
+    # the same scene, from the restored project with the origin deleted: splat pictures AND the mix in one export, judged again
+    second = Channel(harness.JsonlSession(ctx.binary("render"), ["--gl", ctx.args.gl]))
+    try:
+        must(second, {"op": "project.restore", "path": str(archive), "folder": str(restored)}, 300)
+        documents = sorted(restored.rglob("*.tessel.json"))
+        if not p.check("the restored folder holds a project document", bool(documents), None):
+            return
+        must(second, {"op": "project.open", "path": str(documents[0])}, 120)
+        must(second, {"op": "scene.resources.resolve", "scene": "full"}, 120)  # no base: nothing may need the deleted origin
+        ok, body, metrics = export_and_verify(p, ctx, second, "full", "full", work / "restored-full.mp4", 0, 48, PRESET_H, audio=None, kind="splat",
+                                              judge_frames=ctx.exp["splat"]["frames"], audio_case=case, audio_expected=True, label="restored full")
+        p.check("scene.export of the splat + audio scene from the restored project succeeds", ok, body)
+        p.metrics["restored_export"] = metrics
+    finally:
+        second.close()
 
 
 PHASES = [
@@ -1036,7 +1160,7 @@ def runtime_identity():
 
 def environment():
     return {"python": platform.python_version(), "platform": platform.platform(), "machine": platform.machine(), **verify.ev.tool_versions(),
-            "free_gib_tmp": round(free_gib(), 1)}
+            "free_gib_tmp": round(free_gib("/tmp"), 1)}
 
 
 def run_phase(ctx, phase, run):
@@ -1057,13 +1181,50 @@ def run_phase(ctx, phase, run):
         print(f"  FAIL {phase.error}", flush=True)
 
 
-def exit_code_of(statuses, within_budget=True, stopped_early=False):
-    """1 if any FAIL (or the budget was exceeded), else 2 if the run stopped on a prerequisite, else 3 if any BLOCKED, else 0."""
+def exit_code_of(statuses, within_budget=True, stopped_early=False, informational=()):
+    """1 if any FAIL (or the budget was exceeded), else 2 if the run stopped on a prerequisite or ran nothing, else 3 if any BLOCKED, else 4 if every phase
+    passed but the run is not an acceptance (`informational` reasons), else 0. 0 is the only status that can be quoted as acceptance."""
     if harness.FAIL in statuses or not within_budget:
         return 1
-    if stopped_early:
+    if stopped_early or not statuses:  # a run that ran nothing proves nothing
         return 2
-    return 3 if harness.BLOCKED in statuses else 0
+    if harness.BLOCKED in statuses:
+        return 3
+    if informational:
+        return 4
+    return 0
+
+
+EXIT_TEXT = {0: "the selected phases passed on a clean tree with attested binaries", 1: "failures", 2: "stopped on a prerequisite",
+             3: "blocked phases: not a pass", 4: "INFORMATIONAL, not an acceptance (every phase passed, see `acceptance`)"}
+
+
+def selected_phases(text, ids):
+    """`(phase ids, error)`: `all` or a comma list. An empty selection is an error, never an empty green run."""
+    if text == "all":
+        return list(ids), None
+    wanted = [x.strip() for x in text.split(",") if x.strip()]
+    if not wanted:
+        return [], "no phase selected (--phases is empty): an empty run proves nothing; see --list"
+    unknown = [x for x in wanted if x not in ids]
+    if unknown:
+        return [], f"unknown phase(s): {unknown}; see --list"
+    return wanted, None
+
+
+def acceptance_of(git_state, allow_stale_binary, informational, results, ids, wanted):
+    """Why a run that passed may still not be an acceptance. `informational` (exit 4) lists what makes a passing run non-accepting: a dirty
+    tree, `--allow-stale-binary`, a binary used without attestation. A subset of phases may exit 0 (the selected ones passed) but is never
+    `acceptable`: the report says how many of the phases ran."""
+    informational = list(informational)
+    if git_state.get("dirty_files"):
+        informational.append(f"the working tree is dirty ({git_state['dirty_files']} entries): the report would describe no commit")
+    if allow_stale_binary:
+        informational.append("--allow-stale-binary was passed")
+    reasons = list(informational)
+    if set(wanted) != set(ids):
+        reasons.append(f"only {len(wanted)} of {len(ids)} phases were selected: nothing outside them is claimed")
+    return {"acceptable": not reasons, "reasons": reasons, "informational": informational}
 
 
 def main():
@@ -1073,7 +1234,7 @@ def main():
     parser.add_argument("--bin-render", default=str(ROOT / "target/debug/tessel-render"))
     parser.add_argument("--gl", default="swiftshader", choices=["swiftshader", "gpu"])
     parser.add_argument("--work", default=None, help="a directory you own: the harness makes and removes its own s10-acc-* inside it, never touching the rest")
-    parser.add_argument("--allow-stale-binary", action="store_true", help="accept a tessel-render older than this checkout's sources (the report records it)")
+    parser.add_argument("--allow-stale-binary", action="store_true", help="use a tessel-render that is stale or not attested for this head (link.py); the run is then informational (exit 4), never an acceptance")
     parser.add_argument("--keep", action="store_true")
     parser.add_argument("--corpus", default=None, help="corpus directory; a tampered copy is the negative control (exits 1)")
     parser.add_argument("--gpu-lock-held", action="store_true", help="run under scripts/directed-scene-proof/with-gpu-lock.py")
@@ -1084,25 +1245,31 @@ def main():
         for phase_id, surface, _ in PHASES:
             print(f"{phase_id:26s} {surface}")
         return 0
-    wanted = ids if args.phases == "all" else [x.strip() for x in args.phases.split(",") if x.strip()]
-    unknown = [x for x in wanted if x not in ids]
-    if unknown:
-        print(f"unknown phase(s): {unknown}; see --list", file=sys.stderr)
+    wanted, problem = selected_phases(args.phases, ids)
+    if problem:
+        print(problem, file=sys.stderr)
         return 2
     corpus_dir = pathlib.Path(args.corpus).resolve() if args.corpus else corpus_module.CORPUS_DIR
     if not (corpus_dir / "expected.json").is_file():
         print("corpus/expected.json missing: run corpus.py first", file=sys.stderr)
         return 2
     expected, bundles, _ = controls.load(corpus_dir)
-    work = Workspace(keep=args.keep, base=args.work)
+    try:
+        work = Workspace(keep=args.keep, base=args.work)
+    except WorkspaceError as error:
+        print(f"refusing to start: {error}", file=sys.stderr)
+        return 2
     ctx = Context(args, work, expected, bundles)
     results, started, stopped = [], time.time(), None
+    disk = {"start_gib": round(work.free_gib(), 2), "min_gib": round(work.free_gib(), 2), "volume_of": str(work.base)}
     try:
         for phase_id, surface, run in PHASES:
             if phase_id not in wanted:
                 continue
-            if free_gib() < MIN_FREE_GIB or not work.within_budget():
-                stopped = f"stopped before {phase_id}: {free_gib():.1f} GiB free (reserve {MIN_FREE_GIB}) / work dir {work.bytes_used() / 1024 ** 3:.2f} GiB (budget {WORK_BUDGET_BYTES / 1024 ** 3:.0f})"
+            free = work.free_gib()
+            disk["min_gib"] = min(disk["min_gib"], round(free, 2))
+            if free < MIN_FREE_GIB or not work.within_budget():
+                stopped = f"stopped before {phase_id}: {free:.1f} GiB free on the volume of {work.base} (reserve {MIN_FREE_GIB}) / work dir {work.bytes_used() / 1024 ** 3:.2f} GiB (budget {WORK_BUDGET_BYTES / 1024 ** 3:.0f})"
                 print(f"  {stopped}", flush=True)
                 break
             print(f"== {phase_id} [{surface}]", flush=True)
@@ -1111,26 +1278,32 @@ def main():
             t0 = time.time()
             run_phase(ctx, phase, run)
             phase.seconds = time.time() - t0
+            disk["min_gib"] = min(disk["min_gib"], round(work.free_gib(), 2))
             results.append(phase)
         within, peak_bytes = work.within_budget(), work.bytes_used()
+        disk["end_gib"] = round(work.free_gib(), 2)
     finally:
         work.close()
     statuses = [r.status for r in results]
-    exit_code = exit_code_of(statuses, within, stopped is not None)
-    provenance = json.loads((corpus_dir / "provenance.json").read_text())
+    state = harness.git_state()
+    acceptance = acceptance_of(state, args.allow_stale_binary, ctx.informational, results, ids, wanted)
+    exit_code = exit_code_of(statuses, within, stopped is not None, acceptance["informational"])
+    acceptance["acceptable"] = acceptance["acceptable"] and exit_code == 0
+    provenance = json.loads((corpus_dir / "provenance.json").read_text(encoding="utf-8"))
     tolerances_path = HERE / "tolerances.json"
     report = {
         "harness": {"name": "directed-scene-acceptance", "version": HARNESS_VERSION,
-                    "files": {name: sha256_file(HERE / name) for name in ("proof.py", "oracle.py", "corpus.py", "verify.py", "controls.py", "ledger.py", "tolerances.json", "amendments.json", "proof.spec.py")}},
-        "git": harness.git_state(),
+                    "files": {name: sha256_file(HERE / name) for name in ledger.PINNED} | {"proof.spec.py": sha256_file(HERE / "proof.spec.py"), "amendments.json": sha256_file(ledger.LEDGER)}},
+        "git": state,
+        "acceptance": acceptance,
         "tolerances": {"sha256": sha256_file(tolerances_path), "introduced_in": (git("log", "--diff-filter=A", "--format=%H", "--", str(tolerances_path.relative_to(ROOT))).splitlines() or [None])[-1],
-                       "frozen_from": json.loads(tolerances_path.read_text())["frozenFrom"]},
+                       "provenance": json.loads(tolerances_path.read_text(encoding="utf-8"))["provenance"]["claim"]},
         "amendment_ledger": {"sha256": sha256_file(ledger.LEDGER), "pinned_now": ledger.current(), "book": ledger.load()},
         "stopped": stopped, "allow_stale_binary": args.allow_stale_binary,
         "corpus": {"version": expected["corpusVersion"], "dir": str(corpus_dir), "files": provenance["files"],
                    "expected_sha256": sha256_file(corpus_dir / "expected.json")},
         "binaries": ctx.binaries, "runtime_bundle": runtime_identity(), "environment": environment(), "gl": args.gl,
-        "seams": SEAMS, "seconds": round(time.time() - started, 1),
+        "disk": disk, "seams": SEAMS, "seconds": round(time.time() - started, 1),
         "work_budget_respected": within, "work_bytes_at_end": peak_bytes,
         "phases": [r.to_json() for r in results], "not_run": [x for x in ids if x not in wanted],
         "not_claimed": NOT_CLAIMED, "exit_code": exit_code,
@@ -1143,7 +1316,10 @@ def main():
         print(f"  {r.status:8s} {r.id:26s} {detail}{extra}")
     for x in report["not_run"]:
         print(f"  NOT RUN  {x}")
-    print(f"exit {exit_code} ({'all selected phases passed' if exit_code == 0 else 'failures' if exit_code == 1 else 'stopped on a prerequisite' if exit_code == 2 else 'blocked phases: not a pass'})")
+    for reason in acceptance["reasons"]:
+        print(f"  NOT AN ACCEPTANCE: {reason}")
+    verdict = "ACCEPTABLE: every phase passed on a clean tree with attested binaries" if exit_code == 0 and acceptance["acceptable"] else EXIT_TEXT[exit_code]
+    print(f"exit {exit_code} ({verdict})")
     if args.report:
         harness.write_report(args.report, report)
         print(f"report: {args.report}")

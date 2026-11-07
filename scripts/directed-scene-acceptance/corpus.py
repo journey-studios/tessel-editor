@@ -29,8 +29,9 @@ sys.path.insert(0, str(HERE))
 import oracle  # noqa: E402
 
 CORPUS_DIR = HERE / "corpus"
-CORPUS_VERSION = 2  # 1 -> 2: amendment A1 (audio window semantics); the version-1 corpus is kept in history/A1-audio-window/before
+CORPUS_VERSION = 3  # 1 -> 2: amendment A1 (audio window semantics; version 1 is kept in history/A1-audio-window/before); 2 -> 3: round R2
 TOLERANCES_PATH = HERE / "tolerances.json"
+TOL = json.loads(TOLERANCES_PATH.read_text(encoding="utf-8"))
 
 # Palette: solid colours, far from each other and from the background (max channel distance >= 120).
 BG = (20, 24, 40)
@@ -39,9 +40,12 @@ ORANGE, CYAN, PURPLE = (240, 150, 30), (30, 210, 220), (170, 60, 200)
 
 SPLAT_W, SPLAT_H = 640, 360
 CAMERA_SIZES = [(640, 360), (360, 640)]
+assert [list(size) for size in CAMERA_SIZES] == TOL["camera"]["renderSizes"], "camera sizes differ from tolerances.json"
+assert [SPLAT_W, SPLAT_H] == TOL["splat"]["renderSize"], "splat render size differs from tolerances.json"
 CAMERA_FRAMES = [0, 8, 15, 16, 24, 31, 32, 40, 47]
 SPLAT_FRAMES = [0, 12, 23, 24, 36, 47]
-AUDIO_RATE_OUT, AUDIO_RATE_MIX, AUDIO_AMPLITUDE = 48000, 44100, 0.5
+AUDIO_RATE_OUT, AUDIO_RATE_MIX = 48000, 44100
+assert (AUDIO_RATE_OUT, AUDIO_RATE_MIX) == (TOL["audio"]["outputSampleRate"], TOL["audio"]["mixSampleRate"]), "audio rates differ from tolerances.json"
 MIX_CHANNELS = 1  # the mix WAV is mono; the origin's graph writes stereo, so the expected gain is oracle.channel_gain_db(1, 2)
 
 # File time (seconds from the first sample of the WHOLE mix WAV; the origin's `editSecondsToSourceTime` reads the file at
@@ -68,10 +72,14 @@ AUDIO_CASES = {
                 "covers": "splat scene and audio mix together (integrated acceptance of the splat and mix fronts): first 2 s of the 440 Hz tone"},
 }
 
-# The source-too-short control (negative, live): the A1-era WAV is 8 s but the declared window is [1, 13); the range below
-# reads file seconds 5-9, one second past the end. The origin refuses a source that does not cover the window; the destination
-# must refuse this range with `audio_source_short` and create nothing.
-SHORT_SOURCE_CASE = {"bundle": "audio_short", "from": 96, "frames": 96, "expectedCode": "audio_source_short"}
+# The source-too-short control (negative, live): the A1-era WAV is 8 s but the declared window is [1, 13). The origin
+# (`node/render.ts`, AUDIO_SHORT) refuses a source that does not cover `editEndSecondsExclusive` BEFORE looking at the range, so
+# every range of this bundle must be refused with `audio_source_short`: one the file covers entirely (file seconds 1-3: a
+# partial render of a covered stretch) as well as one that reads past the end (file seconds 5-9), and no file may be created.
+# A range that the 8 s file covers must NOT export: the old phase expected that and contradicted the origin (review R2-1).
+SHORT_SOURCE_CASE = {"bundle": "audio_short", "expectedCode": "audio_source_short",
+                     "ranges": [{"name": "covered by the file (file seconds 1 to 3)", "from": 0, "frames": 48},
+                                {"name": "reads past the end of the file (file seconds 5 to 9)", "from": 96, "frames": 96}]}
 
 
 # ---------------------------------------------------------------------------------- PNG
@@ -334,6 +342,7 @@ def camera_expectations(bundle):
                 entry["markers"][name] = {"area": 0, "x": None, "y": None} if stats is None else \
                     {"area": stats["area"], "x": round(stats["x"], 4), "y": round(stats["y"], 4)}
             cases[f"{width}x{height}@{frame}"] = entry
+    assert sorted({round(c["camera"]["fovDeg"], 6) for c in cases.values()}) == sorted(TOL["camera"]["fovsDeg"]), "camera fovs differ from tolerances.json"
     judged = [c for c in cases.values() if c["size"] == [640, 360]]
     assert all(sum(1 for m in c["markers"].values() if m["area"] >= 400) >= 2 for c in judged), \
         "every 640x360 frame needs at least two markers with an area of 400 px or more"
@@ -367,7 +376,7 @@ def splat_expectations(bundle):
                     "color": [round(c, 2) for c in oracle.quantised_color(color)], "colorName": color,
                     "world": [round(w, 6) for w in where["world"]]})
         for entry in entries:
-            assert entry["sigmaPx"] >= 6, f"frame {frame}: {entry['node']}[{entry['index']}] sigma {entry['sigmaPx']} px < 6"
+            assert entry["sigmaPx"] >= TOL["splat"]["minScreenSigmaPx"], f"frame {frame}: {entry['node']}[{entry['index']}] sigma {entry['sigmaPx']} px < {TOL['splat']['minScreenSigmaPx']}"
             margin = 3 * entry["sigmaPx"] + 3
             assert margin <= entry["x"] <= SPLAT_W - margin and margin <= entry["y"] <= SPLAT_H - margin, \
                 f"frame {frame}: {entry['node']}[{entry['index']}] is not 3 sigma inside the picture"
@@ -379,9 +388,12 @@ def splat_expectations(bundle):
                 limit = 2 * (a["sigmaPx"] + b["sigmaPx"]) + 6  # regions (radius ~1.95 sigma) never touch
                 assert gap >= limit, f"frame {frame}: {a['node']}[{a['index']}] and {b['node']}[{b['index']}] are {gap:.1f} px apart (< {limit:.1f})"
         far = [[px, py] for px, py in background_points
-               if all(math.hypot(px - e["x"], py - e["y"]) >= 6 * e["sigmaPx"] for e in entries)]
+               if all(math.hypot(px - e["x"], py - e["y"]) >= TOL["splat"]["backgroundClearanceSigmas"] * e["sigmaPx"] for e in entries)]
         assert far, f"frame {frame}: no corner is >= 6 sigma from every splat"
-        cases[str(frame)] = {"frame": frame, "shot": state["shotId"], "splats": entries, "backgroundPoints": far,
+        probe = oracle.back_separable_point(entries, BG, TOL["splat"]["backSplatSearchSigmas"])
+        assert probe["separation"] >= TOL["splat"]["backSplatSeparationMinDistance"], \
+            f"frame {frame}: the back splat of s-order is separable by only {probe['separation']} at its best pixel"
+        cases[str(frame)] = {"frame": frame, "shot": state["shotId"], "splats": entries, "backgroundPoints": far, "backProbe": probe,
                              "camera": {"position": state["camera"]["position"], "target": state["camera"]["target"],
                                         "fovDeg": state["camera"]["fovDeg"]}}
     return cases
@@ -417,7 +429,7 @@ def audio_expectations(bundles):
             "naive30fpsStartSeconds": float(Fraction(case["from"], 30)) if case["bundle"] == "audio_ntsc" else None,
         }
     # A case must be able to tell NTSC from 30 fps by more than the onset tolerance.
-    tolerance = json.loads(TOLERANCES_PATH.read_text())["audio"]["onsetToleranceSeconds"]
+    tolerance = TOL["audio"]["onsetToleranceSeconds"]
     ntsc = out["audio_ntsc_window"]
     ntsc_from = AUDIO_CASES["audio_ntsc_window"]["from"]
     assert abs(float(Fraction(ntsc_from * 1001, 30000)) - ntsc_from / 30) > 1.5 * tolerance, "NTSC window is not distinguishable from 30 fps"
@@ -434,8 +446,13 @@ def audio_expectations(bundles):
         assert Fraction(audio["editEndSecondsExclusive"]).limit_denominator(100000) <= mix_seconds, f"{key}: the mix WAV is shorter than editEndSecondsExclusive"
     short = bundles["audio_short"]["audio"]
     assert Fraction(SHORT_MIX_SECONDS) < Fraction(short["editEndSecondsExclusive"]).limit_denominator(1000), "the short fixture must be shorter than its window"
-    reads_through = Fraction(SHORT_SOURCE_CASE["from"] + SHORT_SOURCE_CASE["frames"], 24) + Fraction(short["editStartSeconds"]).limit_denominator(1000)
-    assert reads_through > SHORT_MIX_SECONDS, "the short-source range must read past the end of the short file"
+    for entry in SHORT_SOURCE_CASE["ranges"]:
+        reads_from = Fraction(entry["from"], 24) + Fraction(short["editStartSeconds"]).limit_denominator(1000)
+        reads_through = reads_from + Fraction(entry["frames"], 24)
+        entry["readsFromSeconds"], entry["readsThroughSeconds"] = float(reads_from), float(reads_through)
+    covered, past_end = SHORT_SOURCE_CASE["ranges"]
+    assert Fraction(covered["readsThroughSeconds"]).limit_denominator(1000) <= SHORT_MIX_SECONDS, "the covered range must lie inside the short file"
+    assert Fraction(past_end["readsThroughSeconds"]).limit_denominator(1000) > SHORT_MIX_SECONDS, "the past-the-end range must read past the end of the short file"
     return out
 
 
@@ -449,7 +466,8 @@ def build():
         "note": "Generated by corpus.py from oracle.py (closed-form maths). No destination output is stored here.",
         "tolerancesSha256": sha256(TOLERANCES_PATH.read_bytes()),
         "bundles": {k: {"file": BUNDLE_FILES[k], "bundleId": b["bundleId"], "sha256": sha256(json_files[BUNDLE_FILES[k]]),
-                        "fps": f"{b['fps']['numerator']}/{b['fps']['denominator']}", "editFrames": b["editDurationFrames"]}
+                        "fps": f"{b['fps']['numerator']}/{b['fps']['denominator']}", "editFrames": b["editDurationFrames"],
+                        "declaredAssets": sorted(a["relativePath"] for a in b["assets"])}
                     for k, b in bundles.items()},
         "assets": {path: {"sha256": sha256(data), "bytes": len(data)} for path, data in sorted(files.items())},
         "palette": {"background": BG, "markers": {k: list(v) for k, v in MARKER_COLOR.items()}},
@@ -460,7 +478,7 @@ def build():
                           "windowRule": "file time = editStartSeconds + edit time (origin audio-window.ts); the WAV covers [0, editEndSecondsExclusive)",
                           "segments": [[str(a), str(b), hz, float(amp)] for a, b, hz, amp in oracle.ToneTable(MIX_SEGMENTS, MIX_SECONDS).segments]},
                   "shortSource": {**SHORT_SOURCE_CASE, "relativePath": "audio/mix-short.wav", "fileSeconds": SHORT_MIX_SECONDS,
-                                  "windowSeconds": [1.0, 13.0], "readsThroughSeconds": float(Fraction(SHORT_SOURCE_CASE["from"] + SHORT_SOURCE_CASE["frames"], 24) + 1)},
+                                  "fileFrames": SHORT_MIX_SECONDS * AUDIO_RATE_MIX, "windowSeconds": [1.0, 13.0], "windowEndSeconds": 13},
                   "outputSampleRate": AUDIO_RATE_OUT, "cases": audio_expectations(bundles)},
     }
     json_files["expected.json"] = json.dumps(expected, indent=1, sort_keys=True).encode() + b"\n"

@@ -1,8 +1,9 @@
 """Independent verifiers of S10: pictures (camera masks, splats), exported audio and packages.
 
 Nothing here knows how the editor renders, mixes or packages. A picture, a file or an archive goes in; the expected values
-come from `corpus/expected.json` (written by `oracle.py`), the tolerances from `tolerances.json` (frozen before the first
-result). Reports of the destination are compared with what is measured, never trusted.
+come from `corpus/expected.json` (written by `oracle.py`), the tolerances from `tolerances.json` (pinned by the amendment ledger
+from a named commit: ancestry, not pre-registration, and not an approval of the numbers). Reports of the destination are compared
+with what is measured, never trusted.
 
 `p` is any object with `.check(name, condition, detail="")` (`harness.Phase` in the proof, `Collector` in self-tests).
 """
@@ -24,7 +25,7 @@ import oracle  # noqa: E402
 import export_verify as ev  # noqa: E402  (R10, read-only: container/timing rules and the BT.709 limited-range decoder)
 
 FFMPEG, FFPROBE = ev.FFMPEG, ev.FFPROBE
-TOLERANCES = json.loads((HERE / "tolerances.json").read_text())
+TOLERANCES = json.loads((HERE / "tolerances.json").read_text(encoding="utf-8"))
 Collector = ev.Collector
 
 
@@ -215,6 +216,18 @@ def judge_splat_frame(p, rgb, width, height, case, palette, video=False, label="
                 distance(got_back, blended) <= tol["overlapBackCompositionDelta"], f"{got_back} vs composition {blended}")
         p.check(f"{label}s-order back centre: far (>= {tol['overlapBackColorMinDistance']}) from the back splat's own colour (the front is in front)",
                 distance(got_back, back["color"]) >= tol["overlapBackColorMinDistance"], f"{got_back} vs back {back['color']}")
+        # Amendment A6: at the back centre the front gaussian hides the back splat (with and without it differ by only 16 to 46), so a
+        # missing back splat, or an opaque disc without the gaussian falloff, escaped on most frames. The corpus stores the pixel where
+        # the three hypotheses differ most (`oracle.back_separable_point`, chosen by the model alone, `case["backProbe"]`): the picture
+        # there must be nearest the composition WITH the gaussian. No new tolerance: the nearest composition wins, so the margin is half
+        # the separation, which the corpus keeps above `backSplatSeparationMinDistance`.
+        probe = case["backProbe"]
+        got_probe = pixel(rgb, width, probe["x"], probe["y"])
+        near = {name: distance(got_probe, probe[name]) for name in ("drawn", "missing", "disc")}
+        p.check(f"{label}s-order back splat is present as a gaussian: at its most separable pixel ({probe['x']},{probe['y']}) the picture is nearest the composition "
+                f"with it {probe['drawn']} (distance {near['drawn']}), not the one without it {probe['missing']} ({near['missing']}) nor the one with an opaque disc {probe['disc']} ({near['disc']})",
+                near["drawn"] < near["missing"] and near["drawn"] < near["disc"], f"{got_probe}")
+        metrics["s-order back"] = {"probePixel": [probe["x"], probe["y"]], "separation": probe["separation"], "distance": near}
     return metrics
 
 
@@ -300,7 +313,7 @@ _MIX_SECONDS = []
 def case_mix_segments():
     """The tone table of the corpus's mix (file time), read from expected.json (written by corpus.py from the same constants)."""
     if not _MIX:
-        data = json.loads((HERE / "corpus/expected.json").read_text())["audio"]["mix"]
+        data = json.loads((HERE / "corpus/expected.json").read_text(encoding="utf-8"))["audio"]["mix"]
         _MIX.extend((Fraction(a), Fraction(b), hz, amp) for a, b, hz, amp in data["segments"])
         _MIX_SECONDS.append(Fraction(data["seconds"]))
     return list(_MIX)
@@ -311,7 +324,7 @@ def _mix_seconds():
     return _MIX_SECONDS[0]
 
 
-def judge_audio(p, path, case, bundle, label="", video_seconds=None, channels_expected=None, gain_db=None):
+def judge_audio(p, path, case, bundle, label="", video_seconds=None, gain_db=None):
     """Measures the exported file's audio against the analytic expectation of `case`. Returns metrics.
 
     The expected gain is the origin's channel law for the case's source and the file's channels
@@ -325,7 +338,8 @@ def judge_audio(p, path, case, bundle, label="", video_seconds=None, channels_ex
         return {}
     streams = audio_streams(probe)
     p.check(f"{label}audio: exactly {tol['streamCountExact']} audio stream", len(streams) == tol["streamCountExact"], len(streams))
-    p.check(f"{label}audio: {len(channels)} channel(s) are accepted", len(channels) in tol["channelsAccepted"], len(channels))
+    p.check(f"{label}audio: {len(channels)} channel(s), the origin always writes {tol['outputChannels']} (a mono file is a regression)",
+            len(channels) == tol["outputChannels"], len(channels))
     p.check(f"{label}audio: sample rate {tol['outputSampleRate']}", int(streams[0]["sample_rate"]) == tol["outputSampleRate"],
             streams[0]["sample_rate"])
     start_time = float(streams[0].get("start_time") or 0)
@@ -480,12 +494,20 @@ def judge_package(p, path, expected_assets, label=""):
 
 
 def judge_declared_hashes(p, bundle, expected_assets, label=""):
-    """A bundle must declare, for every asset, exactly the hash the corpus computed from the bytes."""
-    declared = {a["relativePath"]: a["contentHash"] for a in bundle["assets"]}
-    mismatched = sorted(path for path, digest in declared.items() if path in expected_assets and expected_assets[path]["sha256"] != digest)
-    unknown = sorted(path for path in declared if path not in expected_assets)
-    p.check(f"{label}the bundle declares the corpus hash of every asset", not mismatched and not unknown, {"mismatched": mismatched, "unknown": unknown})
-    return {"mismatched": mismatched, "unknown": unknown}
+    """A bundle must declare, for every expected asset, exactly the corpus' name and the hash the corpus computed from the bytes:
+    no asset missing from the declaration, none unknown or declared twice, and no wrong hash. `expected_assets` is
+    `{relativePath: {"sha256": ...}}` of the assets this bundle is supposed to declare."""
+    declarations = [(a["relativePath"], a["contentHash"]) for a in bundle["assets"]]
+    names = [name for name, _ in declarations]
+    declared = dict(declarations)
+    mismatched = sorted(name for name, digest in declared.items() if name in expected_assets and expected_assets[name]["sha256"] != digest)
+    unknown = sorted(name for name in declared if name not in expected_assets)
+    missing = sorted(name for name in expected_assets if name not in declared)
+    repeated = sorted({name for name in names if names.count(name) > 1})
+    ok = not (mismatched or unknown or missing or repeated) and bool(expected_assets)
+    p.check(f"{label}the bundle declares exactly the corpus' asset names, each with the corpus hash", ok,
+            {"mismatched": mismatched, "unknown": unknown, "missing": missing, "repeated": repeated})
+    return {"mismatched": mismatched, "unknown": unknown, "missing": missing, "repeated": repeated}
 
 
 def tamper_zip(source, target, mutate):

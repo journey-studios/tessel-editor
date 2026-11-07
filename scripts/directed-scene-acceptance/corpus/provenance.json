@@ -57,8 +57,8 @@
    "sha256": "be2c4f08a8773bc2ad9b195947df18d77f7691cbdbdc5a337ce08027d75ffec5"
   },
   "expected.json": {
-   "bytes": 57802,
-   "sha256": "3396851716c0cb7923a77cd5e343f6cf9d90ef67d8aff833b730e4e41681ba02"
+   "bytes": 60748,
+   "sha256": "387c0b7c7dc3046de0258fec10598581646f37ae11d9b385ddf8d9391ba70e98"
   },
   "splat/sp-green.spz": {
    "bytes": 45,
@@ -84,5 +84,5 @@
  "generator": "scripts/directed-scene-acceptance/corpus.py",
  "origin": "drawn from scratch: solid-colour PNGs, SPZ v2 written by oracle.spz_v2, sine-tone WAV from oracle.wav_bytes",
  "private_media": false,
- "version": 2
+ "version": 3
 }

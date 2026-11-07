@@ -1,64 +1,74 @@
 {
-  "schema": "s10-tolerances/1",
-  "frozenFrom": {
-    "commit": "da0b59328687622831cc54efdaba4b28178edf28",
-    "what": "Git ancestry only: this file was committed in da0b593 (2026-11-05 20:20:57 -0300), six seconds before the commit that added the harness code (1b5953e), and that second commit already contained the baseline_splat_colour FINDING. Development runs of the harness preceded the first commit that holds a result file. Nothing below is claimed to be fixed before every result; no number is known to have been tuned either."
+  "schema": "s10-tolerances/2",
+  "provenance": {
+    "claim": "None of these numbers is claimed to have been fixed before a result, and none is claimed to have been reviewed and approved by a reviewer who is not the author. Git proves ancestry only.",
+    "gitFacts": "The first version of this file was committed in da0b593 (2026-11-05 20:20:57 -0300), six seconds before the commit that added the harness code (1b5953e), and that second commit already contained the baseline_splat_colour FINDING. Development runs of the harness preceded the first commit that holds a result file. The first review (R1) and the second review (R2) of PR #8 did not approve any number: the R2 review wrote 'Nao aprovo nenhum numero'.",
+    "whatIsRegistered": "Before any live run of the R2 harness, `justifications` below gives the analytic basis (or the declared choice) of every number, and docs/features/scene-acceptance.md lists the sensitivity of each rule, computed by sensitivity.py from the model alone. A change after the baseline commit is an amendment: amendments.json records the reason, the motivating finding and the SHA-256 of every pinned file before and after; the ledger is anchored to Git (ledger.py) and `tolerances_frozen` fails if a pinned file, the anchor, the ancestry or the append-only history do not hold.",
+    "wiring": "Every numeric value in this file is read by code (verify.py, proof.py, controls.py, corpus.py or sensitivity.py) and has an entry in `justifications`; proof.spec.py fails otherwise. A value that nothing reads was removed in round R2."
   },
-  "provenance": "No value that existed in da0b593 has been changed by any amendment (amendments.json pins the hashes). Values added or moved into this file by amendments carry a `why...` note. The author did NOT re-derive the older values independently and does not claim a pre-registration; the review of every number by a reviewer who is not the author is requested before the next live result of the amended harness is accepted (docs/features/scene-acceptance.md, Provenance). A change after commit da0b593 is an amendment: amendments.json records the reason, the motivating finding and the SHA-256 of every pinned file before and after, and `tolerances_frozen` fails if a pinned file differs from the last recorded state.",
   "amendmentsLedger": "amendments.json",
   "units": "pixels are 8-bit sRGB; positions are output pixels of the stated render size; audio is float PCM in [-1, 1]; times are seconds",
 
   "camera": {
     "about": "Markers are flat coloured quads (image planes) at known world positions. The model ray-casts the exact projected mask of each marker; the verifier measures the mask in the real picture from colour distance to the flat background. Position and shape are judged, never a probe lookup alone.",
     "renderSizes": [[640, 360], [360, 640]],
-    "markerMask": {"channelDistanceFromBackgroundMin": 60, "why": "marker and background colours differ by >= 120 on at least one channel; half of that is the edge threshold"},
+    "fovsDeg": [30, 50, 75],
+    "markerMask": {"channelDistanceFromBackgroundMin": 60},
     "maskCentroidPx": 0.75,
     "maskIouMin": 0.90,
     "interiorColorDelta": 6,
     "minJudgedAreaPx": 300,
     "absentMarkerMaxPixels": 20,
-    "whyArea": "A marker with fewer than 300 model pixels is clipped by the frame edge; its centroid and IoU move by the clipping, so it is not judged for position. One whose model area is 0 is outside the frame: it must leave at most 20 stray pixels (under 7% of the smallest judged mask; anti-aliasing of a neighbour can colour a few).",
     "videoMaskCentroidPx": 1.25,
     "videoMaskIouMin": 0.85,
     "videoInteriorColorDelta": 12,
-    "fovsDeg": [30, 50, 75],
     "poseAbsolute": 1e-9,
     "poseRelative": 1e-12,
-    "negativeControlsMustFail": ["fov +5 deg", "dolly direction reversed", "mirrored x", "camera one frame late", "vertical fov used as horizontal"]
+    "matrixAbsolute": 1e-9,
+    "negativeControlsMustFail": ["fov +5 deg", "dolly direction reversed", "mirrored x", "camera one frame late", "vertical fov used as horizontal", "marker colour where the model has none"]
   },
 
   "splat": {
-    "about": "Gaussian splats written by this corpus (SPZ v2) at known positions, colours, scales and opacities, drawn over a flat background plane. The model projects centre and size through the evaluated camera; the verifier measures centroid, centre colour, half-intensity radius and overlap order in the picture. Blending laws of the renderer are NOT modelled, only monotone quantities.",
+    "about": "Gaussian splats written by this corpus (SPZ v2) at known positions, colours, scales and opacities, drawn over a flat background plane. The model projects centre and size through the evaluated camera; the verifier measures centroid, centre colour, half-intensity radius and the overlap pair in the picture. The one blending law modelled is the `over` composition of the overlap pair (oracle.composite_at); light, tonemapping and linear-light blending are NOT modelled.",
     "renderSize": [640, 360],
     "minScreenSigmaPx": 6,
+    "backgroundClearanceSigmas": 6,
     "centroidPx": 1.5,
     "centerColorDelta": 24,
     "backgroundDelta": 6,
-    "backgroundClearanceSigmas": 6,
     "halfIntensityRadius": {"relative": 0.30, "absolutePx": 1.5, "law": "r50 = sigma * sqrt(2 ln 2) for an isotropic gaussian"},
     "coverageChannelDistanceFromBackgroundMin": 30,
     "overlapFrontColorDelta": 40,
     "overlapBackCompositionDelta": 40,
-    "whyOverlap": "Amendment A2. At the centre of the front splat the front colour is the picture (alpha 1). At the centre of the back splat the front gaussian is only partly opaque (alpha = exp(-d^2 / 2 sigma^2), 0.80 to 0.92 over the six frames), so the picture is the model's own over-composition (oracle.composite_at), judged within the same 40 the front rule always had; the >= 80 rule against the back colour is unchanged.",
-    "videoBackgroundExtraDelta": 6,
     "overlapBackColorMinDistance": 80,
+    "backSplatSearchSigmas": 2,
+    "backSplatSeparationMinDistance": 24,
+    "whyOverlap": "Amendment A2. At the centre of the front splat the front colour is the picture (alpha 1). At the centre of the back splat the front gaussian is only partly opaque (alpha = exp(-d^2 / 2 sigma^2): 0.761 to 0.920 at the exact centre and 0.750 to 0.914 at the pixel the verifier reads, over the six frames; frames 36 and 47 are below 0.80), so the picture there is the model's own over-composition (oracle.composite_at), judged within the same 40 the front rule always had; the >= 80 rule against the back colour is unchanged.",
+    "whyBackSplat": "Amendment A6. At the back centre the picture with and without the back splat differs by only 16 to 46, and an opaque disc of the half-intensity radius cannot be told from the gaussian there, so a missing or disc-shaped back splat escaped on most frames. The verifier now reads the pixel, within backSplatSearchSigmas back sigmas of the back centre, where the three hypotheses (gaussian, missing, opaque disc) differ most; it is chosen by the model alone (oracle.back_separable_point), the picture must be nearest the gaussian composition, and the corpus refuses a frame whose separation is below backSplatSeparationMinDistance. 2 sigma keeps the pixel where the gaussian still has alpha >= exp(-2) = 0.135, inside the extent that gaussian renderers keep.",
+    "videoBackgroundExtraDelta": 6,
     "videoCentroidPx": 2.0,
     "videoCenterColorDelta": 36,
     "videoHalfIntensityRadius": {"relative": 0.35, "absolutePx": 2.0},
     "opacityUnit": "SPZ alpha byte / 255, applied once; an opaque (255) splat shows its colour at the centre",
-    "nodeTransformCoversTranslationRotationUniformScale": true,
-    "negativeControlsMustFail": ["centroid shifted 4 px", "colour channels swapped", "front and back order swapped", "size x1.5", "splat missing", "node transform ignored"]
+    "negativeControlsMustFail": ["centroid shifted 4 px", "colour channels swapped", "front and back order swapped", "size x1.5", "size x2 of each splat alone", "splat missing", "back splat missing", "back splat drawn as an opaque disc", "node transform ignored"]
+  },
+
+  "video": {
+    "about": "The regime of `scene.export`. Controls run twice: on the picture as the renderer writes it (PNG) and on the same picture after the preset's own FFmpeg chain, then judged with the video tolerances. The chain is the public preset (libx264 medium, profile high, yuv420p, BT.709 limited range, crf 18), applied here by FFmpeg to the model's picture, not read from an export.",
+    "crf": 18,
+    "preset": "medium",
+    "profile": "high",
+    "controlRegimes": ["png", "video"]
   },
 
   "audio": {
-    "channelLaw": "The origin forces stereo (aformat channel_layouts=stereo) and sums with amix normalize=0, so FFmpeg's rematrix applies: mono -> stereo is 1/sqrt(2) per channel (-3.0103 dB), same layout is untouched. oracle.channel_gain_db; proof.spec.py re-derives it by running the origin's own filter.",
+    "channelLaw": "The origin forces stereo (aformat channel_layouts=stereo) and sums with amix normalize=0, so FFmpeg's rematrix applies: mono -> stereo is 1/sqrt(2) per channel (-3.0103 dB), same layout is untouched. oracle.channel_gain_db; proof.spec.py re-derives it by running the origin's own filter. The origin always writes a stereo file, so a mono output is a regression and is refused (outputChannels).",
     "onsetSearchWindowSeconds": 0.08,
     "onsetThresholdFraction": 0.35,
     "whyOnset": "An edge is searched within 80 ms of the expected time (half a 24 fps frame is 21 ms, the AAC encoder delay about 21 ms) and is the first 1 ms RMS value reaching 35% of the expected tone RMS (the 2 ms window half-covers the edge at 50%).",
     "about": "The oracle is analytic: a tone table, an exact rational frame-to-time mapping and a rate conversion that is the identity on the continuous signal. The exported file is decoded by ffmpeg to float PCM and compared with the analytic signal, never with a copy of the editor's mix.",
     "outputSampleRate": 48000,
     "mixSampleRate": 44100,
-    "amplitude": 0.5,
     "onsetToleranceSeconds": 0.003,
     "lagToleranceSamples": 48,
     "lagSearchSeconds": 0.15,
@@ -71,31 +81,83 @@
     "durationVsVideoSeconds": 0.0225,
     "startTimeAbsSeconds": 0.025,
     "streamCountExact": 1,
-    "channelsAccepted": [1, 2],
-    "negativeControlsMustFail": ["shifted 5 ms", "shifted one frame", "rate bug (44.1 kHz read as 48 kHz)", "silent stream", "gain -6 dB", "mix offset ignored", "export range ignored", "tone swapped", "no audio stream", "truncated audio", "NTSC treated as 30 fps", "mono source written at 0 dB (channel law ignored)", "retired A1 reading (mix[0] plays at editStartSeconds)"]
+    "outputChannels": 2,
+    "negativeControlsMustFail": ["shifted 5 ms", "shifted one frame", "rate bug (44.1 kHz read as 48 kHz)", "silent stream", "gain -6 dB", "mix offset ignored", "export range ignored", "tone swapped", "no audio stream", "truncated audio", "NTSC treated as 30 fps", "mono source written at 0 dB (channel law ignored)", "mono output (the origin always writes stereo)", "retired A1 reading (mix[0] plays at editStartSeconds)"]
   },
 
   "package": {
-    "about": "A package is judged by reading it with a reader that is not the editor's (Python zipfile / plain directory walk) and by what a restore recovers once the origin is deleted.",
-    "assetSha256": "exact equality with the corpus hash, every asset, zero tolerance",
-    "restoredRenderMaskCentroidPx": 0.75,
-    "tamperedPackageMustBeRefused": true,
-    "missingAssetMustBeRefused": true,
-    "negativeControlsMustFail": ["asset byte flipped inside the package", "asset removed from the package", "wrong hash declared in the bundle"]
+    "about": "A package is judged by reading it with a reader that is not the editor's (Python zipfile / plain directory walk) and by what a restore recovers once the origin is deleted. A tampered or incomplete package, and a bundle that declares a wrong or missing asset hash, are refused (live phases package_tamper and package_portability, controls_package).",
+    "assetSha256": "exact equality with the corpus hash, every asset, zero tolerance; a bundle must declare exactly the corpus' asset names and hashes (verify.judge_declared_hashes)",
+    "negativeControlsMustFail": ["asset byte flipped inside the package", "asset removed from the package", "wrong hash declared in the bundle", "asset name missing from the declaration", "unknown asset name declared"]
   },
 
   "export": {
-    "about": "Video timing and picture rules are inherited unchanged from scripts/directed-scene-export-proof (expected.json tolerances, fixed before any export existed); this harness adds no looser value.",
-    "inherits": "scripts/directed-scene-export-proof/export_corpus.py TOLERANCES",
-    "fpsExactFraction": true,
-    "ptsDeltaExact": true,
-    "durationToleranceSeconds": 0.001,
-    "videoProbeChannelDelta": 12,
-    "audioDeclaredButAbsentIsFailure": true
+    "about": "Video container, timing and picture rules are inherited from scripts/directed-scene-export-proof (export_verify.py, export_corpus.py), read-only; this harness adds no value of its own here, and pins both files in the amendment ledger because they decide verdicts. They were not independently reviewed by this change.",
+    "inherits": "scripts/directed-scene-export-proof/export_verify.py"
+  },
+
+  "justifications": {
+    "camera.markerMask.channelDistanceFromBackgroundMin": {"basis": "analytic", "text": "the distance is the largest per-channel difference (verify.distance). The smallest separation between a marker colour and the background is 176 (green), the largest 220: 60 is about a third of the smallest, so a marker pixel is never read as background and an anti-aliased edge pixel above a third of the way is still a marker pixel."},
+    "camera.maskCentroidPx": {"basis": "analytic", "text": "one extra row plus one extra column in the detected mask moves the centroid by hypot(.5,.5) = 0.707 px, so 0.75 is the smallest round value above a one-pixel mask-edge difference. Sensitivity (sensitivity.py positive_margins): the model's own picture costs 0.000 px in the PNG regime. A systematic half-pixel offset in both axes (0.707) is NOT detected by this rule; a one-pixel offset is."},
+    "camera.maskIouMin": {"basis": "analytic", "text": "the IoU of a mask scaled by s is 1/s^2: 0.90 tolerates a 5.4% size error. Sensitivity (sensitivity.py camera_fov on 640x360@8, PNG regime): a 0.1 degree FOV error is NOT detected; 0.25 degrees and every larger error in the sweep (0.5, 1, 5) are."},
+    "camera.interiorColorDelta": {"basis": "inherited", "text": "scripts/directed-scene-export-proof/export_corpus.py (interior colour of a flat quad, PNG regime); a flat colour has no resampling inside the mask."},
+    "camera.minJudgedAreaPx": {"basis": "choice", "text": "a marker with fewer than 300 model pixels is clipped by the frame edge; its centroid and IoU move by the clipping, so it is not judged for position. Sensitivity: the smallest model area above zero in the corpus is 561, so the branch is unreachable for the camera corpus and only guards other layouts."},
+    "camera.absentMarkerMaxPixels": {"basis": "choice", "text": "a marker the model puts outside the frame may leave at most 20 pixels of its colour: 6.7% of the 300 px judging threshold and 3.6% of the smallest judged mask (561), because anti-aliasing of a neighbour can colour a few. The 4:2:0 regime is exercised before any live run by a positive control (nothing stray) and a negative control (a stray blob) at 360x640@0, in the PNG and in the codec regime."},
+    "camera.videoMaskCentroidPx": {"basis": "choice", "text": "the PNG value plus half a pixel for 4:2:0 chroma and block coding. Sensitivity (sensitivity.py positive_margins, one intra frame through the preset's libx264 chain): the model's own picture costs at most 0.092 px, so this is a choice with room, not a measured need; a real export adds motion, rate control and the renderer's own anti-aliasing, which are not rehearsed."},
+    "camera.videoMaskIouMin": {"basis": "choice", "text": "the PNG value relaxed for 4:2:0 edges; tolerated size error 8.5% (1/s^2 = 0.85). Sensitivity: the model's own picture after the codec keeps an IoU of at least 0.986, so the floor is a choice with room (one intra frame; see videoMaskCentroidPx)."},
+    "camera.videoInteriorColorDelta": {"basis": "inherited", "text": "scripts/directed-scene-export-proof/export_corpus.py (video interior colour, BT.709 decode). Sensitivity: the model's own picture after the codec differs by at most 3 inside the marker."},
+    "camera.poseAbsolute": {"basis": "analytic", "text": "double precision: matrices in expected.json carry 12 decimals."},
+    "camera.poseRelative": {"basis": "analytic", "text": "double precision."},
+    "camera.matrixAbsolute": {"basis": "analytic", "text": "double precision; same bound as the pose, written in one place instead of as literals in proof.py."},
+    "camera.renderSizes": {"basis": "choice", "text": "640x360 and its portrait 360x640: the two orientations the editor's presets produce; the corpus asserts both."},
+    "camera.fovsDeg": {"basis": "choice", "text": "30, 50 and 75 degrees (three shots); the corpus asserts the cameras carry them."},
+    "splat.renderSize": {"basis": "choice", "text": "640x360, one landscape picture size; the corpus asserts it."},
+    "splat.minScreenSigmaPx": {"basis": "choice", "text": "r50 = sigma * sqrt(2 ln 2) = 1.177 sigma: at 6 px of sigma the half-intensity radius is 7.06 px, so the absolute 1.5 px term of the radius rule is at most 21% of it; below that the rule would mostly be its absolute term and the 0.25 px radius scan would resolve it poorly. The corpus refuses smaller splats."},
+    "splat.backgroundClearanceSigmas": {"basis": "analytic", "text": "a corner is judged as background only when it is >= 6 sigma from every splat: exp(-18) of the peak."},
+    "splat.centroidPx": {"basis": "choice", "text": "1.5 px. Sensitivity (sensitivity.py positive_margins): the model's own picture costs at most 0.032 px in the PNG regime and 0.154 px after the codec, so there is room for the renderer's own blur. A one-pixel error passes this rule; the control shifts the splats 4 px (detected on every frame, in both regimes)."},
+    "splat.centerColorDelta": {"basis": "choice", "text": "24. Sensitivity: the model's own picture differs from the stored colour by at most 1 (PNG) and 9 (codec). The colour-swap control is detected on every frame and regime, and the darkening of BL019-F1 (a stored (230,49,49) read as (203,7,7)) is a distance of 42, above this value. A colour error under 24 passes."},
+    "splat.backgroundDelta": {"basis": "choice", "text": "an 8-bit flat background after renderer colour handling may drift a few levels."},
+    "splat.halfIntensityRadius.relative": {"basis": "choice", "text": "0.30 of the model radius: PNG tolerates +-(0.30 r50 + 1.5 px). Sensitivity (sensitivity.py splat_size): a size factor above 1.365 to 1.452 (depending on the splat) is detected in the PNG regime, so x1.5 is detected on all 30 measurements and a factor of 1.3 or less is not. The model's own picture uses at most 4% of the allowance."},
+    "splat.halfIntensityRadius.absolutePx": {"basis": "choice", "text": "1.5 px: six 0.25 px steps of the radius scan."},
+    "splat.coverageChannelDistanceFromBackgroundMin": {"basis": "inherited", "text": "the camera markerMask rule applied to splat support: half of the smallest palette separation."},
+    "splat.overlapFrontColorDelta": {"basis": "choice", "text": "40, the value the front rule always had. At the front centre the model's own composition differs from the front colour by 1 on every frame (the front gaussian is opaque there), so 40 is a choice with wide room; the next rule (>= 80 from the back colour, 209 in the model) refuses a swapped order."},
+    "splat.overlapBackCompositionDelta": {"basis": "choice", "text": "40, the value the front rule always had, not widened (amendment A2). Permissive for a missing back splat at the back centre, where the composition with and without it differs by 16 to 46 (amendment A6 adds the separate probe pixel)."},
+    "splat.overlapBackColorMinDistance": {"basis": "analytic", "text": "80: the model's composition at the back centre is 157 to 192 away from the back colour over the six frames, so 80 refuses a swapped order with a margin of at least 77."},
+    "splat.backSplatSearchSigmas": {"basis": "choice", "text": "2 sigma around the back centre, where alpha >= 0.135 and inside the extent gaussian renderers keep."},
+    "splat.backSplatSeparationMinDistance": {"basis": "choice", "text": "24: the smallest model separation of the three back-splat hypotheses over the six frames is 30 (frames 0 and 24; 34, 36, 46, 49 on the others). The nearest-composition rule leaves half of it (15) as the margin per hypothesis, above the codec's own error on the model picture (centre colour 9); the corpus refuses a frame below 24."},
+    "splat.videoBackgroundExtraDelta": {"basis": "choice", "text": "extra 6 for the video regime's chroma drift of the flat background; the model's own picture after the codec stays within the PNG background delta plus this."},
+    "splat.videoCentroidPx": {"basis": "choice", "text": "PNG 1.5 plus half a pixel for 4:2:0. The model's own picture after the codec costs at most 0.154 px."},
+    "splat.videoCenterColorDelta": {"basis": "choice", "text": "36: PNG 24 plus the 12 of the video interior colour delta. The model's own picture after the codec costs at most 9."},
+    "splat.videoHalfIntensityRadius.relative": {"basis": "choice", "text": "0.35: PNG 0.30 plus 0.05 for chroma blur. The model's own picture after the codec uses at most 6.4% of the allowance."},
+    "splat.videoHalfIntensityRadius.absolutePx": {"basis": "choice", "text": "2.0 px. Sensitivity (sensitivity.py splat_size): with this floor x1.5 is NOT detected on 15 of the 30 measurements (the splats whose model r50 is below about 13 px), x2 is detected on all of them. The size controls state it per splat and regime (declared blind spot, recorded in the report) instead of hiding it; no tolerance was changed to remove it."},
+    "video.crf": {"basis": "inherited", "text": "the preset's crf (crates/core preset 18), applied by FFmpeg to the model's own picture."},
+    "audio.onsetSearchWindowSeconds": {"basis": "analytic", "text": "half a 24 fps frame is 21 ms; the AAC encoder delay is about 21 ms."},
+    "audio.onsetThresholdFraction": {"basis": "analytic", "text": "a 2 ms RMS window half-covers an edge at 50%; 0.35 of the tone RMS gives a bias of -0.755 to +0.245 ms."},
+    "audio.outputSampleRate": {"basis": "inherited", "text": "the preset's output rate."},
+    "audio.mixSampleRate": {"basis": "analytic", "text": "the corpus WAV rate; the corpus asserts it."},
+    "audio.onsetToleranceSeconds": {"basis": "choice", "text": "3 ms. Sensitivity (sensitivity.py audio_shift, AAC through ffmpeg, window audio24_window_a): delays of 3, 4, 5 and 6 ms are detected by the edge rule; 1 and 2 ms are NOT."},
+    "audio.lagToleranceSamples": {"basis": "analytic", "text": "48 samples = one 1 ms envelope hop."},
+    "audio.lagSearchSeconds": {"basis": "choice", "text": "150 ms of lag search around zero."},
+    "audio.correlationMin": {"basis": "choice", "text": "0.97: strict in phase (1.4 samples at 1320 Hz); permissive against added noise at -12 dB."},
+    "audio.gainDbTolerance": {"basis": "choice", "text": "1.0 dB separates 0 dB and -6 dB from the -3.01 dB law with a margin of at least 2 dB."},
+    "audio.silenceRmsMax": {"basis": "choice", "text": "0.004 (about -48 dBFS): permissive, no known failing case."},
+    "audio.transitionGuardSeconds": {"basis": "analytic", "text": "40 ms: covers one AAC block (21.3 ms) around every edge."},
+    "audio.toneWindowSeconds": {"basis": "choice", "text": "100 ms analysis windows inside one segment."},
+    "audio.toneDominanceRatioMin": {"basis": "choice", "text": "25 in power: permissive, another tone at 20% amplitude passes."},
+    "audio.durationVsVideoSeconds": {"basis": "analytic", "text": "22.5 ms: one AAC frame (21.33 ms) plus rounding."},
+    "audio.startTimeAbsSeconds": {"basis": "analytic", "text": "25 ms: the AAC priming offset."},
+    "audio.streamCountExact": {"basis": "analytic", "text": "an export has exactly one audio stream."},
+    "audio.outputChannels": {"basis": "analytic", "text": "the origin's graph forces stereo: the file has two channels."}
   },
 
   "blockedPolicy": {
-    "rule": "A phase whose dependency is absent (front S7 for splat in the directed scene, front S9 for mixed audio in the export) exits BLOCKED and the process exits 3 when nothing failed. BLOCKED is never counted as pass and never silently skipped, and it never replaces a FAIL: a phase that failed a check keeps FAIL even if a later step of it is blocked. Aceite of the integrated heads needs every phase to run and pass.",
-    "exit": {"0": "every selected phase ran and passed", "1": "at least one FAIL (also: the 2 GiB budget exceeded)", "2": "harness usage error or prerequisite refused (disk reserve, stale binary) and no FAIL", "3": "no FAIL but at least one BLOCKED"}
+    "rule": "A phase whose dependency is absent exits BLOCKED and never counts as pass, never silently skipped, never replaces a FAIL: a phase that failed a check keeps FAIL even if a later step of it is blocked. FAIL, BLOCKED and SKIPPED are never a PASS. Acceptance of the integrated heads needs every phase to run and pass on a clean tree with a binary linked to the head.",
+    "exit": {
+      "0": "every selected phase ran and passed, the tree is clean, no stale binary was allowed, and every binary is linked to this head (the report calls the run acceptable only when ALL phases were selected)",
+      "1": "at least one FAIL (also: the 2 GiB budget exceeded); FAIL wins over BLOCKED",
+      "2": "harness usage error or prerequisite refused (empty or unknown phase list, bad --work, disk reserve) and no FAIL",
+      "3": "no FAIL but at least one BLOCKED (also: a binary not linked to this head)",
+      "4": "informational, NOT acceptance: every selected phase passed but the run is not acceptable (dirty tree, --allow-stale-binary used, or a binary not linked to this head under --allow-stale-binary)"
+    }
   }
 }
