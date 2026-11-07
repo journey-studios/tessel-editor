@@ -40,6 +40,10 @@ pub struct HelloOptions {
     /// MSAA samples of scene targets, 0, 2 or 4 (see `docs/features/viewport.md`, OPT07): a
     /// visible quality choice, so it is only sent when the host asks. `None` is the runtime's 4.
     pub scene_samples: Option<u32>,
+    /// MSAA samples of scene layers in `preview` frames (the monitor while the playhead moves,
+    /// BL129): 0, 2 or 4, where 4 turns the reduction off. `None` is the runtime's default (2);
+    /// it never raises the count above `scene_samples`.
+    pub preview_scene_samples: Option<u32>,
 }
 
 /// Messages sent to the runtime.
@@ -61,6 +65,9 @@ pub fn hello_with(host: &str, options: HelloOptions) -> Value {
     }
     if let Some(samples) = options.scene_samples {
         message["scene_samples"] = json!(samples);
+    }
+    if let Some(samples) = options.preview_scene_samples {
+        message["preview_scene_samples"] = json!(samples);
     }
     message
 }
@@ -660,9 +667,11 @@ mod tests {
                 presented: true,
                 result_cache: Some(false),
                 scene_samples: Some(2),
+                preview_scene_samples: Some(0),
             },
         );
         assert_eq!(with["retain"], false);
+        assert_eq!(with["preview_scene_samples"].as_u64(), Some(0));
         assert_eq!(with["telemetry"]["presented"], true);
         assert_eq!(
             (
@@ -672,6 +681,9 @@ mod tests {
             (Some(false), Some(2))
         );
         assert_eq!(with["host"], "tessel-editor");
+        // The preview count is not in the message unless the host asks for it.
+        let plain = hello_with("tessel-editor", HelloOptions::default());
+        assert!(plain.get("preview_scene_samples").is_none());
     }
 
     #[test]
@@ -825,5 +837,38 @@ mod tests {
         };
         assert_eq!(frame.detail.proxy_layers(), 2);
         assert_eq!(frame.to_json()["source"]["original_layers"], 1);
+        assert!(
+            frame.detail.is_reduced(),
+            "a proxy picture is a reduced one"
+        );
+        assert_eq!(frame.detail.scene_samples(), None);
+    }
+
+    #[test]
+    fn frame_done_reports_reduced_scene_msaa_and_old_runtimes_report_none() {
+        let decode = |source: Value| {
+            let done = json!({"v":1,"type":"frame.done","id":1,"revision":1,"width":2,"height":2,
+                "timings":{"render_ms":1.0,"total_ms":2.0}, "source": source});
+            let BackendEvent::FrameDone(frame) = decode_event(&done).unwrap() else {
+                panic!("expected a frame");
+            };
+            frame.detail
+        };
+        let reduced = decode(
+            json!({"quality":"preview","proxy_layers":0,"original_layers":0,
+            "result_hits":0,"scene_samples":2,"reduced_scene_layers":1}),
+        );
+        assert_eq!(
+            (reduced.scene_samples(), reduced.reduced_scene_layers()),
+            (Some(2), 1)
+        );
+        assert!(reduced.is_reduced());
+        let final_quality = decode(json!({"quality":"original","proxy_layers":0,
+            "scene_samples":4,"reduced_scene_layers":0}));
+        assert_eq!(final_quality.scene_samples(), Some(4));
+        assert!(!final_quality.is_reduced());
+        // A runtime that predates the field, and a frame without a scene layer, are never reduced.
+        assert!(!decode(json!({"quality":"preview","proxy_layers":0})).is_reduced());
+        assert!(!FrameDetail::default().is_reduced());
     }
 }

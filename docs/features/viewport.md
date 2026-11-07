@@ -91,7 +91,7 @@ O monitor pede quadros por `ViewportSession::request_preview`; CLI/provas/export
 Política (`EditorState.preview_policy`, comando `SetPreviewPolicy`, **não é edição**: sem histórico, sem revisão):
 `mode` `auto` (padrão) ou `original`, `max_height` (padrão 540, 144–4320) e `format` `jpeg` (padrão) ou `png`.
 `op preview.policy` sem campos devolve o relatório (`crates/core/src/preview.rs`), com campos aplica; o nó
-`monitor.preview.quality` (toggle "Fast preview (proxy while scrubbing)") alterna `auto`/`original`:
+`monitor.preview.quality` (toggle "Fast preview (proxy and lighter MSAA while playing or scrubbing)") alterna `auto`/`original`:
 
 ```sh
 ./scripts/ui op '{"op":"preview.policy"}'                       # o que está valendo e por quê, por asset
@@ -103,13 +103,14 @@ O relatório diz `interactive_quality`, `export:"original"`, `explicit_frames:"o
 `proxy_ready` (com `proxy.{pattern,first,count,width,height,format}`), `proxy_missing` (ainda não gerado), `proxy_stale`
 (o proxy é de outros frames), `small_enough` (o original já não é maior que o proxy), `no_frames` (ainda não decodificado),
 `not_video`, `policy_original`. **A qualidade nunca fica escondida**: o cabeçalho do monitor ganha " · proxy" quando a
-imagem veio de um proxy e `last_frame.source` traz `{quality, proxy_layers, original_layers, result_hits, proxy_error?}`.
+imagem veio de um proxy (e " · MSAA n" quando uma cena com splat foi desenhada com menos amostras, BL129) e `last_frame.source` traz
+`{quality, proxy_layers, original_layers, result_hits, proxy_error?, scene_samples?, reduced_scene_layers?}`.
 
 Regras (as mesmas em lib/CLI/UI, `Quality` decidida na sessão):
 
 - Só o **quadro do scrub do monitor sem PNG nem probes** usa `Preview`. `render.frame`, export, PNG, probes e o quadro de
   refino usam `Original`. O export nunca vê o proxy (`Derived::for_export`; provado frame a frame, ver o relatório).
-- **Refino:** depois de uma imagem de proxy ser aceita, a sessão guarda o plano; após `REFINE_DELAY` (200 ms) sem intenção
+- **Refino:** depois de uma imagem **reduzida** (de proxy, ou de cena com splat com MSAA menor; `FrameDetail::is_reduced`) ser aceita, a sessão guarda o plano; após `REFINE_DELAY` (200 ms) sem intenção
   nova um quadro `Original` não fundível o substitui (no desktop um timer de 220 ms, não o tick de 500 ms). Qualquer
   intenção, edição ou pedido explícito descarta o refino pendente (`session.refine_pending`, `stats.refined`).
 - **Geração do proxy:** o `MediaHost` agenda o job "Build preview proxy" depois do decode (`Cache::preview_frames`, FFmpeg
@@ -141,9 +142,57 @@ no runtime). **Só vale para cena parada**; em movimento nada muda (ver relatór
   `render.status.ui` (`repaints`, `skipped`). Não é FPS.
 - **OPT03, medido e removido:** segurar o próximo quadro do scrub até `frame.presented` (rAF) não deu ganho (tabela no
   relatório); o código foi retirado. `frame.presented` continua sendo só telemetria do `TESSEL_VIEWPORT_TRACE=1`.
-- **OPT07, opt-in:** `hello.scene_samples` / `TESSEL_VIEWPORT_SCENE_SAMPLES=0|2|4` troca MSAA das cenas (padrão 4). Com 1M em
-  órbita o quadro drenado vai de 35 → 27 (2) → 21 ms (0) com arestas visivelmente piores: **não** é o padrão e o
-  frame final/export segue o configurado.
+- **OPT07, opt-in:** `hello.scene_samples` / `TESSEL_VIEWPORT_SCENE_SAMPLES=0|2|4` troca MSAA **final** das cenas (padrão 4).
+  Com 1M em órbita o quadro drenado vai de 35 → 27 (2) → 21 ms (0): como opção do processo inteiro piora o quadro final;
+  por isso o padrão não mudou e o BL129 (abaixo) reduz só enquanto o playhead anda.
+
+### MSAA por movimento (BL129)
+
+Cena **com splat** desenhada num quadro `Preview` (playback e scrub do monitor, sem PNG nem probes) usa
+`hello.preview_scene_samples` amostras (**padrão 0**; `TESSEL_VIEWPORT_PREVIEW_SCENE_SAMPLES=0|2|4`; 4 desliga a redução; nunca
+passa de `scene_samples`). Pausa, fim do scrub, `render.frame`, export, PNG, probes e o quadro de refino são `Original` e usam
+`scene_samples` (padrão 4): nada disso mudou. Cena sem splat (geometria procedural, barata) não é reduzida.
+
+- **Sem controle novo:** a política é automática e é a de `monitor.preview.quality` (`original` = MSAA final também no
+  playback). A qualidade nunca fica escondida: cabeçalho " · MSAA n" e `last_frame.source.scene_samples` /
+  `reduced_scene_layers` (campos aditivos do `frame.done`; runtime antigo não os envia e o quadro é tratado como final).
+- **Nunca preso em baixa qualidade:** a sessão guarda o plano de um quadro interativo reduzido (`FrameDetail::is_reduced`) e,
+  200 ms sem intenção (timer de 220 ms no desktop), pede o quadro `Original`; nova intenção, edição, pedido explícito ou
+  troca de política descartam/substituem o refino. O refino acontece sozinho ao pausar e ao soltar o scrub.
+- **O cache de resultado não serve quadro reduzido como final:** a chave do resultado da cena e o alvo MSAA retido trazem as
+  amostras do quadro; um alvo com outra contagem é recriado (testes em `runtime/test/preview-samples.test.mjs`).
+- Cenas dirigidas (F048) seguem sempre com `scene_samples`.
+
+Evidência BL129 (release, M3 Pro, GPU compartilhada, cópia em `/tmp` do projeto 1280×720/24 fps com 4 cenas SHARP de 1.179.648
+gaussians; repetições de 3 corridas por sessão, média (mín–máx); `scripts/preview-quality-proof.py`, relógio do próprio editor com
+`TESSEL_VIEWPORT_TRACE=1`). "Antes" = `origin/main` em `01c0f9a` (2 sessões); "MSAA 0" = este PR sobre ele (3 sessões; a
+sessão 2 rodou com a CPU disputada por outros builds, load average ≈ 15 contra ≈ 3, e concentra todo o pior caso);
+"MSAA 2" = `TESSEL_VIEWPORT_PREVIEW_SCENE_SAMPLES=2`, medido antes da fusão do BL131 (2 sessões):
+
+| Medida | Antes | MSAA 2 | MSAA 0 (padrão) |
+|---|---|---|---|
+| Take A a 24 fps, quadros sem imagem | 22,6 % (13,8–31,2) | 1,3 % (0–7,6) | **0 %** (0–0) |
+| Crossfade (14 quadros), quadros sem imagem | 57,1 % (57,1–57,1) | 39,3 % (28,6–50,0) | 4,8 % (0–28,6); 0 % fora da sessão disputada |
+| Desenho no runtime, take A (p50) | 50,0 ms (45–59) | 19,0 ms (14–34) | 14,8 ms (14–17) |
+| Scrub do take A, imagens por segundo | 19,2 (17,5–20,0) | 28,2 (27,0–29,5) | **46,2** (39,0–49,5) |
+| Scrub do crossfade, imagens por segundo | 19,2 (17,5–21,0) | 26,2 (24,0–27,5) | **42,4** (39,0–46,5) |
+| Atraso do scrub (quadros, mediana) | 3,0 | 2,0 | 0,6 |
+| Parou → quadro final de volta | — (sem refino de MSAA) | 294 ms (211–420) | 342 ms (220–430) |
+
+Na sessão sem disputa o scrub fica em 41–49,5 imagens/s e o crossfade não perde quadro; sob load 15 o scrub cai para 39–42,5.
+
+Escolha 0 em vez de 2: 2 amostras não fecham o aceite (scrub < 40 imagens/s e quadros perdidos no take A e no crossfade),
+e 0 é indistinguível de 4 neste conteúdo: diferença máxima por canal de 3–8/255, nenhum pixel acima de 16/255, PSNR ≈ 66 dB
+em relação ao MSAA 4 (2 amostras: 66,5–66,8 dB). Gaussians translúcidas não têm silhueta dura, então a redução só custa
+o raster. Imagens em `/Users/wallyssonnunes/www/tessel-video-splat/previews/perf-bl129/`, fora do repositório.
+
+- `render.frame` explícito e export idênticos: hash dos quadros 5, 60, 100, 193, 300 e 450 igual antes e depois, e 6 quadros
+  de crossfade exportados (190–195, `fullhd`, medido antes da fusão do BL131) com o mesmo MD5 decodificado antes e depois.
+- Depois de parar, o quadro na tela (`last_frame.source`: `scene_samples` 4, `reduced_scene_layers` 0) tem o mesmo hash que o
+  `render.frame` do mesmo quadro (take A e crossfade).
+- Não provado: outros conteúdos (cena com muita geometria opaca fora de splat não é reduzida por regra; um splat com silhueta
+  dura pode mostrar serrilhado enquanto o playhead anda e se refina ao parar), outras máquinas/GPUs, e áudio ouvido (o projeto de teste
+  rodou com as trilhas de áudio mudas, relógio de parede). O intervalo médio entre imagens no take A foi 41,6 ms (24,05/s).
 
 ### Retenção de GPU no runtime
 
@@ -229,7 +278,7 @@ JSON por mensagem, campo `v: 1`. Host→página: `hello`, `asset.load`, `asset.r
 `context.lost`, `context.restored`, `closed`, `error`. Campo aditivo (compatível, v1):
 `frame.render.inspect:false` (ausente = ler e descrever, o que todo host antigo faz); `frame.done` ganha
 `inspected` e `timings.{settle_ms|readback_ms, describe_ms}`; sem leitura, `hash`/`mean` vêm `null`.
-Mais campos aditivos (OPT01/02/07, ainda v1): `asset.proxy`, `frame.render.quality`, `frame.done.source`, `hello.result_cache`, `hello.scene_samples` e `capabilities.features` `asset.proxy`/`frame.quality`. Mais campos aditivos (entrega anterior, ainda v1): `hello.retain:false` (volta ao caminho de criar/descartar por quadro; ausente =
+Mais campos aditivos (BL129, ainda v1): `hello.preview_scene_samples` e `frame.done.source.scene_samples|reduced_scene_layers`. Mais campos aditivos (OPT01/02/07, ainda v1): `asset.proxy`, `frame.render.quality`, `frame.done.source`, `hello.result_cache`, `hello.scene_samples` e `capabilities.features` `asset.proxy`/`frame.quality`. Mais campos aditivos (entrega anterior, ainda v1): `hello.retain:false` (volta ao caminho de criar/descartar por quadro; ausente =
 retenção ligada) e `hello.telemetry.presented:true` (pede `frame.presented`, que **só** é enviada a quem pediu: o
 `decode_event` de um host antigo rejeita tipo desconhecido); `ready.capabilities.features`
 (`frame.presented`, `cache.telemetry`); `frame.done` ganha `timings.{prepare_ms, draw_ms, flush_ms}` e `cache`
