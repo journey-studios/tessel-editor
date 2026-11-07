@@ -269,6 +269,10 @@ pub struct MediaHost {
     /// The thumbnail job in flight and the project it draws for (BL144). One at a time: it owns
     /// a renderer. A job whose project is no longer the open one is cancelled by `poll`.
     thumb_job: Option<(JobId, ThumbStamp)>,
+    /// The project whose automatic thumbnail job the user cancelled: it is not started again by
+    /// the tick (that would undo the cancel in a loop); `media.thumbnails` asks for it explicitly,
+    /// and another project or another opening of it starts fresh.
+    thumb_paused: Option<ThumbStamp>,
     /// `(asset, hash, height, format)` whose proxy failed: not retried until one of them changes.
     proxy_failed: Vec<ProxyKey>,
     proxy_assets: HashMap<JobId, Vec<ProxyKey>>,
@@ -372,6 +376,7 @@ impl MediaHost {
             renderer: None,
             scene_renderer: None,
             thumb_job: None,
+            thumb_paused: None,
             pending: HashMap::new(),
             interactive: false,
             auto_prepare: None,
@@ -458,8 +463,11 @@ impl MediaHost {
             if self.auto_proxy.as_deref() == Some(id.as_str()) {
                 self.auto_proxy = None;
             }
-            if self.thumb_job.as_ref().is_some_and(|(job, _)| *job == id) {
-                self.thumb_job = None;
+            if let Some((_, stamp)) = self.thumb_job.take_if(|(job, _)| *job == id)
+                && info.state == JobState::Cancelled
+                && stamp.is_current(state)
+            {
+                self.thumb_paused = Some(stamp);
             }
             let proxied = self.proxy_assets.remove(&id);
             let automatic = self.auto_assets.remove(&id);
@@ -515,14 +523,30 @@ impl MediaHost {
         }
     }
 
+    /// Whether a video export is running: it owns a renderer and the GPU, and a thumbnail that
+    /// nobody asked for does not compete with it (it starts when the export is over).
+    fn export_running(&self) -> bool {
+        !self
+            .registry
+            .matching(|info| info.kind == JobKind::VideoExport && !info.state.is_final())
+            .is_empty()
+    }
+
     /// Starts the one thumbnail job the open project needs (splats and scenes with no picture
-    /// yet), after the media is prepared: the renderer is the heavy part and runs alone.
+    /// yet), after the media is prepared: the renderer is the heavy part and runs alone. Each
+    /// tick this costs the identities of the splats and scenes (model lookups, no clone); the
+    /// project is copied only when a job starts, and then only the assets it draws.
     fn schedule_thumbnails(&mut self, state: &EditorState) {
         if !self.interactive
             || self.thumb_job.is_some()
             || self.auto_prepare.is_some()
             || self.auto_proxy.is_some()
             || state.project.workspace.is_none()
+            || self
+                .thumb_paused
+                .as_ref()
+                .is_some_and(|stamp| stamp.is_current(state))
+            || self.export_running()
         {
             return;
         }
@@ -543,7 +567,7 @@ impl MediaHost {
         let workspace = workspace(state)?;
         let stamp = state.thumbnail_stamp();
         let job_stamp = stamp.clone();
-        let snapshot = state.clone();
+        let snapshot = state.thumbnail_snapshot(&targets)?;
         let factory = self.renderer.clone();
         let (id, slot) = self.start(JobKind::Thumbnail, label, move |ctx| {
             let cache = Cache::new(&workspace);
@@ -577,9 +601,22 @@ impl MediaHost {
         state: &mut EditorState,
         request: &Value,
     ) -> Result<Value, CommandError> {
-        if let Some((job, _)) = &self.thumb_job {
-            return Ok(json!({ "job": job, "state": "running", "reused": true }));
+        if let Some((job, stamp)) = &self.thumb_job {
+            if stamp.is_current(state) {
+                return Ok(json!({ "job": job, "state": "running", "reused": true }));
+            }
+            // The job in flight belongs to another project (or another opening of this one): it
+            // is not an answer for this one, and two renderers are not started. It is told to
+            // stop; it ends at the next frame boundary, within `FRAME_TIMEOUT` of the renderer
+            // answering, and the tick then starts this project's own job.
+            let _ = self.registry.cancel(job);
+            self.thumb_paused = None;
+            return Ok(json!({ "action": "media.thumbnails", "state": "waiting",
+                "reused": false, "waiting_for": job, "assets": [],
+                "reason": "the thumbnail job of another project is still ending; one renderer at a time",
+                "deadline_seconds": thumbs::FRAME_TIMEOUT.as_secs() }));
         }
+        self.thumb_paused = None;
         let wanted = strings(request, "assets")?;
         if let Some(wanted) = &wanted {
             for id in wanted {

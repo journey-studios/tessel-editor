@@ -43,19 +43,24 @@ impl Renderer for Spy {
         state: &EditorState,
         plan: RenderPlan,
         output: Output,
-        _probes: Vec<(u32, u32)>,
+        probes: Vec<(u32, u32)>,
         timeout: Duration,
     ) -> Result<FrameResult, BackendError> {
         let PreviewIntent::Source { asset, .. } = plan.intent.clone() else {
             panic!("a thumbnail is a source plan");
         };
-        let result = self
+        // The adapter's own probes (what tells an empty picture) come first and go back to it;
+        // the spy's come after them and are kept for the assertions, indexed from zero.
+        let asked = probes.len();
+        let mut every = probes;
+        every.extend(self.probes.iter().copied());
+        let mut result = self
             .inner
-            .render_frame(state, plan, output, self.probes.clone(), timeout)?;
-        self.seen
-            .lock()
-            .unwrap()
-            .push((asset.to_string(), result.clone()));
+            .render_frame(state, plan, output, every, timeout)?;
+        let mut kept = result.clone();
+        kept.probes = result.probes.get(asked..).unwrap_or_default().to_vec();
+        result.probes.truncate(asked);
+        self.seen.lock().unwrap().push((asset.to_string(), kept));
         Ok(result)
     }
 
@@ -173,7 +178,15 @@ fn the_real_runtime_draws_a_scene_and_a_bare_splat_into_their_thumbnails() {
     let box_at = project([-2.2, 0.0, 0.0], width, height);
     let sphere_at = project([2.2, 0.0, 0.0], width, height);
     let cloud_at = project([0.0, 0.0, 0.0], width, height);
-    let probes = vec![box_at, sphere_at, cloud_at, (2, 2), (width - 3, height - 3)];
+    let middle = (width / 2, height / 2);
+    let probes = vec![
+        box_at,
+        sphere_at,
+        cloud_at,
+        (2, 2),
+        (width - 3, height - 3),
+        middle,
+    ];
     let seen = Arc::new(Mutex::new(Vec::new()));
     let factory: Arc<RendererFactory> = {
         let (seen, probes, config) = (seen.clone(), probes.clone(), config.clone());
@@ -242,7 +255,9 @@ fn the_real_runtime_draws_a_scene_and_a_bare_splat_into_their_thumbnails() {
         );
     }
 
-    // The bare splat: the cloud and nothing else (no box, no sphere), on the same background.
+    // The bare splat: the cloud and nothing else (no box, no sphere), on the same background. It
+    // is framed from its own file, so the cloud is in the middle of the picture, not where the
+    // scenes' default camera sees the origin.
     assert!(
         distance(pixel(splat_frame, 0), BACKGROUND) <= 12,
         "no box in the splat thumbnail: {:?}",
@@ -254,9 +269,9 @@ fn the_real_runtime_draws_a_scene_and_a_bare_splat_into_their_thumbnails() {
         pixel(splat_frame, 1)
     );
     assert!(
-        distance(pixel(splat_frame, 2), BACKGROUND) > 40,
-        "the cloud is at the center: {:?}",
-        pixel(splat_frame, 2)
+        distance(pixel(splat_frame, 5), BACKGROUND) > 40,
+        "the cloud is at the middle of the picture {middle:?}: {:?}",
+        pixel(splat_frame, 5)
     );
     for corner in [3, 4] {
         assert!(
@@ -265,4 +280,129 @@ fn the_real_runtime_draws_a_scene_and_a_bare_splat_into_their_thumbnails() {
         );
     }
     assert_ne!(scene_frame.hash, splat_frame.hash, "two different pictures");
+}
+
+/// A dense, bright ball of `count` splat records of `radius` around `center` (the 32-byte layout).
+fn ball(center: [f32; 3], radius: f32, count: usize) -> Vec<u8> {
+    let mut seed = 0x2545_f491_u32;
+    let mut next = move || {
+        seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+        (seed >> 8) as f32 / (1u32 << 24) as f32 * 2.0 - 1.0
+    };
+    let mut bytes = Vec::new();
+    let mut made = 0;
+    while made < count {
+        let offset = [next(), next(), next()];
+        if offset.iter().map(|v| v * v).sum::<f32>() > 1.0 {
+            continue;
+        }
+        made += 1;
+        for axis in 0..3 {
+            bytes.extend_from_slice(&(center[axis] + offset[axis] * radius).to_le_bytes());
+        }
+        for _ in 0..3 {
+            bytes.extend_from_slice(&(radius * 0.05).to_le_bytes());
+        }
+        bytes.extend_from_slice(&[230, 180, 90, 255]);
+        bytes.extend_from_slice(&[255, 128, 128, 128]);
+    }
+    bytes
+}
+
+/// A cloud that is nowhere near the origin, in a different size, is still in the picture: the
+/// frame is framed from the file, not from where scene thumbnails happen to look.
+#[test]
+fn a_displaced_cloud_of_any_size_is_in_the_middle_of_its_thumbnail() {
+    let config = match RuntimeConfig::discover() {
+        Ok(config) => config,
+        Err(setup) => {
+            assert!(
+                std::env::var("TESSEL_REQUIRE_RUNTIME").as_deref() != Ok("1"),
+                "the runtime is required but unavailable: {}",
+                setup.message()
+            );
+            eprintln!("SKIPPED (runtime unavailable): {}", setup.message());
+            return;
+        }
+    };
+    let dir: PathBuf =
+        std::env::temp_dir().join(format!("tessel-thumb-displaced-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("set")).unwrap();
+    let cases = [
+        ("far", [1000.0, -200.0, 300.0], 5.0),
+        ("tiny", [0.2, 0.1, -0.3], 0.01),
+        ("capture", [-80_000.0, 20_000.0, 90_000.0], 3_000.0),
+    ];
+    let mut paths = Vec::new();
+    for (name, center, radius) in cases {
+        let path = dir.join("set").join(format!("{name}.splat"));
+        fs::write(&path, ball(center, radius, 3000)).unwrap();
+        paths.push(path);
+    }
+    let mut state = EditorState::empty(&ProjectSettings {
+        name: "Displaced".into(),
+        workspace: Some(dir.join("project")),
+        ..ProjectSettings::default()
+    })
+    .unwrap();
+    let (width, height) = size_for(state.timeline.width, state.timeline.height);
+    let mut importer = MediaHost::new();
+    let imported = headless::execute_ext(
+        &mut state,
+        None,
+        Some(&mut importer),
+        &json!({"op":"media.import","paths":paths}),
+    )
+    .unwrap();
+    assert_eq!(imported["applied"]["imported"], 3, "{imported}");
+
+    let probes = vec![(width / 2, height / 2), (2, 2), (width - 3, height - 3)];
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let factory: Arc<RendererFactory> = {
+        let (seen, probes, config) = (seen.clone(), probes.clone(), config.clone());
+        Arc::new(move || {
+            Ok(Box::new(Spy {
+                inner: Box::new(session(&config)),
+                probes: probes.clone(),
+                seen: seen.clone(),
+            }))
+        })
+    };
+    let mut host = MediaHost::new().with_renderer(factory);
+    let report = headless::execute_ext(
+        &mut state,
+        None,
+        Some(&mut host),
+        &json!({"op":"media.thumbnails"}),
+    )
+    .unwrap();
+    assert_eq!(report["ready"], 3, "{report}");
+
+    let frames = seen.lock().unwrap().clone();
+    for (name, _, _) in cases {
+        let id = state.thumbnail_stand_in_id(name);
+        let frame = &frames
+            .iter()
+            .find(|(asset, _)| *asset == id)
+            .unwrap_or_else(|| panic!("{id} in {frames:?}"))
+            .1;
+        assert!(
+            distance(frame.probes[0], BACKGROUND) > 40,
+            "{name}: the cloud is in the middle: {:?}",
+            frame.probes[0]
+        );
+        for corner in [1, 2] {
+            assert!(
+                distance(frame.probes[corner], BACKGROUND) <= 12,
+                "{name}: corner {corner} is the background: {:?}",
+                frame.probes[corner]
+            );
+        }
+        let thumbnail = state
+            .thumbnail(name)
+            .unwrap_or_else(|| panic!("a thumbnail for {name}"));
+        assert_eq!(png_size(&thumbnail.path), (width, height), "{name}");
+    }
+    let _ = fs::remove_dir_all(&dir);
 }

@@ -12,13 +12,14 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use tessel_editor_core::assets::{
     Asset, AudioStream, Decoded, DecodedAudio, DecodedFrames, MediaKind, ProxyFormat, ProxyFrames,
     Source, expand_pattern,
 };
 use tessel_editor_core::jobs::{JobContext, JobError};
 
-use crate::fsx::{self, Staging, directory_size, io_error};
+use crate::fsx::{self, Staging, directory_size, hex, io_error};
 use crate::tools::Tools;
 
 /// Bump when the layout or the way a derivative is produced changes.
@@ -60,6 +61,96 @@ fn png_size(path: &Path) -> Result<(u32, u32), JobError> {
         u32::from_be_bytes([header[at], header[at + 1], header[at + 2], header[at + 3]])
     };
     Ok((word(16), word(20)))
+}
+
+/// Whether the picture of a cache entry is still the file that was drawn: the byte length and
+/// CRC-32 recorded in the manifest, a well-formed PNG, the size the entry is named for.
+fn picture_is_intact(dir: &Path, size: (u32, u32)) -> bool {
+    let Some(stored) = fs::read(dir.join("cache.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+        .map(|manifest| manifest["extra"].clone())
+    else {
+        return false;
+    };
+    let Ok(bytes) = fs::read(dir.join("thumb.png")) else {
+        return false;
+    };
+    stored["bytes"].as_u64() == Some(bytes.len() as u64)
+        && stored["crc32"].as_u64() == Some(u64::from(crc32fast::hash(&bytes)))
+        && png_dimensions(&bytes) == Ok(size)
+}
+
+/// Width and height of a PNG after checking its whole structure without decoding the pixels: the
+/// signature, an `IHDR` of 13 bytes first, every chunk's CRC-32, at least one `IDAT`, and `IEND` as
+/// the last chunk with nothing after it. A truncated or altered file does not pass.
+pub fn png_dimensions(bytes: &[u8]) -> Result<(u32, u32), String> {
+    const SIGNATURE: [u8; 8] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
+    if bytes.len() < SIGNATURE.len() || bytes[..8] != SIGNATURE {
+        return Err("not a PNG (bad signature)".into());
+    }
+    let mut at = 8usize;
+    let mut size = None;
+    let mut seen_data = false;
+    let mut first = true;
+    loop {
+        let head = bytes
+            .get(at..at + 8)
+            .ok_or("truncated before the next chunk")?;
+        let length = u32::from_be_bytes([head[0], head[1], head[2], head[3]]) as usize;
+        let kind = [head[4], head[5], head[6], head[7]];
+        let end = at
+            .checked_add(8 + length + 4)
+            .filter(|end| *end <= bytes.len())
+            .ok_or_else(|| {
+                format!(
+                    "truncated inside a `{}` chunk",
+                    String::from_utf8_lossy(&kind)
+                )
+            })?;
+        let data = &bytes[at + 8..at + 8 + length];
+        let stored = u32::from_be_bytes([
+            bytes[end - 4],
+            bytes[end - 3],
+            bytes[end - 2],
+            bytes[end - 1],
+        ]);
+        let mut crc = crc32fast::Hasher::new();
+        crc.update(&kind);
+        crc.update(data);
+        if crc.finalize() != stored {
+            return Err(format!(
+                "the `{}` chunk fails its CRC",
+                String::from_utf8_lossy(&kind)
+            ));
+        }
+        if first {
+            if &kind != b"IHDR" || length != 13 {
+                return Err("the first chunk is not a 13-byte IHDR".into());
+            }
+            let word = |from: usize| {
+                u32::from_be_bytes([data[from], data[from + 1], data[from + 2], data[from + 3]])
+            };
+            size = Some((word(0), word(4)));
+            first = false;
+        }
+        match &kind {
+            b"IDAT" => seen_data = true,
+            b"IEND" => {
+                if !seen_data {
+                    return Err("IEND without any IDAT".into());
+                }
+                if end != bytes.len() {
+                    return Err("bytes after IEND".into());
+                }
+                return size
+                    .filter(|(width, height)| *width > 0 && *height > 0)
+                    .ok_or_else(|| "IHDR declares an empty picture".to_string());
+            }
+            _ => {}
+        }
+        at = end;
+    }
 }
 
 fn file_path(asset: &Asset) -> Result<&str, JobError> {
@@ -184,8 +275,13 @@ impl Cache {
 
     /// A PNG picture of `asset` identified by `identity` (BL144: splat and scene thumbnails),
     /// drawn by `render` into staging unless the cache already holds that exact picture. The
-    /// entry name carries a digest of the identity, so a different picture never reuses a path
-    /// (a window's image cache is keyed by path). Returns the PNG and whether the cache had it.
+    /// entry name carries a SHA-256 digest of the identity, so a different picture never reuses a
+    /// path (a window's image cache is keyed by path). Returns the PNG and whether the cache had it.
+    ///
+    /// A cached picture is trusted only while it is **intact**: the manifest names the exact
+    /// identity, the file has the byte length and CRC-32 recorded when it was drawn, and it is a
+    /// well-formed PNG (every chunk's CRC checks, IHDR first, IEND last, nothing after it) of the
+    /// size asked for. A truncated, altered, wrongly sized or missing file is removed and drawn again.
     pub fn picture(
         &self,
         asset: &Asset,
@@ -193,16 +289,16 @@ impl Cache {
         size: (u32, u32),
         render: impl FnOnce(&Path) -> Result<(), JobError>,
     ) -> Result<(PathBuf, bool), JobError> {
-        let name = format!(
-            "picture-{}x{}-{:08x}",
-            size.0,
-            size.1,
-            crc32fast::hash(identity.as_bytes())
-        );
+        let digest = hex(&Sha256::digest(identity.as_bytes()));
+        let name = format!("picture-{}x{}-{}", size.0, size.1, &digest[..16]);
         let fingerprint = json!({ "cache": CACHE_VERSION, "identity": identity });
         let dir = self.entry_dir(asset, &name)?;
-        if Self::valid(&dir, &fingerprint) && dir.join("thumb.png").is_file() {
-            return Ok((dir.join("thumb.png"), true));
+        if Self::valid(&dir, &fingerprint) {
+            if picture_is_intact(&dir, size) {
+                return Ok((dir.join("thumb.png"), true));
+            }
+            // `ensure` would trust the manifest: take the damaged entry away first.
+            fs::remove_dir_all(&dir).map_err(|error| io_error(&dir, &error))?;
         }
         let (dir, _, _) = self.ensure(asset, &name, fingerprint, |staging| {
             let out = staging.join("thumb.png");
@@ -213,7 +309,13 @@ impl Cache {
                     "The renderer reported success but wrote no picture",
                 ));
             }
-            let got = png_size(&out)?;
+            let bytes = fs::read(&out).map_err(|error| io_error(&out, &error))?;
+            let got = png_dimensions(&bytes).map_err(|reason| {
+                JobError::new(
+                    "render_failed",
+                    format!("The renderer wrote a damaged PNG: {reason}"),
+                )
+            })?;
             if got != size {
                 return Err(JobError::new(
                     "render_failed",
@@ -223,7 +325,7 @@ impl Cache {
                     ),
                 ));
             }
-            Ok(Value::Null)
+            Ok(json!({ "bytes": bytes.len(), "crc32": crc32fast::hash(&bytes) }))
         })?;
         Ok((dir.join("thumb.png"), false))
     }
