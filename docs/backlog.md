@@ -781,3 +781,5 @@ BL141 — correção do coordenador após revisão B: main integrada por merge p
 | BL141.7 | R2 | Teste TreeContext faltava perf_meter e verificação de reset comparava objeto com string | Corrigido por código, sem compilação | BL141 | Coordenador | Incluir campo obrigatório e conferir action do objeto |
 | BL141.8 | R2 | Input pode ser lido antes de paint nos testes GPUI | Corrigido por código, GPUI a validar | BL141.4 | Coordenador | Refresh/paint após seleção e antes de input |
 BL141.3: diagnóstico changed/union/pior linha adicionado ao teste sem relaxar tolerância; render não executado. Matriz F050 rebaixada aI até gates.
+
+BL141.4: commit canonicamente equivalente ressincroniza Input mesmo sem mudança no modelo; teste GPUI escrito/paint explícito. BL141.5 usa helper canônico28/28, diretório absoluto evita fixtures em outrocwd. Sem Cargo/render por disco.

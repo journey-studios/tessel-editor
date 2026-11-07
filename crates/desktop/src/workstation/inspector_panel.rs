@@ -59,7 +59,7 @@ impl Workstation {
             return;
         }
         let content = input.read(cx).value().to_string();
-        let result = self.execute(
+        let _ = self.execute(
             Command::SetClipTextField {
                 clip: clip.clone(),
                 field: "content".to_string(),
@@ -68,11 +68,9 @@ impl Workstation {
             Source::Gesture,
             cx,
         );
-        if result.is_err() {
-            // Refused: the model kept its text, so the input shows it again.
-            self.title_text_shown = None;
-            cx.notify();
-        }
+        // Also resync an equivalent NFD edit whose normalized model is unchanged.
+        self.title_text_shown = None;
+        cx.notify();
     }
 
     /// Pushes the selected title's text into the input when the clip or its text changed.

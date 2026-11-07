@@ -66,6 +66,8 @@ fn type_and_confirm(view: &Entity<Workstation>, cx: &mut VisualTestContext, text
         });
     });
     cx.run_until_parked();
+    cx.update(|window, _| window.refresh());
+    cx.run_until_parked();
 }
 
 #[gpui_kit::test]
@@ -195,4 +197,21 @@ fn a_delayed_input_event_cannot_write_into_a_different_selected_title(cx: &mut T
     });
     type_and_confirm(&view, cx, "Texto atrasado");
     assert_eq!(model_text(&view, cx), before);
+}
+
+#[gpui_kit::test]
+fn an_equivalent_decomposed_commit_resynchronizes_the_input_without_an_edit(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = fixture(cx);
+    select_title(&view, cx);
+    type_and_confirm(&view, cx, "Ação");
+    let revision = view.read_with(cx, |view, _| view.state.project.revision);
+    type_and_confirm(&view, cx, "Ac\u{0327}a\u{0303}o");
+    assert_eq!(shown(&view, cx), "Ação");
+    assert_eq!(model_text(&view, cx), "Ação");
+    assert_eq!(
+        view.read_with(cx, |view, _| view.state.project.revision),
+        revision
+    );
 }

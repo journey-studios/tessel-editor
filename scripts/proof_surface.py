@@ -159,6 +159,8 @@ class Headless:
         try:
             line = self._lines.get(timeout=self.timeout)
         except queue.Empty:
+            self._eof = True
+            self.cleanup_errors += _stop_process(self.process, 0.1)
             raise SurfaceError(f'headless sent no reply to `{label}` within {self.timeout}s') from None
         if line is None:
             self._eof = True
@@ -211,6 +213,8 @@ class Headless:
         except OSError as error:
             problems.append(f'waiting for headless: {error}')
         self.exit_code = self.process.poll()
+        if self.exit_code not in (None, 0):
+            problems.append(f"headless exited with status {self.exit_code}")
         self._reader.join(2)
         for stream in (self.process.stdin, self.process.stdout):
             try:
@@ -227,7 +231,7 @@ class Native:
 
     def __init__(self, binary, home):
         self.binary = binary
-        self.env = {**os.environ, 'HOME': home}
+        self.env = {**os.environ, 'HOME': home, 'TESSEL_VIEWPORT_INSPECT': '1'}
         self.socket = os.path.join(home, '.cache/tessel-editor/ui.sock')
         self.home = home
         self.process = None
@@ -368,7 +372,7 @@ def run_surface(cls, binary, scenario, out, home_prefix='tessel-proof', extra=()
     home = None
     try:
         home = tempfile.mkdtemp(prefix=home_prefix) if cls.needs_home else None
-        surface = cls(binary, home, extra) if cls is Headless else cls(binary, home)
+        surface = cls(binary, home, extra) if issubclass(cls, Headless) else cls(binary, home)
         surface.prepare()
         scratch = out / cls.name
         shutil.rmtree(scratch, ignore_errors=True)
@@ -388,6 +392,9 @@ def run_surface(cls, binary, scenario, out, home_prefix='tessel-proof', extra=()
                 result['cleanup_errors'].append(f'stop raised {type(error).__name__}: {error}')
         if home:
             shutil.rmtree(home, ignore_errors=True)
+    if result['cleanup_errors'] and not result['failed']:
+        result['failed'] = True
+        result['error'] = '; '.join(result['cleanup_errors'])
     result['passed'] = check.passed
     result['skipped'] = check.skipped
     result['complete'] = not result['failed'] and check.skipped == 0
