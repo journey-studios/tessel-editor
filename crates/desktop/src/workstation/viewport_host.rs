@@ -28,6 +28,7 @@ use tessel_editor_core::backend::{BackendError, FrameResult, Output};
 use tessel_editor_core::bridge::{BridgeBackend, HelloOptions, Transport};
 use tessel_editor_core::headless::{backend_error, frame_geometry, frame_report, plan_summary};
 use tessel_editor_core::ops::RenderFrame;
+use tessel_editor_core::perf::Meter;
 use tessel_editor_core::plan::{PlanRequest, RenderPlan};
 use tessel_editor_core::session::{Preview, SessionEvent, Status, ViewportSession};
 use tessel_editor_core::state::EditorState;
@@ -151,6 +152,12 @@ impl Transport for WebTransport {
     }
 }
 
+/// Where presented pictures are reported for the debug meter (F049), and the clock it uses.
+struct MeterLink {
+    meter: Rc<RefCell<Meter>>,
+    epoch: Instant,
+}
+
 struct Waiter {
     request: u64,
     reply: Sender<Result<Value, CommandError>>,
@@ -184,6 +191,8 @@ pub struct ViewportHost {
     /// took the same rounded milliseconds). OPT04: the window only repaints for the former.
     ui_repaints: u64,
     ui_skipped: u64,
+    /// The debug meter, when the workstation attached one. It records only while it is enabled.
+    meter: Option<MeterLink>,
 }
 
 impl ViewportHost {
@@ -237,9 +246,35 @@ impl ViewportHost {
             directed: directed::DirectedViewport::default(),
             ui_repaints: 0,
             ui_skipped: 0,
+            meter: None,
         };
         host.set_inspect_previews(std::env::var(INSPECT_ENV).is_ok_and(|value| value == "1"));
         host
+    }
+
+    /// Lets the debug meter hear every picture the monitor accepts. `epoch` is the meter's clock.
+    pub fn attach_meter(&mut self, meter: Rc<RefCell<Meter>>, epoch: Instant) {
+        self.meter = Some(MeterLink { meter, epoch });
+    }
+
+    /// One accepted picture (`frame.done` of the request in flight), with its sequence frame.
+    /// A hidden meter returns at once inside `monitor_presented`: nothing is kept.
+    fn note_presented(&self, frame: Option<i64>) {
+        if let Some(link) = &self.meter {
+            link.meter
+                .borrow_mut()
+                .monitor_presented(link.epoch.elapsed(), frame);
+        }
+    }
+
+    /// The last picture the runtime finished, for the meter's context rows.
+    pub fn last_frame(&self) -> Option<&FrameResult> {
+        self.last_frame.as_ref()
+    }
+
+    /// Whether the runtime can produce pictures at all (the meter says "indisponível" otherwise).
+    pub fn monitor_available(&self) -> bool {
+        self.phase == Phase::Ready
     }
 
     /// The recorder of host-side spans (see [`TRACE_ENV`]); the window records its own into it.
@@ -697,6 +732,7 @@ impl ViewportHost {
                     let _ = waiter.reply.try_send(frame_report(&waiter.summary, &frame));
                 }
                 self.last_frame = Some(frame);
+                self.note_presented(self.session.presented_frame());
             }
             SessionEvent::Failed(error) => {
                 self.request_started = None;

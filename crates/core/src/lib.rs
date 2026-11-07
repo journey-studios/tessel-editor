@@ -18,6 +18,7 @@ pub mod id;
 pub mod interchange;
 pub mod jobs;
 pub mod ops;
+pub mod perf;
 pub mod persist;
 pub mod plan;
 pub mod preset;

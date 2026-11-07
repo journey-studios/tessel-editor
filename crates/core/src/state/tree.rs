@@ -27,6 +27,8 @@ pub struct TreeContext<'a> {
     pub metrics: &'a HashMap<String, [f32; 4]>,
     /// The live dock, snapshotted from the `DockArea` for this request.
     pub layout: &'a Layout,
+    /// Whether the debug performance meter is shown (F049): window state like the theme.
+    pub perf_meter: bool,
 }
 
 #[derive(Clone)]
@@ -226,6 +228,16 @@ fn build(state: &EditorState, cx: &TreeContext) -> Vec<Node> {
     nodes.push(
         toolbar_button("toolbar.theme", "Toggle theme", cx.theme == "light")
             .state("theme", cx.theme),
+    );
+    nodes.push(
+        toolbar_button(
+            crate::perf::TARGET,
+            "Debug performance meter",
+            cx.perf_meter,
+        )
+        .field("visible", "boolean", json!({}))
+        .state("visible", cx.perf_meter)
+        .state("shortcut", crate::perf::SHORTCUT),
     );
     build_dock(cx.layout, &mut nodes);
 
@@ -838,6 +850,7 @@ mod tests {
             theme: "dark",
             metrics: &metrics,
             layout: &layout,
+            perf_meter: false,
         };
         find(state, &cx, id).unwrap_or_else(|| panic!("{id} is missing from the tree"))
     }
@@ -937,6 +950,17 @@ mod tests {
             assert_eq!(found["parent"], "region:monitor", "{id}");
             assert_eq!(found["actions"][0]["action"], "invoke", "{id}");
         }
+    }
+
+    #[test]
+    fn the_perf_meter_is_a_toolbar_node_with_a_visible_field_and_its_shortcut() {
+        let state = EditorState::demo();
+        let found = node(&state, crate::perf::TARGET);
+        assert_eq!(found["parent"], "region:toolbar");
+        assert_eq!(found["actions"][0]["action"], "toggle");
+        assert_eq!(found["fields"][0]["field"], "visible");
+        assert_eq!(found["state"]["visible"], false);
+        assert_eq!(found["state"]["shortcut"], crate::perf::SHORTCUT);
     }
 
     #[test]

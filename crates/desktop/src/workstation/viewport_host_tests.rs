@@ -1233,3 +1233,93 @@ fn directed_output_rejection_leaves_the_monitor_and_history_unchanged() {
     assert_eq!(host.directed_scene(), None);
     assert!(sent(&mut host).is_empty());
 }
+
+// ---- the debug meter's feed (F049)
+
+/// A host wired to a meter that is switched on, and the meter.
+fn metered(
+    tag: &str,
+    state: &EditorState,
+    on: bool,
+) -> (
+    ViewportHost,
+    std::rc::Rc<std::cell::RefCell<tessel_editor_core::perf::Meter>>,
+) {
+    let mut host = ViewportHost::new(Ok(page(tag)));
+    let meter = std::rc::Rc::new(std::cell::RefCell::new(
+        tessel_editor_core::perf::Meter::default(),
+    ));
+    if on {
+        meter.borrow_mut().enable(Duration::ZERO, None);
+    }
+    host.attach_meter(meter.clone(), Instant::now());
+    from_page(&mut host, state, json!({"type":"page.ready"}));
+    let _ = sent(&mut host);
+    from_page(&mut host, state, ready_message());
+    (host, meter)
+}
+
+#[test]
+fn the_meter_counts_pictures_the_host_accepted_and_nothing_else() {
+    let mut state = titled_state("Um");
+    let (mut host, meter) = metered("meter-feed", &state, true);
+    let first = sent(&mut host);
+    let first_id = first[0]["id"].as_u64().unwrap();
+    let first_revision = first[0]["revision"].as_u64().unwrap();
+    assert_eq!(
+        meter.borrow().samples(),
+        (0, 0),
+        "a request is not a picture"
+    );
+
+    // An edit supersedes the frame in flight; the late answer for the old one is dropped.
+    retitle(&mut state, "Dois");
+    host.sync(&state);
+    let second = sent(&mut host);
+    let second_id = second[1]["id"].as_u64().unwrap();
+    from_page(
+        &mut host,
+        &state,
+        frame_done(second_id, second[1]["revision"].as_u64().unwrap()),
+    );
+    assert_eq!(meter.borrow().samples(), (0, 1));
+    from_page(&mut host, &state, frame_done(first_id, first_revision));
+    assert_eq!(
+        meter.borrow().samples(),
+        (0, 1),
+        "a stale answer was never shown"
+    );
+
+    // The page saying the picture reached a rendering opportunity is not a new picture.
+    from_page(
+        &mut host,
+        &state,
+        json!({"type":"frame.presented","id":second_id,"revision":second[1]["revision"],
+               "after_done_ms":9.0}),
+    );
+    assert_eq!(meter.borrow().samples(), (0, 1));
+}
+
+#[test]
+fn a_hidden_meter_keeps_no_samples_from_the_monitor() {
+    let state = titled_state("Um");
+    let (mut host, meter) = metered("meter-off", &state, false);
+    let (id, revision, _) = renders(&sent(&mut host))[0];
+    from_page(&mut host, &state, frame_done(id, revision));
+    assert_eq!(host.report()["session"]["stats"]["accepted"], 1);
+    assert_eq!(meter.borrow().samples(), (0, 0));
+    assert_eq!(meter.borrow().next_wakeup(Duration::from_secs(9)), None);
+}
+
+#[test]
+fn the_context_rows_come_from_the_last_finished_frame_and_msaa_is_absent_without_data() {
+    let state = titled_state("Um");
+    let (mut host, _meter) = metered("meter-context", &state, true);
+    assert!(host.last_frame().is_none());
+    let (id, revision, _) = renders(&sent(&mut host))[0];
+    from_page(&mut host, &state, frame_done(id, revision));
+    let context = tessel_editor_core::perf::FrameContext::of(host.last_frame().unwrap());
+    assert_eq!((context.width, context.height), (4, 2));
+    assert_eq!(context.msaa, None);
+    assert_eq!(context.reduced_scene_layers, None);
+}

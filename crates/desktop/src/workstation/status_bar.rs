@@ -8,7 +8,11 @@ use super::tokens::Tokens;
 use super::{Source, Workstation};
 
 impl Workstation {
-    pub(super) fn render_status(&mut self, t: &Tokens) -> impl IntoElement + use<> {
+    pub(super) fn render_status(
+        &mut self,
+        t: &Tokens,
+        perf_strip: Option<AnyElement>,
+    ) -> impl IntoElement + use<> {
         let selection = match (self.state.selected_clip(), self.state.subject_media()) {
             (Some(clip), _) => format!("Clipe: {}", clip.name),
             (None, Some(item)) => format!("Mídia: {}", item.name),
@@ -78,6 +82,7 @@ impl Workstation {
                     .items_center()
                     .gap(px(12.))
                     .min_w(px(0.))
+                    .children(perf_strip)
                     .children(jobs)
                     .children(activity)
                     .child(
