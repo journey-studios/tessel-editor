@@ -315,8 +315,17 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       ['overlay.enable', 'overlay.set', 'overlay.clear'].map((type) => [
         type,
         (message) => {
+          // No overlay surface (the headless worker): the feature was never negotiated, so this is
+          // a protocol refusal and stays the generic `unsupported` error.
           if (!overlay) throw new RuntimeError('unsupported', 'This page has no overlay surface');
-          overlay.receive(message);
+          // An operational overlay that fails (a malformed payload): the overlay's own failure, not a
+          // protocol error. The generic `error` closes the host's render session; `overlay.error` is
+          // consumed by the overlay adapter, and the page keeps its previous overlay and its frames.
+          try {
+            overlay.receive(message);
+          } catch (error) {
+            send({ type: 'overlay.error', request: type, error: toErrorJson(error, 'invalid_overlay') });
+          }
         },
       ]),
     ),

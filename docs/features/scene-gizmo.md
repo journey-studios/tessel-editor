@@ -112,8 +112,12 @@ anunciado (`overlay.gizmo`) no contexto de **desktop**, ou numa página de teste
 `?overlay=gizmo` (`wantsOverlay`); a página headless não tem `#overlay`, não anuncia o feature e recusa
 `overlay.*` com `unsupported`. Depois de cada frame, `refreshAfterFrame` roda **depois** de
 `frame.done` e de `announcePresented`, só se o overlay está ativo (inativo = nenhum layout nem
-canvas), e uma exceção do desenho vira um `error` próprio (`overlay_failed`): nunca `frame.failed`, e
-`done`/`presented`/export/headless não regridem.
+canvas), e uma exceção do desenho vira `overlay.error` (código `overlay_failed`): nunca `frame.failed` nem o `error`
+genérico, e `done`/`presented`/export/headless não regridem. O mesmo vale para o `overlay.receive` de uma página com
+overlay operacional que recusa um payload (`overlay.set` inválido): `overlay.error` com `request` e código
+`invalid_overlay`. `unsupported` continua sendo o `error` genérico só onde **não há superfície de overlay** (a
+página headless); erros de protocolo reais (JSON inválido, versão, tipo desconhecido) e `frame.failed` seguem pelo caminho
+de sempre.
 
 **Medição proporcional (não alegada como "custo 0"):** `runtime/scripts/perf/run.mjs --engine chrome-swiftshader --suite bench
 --cases image,scene --variants current,baseline --baseline-bundle <bundle da main> --passes 3 --frames 120` (sob o lock de GPU),
@@ -360,4 +364,8 @@ Harmonização: **S4** (identidade de ativos) — o gizmo só endereça nós pel
 Veja [arquitetura](../core-architecture.md), [interação de cenas](scene-interaction.md) e
 [template](_template.md).
 
-Uma falha de desenho é informada por `overlay.error` e registrada no relatório do overlay, sem invalidar a sessão de render.
+Uma falha do overlay (o desenho depois de um frame, ou um payload que a página recusou) é informada por `overlay.error`
+e **consumida pelo adaptador da janela fora da sessão de render** (`viewport_ipc` → `overlay_note`, antes de
+`ViewportHost::on_ipc`): fica em `get monitor.viewport` → `state.overlay.error` (o último erro desde o último reload, com `request` quando veio de
+uma mensagem do host) e não vira `BackendClosed`/`backend_unavailable`, não apaga capacidades nem ativos. O `error` genérico continua
+fechando a sessão, como um erro de protocolo deve.

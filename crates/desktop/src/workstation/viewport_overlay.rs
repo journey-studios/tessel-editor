@@ -195,7 +195,17 @@ impl ViewportHost {
     /// Counts and keeps what the page reports about the overlay. `true` if `message` was one.
     pub fn overlay_note(&mut self, message: &Value) -> bool {
         match message["type"].as_str() {
-            Some("overlay.error") => self.overlay.failure = Some(message["error"].clone()),
+            // The overlay's own failure (a refresh that threw, a payload the page refused): kept for
+            // the report, never a backend failure. The generic `error` would close the session.
+            Some("overlay.error") => {
+                let mut failure = message["error"].clone();
+                if let (Some(object), Some(request)) =
+                    (failure.as_object_mut(), message["request"].as_str())
+                {
+                    object.insert("request".to_owned(), json!(request));
+                }
+                self.overlay.failure = Some(failure);
+            }
             Some("overlay.layout") => self.overlay.layout = Some(message.clone()),
             // An ack of an overlay that is no longer the current one says nothing about what is
             // on the page now (a reload or a replaced project may have happened since).

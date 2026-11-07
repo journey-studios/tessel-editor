@@ -298,9 +298,15 @@ test('hovering a handle shows the grab cursor; an unsupported overlay is refused
   await settle(runtime);
   assert.equal(await runtime.page.evaluate(() => document.getElementById('overlay').style.cursor), 'default');
 
+  runtime.messages.length = 0;
   await runtime.send({ type: 'overlay.set', overlay: overlayJson({ version: 2 }) });
-  const refused = await runtime.waitFor((m) => m.type === 'error', 'error');
+  const refused = await runtime.waitFor((m) => m.type === 'overlay.error', 'overlay.error');
   assert.match(JSON.stringify(refused), /version 2/);
+  assert.equal(refused.request, 'overlay.set');
+  assert.equal(refused.error.code, 'invalid_overlay');
+  // An overlay that is operational and refuses a payload is the overlay's failure: the generic
+  // `error` would be read by the host as a closed backend (S8, thread 4504060122).
+  assert.ok(!runtime.messages.some((m) => m.type === 'error'), 'no generic error for an overlay failure');
   assert.equal((await state(runtime)).enabled, true, 'the page stays up with the previous overlay');
 });
 
@@ -440,6 +446,28 @@ test('an overlay that fails after a frame is its own error: done and presented s
   await runtime.page.evaluate(() => delete window.TesselRuntime.debug.overlay.surface.clientWidth);
   const next = await runtime.frame([], { id: 51 });
   assert.equal(next.type, 'frame.done');
+});
+
+test('an overlay payload the page refuses is its own error and the frame after it is served', async (t) => {
+  const runtime = await open(t);
+  if (!runtime) return;
+  await runtime.hello({ telemetry: { presented: true } });
+  await runtime.send({ type: 'overlay.enable', enabled: true });
+  runtime.messages.length = 0;
+  await runtime.send({ type: 'overlay.set', overlay: { version: 99 } });
+  const failure = await runtime.waitFor((m) => m.type === 'overlay.error', 'overlay.error');
+  assert.equal(failure.request, 'overlay.set');
+  assert.equal(failure.error.code, 'invalid_overlay');
+  assert.match(failure.error.message, /version 99/);
+  const done = await runtime.frame([], { id: 60 });
+  assert.equal(done.type, 'frame.done', 'the page still renders');
+  const presented = await runtime.waitFor((m) => m.type === 'frame.presented' && m.id === 60, 'frame.presented');
+  assert.equal(presented.id, 60);
+  const types = runtime.messages.map((m) => m.type);
+  assert.ok(!types.includes('error') && !types.includes('frame.failed'), `only overlay.error was said, got ${types}`);
+  // The feature is still the page's: a good overlay is drawn afterwards.
+  await runtime.send({ type: 'overlay.set', overlay: overlayJson(), ack: true });
+  assert.equal((await runtime.waitFor((m) => m.type === 'overlay.drawn', 'overlay.drawn')).stamp.revision, STAMP.revision);
 });
 
 test('the headless page (no overlay surface) has no overlay.gizmo, no canvas and refuses overlay messages', async (t) => {

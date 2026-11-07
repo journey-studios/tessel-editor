@@ -214,7 +214,8 @@ export class PointerSession {
  * PR #25 review). The overlay is OFF for every frame that is not a directed scene on the desktop
  * monitor, and a frame is never reported as failed because of it:
  *   * no overlay, or an inactive one: nothing is read, cleared or reported (`false`);
- *   * the refresh throws: the host hears an `overlay_failed` error message, the frame stands.
+ *   * the refresh throws: the host hears an `overlay.error` message (code `overlay_failed`), never the
+ *     generic `error` that closes its render session; the frame stands.
  * Returns whether the overlay was refreshed.
  */
 export const refreshAfterFrame = (overlay, onError) => {

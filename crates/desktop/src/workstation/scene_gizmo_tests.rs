@@ -918,18 +918,126 @@ fn a_new_epoch_in_the_middle_of_a_drag_ends_it(cx: &mut TestAppContext) {
     assert_eq!((figure_x(&view, cx), undo_depth(&view, cx)), before);
 }
 
+/// A viewport that is `Ready` for real: its page announced itself and the runtime answered the
+/// handshake negotiating `overlay.gizmo`, both through the window's own IPC entry. Nothing here
+/// pretends (`pretend_overlay_supported` would make `overlay_supported` true on a host that never
+/// became ready, and the assertions about "the session did not fail" would hold for any message).
+fn with_ready_gizmo_viewport(view: &Entity<Workstation>, cx: &mut VisualTestContext, tag: &str) {
+    let dist = std::env::temp_dir()
+        .join(format!("tessel-gizmo-{tag}-{}", std::process::id()))
+        .join("dist");
+    std::fs::create_dir_all(&dist).unwrap();
+    std::fs::write(dist.join("index.html"), "<html>").unwrap();
+    std::fs::write(dist.join("runtime.js"), "//").unwrap();
+    view.update(cx, |view, cx| {
+        view.viewport = super::viewport_host::ViewportHost::new(Ok(dist));
+        view.viewport_ipc(r#"{"v":1,"type":"page.ready"}"#, cx);
+        let ready = json!({"v":1,"type":"ready",
+            "runtime":{"name":"tessel-three","version":"0.1.0","renderer":"Test GPU"},
+            "capabilities":{"layers":["image","video","text","scene","waveform"],"formats":{},
+                "features":["overlay.gizmo"]}});
+        view.viewport_ipc(&ready.to_string(), cx);
+        assert!(
+            view.viewport.is_ready(),
+            "the handshake made the host ready"
+        );
+        assert!(
+            view.viewport.overlay_supported(),
+            "and the page negotiated the overlay"
+        );
+    });
+}
+
+/// What "the render session did not fail" means, read from the host: the phase, the capabilities
+/// the handshake gave (a failed session forgets them), the session status and the monitor.
+fn session_of(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> Value {
+    view.read_with(cx, |view, _| {
+        let report = view.viewport.report();
+        json!({
+            "phase": report["phase"],
+            "capabilities": report["capabilities"],
+            "status": report["session"]["status"],
+            "error": report["error"],
+            "ready": view.viewport.is_ready(),
+            "available": view.viewport.monitor_available(),
+            "supported": view.viewport.overlay_supported(),
+        })
+    })
+}
+
 #[gpui_kit::test]
 fn an_overlay_error_is_consumed_without_failing_the_render_session(cx: &mut TestAppContext) {
-    let (view, cx) = mounted(cx);
+    let (view, cx) = fixture(cx);
+    with_ready_gizmo_viewport(&view, cx, "refresh-error");
+    let before = session_of(&view, cx);
+    assert_eq!(before["phase"], "ready");
+    assert_eq!(before["ready"], true);
+    assert!(before["capabilities"].is_object());
+
+    // The refresh after a frame threw (runtime `refreshAfterFrame`).
     view.update(cx, |view, cx| {
-        let before = view.viewport.ui_signature();
-        let supported = view.viewport.overlay_supported();
         view.viewport_ipc(
-            r#"{"type":"overlay.error","error":{"code":"overlay_failed","message":"layout exploded"}}"#,
+            r#"{"v":1,"type":"overlay.error","error":{"code":"overlay_failed","message":"layout exploded"}}"#,
             cx,
         );
-        assert_eq!(view.viewport.ui_signature(), before);
-        assert_eq!(view.viewport.overlay_supported(), supported);
-        assert_eq!(view.viewport.report()["overlay"]["error"]["code"], "overlay_failed");
     });
+    assert_eq!(
+        session_of(&view, cx),
+        before,
+        "the render session is as it was"
+    );
+    let error = view.read_with(cx, |view, _| {
+        view.viewport.report()["overlay"]["error"].clone()
+    });
+    assert_eq!(error["code"], "overlay_failed");
+    assert_eq!(error["message"], "layout exploded");
+}
+
+#[gpui_kit::test]
+fn an_overlay_the_page_refused_is_consumed_without_failing_the_render_session(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = fixture(cx);
+    with_ready_gizmo_viewport(&view, cx, "receive-error");
+    let before = session_of(&view, cx);
+    assert_eq!(before["phase"], "ready");
+
+    // `overlay.receive` threw for an `overlay.set` the page could not parse (runtime handler).
+    view.update(cx, |view, cx| {
+        view.viewport_ipc(
+            r#"{"v":1,"type":"overlay.error","request":"overlay.set","error":{"code":"invalid_overlay","message":"overlay version 99 is not supported"}}"#,
+            cx,
+        );
+    });
+    assert_eq!(
+        session_of(&view, cx),
+        before,
+        "the render session is as it was"
+    );
+    let error = view.read_with(cx, |view, _| {
+        view.viewport.report()["overlay"]["error"].clone()
+    });
+    assert_eq!(error["code"], "invalid_overlay");
+    assert_eq!(error["request"], "overlay.set");
+}
+
+/// The control of the two tests above: the same host, the same entry, a real protocol error (the
+/// generic `error` message, what the page sends for broken JSON or a refused `overlay.*` on a page
+/// with no overlay surface) is NOT swallowed: it still ends the session. Without this, "consumed"
+/// could just mean "ignored".
+#[gpui_kit::test]
+fn a_real_protocol_error_still_fails_the_render_session(cx: &mut TestAppContext) {
+    let (view, cx) = fixture(cx);
+    with_ready_gizmo_viewport(&view, cx, "protocol-error");
+    assert_eq!(session_of(&view, cx)["phase"], "ready");
+    view.update(cx, |view, cx| {
+        view.viewport_ipc(
+            r#"{"v":1,"type":"error","error":{"code":"protocol_error","message":"Unknown message type"}}"#,
+            cx,
+        );
+    });
+    let after = session_of(&view, cx);
+    assert_eq!(after["phase"], "unavailable");
+    assert_eq!(after["ready"], false);
+    assert_eq!(after["supported"], false);
 }
