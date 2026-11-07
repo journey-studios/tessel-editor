@@ -780,3 +780,5 @@ BL142 — revisão do coordenador: main integrada sem apagar medidor; helper can
 | BL142.5 | RevisãoB | Link de áudio partia bullet do inventário | Corrigido | BL142 | Coordenador | Links preservados em bullets independentes |
 
 BL142.3 / R2: asserção estrita da última amostra e silêncio após o fim em fps fracionário escrita; não executada. F051 rebaixada aI até gates; não reutilizar os V anteriores como prova deste head.
+
+BL142.4: helper canônico28/28 adotado, filho encerrado após timeout, subclasses recebem args e saída absoluta preserva diretório de fixtures. Sem gates compilados ou áudio real nesta rodada.
