@@ -350,6 +350,10 @@ def judge_audio(p, path, case, bundle, label="", video_seconds=None, gain_db=Non
     p.check(f"{label}audio: duration {audio_seconds:.4f} s within {tol['durationVsVideoSeconds']} s of {reference:.4f} s",
             abs(audio_seconds - reference) <= tol["durationVsVideoSeconds"], audio_seconds)
     expected = expected_samples(case, bundle)
+    # Round R3 (A13): a window with a constant envelope cannot show an offset (a 440 Hz tone read 0.1 s late is the same tone, and
+    # the envelope lag lands on an edge of the search window), so a case without a tone/silence edge proves nothing about alignment.
+    p.check(f"{label}audio: the analytic window has at least one tone/silence edge, so an offset is observable (lag observable)",
+            len(case.get("transitions", [])) >= 1, len(case.get("transitions", [])))
     if gain_db is None:
         try:
             gain_db = oracle.channel_gain_db(case["sourceChannels"], len(channels))

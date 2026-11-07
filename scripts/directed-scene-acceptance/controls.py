@@ -365,7 +365,7 @@ def audio_controls(expected, bundles, work):
         verify.write_av_file(path, channels, case["frames"], case["fps"])
         return lambda p: verify.judge_audio(p, path, case, bundle, label="", video_seconds=case["durationSecondsFloat"])
 
-    for case_id in ("audio24_window_a", "audio24_window_b", "audio_ntsc_window"):
+    for case_id in ("audio24_window_a", "audio24_window_b", "audio_ntsc_window", "full_av"):
         exact = window(expected, bundles, case_id)
         results.append(run_control(f"positive: analytic window of {case_id}, stereo with the origin's mono->stereo law, AAC", True,
                                    judge_file(case_id, "exact", correct_export(expected, exact))))
@@ -408,6 +408,14 @@ def audio_controls(expected, bundles, work):
         return verify.judge_audio(p, path, case, bundle, label="", video_seconds=case["durationSecondsFloat"])
 
     negative("no audio stream", no_audio, ("decodable audio stream",))
+
+    def constant_envelope(p):
+        flat = dict(case, transitions=[])  # a case whose analytic window has no edge: a shifted file would pass the lag check
+        path = work / f"{case_id}-constant.mp4"
+        verify.write_av_file(path, correct_export(expected, exact), case["frames"], case["fps"])
+        return verify.judge_audio(p, path, flat, bundle, label="", video_seconds=case["durationSecondsFloat"])
+
+    negative("constant-envelope window (no edge: an offset is not observable)", constant_envelope, ("lag observable",))
     wrong = window(expected, bundles, "audio_ntsc_window", fps=Fraction(30))
     negative("NTSC treated as 30 fps", judge_file("audio_ntsc_window", "ntsc-as-30", stereo(wrong)), ("edge at",))
     return results

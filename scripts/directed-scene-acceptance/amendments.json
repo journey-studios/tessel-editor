@@ -235,6 +235,59 @@
     "../directed-scene-export-proof/export_verify.py": "6f0432c0c96231093724d912c01de629e0c5b1a2540fd852e0101a429d8e55a4",
     "../directed-scene-export-proof/export_corpus.py": "20bbed3797586800f729269c826fd376deea1466c85d697bbcb2dccfc47dc00e"
    }
+  },
+  {
+   "id": "R3",
+   "reason": "First live run of the R2 harness against editor binaries built from the integrated head (6073f1e, attested by link.py): 23 of 24 phases passed, including splat, audio at 24 fps and 30000/1001, package and short source; `full_av` failed only the envelope-lag check (+4800 samples, the edge of the 0.15 s search) while the sample-level correlation with the analytic signal was 1.0000, the gain -3.01 dB and every tone window right. The cause is in the corpus, not the editor: the `full` bundle's window was the first 2 s of the file, a single 440 Hz tone, whose envelope is constant, so the lag is unobservable and (440 Hz x 0.1 s = 44 whole cycles) a 0.1 s offset is invisible to the correlation too.",
+   "applied": "AFTER that live run, in a new commit: this round was made knowing the result of `full_av` (the live log is kept in the PR evidence, with the aborted attempts). It does not touch any tolerance and cannot make a failing editor pass: it only moves the `full` window to a stretch with edges, and makes a window without edges a failure of the harness. The R2 text 'before any live run' keeps its meaning for R2 only. The live run is repeated, from scratch, on binaries rebuilt and re-attested for this head.",
+   "before": {
+    "tolerances.json": "6fb8ae0760206eabcc3401775ca81442652ab1012d4a003d0c9116c1b8963d9d",
+    "oracle.py": "8ac1a7ed6a2d8ac979c4b103ef2fba917347a2b5448d67bffb71f89c1a17af4e",
+    "corpus.py": "3f4b2d1c1e118facb577832c4eb656dd2bb381d48cbf7c7d1497f967f686c33a",
+    "verify.py": "8834574cb5a77f9ae6d7f47ec2bd28dc7a96f1e04b1ffd6b147cf6fc79cf9195",
+    "controls.py": "d41541ec7d599b43e6f677b114b2422ca85fc290388829788472180e9e71dad9",
+    "corpus/expected.json": "387c0b7c7dc3046de0258fec10598581646f37ae11d9b385ddf8d9391ba70e98",
+    "proof.py": "0d0dd91282c3eb20a44d6cb6e234f4b115658515eb3c269b1bb461f6824ae16a",
+    "link.py": "3d3aaca7d28aca3c129e9f4ec44c4c8fc67e1529a7f1b7b154e49b265648c635",
+    "sensitivity.py": "e4618d0d687e2c366e16e7af59b87ea170c063478000e57e7858a3ad0f45a4b2",
+    "ledger.py": "6a93dba974b4f006fecf187ebdc629a7abc84a2259152cb52fc2018825efb469",
+    "../directed-scene-proof/model.py": "322af021aceb5ae45d8b99992c126c5360faa243c571e5bf5db73c6c7991e9bd",
+    "../directed-scene-proof/harness.py": "b6da5243475c8ba7520b31209c68a8417e82d5ed2b626b0f970389d66d8059ec",
+    "../directed-scene-export-proof/export_verify.py": "6f0432c0c96231093724d912c01de629e0c5b1a2540fd852e0101a429d8e55a4",
+    "../directed-scene-export-proof/export_corpus.py": "20bbed3797586800f729269c826fd376deea1466c85d697bbcb2dccfc47dc00e"
+   },
+   "pins": [],
+   "amendments": [
+    {
+     "id": "A13",
+     "finding": "R2 acceptance run: `full_av` envelope lag +4800 samples on a constant-envelope window",
+     "files": [
+      "corpus.py",
+      "corpus/expected.json",
+      "verify.py",
+      "controls.py",
+      "tolerances.json"
+     ],
+     "change": "corpus.py: the `full` bundle declares the audio window [2, 4) instead of [0, 2) (edit duration unchanged, 48 frames), so the analytic window holds the end of the 440 Hz tone, a 0.5 s gap and the start of the 880 Hz tone (edges at 1.0 s and 1.5 s of the export); the generator refuses any audio case without a tone/silence edge. verify.py: `judge_audio` fails a case whose analytic window has no edge ('lag observable'). controls.py: new frozen negative control 'constant-envelope window (no edge: an offset is not observable)' (listed in tolerances.json, no number changed) and a positive control for `full_av`. corpus/expected.json and bundle.full.json regenerated.",
+     "motivating_result": "Live run 3 of this head: `full_av` 418/422 checks, the four failures all 'envelope lag +4800 samples' (ch0/ch1, export and restored export). Same file, same editor: correlation 1.0000 at lag 0, gain -3.01 dB, 19 tone windows dominated by the expected frequency. Arithmetic: the 0.15 s search window and a constant envelope give an arbitrary edge value; 44 whole cycles in 0.1 s make a pure 440 Hz tone shift-invariant at that lag. The editor was not changed and the thresholds were not changed."
+    }
+   ],
+   "after": {
+    "tolerances.json": "8f150233f6f89669efafe133aed67fd33fbcc01da24fa3c035d1e427f9c409e3",
+    "oracle.py": "8ac1a7ed6a2d8ac979c4b103ef2fba917347a2b5448d67bffb71f89c1a17af4e",
+    "corpus.py": "f36a9d0982a9915f7f6772073bfafc8860ae968bc06f952116e8750d010821eb",
+    "verify.py": "033783db6452783675a1e8bf9bc4f57c34d37a16d863a0263b398beb3a2624bb",
+    "controls.py": "47d7025058052ef367ecc0342995531b80214c530b9e3accb8dc5f250f445392",
+    "corpus/expected.json": "b87443f8f9dbccd36b561890126ee3aae5c336a0f63730d03d26ed3975ecf838",
+    "proof.py": "0d0dd91282c3eb20a44d6cb6e234f4b115658515eb3c269b1bb461f6824ae16a",
+    "link.py": "3d3aaca7d28aca3c129e9f4ec44c4c8fc67e1529a7f1b7b154e49b265648c635",
+    "sensitivity.py": "e4618d0d687e2c366e16e7af59b87ea170c063478000e57e7858a3ad0f45a4b2",
+    "ledger.py": "6a93dba974b4f006fecf187ebdc629a7abc84a2259152cb52fc2018825efb469",
+    "../directed-scene-proof/model.py": "322af021aceb5ae45d8b99992c126c5360faa243c571e5bf5db73c6c7991e9bd",
+    "../directed-scene-proof/harness.py": "b6da5243475c8ba7520b31209c68a8417e82d5ed2b626b0f970389d66d8059ec",
+    "../directed-scene-export-proof/export_verify.py": "6f0432c0c96231093724d912c01de629e0c5b1a2540fd852e0101a429d8e55a4",
+    "../directed-scene-export-proof/export_corpus.py": "20bbed3797586800f729269c826fd376deea1466c85d697bbcb2dccfc47dc00e"
+   }
   }
  ]
 }

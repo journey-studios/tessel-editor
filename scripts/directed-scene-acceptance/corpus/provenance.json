@@ -50,15 +50,15 @@
   },
   "bundle.full.json": {
    "bytes": 9243,
-   "sha256": "14aaf573e9b5837859c70a6cfbc50e8cb0a784c6808223dbacb88c1c5c1ba9e0"
+   "sha256": "efded55040d4a1136f074a360443ac9fb2b7b58b39773e188ffd93cc7a267165"
   },
   "bundle.splat.json": {
    "bytes": 9027,
    "sha256": "be2c4f08a8773bc2ad9b195947df18d77f7691cbdbdc5a337ce08027d75ffec5"
   },
   "expected.json": {
-   "bytes": 60748,
-   "sha256": "387c0b7c7dc3046de0258fec10598581646f37ae11d9b385ddf8d9391ba70e98"
+   "bytes": 61226,
+   "sha256": "b87443f8f9dbccd36b561890126ee3aae5c336a0f63730d03d26ed3975ecf838"
   },
   "splat/sp-green.spz": {
    "bytes": 45,

@@ -67,8 +67,8 @@
     }
   ],
   "audio": {
-    "editEndSecondsExclusive": 2.0,
-    "editStartSeconds": 0.0,
+    "editEndSecondsExclusive": 4.0,
+    "editStartSeconds": 2.0,
     "mixRelativePath": "audio/mix.wav",
     "sourcePcmHashSha256": "e089e7d141d6bbfed6df66b7b8be7e27b9d0d2f308a882cafd1a8e61e659ed48"
   },

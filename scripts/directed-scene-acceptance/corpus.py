@@ -69,7 +69,7 @@ AUDIO_CASES = {
     "audio_ntsc_window": {"bundle": "audio_ntsc", "from": 180, "frames": 96,
                           "covers": "rate 30000/1001, offset 0: the window starts at 6.006 s, not 6.000 s; 1320 Hz ends and 440 Hz begins inside the window"},
     "full_av": {"bundle": "full", "from": 0, "frames": 48,
-                "covers": "splat scene and audio mix together (integrated acceptance of the splat and mix fronts): first 2 s of the 440 Hz tone"},
+                "covers": "splat scene and audio mix together (integrated acceptance of the splat and mix fronts): edit window offset 2 s, file 2-4 s: the end of the 440 Hz tone, a gap, the start of 880 Hz (R3: the first window was a constant tone, whose offset cannot be observed)"},
 }
 
 # The source-too-short control (negative, live): the A1-era WAV is 8 s but the declared window is [1, 13). The origin
@@ -303,7 +303,7 @@ def build_bundles(files):
     # Splat and audio together: what the integrated acceptance packages and exports.
     full = copy.deepcopy(splat)
     full["bundleId"] = "s10-full"
-    full["audio"] = audio_block(0.0, 48, FPS24)
+    full["audio"] = audio_block(2.0, 48, FPS24)
     # The same scene and camera moves authored for a 9:16 deliverable: the render profile is the authored frame, and the
     # destination fits the requested output into it (a 16:9 profile asked for 360x640 gets bars, not a taller picture).
     portrait = copy.deepcopy(camera)
@@ -434,6 +434,8 @@ def audio_expectations(bundles):
     ntsc_from = AUDIO_CASES["audio_ntsc_window"]["from"]
     assert abs(float(Fraction(ntsc_from * 1001, 30000)) - ntsc_from / 30) > 1.5 * tolerance, "NTSC window is not distinguishable from 30 fps"
     assert len(ntsc["transitions"]) >= 2, "the NTSC window needs edges to time"
+    for case_id, entry in out.items():
+        assert entry["transitions"], f"{case_id}: a window with a constant envelope cannot show an offset (add a tone/silence edge)"
     # Origin rules the corpus must obey for every bundle that declares a mix (the corpus is generated, never hand-edited).
     mix_seconds = Fraction(MIX_SECONDS)
     for key, bundle in bundles.items():

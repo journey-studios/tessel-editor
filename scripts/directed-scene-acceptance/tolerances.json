@@ -82,7 +82,7 @@
     "startTimeAbsSeconds": 0.025,
     "streamCountExact": 1,
     "outputChannels": 2,
-    "negativeControlsMustFail": ["shifted 5 ms", "shifted one frame", "rate bug (44.1 kHz read as 48 kHz)", "silent stream", "gain -6 dB", "mix offset ignored", "export range ignored", "tone swapped", "no audio stream", "truncated audio", "NTSC treated as 30 fps", "mono source written at 0 dB (channel law ignored)", "mono output (the origin always writes stereo)", "retired A1 reading (mix[0] plays at editStartSeconds)"]
+    "negativeControlsMustFail": ["shifted 5 ms", "shifted one frame", "rate bug (44.1 kHz read as 48 kHz)", "silent stream", "gain -6 dB", "mix offset ignored", "export range ignored", "tone swapped", "no audio stream", "truncated audio", "NTSC treated as 30 fps", "mono source written at 0 dB (channel law ignored)", "mono output (the origin always writes stereo)", "retired A1 reading (mix[0] plays at editStartSeconds)", "constant-envelope window (no edge: an offset is not observable)"]
   },
 
   "package": {

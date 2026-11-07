@@ -10,6 +10,7 @@ judged here. This does NOT prove that the real fronts behave: that is `proof.py`
 import argparse
 import importlib.util
 import json
+import math
 import pathlib
 import shutil
 import subprocess
@@ -304,6 +305,43 @@ class AudioWindowAmendment(unittest.TestCase):
         self.assertEqual(table.hz_at(Fraction(7, 4)), 440)  # file 1.75 s: audio24_window_a's first sample
         self.assertEqual(oracle.export_time_of(Fraction(7, 4), Fraction(24), 1, 18), 0)
         self.assertEqual(oracle.export_time_of(Fraction(3), Fraction(24), 1, 18), Fraction(5, 4))
+
+    def test_every_audio_window_has_an_edge_so_an_offset_is_observable(self):
+        """A13: the first full_av window was one 440 Hz tone; its envelope lag was arbitrary and 0.1 s is 44 whole cycles."""
+        expected = controls.load()[0]
+        for case_id, case in expected["audio"]["cases"].items():
+            self.assertGreaterEqual(len(case["transitions"]), 1, case_id)
+        full = expected["audio"]["cases"]["full_av"]
+        self.assertEqual(sorted(t["kind"] for t in full["transitions"]), ["off", "on"])
+
+    def test_a_constant_tone_cannot_show_a_shift_but_the_edged_window_does(self):
+        """The arithmetic behind A13: a pure 440 Hz tone shifted 0.1 s is the same signal; the full_av window shifted 0.1 s is not."""
+        rate = 48000
+        tone = [math.sin(2 * math.pi * 440 * n / rate) for n in range(2 * rate)]
+        shifted = tone[4800:] + tone[:4800]
+        self.assertGreater(verify.correlation(tone, shifted), 0.999)
+        expected, bundles, _ = controls.load()
+        exact = controls.window(expected, bundles, "full_av")
+        late = [0.0] * 4800 + exact[:-4800]  # the corpus window has edges: 0.1 s late moves them by 100 ms
+        case = expected["audio"]["cases"]["full_av"]
+        with tempfile.TemporaryDirectory(prefix="s10-spec-") as tmp:
+            path = pathlib.Path(tmp) / "late.mp4"
+            verify.write_av_file(path, controls.correct_export(expected, late), case["frames"], case["fps"])
+            collector = verify.Collector()
+            verify.judge_audio(collector, path, case, bundles["full"], label="", video_seconds=case["durationSecondsFloat"])
+        failed = collector.failed()
+        self.assertTrue(any("edge at" in name for name in failed), failed)
+        self.assertTrue(any("envelope lag" in name for name in failed), failed)
+
+    def test_judge_audio_refuses_a_case_without_an_edge(self):
+        expected, bundles, _ = controls.load()
+        case = dict(expected["audio"]["cases"]["full_av"], transitions=[])
+        with tempfile.TemporaryDirectory(prefix="s10-spec-") as tmp:
+            path = pathlib.Path(tmp) / "flat.mp4"
+            verify.write_av_file(path, controls.correct_export(expected, controls.window(expected, bundles, "full_av")), case["frames"], case["fps"])
+            collector = verify.Collector()
+            verify.judge_audio(collector, path, case, bundles["full"], label="", video_seconds=case["durationSecondsFloat"])
+            self.assertTrue(any("lag observable" in name for name in collector.failed()), collector.failed())
 
 
 class PhaseIsolation(unittest.TestCase):

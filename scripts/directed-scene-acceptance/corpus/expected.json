@@ -185,10 +185,10 @@
    },
    "full_av": {
     "bundle": "full",
-    "covers": "splat scene and audio mix together (integrated acceptance of the splat and mix fronts): first 2 s of the 440 Hz tone",
+    "covers": "splat scene and audio mix together (integrated acceptance of the splat and mix fronts): edit window offset 2 s, file 2-4 s: the end of the 440 Hz tone, a gap, the start of 880 Hz (R3: the first window was a constant tone, whose offset cannot be observed)",
     "durationSeconds": "2",
     "durationSecondsFloat": 2.0,
-    "editStartSeconds": 0.0,
+    "editStartSeconds": 2.0,
     "fps": "24/1",
     "frames": 48,
     "from": 0,
@@ -199,11 +199,30 @@
       "amplitude": 0.5,
       "from": 0.0,
       "hz": 440,
+      "to": 1.0
+     },
+     {
+      "amplitude": 0.5,
+      "from": 1.5,
+      "hz": 880,
       "to": 2.0
      }
     ],
     "sourceChannels": 1,
-    "transitions": [],
+    "transitions": [
+     {
+      "exportSeconds": "1",
+      "exportSecondsFloat": 1.0,
+      "kind": "off",
+      "mixSeconds": "3"
+     },
+     {
+      "exportSeconds": "3/2",
+      "exportSecondsFloat": 1.5,
+      "kind": "on",
+      "mixSeconds": "7/2"
+     }
+    ],
     "windowStartSeconds": "0"
    }
   },
@@ -355,7 +374,7 @@
    "editFrames": 48,
    "file": "bundle.full.json",
    "fps": "24/1",
-   "sha256": "14aaf573e9b5837859c70a6cfbc50e8cb0a784c6808223dbacb88c1c5c1ba9e0"
+   "sha256": "efded55040d4a1136f074a360443ac9fb2b7b58b39773e188ffd93cc7a267165"
   },
   "splat": {
    "bundleId": "s10-splat",
@@ -4011,5 +4030,5 @@
    360
   ]
  },
- "tolerancesSha256": "6fb8ae0760206eabcc3401775ca81442652ab1012d4a003d0c9116c1b8963d9d"
+ "tolerancesSha256": "8f150233f6f89669efafe133aed67fd33fbcc01da24fa3c035d1e427f9c409e3"
 }
