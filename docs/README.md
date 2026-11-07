@@ -6,6 +6,7 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 - [Integração da rodada R1–R10](migration/round-r1-r10-report.md): export dirigido, inspector, planos e robustez; evidências e limites do gate final.
 - [Próxima entrega — dez frentes](migration/next-delivery-ten-agents.md): contratos e ownership; status e delegações no backlog comum.
 - [Integração M/N/O/P](migration/round-mnop-report.md): renderer, recursos portáteis, inspector e provas do fluxo dirigido.
+- [Keyframes da câmera de clipe de cena (BL140)](features/camera-keys.md): chaves de posição/alvo/FOV com easing, tempo de cena, lib/JSONL/UI e export igual ao monitor.
 - [Renderer de cenas dirigidas](features/scene-renderer.md): scene.plan/scene.render, lib/JSONL e monitor com mapas verificados.
 - [Integração H/I/J/K + sliders](migration/round-hijkl-report.md): 718 testes Rust, provas por superfície e limites atuais da base.
 - [Inspector e árvore de cena](features/scene-inspector.md): controles recebidos, input GPUI e socket reportados; layout R9 inspecionado, captura final do cabeçalho em validação.
