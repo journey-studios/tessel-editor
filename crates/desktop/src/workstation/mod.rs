@@ -280,8 +280,8 @@ impl Workstation {
         };
         let scene_ui = SceneUi::new(window, cx);
         let mut viewport = ViewportHost::new(page);
-        let perf = perf_meter::PerfState::new();
-        viewport.attach_meter(perf.meter(), perf.epoch());
+        let perf = perf_meter::PerfState::new(cx);
+        viewport.attach_meter(perf.meter(), perf.clock());
         cx.set_global(perf_meter::PerfTarget(cx.weak_entity()));
         let viewport_view = Self::build_viewport(&mut viewport, window, cx);
 

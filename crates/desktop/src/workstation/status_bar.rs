@@ -29,6 +29,10 @@ impl Workstation {
                 (IconName::Check, t.dim)
             };
             div()
+                .debug_selector(|| "status-activity".to_string())
+                // Whole and on one line: the debug meter's strip is what gives way (F049).
+                .flex_shrink_0()
+                .whitespace_nowrap()
                 .flex()
                 .items_center()
                 .gap(px(4.))
@@ -38,6 +42,9 @@ impl Workstation {
         });
         let jobs = self.workflow.jobs_line().map(|line| {
             div()
+                .debug_selector(|| "status-jobs".to_string())
+                .flex_shrink_0()
+                .whitespace_nowrap()
                 .flex()
                 .items_center()
                 .gap(px(4.))
@@ -78,6 +85,7 @@ impl Workstation {
             )
             .child(
                 div()
+                    .debug_selector(|| "status-right".to_string())
                     .flex()
                     .items_center()
                     .gap(px(12.))
@@ -87,6 +95,7 @@ impl Workstation {
                     .children(activity)
                     .child(
                         div()
+                            .debug_selector(|| "status-saved".to_string())
                             .flex_shrink_0()
                             .truncate()
                             .text_color(t.faint)

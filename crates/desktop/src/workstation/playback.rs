@@ -238,9 +238,13 @@ impl Playback {
 }
 
 impl PlaybackState {
-    /// The frame the running clock has reached (`None` unless a clock runs).
-    pub fn frame(&self) -> Option<i64> {
-        self.active.as_ref().map(|active| active.frame)
+    /// The frame of a clock that is *running*: `None` while paused, stopped or preparing. The
+    /// debug meter starts from this: a paused playback expects no frames.
+    pub fn running_frame(&self) -> Option<i64> {
+        self.active
+            .as_ref()
+            .filter(|active| !active.paused)
+            .map(|active| active.frame)
     }
 
     pub fn is_playing(&self) -> bool {
@@ -312,7 +316,7 @@ impl Workstation {
         Ok(json!({ "action": "playback.start", "from": from, "state": "preparing" }))
     }
 
-    fn playback_begin(
+    pub(super) fn playback_begin(
         &mut self,
         from: i64,
         mixed: Result<Source, CommandError>,
@@ -492,7 +496,8 @@ impl Workstation {
         active.wall.resume();
         active.paused = false;
         let frame = active.frame;
-        // The run restarts from the frame on screen; the pause is not a gap (F049).
+        // The run restarts from the frame on screen; the pause is not a gap (F049). The meter
+        // keeps the counts of a playback that never paused (`Meter::playback_started`).
         self.perf_playback_started(frame);
         cx.notify();
         Ok(json!({ "action": "playback.resume", "report": self.playback.report() }))

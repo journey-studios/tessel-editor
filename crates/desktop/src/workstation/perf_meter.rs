@@ -17,7 +17,12 @@
 //!   [`REFRESH_EVERY`] (4 Hz) and never because the meter asked;
 //! - the only timer is a one-shot, armed only after something was painted, that fires once when
 //!   the window came to rest to replace the numbers by "parado". The redraw it causes is marked
-//!   as the meter's own and is not counted as a UI frame.
+//!   as the meter's own and is not counted as a UI frame. Hiding the meter drops (cancels) that
+//!   timer: a hidden meter never wakes the executor.
+//!
+//! Every time the meter reads is on the executor's clock ([`PerfClock`]): the wall clock in the
+//! app, the controlled one in the GPUI tests, so the 4 Hz and rest rules are tested without
+//! sleeping.
 //!
 //! The native WebView paints above every GPUI element, so a card over the picture would be
 //! invisible. The card is placed by `perf::place` away from the WebView's rectangle; when no
@@ -78,29 +83,89 @@ pub fn shortcut_label() -> &'static str {
     }
 }
 
+/// Time since the meter's epoch on the executor's clock. `BackgroundExecutor::now` is the wall
+/// clock in the app and the controlled clock in GPUI tests (`advance_clock`), so the meter, its
+/// rest timer and the tests all share one notion of "now".
+#[derive(Clone)]
+pub(super) struct PerfClock {
+    source: ClockSource,
+    epoch: Instant,
+}
+
+#[derive(Clone)]
+enum ClockSource {
+    Executor(BackgroundExecutor),
+    /// For tests of pieces that run without an `App` (the viewport host's feed).
+    #[cfg(test)]
+    Wall,
+}
+
+impl ClockSource {
+    fn now(&self) -> Instant {
+        match self {
+            Self::Executor(executor) => executor.now(),
+            #[cfg(test)]
+            Self::Wall => Instant::now(),
+        }
+    }
+}
+
+impl PerfClock {
+    pub fn new(cx: &App) -> Self {
+        let source = ClockSource::Executor(cx.background_executor().clone());
+        let epoch = source.now();
+        Self { source, epoch }
+    }
+
+    #[cfg(test)]
+    pub fn wall() -> Self {
+        Self {
+            source: ClockSource::Wall,
+            epoch: Instant::now(),
+        }
+    }
+
+    pub fn elapsed(&self) -> Duration {
+        self.source.now().saturating_duration_since(self.epoch)
+    }
+}
+
 pub(super) struct PerfState {
     meter: Rc<RefCell<Meter>>,
-    epoch: Instant,
+    clock: PerfClock,
     visible: bool,
     /// The next paint is the meter's own redraw (the "parado" transition): not a UI frame.
     own_redraw: Rc<Cell<bool>>,
     /// The one-shot rest timer is waiting.
     wake_armed: bool,
+    /// The rest timer's task. Dropping it cancels the timer: hiding the meter does.
+    wake_task: Option<Task<()>>,
     /// What the card shows: recomputed at most every `REFRESH_EVERY`.
     shown: Option<(Duration, Readout)>,
     placement: Placement,
+    /// How many times the text was recomputed (the 4 Hz rule is about this number).
+    #[cfg(test)]
+    refreshes: u64,
+    /// How many times the rest timer fired.
+    #[cfg(test)]
+    wakes: u64,
 }
 
 impl PerfState {
-    pub fn new() -> Self {
+    pub fn new(cx: &App) -> Self {
         Self {
             meter: Rc::new(RefCell::new(Meter::default())),
-            epoch: Instant::now(),
+            clock: PerfClock::new(cx),
             visible: false,
             own_redraw: Rc::new(Cell::new(false)),
             wake_armed: false,
+            wake_task: None,
             shown: None,
             placement: Placement::Floating { y: CARD_MARGIN },
+            #[cfg(test)]
+            refreshes: 0,
+            #[cfg(test)]
+            wakes: 0,
         }
     }
 
@@ -108,8 +173,12 @@ impl PerfState {
         self.meter.clone()
     }
 
-    pub fn epoch(&self) -> Instant {
-        self.epoch
+    pub fn clock(&self) -> PerfClock {
+        self.clock.clone()
+    }
+
+    pub fn elapsed(&self) -> Duration {
+        self.clock.elapsed()
     }
 
     pub fn visible(&self) -> bool {
@@ -121,10 +190,19 @@ impl PerfState {
         self.wake_armed
     }
 
-    /// When the text on the card was last recomputed.
     #[cfg(test)]
-    pub fn shown_at(&self) -> Option<Duration> {
-        self.shown.as_ref().map(|(at, _)| *at)
+    pub fn refreshes(&self) -> u64 {
+        self.refreshes
+    }
+
+    #[cfg(test)]
+    pub fn wakes(&self) -> u64 {
+        self.wakes
+    }
+
+    #[cfg(test)]
+    pub fn wake_pending(&self) -> bool {
+        self.wake_task.is_some()
     }
 }
 
@@ -157,13 +235,18 @@ impl Workstation {
             self.perf.shown = None;
             self.perf.placement = Placement::Floating { y: CARD_MARGIN };
             if visible {
-                let playing = self.playback.frame();
+                // Only a clock that is running counts: a paused playback is a rest (F049).
+                let playing = self.playback.running_frame();
+                let on_screen = self.viewport.presented_frame();
                 self.perf
                     .meter
                     .borrow_mut()
-                    .enable(self.perf.epoch.elapsed(), playing);
+                    .enable(self.perf.elapsed(), playing, on_screen);
             } else {
                 self.perf.meter.borrow_mut().disable();
+                // The rest timer is dropped with the meter: no wake-up while hidden.
+                self.perf.wake_task = None;
+                self.perf.wake_armed = false;
             }
         }
         self.activity = Some(Activity {
@@ -185,10 +268,11 @@ impl Workstation {
     // ---- feeds from playback (single bool check while hidden)
 
     pub(super) fn perf_playback_started(&self, frame: i64) {
-        self.perf
-            .meter
-            .borrow_mut()
-            .playback_started(self.perf.epoch.elapsed(), frame);
+        self.perf.meter.borrow_mut().playback_started(
+            self.perf.elapsed(),
+            frame,
+            self.viewport.presented_frame(),
+        );
     }
 
     pub(super) fn perf_playback_clock(&self, frame: i64) {
@@ -196,14 +280,17 @@ impl Workstation {
     }
 
     pub(super) fn perf_playback_seeked(&self, frame: i64) {
-        self.perf.meter.borrow_mut().playback_seeked(frame);
+        self.perf
+            .meter
+            .borrow_mut()
+            .playback_seeked(frame, self.viewport.presented_frame());
     }
 
     pub(super) fn perf_playback_stopped(&self) {
         self.perf
             .meter
             .borrow_mut()
-            .playback_stopped(self.perf.epoch.elapsed());
+            .playback_stopped(self.perf.elapsed());
     }
 
     // ---- readout
@@ -234,7 +321,7 @@ impl Workstation {
             }
         };
         node["state"]["readout"] = if self.perf.visible {
-            self.perf_readout(self.perf.epoch.elapsed()).to_json()
+            self.perf_readout(self.perf.elapsed()).to_json()
         } else {
             // Hidden: nothing is collected, so there is nothing to read.
             Value::Null
@@ -243,11 +330,15 @@ impl Workstation {
 
     /// Wakes once when the window and the monitor came to rest, so "parado" replaces the numbers.
     fn perf_wake(&mut self, cx: &mut Context<Self>) {
+        #[cfg(test)]
+        {
+            self.perf.wakes += 1;
+        }
         self.perf.wake_armed = false;
         if !self.perf.visible {
             return;
         }
-        let now = self.perf.epoch.elapsed();
+        let now = self.perf.elapsed();
         let next = self.perf.meter.borrow().next_wakeup(now);
         match next {
             // Something painted meanwhile: wait for the new deadline, no redraw yet.
@@ -265,11 +356,11 @@ impl Workstation {
             return;
         }
         self.perf.wake_armed = true;
-        cx.spawn(async move |this, cx| {
+        // Kept, not detached: hiding the meter drops the task and so cancels the timer.
+        self.perf.wake_task = Some(cx.spawn(async move |this, cx| {
             cx.background_executor().timer(wait).await;
             let _ = this.update(cx, |this, cx| this.perf_wake(cx));
-        })
-        .detach();
+        }));
     }
 
     // ---- drawing
@@ -279,7 +370,7 @@ impl Workstation {
         if !self.perf.visible {
             return PerfParts::default();
         }
-        let now = self.perf.epoch.elapsed();
+        let now = self.perf.elapsed();
         let stale = self
             .perf
             .shown
@@ -288,6 +379,10 @@ impl Workstation {
         if stale {
             let readout = self.perf_readout(now);
             self.perf.shown = Some((now, readout));
+            #[cfg(test)]
+            {
+                self.perf.refreshes += 1;
+            }
         }
         let wake = self.perf.meter.borrow().next_wakeup(now);
         if let Some(wait) = wake {
@@ -340,7 +435,7 @@ impl Workstation {
         // of this frame ran) that the layout moved under the card: that asks for one more frame
         // so the card lands where the native view is not.
         let meter = self.perf.meter.clone();
-        let epoch = self.perf.epoch;
+        let clock = self.perf.clock();
         let own = self.perf.own_redraw.clone();
         let geometry = self.geometry.clone();
         let used = (area, viewport);
@@ -358,7 +453,7 @@ impl Workstation {
             move |_, _, _, _| {
                 // The meter's own "parado" redraw is not a frame anyone asked for.
                 if !own.replace(false) {
-                    meter.borrow_mut().ui_painted(epoch.elapsed());
+                    meter.borrow_mut().ui_painted(clock.elapsed());
                 }
             },
         )
@@ -380,8 +475,13 @@ impl Workstation {
         text: String,
         cx: &App,
     ) -> impl IntoElement + use<> {
+        // The one item of the status bar that gives way: it may shrink below its text
+        // (`min_w(0)`) and `truncate` then cuts it, so the job, the activity and the save state
+        // next to it stay whole and on one line even with the monitor maximized at 960 px.
         div()
-            .flex_shrink_0()
+            .debug_selector(|| "perf-strip".to_string())
+            .flex_shrink(1.)
+            .min_w(px(0.))
             .truncate()
             .font_family(cx.theme().mono_font_family.clone())
             .text_color(t.text)

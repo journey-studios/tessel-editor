@@ -37,6 +37,8 @@ use tessel_editor_render::SetupError;
 use tessel_editor_render::host::{AssetAccess, Served, serve, write_png};
 use wry::http::{Request, Response};
 
+use super::perf_meter::PerfClock;
+
 /// Scheme and host the page is served from. A custom scheme keeps the page same-origin with
 /// its assets and unreachable from any web page.
 pub const PAGE_URL: &str = "tessel://localhost/index.html";
@@ -184,7 +186,7 @@ impl Transport for WebTransport {
 /// Where presented pictures are reported for the debug meter (F049), and the clock it uses.
 struct MeterLink {
     meter: Rc<RefCell<Meter>>,
-    epoch: Instant,
+    clock: PerfClock,
 }
 
 struct Waiter {
@@ -222,6 +224,8 @@ pub struct ViewportHost {
     ui_skipped: u64,
     /// The debug meter, when the workstation attached one. It records only while it is enabled.
     meter: Option<MeterLink>,
+    /// Sequence frame of the newest accepted picture (see [`ViewportHost::note_presented`]).
+    presented: Option<i64>,
 }
 
 impl ViewportHost {
@@ -277,24 +281,34 @@ impl ViewportHost {
             ui_repaints: 0,
             ui_skipped: 0,
             meter: None,
+            presented: None,
         };
         host.set_inspect_previews(std::env::var(INSPECT_ENV).is_ok_and(|value| value == "1"));
         host
     }
 
-    /// Lets the debug meter hear every picture the monitor accepts. `epoch` is the meter's clock.
-    pub fn attach_meter(&mut self, meter: Rc<RefCell<Meter>>, epoch: Instant) {
-        self.meter = Some(MeterLink { meter, epoch });
+    /// Lets the debug meter hear every picture the monitor accepts, on the meter's clock.
+    pub(super) fn attach_meter(&mut self, meter: Rc<RefCell<Meter>>, clock: PerfClock) {
+        self.meter = Some(MeterLink { meter, clock });
     }
 
     /// One accepted picture (`frame.done` of the request in flight), with its sequence frame.
-    /// A hidden meter returns at once inside `monitor_presented`: nothing is kept.
-    fn note_presented(&self, frame: Option<i64>) {
+    /// A hidden meter returns at once inside `monitor_presented`: nothing is kept. The frame is
+    /// remembered whatever the meter does (one `Option<i64>`, no sample): the meter needs to
+    /// know what the monitor shows at the instant it is switched on or playback starts.
+    pub(super) fn note_presented(&mut self, frame: Option<i64>) {
+        self.presented = frame;
         if let Some(link) = &self.meter {
             link.meter
                 .borrow_mut()
-                .monitor_presented(link.epoch.elapsed(), frame);
+                .monitor_presented(link.clock.elapsed(), frame);
         }
+    }
+
+    /// The sequence frame of the newest picture the monitor accepted (`None`: a source preview
+    /// or nothing yet).
+    pub fn presented_frame(&self) -> Option<i64> {
+        self.presented
     }
 
     /// The last picture the runtime finished, for the meter's context rows.

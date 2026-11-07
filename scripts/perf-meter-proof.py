@@ -5,26 +5,43 @@
         [--binary target/release/tessel-editor] [--seconds 8] [--rounds 3] [--splat-wait 120] [--paint-probe] [--keep]
 
 Starts the DIRECT binary with an isolated HOME (own socket; the user's own editor is never
-addressed). With --project, a /tmp COPY of that document is opened first (the original is not
-touched; the assets it references are only read) and the script reports whether the runtime
-could draw it within --splat-wait seconds. The layouts and the cost are then measured on a
-synthetic H.264 project made with FFmpeg, so the monitor really presents pictures. Everything
-goes through semantic requests (`get`, `set`, `invoke`, `op`); no pointer, no coordinates. It
-checks:
+addressed). With --project, a PRIVATE COPY of that project is opened first and the script reports
+whether the runtime could draw it within --splat-wait seconds. The copy keeps the project's
+folder layout (the document is copied; every other entry of its folder is a symlink to the
+original, except `.tessel`, the editor's own state), so document-relative media paths resolve
+exactly as in the original and the original is only read: its document hash and listing are
+compared before and after. The layouts and the cost are then measured on a synthetic H.264
+project made with FFmpeg, so the monitor really presents pictures; that project is saved with
+its clip INSIDE its folder (relative path) and measured from a private copy of itself, which
+proves the copy logic natively (a JSON-only copy is the negative control and must fail).
+Everything goes through semantic requests (`get`, `set`, `invoke`, `op`); no pointer, no
+coordinates. It checks:
 
-  * hidden: the node has no readout and `monitor.viewport` shows no extra UI repaints at rest;
+  * hidden: the node has no readout and `monitor.viewport` reports no UI-signature repaint
+    requests at rest (`ui.repaints` counts IPC messages that change the UI, NOT window paints;
+    window paints are only counted with --paint-probe, see below);
   * the shortcut's handler (`invoke toolbar.perf_meter toggle`) and `set ... visible` share state;
   * placement in three layouts: default (card over the inspector), inspector closed (card moved
     out of the native view) and the monitor maximized (status-bar strip);
   * the cost: playback of the same span with the meter hidden and shown, alternating, comparing
     what the app already counts without the meter (`playback.stop` report: skipped frames and the
     largest gap; `monitor.viewport`: pictures accepted and `ui.repaints`), plus what the meter itself
-    reads while shown.
+    reads while shown. The fixture is sized for --seconds plus a margin; a run whose playback ended
+    before its window is a failed check and is left out of the means;
+  * pause and resume: enabling the meter while paused reads a rest and no running clock, a
+    `playback.resume` of a playback that never paused keeps the loss counts, and resuming after
+    a real pause does not record the pause as an interval.
 
-With --shots DIR it captures the window with `screencapture -l <window id of THIS process>`.
-Prints one JSON report on the last line. Exit status 1 on a failed check.
+--paint-probe needs a local build that logs `PAINT <ms>` per window paint (not part of the
+product); without it the window-paint rate is reported as "not measured", never as zero. With
+--shots DIR it captures the window with `screencapture -l <window id of THIS process>`; a
+capture that fails (no window, `screencapture` exit status, missing or empty file) is a failed
+check and its path is not reported. Prints one JSON report on the last line. Exit status 1 on a
+failed check.
 """
+import hashlib
 import json
+import math
 import os
 import shutil
 import socket
@@ -35,6 +52,13 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NODE = "toolbar.perf_meter"
+FPS = 24
+# Seconds of playback the fixture has beyond --seconds: the wait for the clock to start, the
+# settle before it and the pause/resume leg all play from frame 0 of the same fixture.
+FIXTURE_MARGIN_SECONDS = 12
+MAX_SECONDS = 600
+# What the editor owns inside a project folder: never linked into a private copy.
+EDITOR_OWNED = {".tessel"}
 failures = []
 report = {"checks": [], "layouts": {}, "cost": []}
 
@@ -116,6 +140,10 @@ class Editor:
         return subprocess.run(["swift", "-e", script], capture_output=True, text=True).stdout.strip()
 
     def shot(self, directory, name):
+        """Captures this process's window; the path only when a non-empty file was written.
+
+        A capture that was asked for (--shots) and failed is a failed check, so the report never
+        advertises a screenshot that does not exist."""
         if not directory:
             return None
         os.makedirs(directory, exist_ok=True)
@@ -123,10 +151,16 @@ class Editor:
         time.sleep(0.8)
         window = self.window_id()
         if not window:
+            check(f"screenshot {name}: the window of this process was found", False, "no on-screen window id")
             return None
         path = os.path.join(directory, f"{name}.png")
-        subprocess.run(["screencapture", "-x", "-o", "-l", window, path], check=False)
-        return path
+        if os.path.exists(path):
+            os.remove(path)
+        done = subprocess.run(["screencapture", "-x", "-o", "-l", window, path], check=False, capture_output=True, text=True)
+        written = os.path.isfile(path) and os.path.getsize(path) > 0
+        check(f"screenshot {name}: captured", done.returncode == 0 and written,
+              f"screencapture exit {done.returncode}, file {'present' if written else 'missing or empty'}: {(done.stderr or '').strip()[:120]}")
+        return path if done.returncode == 0 and written else None
 
     def stop(self):
         self.process.terminate()
@@ -136,28 +170,69 @@ class Editor:
             self.process.kill()
 
 
-def synthetic_project(editor, work, frames=240):
-    """A fresh 1280x720 24 fps project with one H.264 clip, so every playback tick draws a picture."""
-    clip = os.path.join(work, "clip.mp4")
+def fixture_frames(seconds):
+    """Frames the fixture needs so playback outlasts `seconds` plus the margin; refuses the absurd."""
+    if not (seconds > 0 and math.isfinite(seconds)) or seconds > MAX_SECONDS:
+        raise ValueError(f"--seconds must be in (0, {MAX_SECONDS}], got {seconds}")
+    return int(math.ceil((seconds + FIXTURE_MARGIN_SECONDS) * FPS))
+
+
+def fingerprint(document):
+    """What must not change in a project that was only read: its document and its folder listing."""
+    folder = os.path.dirname(os.path.abspath(document))
+    with open(document, "rb") as handle:
+        digest = hashlib.sha256(handle.read()).hexdigest()
+    return {"document_sha256": digest, "entries": sorted(os.listdir(folder))}
+
+
+def private_copy(document, destination):
+    """A private copy of a saved project that resolves its relative media like the original.
+
+    Document-relative paths are resolved against the document's folder, so copying only the JSON
+    breaks them. The document is copied; every other entry of its folder is a symlink to the
+    original (read only for the proof), except what the editor owns (`.tessel`: recovery and
+    state), which lives in the copy. Returns the path of the copied document."""
+    source = os.path.abspath(document)
+    folder = os.path.dirname(source)
+    os.makedirs(destination)
+    copied = os.path.join(destination, os.path.basename(source))
+    shutil.copyfile(source, copied)
+    for entry in sorted(os.listdir(folder)):
+        if entry == os.path.basename(source) or entry in EDITOR_OWNED:
+            continue
+        os.symlink(os.path.join(folder, entry), os.path.join(destination, entry))
+    return copied
+
+
+def synthetic_project(editor, work, frames):
+    """A fresh 1280x720 24 fps project with one H.264 clip, so every playback tick draws a picture.
+
+    The clip lives inside the project folder (`work/rel/media`), so the saved document stores its
+    path relative to the document. Returns (ok, why, document)."""
+    folder = os.path.join(work, "rel")
+    os.makedirs(os.path.join(folder, "media"))
+    clip = os.path.join(folder, "media", "clip.mp4")
+    document = os.path.join(folder, "perf.tessel.json")
     made = subprocess.run(
-        ["ffmpeg", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=24:duration=100",
-         "-frames:v", str(frames), "-c:v", "libx264", "-crf", "20", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-g", "24",
+        ["ffmpeg", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i", f"testsrc2=size=1280x720:rate={FPS}:duration={frames / FPS + 2:.3f}",
+         "-frames:v", str(frames), "-c:v", "libx264", "-crf", "20", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-g", str(FPS),
          "-movflags", "+faststart", clip],
         capture_output=True, text=True,
     )
     if made.returncode != 0:
-        return False, made.stderr[-300:]
+        return False, made.stderr[-300:], None
     steps = [
-        {"op": "project.create", "name": "Perf meter proof", "sequence": "main", "rate": 24, "width": 1280, "height": 720, "length": frames},
-        {"op": "asset.add", "kind": "video", "id": "clip", "name": "Clip", "path": clip, "rate": 24, "width": 1280, "height": 720, "duration": {"num": frames, "den": 24}},
+        {"op": "project.create", "name": "Perf meter proof", "sequence": "main", "rate": FPS, "width": 1280, "height": 720, "length": frames, "dir": folder},
+        {"op": "asset.add", "kind": "video", "id": "clip", "name": "Clip", "path": clip, "rate": FPS, "width": 1280, "height": 720, "duration": {"num": frames, "den": FPS}},
         {"op": "track.add", "id": "t", "name": "T", "kind": "video"},
         {"op": "clip.add", "id": "c", "track": "t", "asset": "clip", "start": 0, "duration": frames},
+        {"op": "project.save", "path": document},
     ]
     for step in steps:
         response = editor.op(step)
         if not response.get("ok"):
-            return False, str(response)[:300]
-    return True, None
+            return False, str(response)[:300], None
+    return True, None, document
 
 
 def settle(editor, seconds=1.2):
@@ -182,8 +257,26 @@ def painted_between(editor, start_ms, end_ms):
     return count
 
 
+def stop_report(stopped):
+    """(flat report, ended_early) of a `playback.stop` answer.
+
+    Stopping a playback that is running answers the flat report of that run. Stopping one that
+    already ended on its own answers `{"state": "stopped", "last": <that report>}`: the metrics
+    are nested and the run did NOT cover the whole window, so it must not be read as a full one."""
+    report_ = (stopped.get("data") or {}).get("report") or {}
+    if "ticks" in report_:
+        return report_, False
+    if "last" in report_:
+        return report_.get("last") or {}, True
+    return report_, True
+
+
 def playback_run(editor, seconds, meter_on):
-    """Plays `seconds` from frame 0 and returns what the app counts around it."""
+    """Plays `seconds` from frame 0 and returns what the app counts around it.
+
+    The run is `ok` only when the playback was still running when the window closed; one that
+    ended early (fixture shorter than the window) is reported with the reason and no metrics are
+    taken from it."""
     editor.op({"op": "playback.stop"})
     editor.op({"op": "seek", "frame": 0})
     time.sleep(1.0)
@@ -202,20 +295,24 @@ def playback_run(editor, seconds, meter_on):
     time.sleep(seconds)
     window_end = time.time() * 1000
     live = editor.meter() if meter_on else None
+    still_playing = (editor.op({"op": "playback.status"}).get("data") or {}).get("state") == "playing"
     stopped = editor.op({"op": "playback.stop"})
     after = editor.viewport()
-    played = (stopped.get("data") or {}).get("report") or {}
+    played, ended_early = stop_report(stopped)
     stats = lambda state: state["session"]["stats"]
     ui = lambda state: (state.get("ui") or {}).get("repaints", 0)
     result = {
         "meter": "on" if meter_on else "off",
         "seconds": seconds,
+        "ok": still_playing and not ended_early,
         "ticks": played.get("ticks"),
         "skipped_frames": played.get("skipped_frames"),
         "max_gap_frames": played.get("max_gap_frames"),
         "pictures_accepted": stats(after)["accepted"] - stats(mark)["accepted"],
         "ui_repaints": ui(after) - ui(mark),
     }
+    if not result["ok"]:
+        result["error"] = "playback ended before the measurement window (fixture too short): not a measurement"
     paints = painted_between(editor, window_start, window_end)
     if paints is not None:
         # Independent of the meter: a build instrumented to log every window paint (see --paint-probe).
@@ -232,6 +329,12 @@ def playback_run(editor, seconds, meter_on):
     return result
 
 
+def mean(runs, arm, key):
+    """Mean of `key` over the runs of one arm that really covered their window (failed ones are out)."""
+    values = [run[key] for run in runs if run.get("meter") == arm and run.get("ok") and isinstance(run.get(key), (int, float))]
+    return round(sum(values) / len(values), 2) if values else None
+
+
 def main():
     project = arg("--project")
     binary = os.path.abspath(arg("--binary", os.path.join(ROOT, "target/release/tessel-editor")))
@@ -240,7 +343,12 @@ def main():
     rounds = int(arg("--rounds", "3"))
     splat_wait = float(arg("--splat-wait", "120"))
     if (project and not os.path.exists(project)) or not os.path.exists(binary):
-        print("usage: perf-meter-proof.py [--project <file.tessel.json>] [--binary <editor>] [--shots DIR]")
+        print("usage: perf-meter-proof.py [--project <file.tessel.json>] [--binary <editor>] [--shots DIR] [--seconds N] [--rounds N]")
+        return 2
+    try:
+        frames = fixture_frames(seconds)
+    except ValueError as error:
+        print(error)
         return 2
     work = tempfile.mkdtemp(prefix="pmp-", dir="/tmp")
     home = os.path.join(work, "home")
@@ -260,8 +368,10 @@ def main():
         report["shortcut"] = [hidden.get("shortcut"), hidden.get("shortcut_label")]
 
         if project:
-            document = os.path.join(work, "project.tessel.json")
-            shutil.copyfile(project, document)
+            # A private copy that keeps the layout, so document-relative media still resolve; the
+            # original is only read, and its document and listing are compared afterwards.
+            before = fingerprint(project)
+            document = private_copy(project, os.path.join(work, "real"))
             opened = editor.op({"op": "project.open", "path": document})
             check("the project copy opens", opened.get("ok"), str(opened)[:300])
             deadline = time.time() + splat_wait
@@ -279,18 +389,43 @@ def main():
             report["real_project_shot"] = editor.shot(shots, "perf-meter-real-project")
             report["real_project_readout"] = editor.meter()["readout"]
             editor.set(NODE, "visible", False)
+            check("the original project was only read (document hash and folder listing unchanged)", fingerprint(project) == before, before)
 
-        ok, why = synthetic_project(editor, work)
+        ok, why, saved = synthetic_project(editor, work, frames)
         check("a project whose pictures the runtime draws", ok, why)
+        if not ok:
+            raise RuntimeError(f"no fixture: {why}")
+        report["fixture_frames"] = frames
+        stored = json.dumps(json.load(open(saved)))
+        check("the fixture stores its clip relative to the document", '"media/clip.mp4"' in stored and os.path.join(work, "rel") not in stored, stored[:200])
+        # Negative control: only the JSON copied elsewhere cannot find its media...
+        naive = os.path.join(work, "naive")
+        os.makedirs(naive)
+        naive_document = shutil.copyfile(saved, os.path.join(naive, os.path.basename(saved)))
+        editor.op({"op": "project.open", "path": naive_document})
+        broken = editor.op({"op": "render.frame", "frame": 0})
+        check("a JSON-only copy cannot draw: the relative media path moved with the base (negative control)", not broken.get("ok"), str(broken)[:200])
+        # ...and the private copy draws, and is what the rest of the proof measures.
+        before = fingerprint(saved)
+        copy_document = private_copy(saved, os.path.join(work, "copy"))
+        opened = editor.op({"op": "project.open", "path": copy_document})
+        check("the private copy of the fixture opens", opened.get("ok"), str(opened)[:300])
         frame = editor.op({"op": "render.frame", "frame": 0})
-        check("a real frame renders", frame.get("ok"), str(frame)[:300])
+        check("a real frame renders from the private copy (relative media preserved)", frame.get("ok"), str(frame)[:300])
+        check("the fixture's original folder was only read", fingerprint(saved) == before, before)
         settle(editor, 2.0)
 
+        # `ui.repaints` counts IPC messages that change the UI signature. It is NOT a window paint
+        # counter (the app paints a few frames per second at rest by itself), so it can only say
+        # that nothing asked the window to change; the paint rate needs --paint-probe.
         at_rest = editor.viewport()["ui"]["repaints"]
+        rest_start = time.time() * 1000
         time.sleep(4.0)
+        rest_end = time.time() * 1000
         hidden_rest = editor.viewport()["ui"]["repaints"] - at_rest
-        check("hidden at rest: the window does not repaint by itself", hidden_rest <= 1, editor.viewport()["ui"])
-        report["rest_repaints_4s"] = {"hidden": hidden_rest}
+        check("hidden at rest: no UI-signature repaint requests in 4 s (ui.repaints counts IPC changes, not window paints)", hidden_rest <= 1, editor.viewport()["ui"])
+        report["rest_ui_signature_repaints_4s"] = {"hidden": hidden_rest}
+        report["rest_window_paints_4s"] = {"hidden": painted_between(editor, rest_start, rest_end) if "--paint-probe" in sys.argv else "not measured (no --paint-probe build)"}
 
         # --- the gesture is one handler for the shortcut, the button and the CLI
         shown = editor.invoke(NODE, "toggle")
@@ -299,10 +434,13 @@ def main():
         check("set visible=true shows it", editor.set(NODE, "visible", True).get("ok") and editor.meter()["visible"] is True)
         settle(editor, 2.5)
         at_rest = editor.viewport()["ui"]["repaints"]
+        rest_start = time.time() * 1000
         time.sleep(4.0)
+        rest_end = time.time() * 1000
         shown_rest = editor.viewport()["ui"]["repaints"] - at_rest
-        report["rest_repaints_4s"]["shown"] = shown_rest
-        check("shown at rest: the meter keeps no clock of its own (no repaints in 4 s)", shown_rest <= 1, shown_rest)
+        report["rest_ui_signature_repaints_4s"]["shown"] = shown_rest
+        report["rest_window_paints_4s"]["shown"] = painted_between(editor, rest_start, rest_end) if "--paint-probe" in sys.argv else "not measured (no --paint-probe build)"
+        check("shown at rest: no UI-signature repaint requests in 4 s (ui.repaints counts IPC changes, not window paints)", shown_rest <= 1, shown_rest)
 
         # --- the readout of a still window and of the monitor. Every request above made the window
         # paint (a real frame), so the readout is only "idle" after a quiet second without any.
@@ -347,6 +485,7 @@ def main():
                 run["round"] = index
                 report["cost"].append(run)
                 print(json.dumps(run), flush=True)
+                check(f"cost round {index} meter {'on' if on else 'off'}: playback covered the whole {seconds:g} s window", run.get("ok"), run.get("error"))
         # --- pause is a rest and resume does not record the pause as a gap
         editor.set(NODE, "visible", True)
         settle(editor, 1.0)
@@ -354,27 +493,34 @@ def main():
         time.sleep(1.0)
         editor.op({"op": "playback.start", "from": 0})
         time.sleep(2.5)
+        # A resume of a playback that never paused is not a new run: the loss counts survive it.
+        loss_before = editor.meter()["readout"]["playback_loss"]
+        editor.op({"op": "playback.resume"})
+        loss_after = editor.meter()["readout"]["playback_loss"]
+        check("resume on a running playback keeps the loss counts", loss_before.get("state") == "live" and loss_after.get("state") == "live" and loss_after["span_frames"] >= loss_before["span_frames"], [loss_before, loss_after])
         editor.op({"op": "playback.pause"})
         time.sleep(1.8)
         paused = editor.meter()["readout"]
         check("paused: the monitor reads idle (parado), not a stall", paused["monitor"]["state"] == "idle" and paused["playback_loss"]["state"] == "not_playing", [paused["monitor"], paused["playback_loss"]])
+        # Switching the meter on while paused is a rest too: no running clock, not a 0 fps stall.
+        editor.set(NODE, "visible", False)
+        editor.set(NODE, "visible", True)
+        time.sleep(2.2)
+        reenabled = editor.meter()["readout"]
+        check("meter enabled while paused: idle, not playing, no loss (not a 0 fps stall)", reenabled["monitor"]["state"] == "idle" and reenabled["playing"] is False and reenabled["playback_loss"]["state"] == "not_playing", [reenabled["monitor"], reenabled["playing"], reenabled["playback_loss"]])
         editor.op({"op": "playback.resume"})
         time.sleep(2.0)
         resumed = editor.meter()["readout"]
         worst = resumed["monitor"].get("worst_interval_ms", 0)
         check("resumed: the pause is not the worst interval", resumed["monitor"]["state"] == "live" and worst < 1500, resumed["monitor"])
-        report["pause_resume"] = {"paused": paused["monitor"], "resumed": resumed["monitor"]}
+        report["pause_resume"] = {"paused": paused["monitor"], "enabled_while_paused": reenabled["monitor"], "resumed": resumed["monitor"]}
         editor.op({"op": "playback.stop"})
         editor.set(NODE, "visible", False)
 
         editor.set(NODE, "visible", False)
 
-        def mean(arm, key):
-            values = [run[key] for run in report["cost"] if run.get("meter") == arm and isinstance(run.get(key), (int, float))]
-            return round(sum(values) / len(values), 2) if values else None
-
         report["cost_mean"] = {
-            arm: {key: mean(arm, key) for key in ("ticks", "skipped_frames", "max_gap_frames", "pictures_accepted", "ui_repaints", "window_paints_per_s")}
+            arm: {key: mean(report["cost"], arm, key) for key in ("ticks", "skipped_frames", "max_gap_frames", "pictures_accepted", "ui_repaints", "window_paints_per_s")}
             for arm in ("off", "on")
         }
         print(json.dumps(report["cost_mean"]), flush=True)

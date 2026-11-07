@@ -1369,9 +1369,9 @@ fn metered(
         tessel_editor_core::perf::Meter::default(),
     ));
     if on {
-        meter.borrow_mut().enable(Duration::ZERO, None);
+        meter.borrow_mut().enable(Duration::ZERO, None, None);
     }
-    host.attach_meter(meter.clone(), Instant::now());
+    host.attach_meter(meter.clone(), super::perf_meter::PerfClock::wall());
     from_page(&mut host, state, json!({"type":"page.ready"}));
     let _ = sent(&mut host);
     from_page(&mut host, state, ready_message());

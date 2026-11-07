@@ -127,9 +127,12 @@ impl FrameClock {
     /// One frame presented at `at`.
     pub fn record(&mut self, at: Duration) {
         // While motion is expected the gap runs from the later of the last frame and the moment
-        // motion began: the rest before playback is not an interval between two pictures.
+        // motion began: the rest before playback is not an interval between two pictures. With
+        // no previous frame at all (the meter was switched on during playback) the motion
+        // anchor is the origin, so a stall before the first picture stays in the window.
         let since = match (self.last, self.anchor) {
             (Some(last), Some(anchor)) if self.motion => Some(last.max(anchor)),
+            (None, Some(anchor)) if self.motion => Some(anchor),
             (last, _) => last,
         };
         let gap = since
@@ -267,7 +270,8 @@ impl LossReading {
 struct LossRun {
     first: i64,
     clock: i64,
-    last_shown: i64,
+    /// Newest sequence frame a picture showed in this run; `None` until one did.
+    last_shown: Option<i64>,
     presented: u64,
 }
 
@@ -279,13 +283,17 @@ pub struct PlaybackLoss {
 }
 
 impl PlaybackLoss {
-    /// Playback starts (or seeks) at `frame`, which the monitor is already showing.
-    pub fn start(&mut self, frame: i64) {
+    /// Playback starts (or seeks) at `frame`. `on_screen` is the sequence frame the monitor
+    /// showed at that moment (`None`: unknown, a source preview or nothing yet). The starting
+    /// frame counts as presented only when the monitor was really showing it; otherwise its own
+    /// picture has to arrive (before any newer one) to count.
+    pub fn start(&mut self, frame: i64, on_screen: Option<i64>) {
+        let shown = on_screen == Some(frame);
         self.run = Some(LossRun {
             first: frame,
             clock: frame,
-            last_shown: frame,
-            presented: 1,
+            last_shown: shown.then_some(frame),
+            presented: u64::from(shown),
         });
     }
 
@@ -307,8 +315,11 @@ impl PlaybackLoss {
         };
         // A picture of a frame the clock has not reached yet is not part of this run: it was
         // requested before playback started (the playhead was elsewhere) and finished late.
-        if frame > run.last_shown && frame >= run.first && frame <= run.clock {
-            run.last_shown = frame;
+        if run.last_shown.is_none_or(|last| frame > last)
+            && frame >= run.first
+            && frame <= run.clock
+        {
+            run.last_shown = Some(frame);
             run.presented += 1;
         }
     }
@@ -317,14 +328,25 @@ impl PlaybackLoss {
         let Some(run) = self.run else {
             return LossReading::NotPlaying;
         };
-        let span = (run.last_shown - run.first + 1).max(1) as u64;
+        // Nothing shown yet: no span to lose frames in, and every frame due is still in flight.
+        let (span, lag) = match run.last_shown {
+            Some(last) => (
+                (last - run.first + 1).max(1) as u64,
+                (run.clock - last).max(0) as u64,
+            ),
+            None => (0, (run.clock - run.first + 1).max(0) as u64),
+        };
         let lost = span.saturating_sub(run.presented);
         LossReading::Live {
             span_frames: span,
             presented_frames: run.presented,
             lost,
-            lost_pct: lost as f64 / span as f64 * 100.0,
-            lag_frames: (run.clock - run.last_shown).max(0) as u64,
+            lost_pct: if span == 0 {
+                0.0
+            } else {
+                lost as f64 / span as f64 * 100.0
+            },
+            lag_frames: lag,
         }
     }
 }
@@ -414,13 +436,15 @@ impl Meter {
         self.enabled
     }
 
-    /// Starts collecting. `playing_from` is the playback clock's frame when one is running.
-    pub fn enable(&mut self, now: Duration, playing_from: Option<i64>) {
+    /// Starts collecting. `playing_from` is the playback clock's frame when a clock is
+    /// *running* (a paused playback has none: silence is a rest, not a stall) and `on_screen`
+    /// the sequence frame the monitor shows right now.
+    pub fn enable(&mut self, now: Duration, playing_from: Option<i64>, on_screen: Option<i64>) {
         self.clear();
         self.enabled = true;
         self.playing = playing_from.is_some();
         if let Some(frame) = playing_from {
-            self.start_run(now, frame);
+            self.start_run(now, frame, on_screen);
         }
     }
 
@@ -436,9 +460,9 @@ impl Meter {
         self.loss.stop();
     }
 
-    fn start_run(&mut self, now: Duration, frame: i64) {
+    fn start_run(&mut self, now: Duration, frame: i64, on_screen: Option<i64>) {
         self.monitor.set_motion(true, now);
-        self.loss.start(frame);
+        self.loss.start(frame, on_screen);
     }
 
     /// Frames held per source, `(window, monitor)`: nothing while disabled.
@@ -461,10 +485,13 @@ impl Meter {
         }
     }
 
-    pub fn playback_started(&mut self, now: Duration, frame: i64) {
-        self.playing = true;
-        if self.enabled {
-            self.start_run(now, frame);
+    /// Playback starts or resumes at `frame`; `on_screen` is the frame the monitor shows. A
+    /// playback that is already running keeps its run: a second "started" (a `resume` of a
+    /// playback that never paused) must not wipe the counts it has gathered.
+    pub fn playback_started(&mut self, now: Duration, frame: i64, on_screen: Option<i64>) {
+        let was_running = std::mem::replace(&mut self.playing, true);
+        if self.enabled && !was_running {
+            self.start_run(now, frame, on_screen);
         }
     }
 
@@ -475,9 +502,9 @@ impl Meter {
     }
 
     /// A seek during playback restarts the comparison from the new frame.
-    pub fn playback_seeked(&mut self, frame: i64) {
+    pub fn playback_seeked(&mut self, frame: i64, on_screen: Option<i64>) {
         if self.enabled && self.playing {
-            self.loss.start(frame);
+            self.loss.start(frame, on_screen);
         }
     }
 
@@ -908,7 +935,7 @@ mod tests {
     #[test]
     fn a_pause_is_a_rest_and_resuming_does_not_record_it_as_a_gap() {
         let mut meter = Meter::default();
-        meter.enable(at(0), Some(0));
+        meter.enable(at(0), Some(0), None);
         meter.monitor_presented(at(10), Some(0));
         meter.playback_clock(1);
         meter.monitor_presented(at(50), Some(1));
@@ -918,7 +945,7 @@ mod tests {
         assert_eq!(paused.monitor, Reading::Idle);
         assert!(!paused.playing);
         // Resume: the run restarts, and the first picture is measured from the resume.
-        meter.playback_started(at(9_000), 1);
+        meter.playback_started(at(9_000), 1, Some(1));
         for (step, frame) in [(9_040, 2), (9_080, 3), (9_120, 4)] {
             meter.playback_clock(frame);
             meter.monitor_presented(at(step), Some(frame));
@@ -936,7 +963,7 @@ mod tests {
     fn dropped_frames_are_the_numbers_a_newer_picture_skipped() {
         let mut loss = PlaybackLoss::default();
         assert_eq!(loss.reading(), LossReading::NotPlaying);
-        loss.start(10);
+        loss.start(10, Some(10));
         for frame in [11, 12, 14, 15, 18] {
             loss.clock(frame);
             loss.shown(Some(frame));
@@ -958,7 +985,7 @@ mod tests {
     #[test]
     fn a_frame_still_in_flight_is_lag_not_loss() {
         let mut loss = PlaybackLoss::default();
-        loss.start(0);
+        loss.start(0, Some(0));
         loss.clock(1);
         loss.shown(Some(1));
         loss.clock(2); // asked for, not shown yet
@@ -972,10 +999,11 @@ mod tests {
 
     #[test]
     fn a_late_picture_of_the_old_playhead_does_not_swallow_the_run() {
-        // Playback starts at 0 while a picture requested for frame 192 (where the playhead was)
-        // finishes afterwards: it is ahead of the clock, so it is not a presented frame of this run.
+        // Playback starts at 0 while the monitor still shows frame 192 (where the playhead was)
+        // and a picture requested for it finishes afterwards: it is ahead of the clock, so it is
+        // not a presented frame of this run, and frame 0 (never shown) is not invented either.
         let mut loss = PlaybackLoss::default();
-        loss.start(0);
+        loss.start(0, Some(192));
         loss.shown(Some(192));
         for frame in 1..=5 {
             loss.clock(frame);
@@ -985,18 +1013,78 @@ mod tests {
             loss.reading(),
             LossReading::Live {
                 span_frames: 6,
-                presented_frames: 6,
-                lost: 0,
-                lost_pct: 0.0,
+                presented_frames: 5,
+                lost: 1,
+                lost_pct: 1.0 / 6.0 * 100.0,
                 lag_frames: 0,
-            }
+            },
+            "frame 0 was never on screen: it is the one lost frame, not a presented one"
         );
+    }
+
+    #[test]
+    fn the_starting_frame_counts_only_when_the_monitor_showed_it() {
+        let live = |loss: &PlaybackLoss| match loss.reading() {
+            LossReading::Live {
+                presented_frames,
+                lost,
+                ..
+            } => (presented_frames, lost),
+            other => panic!("{other:?}"),
+        };
+        // Shown at the start: presented from the first instant.
+        let mut shown = PlaybackLoss::default();
+        shown.start(7, Some(7));
+        assert_eq!(live(&shown), (1, 0));
+        // Not shown (the monitor is elsewhere, or knows nothing yet): nothing presented, nothing
+        // lost yet either (the picture is in flight).
+        for on_screen in [None, Some(3), Some(8)] {
+            let mut pending = PlaybackLoss::default();
+            pending.start(7, on_screen);
+            assert_eq!(live(&pending), (0, 0), "{on_screen:?}");
+        }
+        // Its own picture arriving first still counts: nothing is skipped.
+        let mut arrives = PlaybackLoss::default();
+        arrives.start(7, None);
+        arrives.shown(Some(7));
+        arrives.clock(8);
+        arrives.shown(Some(8));
+        assert_eq!(live(&arrives), (2, 0));
+        // A newer picture first leaves the start frame behind: it is lost, and a late arrival of
+        // it is not counted afterwards.
+        let mut skipped = PlaybackLoss::default();
+        skipped.start(7, None);
+        skipped.clock(8);
+        skipped.shown(Some(8));
+        skipped.shown(Some(7));
+        assert_eq!(live(&skipped), (1, 1));
+    }
+
+    #[test]
+    fn a_seek_does_not_invent_the_frame_it_landed_on() {
+        let mut meter = Meter::default();
+        meter.enable(at(0), Some(0), Some(0));
+        meter.playback_clock(1);
+        meter.monitor_presented(at(40), Some(1));
+        // Seeking while the monitor still shows frame 1: the target was not shown.
+        meter.playback_seeked(500, Some(1));
+        meter.playback_clock(501);
+        meter.monitor_presented(at(80), Some(501));
+        match meter.readout(at(90), true, None, None).loss {
+            LossReading::Live {
+                presented_frames,
+                lost,
+                span_frames,
+                ..
+            } => assert_eq!((presented_frames, lost, span_frames), (1, 1, 2)),
+            other => panic!("{other:?}"),
+        }
     }
 
     #[test]
     fn repeats_backwards_frames_and_source_previews_do_not_count() {
         let mut loss = PlaybackLoss::default();
-        loss.start(5);
+        loss.start(5, Some(5));
         loss.clock(6);
         loss.shown(Some(6));
         loss.shown(Some(6)); // the refine of the same frame
@@ -1030,7 +1118,7 @@ mod tests {
     #[test]
     fn enabling_starts_empty_and_disabling_forgets() {
         let mut meter = Meter::default();
-        meter.enable(at(0), None);
+        meter.enable(at(0), None, None);
         feed_meter_ui(&mut meter, 0, 1000, 16);
         assert!(matches!(
             meter.readout(at(1000), true, None, None).ui,
@@ -1039,7 +1127,7 @@ mod tests {
         meter.disable();
         assert!(!meter.enabled());
         assert_eq!(meter.readout(at(1000), true, None, None).ui, Reading::Idle);
-        meter.enable(at(2000), None);
+        meter.enable(at(2000), None, None);
         assert_eq!(
             meter.readout(at(2000), true, None, None).ui,
             Reading::Idle,
@@ -1058,11 +1146,11 @@ mod tests {
     #[test]
     fn the_meter_wakes_once_for_the_nearest_source_to_rest() {
         let mut meter = Meter::default();
-        meter.enable(at(0), None);
+        meter.enable(at(0), None, None);
         meter.ui_painted(at(100));
         meter.monitor_presented(at(300), None);
         assert_eq!(meter.next_wakeup(at(400)), Some(at(701)));
-        meter.playback_started(at(400), 0);
+        meter.playback_started(at(400), 0, None);
         // Playing: the monitor is expected to move; only the UI source can still rest.
         assert_eq!(meter.next_wakeup(at(400)), Some(at(701)));
         meter.playback_stopped(at(500));
@@ -1072,12 +1160,12 @@ mod tests {
     #[test]
     fn playback_loss_flows_through_the_meter_only_while_playing() {
         let mut meter = Meter::default();
-        meter.enable(at(0), None);
+        meter.enable(at(0), None, None);
         assert_eq!(
             meter.readout(at(0), true, None, None).loss,
             LossReading::NotPlaying
         );
-        meter.playback_started(at(0), 100);
+        meter.playback_started(at(0), 100, Some(100));
         for (t, frame) in [(40, 101), (80, 102), (160, 104)] {
             meter.playback_clock(frame);
             meter.monitor_presented(at(t), Some(frame));
@@ -1086,7 +1174,7 @@ mod tests {
             LossReading::Live { lost, .. } => assert_eq!(lost, 1),
             other => panic!("{other:?}"),
         }
-        meter.playback_seeked(500);
+        meter.playback_seeked(500, None);
         assert!(matches!(
             meter.readout(at(210), true, None, None).loss,
             LossReading::Live { lost: 0, .. }
@@ -1101,11 +1189,85 @@ mod tests {
     #[test]
     fn enabling_in_the_middle_of_playback_starts_from_the_clock() {
         let mut meter = Meter::default();
-        meter.playback_started(at(0), 0); // meter hidden
-        meter.enable(at(5000), Some(120));
+        meter.playback_started(at(0), 0, None); // meter hidden
+        meter.enable(at(5000), Some(120), Some(120));
         let readout = meter.readout(at(5100), true, None, None);
         assert!(readout.playing);
         assert!(matches!(readout.loss, LossReading::Live { lost: 0, .. }));
+    }
+
+    #[test]
+    fn a_stall_before_the_first_picture_stays_in_the_window_once_pictures_arrive() {
+        // The meter is switched on during playback; the first picture only arrives 3 s later.
+        let mut meter = Meter::default();
+        meter.enable(at(0), Some(10), None);
+        meter.monitor_presented(at(3_000), Some(10));
+        meter.playback_clock(11);
+        meter.monitor_presented(at(3_040), Some(11));
+        let (fps, worst) = live(meter.readout(at(3_050), true, None, None).monitor);
+        assert!(fps > 0.0);
+        assert!(
+            (worst - 3_000.0).abs() < 1.0,
+            "the 3 s of silence before the first frame is the worst interval, not 40 ms: {worst}"
+        );
+        // Still there four seconds later, and gone only once it is more than five seconds old.
+        for step in 0..100u64 {
+            meter.playback_clock(12 + step as i64);
+            meter.monitor_presented(at(3_080 + step * 40), Some(12 + step as i64));
+        }
+        let (_, worst) = live(meter.readout(at(6_900), true, None, None).monitor);
+        assert!((worst - 3_000.0).abs() < 1.0, "{worst}");
+        let (_, worst) = live(meter.readout(at(8_100), true, None, None).monitor);
+        assert!(worst < 3_000.0, "older than 5 s: {worst}");
+    }
+
+    #[test]
+    fn a_first_picture_after_a_rest_is_still_measured_from_the_motion_start_only() {
+        // The negative control of the stall above: with no motion expected, a first frame after
+        // a long rest carries no gap at all.
+        let mut clock = FrameClock::default();
+        clock.record(at(3_000));
+        clock.record(at(3_040));
+        let (_, worst) = live(clock.reading(at(3_050)));
+        assert_eq!(worst, 40.0);
+    }
+
+    #[test]
+    fn enabling_during_a_pause_is_a_rest_not_a_stall() {
+        // The adapter hands over no running clock while paused.
+        let mut meter = Meter::default();
+        meter.enable(at(0), None, Some(5));
+        let paused = meter.readout(at(5_000), true, None, None);
+        assert_eq!(paused.monitor, Reading::Idle);
+        assert_eq!(paused.loss, LossReading::NotPlaying);
+        assert!(!paused.playing);
+        assert_eq!(
+            meter.next_wakeup(at(0)),
+            None,
+            "nothing recorded, nothing to wait for"
+        );
+    }
+
+    #[test]
+    fn resuming_a_playback_that_never_paused_keeps_its_counts() {
+        let mut meter = Meter::default();
+        meter.enable(at(0), Some(0), Some(0));
+        for (t, frame) in [(40, 1), (80, 2), (160, 4)] {
+            meter.playback_clock(frame);
+            meter.monitor_presented(at(t), Some(frame));
+        }
+        let before = meter.readout(at(170), true, None, None).loss;
+        assert!(matches!(before, LossReading::Live { lost: 1, .. }));
+        // `playback.resume` on a running playback: no new run.
+        meter.playback_started(at(180), 4, Some(4));
+        assert_eq!(meter.readout(at(190), true, None, None).loss, before);
+        // After a real pause the resume does start a new run.
+        meter.playback_stopped(at(200));
+        meter.playback_started(at(300), 4, Some(4));
+        assert!(matches!(
+            meter.readout(at(310), true, None, None).loss,
+            LossReading::Live { lost: 0, .. }
+        ));
     }
 
     #[test]
