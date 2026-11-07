@@ -12,6 +12,9 @@ para tempo real: **MSAA 0 durante movimento** e **ordenação de splats sem espe
 **Estado posterior (revisão da PR #14).** Este relatório é de investigação e foi medido numa base anterior a `5ebb855`.
 Depois dele, a frente MSAA foi integrada (BL129, PR #17), a malha compartilhada de efeitos também (BL131, PR #15) e a ordenação
 sem espera (BL130, PR #19, merge `11832a9`). As tabelas **não** foram refeitas: cada frente re-mede antes de afirmar ganho.
+Escopo acrescido nesta PR (só documentação, depois do merge da PR #19, auditoria 5812503277): as alegações de BL130 em `spark.md`, `viewport.md`, no README
+de `bl130-spark-settle/` e na linha BL130 do backlog foram alinhadas ao que sobrou da prova do scrub (2 execuções em `release-frame-check.json`; os hashes dos
+quadros 20/150 estão retirados) e a fraqueza de proveniência dos JSON de `final-gate/` foi registrada. Nenhuma medição nova, nenhum código nem artefato histórico alterado.
 Na revisão, as linhas de **um vídeo (N = 1)** foram retiradas (vinham de uma execução inválida, ver as seções 5 e 8)
 e os drivers passaram a falhar de forma explícita (seção 11).
 
