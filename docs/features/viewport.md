@@ -206,8 +206,10 @@ limites e medição) está em [spark.md](spark.md#ordem-dos-splats-em-movimento-
 - **Mesma regra do BL129, sem controle novo:** a sessão trata `stale_sort_layers > 0` como quadro reduzido e agenda o refino
   exato (quadro sem `quality`) depois de `REFINE_DELAY`; o cabeçalho diz " · sort" enquanto a imagem é a de ordem velha.
   `render.frame`, export, PNG, probes, quadro explícito e o refino nunca usam a ordem velha (provado: hash do último quadro que o
-  runtime devolveu ao monitor depois de parar o playback e depois de soltar o scrub igual ao do `render.frame` do mesmo quadro; hash dos
-  quadros explícitos e MD5 do export iguais antes e depois). **O hash é o do quadro lido pelo runtime, não dos pixels da tela**: a
+  runtime devolveu ao monitor depois de parar o playback (4 playbacks) igual ao do `render.frame` do mesmo quadro; hash dos
+  quadros explícitos e MD5 do export iguais antes e depois. **Depois de soltar o scrub** a prova antiga (quadros 20/150) foi retirada: resta
+  `release-frame-check.json`, 2 execuções, 1 por cenário, quadros 120 e 250, igual ao `render.frame` do mesmo binário, sem comparação com a
+  base; o vínculo binário → commit desses artefatos é só prosa, ver [spark.md](spark.md#ordem-dos-splats-em-movimento-bl130)). **O hash é o do quadro lido pelo runtime, não dos pixels da tela**: a
   apresentação no monitor nativo não foi verificada (revisão visual nativa pendente, BL130.6). `preview_sort: exact` mantém só a
   ordenação exata: o quadro de preview ainda pode ter MSAA reduzido e proxy de vídeo; a política (`monitor.preview.quality = original`)
   é a que mantém o quadro com a qualidade original também em movimento.

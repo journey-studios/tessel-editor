@@ -1,0 +1,415 @@
+diff --git a/crates/desktop/src/main.rs b/crates/desktop/src/main.rs
+index 3c4b715..1a37de1 100644
+--- a/crates/desktop/src/main.rs
++++ b/crates/desktop/src/main.rs
+@@ -1,4 +1,5 @@
+ mod automation;
++mod perf_probe;
+ mod header;
+ mod shell;
+ use tessel_editor_core::state;
+diff --git a/crates/desktop/src/perf_probe.rs b/crates/desktop/src/perf_probe.rs
+new file mode 100644
+index 0000000..035acd1
+--- /dev/null
++++ b/crates/desktop/src/perf_probe.rs
+@@ -0,0 +1,50 @@
++//! LOCAL MEASUREMENT PROBE (investigation, not committed): appends JSON lines to the file named by
++//! `TESSEL_PERF_LOG`. Off (one `OnceLock` read) when the variable is unset.
++use std::io::Write;
++use std::sync::{Mutex, OnceLock};
++use std::time::Instant;
++
++struct Sink {
++    file: Mutex<std::io::BufWriter<std::fs::File>>,
++    epoch: Instant,
++}
++
++fn sink() -> Option<&'static Sink> {
++    static SINK: OnceLock<Option<Sink>> = OnceLock::new();
++    SINK.get_or_init(|| {
++        let path = std::env::var_os("TESSEL_PERF_LOG")?;
++        let file = std::fs::OpenOptions::new().create(true).append(true).open(path).ok()?;
++        Some(Sink { file: Mutex::new(std::io::BufWriter::new(file)), epoch: Instant::now() })
++    })
++    .as_ref()
++}
++
++pub fn enabled() -> bool {
++    sink().is_some()
++}
++
++pub fn now_ms() -> f64 {
++    sink().map_or(0.0, |s| s.epoch.elapsed().as_secs_f64() * 1000.0)
++}
++
++/// `kind` plus a pre-formatted JSON object body (without braces).
++pub fn log(kind: &str, body: &str) {
++    if let Some(s) = sink() {
++        let t = s.epoch.elapsed().as_secs_f64() * 1000.0;
++        if let Ok(mut f) = s.file.lock() {
++            let _ = writeln!(f, "{{\"k\":\"{kind}\",\"t\":{t:.3},{body}}}");
++            let _ = f.flush();
++        }
++    }
++}
++
++/// A raw JSON line sent by the page (`perf.log`), stamped with the host clock on arrival.
++pub fn page_line(raw: &str) {
++    if let Some(s) = sink() {
++        let t = s.epoch.elapsed().as_secs_f64() * 1000.0;
++        if let Ok(mut f) = s.file.lock() {
++            let _ = writeln!(f, "{{\"k\":\"page\",\"t\":{t:.3},\"msg\":{raw}}}");
++            let _ = f.flush();
++        }
++    }
++}
+diff --git a/crates/desktop/src/workstation/mod.rs b/crates/desktop/src/workstation/mod.rs
+index 1f9c304..f999ade 100644
+--- a/crates/desktop/src/workstation/mod.rs
++++ b/crates/desktop/src/workstation/mod.rs
+@@ -723,9 +723,11 @@ fn describe(outcome: &Value) -> String {
+ 
+ impl Render for Workstation {
+     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
++        let probe_started = std::time::Instant::now();
+         self.update_viewport_visibility(cx);
+         let t = Tokens::new(cx);
+         let status = self.render_status(&t);
++        crate::perf_probe::log("render", &format!("\"dur\":{:.3}", probe_started.elapsed().as_secs_f64() * 1000.0));
+         div()
+             .id("workstation")
+             .key_context("Workstation")
+diff --git a/crates/desktop/src/workstation/playback.rs b/crates/desktop/src/workstation/playback.rs
+index 04ff2dc..f0cc890 100644
+--- a/crates/desktop/src/workstation/playback.rs
++++ b/crates/desktop/src/workstation/playback.rs
+@@ -377,6 +377,13 @@ impl Workstation {
+     /// One clock tick: moves the playhead to the frame the clock says it is. Returns whether to
+     /// keep ticking.
+     pub(super) fn playback_tick(&mut self, cx: &mut Context<Self>) -> bool {
++        let probe_started = std::time::Instant::now();
++        let keep = self.playback_tick_inner(cx);
++        crate::perf_probe::log("tick", &format!("\"dur\":{:.3}", probe_started.elapsed().as_secs_f64() * 1000.0));
++        keep
++    }
++
++    fn playback_tick_inner(&mut self, cx: &mut Context<Self>) -> bool {
+         let length = self.state.timeline.length;
+         let Some(active) = &mut self.playback.active else {
+             return false;
+diff --git a/crates/desktop/src/workstation/viewport_host.rs b/crates/desktop/src/workstation/viewport_host.rs
+index b0fe840..701272c 100644
+--- a/crates/desktop/src/workstation/viewport_host.rs
++++ b/crates/desktop/src/workstation/viewport_host.rs
+@@ -340,10 +340,14 @@ impl ViewportHost {
+     fn preview_size(plan: &RenderPlan) -> (u32, u32) {
+         let (width, height) = (plan.width.max(1), plan.height.max(1));
+         let long = width.max(height);
+-        if long <= PREVIEW_LONG_SIDE {
++        let bound = std::env::var("TESSEL_PERF_PREVIEW_LONG")
++            .ok()
++            .and_then(|v| v.parse::<u32>().ok())
++            .unwrap_or(PREVIEW_LONG_SIDE);
++        if long <= bound {
+             return (width, height);
+         }
+-        let scale = f64::from(PREVIEW_LONG_SIDE) / f64::from(long);
++        let scale = f64::from(bound) / f64::from(long);
+         (
+             ((f64::from(width) * scale).round() as u32).max(1),
+             ((f64::from(height) * scale).round() as u32).max(1),
+@@ -536,6 +540,10 @@ impl ViewportHost {
+     }
+ 
+     fn handle_ipc(&mut self, raw: &str, state: &EditorState) {
++        if raw.starts_with("{\"perf\"") {
++            crate::perf_probe::page_line(raw);
++            return;
++        }
+         let Ok(mut message) = serde_json::from_str::<Value>(raw) else {
+             // A page that speaks something else is not our runtime.
+             self.set_unavailable(BackendError::new(
+diff --git a/runtime/src/compositor.js b/runtime/src/compositor.js
+index 57d07ed..29c3f2f 100644
+--- a/runtime/src/compositor.js
++++ b/runtime/src/compositor.js
+@@ -30,6 +30,7 @@ import { fnv1a64, meanColor } from './hash.js';
+ import { BLEND_MODES, RuntimeError } from './protocol.js';
+ import { LIMITS, LruCache, RetentionCounters, rgbaBytes, targetBytes } from './retention.js';
+ import { SceneRig } from './scene.js';
++import { perf } from './perf.js';
+ import { SplatStage } from './splat-stage.js';
+ 
+ THREE.ColorManagement.enabled = false;
+@@ -351,6 +352,7 @@ export class Compositor {
+         const prepareStarted = performance.now();
+         const prepared = await this.prepareLayer(layer, { ...frame, order });
+         timings.prepare_ms += performance.now() - prepareStarted;
++        perf.layer({ kind: layer.kind, asset: layer.asset, ms: performance.now() - prepareStarted });
+         scene.add(this.layerMesh(layer, prepared, { width, height, order, keep }));
+       }
+       if (aborted()) throw new RuntimeError('cancelled', 'The frame was superseded');
+@@ -366,6 +368,7 @@ export class Compositor {
+       this.renderer.clear(true, true, true);
+       this.renderer.render(scene, camera);
+       timings.draw_ms = performance.now() - drawStarted;
++      perf.set('composite_submit', timings.draw_ms);
+       if (!readback) {
+         const flushStarted = performance.now();
+         // WHY flush, not finish: finish() does not wait for the GPU in WebKit or Chromium (it is
+@@ -458,7 +461,9 @@ export class Compositor {
+         // The target is about to hold another picture (or half of one if this frame is cancelled):
+         // until the draw completes it matches no key.
+         if (cached) cached.result = null;
++        const rigStarted = performance.now();
+         const rig = await this.sceneRig(layer.asset, entry, assets, keep);
++        perf.add('rig_build', performance.now() - rigStarted);
+         await rig.draw(this.renderer, target, {
+           camera: layer.camera,
+           time: layer.scene_time.seconds,
+diff --git a/runtime/src/index.js b/runtime/src/index.js
+index 5339ea7..d60f3de 100644
+--- a/runtime/src/index.js
++++ b/runtime/src/index.js
+@@ -8,6 +8,7 @@ import { AssetStore } from './assets.js';
+ import { Compositor, describePixels } from './compositor.js';
+ import { DIRECTED_SCENE_CAPABILITIES } from './directed-scene.js';
+ import { RetentionCounters } from './retention.js';
++import { DRAIN, perf } from './perf.js';
+ import { SPLAT_FORMATS } from './splat-format.js';
+ import { SPARK_VERSION } from './splat-stage.js';
+ import {
+@@ -187,8 +188,11 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
+     };
+   };
+ 
++  const recvAt = new Map();
+   const renderFrame = async (request) => {
+     const started = performance.now();
++    perf.begin(request.id, recvAt.get(request.id));
++    recvAt.delete(request.id);
+     const { id, revision, plan, output, probes = [] } = request;
+     // Additive field of bridge v1: `preview` lets a frame sequence draw its attached proxy; absent
+     // (every host that predates it, and every explicit/export request) means the original.
+@@ -243,8 +247,20 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
+       // The host that owns the filesystem writes the file; the page only encodes it.
+       if (output.png) message.png_data = canvas.toDataURL('image/png').split(',')[1];
+       send(message);
++      const sentAt = performance.now();
++      let drainMs = null;
++      if (DRAIN) {
++        const gl = active.gl;
++        const px = new Uint8Array(4);
++        const d = performance.now();
++        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
++        drainMs = performance.now() - d;
++      }
++      const alive = [...assets.entries.values()].filter((e) => e.mesh);
++      perf.end({ revision, outcome: 'done', meshes: { alive: alive.length, splats: alive.reduce((n, e) => n + (e.mesh.packedSplats?.numSplats ?? 0), 0), assets: assets.entries.size, gl: active.renderer.info.memory, programs: active.renderer.info.programs?.length, spark_max: active.splats?.spark.maxSplats ?? 0, acc: active.splats ? [active.splats.spark.display, ...active.splats.spark.accumulators].map((a) => a.maxSplats ?? 0) : [] }, render_ms: message.timings.render_ms, total_ms_rt: performance.now() - started, drain_ms: drainMs, post_ms: performance.now() - sentAt - (drainMs ?? 0), cache: { result_hit: message.source.result_hits, size: [width, height] } });
+       if (options.presented) announcePresented(id, revision);
+     } catch (error) {
++      perf.end({ outcome: 'failed:' + (error?.code ?? error?.message) });
+       send({ type: 'frame.failed', id, revision, error: failureOf(error, lostDuringFrame()) });
+     } finally {
+       cancelled.delete(id);
+@@ -267,6 +283,7 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
+       }
+     },
+     'frame.render': (message) => {
++      recvAt.set(message.id, performance.now());
+       latestRender = message.id;
+       // One GL context: frames run strictly one after another, newest wins.
+       renderQueue = renderQueue.then(() => renderFrame(message));
+diff --git a/runtime/src/perf.js b/runtime/src/perf.js
+new file mode 100644
+index 0000000..49ce9c8
+--- /dev/null
++++ b/runtime/src/perf.js
+@@ -0,0 +1,47 @@
++// LOCAL MEASUREMENT PROBE (investigation, not committed). Collects per-frame spans on the page clock
++// and posts them to the host as `{"perf": ...}` lines (host appends them to TESSEL_PERF_LOG).
++const post = (obj) => {
++  try {
++    window.ipc?.postMessage(JSON.stringify(obj));
++  } catch {
++    // no host
++  }
++};
++export const DRAIN = globalThis.__TESSEL_PERF_DRAIN === true;
++let frame = null;
++export const perf = {
++  begin(id, recvAt) {
++    frame = { id, t0: performance.now(), queue_ms: recvAt ? performance.now() - recvAt : 0, layers: [], sum: {}, cnt: {} };
++  },
++  active: () => frame !== null,
++  add(name, ms) {
++    if (!frame) return;
++    frame.sum[name] = (frame.sum[name] ?? 0) + ms;
++    frame.cnt[name] = (frame.cnt[name] ?? 0) + 1;
++  },
++  set(name, value) {
++    if (frame) frame.sum[name] = value;
++  },
++  layer(info) {
++    frame?.layers.push(info);
++  },
++  end(extra) {
++    if (!frame) return;
++    const f = frame;
++    frame = null;
++    f.total_ms = performance.now() - f.t0;
++    post({ perf: 'frame', ...f, ...extra });
++  },
++  drop() {
++    frame = null;
++  },
++  post,
++};
++export const timed = async (name, fn) => {
++  const t = performance.now();
++  try {
++    return await fn();
++  } finally {
++    perf.add(name, performance.now() - t);
++  }
++};
+diff --git a/runtime/src/scene.js b/runtime/src/scene.js
+index ab29d28..4b2e883 100644
+--- a/runtime/src/scene.js
++++ b/runtime/src/scene.js
+@@ -6,6 +6,7 @@
+ import * as THREE from 'three';
+ 
+ import { RuntimeError } from './protocol.js';
++import { perf } from './perf.js';
+ 
+ const vector = (value, fallback) =>
+   Array.isArray(value) && value.length === 3 && value.every(Number.isFinite) ? value : fallback;
+@@ -111,14 +112,20 @@ export class SceneRig {
+     if (this.hasSplats) {
+       stage.attach(this.scene);
+       try {
++        const settleStarted = performance.now();
+         await stage.settle(this.scene, camera, aborted);
++        perf.add('settle_total', performance.now() - settleStarted);
++        const renderStarted = performance.now();
+         this.render(renderer, target, camera);
++        perf.add('scene_render_submit', performance.now() - renderStarted);
+       } finally {
+         stage.detach(this.scene);
+       }
+       return;
+     }
++    const renderStarted = performance.now();
+     this.render(renderer, target, camera);
++    perf.add('scene_render_submit', performance.now() - renderStarted);
+   }
+ 
+   render(renderer, target, camera) {
+@@ -131,7 +138,9 @@ export class SceneRig {
+ 
+   /** Gives the splat meshes back (they belong to the asset store) and frees the plain geometry. */
+   dispose() {
++    const t = performance.now();
+     this.disposables.forEach((item) => item.dispose());
+     this.splats.forEach((lease) => lease.release());
++    perf.add('rig_dispose', performance.now() - t);
+   }
+ }
+diff --git a/runtime/src/splat-stage.js b/runtime/src/splat-stage.js
+index 133b81f..42fc05a 100644
+--- a/runtime/src/splat-stage.js
++++ b/runtime/src/splat-stage.js
+@@ -9,6 +9,7 @@
+ import { SparkRenderer, SplatMesh } from '@sparkjsdev/spark';
+ 
+ import { RuntimeError } from './protocol.js';
++import { perf } from './perf.js';
+ 
+ export const SPARK_VERSION = '2.4.0';
+ /** Sort attempts before a frame is refused: a frame sorted for another viewpoint is never drawn. */
+@@ -17,9 +18,11 @@ const SETTLE_DISTANCE = 1e-4;
+ 
+ /** Decodes splat bytes into a mesh whose data is ready; Spark's own errors become decode_failed. */
+ export const loadSplatMesh = async (bytes, fileName, label) => {
++  const decodeStarted = performance.now();
+   const mesh = new SplatMesh({ fileBytes: bytes.slice(0), fileName });
+   try {
+     await mesh.initialized;
++    perf.add('lease_decode', performance.now() - decodeStarted);
+   } catch (error) {
+     mesh.dispose();
+     throw new RuntimeError('decode_failed', `Cannot decode splats of ${label}: ${error?.message ?? error}`);
+@@ -37,6 +40,38 @@ export class SplatStage {
+     // minSortIntervalMs 0: a sort is never deferred to a timer, which `settle` relies on.
+     // autoUpdate false: only `settle` sorts, for the camera of the frame in flight.
+     this.spark = new SparkRenderer({ renderer, minSortIntervalMs: 0, autoUpdate: false });
++    const exp = globalThis.__TESSEL_EXP ?? {};
++    this.exp = exp;
++    if (exp.stdDev) this.spark.maxStdDev = exp.stdDev;
++    if (exp.minAlpha) this.spark.minAlpha = exp.minAlpha;
++    if (exp.maxPixelRadius) this.spark.maxPixelRadius = exp.maxPixelRadius;
++    if (exp.minPixelRadius) this.spark.minPixelRadius = exp.minPixelRadius;
++    for (const acc of [this.spark.display, ...this.spark.accumulators]) {
++      const original = acc.prepareGenerate.bind(acc);
++      acc.prepareGenerate = (args) => {
++        const t = performance.now();
++        const result = original(args);
++        perf.add('spark_prepare', performance.now() - t);
++        if (!result.sameMapping) perf.add('spark_mapping_changed', 1);
++        const gen = result.generate;
++        result.generate = () => {
++          const g = performance.now();
++          gen();
++          perf.add('spark_generate_cpu', performance.now() - g);
++        };
++        return result;
++      };
++    }
++    const rb = this.spark.readbackDepth.bind(this.spark);
++    this.spark.readbackDepth = async (a) => {
++      const t = performance.now();
++      try { return await rb(a); } finally { perf.add('spark_readback', performance.now() - t); }
++    };
++    const ds = this.spark.driveSort.bind(this.spark);
++    this.spark.driveSort = async () => {
++      const t = performance.now();
++      try { return await ds(); } finally { perf.add('spark_drivesort', performance.now() - t); }
++    };
+   }
+ 
+   attach(scene) {
+@@ -53,12 +88,32 @@ export class SplatStage {
+    */
+   async settle(scene, camera, aborted) {
+     const target = camera.getWorldPosition(camera.position.clone());
++    if (this.exp.stale && Number.isFinite(this.spark.sortedCenter.x)) {
++      // EXPERIMENT (not a product path): draw with the order of the last finished sort.
++      const staleStarted = performance.now();
++      void this.spark.update({ scene, camera });
++      perf.add('settle_update', performance.now() - staleStarted);
++      return;
++    }
+     for (let attempt = 0; attempt < MAX_SORT_ATTEMPTS; attempt += 1) {
+       if (aborted()) throw new RuntimeError('cancelled', 'The frame was superseded');
++      if (this.spark.sortWorker && !this.spark.sortWorker.__w) {
++        const w = this.spark.sortWorker;
++        const call = w.call.bind(w);
++        w.call = async (...a) => {
++          const t = performance.now();
++          try { return await call(...a); } finally { perf.add('spark_worker_sort', performance.now() - t); }
++        };
++        w.__w = true;
++      }
++      const attemptStarted = performance.now();
+       await this.spark.update({ scene, camera });
++      perf.add('settle_update', performance.now() - attemptStarted);
+       const idle = !(this.spark.sorting || this.spark.sortDirty);
+       if (idle && this.spark.sortedCenter.distanceTo(target) < SETTLE_DISTANCE) return;
++      const sleepStarted = performance.now();
+       await new Promise((resolve) => setTimeout(resolve, 0));
++      perf.add('settle_sleep', performance.now() - sleepStarted);
+     }
+     throw new RuntimeError(
+       'render_failed',

@@ -55,9 +55,11 @@ ruído (a faixa maior do `exact` coincide com as sessões de load 36–44): a di
   tela.** A apresentação na janela nativa não foi verificada por estas provas (BL130.6, revisão visual nativa pendente).
 - Último quadro devolvido depois de parar o playback = `render.frame` do mesmo quadro (`refined_equals_explicit.equal: true`) nas 4 paradas
   (`40:60` e `181:30`, 2 repetições, antes e depois), com `final_source.stale_sort_layers` 0.
-- Último quadro devolvido depois de soltar o scrub = `render.frame` do mesmo quadro: take (quadro 20, `adc70df7ad9c472d`) e crossfade (quadro 150,
-  `d9c627b2d86f1134`), 2 repetições cada, **o mesmo hash antes e depois** (`runs/inspect3-*.log`; a comparação no scrub é do harness
-  novo, `refined_comparison`).
+- ~~Último quadro devolvido depois de soltar o scrub = `render.frame` (quadros 20 e 150, `adc70df7ad9c472d`, `d9c627b2d86f1134`, `runs/inspect3-*.log`)~~:
+  **alegação retirada** (ver "Correção de proveniência do scrub" abaixo). O que a sustenta hoje é só `final-gate/release-frame-check.json`:
+  2 execuções (1 repetição por cenário: take no quadro 120, crossfade no quadro 250), `--inspect`, hash na tela = `render.frame` do **mesmo build**,
+  **sem** comparação com a base nesses quadros e sem medição de desempenho. Para exatidão contra o código anterior valem os hashes explícitos
+  de 6 quadros e o export de 6 quadros (idênticos base × novo). Os logs `inspect3-*` ficam como histórico.
 - Export de 6 quadros de crossfade (190–195, `fullhd`, `export.start` pela janela real): `framemd5` idêntico por quadro e **arquivo
   idêntico** (436.972 bytes, mesmo sha256) antes e depois (`runs/export-*.log`).
 
@@ -150,4 +152,10 @@ Gravação nativa do playback real atravessando crossfade: `/tmp/pr19-final/nati
 
 Correção de proveniência do scrub: os hashes históricos da origem 20/150 não comprovavam o quadro de release, pois o subprocesso restaurava a origem antes da comparação. Essa alegação fica retirada. O harness isolado agora deixa o último quadro do gesto (`--no-restore`); a nova execução inspect fica registrada separadamente, sem contar como benchmark. Os tempos de release medidos pelo subprocesso antes da restauração continuam válidos.
 
-Nova prova de release: [release-frame-check.json](final-gate/release-frame-check.json), quadros 120 e 250, ambos iguais ao explícito e sem falhas. Uma repetição inspect por cenário; sem alegação de desempenho desta execução.
+Nova prova de release: [release-frame-check.json](final-gate/release-frame-check.json), quadros 120 e 250, ambos iguais ao explícito e sem falhas. Uma repetição inspect por cenário (2 execuções no total); sem alegação de desempenho desta execução.
+
+**Limite de proveniência (registrado depois do merge, auditoria 5812503277, sem alterar os artefatos):** `final.json`, `base.json` e `release-frame-check.json` não gravam o
+commit/árvore do binário medido, o comando, o diretório de trabalho nem a hora (`release-frame-check.json` guarda o caminho do binário, sem hash, e
+`TESSEL_REQUIRE_RUNTIME` não aparece nos artefatos). `manifest.json` tem sha256 do binário e do runtime, não o commit; o binário do `final` veio de
+outro worktree e o da base de `/tmp/bl130`. O elo "este binário saiu de `c4d3868`" é **prosa** deste README. Mitigação conferida em Git:
+`git diff c4d3868 11832a9 -- crates runtime/src` é vazio. Os artefatos históricos **não** foram retroalimentados com proveniência.
