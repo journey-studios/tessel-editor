@@ -34,10 +34,12 @@ import contextlib
 import hashlib
 import importlib.util
 import json
+import math
 import os
 from pathlib import Path
 import shutil
 import signal
+import socket
 import subprocess
 import tempfile
 import threading
@@ -58,6 +60,8 @@ MIN_SAMPLES_DURING_DISCARD = 20
 # The control must stall the probe at least this long, else the probe cannot see a stall.
 CONTROL_MIN_STALL_MS = 1000.0
 PROBE_GAP_S = 0.02
+# How long `Probe.end` waits for its thread; a thread still alive after that is a finding, never hidden.
+PROBE_JOIN_S = 30
 # How long a session's child gets to take pending files back and exit once its stdin is closed.
 CHILD_EXIT_S = 120
 
@@ -107,6 +111,10 @@ def stats(values):
 # One probe answer. `sent` and `received` are `time.monotonic()` instants taken around the request;
 # `state` is the `jobs` payload the window computed when it finally answered.
 Sample = collections.namedtuple('Sample', 'sent received latency_ms state')
+# One request that got NO answer: `sent`/`failed` are `time.monotonic()` instants (`failed` is None for a
+# request still in flight when the probe stopped), `cause` is 'timeout' | 'network' | 'protocol' |
+# 'unexpected' | 'unfinished', `error` the exception text. It is never classified by an answer (there is none).
+Failure = collections.namedtuple('Failure', 'sent failed latency_ms cause error')
 
 
 def result_state_of(sample, job):
@@ -116,7 +124,7 @@ def result_state_of(sample, job):
     return next((entry['result_state'] for entry in sample.state['all'] if entry['id'] == job), None)
 
 
-def discard_window(samples, job):
+def discard_window(samples, job, failures=()):
     """The monotonic span `(start, end)` of the discard, taken from instants, never from the state an
     answer carries (BL112.12).
 
@@ -129,7 +137,9 @@ def discard_window(samples, job):
       (the first answer that says 'discarding' or 'discarded' comes after it). Everything sent from
       then on may have run during the discard;
     * end: the instant the first 'discarded' answer was received; the discard ended before the
-      window could produce it. With no such answer the span ends at the last answer.
+      window could produce it. With no such answer the end of the discard is unknown, so the span ends at
+      the last instant the probe recorded, an answer or a failure (a request that failed after the last
+      answer must not fall outside the window just because nothing answered it).
 
     Samples come in the order the (single) probe thread completed them, which is the order the
     window handled them. None when no answer ever showed the discard began."""
@@ -139,13 +149,60 @@ def discard_window(samples, job):
         return None
     start = samples[began - 1].sent if began else samples[0].sent
     done = next((i for i, state in enumerate(states) if state == 'discarded'), None)
-    end = samples[done].received if done is not None else samples[-1].received
-    return start, end
+    if done is not None:
+        return start, samples[done].received
+    return start, max([samples[-1].received] + [f.failed if f.failed is not None else f.sent for f in failures])
 
 
 def latencies_sent_within(samples, start, end):
     """Every answer to a request SENT inside `[start, end]`, whatever state it came back labelled with."""
     return [sample.latency_ms for sample in samples if start <= sample.sent <= end]
+
+
+def failures_sent_within(failures, start, end):
+    """Every request SENT inside `[start, end]` that got no answer, whatever happened to it afterwards."""
+    return [failure for failure in failures if start <= failure.sent <= end]
+
+
+def finite(value, digits=4):
+    """A JSON-safe number: None for None, NaN and infinity (the report is written with `allow_nan=False` in spirit)."""
+    return round(value, digits) if isinstance(value, (int, float)) and math.isfinite(value) else None
+
+
+def failure_record(failure, origin):
+    """One failed request as report data; instants are seconds from `origin`, never NaN/inf."""
+    return {'sent_s': finite(failure.sent - origin), 'failed_s': finite(None if failure.failed is None else failure.failed - origin),
+            'latency_ms': finite(failure.latency_ms, 1), 'cause': failure.cause, 'error': str(failure.error)[:300]}
+
+
+def responsiveness_verdict(samples, failures, start, end, thread_alive=False):
+    """The full 'responsive while removing' judgement over the discard window `[start, end]`: the three
+    latency conditions of `ceiling_verdict` plus (BL112.12, CodeRabbit 4499357511) that NO request sent in
+    the window failed and that the probe thread did not outlive its stop. A failure is judged by when it was
+    SENT, like a late answer, and never by an answer's state. Failures outside the window are counted and
+    reported, not judged."""
+    verdict = ceiling_verdict(latencies_sent_within(samples, start, end))
+    inside = failures_sent_within(failures, start, end)
+    verdict.update({
+        'no_failed_requests': not inside,
+        'probe_stopped': not thread_alive,
+        'failed_in_window': [failure_record(failure, start) for failure in inside],
+        'failed_outside_window': len(failures) - len(inside),
+    })
+    verdict['ok'] = (verdict['enough_samples'] and verdict['p99_ok'] and verdict['max_ok']
+                     and verdict['no_failed_requests'] and verdict['probe_stopped'])
+    return verdict
+
+
+def probe_report(probe, origin):
+    """Everything the probe saw that is not a latency: every failed request in the order it happened,
+    the counts, and whether its thread is still alive. JSON-safe by construction."""
+    failures = probe.failures
+    causes = collections.Counter(failure.cause for failure in failures)
+    # an answer with `ok: false` is both a Sample and a 'rejected' Failure: one request, counted once
+    return {'requests': len(probe.requests) - causes.get('rejected', 0), 'answered': len(probe.samples), 'failed': len(failures),
+            'by_cause': dict(causes), 'thread_alive_after_stop': bool(probe.thread_alive),
+            'failures': [failure_record(failure, origin) for failure in failures]}
 
 
 def ceiling_verdict(latencies):
@@ -336,38 +393,125 @@ def jsonl_checks(binary, work, report, pad_mib, sessions):
 # --- the window ---------------------------------------------------------------------------------
 
 class Probe:
-    """A second client that keeps asking the window for its state and times every answer."""
+    """A second client that keeps asking the window for its state and times every request.
+
+    EVERY request is recorded, in the order it completed, with the instants it was sent and ended: an
+    answer as a `Sample`, anything else as a `Failure` with its cause (BL112.12). Nothing is swallowed:
+    a timeout, a network error, a reply that is not JSON, or any other exception becomes a `Failure`, and
+    the probe keeps asking afterwards (so one failure cannot silence the rest of the measurement). An
+    answer that says `ok: false` is both: a `Sample` (it was timed) and a `Failure` of cause 'rejected'."""
 
     def __init__(self, lab):
         self.lab = lab
-        self.samples = []  # Sample(sent, received, latency_ms, jobs_state)
+        self.requests = []  # Sample | Failure, in completion order (one thread: the order the window handled them)
+        self.in_flight = None  # `sent` of the request being waited for
         self.stop = threading.Event()
         self.thread = None
+        self.ended = False
+        self.thread_alive = False
+
+    @property
+    def samples(self):
+        return [request for request in self.requests if isinstance(request, Sample)]
+
+    @property
+    def failures(self):
+        return [request for request in self.requests if isinstance(request, Failure)]
 
     def start(self):
         self.stop.clear()
+        self.ended = False
+        self.thread_alive = False
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
+
+    @staticmethod
+    def cause_of(error):
+        if isinstance(error, (TimeoutError, socket.timeout)):
+            return 'timeout'
+        if isinstance(error, OSError):
+            return 'network'
+        if isinstance(error, ValueError):  # JSONDecodeError: the window closed the connection without a line
+            return 'protocol'
+        return 'unexpected'
+
+    def _record(self, request):
+        if not self.ended:  # a straggler that finishes after the verdict was drawn is not part of it
+            self.requests.append(request)
 
     def _run(self):
         while not self.stop.is_set():
             sent = time.monotonic()
             started = time.perf_counter()
+            self.in_flight = sent
             try:
                 answer = self.lab.send({'version': 1, 'command': 'get', 'target': 'jobs'}, timeout=120)
-            except OSError:
-                self.stop.wait(PROBE_GAP_S)
-                continue
-            latency = (time.perf_counter() - started) * 1000
-            state = answer.get('data', {}).get('state') if answer.get('ok') else None
-            self.samples.append(Sample(sent, time.monotonic(), latency, state))
+                latency = (time.perf_counter() - started) * 1000
+                received = time.monotonic()
+                state = answer.get('data', {}).get('state') if answer.get('ok') else None
+                self._record(Sample(sent, received, latency, state))
+                if not answer.get('ok'):
+                    self._record(Failure(sent, received, latency, 'rejected', answer.get('error')))
+            except Exception as error:  # every one is data: a thread that dies silently hides the failure
+                self._record(Failure(sent, time.monotonic(), (time.perf_counter() - started) * 1000,
+                                     self.cause_of(error), repr(error)))
+            finally:
+                self.in_flight = None
             self.stop.wait(PROBE_GAP_S)
 
     def end(self):
+        """Stops the thread and returns the answers. A thread that is still alive afterwards is NOT hidden: it
+        is reported (`thread_alive`) and the request it is stuck on is recorded as an 'unfinished' failure."""
+        if self.ended:
+            return self.samples
         self.stop.set()
         if self.thread is not None:
-            self.thread.join(30)
+            self.thread.join(PROBE_JOIN_S)
+            self.thread_alive = self.thread.is_alive()
+        stuck = self.in_flight
+        self.ended = True
+        if self.thread_alive and stuck is not None:
+            self.requests.append(Failure(stuck, None, None, 'unfinished',
+                                         f'no answer {time.monotonic() - stuck:.1f} s after the request was sent'))
         return self.samples
+
+
+def judge_discard(report, results, probe, job):
+    """Judges the probe of a discard, shared by the window phase and by the spec: every check of the
+    'responsive while removing' verdict, with every request the probe made (answers AND failures) recorded
+    in `results` BEFORE any check can raise. A request is 'during the discard' by when it was SENT (see
+    `discard_window`), not by the state its answer carries."""
+    check = report.check
+    samples = probe.end()
+    failures = probe.failures
+    origin = samples[0].sent if samples else (failures[0].sent if failures else 0.0)
+    window = discard_window(samples, job, failures)
+    results['probe'] = probe_report(probe, origin)
+    check('the probe thread stopped (a thread still waiting is a finding, not a pass)', not probe.thread_alive,
+          results['probe'])
+    check('the probe saw the discard begin (a window of instants can be drawn)', window is not None,
+          [(round(sample.latency_ms, 1), result_state_of(sample, job)) for sample in samples[-10:]])
+    start, end = window
+    verdict = responsiveness_verdict(samples, failures, start, end, probe.thread_alive)
+    during = latencies_sent_within(samples, start, end)
+    by_label = [sample.latency_ms for sample in samples if result_state_of(sample, job) == 'discarding']
+    results['during_discard'] = stats(during)
+    # The previous measurement (answers labelled 'discarding'), kept next to the new one so the
+    # difference between them is data, not a claim.
+    results['during_discard_by_answer_label'] = stats(by_label)
+    results['during_discard_answered_after_the_end'] = sum(
+        1 for sample in samples if start <= sample.sent <= end and result_state_of(sample, job) == 'discarded')
+    results['discard_window_seconds'] = round(end - start, 2)
+    results['discard_window_basis'] = 'send/receive instants (time.monotonic), not the answer label'
+    results['probe'] = probe_report(probe, start)
+    results['discard_verdict'] = {key: value for key, value in verdict.items() if key != 'stats'}
+    check(f'the probe sampled the window while it removed (>= {MIN_SAMPLES_DURING_DISCARD} answers)',
+          verdict['enough_samples'], results['during_discard'])
+    check(f'responsive while removing: p99 <= {DISCARD_P99_MS} ms and max <= {DISCARD_MAX_MS} ms',
+          verdict['p99_ok'] and verdict['max_ok'], results['during_discard'])
+    check('no request sent while it removed failed (timeout, network, protocol, rejected or unfinished)',
+          verdict['no_failed_requests'], verdict['failed_in_window'])
+    return verdict
 
 
 def window_phase(binary, work, report, pad_mib):
@@ -510,7 +654,7 @@ def window_phase(binary, work, report, pad_mib):
                 negative['jobs_dialog_opened'] = bool(opened.get('ok')) and opened['data'].get('changed') is True
                 negative['jobs_dialog_closed'] = bool(send({'command': 'invoke', 'target': 'dialog.cancel'}).get('ok'))
             time.sleep(0.005)
-        samples = probe.end()
+        probe.end()
         results['timeline'] = timeline
         check('the window moved the stale result through pending -> discarding -> discarded',
               timeline[-3:] == ['pending', 'discarding', 'discarded'] or timeline[-2:] == ['discarding', 'discarded'],
@@ -534,29 +678,7 @@ def window_phase(binary, work, report, pad_mib):
         again = refused({'op': 'job.discard', 'job': job})
         check('a discarded result is job_discarded', again['code'] == 'job_discarded', again)
 
-        # While the files were being removed, the window kept answering. A request is "during the
-        # discard" by WHEN IT WAS SENT (see `discard_window`), not by the state its answer carries:
-        # an answer delayed past the end comes back 'discarded' and is exactly the one that counts.
-        window = discard_window(samples, job)
-        check('the probe saw the discard begin (a window of instants can be drawn)', window is not None,
-              [(round(sample.latency_ms, 1), result_state_of(sample, job)) for sample in samples[-10:]])
-        start, end = window
-        during = latencies_sent_within(samples, start, end)
-        by_label = [sample.latency_ms for sample in samples if result_state_of(sample, job) == 'discarding']
-        results['during_discard'] = stats(during)
-        # The previous measurement (answers labelled 'discarding'), kept next to the new one so the
-        # difference between them is data, not a claim.
-        results['during_discard_by_answer_label'] = stats(by_label)
-        results['during_discard_answered_after_the_end'] = sum(
-            1 for sample in samples
-            if start <= sample.sent <= end and result_state_of(sample, job) == 'discarded')
-        results['discard_window_seconds'] = round(end - start, 2)
-        results['discard_window_basis'] = 'send/receive instants (time.monotonic), not the answer label'
-        check(f'the probe sampled the window while it removed (>= {MIN_SAMPLES_DURING_DISCARD} answers)',
-              len(during) >= MIN_SAMPLES_DURING_DISCARD, results['during_discard'])
-        verdict = ceiling_verdict(during)
-        check(f'responsive while removing: p99 <= {DISCARD_P99_MS} ms and max <= {DISCARD_MAX_MS} ms',
-              verdict['p99_ok'] and verdict['max_ok'], results['during_discard'])
+        judge_discard(report, results, probe, job)
 
         # The tick reports the end of the discard job on its next beat (250 ms), not at once.
         wait_for(lambda: any(event.get('kind') == 'discard' for event in jobs()['recent']), 10,
@@ -586,6 +708,9 @@ def window_phase(binary, work, report, pad_mib):
             try:
                 if probe is not None:
                     probe.end()  # a failed check must not leave it asking a window that is going away
+                    # ...and what it saw is reported even when an earlier check raised before the verdict.
+                    first = probe.requests[0].sent if probe.requests else 0.0
+                    results.setdefault('probe', probe_report(probe, first))
             finally:
                 lab.stop()
         finally:
