@@ -84,6 +84,7 @@ REQUIRED = {
         'the page acknowledged what it drew',
         'the x axis is painted red and the y axis green on the canvas (alpha > 200)',
         'the page drew the active handle of the drag',
+        'the monitor has a picture at the animating frame to compare the drag with',
         'and shows the initial picture again',
         'the open drag was cancelled by the hide (never committed)',
         'the gizmo is drawn again for the selection',
@@ -421,6 +422,7 @@ def scenario(surface, check, scratch, record):
         surface.lab.seek(FRAME)
         check('the monitor converged on the animating frame', surface.lifecycle.settle(surface.lab, FRAME, 60) is not None,
               surface.viewport().get('directed'))
+        record_baseline_picture(surface, check, record)
 
     base_bundle = bundle()
     base_history = history()
@@ -599,8 +601,18 @@ def native_initial(surface, check, record):
           overlay.get('supported') is True and overlay.get('enabled') is True, overlay)
     drawn = wait_for(lambda: (surface.viewport().get('overlay') or {}).get('drawn'))
     check('the page acknowledged what it drew', drawn is not None, surface.viewport().get('overlay'))
+    # The picture of the first show is the one at the playhead the scene was shown at, not the one at FRAME:
+    # it is NOT the baseline of the drag (`record_baseline_picture` takes that once the monitor sits on FRAME).
+    record['shown_hash'] = picture_hash(surface)
+    check('the monitor has a picture to compare with', bool(record['shown_hash']), surface.viewport().get('last_frame'))
+
+
+def record_baseline_picture(surface, check, record):
+    """The picture of the unedited document AT THE FRAME the drag is made at. Every later picture check (the
+    candidate leaves it, the undone one returns to it) compares against this one and never against the first show."""
     record['initial_hash'] = picture_hash(surface)
-    check('the monitor has a picture to compare with', bool(record['initial_hash']), surface.viewport().get('last_frame'))
+    check('the monitor has a picture at the animating frame to compare the drag with', bool(record['initial_hash']),
+          surface.viewport().get('last_frame'))
 
 
 def native_selected(surface, check, record):

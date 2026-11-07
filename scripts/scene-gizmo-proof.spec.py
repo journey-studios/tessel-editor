@@ -425,5 +425,67 @@ class HeadlessChildTests(unittest.TestCase):
             shutil.rmtree(work, ignore_errors=True)
 
 
+class PictureBaselineTests(unittest.TestCase):
+    """The native proof compares pictures of the monitor. The baseline must be the picture of the unedited document
+    AT THE FRAME the drag is made at: the first show is at another playhead, so using it made "undo shows the initial
+    picture again" fail on an undo that was right, and "the picture left the initial one" true for the wrong reason."""
+
+    class Monitor:
+        """A monitor whose picture is a function of the playhead and of whether the document is edited."""
+
+        def __init__(self):
+            self.frame = 0
+            self.edited = False
+            self.lifecycle = self
+            self.lab = None
+
+        def viewport(self):
+            return {
+                "overlay": {"supported": True, "enabled": True, "drawn": {"visible": False}},
+                "last_frame": {"hash": f"frame-{self.frame}-{'edited' if self.edited else 'base'}"},
+            }
+
+        def settle(self, lab, frame, seconds):
+            return {"frame": frame}
+
+    def checker(self):
+        return proof.Recorder("native")
+
+    def test_the_first_show_is_not_the_baseline_of_the_drag(self):
+        monitor, record = self.Monitor(), {}
+        with contextlib.redirect_stdout(io.StringIO()):
+            proof.native_initial(monitor, self.checker(), record)
+        self.assertEqual(record["shown_hash"], "frame-0-base")
+        self.assertNotIn("initial_hash", record, "the picture of another playhead must not become the baseline")
+
+    def test_the_baseline_is_taken_where_the_monitor_sits_after_the_seek(self):
+        monitor, record = self.Monitor(), {}
+        with contextlib.redirect_stdout(io.StringIO()):
+            proof.native_initial(monitor, self.checker(), record)
+            monitor.frame = proof.FRAME
+            proof.record_baseline_picture(monitor, self.checker(), record)
+        self.assertEqual(record["initial_hash"], f"frame-{proof.FRAME}-base")
+
+    def test_an_undo_shows_the_baseline_again_only_against_the_baseline_of_that_frame(self):
+        monitor, record = self.Monitor(), {}
+        with contextlib.redirect_stdout(io.StringIO()):
+            proof.native_initial(monitor, self.checker(), record)
+            monitor.frame = proof.FRAME
+            proof.record_baseline_picture(monitor, self.checker(), record)
+            monitor.edited = True
+            monitor.edited = False  # the undo
+            proof.native_undone_view(monitor, self.checker(), record)  # the right undo passes
+            record["initial_hash"] = record["shown_hash"]  # the old baseline (the first show)
+            with self.assertRaises(proof.ProofFailure):
+                proof.native_undone_view(monitor, self.checker(), record)
+
+    def test_the_scenario_takes_the_baseline_right_after_the_monitor_converged_on_the_frame(self):
+        converged = SOURCE.index("the monitor converged on the animating frame")
+        taken = SOURCE.index("record_baseline_picture(surface, check, record)", converged)
+        select = SOURCE.index("'op': 'scene.select'", converged)
+        self.assertLess(taken, select, "the baseline must be recorded before the first edit of the scenario")
+        self.assertNotIn("record['initial_hash'] = picture_hash(surface)\n    check('the monitor has a picture to compare with'", SOURCE)
+
+
 if __name__ == "__main__":
     unittest.main()
