@@ -443,3 +443,22 @@ Concluído localmente: fmt/check/clippy, workspace 1027 testes verdes (8 ignorad
 ### PR da entrega e bloqueio de revisão
 
 [PR #4](https://github.com/journey-studios/tessel-editor/pull/4), implementação `f6311d2`, gate local acima. CodeRabbit pulou a revisão: 121 arquivos selecionados, teto de 100 e capacidade/créditos indisponíveis ([comentário](https://github.com/journey-studios/tessel-editor/pull/4#issuecomment-6669704948)). PR aberta, sem merge ou aprovação do serviço. Os limites BL111/BL112 permanecem pendentes. A configuração nova de filtros de evidências só entra para futuras execuções que a usem; a execução atual leu a base.
+
+### Performance do monitor — projeto splat de amostra
+
+Investigação e medições em [viewport-performance-splat-project-investigation.md](viewport-performance-splat-project-investigation.md);
+contratos em [features/viewport.md](features/viewport.md) (PERF-1 a PERF-4). Status **A validar**: medidas no harness
+local (macOS/WebKit, load 6–17, quadros de 960×540); sem comparação visual de pixels nem GPU real além desta máquina.
+
+| ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
+|---|---|---|---|---|---|---|
+| BL113 | F-viewport/PERF-1 | MSAA padrão 2× no monitor; export segue 4× (`TESSEL_VIEWPORT_SCENE_SAMPLES=4` restaura) | A validar | BL031 | Perf | Implementado (`50b7e98`) com teste de política. Medido: take A 52→14–17 ms, 24 fps cheios; crossfade 106→74 ms. Falta comparação visual das bordas |
+| BL114 | F-viewport/PERF-2 | Pré-carga da cena das próximas 2 s durante a reprodução (`ViewportSession::prefetch`, melhor esforço) | A validar | BL113 | Perf | Implementado (`50b7e98`), 6 testes de sessão. Medido (projeto 0–25 s, MSAA 2): maior intervalo entre quadros 291→95 ms. Custo: memória de cenas pré-carregadas; não há limite próprio além da retenção de 16 ativos |
+| BL115 | F-viewport/PERF-3 | Camadas totalmente cobertas por camada opaca acima não são preparadas nem desenhadas (`Layer.occluded` do core) | A validar | – | Perf | Implementado (`50b7e98`), testes de core e do runtime no navegador (hash idêntico). Medido: 6 vídeos empilhados 50→8 ms (17→24 fps), 4 vídeos+splat 85→8 ms. Conservador: só topo mp4/m4v/jpg/jpeg, opacidade 1, `normal`, sem rotação |
+| BL116 | F-viewport/PERF-4 | Cabeçalho do monitor indica proxy pendente e `render.status` expõe `proxy_coverage` | A validar | OPT01 | Perf | Implementado (`50b7e98`) com teste de cobertura; o proxy em si não mudou (4 vídeos 105→31 ms já medido). Sem medição de UI do aviso |
+| BL117 | F-viewport/PERF | Pré-decodificar quadros de vídeo à frente (p99 de 4 vídeos ≤ 60 ms) | Pendente | – | – | Hipótese; preparo é ~15 de 31 ms com 4 vídeos |
+| BL118 | F-viewport/PERF | `PackedSplats` compartilhado para efeitos repetidos | Pendente | – | – | `lease_decode` = 0 em crossfade; ganho ≤ 7 ms por camada extra |
+| BL119 | F-viewport/PERF | Investigar `lod:true` do Spark e decimação só para o monitor | Pendente | BL031 | – | `decode_failed` em splat pequeno e travamento em grande; provar que carrega e definir qualidade |
+| BL120 | F-viewport/PERF | Pipeline do `settle` com prova de apresentação | Pendente | `frame.presented` | – | Sem aumento de p95/p99; hoje só hipótese |
+| BL121 | F-viewport/PERF | Mostrar fps exibido e quadros perdidos no cabeçalho | Pendente | – | – | A UI informa fluidez, não só `render_ms` (que mede só o JS) |
+| BL122 | F-viewport/PERF | Investigar crescimento de RSS do editor em reprodução longa (340→550 MB em 25 s) | Pendente | – | – | RSS estável em 5 min |
