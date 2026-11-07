@@ -679,3 +679,10 @@ Gates proporcionais: spec Python normal e `-O` 27/27, `py_compile`, build novo d
 Corrigida a borda apontada em 4499434886 e review 5809332490: sem resposta ociosa anterior, o começo da janela inclui envios falhos anteriores à primeira resposta de descarte. Spec com Probe real e mutação da borda antiga. Corrigido também o texto: judge_discard não roda se um check anterior abortar; finally preserva só o relatório bruto. Rust e a produção permanecem inalterados.
 
 Validação da borda: spec 28/28 normal e com `-O`; os dois modos incluem o teste novo e a mutação que restaura a borda antiga. Logs `/tmp/pr6-probe-boundary-spec.log` e `-O.log`. A prova nativa 43/43 anterior continua atribuída a `efba600`, sem repetir a janela neste patch de borda.
+
+BL130 / R2 no head 7e2ebfc: sem bloqueador funcional identificado na revisão independente. Capturas nativas de dois quadros refinados coincidem com referência; movimento real e benchmark release final pendentes. Coordenador ajusta timeout sem inspect, bytes inválidos de env e limites documentados.
+
+| BL130.9 | R2 / testes | Mutação sem makeRoom sobrevive: pico de estágios na criação não discriminado | Pendente | BL130.2 | Coordenador | Teste de pico durante construção, não só contagem ao fim do quadro |
+| BL130.10 | R2 / recuperação | Refino após erro de sort pode falhar uma vez sem retry automático | Limite documentado, a validar | BL130.5 | Coordenador | Reproduzir pela sessão e decidir retry limitado sem ocultar causa |
+
+BL130: benchmark release final executado pelo coordenador (uma sessão, três repetições por variante, sem inspect): sem falhas. Spec Python atualizado 9/9 normal e -O, env inválida 1/1, fmt e build release passam. Evidências em viewport-performance-results/bl130-spark-settle/final-gate/. R2 sem bloqueador funcional; movimento real permanece a validar. Trailers removidos com árvore idêntica por commit e mapeamento versionado.

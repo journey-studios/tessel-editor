@@ -94,10 +94,16 @@ class FinalQualityTests(unittest.TestCase):
         self.assertIs(result["passed"], False)
         self.assertIn("error", result["refined_equals_explicit"])
 
-    def test_without_inspect_a_scrub_makes_no_wait_and_keeps_the_sub_script_verdict(self):
-        waits = [(5, screen())]
+    def test_without_inspect_a_scrub_waits_but_does_not_compare_hashes(self):
+        waits = [(5, screen()), (180, screen())]
         result = scrub(FakeEditor(), waits, inspect=False)
         self.assertIs(result["passed"], True)
+        self.assertNotIn("refined_equals_explicit", result)
+
+    def test_scrub_timeout_without_inspect_fails_the_run(self):
+        result = scrub(FakeEditor(), [(5, screen()), (None, screen())], inspect=False)
+        self.assertIs(result["passed"], False)
+        self.assertIs(result["final_quality_timeout"], True)
         self.assertNotIn("refined_equals_explicit", result)
 
     def test_the_outcome_of_a_timeout_does_not_depend_on_inspect(self):

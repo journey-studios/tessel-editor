@@ -134,7 +134,10 @@ impl HostOptions {
             scene_samples: samples_from_env(SCENE_SAMPLES_ENV),
             preview_scene_samples: samples_from_env(PREVIEW_SCENE_SAMPLES_ENV),
             preview_sort: match preview_sort_from_env(
-                std::env::var(PREVIEW_SORT_ENV).ok().as_deref(),
+                std::env::var_os(PREVIEW_SORT_ENV)
+                    .as_deref()
+                    .map(std::ffi::OsStr::to_string_lossy)
+                    .as_deref(),
             ) {
                 Ok(sort) => sort,
                 Err((sort, warning)) => {

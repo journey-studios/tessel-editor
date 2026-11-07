@@ -506,7 +506,7 @@ export class Compositor {
         this.counters.add('stage_shared_layers');
         continue;
       }
-      // Touched now, not when drawn: a stage another layer makes room for must not be one this frame will need.
+      // Refresh LRU order before beginFrame clears usage, leaving idle entries first for eviction.
       this.stages.get(use.lineage);
       byOrder.set(use.order, { lineage: use.lineage });
       use.scene.objects.forEach((object, index) => {

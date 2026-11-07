@@ -373,12 +373,10 @@ def scrub_run(editor, name, origin, span, hz, label, inspect=False):
             "present_gap_ms": report.get("present_gap_ms"), "lag_frames": report.get("lag_frames"),
             "release_to_final_ms": report.get("release_to_final_ms"), "first_present_ms": report.get("first_present_ms"),
             "passed": proc.returncode == 0}
-    if inspect:
-        # The scrub is released and its sub-script waited for the final picture: it must be the explicit one, and if
-        # it never is, the run says so (it used to say nothing).
-        converge_ms, final_state = wait_final_quality(editor)
-        result["final_quality_ms"] = converge_ms
-        result.update(final_quality_outcome(editor, converge_ms, final_state, inspect, "the scrub was released"))
+    # Always verify final quality; only the hash comparison requires inspect.
+    converge_ms, final_state = wait_final_quality(editor)
+    result["final_quality_ms"] = converge_ms
+    result.update(final_quality_outcome(editor, converge_ms, final_state, inspect, "the scrub was released"))
     return result
 
 

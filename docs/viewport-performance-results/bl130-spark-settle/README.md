@@ -121,7 +121,7 @@ Medições acima = o que o PR já tinha mais a repetição local; o que mudou ab
   engolir e a reserva de donos de malha); a espera do quadro exato passou a acordar pelo fim da ordenação e a conferir cancelamento e
   orçamento a cada 25 ms. O que se mediu foi a mediana de `render_ms` de cada quadro de movimento da ferramenta de evidência (inclui a
   leitura do PNG; GPU do M3 Pro, máquina carregada, `clippy` do workspace rodando em paralelo): `take` 74,5 ms (`e5447cb`) → 70,9 ms,
-  `xfade` 112,3 → 102,3 ms (ritmo 41,67). Isto mostra que não houve regressão **nessa leitura**; **não** repete a tabela de `draw` p50 /
+  `xfade` 112,3 → 102,3 ms (ritmo 41,67). Essa leitura não distingue regressão de ruído de carga e readback; **não** repete a tabela de `draw` p50 /
   imagens por segundo do editor release (1 ms, 50/s), que continua sendo a do `e5447cb` (não repetida: nenhuma volta do editor release
   foi feita nesta revisão).
 
@@ -130,3 +130,20 @@ Medições acima = o que o PR já tinha mais a repetição local; o que mudou ab
 Ver [spark.md](../../features/spark.md#ordem-dos-splats-em-movimento-bl130): corrida de 2,4 s não reproduzida (BL130.1), leitura de PNG que
 encurta o atraso, `done` é submissão e não exibição, **revisão visual nativa pendente (BL130.6)**, GPU compartilhada sem trava de GPU no
 repositório (BL130.3), mais de 2 cenas sem medição de memória/latência com cenas grandes (BL130.2), áudio não ouvido.
+
+## Fechamento do coordenador (2026-11-07)
+
+Build release executado após a R2 com os ajustes pequenos de timeout sem `--inspect` e variável de ambiente não UTF-8. Uma sessão por variante, três repetições de playback e scrub, sequenciais, GPU M3 Pro compartilhada, sem `--inspect` ou leitura PNG durante medição. Relatórios completos e hashes em [final-gate](final-gate/manifest.json); baseline é o binário preservado da comparação original, identificado pelo hash. Não é repetição das três sessões anteriores.
+
+| Medida (média das repetições) | Base preservada | Código final |
+|---|---|---|
+| Draw p50 take / crossfade | 14,2 / 32,0 ms | 1,0 / 1,0 ms |
+| Quadros sem imagem take / crossfade | 0 / 0 % | 0 / 0 % |
+| Scrub take / crossfade | 49,5 / 45,8 imagens/s | 50,0 / 50,0 imagens/s |
+| Soltou scrub → final take / crossfade | 296 / 276 ms | 349 / 348 ms |
+
+Nenhuma execução falhou ou excedeu o timeout final. Sob estas condições a base também não perdeu quadros; esta sessão não sustenta uma redução de perdas. O custo adicional do refino permanece. Spec Python 9/9 normal e -O; teste Rust do parsing de env inválida 1/1; fmt e build release passaram. Os demais gates são os atribuídos às entregas/revisões anteriores, não uma nova execução completa.
+
+Os quatro commits originais tiveram apenas seus trailers removidos, com árvore idêntica em cada par: [mapeamento](final-gate/history-map.json). Os SHAs históricos acima continuam descrevendo as mesmas árvores; o fechamento acrescenta os ajustes e as evidências. Capturas da revisão R2 confirmam dois quadros refinados nativos, sem validar movimento humano.
+
+Gravação nativa do playback real atravessando crossfade: `/tmp/pr19-final/native-playback.mp4` (somente local, sem imagens privadas no git). Inspeção de um frame confirma captura apenas da janela própria; avaliação humana de movimento permanece pendente. Stop/refino alcançou qualidade original em 411 ms; [metadados](final-gate/motion.json).

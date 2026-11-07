@@ -149,7 +149,7 @@ descartado:
   quadro de movimento que viu a ordem velha já foi entregue).
 - O compositor descarta o estágio falho (`stage_discarded`; o de uma linhagem ou o compartilhado), então o pedido depois dele cria um
   `SparkRenderer` novo e ordena para a própria câmera (exato; depois, movimento reaproveita de novo). Nada do estado quebrado é reutilizado.
-- A espera por uma ordenação é limitada: um quadro **cancelado ou superado** para de esperar em ≤ 25 ms (antes, ficava preso até o fim
+- A espera por uma ordenação é limitada: um quadro **cancelado ou superado** confere o cancelamento a cada 25 ms (a latência depende do agendamento) (antes, ficava preso até o fim
   da ordenação e segurava a fila de quadros) e uma ordenação que não termina em 60 s (ou 400 ordenações) falha o quadro e aposenta o estágio,
   para o seguinte não gastar o mesmo orçamento.
 
@@ -227,3 +227,11 @@ Cor (BL019-F1): o desenho vai a um render target e, nele, o Spark 2.4.0 usa `Col
 (`runtime/src/splat-stage.js`) mantém o uniform em `false` só no material do Spark, depois do `onBeforeRender` do
 próprio Spark. **Isto também muda a cor do caminho de projeto (`scene`)**, não só o da cena dirigida: um splat do
 projeto agora mostra a cor guardada. Detalhes e prova em [scene-splat.md](scene-splat.md#cor-bl019-f1).
+
+### Conferência independente R2
+
+No head `7e2ebfc`, a revisão executou 72 testes focados de runtime em Chrome real, 58 testes do host e o spec Python (8/8). Em janela isolada, capturas dos quadros 60 (take) e 193 (crossfade) após refino coincidiram com a referência exata abaixo do cabeçalho. Isso não valida movimento real, playback ou scrub longo; BL130.6 continua pendente. O teste atual de orçamento conta estágios após o quadro, sem discriminar o pico durante a criação (`makeRoom`); essa cobertura permanece pendente. Após erro de sort, o próximo pedido reporta a causa e descarta o estágio; não há retry automático do refino e uma nova ação pode ser necessária.
+
+O coordenador executou o build release e uma sessão final com três repetições por variante, sem inspect/PNG: nenhum timeout ou erro; os relatórios e limites estão no [fechamento](../viewport-performance-results/bl130-spark-settle/README.md#fechamento-do-coordenador-2026-11-07). Isso não substitui o aceite visual de movimento real.
+
+Foi gravado playback real pela operação semântica `playback.start` do quadro 160, por 5,2 s, seguido de stop/refino (411 ms, qualidade original, `stale_sort_layers: 0`), em janela isolada capturada por ID. Vídeo local privado `/tmp/pr19-final/native-playback.mp4`, fora do git; metadados em [motion.json](../viewport-performance-results/bl130-spark-settle/final-gate/motion.json). A gravação está disponível para avaliação humana; não equivale a aprovação de movimento nem criativa.

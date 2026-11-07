@@ -1071,6 +1071,13 @@ fn an_unreadable_preview_sort_is_the_safe_order_and_says_so() {
     assert_eq!(read(Some("  ")), Ok(None));
     assert_eq!(read(Some("latest")), Ok(Some(PreviewSort::Latest)));
     assert_eq!(read(Some(" Exact ")), Ok(Some(PreviewSort::Exact)));
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let invalid = std::ffi::OsStr::from_bytes(b"exact\xff");
+        let (sort, _) = read(Some(&invalid.to_string_lossy())).unwrap_err();
+        assert_eq!(sort, PreviewSort::Exact);
+    }
     // A typo of a rollback must not leave the reused order on: it is `exact`, with the reason to print.
     for typo in ["exacto", "fast", "0", "on"] {
         let (sort, warning) = read(Some(typo)).expect_err(typo);
