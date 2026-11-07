@@ -773,6 +773,8 @@ mod input_tests;
 #[cfg(test)]
 mod scene_tests;
 #[cfg(test)]
+mod sharp_capture_tests;
+#[cfg(test)]
 mod slider_gesture_tests;
 #[cfg(test)]
 mod viewport_host_tests;

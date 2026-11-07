@@ -257,6 +257,35 @@ impl Workstation {
         let inside = playhead >= entry.start && playhead < entry.end();
         let keys = entry.camera_keys.clone();
         let orbiting = entry.camera.is_some_and(|camera| camera.orbit != 0.0);
+        let capture = self.state.capture_of_clip(entry.id);
+        let capture_row = capture.map(|capture| {
+            let button = Button::new("camera-capture-use")
+                .ghost()
+                .xsmall()
+                .icon(IconName::Camera)
+                .label("Câmera da captura")
+                .tooltip("Volta a câmera do clipe para a que fotografou o PLY do SHARP")
+                .accessibility_label("Usar a câmera da captura")
+                .disabled(!keys.is_empty())
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.dispatch(
+                        Command::SetClipCameraFromCapture {
+                            clip: clip.to_string(),
+                        },
+                        cx,
+                    );
+                }));
+            v_flex()
+                .items_start()
+                .gap(px(2.))
+                .child(
+                    div()
+                        .text_size(px(10.))
+                        .text_color(t.faint)
+                        .child(capture.label()),
+                )
+                .child(button)
+        });
         let hint = if keys.is_empty() {
             "Sem chaves: a câmera é a do clipe. Posicione o playhead e adicione uma chave."
         } else if !inside {
@@ -302,6 +331,7 @@ impl Workstation {
             .gap(px(2.))
             .px(px(10.))
             .py(px(4.))
+            .children(capture_row)
             .child(
                 h_flex()
                     .items_center()
