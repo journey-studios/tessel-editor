@@ -1567,3 +1567,53 @@ fn entering_the_scene_that_owns_the_gesture_keeps_it(cx: &mut TestAppContext) {
     });
     assert_eq!(still, Some(gesture), "entering the owning scene keeps it");
 }
+
+#[gpui_kit::test]
+fn switching_between_other_scenes_keeps_a_third_scenes_gesture(cx: &mut TestAppContext) {
+    let (view, cx) = two_scenes(cx);
+    view.update(cx, |view, cx| {
+        view.execute(
+            Command::Scene(SceneCommand::Attach {
+                id: Some("plaza".into()),
+                name: None,
+                source: SceneSource::Text(BUNDLE.to_string()),
+            }),
+            Source::Cli,
+            cx,
+        )
+        .unwrap();
+    });
+    choose(&view, cx, "street");
+    let gesture = view
+        .update(cx, |view, cx| {
+            view.scene_execute(
+                SceneCommand::FxGesture(
+                    tessel_editor_core::scene_interaction::FxGestureCommand::Begin {
+                        scene: "yard".into(),
+                        clip: "fx-1".into(),
+                        label: None,
+                    },
+                ),
+                Source::Cli,
+                cx,
+            )
+        })
+        .unwrap()["gesture"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(gesture_open(&view, cx), "begun on `yard`, shown: `street`");
+
+    choose(&view, cx, "plaza");
+    let still = view.read_with(cx, |view, _| {
+        view.state
+            .scene_interaction
+            .gesture()
+            .map(|open| open.id().to_owned())
+    });
+    assert_eq!(
+        still,
+        Some(gesture),
+        "leaving street must not cancel a gesture owned by yard"
+    );
+}
