@@ -21,6 +21,12 @@ pub(super) fn fx_scope_json() -> Value {
         "domain": "bundle.fx of the directed scene (render-bundle document key); one model, no copy in the sequence timeline",
         "scope": ["output"],
         "evaluation": "deterministic per edit frame; envelope sampled at the middle of the frame",
+        "pass_budget": {
+            "max_passes": fx::FX_PASS_BUDGET,
+            "policy": "warn",
+            "warning": fx::FX_PASS_BUDGET_WARNING,
+            "meaning": "a frame with more passes is valid and drawn in full, only slower; list, edit and frame report it as a warning",
+        },
         "refused": {
             "keys": fx::FX_KEYS_NOT_YET,
             "scope shot|node": fx::FX_SCOPE_NOT_YET,
@@ -45,11 +51,13 @@ pub(super) fn list_answer(id: &str, scene: &DirectedScene) -> Value {
             "clips": track.clips.iter().map(fx::clip_json).collect::<Vec<_>>(),
         }));
     }
+    let budget = layer.pass_budget(scene.bundle().edit_duration_frames);
     json!({
         "action": "scene.fx.list", "scene": id, "catalog_version": FX_CATALOG_VERSION,
         "edit_duration_frames": scene.bundle().edit_duration_frames,
         "track_count": layer.tracks.len(), "clip_count": layer.clip_count(),
         "tracks": tracks,
+        "budget": budget.to_json(), "warnings": budget.warnings(),
     })
 }
 
@@ -77,9 +85,23 @@ pub(super) fn frame_answer(
         .iter()
         .map(fx::FxPass::to_json)
         .collect();
+    let over = passes.len() > fx::FX_PASS_BUDGET;
+    let warnings: Vec<Value> = if over {
+        vec![json!({
+            "code": fx::FX_PASS_BUDGET_WARNING,
+            "message": format!(
+                "this frame draws {} effect passes, more than the {} the budget allows without a slowdown",
+                passes.len(), fx::FX_PASS_BUDGET
+            ),
+            "max_passes": fx::FX_PASS_BUDGET, "passes": passes.len(),
+        })]
+    } else {
+        Vec::new()
+    };
     Ok(json!({
         "action": "scene.fx.frame", "scene": id, "edit_frame": frame,
         "count": passes.len(), "passes": passes,
+        "max_passes": fx::FX_PASS_BUDGET, "over_budget": over, "warnings": warnings,
     }))
 }
 
@@ -106,6 +128,12 @@ impl EditorState {
         let outcome = scene_edit::apply_fx(&current, ops)?;
         let summary = outcome.summary;
         let clips = outcome.candidate.bundle().fx.clip_count();
+        let budget = outcome
+            .candidate
+            .bundle()
+            .fx
+            .pass_budget(outcome.candidate.bundle().edit_duration_frames);
+        let warnings = budget.warnings();
         if dry_run {
             if summary.modified {
                 self.scenes.check_replacement_size(id, &outcome.candidate)?;
@@ -114,6 +142,7 @@ impl EditorState {
                 "action": "scene.fx.edit", "scene": id, "dry_run": true, "changed": false,
                 "would_change": summary.modified, "changed_ops": summary.changed_count(),
                 "clip_count": clips, "changes": changes_json(&summary),
+                "budget": budget.to_json(), "warnings": warnings,
             }));
         }
         if !summary.modified {
@@ -121,6 +150,7 @@ impl EditorState {
                 "action": "scene.fx.edit", "scene": id, "dry_run": false, "changed": false,
                 "noop": true, "changed_ops": summary.changed_count(),
                 "clip_count": clips, "changes": changes_json(&summary),
+                "budget": budget.to_json(), "warnings": warnings,
             }));
         }
         self.scenes.replace_scene(id, outcome.candidate)?;
@@ -128,6 +158,7 @@ impl EditorState {
             "action": "scene.fx.edit", "scene": id, "dry_run": false, "changed": true,
             "noop": false, "changed_ops": summary.changed_count(),
             "clip_count": clips, "changes": changes_json(&summary),
+            "budget": budget.to_json(), "warnings": warnings,
         }))
     }
 }

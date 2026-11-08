@@ -12,6 +12,7 @@
 use std::fs;
 use std::io::Write;
 use std::process::{Command as Process, Stdio};
+use std::sync::Arc;
 
 use serde_json::{Value, json};
 use tessel_editor_core::directed_scene::DirectedScene;
@@ -832,4 +833,506 @@ fn the_headless_executable_edits_effects_like_the_library_and_refuses_the_same_w
 
 fn edit_request(ops: Value) -> String {
     json!({"op":"scene.fx.edit","scene":"street","ops":ops}).to_string()
+}
+
+// ---- review R1: ids, budget, empty batches, automatic tracks, limits (A3, A5, A7, A8, A9) ---------------
+
+fn session_with_fx(layer: Value) -> EditorState {
+    let mut document = bundle();
+    document["fx"] = layer;
+    let mut state = EditorState::empty(&ProjectSettings::default()).unwrap();
+    ok(
+        &mut state,
+        json!({"op":"scene.attach","id":"street","bundle":document}),
+    );
+    state
+}
+
+fn listing(state: &mut EditorState) -> Value {
+    ok(state, json!({"op":"scene.fx.list","scene":"street"}))
+}
+
+fn issue_codes(error: &CommandError) -> Vec<String> {
+    error
+        .details
+        .as_ref()
+        .and_then(|details| details["issues"].as_array())
+        .map(|issues| {
+            issues
+                .iter()
+                .map(|issue| issue["code"].as_str().unwrap().to_string())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[test]
+fn ids_follow_the_pilot_rule_and_reserved_words_in_any_case() {
+    // The pilot's `^[a-z0-9][a-z0-9_-]{0,63}$` with the `i` flag; reserved words compared in lowercase.
+    assert_eq!(fx::MAX_FX_ID_BYTES, 64);
+    let fine = [
+        "a",
+        "0",
+        "A1",
+        "Fx-1",
+        "FX1",
+        "a-b_c",
+        "9-lives",
+        &"x".repeat(64),
+    ];
+    for id in fine {
+        assert_eq!(fx::id_problem(id), None, "{id}");
+    }
+    let invalid = [
+        "", ".a", "-a", "_a", "a.b", "a b", "a/b", "é", "a\n", "-", "_", ".",
+    ];
+    for id in invalid {
+        let (code, _) = fx::id_problem(id).unwrap_or_else(|| panic!("`{id}` must be refused"));
+        assert_eq!(code, "INVALID_VALUE", "{id:?}");
+    }
+    assert_eq!(fx::id_problem(&"x".repeat(65)).unwrap().0, "INVALID_VALUE");
+    for id in [
+        "fx",
+        "FX",
+        "Fx",
+        "track",
+        "Track",
+        "TRACK",
+        "transition",
+        "TRANSITION",
+        "Transition",
+    ] {
+        assert_eq!(fx::id_problem(id).unwrap().0, fx::RESERVED_ID, "{id}");
+    }
+    // Prefixes and suffixes of a reserved word are ordinary ids.
+    for id in ["fx-1", "tracks", "track-2", "my-fx"] {
+        assert_eq!(fx::id_problem(id), None, "{id}");
+    }
+}
+
+#[test]
+fn an_edit_with_a_bad_id_is_refused_atomically_and_a_mixed_case_id_is_kept_as_written() {
+    let mut state = session();
+    edit(&mut state, json!([add(8, 24, json!({}))]));
+    let depth = undo_depth(&state);
+    let before = document(&state);
+    let scene = Arc::clone(&state.scenes.get("street").unwrap().scene);
+
+    let cases = [
+        (".dot", "invalid_value"),
+        ("-lead", "invalid_value"),
+        ("_lead", "invalid_value"),
+        ("a.b", "invalid_value"),
+        ("FX", "reserved_id"),
+        ("Track", "reserved_id"),
+        ("TRANSITION", "reserved_id"),
+    ];
+    for (id, code) in cases {
+        // The bad id is the SECOND op, after a valid one: the whole batch must go.
+        let error = edit_err(
+            &mut state,
+            json!([{"op":"add_clip","effect":"vignette","start_frame":60,"duration_frames":4,"id":"ok-first"},
+                   {"op":"add_clip","effect":"vignette","start_frame":70,"duration_frames":4,"id":id}]),
+        );
+        assert_eq!(error.code, code, "{id}: {error:?}");
+        assert_eq!(
+            error
+                .details
+                .as_ref()
+                .and_then(|details| details["index"].as_u64()),
+            Some(1),
+            "{id}"
+        );
+        assert_eq!(document(&state), before, "{id}");
+        assert_eq!(undo_depth(&state), depth, "{id}");
+        assert!(
+            Arc::ptr_eq(&scene, &state.scenes.get("street").unwrap().scene),
+            "{id}: the scene was not even replaced"
+        );
+    }
+    // A track named with a bad id through the document (import) is refused with the same codes.
+    for (id, code) in [("Track", "RESERVED_ID"), (".t", "INVALID_VALUE")] {
+        let mut document = bundle();
+        document["fx"] = json!({"catalogVersion":1,"transitions":[],"tracks":[
+            {"id": id, "label":"FX","clips":[]}]});
+        let issues: Vec<String> = DirectedScene::import_value(document)
+            .unwrap_err()
+            .issues()
+            .iter()
+            .map(|issue| issue.code.to_string())
+            .collect();
+        assert_eq!(issues, [code], "track `{id}`");
+    }
+    // Mixed case is fine and survives save and reopen exactly as written.
+    edit(
+        &mut state,
+        json!([{"op":"add_clip","effect":"vignette","start_frame":60,"duration_frames":4,"id":"Intro-1"}]),
+    );
+    assert_eq!(
+        listing(&mut state)["tracks"][0]["clips"][1]["id"],
+        "Intro-1"
+    );
+}
+
+#[test]
+fn the_budget_is_a_structured_warning_never_a_refusal_and_the_plan_keeps_every_pass() {
+    let crowd = |count: usize| {
+        let mut document = bundle();
+        document["fx"] = json!({"catalogVersion":1,"transitions":[],"tracks":(0..count).map(|n| json!({
+            "id": format!("t{n}"), "label": format!("FX {}", n + 1),
+            "clips":[{"id": format!("c{n}"), "effect":"vignette",
+                      "startFrame": if n < 8 { 0 } else { 10 },
+                      "durationFrames": if n < 8 { 20 } else { 5 }}]})).collect::<Vec<_>>()});
+        let mut state = EditorState::empty(&ProjectSettings::default()).unwrap();
+        ok(
+            &mut state,
+            json!({"op":"scene.attach","id":"street","bundle":document}),
+        );
+        state
+    };
+    // Eight passes at frame 0 is exactly the budget: no warning.
+    let mut state = crowd(8);
+    let inside = listing(&mut state);
+    assert_eq!(inside["budget"]["max_passes"], 8);
+    assert_eq!(inside["budget"]["peak_passes"], 8);
+    assert_eq!(inside["budget"]["over_budget"], false);
+    assert_eq!(inside["warnings"], json!([]));
+    assert_eq!(passes(&mut state, 0).len(), 8);
+
+    // The real overrun: ten clips alive at frames 10..15.
+    let mut state = crowd(10);
+    let over = listing(&mut state);
+    assert_eq!(over["budget"]["peak_passes"], 10);
+    assert_eq!(over["budget"]["over_budget"], true);
+    assert_eq!(over["budget"]["first_frame_over"], 10);
+    assert_eq!(over["budget"]["frames_over"], 5);
+    assert_eq!(over["budget"]["policy"], "warn");
+    assert_eq!(over["warnings"][0]["code"], "FX_PASS_BUDGET");
+    assert_eq!(over["warnings"][0]["peak_passes"], 10);
+    // The overrun is reported by the frame too, and only for the frames that are over.
+    let frame = ok(
+        &mut state,
+        json!({"op":"scene.fx.frame","scene":"street","frame":12}),
+    );
+    assert_eq!(frame["count"], 10);
+    assert_eq!(frame["over_budget"], true);
+    assert_eq!(frame["warnings"][0]["code"], "FX_PASS_BUDGET");
+    let inside = ok(
+        &mut state,
+        json!({"op":"scene.fx.frame","scene":"street","frame":15}),
+    );
+    assert_eq!(
+        inside["count"], 8,
+        "the end of the two extra clips is exclusive"
+    );
+    assert_eq!(inside["over_budget"], false);
+    assert_eq!(inside["warnings"], json!([]));
+    // The plan keeps every pass in the order of the tracks: nothing is dropped to fit a budget.
+    let plan = plan_json(&mut state, 12);
+    let clips: Vec<&str> = plan["fx"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|pass| pass["clipId"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        clips,
+        ["c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9"]
+    );
+
+    // An edit that creates the overrun is accepted, with the warning in its answer (dry run too).
+    let depth = undo_depth(&state);
+    let dry = ok(
+        &mut state,
+        json!({"op":"scene.fx.edit","scene":"street","dry_run":true,
+               "ops":[{"op":"set_field","clip":"c8","field":"start_frame","value":0}]}),
+    );
+    assert_eq!(dry["warnings"][0]["code"], "FX_PASS_BUDGET");
+    assert_eq!(dry["warnings"][0]["frames_over"], 15 + 5);
+    let real = edit(
+        &mut state,
+        json!([{"op":"set_field","clip":"c8","field":"start_frame","value":0}]),
+    );
+    assert_eq!(real["changed"], true);
+    assert_eq!(real["warnings"][0]["frames_over"], 15 + 5);
+    assert_eq!(undo_depth(&state), depth + 1);
+    // Hidden clips draw nothing and do not count.
+    let hidden = edit(
+        &mut state,
+        json!([{"op":"set_hidden","clip":"c8","hidden":true},{"op":"set_hidden","clip":"c9","hidden":true}]),
+    );
+    assert_eq!(hidden["warnings"], json!([]));
+    assert_eq!(hidden["budget"]["peak_passes"], 8);
+    // The catalog answer states the policy as data.
+    let catalog = ok(&mut state, json!({"op":"scene.fx.catalog"}));
+    assert_eq!(catalog["scope"]["pass_budget"]["max_passes"], 8);
+    assert_eq!(catalog["scope"]["pass_budget"]["policy"], "warn");
+}
+
+#[test]
+fn a_batch_that_changes_nothing_leaves_the_document_the_scene_and_the_history_alone() {
+    // A layer the author wrote bare stays as written under an empty batch (it used to lose the key).
+    let mut state = session_with_fx(json!({"catalogVersion":1,"tracks":[],"transitions":[]}));
+    let before = document(&state);
+    assert!(before.get("fx").is_some());
+    let depth = undo_depth(&state);
+    let scene = Arc::clone(&state.scenes.get("street").unwrap().scene);
+    for ops in [json!([])] {
+        let answer = edit(&mut state, ops.clone());
+        assert_eq!(answer["changed"], false, "{ops}");
+        assert_eq!(answer["noop"], true, "{ops}");
+        assert_eq!(answer["changed_ops"], 0, "{ops}");
+        assert_eq!(document(&state), before, "{ops}");
+        assert_eq!(undo_depth(&state), depth, "{ops}");
+        assert!(Arc::ptr_eq(
+            &scene,
+            &state.scenes.get("street").unwrap().scene
+        ));
+    }
+    // The same on a scene with a clip, with a batch of only no-ops, and on one without any layer.
+    edit(&mut state, json!([add(0, 10, json!({}))]));
+    let depth = undo_depth(&state);
+    let before = document(&state);
+    let answer = edit(
+        &mut state,
+        json!([{"op":"set_hidden","clip":"v1","hidden":false}]),
+    );
+    assert_eq!(answer["changed"], false);
+    assert_eq!(document(&state), before);
+    assert_eq!(undo_depth(&state), depth);
+    let mut plain = session();
+    let before = document(&plain);
+    let answer = edit(&mut plain, json!([]));
+    assert_eq!(answer["noop"], true);
+    assert_eq!(document(&plain), before);
+    assert!(document(&plain).get("fx").is_none(), "no layer is invented");
+    assert_eq!(
+        undo_depth(&plain),
+        0,
+        "an empty batch on a clean session records nothing"
+    );
+    // A batch that does change something and ends bare (add then remove) still gives the original back.
+    let mut state = session_with_fx(json!({"catalogVersion":1,"tracks":[],"transitions":[]}));
+    let answer = edit(
+        &mut state,
+        json!([add(0, 10, json!({})), {"op":"remove_clip","clip":"v1"}]),
+    );
+    assert_eq!(answer["changed"], false);
+    assert_eq!(answer["noop"], true);
+}
+
+#[test]
+fn a_clip_without_a_track_never_lands_on_a_hidden_track_and_keeps_ids_apart() {
+    let mut state = session_with_fx(json!({"catalogVersion":1,"transitions":[],"tracks":[
+        {"id":"hid","label":"FX 1","hidden":true,"clips":[
+            {"id":"old","effect":"vignette","startFrame":0,"durationFrames":4}]}]}));
+    // Frames 40..50 fit on `hid` by time, but a clip there would draw nothing.
+    edit(
+        &mut state,
+        json!([{"op":"add_clip","effect":"vignette","start_frame":40,"duration_frames":10,"id":"seen"}]),
+    );
+    let layer = listing(&mut state);
+    assert_eq!(layer["track_count"], 2, "a visible track was made: {layer}");
+    assert_eq!(layer["tracks"][0]["clips"].as_array().unwrap().len(), 1);
+    assert_eq!(layer["tracks"][1]["clips"][0]["id"], "seen");
+    assert_eq!(layer["tracks"][1]["hidden"], false);
+    assert_eq!(passes(&mut state, 42).len(), 1, "the new effect is visible");
+    // A visible track that fits is reused, and an explicit hidden track is still honoured.
+    edit(
+        &mut state,
+        json!([{"op":"add_clip","effect":"vignette","start_frame":60,"duration_frames":4,"id":"next"}]),
+    );
+    assert_eq!(listing(&mut state)["track_count"], 2);
+    edit(
+        &mut state,
+        json!([{"op":"add_clip","effect":"vignette","start_frame":70,"duration_frames":4,"id":"chosen","track":"hid"}]),
+    );
+    assert_eq!(
+        listing(&mut state)["tracks"][0]["clips"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+
+    // The clip's own id is reserved before the track's is made: an explicit `fx-track-1` clip needing a
+    // new track used to be refused by the importer as DUPLICATE_ID.
+    let mut state = session();
+    edit(&mut state, json!([add(0, 20, json!({}))]));
+    let answer = edit(
+        &mut state,
+        json!([{"op":"add_clip","effect":"vignette","start_frame":5,"duration_frames":10,"id":"fx-track-1"}]),
+    );
+    assert_eq!(answer["changed"], true, "{answer}");
+    let layer = listing(&mut state);
+    assert_eq!(layer["tracks"][1]["clips"][0]["id"], "fx-track-1");
+    assert_ne!(layer["tracks"][1]["id"], "fx-track-1");
+    assert_eq!(layer["tracks"][1]["id"], "fx-track-2");
+}
+
+#[test]
+fn track_labels_are_unique_after_a_removal() {
+    let mut state = session();
+    edit(
+        &mut state,
+        json!([{"op":"add_clip","effect":"vignette","start_frame":0,"duration_frames":20,"id":"a"},
+               {"op":"add_clip","effect":"vignette","start_frame":0,"duration_frames":20,"id":"b"}]),
+    );
+    let labels = |state: &mut EditorState| -> Vec<String> {
+        listing(state)["tracks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|track| track["label"].as_str().unwrap().to_string())
+            .collect()
+    };
+    assert_eq!(labels(&mut state), ["FX 1", "FX 2"]);
+    // Removing the first track leaves "FX 2"; a new overlapping clip's track used to be "FX 2" again.
+    edit(&mut state, json!([{"op":"remove_clip","clip":"a"}]));
+    edit(
+        &mut state,
+        json!([{"op":"add_clip","effect":"vignette","start_frame":0,"duration_frames":20,"id":"c"}]),
+    );
+    let after = labels(&mut state);
+    assert_eq!(after.len(), 2);
+    assert_ne!(after[0], after[1], "{after:?}");
+    assert_eq!(after, ["FX 2", "FX 1"], "the smallest label not taken");
+}
+
+#[test]
+fn the_limits_of_the_layer_are_importer_issues_with_the_fx_limit_code() {
+    let track = |n: usize| json!({"id": format!("t{n}"), "label": "FX", "clips": []});
+    let mut document = bundle();
+    document["fx"] = json!({"catalogVersion":1,"transitions":[],
+        "tracks": (0..fx::MAX_FX_TRACKS).map(track).collect::<Vec<_>>()});
+    assert!(
+        DirectedScene::import_value(document.clone()).is_ok(),
+        "64 tracks fit"
+    );
+    document["fx"]["tracks"]
+        .as_array_mut()
+        .unwrap()
+        .push(track(64));
+    let error = DirectedScene::import_value(document).unwrap_err();
+    let found: Vec<(String, String)> = error
+        .issues()
+        .iter()
+        .map(|issue| (issue.code.to_string(), issue.path.to_string()))
+        .collect();
+    assert_eq!(found, [("FX_LIMIT".to_string(), "/fx/tracks".to_string())]);
+
+    let mut document = bundle();
+    document["fx"] = json!({"catalogVersion":1,"transitions":[],"tracks":[{
+        "id":"t","label":"FX","clips":(0..=fx::MAX_FX_CLIPS_PER_TRACK).map(|n| json!({
+            "id": format!("c{n}"), "effect":"vignette", "startFrame": 0, "durationFrames": 1})).collect::<Vec<_>>()}]});
+    let codes: Vec<String> = DirectedScene::import_value(document)
+        .unwrap_err()
+        .issues()
+        .iter()
+        .map(|issue| issue.code.to_string())
+        .collect();
+    assert!(codes.contains(&"FX_LIMIT".to_string()), "{codes:?}");
+
+    // Through an edit: a 65th track is `invalid_bundle` whose issue is FX_LIMIT, atomically.
+    let mut full = bundle();
+    full["fx"] = json!({"catalogVersion":1,"transitions":[],
+        "tracks": (0..fx::MAX_FX_TRACKS).map(|n| json!({"id": format!("t{n}"), "label": format!("FX {}", n + 1),
+            "clips":[{"id": format!("c{n}"), "effect":"vignette","startFrame":0,"durationFrames":90}]})).collect::<Vec<_>>()});
+    let mut state = EditorState::empty(&ProjectSettings::default()).unwrap();
+    ok(
+        &mut state,
+        json!({"op":"scene.attach","id":"street","bundle":full}),
+    );
+    let before = document(&state);
+    let depth = undo_depth(&state);
+    let error = edit_err(
+        &mut state,
+        json!([{"op":"add_clip","effect":"vignette","start_frame":10,"duration_frames":5,"id":"one-too-many"}]),
+    );
+    assert_eq!(error.code, "invalid_bundle", "{error:?}");
+    assert_eq!(issue_codes(&error), ["FX_LIMIT"]);
+    assert_eq!(document(&state), before);
+    assert_eq!(undo_depth(&state), depth);
+    // The 64 tracks all draw: the budget warns, nothing refuses.
+    let layer = listing(&mut state);
+    assert_eq!(layer["budget"]["peak_passes"], 64);
+    assert_eq!(layer["warnings"][0]["code"], "FX_PASS_BUDGET");
+}
+
+#[test]
+fn shrinking_a_clip_under_its_fades_is_refused_and_the_fades_are_not_adjusted() {
+    // The pilot trims the fades to the new duration; this editor refuses, so no edit changes a value the
+    // author did not name (documented in effects.md). The two ways out are explicit ops.
+    let mut state = session();
+    edit(
+        &mut state,
+        json!([add(8, 24, json!({})),
+               {"op":"set_field","clip":"v1","field":"fade_in_frames","value":10},
+               {"op":"set_field","clip":"v1","field":"fade_out_frames","value":10}]),
+    );
+    let before = document(&state);
+    let depth = undo_depth(&state);
+    let error = edit_err(
+        &mut state,
+        json!([{"op":"set_field","clip":"v1","field":"duration_frames","value":12}]),
+    );
+    assert_eq!(error.code, "invalid_bundle", "{error:?}");
+    assert_eq!(issue_codes(&error), ["ENVELOPE_TOO_LONG"]);
+    assert_eq!(document(&state), before);
+    assert_eq!(undo_depth(&state), depth);
+    // Shortening the fades in the same batch is the explicit way, and it is one entry.
+    let answer = edit(
+        &mut state,
+        json!([{"op":"set_field","clip":"v1","field":"fade_in_frames","value":4},
+               {"op":"set_field","clip":"v1","field":"fade_out_frames","value":4},
+               {"op":"set_field","clip":"v1","field":"duration_frames","value":12}]),
+    );
+    assert_eq!(answer["changed"], true);
+    assert_eq!(undo_depth(&state), depth + 1);
+}
+
+/// The slice of the catalog the runtime draws from (`runtime/test/fixtures/fx-catalog.json`): the
+/// runtime's own test pins `OUTPUT_FX_EFFECTS` to the same file, so a range, a kind or the parameter order
+/// cannot change on one side only. `TESSEL_UPDATE_FX_CONTRACT=1` rewrites the file from the catalog.
+#[test]
+fn the_runtime_contract_fixture_is_the_catalog() {
+    let projection = json!({
+        "catalog_version": fx::FX_CATALOG_VERSION,
+        "effects": fx::catalog().iter().map(|spec| json!({
+            "id": spec.id,
+            "params": spec.params.iter().map(|param| match param.kind {
+                fx::ParamKind::Number { min, max, .. } => json!({"id": param.id, "kind": "number", "min": min, "max": max}),
+                // `parse_param` reads each channel in 0..=1 (a constant of the rule, not of the spec).
+                fx::ParamKind::Color { .. } => json!({"id": param.id, "kind": "color", "min": 0, "max": 1}),
+                fx::ParamKind::Point { min, max, .. } => json!({"id": param.id, "kind": "vec2", "min": min, "max": max}),
+            }).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+    });
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../runtime/test/fixtures/fx-catalog.json"
+    );
+    if std::env::var_os("TESSEL_UPDATE_FX_CONTRACT").is_some() {
+        fs::write(
+            path,
+            serde_json::to_string_pretty(&projection).unwrap() + "\n",
+        )
+        .unwrap();
+    }
+    let pinned: Value = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+    assert_eq!(
+        pinned, projection,
+        "the runtime fixture drifted from the catalog; regenerate with TESSEL_UPDATE_FX_CONTRACT=1"
+    );
+    // And the ranges are the ones the parser enforces: just inside passes, just outside is refused.
+    for spec in fx::catalog() {
+        for param in spec.params {
+            if let fx::ParamKind::Number { min, max, .. } = param.kind {
+                assert!(fx::parse_param(param, &json!(min)).is_ok());
+                assert!(fx::parse_param(param, &json!(max)).is_ok());
+                assert!(fx::parse_param(param, &json!(min - 0.001)).is_err());
+                assert!(fx::parse_param(param, &json!(max + 0.001)).is_err());
+            }
+        }
+    }
 }

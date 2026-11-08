@@ -12,6 +12,7 @@
 //! at import and at edit, never a quietly ignored one):
 //!
 //! * the `vignette` look, scope `output`, on tracks of non-overlapping clips;
+//! * IDs of tracks and clips by the pilot's rule (see [`id_problem`]);
 //! * fixed parameters (`params`; a missing one is the catalog default), `fadeInFrames` /
 //!   `fadeOutFrames` envelope, `hidden` on clips and tracks, `seed` kept as written;
 //! * **refused for now**: `keys` (`FX_KEYS_NOT_YET`), scope `shot`/`node` (`FX_SCOPE_NOT_YET`)
@@ -70,7 +71,19 @@ pub const CATALOG_TOO_NEW: &str = "CATALOG_TOO_NEW";
 pub const FX_SCOPE_NOT_YET: &str = "FX_SCOPE_NOT_YET";
 pub const FX_KEYS_NOT_YET: &str = "FX_KEYS_NOT_YET";
 pub const FX_TRANSITION_NOT_YET: &str = "FX_TRANSITION_NOT_YET";
+/// A limit of the layer (tracks in a bundle, clips on a track). Reported as an importer issue
+/// with this code; the command code of the rejected edit stays `invalid_bundle`.
 pub const FX_LIMIT: &str = "FX_LIMIT";
+/// The code of the structured warning for a frame that asks for more passes than the budget.
+pub const FX_PASS_BUDGET_WARNING: &str = "FX_PASS_BUDGET";
+
+/// How many output passes a frame should have at most. **Policy: warn, never refuse.** Every pass
+/// is one fullscreen draw over the picture (the pilot's editor warns at the same number), so past
+/// it a frame is slower, not wrong: the document stays valid, the plan keeps every pass in order and
+/// the runtime draws them all (two ping-pong targets whatever the count), and `scene.fx.list`,
+/// `scene.fx.edit` and `scene.fx.frame` report the overrun as a structured warning
+/// ([`PassBudget`]). A refusal here would make a bundle the pilot accepts impossible to open.
+pub const FX_PASS_BUDGET: usize = 8;
 
 /// A resolved parameter value.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -208,7 +221,89 @@ impl FxPass {
     }
 }
 
+/// How the layer stands against [`FX_PASS_BUDGET`] over the whole edit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PassBudget {
+    pub budget: usize,
+    /// The most passes any frame of the edit has (hidden clips and tracks draw nothing).
+    pub peak: usize,
+    /// The first edit frame with more than `budget` passes.
+    pub first_frame_over: Option<i64>,
+    /// How many frames of the edit have more than `budget` passes.
+    pub frames_over: i64,
+}
+
+impl PassBudget {
+    pub fn over(&self) -> bool {
+        self.peak > self.budget
+    }
+
+    /// The budget as data, always present (so a caller can tell "inside" from "not reported").
+    pub fn to_json(&self) -> Value {
+        json!({
+            "max_passes": self.budget, "policy": "warn", "peak_passes": self.peak,
+            "over_budget": self.over(), "first_frame_over": self.first_frame_over,
+            "frames_over": self.frames_over,
+        })
+    }
+
+    /// The structured warnings of the budget: none inside it, one past it.
+    pub fn warnings(&self) -> Vec<Value> {
+        let Some(first) = self.first_frame_over.filter(|_| self.over()) else {
+            return Vec::new();
+        };
+        vec![json!({
+            "code": FX_PASS_BUDGET_WARNING,
+            "message": format!(
+                "{} frames draw more than {} effect passes (up to {}, from frame {first}); each pass is one fullscreen draw, so those frames are slower",
+                self.frames_over, self.budget, self.peak
+            ),
+            "max_passes": self.budget, "peak_passes": self.peak,
+            "first_frame_over": first, "frames_over": self.frames_over,
+        })]
+    }
+}
+
 impl Fx {
+    /// The layer against [`FX_PASS_BUDGET`] over the `edit_duration_frames` of the edit: a sweep
+    /// over the visible clips, so it costs the number of clips, not of frames.
+    pub fn pass_budget(&self, edit_duration_frames: u64) -> PassBudget {
+        let length = i64::try_from(edit_duration_frames).unwrap_or(i64::MAX);
+        let mut edges: Vec<(i64, i32)> = Vec::new();
+        for track in self.tracks.iter().filter(|track| !track.hidden) {
+            for clip in track.clips.iter().filter(|clip| !clip.hidden) {
+                let start = clip.start_frame.max(0);
+                let end = clip.end_frame_exclusive().min(length);
+                if start < end {
+                    edges.push((start, 1));
+                    edges.push((end, -1));
+                }
+            }
+        }
+        // At a frame both ends and starts happen: a clip ends *before* the one starting there begins.
+        edges.sort_unstable();
+        let mut running: i64 = 0;
+        let mut peak: i64 = 0;
+        let mut first_frame_over = None;
+        let mut frames_over = 0;
+        let budget = i64::try_from(FX_PASS_BUDGET).unwrap_or(i64::MAX);
+        for (index, &(frame, delta)) in edges.iter().enumerate() {
+            running += i64::from(delta);
+            peak = peak.max(running);
+            let next = edges.get(index + 1).map_or(frame, |&(next, _)| next);
+            if running > budget && next > frame {
+                first_frame_over.get_or_insert(frame);
+                frames_over += next - frame;
+            }
+        }
+        PassBudget {
+            budget: FX_PASS_BUDGET,
+            peak: usize::try_from(peak).unwrap_or(0),
+            first_frame_over,
+            frames_over,
+        }
+    }
+
     /// Whether no clip exists at all (the document may still hold empty tracks).
     pub fn is_empty(&self) -> bool {
         self.tracks.iter().all(|track| track.clips.is_empty())
@@ -295,8 +390,12 @@ pub fn clip_json(clip: &FxClip) -> Value {
     })
 }
 
-/// A syntactically fine ID for a track or clip: letters, digits, `-`, `_`, `.`, at most
-/// [`MAX_FX_ID_BYTES`], not reserved. `None` means fine; `Some` is the reason (and code).
+/// A syntactically fine ID for a track or clip, the pilot's rule (`fx-schema.ts`):
+/// `^[a-z0-9][a-z0-9_-]{0,63}$` read case-insensitively (ASCII letters of either case, digits,
+/// `-` and `_`; it starts with a letter or digit, so no `.`, no leading `-` or `_`), at most
+/// [`MAX_FX_ID_BYTES`] bytes, and not reserved. The reserved words are compared in lowercase, as the
+/// pilot does: `FX`, `Track` and `TRANSITION` are as reserved as `fx`, `track` and `transition`.
+/// `None` means fine; `Some` is the reason (and code).
 pub fn id_problem(id: &str) -> Option<(&'static str, String)> {
     if id.is_empty() {
         return Some((super::INVALID_VALUE, "an ID cannot be empty".to_string()));
@@ -312,18 +411,25 @@ pub fn id_problem(id: &str) -> Option<(&'static str, String)> {
     }
     if let Some(bad) = id
         .chars()
-        .find(|ch| !(ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.')))
+        .find(|ch| !(ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_')))
     {
         return Some((
             super::INVALID_VALUE,
-            format!("`{bad}` is not allowed in an ID (use letters, digits, `-`, `_` or `.`)"),
+            format!("`{bad}` is not allowed in an ID (use letters, digits, `-` or `_`)"),
         ));
     }
-    if FX_RESERVED_IDS.contains(&id) {
+    if !id.starts_with(|ch: char| ch.is_ascii_alphanumeric()) {
+        return Some((
+            super::INVALID_VALUE,
+            format!("an ID starts with a letter or a digit, not `{}`", &id[..1]),
+        ));
+    }
+    let lowercase = id.to_ascii_lowercase();
+    if FX_RESERVED_IDS.contains(&lowercase.as_str()) {
         return Some((
             RESERVED_ID,
             format!(
-                "`{id}` is reserved (property paths use it as a segment); reserved: {}",
+                "`{id}` is reserved in any case (property paths use it as a segment); reserved: {}",
                 FX_RESERVED_IDS.join(", ")
             ),
         ));

@@ -139,7 +139,8 @@ impl SceneUi {
                 else {
                     return;
                 };
-                this.scene_ui.chosen = Some(id.clone());
+                let id = id.clone();
+                this.scene_follow(&id);
                 cx.notify();
             },
         )
@@ -160,6 +161,13 @@ impl SceneUi {
             fx: FxUi::default(),
             notice: None,
         }
+    }
+
+    /// Moves the followed scene without telling the effects section: the guard of a commit is tested
+    /// against a change it never saw.
+    #[cfg(test)]
+    pub fn set_chosen_for_test(&mut self, scene: &str) {
+        self.chosen = Some(scene.to_string());
     }
 
     pub fn is_expanded(&self, path: &str, depth: usize) -> bool {
@@ -360,9 +368,20 @@ impl Workstation {
         if self.state.scenes.get(scene).is_none() {
             return Err(CommandError::unknown_element("scene", scene));
         }
-        self.scene_ui.chosen = Some(scene.to_string());
+        self.scene_follow(scene);
         cx.notify();
         Ok(json!({ "target": "scene.picker", "field": "value", "value": scene, "changed": true }))
+    }
+
+    /// The panel follows another attached scene (the picker, or `set scene.picker value`). What a
+    /// gesture of the scene it leaves was holding is dropped here, never carried into the new one: a drag
+    /// buffer is a value for one control of one scene, and the control of the same name in the next scene
+    /// is another control (`FxUi::retain_scene`).
+    pub(super) fn scene_follow(&mut self, scene: &str) {
+        if self.scene_ui.chosen.as_deref() != Some(scene) {
+            self.scene_ui.fx.retain_scene(scene);
+        }
+        self.scene_ui.chosen = Some(scene.to_string());
     }
 
     /// The Kit tree's own selection moved (arrow keys, a click): follow it into the core.

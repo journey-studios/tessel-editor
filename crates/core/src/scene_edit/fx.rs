@@ -305,7 +305,6 @@ pub(super) fn command_code(code: &str) -> Option<&'static str> {
         fx::FX_SCOPE_NOT_YET => "fx_scope_not_yet",
         fx::FX_KEYS_NOT_YET => "fx_keys_not_yet",
         fx::FX_TRANSITION_NOT_YET => "fx_transition_not_yet",
-        fx::FX_LIMIT => "fx_limit",
         _ => return None,
     })
 }
@@ -380,6 +379,16 @@ fn fresh_id(taken: &[String], prefix: &str) -> String {
         .unwrap_or_else(|| format!("{prefix}-0"))
 }
 
+/// `FX n` for the smallest `n` no track carries: removing a track and adding another does not
+/// give two tracks the same label (the count of tracks would).
+fn fresh_label(tracks: &[Value]) -> String {
+    let taken: Vec<&str> = tracks.iter().map(|track| text_of(track, "label")).collect();
+    (1..)
+        .map(|n| format!("FX {n}"))
+        .find(|label| !taken.contains(&label.as_str()))
+        .unwrap_or_else(|| "FX".to_string())
+}
+
 fn overlaps(track: &Value, start: i64, duration: i64) -> bool {
     clips_of(track).iter().any(|clip| {
         let other_start = frame_of(clip, "startFrame");
@@ -425,21 +434,24 @@ pub fn apply_fx_with(
     }
     // A layer that holds nothing but its empty frame is no layer: the baseline document has no
     // `fx` at all (a layer with other keys, kept as written, stays).
-    let bare = work
-        .get("fx")
-        .and_then(Value::as_object)
-        .is_some_and(|layer| {
-            layer.len() == 3
-                && layer.get("catalogVersion") == Some(&json!(FX_CATALOG_VERSION))
-                && layer
-                    .get("tracks")
-                    .and_then(Value::as_array)
-                    .is_some_and(Vec::is_empty)
-                && layer
-                    .get("transitions")
-                    .and_then(Value::as_array)
-                    .is_some_and(Vec::is_empty)
-        });
+    // Only an edit that changed something may tidy it: a batch that changed nothing (an empty one, or
+    // only no-ops) leaves a layer the author wrote bare exactly as written, so no revision, no undo entry.
+    let bare = !touched.is_empty()
+        && work
+            .get("fx")
+            .and_then(Value::as_object)
+            .is_some_and(|layer| {
+                layer.len() == 3
+                    && layer.get("catalogVersion") == Some(&json!(FX_CATALOG_VERSION))
+                    && layer
+                        .get("tracks")
+                        .and_then(Value::as_array)
+                        .is_some_and(Vec::is_empty)
+                    && layer
+                        .get("transitions")
+                        .and_then(Value::as_array)
+                        .is_some_and(Vec::is_empty)
+            });
     if bare && let Some(root) = work.as_object_mut() {
         root.remove("fx");
     }
@@ -586,7 +598,7 @@ fn add_clip(
             .typical_duration_frames
             .min(edit_length - add.start_frame),
     };
-    let ids = every_id(work);
+    let mut ids = every_id(work);
     let clip_id = match &add.clip {
         Some(id) => {
             if let Some(problem) = bad_id(id) {
@@ -603,6 +615,9 @@ fn add_clip(
         }
         None => fresh_id(&ids, "fx"),
     };
+    // The clip's ID is taken from here on: a track made for it must not be given the same one
+    // (`id: "fx-track-1"` on a clip that needs a new track).
+    ids.push(clip_id.clone());
     let mut params = Map::new();
     for (name, value) in &add.params {
         let (_, param) = spec.param(name).ok_or_else(|| {
@@ -632,16 +647,19 @@ fn add_clip(
             .ok_or_else(|| {
                 EditError::new(UNKNOWN_TRACK, format!("no fx track `{id}`")).with_id(id.as_str())
             })?,
-        None => match all
-            .iter()
-            .position(|track| !overlaps(track, add.start_frame, duration))
-        {
+        // No track named: the first VISIBLE track where it fits (a clip on a hidden track would draw
+        // nothing, an effect nobody sees), or a new one. A hidden track is still a track one can name.
+        None => match all.iter().position(|track| {
+            track.get("hidden") != Some(&Value::Bool(true))
+                && !overlaps(track, add.start_frame, duration)
+        }) {
             Some(slot) => slot,
             None => {
                 let track_id = fresh_id(&ids, "fx-track");
+                let label = fresh_label(all);
                 all.push(json!({
                     "id": track_id,
-                    "label": format!("FX {}", all.len() + 1),
+                    "label": label,
                     "clips": [],
                 }));
                 all.len() - 1

@@ -71,9 +71,20 @@ impl FxUi {
         self.pending.clear();
     }
 
+    /// Drops every drag buffer that belongs to a scene other than `scene` (the panel moved on).
+    pub fn retain_scene(&mut self, scene: &str) {
+        self.pending.retain(|key, _| key.scene == scene);
+    }
+
     #[cfg(test)]
     pub fn pending(&self) -> usize {
         self.pending.len()
+    }
+
+    /// A drag buffer as the slider would have left it (tests: the pointer path is covered separately).
+    #[cfg(test)]
+    pub fn hold(&mut self, key: FxKey, value: f64) {
+        self.pending.insert(key, value);
     }
 }
 
@@ -248,6 +259,26 @@ pub fn controls_of(clip: &FxClip, edit_frames: i64) -> Vec<FxControl> {
 }
 
 impl FxControl {
+    /// What a slider thumb at `raw` means for this control: the step's grid (anchored at the minimum),
+    /// inside the range, written in the decimals of the step. The Kit slider hands over an `f32`, so
+    /// `0.4` arrives as `0.4000000059604645`; the document must hold `0.4`, not that. Only the pointer
+    /// gesture quantizes: a value typed or sent through `set` is the author's own and is checked, not
+    /// rounded, by the core.
+    pub fn quantize(&self, raw: f64) -> f64 {
+        if !raw.is_finite() || self.step <= 0.0 {
+            return raw;
+        }
+        let steps = ((raw - self.min) / self.step).round();
+        let snapped = (self.min + steps * self.step).clamp(self.min, self.max);
+        if self.integer {
+            return snapped.round();
+        }
+        // Decimals of the step (0.01 -> 2) remove the float dust of `min + n * step`.
+        let decimals = (-self.step.log10().floor()).clamp(0.0, 9.0) as i32;
+        let scale = 10f64.powi(decimals);
+        ((snapped * scale).round() / scale).clamp(self.min, self.max)
+    }
+
     /// The edit op that moves this control of `clip` to `value`. A component of a point or a
     /// colour keeps its siblings as the document has them.
     pub fn op(&self, clip: &FxClip, value: f64) -> Result<FxOp, CommandError> {
@@ -431,6 +462,23 @@ impl Workstation {
         self.fx_run(&view.scene, op, source, cx)
     }
 
+    /// The view of `scene`, only while it is the scene the panel shows: a gesture belongs to the scene
+    /// it began on and never edits another one that happens to have a clip of the same id.
+    fn fx_view_of(&self, scene: &str) -> Result<FxView, CommandError> {
+        let view = self.fx_view().ok_or_else(no_scene)?;
+        if view.scene != scene {
+            return Err(CommandError::new(
+                "stale_gesture",
+                format!(
+                    "The effect gesture belonged to scene `{scene}` and the panel now shows `{}`: it was dropped, nothing changed",
+                    view.scene
+                ),
+            )
+            .target(scene));
+        }
+        Ok(view)
+    }
+
     fn fx_known<'a>(&self, view: &'a FxView, clip: &str) -> Result<&'a ClipView, CommandError> {
         view.clip(clip)
             .ok_or_else(|| CommandError::unknown_element("effect clip", clip))
@@ -478,12 +526,49 @@ impl Workstation {
         }
     }
 
+    /// The drag of `key` ends: one edit with the value the thumb shows, in the scene the gesture began
+    /// on. A drag whose scene is no longer the one the panel shows, or whose clip is gone, is not
+    /// applied to whatever is there now: it is dropped and the typed reason goes on screen like any
+    /// refusal. A thumb that rests where the document already is sends nothing.
     fn fx_commit_pending(&mut self, key: &FxKey, cx: &mut Context<Self>) {
         let Some(value) = self.scene_ui.fx.pending.remove(key) else {
             return;
         };
-        let _ = self.fx_set_control(&key.clip, &key.control, value, Source::Gesture, cx);
+        if let Err(error) = self.fx_commit_value(key, value, cx) {
+            self.scene_report(error, cx);
+        }
         cx.notify();
+    }
+
+    fn fx_commit_value(
+        &mut self,
+        key: &FxKey,
+        value: f64,
+        cx: &mut Context<Self>,
+    ) -> Result<Option<Value>, CommandError> {
+        let view = self.fx_view_of(&key.scene)?;
+        let found = self.fx_known(&view, &key.clip)?;
+        let controls = controls_of(&found.clip, view.edit_frames);
+        let control = controls
+            .iter()
+            .find(|candidate| candidate.id == key.control)
+            .ok_or_else(|| {
+                CommandError::new(
+                    "unknown_field",
+                    format!(
+                        "`{}` has no settable field `{}`",
+                        clip_node_id(&key.clip),
+                        key.control
+                    ),
+                )
+            })?;
+        let value = control.quantize(value);
+        if (value - control.value).abs() < 1e-9 {
+            // Nothing to write: no command, no history entry, and a stale notice is left as it was.
+            return Ok(None);
+        }
+        let op = control.op(&found.clip, value)?;
+        self.fx_run(&view.scene, op, Source::Gesture, cx).map(Some)
     }
 
     /// The window lost the focus: a release may never arrive, so what a drag shows is committed.

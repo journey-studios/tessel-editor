@@ -8,7 +8,7 @@ use std::collections::HashSet;
 
 use serde_json::Value;
 
-use crate::directed_scene::issue::{INVALID_TYPE, INVALID_VALUE, LIMIT_EXCEEDED};
+use crate::directed_scene::issue::{INVALID_TYPE, INVALID_VALUE};
 use crate::directed_scene::read::{Bound, Obj, Sink, at, child, kind_of};
 
 use super::catalog::{EffectSpec, ParamKind, ParamSpec, effect};
@@ -441,7 +441,7 @@ pub(in crate::directed_scene) fn read_fx(
         && tracks.len() > MAX_FX_TRACKS
     {
         sink.issue(
-            LIMIT_EXCEEDED,
+            FX_LIMIT,
             &obj.field_path("tracks"),
             format!("a bundle holds at most {MAX_FX_TRACKS} fx tracks"),
         );
