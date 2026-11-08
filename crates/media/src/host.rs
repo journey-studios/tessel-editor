@@ -993,12 +993,14 @@ impl MediaHost {
                 .ok_or_else(|| invalid("`mode` is `copy` or `reference`"))?,
         };
         let folder = optional_text(request, "folder")?.map(str::to_string);
+        let capture = tessel_editor_core::ops::capture_choice(request)?;
         let prepare = flag(request, "prepare", true);
         let known = import::known_hashes(state);
         let import_request = ImportRequest {
             paths,
             mode,
             folder: folder.clone(),
+            capture,
         };
         let (id, slot) = self.start(JobKind::Import, "Import media", move |ctx| {
             let tools = tools.get()?;

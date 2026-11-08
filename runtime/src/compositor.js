@@ -31,7 +31,7 @@ import { forEachLitCell, measureText, GLYPH_ROWS } from './font.js';
 import { fnv1a64, meanColor } from './hash.js';
 import { BLEND_MODES, RuntimeError } from './protocol.js';
 import { LIMITS, LruCache, RetentionCounters, rgbaBytes, targetBytes } from './retention.js';
-import { SceneRig } from './scene.js';
+import { SceneRig, layerScene, splatLayerScene } from './scene.js';
 import { SplatStage } from './splat-stage.js';
 
 THREE.ColorManagement.enabled = false;
@@ -492,7 +492,7 @@ export class Compositor {
     const wanted = [];
     plan.layers.forEach((layer, order) => {
       if (layer.kind !== 'scene') return;
-      const scene = assets.entries.get(layer.asset)?.scene;
+      const scene = layerScene(layer, assets.entries.get(layer.asset));
       if (!scene || !SceneRig.hasSplatObjects(scene)) return;
       const nth = uses.get(layer.asset) ?? 0;
       uses.set(layer.asset, nth + 1);
@@ -576,6 +576,12 @@ export class Compositor {
     return entry;
   }
 
+  /** The entry a scene layer draws: a scene asset as loaded, a bare splat asset as a one-splat scene. */
+  sceneEntryFor(layer, frame) {
+    const entry = this.entryFor(layer, frame);
+    return entry.kind === 'splat' ? { serial: entry.serial, scene: splatLayerScene(layer) } : entry;
+  }
+
   async prepareLayer(layer, frame) {
     const { plan, width, height, assets, keep, aborted } = frame;
     switch (layer.kind) {
@@ -610,7 +616,7 @@ export class Compositor {
         return { texture, width, height, fit: false, flipV: false };
       }
       case 'scene': {
-        const entry = this.entryFor(layer, frame);
+        const entry = this.sceneEntryFor(layer, frame);
         const splatted = SceneRig.hasSplatObjects(entry.scene);
         // Which Spark sort lineage this layer is (`null`: the shared, exact stage), decided from the whole plan.
         const lineage = splatted ? (frame.lineages.get(frame.order)?.lineage ?? null) : null;
@@ -841,7 +847,7 @@ export class Compositor {
       const asset = assets.entries.get(object.asset);
       if (!asset) return null;
       used.set(object.asset, asset);
-      splats.push([object.asset, asset.serial, object.scale ?? 1, object.position ?? null, object.spin ?? null]);
+      splats.push([object.asset, asset.serial, object.scale ?? 1, object.position ?? null, object.spin ?? null, object.rotation ?? null]);
     }
     const animated = entry.scene.objects.some((object) => Array.isArray(object.spin) && object.spin.some((degrees) => degrees !== 0));
     return JSON.stringify({

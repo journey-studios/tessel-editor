@@ -93,6 +93,13 @@ impl ViewportHost {
         self.directed.scene.as_deref()
     }
 
+    /// Tests only: the monitor shows `scene` without a page (a test window has no WebView), so
+    /// the gizmo adapter can be driven through the same entry the page uses.
+    #[cfg(test)]
+    pub fn pretend_directed_scene(&mut self, scene: &str) {
+        self.directed.scene = Some(scene.to_string());
+    }
+
     pub fn render_scene(
         &mut self,
         state: &mut EditorState,

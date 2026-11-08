@@ -29,7 +29,7 @@ fn main() {
         Ok((set, proof)) => println!(
             "{}",
             json!({ "dir": set.dir, "image": set.image, "frames": set.frames_pattern, "tone": set.tone,
-                "splat": set.splat, "scene": set.scene, "proof": proof })
+                "splat": set.splat, "sharp": set.sharp, "scene": set.scene, "proof": proof })
         ),
         Err(error) => {
             eprintln!("Cannot write fixtures: {error}");
