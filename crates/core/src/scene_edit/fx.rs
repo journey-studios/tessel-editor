@@ -17,6 +17,7 @@ use crate::directed_scene::fx::{
     UNKNOWN_EFFECT, UNKNOWN_PARAM, UNKNOWN_TRACK, id_problem, parse_param,
 };
 use crate::directed_scene::{DirectedScene, INVALID_VALUE, ImportError, Limits};
+use crate::time::Ratio;
 
 use super::batch::rejected;
 use super::error::{DOCUMENT_MISMATCH, EditError, INVALID_OP};
@@ -70,12 +71,20 @@ impl ClipField {
 /// A new clip. Everything but the effect and the start is optional: no track means the first
 /// track where it fits (or a new one), no ID means `fx-<n>`, no duration means the effect's
 /// typical length cut at the end of the edit, no `params` means the catalog defaults.
+///
+/// The start is a frame of the edit (`start_frame`) **or** an exact time in seconds
+/// (`start_time`), which the core turns into the edit frame that contains it
+/// (`frame_at_time`, floor, like every other time of `scene.*`). WHY a time: an adapter that
+/// knows only the project's playhead must not hand a sequence frame to a bundle that may run at
+/// another rate; it hands the time, and the bundle's own clock names the frame. With a
+/// `start_time` the `start_frame` field is ignored (it must be 0 in JSON, where it is absent).
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddClip {
     pub track: Option<String>,
     pub clip: Option<String>,
     pub effect: String,
     pub start_frame: i64,
+    pub start_time: Option<Ratio>,
     pub duration_frames: Option<i64>,
     pub params: Vec<(String, Value)>,
 }
@@ -103,7 +112,7 @@ pub enum FxOp {
     },
 }
 
-const SHAPES: &str = r#"{ "op": "add_clip", "effect": "vignette", "start_frame": 0, "duration_frames"?, "track"?, "id"?, "params"? }, { "op": "remove_clip", "clip" }, { "op": "set_param", "clip", "param", "value" }, { "op": "set_field", "clip", "field": "start_frame|duration_frames|fade_in_frames|fade_out_frames", "value" } or { "op": "set_hidden", "clip", "hidden" }"#;
+const SHAPES: &str = r#"{ "op": "add_clip", "effect": "vignette", "start_frame": 0 | "start_time": seconds, "duration_frames"?, "track"?, "id"?, "params"? }, { "op": "remove_clip", "clip" }, { "op": "set_param", "clip", "param", "value" }, { "op": "set_field", "clip", "field": "start_frame|duration_frames|fade_in_frames|fade_out_frames", "value" } or { "op": "set_hidden", "clip", "hidden" }"#;
 
 impl FxOp {
     /// The JSON shape of an op (the `ops` of `scene.fx.edit`).
@@ -144,6 +153,7 @@ impl FxOp {
                     "op",
                     "effect",
                     "start_frame",
+                    "start_time",
                     "duration_frames",
                     "track",
                     "id",
@@ -161,11 +171,33 @@ impl FxOp {
                     None | Some(Value::Null) => None,
                     Some(_) => Some(integer("duration_frames")?),
                 };
+                let has = |key: &str| map.get(key).is_some_and(|value| !value.is_null());
+                let (start_frame, start_time) = match (has("start_frame"), has("start_time")) {
+                    (true, false) => (integer("start_frame")?, None),
+                    (false, true) => {
+                        let time = map
+                            .get("start_time")
+                            .and_then(Ratio::from_json)
+                            .ok_or_else(|| {
+                                invalid(
+                                    "`start_time` is seconds: an integer or {\"num\":1,\"den\":24}"
+                                        .to_string(),
+                                )
+                            })?;
+                        (0, Some(time))
+                    }
+                    _ => {
+                        return Err(invalid(
+                            "give exactly one of `start_frame` or `start_time`".to_string(),
+                        ));
+                    }
+                };
                 Ok(Self::AddClip(AddClip {
                     track: optional_text("track")?,
                     clip: optional_text("id")?,
                     effect: text("effect")?,
-                    start_frame: integer("start_frame")?,
+                    start_frame,
+                    start_time,
                     duration_frames,
                     params,
                 }))
@@ -426,7 +458,14 @@ pub fn apply_fx_with(
     let mut touched: Vec<(usize, String)> = Vec::new();
     for (index, op) in ops.iter().enumerate() {
         let fail = |error: EditError| error.at_op(index);
-        let change = run_op(&mut work, op, index, edit_length).map_err(fail)?;
+        let resolved = resolve_start(scene, op).map_err(fail)?;
+        let change = run_op(
+            &mut work,
+            resolved.as_ref().unwrap_or(op),
+            index,
+            edit_length,
+        )
+        .map_err(fail)?;
         if !change.noop {
             touched.push((index, change.clip.clone()));
         }
@@ -476,6 +515,30 @@ pub fn apply_fx_with(
         candidate,
         summary: FxSummary { changes, modified },
     })
+}
+
+/// The op with its `start_time` turned into the edit frame that contains it, or `None` when
+/// the op has no time to convert. The conversion is the bundle's own clock, so a time that no
+/// frame of the edit holds is refused as `fx_clip_out_of_range` by the range check that follows,
+/// not clamped.
+fn resolve_start(scene: &DirectedScene, op: &FxOp) -> Result<Option<FxOp>, EditError> {
+    let FxOp::AddClip(add) = op else {
+        return Ok(None);
+    };
+    let Some(time) = add.start_time else {
+        return Ok(None);
+    };
+    let frame = scene.bundle().frame_at_time(time).map_err(|error| {
+        EditError::new(
+            FX_CLIP_OUT_OF_RANGE,
+            format!("time {time} s is not a frame of the edit: {error}"),
+        )
+    })?;
+    Ok(Some(FxOp::AddClip(AddClip {
+        start_frame: frame,
+        start_time: None,
+        ..add.clone()
+    })))
 }
 
 /// Validates the batch exactly as `apply_fx` would and reports what it would change.

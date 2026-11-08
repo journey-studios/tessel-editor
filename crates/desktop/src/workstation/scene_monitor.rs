@@ -99,7 +99,10 @@ impl Workstation {
         scene: &str,
         cx: &mut gpui_kit::Context<Self>,
     ) -> Result<Value, CommandError> {
-        let request = serde_json::json!({ "scene": scene, "frame": self.state.timeline.playhead,
+        // The frame of THIS scene's edit that the playhead's time falls on (the core converts it:
+        // a sequence frame is not a bundle frame unless the two rates are the same).
+        let frame = self.state.scene_frame_at_playhead(scene)?;
+        let request = serde_json::json!({ "scene": scene, "frame": frame,
             "width": 960, "height": 540 });
         self.viewport.render_scene(
             &mut self.state,
