@@ -331,6 +331,22 @@ impl EditorState {
         let gesture = self.scene_interaction.gesture.find(id)?;
         self.ensure_live(gesture)?;
         ensure_kind(gesture, &GestureKind::Properties, "scene.fx.gesture.update")?;
+        let outcome = self.gesture_update_candidate(id, ops);
+        if let Err(error) = &outcome {
+            self.scene_interaction
+                .gesture
+                .find_mut(id)?
+                .note_refusal(error);
+        }
+        outcome
+    }
+
+    fn gesture_update_candidate(
+        &mut self,
+        id: &str,
+        ops: Vec<EditOp>,
+    ) -> Result<Value, CommandError> {
+        let gesture = self.scene_interaction.gesture.find(id)?;
         let scene = gesture.scene().to_string();
         let base = Arc::clone(gesture.base());
         if !gesture.targets().is_empty() {

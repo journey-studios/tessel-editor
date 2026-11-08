@@ -378,7 +378,13 @@ impl Workstation {
     /// into the new one: a gesture is a candidate for one clip of one scene, and the control of the
     /// same name in the next scene is another control (F016, BL082.6).
     pub(super) fn scene_follow(&mut self, scene: &str, cx: &mut Context<Self>) {
-        if self.scene_ui.chosen.as_deref() != Some(scene) {
+        let already_shown = self.scene_active_id().as_deref() == Some(scene);
+        let entering_gesture = self
+            .state
+            .scene_interaction
+            .gesture()
+            .is_some_and(|gesture| gesture.scene() == scene);
+        if !already_shown && !entering_gesture {
             self.fx_scene_left(cx);
         }
         self.scene_ui.chosen = Some(scene.to_string());

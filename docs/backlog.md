@@ -1026,3 +1026,5 @@ real (SwiftShader, instância própria, lock de GPU). Lacunas P0 `ORIGIN_NOT_EXE
 sem ponteiro físico, GPU real nem paridade integral; a regra do último candidato legal (`release-on-refusal`) não foi invertida.
 Revisão: o OpenCodeReview (3 comentários) perguntou se os gates rodaram no head atual — respondido por esta linha; o
 CodeRabbit está NEUTRAL por quota (não é revisão nem aceite). Aceite/merge seguem com o coordenador. Detalhes: [effects.md](features/effects.md).
+
+BL082.20 / F039 — revisão residual PR37: preservar gesto na cena já mostrada por fallback e ao entrar na cena dona do gesto; property gesture status publica/limpa refusal. Core scene_interaction23/23; GPUI e gates do novo head pendentes. Os gates b5b077e não validam esta correção.

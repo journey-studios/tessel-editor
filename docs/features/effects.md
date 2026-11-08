@@ -419,3 +419,12 @@ cena exige begin/update bem-sucedidos e verifica a chave real `active`. Quantiza
 limpa para inteiro passos menores que 1e-9: sem grade decimal representável em até nove
 casas conserva o valor já encaixado. Regressões Rust adicionadas, **não executadas** por
 disco abaixo do piso. Check CodeRabbit NEUTRAL não é aprovação; build/prova final pendentes.
+
+## Revisão residual após gates de b5b077e
+
+Escolher uma cena já exibida por fallback preserva o gesto de FX; entrar na cena dona do
+gesto também não o cancela. A comparação usa scene_active_id, não apenas chosen.
+Gestos de propriedades agora registram a última recusa em status, preservam candidato
+e documento, e limpam a recusa no próximo update válido, como os gestos FX.
+Regressão core scene_interaction: 23/23 nesta correção. Teste GPUI adicionado; os gates
+de b5b077e acima não validam estas alterações posteriores. Revalidar antes de merge.

@@ -1469,3 +1469,17 @@ fn the_grid_of_a_fine_step_is_not_lost_through_the_adapter() {
     assert_eq!(quantize_control(0.4, 0.0, 1.0, 0.01, false), 0.4);
     assert_eq!(quantize_control(1.7, 0.0, 1.0, 0.25, false), 1.0);
 }
+
+#[gpui_kit::test]
+fn choosing_the_displayed_fallback_scene_keeps_its_effect_candidate(cx: &mut TestAppContext) {
+    let (view, cx) = two_scenes(cx);
+    view.update(cx, |view, _| view.scene_ui.set_chosen_for_test("detached"));
+    let scene = view.read_with(cx, |view, _| view.scene_active_id().unwrap());
+    change(&view, cx, key(&scene, "fx-1", "intensity"), 0.2);
+    assert!(gesture_open(&view, cx));
+    choose(&view, cx, &scene);
+    assert!(
+        gesture_open(&view, cx),
+        "the displayed scene did not change"
+    );
+}

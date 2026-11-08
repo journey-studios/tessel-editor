@@ -261,3 +261,5 @@ Antes da correção os testes de BL066 (mesmo ID em dois projetos) e BL069 (sele
 conforme alguém consultou ou não) **falharam** contra o código anterior; ver o relatório.
 
 Integração pelo coordenador: testes públicos 21/21, unitários no gate core (197/197 no conjunto) e clippy lib limpo. Corrigidas duas expectativas: alvo fora do gesto é recusado antes de validar nó inexistente (`gesture_target_mismatch`). O executável headless passou uma sessão real de 13 requests (attach, árvore, seleção, evaluate, begin/update/commit, get, undo/redo). A integração posterior da janela está em F039-UI; testes e CLI sem janela não provam ponteiro físico.
+
+A última proposta recusada de um gesto de propriedades é exposta em `gesture.refusal`, sem alterar o candidato legal ou o documento. Um update válido limpa a recusa; segue o mesmo contrato do gesto FX.
