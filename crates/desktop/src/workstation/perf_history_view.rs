@@ -37,12 +37,12 @@ use super::tokens::Tokens;
 use super::{Activity, Source, Workstation};
 
 /// Width of one 250 ms bucket on screen.
-const BAR: f32 = 2.0;
+const BAR: f32 = 1.5;
 const CHART_WIDTH: f32 = BAR * BUCKETS as f32;
 const ROW_HEIGHT: f32 = 24.0;
 const LABEL_WIDTH: f32 = 190.0;
-const SUMMARY_WIDTH: f32 = 190.0;
-const DIALOG_WIDTH: f32 = 920.0;
+const SUMMARY_WIDTH: f32 = 250.0;
+const DIALOG_WIDTH: f32 = 900.0;
 
 /// What the workstation keeps about the panel: the open one, if any.
 #[derive(Default)]
@@ -942,6 +942,11 @@ fn inspection_block(
                 .child("Eventos correlacionados (do início da espera até o balde):"),
         )
         .children(events)
+        .children(inspection.events.is_empty().then(|| {
+            div()
+                .text_color(t.faint)
+                .child("nenhum evento nessa janela")
+        }))
 }
 
 fn footer(
