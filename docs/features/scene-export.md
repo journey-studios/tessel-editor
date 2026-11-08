@@ -242,4 +242,4 @@ exportado, os originais nem o estágio de outro export. Teste: `crates/media/tes
 
 ## Posse do renderer (BL144.10)
 
-Um export (e seu preflight) pede o renderer pela política única de [F056](renderer-ownership.md): com outro export (ou preflight) no renderer, responde `renderer_busy`/`retryable` e nada é enfileirado; com um job de miniaturas no renderer, o job é parado no próximo quadro e o export é recusado até a nova tentativa (o renderer fica reservado por 30 s). Escrito, não executado (disco).
+Um export (e seu preflight) pede o renderer pela política única de [F056](renderer-ownership.md): com outro export (ou preflight) no renderer, responde `renderer_busy`/`retryable` e nada é enfileirado; com um job de miniaturas no renderer, o job é parado no próximo quadro e o export é recusado até a nova tentativa (o renderer fica reservado por 30 s). Uma sonda de preflight cancelada continua dona do renderer até largá-lo (BL144.18). Validado (testes que contam renderers, prova headless e nativa; ver F056).

@@ -10,7 +10,11 @@
 //!   holds it              export / preflight        thumbnails (window tick or explicit)
 //!   ------------------    ----------------------    ------------------------------------
 //!   nobody                granted                   granted
-//!   an export/preflight   refused, retryable        refused, retryable
+//!   an export             refused, retryable        refused, retryable
+//!   a preflight probe     refused, retryable, and   refused, retryable
+//!                         the probe is asked to
+//!                         stop (a newer request
+//!                         supersedes a report)
 //!   a thumbnail job       refused, retryable, and   its own family decides (same project:
 //!                         the job is asked to stop  reuse; other project: wait), never a
 //!                         (export has priority)     second renderer
@@ -23,9 +27,12 @@
 //! (or its preflight) is refused only because a thumbnail job holds the renderer, that job is asked
 //! to stop at its next frame boundary and the renderer is **reserved** for the export for a bounded
 //! time, so the window's tick does not hand it to a new thumbnail job before the caller retries
-//! (otherwise the export would starve behind a tick that always wins). The reservation ends when an
-//! export is granted or when it expires; it never outlives a project change in a way that loses
-//! anything, because it only delays work nobody asked for.
+//! (otherwise the export would starve behind a tick that always wins). The same goes for a
+//! renderer **probe** (the export dialog's own verification, read-only): a newer export or probe
+//! asks it to stop, because the report it would produce is already out of date. The reservation
+//! ends when an export is granted, when it expires, or when the project it was made for is no
+//! longer the open one (the adapter ties it to the project's stamp): it only delays work nobody
+//! asked for, and it must never delay another project's drawing.
 //!
 //! The user's decisions are not this module's to undo: a thumbnail job the user cancelled leaves
 //! that project's automatic drawing paused whatever the exports do, and a thumbnail job stopped on
@@ -69,6 +76,12 @@ impl Holder {
     fn is_thumbnail(&self) -> bool {
         self.kind == JobKind::Thumbnail
     }
+
+    /// The renderer probe of an export preflight: read-only, and superseded by any newer export
+    /// request, so (unlike an export) it can be asked to stop.
+    fn is_probe(&self) -> bool {
+        self.kind == JobKind::Preflight
+    }
 }
 
 /// Whoever asks for the renderer.
@@ -100,8 +113,9 @@ pub struct Refusal {
     pub message: String,
     /// The job in the way, if one is.
     pub holder: Option<Holder>,
-    /// A thumbnail job the host must ask to stop (export priority). Never an export.
-    pub preempt: Option<JobId>,
+    /// The thumbnail jobs and renderer probes the host must ask to stop (export priority). Never
+    /// an export.
+    pub preempt: Vec<JobId>,
     /// The host must reserve the renderer for an export for [`EXPORT_PRIORITY_SECONDS`].
     pub reserve: bool,
     /// Thumbnails against a thumbnail job: the thumbnail family arbitrates (reuse, or wait for the
@@ -123,7 +137,7 @@ impl Refusal {
             details["job"] = json!(holder.job);
             details["job_kind"] = json!(holder.kind.label());
         }
-        if self.preempt.is_some() {
+        if !self.preempt.is_empty() {
             details["stopping"] = json!(true);
         }
         CommandError::new(self.code, self.message.clone()).details(details)
@@ -143,13 +157,19 @@ pub enum Verdict {
 /// Pure and total: the same registry and reservation always give the same answer, and the order of
 /// `holders` only decides which of several equal holders is named.
 pub fn decide(claimant: Claimant, holders: &[Holder], reserved: bool) -> Verdict {
-    let export_holder = holders.iter().find(|holder| !holder.is_thumbnail());
+    // An export is the one holder that is never stopped; a probe is read-only and can be. The
+    // thumbnail family comes last.
+    let export_holder = holders
+        .iter()
+        .find(|holder| !holder.is_thumbnail() && !holder.is_probe());
+    let probe_holder = holders.iter().find(|holder| holder.is_probe());
     let thumbnail_holder = holders.iter().find(|holder| holder.is_thumbnail());
+    let blocking_holder = export_holder.or(probe_holder);
     let refusal = |code, message: String| Refusal {
         code,
         message,
         holder: None,
-        preempt: None,
+        preempt: Vec::new(),
         reserve: false,
         same_family: false,
         reserved: false,
@@ -168,16 +188,25 @@ pub fn decide(claimant: Claimant, holders: &[Holder], reserved: bool) -> Verdict
                 )
             });
         }
-        if let Some(holder) = thumbnail_holder {
+        let stoppable: Vec<&Holder> = holders
+            .iter()
+            .filter(|holder| holder.is_probe() || holder.is_thumbnail())
+            .collect();
+        if let Some(holder) = stoppable.first() {
+            let what = if holder.is_probe() {
+                "A renderer probe (an export preflight)"
+            } else {
+                "A thumbnail job"
+            };
             return Verdict::Refuse(Refusal {
-                holder: Some(holder.clone()),
-                preempt: Some(holder.job.clone()),
+                holder: Some((*holder).clone()),
+                preempt: stoppable.iter().map(|holder| holder.job.clone()).collect(),
                 reserve: true,
                 ..refusal(
                     "renderer_busy",
                     format!(
-                        "A thumbnail job (`{}`) holds the renderer; it was asked to stop at its next \
-                         frame and the renderer is reserved for the export: ask again in a moment",
+                        "{what} (`{}`) holds the renderer; it was asked to stop and the \
+                         renderer is reserved for the export: ask again in a moment",
                         holder.job
                     ),
                 )
@@ -185,7 +214,7 @@ pub fn decide(claimant: Claimant, holders: &[Holder], reserved: bool) -> Verdict
         }
         return Verdict::Grant;
     }
-    if let Some(holder) = export_holder {
+    if let Some(holder) = blocking_holder {
         return Verdict::Refuse(Refusal {
             holder: Some(holder.clone()),
             ..refusal(
@@ -290,7 +319,7 @@ mod tests {
             let refused = refusal(decide(claimant, &holders, false));
             assert_eq!(refused.code, "renderer_busy", "{claimant:?}");
             assert_eq!(refused.holder, Some(holders[0].clone()));
-            assert_eq!(refused.preempt, None, "an export is never preempted");
+            assert!(refused.preempt.is_empty(), "an export is never preempted");
             assert!(!refused.reserve, "{claimant:?}");
             let error = refused.error();
             assert_eq!(error.code, "renderer_busy");
@@ -306,7 +335,7 @@ mod tests {
         for claimant in [Claimant::Export, Claimant::Preflight] {
             let refused = refusal(decide(claimant, &holders, false));
             assert_eq!(refused.code, "renderer_busy");
-            assert_eq!(refused.preempt.as_deref(), Some("job-7"));
+            assert_eq!(refused.preempt, vec!["job-7".to_string()]);
             assert!(refused.reserve, "{claimant:?}");
             assert!(!refused.same_family);
             let error = refused.error();
@@ -318,13 +347,58 @@ mod tests {
     }
 
     #[test]
+    fn a_renderer_probe_yields_to_a_newer_export_request_and_never_to_a_thumbnail() {
+        let holders = [holder("job-3", JobKind::Preflight)];
+        for claimant in [Claimant::Export, Claimant::Preflight] {
+            let refused = refusal(decide(claimant, &holders, false));
+            assert_eq!(refused.code, "renderer_busy", "{claimant:?}");
+            assert_eq!(refused.preempt, vec!["job-3".to_string()], "{claimant:?}");
+            assert!(refused.reserve, "{claimant:?}");
+            let error = refused.error();
+            let details = error.details.as_deref().expect("details");
+            assert_eq!(details["retryable"], true);
+            assert_eq!(details["queued"], false);
+            assert_eq!(details["stopping"], true);
+            assert_eq!(details["job_kind"], "preflight");
+        }
+        for claimant in [Claimant::AutomaticThumbnails, Claimant::ExplicitThumbnails] {
+            let refused = refusal(decide(claimant, &holders, false));
+            assert_eq!(refused.code, "renderer_busy", "{claimant:?}");
+            assert!(refused.preempt.is_empty(), "thumbnails stop nothing");
+            assert!(!refused.reserve && !refused.same_family);
+        }
+    }
+
+    #[test]
+    fn an_export_outranks_a_probe_and_a_thumbnail_job_when_several_hold_the_renderer() {
+        let holders = [
+            holder("job-1", JobKind::Preflight),
+            holder("job-2", JobKind::Thumbnail),
+            holder("job-3", JobKind::VideoExport),
+        ];
+        let refused = refusal(decide(Claimant::Export, &holders, false));
+        assert_eq!(refused.holder, Some(holders[2].clone()));
+        assert!(
+            refused.preempt.is_empty(),
+            "nothing is stopped behind an export"
+        );
+        // Without the export, one refusal stops every stoppable holder, so a single retry is
+        // enough once they end.
+        let refused = refusal(decide(Claimant::Export, &holders[..2], false));
+        assert_eq!(
+            refused.preempt,
+            vec!["job-1".to_string(), "job-2".to_string()]
+        );
+    }
+
+    #[test]
     fn thumbnails_never_take_the_renderer_from_a_thumbnail_job_or_an_export_reservation() {
         let holders = [holder("job-7", JobKind::Thumbnail)];
         for claimant in [Claimant::AutomaticThumbnails, Claimant::ExplicitThumbnails] {
             let refused = refusal(decide(claimant, &holders, false));
             assert_eq!(refused.code, "thumbnail_busy");
             assert!(refused.same_family, "the host arbitrates its own family");
-            assert_eq!(refused.preempt, None);
+            assert!(refused.preempt.is_empty());
             assert!(!refused.reserve);
 
             let reserved = refusal(decide(claimant, &holders, true));
@@ -352,7 +426,7 @@ mod tests {
         ];
         let refused = refusal(decide(Claimant::Export, &holders, false));
         assert_eq!(refused.holder, Some(holders[1].clone()));
-        assert_eq!(refused.preempt, None);
+        assert!(refused.preempt.is_empty());
         let refused = refusal(decide(Claimant::ExplicitThumbnails, &holders, false));
         assert_eq!(refused.holder, Some(holders[1].clone()));
         assert!(!refused.same_family);

@@ -53,6 +53,10 @@ struct Arena {
     hold_export: AtomicBool,
     /// A frame of a directed export waits while set.
     hold_scene: AtomicBool,
+    /// The renderer's capability query (the preflight probe) waits while set.
+    hold_probe: AtomicBool,
+    /// Renderers that have started a capability query and not ended it.
+    probing: AtomicUsize,
     /// The next normal export renderer fails on its first frame.
     fail_export_frames: AtomicBool,
     /// The factory cannot start a renderer.
@@ -175,7 +179,11 @@ impl Renderer for GateRenderer {
     }
 
     fn capabilities(&mut self) -> Result<Capabilities, BackendError> {
-        self.mock.capabilities()
+        self.arena.probing.fetch_add(1, Ordering::SeqCst);
+        park_while(&self.arena.hold_probe);
+        let capabilities = self.mock.capabilities();
+        self.arena.probing.fetch_sub(1, Ordering::SeqCst);
+        capabilities
     }
 
     fn summary(&self) -> Value {
@@ -302,9 +310,20 @@ fn poll_until(
     host: &mut MediaHost,
     state: &mut EditorState,
     what: &str,
+    done: impl FnMut(&MediaHost, &EditorState) -> bool,
+) {
+    poll_within(host, state, what, Duration::from_secs(60), done);
+}
+
+/// Like [`poll_until`], with a limit that is part of what is being proved.
+fn poll_within(
+    host: &mut MediaHost,
+    state: &mut EditorState,
+    what: &str,
+    limit: Duration,
     mut done: impl FnMut(&MediaHost, &EditorState) -> bool,
 ) {
-    let deadline = Instant::now() + Duration::from_secs(60);
+    let deadline = Instant::now() + limit;
     while !done(host, state) {
         host.poll(state);
         assert!(Instant::now() < deadline, "never happened: {what}");
@@ -948,6 +967,430 @@ fn a_directed_export_asked_behind_a_thumbnail_frame_is_refused_and_retried() {
     ));
     poll_until(&mut host, &mut state, "the directed export", |host, _| {
         label(host, &export) == Some("succeeded")
+    });
+    assert_eq!(arena.peak(), 1);
+}
+
+fn preflight_request(dir: &Path, name: &str) -> Value {
+    json!({"op":"export.preflight","preset":tiny(),"destination":dir.join(name),"range":[0,4]})
+}
+
+/// The explicit retry a caller makes after `renderer_busy`: asks again until the renderer is its
+/// own, never longer than a minute. Every answer other than "busy" ends the loop.
+fn ask_until_granted(host: &mut MediaHost, state: &mut EditorState, request: Value) -> Value {
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        match run(host, state, request.clone()) {
+            Ok(reply) => return reply,
+            Err(error) if error.code == "renderer_busy" => {
+                assert!(Instant::now() < deadline, "the renderer never came free");
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(error) => panic!("{request}: {error:?}"),
+        }
+    }
+}
+
+/// A window host whose first thing is a renderer probe parked inside its capability query.
+fn probe_in_flight(
+    arena: &Arc<Arena>,
+    dir: &Path,
+    set: &StandardSet,
+    hold: Option<Duration>,
+) -> (EditorState, MediaHost, String) {
+    let mut state = project(dir, "film", set);
+    arena.hold_probe.store(true, Ordering::SeqCst);
+    // The tick has nothing to draw yet: the preflight is the first to ask for the renderer.
+    let mut host = window(arena, hold);
+    let job = job_of(&ok(&mut host, &mut state, preflight_request(dir, "p.mp4")));
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while arena.probing.load(Ordering::SeqCst) != 1 {
+        assert!(
+            Instant::now() < deadline,
+            "the probe never reached the renderer"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    (state, host, job)
+}
+
+#[test]
+fn a_cancelled_preflight_keeps_the_renderer_until_its_probe_lets_it_go() {
+    // BL144.18: the probe asks the renderer for its limits on a side thread, so cancelling the job
+    // ends the job at once while the renderer is still alive. The registry says `cancelled`; the
+    // renderer is not free until the thread drops it. Counting the registry alone would start a
+    // second renderer here (peak 2): the counter below is what proves it does not.
+    let (dir, set) = setup("cancelled-probe");
+    let arena = Arc::new(Arena::default());
+    let (mut state, mut host, preflight) = probe_in_flight(&arena, &dir, &set, None);
+    assert_eq!(arena.live(), 1);
+
+    ok(
+        &mut host,
+        &mut state,
+        json!({"op":"job.cancel","job":preflight}),
+    );
+    poll_until(
+        &mut host,
+        &mut state,
+        "the preflight job to end",
+        |host, _| label(host, &preflight) == Some("cancelled"),
+    );
+    assert_eq!(arena.live(), 1, "the job is over, its renderer is not");
+
+    // Every request for a renderer is refused while the probe still has it, and none is queued.
+    let export = run(&mut host, &mut state, export_request(&dir, "e.mp4")).unwrap_err();
+    assert_eq!(export.code, "renderer_busy");
+    assert_eq!(details(&export)["retryable"], true);
+    assert_eq!(details(&export)["queued"], false);
+    assert_eq!(details(&export)["job"], json!(preflight));
+    let again = run(&mut host, &mut state, preflight_request(&dir, "p2.mp4")).unwrap_err();
+    assert_eq!(again.code, "renderer_busy");
+    let thumbnails = run(&mut host, &mut state, json!({"op":"media.thumbnails"})).unwrap_err();
+    assert_eq!(thumbnails.code, "renderer_busy");
+    tick(&mut host, &mut state, 20);
+    assert_eq!(
+        count(&host, "thumbnail"),
+        0,
+        "the tick draws nothing behind a probe"
+    );
+    assert_eq!(count(&host, "video-export"), 0);
+    assert_eq!(arena.live(), 1);
+    assert_eq!(arena.peak(), 1, "never two renderers");
+
+    // The probe lets go; only then is the renderer anyone's.
+    arena.hold_probe.store(false, Ordering::SeqCst);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while arena.live() != 0 {
+        assert!(
+            Instant::now() < deadline,
+            "the probe never dropped its renderer"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let started = ask_until_granted(&mut host, &mut state, export_request(&dir, "e.mp4"));
+    let export = job_of(&started);
+    poll_until(&mut host, &mut state, "the export", |host, _| {
+        label(host, &export) == Some("succeeded")
+    });
+    assert_eq!(
+        arena.peak(),
+        1,
+        "the export built its renderer after the probe's was gone"
+    );
+}
+
+#[test]
+fn a_new_preflight_right_after_cancelling_the_previous_one_is_refused_once_then_granted() {
+    // The export dialog cancels its previous report and asks again at once (BL144.19). The first
+    // ask is a clear, retryable refusal that also stops the old probe; the retry succeeds.
+    let (dir, set) = setup("preflight-after-cancel");
+    let arena = Arc::new(Arena::default());
+    let (mut state, mut host, first) = probe_in_flight(&arena, &dir, &set, None);
+
+    host.registry().cancel(&first).unwrap();
+    let refused = run(&mut host, &mut state, preflight_request(&dir, "p2.mp4")).unwrap_err();
+    assert_eq!(refused.code, "renderer_busy");
+    assert_eq!(details(&refused)["retryable"], true);
+    assert_eq!(details(&refused)["queued"], false);
+    assert_eq!(details(&refused)["stopping"], true);
+    assert_eq!(count(&host, "preflight"), 1, "refused, not accepted");
+    assert_eq!(arena.peak(), 1);
+
+    arena.hold_probe.store(false, Ordering::SeqCst);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while arena.live() != 0 {
+        assert!(Instant::now() < deadline, "the old probe never ended");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let second = job_of(&ask_until_granted(
+        &mut host,
+        &mut state,
+        preflight_request(&dir, "p2.mp4"),
+    ));
+    poll_until(&mut host, &mut state, "the second preflight", |host, _| {
+        label(host, &second) == Some("succeeded")
+    });
+    assert_eq!(arena.peak(), 1);
+}
+
+#[test]
+fn an_export_asked_while_the_dialogs_preflight_still_probes_stops_it_and_is_retried() {
+    // `Exportar` pressed while the dialog still says "Verificando…": the verification is read-only
+    // and out of date, so the export stops it. The export itself is not accepted yet.
+    let (dir, set) = setup("export-behind-probe");
+    let arena = Arc::new(Arena::default());
+    let (mut state, mut host, preflight) = probe_in_flight(&arena, &dir, &set, None);
+
+    let refused = run(&mut host, &mut state, export_request(&dir, "e.mp4")).unwrap_err();
+    assert_eq!(refused.code, "renderer_busy");
+    assert_eq!(details(&refused)["stopping"], true);
+    assert_eq!(details(&refused)["job"], json!(preflight));
+    assert!(host.registry().get(&preflight).unwrap().cancel_requested);
+    assert_eq!(count(&host, "video-export"), 0);
+    assert_eq!(arena.live(), 1);
+
+    // Still reserved for the export: the tick does not give the renderer to thumbnails.
+    arena.hold_probe.store(false, Ordering::SeqCst);
+    poll_until(&mut host, &mut state, "the probe to end", |_, _| {
+        arena.live() == 0
+    });
+    tick(&mut host, &mut state, 20);
+    assert_eq!(count(&host, "thumbnail"), 0, "reserved for the retry");
+
+    let export = job_of(&ask_until_granted(
+        &mut host,
+        &mut state,
+        export_request(&dir, "e.mp4"),
+    ));
+    poll_until(&mut host, &mut state, "the export", |host, _| {
+        label(host, &export) == Some("succeeded")
+    });
+    assert_eq!(arena.peak(), 1);
+}
+
+#[test]
+fn the_users_pause_survives_a_preflight_that_finishes_is_cancelled_or_cannot_start() {
+    for outcome in ["finishes", "is cancelled", "cannot start a renderer"] {
+        let (dir, set) = setup(&format!("pause-preflight-{}", outcome.replace(' ', "-")));
+        let arena = Arc::new(Arena::default());
+        let (mut state, mut host) = thumbnail_frame_in_flight(&arena, &dir, &set, None);
+        let thumbnail = only_job(&host, "thumbnail");
+        ok(
+            &mut host,
+            &mut state,
+            json!({"op":"job.cancel","job":thumbnail}),
+        );
+        arena.hold_thumbnail.store(false, Ordering::SeqCst);
+        poll_until(&mut host, &mut state, "the job to end", |host, _| {
+            label(host, &thumbnail) == Some("cancelled")
+        });
+        tick(&mut host, &mut state, 20);
+        assert_eq!(
+            count(&host, "thumbnail"),
+            1,
+            "{outcome}: paused before the preflight"
+        );
+
+        match outcome {
+            "is cancelled" => arena.hold_probe.store(true, Ordering::SeqCst),
+            "cannot start a renderer" => arena.fail_build.store(true, Ordering::SeqCst),
+            _ => {}
+        }
+        let preflight = job_of(&ok(&mut host, &mut state, preflight_request(&dir, "p.mp4")));
+        if outcome == "is cancelled" {
+            let deadline = Instant::now() + Duration::from_secs(60);
+            while arena.probing.load(Ordering::SeqCst) != 1 {
+                assert!(Instant::now() < deadline, "the probe never started");
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            // The dialog's way of cancelling: the registry, not `job.cancel`.
+            host.registry().cancel(&preflight).unwrap();
+            arena.hold_probe.store(false, Ordering::SeqCst);
+        }
+        let expected = if outcome == "is cancelled" {
+            "cancelled"
+        } else {
+            "succeeded"
+        };
+        poll_until(&mut host, &mut state, "the preflight to end", |host, _| {
+            label(host, &preflight) == Some(expected)
+        });
+        poll_until(&mut host, &mut state, "the renderer to be free", |_, _| {
+            arena.live() == 0
+        });
+        arena.fail_build.store(false, Ordering::SeqCst);
+
+        // The pause is still the user's: the preflight did not undo it, whichever way it ended.
+        tick(&mut host, &mut state, 30);
+        assert_eq!(
+            count(&host, "thumbnail"),
+            1,
+            "{outcome}: the pause survived"
+        );
+        assert!(state.thumbnails.is_empty(), "{outcome}");
+        let resumed = ok(&mut host, &mut state, json!({"op":"media.thumbnails"}));
+        assert!(resumed["job"].is_string(), "{outcome}: {resumed}");
+        let (splat, scene) = (id_of(&state, "splat"), id_of(&state, "scene"));
+        poll_until(&mut host, &mut state, "the resumed drawing", |_, state| {
+            state.thumbnail(&splat).is_some() && state.thumbnail(&scene).is_some()
+        });
+        assert_eq!(arena.peak(), 1, "{outcome}");
+    }
+}
+
+#[test]
+fn a_cancel_that_does_not_come_through_the_host_still_wins_over_the_stop_for_an_export() {
+    // The jobs dialog cancels through the registry, not through `job.cancel`. The host must not
+    // need to hear about it: the job's own count of requests tells the user's cancel from its own.
+    let hold = Some(Duration::ZERO);
+    let (dir, set) = setup("registry-cancel");
+    let arena = Arc::new(Arena::default());
+    let (mut state, mut host) = thumbnail_frame_in_flight(&arena, &dir, &set, hold);
+    let thumbnail = only_job(&host, "thumbnail");
+    let refused = run(&mut host, &mut state, export_request(&dir, "a.mp4")).unwrap_err();
+    assert_eq!(refused.code, "renderer_busy");
+    // A second refusal asks nobody to stop a second time: the count is the user's alone.
+    let refused = run(&mut host, &mut state, export_request(&dir, "a.mp4")).unwrap_err();
+    assert_eq!(refused.code, "renderer_busy");
+    assert_eq!(host.registry().get(&thumbnail).unwrap().cancel_requests, 1);
+
+    host.registry().cancel(&thumbnail).unwrap();
+    arena.hold_thumbnail.store(false, Ordering::SeqCst);
+    poll_until(&mut host, &mut state, "the job to end", |host, _| {
+        label(host, &thumbnail) == Some("cancelled")
+    });
+    tick(&mut host, &mut state, 30);
+    assert_eq!(
+        count(&host, "thumbnail"),
+        1,
+        "the user's cancel paused the drawing"
+    );
+    assert_eq!(arena.peak(), 1);
+}
+
+#[test]
+fn the_user_cancelling_while_an_export_forces_the_stop_always_leaves_the_pause() {
+    // The user's cancel and the export's forced stop race on two threads, many times over. Whoever
+    // wins the registry, the user's request is counted: the pause must hold in every round.
+    for round in 0..12 {
+        let (dir, set) = setup(&format!("race-{round}"));
+        let arena = Arc::new(Arena::default());
+        let (mut state, mut host) =
+            thumbnail_frame_in_flight(&arena, &dir, &set, Some(Duration::ZERO));
+        let thumbnail = only_job(&host, "thumbnail");
+        let registry = host.registry().clone();
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let user = {
+            let (barrier, thumbnail) = (barrier.clone(), thumbnail.clone());
+            std::thread::spawn(move || {
+                barrier.wait();
+                for _ in 0..(round % 4) {
+                    std::thread::yield_now();
+                }
+                let _ = registry.cancel(&thumbnail);
+            })
+        };
+        barrier.wait();
+        let _ = run(&mut host, &mut state, export_request(&dir, "a.mp4"));
+        user.join().unwrap();
+        arena.hold_thumbnail.store(false, Ordering::SeqCst);
+        poll_until(&mut host, &mut state, "the job to end", |host, _| {
+            label(host, &thumbnail) == Some("cancelled")
+        });
+        tick(&mut host, &mut state, 20);
+        assert!(
+            host.registry().get(&thumbnail).unwrap().cancel_requests >= 1,
+            "round {round}: the user's request was counted"
+        );
+        assert_eq!(
+            count(&host, "thumbnail"),
+            1,
+            "round {round}: the pause held"
+        );
+        assert_eq!(arena.peak(), 1, "round {round}");
+    }
+}
+
+#[test]
+fn the_reservation_for_a_refused_export_expires_and_the_tick_draws_again() {
+    let (dir, set) = setup("reservation-expiry");
+    let arena = Arc::new(Arena::default());
+    let hold = Duration::from_millis(1500);
+    let (mut state, mut host) = thumbnail_frame_in_flight(&arena, &dir, &set, Some(hold));
+    let thumbnail = only_job(&host, "thumbnail");
+    let refused = run(&mut host, &mut state, export_request(&dir, "a.mp4")).unwrap_err();
+    assert_eq!(refused.code, "renderer_busy");
+    arena.hold_thumbnail.store(false, Ordering::SeqCst);
+    poll_until(
+        &mut host,
+        &mut state,
+        "the stopped job to end",
+        |host, _| label(host, &thumbnail) == Some("cancelled"),
+    );
+    tick(&mut host, &mut state, 10);
+    assert_eq!(
+        count(&host, "thumbnail"),
+        1,
+        "inside the reservation nothing is drawn"
+    );
+
+    // Nobody asked again: the reservation runs out and the drawing comes back by itself. The
+    // export that was refused does not.
+    std::thread::sleep(hold + Duration::from_millis(300));
+    let (splat, scene) = (id_of(&state, "splat"), id_of(&state, "scene"));
+    poll_until(
+        &mut host,
+        &mut state,
+        "the drawing after the reservation",
+        |_, state| state.thumbnail(&splat).is_some() && state.thumbnail(&scene).is_some(),
+    );
+    assert_eq!(count(&host, "video-export"), 0);
+    assert_eq!(arena.peak(), 1);
+}
+
+#[test]
+fn a_reservation_made_for_one_project_never_delays_another_project() {
+    let (dir, set) = setup("reservation-switch");
+    let arena = Arc::new(Arena::default());
+    // The default 30 s: only the project's stamp can end it early.
+    let (first, mut host) = thumbnail_frame_in_flight(&arena, &dir, &set, None);
+    let mut first = first;
+    let stale = only_job(&host, "thumbnail");
+    let refused = run(&mut host, &mut first, export_request(&dir, "a.mp4")).unwrap_err();
+    assert_eq!(refused.code, "renderer_busy");
+    arena.hold_thumbnail.store(false, Ordering::SeqCst);
+
+    let mut second = project(&dir, "second", &set);
+    poll_until(
+        &mut host,
+        &mut second,
+        "the stopped job to end",
+        |host, _| label(host, &stale) == Some("cancelled"),
+    );
+    let (splat, scene) = (id_of(&second, "splat"), id_of(&second, "scene"));
+    // Far inside the 30 s of the reservation: it was made for the other project, not this one.
+    poll_within(
+        &mut host,
+        &mut second,
+        "the other project's thumbnails, with no export in sight",
+        Duration::from_secs(10),
+        |_, state| state.thumbnail(&splat).is_some() && state.thumbnail(&scene).is_some(),
+    );
+    assert_eq!(count(&host, "video-export"), 0);
+    assert_eq!(arena.peak(), 1);
+}
+
+#[test]
+fn a_request_that_would_fail_anyway_stops_nothing_and_reserves_nothing() {
+    let (dir, set) = setup("invalid-requests");
+    let arena = Arc::new(Arena::default());
+    let (mut state, mut host) = thumbnail_frame_in_flight(&arena, &dir, &set, None);
+    let thumbnail = only_job(&host, "thumbnail");
+    for bad in [
+        json!({"op":"export.start","preset":tiny()}),
+        json!({"op":"export.start","preset":"no-such-preset","destination":dir.join("x.mp4")}),
+        json!({"op":"export.start","preset":tiny(),"destination":dir.join("x.mp4"),"range":[3]}),
+        json!({"op":"export.preflight","preset":tiny()}),
+        json!({"op":"media.thumbnails","assets":["no-such-asset"]}),
+    ] {
+        let error = run(&mut host, &mut state, bad.clone()).unwrap_err();
+        assert_ne!(error.code, "renderer_busy", "{bad}: {error:?}");
+        let info = host.registry().get(&thumbnail).unwrap();
+        assert_eq!(
+            info.cancel_requests, 0,
+            "{bad}: the thumbnail job was not stopped"
+        );
+        assert!(!info.cancel_requested, "{bad}");
+    }
+    // Not reserved either: the explicit thumbnail request still reaches its own family's answer
+    // (a job already runs: reuse), never `renderer_busy`.
+    let reply = ok(&mut host, &mut state, json!({"op":"media.thumbnails"}));
+    assert_eq!(reply["reused"], true, "{reply}");
+
+    arena.hold_thumbnail.store(false, Ordering::SeqCst);
+    poll_until(&mut host, &mut state, "the job to end", |host, _| {
+        label(host, &thumbnail) == Some("succeeded") || label(host, &thumbnail).is_none()
     });
     assert_eq!(arena.peak(), 1);
 }
