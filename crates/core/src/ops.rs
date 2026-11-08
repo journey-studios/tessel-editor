@@ -85,6 +85,8 @@ pub enum Op {
     Capabilities,
     RenderStatus,
     Status,
+    /// What the window header says about the open project (`project.header`).
+    Header,
 }
 
 fn invalid(message: impl Into<String>) -> CommandError {
@@ -359,6 +361,7 @@ pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, Comm
     let op = string(request, "op")?;
     let command = match op {
         "status" => return Ok(Some(Op::Status)),
+        "project.header" => return Ok(Some(Op::Header)),
         "capabilities" => return Ok(Some(Op::Capabilities)),
         "render.status" => return Ok(Some(Op::RenderStatus)),
         "project.create" => return Ok(Some(Op::CreateProject(project_create(request)?))),

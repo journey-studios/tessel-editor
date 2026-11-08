@@ -457,6 +457,7 @@ fn build_library(state: &EditorState, nodes: &mut Vec<Node>) {
                 .state("media_kind", item.kind.label())
                 .state("folder", format!("folder:{}", item.folder))
                 .state("demo_image", item.image.is_some())
+                .state("thumbnail", state.thumbnail_report(item.id.as_str()))
                 .state(
                     "capture",
                     item.asset

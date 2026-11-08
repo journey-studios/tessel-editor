@@ -441,6 +441,7 @@ impl EditorState {
             preview_policy: crate::preview::PreviewPolicy::default(),
             scenes,
             scene_interaction: Default::default(),
+            thumbnails: Default::default(),
         })
     }
 }

@@ -51,13 +51,19 @@ fn folder_item(library: &Library, folder: &Folder) -> TreeItem {
         )
 }
 
-/// What the tree must show, as IDs plus expansion plus the selected row, so a
-/// change in any of them is noticed with one comparison.
+/// What the tree must show, as IDs and labels plus expansion plus the selected row, so a
+/// change in any of them is noticed with one comparison. The label is part of it because
+/// every project's root bin has the same ID: opening another project renames it.
 fn signature(library: &Library) -> Vec<(String, bool)> {
     let mut signature: Vec<(String, bool)> = library
         .folders
         .iter()
-        .map(|folder| (folder.id.to_string(), folder.expanded))
+        .map(|folder| {
+            (
+                format!("{}\u{1}{}", folder.id, folder.label),
+                folder.expanded,
+            )
+        })
         .collect();
     signature.push((
         format!(
@@ -129,13 +135,25 @@ impl Workstation {
             .rounded(px(3.))
             .overflow_hidden()
             .bg(t.field);
-        let thumb = match item.image {
-            Some(image) => thumb.child(
+        // A splat or scene shows the frame the adapter drew of it, but only while that picture
+        // is still the one of the asset as it is now (`EditorState::thumbnail` checks).
+        let drawn = self.state.thumbnail(item.id.as_str()).cloned();
+        let thumb = match (item.image, drawn) {
+            (Some(image), _) => thumb.child(
                 img(demo_image(image))
                     .size_full()
                     .object_fit(ObjectFit::Cover),
             ),
-            None => thumb.child(glyph(
+            (None, Some(drawn)) => {
+                let id = item.id.to_string();
+                thumb.child(
+                    img(std::path::PathBuf::from(drawn.path))
+                        .debug_selector(move || format!("media-thumb-{id}"))
+                        .size_full()
+                        .object_fit(ObjectFit::Cover),
+                )
+            }
+            (None, None) => thumb.child(glyph(
                 match item.kind {
                     MediaKind::Audio => IconName::AudioLines,
                     _ => IconName::ChartGantt,
@@ -351,5 +369,21 @@ impl Workstation {
                             .opacity(0.7),
                     ),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use core::prelude::v1::test;
+
+    use super::*;
+
+    #[test]
+    fn the_tree_signature_changes_when_another_project_renames_the_same_root_bin() {
+        let first = Library::empty("Aurora");
+        let second = Library::empty("Basalt");
+        assert_eq!(first.root().map(|f| f.id), second.root().map(|f| f.id));
+        assert_ne!(signature(&first), signature(&second));
+        assert_eq!(signature(&first), signature(&Library::empty("Aurora")));
     }
 }

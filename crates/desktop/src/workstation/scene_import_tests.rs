@@ -1013,7 +1013,7 @@ fn the_scene_flows_are_in_the_automation_tree_and_the_header(cx: &mut TestAppCon
         assert_eq!(node["actions"][0]["action"], "open", "{id}");
     }
     // The header button is the same gesture as `flow.attach_scene` (`workflow_invoke`).
-    let button = crate::header::node("node:26").expect("the header declares the button");
+    let button = crate::header::node("node:26", "").expect("the header declares the button");
     assert_eq!(button["label"], "Anexar cena");
     assert_eq!(button["kind"], "button");
     assert_eq!(import_state(&view, cx), json!({ "state": "idle" }));

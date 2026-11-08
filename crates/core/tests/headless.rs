@@ -6,8 +6,11 @@ use tessel_editor_core::{Command, EditorState, Raw, headless};
 
 #[test]
 fn json_and_library_flows_have_the_same_state_and_reject_without_mutation() {
+    // Two sessions of the same project: the same identity (the ID every new project gets is
+    // random, so a second `default()` would be another project), so the whole summary is compared.
     let mut direct = EditorState::default();
-    let mut json_session = EditorState::default();
+    let mut json_session = direct.clone();
+    assert_eq!(direct.summary(), json_session.summary());
     direct
         .execute(Command::SetPlayhead {
             frame: Raw::Number(120.0),

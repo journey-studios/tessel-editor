@@ -19,6 +19,11 @@ use crate::theme;
 use crate::workstation::{Source, Workstation, shortcut_label};
 use tessel_editor_core::perf::PerfMeterCommand;
 
+/// What node 13 declares before it is given the live project title.
+const TITLE_NODE_LABEL: &str = "";
+/// The node that carries the open project's title.
+const TITLE_NODE: u32 = 13;
+
 /// Strip height; the native traffic lights are centred in it.
 pub const HEIGHT: f32 = 40.0;
 /// Room the traffic lights take on the left, see `traffic_light_position`.
@@ -42,7 +47,9 @@ const NODES: [StaticNode; 27] = [
     (10, "icon", None, Some(9), false),
     (11, "button", Some("Refazer"), Some(8), false),
     (12, "icon", None, Some(11), false),
-    (13, "text", Some("North / Master"), Some(3), false),
+    // The text of node 13 is the open project's `Project / Sequence` (BL144): `nodes(title)`
+    // replaces this placeholder with the live label, the same one the header paints.
+    (13, "text", Some(TITLE_NODE_LABEL), Some(3), false),
     (14, "button", Some("Importar"), Some(8), false),
     (15, "icon", None, Some(14), false),
     (16, "button", Some("Exportar"), Some(8), false),
@@ -75,10 +82,15 @@ const ACTIONS: [(u32, &str, IconName); 9] = [
 
 /// The header's static nodes for the automation tree, parented to
 /// `region:header` (the root) or to each other.
-pub fn nodes() -> Vec<Value> {
+pub fn nodes(title: &str) -> Vec<Value> {
     NODES
         .iter()
         .map(|(number, kind, label, parent, hidden)| {
+            let label = if *number == TITLE_NODE {
+                Some(title)
+            } else {
+                *label
+            };
             let children: Vec<String> = NODES
                 .iter()
                 .filter(|(_, _, _, candidate, _)| *candidate == Some(*number))
@@ -96,8 +108,8 @@ pub fn nodes() -> Vec<Value> {
         .collect()
 }
 
-pub fn node(id: &str) -> Option<Value> {
-    nodes().into_iter().find(|node| node["id"] == id)
+pub fn node(id: &str, title: &str) -> Option<Value> {
+    nodes(title).into_iter().find(|node| node["id"] == id)
 }
 
 /// Header content for one panel toggle: icon and the Portuguese accessible name.
@@ -143,6 +155,7 @@ impl Render for Header {
         let dark = theme::is_dark(cx);
         let colors = cx.theme().colors;
 
+        let title = self.workstation.read(cx).state.header().label();
         let perf_visible = self.workstation.read(cx).perf_visible();
         let perf_label = format!("Medidor de FPS e debug ({})", shortcut_label());
         let compact = window.viewport_size().width < px(1040.);
@@ -264,9 +277,10 @@ impl Render for Header {
                     .child(
                         div()
                             .truncate()
+                            .debug_selector(|| "header-title".to_string())
                             .text_size(px(12.))
                             .text_color(colors.muted_foreground)
-                            .child("North / Master"),
+                            .child(title),
                     ),
             )
             .child(
@@ -295,7 +309,7 @@ mod tests {
     #[test]
     fn header_nodes_are_addressable_and_unique() {
         // Ported from `automation::model`: the header used to come from design.json.
-        let all = nodes();
+        let all = nodes("Film / Cut");
         let ids: HashSet<_> = all
             .iter()
             .map(|node| node["id"].as_str().unwrap())
@@ -303,14 +317,14 @@ mod tests {
         assert_eq!(all.len(), ids.len());
         assert!(all.len() >= 15);
         for id in &ids {
-            assert!(node(id).is_some());
+            assert!(node(id, "").is_some());
         }
-        assert!(node("node:missing").is_none());
+        assert!(node("node:missing", "").is_none());
     }
 
     #[test]
     fn header_has_one_root_under_the_header_region() {
-        let roots: Vec<_> = nodes()
+        let roots: Vec<_> = nodes("")
             .into_iter()
             .filter(|node| node["parent"] == "region:header")
             .collect();
@@ -319,7 +333,7 @@ mod tests {
 
     #[test]
     fn header_buttons_are_enabled_and_invokable() {
-        for node in nodes() {
+        for node in nodes("") {
             if node["kind"] == "button" {
                 assert_eq!(node["enabled"], true);
                 assert_eq!(node["actions"][0]["action"], "invoke");
@@ -330,7 +344,7 @@ mod tests {
     #[test]
     fn every_rendered_action_has_a_declared_button() {
         for (number, label, _) in ACTIONS {
-            let declared = node(&format!("node:{number}")).unwrap();
+            let declared = node(&format!("node:{number}"), "").unwrap();
             assert_eq!(declared["kind"], "button");
             assert_eq!(declared["label"], label);
         }

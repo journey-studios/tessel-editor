@@ -158,7 +158,7 @@ fn dispatch_now(
     let data = match request["command"].as_str() {
         Some("tree") => {
             let mut nodes = workstation.read(cx).tree_nodes(cx);
-            let header_nodes = header::nodes();
+            let header_nodes = header::nodes(&workstation.read(cx).state.header().label());
             let roots: Vec<Value> = header_nodes
                 .iter()
                 .filter(|node| node["parent"] == "region:header")
@@ -227,7 +227,7 @@ fn dispatch_now(
 /// layout so one `get dock` answers every question about it.
 fn lookup(workstation: &Entity<Workstation>, id: &str, cx: &App) -> Result<Value, CommandError> {
     let node = if id.starts_with("node:") {
-        header::node(id)
+        header::node(id, &workstation.read(cx).state.header().label())
     } else {
         workstation.read(cx).tree_node(id, cx)
     };

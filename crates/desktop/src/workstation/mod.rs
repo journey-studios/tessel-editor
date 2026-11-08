@@ -830,6 +830,8 @@ mod camera_keys_tests;
 #[cfg(test)]
 mod dock_tests;
 #[cfg(test)]
+mod identity_tests;
+#[cfg(test)]
 mod input_tests;
 #[cfg(test)]
 mod perf_tests;
