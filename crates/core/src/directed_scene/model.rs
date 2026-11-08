@@ -368,6 +368,8 @@ pub struct Bundle {
     pub shots: Vec<Shot>,
     pub composition_passes: Vec<CompositionPass>,
     pub audio: Option<AudioMix>,
+    /// The effects layer (`bundle.fx`, F016): output-scope looks over the edit's timeline.
+    pub fx: super::fx::Fx,
 }
 
 impl Bundle {

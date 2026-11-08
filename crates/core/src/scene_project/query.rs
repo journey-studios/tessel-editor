@@ -222,6 +222,8 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
                 "scene.gizmo.state", "scene.gizmo.hit", "scene.pointer.down",
                 "scene.pointer.move", "scene.pointer.up", "scene.pointer.cancel",
                 "scene.translate",
+                // F016 (docs/features/effects.md): the effects layer, additive.
+                "scene.fx.edit", "scene.fx.list", "scene.fx.catalog", "scene.fx.frame",
             ],
             "max_scenes": MAX_SCENES,
             // Additive contract of the property catalog (docs/features/scene-edit.md): a caller
@@ -295,6 +297,14 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
             answer["scene"] = json!(scene);
             Ok(answer)
         }
+        SceneCommand::FxCatalog => Ok(super::fx::catalog_answer()),
+        SceneCommand::FxList { scene } => Ok(super::fx::list_answer(
+            &scene,
+            &attached(book, &scene)?.scene,
+        )),
+        SceneCommand::FxFrame { scene, at } => {
+            super::fx::frame_answer(&scene, &attached(book, &scene)?.scene, &at)
+        }
         // The F039 commands also need the session state (selection, gesture), which this
         // function does not get: they run in `interaction.rs`.
         SceneCommand::Attach { .. }
@@ -306,7 +316,8 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
         | SceneCommand::Select { .. }
         | SceneCommand::Selection
         | SceneCommand::Gesture(_)
-        | SceneCommand::Gizmo(_) => Err(CommandError::new(
+        | SceneCommand::Gizmo(_)
+        | SceneCommand::FxEdit { .. } => Err(CommandError::new(
             "internal",
             "a scene command reached the read path that does not serve it",
         )),

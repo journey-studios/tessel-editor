@@ -13,6 +13,7 @@
 
 import * as THREE from 'three';
 
+import { parseOutputFx } from './output-fx.js';
 import { RuntimeError } from './protocol.js';
 
 export const SCENE_PLAN_KIND = 'tessel-scene-plan';
@@ -33,6 +34,7 @@ export const SCENE_CAPABILITIES = [
   'opaqueAlpha',
   'compositionPassOrder',
   'splats',
+  'outputFx',
 ];
 
 /** Advertised in `ready.capabilities.directed_scene`, so a host can check before it sends. */
@@ -282,8 +284,12 @@ export const parseDirectedLayer = (layer) => {
   }
   if (splats.length > 0 && !requires.includes('splats')) throw invalid('/requires', 'a plan with splats must require `splats`');
 
+  // F016: the resolved effect passes drawn over the finished picture (absent means none).
+  const fx = parseOutputFx(plan.fx, requires);
+
   return {
     output: { width, height },
+    fx,
     camera: {
       position: vec3At(camera.position, '/camera/position'),
       target: vec3At(camera.target, '/camera/target'),

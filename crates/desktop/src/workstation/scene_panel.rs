@@ -71,14 +71,14 @@ fn entity_icon(kind: &str) -> IconName {
 }
 
 /// What one slider row prints around its control.
-struct SliderRow<'a> {
+pub(super) struct SliderRow<'a> {
     /// Element ID suffix, the same as the slider's (`SliderKey::element_id`).
-    element: &'a str,
+    pub(super) element: &'a str,
     /// Component label (`X`, `Y°`); empty for a single number, whose property header says it.
-    label: &'a str,
-    modified: bool,
-    value: String,
-    unit: &'a str,
+    pub(super) label: &'a str,
+    pub(super) modified: bool,
+    pub(super) value: String,
+    pub(super) unit: &'a str,
 }
 
 impl Workstation {
@@ -214,6 +214,7 @@ impl Workstation {
         if let Some(status) = self.scene_gesture_status(t, &snapshot, cx) {
             content = content.child(status);
         }
+        content = content.child(self.scene_fx_section(t, fit, window, cx));
         content = content.child(self.scene_target(t, fit, &snapshot, window, cx));
         self.scene_scroll(t, content)
     }
@@ -755,7 +756,7 @@ impl Workstation {
     /// has a floor (`MIN_TRACK`) and the value column grows to `MAX_VALUE` and then cuts with an
     /// ellipsis; when the panel is too narrow for that (`fit.compact`) the slider takes its
     /// own line under the label and the value.
-    fn scene_slider_row(
+    pub(super) fn scene_slider_row(
         &self,
         t: &Tokens,
         fit: PanelFit,

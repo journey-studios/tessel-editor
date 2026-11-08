@@ -28,6 +28,7 @@
 //! ```
 
 mod animation;
+pub mod fx;
 mod graph;
 mod integrity;
 mod issue;
@@ -239,6 +240,7 @@ impl DirectedScene {
             shots: draft.shots,
             composition_passes: draft.passes,
             audio: draft.audio,
+            fx: draft.fx,
         };
         Ok(Self {
             document: value,

@@ -3,6 +3,7 @@
 Comece pela [matriz de features](features/README.md): ela registra o contrato e o estado de
 cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 
+- [Piloto de efeitos, planos e Studio: tudo para portar](migration/pilot-fx-shots-studio-features.md): 59 efeitos, comandos, gestos, inspector, runtime, timeline e CLI do branch `t3/scene-engine-pilot`, com ordem sugerida para o Rust.
 - [Integração da rodada R1–R10](migration/round-r1-r10-report.md): export dirigido, inspector, planos e robustez; evidências e limites do gate final.
 - [Próxima entrega — dez frentes](migration/next-delivery-ten-agents.md): contratos e ownership; status e delegações no backlog comum.
 - [Integração M/N/O/P](migration/round-mnop-report.md): renderer, recursos portáteis, inspector e provas do fluxo dirigido.

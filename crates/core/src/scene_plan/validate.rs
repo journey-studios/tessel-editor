@@ -10,6 +10,7 @@ use crate::directed_scene::{AssetAlpha, AssetFormat, CameraState, NodeAnimation,
 
 use super::model::{Capability, Domain, PlanLayer, PlanNode, PlanSplat, ScenePlan};
 use super::{PLAN_VERSION, PlanError};
+use crate::directed_scene::fx::FxPass;
 
 /// Where each splat falls among the layers: the index of the first layer (plan order) whose node
 /// origin is in front of the camera and strictly nearer to it than the splat node's origin, else
@@ -111,6 +112,7 @@ pub(super) fn derive_requires(
     layers: &[PlanLayer],
     splats: &[PlanSplat],
     animation: &NodeAnimation,
+    fx: &[FxPass],
 ) -> Vec<Capability> {
     let mut found = BTreeSet::from([Capability::Camera, Capability::NodeTransforms]);
     if nodes.iter().any(|node| {
@@ -128,6 +130,9 @@ pub(super) fn derive_requires(
     }
     if !splats.is_empty() {
         found.insert(Capability::Splats);
+    }
+    if !fx.is_empty() {
+        found.insert(Capability::OutputFx);
     }
     for layer in layers {
         found.insert(match layer.alpha {
@@ -187,8 +192,14 @@ impl ScenePlan {
         self.check_layers(&index)?;
         self.check_splats(&index)?;
         self.check_resources()?;
-        if derive_requires(&self.nodes, &self.layers, &self.splats, &self.animation)
-            != self.requires
+        self.check_fx()?;
+        if derive_requires(
+            &self.nodes,
+            &self.layers,
+            &self.splats,
+            &self.animation,
+            &self.fx,
+        ) != self.requires
         {
             return Err(PlanError::invalid(
                 "/requires",
@@ -422,6 +433,71 @@ impl ScenePlan {
                 ));
             }
             previous = Some(key);
+        }
+        Ok(())
+    }
+
+    /// The effect passes are resolved data a runtime draws as listed, so they are checked against
+    /// the catalog: a known effect, exactly its parameters in range, a weight in 0..1 and an
+    /// `amount` that is the intensity times the weight.
+    fn check_fx(&self) -> Result<(), PlanError> {
+        let mut seen = std::collections::HashSet::new();
+        for (position, pass) in self.fx.iter().enumerate() {
+            let at = format!("/fx/{position}");
+            let Some(spec) = crate::directed_scene::fx::effect(&pass.effect) else {
+                return Err(PlanError::invalid(
+                    format!("{at}/effect"),
+                    format!("`{}` is not an effect of the catalog", pass.effect),
+                ));
+            };
+            if pass.track_id.is_empty() || pass.clip_id.is_empty() {
+                return Err(PlanError::invalid(at, "trackId and clipId are not empty"));
+            }
+            if !seen.insert(pass.clip_id.as_str()) {
+                return Err(PlanError::invalid(
+                    format!("{at}/clipId"),
+                    "a clip appears once per frame",
+                ));
+            }
+            if pass.frame_in_clip < 0 {
+                return Err(PlanError::invalid(
+                    format!("{at}/frameInClip"),
+                    "must not be negative",
+                ));
+            }
+            if pass.params.len() != spec.params.len() {
+                return Err(PlanError::invalid(
+                    format!("{at}/params"),
+                    "must hold exactly the parameters of the effect, in catalog order",
+                ));
+            }
+            for ((name, value), param) in pass.params.iter().zip(spec.params) {
+                if name != param.id {
+                    return Err(PlanError::invalid(
+                        format!("{at}/params/{name}"),
+                        "must hold exactly the parameters of the effect, in catalog order",
+                    ));
+                }
+                if let Err((_, message)) =
+                    crate::directed_scene::fx::parse_param(param, &value.to_json())
+                {
+                    return Err(PlanError::invalid(format!("{at}/params/{name}"), message));
+                }
+            }
+            if !(0.0..=1.0).contains(&pass.weight) {
+                return Err(PlanError::invalid(
+                    format!("{at}/weight"),
+                    "must be between 0 and 1",
+                ));
+            }
+            if !(0.0..=1.0).contains(&pass.amount)
+                || (pass.amount - pass.expected_amount()).abs() > 1e-9
+            {
+                return Err(PlanError::invalid(
+                    format!("{at}/amount"),
+                    "must be the intensity times the weight, between 0 and 1",
+                ));
+            }
         }
         Ok(())
     }

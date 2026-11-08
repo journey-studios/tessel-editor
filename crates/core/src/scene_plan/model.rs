@@ -2,6 +2,7 @@
 //! own value unchanged (`Vec3`, `Mat4`, `CameraState`, `NodeAnimation`, `Fps`, the asset enums),
 //! so the plan cannot drift from what `evaluate_frame` returned.
 
+use crate::directed_scene::fx::FxPass;
 use crate::directed_scene::{
     AssetAlpha, AssetColorSpace, AssetFormat, CameraState, Fps, Mat4, NodeAnimation, NodeKind, Vec3,
 };
@@ -37,10 +38,14 @@ pub enum Capability {
     /// the plan. A runtime that does
     /// not list it refuses the plan (`unsupported` + `missing`), never draws it without the splats.
     Splats,
+    /// Output-scope effects (`ScenePlan::fx`, F016): passes over the finished picture, drawn in
+    /// the listed order after the layers and splats. A runtime that does not list it refuses the
+    /// plan (`unsupported` + `missing`), never draws the picture without its effects.
+    OutputFx,
 }
 
 impl Capability {
-    pub const ALL: [Capability; 9] = [
+    pub const ALL: [Capability; 10] = [
         Self::Camera,
         Self::NodeTransforms,
         Self::Sockets,
@@ -50,6 +55,7 @@ impl Capability {
         Self::OpaqueAlpha,
         Self::CompositionPassOrder,
         Self::Splats,
+        Self::OutputFx,
     ];
 
     /// The spelling used on the wire.
@@ -64,6 +70,7 @@ impl Capability {
             Self::OpaqueAlpha => "opaqueAlpha",
             Self::CompositionPassOrder => "compositionPassOrder",
             Self::Splats => "splats",
+            Self::OutputFx => "outputFx",
         }
     }
 
@@ -346,6 +353,11 @@ pub struct ScenePlan {
     /// The splat nodes, in document order; each is drawn at its `after_layers` slot among the layers. Empty for a scene without
     /// splats, and then absent from the wire form (S7: plans without splats keep their bytes).
     pub splats: Vec<PlanSplat>,
+    /// The output-scope effect passes of the frame, in the order of composition (F016): already
+    /// resolved (envelope applied, `amount` final), so a runtime draws them as listed and knows
+    /// no timeline. Empty without effects, and then absent from the wire form (plans without
+    /// effects keep their bytes).
+    pub fx: Vec<FxPass>,
     /// The textures and splat files the frame needs, ascending by `asset_id` (bytewise): the stable list a
     /// resource manifest is asked about.
     pub resources: Vec<PlanResource>,

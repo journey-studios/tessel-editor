@@ -1,18 +1,284 @@
-# F016 — Adicionar e processar efeitos
+# F016 — Adicionar e processar efeitos (primeira fatia: vinheta, escopo de saída)
 
 ## Status
 
-**Pendente** em UI, CLI e biblioteca. Nenhuma API ou comando desta feature está entregue.
-Estado demonstrativo e controles desabilitados não comprovam implementação funcional.
+**Parcial.** Uma fatia completa de ponta a ponta: o efeito **vinheta** com escopo **saída** (a imagem
+final da cena dirigida), criado, editado e removido pela biblioteca, pelo JSONL sem janela e pela janela;
+avaliado por quadro no core; persistido; desfeito em uma entrada; desenhado pelo monitor e pelo export.
+Não é a migração do motor de efeitos: o catálogo tem **um** efeito e o piloto tem 59 shaders. O restante
+(catálogo, transições, edição de shots) continua pendente em BL028/BL036/BL082 e **não** há placeholder
+habilitado para ele.
 
-## Contrato a implementar
+| Superfície | Estado | Evidência (ver "Evidências": o que foi executado e o que **não** foi) |
+|---|---|---|
+| Lib | A validar | `crates/core/tests/scene_fx.rs` (16 do head anterior + 9 da correção R1), `reference.rs` (5): **a correção R1 foi escrita sem compilar** (disco) |
+| CLI headless (JSONL) | A validar | `scene.fx.*` pelo `tessel-headless` real igual à lib (`scene_fx.rs`); export headless com FFmpeg real (`crates/render/tests/scene_fx_export.rs`); orçamento/avisos novos só na resposta (lib/JSONL) |
+| UI / CLI da janela | V (semântico, head anterior) · A validar (R1) · Parcial (ponteiro físico) | 7 testes GPUI do head anterior + 6 novos da R1 (gesto/cena, quantização) **não compilados**; `scripts/scene-fx-ui-proof.py` 70/70 no head anterior, **não reexecutada** depois do endurecimento (A2); captura nativa só de observação |
+| Pixels no monitor | V no corpus (head anterior) | monitor == `scene.render` (hash) e sondas == vinheta independente em Python (pior 0,5/255) |
+| Pixels no runtime após a correção do ping-pong | V (SwiftShader) | `directed-scene-fx-browser.test.mjs` 7/7: ordem com cores distintas, 5 e 9 passes, resize, erro e perda de contexto; igual à referência nas duas ordens |
+| Pixels no export | V no corpus (head anterior) | MP4 decodificado == referência sobre o baseline decodificado (pior 7/255 pela lib, 7 pela janela), fora do clipe == baseline |
 
-Começar pelo core sem GPUI: entradas e IDs próprios, consultas, comandos, resultados e erros.
-Documentar unidades, pré-condições e efeitos no estado. Expor a mesma operação pela CLI headless
-antes de conectá-la à UI. Para batch, não depender de seleção da interface.
+## Decisão de domínio (antes de implementar)
 
-## Evidências necessárias
+O efeito vive **uma vez**, em `fx`, chave de primeiro nível do **documento do bundle dirigido**
+(`DirectedScene`), não na timeline de sequências do editor e não numa cópia no plano:
 
-Fluxo programático pela lib, execução em processo sem UI, erro relevante sem alteração indevida
-de estado e validação da integração UI. Substituir este planejamento pelo contrato executável
-na entrega; atualizar [matriz](README.md) na mesma mudança.
+- o bundle já é o dado canônico e sem perdas (`document()`); o undo, a persistência (o documento da cena
+  viaja no projeto), o pacote e o intercâmbio já o carregam sem código novo;
+- o `ScenePlan`/`PlanTimeline` já são a única avaliação por quadro que monitor e export consomem, então
+  um `fx` resolvido por quadro dentro do plano dá **a mesma avaliação offline, de preview e de export**;
+- duplicar na sequência criaria dois modelos a reconciliar. A fatia **não** põe nada na timeline do projeto.
+
+Não é um bundle "do piloto": a chave `fx` é uma extensão **do editor** ao documento (campos desconhecidos
+continuam preservados e avisados, `UNKNOWN_FIELD`; `fx` é lido, validado e normalizado). O piloto é uma
+especificação a reabrir, não algo que se afirme portado.
+
+### Formato (`catalogVersion` 1)
+
+```json
+"fx": {
+  "catalogVersion": 1,
+  "tracks": [{
+    "id": "fx-track-1", "label": "FX 1", "hidden": false,
+    "clips": [{
+      "id": "fx-1", "effect": "vignette",
+      "startFrame": 0, "durationFrames": 48,
+      "params": { "intensity": 0.7, "radius": 0.75, "softness": 0.45, "roundness": 0.6,
+                  "center": { "x": 0.5, "y": 0.5 }, "color": { "r": 0, "g": 0, "b": 0 } },
+      "fadeInFrames": 8, "fadeOutFrames": 8, "hidden": false, "scope": { "kind": "output" }
+    }]
+  }],
+  "transitions": []
+}
+```
+
+- Frames de edição (inteiros); o fim é exclusivo. `params` é escrito como o catálogo tipa (omitir usa o
+  padrão). Fades de 0, `hidden: false` e `scope` de saída são grafia canônica (omitidos); uma camada sem
+  clipes sai do documento, então adicionar e remover devolve o documento byte a byte.
+- Sem `fx` (ou vazia) o plano **não tem a chave `fx`** e os bytes do plano de antes não mudam (golden).
+- Recusado com código tipado, nunca ignorado: `keys` (`FX_KEYS_NOT_YET`), escopo `shot`/`node`
+  (`FX_SCOPE_NOT_YET`), qualquer entrada em `transitions` (`FX_TRANSITION_NOT_YET`), `catalogVersion > 1`
+  (`CATALOG_TOO_NEW`), efeito fora do catálogo (`UNKNOWN_EFFECT`), parâmetro desconhecido, de outro tipo ou
+  fora da faixa, sobreposição de clipes na mesma trilha (`FX_CLIP_OVERLAP`), clipe vazio ou fora da edição,
+  fades que não cabem (`ENVELOPE_TOO_LONG`), IDs duplicados/reservados e limites (ver abaixo).
+
+**IDs** (trilhas e clipes) seguem a regra do piloto `^[a-z0-9][a-z0-9_-]{0,63}$` **sem diferenciar maiúsculas**:
+letras ASCII de qualquer caixa, dígitos, `-` e `_`; começa por letra ou dígito (não há `.`, nem `-`/`_` inicial);
+até 64 bytes. As palavras reservadas `track`, `fx` e `transition` valem em **qualquer caixa** (`FX`, `Track`,
+`TRANSITION` são recusados, comparação em minúsculas como no piloto). Caixa mista é aceita e preservada como escrita
+(`Intro-1`). A recusa vem do importador (`INVALID_VALUE`/`RESERVED_ID`) e, num `scene.fx.edit`, é atômica
+(`invalid_value`/`reserved_id`, índice da op, nada muda).
+
+**Limites** (64 trilhas, 1024 clipes por trilha) são problemas do **importador** com o código `FX_LIMIT`.
+Numa edição que estoura o limite o candidato é recusado pelo importador: o código do comando é
+`invalid_bundle` e o issue interno é `FX_LIMIT` (`details.issues[].code`); **não existe** comando `fx_limit`.
+
+### Catálogo (`directed_scene::fx::catalog`)
+
+A tabela está na **ordem do catálogo** (a ordem dos parâmetros é a de `params` do clipe e a do contrato com o
+runtime); a seção da janela mostra **intensidade primeiro** por escolha de apresentação (`controls_of`
+ordena `intensity` na frente), não por causa do catálogo.
+
+| Efeito | Parâmetro | Tipo | Faixa | Padrão |
+|---|---|---|---|---|
+| `vignette` | `radius` | número | 0–1,5 | 0,75 |
+| | `softness` | número | 0,05–1 | 0,45 |
+| | `intensity` | número | 0–1 | 0,7 |
+| | `color` | cor `{r,g,b}` em luz linear | 0–1 | preto |
+| | `roundness` | número | 0–1 | 0,6 |
+| | `center` | ponto (`x` à direita, `y` **para baixo**) | 0–1 | (0,5; 0,5) |
+
+As faixas, os tipos e a ordem são **testados automaticamente** contra o runtime: `runtime/test/fixtures/fx-catalog.json`
+é a projeção do catálogo Rust (`the_runtime_contract_fixture_is_the_catalog` compara e, com
+`TESSEL_UPDATE_FX_CONTRACT=1`, regrava) e `runtime/test/output-fx.test.mjs` compara o `OUTPUT_FX_EFFECTS` do runtime
+com o mesmo arquivo (nomes, tipo, ordem e faixas): uma faixa mudada só de um lado reprova.
+
+`typical_duration_frames` = 96 (duração padrão de um clipe adicionado sem duração, cortada no fim da edição).
+
+### Avaliação determinística por quadro
+
+`Fx::resolve(frame)` devolve um `FxPass` por clipe visível que cobre o quadro, na ordem das trilhas e dos
+clipes. O peso do envelope é amostrado no **meio** do quadro:
+`min((f + 0,5)/fadeIn, (dur − f − 0,5)/fadeOut)`; `amount = clamp(intensity × weight)`. `amount ≤ 0`
+é identidade exata (sem ida e volta sRGB, então intensidade 0 não move um pixel).
+
+Vinheta (especificação do shader do piloto, transcrita em `reference.rs` e **independentemente** em Python na
+prova da janela): distância `|(p − centro)·2·forma| / max(|forma|,1)` com `forma = (mix(1, w/h, roundness), 1)`,
+`shade = smoothstep(radius, radius+softness, distância)`, mistura com `color` em **luz linear** (curvas
+IEC 61966-2-1 exatas) por `shade × amount`.
+
+### Plano e runtime
+
+`ScenePlan.fx` (chave aditiva, só quando há passes): `trackId`, `clipId`, `effect`, `frameInClip`, `weight`,
+`amount`, `params`, `scope: {kind: "output"}`. `Capability::OutputFx` (`outputFx`, a 10ª) entra em `requires`
+quando há passe; um runtime sem ela recusa o plano pelo nome. O validador recalcula `amount` e recusa um plano
+adulterado. `PlanTimeline::at_frame` re-resolve `fx` e `requires` por quadro (igual a `ScenePlan::build` em
+todos os quadros, testado). O runtime só desenha (`runtime/src/output-fx.js`, `OutputFxPipeline`):
+
+- **Pipeline retido** por compositor: a cena, a câmera, a geometria de tela cheia e **um `ShaderMaterial` por efeito**
+  são criados uma vez e reaproveitados em todos os quadros e passes (os uniformes são trocados por passe, nada é
+  recompilado). Descarte: `dispose()` libera geometria e materiais; perda de contexto (`dropRetained`), erro de
+  um passe (o pipeline é descartado, `fx_pipeline_discarded`, e recriado no quadro seguinte) e `retain: false`
+  (descartado a cada quadro) o fazem; resize só troca os alvos. Contadores: `fx_pipeline_created/discarded`,
+  `fx_program_created/reused`; `retained()` informa `fx_pipeline_entries` e `fx_material_entries`.
+- **Ping-pong de verdade**: o passe `i` lê o alvo `(i-1) % 2` e escreve o `i % 2`: **dois** alvos sem MSAA e **sem
+  depth** (`depthBuffer: false`), qualquer que seja o número de passes (antes: um alvo com depth por passe). A
+  ordem dos passes é a do plano; o último passe vai ao alvo do shot/saída que o monitor e o export leem.
+- Efeito ou escopo desconhecido é `unsupported` tipado, nunca pulado; a busca do efeito e do parâmetro é por
+  **propriedade própria** (`Object.hasOwn`), então `constructor`, `toString`, `__proto__`, `hasOwnProperty` e
+  nomes não-string dão `unsupported`/parâmetro desconhecido tipados, não `TypeError`.
+- `frame.sources.directed_scene_fx` conta os passes.
+
+**Medição pareada** (`runtime/scripts/measure-fx-cost.mjs`, mesmo cenário antes/depois: parede plana de 1280×720,
+mediana de 30 quadros, 0/1/2/8 passes, pelo bridge real em Chrome headless). **Só SwiftShader (GL por software)**:
+compara dois builds do mesmo runtime na mesma máquina e **não** é a velocidade de uma GPU nativa nem deve ser
+citada como tal.
+
+| Passes | Antes (ms/quadro) | Depois (ms/quadro) | Alvos vivos antes → depois |
+|---|---|---|---|
+| 0 | 54,3 | 55,6 (ruído; sem passes não há mudança) | 1 → 1 |
+| 1 | 89,5 | 70,9 | 2 → 3 |
+| 2 | 94,1 | 68,9 | 3 → 3 |
+| 8 | 121,5 | 91,8 | 9 → 3 |
+
+### Orçamento de passes (política do core)
+
+`FX_PASS_BUDGET = 8` (o piloto avisa no mesmo número). **Política: avisar, nunca recusar** — o runtime não tem regra
+de domínio e uma recusa tornaria impossível abrir um bundle que o piloto aceita. `Fx::pass_budget(duração)` varre
+os clipes visíveis (clipes e trilhas ocultos não contam; o fim é exclusivo) e devolve o pico, o primeiro quadro
+acima e quantos quadros ficam acima. `scene.fx.list` e toda resposta de `scene.fx.edit` (dry-run, no-op e real)
+trazem `budget {max_passes, policy:"warn", peak_passes, over_budget, first_frame_over, frames_over}` e
+`warnings[]` (`{code:"FX_PASS_BUDGET", ...}` só quando há quadros acima); `scene.fx.frame` traz
+`max_passes`, `over_budget` e `warnings`; `scene.fx.catalog` declara a política (`scope.pass_budget`). O plano **mantém
+todos** os passes na ordem das trilhas e o runtime desenha todos (dois alvos qualquer que seja a contagem).
+Gap registrado: a janela ainda **não mostra** esse aviso (BL082.16).
+
+## Entrada compartilhada (lib · JSONL · janela)
+
+Core: `scene_edit::fx` (`FxOp`, `apply_fx`/`apply_fx_with`/`dry_run_fx`) e `scene_project::fx`. O lote é
+**atômico** (clona o JSON, valida cada op, reimporta o candidato com as regras do importador e dos gates
+estrutural/temporal; recusa ⇒ nada muda e a op é nomeada). Um comando = uma entrada de undo ("Edit effects");
+no-op e dry-run não gravam nada.
+
+| Op JSONL | Efeito |
+|---|---|
+| `scene.fx.catalog` | catálogo, faixas, escopo e recusas como dado |
+| `scene.fx.list {scene}` | trilhas e clipes |
+| `scene.fx.frame {scene, frame\|time}` | passes resolvidos de um quadro |
+| `scene.fx.edit {scene, ops[], dry_run?}` | lote atômico de `add_clip {effect, start_frame, duration_frames?, track?, id?, params?}`, `remove_clip {clip}`, `set_param {clip, param, value}`, `set_field {clip, field: start_frame\|duration_frames\|fade_in_frames\|fade_out_frames, value}`, `set_hidden {clip, hidden}` |
+
+Sem trilha, `add_clip` usa a primeira trilha **visível** em que cabe (uma trilha oculta não desenharia o clipe) ou
+cria `fx-track-N`; a trilha oculta só recebe um clipe quando é **nomeada** em `track`. O ID do clipe é reservado
+antes do da trilha (um clipe `id: "fx-track-1"` que precisa de trilha nova não colide: a trilha vira
+`fx-track-2`). O rótulo da trilha nova é `FX n` com o **menor n livre** (remover uma trilha e criar outra não repete
+rótulo); sem ID de clipe, `fx-N`; remover o último clipe de uma trilha remove a trilha. Um lote que não muda nada
+(`ops: []` ou só no-ops) deixa o documento, a cena e o histórico como estão — inclusive uma camada `fx` vazia
+escrita pelo autor (só um lote que muda algo e termina vazio devolve o documento sem `fx`).
+
+**Reduzir um clipe abaixo dos fades é recusado**, não ajustado: o piloto apara os fades à nova duração; este editor
+recusa com `invalid_bundle`/`ENVELOPE_TOO_LONG` e não altera nenhum valor que o autor não nomeou. Os dois caminhos
+são explícitos: encurtar os fades no mesmo lote ou antes. Códigos de erro do comando (`command_code`):
+`unknown_effect`, `unknown_param`, `param_type`, `param_out_of_range`, `unknown_fx_track`, `unknown_fx_clip`,
+`reserved_id`, `duplicate_id`, `fx_clip_overlap`, `fx_clip_empty`, `fx_clip_out_of_range`, `envelope_too_long`,
+`catalog_too_new`, `fx_scope_not_yet`, `fx_keys_not_yet`, `fx_transition_not_yet`; um candidato recusado pelo
+importador mantém `invalid_bundle` com os issues em `details.issues[]` (os limites chegam como `FX_LIMIT`).
+
+### Janela
+
+Seção **Efeitos** no inspetor de cena (`workstation/scene_fx.rs`): botão `+` (adicionar vinheta) e, por clipe,
+título, interruptor de visibilidade, remover e sliders do Kit (intensidade primeiro, raio, suavidade, cor R/G/B,
+arredondamento, centro X/Y, início, duração, fade in/out). Cada gesto é **um** `scene.fx.edit` por
+`Workstation::execute` (um slider guarda o valor no arrasto e envia **uma** edição ao soltar; Escape descarta;
+perda de foco confirma). Recusas do core aparecem como o aviso do painel (`scene.panel.state.notice`).
+
+- **O gesto pertence à cena em que começou.** O buffer do arrasto é chaveado por cena, clipe e controle; trocar a cena
+  do painel (seletor ou `set scene.picker`) o **descarta**; mesmo assim o commit confere que a cena do gesto é a que o
+  painel mostra (`stale_gesture`) e nunca edita o `fx-1` de outra cena. Um clipe removido durante o gesto
+  mostra `unknown_element` no painel (não é engolido).
+- **O slider grava o passo, não ruído de f32.** O Kit entrega `f32` (`0.4` chega como `0.4000000059604645`): o valor
+  é alinhado à grade do passo (ancorada no mínimo), limitado à faixa e escrito nas casas do passo antes do
+  `SetParam`; um valor igual ao do documento não envia comando nem entrada de undo. Só o gesto do ponteiro quantiza:
+  um `set` por nó/CLI é o valor do autor e é validado, não arredondado.
+
+Nós semânticos: `scene.fx` (ação `add:vignette`; `state.clip_count`, `effects`, `scope`) e
+`scene.fx.clip:<id>` (campos numéricos `intensity`, `radius`, `softness`, `roundness`, `center_x/_y`, `color_r/_g/_b`,
+`start_frame`, `duration_frames`, `fade_in_frames`, `fade_out_frames` e `hidden`; ações `remove`, `toggle_hidden`).
+`set` de um componente de ponto/cor mantém os irmãos como o documento os tem; quadros exigem inteiros.
+
+## Evidências
+
+Duas camadas, para não misturar o que rodou com o que só foi escrito. **Executado neste head (correção R1)**:
+runtime (`node --test` dos arquivos de efeito: 11 puros + 7 em Chrome/SwiftShader), medição pareada, e a
+`scene-fx-ui-proof.spec.py` (23 testes, sem janela). **Escrito neste head e não executado** (o disco da máquina ficou
+abaixo do piso de 12 GiB durante a entrega, então nenhuma compilação Rust foi iniciada; só `cargo fmt --all --check`
+passou): os testes de core (`scene_fx.rs`, 9 novos), os 6 novos da janela GPUI e todo o código Rust da R1. Os números
+abaixo marcados "head anterior" são os da entrega 32860ec e **não** foram repetidos.
+
+- **Lib/JSONL** — `cargo test -p tessel-editor-core --test scene_fx`: 16 testes (catálogo; plano sem `fx` idêntico ao
+  anterior; criar/editar/remover com undo/redo; no-op e dry-run; trilhas automáticas; 13 recusas atômicas;
+  sobreposição; recusas de import; envelope; salvar/reabrir; plano com passes e capacidade; igualdade
+  `PlanTimeline` em todos os quadros; plano adulterado recusado; pixels de referência — baseline, intensidade 0,
+  1, centro movido; `cargo tree` sem gpui/wry; processo `tessel-headless` real igual à lib, com a recusa
+  `param_out_of_range` e saída 1).
+- **Runtime (executado, R1)** — `runtime/test/output-fx.test.mjs` (11, puro: nomes herdados como efeito e como
+  parâmetro, contrato com `fixtures/fx-catalog.json` (faixas, tipos, ordem), ping-pong e material retido com renderer
+  falso, passe que falha restaura o alvo) e `directed-scene-fx-browser.test.mjs` (7, Chrome/SwiftShader: parede cor
+  `[200,160,80]`; amount 0 == baseline; amount 1 == transcrição JS ±2; centro (1,1) discrimina; dois passes
+  empilhados; efeito desconhecido ⇒ `frame.failed`/`unsupported`; **ordem com cores distintas** — vermelho então azul
+  difere de azul então vermelho e o runtime iguala a referência nas **duas** ordens; 5 e 9 passes em dois alvos sem
+  religar programas (`fx_program_created === 0`, `target_entries === 3`); resize; erro no 2º passe ⇒ pipeline
+  descartado e quadro seguinte igual à referência; perda de contexto e `retain: false`).
+- **Renderer (lib + processo Node/Chrome)** — `crates/render/tests/scene_fx.rs` (3): a cena do corpus recebe a vinheta
+  pela edição do core; 54 sondas por quadro comparadas à referência do core (pior diferença 0); intensidade 0 ==
+  baseline (sondas idênticas); fora do clipe == baseline; centro movido discrimina; mesmo quadro ⇒ mesmo hash depois de
+  um seek para longe; fade (3º quadro de um fade-in de 10: peso 0,25); runtime sem `outputFx` recusado pela lib.
+- **Export (FFmpeg real)** — `crates/render/tests/scene_fx_export.rs`: 1080p, quadros 44..52 (o clipe termina em 48):
+  hash dentro ≠ baseline, fora == baseline, hash de cada quadro == `scene.render`; MP4 decodificado == referência
+  sobre o baseline decodificado (pior 7/255, tolerância 16, maior mudança 69 — discrimina); `history.undo`
+  devolve os hashes do baseline; o export não grava undo nem clipe de timeline.
+- **Janela (GPUI)** — `scene_fx_tests.rs` (7): adicionar é uma entrada; nós descrevem o clipe; `set` por nó é uma entrada
+  e componentes mantêm irmãos; recusas tipadas (`param_out_of_range`, `invalid_value`, `unknown_field`,
+  `unknown_element`) sem sobra e com aviso no painel; ocultar/alternar/remover e undo; arrasto do slider confirma
+  **uma** vez ao soltar; Escape descarta; cliques nos botões de adicionar e remover.
+- **Prova da janela, endurecimento A2 (executado: só os testes puros)** — `scripts/scene-fx-ui-proof.py` não
+  deixa mais nada passar sem olhar: export que passa de 600 s (`EXPORT_TIMEOUT_S`) é FAIL e o job é cancelado; job
+  falho, arquivo ausente/vazio, lista de hashes ausente/curta/vazia e contagem de quadros errada são FAIL; fecha com a
+  cobertura (`N de N quadros comparados`); undo/redo andam com limite de passos e prazo e falham se o histórico não
+  anda; o relatório JSON é gravado (atômico) em qualquer saída e registra as superfícies exercidas (janela) e as não
+  cobertas (headless/lib, ponteiro) com o motivo; o editor lançado e todo o grupo de processos da sua sessão são
+  encerrados e conferidos (`stop_lab`). `scripts/scene-fx-ui-proof.spec.py` (23 testes, relógio falso — um export de
+  600 s não roda) fixa cada FAIL. **A prova nativa não foi reexecutada depois do endurecimento.**
+- **Janela real (head anterior, 32860ec)** — `scripts/scene-fx-ui-proof.py` (instância privada, binário direto, `HOME` curto, lock de GPU, só
+  `op`/`get`/`set`/`invoke`): 70/70 — árvore viva, baseline monitor == render, adicionar, intensidade 1 (54 sondas ==
+  vinheta em Python, pior 0,5), intensidade 0 == baseline, centro movido, `param_out_of_range` no painel sem mudar valor,
+  histórico nem imagem, undo/redo, ocultar, **salvar/reabrir o projeto** com os parâmetros, e dois exports pelo diálogo
+  (`flow.export_scene`) decodificados contra o modelo Python. A captura nativa
+  (`--shot`, `screencapture -l`) é só observação: mostra as bordas do monitor escurecidas.
+
+## Limites e gaps (todos em [backlog](../backlog.md) BL028/BL036/BL082)
+
+- **Correção R1 (BL082.7–BL082.15) não compilada nem testada em Rust**: o disco ficou abaixo do piso; ver a
+  linha de cada ID no backlog. O que existe é código e testes escritos, revisados à mão e formatados.
+- A medição de custo é SwiftShader (comparação antes/depois); a GPU nativa não foi medida.
+- A janela não mostra o aviso do orçamento de passes (BL082.16); ele está na lib/JSONL.
+
+- Só `vignette`. Os outros efeitos do piloto (59 shaders) **não** foram portados; cada efeito novo é uma entrada no
+  catálogo, um shader no runtime e um teste de pixel.
+- Só escopo `output`. `shot`/`node`, chaves (`keys`, animação de parâmetros) e `seed` (lido, sem uso) são recusados.
+- Sem transições: `transitions` é recusado se não vazio. **Contrato de extensão** (sem controle habilitado): uma
+  `crossDissolve` será `transitions[]` com `{id, type, fromShot, toShot, durationFrames}` resolvida no plano com
+  **dois** quadros de origem (precisa que o plano e o runtime desenhem dois shots no mesmo quadro: capacidade nova
+  `transitionBlend`), e o ripple/roll de shots será um comando de edição estrutural do core sobre `shots[]` que
+  mantém o join/temporal gates; nenhum dos dois tem nó, comando nem botão ainda.
+- Sem prévia ao vivo durante o arrasto do slider (a imagem muda ao soltar) e sem teclado nos sliders da seção
+  (o gesto de teclado da seção de cena não foi ligado): a edição por nó/CLI é o caminho acessível.
+- O botão adiciona no quadro 0 (não no playhead); uma segunda vinheta nos mesmos quadros vai para uma trilha nova.
+- Ponteiro físico real continua não provado (BL043); a prova da janela é semântica e o GPUI injeta entrada.
+- Não há dithering (o runtime escreve 8 bits como a cena); gradientes suaves podem mostrar bandas de 1/255.
+- A janela pinta a seção só com uma cena anexada; sem cena, a edição é por `scene.fx.edit` (headless).
+
+## Correções da conferência de merge (R2)
+
+Corrigidos os resíduos de revisão do head07dde5a: limpeza da camada só quando o documento líquido mudou (add/remove sobre camada vazia autorada preserva documento e undo); fixture numérica usa floats para campos f64 do catálogo; orçamento espera 10 quadros acima do limite (0..5 e10..15); inicialização falha do runtime também limpa temporários; interrupção do proof registra FAIL e o mesmo código no processo/JSON. O teste de lote neutro agora confere documento e profundidade de undo.
+
+Executado pelo coordenador: Python24/24 (inclui interrupção), Node puro output-fx11/11 (inclui contrato da fixture), fmt --check, node --check do medidor e git diff --check. **Rust continua não compilado/testado e prova nativa não repetida**: disco3,9GiB abaixo do piso12/reserva16. Não promover as evidências do head32860ec ao código novo. Aceite/merge permanecem pendentes em BL082.17.

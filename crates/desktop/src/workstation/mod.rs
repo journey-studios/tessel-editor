@@ -19,6 +19,7 @@ mod monitor;
 mod ops;
 mod perf_meter;
 mod playback;
+mod scene_fx;
 mod scene_gesture;
 mod scene_gizmo;
 mod scene_import;
@@ -285,6 +286,7 @@ impl Workstation {
             if !window.is_window_active() {
                 this.slider_focus_lost(cx);
                 this.scene_slider_focus_lost(cx);
+                this.fx_focus_lost(cx);
                 // F055: a release may never arrive; a gizmo drag is cancelled, never committed.
                 this.cancel_gizmo_drag(
                     tessel_editor_core::scene_interaction::CancelReason::Blur,
@@ -794,6 +796,7 @@ impl Render for Workstation {
                     // A slider drag is a gesture too: Escape puts the original value back.
                     this.cancel_slider_gesture(cx);
                     this.cancel_scene_gesture(cx);
+                    this.fx_cancel_drag(cx);
                     this.cancel_gizmo_drag(
                         tessel_editor_core::scene_interaction::CancelReason::Escape,
                         cx,
@@ -830,6 +833,8 @@ mod dock_tests;
 mod input_tests;
 #[cfg(test)]
 mod perf_tests;
+#[cfg(test)]
+mod scene_fx_tests;
 #[cfg(test)]
 mod scene_gizmo_tests;
 #[cfg(test)]

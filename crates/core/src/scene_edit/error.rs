@@ -139,7 +139,7 @@ impl EditError {
             CAMERA_CONVERSION_FAILED => "invalid_camera",
             INVALID_TYPE => "invalid_type",
             INVALID_VALUE => "invalid_value",
-            _ => "invalid_edit",
+            other => super::fx::command_code(other).unwrap_or("invalid_edit"),
         }
     }
 }

@@ -171,7 +171,7 @@ impl<'a> PlanTimeline<'a> {
             .get_or_init(|| layout.prepared.assemble(self.scene, &frame))
             .as_ref()
             .map_err(Clone::clone)?;
-        template.at_frame(&frame)
+        template.at_frame(&frame, &self.scene.bundle().fx)
     }
 
     fn node_timeline(
@@ -203,6 +203,7 @@ impl<'a> PlanTimeline<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::directed_scene::fx::Fx;
 
     const MINIMAL: &str = include_str!(
         "../../../../docs/migration/fixtures/bundles/valid-minimal-continuous.bundle.json"
@@ -227,8 +228,8 @@ mod tests {
             .assemble(&scene, &frame)
             .unwrap();
 
-        assert_eq!(template.at_frame(&frame).unwrap(), template);
-        let error = template.at_frame(&foreign).unwrap_err();
+        assert_eq!(template.at_frame(&frame, &Fx::default()).unwrap(), template);
+        let error = template.at_frame(&foreign, &Fx::default()).unwrap_err();
         assert!(
             matches!(&error, PlanError::Unresolved { kind: "node", id } if !id.is_empty()),
             "{error:?}"
@@ -281,13 +282,15 @@ mod tests {
             .unwrap()
             .assemble(&stretched, &stretched_frame)
             .expect("the template does not check the per-frame similarity");
-        assert!(template.at_frame(&frame).is_ok());
-        let error = template.at_frame(&stretched_frame).unwrap_err();
+        assert!(template.at_frame(&frame, &Fx::default()).is_ok());
+        let error = template
+            .at_frame(&stretched_frame, &Fx::default())
+            .unwrap_err();
         assert!(
             matches!(&error, PlanError::SplatTransform { node_id, .. } if node_id == "cloud-node"),
             "{error:?}"
         );
         assert_eq!(error.code(), "unsupported");
-        assert!(stretched_template.at_frame(&frame).is_ok());
+        assert!(stretched_template.at_frame(&frame, &Fx::default()).is_ok());
     }
 }

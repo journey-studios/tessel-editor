@@ -41,6 +41,11 @@ impl Sink {
             .push(Issue::new(code, path, message));
     }
 
+    /// How many issues were reported so far (a section compares before and after).
+    pub(super) fn issue_count(&self) -> usize {
+        self.issues.borrow().len()
+    }
+
     pub(super) fn into_parts(self) -> (Vec<Issue>, Vec<Notice>) {
         let mut notices = self.notices.into_inner();
         // Children drop before their parents; sorting makes the order independent of that.

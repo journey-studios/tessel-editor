@@ -36,6 +36,7 @@ mod batch;
 mod camera_keys;
 mod catalog;
 mod error;
+mod fx;
 mod op;
 mod reference;
 mod value;
@@ -53,6 +54,10 @@ pub use error::{
     CAMERA_CONVERSION_FAILED, CANDIDATE_REJECTED, DOCUMENT_MISMATCH, EditError, INVALID_OP,
     LocalizedIssue, NO_DEFAULT, NOT_APPLICABLE, UNKNOWN_CLIP, UNKNOWN_NODE, UNKNOWN_PATH,
     UNKNOWN_SCENE,
+};
+pub use fx::{
+    AddClip, ClipField, FxChange, FxOp, FxOutcome, FxSummary, apply_fx, apply_fx_with, dry_run_fx,
+    parse_fx_batch,
 };
 pub use op::{EditOp, parse_batch};
 pub use reference::PropertyRef;

@@ -15,6 +15,7 @@
 
 use serde_json::{Map, Value, json};
 
+use crate::directed_scene::fx::{FxPass, FxValue, ParamKind, effect};
 use crate::directed_scene::{
     AssetAlpha, AssetColorSpace, AssetFormat, CameraState, Fps, Mat4, NodeAnimation, NodeKind, Vec3,
 };
@@ -168,6 +169,10 @@ impl ScenePlan {
         // does not know splats ignores an absent key but refuses `requires: ["splats"]`.
         if !self.splats.is_empty() {
             wire["splats"] = Value::Array(self.splats.iter().map(splat_json).collect());
+        }
+        // The same for `fx` (F016): written only when the frame has effect passes.
+        if !self.fx.is_empty() {
+            wire["fx"] = Value::Array(self.fx.iter().map(FxPass::to_json).collect());
         }
         wire
     }
@@ -473,6 +478,67 @@ fn read_splat(splat: &Obj<'_>) -> Result<PlanSplat, PlanError> {
     })
 }
 
+fn read_fx_value(params: &Obj<'_>, name: &str, kind: &ParamKind) -> Result<FxValue, PlanError> {
+    match kind {
+        ParamKind::Number { .. } => Ok(FxValue::Number(params.number(name)?)),
+        ParamKind::Color { .. } => {
+            let color = params.object(name)?;
+            color.only(&["r", "g", "b"])?;
+            Ok(FxValue::Color {
+                r: color.number("r")?,
+                g: color.number("g")?,
+                b: color.number("b")?,
+            })
+        }
+        ParamKind::Point { .. } => {
+            let point = params.object(name)?;
+            point.only(&["x", "y"])?;
+            Ok(FxValue::Point {
+                x: point.number("x")?,
+                y: point.number("y")?,
+            })
+        }
+    }
+}
+
+fn read_fx_pass(pass: &Obj<'_>) -> Result<FxPass, PlanError> {
+    pass.only(&[
+        "trackId",
+        "clipId",
+        "effect",
+        "frameInClip",
+        "weight",
+        "amount",
+        "params",
+        "scope",
+    ])?;
+    let name = pass.text("effect")?;
+    let spec = effect(&name).ok_or_else(|| pass.fail("effect", "not an effect of the catalog"))?;
+    let scope = pass.object("scope")?;
+    scope.only(&["kind"])?;
+    if scope.text_ref("kind")? != "output" {
+        return Err(scope.fail("kind", "only the `output` scope is supported"));
+    }
+    let raw = pass.object("params")?;
+    raw.only(&spec.params.iter().map(|param| param.id).collect::<Vec<_>>())?;
+    let mut params = Vec::with_capacity(spec.params.len());
+    for param in spec.params {
+        params.push((
+            param.id.to_string(),
+            read_fx_value(&raw, param.id, &param.kind)?,
+        ));
+    }
+    Ok(FxPass {
+        track_id: pass.text("trackId")?,
+        clip_id: pass.text("clipId")?,
+        effect: name,
+        frame_in_clip: pass.integer("frameInClip")?,
+        weight: pass.number("weight")?,
+        amount: pass.number("amount")?,
+        params,
+    })
+}
+
 fn read_resource(resource: &Obj<'_>) -> Result<PlanResource, PlanError> {
     resource.only(&[
         "assetId",
@@ -557,6 +623,7 @@ impl ScenePlan {
             "nodes",
             "layers",
             "splats",
+            "fx",
             "resources",
             "unsupported",
             "uninterpreted",
@@ -675,6 +742,15 @@ impl ScenePlan {
                 root.items("splats")?
                     .iter()
                     .map(read_splat)
+                    .collect::<Result<Vec<_>, _>>()?
+            } else {
+                Vec::new()
+            },
+            // Optional (additive): absent means no effect passes.
+            fx: if root.map.contains_key("fx") {
+                root.items("fx")?
+                    .iter()
+                    .map(read_fx_pass)
                     .collect::<Result<Vec<_>, _>>()?
             } else {
                 Vec::new()

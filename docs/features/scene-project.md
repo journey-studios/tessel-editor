@@ -60,6 +60,8 @@ ordem de anexação. Cada `scene.*` é um `SceneCommand` dentro de `Command::Sce
 | `scene.attach.start` (host de mídia, [F043](scene-import-ui.md)) | os mesmos campos + `wait?` | o mesmo attach, mas ler/importar/validar roda num job (`AdmittedScene::prepare`) e o resultado só é aplicado se projeto, **sessão de edição** e revisão forem os da partida (BL113a) | "Attach scene" |
 | `scene.detach` | `scene` | remove | "Remove scene" |
 | `scene.edit` | `scene`, `ops[]` (`{"set","value"}`/`{"reset"}` da F034), `dry_run?` | lote atômico via `scene_edit::apply`/`dry_run` | "Edit scene" (uma entrada por lote) |
+| `scene.fx.edit` | `scene`, `ops[]` (`add_clip`, `remove_clip`, `set_param`, `set_field`, `set_hidden`; F016), `dry_run?` | lote atômico via `scene_edit::apply_fx`/`dry_run_fx` | "Edit effects" (uma entrada por lote) |
+| `scene.fx.list` / `scene.fx.frame` / `scene.fx.catalog` | `scene` (+ `frame`\|`time`) | consulta; sem entrada de histórico | — |
 | `scene.list` | — | `id`, `name`, `bundle_id`, `revision_id`, contagens | — |
 | `scene.describe` | `scene` | fps, duração, definições/nós, instâncias, shots, clipes, notices, famílias adiadas em uso, chaves de entrada desconhecidas | — |
 | `scene.catalog` | — | as 21 propriedades (as 8 originais primeiro; `path`, `kind`, `unit`, `range`, `default`, `applies_to`, `origin`) | — |
