@@ -246,6 +246,11 @@ pub struct JobInfo {
     pub error: Option<JobError>,
     pub result: Option<Value>,
     pub cancel_requested: bool,
+    /// How many times `cancel` reached this job. `cancel_requested` says a stop was asked for;
+    /// this says by how many callers, so a host that stopped a job for its own reasons (BL144.10)
+    /// can still tell that a person asked for it afterwards, whichever door they used. Not part
+    /// of the JSON.
+    pub cancel_requests: u32,
     /// What became of the result of this job (BL094).
     pub result_state: ResultState,
     pub created_ms: u64,
@@ -439,6 +444,7 @@ impl JobRegistry {
                 error: None,
                 result: None,
                 cancel_requested: false,
+                cancel_requests: 0,
                 result_state: ResultState::None,
                 created_ms: now_ms(),
                 started_ms: None,
@@ -619,6 +625,7 @@ impl JobRegistry {
         }
         slot.token.cancel();
         slot.info.cancel_requested = true;
+        slot.info.cancel_requests = slot.info.cancel_requests.saturating_add(1);
         let info = slot.info.clone();
         drop(inner);
         self.shared.changed.notify_all();
@@ -806,6 +813,30 @@ mod tests {
         assert_eq!(
             registry.cancel("job-404").unwrap_err().code,
             "unknown_element"
+        );
+    }
+
+    #[test]
+    fn every_cancel_request_is_counted_so_a_later_caller_can_be_told_from_an_earlier_one() {
+        // BL144.10: a host that stopped a job for its own reasons must still see that a person
+        // asked afterwards, through any door. `cancel_requested` cannot say it; the count can.
+        let registry = JobRegistry::new(1);
+        let id = registry.spawn(JobKind::Import, "slow", |ctx| {
+            loop {
+                ctx.check()?;
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        });
+        assert_eq!(registry.get(&id).unwrap().cancel_requests, 0);
+        registry.cancel(&id).unwrap();
+        registry.cancel(&id).ok();
+        let counted = registry.get(&id).unwrap().cancel_requests;
+        assert!(counted >= 1, "{counted}");
+        let info = registry.wait(&id, Duration::from_secs(5)).unwrap();
+        assert_eq!(info.state, JobState::Cancelled);
+        assert!(
+            info.to_json().get("cancel_requests").is_none(),
+            "the count is not part of the JSON"
         );
     }
 
