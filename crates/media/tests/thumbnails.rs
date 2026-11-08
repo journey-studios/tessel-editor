@@ -15,9 +15,13 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 use tessel_editor_core::backend::{BackendError, Capabilities, FrameResult, Output};
 use tessel_editor_core::content::Camera;
-use tessel_editor_core::fixtures::{StandardSet, encode_png, scene_json, write_standard_set};
+use tessel_editor_core::fixtures::{
+    SHARP_FIXTURE_PIXELS, SharpSpec, StandardSet, encode_png, scene_json, write_sharp_ply,
+    write_standard_set,
+};
 use tessel_editor_core::plan::{Content, PreviewIntent, RenderPlan};
 use tessel_editor_core::session::Renderer;
+use tessel_editor_core::sharp::{self, Choice};
 use tessel_editor_core::state::ProjectSettings;
 use tessel_editor_core::thumbnails::{WIDTH, size_for};
 use tessel_editor_core::{CommandError, EditorState, Id, headless};
@@ -38,6 +42,10 @@ struct Frame {
     camera: Option<Camera>,
     /// `(position, scale)` of every splat object of the scene file, as the file says.
     placed: Vec<([f64; 3], f64)>,
+    /// `rotation` (degrees) of every splat object of the scene file, `[0; 3]` when it has none.
+    turned: Vec<[f64; 3]>,
+    /// The `orientation` the plan gave the scene layer (the half turn of a clip of a SHARP splat).
+    orientation: Option<[f64; 3]>,
     /// How many probe pixels the frame was asked to report.
     probes: usize,
 }
@@ -76,13 +84,17 @@ impl Renderer for Double {
             Content::Scene { camera, .. } => Some(*camera),
             _ => None,
         });
+        let orientation = plan.layers.iter().find_map(|layer| match &layer.content {
+            Content::Scene { orientation, .. } => Some(*orientation),
+            _ => None,
+        });
         let asset = asset.to_string();
         // What the scene file of that asset puts on screen, read the way the runtime would.
         let item = state
             .library
             .item(&asset)
             .expect("the plan names a library asset");
-        let (splats, placed): (Vec<String>, Vec<([f64; 3], f64)>) =
+        let (splats, placed, turned): (Vec<String>, Vec<([f64; 3], f64)>, Vec<[f64; 3]>) =
             match &item.asset.as_ref().unwrap().source {
                 tessel_editor_core::assets::Source::File { path }
                     if item.kind.label() == "scene" =>
@@ -114,9 +126,13 @@ impl Renderer for Double {
                                 )
                             })
                             .collect(),
+                        objects
+                            .iter()
+                            .map(|object| vector(&object["rotation"]))
+                            .collect(),
                     )
                 }
-                _ => (Vec::new(), Vec::new()),
+                _ => (Vec::new(), Vec::new(), Vec::new()),
             };
         self.0.frames.lock().unwrap().push(Frame {
             asset: asset.clone(),
@@ -125,6 +141,8 @@ impl Renderer for Double {
             height: output.height,
             camera,
             placed,
+            turned,
+            orientation,
             probes: probes.len(),
         });
         while self.0.hold.load(Ordering::SeqCst) && !self.0.release.load(Ordering::SeqCst) {
@@ -1454,4 +1472,164 @@ fn the_tick_does_not_draw_thumbnails_while_a_video_export_owns_the_renderer() {
         2,
         "after the export, the thumbnails"
     );
+}
+
+/// A project in the workspace `name` with the SHARP file `file` imported as `capture` (`auto` or `ignore`).
+fn sharp_project(dir: &Path, name: &str, file: &Path, capture: &str) -> EditorState {
+    let mut state = EditorState::empty(&ProjectSettings {
+        name: name.to_string(),
+        workspace: Some(dir.join(name)),
+        ..ProjectSettings::default()
+    })
+    .unwrap();
+    let mut importer = MediaHost::new().with_tools(tools());
+    let report = ok(
+        &mut importer,
+        &mut state,
+        json!({"op":"media.import","paths":[file],"capture":capture}),
+    );
+    assert_eq!(report["applied"]["imported"], 1, "{report}");
+    state
+}
+
+/// `p` turned by `degrees` around X, as a scene object with that `rotation` turns it.
+fn turn_x(point: [f64; 3], degrees: f64) -> [f64; 3] {
+    let (sin, cos) = degrees.to_radians().sin_cos();
+    [
+        point[0],
+        point[1] * cos - point[2] * sin,
+        point[1] * sin + point[2] * cos,
+    ]
+}
+
+/// BL144.2: a SHARP splat is seen through its own camera and axes, once; a plain one is not.
+#[test]
+fn a_sharp_splat_is_drawn_through_its_capture_with_one_turn_and_a_plain_one_is_not_turned() {
+    let (dir, _) = setup("sharp-capture");
+    let files = dir.join("clouds");
+    fs::create_dir_all(&files).unwrap();
+    let spec = SharpSpec::default();
+    let shot = files.join("shot.ply");
+    write_sharp_ply(&shot, &spec).unwrap();
+    let plain = files.join("plain.splat");
+    write_cloud(&plain, &cube([4.0, -2.0, 7.0], 1.5));
+    let capture = sharp::read(&shot, Choice::Auto).unwrap().unwrap();
+
+    let mut state = project_of(&dir, "film", &[&shot, &plain]);
+    let script = Arc::new(Script::default());
+    let mut host = host(&script, false);
+    let report = ok(&mut host, &mut state, json!({"op":"media.thumbnails"}));
+    assert_eq!(report["ready"], 2, "{report}");
+
+    // The SHARP stand-in: the cloud where the file puts it, turned once, the capture's camera, and a
+    // plan layer that does not turn it again.
+    let frame = stand_in_frame(&script, &state, "shot");
+    assert_eq!(frame.placed, vec![([0.0; 3], 1.0)]);
+    assert_eq!(frame.turned, vec![sharp::ORIENTATION]);
+    assert_eq!(
+        frame.orientation,
+        Some([0.0; 3]),
+        "the stand-in is a scene: its layer carries no orientation, so the half turn is not doubled"
+    );
+    assert_eq!(frame.camera, Some(capture.camera()));
+    assert_eq!(frame.camera.unwrap().fov, capture.vfov);
+
+    // Independent oracle: a plain pinhole from the camera in the frame, over the points turned as
+    // the scene file says, puts each of the five points over the pixel of the source image it was
+    // made for (160 x 120), scaled to this picture's height and centred (the lens, not the crop).
+    let (width, height) = (f64::from(frame.width), f64::from(frame.height));
+    let scale = height / 120.0;
+    let camera = frame.camera.unwrap();
+    for (point, pixel) in spec.points.iter().zip(SHARP_FIXTURE_PIXELS) {
+        let position = point.position.map(f64::from);
+        let turned = turn_x(position, frame.turned[0][0]);
+        let (x, y) = project_point(&camera, turned, width, height)
+            .unwrap_or_else(|| panic!("{position:?} is behind the camera"));
+        let expected = (
+            width / 2.0 + (pixel[0] - 80.0) * scale,
+            height / 2.0 + (pixel[1] - 60.0) * scale,
+        );
+        assert!(
+            (x - expected.0).abs() < 0.05 && (y - expected.1).abs() < 0.05,
+            "{position:?} lands at ({x}, {y}), expected {expected:?}"
+        );
+        // Upright: a point over the upper half of the source is over the upper half here.
+        assert_eq!(pixel[1] < 60.0, y < height / 2.0, "{pixel:?} -> {y}");
+        // Mutation: the file's axes without the turn put it behind the camera.
+        assert!(project_point(&camera, position, width, height).is_none());
+    }
+
+    // The plain splat keeps the common framing: no rotation, a unit sphere, the 50 degree camera.
+    let flat = stand_in_frame(&script, &state, "plain");
+    assert_eq!(flat.turned, vec![[0.0; 3]]);
+    assert_eq!(flat.orientation, Some([0.0; 3]));
+    assert_eq!(flat.camera.unwrap().fov, 50.0);
+    assert_framed(&flat, [4.0, -2.0, 7.0], 1.5);
+}
+
+/// BL144.2: the capture is part of the picture's identity, so reading the same bytes as a plain
+/// splat (or with other intrinsics) draws again, from the cache's point of view a different picture.
+#[test]
+fn the_same_file_with_and_without_its_capture_is_two_pictures_not_one_cache_entry() {
+    let (dir, _) = setup("sharp-cache");
+    let shot = dir.join("shot.ply");
+    write_sharp_ply(&shot, &SharpSpec::default()).unwrap();
+    let script = Arc::new(Script::default());
+    let mut host = host(&script, false);
+
+    // The same ID, the same workspace, the same bytes; only the capture differs.
+    let mut seen = sharp_project(&dir, "film", &shot, "auto");
+    ok(&mut host, &mut seen, json!({"op":"media.thumbnails"}));
+    let seen_path = seen.thumbnail("shot").unwrap().path.clone();
+    assert_eq!(script.frames.lock().unwrap().len(), 1);
+
+    // Asked again for the same capture: the cache answers, no frame.
+    let mut again = sharp_project(&dir, "film", &shot, "auto");
+    ok(&mut host, &mut again, json!({"op":"media.thumbnails"}));
+    assert_eq!(
+        script.frames.lock().unwrap().len(),
+        1,
+        "the same capture is served from the cache"
+    );
+    assert_eq!(again.thumbnail("shot").unwrap().path, seen_path);
+
+    let mut ignored = sharp_project(&dir, "film", &shot, "ignore");
+    assert_ne!(
+        seen.thumbnail_identity("shot"),
+        ignored.thumbnail_identity("shot")
+    );
+    ok(&mut host, &mut ignored, json!({"op":"media.thumbnails"}));
+    assert_eq!(
+        script.frames.lock().unwrap().len(),
+        2,
+        "without the capture it is another picture"
+    );
+    assert_ne!(ignored.thumbnail("shot").unwrap().path, seen_path);
+    let plain = stand_in_frame(&script, &ignored, "shot");
+    assert_eq!(plain.turned, vec![[0.0; 3]]);
+    assert_eq!(plain.camera.unwrap().fov, 50.0);
+}
+
+/// BL144.2: a capture whose cloud is behind its own camera is named, not drawn from some other side.
+#[test]
+fn a_sharp_cloud_behind_its_capture_camera_is_named_and_never_reaches_the_renderer() {
+    let (dir, _) = setup("sharp-behind");
+    let shot = dir.join("behind.ply");
+    let mut spec = SharpSpec::default();
+    for point in &mut spec.points {
+        point.position[2] = -point.position[2];
+    }
+    write_sharp_ply(&shot, &spec).unwrap();
+    let mut state = sharp_project(&dir, "film", &shot, "auto");
+    let script = Arc::new(Script::default());
+    let mut host = host(&script, false);
+    let report = ok(&mut host, &mut state, json!({"op":"media.thumbnails"}));
+    assert_eq!(report["ready"], 0, "{report}");
+    let failed = state.thumbnail_report("behind");
+    assert_eq!(
+        (failed["state"].as_str(), failed["code"].as_str()),
+        (Some("failed"), Some("splat_not_drawable")),
+        "{failed}"
+    );
+    assert!(script.frames.lock().unwrap().is_empty());
 }
