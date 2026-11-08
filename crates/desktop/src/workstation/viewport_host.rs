@@ -62,6 +62,10 @@ const RETAINED_ASSETS: usize = 16;
 /// fading out or in, and one more to scrub back to). Past it the least recently used heavy asset is
 /// released, because each scene costs ~100-250 MB in the WebView once decoded.
 const RETAINED_ASSET_BYTES: u64 = 256 << 20;
+/// Source-file MiB the monitor keeps loaded before it releases the least recently used heavy asset
+/// (default 256; see [`RETAINED_ASSET_BYTES`]). A smaller value makes a project of a few scenes
+/// exercise the release in a real window; `0` or anything unreadable keeps the default.
+pub const RETAIN_MIB_ENV: &str = "TESSEL_VIEWPORT_RETAIN_MIB";
 /// Set to `1` to make the monitor's own frames carry hash/mean like explicit ones (measurement
 /// and pixel proofs); off by default because the readback is not needed to show a picture.
 pub const INSPECT_ENV: &str = "TESSEL_VIEWPORT_INSPECT";
@@ -105,6 +109,8 @@ pub struct HostOptions {
     pub scene_samples: Option<u32>,
     pub preview_scene_samples: Option<u32>,
     pub preview_sort: Option<PreviewSort>,
+    /// Bytes of heavy assets the session keeps loaded; `None` is [`RETAINED_ASSET_BYTES`].
+    pub retained_bytes: Option<u64>,
 }
 
 /// A MSAA sample count the runtime accepts, from an environment value.
@@ -134,6 +140,14 @@ pub(super) fn preview_sort_from_env(
     }
 }
 
+/// The retention budget an environment value (MiB) asks for; `None` for unset, zero or unreadable.
+pub(super) fn retained_bytes_from_env(value: Option<&str>) -> Option<u64> {
+    value
+        .and_then(|text| text.trim().parse::<u64>().ok())
+        .filter(|mib| *mib > 0)
+        .and_then(|mib| mib.checked_mul(1 << 20))
+}
+
 impl HostOptions {
     pub fn from_env() -> Self {
         Self {
@@ -145,6 +159,7 @@ impl HostOptions {
                 .is_ok_and(|value| value == "0")
                 .then_some(false),
             scene_samples: samples_from_env(SCENE_SAMPLES_ENV),
+            retained_bytes: retained_bytes_from_env(std::env::var(RETAIN_MIB_ENV).ok().as_deref()),
             preview_scene_samples: samples_from_env(PREVIEW_SCENE_SAMPLES_ENV),
             preview_sort: match preview_sort_from_env(
                 std::env::var_os(PREVIEW_SORT_ENV)
@@ -314,7 +329,7 @@ impl ViewportHost {
         let mut session =
             ViewportSession::new(backend).with_demo_dir(tessel_editor_render::demo_dir());
         session.set_retained_assets(RETAINED_ASSETS);
-        session.set_retained_bytes(RETAINED_ASSET_BYTES);
+        session.set_retained_bytes(options.retained_bytes.unwrap_or(RETAINED_ASSET_BYTES));
         session.trace().set_enabled(options.trace);
         let (dist, phase) = match page {
             Ok(dist) => (Some(dist), Phase::Booting(Instant::now())),

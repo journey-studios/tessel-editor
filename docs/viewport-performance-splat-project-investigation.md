@@ -313,6 +313,20 @@ comprime e devolve memória por conta própria, então a comparação usa a regi
 tendência. Ler o PLY em intervalos de 4 MiB no JS reduziu o editor a ~5 MB nessa região, mas o WebContent subiu para ~780 MB
 (os `ArrayBuffer`s das partes esperam a coleta de lixo): sem ganho líquido, não foi mantido.
 
+### Revalidação na `main` integrada
+
+Binário release de `ce71ce9` (antes da PR #28) contra o da `main` com o BL146–BL155, tour de 4 cenas do projeto de amostra
+(1,18 M de splats), 3 execuções intercaladas de cada, `vmmap`/`footprint` após cada quadro (MB):
+
+| | editor (pegada) | editor `MALLOC_LARGE (empty)` | WebContent (pico → final) |
+|---|---|---|---|
+| antes | 330 → 521 | 82 → 273 | 955 → 955 |
+| depois | 330 → 330 | 84 → 84 | 739 → 672 |
+
+As três execuções de cada lado diferem em ≤ 3 MB. Com `TESSEL_VIEWPORT_RETAIN_MIB=64` a remoção por bytes aparece numa janela real
+(`stats.evicted` chega a 5, `splat_assets` cai de 3 para 2 e volta a 3 ao revisitar a cena, editor estável). A pré-carga não aparece
+nesse tour porque ele só usa `seek`, sem reprodução; os números dela estão nas seções anteriores.
+
 ## Backlog
 
 Registrado em [backlog.md](backlog.md), seção "Performance do monitor — projeto splat de amostra": BL146 (carga antecipada),
