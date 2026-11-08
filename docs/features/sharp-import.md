@@ -150,17 +150,31 @@ livres (piso de 12 GiB), runtime real, Chrome, FFmpeg. `TESSEL_REQUIRE_RUNTIME=1
 **headless 24/24, janela 30/30**, 0 SKIP; todos os `scripts/*.spec.py` passam (helper 29/29 normal e `-O`); `cargo tree -p tessel-editor-core`
 sem gpui/wry. Nota de operação: o bundle `runtime/dist` não é versionado e precisa de `./scripts/runtime build` depois de trocar de branch
 (com o bundle antigo os 3 testes de pixels falham com `Cannot read properties of undefined (reading 'objects')`, que **não** é defeito do código).
-**Não** foi executado com uma saída real do SHARP (nenhum modelo roda aqui): o formato segue a fonte primária e o espelho sintético; a
-conferência com um PLY real é BL143.1. Um revisor leu o cabeçalho primário de quatro PLYs reais
-(1 179 648 pontos, 1672×941, fx=fy=1330,3168, cx 836, cy 470,5, `color_space` 0, versão 1.5.0, FOV vertical 38,955°): confirma o
-formato em parte, não a execução em Rust nem os pixels.
+Nenhum modelo roda neste repositório; os PLYs reais do SHARP existem só fora do Git, na máquina do autor (ver a seção seguinte).
+
+**Arquivo real (BL143.1 e BL143.8), executado depois da integração.** Os quatro PLYs locais do filme (`t1-teatro`…`t4-batalha`; só lidos,
+nada foi copiado para o repositório e os quadros temporários foram apagados) foram lidos pelo leitor Rust (`asset.add` em `tessel-headless`):
+1 179 648 gaussianas, `image_size` 1672×941, `fx=fy` 1330,3168, `cx` 836, `cy` 470,5, FOV vertical 38,9548°, `color_space` sRGB declarado, versão
+1.5.0, eixos OpenCV → giro de 180° em X, câmera em (0,0,0) olhando −Z: o que o revisor leu no cabeçalho. O render real (`tessel-render`: Chrome +
+SwiftShader + Spark) a 1672×941, com a câmera e os eixos só da captura, foi comparado com a imagem-fonte por FFmpeg:
+
+| Arquivo | SSIM do render | SSIM com `capture: ignore` (controle) | Média RGB do render × da fonte | Maior diferença por canal (total e por quadrante) |
+|---|---|---|---|---|
+| `t1-teatro` | 0,9625 | 0,168 | 84/41/32 × 85/42/32 | 1 / 2 |
+| `t2-estudio` | 0,9552 | 0,102 | 103/64/45 × 105/65/45 | 2 / 2 |
+| `t3-chao` | 0,9530 | 0,069 | 122/81/58 × 124/81/58 | 2 / 2 |
+| `t4-batalha` | — | — | — | `render.frame` sem resposta em 60 s, duas vezes, com a máquina sob carga (BL143.12, sem causa) |
+
+Resultado: enquadramento certo (sem espelho nem inversão) e sem escurecimento (≤ 2/255 por canal, ~0,8 %); o controle sem captura cai para
+SSIM ≤ 0,17, então a métrica distingue o certo do errado. A diferença residual de SSIM é a natural de Gaussianas contra os pixels originais.
+`scripts/sharp-real-check.py` repete a conferência (só leitura, caminhos locais, tolerâncias declaradas no cabeçalho do script:
+SSIM ≥ 0,90, cor ≤ 4/255, controle ≥ 0,5 abaixo). **Limites:** é a pilha do preview/export (Chrome headless), não a WKWebView nativa; o SwiftShader é
+determinístico, uma GPU real pode diferir; o corpus é de um único modelo (quatro cenas com a mesma câmera) e não entra no CI por ser privado.
 
 **Cor (BL143.8).** As sondas de pixel antigas comparam a cor dominante sobre preto, o que **não detecta escurecimento**. O runtime
 já traz a correção BL019-F1; não se repete correção de cor sem prova. O teste novo `colours_and_framing_match_an_independent_oracle_...`
 mede erro de cor por canal e erro de enquadramento em pixels contra um leitor e um pinhole independentes, com controles negativos
-(escurecer, trocar R/B, espelhar, atrás da câmera). Ele cobre o contrato do **arquivo**, não renderiza. **Prova ausente:** comparar a
-leitura Rust do PLY real e um render com a imagem-fonte local (`input/t1-teatro.png`), por cor e enquadramento, só-leitura e fora do
-Git, quando houver disco; até lá BL143.8 fica bloqueado.
+(escurecer, trocar R/B, espelhar, atrás da câmera). Ele cobre o contrato do **arquivo**, não renderiza. **Prova com o arquivo real:** feita, ver a seção anterior (BL143.8).
 
 Limites: o FOV é vertical (proporção da sequência diferente da fonte muda o corte horizontal); `tessel-scene` que referencia um
 splat com captura não herda câmera nem giro (BL143.2, mas `rotation` por objeto existe); sem seletor de `capture` na janela
