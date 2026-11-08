@@ -812,3 +812,5 @@ e renumera o contrato dela para um ID livre. Sem IDs novos de backlog: BL145 e B
 BL145.1 — resíduos 4502907216/4502916726: relatório de exceção usa assinatura compatível com Python 3.9; limite de leitura de atividade truncada documentado sem prometer CLI `get`. Sem mudança de Rust/runtime.
 
 Validação dos resíduos: spec 41/41 em Python 3.9.6 e 3.14.3, logs `/tmp/pr18-python39-final.log` e `/tmp/pr18-python314-final.log`; gates de produção anteriores preservados.
+
+BL082.8/.13/.15/.17 — conferência de merge R2: corrigidos resíduos OCR do head07dde5a (lote neutro com camada vazia, igualdade float da fixture, expectativa frames_over=10, cleanup após startup falho do runtime, interrupção com FAIL e exit code coerente). Python24/Node puro11/fmt/sintaxeNode/diffcheck passam; nenhum teste Rust ou janela nova executado por disco3,9GiB. A validar, sem merge.

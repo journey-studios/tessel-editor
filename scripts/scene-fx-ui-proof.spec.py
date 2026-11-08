@@ -347,6 +347,21 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(report["expected_surfaces"], ["window"])
         self.assertFalse(Path(self.directory.name, "report.json.tmp").exists(), "the report is replaced atomically")
 
+    def test_interruption_records_failure_and_preserves_exit_code(self):
+        for interruption in (SystemExit(130), SystemExit(143), KeyboardInterrupt()):
+            with self.subTest(interruption=repr(interruption)):
+                proof.checks.clear()
+                proof.failures.clear()
+
+                def interrupted(args, surfaces):
+                    raise interruption
+
+                code, report = self.run_main([], interrupted)
+                expected = interruption.code if isinstance(interruption, SystemExit) else 130
+                self.assertEqual(code, expected)
+                self.assertEqual(report["exit_code"], expected)
+                self.assertEqual(report["failed"], ["the proof was interrupted"])
+
     def test_a_missing_prerequisite_exits_2_and_still_reports_that_nothing_ran(self):
         with patch.object(sys, "argv", ["proof", "--json", str(Path(self.directory.name) / "r.json"), "--binary", "/nonexistent/tessel-editor"]):
             code = proof.main()

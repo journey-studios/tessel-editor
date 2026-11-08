@@ -1048,13 +1048,13 @@ fn the_budget_is_a_structured_warning_never_a_refusal_and_the_plan_keeps_every_p
                "ops":[{"op":"set_field","clip":"c8","field":"start_frame","value":0}]}),
     );
     assert_eq!(dry["warnings"][0]["code"], "FX_PASS_BUDGET");
-    assert_eq!(dry["warnings"][0]["frames_over"], 15 + 5);
+    assert_eq!(dry["warnings"][0]["frames_over"], 5 + 5);
     let real = edit(
         &mut state,
         json!([{"op":"set_field","clip":"c8","field":"start_frame","value":0}]),
     );
     assert_eq!(real["changed"], true);
-    assert_eq!(real["warnings"][0]["frames_over"], 15 + 5);
+    assert_eq!(real["warnings"][0]["frames_over"], 5 + 5);
     assert_eq!(undo_depth(&state), depth + 1);
     // Hidden clips draw nothing and do not count.
     let hidden = edit(
@@ -1113,12 +1113,16 @@ fn a_batch_that_changes_nothing_leaves_the_document_the_scene_and_the_history_al
     );
     // A batch that does change something and ends bare (add then remove) still gives the original back.
     let mut state = session_with_fx(json!({"catalogVersion":1,"tracks":[],"transitions":[]}));
+    let before = document(&state);
+    let depth = undo_depth(&state);
     let answer = edit(
         &mut state,
         json!([add(0, 10, json!({})), {"op":"remove_clip","clip":"v1"}]),
     );
     assert_eq!(answer["changed"], false);
     assert_eq!(answer["noop"], true);
+    assert_eq!(document(&state), before);
+    assert_eq!(undo_depth(&state), depth);
 }
 
 #[test]

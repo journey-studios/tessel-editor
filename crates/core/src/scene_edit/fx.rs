@@ -436,7 +436,8 @@ pub fn apply_fx_with(
     // `fx` at all (a layer with other keys, kept as written, stays).
     // Only an edit that changed something may tidy it: a batch that changed nothing (an empty one, or
     // only no-ops) leaves a layer the author wrote bare exactly as written, so no revision, no undo entry.
-    let bare = !touched.is_empty()
+    let bare = work != *scene.document()
+        && !touched.is_empty()
         && work
             .get("fx")
             .and_then(Value::as_object)

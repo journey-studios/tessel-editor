@@ -276,3 +276,9 @@ abaixo marcados "head anterior" são os da entrega 32860ec e **não** foram repe
 - Ponteiro físico real continua não provado (BL043); a prova da janela é semântica e o GPUI injeta entrada.
 - Não há dithering (o runtime escreve 8 bits como a cena); gradientes suaves podem mostrar bandas de 1/255.
 - A janela pinta a seção só com uma cena anexada; sem cena, a edição é por `scene.fx.edit` (headless).
+
+## Correções da conferência de merge (R2)
+
+Corrigidos os resíduos de revisão do head07dde5a: limpeza da camada só quando o documento líquido mudou (add/remove sobre camada vazia autorada preserva documento e undo); fixture numérica usa floats para campos f64 do catálogo; orçamento espera 10 quadros acima do limite (0..5 e10..15); inicialização falha do runtime também limpa temporários; interrupção do proof registra FAIL e o mesmo código no processo/JSON. O teste de lote neutro agora confere documento e profundidade de undo.
+
+Executado pelo coordenador: Python24/24 (inclui interrupção), Node puro output-fx11/11 (inclui contrato da fixture), fmt --check, node --check do medidor e git diff --check. **Rust continua não compilado/testado e prova nativa não repetida**: disco3,9GiB abaixo do piso12/reserva16. Não promover as evidências do head32860ec ao código novo. Aceite/merge permanecem pendentes em BL082.17.

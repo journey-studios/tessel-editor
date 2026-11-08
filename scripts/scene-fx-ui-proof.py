@@ -429,14 +429,19 @@ def main():
     surfaces, code = [], 1
     try:
         code = run(args, surfaces)
-    except Exception as error:  # noqa: BLE001 - a crash is a recorded FAIL; an interrupt or exit still unwinds
+    except (SystemExit, KeyboardInterrupt) as error:
+        code = error.code if isinstance(error, SystemExit) and isinstance(error.code, int) and error.code != 0 else 130
+        check("the proof was interrupted", False, f"{type(error).__name__}: {error}")
+    except Exception as error:  # noqa: BLE001 - a crash is a recorded FAIL
         check("the proof ran to its end", False, f"{type(error).__name__}: {error}")
     finally:
+        if failures and code == 0:
+            code = 1
         total = len(checks)
         print(f"\n{total - len(failures)}/{total} checks passed", flush=True)
         if args.json:
             write_report(pathlib.Path(args.json), pathlib.Path(args.binary).resolve(), surfaces, code)
-    return 1 if failures else code
+    return code
 
 
 def write_report(path, binary, surfaces, code):

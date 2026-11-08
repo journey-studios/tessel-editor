@@ -56,8 +56,9 @@ const plan = (count) =>
 const cleanups = [];
 const t = { after: (callback) => cleanups.push(callback) };
 const paths = makeFiles(t, { wall: flat(16, 9, [200, 160, 80]) });
-const runtime = await directedRuntime(paths);
+let runtime;
 try {
+  runtime = await directedRuntime(paths);
   const loaded = await runtime.load(sceneAsset('slot-wall', paths.wall, 'wall'));
   if (loaded.state !== 'ready') throw new Error(`load failed: ${JSON.stringify(loaded.error)}`);
   const result = { size: [width, height], frames, gl: 'swiftshader', configurations: {} };
@@ -84,6 +85,9 @@ try {
   }
   console.log(JSON.stringify(result, null, 2));
 } finally {
-  await runtime.close();
-  for (const callback of cleanups) callback();
+  try {
+    await runtime?.close();
+  } finally {
+    for (const callback of cleanups) callback();
+  }
 }
