@@ -6,6 +6,8 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 - [Integração da rodada R1–R10](migration/round-r1-r10-report.md): export dirigido, inspector, planos e robustez; evidências e limites do gate final.
 - [Próxima entrega — dez frentes](migration/next-delivery-ten-agents.md): contratos e ownership; status e delegações no backlog comum.
 - [Integração M/N/O/P](migration/round-mnop-report.md): renderer, recursos portáteis, inspector e provas do fluxo dirigido.
+- [Keyframes da câmera de clipe de cena (BL140)](features/camera-keys.md): chaves de posição/alvo/FOV com easing, tempo de cena, lib/JSONL/UI e export igual ao monitor.
+- [PLY do SHARP direto, com a câmera da captura (BL143)](features/sharp-import.md): eixos OpenCV, FOV das intrínsecas, recusa de metadado ambíguo, câmera restaurável, pixels reais na janela e no export.
 - [Renderer de cenas dirigidas](features/scene-renderer.md): scene.plan/scene.render, lib/JSONL e monitor com mapas verificados.
 - [Integração H/I/J/K + sliders](migration/round-hijkl-report.md): 718 testes Rust, provas por superfície e limites atuais da base.
 - [Inspector e árvore de cena](features/scene-inspector.md): controles recebidos, input GPUI e socket reportados; layout R9 inspecionado, captura final do cabeçalho em validação.
@@ -17,6 +19,7 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 - [Fade de entrada e saída em clipe de áudio (BL142)](features/audio-fades.md): rampa linear de ganho relativa ao clipe, mix em blocos = mix inteiro, sobreposição encurtada.
 - [Recursos da cena dirigida](features/scene-resources.md): manifesto, preflight e materialização inicial; identidade por assetId, transporte parcial e pacote ainda protegido pelas guardas.
 - [Interação de cenas dirigidas](features/scene-interaction.md): seleção, árvore, avaliação e gestos via comandos; gate local da rodada passou; inspector parcial em F039-UI.
+- [Gizmo de translação no canvas](features/scene-gizmo.md) (F055, S8/BL015/BL042): overlay e arrasto no core, canvas dentro da WebView, `scene.translate` equivalente; implementado e a validar: workspace, clippy, Chrome e runtime executados no head de código `db02923`; build, prova nativa+headless com `final_evidence` e as mutações Rust executados depois, no head `fb268bb` (mesmas fontes de produção, um teste a mais; ver BL015.6), sem ponteiro físico.
 - [Plano avaliado de cena dirigida](features/scene-plan.md): contrato core → runtime e recursos por assetId; gate local da rodada passou; consumido pelo renderer F041.
 - [Cenas no projeto e CLI](features/scene-project.md): attach, lotes, histórico, save/reopen
   e JSONL sem janela; inspector e render dirigido integrados; diálogo de anexar pendente.

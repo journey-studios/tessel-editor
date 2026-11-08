@@ -134,6 +134,9 @@ pub enum Content {
     Scene {
         camera: Camera,
         time: Ratio,
+        /// Degrees around X, Y, Z (`XYZ` order) applied to the splat of a bare splat layer: the
+        /// SHARP axes (BL143). Zero for scene files and plain splats.
+        orientation: [f64; 3],
     },
     Waveform {
         peaks: Vec<f32>,
@@ -230,9 +233,16 @@ fn layer_json(layer: &Layer) -> Value {
             value["source_frame"] = json!(source_frame);
         }
         Content::Text(text) => value["text"] = text.to_json(),
-        Content::Scene { camera, time } => {
+        Content::Scene {
+            camera,
+            time,
+            orientation,
+        } => {
             value["camera"] = camera.to_json();
             value["scene_time"] = time.to_json();
+            if *orientation != [0.0; 3] {
+                value["orientation"] = json!(orientation);
+            }
         }
         Content::Waveform { peaks, position } => {
             value["peaks"] = json!(peaks);
@@ -413,10 +423,14 @@ impl Resolver<'_> {
                     source_frame: frame,
                 }
             }
-            MediaKind::Scene | MediaKind::Splat => Content::Scene {
-                camera: scene_camera,
-                time: source_time,
-            },
+            MediaKind::Scene | MediaKind::Splat => {
+                let capture = asset.meta.capture.filter(|_| item.kind == MediaKind::Splat);
+                Content::Scene {
+                    camera: scene_camera,
+                    time: source_time,
+                    orientation: capture.map_or([0.0; 3], |_| crate::sharp::ORIENTATION),
+                }
+            }
             MediaKind::Text => match &asset.meta.text {
                 Some(text) => Content::Text(text.clone()),
                 None => {
@@ -561,11 +575,7 @@ impl EditorState {
                 let mut layer =
                     resolver.asset_layer(item, asset, source_time, camera, layer_id, Some(clip))?;
                 if let Content::Scene { camera, .. } = &mut layer.content {
-                    let seconds = source_time
-                        .sub(clip.source_start)
-                        .unwrap_or(Ratio::ZERO)
-                        .to_f64();
-                    *camera = clip.camera.unwrap_or_default().at(seconds);
+                    *camera = self.clip_camera_at(clip, frame);
                 }
                 layer
             }
@@ -575,6 +585,44 @@ impl EditorState {
         layer.opacity = resolver.opacity(clip, frame);
         layer.blend = resolver.choice(clip, "blend");
         Ok(Some(layer))
+    }
+
+    /// Scene time (exact seconds) a clip reads at sequence `frame`: `source_start` plus the
+    /// elapsed clip time at its speed. The plan reports it as `scene_time`; camera keys use it.
+    pub fn clip_source_time(&self, clip: &Clip, frame: i64) -> Ratio {
+        Resolver {
+            state: self,
+            requires: Vec::new(),
+            warnings: Vec::new(),
+        }
+        .source_time(clip, frame)
+    }
+
+    /// Playback speed of `clip` as an exact ratio (`1` is 100 %): the value the picture, the
+    /// sound and the camera keys all read, and the one a head trim scales by.
+    pub fn clip_speed(&self, clip: &Clip) -> Ratio {
+        Resolver {
+            state: self,
+            requires: Vec::new(),
+            warnings: Vec::new(),
+        }
+        .speed_ratio(clip)
+    }
+
+    /// The camera a scene clip shows at sequence `frame`: its keyframes (BL140) at scene time, or
+    /// without keys the still/orbiting camera counted from the clip start. One function for the
+    /// plan (so preview and export agree) and for capturing a key at the playhead.
+    pub fn clip_camera_at(&self, clip: &Clip, frame: i64) -> Camera {
+        let source_time = self.clip_source_time(clip, frame);
+        if let Some(camera) = crate::camera_keys::evaluate(&clip.camera_keys, source_time.to_f64())
+        {
+            return camera;
+        }
+        let seconds = source_time
+            .sub(clip.source_start)
+            .unwrap_or(Ratio::ZERO)
+            .to_f64();
+        clip.camera.unwrap_or_default().at(seconds)
     }
 
     fn plan_source(&self, asset_id: &Id, time: Ratio) -> Result<RenderPlan, CommandError> {
@@ -642,11 +690,16 @@ impl EditorState {
                 blend: "normal".to_string(),
             }
         } else {
+            // A SHARP splat is previewed from the camera that took its picture (BL143).
+            let camera = asset
+                .meta
+                .capture
+                .map_or_else(Camera::default, |capture| capture.camera());
             resolver.asset_layer(
                 item,
                 asset,
                 time,
-                Camera::default().at(time.to_f64()),
+                camera.at(time.to_f64()),
                 format!("layer:source:{asset_id}"),
                 None,
             )?

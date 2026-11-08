@@ -14,6 +14,21 @@ const requireObject = (condition, index, message) => {
   if (!condition) throw new RuntimeError('decode_failed', `Scene object ${index}: ${message}`);
 };
 
+/**
+ * The scene of a layer whose asset is a bare splat (a clip of a splat file, BL143): one splat object,
+ * turned by the plan's `orientation` (degrees around X, Y, Z). The SHARP axes (y down, z forward) are a
+ * half turn around X from the editor's (y up, -z forward), so the plan says `[180, 0, 0]` and the
+ * capture camera then looks at the picture the way the source image did.
+ */
+export const splatLayerScene = (layer) => ({
+  format: 'tessel-scene',
+  version: 1,
+  objects: [{ type: 'splat', asset: layer.asset, rotation: vector(layer.orientation, [0, 0, 0]) }],
+});
+
+/** The scene a `scene` layer draws: the file of a scene asset, or the synthesized one of a splat asset. */
+export const layerScene = (layer, entry) => (entry?.kind === 'splat' ? splatLayerScene(layer) : entry?.scene);
+
 /** A built scene ready to draw at a given time and camera. */
 export class SceneRig {
   /**
@@ -63,6 +78,8 @@ export class SceneRig {
     sceneFile.objects.forEach((object, index) => {
       const position = vector(object.position, [0, 0, 0]);
       const spin = vector(object.spin, [0, 0, 0]);
+      // Degrees around X, Y, Z before the spin is added: how an object is turned in the scene.
+      const turn = vector(object.rotation, [0, 0, 0]);
       let node;
       if (object.type === 'box' || object.type === 'sphere') {
         const color = new THREE.Color(object.color ?? '#cccccc');
@@ -83,7 +100,7 @@ export class SceneRig {
         throw new RuntimeError('decode_failed', `Scene object ${index}: unknown type \`${object.type}\``);
       }
       node.position.set(...position);
-      this.spinners.push({ node, spin });
+      this.spinners.push({ node, spin, turn });
       this.scene.add(node);
     });
   }
@@ -106,11 +123,11 @@ export class SceneRig {
     camera.updateMatrixWorld(true);
     camera.updateProjectionMatrix();
 
-    this.spinners.forEach(({ node, spin }) => {
+    this.spinners.forEach(({ node, spin, turn }) => {
       node.rotation.set(
-        THREE.MathUtils.degToRad(spin[0] * time),
-        THREE.MathUtils.degToRad(spin[1] * time),
-        THREE.MathUtils.degToRad(spin[2] * time),
+        THREE.MathUtils.degToRad(turn[0] + spin[0] * time),
+        THREE.MathUtils.degToRad(turn[1] + spin[1] * time),
+        THREE.MathUtils.degToRad(turn[2] + spin[2] * time),
       );
       node.updateMatrixWorld(true);
     });

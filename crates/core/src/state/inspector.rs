@@ -72,6 +72,8 @@ pub enum Applies {
     Audio,
     /// The fades of a clip that is only sound: the same properties as the visual fades.
     SoundClip,
+    /// Scene clips only (their camera keyframes, BL140).
+    Scene,
 }
 
 impl Applies {
@@ -81,6 +83,7 @@ impl Applies {
             // A video clip carries its own sound: its levels are the same controls as an audio clip's.
             Self::Audio => matches!(kind, ClipKind::Audio | ClipKind::Video),
             Self::SoundClip => kind == ClipKind::Audio,
+            Self::Scene => kind == ClipKind::Scene,
         }
     }
 
@@ -89,6 +92,7 @@ impl Applies {
             Self::Visual => "video and title clips",
             Self::Audio => "audio and video clips",
             Self::SoundClip => "audio clips",
+            Self::Scene => "scene clips",
         }
     }
 }
@@ -154,6 +158,13 @@ pub const SECTIONS: &[SectionDef] = &[
         label: "Tempo",
         tab: InspectorTab::Video,
         applies: Applies::Visual,
+        expanded: true,
+    },
+    SectionDef {
+        id: "camera",
+        label: "Câmera",
+        tab: InspectorTab::Video,
+        applies: Applies::Scene,
         expanded: true,
     },
     SectionDef {

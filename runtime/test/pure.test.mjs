@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { forEachLitCell, measureText } from '../src/font.js';
 import { fnv1a64, meanColor } from '../src/hash.js';
 import { expandPattern } from '../src/protocol.js';
+import { layerScene, splatLayerScene } from '../src/scene.js';
 import { SPLAT_FORMATS, splatFileName } from '../src/splat-format.js';
 
 const bytes = (text) => new TextEncoder().encode(text);
@@ -57,4 +58,13 @@ test('splat file names follow the content format the core identified, then the e
   assert.equal(splatFileName('spz', '/p/x.bin'), 'asset.spz');
   assert.equal(splatFileName(undefined, '/p/Scan.PLY'), 'asset.ply');
   assert.equal(splatFileName('mystery', '/p/noext'), 'asset.splat');
+});
+
+test('a bare splat layer is a one-splat scene turned by the plan orientation (BL143)', () => {
+  const layer = { kind: 'scene', asset: 'shot', orientation: [180, 0, 0] };
+  assert.deepEqual(splatLayerScene(layer).objects, [{ type: 'splat', asset: 'shot', rotation: [180, 0, 0] }]);
+  assert.deepEqual(layerScene({ asset: 'shot' }, { kind: 'splat' }).objects[0].rotation, [0, 0, 0]);
+  const file = { objects: [] };
+  assert.equal(layerScene(layer, { kind: 'scene', scene: file }), file);
+  assert.equal(layerScene(layer, undefined), undefined);
 });

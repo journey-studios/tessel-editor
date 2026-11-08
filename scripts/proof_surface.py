@@ -125,6 +125,7 @@ class Headless:
         self.cleanup_errors = []
         self._lines = queue.Queue()
         self._eof = False
+        self.refused = 0          # replies with `ok: false`; `tessel-headless` then exits with status 1
         try:
             self.process = subprocess.Popen([binary, *extra], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                             stderr=subprocess.DEVNULL, text=True, bufsize=1)
@@ -175,6 +176,8 @@ class Headless:
             raise SurfaceError(f'headless reply to `{label}` is not JSON: {line[:200]!r}') from error
         if not isinstance(body, dict):
             raise SurfaceError(f'headless reply to `{label}` is not an object: {line[:200]!r}')
+        if not body.get('ok'):
+            self.refused += 1
         return body
 
     def op(self, request):
@@ -213,8 +216,11 @@ class Headless:
         except OSError as error:
             problems.append(f'waiting for headless: {error}')
         self.exit_code = self.process.poll()
-        if self.exit_code not in (None, 0):
-            problems.append(f"headless exited with status {self.exit_code}")
+        # `tessel-headless` answers every request and exits 1 when any of them failed: the scenarios
+        # refuse edits on purpose, so that status is expected exactly when a refusal was seen.
+        expected = 1 if self.refused else 0
+        if self.exit_code not in (None, expected):
+            problems.append(f"headless exited with status {self.exit_code} (expected {expected})")
         self._reader.join(2)
         for stream in (self.process.stdin, self.process.stdout):
             try:

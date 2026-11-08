@@ -128,6 +128,7 @@ fn import_files(
         paths,
         mode,
         folder: None,
+        capture: Default::default(),
     };
     let mut prepared = Vec::new();
     let (_, outcome) = registry.run_inline(JobKind::Import, "import", |ctx| {

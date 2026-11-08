@@ -10,7 +10,7 @@ use serde_json::Value;
 use crate::directed_scene::DirectedScene;
 
 use crate::scene_edit::{EditOp, PropertyRef};
-use crate::scene_interaction::{FrameAt, GestureCommand, SelectMode};
+use crate::scene_interaction::{FrameAt, GestureCommand, GizmoCommand, PointerCommand, SelectMode};
 use crate::time::Ratio;
 
 /// Where the bytes of a bundle come from. It is read and validated when the command *executes*,
@@ -169,6 +169,8 @@ pub enum SceneCommand {
     Selection,
     /// F039: the begin/update/commit/cancel cycle.
     Gesture(GestureCommand),
+    /// F055: the translation gizmo (overlay, hit test, pointer drag, semantic translate).
+    Gizmo(GizmoCommand),
 }
 
 impl SceneCommand {
@@ -184,6 +186,11 @@ impl SceneCommand {
             // commit carries `changed`, and `EditorState::execute` records nothing when it is
             // false (empty gesture, net no-op) or when the commit is rejected.
             Self::Gesture(GestureCommand::Commit { .. }) => Some("Edit scene"),
+            // The release of a gizmo drag IS that commit, and `scene.translate` IS a
+            // `scene.edit`: both report `changed` as "the document changed", so a click that
+            // moved nothing leaves no entry. Press, move, cancel and the reads never do.
+            Self::Gizmo(GizmoCommand::Pointer(PointerCommand::Up { .. })) => Some("Edit scene"),
+            Self::Gizmo(GizmoCommand::Translate { .. }) => Some("Edit scene"),
             _ => None,
         }
     }
