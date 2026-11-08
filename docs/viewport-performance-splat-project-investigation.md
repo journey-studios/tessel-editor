@@ -366,13 +366,14 @@ nunca eram aquecidas, porque o estágio ocioso da cena anterior continuava na fi
 quadro de entrada (`sort`): 93–175 ms. Depois de permitir que o aquecimento ocupe o estágio que o último quadro não desenhou (e que
 nenhum aquecimento está ordenando): 28–58 ms.
 
-Execuções intercaladas `main` × aquecimento (release, projeto de amostra, 0–26 s, máquina com carga 7–22 por outros processos):
-maior tempo de quadro nos quadros de entrada (186/268/410) 44–145 ms (mediana ≈ 60) em `main` e 7–34 ms com aquecimento em 8 de 10
-execuções (outras 2: 88 e 139 ms); soma dos quadros > 40 ms por execução 226–779 em `main` (mediana 291) contra 45–440 com
-aquecimento (uma execução de 919). O aquecimento move trabalho síncrono (montagem do rig) para antes do corte e, em algumas
-execuções, atrasou um quadro na fila do runtime (`transit` > 40 ms em 4 de 10 execuções contra 2 de 7 em `main`). Com a máquina
-em carga o ruído é maior que o ganho nas métricas agregadas (intervalo máximo, quantidade de intervalos > 62 ms), por isso o
-resultado é "entrada de cena de ~60 para ~20 ms na mediana, sem piora clara do resto" e precisa ser reconferido na máquina quieta.
+Para isolar o efeito, o runtime ganhou uma variante local que não anuncia `scene.warm` (o host então nunca aquece): o mesmo binário release
+dá o lado "sem aquecimento" (`mkrt.py`, só no harness local). Seis execuções intercaladas de cada lado, projeto de amostra 0–26 s, máquina
+com carga 29–53 de outros processos: média do pior quadro nas entradas 186/268/410 de 96 para 22 ms; soma dos quadros > 40 ms por
+execução (mediana) de 259 para 118 ms; intervalos > 62 ms (mediana) de 11 para 8,5. Pico de pegada do WebContent na reprodução
+(amostra a cada 2 s): mediana 1000 MB sem aquecimento e 946 MB com, GPU 855–863 MB nos dois, ou seja, o aquecimento não aumenta o
+pico. O trecho que roda na fila de quadros do runtime (montagem do rig) segura a fila só 4–7 ms por chamada (10 por tour; a
+ordenação corre fora da fila), então a suspeita da rodada anterior (aquecimento atrasando quadros) não se confirma: os atrasos de
+fila > 40 ms aparecem também sem aquecimento e acompanham a carga da máquina.
 
 Outras medições desta rodada: build de debug contra release no mesmo tour (BL137) e uma abertura com `Falha: timeout` também no projeto
 de splats, com o binário de debug e carga de 50 (BL158). Não investigados ainda: BL133, BL155 e a memória do WebContent.
