@@ -195,6 +195,20 @@ Capturas vão para `--out`; só `--copy-screenshots DIR` as copia (nada é escri
 canônico da `main`): binário ausente, processo que morre, resposta que não é JSON, EOF ou tempo esgotado viram falha
 **dessa** superfície, a outra ainda roda e o relatório é escrito.
 
+**Evidência do BL144.2 (PR #31, código de produção em `5c19925`, macOS, SwiftShader).**
+
+- `cargo fmt --check`, `./scripts/cargo check` e `clippy --all-targets -- -D warnings` limpos; `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test
+  --workspace --locked --no-fail-fast`: **1833 passam, 0 falham, 12 ignorados**, incluindo
+  `a_sharp_splat_thumbnail_is_the_source_picture_upright_and_a_plain_reading_is_not` (runtime real, `runtime.js` sha256 `7b6b4338…`, sem
+  mudança nesta PR); `tessel-editor` e `tessel-render` compilam com `--locked`; `cargo tree -p tessel-editor-core` sem `gpui` nem `wry`;
+  `header-thumbnails-proof.spec.py` (31 testes) passa normal e `-O`.
+- `scripts/header-thumbnails-proof.py`, fase BL144.2, as duas superfícies: headless **152 passam**, janela nativa **167 passam**, 0 SKIP.
+  Cada superfície importa `sharp.ply` (cinco gaussianas sobre pixels conhecidos da imagem 160×120), desenha a miniatura e confere, por um oráculo
+  em Python puro, as cinco cores sobre os pixels da imagem de origem escalada à altura e centrada; a mesma importação com `capture: ignore`
+  é outro caminho de cache e a imagem não coincide (1 de 5). Vistas: a miniatura em pé (vermelho/verde em cima, azul/amarelo embaixo,
+  branco no centro), a leitura sem captura girada 180° e a janela com o tile de `sharp.ply`.
+- Aprovação visual por um humano, GPU real e ponteiro físico continuam distintos e **não** foram executados (I).
+
 **Defeitos reais achados e corrigidos na validação.**
 
 - `MediaHost` ficava preso a um job de miniatura que já terminara quando `job.commit` ou `job.discard` o encerrava antes
@@ -208,7 +222,7 @@ canônico da `main`): binário ausente, processo que morre, resposta que não é
 **Limites declarados (não provados nesta validação; os IDs seguem abertos no backlog).**
 
 - **BL144.1:** imagem parada e vídeo seguem com glifo.
-- **BL144.2:** implementado, a validar (ver "Splat do SHARP" acima); sem render real nem Cargo neste ambiente (disco abaixo do piso).
+- **BL144.2:** validado na PR #31 (ver "Evidência do BL144.2" abaixo); SwiftShader, sem GPU real, só o fixture sintético de cinco gaussianas (um PLY real do SHARP é BL143.8; eixos SPZ/PLY, BL144.13).
 - **BL144.3 (impressão do runtime):** o cache só é invalidado por `VERSION`/`CACHE_VERSION`; reconstruir `runtime/dist` não
   refaz imagens guardadas. Plano: o runtime expõe o hash do bundle em `capabilities`, o adaptador o inclui na impressão do
   cache e `media.thumbnails {rebuild: true}` limpa só as miniaturas. Não implementado.

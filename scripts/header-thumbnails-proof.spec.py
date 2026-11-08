@@ -188,6 +188,26 @@ class ObservationTests(unittest.TestCase):
             proof.await_in_flight(lambda: script.pop(0), 'B\'s job', sleep=lambda _: None)
         self.assertIn('ended before one was seen running', str(raised.exception))
 
+    def test_the_old_final_jobs_of_a_replaced_session_are_not_a_verdict_on_the_new_one(self):
+        old = self.job('cancelled', 3, 23)
+        old['id'] = 'old'
+        fresh = self.job('running', 2, 23)
+        fresh['id'] = 'new'
+        # Before the window starts the new session's job, only the old (final) one is listed.
+        script = [[old], [old], [old, fresh]]
+        seen = proof.await_in_flight(lambda: script.pop(0), 'x', sleep=lambda _: None, ignore={'old'})
+        self.assertEqual(seen['id'], 'new')
+        # Without ignoring them the same sequence is the failure the proof used to report by mistake.
+        script = [[old], [old], [old, fresh]]
+        with self.assertRaises(proof.ProofFailure):
+            proof.await_in_flight(lambda: script.pop(0), 'x', sleep=lambda _: None)
+        # A NEW job that ended without being seen is still a failure.
+        gone = self.job('succeeded', 23, 23)
+        gone['id'] = 'new'
+        script = [[old], [old, gone]] + [[old, gone]] * 3
+        with self.assertRaises(proof.ProofFailure):
+            proof.await_in_flight(lambda: script.pop(0), 'x', sleep=lambda _: None, ignore={'old'})
+
     def test_other_kinds_of_jobs_are_not_the_thumbnail_job(self):
         script = [[self.job('running', 2, 5, kind='import')]] * 3
         now = iter([0, 1, 2, 1000])
@@ -357,6 +377,41 @@ class SurfaceFailureTests(unittest.TestCase):
         self.assertTrue(report['native']['failed'])
         self.assertIn('this one fails', report['native']['error'])
         self.assertTrue(created[0].stopped)
+
+
+class SharpOracleTests(unittest.TestCase):
+    """BL144.2: where the five points of the SHARP fixture are, and what counts as seeing them."""
+
+    def picture(self, width, height, drawn):
+        rows = [[proof.BACKGROUND] * width for _ in range(height)]
+        for (x, y), wanted in drawn:
+            rows[y][x] = tuple(230 if channel else 20 for channel in wanted)
+        return rows
+
+    def test_the_points_keep_the_source_layout_scaled_to_the_height_and_centred(self):
+        where = proof.sharp_expected(240, 136)
+        scale = 136 / 120
+        self.assertEqual(where[4], (120, 68))
+        self.assertEqual(where[0], (round(120 + (40 - 80) * scale), round(68 + (30 - 60) * scale)))
+        # Asymmetric: the picture is not mirrored or turned over by the oracle itself.
+        self.assertLess(where[0][0], where[1][0])
+        self.assertLess(where[0][1], where[2][1])
+        self.assertEqual(proof.sharp_expected(120, 90)[4], (60, 45))
+
+    def test_all_five_colours_in_place_match_and_a_turned_picture_does_not(self):
+        where = proof.sharp_expected(240, 136)
+        upright = self.picture(240, 136, zip(where, proof.SHARP_LIT))
+        self.assertEqual(proof.sharp_matches(upright, 240, 136), [True] * 5)
+        # The same five colours over the turned layout (a half turn): only the centre stays.
+        turned = self.picture(240, 136, zip([(240 - x, 136 - y) for x, y in where], proof.SHARP_LIT))
+        self.assertEqual(proof.sharp_matches(turned, 240, 136), [False, False, False, False, True])
+        self.assertEqual(sum(proof.sharp_matches(self.picture(240, 136, []), 240, 136)), 0)
+
+    def test_a_colour_needs_its_lit_channels_and_dark_the_others(self):
+        self.assertTrue(proof.sharp_lit((230, 20, 20), (1, 0, 0)))
+        self.assertFalse(proof.sharp_lit((230, 200, 20), (1, 0, 0)))
+        self.assertFalse(proof.sharp_lit((100, 20, 20), (1, 0, 0)))
+        self.assertFalse(proof.sharp_lit(proof.BACKGROUND, (1, 1, 1)))
 
 
 if __name__ == '__main__':
