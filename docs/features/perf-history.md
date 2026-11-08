@@ -258,3 +258,14 @@ válido; o cartão mostrado no meio de uma gravação começa a medir do momento
 intervalo" falso); falhas síncronas e timeouts de quadro viram `request_failed`; parar a gravação limpa a marca
 de redesenho do próprio diagnóstico; o teste da pasta bloqueada é só Unix e se ignora quando o processo escreve
 mesmo assim. Nenhum gate foi executado sobre este head: estado **a validar**.
+
+## Correções após notificação PR36 (2026-11-08)
+
+Destino escolhido no próprio painel não relê HistoryView durante seu update: o campo
+é sincronizado pelo adapter antes do comando. Regressão GPUI adicionada, não executada
+por disco. Benchmark passa a dividir CPU pelo tempo monotônico efetivamente medido,
+incluindo preparação e espera; números anteriores não comprovam custo desse head.
+Permanecem a revisar: correlação de quadro antigo na troca de cena, FPS de pedido explícito,
+observação após 64 exports, repetição de falhas inundando eventos, além dos limites BL145.4.
+Publicação do JSON exige hardlink suportado no destino e falha sem sobrescrever em outros
+sistemas; não reintroduzir fallback rename inseguro. Nenhum gate Rust ou janela reexecutado.

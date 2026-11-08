@@ -1008,3 +1008,8 @@ Entrega independente de BL082/P0P1; coordenador reserva subitens BL145 livres na
 Encaminhamento pendente de confirmação T3, nenhum comportamento declarado entregue.
 
 BL145.2 — correção coordenador: export sem fallback rename (evita sobrescrita concorrente), temporário só é removido se criado pela chamada; teste colisão escrito, não executado por disco8,9GiB. Fmt estático somente, validação compilada continua pendente.
+
+BL145.3/.4/.5 — PR36: acesso reentrante do seletor de destino corrigido por adapter e
+regressão GPUI escrita; benchmark usa duração monotônica medida, não seconds+2.5.
+Não compilado nem provado na janela. Achados adicionais de sessão/FPS explícito/export
+após64 jobs/eventos repetidos mantidos no contrato como pendências antes de aceite.

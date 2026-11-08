@@ -914,3 +914,25 @@ fn only_export_jobs_reach_the_history_and_only_their_id_state_and_error_code() {
         "a job's label never reaches the history"
     );
 }
+
+#[gpui_kit::test]
+fn a_destination_from_the_panel_does_not_read_its_own_update_lease(cx: &mut TestAppContext) {
+    let (view, cx) = fixture(cx);
+    let panel = open_panel(&view, cx);
+    panel.update_in(cx, |panel, window, cx| {
+        panel.run(
+            HistoryCommand::Destination("/tmp/picked-history.json".into()),
+            window,
+            cx,
+        );
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        panel.read_with(cx, |panel, cx| panel.destination_text(cx)),
+        "/tmp/picked-history.json"
+    );
+    assert_eq!(
+        node(&view, cx)["state"]["export_destination"],
+        json!("/tmp/picked-history.json")
+    );
+}

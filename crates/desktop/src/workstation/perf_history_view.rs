@@ -86,7 +86,9 @@ impl Workstation {
             HistoryCommand::Record(on) => Ok(self.history_record(*on, now)),
             HistoryCommand::Show => self.history_show(window, cx),
             HistoryCommand::Hide => Ok(self.history_hide(window, cx)),
-            HistoryCommand::Destination(text) => Ok(self.history_destination(text, window, cx)),
+            HistoryCommand::Destination(text) => {
+                Ok(self.history_destination(text, !matches!(&source, Source::Gesture), window, cx))
+            }
             HistoryCommand::ExportToDestination => {
                 // The same write as `export_to <path>`: only the path comes from the field.
                 let path = std::path::PathBuf::from(self.perf.history.destination.trim());
@@ -212,12 +214,15 @@ impl Workstation {
     fn history_destination(
         &mut self,
         text: &str,
+        sync_field: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Value {
         let changed = self.perf.history.destination != text;
         self.perf.history.destination = text.to_string();
-        if let Some(view) = &self.perf.history.view {
+        // A panel-origin command already owns the view's update lease; its field is synced
+        // by HistoryView::run. Only an external command may read the view here.
+        if sync_field && let Some(view) = &self.perf.history.view {
             let input = view.read(cx).destination.clone();
             let shown = text.to_string();
             input.update(cx, |input, cx| input.set_value(shown, window, cx));
@@ -383,7 +388,16 @@ impl HistoryView {
         cx.notify();
     }
 
-    fn run(&mut self, command: HistoryCommand, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn run(
+        &mut self,
+        command: HistoryCommand,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let HistoryCommand::Destination(text) = &command {
+            self.destination
+                .update(cx, |input, cx| input.set_value(text.clone(), window, cx));
+        }
         let result = self.workstation.update(cx, |workstation, cx| {
             workstation.execute_perf_history(command, Source::Gesture, window, cx)
         });

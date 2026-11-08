@@ -298,12 +298,15 @@ def main():
         for index in range(rounds):
             for arm in arm_order(index):
                 arm_setup(editor, arm)
+                wall_before = time.monotonic()
                 cpu_before = cpu_seconds(editor.process.pid)
                 run = pmp.playback_run(editor, seconds, False)
                 cpu_after = cpu_seconds(editor.process.pid)
+                wall_seconds = time.monotonic() - wall_before
+                run["measured_wall_seconds"] = wall_seconds
                 run.update({"arm": arm, "round": index})
-                if cpu_before is not None and cpu_after is not None:
-                    run["cpu_s_per_s"] = round((cpu_after - cpu_before) / (seconds + 2.5), 3)
+                if cpu_before is not None and cpu_after is not None and wall_seconds > 0:
+                    run["cpu_s_per_s"] = round((cpu_after - cpu_before) / wall_seconds, 3)
                 report["cost"].append(run)
                 print(json.dumps(run), flush=True)
                 check(f"cost round {index} arm {arm}: playback covered the whole {seconds:g} s window", run.get("ok"), run.get("error"))
