@@ -31,7 +31,8 @@ use tessel_editor_core::backend::{BackendError, FrameDetail, FrameResult, Output
 use tessel_editor_core::bridge::{BridgeBackend, HelloOptions, PreviewSort, Transport};
 use tessel_editor_core::headless::{backend_error, frame_geometry, frame_report, plan_summary};
 use tessel_editor_core::ops::RenderFrame;
-use tessel_editor_core::perf::Meter;
+use tessel_editor_core::perf::{FrameContext, Meter};
+use tessel_editor_core::perf_history::{Context, Image, SessionKind};
 use tessel_editor_core::plan::{PlanRequest, RenderPlan};
 use tessel_editor_core::preview::ProxyCoverage;
 use tessel_editor_core::session::{Preview, SessionEvent, Status, ViewportSession};
@@ -384,6 +385,56 @@ impl ViewportHost {
         }
     }
 
+    /// One accepted picture of the three.js runtime, with what the host knows about it: its
+    /// request (latency), `render_ms` (CPU) and the texture estimate go to the history.
+    fn note_image(&mut self, frame: Option<i64>, result: &FrameResult) {
+        self.presented = frame;
+        if let Some(link) = &self.meter
+            && link.meter.borrow().enabled()
+        {
+            let context = FrameContext::of(result);
+            let image = Image {
+                request: Some(result.id),
+                frame,
+                render_ms: Some(result.render_ms),
+                texture_bytes: context.texture_bytes,
+            };
+            let at = link.clock.elapsed();
+            let mut meter = link.meter.borrow_mut();
+            meter.monitor_image(at, frame, &image);
+            meter.picture_context(
+                at,
+                Context {
+                    width: context.width,
+                    height: context.height,
+                    quality: context.quality,
+                    proxy_layers: context.proxy_layers,
+                    stale_sort_layers: context.stale_sort_layers,
+                    reduced_scene_layers: context.reduced_scene_layers,
+                    monitor_on_screen: Some(self.on_screen),
+                    ..Context::default()
+                },
+            );
+        }
+    }
+
+    /// The host admitted request `id` (history latency starts here).
+    fn note_admitted(&self, id: u64) {
+        if let Some(link) = &self.meter {
+            link.meter
+                .borrow_mut()
+                .request_admitted(id, link.clock.elapsed());
+        }
+    }
+
+    fn note_session(&self, kind: SessionKind) {
+        if let Some(link) = &self.meter {
+            link.meter
+                .borrow_mut()
+                .session_changed(link.clock.elapsed(), kind);
+        }
+    }
+
     /// The sequence frame of the newest picture the monitor accepted (`None`: a source preview,
     /// nothing yet, or the project was replaced or the viewport reloaded since).
     pub fn presented_frame(&self) -> Option<i64> {
@@ -462,6 +513,7 @@ impl ViewportHost {
         self.last_frame = None;
         // The reloaded page shows nothing until its first new picture.
         self.presented = None;
+        self.note_session(SessionKind::ViewportReloaded);
         true
     }
 
@@ -475,6 +527,7 @@ impl ViewportHost {
         self.last_frame = None;
         // Frame IDs may now mean something else: what the monitor showed is not known anymore.
         self.presented = None;
+        self.note_session(SessionKind::ProjectReplaced);
         self.dirty = true;
     }
 
@@ -603,7 +656,8 @@ impl ViewportHost {
             // Only an interactive frame is ever coalesced into, and explicit requests (the ones
             // with a waiter) are never interactive: nothing to answer here.
             Ok(Preview::Coalesced) => {}
-            Ok(Preview::Submitted(_)) => {
+            Ok(Preview::Submitted(id)) => {
+                self.note_admitted(id);
                 self.request_started = Some(Instant::now());
                 self.failure = None;
                 self.png_paths.clear();
@@ -646,6 +700,7 @@ impl ViewportHost {
         Self::cancel_waiters(std::mem::take(&mut self.waiters));
         match self.session.request_frame(state, plan, output, probes) {
             Ok(id) => {
+                self.note_admitted(id);
                 self.request_started = Some(Instant::now());
                 self.failure = None;
                 if let Some(path) = png {
@@ -814,7 +869,8 @@ impl ViewportHost {
             return;
         }
         match self.session.dispatch_pending(state) {
-            Some(Ok(_)) => {
+            Some(Ok(id)) => {
+                self.note_admitted(id);
                 self.request_started = Some(Instant::now());
                 self.failure = None;
             }
@@ -853,7 +909,8 @@ impl ViewportHost {
             return false;
         }
         match self.session.dispatch_refine(state, now) {
-            Some(Ok(_)) => {
+            Some(Ok(id)) => {
+                self.note_admitted(id);
                 self.request_started = Some(now);
                 self.failure = None;
                 true
@@ -869,7 +926,12 @@ impl ViewportHost {
 
     fn on_event(&mut self, event: SessionEvent) {
         match event {
-            SessionEvent::Progress | SessionEvent::Stale(_) => {}
+            SessionEvent::Progress => {}
+            SessionEvent::Stale(id) => {
+                if let Some(link) = &self.meter {
+                    link.meter.borrow_mut().response_stale(id);
+                }
+            }
             SessionEvent::Frame(frame) => {
                 self.request_started = None;
                 self.failure = None;
@@ -882,10 +944,16 @@ impl ViewportHost {
                     let waiter = self.waiters.remove(index);
                     let _ = waiter.reply.try_send(frame_report(&waiter.summary, &frame));
                 }
+                let presented = self.session.presented_frame();
+                self.note_image(presented, &frame);
                 self.last_frame = Some(frame);
-                self.note_presented(self.session.presented_frame());
             }
             SessionEvent::Failed(error) => {
+                if let Some(link) = &self.meter {
+                    link.meter
+                        .borrow_mut()
+                        .request_failed(link.clock.elapsed(), None, &error.code);
+                }
                 self.request_started = None;
                 self.png_paths.clear();
                 if error.code == "backend_unavailable"

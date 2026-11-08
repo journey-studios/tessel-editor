@@ -104,6 +104,8 @@ pub struct Workflow {
     pub(super) flow: Option<FlowDialog>,
     /// The jobs dialog has no state of its own; this only tells the monitor to step aside.
     jobs_open: bool,
+    /// The performance history panel (F049) is a Root dialog too: the monitor steps aside for it.
+    pub(super) history_open: bool,
     /// Newest first; what the status bar and `jobs` show about jobs that already finished.
     history: Vec<Value>,
     last_autosave: Instant,
@@ -177,6 +179,7 @@ impl Workflow {
                 .interactive(),
             flow: None,
             jobs_open: false,
+            history_open: false,
             history: Vec::new(),
             last_autosave: Instant::now(),
             autosaved_revision: None,
@@ -193,7 +196,7 @@ impl Workflow {
     }
 
     pub fn has_dialog(&self) -> bool {
-        self.flow.is_some() || self.jobs_open
+        self.flow.is_some() || self.jobs_open || self.history_open
     }
 
     /// Tests only: a dialog is open, as far as `has_dialog` (the monitor's visibility) can tell.

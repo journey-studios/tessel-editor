@@ -98,7 +98,10 @@ impl Inspection {
     pub fn to_json(&self) -> Value {
         let mut metrics = Map::new();
         for metric in Metric::ALL {
-            metrics.insert(metric.id().to_string(), agg_json(&self.metrics[metric.index()]));
+            metrics.insert(
+                metric.id().to_string(),
+                agg_json(&self.metrics[metric.index()]),
+            );
         }
         json!({
             "bucket": { "index": self.bucket, "start_ms": round3(self.start_ms),
@@ -274,7 +277,8 @@ impl Snapshot {
         for metric in Metric::ALL {
             peaks.insert(
                 metric.id().to_string(),
-                self.summary(metric).map_or(Value::Null, MetricSummary::to_json),
+                self.summary(metric)
+                    .map_or(Value::Null, MetricSummary::to_json),
             );
         }
         Value::Object(peaks)
@@ -347,7 +351,11 @@ impl Snapshot {
                     .iter()
                     .map(|aggs| {
                         let agg = &aggs[metric.index()];
-                        if agg.is_empty() { Value::Null } else { read(agg) }
+                        if agg.is_empty() {
+                            Value::Null
+                        } else {
+                            read(agg)
+                        }
                     })
                     .collect()
             };

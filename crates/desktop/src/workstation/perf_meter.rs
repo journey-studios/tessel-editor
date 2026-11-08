@@ -143,6 +143,8 @@ pub(super) struct PerfState {
     /// What the card shows: recomputed at most every `REFRESH_EVERY`.
     shown: Option<(Duration, Readout)>,
     placement: Placement,
+    /// The history panel (a dialog); the recorder itself lives in `meter`.
+    pub(super) history: super::perf_history_view::HistoryState,
     /// How many times the text was recomputed (the 4 Hz rule is about this number).
     #[cfg(test)]
     refreshes: u64,
@@ -162,6 +164,7 @@ impl PerfState {
             wake_task: None,
             shown: None,
             placement: Placement::Floating { y: CARD_MARGIN },
+            history: Default::default(),
             #[cfg(test)]
             refreshes: 0,
             #[cfg(test)]
@@ -175,6 +178,11 @@ impl PerfState {
 
     pub fn clock(&self) -> PerfClock {
         self.clock.clone()
+    }
+
+    /// The flag the next paint spends as "that frame was ours" (diagnostic redraws).
+    pub(super) fn own_redraw(&self) -> Rc<Cell<bool>> {
+        self.own_redraw.clone()
     }
 
     pub fn elapsed(&self) -> Duration {
@@ -377,7 +385,32 @@ impl Workstation {
     /// Everything the meter adds to this frame; nothing at all while hidden.
     pub(super) fn render_perf(&mut self, t: &Tokens, cx: &mut Context<Self>) -> PerfParts {
         if !self.perf.visible {
-            return PerfParts::default();
+            // Recording with the card hidden is light capture: one zero-size paint probe that
+            // counts the window's frames and reads the memory gauge. No overlay, no wake-up
+            // timer, no readout is computed.
+            if !self.perf.meter.borrow().recorder().recording() {
+                return PerfParts::default();
+            }
+            let (meter, clock, own) = (
+                self.perf.meter.clone(),
+                self.perf.clock(),
+                self.perf.own_redraw.clone(),
+            );
+            let recorder = canvas(
+                |_, _, _| (),
+                move |_, _, _, _| {
+                    if !own.replace(false) {
+                        meter.borrow_mut().ui_painted(clock.elapsed());
+                        sample_rss(&meter, &clock);
+                    }
+                },
+            )
+            .absolute()
+            .size(px(0.));
+            return PerfParts {
+                recorder: Some(recorder.into_any_element()),
+                ..PerfParts::default()
+            };
         }
         let now = self.perf.elapsed();
         let stale = self
@@ -463,6 +496,7 @@ impl Workstation {
                 // The meter's own "parado" redraw is not a frame anyone asked for.
                 if !own.replace(false) {
                     meter.borrow_mut().ui_painted(clock.elapsed());
+                    sample_rss(&meter, &clock);
                 }
             },
         )
@@ -497,6 +531,18 @@ impl Workstation {
             .text_color(t.text)
             .child(text)
     }
+}
+
+/// Reads the process memory for the history, at most once per second and only while recording
+/// (the recorder says when a reading is due). Called from the paint probe, never from a timer:
+/// a window that does not paint reads nothing, and the gap stays a gap.
+fn sample_rss(meter: &Rc<RefCell<Meter>>, clock: &PerfClock) {
+    let now = clock.elapsed();
+    if !meter.borrow().recorder().rss_due(now) {
+        return;
+    }
+    let rss = memory_stats::memory_stats().map(|usage| usage.physical_mem as u64);
+    meter.borrow_mut().recorder_mut().rss_read(now, rss);
 }
 
 /// Width of the label column: `render_ms`, the longest label, is nine monospace glyphs.

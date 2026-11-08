@@ -41,10 +41,8 @@ fn last(_: &Snapshot) -> usize {
 }
 
 fn scratch(name: &str) -> PathBuf {
-    let directory = std::env::temp_dir().join(format!(
-        "tessel-perf-history-{}-{name}",
-        std::process::id()
-    ));
+    let directory =
+        std::env::temp_dir().join(format!("tessel-perf-history-{}-{name}", std::process::id()));
     let _ = std::fs::remove_dir_all(&directory);
     std::fs::create_dir_all(&directory).unwrap();
     directory
@@ -109,9 +107,18 @@ fn a_bucket_with_no_sample_is_absent_not_zero_and_not_the_last_value() {
     assert!(series[bucket(600)].is_none(), "a gap is None");
     assert!(series[bucket(1100)].is_some());
     let document = snapshot.to_document();
-    assert_eq!(document["series"]["render_ms"]["count"][bucket(600)], Value::Null);
-    assert_eq!(document["series"]["render_ms"]["max"][bucket(600)], Value::Null);
-    assert_eq!(document["series"]["latency_ms"]["count"][bucket(100)], Value::Null);
+    assert_eq!(
+        document["series"]["render_ms"]["count"][bucket(600)],
+        Value::Null
+    );
+    assert_eq!(
+        document["series"]["render_ms"]["max"][bucket(600)],
+        Value::Null
+    );
+    assert_eq!(
+        document["series"]["latency_ms"]["count"][bucket(100)],
+        Value::Null
+    );
     assert!(snapshot.summary(Metric::LatencyMs).is_none());
 }
 
@@ -122,15 +129,30 @@ fn old_data_leaves_by_elapsed_time_even_when_no_new_frame_arrives() {
     recorder.event(at(1_000), EventKind::ResourceLoadStarted, None);
     let early = recorder.snapshot(at(30_000)).unwrap();
     assert_eq!(early.summary(Metric::RenderMs).unwrap().count, 1);
-    assert!(early.events.iter().any(|e| e.kind == EventKind::ResourceLoadStarted));
+    assert!(
+        early
+            .events
+            .iter()
+            .any(|e| e.kind == EventKind::ResourceLoadStarted)
+    );
     // 70 s later, nothing was recorded since: the window moved on its own.
     let late = recorder.snapshot(at(71_000)).unwrap();
     assert!(late.summary(Metric::RenderMs).is_none());
-    assert!(late.events.iter().all(|e| e.kind != EventKind::ResourceLoadStarted));
+    assert!(
+        late.events
+            .iter()
+            .all(|e| e.kind != EventKind::ResourceLoadStarted)
+    );
     // The edge: still inside at 60 s, gone one bucket later.
     let edge = recorder.snapshot(at(60_900)).unwrap();
     assert!(edge.summary(Metric::RenderMs).is_some());
-    assert!(recorder.snapshot(at(61_300)).unwrap().summary(Metric::RenderMs).is_none());
+    assert!(
+        recorder
+            .snapshot(at(61_300))
+            .unwrap()
+            .summary(Metric::RenderMs)
+            .is_none()
+    );
 }
 
 #[test]
@@ -215,7 +237,13 @@ fn silence_while_playing_shows_as_an_open_interval_before_any_frame_arrives() {
     assert_eq!(snapshot.open_monitor_interval_ms, Some(2_000.0));
     let mut resting = started(0);
     resting.monitor_presented(at(40));
-    assert_eq!(resting.snapshot(at(9_000)).unwrap().open_monitor_interval_ms, None);
+    assert_eq!(
+        resting
+            .snapshot(at(9_000))
+            .unwrap()
+            .open_monitor_interval_ms,
+        None
+    );
 }
 
 #[test]
@@ -255,7 +283,11 @@ fn losses_are_the_delta_of_a_cumulative_counter_per_run_never_added_twice() {
     recorder.loss_observed(at(200), 2, 0);
     recorder.loss_observed(at(240), 2, 1);
     assert_eq!(total(&recorder), 6.0);
-    let summary = recorder.snapshot(at(300)).unwrap().summary(Metric::LostFrames).unwrap();
+    let summary = recorder
+        .snapshot(at(300))
+        .unwrap()
+        .summary(Metric::LostFrames)
+        .unwrap();
     assert_eq!(summary.count, 6, "zero losses are observed zeros, not gaps");
 }
 
@@ -273,7 +305,10 @@ fn clearing_mid_run_rebases_the_losses_instead_of_counting_the_old_total() {
         .iter()
         .map(|aggs| aggs[Metric::LostFrames.index()].sum)
         .sum();
-    assert_eq!(sum, 1.0, "7 is the new baseline, only the step to 8 is a loss");
+    assert_eq!(
+        sum, 1.0,
+        "7 is the new baseline, only the step to 8 is a loss"
+    );
 }
 
 #[test]
@@ -309,7 +344,13 @@ fn a_picture_of_a_request_nobody_admitted_invents_no_latency() {
     assert_eq!(recorder.counters().unmatched_images, 1);
     let mut without_id = started(0);
     without_id.image(at(10), &Image::default());
-    assert!(without_id.snapshot(at(20)).unwrap().summary(Metric::LatencyMs).is_none());
+    assert!(
+        without_id
+            .snapshot(at(20))
+            .unwrap()
+            .summary(Metric::LatencyMs)
+            .is_none()
+    );
 }
 
 #[test]
@@ -319,7 +360,11 @@ fn superseded_requests_are_forgotten_when_a_newer_one_is_answered() {
     recorder.request_admitted(2, at(120));
     recorder.request_admitted(3, at(140));
     recorder.image(at(200), &image(3, 4.0));
-    assert_eq!(recorder.pending_requests(), 0, "1 and 2 were superseded and never answered");
+    assert_eq!(
+        recorder.pending_requests(),
+        0,
+        "1 and 2 were superseded and never answered"
+    );
     recorder.image(at(210), &image(2, 4.0));
     let snapshot = recorder.snapshot(at(300)).unwrap();
     assert_eq!(snapshot.summary(Metric::LatencyMs).unwrap().count, 1);
@@ -335,7 +380,10 @@ fn a_stale_response_is_dropped_counted_and_never_becomes_a_latency() {
     let snapshot = recorder.snapshot(at(600)).unwrap();
     assert!(snapshot.summary(Metric::LatencyMs).is_none());
     assert_eq!(snapshot.counters.stale_responses, 1);
-    assert_eq!(snapshot.to_document()["counters"]["stale_responses_dropped"], 1);
+    assert_eq!(
+        snapshot.to_document()["counters"]["stale_responses_dropped"],
+        1
+    );
 }
 
 #[test]
@@ -347,7 +395,13 @@ fn pending_requests_are_bounded_and_the_forgotten_ones_are_counted() {
     assert_eq!(recorder.pending_requests(), MAX_PENDING);
     assert_eq!(recorder.counters().forgotten_requests, 10);
     recorder.image(at(500), &image(0, 1.0));
-    assert!(recorder.snapshot(at(600)).unwrap().summary(Metric::LatencyMs).is_none());
+    assert!(
+        recorder
+            .snapshot(at(600))
+            .unwrap()
+            .summary(Metric::LatencyMs)
+            .is_none()
+    );
 }
 
 #[test]
@@ -376,13 +430,19 @@ fn memory_is_read_at_most_once_per_second_and_unknown_stays_absent() {
     assert!(!recorder.rss_due(at(999)));
     assert!(recorder.rss_due(at(1_000)));
     recorder.rss_read(at(1_000), None);
-    assert!(!recorder.rss_due(at(1_500)), "a failed read also waits a second");
+    assert!(
+        !recorder.rss_due(at(1_500)),
+        "a failed read also waits a second"
+    );
     recorder.rss_read(at(2_000), Some(300));
     let snapshot = recorder.snapshot(at(2_100)).unwrap();
     let series: Vec<Option<&Agg>> = snapshot.series(Metric::RssBytes).collect();
     let bucket = |milliseconds: u64| snapshot.index_at(at(milliseconds)).unwrap();
     assert_eq!(series[bucket(0)].unwrap().max, 100.0);
-    assert!(series[bucket(1_000)].is_none(), "the failed read is a gap, not the last value");
+    assert!(
+        series[bucket(1_000)].is_none(),
+        "the failed read is a gap, not the last value"
+    );
     assert_eq!(series[bucket(2_000)].unwrap().max, 300.0);
     assert_eq!(snapshot.counters.memory_unavailable, 1);
 }
@@ -398,11 +458,21 @@ fn the_texture_gauge_follows_the_pictures_at_one_hertz_and_absent_stays_absent()
         recorder.image(at(step * 41), &picture);
     }
     let snapshot = recorder.snapshot(at(2_000)).unwrap();
-    assert_eq!(snapshot.summary(Metric::TextureBytes).unwrap().count, 2, "48 pictures, 2 s");
+    assert_eq!(
+        snapshot.summary(Metric::TextureBytes).unwrap().count,
+        2,
+        "48 pictures, 2 s"
+    );
     assert_eq!(snapshot.summary(Metric::RenderMs).unwrap().count, 48);
     let mut missing = started(0);
     missing.image(at(10), &image(1, 2.0));
-    assert!(missing.snapshot(at(20)).unwrap().summary(Metric::TextureBytes).is_none());
+    assert!(
+        missing
+            .snapshot(at(20))
+            .unwrap()
+            .summary(Metric::TextureBytes)
+            .is_none()
+    );
 }
 
 // ------------------------------------------------------------------ segments and sessions
@@ -414,7 +484,11 @@ fn a_session_change_opens_a_segment_and_nothing_crosses_its_edge() {
     recorder.request_admitted(5, at(60));
     recorder.session_changed(at(100), SessionKind::ProjectReplaced);
     assert_eq!(recorder.segment(), 1);
-    assert_eq!(recorder.pending_requests(), 0, "requests of the old session are forgotten");
+    assert_eq!(
+        recorder.pending_requests(),
+        0,
+        "requests of the old session are forgotten"
+    );
     // The answer to the old session arrives: no latency, no interval against the old frame.
     recorder.image(at(120), &image(5, 3.0));
     let snapshot = recorder.snapshot(at(200)).unwrap();
@@ -425,14 +499,21 @@ fn a_session_change_opens_a_segment_and_nothing_crosses_its_edge() {
         "the first frame of segment 1 (20 ms after the edge) does not measure against the \
          frame of segment 0, and the 40 ms of segment 0 stays"
     );
-    assert_eq!(snapshot.summary(Metric::MonitorIntervalMs).unwrap().count, 2);
+    assert_eq!(
+        snapshot.summary(Metric::MonitorIntervalMs).unwrap().count,
+        2
+    );
     let kinds: Vec<(&str, u32)> = snapshot
         .segments
         .iter()
         .map(|segment| (segment.kind.id(), segment.id))
         .collect();
     assert_eq!(kinds, vec![("recording", 0), ("project_replaced", 1)]);
-    let replaced = snapshot.events.iter().find(|e| e.kind == EventKind::ProjectReplaced).unwrap();
+    let replaced = snapshot
+        .events
+        .iter()
+        .find(|e| e.kind == EventKind::ProjectReplaced)
+        .unwrap();
     assert_eq!(replaced.segment, 1);
     assert_eq!(snapshot.segment, 1);
 }
@@ -504,7 +585,11 @@ fn event_details_are_codes_never_paths_or_free_text() {
     assert_eq!(code("Meu projeto"), None);
     assert_eq!(code(&"a".repeat(49)), None);
     let mut recorder = started(0);
-    recorder.event(at(10), EventKind::ExportFailed, Some("/Users/me/secret.mp4"));
+    recorder.event(
+        at(10),
+        EventKind::ExportFailed,
+        Some("/Users/me/secret.mp4"),
+    );
     recorder.event(at(20), EventKind::ExportFailed, Some("export_target_busy"));
     let events = recorder.snapshot(at(30)).unwrap().events;
     let details: Vec<Option<&str>> = events
@@ -575,7 +660,10 @@ fn stopping_keeps_what_was_recorded_readable_at_the_moment_it_stopped() {
     assert_eq!(snapshot.recording_end, Some(at(2_000)));
     assert_eq!(snapshot.to_document()["recording"]["state"], "stopped");
     assert!(recorder.events_held() >= 2);
-    assert!(recorder.rss_due(at(5_000)) == false, "a stopped recorder wants no memory reading");
+    assert!(
+        recorder.rss_due(at(5_000)) == false,
+        "a stopped recorder wants no memory reading"
+    );
 }
 
 #[test]
@@ -588,7 +676,10 @@ fn starting_again_begins_a_new_recording_and_discards_the_old_one() {
     assert!(snapshot.summary(Metric::RenderMs).is_none());
     assert_eq!(snapshot.recording_start, at(5_000));
     assert_eq!(snapshot.segments.len(), 1);
-    assert!(!recorder.start(at(5_200), false), "already recording: no-op");
+    assert!(
+        !recorder.start(at(5_200), false),
+        "already recording: no-op"
+    );
 }
 
 #[test]
@@ -600,7 +691,10 @@ fn clear_is_explicit_resets_anchors_and_keeps_recording() {
     recorder.select(Some(at(40)));
     recorder.clear(at(1_000), true);
     assert!(recorder.recording());
-    assert!(recorder.frozen().is_none(), "a cleared history has nothing to keep frozen");
+    assert!(
+        recorder.frozen().is_none(),
+        "a cleared history has nothing to keep frozen"
+    );
     assert_eq!(recorder.selected(), None);
     assert_eq!(recorder.pending_requests(), 0);
     recorder.monitor_presented(at(1_040));
@@ -632,7 +726,11 @@ fn freezing_fixes_a_bounded_snapshot_while_the_recording_continues() {
     recorder.sample(Metric::RenderMs, at(700), 55.0);
     recorder.event(at(710), EventKind::Seek, None);
     recorder.monitor_presented(at(720));
-    assert_eq!(recorder.frozen().unwrap(), &fixed, "the frozen snapshot is immutable");
+    assert_eq!(
+        recorder.frozen().unwrap(),
+        &fixed,
+        "the frozen snapshot is immutable"
+    );
     assert_eq!(recorder.view(at(900)).unwrap(), fixed);
     let live = recorder.snapshot(at(900)).unwrap();
     assert_eq!(live.summary(Metric::RenderMs).unwrap().count, 2);
@@ -643,7 +741,15 @@ fn freezing_fixes_a_bounded_snapshot_while_the_recording_continues() {
     // Resume returns to the moving history, which kept growing.
     assert!(recorder.resume());
     assert!(!recorder.resume());
-    assert_eq!(recorder.view(at(900)).unwrap().summary(Metric::RenderMs).unwrap().count, 2);
+    assert_eq!(
+        recorder
+            .view(at(900))
+            .unwrap()
+            .summary(Metric::RenderMs)
+            .unwrap()
+            .count,
+        2
+    );
     assert!(recorder.recording());
 }
 
@@ -682,7 +788,11 @@ fn selecting_an_instant_shows_its_numbers_and_the_events_that_explain_a_wait() {
     let snapshot = recorder.snapshot(at(3_300)).unwrap();
     let inspected = snapshot.inspect(at(3_210)).unwrap();
     let interval = inspected.metrics[Metric::MonitorIntervalMs.index()];
-    assert_eq!((interval.count, interval.max), (2, 440.0), "440 ms and the 40 ms after it");
+    assert_eq!(
+        (interval.count, interval.max),
+        (2, 440.0),
+        "440 ms and the 40 ms after it"
+    );
     assert_eq!(interval.max_at_us, 3_200_000);
     // The seek is 400 ms before the picture, outside the bucket, inside the wait.
     let kinds: Vec<EventKind> = inspected.events.iter().map(|e| e.kind).collect();
@@ -704,23 +814,43 @@ fn selection_commands_validate_against_the_window_and_clear_with_none() {
     assert_eq!(selected["inspection"]["metrics"]["render_ms"]["max"], 12.0);
     assert_eq!(recorder.selected(), Some(at(1_050)));
     let outside = recorder
-        .apply(&HistoryCommand::Select(Some(Duration::from_secs(900))), at(1_100))
+        .apply(
+            &HistoryCommand::Select(Some(Duration::from_secs(900))),
+            at(1_100),
+        )
         .unwrap_err();
     assert_eq!(outside.code, "perf_history_outside_window");
-    assert_eq!(recorder.selected(), Some(at(1_050)), "a refused selection changes nothing");
-    recorder.apply(&HistoryCommand::Select(None), at(1_100)).unwrap();
+    assert_eq!(
+        recorder.selected(),
+        Some(at(1_050)),
+        "a refused selection changes nothing"
+    );
+    recorder
+        .apply(&HistoryCommand::Select(None), at(1_100))
+        .unwrap();
     assert_eq!(recorder.selected(), None);
-    assert!(Recorder::default().apply(&HistoryCommand::Select(Some(at(0))), at(0)).is_err());
+    assert!(
+        Recorder::default()
+            .apply(&HistoryCommand::Select(Some(at(0))), at(0))
+            .is_err()
+    );
 }
 
 #[test]
 fn visibility_and_recording_are_the_adapters_and_the_recorder_refuses_them() {
     let mut recorder = started(0);
-    for command in [HistoryCommand::Show, HistoryCommand::Hide, HistoryCommand::Record(true)] {
+    for command in [
+        HistoryCommand::Show,
+        HistoryCommand::Hide,
+        HistoryCommand::Record(true),
+    ] {
         let error = recorder.apply(&command, at(10)).unwrap_err();
         assert_eq!(error.code, "desktop_required");
     }
-    assert!(recorder.recording(), "showing or hiding never changes recording");
+    assert!(
+        recorder.recording(),
+        "showing or hiding never changes recording"
+    );
 }
 
 // ------------------------------------------------------------------ export
@@ -744,7 +874,14 @@ fn the_document_has_the_schema_units_sources_origin_range_context_buckets_and_ev
     let document = recorder.export_document(at(1_100)).unwrap();
     assert_eq!(document["schema"], "tessel.perf-history");
     assert_eq!(document["schema_version"], 1);
-    assert_eq!(document["build"]["profile"], if cfg!(debug_assertions) { "debug" } else { "release" });
+    assert_eq!(
+        document["build"]["profile"],
+        if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        }
+    );
     assert!(document["build"]["version"].is_string());
     assert_eq!(document["monotonic_origin"]["unit"], "ms");
     assert_eq!(document["recording"]["started_at_ms"], 1000.0);
@@ -763,7 +900,11 @@ fn the_document_has_the_schema_units_sources_origin_range_context_buckets_and_ev
         assert_eq!(document["metrics"][id]["unit"], metric.unit(), "{id}");
         assert!(document["metrics"][id]["source"].as_str().unwrap().len() > 20);
         for column in ["count", "min", "mean", "max"] {
-            assert_eq!(document["series"][id][column].as_array().unwrap().len(), 240, "{id}.{column}");
+            assert_eq!(
+                document["series"][id][column].as_array().unwrap().len(),
+                240,
+                "{id}.{column}"
+            );
         }
     }
     assert!(!document["events"].as_array().unwrap().is_empty());
@@ -776,7 +917,11 @@ fn the_document_has_the_schema_units_sources_origin_range_context_buckets_and_ev
 #[test]
 fn the_document_carries_no_path_project_text_or_credential() {
     let mut recorder = playing(0);
-    recorder.event(at(10), EventKind::ExportFailed, Some("/Users/me/Meu Projeto/secret.mp4"));
+    recorder.event(
+        at(10),
+        EventKind::ExportFailed,
+        Some("/Users/me/Meu Projeto/secret.mp4"),
+    );
     recorder.set_context(
         at(20),
         Context {
@@ -788,8 +933,19 @@ fn the_document_carries_no_path_project_text_or_credential() {
     );
     recorder.request_failed(at(30), None, "C:\\Users\\me\\token");
     let text = serde_json::to_string(&recorder.export_document(at(100)).unwrap()).unwrap();
-    for forbidden in ["/Users", "secret", "Meu Projeto", "token", "C:\\\\", "password", "http"] {
-        assert!(!text.contains(forbidden), "`{forbidden}` leaked into the export");
+    for forbidden in [
+        "/Users",
+        "secret",
+        "Meu Projeto",
+        "token",
+        "C:\\\\",
+        "password",
+        "http",
+    ] {
+        assert!(
+            !text.contains(forbidden),
+            "`{forbidden}` leaked into the export"
+        );
     }
 }
 
@@ -820,10 +976,19 @@ fn export_errors_are_typed_observable_and_change_nothing() {
     let mut recorder = started(0);
     recorder.sample(Metric::RenderMs, at(100), 1.0);
     let code_of = |recorder: &mut Recorder, path: PathBuf| {
-        recorder.apply(&HistoryCommand::Export(path), at(200)).unwrap_err().code
+        recorder
+            .apply(&HistoryCommand::Export(path), at(200))
+            .unwrap_err()
+            .code
     };
-    assert_eq!(code_of(&mut recorder, PathBuf::new()), "perf_history_export_path_missing");
-    assert_eq!(code_of(&mut recorder, directory.clone()), "perf_history_export_is_directory");
+    assert_eq!(
+        code_of(&mut recorder, PathBuf::new()),
+        "perf_history_export_path_missing"
+    );
+    assert_eq!(
+        code_of(&mut recorder, directory.clone()),
+        "perf_history_export_is_directory"
+    );
     assert_eq!(
         code_of(&mut recorder, directory.join("missing").join("a.json")),
         "perf_history_export_parent_missing"
@@ -832,9 +997,20 @@ fn export_errors_are_typed_observable_and_change_nothing() {
         code_of(&mut Recorder::default(), directory.join("a.json")),
         "perf_history_empty"
     );
-    assert!(std::fs::read_dir(&directory).unwrap().next().is_none(), "nothing was created");
+    assert!(
+        std::fs::read_dir(&directory).unwrap().next().is_none(),
+        "nothing was created"
+    );
     assert!(recorder.recording());
-    assert_eq!(recorder.snapshot(at(200)).unwrap().summary(Metric::RenderMs).unwrap().count, 1);
+    assert_eq!(
+        recorder
+            .snapshot(at(200))
+            .unwrap()
+            .summary(Metric::RenderMs)
+            .unwrap()
+            .count,
+        1
+    );
     // A folder that refuses the write: typed error, the old file survives, no temporary left.
     use std::os::unix::fs::PermissionsExt;
     let locked = directory.join("locked");
@@ -861,7 +1037,9 @@ fn exporting_a_frozen_view_writes_the_frozen_snapshot_not_the_moving_window() {
     recorder.freeze(at(300)).unwrap();
     recorder.sample(Metric::RenderMs, at(400), 90.0);
     let target = directory.join("frozen.json");
-    recorder.apply(&HistoryCommand::Export(target.clone()), at(500)).unwrap();
+    recorder
+        .apply(&HistoryCommand::Export(target.clone()), at(500))
+        .unwrap();
     let written: Value = serde_json::from_str(&std::fs::read_to_string(&target).unwrap()).unwrap();
     assert_eq!(written["recording"]["frozen"], true);
     assert_eq!(written["summary"]["render_ms"]["max"], 10.0);
@@ -870,7 +1048,8 @@ fn exporting_a_frozen_view_writes_the_frozen_snapshot_not_the_moving_window() {
 }
 
 #[test]
-fn controlled_samples_produce_the_expected_peaks_events_and_the_export_agrees_with_the_inspection() {
+fn controlled_samples_produce_the_expected_peaks_events_and_the_export_agrees_with_the_inspection()
+{
     let mut recorder = playing(0);
     recorder.loss_run_started(1);
     // 24 fps for 5 s, with one 400 ms stall at 3 s after a seek, and 3 lost frames.
@@ -892,14 +1071,21 @@ fn controlled_samples_produce_the_expected_peaks_events_and_the_export_agrees_wi
         if step == 400 {
             cumulative += 3;
         }
-        recorder.image(at(time), &image(request, if step == 400 { 120.0 } else { 6.0 }));
+        recorder.image(
+            at(time),
+            &image(request, if step == 400 { 120.0 } else { 6.0 }),
+        );
         recorder.loss_observed(at(time), 1, cumulative);
     }
     let now = at(5_100);
     let snapshot = recorder.snapshot(now).unwrap();
     let intervals = snapshot.summary(Metric::MonitorIntervalMs).unwrap();
     assert_eq!(intervals.max, 400.0);
-    assert!((3_000.0..=3_450.0).contains(&intervals.peak_at_ms), "{}", intervals.peak_at_ms);
+    assert!(
+        (3_000.0..=3_450.0).contains(&intervals.peak_at_ms),
+        "{}",
+        intervals.peak_at_ms
+    );
     assert_eq!(snapshot.summary(Metric::RenderMs).unwrap().max, 120.0);
     assert_eq!(snapshot.summary(Metric::LatencyMs).unwrap().max, 400.0);
     let lost: f64 = snapshot
@@ -912,7 +1098,12 @@ fn controlled_samples_produce_the_expected_peaks_events_and_the_export_agrees_wi
     let peak = Duration::from_secs_f64(intervals.peak_at_ms / 1000.0);
     recorder.select(Some(peak));
     let inspection = recorder.inspection(now).unwrap();
-    assert!(inspection.events.iter().any(|e| e.kind == EventKind::Seek && e.frame == Some(72)));
+    assert!(
+        inspection
+            .events
+            .iter()
+            .any(|e| e.kind == EventKind::Seek && e.frame == Some(72))
+    );
     // The export holds the same numbers at that bucket as the inspection shows.
     let document = recorder.export_document(now).unwrap();
     let bucket = inspection.bucket;
@@ -926,7 +1117,11 @@ fn controlled_samples_produce_the_expected_peaks_events_and_the_export_agrees_wi
     );
     assert_eq!(document["summary"]["monitor_interval_ms"]["max"], 400.0);
     assert!(
-        document["events"].as_array().unwrap().iter().any(|e| e["kind"] == "seek" && e["frame"] == 72)
+        document["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["kind"] == "seek" && e["frame"] == 72)
     );
 }
 
@@ -955,7 +1150,10 @@ fn ten_minutes_of_feeds_keep_every_buffer_at_its_bound() {
     assert!(snapshot.events.len() <= MAX_EVENTS);
     assert!(recorder.pending_requests() <= MAX_PENDING);
     assert!(snapshot.segments.len() <= MAX_SEGMENTS);
-    assert!(recorder.dropped_events() == 0, "1800 events spread over 10 minutes age out, they are not capacity drops");
+    assert!(
+        recorder.dropped_events() == 0,
+        "1800 events spread over 10 minutes age out, they are not capacity drops"
+    );
     // Old minutes are gone: the window holds ~60 s of pictures, not 10 minutes.
     let frames = snapshot.summary(Metric::MonitorFrames).unwrap().count;
     assert!((1_400..=1_460).contains(&frames), "{frames}");
@@ -966,7 +1164,12 @@ fn a_target_distinct_from_sixty_fps_travels_in_the_context() {
     let mut recorder = started(0);
     recorder.set_context(
         at(10),
-        Context { width: 1, height: 1, sequence_fps: Some(24.0), ..Context::default() },
+        Context {
+            width: 1,
+            height: 1,
+            sequence_fps: Some(24.0),
+            ..Context::default()
+        },
     );
     let json = recorder.snapshot(at(20)).unwrap().compact_json();
     assert_eq!(json["context"]["sequence_target_fps"], 24.0);
@@ -978,17 +1181,27 @@ fn values_read_with_their_own_unit_and_an_empty_bucket_says_so() {
     assert_eq!(Metric::MonitorIntervalMs.format(41.0), "41,0 ms");
     assert_eq!(Metric::LatencyMs.format(412.0), "412 ms");
     assert_eq!(Metric::RssBytes.format(300.0 * 1024.0 * 1024.0), "300 MiB");
-    assert_eq!(rate_fps(6), 24.0, "6 pictures in a 250 ms bucket are 24 fps");
+    assert_eq!(
+        rate_fps(6),
+        24.0,
+        "6 pictures in a 250 ms bucket are 24 fps"
+    );
     let mut bucket = Agg::default();
     assert_eq!(describe(Metric::RenderMs, &bucket), "sem amostra");
     bucket.add(10.0, at(0));
     bucket.add(30.0, at(10));
-    assert_eq!(describe(Metric::RenderMs, &bucket), "2× · mín 10,0 ms · méd 20,0 ms · máx 30,0 ms");
+    assert_eq!(
+        describe(Metric::RenderMs, &bucket),
+        "2× · mín 10,0 ms · méd 20,0 ms · máx 30,0 ms"
+    );
     let mut frames = Agg::default();
     for step in 0..6 {
         frames.add(1.0, at(step));
     }
-    assert_eq!(describe(Metric::MonitorFrames, &frames), "6 quadros · 24 fps");
+    assert_eq!(
+        describe(Metric::MonitorFrames, &frames),
+        "6 quadros · 24 fps"
+    );
     // Bytes and milliseconds never share a scale group.
     assert_ne!(Metric::RssBytes.group(), Metric::RenderMs.group());
     assert_ne!(Metric::RssBytes.unit(), Metric::LatencyMs.unit());

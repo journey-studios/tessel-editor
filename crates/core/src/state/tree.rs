@@ -1347,7 +1347,10 @@ mod tests {
             .iter()
             .map(|field| field["field"].as_str().unwrap())
             .collect();
-        assert_eq!(fields, ["recording", "visible", "frozen", "selected_ms", "export_to"]);
+        assert_eq!(
+            fields,
+            ["recording", "visible", "frozen", "selected_ms", "export_to"]
+        );
         assert_eq!(found["state"]["recording"], false, "off by default");
     }
 

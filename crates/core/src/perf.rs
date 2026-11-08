@@ -23,7 +23,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 
 use crate::backend::FrameResult;
-use crate::perf_history::{EventKind, Image, Recorder, SessionKind};
+use crate::perf_history::{Context, EventKind, Image, Recorder, SessionKind};
 
 /// Frames of the last second give the rate.
 pub const RATE_WINDOW: Duration = Duration::from_millis(1000);
@@ -653,6 +653,16 @@ impl Meter {
     /// An observed fact for the history's event line.
     pub fn history_event(&mut self, at: Duration, kind: EventKind, detail: Option<&str>) {
         self.recorder.event(at, kind, detail);
+    }
+
+    /// What the newest picture was made of (size, quality, proxy layers...). Whether a playback
+    /// clock runs is the meter's own knowledge and fills `playing`. Ignored unless recording.
+    pub fn picture_context(&mut self, at: Duration, mut context: Context) {
+        if !self.recorder.recording() {
+            return;
+        }
+        context.playing = self.playing;
+        self.recorder.set_context(at, context);
     }
 
     /// The session under the measurements changed (project replaced, scene changed, viewport
@@ -1682,32 +1692,59 @@ mod tests {
         assert!(!meter.card_visible(), "recording never shows the card");
         meter.ui_painted(at(10));
         meter.monitor_image(at(20), Some(1), &picture(1));
-        assert_eq!(meter.samples(), (0, 0), "the card's windows are only fed while it is shown");
+        assert_eq!(
+            meter.samples(),
+            (0, 0),
+            "the card's windows are only fed while it is shown"
+        );
         let snapshot = meter.recorder().snapshot(at(100)).unwrap();
         assert_eq!(snapshot.summary(Metric::UiFrames).unwrap().count, 1);
         assert_eq!(snapshot.summary(Metric::MonitorFrames).unwrap().count, 1);
-        assert_eq!(meter.next_wakeup(at(100)), None, "no timer for a hidden card");
+        assert_eq!(
+            meter.next_wakeup(at(100)),
+            None,
+            "no timer for a hidden card"
+        );
     }
 
     #[test]
     fn hiding_the_card_keeps_a_recording_and_showing_it_never_starts_one() {
         let mut meter = Meter::default();
         meter.enable(at(0), None, None);
-        assert!(!meter.recorder().recording(), "showing the card is not recording");
+        assert!(
+            !meter.recorder().recording(),
+            "showing the card is not recording"
+        );
         meter.ui_painted(at(10));
         assert!(meter.recorder().snapshot(at(20)).is_none());
         meter.start_recording(at(100), None, None);
         meter.ui_painted(at(110));
         meter.disable();
-        assert!(meter.enabled(), "hiding the card does not turn the recording off");
+        assert!(
+            meter.enabled(),
+            "hiding the card does not turn the recording off"
+        );
         meter.ui_painted(at(120));
         let snapshot = meter.recorder().snapshot(at(200)).unwrap();
         assert_eq!(snapshot.summary(Metric::UiFrames).unwrap().count, 2);
-        assert_eq!(meter.samples(), (0, 0), "the card's windows were forgotten on hide");
+        assert_eq!(
+            meter.samples(),
+            (0, 0),
+            "the card's windows were forgotten on hide"
+        );
         meter.stop_recording(at(300));
         assert!(!meter.enabled());
         meter.ui_painted(at(310));
-        assert_eq!(meter.recorder().snapshot(at(400)).unwrap().summary(Metric::UiFrames).unwrap().count, 2);
+        assert_eq!(
+            meter
+                .recorder()
+                .snapshot(at(400))
+                .unwrap()
+                .summary(Metric::UiFrames)
+                .unwrap()
+                .count,
+            2
+        );
     }
 
     #[test]

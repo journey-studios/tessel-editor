@@ -76,7 +76,9 @@ impl From<HistoryError> for CommandError {
                 at_ms,
                 start_ms,
                 end_ms,
-            } => Some(json!({ "at_ms": at_ms, "window_start_ms": start_ms, "window_end_ms": end_ms })),
+            } => Some(
+                json!({ "at_ms": at_ms, "window_start_ms": start_ms, "window_end_ms": end_ms }),
+            ),
             HistoryError::ExportWriteFailed { kind } => Some(json!({ "io_kind": kind })),
             _ => None,
         };
@@ -122,9 +124,10 @@ pub fn write_export(path: &Path, document: &Value) -> Result<usize, HistoryError
         .ok_or(HistoryError::ExportPathMissing)?
         .to_string_lossy()
         .into_owned();
-    let bytes = serde_json::to_vec_pretty(document).map_err(|_| HistoryError::ExportWriteFailed {
-        kind: "serialize".to_string(),
-    })?;
+    let bytes =
+        serde_json::to_vec_pretty(document).map_err(|_| HistoryError::ExportWriteFailed {
+            kind: "serialize".to_string(),
+        })?;
     let temporary = parent.join(format!(".{name}.tmp-{}", std::process::id()));
     let failed = |error: std::io::Error| HistoryError::ExportWriteFailed {
         kind: format!("{:?}", error.kind()),

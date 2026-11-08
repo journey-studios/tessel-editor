@@ -160,12 +160,10 @@ pub fn execute_ext(
         | Parsed::ToggleTheme
         | Parsed::PerfMeter(_)
         | Parsed::PerfHistory(_)
-        | Parsed::ReloadViewport => {
-            Err(CommandError::new(
-                "desktop_required",
-                "Dock layout, theme, performance meter and viewport page commands require the desktop adapter",
-            ))
-        }
+        | Parsed::ReloadViewport => Err(CommandError::new(
+            "desktop_required",
+            "Dock layout, theme, performance meter and viewport page commands require the desktop adapter",
+        )),
     }
 }
 

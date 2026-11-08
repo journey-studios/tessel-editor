@@ -173,15 +173,33 @@ impl Metric {
     /// What a sample is, and what it is not.
     pub fn source(self) -> &'static str {
         match self {
-            Self::UiFrames => "frames the window GPUI really painted (one per Window::draw; the diagnostic's own redraw is not counted)",
-            Self::UiIntervalMs => "gap between two painted frames of the same run; a rest longer than 1 s records none",
-            Self::MonitorFrames => "new pictures the host accepted (frame.done of the request in flight); not compositor presentation",
-            Self::MonitorIntervalMs => "gap between two accepted pictures; while playing, a silence is an interval (stall), at rest it is none",
-            Self::RenderMs => "frame.done timings.render_ms of an accepted picture: CPU time until the draw was submitted, excluding GPU rasterization",
-            Self::LatencyMs => "host admitted the request until the picture with the same request id was accepted, one process clock; not GPU completion, not seek-to-photon",
-            Self::LostFrames => "playback clock frames no accepted picture showed, as the delta since the previous observation of the same playback run",
-            Self::RssBytes => "resident set of the editor process; WebKit's WebContent/GPU processes are not included; not GPU memory",
-            Self::TextureBytes => "estimate of the retained RGBA image textures the runtime reports (cache.texture_bytes); not a GPU reading",
+            Self::UiFrames => {
+                "frames the window GPUI really painted (one per Window::draw; the diagnostic's own redraw is not counted)"
+            }
+            Self::UiIntervalMs => {
+                "gap between two painted frames of the same run; a rest longer than 1 s records none"
+            }
+            Self::MonitorFrames => {
+                "new pictures the host accepted (frame.done of the request in flight); not compositor presentation"
+            }
+            Self::MonitorIntervalMs => {
+                "gap between two accepted pictures; while playing, a silence is an interval (stall), at rest it is none"
+            }
+            Self::RenderMs => {
+                "frame.done timings.render_ms of an accepted picture: CPU time until the draw was submitted, excluding GPU rasterization"
+            }
+            Self::LatencyMs => {
+                "host admitted the request until the picture with the same request id was accepted, one process clock; not GPU completion, not seek-to-photon"
+            }
+            Self::LostFrames => {
+                "playback clock frames no accepted picture showed, as the delta since the previous observation of the same playback run"
+            }
+            Self::RssBytes => {
+                "resident set of the editor process; WebKit's WebContent/GPU processes are not included; not GPU memory"
+            }
+            Self::TextureBytes => {
+                "estimate of the retained RGBA image textures the runtime reports (cache.texture_bytes); not a GPU reading"
+            }
         }
     }
 
@@ -295,7 +313,11 @@ pub fn describe(metric: Metric, agg: &Agg) -> String {
     };
     match metric {
         Metric::UiFrames | Metric::MonitorFrames => {
-            format!("{} quadros · {} fps", agg.count, format!("{:.0}", rate_fps(agg.count)))
+            format!(
+                "{} quadros · {} fps",
+                agg.count,
+                format!("{:.0}", rate_fps(agg.count))
+            )
         }
         Metric::LostFrames => format!("{} perdidos (em {} leituras)", agg.sum as u64, agg.count),
         _ => format!(
@@ -926,7 +948,11 @@ impl Recorder {
             _ => cumulative,
         };
         self.loss = Some((run, cumulative));
-        self.sample(Metric::LostFrames, at, cumulative.saturating_sub(before) as f64);
+        self.sample(
+            Metric::LostFrames,
+            at,
+            cumulative.saturating_sub(before) as f64,
+        );
     }
 
     /// A playback clock began running (or resumed after a pause).

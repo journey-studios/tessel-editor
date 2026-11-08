@@ -18,6 +18,7 @@ use crate::state::layout::{LayoutCommand, PanelKind};
 use crate::theme;
 use crate::workstation::{Source, Workstation, shortcut_label};
 use tessel_editor_core::perf::PerfMeterCommand;
+use tessel_editor_core::perf_history::HistoryCommand;
 
 /// What node 13 declares before it is given the live project title.
 const TITLE_NODE_LABEL: &str = "";
@@ -158,6 +159,8 @@ impl Render for Header {
         let title = self.workstation.read(cx).state.header().label();
         let perf_visible = self.workstation.read(cx).perf_visible();
         let perf_label = format!("Medidor de FPS e debug ({})", shortcut_label());
+        let history_visible = self.workstation.read(cx).history_visible();
+        let history_label = "Histórico de desempenho (60 s)";
         let compact = window.viewport_size().width < px(1040.);
         let actions = ACTIONS.iter().fold(
             Toolbar::new("header-actions").xsmall(),
@@ -226,6 +229,29 @@ impl Render for Header {
                             let _ = workstation.execute_perf(
                                 PerfMeterCommand::Toggle,
                                 Source::Gesture,
+                                cx,
+                            );
+                        });
+                    })),
+            )
+            .child(
+                Button::new("toolbar-perf-history")
+                    .ghost()
+                    .icon(IconName::ChartLine)
+                    .tooltip(history_label)
+                    .accessibility_label(history_label)
+                    .selected(history_visible)
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.workstation.update(cx, |workstation, cx| {
+                            let command = if workstation.history_visible() {
+                                HistoryCommand::Hide
+                            } else {
+                                HistoryCommand::Show
+                            };
+                            let _ = workstation.execute_perf_history(
+                                command,
+                                Source::Gesture,
+                                window,
                                 cx,
                             );
                         });

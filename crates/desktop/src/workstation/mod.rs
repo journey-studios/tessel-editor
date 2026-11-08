@@ -17,6 +17,7 @@ mod library_panel;
 mod media;
 mod monitor;
 mod ops;
+mod perf_history_view;
 mod perf_meter;
 mod playback;
 mod scene_fx;
@@ -361,7 +362,12 @@ impl Workstation {
         cx: &mut Context<Self>,
     ) -> Result<Value, CommandError> {
         let ordinary_preview = matches!(command, Command::SetPreview { .. });
+        let moved_playhead = matches!(command, Command::SetPlayhead { .. });
         let result = self.state.execute(command);
+        if result.is_ok() && moved_playhead {
+            // The history's event line: a gesture or `ui set` moved the playhead on purpose.
+            self.perf_playhead_moved();
+        }
         if result.is_ok() && ordinary_preview {
             self.viewport.clear_directed();
         }
@@ -462,6 +468,7 @@ impl Workstation {
             self.adopt_playback(node);
             self.adopt_scene(node);
             self.adopt_perf(node);
+            self.adopt_perf_history(node);
         }
         // The scene inspector and the scene monitor seam are window state too.
         nodes.extend(self.scene_nodes());
@@ -491,6 +498,7 @@ impl Workstation {
         self.adopt_playback(&mut node);
         self.adopt_scene(&mut node);
         self.adopt_perf(&mut node);
+        self.adopt_perf_history(&mut node);
         Some(node)
     }
 

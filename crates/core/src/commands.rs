@@ -134,7 +134,9 @@ fn parse_set_history(field: &str, value: &Raw) -> Result<Parsed, CommandError> {
                     json!("milliseconds"),
                 ));
             }
-            HistoryCommand::Select(Some(std::time::Duration::from_secs_f64(milliseconds / 1000.0)))
+            HistoryCommand::Select(Some(std::time::Duration::from_secs_f64(
+                milliseconds / 1000.0,
+            )))
         }
         "export_to" => HistoryCommand::Export(std::path::PathBuf::from(value.text())),
         _ => {
@@ -143,7 +145,9 @@ fn parse_set_history(field: &str, value: &Raw) -> Result<Parsed, CommandError> {
                 format!("`{}` has no settable field `{field}`", perf_history::TARGET),
             )
             .target(perf_history::TARGET)
-            .details(json!({ "fields": ["recording", "visible", "frozen", "selected_ms", "export_to"] })));
+            .details(
+                json!({ "fields": ["recording", "visible", "frozen", "selected_ms", "export_to"] }),
+            ));
         }
     };
     Ok(Parsed::PerfHistory(command))
@@ -1246,12 +1250,30 @@ mod tests {
             Parsed::PerfHistory(command) => command,
             other => panic!("expected a history command, got {other:?}"),
         };
-        assert_eq!(history(set("recording", Raw::Bool(true))), HistoryCommand::Record(true));
-        assert_eq!(history(set("recording", Raw::Text("off".into()))), HistoryCommand::Record(false));
-        assert_eq!(history(set("visible", Raw::Bool(true))), HistoryCommand::Show);
-        assert_eq!(history(set("visible", Raw::Bool(false))), HistoryCommand::Hide);
-        assert_eq!(history(set("frozen", Raw::Bool(true))), HistoryCommand::Freeze);
-        assert_eq!(history(set("frozen", Raw::Bool(false))), HistoryCommand::Resume);
+        assert_eq!(
+            history(set("recording", Raw::Bool(true))),
+            HistoryCommand::Record(true)
+        );
+        assert_eq!(
+            history(set("recording", Raw::Text("off".into()))),
+            HistoryCommand::Record(false)
+        );
+        assert_eq!(
+            history(set("visible", Raw::Bool(true))),
+            HistoryCommand::Show
+        );
+        assert_eq!(
+            history(set("visible", Raw::Bool(false))),
+            HistoryCommand::Hide
+        );
+        assert_eq!(
+            history(set("frozen", Raw::Bool(true))),
+            HistoryCommand::Freeze
+        );
+        assert_eq!(
+            history(set("frozen", Raw::Bool(false))),
+            HistoryCommand::Resume
+        );
         assert_eq!(
             history(set("selected_ms", Raw::Number(1500.0))),
             HistoryCommand::Select(Some(Duration::from_millis(1500)))
@@ -1260,10 +1282,24 @@ mod tests {
             history(set("export_to", Raw::Text("/tmp/a.json".into()))),
             HistoryCommand::Export("/tmp/a.json".into())
         );
-        assert_eq!(set("selected_ms", Raw::Number(-1.0)).unwrap_err().code, "invalid_value");
-        assert_eq!(set("selected_ms", Raw::Text("soon".into())).unwrap_err().code, "invalid_value");
-        assert_eq!(set("recording", Raw::Number(1.0)).unwrap_err().code, "invalid_value");
-        assert_eq!(set("speed", Raw::Number(1.0)).unwrap_err().code, "unknown_field");
+        assert_eq!(
+            set("selected_ms", Raw::Number(-1.0)).unwrap_err().code,
+            "invalid_value"
+        );
+        assert_eq!(
+            set("selected_ms", Raw::Text("soon".into()))
+                .unwrap_err()
+                .code,
+            "invalid_value"
+        );
+        assert_eq!(
+            set("recording", Raw::Number(1.0)).unwrap_err().code,
+            "invalid_value"
+        );
+        assert_eq!(
+            set("speed", Raw::Number(1.0)).unwrap_err().code,
+            "unknown_field"
+        );
         let invoke = |action: &str| {
             history(parse_invoke(
                 &EditorState::demo(),
@@ -1284,12 +1320,20 @@ mod tests {
             ("clear_selection", HistoryCommand::Select(None)),
         ] {
             assert_eq!(invoke(action), expected, "{action}");
-            assert!(perf_history::ACTIONS.contains(&action), "{action} is documented");
+            assert!(
+                perf_history::ACTIONS.contains(&action),
+                "{action} is documented"
+            );
         }
         assert_eq!(
-            parse_invoke(&EditorState::demo(), &default_layout(), perf_history::TARGET, "explode")
-                .unwrap_err()
-                .code,
+            parse_invoke(
+                &EditorState::demo(),
+                &default_layout(),
+                perf_history::TARGET,
+                "explode"
+            )
+            .unwrap_err()
+            .code,
             "unknown_action"
         );
     }
