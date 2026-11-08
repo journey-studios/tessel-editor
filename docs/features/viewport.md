@@ -239,6 +239,16 @@ favor deles. Resultados medidos no relatório [viewport-performance-splat-projec
   (fetch + decode); agora a carga corre durante os quadros anteriores. É melhor esforço: arquivo ausente ou falha do
   runtime não vira erro (quem precisa do asset reporta). Só reprodução: scrub/seek não pré-carregam. Contador:
   `session.stats.prefetched`.
+- **Aquecimento da cena (BL157).** O custo que sobrava na entrada de uma cena de splats era o estágio novo da linhagem esperar a
+  própria ordenação (50–70 ms). Quando os assets de um corte futuro (`EditorState::plans_ahead(2 s)`) já estão carregados, o host
+  envia `frame.warm {plan}` (feature aditiva `scene.warm`, anunciada em `ready.capabilities.features`; só vai a runtime que anuncia,
+  sem resposta) uma vez por conjunto de assets (`ViewportSession::warm`, contador `session.stats.warmed`). O runtime
+  (`Compositor.warmScenes`) cria o estágio da linhagem, empresta as malhas com o mesmo dono, põe a cena na pose do corte e inicia a
+  primeira ordenação sem esperá-la; o quadro do corte desenha com essa ordem (`stale_sort_layers`, refinada na pausa como no BL130).
+  Orçamento intacto (`splatStages` = 2): ocupa um espaço livre ou o estágio que o último quadro não desenhou; nunca um que está na
+  tela. Melhor esforço, nunca erro. Medidas e limites: [backlog.md](../backlog.md) BL157.
+- **Nova tentativa do quadro com `timeout` (BL158).** Um quadro que falha com `timeout` é pedido de novo depois de 1 s e de 3 s;
+  uma mudança do usuário ou um quadro entregue zera as tentativas; outros erros não são repetidos.
 - **Camadas cobertas (BL148).** O plano marca `occluded` (aditivo, só aparece quando `true`) nas camadas que uma camada
   acima esconde por completo: a de cima precisa ser **comprovadamente opaca** (vídeo `mp4`/`m4v` ou foto `jpg`/`jpeg`; PNG,
   `mov`, cena, texto e forma de onda nunca são presumidos opacos), opacidade 1, mistura `normal`, sem rotação, com o
@@ -356,7 +366,7 @@ retenção ligada) e `hello.telemetry.presented:true` (pede `frame.presented`, q
 (`frame.presented`, `cache.telemetry`); `frame.done` ganha `timings.{prepare_ms, draw_ms, flush_ms}` e `cache`
 (textura/texto/material/rig/alvo × criado/reaproveitado/expulso e o que está retido). Campos antigos e `settle_ms`
 continuam. `HelloOptions` padrão gera a mesma mensagem de antes, byte a byte (`hello_defaults_stay_byte_identical…`).
-Mais um campo aditivo (BL102, ainda v1): `asset.load.asset.request` (inteiro) e o eco `request`/`scene` em todo `asset.state`, negociados por `capabilities.features` `asset.identity`; só é enviado a runtime que o anuncia, e o runtime antigo ignora. Contrato em [scene-renderer.md](scene-renderer.md#identidade-de-carga-em-assetloadassetstate-bl102).
+Mais um grupo aditivo (BL157, ainda v1): host→página `frame.warm {plan}` (sem resposta), enviado **somente** a runtime que anuncia `scene.warm` em `ready.capabilities.features`; o runtime antigo nunca o recebe (um tipo desconhecido vira `error` de protocolo). Mais um campo aditivo (BL102, ainda v1): `asset.load.asset.request` (inteiro) e o eco `request`/`scene` em todo `asset.state`, negociados por `capabilities.features` `asset.identity`; só é enviado a runtime que o anuncia, e o runtime antigo ignora. Contrato em [scene-renderer.md](scene-renderer.md#identidade-de-carga-em-assetloadassetstate-bl102).
 Mais um grupo aditivo (F055/BL015, ainda v1): feature `overlay.gizmo` em `ready.capabilities.features` (a página só anuncia com o canvas de overlay); host→página `overlay.enable|set|clear` e página→host `overlay.pointer|layout|drawn` (`drawn` só com `TESSEL_VIEWPORT_OVERLAY_ACK=1`), enviados **somente** a quem anuncia o feature; o runtime antigo nunca os recebe e o host antigo rejeitaria o tipo. O overlay é desenhado e acertado por um canvas 2D dentro da página, nunca por GPUI sobre a WKWebView. Contrato, carimbo de identidade e política de cancelamento em [scene-gizmo.md](scene-gizmo.md).
 Versão incompatível vira `backend_unavailable` mencionando a bridge. O worker Node e a WebView falam o mesmo protocolo.
 

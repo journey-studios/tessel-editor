@@ -530,6 +530,50 @@ fn a_frame_that_never_comes_is_cancelled_after_the_timeout() {
 }
 
 #[test]
+fn a_frame_that_timed_out_is_asked_for_again_twice_and_then_left_alone() {
+    let mut state = titled_state("Titulo");
+    let mut host = ready_host("frame-retry", &state);
+    sent(&mut host);
+    let timeout = Duration::from_secs(31);
+    assert!(host.tick(Instant::now() + timeout));
+    assert_eq!(host.failure().unwrap().code, "timeout");
+    assert!(
+        !host.retry_due(Instant::now()),
+        "after a pause, not at once"
+    );
+    assert!(host.retry_due(Instant::now() + Duration::from_secs(2)));
+    assert!(
+        !host.retry_due(Instant::now() + Duration::from_secs(2)),
+        "one retry per due time"
+    );
+    // The retry is the sync a change would make: the frame is asked for again.
+    host.sync(&state);
+    assert_eq!(kinds(&sent(&mut host)).last(), Some(&"frame.render"));
+    assert!(host.failure().is_none());
+
+    // Second timeout, second retry (a longer pause); a third one is not made.
+    assert!(host.tick(Instant::now() + timeout));
+    assert!(!host.retry_due(Instant::now() + Duration::from_secs(2)));
+    assert!(host.retry_due(Instant::now() + Duration::from_secs(4)));
+    host.sync(&state);
+    assert_eq!(kinds(&sent(&mut host)).last(), Some(&"frame.render"));
+    assert!(host.tick(Instant::now() + timeout));
+    assert!(!host.retry_due(Instant::now() + Duration::from_secs(3600)));
+    assert_eq!(
+        host.failure().unwrap().code,
+        "timeout",
+        "the failure stays on the header"
+    );
+
+    // A change the user makes starts the retries over.
+    seek(&mut state, 3);
+    host.sync(&state);
+    assert_eq!(kinds(&sent(&mut host)).last(), Some(&"frame.render"));
+    assert!(host.tick(Instant::now() + timeout));
+    assert!(host.retry_due(Instant::now() + Duration::from_secs(2)));
+}
+
+#[test]
 fn a_script_the_page_refuses_is_reported_not_retried() {
     let state = empty_state();
     let mut host = ready_host("script", &state);

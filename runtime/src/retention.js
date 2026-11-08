@@ -178,13 +178,19 @@ export class LruCache {
    * Frees least-recently-used entries this frame did not touch until one more entry fits the count bound,
    * so a new entry never makes the peak go past `maxEntries` while an idle one could have made room.
    */
-  makeRoom() {
+  makeRoom(keep = null) {
     for (const key of [...this.entries.keys()]) {
       if (this.entries.size < this.maxEntries) break;
-      if (this.used.has(key)) continue;
+      if (this.used.has(key) || keep?.has(key)) continue;
       this.delete(key);
       this.onEvict();
     }
+  }
+
+  /** Whether one more entry fits now or after freeing entries neither the last frame nor `keep` touched. */
+  hasRoom(keep = null) {
+    if (this.entries.size < this.maxEntries) return true;
+    return [...this.entries.keys()].some((key) => !this.used.has(key) && !keep?.has(key));
   }
 
   /** Frees least-recently-used entries the last frame did not touch until both bounds hold. */

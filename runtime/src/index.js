@@ -49,6 +49,8 @@ const FEATURES = [
   'scene.result_cache',
   'directed_scene',
   'asset.identity',
+  // BL157: `frame.warm` gives the splat scenes of a plan their Spark stage and first sort ahead of the frame that draws them.
+  'scene.warm',
 ];
 // F055: announced only by a page that has an overlay surface (the desktop WebView, see
 // `wantsOverlay`), never by the headless worker (same bundle, no surface): a host sends `overlay.*`
@@ -307,6 +309,17 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       // One GL context: frames run strictly one after another, newest wins.
       renderQueue = renderQueue.then(() => renderFrame(message));
     },
+    // Additive (negotiated by `scene.warm`): no picture, no answer. Behind the frames in the queue, like them.
+    'frame.warm': (message) => {
+      renderQueue = renderQueue.then(async () => {
+        if (disposed || contextLost) return;
+        try {
+          await ensureCompositor().warmScenes({ plan: message.plan, assets });
+        } catch {
+          // Best effort: a frame that needs the scene reports what is wrong with it.
+        }
+      });
+    },
     'frame.cancel': (message) => {
       cancelled.add(message.id);
     },
@@ -400,6 +413,8 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       return { textures: info.memory.textures, geometries: info.memory.geometries, programs: info.programs?.length ?? 0 };
     },
     idle: () => renderQueue,
+    // Lineages whose warm sort is still running (tests).
+    warming: () => compositor?.warming.size ?? 0,
     // Every SparkRenderer alive, to inject a failure into one or count them (tests and measurements).
     splatStages: () => compositor?.liveStages() ?? [],
     // The compositor, to make one pass of a frame fail on purpose (tests): the frame must report it and the next must draw.

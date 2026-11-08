@@ -357,6 +357,23 @@ o mesmo conjunto de splats; no primeiro quadro da cena o estágio da linhagem é
 ordenação. A pré-carga carrega e decodifica, mas não cria o estágio nem ordena, então esse custo continua no caminho crítico.
 Correção possível e riscos: backlog BL157.
 
+### Aquecimento da cena na pré-carga (BL157, entregue)
+
+A correção é a que o backlog descrevia, com uma mensagem própria (`frame.warm`, feature `scene.warm`) em vez de um campo em `asset.load`,
+porque a pré-carga de assets e a de uma cena têm momentos diferentes (a cena só pode ser aquecida depois que todos os seus assets
+carregaram). Primeira versão: o aquecimento era pulado quando o orçamento de 2 estágios estava cheio, e a cena de 268 e a de 410
+nunca eram aquecidas, porque o estágio ocioso da cena anterior continuava na fila do LRU (`stage_warm_skipped`). Medido por fase no
+quadro de entrada (`sort`): 93–175 ms. Depois de permitir que o aquecimento ocupe o estágio que o último quadro não desenhou (e que
+nenhum aquecimento está ordenando): 28–58 ms.
+
+Execuções intercaladas `main` × aquecimento (release, projeto de amostra, 0–26 s, máquina com carga 7–22 por outros processos):
+maior tempo de quadro nos quadros de entrada (186/268/410) 44–145 ms (mediana ≈ 60) em `main` e 7–34 ms com aquecimento em 8 de 10
+execuções (outras 2: 88 e 139 ms); soma dos quadros > 40 ms por execução 226–779 em `main` (mediana 291) contra 45–440 com
+aquecimento (uma execução de 919). O aquecimento move trabalho síncrono (montagem do rig) para antes do corte e, em algumas
+execuções, atrasou um quadro na fila do runtime (`transit` > 40 ms em 4 de 10 execuções contra 2 de 7 em `main`). Com a máquina
+em carga o ruído é maior que o ganho nas métricas agregadas (intervalo máximo, quantidade de intervalos > 62 ms), por isso o
+resultado é "entrada de cena de ~60 para ~20 ms na mediana, sem piora clara do resto" e precisa ser reconferido na máquina quieta.
+
 Outras medições desta rodada: build de debug contra release no mesmo tour (BL137) e uma abertura com `Falha: timeout` também no projeto
 de splats, com o binário de debug e carga de 50 (BL158). Não investigados ainda: BL133, BL155 e a memória do WebContent.
 

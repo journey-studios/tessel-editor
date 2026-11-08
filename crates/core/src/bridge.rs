@@ -19,6 +19,7 @@ use crate::backend::{
     FrameRequest, FrameResult, ProxyState, RenderBackend, RequestId,
 };
 use crate::id::Id;
+use crate::plan::RenderPlan;
 use crate::preview::Quality;
 use crate::trace::SubmitSpans;
 
@@ -198,6 +199,12 @@ pub fn frame_render(request: &FrameRequest) -> Value {
         message["quality"] = json!(request.quality.label());
     }
     message
+}
+
+/// `scene.warm` (additive): the plan of a frame that is not drawn now, whose splat scenes the runtime
+/// prepares. No picture and no answer.
+pub fn frame_warm(plan: &RenderPlan) -> Value {
+    json!({ "v": BRIDGE_VERSION, "type": "frame.warm", "plan": plan.to_json() })
 }
 
 pub fn frame_cancel(id: RequestId) -> Value {
@@ -452,6 +459,10 @@ impl<T: Transport> RenderBackend for BridgeBackend<T> {
 
     fn set_proxy(&mut self, id: Id, proxy: Option<&Value>) -> Result<(), BackendError> {
         self.transport.send(&asset_proxy(id, proxy))
+    }
+
+    fn warm_scene(&mut self, plan: &RenderPlan) -> Result<(), BackendError> {
+        self.transport.send(&frame_warm(plan))
     }
 
     fn submit(&mut self, request: &FrameRequest) -> Result<(), BackendError> {
@@ -804,6 +815,25 @@ mod tests {
         assert!(backend.take_submit_spans().is_some());
         assert!(backend.take_submit_spans().is_none(), "taken, not repeated");
         assert_eq!(backend.transport_mut().0.len(), 1);
+    }
+
+    #[test]
+    fn a_warm_is_the_plan_alone_and_the_backend_sends_it_without_a_frame() {
+        use crate::plan::PlanRequest;
+        use crate::state::{EditorState, ProjectSettings};
+        let state = EditorState::empty(&ProjectSettings::default()).unwrap();
+        let plan = state.plan(&PlanRequest::of(&state)).unwrap();
+        let message = frame_warm(&plan);
+        assert_eq!(message["type"], "frame.warm");
+        assert_eq!(message["plan"], plan.to_json());
+        assert!(
+            message.get("id").is_none() && message.get("output").is_none(),
+            "no picture is asked for, so nothing to identify or size"
+        );
+        let mut backend = BridgeBackend::new("t", Loopback(Vec::new()), Duration::ZERO);
+        backend.warm_scene(&plan).unwrap();
+        assert_eq!(backend.transport_mut().0.len(), 1);
+        assert_eq!(backend.transport_mut().0[0]["type"], "frame.warm");
     }
 
     #[test]

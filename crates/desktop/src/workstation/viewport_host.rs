@@ -54,6 +54,10 @@ const BOOT_TIMEOUT: Duration = Duration::from_secs(15);
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(15);
 /// Loading assets and drawing one frame.
 const FRAME_TIMEOUT: Duration = Duration::from_secs(30);
+/// How long the monitor waits before it asks again for a frame that failed with a `timeout` (a slow
+/// machine, a media file that was still opening), one entry per retry. After the last one the failure
+/// stays on the header until the next change, as for any other failure (BL158).
+const RETRY_DELAYS: [Duration; 2] = [Duration::from_secs(1), Duration::from_secs(3)];
 /// Longest side of the picture the monitor renders itself; the CSS fit scales it to the pane.
 const PREVIEW_LONG_SIDE: u32 = 960;
 /// Loaded assets kept between frames before the ones the plan no longer needs are released.
@@ -285,6 +289,11 @@ pub struct ViewportHost {
     request_started: Option<Instant>,
     /// The last frame request that failed; cleared by the next one that works.
     failure: Option<BackendError>,
+    /// Retries already made for the failure on show, and when the next one is due (BL158).
+    retries: usize,
+    retry_due: Option<Instant>,
+    /// The next [`sync`](Self::sync) is a retry, not a change the user made.
+    retrying: bool,
     last_frame: Option<FrameResult>,
     output_size: Option<(u32, u32)>,
     /// Proxy coverage of the sequence's videos as of the last sync: while some are pending the
@@ -351,6 +360,9 @@ impl ViewportHost {
             waiters: Vec::new(),
             request_started: None,
             failure: None,
+            retries: 0,
+            retry_due: None,
+            retrying: false,
             last_frame: None,
             output_size: None,
             proxy_coverage: ProxyCoverage::default(),
@@ -516,6 +528,10 @@ impl ViewportHost {
 
     /// Follows the editor state: asks for a new picture if what the monitor shows changed.
     pub fn sync(&mut self, state: &EditorState) {
+        // Anything but a retry is a change the user made: it starts the retries over.
+        if !std::mem::take(&mut self.retrying) {
+            self.retries = 0;
+        }
         if self.directed_scene().is_some() {
             self.dispatch_directed();
             return;
@@ -588,11 +604,19 @@ impl ViewportHost {
             .rate
             .nominal_fps()
             .saturating_mul(PREFETCH_SECONDS);
-        let assets = state.assets_ahead(frames);
-        if assets.is_empty() {
+        let plans = state.plans_ahead(frames);
+        if plans.is_empty() {
             return 0;
         }
-        self.session.prefetch(state, &assets)
+        let mut assets = Vec::new();
+        for asset in plans.iter().flat_map(|plan| plan.requires.iter()) {
+            if !assets.contains(asset) {
+                assets.push(*asset);
+            }
+        }
+        let started = self.session.prefetch(state, &assets);
+        // What was loaded on an earlier tick gets its splat scenes' first sort now, not at the cut (BL157).
+        started + self.session.warm(&plans)
     }
 
     /// The monitor's own frame. A frame already rendering is left to finish when only the
@@ -630,7 +654,31 @@ impl ViewportHost {
         self.last_frame = None;
         self.png_paths.clear();
         self.fail_waiters(&error);
+        self.show_failure(error);
+    }
+
+    /// Keeps `error` on show and, for a `timeout`, schedules the retry (BL158): the slow open or frame
+    /// that timed out usually works the second time, and nothing else would ever ask again.
+    fn show_failure(&mut self, error: BackendError) {
+        self.retry_due = (error.code == "timeout")
+            .then(|| RETRY_DELAYS.get(self.retries))
+            .flatten()
+            .map(|delay| Instant::now() + *delay);
         self.failure = Some(error);
+    }
+
+    /// Whether the failure on show is due its retry. Consumes the due time: the caller then runs
+    /// [`sync`](Self::sync), which asks for the frame again.
+    pub fn retry_due(&mut self, now: Instant) -> bool {
+        if self.failure.is_none() || !self.retry_due.is_some_and(|due| now >= due) {
+            return false;
+        }
+        self.retry_due = None;
+        self.retries += 1;
+        self.retrying = true;
+        // The plan is the one that failed, so only `dirty` keeps `sync` from taking it for "unchanged".
+        self.dirty = true;
+        true
     }
 
     fn request(
@@ -873,6 +921,8 @@ impl ViewportHost {
             SessionEvent::Frame(frame) => {
                 self.request_started = None;
                 self.failure = None;
+                self.retries = 0;
+                self.retry_due = None;
                 self.png_paths.remove(&frame.id);
                 if let Some(index) = self
                     .waiters
@@ -896,7 +946,7 @@ impl ViewportHost {
                     return;
                 }
                 self.fail_waiters(&error);
-                self.failure = Some(error);
+                self.show_failure(error);
             }
         }
     }

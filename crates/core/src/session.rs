@@ -92,6 +92,8 @@ pub struct Stats {
     pub prefetch_skipped: u64,
     /// Heavy assets released, least recently used first, to stay inside the byte budget.
     pub evicted: u64,
+    /// Cuts whose splat scenes the runtime was asked to prepare ahead (see [`ViewportSession::warm`]).
+    pub warmed: u64,
 }
 
 /// Assets below this size are never evicted for memory: releasing them frees nothing worth a reload.
@@ -168,6 +170,8 @@ pub struct ViewportSession<B: RenderBackend> {
     /// [`ViewportSession::prefetch`]); the retention release keeps them like a required asset.
     prefetched: HashMap<Id, u64>,
     prefetch_budget: u64,
+    /// The cuts (by the assets their plan requires) the runtime was already asked to warm.
+    warmed: HashSet<Vec<Id>>,
     /// Bytes of source files of every asset loaded or loading, and the request that last needed it.
     asset_bytes: HashMap<Id, u64>,
     last_used: HashMap<Id, u64>,
@@ -212,6 +216,7 @@ impl<B: RenderBackend> ViewportSession<B> {
             retain: None,
             prefetched: HashMap::new(),
             prefetch_budget: PREFETCH_BUDGET_BYTES,
+            warmed: HashSet::new(),
             asset_bytes: HashMap::new(),
             last_used: HashMap::new(),
             retain_bytes: None,
@@ -536,6 +541,55 @@ impl<B: RenderBackend> ViewportSession<B> {
         started
     }
 
+    /// Asks the runtime to prepare the splat scenes of the cuts in `plans` (the plans at the frames
+    /// where clips start a moment ahead of the playhead, see `EditorState::plans_ahead`).
+    ///
+    /// WHY: the first frame that draws a splat scene waits for the sort of a stage that never held it
+    /// (50 to 70 ms for a 300 k splat scene, measured in
+    /// `docs/viewport-performance-splat-project-investigation.md`), however early the file loaded:
+    /// loading and decoding are not that sort. Once every asset of a cut is loaded the runtime is told
+    /// to build the stage and run its first sort now, while the frames before the cut play, so the
+    /// frame at the cut is drawn from an order that exists.
+    ///
+    /// Best effort and never an error. Sent only to a runtime that announced `scene.warm`, only for a
+    /// plan with a scene layer whose assets are all loaded, and once per cut until it is passed, its
+    /// assets are released or the context is lost. It changes neither the status, the revision nor the
+    /// request in flight. Returns how many cuts were sent.
+    pub fn warm(&mut self, plans: &[RenderPlan]) -> usize {
+        // A cut the playhead passed (or that left the window) is forgotten: a later pass warms it again.
+        self.warmed
+            .retain(|key| plans.iter().any(|plan| &plan.requires == key));
+        if !self
+            .capabilities
+            .as_ref()
+            .is_some_and(|caps| caps.supports("scene.warm"))
+        {
+            return 0;
+        }
+        let mut sent = 0;
+        for plan in plans {
+            if self.warmed.contains(&plan.requires)
+                || !plan
+                    .layers
+                    .iter()
+                    .any(|layer| layer.content.kind() == "scene" && !layer.occluded)
+                || plan
+                    .requires
+                    .iter()
+                    .any(|asset| self.assets.get(asset) != Some(&Slot::Ready))
+            {
+                continue;
+            }
+            if self.backend.warm_scene(plan).is_err() {
+                continue;
+            }
+            self.warmed.insert(plan.requires.clone());
+            self.stats.warmed += 1;
+            sent += 1;
+        }
+        sent
+    }
+
     fn start(
         &mut self,
         state: &EditorState,
@@ -816,6 +870,7 @@ impl<B: RenderBackend> ViewportSession<B> {
                 self.proxies.clear();
                 self.refused.clear();
                 self.prefetched.clear();
+                self.warmed.clear();
                 let error = BackendError::new("context_lost", "The graphics context was lost");
                 SessionEvent::Failed(self.fail(error))
             }
@@ -826,6 +881,7 @@ impl<B: RenderBackend> ViewportSession<B> {
             BackendEvent::Closed(reason) => {
                 self.assets.clear();
                 self.prefetched.clear();
+                self.warmed.clear();
                 self.proxies.clear();
                 self.refused.clear();
                 self.capabilities = None;
@@ -984,6 +1040,7 @@ impl<B: RenderBackend> ViewportSession<B> {
     }
 
     fn forget_asset(&mut self, id: &Id) {
+        self.warmed.retain(|key| !key.contains(id));
         self.assets.remove(id);
         self.proxies.remove(id);
         self.refused.remove(id);
@@ -1022,6 +1079,7 @@ impl<B: RenderBackend> ViewportSession<B> {
         self.cancel();
         self.assets.clear();
         self.prefetched.clear();
+        self.warmed.clear();
         self.asset_bytes.clear();
         self.last_used.clear();
         self.proxies.clear();
@@ -1042,7 +1100,7 @@ impl<B: RenderBackend> ViewportSession<B> {
                 "cancelled": self.stats.cancelled, "dropped_stale": self.stats.dropped_stale,
                 "coalesced": self.stats.coalesced, "proxy_attached": self.stats.proxy_attached,
                 "proxy_failed": self.stats.proxy_failed, "refined": self.stats.refined,
-                "prefetched": self.stats.prefetched, "prefetch_skipped": self.stats.prefetch_skipped, "evicted": self.stats.evicted,
+                "prefetched": self.stats.prefetched, "prefetch_skipped": self.stats.prefetch_skipped, "evicted": self.stats.evicted, "warmed": self.stats.warmed,
             },
             "preview_policy": self.policy.to_json(), "refine_pending": self.refine.is_some(),
             "proxy_error": self.proxy_error.as_ref().map(|(id, error)| json!({ "asset": id, "error": error.to_json() })),

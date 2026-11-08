@@ -202,8 +202,13 @@ impl Workstation {
 
     fn viewport_tick(&mut self, cx: &mut Context<Self>) {
         self.settle_gizmo_drag(cx);
-        if self.viewport.tick(Instant::now()) {
+        let now = Instant::now();
+        if self.viewport.tick(now) {
             cx.notify();
+        }
+        // A frame that timed out is asked for again after a pause (BL158), by the path a change takes.
+        if self.viewport.retry_due(now) {
+            self.viewport_sync(cx);
         }
     }
 

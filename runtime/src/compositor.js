@@ -37,6 +37,9 @@ import { SplatStage } from './splat-stage.js';
 
 THREE.ColorManagement.enabled = false;
 
+/** The longest a frame waits for the warm sort of its own scene before it goes on and sorts for itself. */
+const WARM_WAIT_MS = 1000;
+
 const BLENDING = {
   normal: { blending: THREE.NormalBlending },
   multiply: {
@@ -217,6 +220,8 @@ export class Compositor {
       dispose: ({ target }) => disposeTarget(target),
       onEvict: evicted('target_evicted'),
     });
+    // Lineages whose first sort is running ahead of any frame that draws them (BL157, see `warmScenes`).
+    this.warming = new Map();
     // One Spark sort lineage per scene layer in flight (BL130, see `planLineages`).
     this.stages = new LruCache({
       maxEntries: limits.splatStages,
@@ -554,13 +559,18 @@ export class Compositor {
     return { byOrder, owners };
   }
 
+  /** Lineages whose stage a warm is sorting: no one frees them to make room. */
+  warmingKeys() {
+    return this.warming.size ? new Set(this.warming.keys()) : null;
+  }
+
   /** The stage of a lineage from `planLineages`, made on first use; `null` is the one shared stage. */
   stageOf(lineage) {
     if (lineage === null) return this.splatStage();
     let stage = this.stages.get(lineage);
     if (!stage) {
       // Room first: the peak is the budget, not the budget plus the idle stage the trim would free afterwards.
-      this.stages.makeRoom();
+      this.stages.makeRoom(this.warmingKeys());
       stage = new SplatStage(this.renderer);
       this.stages.set(lineage, stage);
       this.counters.add('stage_created');
@@ -587,6 +597,71 @@ export class Compositor {
     }
   }
 
+  /**
+   * Gives the splat scenes of a plan their stage, and the first sort of it, before a frame draws them (BL157).
+   *
+   * WHY: a moving playhead draws a splat scene with the order of the last finished sort, but only when its stage
+   * already holds that scene (`SplatStage.holdsOrderFor`); the first frame of a scene finds a new stage and waits for
+   * its own sort, 50 to 70 ms of a frame that is due in 42, however early the file was loaded. The host asks for this
+   * when the assets of a cut are loaded and the cut is still ahead, so the sort runs while the frames before it play and
+   * the frame at the cut finds a stage that holds the scene.
+   *
+   * Best effort and never an error. It makes only what fits the stage budget (an idle stage of what is on screen is
+   * never freed for it), skips what already has a stage, and waits for nothing: the leases and the stage are kept until
+   * the sort ends and a frame that needs the lineage meanwhile waits for it (`prepareLayer`). Returns how many stages
+   * were started.
+   */
+  async warmScenes({ plan, assets }) {
+    if (!this.retain || this.gl.isContextLost()) return 0;
+    const width = plan.canvas?.width ?? 16;
+    const height = plan.canvas?.height ?? 9;
+    const uses = new Map();
+    let started = 0;
+    for (const layer of plan.layers ?? []) {
+      if (layer.kind !== 'scene' || layer.occluded === true || !layer.camera) continue;
+      const entry = assets.entries.get(layer.asset);
+      const scene = entry ? layerScene(layer, entry) : null;
+      if (!scene || !SceneRig.hasSplatObjects(scene)) continue;
+      const nth = uses.get(layer.asset) ?? 0;
+      uses.set(layer.asset, nth + 1);
+      const lineage = `${layer.asset}\u0000${nth}`;
+      if (this.stages.entries.has(lineage) || this.warming.has(lineage)) continue;
+      // Every splat the scene names is loaded: a warm never waits for a file (and never starts a load).
+      if (scene.objects.some((object) => object.type === 'splat' && assets.entries.get(object.asset)?.kind !== 'splat')) continue;
+      // Room means a free slot or a stage the last frame did not draw and no warm is sorting: a cut that follows
+      // another scene finds the old scene's idle stage in the way, and freeing it is what the cut's own frame would do.
+      if (!this.stages.hasRoom(this.warmingKeys())) {
+        this.counters.add('stage_warm_skipped');
+        continue;
+      }
+      let rig = null;
+      try {
+        rig = await SceneRig.build(scene, assets, lineage);
+        const stage = this.stageOf(lineage);
+        const camera = SceneRig.camera(layer.camera, width, height);
+        // Posed as the layer will be at the cut, so what the sort ordered is what the first frame draws.
+        rig.pose(layer.scene_time?.seconds ?? 0);
+        stage.attach(rig.scene);
+        const owned = rig;
+        const sorted = stage.begin(rig.scene, camera).finally(() => {
+          stage.detach(owned.scene);
+          owned.dispose();
+          this.warming.delete(lineage);
+          this.discardFailedStage(stage, lineage);
+        });
+        this.warming.set(lineage, sorted);
+        this.counters.add('stage_warmed');
+        started += 1;
+      } catch (error) {
+        rig?.dispose();
+        // A stage made for a warm that did not start holds no scene: it must not keep a slot of the budget.
+        if (!this.warming.has(lineage)) this.stages.delete(lineage);
+        this.counters.add('stage_warm_failed');
+      }
+    }
+    return started;
+  }
+
   /** Every SparkRenderer alive (tests and measurements). */
   liveStages() {
     return [...[...this.stages.entries.values()].map(({ value }) => value), ...(this.splats ? [this.splats] : [])];
@@ -600,6 +675,7 @@ export class Compositor {
       // The context is already gone; there is nothing left to free on it.
     }
     this.splats = null;
+    this.warming.clear();
     try {
       this.stages.clear();
     } catch {
@@ -676,6 +752,18 @@ export class Compositor {
         // The target is about to hold another picture (or half of one if this frame is cancelled):
         // until the draw completes it matches no key.
         if (cached) cached.result = null;
+        // A warm of this very lineage still sorting: the frame takes its result instead of sorting again.
+        // Bounded: a sort whose stage was disposed under it must not hold the frame.
+        if (lineage !== null && this.warming.has(lineage)) {
+          let timer;
+          await Promise.race([
+            this.warming.get(lineage),
+            new Promise((resolve) => {
+              timer = setTimeout(resolve, WARM_WAIT_MS);
+            }),
+          ]);
+          clearTimeout(timer);
+        }
         const rig = await this.sceneRig(layer.asset, entry, assets, keep, lineage);
         let stage = null;
         let drawn;
