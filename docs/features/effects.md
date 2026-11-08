@@ -21,14 +21,14 @@ habilitado para ele.
 **Atualização P0+P1 (branch `t3/fx-candidate-preview`, BL036/BL018/BL019/BL082.6/.16/.17).** O código da correção R1
 foi **compilado e executado** neste head (antes: "não compilado"); o gesto de efeito, o aviso de orçamento e a
 inserção no quadro exibido são do **core** e passam pelos mesmos handlers em lib, JSONL e janela; o corpus pequeno da
-vinheta tem proveniência fixada. Estado por superfície depois desta entrega:
+vinheta tem proveniência fixada. Estado por superfície depois desta entrega (números reexecutados no head `b5b077e`; ver "Âncoras de SHA"):
 
 | Superfície | Estado | Evidência executada neste branch |
 |---|---|---|
 | Lib (gesto, aviso, tempo→quadro, corpus) | V | `crates/core/tests/scene_fx_gesture.rs` (16), `pilot_fx_corpus.rs` (5) |
 | CLI headless (JSONL, processo real, sem janela) | V | `scene_fx_gesture.rs::the_headless_executable_runs_the_gesture_without_a_window…` (processo `tessel-headless`), mesmos `scene.fx.gesture.*` |
-| UI GPUI (ponteiro injetado, teclado do adaptador) | V (entrada injetada; **não** é ponteiro/teclado físico) | `workstation/scene_fx_tests.rs` (20) |
-| Janela real, só comandos semânticos | V | `scripts/scene-fx-ui-proof.py` 113/113 (`op`/`get`/`set`/`invoke`, instância privada, lock de GPU) |
+| UI GPUI (ponteiro injetado, teclado do adaptador, **monitor**) | V (entrada injetada; **não** é ponteiro/teclado físico) | `workstation/scene_fx_tests.rs` (25 em `b5b077e`, incluindo os 3 do monitor e o `set` semântico de ponto/cor) |
+| Janela real, só comandos semânticos | V | `scripts/scene-fx-ui-proof.py` **115/115 em `b5b077e`** (`op`/`get`/`set`/`invoke`, instância privada, lock de GPU; 113/113 no `88d1715` anterior) |
 | Pixels (runtime/Chrome SwiftShader) | V | `crates/render/tests/scene_fx_gesture_frames.rs` (candidato antes do commit, commit == prévia, cancelar, undo/redo) |
 
 
@@ -242,8 +242,9 @@ de cena (`scene_interaction::GestureSlot`); a janela só traduz entrada em coman
   (`gesture_invalidated`) não é mais pedido pelo monitor, que volta a mostrar o documento.
   *Revisão independente do head `c834ff7`:* esta regra do monitor e a quantização por casas decimais do passo
   (`0.25` não vira `0.3`; teste novo em `control.rs`) foram **escritas sem compilar** (disco abaixo do piso); só
-  `cargo fmt --check` foi executado. Reexecutar `check/clippy/test` e o teste de janela antes de confiar nelas.
-  *BL082.20 (teste de janela do **monitor**, escrito e não executado):* o gesto invalidado por **undo** ou por
+  `cargo fmt --check` foi executado. **Executadas depois em `b5b077e`** (ver "Âncoras de SHA"): `check`, `clippy`,
+  testes do workspace e prova da janela passaram, incluindo o teste novo de `control.rs`.
+  *BL082.20 (teste de janela do **monitor**, executado em `b5b077e`):* o gesto invalidado por **undo** ou por
   **edição externa** no meio do arrasto continua no slot do core, mas o monitor **não o pede** (o plano que ele
   guarda é o da cena confirmada, sem `gesture_invalidated` e sem falha na tela), o painel mostra o mesmo valor, o
   `commit` velho é recusado com `gesture_invalidated` sem entrada de undo (e o redo continua disponível), e
@@ -253,7 +254,7 @@ de cena (`scene_interaction::GestureSlot`); a janela só traduz entrada em coman
   o monitor na hora** (antes ele só voltava ao documento no próximo comando alheio).
   O `set` semântico de uma componente de ponto/cor (`center_y`, `color_g`...) agora parte do **documento**, não do
   candidato de um gesto aberto no mesmo clipe: o irmão não confirmado de um arrasto não vaza para o documento
-  (teste de janela escrito, não executado).
+  (`a_semantic_set_never_writes_the_candidate_of_an_open_gesture_into_the_document`, executado em `b5b077e`).
 - **Um commit que muda algo é UMA entrada de undo ("Edit effects")**; commit sem mudança e cancelar são **zero**.
   Undo/redo restauram valores **e pixels** (prova nos pixels em `scene_fx_gesture_frames.rs`).
 - **Inserção no quadro exibido**: o botão `+` usa `EditorState::scene_frame_at_playhead` (o tempo do playhead da
@@ -298,24 +299,44 @@ eles, com controle negativo (expectativa adulterada é pega).
 
 ## Evidências
 
-**Âncoras de SHA da matriz (a conferir antes de confiar em qualquer número abaixo).** O **último código com
-os gates completos registrados** é `88d1715` (`refactor(fx): Use matches! ...`; `fbae5f7` e `c834ff7` são só
-documentação). A prova da janela real 113/113 usou um binário do head anterior `96e3b64`, diferente de `88d1715` só
-pelo `matches!` de `scene_project/interaction.rs`. Tudo o que mudou **depois** disso é **não testado** (escrito;
-no máximo `rustfmt`): `3cf7178` (monitor sem gesto invalidado; quantização por casas do passo), `53ac7b8` (grades
-finas e verbos do gesto nas capabilities), o merge `9c53744` (traz miniaturas de `main`, sem código de efeito) e o
-commit de **BL082.20** desta rodada (testes de janela do monitor, sincronização do monitor ao cancelar, accessor de
-teste). Um número de teste, de suíte ou de prova só vale para o SHA que o produziu; **nenhum** deles foi reexecutado
-nos heads posteriores a `88d1715`. As lacunas do P0 seguem explícitas e **não** foram fechadas: `ORIGIN_NOT_EXECUTED`
+**Âncoras de SHA da matriz (a conferir antes de confiar em qualquer número abaixo).** O código de produção da PR37
+é o de `85ba335` (cabeça remota inicial desta rodada); o **único** commit de código acrescentado depois é `b5b077e`
+(`test(fx): Approve the scene's resources before the monitor tests ask for its plan`: só `scene_fx_tests.rs`). Os
+gates completos e a prova da janela desta rodada rodaram em **`b5b077e`** (um commit só de documentação vem depois e
+não altera código). Antes disso, o último head com gates completos era `88d1715` e a janela real 113/113 usou o binário
+de `96e3b64`; `3cf7178`, `53ac7b8`, o merge `9c53744` e `85ba335` estavam **sem compilar**. Isso foi corrigido:
+
+| Gate em `b5b077e` (`TESSEL_REQUIRE_RUNTIME=1`, `./scripts/cargo`, runtime `dist/runtime.js` sha256 `7b6b4338…2a98`) | Resultado |
+|---|---|
+| `cargo fmt --all -- --check` | exit 0 |
+| `check --workspace --locked` | exit 0 |
+| `clippy --workspace --all-targets --locked -- -D warnings` | exit 0 |
+| `build -p tessel-editor --locked` (`tessel-editor` sha256 `3707c7ed…7324`) | exit 0 |
+| `cargo tree -p tessel-editor-core` filtrado por `gpui\|wry` | vazio (grep exit 1 = nenhuma ocorrência) |
+| `test --workspace --locked --no-fail-fast` | exit 0: 106 suítes, **1874 passaram, 0 falharam, 12 ignoradas** |
+| `python3 scripts/pilot-fx-corpus.py verify` | exit 0 (10 casos, 6 de gesto, 11 fontes; origem não relida) |
+| `scene-fx-ui-proof.spec.py` normal e `-O` | 24/24 nos dois |
+| `scene-fx-ui-proof.py` (janela real, instância própria, lock de GPU, só `op`/`get`/`set`/`invoke`) | **115/115**, 0 FAIL, 0 SKIP; monitor == vinheta independente em Python (pior 7/255 no export); SwiftShader |
+
+**Defeito achado e corrigido nesta rodada (só de teste).** Na primeira execução do head `85ba335` (1871 passaram, 3
+falharam) os três testes de janela do **monitor** de BL082.20 falharam porque a janela de teste não tem pasta para
+`scene.resources.resolve`: o plano era recusado com `scene_resources_not_loaded` e o monitor nunca guardava o
+pedido. Nenhuma lógica de produção estava errada. O teste agora instala o mapa aprovado que o bundle declara
+(`load_resources`) antes de o monitor seguir a cena. Discriminação provada por mutação: sem o filtro de invalidação em
+`viewport_sync`, falham o teste do undo e o da edição externa; trocando a sincronização do monitor ao cancelar por um
+simples repaint, falha o de troca de cena/Escape/polegar em repouso (25/25 de `scene_fx_tests` no código real).
+
+As lacunas do P0 seguem explícitas e **não** foram fechadas: `ORIGIN_NOT_EXECUTED`
 e `ORIGIN_GOLDEN_NOT_COMPARABLE` (a origem `d40ac3f7c0` só foi lida por `git show`; não se executou nem se instalou).
+O ponteiro/teclado físicos, a GPU real e a paridade integral com o piloto **não** estão provados; o monitor foi
+provado pelo pedido que guarda (testes) e por pixels do SwiftShader (prova da janela e `scene_fx_gesture_frames.rs`).
 
 **Reconciliação por head (P0+P1).** Os parágrafos abaixo guardam o histórico e os limites de cada entrega
 (32860ec, R1, R2); onde dizem "não compilado/não reexecutado", isso era verdade **naquele head**. No branch
 `t3/fx-candidate-preview` o Rust foi compilado e executado: `fmt`, `check`, `clippy -D warnings` e
 `test --workspace --locked` (105 suítes, 1855 passaram, 0 falharam, 12 ignoradas, `TESSEL_REQUIRE_RUNTIME=1`, nenhum
-SKIPPED), `cargo tree -p tessel-editor-core` sem gpui/wry, e a prova da janela 113/113. O `build -p tessel-editor
---locked` do head final não foi repetido (disco abaixo do piso de 12 GiB: `REFUSED_DISK`); o binário da prova da janela
-vem de um head anterior, diferente só pelo `matches!` de `scene_project/interaction.rs`.
+SKIPPED), `cargo tree -p tessel-editor-core` sem gpui/wry, e a prova da janela 113/113. (Contagens e `build` do head
+final: tabela "Âncoras de SHA" acima, em `b5b077e`.)
 
 Duas camadas, para não misturar o que rodou com o que só foi escrito. **Executado neste head (correção R1)**:
 runtime (`node --test` dos arquivos de efeito: 11 puros + 7 em Chrome/SwiftShader), medição pareada, e a

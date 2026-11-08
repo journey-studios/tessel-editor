@@ -1013,3 +1013,16 @@ BL082.20 — integração PR37 com main30ac65b (PR31 SHARP): conflito somente do
 no backlog, preservadas notas FX e evidências de miniaturas. Fmt, specs Python e diffcheck
 executados nesta integração; gates Rust/build/renderer/janela continuam BLOCKED_DISK.
 CodeRabbit NEUTRAL por quota não é revisão nem aceite. Sem merge da PR para main.
+
+BL082.20 — PR37, gates e prova da janela executados (2026-11-08, Cursor Sonnet 5.5, base remota `85ba335`, disco 46 GiB livres):
+os "BLOCKED_DISK" acima ficam superados **para `b5b077e`**. Primeira execução em `85ba335`: fmt/check/clippy/build ok e
+workspace 1871/3/12, com três falhas reais nos testes novos de janela do monitor (`scene_resources_not_loaded`: a janela de
+teste não tem pasta para resolver os recursos). Causa só de teste; `b5b077e` instala o mapa aprovado (`load_resources`) e
+mutações provam que os três discriminam. Em `b5b077e` (runtime `7b6b4338…2a98`, `tessel-editor` `3707c7ed…7324`):
+fmt, check, clippy `-D warnings`, `build -p tessel-editor --locked` exit 0; `cargo tree -p tessel-editor-core` sem gpui/wry;
+`test --workspace --locked --no-fail-fast` com `TESSEL_REQUIRE_RUNTIME=1` exit 0 (106 suítes, **1874 passaram, 0 falharam,
+12 ignoradas**); `pilot-fx-corpus.py verify` ok; spec Python normal e `-O` 24/24; `scene-fx-ui-proof.py` **115/115** na janela
+real (SwiftShader, instância própria, lock de GPU). Lacunas P0 `ORIGIN_NOT_EXECUTED` e `ORIGIN_GOLDEN_NOT_COMPARABLE` mantidas;
+sem ponteiro físico, GPU real nem paridade integral; a regra do último candidato legal (`release-on-refusal`) não foi invertida.
+Revisão: o OpenCodeReview (3 comentários) perguntou se os gates rodaram no head atual — respondido por esta linha; o
+CodeRabbit está NEUTRAL por quota (não é revisão nem aceite). Aceite/merge seguem com o coordenador. Detalhes: [effects.md](features/effects.md).
