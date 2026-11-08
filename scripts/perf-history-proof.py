@@ -22,14 +22,22 @@ playback run, cleanup). It checks, one by one:
     outside the window is a typed error, one inside returns the inspection (numbers and correlated
     events), resume goes back to the moving window;
   * the export is a local JSON of `tessel.perf-history` v1 whose text contains neither the
-    working directory nor the project's folder, and whose errors are typed;
+    working directory nor the project's folder, and whose errors are typed. The file is written
+    off the window's thread: the command answers `state: writing` and the end (`done`, or the
+    typed refusal of the disk) is read from `get perf.history` -> `export`;
   * clear forgets the history; stop keeps it readable;
   * the cost: playback of the same span with the history off, recording with the panel closed
     ("hidden") and recording with the panel open ("visible"), alternating the order each round,
     comparing what the app already counts (pictures accepted, skipped frames, largest gap, UI
     repaint requests) and the editor process's CPU time;
-  * with --buffer-minutes N: one continuous playback of N minutes while recording; the ring stays
-    240 buckets, the events stay within their capacity and the editor's RSS growth is reported.
+  * with --buffer-minutes N (a positive, finite number): one continuous playback of N minutes while
+    recording; the ring stays 240 buckets, the events stay within their capacity, playback is
+    still running at the end, and the editor's RSS growth after warm-up is judged only when at
+    least `MIN_BUFFER_SAMPLES` readings exist (an unknown reading is unknown, never zero).
+
+Every report names the commit and whether the binary is older than the sources (`source`): a
+number from a binary that is not the head under review is not evidence about that head, and a
+stale binary fails a check unless `--allow-stale-binary` says the run is about that binary.
 
 With --shots DIR it captures the window of THIS process with `screencapture -l` at the live,
 frozen and inspected states. Prints one JSON report on the last line, whatever happens (`ok`,
@@ -112,6 +120,124 @@ def rss_mib(pid):
     return round(int(out) / 1024, 1) if out.isdigit() else None
 
 
+MIN_BUFFER_SAMPLES = 6
+
+
+def parse_buffer_minutes(text):
+    """`--buffer-minutes`: a positive finite number of minutes (0 means off). Anything else is
+    refused up front, before an editor is started, rather than failing minutes into a run."""
+    try:
+        minutes = float(text)
+    except (TypeError, ValueError):
+        raise ValueError(f"--buffer-minutes needs a number, got {text!r}") from None
+    if not math.isfinite(minutes) or minutes < 0:
+        raise ValueError(f"--buffer-minutes must be a finite number >= 0, got {text!r}")
+    return minutes
+
+
+def buffer_sample_every(minutes):
+    """Seconds between readings: about `MIN_BUFFER_SAMPLES` per run, but never slower than 20 s
+    and never a busy loop; a short run is not stretched to a whole 20 s step."""
+    return min(20.0, max(1.0, minutes * 60.0 / MIN_BUFFER_SAMPLES))
+
+
+def buffer_growth(samples):
+    """RSS growth over the run and after the first third (warm-up), in MiB. A reading that is
+    missing is missing (`None`), not zero, and too few readings judge nothing: each result is
+    `None` rather than a growth the data cannot support."""
+    readings = [sample.get("rss_mib") for sample in samples]
+    if len(readings) < MIN_BUFFER_SAMPLES or any(not isinstance(value, (int, float)) for value in readings):
+        return {"growth_mib": None, "growth_after_warmup_mib": None, "judged": False}
+    warm = readings[len(readings) // 3:]
+    return {
+        "growth_mib": round(readings[-1] - readings[0], 1),
+        "growth_after_warmup_mib": round(warm[-1] - warm[0], 1),
+        "judged": True,
+    }
+
+
+def cpu_rate(cpu_before, cpu_after, wall_seconds):
+    """CPU seconds per second of **measured** wall time between the two readings. `None` when a
+    reading is unknown, the wall time is not positive or the counter went backwards (a restarted
+    process): an unknown rate is never a zero or a guess."""
+    if cpu_before is None or cpu_after is None or wall_seconds is None:
+        return None
+    if wall_seconds <= 0 or cpu_after < cpu_before:
+        return None
+    return round((cpu_after - cpu_before) / wall_seconds, 3)
+
+
+def binary_is_stale(binary_mtime, newest_source_mtime):
+    """Whether the binary predates the newest source it is supposed to prove (`None`: unknown)."""
+    if binary_mtime is None or newest_source_mtime is None:
+        return None
+    return binary_mtime < newest_source_mtime
+
+
+def source_state(binary):
+    """Which commit this run speaks for, whether the tree has uncommitted changes and whether the
+    binary is older than the sources: what a reader needs to know before trusting a number."""
+    def git(*args):
+        done = subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True)
+        return done.stdout.strip() if done.returncode == 0 else None
+
+    head = git("rev-parse", "HEAD")
+    dirty = git("status", "--porcelain", "--", "crates", "Cargo.toml", "Cargo.lock")
+    listed = git("ls-files", "crates", "Cargo.toml", "Cargo.lock")
+    newest = None
+    for name in (listed or "").splitlines():
+        try:
+            mtime = (ROOT / name).stat().st_mtime
+        except OSError:
+            continue
+        newest = mtime if newest is None else max(newest, mtime)
+    try:
+        built = os.stat(binary).st_mtime
+    except OSError:
+        built = None
+    return {
+        "git_head": head,
+        "uncommitted_sources": None if dirty is None else bool(dirty),
+        "binary_older_than_sources": binary_is_stale(built, newest),
+    }
+
+
+def export_outcome(response, state):
+    """How an export ended, from the command's answer and `get perf.history` -> `export`:
+    `("refused", code)` when the command itself refused (nothing needed the disk), `("done", None)`,
+    `("failed", code)` for the typed end of the background write, or `("pending", None)` while it
+    still writes. A response with neither error nor a known state is `("unknown", None)`."""
+    error = (response or {}).get("error")
+    if error:
+        return ("refused", error.get("code"))
+    state = state or {}
+    if state.get("state") == "done":
+        return ("done", None)
+    if state.get("state") == "failed":
+        return ("failed", (state.get("error") or {}).get("code"))
+    if state.get("state") == "writing":
+        return ("pending", None)
+    return ("unknown", None)
+
+
+def export_code(outcome):
+    """The typed error code of an outcome that did not produce a file, else `None`."""
+    kind, code = outcome
+    return code if kind in ("refused", "failed") else None
+
+
+def settle_export(editor, response, timeout=15.0):
+    """Waits for the background write the command started (a refusal needs no wait) and returns
+    its outcome. A write that never ends within `timeout` is `("pending", None)`: a failure the
+    caller's check reports, not an assumption that it worked."""
+    deadline = time.monotonic() + timeout
+    while True:
+        outcome = export_outcome(response, history(editor).get("export"))
+        if outcome[0] != "pending" or time.monotonic() >= deadline:
+            return outcome
+        time.sleep(0.1)
+
+
 def arm_order(round_index):
     """Alternates so a drifting machine hits every arm in every position."""
     arms = ["off", "hidden", "visible"]
@@ -151,9 +277,13 @@ def main():
     shots = arg("--shots")
     seconds = float(arg("--seconds", "8"))
     rounds = int(arg("--rounds", "3"))
-    buffer_minutes = float(arg("--buffer-minutes", "0"))
+    try:
+        buffer_minutes = parse_buffer_minutes(arg("--buffer-minutes", "0"))
+    except ValueError as error:
+        print(error)
+        return 2
     if not os.path.exists(binary):
-        print("usage: perf-history-proof.py [--binary <editor>] [--shots DIR] [--seconds N] [--rounds N] [--buffer-minutes N]")
+        print("usage: perf-history-proof.py [--binary <editor>] [--shots DIR] [--seconds N] [--rounds N] [--buffer-minutes N] [--allow-stale-binary]")
         return 2
     try:
         frames = pmp.fixture_frames(max(seconds, buffer_minutes * 60.0))
@@ -161,7 +291,7 @@ def main():
         print(error)
         return 2
     report.clear()
-    report.update({"checks": [], "cost": [], "feature": "F049 history (BL145.2)", "binary": binary})
+    report.update({"checks": [], "cost": [], "feature": "F049 history (BL145.2)", "binary": binary, "source": source_state(binary)})
     pmp.failures.clear()
     work = tempfile.mkdtemp(prefix="php-", dir="/tmp")
     home = os.path.join(work, "home")
@@ -173,6 +303,12 @@ def main():
         editor.wait_ready()
         pmp.settle(editor)
         report["load_average"] = os.getloadavg()
+        stale = report["source"]["binary_older_than_sources"]
+        check(
+            "the binary is not older than the sources it speaks for (or the run says it is about that binary)",
+            stale is False or "--allow-stale-binary" in sys.argv,
+            report["source"],
+        )
 
         # --- off by default
         state = history(editor)
@@ -247,7 +383,9 @@ def main():
         # --- export
         target = os.path.join(work, "exported-history.json")
         exported = editor.set(NODE, "export_to", target)
-        check("export_to writes a local file", exported.get("ok") and os.path.isfile(target), exported)
+        ended = settle_export(editor, exported)
+        check("export_to answers that the write started, off the window's thread", exported.get("ok") and (exported.get("data") or {}).get("state") == "writing", exported)
+        check("export_to ends as a local file", ended[0] == "done" and os.path.isfile(target), [ended, exported])
         if os.path.isfile(target):
             text = Path(target).read_text()
             doc = json.loads(text)
@@ -257,29 +395,34 @@ def main():
             check("the export keeps absent as null and carries its limits", any(v is None for v in doc["series"]["texture_bytes"]["count"]) and len(doc["limits"]) >= 5, doc["limits"][:1])
             report["export_bytes"] = len(text)
         bad = editor.set(NODE, "export_to", work)
-        check("exporting to a directory is a typed error", (bad.get("error") or {}).get("code") == "perf_history_export_is_directory", bad)
+        code = export_code(settle_export(editor, bad))
+        check("exporting to a directory is a typed error", code == "perf_history_export_is_directory", [code, bad])
         bad = editor.set(NODE, "export_to", os.path.join(work, "no", "such", "x.json"))
-        check("exporting under a missing folder is a typed error", (bad.get("error") or {}).get("code") == "perf_history_export_parent_missing", bad)
+        code = export_code(settle_export(editor, bad))
+        check("exporting under a missing folder is a typed error", code == "perf_history_export_parent_missing", [code, bad])
 
         again = editor.set(NODE, "export_to", target)
-        check("exporting over an existing file is refused and the file is untouched", (again.get("error") or {}).get("code") == "perf_history_export_exists" and Path(target).read_text() == text, again)
+        code = export_code(settle_export(editor, again))
+        check("exporting over an existing file is refused and the file is untouched", code == "perf_history_export_exists" and Path(target).read_text() == text, [code, again])
         bad = editor.set(NODE, "export_to", "relative-name.json")
-        check("a relative destination is a typed error", (bad.get("error") or {}).get("code") == "perf_history_export_relative", bad)
+        check("a relative destination is a typed error", export_code(settle_export(editor, bad)) == "perf_history_export_relative", bad)
 
         # The panel's own destination field: `set export_destination` is typing/picking a path,
         # `invoke export` is the button. Nothing is written to a place nobody chose.
         check("no destination until one is given", history(editor).get("export_destination") == "", history(editor).get("export_destination"))
         empty = editor.invoke(NODE, "export")
-        check("the export button without a destination is a typed error", (empty.get("error") or {}).get("code") == "perf_history_export_path_missing", empty)
+        check("the export button without a destination is a typed error", export_code(settle_export(editor, empty)) == "perf_history_export_path_missing", empty)
         chosen = os.path.join(work, "from-the-field.json")
         typed = editor.set(NODE, "export_destination", chosen)
         check("typing a destination writes nothing by itself", typed.get("ok") and not os.path.exists(chosen) and history(editor).get("export_destination") == chosen, typed)
         pmp.settle(editor, 0.8)
         report["shot_destination"] = editor.shot(shots, "history-export-destination")
         pressed = editor.invoke(NODE, "export")
-        check("the export button writes to the destination in the field", pressed.get("ok") and os.path.isfile(chosen), pressed)
+        ended = settle_export(editor, pressed)
+        check("the export button writes to the destination in the field", ended[0] == "done" and os.path.isfile(chosen), [ended, pressed])
         pressed_again = editor.invoke(NODE, "export")
-        check("the same destination again is refused, never replaced", (pressed_again.get("error") or {}).get("code") == "perf_history_export_exists", pressed_again)
+        code = export_code(settle_export(editor, pressed_again))
+        check("the same destination again is refused, never replaced", code == "perf_history_export_exists", [code, pressed_again])
         editor.set(NODE, "export_destination", "")
 
         # --- closing the panel: not stopping
@@ -298,15 +441,17 @@ def main():
         for index in range(rounds):
             for arm in arm_order(index):
                 arm_setup(editor, arm)
-                wall_before = time.monotonic()
                 cpu_before = cpu_seconds(editor.process.pid)
+                wall_before = time.monotonic()
                 run = pmp.playback_run(editor, seconds, False)
                 cpu_after = cpu_seconds(editor.process.pid)
-                wall_seconds = time.monotonic() - wall_before
-                run["measured_wall_seconds"] = wall_seconds
-                run.update({"arm": arm, "round": index})
-                if cpu_before is not None and cpu_after is not None and wall_seconds > 0:
-                    run["cpu_s_per_s"] = round((cpu_after - cpu_before) / wall_seconds, 3)
+                wall = time.monotonic() - wall_before
+                run.update({"arm": arm, "round": index, "wall_s": round(wall, 2)})
+                # Divided by the wall time actually elapsed between the two readings, not by a
+                # guessed constant on top of `--seconds`; unknown stays absent.
+                rate = cpu_rate(cpu_before, cpu_after, wall)
+                if rate is not None:
+                    run["cpu_s_per_s"] = rate
                 report["cost"].append(run)
                 print(json.dumps(run), flush=True)
                 check(f"cost round {index} arm {arm}: playback covered the whole {seconds:g} s window", run.get("ok"), run.get("error"))
@@ -320,13 +465,14 @@ def main():
             editor.op({"op": "seek", "frame": 0})
             time.sleep(1.0)
             editor.op({"op": "playback.start", "from": 0})
-            started_at = time.time()
+            started_at = time.monotonic()
             samples = []
-            while time.time() - started_at < buffer_minutes * 60:
-                time.sleep(20)
+            every = buffer_sample_every(buffer_minutes)
+            while time.monotonic() - started_at < buffer_minutes * 60:
+                time.sleep(every)
                 state = history(editor)
                 samples.append({
-                    "t_s": round(time.time() - started_at),
+                    "t_s": round(time.monotonic() - started_at),
                     "rss_mib": rss_mib(editor.process.pid),
                     "buckets": state["view"]["window"]["buckets"],
                     "events_held": state["view"]["events"]["held"],
@@ -337,12 +483,16 @@ def main():
             check("the ring stays 240 buckets after minutes", final["view"]["window"]["buckets"] == 240 and final["view"]["window"]["duration_ms"] == 60000, final["view"]["window"])
             check("the events stay within their capacity", final["view"]["events"]["held"] <= final["view"]["events"]["capacity"], final["view"]["events"])
             check("the window really is 60 s: the oldest bucket is not older than the window", final["view"]["window"]["end_ms"] - final["view"]["window"]["start_ms"] <= 60250, final["view"]["window"])
-            growth = (samples[-1]["rss_mib"] or 0) - (samples[0]["rss_mib"] or 0) if samples else None
-            report["buffer_rss_growth_mib"] = growth
-            warmup = samples[len(samples) // 3:] if len(samples) > 3 else samples
-            late_growth = (warmup[-1]["rss_mib"] or 0) - (warmup[0]["rss_mib"] or 0) if warmup else None
-            report["buffer_rss_growth_after_warmup_mib"] = late_growth
-            check("the editor's RSS does not keep growing with the recording (after warm-up)", late_growth is not None and late_growth < 64, [growth, late_growth])
+            check("playback was still running at the end (the buffer was measured under load)", (final["view"].get("state") or {}).get("expected_motion") is True, final["view"].get("state"))
+            growth = buffer_growth(samples)
+            report["buffer_rss"] = growth
+            check(
+                f"enough RSS readings to judge growth ({MIN_BUFFER_SAMPLES} known ones needed; use a longer --buffer-minutes)",
+                growth["judged"],
+                [sample.get("rss_mib") for sample in samples],
+            )
+            if growth["judged"]:
+                check("the editor's RSS does not keep growing with the recording (after warm-up)", growth["growth_after_warmup_mib"] < 64, growth)
             editor.op({"op": "playback.stop"})
             arm_setup(editor, "off")
     except BaseException as error:  # the report is still printed, then re-raised

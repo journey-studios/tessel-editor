@@ -402,6 +402,7 @@ impl Snapshot {
             "counters": self.counters_json(),
             "limits": [
                 "absent (null) means nothing was observed, never zero; a still picture is a rest, not a stall",
+                "ui_interval_ms keeps a paint gap of any length while a playback clock runs (a stall); the window being hidden or occluded by the system is not told apart from one",
                 "monitor/ui rates are pictures accepted by the host and frames GPUI painted: not GPU completion, compositor presentation or seek-to-photon",
                 "render_ms is CPU time until submission; latency_ms is host request admission to acceptance of the picture of the same request id",
                 "rss_bytes is the editor process only (no WebKit WebContent/GPU); texture_bytes is the runtime's estimate; neither is GPU memory",

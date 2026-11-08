@@ -42,7 +42,7 @@ use serde_json::{Value, json};
 use crate::jobs::JobState;
 use crate::state::CommandError;
 
-pub use export::{HistoryError, build_info, write_export};
+pub use export::{HistoryError, PreparedExport, build_info, write_export};
 pub use snapshot::{Inspection, MetricSummary, Snapshot};
 
 /// Automation target of the history.
@@ -80,6 +80,9 @@ pub const GAUGE_EVERY: Duration = Duration::from_millis(1000);
 /// (the event keeps the group's start time and the newest frame), so a long scrub reads as a
 /// series of at most 250 ms events rather than one that hides its length.
 pub const SEEK_COALESCE: Duration = Duration::from_millis(250);
+/// Detail of `recording_started` / `recording_cleared` when a playback clock was already running:
+/// the context the recording began in, not a play that was observed.
+pub const PLAYING_CONTEXT: &str = "playing";
 /// Version of the exported schema.
 pub const SCHEMA_VERSION: u32 = 1;
 /// Name of the exported schema.
@@ -181,7 +184,7 @@ impl Metric {
                 "frames the window GPUI really painted (one per Window::draw; the diagnostic's own redraw is not counted)"
             }
             Self::UiIntervalMs => {
-                "gap between two painted frames of the same run; a rest longer than 1 s records none"
+                "gap between two painted frames of the same run; while playing a long gap is a stall and is kept, at rest a gap longer than 1 s records none"
             }
             Self::MonitorFrames => {
                 "new pictures the host accepted (frame.done of the request in flight); not compositor presentation"
@@ -671,6 +674,10 @@ pub struct Recorder {
     segment: u32,
     counters: Counters,
     context: Option<Context>,
+    /// The graphics context is down: a loss was observed and no restore yet. Kept as a flag (not
+    /// read back from the event ring) so a loss longer than the window, whose event aged out,
+    /// is still one loss when the page repeats its notice.
+    context_down: bool,
     /// Frame format of the last picture, to emit one event per change.
     format: Option<(u32, u32, Option<String>)>,
     /// Export jobs as of the last look at the registry (`None`: no baseline yet, so what already
@@ -699,6 +706,7 @@ impl Default for Recorder {
             segment: 0,
             counters: Counters::default(),
             context: None,
+            context_down: false,
             format: None,
             exports: None,
             exports_tried: None,
@@ -746,6 +754,11 @@ impl Recorder {
 
     /// Starts a *new* recording at `now`: whatever an earlier one kept is discarded. `playing`
     /// is whether a playback clock is running right now. `false` when already recording.
+    ///
+    /// A recording that begins during playback did **not** see the play happen, so no
+    /// `playback_started` event is made up: the context it begins in is stated on the start
+    /// event itself (`detail: "playing"`) and frames are expected from `now` (so a stall is
+    /// measured from here, never from a play nobody observed). A later pause is a real event.
     pub fn start(&mut self, now: Duration, playing: bool) -> bool {
         if self.recording() {
             return false;
@@ -757,10 +770,13 @@ impl Recorder {
             ..Self::default()
         };
         self.open_segment(now, SessionKind::Recording);
-        self.push(now, EventKind::RecordingStarted, None, None, None);
-        if playing {
-            self.push(now, EventKind::PlaybackStarted, None, None, None);
-        }
+        self.push(
+            now,
+            EventKind::RecordingStarted,
+            None,
+            None,
+            playing.then(|| PLAYING_CONTEXT.to_string()),
+        );
         true
     }
 
@@ -783,9 +799,13 @@ impl Recorder {
         true
     }
 
-    /// Forgets everything, explicitly. A running recording continues from `now` with fresh
-    /// anchors (no delta against a value from before); a stopped one becomes empty. The project
-    /// is untouched.
+    /// Forgets everything, **explicitly** (the user asked): the ring, the events, the segments,
+    /// the anchors and the deltas, the selection and the frozen snapshot, so nothing a reader
+    /// holds survives it (the document of a cleared history is gone, not "kept frozen"). Whether
+    /// a freeze was released is reported by [`Self::apply`]. A running recording continues from
+    /// `now` with fresh anchors (no delta against a value from before); a stopped one becomes
+    /// empty. The project is untouched. As in [`Self::start`], a clear during playback states
+    /// the context on the event and does not invent a `playback_started`.
     pub fn clear(&mut self, now: Duration, playing: bool) {
         match self.state {
             State::Recording { .. } => {
@@ -796,10 +816,13 @@ impl Recorder {
                     ..Self::default()
                 };
                 self.open_segment(now, SessionKind::Cleared);
-                self.push(now, EventKind::RecordingCleared, None, None, None);
-                if playing {
-                    self.push(now, EventKind::PlaybackStarted, None, None, None);
-                }
+                self.push(
+                    now,
+                    EventKind::RecordingCleared,
+                    None,
+                    None,
+                    playing.then(|| PLAYING_CONTEXT.to_string()),
+                );
             }
             State::Stopped { .. } | State::Off => *self = Self::default(),
         }
@@ -836,18 +859,25 @@ impl Recorder {
         (self.motion_since.is_some() || gap <= REST_AFTER).then_some(gap)
     }
 
-    /// The window painted a frame (one `Window::draw`).
+    /// The window painted a frame (one `Window::draw`). The adapter never calls this for the
+    /// diagnostic's own redraw.
+    ///
+    /// The interval to the previous paint follows the same rest/stall rule as the monitor's:
+    /// while a playback clock runs the window is expected to keep painting, so a long gap is a
+    /// **real** stall and is recorded whatever its length (the maximum and the events that
+    /// happened during it explain it); at rest, a gap longer than [`REST_AFTER`] is a pause in
+    /// the activity and records nothing. Nothing is measured against an anchor that does not
+    /// exist: the first paint of a recording, of a cleared history or of a new segment only
+    /// *becomes* the anchor. A playback that starts after a long idle measures from its start.
     pub fn ui_painted(&mut self, at: Duration) {
         if !self.live() {
             return;
         }
         self.sample(Metric::UiFrames, at, 1.0);
-        // The UI has no "expected motion": only a gap inside one rest threshold is an interval.
-        if let Some(last) = self.ui_last
-            && at >= last
-            && at - last <= REST_AFTER
+        if self.ui_last.is_some()
+            && let Some(gap) = self.interval(self.ui_last, at)
         {
-            self.sample(Metric::UiIntervalMs, at, ms(at - last));
+            self.sample(Metric::UiIntervalMs, at, ms(gap));
         }
         self.ui_last = Some(at);
     }
@@ -942,11 +972,14 @@ impl Recorder {
     }
 
     /// The graphics context was lost (a frame failed with `context_lost`, or the page said so).
-    /// One event per loss: the page's notice and the failed frame it caused are the same loss.
+    /// One event per loss: the page's notice and the failed frame it caused are the same loss,
+    /// whichever arrives first. `request` is the request that was in flight, when there was one;
+    /// a loss while idle has none.
     pub fn context_lost(&mut self, at: Duration, request: Option<u64>) {
-        if !self.live() || self.context_is_lost() {
+        if !self.live() || self.context_down {
             return;
         }
+        self.context_down = true;
         self.push(
             at,
             EventKind::ContextLost,
@@ -957,25 +990,29 @@ impl Recorder {
     }
 
     /// The graphics context came back. Nothing is carried over: the picture it lost is not
-    /// reported as shown, and the next accepted picture is a new measurement.
+    /// reported as shown, and the next accepted picture is a new measurement. A restore is
+    /// recorded even when the loss predates the recording (it is observed); a second notice
+    /// without a new loss in between is not a second restore.
     pub fn context_restored(&mut self, at: Duration) {
         if !self.live() {
             return;
         }
+        let was_down = std::mem::replace(&mut self.context_down, false);
+        let already_restored = !was_down
+            && self
+                .events
+                .iter()
+                .rev()
+                .find_map(|event| match event.kind {
+                    EventKind::ContextLost => Some(false),
+                    EventKind::ContextRestored => Some(true),
+                    _ => None,
+                })
+                .unwrap_or(false);
+        if already_restored {
+            return;
+        }
         self.push(at, EventKind::ContextRestored, None, None, None);
-    }
-
-    /// Whether the newest context event still in the window is a loss without a restore.
-    fn context_is_lost(&self) -> bool {
-        self.events
-            .iter()
-            .rev()
-            .find_map(|event| match event.kind {
-                EventKind::ContextLost => Some(true),
-                EventKind::ContextRestored => Some(false),
-                _ => None,
-            })
-            .unwrap_or(false)
     }
 
     /// Whether the export jobs should be looked at now (at most once per second).
@@ -1035,11 +1072,15 @@ impl Recorder {
         if !self.live() {
             return;
         }
-        // Without an anchor of this run (cleared or re-segmented mid-run) the reading only
-        // becomes the baseline: a total from before is not a loss that happened now.
+        // Without an anchor of this run (the recording began mid-run, or it was cleared or
+        // re-segmented mid-run) the reading only becomes the baseline: a total from before is
+        // not a loss that happened now, and no sample (not even a zero) is invented for it.
         let before = match self.loss {
             Some((known, total)) if known == run => total,
-            _ => cumulative,
+            _ => {
+                self.loss = Some((run, cumulative));
+                return;
+            }
         };
         self.loss = Some((run, cumulative));
         self.sample(
@@ -1091,7 +1132,13 @@ impl Recorder {
         if !self.live() {
             return;
         }
-        self.push(at, kind, None, None, detail.and_then(code));
+        match kind {
+            // The context events have state (one per loss, one per restore): they go through
+            // the methods that keep it, never straight into the ring.
+            EventKind::ContextLost => self.context_lost(at, None),
+            EventKind::ContextRestored => self.context_restored(at),
+            _ => self.push(at, kind, None, None, detail.and_then(code)),
+        }
     }
 
     /// Whether a gauge last tried at `last` is due again.
@@ -1133,6 +1180,10 @@ impl Recorder {
         self.loss = None;
         self.pending.clear();
         self.format = None;
+        if kind == SessionKind::ViewportReloaded {
+            // A new page has a context of its own: whatever state the old one was in is gone.
+            self.context_down = false;
+        }
         let event = match kind {
             SessionKind::ProjectReplaced => EventKind::ProjectReplaced,
             SessionKind::SceneChanged => EventKind::SceneChanged,
@@ -1289,7 +1340,22 @@ impl Recorder {
         Ok(snapshot.to_document())
     }
 
-    /// Writes [`Self::export_document`] to `path`, atomically. Nothing but the file changes.
+    /// Takes the exportable document of the view **now** and pairs it with `path`, without
+    /// touching the disk: an adapter writes it later (off its UI thread) with
+    /// [`PreparedExport::write`], and what lands in the file is this coherent copy, whatever the
+    /// recorder does meanwhile. Same refusals and precedence as [`Self::export`] for what needs
+    /// no disk (`perf_history_empty`, then a missing or relative path); the rest is the write's.
+    pub fn prepare_export(
+        &self,
+        now: Duration,
+        path: std::path::PathBuf,
+    ) -> Result<PreparedExport, HistoryError> {
+        PreparedExport::new(self.export_document(now)?, path)
+    }
+
+    /// Writes [`Self::export_document`] to `path` without replacing anything, on the calling
+    /// thread (the library and tests; a window uses [`Self::prepare_export`] instead). Nothing
+    /// but the new file changes.
     pub fn export(
         &self,
         now: Duration,
@@ -1354,8 +1420,11 @@ impl Recorder {
             }
             HistoryCommand::Clear => {
                 let playing = self.motion_since.is_some();
+                // An explicit clear forgets the frozen snapshot too: say so, so a caller never
+                // finds out by reading a freeze that is no longer there.
+                let released_freeze = self.frozen.is_some();
                 self.clear(now, playing);
-                json!({ "action": "clear", "changed": true })
+                json!({ "action": "clear", "changed": true, "released_freeze": released_freeze })
             }
             HistoryCommand::Snapshot => {
                 let document = self.export_document(now)?;

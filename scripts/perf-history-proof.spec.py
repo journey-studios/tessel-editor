@@ -46,5 +46,84 @@ class SummaryTests(unittest.TestCase):
         self.assertIsNone(out["visible"]["ticks"])
 
 
+class CpuRateTests(unittest.TestCase):
+    def test_the_rate_divides_by_the_measured_wall_time_not_a_constant(self):
+        self.assertEqual(proof.cpu_rate(10.0, 13.0, 10.0), 0.3)
+        # The same CPU over a longer wall time is a lower rate: nothing is added to the divisor.
+        self.assertEqual(proof.cpu_rate(10.0, 13.0, 12.5), 0.24)
+
+    def test_an_unknown_reading_a_bad_wall_time_or_a_restarted_process_is_none_never_zero(self):
+        for args in ((None, 1.0, 5.0), (1.0, None, 5.0), (1.0, 2.0, None), (1.0, 2.0, 0), (1.0, 2.0, -3.0), (5.0, 2.0, 5.0)):
+            self.assertIsNone(proof.cpu_rate(*args), args)
+
+    def test_no_cpu_used_is_a_real_zero(self):
+        self.assertEqual(proof.cpu_rate(4.0, 4.0, 8.0), 0.0)
+
+
+class BufferMinutesTests(unittest.TestCase):
+    def test_a_positive_finite_number_or_zero_is_accepted(self):
+        self.assertEqual(proof.parse_buffer_minutes("3"), 3.0)
+        self.assertEqual(proof.parse_buffer_minutes("0.5"), 0.5)
+        self.assertEqual(proof.parse_buffer_minutes("0"), 0.0)
+
+    def test_anything_else_is_refused_before_an_editor_starts(self):
+        for text in ("abc", "", "-1", "nan", "inf", "-inf", None):
+            with self.assertRaises(ValueError, msg=repr(text)):
+                proof.parse_buffer_minutes(text)
+
+    def test_the_reading_step_is_bounded_and_a_short_run_is_not_stretched(self):
+        self.assertEqual(proof.buffer_sample_every(3), 20.0)
+        self.assertEqual(proof.buffer_sample_every(1), 10.0)
+        self.assertEqual(proof.buffer_sample_every(0.01), 1.0)
+        self.assertEqual(proof.buffer_sample_every(60), 20.0)
+
+
+class BufferGrowthTests(unittest.TestCase):
+    def samples(self, readings):
+        return [{"rss_mib": value} for value in readings]
+
+    def test_growth_is_judged_with_enough_known_readings(self):
+        out = proof.buffer_growth(self.samples([100.0, 130.0, 120.0, 118.0, 119.0, 118.5]))
+        self.assertTrue(out["judged"])
+        self.assertEqual(out["growth_mib"], 18.5)
+        self.assertEqual(out["growth_after_warmup_mib"], -1.5)
+
+    def test_too_few_readings_judge_nothing_instead_of_passing_vacuously(self):
+        out = proof.buffer_growth(self.samples([100.0, 101.0]))
+        self.assertEqual(out, {"growth_mib": None, "growth_after_warmup_mib": None, "judged": False})
+
+    def test_a_missing_reading_is_unknown_not_zero(self):
+        # A zero in place of the unknown reading would read as a huge fake growth (or a fake shrink).
+        out = proof.buffer_growth(self.samples([100.0, None, 101.0, 102.0, 103.0, 104.0]))
+        self.assertFalse(out["judged"])
+        self.assertIsNone(out["growth_mib"])
+
+
+class SourceStateTests(unittest.TestCase):
+    def test_a_binary_older_than_a_source_is_stale_and_unknown_is_unknown(self):
+        self.assertTrue(proof.binary_is_stale(100.0, 200.0))
+        self.assertFalse(proof.binary_is_stale(200.0, 100.0))
+        self.assertFalse(proof.binary_is_stale(200.0, 200.0))
+        self.assertIsNone(proof.binary_is_stale(None, 100.0))
+        self.assertIsNone(proof.binary_is_stale(100.0, None))
+
+
+class ExportOutcomeTests(unittest.TestCase):
+    def test_the_command_refusing_is_told_apart_from_the_write_failing(self):
+        refused = proof.export_outcome({"error": {"code": "perf_history_export_relative"}}, {"state": "idle"})
+        self.assertEqual(refused, ("refused", "perf_history_export_relative"))
+        failed = proof.export_outcome({"ok": True}, {"state": "failed", "error": {"code": "perf_history_export_exists"}})
+        self.assertEqual(failed, ("failed", "perf_history_export_exists"))
+        self.assertEqual(proof.export_code(refused), "perf_history_export_relative")
+        self.assertEqual(proof.export_code(failed), "perf_history_export_exists")
+
+    def test_done_pending_and_unknown_carry_no_error_code(self):
+        self.assertEqual(proof.export_outcome({"ok": True}, {"state": "done", "bytes": 5}), ("done", None))
+        self.assertEqual(proof.export_outcome({"ok": True}, {"state": "writing", "id": 2}), ("pending", None))
+        self.assertEqual(proof.export_outcome({"ok": True}, None), ("unknown", None))
+        for outcome in (("done", None), ("pending", None), ("unknown", None)):
+            self.assertIsNone(proof.export_code(outcome))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -58,6 +58,19 @@ fn node(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> Value {
     view.read_with(cx, |view, cx| view.tree_node(NODE, cx).unwrap())
 }
 
+/// How the last export ended (`get perf.history` -> `export`), once its background write ran.
+fn export_state(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> Value {
+    cx.run_until_parked();
+    node(view, cx)["state"]["export"].clone()
+}
+
+/// The code of the typed error the last export ended with; panics if it did not fail.
+fn export_error(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> String {
+    let state = export_state(view, cx);
+    assert_eq!(state["state"], "failed", "{state}");
+    state["error"]["code"].as_str().unwrap().to_string()
+}
+
 fn frames(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> u64 {
     view.read_with(cx, |view, _| {
         let now = view.perf.elapsed();
@@ -340,8 +353,17 @@ fn the_export_is_a_local_versioned_json_without_paths_and_its_errors_are_typed(
     for _ in 0..3 {
         paint(cx);
     }
-    let done = run(&view, cx, HistoryCommand::Export(target.clone())).unwrap();
+    // The command answers at once that it started: the disk work is off the window's thread.
+    let started = run(&view, cx, HistoryCommand::Export(target.clone())).unwrap();
+    assert_eq!(started["state"], "writing", "{started}");
+    assert_eq!(started["export_id"], 1);
+    let done = export_state(&view, cx);
+    assert_eq!(done["state"], "done", "{done}");
     assert!(done["bytes"].as_u64().unwrap() > 0, "{done}");
+    assert_eq!(
+        view.read_with(cx, |view, _| view.activity.as_ref().map(|a| a.text.clone())),
+        Some("Histórico de desempenho: export concluído".to_string())
+    );
     let text = std::fs::read_to_string(&target).unwrap();
     let document: Value = serde_json::from_str(&text).unwrap();
     assert_eq!(document["schema"], "tessel.perf-history");
@@ -350,16 +372,87 @@ fn the_export_is_a_local_versioned_json_without_paths_and_its_errors_are_typed(
         !text.contains(&dir.to_string_lossy().to_string()),
         "the export never carries a local path"
     );
+    assert!(
+        !done
+            .to_string()
+            .contains(&dir.to_string_lossy().to_string()),
+        "nor does the observable state: {done}"
+    );
 
-    let directory = run(&view, cx, HistoryCommand::Export(dir.clone())).unwrap_err();
-    assert_eq!(directory.code, "perf_history_export_is_directory");
-    let parent = run(
+    // What the disk decides is the typed end of the write, not a refusal of the command.
+    run(&view, cx, HistoryCommand::Export(dir.clone())).unwrap();
+    assert_eq!(export_error(&view, cx), "perf_history_export_is_directory");
+    run(
         &view,
         cx,
         HistoryCommand::Export(dir.join("missing").join("history.json")),
     )
-    .unwrap_err();
-    assert_eq!(parent.code, "perf_history_export_parent_missing");
+    .unwrap();
+    assert_eq!(
+        export_error(&view, cx),
+        "perf_history_export_parent_missing"
+    );
+    assert_eq!(
+        view.read_with(cx, |view, _| view.activity.as_ref().map(|a| a.error)),
+        Some(true),
+        "the status line says the export did not happen"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[gpui_kit::test]
+fn the_export_is_written_off_the_window_thread_from_a_snapshot_taken_at_the_call(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = fixture(cx);
+    let dir = std::env::temp_dir().join(format!("tessel-history-async-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let (first, second) = (dir.join("first.json"), dir.join("second.json"));
+    run(&view, cx, HistoryCommand::Record(true)).unwrap();
+    for _ in 0..3 {
+        paint(cx);
+    }
+    // Everything below happens before the executor gets a turn: the write has not run yet, so
+    // what the file holds can only be what the call took.
+    let (started, refused, cleared) = view.update_in(cx, |view, window, cx| {
+        let started = view.execute_perf_history(
+            HistoryCommand::Export(first.clone()),
+            Source::Cli,
+            window,
+            cx,
+        );
+        assert!(!first.exists(), "the window's thread wrote nothing");
+        let refused = view.execute_perf_history(
+            HistoryCommand::Export(second.clone()),
+            Source::Cli,
+            window,
+            cx,
+        );
+        let cleared = view.execute_perf_history(HistoryCommand::Clear, Source::Cli, window, cx);
+        (started, refused, cleared)
+    });
+    assert_eq!(started.unwrap()["state"], "writing");
+    assert_eq!(
+        refused.unwrap_err().code,
+        "perf_history_export_in_progress",
+        "one export at a time"
+    );
+    cleared.unwrap();
+    assert_eq!(export_state(&view, cx)["state"], "done");
+    assert!(!second.exists(), "the refused export wrote nothing");
+    let document: Value = serde_json::from_str(&std::fs::read_to_string(&first).unwrap()).unwrap();
+    assert!(
+        document["summary"]["ui_frames"]["count"].as_u64().unwrap() >= 3,
+        "the snapshot of the call, not the history cleared right after it: {}",
+        document["summary"]["ui_frames"]
+    );
+    assert_eq!(frames(&view, cx), 0, "the clear did happen");
+    // The next export starts fresh once the first ended.
+    run(&view, cx, HistoryCommand::Record(true)).unwrap();
+    let again = run(&view, cx, HistoryCommand::Export(second.clone())).unwrap();
+    assert_eq!(again["export_id"], 2);
+    assert_eq!(export_state(&view, cx)["state"], "done");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -638,15 +731,17 @@ fn the_export_goes_only_where_the_user_said_and_refuses_what_it_would_have_to_gu
     )
     .unwrap();
     assert!(!target.exists(), "a destination is not an export");
-    let done = run(&view, cx, HistoryCommand::ExportToDestination).unwrap();
+    let started = run(&view, cx, HistoryCommand::ExportToDestination).unwrap();
+    assert_eq!(started["state"], "writing", "{started}");
+    let done = export_state(&view, cx);
     assert!(done["bytes"].as_u64().unwrap() > 0, "{done}");
     let written = std::fs::read_to_string(&target).unwrap();
     let document: Value = serde_json::from_str(&written).unwrap();
     assert_eq!(document["schema"], "tessel.perf-history");
 
     // The same name again is an existing file: refused, the first export is untouched.
-    let again = run(&view, cx, HistoryCommand::ExportToDestination).unwrap_err();
-    assert_eq!(again.code, "perf_history_export_exists");
+    run(&view, cx, HistoryCommand::ExportToDestination).unwrap();
+    assert_eq!(export_error(&view, cx), "perf_history_export_exists");
     assert_eq!(std::fs::read_to_string(&target).unwrap(), written);
 
     // A file that is not ours (a project) is never replaced either.
@@ -658,8 +753,8 @@ fn the_export_goes_only_where_the_user_said_and_refuses_what_it_would_have_to_gu
         HistoryCommand::Destination(project.to_string_lossy().into_owned()),
     )
     .unwrap();
-    let refused = run(&view, cx, HistoryCommand::ExportToDestination).unwrap_err();
-    assert_eq!(refused.code, "perf_history_export_exists");
+    run(&view, cx, HistoryCommand::ExportToDestination).unwrap();
+    assert_eq!(export_error(&view, cx), "perf_history_export_exists");
     assert_eq!(std::fs::read_to_string(&project).unwrap(), "{}");
     let names = std::fs::read_dir(&dir).unwrap().count();
     assert_eq!(names, 2, "no temporary and nothing else was created");

@@ -52,6 +52,56 @@ pub(super) struct HistoryState {
     /// The destination of the JSON export as typed or picked (a path entry, nothing more). Empty
     /// until the user gives one: nothing is exported to a place nobody chose.
     destination: String,
+    /// The last export and how it ended. The file is written off the UI thread, so the command
+    /// only says it started; this is where the end is observable (`get perf.history` and the panel).
+    export: ExportStatus,
+    /// Exports started so far: the id of the next one.
+    exports_started: u64,
+}
+
+/// Where the export stands. Never carries the destination: the path lives only in the field.
+#[derive(Clone, Default, PartialEq)]
+pub(super) enum ExportStatus {
+    #[default]
+    Idle,
+    /// The document was taken (a coherent copy) and the file is being written in the background.
+    Writing {
+        id: u64,
+        source: Source,
+    },
+    Done {
+        id: u64,
+        bytes: usize,
+    },
+    Failed {
+        id: u64,
+        code: &'static str,
+        message: String,
+        details: Option<Value>,
+    },
+}
+
+impl ExportStatus {
+    fn to_json(&self) -> Value {
+        match self {
+            Self::Idle => json!({ "state": "idle" }),
+            Self::Writing { id, .. } => json!({ "state": "writing", "id": id }),
+            Self::Done { id, bytes } => json!({ "state": "done", "id": id, "bytes": bytes }),
+            Self::Failed {
+                id,
+                code,
+                message,
+                details,
+            } => json!({
+                "state": "failed", "id": id,
+                "error": { "code": code, "message": message, "details": details },
+            }),
+        }
+    }
+
+    fn writing(&self) -> bool {
+        matches!(self, Self::Writing { .. })
+    }
 }
 
 impl Workstation {
@@ -89,14 +139,13 @@ impl Workstation {
             HistoryCommand::Destination(text) => {
                 Ok(self.history_destination(text, !matches!(&source, Source::Gesture), window, cx))
             }
+            // Both exports take the document now and write it in the background: the same path
+            // for `export_to <path>`, the button and `invoke export`; only where the path comes from
+            // differs.
+            HistoryCommand::Export(path) => self.history_export(path.clone(), now, source, cx),
             HistoryCommand::ExportToDestination => {
-                // The same write as `export_to <path>`: only the path comes from the field.
                 let path = std::path::PathBuf::from(self.perf.history.destination.trim());
-                self.perf
-                    .meter()
-                    .borrow_mut()
-                    .recorder_mut()
-                    .apply(&HistoryCommand::Export(path), now)
+                self.history_export(path, now, source, cx)
             }
             other => self
                 .perf
@@ -108,10 +157,15 @@ impl Workstation {
         self.activity = Some(match &result {
             Ok(outcome) => Activity {
                 source,
-                text: format!(
-                    "Histórico de desempenho: {}",
-                    outcome["action"].as_str().unwrap_or("comando")
-                ),
+                text: if outcome["state"] == "writing" {
+                    // Not "exported": the write has not ended. The end is reported when it does.
+                    "Histórico de desempenho: exportando…".to_string()
+                } else {
+                    format!(
+                        "Histórico de desempenho: {}",
+                        outcome["action"].as_str().unwrap_or("comando")
+                    )
+                },
                 error: false,
             },
             Err(error) => Activity {
@@ -129,6 +183,104 @@ impl Workstation {
         }
         cx.notify();
         result
+    }
+
+    /// Takes the document **now** (a coherent copy of the view, frozen or moving) and writes it on
+    /// the background executor: the UI thread does no disk work, so a slow volume cannot freeze
+    /// the window. What needs no disk is refused at once (nothing recorded, no or a relative
+    /// path, an export already writing); everything about the file (exists, folder missing,
+    /// temporary busy, a refusing volume) is the typed outcome of the write, observable in
+    /// `get perf.history` -> `export`. One export at a time.
+    fn history_export(
+        &mut self,
+        path: std::path::PathBuf,
+        now: Duration,
+        source: Source,
+        cx: &mut Context<Self>,
+    ) -> Result<Value, CommandError> {
+        if self.perf.history.export.writing() {
+            return Err(CommandError::new(
+                "perf_history_export_in_progress",
+                "An export is still being written; wait for it to end (see `get perf.history`)",
+            )
+            .target(perf_history::TARGET));
+        }
+        let prepared = self
+            .perf
+            .meter()
+            .borrow()
+            .recorder()
+            .prepare_export(now, path)?;
+        self.perf.history.exports_started += 1;
+        let id = self.perf.history.exports_started;
+        self.perf.history.export = ExportStatus::Writing { id, source };
+        let (frozen, range) = (prepared.frozen(), prepared.range());
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move { prepared.write() })
+                .await;
+            let _ = this.update(cx, |this, cx| this.history_export_ended(id, result, cx));
+        })
+        .detach();
+        Ok(json!({
+            "target": perf_history::TARGET, "action": "export", "changed": false,
+            "state": "writing", "export_id": id, "frozen": frozen, "range": range,
+        }))
+    }
+
+    /// The background write ended: the outcome becomes observable and the status line says it.
+    fn history_export_ended(
+        &mut self,
+        id: u64,
+        result: Result<usize, perf_history::HistoryError>,
+        cx: &mut Context<Self>,
+    ) {
+        let ExportStatus::Writing {
+            id: waiting,
+            source,
+        } = self.perf.history.export
+        else {
+            return;
+        };
+        if waiting != id {
+            return;
+        }
+        let (status, activity) = match result {
+            Ok(bytes) => (
+                ExportStatus::Done { id, bytes },
+                Activity {
+                    source,
+                    text: "Histórico de desempenho: export concluído".to_string(),
+                    error: false,
+                },
+            ),
+            Err(error) => {
+                let error = CommandError::from(error);
+                let text = error.to_string();
+                (
+                    ExportStatus::Failed {
+                        id,
+                        code: error.code,
+                        message: error.message,
+                        details: error.details.map(|details| *details),
+                    },
+                    Activity {
+                        source,
+                        text,
+                        error: true,
+                    },
+                )
+            }
+        };
+        self.perf.history.export = status;
+        self.activity = Some(activity);
+        if let Some(view) = self.perf.history.view.clone() {
+            cx.defer(move |cx| {
+                view.update(cx, |_, cx| cx.notify());
+            });
+        }
+        cx.notify();
     }
 
     fn history_record(&mut self, on: bool, now: Duration) -> Value {
@@ -274,6 +426,7 @@ impl Workstation {
         node["state"]["visible"] = json!(self.workflow.history_open);
         node["state"]["card_visible"] = json!(meter.card_visible());
         node["state"]["export_destination"] = json!(self.perf.history.destination);
+        node["state"]["export"] = self.perf.history.export.to_json();
         node["state"]["refresh_hz"] = json!(1000 / REFRESH_EVERY.as_millis().max(1));
         node["label"] = json!("Histórico de desempenho (60 s)");
     }
@@ -410,17 +563,10 @@ impl HistoryView {
     }
 
     /// The export button: writes to the destination the user gave, through the same command as
-    /// `invoke perf.history export`. A refusal (no destination, a relative path, an existing file)
-    /// is shown in words and nothing is written.
+    /// `invoke perf.history export`. A refusal that needs no disk (no destination, a relative
+    /// path) is shown in words at once; the write itself runs in the background and its end
+    /// (new file, or the typed reason it was refused) shows in the panel when it arrives.
     fn export(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let destination = self
-            .workstation
-            .read(cx)
-            .perf
-            .history
-            .destination
-            .trim()
-            .to_string();
         let result = self.workstation.update(cx, |workstation, cx| {
             workstation.execute_perf_history(
                 HistoryCommand::ExportToDestination,
@@ -429,16 +575,10 @@ impl HistoryView {
                 cx,
             )
         });
-        self.note = Some(match result {
-            Ok(done) => (
-                format!(
-                    "Exportado: {destination} ({} bytes). Arquivo novo: nada foi substituído.",
-                    done["bytes"].as_u64().unwrap_or(0)
-                ),
-                false,
-            ),
-            Err(error) => (error.to_string(), true),
-        });
+        self.note = match result {
+            Ok(_) => None,
+            Err(error) => Some((error.to_string(), true)),
+        };
         cx.notify();
     }
 
@@ -505,6 +645,29 @@ struct Reading {
     selected_bucket: Option<usize>,
     monitor_on_screen: Option<bool>,
     destination: String,
+    /// The last export, in words: `(text, is_error)`; `writing` disables the button.
+    export: Option<(String, bool)>,
+    export_writing: bool,
+}
+
+/// The last export in words for the panel. The destination is the user's own field, shown back to
+/// them; the status JSON never carries it.
+fn export_note(status: &ExportStatus, destination: &str) -> Option<(String, bool)> {
+    match status {
+        ExportStatus::Idle => None,
+        ExportStatus::Writing { .. } => {
+            Some(("Exportando… (gravando em segundo plano)".into(), false))
+        }
+        ExportStatus::Done { bytes, .. } => Some((
+            format!(
+                "Exportado: {destination} ({bytes} bytes). Arquivo novo: nada foi substituído."
+            ),
+            false,
+        )),
+        ExportStatus::Failed { code, message, .. } => {
+            Some((format!("Exportação recusada ({code}): {message}"), true))
+        }
+    }
 }
 
 impl Render for HistoryView {
@@ -529,6 +692,11 @@ impl Render for HistoryView {
                 selected_bucket,
                 monitor_on_screen: recorder.context().and_then(|c| c.monitor_on_screen),
                 destination: workstation.perf.history.destination.clone(),
+                export: export_note(
+                    &workstation.perf.history.export,
+                    workstation.perf.history.destination.trim(),
+                ),
+                export_writing: workstation.perf.history.export.writing(),
                 snapshot,
             }
         };
@@ -628,8 +796,14 @@ impl Render for HistoryView {
                     .small()
                     .label("Exportar JSON")
                     .accessibility_label("Exportar o histórico como JSON local")
-                    .disabled(!reading.has_data || reading.destination.trim().is_empty())
-                    .tooltip(if !reading.has_data {
+                    .disabled(
+                        !reading.has_data
+                            || reading.destination.trim().is_empty()
+                            || reading.export_writing,
+                    )
+                    .tooltip(if reading.export_writing {
+                        "Indisponível: uma exportação ainda está sendo gravada"
+                    } else if !reading.has_data {
                         "Indisponível: não há histórico para exportar"
                     } else if reading.destination.trim().is_empty() {
                         "Indisponível: informe o destino do arquivo ao lado"
@@ -684,12 +858,18 @@ impl Render for HistoryView {
             .snapshot
             .as_ref()
             .map(|snapshot| footer(snapshot, reading.monitor_on_screen, &t, mono.clone()));
-        let note = self.note.as_ref().map(|(text, error)| {
-            div()
-                .text_size(px(11.))
-                .text_color(if *error { t.bad } else { t.dim })
-                .child(text.clone())
-        });
+        // A refusal of the last button wins; otherwise the last export's outcome, which arrives
+        // from the background write.
+        let note = self
+            .note
+            .as_ref()
+            .or(reading.export.as_ref())
+            .map(|(text, error)| {
+                div()
+                    .text_size(px(11.))
+                    .text_color(if *error { t.bad } else { t.dim })
+                    .child(text.clone())
+            });
 
         v_flex()
             .gap_2()

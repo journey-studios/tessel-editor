@@ -42,6 +42,37 @@ antiga ou de pedido superado é descartada e contada; trocar de projeto ou recar
 **abre um segmento** (nenhum intervalo, delta ou latência cruza a borda); latência e `render_ms`
 são métricas separadas (a primeira inclui fila e readback do runtime, a segunda é só CPU).
 
+**Intervalos acima de 1 s com a reprodução andando** (BL145.3): `REST_AFTER` é a fronteira entre
+"parado" e "travou" **só quando há movimento esperado** (o relógio de reprodução andando, ou uma
+gravação que começou durante o play). Com movimento esperado, um intervalo de pintura da UI de
+2 s é uma amostra de `ui_interval_ms` (o pior intervalo e a contagem a guardam como o monitor
+guarda os dele); sem movimento (ocioso, primeiro quadro, painel reaberto, nova sessão, reset) o
+mesmo intervalo **não** é amostra e não se inventa nenhuma. Repinturas do próprio diagnóstico
+(`own_redraw`) nunca contam como quadro. Mín/máx/contagens e os eventos correlacionados
+(`inspect` os une à maior espera) são preservados; nada é preenchido.
+
+**Contexto gráfico** (BL145.3): perda e restauração são eventos **observados**, sem pedido de
+render e sem timer de pintura. Uma perda tem um evento só: o aviso da página, o quadro que falhou
+e o `needs_redraw` são a mesma perda, e o estado "contexto fora" é do recorder (não do anel de
+eventos de 60 s: uma perda mais longa que a janela não gera um segundo evento). Em voo, o evento
+nomeia o id do pedido e o pendente é esquecido; ocioso, não tem id. Uma restauração sem perda no
+meio não é uma segunda restauração; uma restauração cuja perda é anterior à gravação é observada
+e entra. Recarregar o viewport zera o estado. O tempo é o relógio do host, nunca o do JS.
+
+**Contexto de reprodução ao iniciar** (BL145.4): iniciar (ou limpar) a gravação com o relógio de
+reprodução já andando **não** inventa um `playback_started`: o evento `recording_started` /
+`recording_cleared` carrega o detalhe `playing` (o contexto em que começou) e os quadros passam a
+ser esperados a partir daquele instante (uma trava é medida dali, nunca de um play que ninguém
+viu). Uma pausa seguinte é um evento real. Sem reprodução, o evento não tem detalhe.
+
+**`clear` x congelar** (BL145.4): congelar fixa **uma cópia imutável** (a gravação continua por
+baixo, `freeze` duas vezes mantém a primeira). `clear` é explícito do usuário e esquece **tudo**:
+anel, eventos, segmentos, âncoras e deltas, seleção **e o snapshot congelado** (o documento de um
+histórico limpo não sobrevive "congelado"). Uma gravação em curso continua do instante do `clear`
+com âncoras novas (nenhum delta contra um valor anterior) e um segmento `Cleared`; uma parada
+fica vazia. O resultado informa se um congelamento foi liberado (`released_freeze`). O projeto não
+é tocado, e uma exportação **já em escrita** não é afetada (ela tem a sua cópia).
+
 **Eventos**: gravação iniciada/parada/limpa, play, pausa/stop, seek (seeks a menos de 250 ms
 viram um evento com `repeat`), projeto trocado, **cena trocada**, viewport recarregado, mudança
 de formato do quadro, pedido que falhou, **carga de recurso** (cena dirigida), **exportação de
@@ -60,13 +91,34 @@ erro tipado `perf_history_outside_window`.
 gravação, janela, contexto não sensível, métricas com unidade/fonte/amostragem, séries por balde,
 resumo, eventos, segmentos, contadores e a lista de limites. O destino é **sempre escolhido
 pelo usuário** (nada é exportado sozinho, nem para o temp) e a escrita é **sem sobrescrever**:
-arquivo irmão temporário (`create_new`) + `sync` + `hard_link` ao destino, que falha se algo
-apareceu ali (em volume sem hard link, erro tipado; nenhum fallback que sobrescreva o destino); o temporário sempre é
-removido. Erros tipados: `perf_history_empty`, `perf_history_export_path_missing`,
+arquivo irmão temporário `.<nome>.tmp-<pid>` (`create_new`) + `sync` + `hard_link` ao destino, que
+falha se algo apareceu ali; **não há fallback por rename**, e só o temporário criado **pela própria
+chamada** é removido (um temporário alheio, um destino preexistente, um link pendente ou um destino
+que apareceu durante a escrita ficam intactos). **Restrição do hard link:** publicar sem
+substituir exige um volume com hard links; em outro (alguns de rede ou FAT/exFAT) a exportação é
+recusada com `perf_history_export_failed` (`stage: publish`) e nada é criado: escolha uma pasta de
+outro volume. Erros tipados: `perf_history_empty`, `perf_history_export_path_missing`,
 `perf_history_export_relative` (o caminho precisa ser absoluto), `perf_history_export_is_directory`,
-`perf_history_export_exists` (um arquivo, ou um link, já está lá: o projeto ou outro arquivo
-nunca é substituído), `perf_history_export_parent_missing`, `perf_history_export_failed` (só o
-tipo do erro do SO, nunca o caminho). Sem caminhos, textos do projeto, credenciais nem conteúdo
+`perf_history_export_exists` (o **destino** já existe: um arquivo, ou um link; nunca é
+substituído), `perf_history_export_temporary_busy` (o **temporário** `.<nome>.tmp-<pid>` já estava
+no caminho, de outro escritor ou de um processo de mesmo PID: o destino pode estar livre e o
+outro arquivo não foi tocado; é a colisão de temporário, distinta de um `exists` real),
+`perf_history_export_parent_missing`, `perf_history_export_failed` (`details`: só `io_kind` e
+`stage` em `serialize|create_temporary|write|sync|publish`, nunca o caminho).
+
+**Escrita fora da thread da janela** (BL145.3): a API do core segue síncrona
+(`Recorder::export`, usada por biblioteca e testes), e a janela usa `Recorder::prepare_export` — uma
+**cópia coerente** do documento tirada no instante do comando, congelada ou móvel — que o adaptador
+grava no executor de segundo plano (`PreparedExport::write`). Nenhum I/O de disco corre na thread da
+UI. O que não precisa de disco é recusado na hora, com a mesma precedência (`perf_history_empty`,
+caminho ausente, relativo) e `perf_history_export_in_progress` (uma exportação por vez); o que
+depende do arquivo é o **resultado tipado da escrita**, observável em
+`get perf.history` → `export`: `{state: idle}`, `{state: writing, id}`,
+`{state: done, id, bytes}` ou `{state: failed, id, error: {code, message, details}}`. O comando
+responde `state: writing` e `export_id`; o que cai no arquivo é a cópia do instante do comando, mesmo que a
+gravação continue, seja limpa ou parada enquanto escreve. Parar ou desligar a gravação não depende da
+exportação nem a cancela. A barra de atividade diz "exportando…" e depois "export concluído" ou o
+erro, e o botão fica desabilitado enquanto escreve. Sem caminhos, textos do projeto, credenciais nem conteúdo
 de mídia: o destino digitado vive só na janela (`get` o mostra) e não entra no documento.
 
 ## Superfícies
@@ -76,7 +128,7 @@ de mídia: o destino digitado vive só na janela (`get` o mostra) e não entra n
 | Biblioteca | Implementada | `Recorder`, `Snapshot`, `HistoryCommand`; 58 testes do módulo com relógio injetado (escritos; a execução do head atual está a validar) |
 | CLI headless | **N/A justificado** | a medição só existe com a janela e o monitor vivos; `tessel-headless` responde `desktop_required` ao alvo `perf.history` (teste em `crates/core/tests/headless.rs`). O core funciona com entradas sintéticas e sem GPUI/wry (`cargo tree`) |
 | UI da janela | Implementada | botão `toolbar-perf-history` no cabeçalho e painel (diálogo Root do Kit) com gráficos nativos |
-| CLI da janela | Implementada | `get perf.history`; `set perf.history recording\|visible\|frozen\|selected_ms\|export_to\|export_destination`; `invoke perf.history record_start\|record_stop\|show\|hide\|freeze\|resume\|clear\|snapshot\|clear_selection\|export` — mesmo handler do painel (`Workstation::execute_perf_history`). `export_to <caminho>` escreve direto; `export_destination <caminho>` só preenche o campo do painel (como digitar ou escolher) e `invoke export` é o botão |
+| CLI da janela | Implementada | `get perf.history`; `set perf.history recording\|visible\|frozen\|selected_ms\|export_to\|export_destination`; `invoke perf.history record_start\|record_stop\|show\|hide\|freeze\|resume\|clear\|snapshot\|clear_selection\|export` — mesmo handler do painel (`Workstation::execute_perf_history`). `export_to <caminho>` inicia a escrita em segundo plano (resposta `state: writing`; o fim, em `get perf.history` → `export`); `export_destination <caminho>` só preenche o campo do painel (como digitar ou escolher) e `invoke export` é o botão |
 
 ### O painel
 
@@ -117,7 +169,7 @@ amostras tardias, leituras de memória indisponíveis, eventos descartados).
 | **Troca de cena** dirigida | `scene_monitor_host.rs` (`render_scene`: o id da cena mudou ou entrou-se numa cena), `viewport_host.rs` (`leave_directed`, chamado por `execute` ao escolher um preview comum) | um segmento `scene_changed` e um evento por troca; um quadro novo da **mesma** cena não abre nada. O id é o número do segmento e o relógio do host: o nome da cena nunca entra |
 | Telemetria do monitor dirigido | `scene_monitor_host.rs` (`dispatch_directed`, `finish_directed`) | admissão do pedido (id do adaptador, ≥ 2⁴⁸, nunca colide com o da sequência), imagem aceita com `render_ms`/textura/contexto, falha com id. Latência = do pedido admitido (inclui esperar recursos) até o `frame.done` do mesmo id |
 | Carga de recurso (cena dirigida) | `scene_monitor_host.rs` (`prepare_directed`, `directed_asset_state`) | `resource_load_started` ao enviar cada `asset.load`; `resource_load_finished` com detalhe `ready` ou o código da falha; respostas obsoletas não contam |
-| Perda e restauração do contexto | `core::perf_history` (`request_failed` com `context_lost`), `viewport_host.rs` (`drain`: `needs_redraw`) | um `context_lost` por perda (o aviso da página e o quadro que falhou são a mesma perda) e um `context_restored`; não é também um `request_failed` |
+| Perda e restauração do contexto | `core::perf_history` (`request_failed` com `context_lost`), `viewport_host.rs` (`drain`: `needs_redraw`) | um `context_lost` por perda (o aviso da página e o quadro que falhou são a mesma perda) e um `context_restored`; não é também um `request_failed`. A cena dirigida ociosa (sem pedido em voo) também chega: `scene_monitor_host.rs` (`suspend_directed`) passa o id em voo, ou nenhum, e o aviso da página não precisa de pedido de render nem de timer |
 | Exportação de vídeo | `workstation/perf_meter.rs` (`observe_exports`, na sonda de pintura, ≤ 1 Hz) | transições de jobs `VideoExport` do registro: início, fim, falha (código), cancelamento. A primeira olhada da gravação é só a linha de base: o que já rodava não vira notícia; um job visto já terminado só tem o fim. O tempo é o da olhada (nunca anterior ao fato) |
 | Taxa-alvo do contexto | `viewport_host.rs` (`target_fps`: `request_preview`, `render_scene`) | `sequence_target_fps` = taxa da sequência (preview de sequência) ou o `fps` do bundle da cena; `null` para preview de fonte e antes do primeiro pedido. `ui_target_fps` continua `null`: não há alvo conhecido e nunca se assume 60 |
 | Seek intencional (`execute(SetPlayhead)`, `playback_seek`) | `workstation/mod.rs`, `playback.rs` | evento `seek`; os ticks do relógio de reprodução não são seek |
@@ -147,18 +199,15 @@ nos helpers de `viewport_host_tests.rs`.
   para olhar o monitor e o histórico ao mesmo tempo.
 - `ui_target_fps` é `null` (a interface não tem alvo conhecido; o histórico não assume 60).
 - Overhead: 3 rodadas de 8 s sob carga externa não provam custo zero (veja a seção de custo).
-- **Intervalo da interface acima de 1 s** (`REST_AFTER`) não vira amostra de `ui_interval_ms`, mesmo com a
-  reprodução andando: a interface não tem relógio de movimento esperado, então uma trava longa da própria
-  thread de UI só aparece como lacuna de `ui_frames` (e no intervalo do monitor, que sim conhece o movimento
-  esperado). Registrado, não corrigido (revisão independente do head `0e81076`).
-- **Cena dirigida ociosa**: o aviso `context.lost`/`context.restored` da página só vira evento pelo caminho da
-  sessão comum (quadro que falhou com `context_lost`, `needs_redraw`). Perda e restauração com a cena dirigida
-  sem quadro em voo não chegam ao histórico; nada foi provocado numa janela real.
-- **Exportação**: um temporário `.<nome>.tmp-<pid>` que já exista (outro escritor, ou sobra de um processo de
-  mesmo PID) recusa a exportação como `perf_history_export_exists` sem apagar o arquivo alheio; a mensagem
-  fala de "arquivo já existe" mesmo quando o destino está livre. A gravação e o `sync` rodam na thread da
-  UI (arquivo pequeno, mas um volume de rede pode bloquear). Volume sem hard link devolve o tipo do erro do
-  SO (`io_kind`), sem dizer que o motivo é o hard link.
+- **Intervalo da interface sem reprodução**: acima de 1 s sem movimento esperado é repouso, não amostra
+  (decisão documentada acima, não uma lacuna). Uma trava da thread de UI **fora** de um play só aparece
+  como lacuna de `ui_frames`.
+- **Exportação**: a escrita é em segundo plano a partir de uma cópia coerente (BL145.3); um volume de
+  rede lento deixa o estado em `writing` por mais tempo, sem travar a janela. O temporário de outro
+  escritor é `perf_history_export_temporary_busy`; hard link é requisito do volume (seção Export).
+- A prova na janela real de perda/restauração do contexto com a cena dirigida e da exportação em segundo
+  plano **não foi executada** para este head (disco); a cobertura é de teste GPUI com relógio controlado,
+  escrito e **não executado**.
 
 ## Evidências e status
 
@@ -178,12 +227,20 @@ ainda é "a validar" está na seção de evidências abaixo, atualizada com a en
   nem iniciar a gravação; snapshot congelado imutável com seleção dentro da janela; export local
   versionado sem caminhos e erros tipados; `set`/`invoke` no mesmo handler; seek como evento;
   refresh de no máximo 4 Hz que só existe enquanto a gravação anda e cujo redraw não conta; feeds
-  do host (latência, resposta obsoleta, segmentos) e host sem gravação.
+  do host (latência, resposta obsoleta, segmentos) e host sem gravação; BL145.3/.4: exportação
+  fora da thread da janela com cópia coerente e resultado em `get perf.history` → `export`;
+  perda/restauração do contexto da cena dirigida ociosa e em voo (um evento, sem pedido de render,
+  sem timer).
+- `core::perf_history` (BL145.3/.4/.5, relógio injetado): intervalo da UI > 1 s com reprodução x
+  ocioso/primeiro quadro/reexibição/reset de sessão; contexto perdido/restaurado sem duplicar e com
+  perda maior que a janela; gravar durante o play sem `playback_started` inventado (linha de base,
+  corrida, parar/iniciar); `clear` x congelar; preparar a exportação e escrever depois com cópia
+  imutável; colisão do temporário x `exists` real.
 - `scripts/perf-history-proof.py` (+ `.spec.py`): prova na janela real; veja abaixo.
 
-### Prova na janela real (executada na 1ª rodada; a 2ª está a validar)
+### Prova na janela real (histórico do commit `2560bbf`; NÃO é evidência do head atual)
 
-**Escopo desta seção:** o que abaixo foi executado vale para o código de `2560bbf` (1ª rodada).
+**Escopo desta seção:** o que abaixo foi executado vale **somente** para o código de `2560bbf` (1ª rodada); os heads `51811e0` e posteriores, e as correções de BL145.3/.4/.5, **não** foram provados na janela real.
 A 2ª rodada (destino de export explícito sem sobrescrita, `scene_changed`, telemetria do monitor
 dirigido, eventos de recurso/exportação/contexto, taxa-alvo do contexto) foi **escrita, mas ainda
 não compilada nem provada na janela real**: `perf-history-proof.py` já cobre o campo de destino
@@ -207,9 +264,9 @@ Capturas inspecionadas (painel congelado com seleção): tema
 (sem hex solto); as barras ocupam só o trecho já gravado e o resto da janela de 60 s fica vazio,
 não preenchido.
 
-### Custo e buffer (executado, com ressalva)
+### Custo e buffer (medidos em `2560bbf`, release; histórico, NÃO é o custo do head atual)
 
-Média de 3 rodadas de 8 s de playback, ordem dos braços alternada, build release, mesmo clipe de
+Números **de `2560bbf`**, anteriores à escrita assíncrona do export, ao tratamento de intervalo da UI e às correções do driver: não descrevem o head atual e não devem ser citados como tal. Média de 3 rodadas de 8 s de playback, ordem dos braços alternada, build release, mesmo clipe de
 1280x720, CPU do processo em s/s: **desligado 0,302**, **gravando com painel escondido 0,290**,
 **painel visível 0,353**. Os ticks, imagens aceitas e redraws foram equivalentes nos três braços
 (sem quadros pulados). Leitura honesta: gravar escondido ficou dentro do ruído do desligado; o
@@ -218,7 +275,7 @@ aceito enquanto o painel está aberto. **Ressalva:** a máquina estava com load 
 (builds e editores de outros agentes), então a diferença de ~17% do braço visível e a ausência de
 diferença do escondido não são medida de laboratório; 3 rodadas não dão intervalo de confiança.
 
-Buffer de 3 minutos com gravação contínua: 240 baldes (cheios) o tempo todo; eventos expiram por
+Também de `2560bbf`: buffer de 3 minutos com gravação contínua: 240 baldes (cheios) o tempo todo; eventos expiram por
 tempo (5 → 0 retidos) e `dropped` ficou 0; RSS 101 MiB aos 20 s e 92 MiB aos 180 s (variação
 −14,8 MiB após o aquecimento, sem crescimento). Não foi feita medição de 10+ minutos: **a
 validar**.
@@ -233,7 +290,7 @@ Executados com sucesso nesta entrega:
 - `./scripts/cargo test -p tessel-editor-core perf_history` (51 testes) e o conjunto do core
   (421 testes) no estado anterior aos últimos ajustes de layout do painel; os 11 testes de
   `workstation::perf_history_tests` passaram no mesmo ponto.
-- `python3 scripts/perf-history-proof.spec.py` (4 testes).
+- `python3 scripts/perf-history-proof.spec.py` (4 testes, então; hoje são 16, veja BL145.5 abaixo).
 - `cargo tree -p tessel-editor-core`: nenhuma ocorrência de `gpui` ou `wry`.
 
 **2ª rodada (sem build desde a 1ª):** todo o código e os testes novos foram só formatados
@@ -269,3 +326,34 @@ Permanecem a revisar: correlação de quadro antigo na troca de cena, FPS de ped
 observação após 64 exports, repetição de falhas inundando eventos, além dos limites BL145.4.
 Publicação do JSON exige hardlink suportado no destino e falha sem sobrescrever em outros
 sistemas; não reintroduzir fallback rename inseguro. Nenhum gate Rust ou janela reexecutado.
+
+### BL145.3 / BL145.4 / BL145.5 — correções das pendências da PR (estado deste head)
+
+Escritas (core, adaptadores, testes, driver e documentos) e **formatadas com `rustfmt`**; o único
+comando executado com resultado foi `python3 scripts/perf-history-proof.spec.py` (16 testes, OK).
+Nenhuma etapa que usa Cargo, build, runtime, navegador ou render foi executada por disco
+(~9,8 GiB livres, abaixo da reserva de 16 GiB e do piso de 12 GiB; sem limpeza e sem matar
+processo de terceiros). Estados, sem PASS:
+
+| Gate / prova | Estado |
+| --- | --- |
+| `cargo fmt --all -- --check` | **BLOCKED** (só `rustfmt --edition 2024` nos arquivos tocados) |
+| `./scripts/cargo check --workspace --locked` | **BLOCKED** (disco) |
+| `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings` | **BLOCKED** (disco) |
+| `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked` | **BLOCKED** (disco): nenhum teste novo foi rodado |
+| `./scripts/cargo build -p tessel-editor --locked` e release | **BLOCKED** (disco) |
+| `cargo tree -p tessel-editor-core` sem gpui/wry | **BLOCKED**; o core não ganhou dependência (nenhum `Cargo.toml` mudou) |
+| Prova na janela real (`scripts/ui`, sem coordenadas, trava de GPU) | **BLOCKED** (sem binário do head) |
+| Custo off / gravando escondido / visível e buffer | **BLOCKED**: sem medição do head; números antigos acima são de `2560bbf` |
+| `python3 scripts/perf-history-proof.spec.py` | **executado, OK** (16 testes) |
+
+O driver `perf-history-proof.py` foi corrigido (BL145.5) e o spec discrimina cada erro:
+`--buffer-minutes` é validado antes de iniciar o editor (número finito ≥ 0), o passo de leitura
+não alonga uma corrida curta, o crescimento de RSS só é julgado com ≥ 6 leituras **conhecidas**
+(leitura ausente é desconhecida, nunca zero, e poucas leituras não passam "vazias") e exige a
+reprodução ainda andando no fim; `cpu_s_per_s` divide pelo **tempo de parede medido** entre as
+duas leituras (antes: `--seconds + 2,5`, um palpite) e vale `None` com leitura desconhecida,
+tempo não positivo ou contador que recuou; o relatório nomeia o commit, se há fontes não
+commitadas e se o binário é mais antigo que as fontes (uma falha de check, a menos de
+`--allow-stale-binary`); o export é lido como assíncrono (`export_outcome`: recusado x escrita
+falhou x pronto x pendente, para separar `exists` de `temporary_busy`).

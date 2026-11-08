@@ -112,8 +112,11 @@ isolar o socket de outra instância do editor. `scripts/headless-flow-proof.py` 
 `./scripts/ui get perf.history` lê o estado do histórico de 60 s (`recording`, `visible`, `frozen`,
 `selected_ms`, `has_data` e, havendo dados, `view`: janela, picos por métrica, eventos recentes, segmentos,
 contadores e contexto). `./scripts/ui set perf.history recording true|false`, `visible true|false`,
-`frozen true|false`, `selected_ms <ms>`, `export_to <caminho absoluto>` (escreve um arquivo **novo**; um
-existente é recusado com `perf_history_export_exists`) e `export_destination <caminho>` (preenche o campo
+`frozen true|false`, `selected_ms <ms>`, `export_to <caminho absoluto>` (inicia a escrita de um arquivo **novo** em
+segundo plano e responde `state: writing` com `export_id`; o fim é lido em `get perf.history` →
+`export`: `idle|writing|done|failed` com o erro tipado; um destino existente falha como
+`perf_history_export_exists`, um temporário alheio como `perf_history_export_temporary_busy` e uma
+segunda exportação durante a escrita é recusada com `perf_history_export_in_progress`) e `export_destination <caminho>` (preenche o campo
 "Destino do JSON" do painel, sem escrever), e `./scripts/ui invoke perf.history
 record_start|record_stop|show|hide|freeze|resume|clear|snapshot|clear_selection|export` (o botão Exportar JSON: grava no
 destino do campo; vazio é `perf_history_export_path_missing`) chamam o mesmo handler dos

@@ -278,6 +278,11 @@ impl ViewportHost {
     /// reload every picture into other slots while the old ones stay in the page. The frame in flight
     /// is answered with `reason`; drawing waits for `context.restored`.
     fn suspend_directed(&mut self, reason: &BackendError) {
+        // The history hears about the loss from the page's notice itself, so a context that dies
+        // while the monitor is idle is recorded too (there is no frame to fail). When a frame was
+        // in flight the loss names it, and the notice that follows in the session is the same loss.
+        let in_flight = self.directed.active.as_ref().map(|active| active.id);
+        self.note_failed(in_flight, &reason.code);
         self.cancel_directed_active(reason);
         self.directed.shown = None;
         self.directed.key = None;

@@ -435,6 +435,17 @@ impl ViewportHost {
         }
     }
 
+    /// Request `id` (when there is one) ended in failure `code`: the history stops waiting for
+    /// its picture and records the failure (a `context_lost` becomes the context event, with the
+    /// request it interrupted). Nothing is built unless the history records.
+    pub(super) fn note_failed(&self, id: Option<u64>, code: &str) {
+        if let Some(link) = &self.meter {
+            link.meter
+                .borrow_mut()
+                .request_failed(link.clock.elapsed(), id, code);
+        }
+    }
+
     pub(super) fn note_session(&self, kind: SessionKind) {
         if let Some(link) = &self.meter {
             link.meter

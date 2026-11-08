@@ -7,18 +7,23 @@
 //! (`scripts/scene-lifecycle-proof.py`), which uses the real WKWebView and real `WEBGL_lose_context`.
 //! The helpers repeat the small ones of `viewport_host_tests.rs` because that module is private.
 
+use std::cell::RefCell;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use core::prelude::v1::test;
 use serde_json::{Value, json};
 use tessel_editor_core::headless::execute_ext;
+use tessel_editor_core::perf::Meter;
+use tessel_editor_core::perf_history::EventKind;
 use tessel_editor_core::scene_plan::Capability;
 use tessel_editor_core::{EditorState, state::ProjectSettings};
 use tessel_editor_media::host::MediaHost;
 use tessel_editor_media::scene_resources::SceneResourceSession;
 use tessel_editor_render::scene::SceneSlots;
 
+use super::super::super::perf_meter::PerfClock;
 use super::super::ViewportHost;
 
 fn page(tag: &str) -> PathBuf {
@@ -741,4 +746,116 @@ fn the_echo_tells_the_failure_of_a_replaced_load_from_the_failure_of_the_current
         waiter.try_recv().unwrap().unwrap_err().code,
         "asset_unreadable"
     );
+}
+
+// ---- the history hears the directed monitor's context (F049 / BL145.4)
+
+/// The history records into a meter on the wall clock; the host feeds it as the window does.
+fn recording(host: &mut ViewportHost) -> (Rc<RefCell<Meter>>, PerfClock) {
+    let meter = Rc::new(RefCell::new(Meter::default()));
+    let clock = PerfClock::wall();
+    meter
+        .borrow_mut()
+        .start_recording(clock.elapsed(), None, None);
+    host.attach_meter(meter.clone(), clock.clone());
+    (meter, clock)
+}
+
+/// The context events of the history, in order, with the request each one names.
+fn context_line(meter: &Rc<RefCell<Meter>>, clock: &PerfClock) -> Vec<(EventKind, Option<u64>)> {
+    meter
+        .borrow()
+        .recorder()
+        .snapshot(clock.elapsed())
+        .unwrap()
+        .events
+        .iter()
+        .filter(|event| {
+            matches!(
+                event.kind,
+                EventKind::ContextLost | EventKind::ContextRestored | EventKind::RequestFailed
+            )
+        })
+        .map(|event| (event.kind, event.request))
+        .collect()
+}
+
+#[test]
+fn a_context_lost_and_restored_while_the_directed_monitor_is_idle_reach_the_history_once() {
+    let (mut host, mut state, resources) = directed_host("history-idle");
+    let (meter, clock) = recording(&mut host);
+    host.render_scene(&mut state, &resources, &frame_request(0), false)
+        .unwrap();
+    let loads = sent(&mut host);
+    let first = frame_render(&confirm_loads(&mut host, &state, &loads));
+    complete(&mut host, &state, &first);
+    assert_eq!(host.report()["directed"]["active"], Value::Null, "idle");
+    assert!(context_line(&meter, &clock).is_empty());
+
+    // Nothing is in flight and nothing asks for a render: the page's notice is all there is.
+    from_page(&mut host, &state, json!({"type":"context.lost"}));
+    // The page repeating itself while the context is down is the same loss.
+    from_page(&mut host, &state, json!({"type":"context.lost"}));
+    from_page(&mut host, &state, json!({"type":"context.restored"}));
+    from_page(&mut host, &state, json!({"type":"context.restored"}));
+    assert_eq!(
+        context_line(&meter, &clock),
+        vec![
+            (EventKind::ContextLost, None),
+            (EventKind::ContextRestored, None)
+        ],
+        "one loss and one restore, none of them a failed request, neither naming a request"
+    );
+
+    // A second loss later is a second event.
+    from_page(&mut host, &state, json!({"type":"context.lost"}));
+    assert_eq!(context_line(&meter, &clock).len(), 3);
+}
+
+#[test]
+fn a_context_lost_with_a_directed_frame_in_flight_is_one_event_that_names_its_request() {
+    let (mut host, mut state, resources) = directed_host("history-in-flight");
+    let (meter, clock) = recording(&mut host);
+    let waiter = host
+        .render_scene(&mut state, &resources, &frame_request(20), true)
+        .unwrap()
+        .unwrap();
+    let loads = sent(&mut host);
+    let old = frame_render(&confirm_loads(&mut host, &state, &loads));
+    let in_flight = old["id"].as_u64().unwrap();
+
+    from_page(&mut host, &state, json!({"type":"context.lost"}));
+    assert_eq!(waiter.try_recv().unwrap().unwrap_err().code, "context_lost");
+    // The frame the page then reports as failed is the same loss, and an old news item.
+    from_page(
+        &mut host,
+        &state,
+        json!({"type":"frame.failed","id":old["id"],"revision":old["revision"],
+            "error":{"code":"context_lost","message":"lost"}}),
+    );
+    from_page(&mut host, &state, json!({"type":"context.restored"}));
+    assert_eq!(
+        context_line(&meter, &clock),
+        vec![
+            (EventKind::ContextLost, Some(in_flight)),
+            (EventKind::ContextRestored, None)
+        ]
+    );
+    assert_eq!(
+        meter.borrow().recorder().pending_requests(),
+        0,
+        "the interrupted request is not waited for any more"
+    );
+}
+
+#[test]
+fn a_host_with_no_recording_hears_nothing_of_a_directed_context_loss() {
+    let (mut host, state, _resources) = directed_host("history-off");
+    let meter = Rc::new(RefCell::new(Meter::default()));
+    host.attach_meter(meter.clone(), PerfClock::wall());
+    from_page(&mut host, &state, json!({"type":"context.lost"}));
+    from_page(&mut host, &state, json!({"type":"context.restored"}));
+    assert!(!meter.borrow().enabled());
+    assert!(meter.borrow().recorder().snapshot(Duration::ZERO).is_none());
+    assert_eq!(meter.borrow().recorder().events_held(), 0);
 }

@@ -1045,7 +1045,14 @@ fn a_folder_that_refuses_the_write_is_a_typed_error_and_leaves_no_sibling() {
         .unwrap_err();
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
     assert_eq!(refused.code, "perf_history_export_failed");
-    assert!(refused.details.is_some());
+    let details = refused.details.as_ref().expect("the category travels");
+    assert_eq!(details["stage"], "create_temporary");
+    assert_eq!(details["io_kind"], "PermissionDenied");
+    let text = serde_json::to_string(&refused.to_json()).unwrap();
+    assert!(
+        !text.contains(directory.to_string_lossy().as_ref()),
+        "the typed error never carries the private path: {text}"
+    );
     assert!(!target.exists(), "nothing was written");
     assert_eq!(
         std::fs::read_dir(&locked).unwrap().count(),
@@ -1475,8 +1482,452 @@ fn refusing_a_busy_temporary_preserves_the_other_writers_bytes() {
     let error = recorder
         .apply(&HistoryCommand::Export(target.clone()), at(200))
         .unwrap_err();
-    assert_eq!(error.code, "perf_history_export_exists");
+    assert_eq!(
+        error.code, "perf_history_export_temporary_busy",
+        "the destination is free: the busy hidden file is its own error, not `exists`"
+    );
     assert!(!target.exists());
     assert_eq!(std::fs::read(&temporary).unwrap(), b"other writer");
+    let text = serde_json::to_string(&error.to_json()).unwrap();
+    assert!(
+        !text.contains(directory.to_string_lossy().as_ref()),
+        "the typed error never carries the private path: {text}"
+    );
+    // A destination that really exists is still `exists`, whatever the hidden file does.
+    std::fs::write(&target, b"mine").unwrap();
+    assert_eq!(
+        recorder
+            .apply(&HistoryCommand::Export(target.clone()), at(200))
+            .unwrap_err()
+            .code,
+        "perf_history_export_exists"
+    );
+    assert_eq!(std::fs::read(&target).unwrap(), b"mine");
+    assert_eq!(std::fs::read(&temporary).unwrap(), b"other writer");
     std::fs::remove_dir_all(directory).unwrap();
+}
+
+// ------------------------------------------------------------------ BL145.4: UI stalls while playing
+
+fn interface_intervals(recorder: &Recorder, now: u64) -> Option<MetricSummary> {
+    recorder
+        .snapshot(at(now))
+        .unwrap()
+        .summary(Metric::UiIntervalMs)
+}
+
+#[test]
+fn a_long_gap_between_paints_while_playing_is_a_real_stall_and_keeps_its_correlated_events() {
+    let mut recorder = playing(0);
+    for milliseconds in [10, 26, 42] {
+        recorder.ui_painted(at(milliseconds));
+    }
+    recorder.event(at(1_000), EventKind::ResourceLoadStarted, None);
+    recorder.ui_painted(at(3_042));
+    let intervals = interface_intervals(&recorder, 3_100).unwrap();
+    assert_eq!(intervals.max, 3_000.0, "the stall is not discarded");
+    assert_eq!(intervals.min, 16.0);
+    assert_eq!(
+        intervals.count, 3,
+        "16, 16 and the stall: the first paint only anchored, nothing was invented"
+    );
+    assert_eq!(
+        recorder
+            .snapshot(at(3_100))
+            .unwrap()
+            .summary(Metric::UiFrames)
+            .unwrap()
+            .count,
+        4
+    );
+    // The peak explains itself: the event that happened during the wait is correlated.
+    recorder.select(Some(Duration::from_secs_f64(intervals.peak_at_ms / 1000.0)));
+    let inspection = recorder.inspection(at(3_100)).unwrap();
+    assert!(
+        inspection
+            .events
+            .iter()
+            .any(|event| event.kind == EventKind::ResourceLoadStarted),
+        "{:?}",
+        inspection.events
+    );
+}
+
+#[test]
+fn a_long_gap_between_paints_at_rest_records_nothing_and_a_pause_ends_the_expectation() {
+    let mut recorder = playing(0);
+    recorder.ui_painted(at(10));
+    recorder.ui_painted(at(26));
+    recorder.playback_stopped(at(100));
+    // Paused: the window may sit still. The gap is a rest, not a 9.9 s interval.
+    recorder.ui_painted(at(10_000));
+    recorder.ui_painted(at(10_016));
+    let intervals = interface_intervals(&recorder, 10_100).unwrap();
+    assert_eq!((intervals.count, intervals.max), (2, 16.0), "16 and 16");
+    // The same at rest from the start.
+    let mut idle = started(0);
+    idle.ui_painted(at(10));
+    idle.ui_painted(at(8_000));
+    assert!(interface_intervals(&idle, 8_100).is_none());
+}
+
+#[test]
+fn a_playback_that_starts_after_a_long_idle_measures_from_its_start_not_from_the_idle() {
+    let mut recorder = started(0);
+    recorder.ui_painted(at(100));
+    recorder.playback_started(at(20_000), 0);
+    recorder.ui_painted(at(20_030));
+    let intervals = interface_intervals(&recorder, 20_100).unwrap();
+    assert_eq!(
+        (intervals.count, intervals.max),
+        (1, 30.0),
+        "from the play, not 19.9 s from the last idle paint"
+    );
+}
+
+#[test]
+fn the_first_paint_after_a_reset_only_anchors_whatever_is_expected() {
+    let mut recorder = playing(0);
+    recorder.ui_painted(at(10));
+    // A new session: the silence before the edge belongs to the old one.
+    recorder.session_changed(at(5_000), SessionKind::ProjectReplaced);
+    recorder.ui_painted(at(8_000));
+    recorder.ui_painted(at(8_016));
+    let intervals = interface_intervals(&recorder, 8_100).unwrap();
+    assert_eq!((intervals.count, intervals.max), (1, 16.0));
+    // A cleared history likewise: no interval against a paint from before the clear.
+    recorder.clear(at(9_000), true);
+    recorder.ui_painted(at(12_000));
+    assert!(
+        interface_intervals(&recorder, 12_100).is_none(),
+        "the first paint after a clear is an anchor, not a 3 s interval"
+    );
+    recorder.ui_painted(at(12_020));
+    assert_eq!(interface_intervals(&recorder, 12_100).unwrap().max, 20.0);
+    // Stopping and starting again drops the anchor as well.
+    recorder.stop(at(12_100));
+    assert!(recorder.start(at(30_000), true));
+    recorder.ui_painted(at(40_000));
+    assert!(interface_intervals(&recorder, 40_100).is_none());
+}
+
+#[test]
+fn the_diagnostics_own_redraws_never_reach_the_recorder_so_they_cannot_split_a_stall() {
+    // The adapter does not call `ui_painted` for its own redraw (see `PerfState::own_redraw`):
+    // here, only real paints exist, and the gap between them is one stall, not two intervals.
+    let mut recorder = playing(0);
+    recorder.ui_painted(at(10));
+    recorder.ui_painted(at(2_010));
+    let intervals = interface_intervals(&recorder, 2_100).unwrap();
+    assert_eq!((intervals.count, intervals.max), (1, 2_000.0));
+}
+
+// ------------------------------------------------------------------ BL145.4: play context
+
+fn kinds_of(recorder: &Recorder, now: u64) -> Vec<(EventKind, Option<String>)> {
+    recorder
+        .snapshot(at(now))
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| (event.kind, event.detail.clone()))
+        .collect()
+}
+
+#[test]
+fn recording_during_playback_states_the_context_and_invents_no_play_event() {
+    let recorder = playing(500);
+    assert_eq!(
+        kinds_of(&recorder, 600),
+        vec![(EventKind::RecordingStarted, Some("playing".to_string()))],
+        "the play happened before anyone was looking"
+    );
+    let quiet = started(500);
+    assert_eq!(
+        kinds_of(&quiet, 600),
+        vec![(EventKind::RecordingStarted, None)]
+    );
+    // Frames are still expected from the start, so a stall is measured from here.
+    let mut stalled = playing(500);
+    stalled.monitor_presented(at(3_500));
+    assert_eq!(
+        stalled
+            .snapshot(at(3_600))
+            .unwrap()
+            .summary(Metric::MonitorIntervalMs)
+            .unwrap()
+            .max,
+        3_000.0
+    );
+}
+
+#[test]
+fn a_real_pause_and_play_after_a_recording_began_mid_playback_are_the_only_play_events() {
+    let mut recorder = playing(0);
+    recorder.playback_started(at(100), 3);
+    recorder.playback_stopped(at(900));
+    recorder.playback_started(at(1_500), 10);
+    let events = recorder.snapshot(at(1_600)).unwrap().events;
+    let frames: Vec<_> = events
+        .iter()
+        .map(|event| (event.kind, event.frame))
+        .collect();
+    assert_eq!(
+        frames,
+        vec![
+            (EventKind::RecordingStarted, None),
+            (EventKind::PlaybackStopped, None),
+            (EventKind::PlaybackStarted, Some(10)),
+        ],
+        "the second `started` of a running playback is nothing"
+    );
+}
+
+#[test]
+fn clearing_during_playback_states_the_context_without_a_new_play_event() {
+    let mut recorder = playing(0);
+    recorder.clear(at(1_000), true);
+    assert_eq!(
+        kinds_of(&recorder, 1_100),
+        vec![(EventKind::RecordingCleared, Some("playing".to_string()))]
+    );
+    recorder.playback_stopped(at(1_200));
+    let mut stopped = started(0);
+    stopped.clear(at(500), false);
+    assert_eq!(
+        kinds_of(&stopped, 600),
+        vec![(EventKind::RecordingCleared, None)]
+    );
+}
+
+#[test]
+fn a_loss_counter_read_with_no_anchor_is_only_a_baseline_never_a_sample() {
+    let mut recorder = playing(0);
+    // The run began before the recording: its total so far is not a loss that happened here.
+    recorder.loss_observed(at(40), 7, 12);
+    recorder.loss_observed(at(80), 7, 14);
+    let snapshot = recorder.snapshot(at(100)).unwrap();
+    let summary = snapshot.summary(Metric::LostFrames).unwrap();
+    assert_eq!((summary.count, summary.max), (1, 2.0));
+    // A run the recording saw begin is read against zero, and its zero is an observation.
+    recorder.loss_run_started(8);
+    recorder.loss_observed(at(120), 8, 0);
+    let summary = recorder
+        .snapshot(at(130))
+        .unwrap()
+        .summary(Metric::LostFrames)
+        .unwrap();
+    assert_eq!(summary.count, 2);
+}
+
+// ------------------------------------------------------------------ BL145.4: clear and freeze
+
+#[test]
+fn an_explicit_clear_releases_the_freeze_the_selection_and_says_so() {
+    let mut recorder = started(0);
+    recorder.sample(Metric::RenderMs, at(100), 10.0);
+    recorder.apply(&HistoryCommand::Freeze, at(200)).unwrap();
+    recorder
+        .apply(&HistoryCommand::Select(Some(at(100))), at(200))
+        .unwrap();
+    let cleared = recorder.apply(&HistoryCommand::Clear, at(300)).unwrap();
+    assert_eq!(cleared["released_freeze"], true, "{cleared}");
+    assert!(recorder.frozen().is_none());
+    assert_eq!(recorder.selected(), None);
+    assert!(
+        recorder
+            .snapshot(at(400))
+            .unwrap()
+            .summary(Metric::RenderMs)
+            .is_none(),
+        "the cleared history holds nothing of before"
+    );
+    assert!(recorder.recording(), "a running recording continues");
+    let again = recorder.apply(&HistoryCommand::Clear, at(500)).unwrap();
+    assert_eq!(again["released_freeze"], false);
+    // Freezing again afterwards fixes the new window, not the old one.
+    assert!(recorder.freeze(at(600)).unwrap());
+}
+
+// ------------------------------------------------------------------ BL145.4: context loss
+
+fn context_events(recorder: &Recorder, now: u64) -> Vec<Event> {
+    recorder
+        .snapshot(at(now))
+        .unwrap()
+        .events
+        .into_iter()
+        .filter(|event| {
+            matches!(
+                event.kind,
+                EventKind::ContextLost | EventKind::ContextRestored | EventKind::RequestFailed
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn a_context_lost_while_idle_is_one_event_without_a_request_and_one_restore() {
+    let mut recorder = started(0);
+    // The page's notice is all there is: no frame was in flight.
+    recorder.context_lost(at(1_000), None);
+    recorder.request_failed(at(1_005), None, "context_lost");
+    recorder.context_restored(at(1_400));
+    recorder.context_restored(at(1_410));
+    let events = context_events(&recorder, 1_500);
+    let kinds: Vec<_> = events.iter().map(|event| event.kind).collect();
+    assert_eq!(
+        kinds,
+        vec![EventKind::ContextLost, EventKind::ContextRestored],
+        "{events:?}"
+    );
+    assert_eq!(events[0].request, None);
+    assert_eq!(events[0].at, at(1_000), "the host's clock, not the page's");
+}
+
+#[test]
+fn a_context_lost_with_a_frame_in_flight_is_one_event_that_names_the_request() {
+    let mut recorder = started(0);
+    recorder.request_admitted(5, at(100));
+    // The adapter learns of the loss through the frame it was waiting for; the page's own
+    // notice follows and is the same loss.
+    recorder.request_failed(at(110), Some(5), "context_lost");
+    recorder.context_lost(at(111), None);
+    recorder.context_restored(at(400));
+    let events = context_events(&recorder, 500);
+    let kinds: Vec<_> = events.iter().map(|event| event.kind).collect();
+    assert_eq!(
+        kinds,
+        vec![EventKind::ContextLost, EventKind::ContextRestored]
+    );
+    assert_eq!(events[0].request, Some(5), "correlated with the request");
+    assert_eq!(recorder.pending_requests(), 0, "it will never be answered");
+}
+
+#[test]
+fn a_loss_longer_than_the_window_stays_one_loss_when_the_page_repeats_its_notice() {
+    let mut recorder = started(0);
+    recorder.context_lost(at(1_000), None);
+    // 70 s later the first event has aged out of the ring; the flag, not the ring, knows.
+    recorder.context_lost(at(71_000), None);
+    assert!(
+        context_events(&recorder, 71_100)
+            .iter()
+            .all(|event| event.kind != EventKind::ContextLost),
+        "no second loss was made up"
+    );
+    recorder.context_restored(at(72_000));
+    let kinds: Vec<_> = context_events(&recorder, 72_100)
+        .iter()
+        .map(|event| event.kind)
+        .collect();
+    assert_eq!(kinds, vec![EventKind::ContextRestored]);
+}
+
+#[test]
+fn a_restore_whose_loss_predates_the_recording_is_still_observed_once() {
+    let mut recorder = started(0);
+    recorder.context_restored(at(200));
+    recorder.context_restored(at(210));
+    let kinds: Vec<_> = context_events(&recorder, 300)
+        .iter()
+        .map(|event| event.kind)
+        .collect();
+    assert_eq!(kinds, vec![EventKind::ContextRestored]);
+}
+
+#[test]
+fn a_reloaded_page_has_a_context_of_its_own() {
+    let mut recorder = started(0);
+    recorder.context_lost(at(100), None);
+    recorder.session_changed(at(200), SessionKind::ViewportReloaded);
+    recorder.context_lost(at(300), None);
+    let lost = context_events(&recorder, 400)
+        .iter()
+        .filter(|event| event.kind == EventKind::ContextLost)
+        .count();
+    assert_eq!(lost, 2, "the new page's loss is its own");
+}
+
+// ------------------------------------------------------------------ BL145.4: export off the UI thread
+
+#[test]
+fn a_prepared_export_is_a_coherent_copy_written_later_without_the_recorder() {
+    let directory = scratch("prepared");
+    let target = directory.join("prepared.json");
+    let mut recorder = started(0);
+    recorder.sample(Metric::RenderMs, at(100), 5.0);
+    let prepared = recorder.prepare_export(at(200), target.clone()).unwrap();
+    assert!(!prepared.frozen());
+    assert!(!target.exists(), "preparing touches no disk");
+    let before = recorder.export_document(at(200)).unwrap();
+    // The recorder moves on (and is even cleared) while the file is still to be written.
+    recorder.sample(Metric::RenderMs, at(300), 99.0);
+    recorder.clear(at(400), false);
+    let bytes = prepared.write().unwrap();
+    assert!(bytes > 1000);
+    let written: Value = serde_json::from_str(&std::fs::read_to_string(&target).unwrap()).unwrap();
+    assert_eq!(
+        written, before,
+        "what was frozen at the call, not what came after"
+    );
+    assert_eq!(written["summary"]["render_ms"]["max"], 5.0);
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
+#[test]
+fn a_prepared_export_of_the_frozen_view_says_so_and_refuses_what_needs_no_disk() {
+    let mut recorder = started(0);
+    recorder.sample(Metric::RenderMs, at(100), 5.0);
+    recorder.freeze(at(200)).unwrap();
+    let frozen = recorder
+        .prepare_export(
+            at(900),
+            PathBuf::from("/tmp/prepared-and-never-written.json"),
+        )
+        .unwrap();
+    assert!(frozen.frozen());
+    assert_eq!(
+        recorder
+            .prepare_export(at(900), PathBuf::new())
+            .unwrap_err()
+            .code(),
+        "perf_history_export_path_missing"
+    );
+    assert_eq!(
+        recorder
+            .prepare_export(at(900), PathBuf::from("relative.json"))
+            .unwrap_err()
+            .code(),
+        "perf_history_export_relative"
+    );
+    assert_eq!(
+        Recorder::default()
+            .prepare_export(at(0), PathBuf::from("/tmp/x.json"))
+            .unwrap_err()
+            .code(),
+        "perf_history_empty",
+        "nothing recorded wins over a bad path, as in the synchronous export"
+    );
+}
+
+#[test]
+fn the_generic_event_entry_cannot_bypass_the_one_loss_one_restore_rule() {
+    let mut recorder = started(0);
+    recorder.event(at(100), EventKind::ContextLost, None);
+    recorder.event(at(110), EventKind::ContextLost, None);
+    recorder.request_failed(at(120), None, "context_lost");
+    recorder.event(at(400), EventKind::ContextRestored, None);
+    recorder.event(at(410), EventKind::ContextRestored, None);
+    let kinds: Vec<_> = context_events(&recorder, 500)
+        .iter()
+        .map(|event| event.kind)
+        .collect();
+    assert_eq!(
+        kinds,
+        vec![EventKind::ContextLost, EventKind::ContextRestored]
+    );
+    // And a new loss after the restore is a new event.
+    recorder.request_failed(at(900), None, "context_lost");
+    assert_eq!(context_events(&recorder, 1_000).len(), 3);
 }
