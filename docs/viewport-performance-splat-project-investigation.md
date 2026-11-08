@@ -346,6 +346,20 @@ o `p99` é o segundo maior intervalo, que é do início da reprodução. Registr
 acontece nos dois binários (BL158). A medição do aviso de proxy pendente (BL149) e um burst grande para o orçamento da
 pré-carga (BL147) não foram feitos.
 
+### Por que a entrada de cena ainda custa 60–150 ms (BL157)
+
+O host só traça `runtime_render_ms` e `runtime_total_ms`, então o runtime foi reconstruído localmente para pôr as fases de CPU
+nesses dois campos (`phase-runtime.py`, só no harness local, nada no produto) e a reprodução 0–26 s foi repetida por fase. Nos
+quadros de entrada (186, 268, 410) o tempo está em `prepare_ms` (69–151 ms), enquanto o desenho (`draw`), a espera da GPU (`flush`)
+e a rasterização da cena ficam em 0–1 ms. Dentro de `prepare_ms`, a montagem do rig é ~0 e a ordenação do Spark é 52–69 ms. É a regra
+de `SplatStage.settle`: um quadro em movimento só é desenhado de imediato com a ordem anterior quando o Spark já tem uma ordenação para
+o mesmo conjunto de splats; no primeiro quadro da cena o estágio da linhagem é novo (um por asset) e o quadro espera a própria
+ordenação. A pré-carga carrega e decodifica, mas não cria o estágio nem ordena, então esse custo continua no caminho crítico.
+Correção possível e riscos: backlog BL157.
+
+Outras medições desta rodada: build de debug contra release no mesmo tour (BL137) e uma abertura com `Falha: timeout` também no projeto
+de splats, com o binário de debug e carga de 50 (BL158). Não investigados ainda: BL133, BL155 e a memória do WebContent.
+
 ## Backlog
 
 Registrado em [backlog.md](backlog.md), seção "Performance do monitor — projeto splat de amostra": BL146 (carga antecipada),
