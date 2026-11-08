@@ -70,6 +70,12 @@ pub enum PropertyKind {
 pub enum Applies {
     Visual,
     Audio,
+    /// Only title clips (the text of a title).
+    Title,
+    /// The fades of a clip that is only sound: the same properties as the visual fades.
+    SoundClip,
+    /// Scene clips only (their camera keyframes, BL140).
+    Scene,
 }
 
 impl Applies {
@@ -78,13 +84,19 @@ impl Applies {
             Self::Visual => matches!(kind, ClipKind::Video | ClipKind::Title | ClipKind::Scene),
             // A video clip carries its own sound: its levels are the same controls as an audio clip's.
             Self::Audio => matches!(kind, ClipKind::Audio | ClipKind::Video),
+            Self::Title => kind == ClipKind::Title,
+            Self::SoundClip => kind == ClipKind::Audio,
+            Self::Scene => kind == ClipKind::Scene,
         }
     }
 
     fn label(self) -> &'static str {
         match self {
             Self::Visual => "video and title clips",
+            Self::Title => "title clips",
             Self::Audio => "audio and video clips",
+            Self::SoundClip => "audio clips",
+            Self::Scene => "scene clips",
         }
     }
 }
@@ -125,6 +137,13 @@ const fn slider(min: f64, max: f64, step: f64, decimals: u32, unit: &'static str
 
 pub const SECTIONS: &[SectionDef] = &[
     SectionDef {
+        id: "text",
+        label: "Texto",
+        tab: InspectorTab::Video,
+        applies: Applies::Title,
+        expanded: true,
+    },
+    SectionDef {
         id: "transform",
         label: "Transformar",
         tab: InspectorTab::Video,
@@ -153,10 +172,27 @@ pub const SECTIONS: &[SectionDef] = &[
         expanded: true,
     },
     SectionDef {
+        id: "camera",
+        label: "Câmera",
+        tab: InspectorTab::Video,
+        applies: Applies::Scene,
+        expanded: true,
+    },
+    SectionDef {
         id: "levels",
         label: "Níveis",
         tab: InspectorTab::Audio,
         applies: Applies::Audio,
+        expanded: true,
+    },
+    // `fade_in` / `fade_out` are one pair of properties. On a video, title or scene clip they
+    // are an opacity ramp and live in `timing`; on an audio clip they are a gain ramp and are
+    // shown here (see `property_section`).
+    SectionDef {
+        id: "fades",
+        label: "Fades",
+        tab: InspectorTab::Audio,
+        applies: Applies::SoundClip,
         expanded: true,
     },
     SectionDef {
@@ -359,10 +395,27 @@ pub fn section_def(id: &str) -> Option<&'static SectionDef> {
     SECTIONS.iter().find(|section| section.id == id)
 }
 
+/// The properties a section lists. The fades belong to `timing` and, on an audio clip, to
+/// `fades`: the same two properties, so one value, one command and one node serve both.
 pub fn section_properties(section: &str) -> impl Iterator<Item = &'static PropertyDef> {
-    PROPERTIES
-        .iter()
-        .filter(move |property| property.section == section)
+    PROPERTIES.iter().filter(move |property| {
+        property.section == section || (section == FADES_SECTION && is_fade(property.id))
+    })
+}
+
+pub const FADES_SECTION: &str = "fades";
+
+pub fn is_fade(property: &str) -> bool {
+    matches!(property, "fade_in" | "fade_out")
+}
+
+/// The section a property is shown under for a clip of `kind` (`None`: no clip selected).
+pub fn property_section(property: &PropertyDef, kind: Option<ClipKind>) -> &'static str {
+    if is_fade(property.id) && kind == Some(ClipKind::Audio) {
+        FADES_SECTION
+    } else {
+        property.section
+    }
 }
 
 fn round_to(value: f64, decimals: u32) -> f64 {
@@ -513,7 +566,7 @@ impl Inspector {
     ) -> Result<(&'static PropertyDef, &'static SectionDef), CommandError> {
         let property =
             property_def(id).ok_or_else(|| CommandError::unknown_element("property", id))?;
-        let section = section_def(property.section)
+        let section = section_def(property_section(property, Some(kind)))
             .ok_or_else(|| CommandError::unknown_element("section", property.section))?;
         if !section.applies.includes(kind) {
             return Err(CommandError::new(

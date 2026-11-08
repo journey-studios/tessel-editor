@@ -326,6 +326,8 @@ pub struct StandardSet {
     pub splat: PathBuf,
     pub ply: PathBuf,
     pub spz: PathBuf,
+    /// A synthetic SHARP PLY ([`SharpSpec::default`]): five coloured Gaussians over known pixels.
+    pub sharp: PathBuf,
     pub scene: PathBuf,
 }
 
@@ -352,6 +354,8 @@ pub fn write_standard_set(dir: &Path) -> io::Result<StandardSet> {
     fs::write(&ply, splat_ply(4000))?;
     let spz = dir.join("cloud.spz");
     fs::write(&spz, splat_spz(4000))?;
+    let sharp = dir.join("sharp.ply");
+    write_sharp_ply(&sharp, &SharpSpec::default())?;
     let scene = dir.join("scene.tessel-scene.json");
     fs::write(&scene, scene_json("cloud"))?;
     Ok(StandardSet {
@@ -363,6 +367,7 @@ pub fn write_standard_set(dir: &Path) -> io::Result<StandardSet> {
         splat,
         ply,
         spz,
+        sharp,
         scene,
     })
 }
@@ -406,6 +411,171 @@ pub fn proof_requests(set: &StandardSet) -> Vec<serde_json::Value> {
             "properties":{"position_y":38}}),
         json!({"op":"clip.add","id":"c-tone","track":"music","asset":"tone","start":0,"duration":48}),
     ]
+}
+
+/// One Gaussian of a synthetic SHARP file, in the file's own OpenCV axes (x right, y down,
+/// z forward).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SharpPoint {
+    pub position: [f32; 3],
+    /// Display color 0..1 (stored as the SH DC term, as SHARP writes sRGB colors).
+    pub color: [f32; 3],
+    /// Isotropic radius in scene units.
+    pub radius: f32,
+    pub opacity: f32,
+}
+
+/// What a synthetic SHARP PLY holds (no model is run: arithmetic only). Every metadata element is
+/// optional so a test can build a missing or contradictory file; `None` omits the element.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SharpSpec {
+    pub image_size: Option<[u32; 2]>,
+    pub intrinsic: Option<[f32; 9]>,
+    pub extrinsic: Option<[f32; 16]>,
+    /// `None` writes the honest `[1, particles]`.
+    pub frames: Option<[i32; 2]>,
+    pub disparity: Option<[f32; 2]>,
+    pub color_space: Option<u8>,
+    pub version: Option<[u8; 3]>,
+    /// `false` writes a plain Gaussian PLY with no capture element at all.
+    pub metadata: bool,
+    pub points: Vec<SharpPoint>,
+}
+
+/// Vertical field of view of [`SharpSpec::default`], in degrees.
+pub const SHARP_FIXTURE_VFOV: f64 = 50.0;
+/// Source image of [`SharpSpec::default`].
+pub const SHARP_FIXTURE_IMAGE: [u32; 2] = [160, 120];
+
+/// Pixels (`u`, `v`, y down) of the default points in the source image, in the order of
+/// [`SharpSpec::default`]`.points`.
+pub const SHARP_FIXTURE_PIXELS: [[f64; 2]; 5] = [
+    [40.0, 30.0],
+    [120.0, 30.0],
+    [40.0, 90.0],
+    [120.0, 90.0],
+    [80.0, 60.0],
+];
+
+impl Default for SharpSpec {
+    fn default() -> Self {
+        let [width, height] = SHARP_FIXTURE_IMAGE;
+        let fy = (f64::from(height) / 2.0 / (SHARP_FIXTURE_VFOV.to_radians() / 2.0).tan()) as f32;
+        let (cx, cy) = (width as f32 / 2.0, height as f32 / 2.0);
+        // Five points on a plane 4 units ahead, each exactly over a known pixel.
+        let depth = 4.0f32;
+        let colors = [
+            [1.0, 0.1, 0.1],
+            [0.1, 1.0, 0.1],
+            [0.1, 0.1, 1.0],
+            [1.0, 1.0, 0.1],
+            [1.0, 1.0, 1.0],
+        ];
+        let points = SHARP_FIXTURE_PIXELS
+            .iter()
+            .zip(colors)
+            .map(|(pixel, color)| SharpPoint {
+                position: [
+                    (pixel[0] as f32 - cx) * depth / fy,
+                    (pixel[1] as f32 - cy) * depth / fy,
+                    depth,
+                ],
+                color,
+                radius: 4.0 * depth / fy,
+                opacity: 0.97,
+            })
+            .collect();
+        let mut extrinsic = [0.0; 16];
+        for index in [0, 5, 10, 15] {
+            extrinsic[index] = 1.0;
+        }
+        Self {
+            image_size: Some([width, height]),
+            intrinsic: Some([fy, 0.0, cx, 0.0, fy, cy, 0.0, 0.0, 1.0]),
+            extrinsic: Some(extrinsic),
+            frames: None,
+            disparity: Some([0.2, 0.5]),
+            color_space: Some(0),
+            version: Some([1, 5, 0]),
+            metadata: true,
+            points,
+        }
+    }
+}
+
+/// Writes a binary little-endian Gaussian PLY laid out like the SHARP writer's
+/// (`vertex`, then one-property metadata elements), byte for byte reproducible.
+pub fn write_sharp_ply(path: &Path, spec: &SharpSpec) -> io::Result<()> {
+    const SH: f32 = 0.282_094_8;
+    let mut header = String::from("ply\nformat binary_little_endian 1.0\n");
+    header += &format!("element vertex {}\n", spec.points.len());
+    for name in [
+        "x", "y", "z", "f_dc_0", "f_dc_1", "f_dc_2", "opacity", "scale_0", "scale_1", "scale_2",
+        "rot_0", "rot_1", "rot_2", "rot_3",
+    ] {
+        header += &format!("property float {name}\n");
+    }
+    let mut body = Vec::new();
+    for point in &spec.points {
+        let logit = (point.opacity / (1.0 - point.opacity)).ln();
+        let scale = point.radius.ln();
+        let mut record: Vec<f32> = point.position.to_vec();
+        record.extend(point.color.map(|channel| (channel - 0.5) / SH));
+        record.push(logit);
+        record.extend([scale, scale, scale]);
+        record.extend([1.0, 0.0, 0.0, 0.0]);
+        for value in record {
+            body.extend_from_slice(&value.to_le_bytes());
+        }
+    }
+    if spec.metadata {
+        let mut element = |name: &str, kind: &str, count: usize, bytes: Vec<u8>| {
+            header += &format!("element {name} {count}\nproperty {kind} {name}\n");
+            body.extend_from_slice(&bytes);
+        };
+        let floats = |values: &[f32]| -> Vec<u8> {
+            values
+                .iter()
+                .flat_map(|value| value.to_le_bytes())
+                .collect()
+        };
+        if let Some(values) = &spec.extrinsic {
+            element("extrinsic", "float", 16, floats(values));
+        }
+        if let Some(values) = &spec.intrinsic {
+            element("intrinsic", "float", 9, floats(values));
+        }
+        if let Some([width, height]) = spec.image_size {
+            let bytes = [width, height]
+                .iter()
+                .flat_map(|value| value.to_le_bytes())
+                .collect();
+            element("image_size", "uint", 2, bytes);
+        }
+        let frames = spec.frames.unwrap_or([1, spec.points.len() as i32]);
+        element(
+            "frame",
+            "int",
+            2,
+            frames
+                .iter()
+                .flat_map(|value| value.to_le_bytes())
+                .collect(),
+        );
+        if let Some(values) = &spec.disparity {
+            element("disparity", "float", 2, floats(values));
+        }
+        if let Some(code) = spec.color_space {
+            element("color_space", "uchar", 1, vec![code]);
+        }
+        if let Some(version) = spec.version {
+            element("version", "uchar", 3, version.to_vec());
+        }
+    }
+    header += "end_header\n";
+    let mut bytes = header.into_bytes();
+    bytes.extend_from_slice(&body);
+    fs::write(path, bytes)
 }
 
 #[cfg(test)]

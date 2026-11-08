@@ -196,7 +196,7 @@ pub(in crate::directed_scene) fn distance(a: Vec3, b: Vec3) -> f64 {
 // WHY not `f64::clamp`: the origin answers a positive zero for `-0` and passes NaN through
 // unchanged; `clamp` keeps the sign of a negative zero. The branches keep the origin's bits.
 #[allow(clippy::manual_clamp)]
-fn apply_easing(t: f64, easing: &str) -> Result<f64, TemporalError> {
+pub fn apply_easing(t: f64, easing: &str) -> Result<f64, TemporalError> {
     let t = if t <= 0.0 {
         0.0
     } else if t >= 1.0 {

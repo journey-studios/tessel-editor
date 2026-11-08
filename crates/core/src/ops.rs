@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use serde_json::{Value, json};
 
 use crate::assets::{Asset, Declared, MediaKind, ProxyFormat};
+use crate::camera_keys::{self, CameraKey, Easing};
 use crate::content::{Camera, TextSpec};
 use crate::directed_scene::Vec3;
 use crate::id::Id;
@@ -20,6 +21,7 @@ use crate::scene_interaction::{
     CancelReason, FrameAt, GestureCommand, GizmoCommand, Point, PointerCommand, SelectMode,
 };
 use crate::scene_project::{CameraAt, SceneCommand, SceneSource};
+use crate::state::camera_edit::CameraKeysCommand;
 use crate::state::timeline::{SequenceSettings, TrackKind};
 use crate::state::{Command, CommandError, EditorState, ProjectSettings, Raw};
 use crate::time::{Rate, Ratio};
@@ -136,6 +138,23 @@ fn time_field(request: &Value, key: &str) -> Result<Option<Ratio>, CommandError>
     })
 }
 
+/// `None` when the request does not say: omitting the easing is never a choice of `linear`.
+fn easing_field(request: &Value) -> Result<Option<Easing>, CommandError> {
+    match request.get("easing").filter(|raw| !raw.is_null()) {
+        None => Ok(None),
+        Some(raw) => raw
+            .as_str()
+            .and_then(Easing::parse)
+            .map(Some)
+            .ok_or_else(|| {
+                CommandError::invalid_value(
+                    "`easing` is not an option",
+                    json!({ "options": Easing::labels() }),
+                )
+            }),
+    }
+}
+
 fn rate_field(request: &Value, key: &str) -> Result<Option<Rate>, CommandError> {
     let Some(raw) = request.get(key).filter(|raw| !raw.is_null()) else {
         return Ok(None);
@@ -224,6 +243,16 @@ fn probes(request: &Value) -> Result<Vec<(u32, u32)>, CommandError> {
         .collect()
 }
 
+/// `capture`: `auto` (default) or `ignore`, what to do with the camera metadata of a SHARP splat.
+pub fn capture_choice(request: &Value) -> Result<crate::sharp::Choice, CommandError> {
+    match request.get("capture") {
+        None | Some(Value::Null) => Ok(crate::sharp::Choice::Auto),
+        Some(Value::String(raw)) => crate::sharp::Choice::parse(raw)
+            .ok_or_else(|| invalid("`capture` is `auto` or `ignore`")),
+        Some(_) => Err(invalid("`capture` is `auto` or `ignore`")),
+    }
+}
+
 fn asset_add(request: &Value) -> Result<Command, CommandError> {
     let kind = kind_field(request)?;
     let name = string(request, "name")?.to_string();
@@ -235,6 +264,7 @@ fn asset_add(request: &Value) -> Result<Command, CommandError> {
         text: None,
         frames: request.get("frames").and_then(Value::as_i64),
         first: request.get("first").and_then(Value::as_i64),
+        capture: capture_choice(request)?,
     };
     let asset = if kind == MediaKind::Text {
         let spec = request
@@ -351,6 +381,30 @@ pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, Comm
             clip: string(request, "clip")?.to_string(),
             camera: Camera::from_json(request)?,
         },
+        "clip.camera_capture" => Command::SetClipCameraFromCapture {
+            clip: string(request, "clip")?.to_string(),
+        },
+        "clip.camera_key" => Command::CameraKeys(CameraKeysCommand::Set {
+            clip: string(request, "clip")?.to_string(),
+            key: CameraKey::from_json(request)?,
+            easing: easing_field(request)?,
+        }),
+        "clip.camera_key.remove" => Command::CameraKeys(CameraKeysCommand::Remove {
+            clip: string(request, "clip")?.to_string(),
+            time: time_field(request, "time")?.ok_or_else(|| invalid("Expected field `time`"))?,
+        }),
+        "clip.camera_key.capture" => Command::CameraKeys(CameraKeysCommand::Capture {
+            clip: string(request, "clip")?.to_string(),
+            easing: easing_field(request)?,
+        }),
+        "clip.camera_keys" => Command::CameraKeys(CameraKeysCommand::Replace {
+            clip: string(request, "clip")?.to_string(),
+            keys: camera_keys::keys_from_json(
+                request
+                    .get("keys")
+                    .ok_or_else(|| invalid("Expected array field `keys`"))?,
+            )?,
+        }),
         "clip.property" => Command::SetClipProperty {
             clip: string(request, "clip")?.to_string(),
             property: string(request, "property")?.to_string(),

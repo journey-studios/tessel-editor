@@ -191,3 +191,87 @@ fn real_runtime_export_frames_a_vertical_output_with_black_bars() {
         "bottom-right quadrant inside the picture",
     );
 }
+
+/// Raw RGB of a PNG the monitor path wrote, decoded by FFmpeg like the exported frames are.
+fn png_rgb(tools: &Tools, file: &Path, width: u32, height: u32) -> Vec<u8> {
+    let output = Command::new(&tools.ffmpeg)
+        .args(["-v", "error", "-nostdin", "-i"])
+        .arg(file)
+        .args(["-frames:v", "1", "-pix_fmt", "rgb24", "-f", "rawvideo", "-"])
+        .output()
+        .unwrap();
+    assert_eq!(output.stdout.len(), (width * height * 3) as usize);
+    output.stdout
+}
+
+fn mean_abs_difference(a: &[u8], b: &[u8]) -> f64 {
+    assert_eq!(a.len(), b.len());
+    let total: u64 = a
+        .iter()
+        .zip(b)
+        .map(|(a, b)| u64::from(a.abs_diff(*b)))
+        .sum();
+    total as f64 / a.len() as f64
+}
+
+/// BL140: a keyed camera is one function of time for the monitor frame (`render.frame`) and the
+/// exported video, because both draw `EditorState::plan`. Real runtime, real H.264.
+#[test]
+fn keyed_camera_export_matches_the_frames_the_monitor_draws() {
+    let Some((mut host, mut state, dir, tools)) = setup("camera-keys") else {
+        return;
+    };
+    let config = RuntimeConfig::discover().expect("setup found the runtime");
+    let mut monitor = session(&config);
+    // Only the scene track, with no orbit and a push-out from z = 3 to z = 14 over 2 s.
+    for request in [
+        json!({"op":"set","target":"track:media-track","field":"hidden","value":true}),
+        json!({"op":"set","target":"track:title-track","field":"hidden","value":true}),
+        json!({"op":"clip.camera","clip":"c-scene","position":[0,1.2,5],"target":[0,0,0],"fov":50,"orbit":0}),
+        json!({"op":"clip.camera_key","clip":"c-scene","time":0,"position":[0,1.2,3],"target":[0,0,0],"fov":50}),
+        json!({"op":"clip.camera_key","clip":"c-scene","time":2,"position":[0,1.2,14],"target":[0,0,0],"fov":50}),
+    ] {
+        headless::execute(&mut state, &request).unwrap();
+    }
+    let target = dir.join("out/keyed.mp4");
+    let preset = json!({"id":"keyed640","name":"Keyed","width":640,"height":360});
+    let report = export(
+        &mut host,
+        &mut state,
+        json!({"op":"export.start","preset":preset,"destination":target,"range":[0, 48]}),
+    );
+    assert_eq!(report["verification"]["ok"], true, "{report}");
+    assert_eq!(report["frames"], 48);
+
+    let mut exported = Vec::new();
+    let mut shown = Vec::new();
+    for frame in [0_u64, 24, 47] {
+        let png = dir.join(format!("out/monitor-{frame}.png"));
+        headless::execute_with(
+            &mut state,
+            Some(&mut monitor),
+            &json!({"op":"render.frame","frame":frame,"width":640,"height":360,"out":png}),
+        )
+        .unwrap_or_else(|error| panic!("monitor frame {frame}: {error:?}"));
+        exported.push(rgb_frame(&tools, &target, frame, 640, 360));
+        shown.push(png_rgb(&tools, &png, 640, 360));
+    }
+    for index in 0..3 {
+        let same_time = mean_abs_difference(&exported[index], &shown[index]);
+        // The other times are the controls: the camera really moved, so they must differ much
+        // more than H.264 noise does.
+        let other = (index + 1) % 3;
+        let other_time = mean_abs_difference(&exported[index], &shown[other]);
+        eprintln!(
+            "keyed camera frame {index}: export vs monitor {same_time:.3}, export vs frame {other} {other_time:.3}"
+        );
+        assert!(
+            same_time < 4.0,
+            "export frame {index} vs monitor frame {index}: mean difference {same_time}"
+        );
+        assert!(
+            other_time > same_time * 2.0 && other_time > 1.5,
+            "export frame {index} must be closer to its own time ({same_time}) than to another ({other_time})"
+        );
+    }
+}

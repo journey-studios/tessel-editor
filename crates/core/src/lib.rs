@@ -8,6 +8,7 @@ pub mod assets;
 pub mod audio;
 pub mod backend;
 pub mod bridge;
+pub mod camera_keys;
 pub mod commands;
 pub mod content;
 pub mod directed_scene;
@@ -30,8 +31,10 @@ pub mod scene_plan;
 pub mod scene_project;
 pub mod scene_resources;
 pub mod session;
+pub mod sharp;
 pub mod splat;
 pub mod state;
+pub mod text;
 pub mod time;
 pub mod trace;
 

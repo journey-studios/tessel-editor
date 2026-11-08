@@ -119,6 +119,13 @@ fn meta_json(meta: &Meta) -> Value {
     if meta.vfr_conformed {
         map.insert("vfr_conformed".into(), json!(true));
     }
+    put_opt(
+        &mut map,
+        "capture",
+        meta.capture
+            .as_ref()
+            .map(crate::sharp::Capture::to_document),
+    );
     if !meta.requires.is_empty() {
         map.insert(
             "requires".into(),
@@ -176,6 +183,12 @@ fn clip_json(clip: &crate::state::timeline::Clip) -> Value {
         "camera",
         clip.camera.as_ref().map(Camera::to_json),
     );
+    if !clip.camera_keys.is_empty() {
+        map.insert(
+            "camera_keys".into(),
+            crate::camera_keys::keys_to_json(&clip.camera_keys),
+        );
+    }
     Value::Object(map)
 }
 
@@ -195,7 +208,19 @@ fn sequence_json(timeline: &Timeline) -> Value {
 impl EditorState {
     /// Smallest schema that can preserve this project's data when it is saved.
     pub fn document_schema_version(&self) -> u64 {
-        if self.scenes.has_document_data() {
+        if self.scenes.has_document_data()
+            || self.library.items.iter().any(|item| {
+                item.asset
+                    .as_ref()
+                    .is_some_and(|a| a.meta.capture.is_some())
+            })
+            || self.all_sequences().any(|timeline| {
+                timeline
+                    .clips
+                    .iter()
+                    .any(|clip| !clip.camera_keys.is_empty())
+            })
+        {
             SCHEMA_VERSION
         } else {
             LEGACY_SCHEMA_VERSION
@@ -505,6 +530,12 @@ fn parse_library(value: &Value, base: Option<&Path>) -> Result<Library, CommandE
             Some(asset) => Some(parse_asset(asset, id, base)?),
             None => None,
         };
+        if kind != MediaKind::Splat && asset.as_ref().is_some_and(|a| a.meta.capture.is_some()) {
+            return Err(invalid(format!(
+                "Asset `{id}` is a {} but carries a SHARP capture: only splats do",
+                kind.label()
+            )));
+        }
         let image = item["demo_image"].as_str().and_then(demo_image);
         library
             .add_item(MediaItem {
@@ -635,6 +666,13 @@ fn parse_asset(value: &Value, id: Id, base: Option<&Path>) -> Result<Asset, Comm
             None => Vec::new(),
         },
         vfr_conformed: m["vfr_conformed"].as_bool().unwrap_or(false),
+        capture: match m.get("capture") {
+            None | Some(Value::Null) => None,
+            Some(capture) => Some(
+                crate::sharp::Capture::from_document(capture)
+                    .map_err(|message| invalid(format!("Asset `{id}`: {message}")))?,
+            ),
+        },
     };
     let i = &value["identity"];
     let identity = Identity {
@@ -763,6 +801,39 @@ fn parse_sequence(value: &Value, library: &Library) -> Result<Timeline, CommandE
                 Some(camera) => Some(Camera::from_json(camera).map_err(|e| invalid(e.message))?),
                 None => None,
             },
+            camera_keys: match clip.get("camera_keys") {
+                Some(keys) => {
+                    let keys = crate::camera_keys::keys_from_json(keys)
+                        .map_err(|e| invalid(format!("Clip `{clip_id}`: {}", e.message)))?;
+                    if kind != ClipKind::Scene {
+                        return Err(invalid(format!(
+                            "Clip `{clip_id}`: only scene clips carry camera keys"
+                        )));
+                    }
+                    // The same rule `camera_keys` editing applies: keys replace the orbit, so a
+                    // reopened project cannot hold what an edit refuses.
+                    let orbiting = match clip.get("camera") {
+                        Some(camera) => {
+                            Camera::from_json(camera)
+                                .map_err(|e| invalid(e.message))?
+                                .orbit
+                                != 0.0
+                        }
+                        None => false,
+                    };
+                    if orbiting && !keys.is_empty() {
+                        return Err(CommandError::new(
+                            "camera_orbit_conflict",
+                            format!(
+                                "Clip `{clip_id}`: the camera orbits and the clip has camera keys, which replace the orbit"
+                            ),
+                        )
+                        .target(format!("clip:{clip_id}")));
+                    }
+                    keys
+                }
+                None => Vec::new(),
+            },
         };
         // Reuses the editing rules (track kind, bounds, overlap): a document cannot smuggle in
         // a layout the editor itself would refuse.
@@ -773,6 +844,21 @@ fn parse_sequence(value: &Value, library: &Library) -> Result<Timeline, CommandE
     timeline.selected_clip = None;
     timeline.selected_track = None;
     Ok(timeline)
+}
+
+/// Whether any clip of any sequence stores a non-empty `camera_keys` list (BL140).
+fn has_camera_keys(doc: &Value) -> bool {
+    doc["sequences"].as_array().is_some_and(|sequences| {
+        sequences.iter().any(|sequence| {
+            sequence["clips"].as_array().is_some_and(|clips| {
+                clips.iter().any(|clip| {
+                    clip.get("camera_keys")
+                        .and_then(Value::as_array)
+                        .is_some_and(|keys| !keys.is_empty())
+                })
+            })
+        })
+    })
 }
 
 /// Validates the supported document versions. V1 has no scene storage; v2 protects it from
@@ -801,6 +887,11 @@ pub fn migrate(doc: Value) -> Result<Value, CommandError> {
     if version == LEGACY_SCHEMA_VERSION && doc.get("scenes").is_some() {
         return Err(invalid(
             "Directed scenes require project schema 2; schema 1 readers would discard them",
+        ));
+    }
+    if version == LEGACY_SCHEMA_VERSION && has_camera_keys(&doc) {
+        return Err(invalid(
+            "Camera keys require project schema 2; schema 1 readers would discard them",
         ));
     }
     if version == 0 {
