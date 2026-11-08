@@ -456,3 +456,7 @@ grava recusa (`scene_interaction.rs`, `scene_fx_gesture.rs`). Mutações: voltar
 candidato legal (x=3, +1 undo), undo restaura 0.5, e update de gesto invalidado dá `gesture_invalidated` sem
 recusa registrada. Limites inalterados: `ORIGIN_NOT_EXECUTED`, `ORIGIN_GOLDEN_NOT_COMPARABLE`; sem ponteiro
 físico, GPU real nem paridade integral.
+
+### Correção residual — gesto de uma terceira cena
+
+Código validado `f5f6d1deb6d69a7d925bf5d747a76ccf0a6b6a59`: mudar o painel de Y para Z cancela somente o gesto de Y; um gesto de X permanece aberto. A regressão GPUI com três cenas falhou antes da correção e passou depois. Executado neste código: fmt/check/clippy workspace com -D warnings, workspace com TESSEL_REQUIRE_RUNTIME=1 (1881/0/12), build desktop, FX GPUI30/30, specs da prova normal/-O e janela116/116 sem falha/skip. Core tree sem gpui/wry. Logs locais em /tmp/pr37-thirdscene-final. Alterações posteriores deste registro são somente documentais. Sem ponteiro físico ou GPU real; gaps P0 preservados.
