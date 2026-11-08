@@ -70,15 +70,23 @@ resultado pelo mesmo plano.
 | Lib | `crates/core/src/text.rs` (5 testes: NFC/NFD, cobertura inteira, marcas inválidas, controle, ASCII intacto), `content.rs`, `crates/core/tests/accented_titles.rs` (7: plano canônico, recusa com estado intacto, undo/repetição, `set clip_text:`, só título, salvar/reabrir NFD, processo `tessel-headless`) e `state/tree.rs` (nó só do título selecionado) | V |
 | Runtime | `runtime/test/pure.test.mjs` (cobertura = a mesma lista do core, marca sobre o corpo, NFC/NFD) e `runtime/test/accented-text-browser.test.mjs` (Chrome real: NFD = NFC sem passar pelo core, acento ≠ sem acento, til ≠ agudo ≠ grave, caixa desconhecida ≠ acento coberto; só hashes, os pixels estão abaixo) | V |
 | CLI headless | mesmo fluxo em `tessel-headless` (processo real) e `scripts/accented-titles-proof.py` (11 checks JSONL, sem janela) | V |
-| Monitor / quadro / export (pixels reais) | `crates/render/tests/accented_titles.rs` (Chrome + FFmpeg): AÇÃO tem a largura de ACAO, til ≥ 4 px acima e cedilha ≥ 4 px abaixo do mesmo corpo (±2 px), maiúscula = minúscula, NFD = NFC byte a byte; export H.264 do quadro: mesma caixa e comparação histórica com `render.frame` em Chrome headless (965 vs 966 acesos, caixas iguais); novos limites locais escritos, não executados por disco | V |
+| Monitor / quadro / export (pixels reais) | `crates/render/tests/accented_titles.rs` (Chrome + FFmpeg): AÇÃO tem a largura de ACAO, til ≥ 4 px acima e cedilha ≥ 4 px abaixo do mesmo corpo (±2 px), maiúscula = minúscula, NFD = NFC byte a byte; export H.264 do quadro: mesma caixa e comparação histórica com `render.frame` em Chrome headless (965 vs 966 acesos, caixas iguais); limites mais estritos (foreground + linhas) executados na integração: `changed=1 union=966 worst_row_fraction=0.0238`, 3/3 | V |
 | UI | `crates/desktop/src/workstation/title_text_tests.rs` (4 testes GPUI: seção/nó só para título, Enter = uma edição composta com undo, recusa restaura o campo e reporta, `set` externo chega ao campo; mutação sem `sync_title_text` derruba os 4) e `scripts/accented-titles-proof.py` na janela real própria (21 checks por `ui op/get/set/invoke`, `render.frame` PNG lido no script e captura nativa [`assets/bl141-accented-title-window.png`](assets/bl141-accented-title-window.png)) | V (sem digitar com teclado físico) |
 
 Limites: não houve digitação física no campo nem clique de coordenada (o teste GPUI aciona a entidade `Input`; o script usa `set`);
 a captura nativa mostra a janela, não substitui os testes de pixel; quebra de linha/alinhamento/multilinha não existem
 (BL141.1); só a cobertura listada (BL141.2: ampliar com fonte real = BL053).
 
-Revisão B: a comparação histórica do export aceitava divergências em1% do quadro incluindo fundo, portanto não comprovava igualdade pixel a pixel de glifos. O teste agora compara foreground e linhas dos acentos, com controle negativo de til→agudo; não reexecutado por disco abaixo do piso. A captura nativa existente não compara pixels com Chrome/export nem prova igualdade entre escalas. Eventos tardios de input são descartados quando o clipe exibido difere do selecionado; o reset Texto sem operação foi removido da apresentação. Provas usam run_surface e captura indisponível vira SKIP, nunca PASS.
+Revisão B e R2 (histórico): a comparação histórica do export aceitava divergências em 1 % do quadro incluindo o fundo; o teste
+passou a comparar foreground e linhas dos acentos, com controle negativo de til→agudo. Eventos tardios de input são descartados quando
+o clipe exibido difere do selecionado e o reset Texto sem operação saiu da apresentação. Provas usam `run_surface`; captura indisponível
+vira SKIP, nunca PASS.
 
-R2 de código: corrigidos TreeContext.perf_meter no teste, comparação de action como objeto e paint explícito antes de ler o Input. O teste de export registra changed/union e pior fração de divergência por linha antes de qualquer tolerância; limites existentes mantidos. A matriz F050 fica I até gates compilados. Estas alterações receberam somente rustfmt/check de sintaxe, sem Cargo/render por disco.
-
-Helper atualizado para28/28 Python normal/-O: timeout encerra transporte e subclasses mantêm args. Caller resolve saída absoluta. Input é ressincronizado após commit equivalente NFC/NFD sem nova revisão; teste GPUI escrito, não executado, com paint explícito.
+**Integração com `main` (PR #21, após os merges das PRs #20, #23 e #22): gates reais executados** (15–17 GiB livres, piso de 12 GiB,
+runtime real, Chrome, FFmpeg). `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked --no-fail-fast`: **1668 passaram,
+0 falharam, 12 ignorados**; `clippy -D warnings` e `fmt --check` limpos; `./scripts/runtime test` 181/181; `scripts/accented-titles-proof.py`
+(com `with-gpu-lock.py`): **headless 11/11, janela 21/21**, 0 SKIP; todos os `scripts/*.spec.py` passam (helper normal e `-O`);
+`cargo tree -p tessel-editor-core` sem gpui/wry. **Export de títulos, impresso antes de qualquer decisão** (`accented_titles.rs`, 3/3, uma
+thread): `glyph comparison changed=1 union=966 worst_row_fraction=0.0238` (limites do teste mantidos: global ≤ 2 % e por linha ≤ 1 pixel ou ≤ 15 %;
+nenhuma tolerância foi alterada) e o controle negativo (til→agudo) é rejeitado. Não houve digitação física no campo nem igualdade
+entre escalas ou com o pixel da WKWebView nativa.
