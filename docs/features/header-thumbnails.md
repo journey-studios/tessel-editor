@@ -223,7 +223,7 @@ canônico da `main`): binário ausente, processo que morre, resposta que não é
 **Limites declarados (não provados nesta validação; os IDs seguem abertos no backlog).**
 
 - **BL144.1:** imagem parada e vídeo seguem com glifo.
-- **BL144.2:** validado na PR #31 (ver "Evidência do BL144.2" abaixo); SwiftShader, sem GPU real, só o fixture sintético de cinco gaussianas (um PLY real do SHARP é BL143.8; eixos SPZ/PLY, BL144.13).
+- **BL144.2:** validado na PR #31 (ver "Evidência do BL144.2" acima); SwiftShader, sem GPU real, só o fixture sintético de cinco gaussianas (um PLY real do SHARP é BL143.8; eixos SPZ/PLY, BL144.13).
 - **BL144.3 (impressão do runtime):** o cache só é invalidado por `VERSION`/`CACHE_VERSION`; reconstruir `runtime/dist` não
   refaz imagens guardadas. Plano: o runtime expõe o hash do bundle em `capabilities`, o adaptador o inclui na impressão do
   cache e `media.thumbnails {rebuild: true}` limpa só as miniaturas. Não implementado.
