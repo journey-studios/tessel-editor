@@ -306,6 +306,12 @@ pub struct ViewportHost {
     /// scene's for a scene. `None` for a source preview or before the first request, so the
     /// history never assumes one (and never 60: this is not the interface's target).
     target_fps: Option<f64>,
+    /// How many times the session under the history's measurements changed (a scene, the project,
+    /// the page). A request is stamped with it when the host admits it, and its answer is recorded
+    /// only while the stamp is still the current one: an answer that comes back after the edge
+    /// belongs to the segment it was asked in, which is over (BL145.6). Counted whether or not a
+    /// recording runs, so a recording that starts later never mistakes an old request for its own.
+    history_epoch: u64,
 }
 
 impl ViewportHost {
@@ -367,6 +373,7 @@ impl ViewportHost {
             meter: None,
             presented: None,
             target_fps: None,
+            history_epoch: 0,
         };
         host.set_inspect_previews(std::env::var(INSPECT_ENV).is_ok_and(|value| value == "1"));
         host
@@ -426,6 +433,32 @@ impl ViewportHost {
         }
     }
 
+    /// The session the history is measuring now; a request admitted under another one is over.
+    pub(super) fn history_epoch(&self) -> u64 {
+        self.history_epoch
+    }
+
+    /// [`Self::note_image`] for a picture whose request was admitted under `epoch`. A picture of
+    /// a session that has since changed (the user moved to another scene while its frame was in
+    /// flight) is still what the canvas shows, so the monitor remembers it, but it is **not** a
+    /// frame, an interval, a latency, a texture reading or a frame format of the segment that is
+    /// open now: the history counts it as a stale answer and nothing else.
+    pub(super) fn note_image_of(&mut self, epoch: u64, frame: Option<i64>, result: &FrameResult) {
+        if epoch == self.history_epoch {
+            self.note_image(frame, result);
+            return;
+        }
+        self.presented = frame;
+        self.note_stale(result.id);
+    }
+
+    /// The answer to request `id` came back after its session ended: counted, never measured.
+    pub(super) fn note_stale(&self, id: u64) {
+        if let Some(link) = &self.meter {
+            link.meter.borrow_mut().response_stale(id);
+        }
+    }
+
     /// The host admitted request `id` (history latency starts here).
     pub(super) fn note_admitted(&self, id: u64) {
         if let Some(link) = &self.meter {
@@ -446,7 +479,8 @@ impl ViewportHost {
         }
     }
 
-    pub(super) fn note_session(&self, kind: SessionKind) {
+    pub(super) fn note_session(&mut self, kind: SessionKind) {
+        self.history_epoch = self.history_epoch.wrapping_add(1);
         if let Some(link) = &self.meter {
             link.meter
                 .borrow_mut()

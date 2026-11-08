@@ -661,7 +661,7 @@ fn stopping_keeps_what_was_recorded_readable_at_the_moment_it_stopped() {
     assert_eq!(snapshot.to_document()["recording"]["state"], "stopped");
     assert!(recorder.events_held() >= 2);
     assert!(
-        recorder.rss_due(at(5_000)) == false,
+        !recorder.rss_due(at(5_000)),
         "a stopped recorder wants no memory reading"
     );
 }
@@ -719,7 +719,7 @@ fn clear_is_explicit_resets_anchors_and_keeps_recording() {
 fn freezing_fixes_a_bounded_snapshot_while_the_recording_continues() {
     let mut recorder = started(0);
     recorder.sample(Metric::RenderMs, at(100), 10.0);
-    assert_eq!(recorder.freeze(at(500)).unwrap(), true);
+    assert!(recorder.freeze(at(500)).unwrap());
     let fixed = recorder.frozen().unwrap().clone();
     assert!(fixed.frozen);
     // Collection goes on underneath.
@@ -736,7 +736,7 @@ fn freezing_fixes_a_bounded_snapshot_while_the_recording_continues() {
     assert_eq!(live.summary(Metric::RenderMs).unwrap().count, 2);
     assert!(!live.frozen);
     // One snapshot at a time: freezing again keeps the first.
-    assert_eq!(recorder.freeze(at(900)).unwrap(), false);
+    assert!(!recorder.freeze(at(900)).unwrap());
     assert_eq!(recorder.frozen().unwrap(), &fixed);
     // Resume returns to the moving history, which kept growing.
     assert!(recorder.resume());

@@ -413,6 +413,8 @@ fn the_export_is_written_off_the_window_thread_from_a_snapshot_taken_at_the_call
     for _ in 0..3 {
         paint(cx);
     }
+    let before_clear = frames(&view, cx);
+    assert!(before_clear >= 3, "the premise: three paints are recorded");
     // Everything below happens before the executor gets a turn: the write has not run yet, so
     // what the file holds can only be what the call took.
     let (started, refused, cleared) = view.update_in(cx, |view, window, cx| {
@@ -447,7 +449,32 @@ fn the_export_is_written_off_the_window_thread_from_a_snapshot_taken_at_the_call
         "the snapshot of the call, not the history cleared right after it: {}",
         document["summary"]["ui_frames"]
     );
-    assert_eq!(frames(&view, cx), 0, "the clear did happen");
+    // The recording CONTINUES after a clear (only the past is forgotten), so the paints that follow
+    // it are recorded again: the proof that the clear happened is a history shorter than the one
+    // that was cleared, its first segment opened by the clear and its event line starting there.
+    assert!(
+        frames(&view, cx) < before_clear,
+        "the clear did happen: {} frames after, {before_clear} before",
+        frames(&view, cx)
+    );
+    view.read_with(cx, |view, _| {
+        let now = view.perf.elapsed();
+        let meter = view.perf.meter();
+        let meter = meter.borrow();
+        let snapshot = meter.recorder().snapshot(now).unwrap();
+        assert!(
+            snapshot
+                .events
+                .iter()
+                .any(|event| event.kind == EventKind::RecordingCleared),
+            "the event line says the history was cleared"
+        );
+        assert_eq!(
+            snapshot.segments.first().map(|segment| segment.kind),
+            Some(SessionKind::Cleared),
+            "the history now starts at the clear"
+        );
+    });
     // The next export starts fresh once the first ended.
     run(&view, cx, HistoryCommand::Record(true)).unwrap();
     let again = run(&view, cx, HistoryCommand::Export(second.clone())).unwrap();

@@ -27,6 +27,9 @@ struct Active {
     plan: Value,
     /// The edit frame this request draws, so the report can say which picture is on screen.
     edit_frame: Value,
+    /// The history session (`ViewportHost::history_epoch`) the host admitted it under: what it
+    /// answers is the history's only while that session is the open one (BL145.6).
+    epoch: u64,
 }
 
 /// The last `asset.load` sent for a slot: the resource it holds and, with `asset.identity`
@@ -35,6 +38,9 @@ struct SentLoad {
     asset_id: String,
     generation: u64,
     identity: Option<LoadIdentity>,
+    /// The history session the load started in: its end is an event of that session, not of the
+    /// segment open when the page finally answers.
+    epoch: u64,
 }
 
 /// What the lifecycle rejected or survived; reported so a native proof can tell "nothing arrived"
@@ -281,7 +287,14 @@ impl ViewportHost {
         // The history hears about the loss from the page's notice itself, so a context that dies
         // while the monitor is idle is recorded too (there is no frame to fail). When a frame was
         // in flight the loss names it, and the notice that follows in the session is the same loss.
-        let in_flight = self.directed.active.as_ref().map(|active| active.id);
+        // Only a request of the open session is named: the loss is the context's, but a frame
+        // asked under a scene that was left is not the one it interrupted.
+        let in_flight = self
+            .directed
+            .active
+            .as_ref()
+            .filter(|active| active.epoch == self.history_epoch())
+            .map(|active| active.id);
         self.note_failed(in_flight, &reason.code);
         self.cancel_directed_active(reason);
         self.directed.shown = None;
@@ -312,7 +325,9 @@ impl ViewportHost {
             Ok(mut active) => {
                 active.reply = intent.reply;
                 // The host admitted this request: the history's latency starts here, with the
-                // runtime's own request id (the ids of this adapter never meet the sequence's).
+                // runtime's own request id (the ids of this adapter never meet the sequence's),
+                // and the session it was asked in is stamped on it.
+                active.epoch = self.history_epoch();
                 self.note_admitted(active.id);
                 self.directed.active = Some(active);
                 self.request_started = Some(Instant::now());
@@ -384,6 +399,7 @@ impl ViewportHost {
                     asset_id: scene["asset_id"].as_str().unwrap_or_default().to_owned(),
                     generation: scene["generation"].as_u64().unwrap_or_default(),
                     identity,
+                    epoch: self.history_epoch(),
                 },
             );
         }
@@ -419,6 +435,7 @@ impl ViewportHost {
             reply: None,
             plan: plan.to_json(),
             edit_frame: json!(plan.frame.edit_frame),
+            epoch: self.history_epoch(),
         })
     }
 
@@ -456,7 +473,9 @@ impl ViewportHost {
                     let _ = reply.try_send(frame_report(&active.plan, &frame));
                 }
                 self.failure = None;
-                self.note_image(active.edit_frame.as_i64(), &frame);
+                // The caller was answered above whatever happened since; the history hears it
+                // only if the session it was asked in is still the open one.
+                self.note_image_of(active.epoch, active.edit_frame.as_i64(), &frame);
                 self.directed.shown = Some((active.id, active.edit_frame));
                 self.last_frame = Some(frame);
             }
@@ -464,12 +483,11 @@ impl ViewportHost {
                 if let Some(reply) = active.reply {
                     let _ = reply.try_send(Err(backend_error(error.clone())));
                 }
-                if let Some(link) = &self.meter {
-                    link.meter.borrow_mut().request_failed(
-                        link.clock.elapsed(),
-                        Some(active.id),
-                        &error.code,
-                    );
+                if active.epoch == self.history_epoch() {
+                    self.note_failed(Some(active.id), &error.code);
+                } else {
+                    // The failure of a request of a session that is over: not an event of this one.
+                    self.note_stale(active.id);
                 }
                 self.directed.key = None;
                 self.failure = Some(error);
@@ -553,7 +571,7 @@ impl ViewportHost {
         match status {
             AssetStatus::Ready(_) => {
                 if self.directed.loads.contains_key(slot) && !foreign {
-                    self.note_event(EventKind::ResourceLoadFinished, Some("ready"));
+                    self.note_load_finished(slot, "ready");
                     self.directed.slots.mark_ready(slot);
                 } else {
                     self.directed.stats.stale_asset_states += 1;
@@ -564,12 +582,26 @@ impl ViewportHost {
                     self.directed.stats.stale_asset_states += 1;
                     return;
                 }
-                self.note_event(EventKind::ResourceLoadFinished, Some(&error.code));
+                self.note_load_finished(slot, &error.code);
                 self.directed.loads.remove(slot);
                 self.directed.slots.mark_failed(slot);
                 self.finish_directed(Err(error));
             }
             _ => {}
+        }
+    }
+
+    /// The end of the load held for `slot`, as an event of the history: only when it started in the
+    /// session that is open (a load of the scene that was left finishing in the next segment would
+    /// show an end whose start the segment never saw). The book is updated either way.
+    fn note_load_finished(&self, slot: &str, detail: &str) {
+        let current = self
+            .directed
+            .loads
+            .get(slot)
+            .is_some_and(|sent| sent.epoch == self.history_epoch());
+        if current {
+            self.note_event(EventKind::ResourceLoadFinished, Some(detail));
         }
     }
 

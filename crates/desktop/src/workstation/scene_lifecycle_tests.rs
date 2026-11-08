@@ -16,7 +16,7 @@ use core::prelude::v1::test;
 use serde_json::{Value, json};
 use tessel_editor_core::headless::execute_ext;
 use tessel_editor_core::perf::Meter;
-use tessel_editor_core::perf_history::EventKind;
+use tessel_editor_core::perf_history::{EventKind, Metric};
 use tessel_editor_core::scene_plan::Capability;
 use tessel_editor_core::{EditorState, state::ProjectSettings};
 use tessel_editor_media::host::MediaHost;
@@ -858,4 +858,320 @@ fn a_host_with_no_recording_hears_nothing_of_a_directed_context_loss() {
     assert!(!meter.borrow().enabled());
     assert!(meter.borrow().recorder().snapshot(Duration::ZERO).is_none());
     assert_eq!(meter.borrow().recorder().events_held(), 0);
+}
+
+// ---- a frame asked under a scene that was left is not a measurement of the next one (BL145.6)
+//
+// The monitor does not cancel the frame in flight when the user moves to another scene (only an
+// explicit request does): the old frame is answered to whoever asked, and it used to be recorded
+// as an image, an interval, a latency, a texture and a frame format of the NEW segment, because
+// the scene change opens the segment before the old answer comes back.
+
+/// The corpus scene attached twice (`proof` and `second`), both with their verified resources, on a
+/// page that completed the handshake.
+fn two_scene_host(tag: &str) -> (ViewportHost, EditorState, SceneResourceSession) {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../scripts/directed-scene-proof/corpus")
+        .canonicalize()
+        .unwrap();
+    let mut state = EditorState::empty(&ProjectSettings::default()).unwrap();
+    let mut media = MediaHost::new();
+    for scene in ["proof", "second"] {
+        for request in [
+            json!({"op":"scene.attach","id":scene,"path":root.join("bundle.json")}),
+            json!({"op":"scene.resources.resolve","scene":scene,"base":root}),
+        ] {
+            execute_ext(&mut state, None, Some(&mut media), &request).unwrap();
+        }
+    }
+    let mut host = ViewportHost::new(Ok(page(tag)));
+    start_page_with(&mut host, &state, ready_message());
+    (host, state, media.scene_resources())
+}
+
+fn scene_frame(scene: &str, frame: i64) -> Value {
+    json!({"scene":scene,"frame":frame,"width":320,"height":180})
+}
+
+/// How many samples of `metric` the open window holds (0 when it holds none).
+fn samples(meter: &Rc<RefCell<Meter>>, clock: &PerfClock, metric: Metric) -> u64 {
+    meter
+        .borrow()
+        .recorder()
+        .snapshot(clock.elapsed())
+        .and_then(|snapshot| snapshot.summary(metric))
+        .map_or(0, |summary| summary.count)
+}
+
+fn stale_answers(meter: &Rc<RefCell<Meter>>) -> u64 {
+    meter.borrow().recorder().counters().stale_responses
+}
+
+/// Every event of `kinds`, in order, as `(kind, segment)`.
+fn events_of(
+    meter: &Rc<RefCell<Meter>>,
+    clock: &PerfClock,
+    kinds: &[EventKind],
+) -> Vec<(EventKind, u32)> {
+    meter
+        .borrow()
+        .recorder()
+        .snapshot(clock.elapsed())
+        .unwrap()
+        .events
+        .iter()
+        .filter(|event| kinds.contains(&event.kind))
+        .map(|event| (event.kind, event.segment))
+        .collect()
+}
+
+/// A frame of `proof` drawn and answered inside its own segment (the control), then a second one
+/// (`explicit` or not) left in flight. Returns its `frame.render`, its waiter when explicit.
+fn proof_frame_left_in_flight(
+    host: &mut ViewportHost,
+    state: &mut EditorState,
+    resources: &SceneResourceSession,
+    explicit: bool,
+) -> (
+    Value,
+    Option<async_channel::Receiver<Result<Value, tessel_editor_core::CommandError>>>,
+) {
+    host.render_scene(state, resources, &scene_frame("proof", 0), false)
+        .unwrap();
+    let loads = sent(host);
+    let first = render_after_loads(host, state, &loads);
+    complete(host, state, &first);
+    let waiter = host
+        .render_scene(state, resources, &scene_frame("proof", 24), explicit)
+        .unwrap();
+    let old = frame_render(&sent(host));
+    (old, waiter)
+}
+
+#[test]
+fn an_old_frame_that_comes_back_after_a_scene_switch_is_no_measurement_of_the_new_segment() {
+    let (mut host, mut state, resources) = two_scene_host("history-stale-image");
+    let (meter, clock) = recording(&mut host);
+    let (old, waiter) = proof_frame_left_in_flight(&mut host, &mut state, &resources, true);
+    let waiter = waiter.unwrap();
+    // The control: the first frame was answered inside its own segment and was recorded.
+    for metric in [Metric::MonitorFrames, Metric::RenderMs, Metric::LatencyMs] {
+        assert_eq!(
+            samples(&meter, &clock, metric),
+            1,
+            "{metric:?} of the control frame"
+        );
+    }
+    assert_eq!(stale_answers(&meter), 0);
+    let segment_of_the_old_scene = meter.borrow().recorder().segment();
+
+    // The user moves to another scene: the segment changes, the old frame is still in flight.
+    host.render_scene(&mut state, &resources, &scene_frame("second", 0), false)
+        .unwrap();
+    assert_eq!(
+        meter.borrow().recorder().segment(),
+        segment_of_the_old_scene + 1,
+        "the premise: the scene change opened a segment before the old answer"
+    );
+    assert!(
+        sent(&mut host).is_empty(),
+        "nothing goes out behind the frame in flight"
+    );
+
+    // The old answer arrives. Whoever asked for it is answered, and the new segment hears none of it.
+    complete(&mut host, &state, &old);
+    assert!(
+        waiter.try_recv().unwrap().is_ok(),
+        "the caller keeps its answer"
+    );
+    assert_eq!(
+        samples(&meter, &clock, Metric::MonitorFrames),
+        1,
+        "no frame of the new segment"
+    );
+    assert_eq!(
+        samples(&meter, &clock, Metric::RenderMs),
+        1,
+        "no CPU time of the new segment"
+    );
+    assert_eq!(
+        samples(&meter, &clock, Metric::LatencyMs),
+        1,
+        "no latency of the new segment"
+    );
+    assert_eq!(
+        samples(&meter, &clock, Metric::MonitorIntervalMs),
+        0,
+        "no interval anchor"
+    );
+    assert_eq!(
+        stale_answers(&meter),
+        1,
+        "counted as a stale answer, and only that"
+    );
+    assert_eq!(
+        meter.borrow().recorder().pending_requests(),
+        1,
+        "only the request of the new scene (admitted as the old one ended) is waited for"
+    );
+
+    // The new scene's own frame is measured normally, with the latency of its own request.
+    let loads = sent(&mut host);
+    let new = render_after_loads(&mut host, &state, &loads);
+    complete(&mut host, &state, &new);
+    assert_eq!(samples(&meter, &clock, Metric::MonitorFrames), 2);
+    assert_eq!(samples(&meter, &clock, Metric::LatencyMs), 2);
+    assert_eq!(stale_answers(&meter), 1);
+    assert_eq!(meter.borrow().recorder().pending_requests(), 0);
+}
+
+#[test]
+fn an_old_frame_that_fails_after_a_scene_switch_is_no_event_of_the_new_segment() {
+    let (mut host, mut state, resources) = two_scene_host("history-stale-failure");
+    let (meter, clock) = recording(&mut host);
+    let (old, waiter) = proof_frame_left_in_flight(&mut host, &mut state, &resources, true);
+    let waiter = waiter.unwrap();
+    host.render_scene(&mut state, &resources, &scene_frame("second", 0), false)
+        .unwrap();
+
+    from_page(
+        &mut host,
+        &state,
+        json!({"type":"frame.failed","id":old["id"],"revision":old["revision"],
+            "error":{"code":"render_failed","message":"the old scene failed"}}),
+    );
+    assert_eq!(
+        waiter.try_recv().unwrap().unwrap_err().code,
+        "render_failed",
+        "the caller is told, whatever the history does"
+    );
+    assert!(
+        events_of(&meter, &clock, &[EventKind::RequestFailed]).is_empty(),
+        "the failure of a frame of the scene that was left is not an event of the next segment"
+    );
+    assert_eq!(stale_answers(&meter), 1);
+
+    // A failure of the new scene's own frame IS news in its segment.
+    let loads = sent(&mut host);
+    let new = render_after_loads(&mut host, &state, &loads);
+    from_page(
+        &mut host,
+        &state,
+        json!({"type":"frame.failed","id":new["id"],"revision":new["revision"],
+            "error":{"code":"render_failed","message":"the new scene failed"}}),
+    );
+    let segment = meter.borrow().recorder().segment();
+    assert_eq!(
+        events_of(&meter, &clock, &[EventKind::RequestFailed]),
+        vec![(EventKind::RequestFailed, segment)]
+    );
+}
+
+#[test]
+fn a_cancelled_frame_released_after_the_new_scene_is_stale_and_never_measured() {
+    let (mut host, mut state, resources) = two_scene_host("history-out-of-order");
+    let (meter, clock) = recording(&mut host);
+    let (old, waiter) = proof_frame_left_in_flight(&mut host, &mut state, &resources, true);
+    let old_waiter = waiter.unwrap();
+
+    // An explicit frame of another scene supersedes it: the old one is cancelled and answered.
+    let new_waiter = host
+        .render_scene(&mut state, &resources, &scene_frame("second", 0), true)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        old_waiter.try_recv().unwrap().unwrap_err().code,
+        "cancelled"
+    );
+    let loads = sent(&mut host);
+    let new = render_after_loads(&mut host, &state, &loads);
+    complete(&mut host, &state, &new);
+    assert!(new_waiter.try_recv().unwrap().is_ok());
+    assert_eq!(
+        samples(&meter, &clock, Metric::MonitorFrames),
+        2,
+        "the control and the new frame"
+    );
+
+    // The page releases the cancelled frame LAST (out of order): the host refuses it.
+    complete(&mut host, &state, &old);
+    assert_eq!(
+        host.report()["directed"]["refused"]["stale_frames"],
+        json!(1)
+    );
+    assert_eq!(
+        samples(&meter, &clock, Metric::MonitorFrames),
+        2,
+        "still two"
+    );
+    assert_eq!(samples(&meter, &clock, Metric::LatencyMs), 2);
+    assert_eq!(samples(&meter, &clock, Metric::RenderMs), 2);
+    assert!(events_of(&meter, &clock, &[EventKind::RequestFailed]).is_empty());
+}
+
+#[test]
+fn a_load_of_the_scene_that_was_left_ends_in_no_segment_that_never_saw_it_start() {
+    let (mut host, mut state, resources) = two_scene_host("history-stale-load");
+    let (meter, clock) = recording(&mut host);
+    let finished = [EventKind::ResourceLoadFinished];
+    let load_events = [
+        EventKind::ResourceLoadStarted,
+        EventKind::ResourceLoadFinished,
+    ];
+
+    // The control: loads that start and end inside one segment show both ends there.
+    host.render_scene(&mut state, &resources, &scene_frame("proof", 0), false)
+        .unwrap();
+    let loads = sent(&mut host);
+    let started = loads.iter().filter(|m| m["type"] == "asset.load").count();
+    assert!(started > 0, "the premise: the first frame waits for loads");
+    let first = render_after_loads(&mut host, &state, &loads);
+    let segment = meter.borrow().recorder().segment();
+    assert_eq!(
+        events_of(&meter, &clock, &load_events),
+        [
+            vec![(EventKind::ResourceLoadStarted, segment); started],
+            vec![(EventKind::ResourceLoadFinished, segment); started],
+        ]
+        .concat()
+    );
+    complete(&mut host, &state, &first);
+    let ended_before = events_of(&meter, &clock, &finished).len();
+
+    // The pictures are dropped (the monitor was closed), so the next frame loads them again.
+    host.clear_directed();
+    host.render_scene(&mut state, &resources, &scene_frame("proof", 24), false)
+        .unwrap();
+    let old_loads = sent(&mut host);
+    assert_eq!(
+        old_loads
+            .iter()
+            .filter(|m| m["type"] == "asset.load")
+            .count(),
+        started,
+        "the premise: they are loaded again"
+    );
+    // The user moves on before the page answered; then the page answers the old loads. (A frame
+    // other than 24: two scenes of one bundle plan the same picture at the same frame, and the
+    // host would take a repeated request for the same scene.)
+    host.render_scene(&mut state, &resources, &scene_frame("second", 12), false)
+        .unwrap();
+    let render = render_after_loads(&mut host, &state, &old_loads);
+    assert_eq!(
+        events_of(&meter, &clock, &finished).len(),
+        ended_before,
+        "the end of a load of the scene that was left is not in the segment that never saw it start"
+    );
+
+    // The book is updated all the same: the old frame draws, and the next scene's frame is
+    // drawn from the pictures that are ready, and measured in its own segment.
+    complete(&mut host, &state, &render);
+    let next_messages = sent(&mut host);
+    let next = render_after_loads(&mut host, &state, &next_messages);
+    complete(&mut host, &state, &next);
+    assert_eq!(samples(&meter, &clock, Metric::MonitorFrames), 2);
+    assert_eq!(
+        host.report()["directed"]["slots"]["occupied"],
+        json!(started)
+    );
 }
