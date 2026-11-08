@@ -35,15 +35,22 @@ open; a thumbnail job draws one PNG per splat and scene at the sequence aspect a
 oracle; a picture is never applied to another project (the same asset IDs and files are in both, on purpose); a
 job that is REALLY running (observed `running` with some frames drawn and not all) is cancelled/replaced and
 ends `cancelled` before drawing everything, its result is not applied and the new job's pictures are right; an
-unknown asset is refused and the project is untouched. Native only: the semantic `node:13` label equals the
-header, the tree's `thumbnail` state per `media:<id>`, and a monitor that drew a real frame of a clip.
+unknown asset is refused and the project is untouched; the SAME document opened again (another session) refuses the
+result drawn for the first opening (headless: `job.commit` is `stale`; native: the running job ends cancelled and the
+new session draws by itself); relinking the splat a scene is drawn with gives the splat and the scene new identities,
+new pictures and the right pixels. Native only: a job the USER cancels (seen running first) is not started again by
+the window's tick (the pause holds) until an explicit `media.thumbnails` resumes it; the semantic `node:13` label
+equals the header, the tree's `thumbnail` state per `media:<id>`, and a monitor that drew a real frame of a clip.
 
 A precondition that does not hold (the job finished before it could be cancelled, the monitor never drew) is a
 FAIL, never a pass. A missing OS capture is a recorded SKIP (the run is then `complete: false`, exit 2).
 Screenshots are written under `--out`; they are copied elsewhere only with `--copy-screenshots`.
 
 Not proven here: a physical pointer, a real GPU (SwiftShader), a real SHARP file (BL143, another PR), a
-black-monitor root cause (BL144.4: the earlier captures were of a sequence with no clip).
+black-monitor root cause (BL144.4: the earlier captures were of a sequence with no clip), a dependency going from
+missing to present (a scene whose splat is not in the library is refused by `media.import` with
+`missing_dependency`, so no operation reaches that state; `crates/media/tests/thumbnails.rs` covers it with the
+library edited directly), the user's pause surviving a video export (BL144.10), an export racing a thumbnail.
 """
 import argparse
 import json
@@ -69,6 +76,7 @@ HEIGHT = 136
 BACKGROUND = (10, 13, 26)
 PNG_SIGNATURE = b'\x89PNG\r\n\x1a\n'
 VARIANTS = 20
+PAUSE_SECONDS = 5
 SPLAT_ID, SCENE_ID, FAR_ID = 'cloud', 'scene-tessel-scene', 'far'
 
 
@@ -170,6 +178,8 @@ def write_variants(fixtures, count=VARIANTS):
         path.write_text(json.dumps(scene, indent=2))
         paths.append(path)
     (fixtures / 'far.splat').write_bytes(ball_splat((1000.0, -200.0, 300.0), 5.0, 3000))
+    # Same number of splats as `cloud.splat` (a relink needs comparable streams), other bytes and place.
+    (fixtures / 'moved.splat').write_bytes(ball_splat((900.0, 150.0, -250.0), 4.0, 4000, seed=11))
     return paths
 
 
@@ -318,6 +328,18 @@ def make_scenario(fixtures, variants):
                       Path(report['path']).is_file() and (report['width'], report['height']) == (WIDTH, HEIGHT), report)
             return reports[SCENE_ID]['path'], reports[SPLAT_ID]['path'], reports[FAR_ID]['path'], reports
 
+        def job_ended(job_id):
+            """The thumbnail job `job_id` once it is final, else `None`."""
+            found = {j['id']: j for j in thumbnail_jobs() if j.get('kind') == 'thumbnail'}.get(job_id)
+            return found if found and is_final(found) else None
+
+        def draw():
+            """Headless asks for the pictures (no scheduler there); the window draws them by itself."""
+            return ok({'op': 'media.thumbnails'}) if surface.name == 'headless' else None
+
+        def thumbnail_of(asset):
+            return library()[asset]['thumbnail']
+
         def settled():
             now = library()
             jobs = [j for j in thumbnail_jobs() if j.get('kind') == 'thumbnail']
@@ -362,6 +384,31 @@ def make_scenario(fixtures, variants):
             job = await_in_flight(thumbnail_jobs, 'B\'s window job')
             check(f'B\'s thumbnail job is running ({job["done"]} of {job["total"]} frames drawn)',
                   in_flight(job), job)
+            # The user stops the automatic job: it ends cancelled midway and the window does not start it again.
+            ok({'op': 'job.cancel', 'job': job['id']})
+            stopped = wait_for(lambda: job_ended(job['id']), 'the job the user cancelled to end')
+            require_cancelled_midway(check, 'B\'s job, cancelled by the user', stopped)
+            ids_at_cancel = {j['id'] for j in thumbnail_jobs() if j.get('kind') == 'thumbnail'}
+            time.sleep(PAUSE_SECONDS)
+            ids_later = {j['id'] for j in thumbnail_jobs() if j.get('kind') == 'thumbnail'}
+            check(f'the user\'s pause holds: no thumbnail job started in the {PAUSE_SECONDS}s after the cancel',
+                  ids_later == ids_at_cancel and job['id'] in ids_at_cancel, (ids_at_cancel, ids_later))
+            check('nothing of the cancelled job was applied (every picture of B is still pending)',
+                  all(a['thumbnail']['state'] == 'pending' for a in library().values()), library())
+            # An explicit request resumes it.
+            ok({'op': 'media.thumbnails'})
+            job = await_in_flight(thumbnail_jobs, 'B\'s resumed job')
+            check(f'media.thumbnails resumed it ({job["done"]} of {job["total"]} frames drawn)', in_flight(job), job)
+            # The same document opened again is another session: the resumed job must stop, and the new session
+            # (not paused) draws by itself.
+            ok({'op': 'project.save', 'path': str(doc_b)})
+            ok({'op': 'project.open', 'path': str(doc_b)})
+            header_matches('Basalt', 'cut-b', 'after project.open of the same document B again')
+            replaced = wait_for(lambda: job_ended(job['id']), 'the resumed job to end')
+            require_cancelled_midway(check, 'B\'s resumed job, replaced by the same document opened again', replaced)
+            job = await_in_flight(thumbnail_jobs, 'the new session of B\'s own job')
+            check('the new session of the same document draws by itself (the old pause belonged to the old session)',
+                  in_flight(job), job)
             ok({'op': 'project.save', 'path': str(doc_b)})
             ok({'op': 'project.open', 'path': str(doc_a)})
             header_matches('Aurora', 'cut-a', 'after project.open of A (B\'s job was running)')
@@ -404,6 +451,16 @@ def make_scenario(fixtures, variants):
             check('the cancelled job\'s result cannot be applied', not good, refused)
             check('nothing of the cancelled job reached the library (every picture still pending)',
                   all(a['thumbnail']['state'] == 'pending' for a in library().values()), library())
+            # A job that finishes for B, then the SAME document is opened again: another session, so it is refused.
+            third = ok({'op': 'media.thumbnails', 'wait': False})['job']
+            ok({'op': 'job.wait', 'job': third})
+            ok({'op': 'project.open', 'path': str(doc_b)})
+            header_matches('Basalt', 'cut-b', 'after project.open of the same document B again')
+            reopened = ok({'op': 'job.commit', 'job': third})
+            check('a result drawn for the first opening of B is refused by its reopening (same document, new session)',
+                  reopened['applied'].get('stale') is True, reopened)
+            check('nothing of it reached the library (every picture of the reopened B is pending)',
+                  all(a['thumbnail']['state'] == 'pending' for a in library().values()), library())
             # A new job for the same project, finished but not applied; then A is opened under it.
             second = ok({'op': 'media.thumbnails', 'wait': False})['job']
             ok({'op': 'job.wait', 'job': second})
@@ -431,6 +488,51 @@ def make_scenario(fixtures, variants):
         check('B\'s pictures are not A\'s files',
               scene_b != scene_a and splat_b != splat_a and far_b != far_a, (scene_b, scene_a))
         check_pictures(check, 'project B', scene_b, splat_b, far_b)
+
+        # ---- a dependency changes: the splat a scene is drawn with is relinked to other content ----
+        # (A scene whose splat is missing cannot be imported at all: `media.import` refuses it with
+        # `missing_dependency`, so "missing -> present" has no live path; the library test covers it.)
+        create('Chalk', 'cut-c', scratch / 'ws-c')
+        header_matches('Chalk', 'cut-c', 'after a third project.create')
+        import_media([fixtures / 'cloud.splat', fixtures / 'scene.tessel-scene.json'])
+        draw()
+        wait_for(lambda: all(a['thumbnail']['state'] == 'ready' for a in library().values()),
+                 'the splat and the scene to be drawn')
+        scene_c, splat_c = thumbnail_of(SCENE_ID), thumbnail_of(SPLAT_ID)
+        check('the scene is drawn with its splat',
+              scene_c['state'] == 'ready' and Path(scene_c['path']).is_file(), scene_c)
+        width, height, rows = read_png(scene_c['path'])
+        box = project_point((-2.2, 0.0, 0.0), width, height)
+        check('the scene thumbnail is orange where the box projects',
+              rows[box[1]][box[0]][0] > rows[box[1]][box[0]][2] + 60, rows[box[1]][box[0]])
+        middle = project_point((0.0, 0.0, 0.0), width, height)
+        check('and shows its cloud at the middle',
+              far_from_background(rows[middle[1]][middle[0]], 40), rows[middle[1]][middle[0]])
+        # Relink the splat to other content: its own picture and the scene's (drawn with it) are made again.
+        ok({'op': 'media.relink', 'asset': SPLAT_ID, 'path': str(fixtures / 'moved.splat'), 'accept_changed': True})
+        draw()
+
+        def redrawn():
+            now = library()
+            return (now[SPLAT_ID]['thumbnail']['state'] == 'ready' and now[SCENE_ID]['thumbnail']['state'] == 'ready'
+                    and now[SPLAT_ID]['thumbnail'].get('identity') != splat_c.get('identity')
+                    and now[SCENE_ID]['thumbnail'].get('identity') != scene_c.get('identity'))
+
+        wait_for(redrawn, 'the relinked splat and the scene drawn with it to be made again')
+        scene_r, splat_r = thumbnail_of(SCENE_ID), thumbnail_of(SPLAT_ID)
+        check('the scene\'s identity follows its splat: a new picture, the old file is kept but not shown',
+              scene_r['path'] != scene_c['path'] and Path(scene_c['path']).is_file(), (scene_c['path'], scene_r['path']))
+        check('the relinked splat has its own new picture',
+              splat_r['path'] != splat_c['path'], (splat_c['path'], splat_r['path']))
+        _, _, relinked = read_png(splat_r['path'])
+        check('the relinked splat (900 units from the origin) is framed from its new file: it is at the middle',
+              far_from_background(relinked[HEIGHT // 2][WIDTH // 2], 40), relinked[HEIGHT // 2][WIDTH // 2])
+        _, _, redrawn_scene = read_png(scene_r['path'])
+        sphere = project_point((2.2, 0.0, 0.0), width, height)
+        check('the scene still shows its box and sphere after the relink',
+              redrawn_scene[box[1]][box[0]][0] > redrawn_scene[box[1]][box[0]][2] + 60
+              and redrawn_scene[sphere[1]][sphere[0]][2] > redrawn_scene[sphere[1]][sphere[0]][0] + 60,
+              (redrawn_scene[box[1]][box[0]], redrawn_scene[sphere[1]][sphere[0]]))
 
         # ---- an error leaves the project intact ----
         before_status = ok({'op': 'status'})

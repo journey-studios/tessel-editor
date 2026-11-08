@@ -1101,13 +1101,15 @@ fn a_batch_that_changes_nothing_leaves_the_document_the_scene_and_the_history_al
     assert_eq!(undo_depth(&state), depth);
     let mut plain = session();
     let before = document(&plain);
+    // Attaching the scene is itself one undo entry; what the empty batch must add is nothing.
+    let attached = undo_depth(&plain);
     let answer = edit(&mut plain, json!([]));
     assert_eq!(answer["noop"], true);
     assert_eq!(document(&plain), before);
     assert!(document(&plain).get("fx").is_none(), "no layer is invented");
     assert_eq!(
         undo_depth(&plain),
-        0,
+        attached,
         "an empty batch on a clean session records nothing"
     );
     // A batch that does change something and ends bare (add then remove) still gives the original back.
@@ -1160,8 +1162,11 @@ fn a_clip_without_a_track_never_lands_on_a_hidden_track_and_keeps_ids_apart() {
 
     // The clip's own id is reserved before the track's is made: an explicit `fx-track-1` clip needing a
     // new track used to be refused by the importer as DUPLICATE_ID.
-    let mut state = session();
-    edit(&mut state, json!([add(0, 20, json!({}))]));
+    // The existing track is not `fx-track-1` (that would make the clip's ID a real duplicate): the clip
+    // overlaps it, so a new track is needed, and the first free track ID is exactly the clip's.
+    let mut state = session_with_fx(json!({"catalogVersion":1,"transitions":[],"tracks":[
+        {"id":"base","label":"FX 1","clips":[
+            {"id":"base-clip","effect":"vignette","startFrame":0,"durationFrames":20}]}]}));
     let answer = edit(
         &mut state,
         json!([{"op":"add_clip","effect":"vignette","start_frame":5,"duration_frames":10,"id":"fx-track-1"}]),

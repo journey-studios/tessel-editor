@@ -20,7 +20,7 @@ use tessel_editor_core::plan::{Content, PreviewIntent, RenderPlan};
 use tessel_editor_core::session::Renderer;
 use tessel_editor_core::state::ProjectSettings;
 use tessel_editor_core::thumbnails::{WIDTH, size_for};
-use tessel_editor_core::{CommandError, EditorState, headless};
+use tessel_editor_core::{CommandError, EditorState, Id, headless};
 use tessel_editor_media::derive::png_dimensions;
 use tessel_editor_media::host::{MediaHost, RendererFactory};
 
@@ -752,6 +752,15 @@ fn displaced_and_real_scale_clouds_are_each_framed_from_their_own_file() {
     }
     let paths: Vec<&Path> = paths.iter().map(PathBuf::as_path).collect();
     let mut state = project_of(&dir, "film", &paths);
+    // `media.import` shortens an asset ID to 40 characters, so that file arrived under a shorter one.
+    // An asset can have a 64-character ID (`asset.add`), and that is the case this one is for.
+    let imported = state
+        .library
+        .items
+        .iter_mut()
+        .find(|item| item.id.as_str() == &long[..40])
+        .expect("the long file was imported under its first 40 characters");
+    imported.id = Id::new(&long).unwrap();
     let script = Arc::new(Script::default());
     let mut host = host(&script, false);
 
@@ -1339,6 +1348,56 @@ fn a_job_the_user_cancelled_is_not_started_again_by_the_next_tick() {
         state.thumbnail_targets(false).is_empty()
     });
     assert_eq!(thumbnails(&host), 2);
+}
+
+/// A thumbnail job that finishes and is committed or discarded by a request, before the tick saw it
+/// finish, must free the host's one thumbnail slot: otherwise the window never draws again and
+/// every `media.thumbnails` answers `reused` with a job that is long over.
+#[test]
+fn a_thumbnail_job_ended_by_commit_or_discard_frees_the_slot_for_the_next_one() {
+    for action in ["job.discard", "job.commit"] {
+        let (dir, set) = setup(&format!("slot-{action}"));
+        let mut state = project(&dir, "film", &set);
+        let (splat, scene) = (id_of(&state, "splat"), id_of(&state, "scene"));
+        let script = Arc::new(Script::default());
+        let mut host = host(&script, true);
+        // The window's request starts the job and returns it; no tick runs between this and the end.
+        let queued = ok(&mut host, &mut state, json!({"op":"media.thumbnails"}));
+        let job = queued["job"].as_str().unwrap().to_string();
+        let registry = host.registry().clone();
+        let deadline = Instant::now() + Duration::from_secs(60);
+        while !registry.get(&job).is_some_and(|info| info.state.is_final()) {
+            assert!(Instant::now() < deadline, "{action}: the job never ended");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        ok(&mut host, &mut state, json!({"op": action, "job": job}));
+
+        // Whatever was discarded is drawn again by a new job, started by the tick; whatever was
+        // committed is already applied. Either way the host is not stuck on the old job.
+        let again = Instant::now() + Duration::from_secs(60);
+        loop {
+            host.poll(&mut state);
+            if state.thumbnail(&splat).is_some() && state.thumbnail(&scene).is_some() {
+                break;
+            }
+            assert!(
+                Instant::now() < again,
+                "{action}: the host kept waiting for a job that was over: {:?}",
+                host.registry().list()
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let reply = ok(
+            &mut host,
+            &mut state,
+            json!({"op":"media.thumbnails","retry":true}),
+        );
+        assert_ne!(
+            reply["job"],
+            json!(job),
+            "{action}: `reused` must never name a job that already ended: {reply}"
+        );
+    }
 }
 
 #[test]
