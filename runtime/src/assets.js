@@ -398,9 +398,13 @@ export class AssetStore {
 
   async loadAudio({ id, source }) {
     // Audio is mixed offline by the core; the viewport only needs to know the file is there.
-    await fetchChecked(this.assetUrl(source.path), `\`${id}\` (${source.path})`).then((response) =>
-      response.body?.cancel(),
-    );
+    // One byte proves it is readable; the whole file would pass through the editor's memory for nothing.
+    const label = `\`${id}\` (${source.path})`;
+    const response = await fetch(this.assetUrl(source.path), { headers: { Range: 'bytes=0-0' } }).catch((error) => {
+      throw new RuntimeError('asset_unreadable', `Cannot fetch ${label}: ${error.message}`);
+    });
+    if (!response.ok) throw new RuntimeError('asset_unreadable', `Cannot read ${label}: HTTP ${response.status}`);
+    await response.body?.cancel();
     return { entry: {}, meta: { readable: true } };
   }
 

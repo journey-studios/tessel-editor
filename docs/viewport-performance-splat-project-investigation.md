@@ -291,8 +291,20 @@ não é contabilizado. Os bytes brutos deixaram de ser retidos (BL128); a sessã
 (BL129; o tour cabe no orçamento, então a remoção só está provada por teste) e os quadros de vídeo ganharam orçamento global
 de CPU (BL130; 10 quadros de um projeto de vídeo ≈ 35 MB, longe do limite).
 
-O processo do editor (Rust) cresce ~65 MB por cena nova antes e depois, independentemente do runtime: fica em BL122, com a
-suspeita de leitura do arquivo inteiro em `host::serve`.
+### Crescimento do processo do editor (BL122)
+
+O processo do editor (Rust) crescia ~65 MB por cena nova, independentemente do runtime. `vmmap` mostrou a região
+`MALLOC_LARGE (empty)` (blocos grandes liberados que o alocador guarda) indo de 88 a 280 MB no tour. Um interposer de `malloc`
+(dylib local que registra alocações ≥ 1 MiB com pilha) apontou a origem: `host::serve` → `read_to_end` num `Vec` vazio, que
+cresce por `realloc` dobrando (1, 2, 4, 8, 16, 32, 64 MiB para cada PLY de 66 MB), com ~190 MB de blocos de 64 MiB, 96 MB de 32 MiB etc.
+no tour. `malloc_history` não serviu (só mostra alocações vivas).
+
+Correção: capacidade exata (um bloco) e resposta de intervalo limitada a 4 MiB. Depois do conserto, o interposer só vê blocos de
+4 MiB de `serve` (os mesmos reaproveitados) e `MALLOC_LARGE (empty)` fica em ≤ ~84 MB constante (era 88→280 MB, crescendo);
+a pegada do editor no tour fica entre 150 e 325 MB (era 316→532 MB). O `footprint` do macOS oscila porque o sistema
+comprime e devolve memória por conta própria, então a comparação usa a região do alocador, que é determinística em
+tendência. Ler o PLY em intervalos de 4 MiB no JS reduziu o editor a ~5 MB nessa região, mas o WebContent subiu para ~780 MB
+(os `ArrayBuffer`s das partes esperam a coleta de lixo): sem ganho líquido, não foi mantido.
 
 ## Backlog
 

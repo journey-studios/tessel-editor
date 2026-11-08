@@ -173,6 +173,10 @@ no runtime). **Só vale para cena parada**; em movimento nada muda (ver relatór
   `stats.evicted`) e os bitmaps de quadros de vídeo/sequência têm um orçamento global (`frameBitmapBytes` 256 MiB,
   `frame_bitmap_evicted`). `render.frame` informa `cache.memory` com a contagem do runtime. Testes: `splat.test.mjs`,
   `retention.test.mjs`, testes da sessão.
+- **Memória do editor (BL122).** `host::serve` aloca o corpo com capacidade exata (antes `read_to_end` dobrava por `realloc`,
+  deixando blocos liberados de 1 a 32 MiB residentes) e nenhuma resposta de intervalo passa de `MAX_RANGE_BODY` (4 MiB; o
+  `Content-Range` diz o que foi enviado). A carga de áudio sonda 1 byte (`Range: bytes=0-0`). Teste:
+  `a_range_answer_never_exceeds_the_body_cap_and_says_what_it_carries`.
 
 ### Carregamento antecipado, camadas cobertas e proxy pendente (PERF-2/3/4)
 
