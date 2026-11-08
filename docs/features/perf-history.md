@@ -384,6 +384,17 @@ deixada não termina num segmento que não a viu começar. **Mutação**: trocar
 incondicional, e abrir os portões de época na falha e na carga, faz os 3 testes que discriminam falharem
 (`21 passed; 3 failed`); o código foi restaurado e os testes voltam a passar.
 
+### Falha repetida sem pedido: quem dobra é o recorder
+
+O host dobrava `request_failed` repetido olhando a **sua** falha na tela (`failure`). Uma falha mostrada
+com a gravação parada, ou antes de uma limpeza, ficava na tela e fazia a primeira falha da gravação
+nova parecer "repetição": o evento nunca existia. A regra agora é do recorder (`failure_open`): dobra
+só o mesmo código, sem pedido próprio, que **esta** gravação já registrou, e termina com um pedido
+admitido, uma imagem aceita, uma troca de sessão, `clear` ou uma gravação nova. Falha de pedido com id
+nunca é dobrada. Testes: 2 no core (dobra e termina; antes da gravação e depois de limpar/parar/iniciar é
+notícia) e 1 no host (falha dita com o histórico parado, repetida depois de começar a gravar: 1 evento).
+Mutação: sem os dois reinícios (`image` e troca de sessão) os 2 testes do core falham.
+
 ### Executado no head `76b14ae` (código); anterior a docs/backlog
 
 Máquina de desenvolvimento **carregada** (média de carga 18-20 em 11 CPUs durante todos os testes e a
@@ -478,6 +489,7 @@ A prova longa limita cada espera ao prazo restante, incluindo custo das consulta
 anteriores. Regressão Python executada (18/18); `./scripts/cargo check -p tessel-editor --locked` passou. Prova GPUI/janela ainda pendente.
 Ainda abertos antes de aceite: dedup de falhas cuja primeira ocorrência não foi gravada
 (iniciar/limpar a gravação) e BL145.6 de frame antigo atravessando a sessão da cena.
+**Atualização (BL145.6, head desta entrega): os dois foram fechados**; o frame antigo pela época do host (seção abaixo) e a repetição de falha pelo recorder (próximo parágrafo).
 
 A primeira checagem desta correção encontrou `.children` recebendo um elemento único; ajustado para `.child`, checagem repetida com exit 0. Não equivale a build/testes workspace nem prova da janela.
 

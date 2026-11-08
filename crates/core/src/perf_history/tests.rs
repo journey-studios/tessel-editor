@@ -1958,3 +1958,74 @@ fn the_generic_event_entry_cannot_bypass_the_one_loss_one_restore_rule() {
     recorder.request_failed(at(900), None, "context_lost");
     assert_eq!(context_events(&recorder, 1_000).len(), 3);
 }
+
+// ------------------------------------------------------------------ a failure without a request
+
+fn failures(recorder: &Recorder, now: u64) -> usize {
+    recorder.snapshot(at(now)).map_or(0, |snapshot| {
+        snapshot
+            .events
+            .iter()
+            .filter(|event| event.kind == EventKind::RequestFailed)
+            .count()
+    })
+}
+
+#[test]
+fn the_same_failure_with_no_request_in_between_is_one_event_until_something_ends_it() {
+    let mut recorder = started(0);
+    for step in 1..=5 {
+        recorder.request_failed(at(10 * step), None, "render_failed");
+    }
+    assert_eq!(failures(&recorder, 100), 1, "five syncs, one failure");
+    // Another code is another failure.
+    recorder.request_failed(at(110), None, "asset_missing");
+    assert_eq!(failures(&recorder, 120), 2);
+    // A request admitted ends the streak: the same code later is news again.
+    recorder.request_admitted(1, at(130));
+    recorder.request_failed(at(140), None, "asset_missing");
+    assert_eq!(failures(&recorder, 150), 3);
+    // So does a picture the monitor accepted.
+    recorder.image(at(160), &image(1, 2.0));
+    recorder.request_failed(at(170), None, "asset_missing");
+    assert_eq!(failures(&recorder, 180), 4);
+    // A failed REQUEST (it has an id) is never folded: each one is a request that was asked.
+    recorder.request_admitted(2, at(190));
+    recorder.request_failed(at(200), Some(2), "render_failed");
+    recorder.request_admitted(3, at(210));
+    recorder.request_failed(at(220), Some(3), "render_failed");
+    assert_eq!(failures(&recorder, 230), 6);
+}
+
+#[test]
+fn a_failure_told_before_the_recording_or_before_a_clear_is_news_to_the_recording() {
+    let mut recorder = Recorder::default();
+    // Off: told and forgotten, no event, nothing remembered to fold the next one against.
+    recorder.request_failed(at(1), None, "render_failed");
+    assert!(recorder.start(at(10), false));
+    recorder.request_failed(at(20), None, "render_failed");
+    assert_eq!(
+        failures(&recorder, 30),
+        1,
+        "the first failure THIS recording saw"
+    );
+
+    recorder.clear(at(40), false);
+    recorder.request_failed(at(50), None, "render_failed");
+    assert_eq!(
+        failures(&recorder, 60),
+        1,
+        "the clear forgot the failure: the same code is a new event of the cleared history"
+    );
+
+    // Stop and start again: a new recording remembers nothing of the old one.
+    assert!(recorder.stop(at(70)));
+    assert!(recorder.start(at(80), false));
+    recorder.request_failed(at(90), None, "render_failed");
+    assert_eq!(failures(&recorder, 100), 1);
+
+    // A session change (the scene changed) closes the streak as well.
+    recorder.session_changed(at(110), SessionKind::SceneChanged);
+    recorder.request_failed(at(120), None, "render_failed");
+    assert_eq!(failures(&recorder, 130), 2);
+}

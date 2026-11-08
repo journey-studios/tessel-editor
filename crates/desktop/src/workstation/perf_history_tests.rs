@@ -915,6 +915,43 @@ fn a_plan_the_core_refuses_is_one_failure_event_not_one_per_state_change() {
 }
 
 #[test]
+fn a_failure_told_while_off_is_news_when_the_recording_starts() {
+    use tessel_editor_core::plan::PreviewIntent;
+    use tessel_editor_core::time::Ratio;
+    let (meter, clock, mut host, mut state) = recording_host("refused-before-recording");
+    sent(&mut host);
+    meter.borrow_mut().stop_recording(clock.elapsed());
+    let failures = |meter: &Rc<RefCell<Meter>>| {
+        event_kinds(meter, &clock)
+            .into_iter()
+            .filter(|kind| *kind == EventKind::RequestFailed)
+            .count()
+    };
+    state.preview = PreviewIntent::Source {
+        asset: tessel_editor_core::Id::new("gone").unwrap(),
+        time: Ratio::ZERO,
+    };
+    // The refusal happens with the history stopped: it is on screen (`failure`) but not recorded.
+    host.sync(&state);
+    assert_eq!(
+        failures(&meter),
+        0,
+        "a stopped recording keeps no new event"
+    );
+    // A new recording begins while the same refusal is still on screen, and the plan is asked again.
+    meter
+        .borrow_mut()
+        .start_recording(clock.elapsed(), None, None);
+    host.sync(&state);
+    host.sync(&state);
+    assert_eq!(
+        failures(&meter),
+        1,
+        "the recording never saw the first one: it is news, and the repeat is folded"
+    );
+}
+
+#[test]
 fn leaving_a_directed_scene_is_one_scene_change_and_staying_is_none() {
     let (meter, clock, mut host, _state) = recording_host("scene-change");
     // The monitor going back to the sequence when no scene was shown is not a scene change.

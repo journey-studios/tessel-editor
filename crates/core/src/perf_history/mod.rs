@@ -680,6 +680,12 @@ pub struct Recorder {
     /// ran before the recording is not announced as news).
     exports: Option<HashMap<String, JobState>>,
     exports_tried: Option<Duration>,
+    /// The code of the last failure of this recording that had no request of its own (a plan the
+    /// core refuses is asked again on every state change). The same code again, with no request
+    /// admitted and no picture accepted since, is the same failure: one event, not one per
+    /// state change. Kept here, not in the host, so a failure told before this recording began
+    /// (or cleared away) is news again: only what THIS recording recorded is deduplicated.
+    failure_open: Option<String>,
 }
 
 impl Default for Recorder {
@@ -706,6 +712,7 @@ impl Default for Recorder {
             format: None,
             exports: None,
             exports_tried: None,
+            failure_open: None,
         }
     }
 }
@@ -898,6 +905,7 @@ impl Recorder {
             return;
         }
         self.monitor_presented(at);
+        self.failure_open = None;
         if let Some(render) = image.render_ms {
             self.sample(Metric::RenderMs, at, render);
         }
@@ -932,6 +940,7 @@ impl Recorder {
         if !self.live() {
             return;
         }
+        self.failure_open = None;
         if self.pending.iter().any(|(pending, _)| *pending == id) {
             return;
         }
@@ -964,7 +973,14 @@ impl Recorder {
             self.context_lost(at, id);
             return;
         }
-        self.push(at, EventKind::RequestFailed, None, id, code(error_code));
+        let code = code(error_code);
+        if id.is_none() {
+            if code.is_some() && self.failure_open == code {
+                return;
+            }
+            self.failure_open = code.clone();
+        }
+        self.push(at, EventKind::RequestFailed, None, id, code);
     }
 
     /// The graphics context was lost (a frame failed with `context_lost`, or the page said so).
@@ -1178,6 +1194,7 @@ impl Recorder {
         self.monitor_last = None;
         self.loss = None;
         self.pending.clear();
+        self.failure_open = None;
         self.format = None;
         if kind == SessionKind::ViewportReloaded {
             // A new page has a context of its own: whatever state the old one was in is gone.
