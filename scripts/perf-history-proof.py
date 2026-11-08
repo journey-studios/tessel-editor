@@ -261,6 +261,27 @@ def main():
         bad = editor.set(NODE, "export_to", os.path.join(work, "no", "such", "x.json"))
         check("exporting under a missing folder is a typed error", (bad.get("error") or {}).get("code") == "perf_history_export_parent_missing", bad)
 
+        again = editor.set(NODE, "export_to", target)
+        check("exporting over an existing file is refused and the file is untouched", (again.get("error") or {}).get("code") == "perf_history_export_exists" and Path(target).read_text() == text, again)
+        bad = editor.set(NODE, "export_to", "relative-name.json")
+        check("a relative destination is a typed error", (bad.get("error") or {}).get("code") == "perf_history_export_relative", bad)
+
+        # The panel's own destination field: `set export_destination` is typing/picking a path,
+        # `invoke export` is the button. Nothing is written to a place nobody chose.
+        check("no destination until one is given", history(editor).get("export_destination") == "", history(editor).get("export_destination"))
+        empty = editor.invoke(NODE, "export")
+        check("the export button without a destination is a typed error", (empty.get("error") or {}).get("code") == "perf_history_export_path_missing", empty)
+        chosen = os.path.join(work, "from-the-field.json")
+        typed = editor.set(NODE, "export_destination", chosen)
+        check("typing a destination writes nothing by itself", typed.get("ok") and not os.path.exists(chosen) and history(editor).get("export_destination") == chosen, typed)
+        pmp.settle(editor, 0.8)
+        report["shot_destination"] = editor.shot(shots, "history-export-destination")
+        pressed = editor.invoke(NODE, "export")
+        check("the export button writes to the destination in the field", pressed.get("ok") and os.path.isfile(chosen), pressed)
+        pressed_again = editor.invoke(NODE, "export")
+        check("the same destination again is refused, never replaced", (pressed_again.get("error") or {}).get("code") == "perf_history_export_exists", pressed_again)
+        editor.set(NODE, "export_destination", "")
+
         # --- closing the panel: not stopping
         hidden = editor.set(NODE, "visible", False)
         pmp.settle(editor, 1.2)

@@ -112,8 +112,11 @@ isolar o socket de outra instância do editor. `scripts/headless-flow-proof.py` 
 `./scripts/ui get perf.history` lê o estado do histórico de 60 s (`recording`, `visible`, `frozen`,
 `selected_ms`, `has_data` e, havendo dados, `view`: janela, picos por métrica, eventos recentes, segmentos,
 contadores e contexto). `./scripts/ui set perf.history recording true|false`, `visible true|false`,
-`frozen true|false`, `selected_ms <ms>` e `export_to <caminho>`, e `./scripts/ui invoke perf.history
-record_start|record_stop|show|hide|freeze|resume|clear|snapshot|clear_selection` chamam o mesmo handler dos
+`frozen true|false`, `selected_ms <ms>`, `export_to <caminho absoluto>` (escreve um arquivo **novo**; um
+existente é recusado com `perf_history_export_exists`) e `export_destination <caminho>` (preenche o campo
+"Destino do JSON" do painel, sem escrever), e `./scripts/ui invoke perf.history
+record_start|record_stop|show|hide|freeze|resume|clear|snapshot|clear_selection|export` (o botão Exportar JSON: grava no
+destino do campo; vazio é `perf_history_export_path_missing`) chamam o mesmo handler dos
 botões do painel e do cabeçalho. Gravar e mostrar são independentes: `show` abre um diálogo (a WebView do monitor
 fica escondida, `get monitor.viewport` diz `on_screen:false`) e `hide` o fecha sem parar a gravação. Tempos são
 milissegundos no relógio monotônico do histórico (`view.window` publica o intervalo). Contrato e limites em

@@ -43,8 +43,11 @@ antiga ou de pedido superado é descartada e contada; trocar de projeto ou recar
 são métricas separadas (a primeira inclui fila e readback do runtime, a segunda é só CPU).
 
 **Eventos**: gravação iniciada/parada/limpa, play, pausa/stop, seek (seeks a menos de 250 ms
-viram um evento com `repeat`), projeto trocado, viewport recarregado, mudança de formato do
-quadro, pedido que falhou. O detalhe de um evento passa por `code()`: só letras, dígitos, `_-.` e
+viram um evento com `repeat`), projeto trocado, **cena trocada**, viewport recarregado, mudança
+de formato do quadro, pedido que falhou, **carga de recurso** (cena dirigida), **exportação de
+vídeo** (início, fim, falha com o código, cancelamento) e **perda/restauração do contexto
+gráfico**. Só entra o que foi **realmente observado** (tabela de ganchos abaixo); o tempo é o do
+relógio monotônico do host, nunca o relógio JS. O detalhe de um evento passa por `code()`: só letras, dígitos, `_-.` e
 no máximo 48 caracteres; um caminho ou um título **nunca** entra.
 
 **Snapshot e inspeção**: `freeze` fixa **um** snapshot imutável e limitado (240×9 agregados e no
@@ -55,11 +58,16 @@ erro tipado `perf_history_outside_window`.
 
 **Export** (`tessel.perf-history`, `schema_version` 1): build, origem monotônica, intervalo da
 gravação, janela, contexto não sensível, métricas com unidade/fonte/amostragem, séries por balde,
-resumo, eventos, segmentos, contadores e a lista de limites. Gravação **atômica** (arquivo
-irmão temporário + `sync` + rename) em um caminho explícito; erros tipados `perf_history_empty`,
-`perf_history_export_path_missing`, `perf_history_export_is_directory`,
-`perf_history_export_parent_missing`, `perf_history_export_failed`. Sem caminhos, textos do
-projeto, credenciais nem conteúdo de mídia.
+resumo, eventos, segmentos, contadores e a lista de limites. O destino é **sempre escolhido
+pelo usuário** (nada é exportado sozinho, nem para o temp) e a escrita é **sem sobrescrever**:
+arquivo irmão temporário (`create_new`) + `sync` + `hard_link` ao destino, que falha se algo
+apareceu ali (em volume sem hard link, uma checagem final e `rename`); o temporário sempre é
+removido. Erros tipados: `perf_history_empty`, `perf_history_export_path_missing`,
+`perf_history_export_relative` (o caminho precisa ser absoluto), `perf_history_export_is_directory`,
+`perf_history_export_exists` (um arquivo, ou um link, já está lá: o projeto ou outro arquivo
+nunca é substituído), `perf_history_export_parent_missing`, `perf_history_export_failed` (só o
+tipo do erro do SO, nunca o caminho). Sem caminhos, textos do projeto, credenciais nem conteúdo
+de mídia: o destino digitado vive só na janela (`get` o mostra) e não entra no documento.
 
 ## Superfícies
 
@@ -68,14 +76,16 @@ projeto, credenciais nem conteúdo de mídia.
 | Biblioteca | Implementada | `Recorder`, `Snapshot`, `HistoryCommand`; 49 testes do módulo com relógio injetado |
 | CLI headless | **N/A justificado** | a medição só existe com a janela e o monitor vivos; `tessel-headless` responde `desktop_required` ao alvo `perf.history` (teste em `crates/core/tests/headless.rs`). O core funciona com entradas sintéticas e sem GPUI/wry (`cargo tree`) |
 | UI da janela | Implementada | botão `toolbar-perf-history` no cabeçalho e painel (diálogo Root do Kit) com gráficos nativos |
-| CLI da janela | Implementada | `get perf.history`; `set perf.history recording\|visible\|frozen\|selected_ms\|export_to`; `invoke perf.history record_start\|record_stop\|show\|hide\|freeze\|resume\|clear\|snapshot\|clear_selection` — mesmo handler do painel (`Workstation::execute_perf_history`) |
+| CLI da janela | Implementada | `get perf.history`; `set perf.history recording\|visible\|frozen\|selected_ms\|export_to\|export_destination`; `invoke perf.history record_start\|record_stop\|show\|hide\|freeze\|resume\|clear\|snapshot\|clear_selection\|export` — mesmo handler do painel (`Workstation::execute_perf_history`). `export_to <caminho>` escreve direto; `export_destination <caminho>` só preenche o campo do painel (como digitar ou escolher) e `invoke export` é o botão |
 
 ### O painel
 
 Um diálogo **Root do Kit** com corpo em `Entity` própria (`HistoryView`): o cartão do medidor
 continua transparente ao ponteiro e não ganha controles. Contém o estado ("Gravando", "Congelado",
 "Parado", "Desligado"), os botões Gravar/Parar, Congelar/Retomar, Limpar seleção, Limpar
-histórico e Exportar JSON (desabilitados com dica do motivo quando não há dados), nove linhas de
+histórico e Exportar JSON (desabilitados com dica do motivo quando não há dados ou destino), o
+**campo "Destino do JSON"** (entrada do Kit; "Escolher…" abre o seletor nativo de arquivo novo, que
+**só preenche o caminho**), nove linhas de
 gráfico (uma por métrica, **cada uma com a sua escala**: unidades diferentes nunca dividem eixo),
 a linha de **eventos e sessões**, o bloco do instante selecionado (clique num gráfico) e os
 contadores do que o recorder recusou (respostas obsoletas, imagens sem pedido, pedidos esquecidos,
@@ -104,6 +114,12 @@ amostras tardias, leituras de memória indisponíveis, eventos descartados).
 | --- | --- | --- |
 | Pedido admitido, imagem aceita (id, `render_ms`, textura, contexto), resposta obsoleta, pedido que falhou | `workstation/viewport_host.rs` | alimenta o `Meter` já anexado; `enabled()` falso retorna antes de construir qualquer coisa |
 | Troca de projeto, recarga do viewport | `viewport_host.rs` (`reset_project`, `begin_reload`) | abre segmento |
+| **Troca de cena** dirigida | `scene_monitor_host.rs` (`render_scene`: o id da cena mudou ou entrou-se numa cena), `viewport_host.rs` (`leave_directed`, chamado por `execute` ao escolher um preview comum) | um segmento `scene_changed` e um evento por troca; um quadro novo da **mesma** cena não abre nada. O id é o número do segmento e o relógio do host: o nome da cena nunca entra |
+| Telemetria do monitor dirigido | `scene_monitor_host.rs` (`dispatch_directed`, `finish_directed`) | admissão do pedido (id do adaptador, ≥ 2⁴⁸, nunca colide com o da sequência), imagem aceita com `render_ms`/textura/contexto, falha com id. Latência = do pedido admitido (inclui esperar recursos) até o `frame.done` do mesmo id |
+| Carga de recurso (cena dirigida) | `scene_monitor_host.rs` (`prepare_directed`, `directed_asset_state`) | `resource_load_started` ao enviar cada `asset.load`; `resource_load_finished` com detalhe `ready` ou o código da falha; respostas obsoletas não contam |
+| Perda e restauração do contexto | `core::perf_history` (`request_failed` com `context_lost`), `viewport_host.rs` (`drain`: `needs_redraw`) | um `context_lost` por perda (o aviso da página e o quadro que falhou são a mesma perda) e um `context_restored`; não é também um `request_failed` |
+| Exportação de vídeo | `workstation/perf_meter.rs` (`observe_exports`, na sonda de pintura, ≤ 1 Hz) | transições de jobs `VideoExport` do registro: início, fim, falha (código), cancelamento. A primeira olhada da gravação é só a linha de base: o que já rodava não vira notícia; um job visto já terminado só tem o fim. O tempo é o da olhada (nunca anterior ao fato) |
+| Taxa-alvo do contexto | `viewport_host.rs` (`target_fps`: `request_preview`, `render_scene`) | `sequence_target_fps` = taxa da sequência (preview de sequência) ou o `fps` do bundle da cena; `null` para preview de fonte e antes do primeiro pedido. `ui_target_fps` continua `null`: não há alvo conhecido e nunca se assume 60 |
 | Seek intencional (`execute(SetPlayhead)`, `playback_seek`) | `workstation/mod.rs`, `playback.rs` | evento `seek`; os ticks do relógio de reprodução não são seek |
 | `has_dialog` | `workstation/workflow.rs` | `history_open` |
 | Botão do cabeçalho | `header.rs` | mesmo `execute_perf_history` |
@@ -115,18 +131,22 @@ nos helpers de `viewport_host_tests.rs`.
 
 ## Lacunas declaradas
 
-- O monitor da **cena dirigida** (`scene_monitor_host`) alimenta só quadros e intervalo do
-  monitor; não há latência, `render_ms` nem textura nesse caminho (o runtime Three.js é o
-  único com id de requisição do host).
-- O evento `scene_changed` existe no core mas **não há gancho** que o dispare.
+- **Fontes do monitor da cena dirigida**: agora há admissão, imagem aceita (com `render_ms`,
+  textura e contexto), falha e eventos de recurso. A latência inclui a espera dos recursos
+  (a admissão acontece quando o adaptador aceita o pedido), diferente da sequência, onde os
+  recursos já estão carregados; compare os dois com isso em mente. Nada disso é GPU concluída.
+- `resource_load_*` só existe na cena dirigida: a sessão da sequência (`core::session`) não
+  expõe o início/fim de carga de recurso ao host e **não foi alterada** para isso (é código
+  compartilhado com o headless). Fica registrado, não inventado.
+- O evento `export_*` vem de olhar o registro de jobs a cada ≤ 1 s numa pintura: uma janela sem
+  nenhuma pintura durante a exportação só a vê na próxima pintura (o horário é o da olhada).
+  Exportações de cena em processo separado que não passam pelo registro de jobs não aparecem.
 - O RSS é amostrado nas pinturas: uma janela completamente parada deixa lacuna (`null`), que é a
-  leitura honesta.
+  leitura honesta; **nunca** se preenche com o valor antigo.
 - O painel é modal (diálogo Root): enquanto ele está aberto, a WebView está escondida; não dá
   para olhar o monitor e o histórico ao mesmo tempo.
-- Sem exportação por seletor nativo: a UI grava em `$TMPDIR/tessel-perf-history-<pid>-<n>.json` e
-  mostra o caminho; a CLI exporta para qualquer caminho explícito.
-- `sequence_target_fps` e `ui_target_fps` do contexto saem `null` (não há alvo conhecido; o
-  histórico não assume 60).
+- `ui_target_fps` é `null` (a interface não tem alvo conhecido; o histórico não assume 60).
+- Overhead: 3 rodadas de 8 s sob carga externa não provam custo zero (veja a seção de custo).
 
 ## Evidências e status
 
@@ -149,7 +169,15 @@ ainda é "a validar" está na seção de evidências abaixo, atualizada com a en
   do host (latência, resposta obsoleta, segmentos) e host sem gravação.
 - `scripts/perf-history-proof.py` (+ `.spec.py`): prova na janela real; veja abaixo.
 
-### Prova na janela real (executada)
+### Prova na janela real (executada na 1ª rodada; a 2ª está a validar)
+
+**Escopo desta seção:** o que abaixo foi executado vale para o código de `2560bbf` (1ª rodada).
+A 2ª rodada (destino de export explícito sem sobrescrita, `scene_changed`, telemetria do monitor
+dirigido, eventos de recurso/exportação/contexto, taxa-alvo do contexto) foi **escrita, mas ainda
+não compilada nem provada na janela real**: `perf-history-proof.py` já cobre o campo de destino
+(`export_destination` + `invoke export`, recusas e uma captura), porém não rodou. A cena dirigida
+e a perda de contexto reais também não foram provocadas numa janela; ficam cobertas só pelos
+testes (quando rodarem) e **a validar**.
 
 `TESSEL_RUNTIME_DIR=/tmp/phr python3 scripts/directed-scene-proof/with-gpu-lock.py python3
 scripts/perf-history-proof.py --binary <release> --seconds 8 --rounds 3 --buffer-minutes 3`, em
@@ -195,6 +223,11 @@ Executados com sucesso nesta entrega:
   `workstation::perf_history_tests` passaram no mesmo ponto.
 - `python3 scripts/perf-history-proof.spec.py` (4 testes).
 - `cargo tree -p tessel-editor-core`: nenhuma ocorrência de `gpui` ou `wry`.
+
+**2ª rodada (sem build desde a 1ª):** todo o código e os testes novos foram só formatados
+(`cargo fmt --all`); nenhum `cargo check/clippy/test/build` foi executado depois deles. Nenhum
+teste novo foi rodado, e os números "51 testes do módulo" / "11 testes do desktop" acima descrevem
+a 1ª rodada (a 2ª adiciona testes a ambos).
 
 **Não executados com sucesso nesta rodada (a validar):** `./scripts/cargo check --workspace
 --locked`, `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings`,
