@@ -49,3 +49,7 @@ Verificação final (ffprobe lê o arquivo de volta e o compara com o plano): co
 - Resampler linear para taxas diferentes de 48 kHz (sem filtro anti-aliasing): ok para o conteúdo testado, não medido em música.
 - Medidas de diferença preview×export e de memória do Node+Chrome: seção abaixo.
 - Não reaproveita export interrompido; sem HDR/HEVC/alpha.
+
+## Posse do renderer (BL144.10)
+
+Um export (e seu preflight) pede o renderer pela política única de [F056](renderer-ownership.md): com outro export (ou preflight) no renderer, responde `renderer_busy`/`retryable` e nada é enfileirado; com um job de miniaturas no renderer, o job é parado no próximo quadro e o export é recusado até a nova tentativa (o renderer fica reservado por 30 s). Escrito, não executado (disco).
