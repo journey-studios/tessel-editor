@@ -1057,3 +1057,15 @@ Código validado `f5f6d1deb6d69a7d925bf5d747a76ccf0a6b6a59`: mudar o painel de Y
 BL145.5/.6 — PR36 integrada com main9215c27 (PR37 FX): conflitos documentais preservam
 estados/evidências de F049 e F016. A integração não fecha BL145.6 (frame de cena antiga
 no segmento novo) nem valida o Rust combinado; fmt/specs Python e diffcheck conferidos.
+
+BL145.4/.5/.6 — revisão OCR0632d3a: corrigida apresentação do export sem atribuí-lo ao destino atual, nota de seleção não oculta resultado do export, e espera da prova limitada pelo deadline. Python18/18 e check desktop passaram; GPUI/janela não provados nesta rodada. Dedup de falha anterior à gravação/clear e frame atravessando cena continuam abertos antes de merge.
+
+BL082.16/BL082.20 — resíduos de revisão da PR37 corrigidos no código `1ad715901df6edb14503ea081ae407c18bd0e94d`: status não publica budget de propriedade/inválido; Change devolve só id próprio e ressincroniza monitor, preservando substituto; premissa fora da edição obrigatória. Gates reais: core19, GPUI32, workspace1885/0/12, janela116/116, fmt/check/clippy/build e specs24 normal/-O passam. Relatório [pr37-review-followup-results.md](migration/pr37-review-followup-results.md). Docs históricos/erros/capabilities/privacidade/docstrings alinhados; sem linter desabilitado, sem claim de coverage externo PASS. Sem PR36 ou raiz alterados; revisão de acompanhamento para fechar após merge prematuro da PR37.
+
+BL145.5/.6 — segunda integração PR36 com main d1f62ef (PR38): conflito somente no
+backlog; preservados registros F049 e resíduos FX validados em 1ad7159. A integração
+não fecha dedup após record/clear ou BL145.6; aceite final da PR36 continua pendente.
+
+Integração PR36 com main d1f62ef: fmt, check workspace --locked, diffcheck e specs Python18+24 passaram. Sem execução de testes Rust, clippy, build ou prova de janela desta combinação; não fecha o aceite funcional.
+
+BL145.4/.5 — PR36, 4508061197: removido contêiner de aviso vazio; mensagens continuam independentes. Check desktop/fmt/diffcheck passaram; sem nova prova nativa e sem fechar dedup/BL145.6.

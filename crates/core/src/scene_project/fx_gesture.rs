@@ -54,6 +54,7 @@ fn with_gesture_details(error: CommandError, id: &str, candidate_kept: bool) -> 
 }
 
 impl EditorState {
+    /// Routes the FX gesture commands through the shared slot; status only budgets an applicable FX preview.
     pub(super) fn apply_fx_gesture(
         &mut self,
         command: FxGestureCommand,
@@ -72,7 +73,12 @@ impl EditorState {
             FxGestureCommand::Status => {
                 let mut answer = self.gesture_status();
                 answer["action"] = json!("scene.fx.gesture.status");
-                if let Some(gesture) = self.scene_interaction.gesture.current() {
+                if let Some(gesture) = self.scene_interaction.gesture.current().filter(|gesture| {
+                    gesture.fx_clip().is_some()
+                        && gesture
+                            .invalidation(&self.scenes, self.project.revision)
+                            .is_none()
+                }) {
                     let scene = gesture.preview_scene();
                     let budget = scene
                         .bundle()
@@ -86,6 +92,7 @@ impl EditorState {
         }
     }
 
+    /// Claims the shared gesture slot and captures this clip's scene/revision without changing the document.
     fn fx_gesture_begin(
         &mut self,
         scene: &str,
@@ -319,6 +326,7 @@ impl EditorState {
         Ok((Arc::clone(open.preview_scene()), Some(id.to_string())))
     }
 
+    /// Lists committed FX, or the explicitly requested live candidate after checking its scene and kind.
     pub(super) fn fx_list(
         &self,
         scene: &str,
@@ -339,6 +347,7 @@ impl EditorState {
         Ok(answer)
     }
 
+    /// Evaluates FX at a frame from the document or a validated candidate, without committing it.
     pub(super) fn fx_frame(
         &self,
         scene: &str,

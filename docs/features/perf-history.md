@@ -469,3 +469,16 @@ O que continua sem prova na janela real: um quadro **em voo** atravessando a tro
 GPUI + mutação, BL145.6), perda de contexto com a cena dirigida, GPU real isolada, ponteiro físico. O gesto sob
 gravação foi provado só por requisições semânticas; o arrasto por ponteiro continua sendo BL043.
 
+## Resíduos de revisão do head 0632d3a
+
+A mensagem de conclusão de export informa bytes, sem atribuir o resultado ao campo de
+destino editável (que pode já nomear outro arquivo). Feedback de seleção e resultado do
+export aparecem independentemente, para uma nota antiga não ocultar erro assíncrono.
+A prova longa limita cada espera ao prazo restante, incluindo custo das consultas
+anteriores. Regressão Python executada (18/18); `./scripts/cargo check -p tessel-editor --locked` passou. Prova GPUI/janela ainda pendente.
+Ainda abertos antes de aceite: dedup de falhas cuja primeira ocorrência não foi gravada
+(iniciar/limpar a gravação) e BL145.6 de frame antigo atravessando a sessão da cena.
+
+A primeira checagem desta correção encontrou `.children` recebendo um elemento único; ajustado para `.child`, checagem repetida com exit 0. Não equivale a build/testes workspace nem prova da janela.
+
+Revisão 4508061197: o painel insere diretamente as mensagens existentes, sem contêiner vazio ou gap extra quando não há aviso. Check desktop e formatação passaram; aparência nativa não reavaliada nesta correção.
