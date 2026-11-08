@@ -3,8 +3,11 @@
 //! Entity addresses stay text here: whether one is well formed or exists is decided when the
 //! command executes, against the bundle, not by the parser.
 
+use crate::directed_scene::Vec3;
 use crate::scene_edit::EditOp;
 use crate::time::Ratio;
+
+use super::gizmo::Point;
 
 /// The edit frame a frame evaluation asks about.
 #[derive(Debug, Clone, PartialEq)]
@@ -75,4 +78,99 @@ pub enum GestureCommand {
         gesture: String,
     },
     Status,
+}
+
+/// Why a pointer interaction ended without being committed. Recorded in the answer; the effect is
+/// the same for every reason (the candidate is discarded, nothing reaches the document), but a
+/// proof or a log can tell Escape from a lost focus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CancelReason {
+    /// The Escape key.
+    Escape,
+    /// The window or the page lost focus: a release may never arrive (BL043), so the drag is
+    /// cancelled, never committed.
+    Blur,
+    /// The platform cancelled the pointer (`pointercancel`, a lost capture).
+    PointerCancel,
+    /// The view was hidden (monitor closed, a dialog opened, the app went to the background).
+    Hidden,
+    /// The page that drew the gizmo went away (reload, crash, lost context) or no longer shows
+    /// the scene: nobody can release the press any more.
+    Unavailable,
+    /// A script or another command asked.
+    Api,
+}
+
+impl CancelReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Escape => "escape",
+            Self::Blur => "blur",
+            Self::PointerCancel => "pointer_cancel",
+            Self::Hidden => "hidden",
+            Self::Unavailable => "unavailable",
+            Self::Api => "api",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        [
+            Self::Escape,
+            Self::Blur,
+            Self::PointerCancel,
+            Self::Hidden,
+            Self::Unavailable,
+            Self::Api,
+        ]
+        .into_iter()
+        .find(|reason| reason.as_str() == raw)
+    }
+}
+
+/// One step of a pointer interaction with the gizmo. Positions are on the picture (see
+/// `scene_interaction::gizmo`); no device, key or window size appears here.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PointerCommand {
+    /// The press. On a handle of the selected node it begins a drag (a gesture); on an image
+    /// plane it selects it (`additive`: toggles it in the selection); on empty picture it clears
+    /// the selection of the scene (`additive` keeps it).
+    Down {
+        scene: String,
+        at: FrameAt,
+        point: Point,
+        additive: bool,
+    },
+    /// The pointer moved during a drag: the candidate becomes the node at that position.
+    Move { point: Point },
+    /// The release: commits the drag as ONE undo entry (with `point`, after one last move).
+    Up { point: Option<Point> },
+    /// Escape, lost focus, a cancelled pointer: discards the drag.
+    Cancel { reason: CancelReason },
+}
+
+/// The gizmo vocabulary (`scene.gizmo.*`, `scene.pointer.*`, `scene.translate`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum GizmoCommand {
+    /// The overlay of the scene at a frame: what a runtime draws for the current selection (the
+    /// live drag's candidate when one is open on this scene).
+    State {
+        scene: String,
+        at: FrameAt,
+    },
+    /// The hit test alone: what is under `point` (a handle, an image plane or nothing), with no
+    /// effect on the selection.
+    Hit {
+        scene: String,
+        at: FrameAt,
+        point: Point,
+    },
+    Pointer(PointerCommand),
+    /// The semantic translation: moves one node by `delta` in the world, as a drag of the gizmo
+    /// would, in one `scene.edit`. The same result as the drag that reported that `world_delta`.
+    Translate {
+        scene: String,
+        entity: String,
+        at: FrameAt,
+        delta: Vec3,
+    },
 }

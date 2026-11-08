@@ -28,6 +28,7 @@ use crate::state::CommandError;
 
 use super::ChannelProperty;
 
+pub use camera::apply_easing;
 pub(in crate::directed_scene) use camera::distance;
 pub use camera::{
     CameraPose, CameraState, CameraTimeline, SegmentPoses, movement_end_pose, movement_pose_at,

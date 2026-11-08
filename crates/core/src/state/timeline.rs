@@ -6,6 +6,7 @@
 use serde_json::{Value, json};
 
 use super::error::CommandError;
+use crate::camera_keys::CameraKey;
 use crate::content::{Camera, TextSpec};
 use crate::id::Id;
 use crate::time::{Rate, Ratio};
@@ -98,6 +99,8 @@ pub struct Clip {
     pub text: Option<TextSpec>,
     /// Camera of a scene clip.
     pub camera: Option<Camera>,
+    /// Keyframes of a scene clip's camera (BL140), sorted by scene time; empty = no keyframes.
+    pub camera_keys: Vec<CameraKey>,
 }
 
 impl Clip {
@@ -261,6 +264,7 @@ impl Timeline {
                     source_start: Ratio::ZERO,
                     text: None,
                     camera: None,
+                    camera_keys: Vec::new(),
                 }
             };
         let mut title = clip(
@@ -703,13 +707,20 @@ impl Timeline {
         Ok(TrimPlan { start, end })
     }
 
+    /// Trims one edge of a clip. `speed` is the clip's playback speed as a ratio (`1` is 100 %):
+    /// trimming the head advances `source_start` by the frames removed **at that speed**, so the
+    /// first visible frame (and every later one) keeps reading the same source time as before for
+    /// video, sound and scene time alike. The shift is exact (`Ratio`); an overflow refuses the
+    /// trim instead of leaving the picture slid.
     pub fn trim_clip(
         &mut self,
         id: &str,
         edge: TrimEdge,
         frame: i64,
+        speed: Ratio,
     ) -> Result<Value, CommandError> {
         let plan = self.plan_trim(id, edge, frame)?;
+        let rate = self.rate;
         let clip = self
             .clips
             .iter_mut()
@@ -717,14 +728,24 @@ impl Timeline {
             .ok_or_else(|| CommandError::unknown_element("clip", id))?;
         let previous = json!({"start":clip.start,"end":clip.end(),"duration":clip.duration});
         // WHY: trimming the head must not slide the picture; the first visible frame keeps
-        // reading the same source time it read before.
+        // reading the same source time it read before. Source time runs at `speed` per second of
+        // timeline, so the removed span is scaled by it. Computed before any mutation.
         let head_shift = plan.start - clip.start;
-        if head_shift != 0 {
-            let shifted = self.rate.frame_to_time(head_shift).add(clip.source_start);
-            if let Some(shifted) = shifted {
-                clip.source_start = shifted;
-            }
-        }
+        let source_start = if head_shift == 0 {
+            clip.source_start
+        } else {
+            rate.frame_to_time(head_shift)
+                .mul(speed)
+                .and_then(|elapsed| elapsed.add(clip.source_start))
+                .ok_or_else(|| {
+                    CommandError::new(
+                        "invalid_time",
+                        "The trim overflows the clip's source time; nothing changed",
+                    )
+                    .target(format!("clip:{id}"))
+                })?
+        };
+        clip.source_start = source_start;
         clip.start = plan.start;
         clip.duration = plan.end - plan.start;
         self.selected_clip = Some(clip.id);
@@ -1276,11 +1297,64 @@ mod trim_tests {
             ..Timeline::default()
         };
         let end = t.clip("first-light").unwrap().end();
-        t.trim_clip("first-light", TrimEdge::Start, 24).unwrap();
+        t.trim_clip("first-light", TrimEdge::Start, 24, Ratio::from_int(1))
+            .unwrap();
         assert_eq!(t.clip("first-light").unwrap().end(), end);
-        t.trim_clip("first-light", TrimEdge::End, 120).unwrap();
+        t.trim_clip("first-light", TrimEdge::End, 120, Ratio::from_int(1))
+            .unwrap();
         assert_eq!(t.clip("first-light").unwrap().start, 24);
         assert_eq!(t.clip("first-light").unwrap().duration, 96);
+    }
+    /// The source time a clip reads at `frame`, written independently of `trim_clip`.
+    fn read_at(t: &Timeline, id: &str, frame: i64, speed: Ratio) -> Ratio {
+        let clip = t.clip(id).unwrap();
+        let elapsed = t.rate.frame_to_time(frame - clip.start);
+        clip.source_start.add(elapsed.mul(speed).unwrap()).unwrap()
+    }
+    #[test]
+    fn head_trim_keeps_every_frame_on_the_source_time_it_read_at_any_speed() {
+        for (num, den) in [(1, 2), (1, 1), (2, 1)] {
+            let speed = Ratio::new(num, den).unwrap();
+            let mut t = Timeline {
+                snap: false,
+                ..Timeline::default()
+            };
+            let before: Vec<Ratio> = [30, 60, 100]
+                .iter()
+                .map(|frame| read_at(&t, "first-light", *frame, speed))
+                .collect();
+            t.trim_clip("first-light", TrimEdge::Start, 24, speed)
+                .unwrap();
+            for (frame, expected) in [30, 60, 100].iter().zip(before) {
+                assert_eq!(read_at(&t, "first-light", *frame, speed), expected);
+            }
+            // The removed 24 frames are 1 s of timeline: `speed` seconds of source.
+            assert_eq!(t.clip("first-light").unwrap().source_start, speed);
+        }
+    }
+    #[test]
+    fn head_trim_at_double_speed_differs_from_the_unscaled_shift() {
+        let mut t = Timeline {
+            snap: false,
+            ..Timeline::default()
+        };
+        t.trim_clip("first-light", TrimEdge::Start, 24, Ratio::from_int(2))
+            .unwrap();
+        assert_ne!(
+            t.clip("first-light").unwrap().source_start,
+            t.rate.frame_to_time(24),
+            "the shift is not the timeline time"
+        );
+    }
+    #[test]
+    fn end_trim_leaves_the_source_start_alone() {
+        let mut t = Timeline {
+            snap: false,
+            ..Timeline::default()
+        };
+        t.trim_clip("first-light", TrimEdge::End, 120, Ratio::from_int(2))
+            .unwrap();
+        assert_eq!(t.clip("first-light").unwrap().source_start, Ratio::ZERO);
     }
     #[test]
     fn invalid_trim_is_atomic() {
@@ -1296,7 +1370,10 @@ mod trim_tests {
             (TrimEdge::End, 240),
             (TrimEdge::End, SEQUENCE_FRAMES + 1),
         ] {
-            assert!(t.trim_clip("first-light", edge, frame).is_err());
+            assert!(
+                t.trim_clip("first-light", edge, frame, Ratio::from_int(1))
+                    .is_err()
+            );
             assert_eq!(t.clips, before);
         }
     }
@@ -1306,7 +1383,8 @@ mod trim_tests {
             snap: false,
             ..Timeline::default()
         };
-        t.trim_clip("first-light", TrimEdge::End, 120).unwrap();
+        t.trim_clip("first-light", TrimEdge::End, 120, Ratio::from_int(1))
+            .unwrap();
         t.snap = true;
         let before = t.clips.clone();
         assert_eq!(

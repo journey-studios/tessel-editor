@@ -8,6 +8,7 @@ import { ASSET_IDENTITY_CAPABILITIES, assetEcho } from './asset-identity.js';
 import { AssetStore } from './assets.js';
 import { Compositor, DEFAULT_PREVIEW_SORT, describePixels } from './compositor.js';
 import { DIRECTED_SCENE_CAPABILITIES } from './directed-scene.js';
+import { refreshAfterFrame } from './overlay.js';
 import { RetentionCounters } from './retention.js';
 import { SPLAT_FORMATS } from './splat-format.js';
 import { SPARK_VERSION } from './splat-stage.js';
@@ -49,8 +50,12 @@ const FEATURES = [
   'directed_scene',
   'asset.identity',
 ];
+// F055: announced only by a page that has an overlay surface (the desktop WebView, see
+// `wantsOverlay`), never by the headless worker (same bundle, no surface): a host sends `overlay.*`
+// messages only to a runtime that says it can draw them.
+const OVERLAY_FEATURE = 'overlay.gizmo';
 
-export const createRuntime = ({ post, assetUrl, canvas }) => {
+export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
   const send = (message) => post({ v: BRIDGE_VERSION, ...message });
   const counters = new RetentionCounters();
   const assets = new AssetStore({ assetUrl, counters });
@@ -142,7 +147,7 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
         layers: LAYERS,
         formats: FORMATS,
         max_size: active.maxSize,
-        features: FEATURES,
+        features: overlay ? [...FEATURES, OVERLAY_FEATURE] : FEATURES,
         native_video: NATIVE_VIDEO,
         // Additive: what a `directed_scene` layer needs and how its resources are identified.
         directed_scene: DIRECTED_SCENE_CAPABILITIES,
@@ -269,6 +274,11 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
       if (output.png) message.png_data = canvas.toDataURL('image/png').split(',')[1];
       send(message);
       if (options.presented) announcePresented(id, revision);
+      // The canvas may have changed shape with this picture: an active overlay re-checks that it
+      // still describes it (F055). After `frame.done` and `frame.presented`, so it never delays
+      // them, and isolated: a failure here is the overlay's, never `frame.failed` after a success.
+      refreshAfterFrame(overlay, (error) =>
+        send({ type: 'overlay.error', error: toErrorJson(error, 'overlay_failed') }));
     } catch (error) {
       send({ type: 'frame.failed', id, revision, error: failureOf(error, lostDuringFrame()) });
     } finally {
@@ -300,6 +310,25 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
       cancelled.add(message.id);
     },
     'viewport.resize': () => {},
+    // F055 (additive, negotiated by the `overlay.gizmo` feature): the gizmo drawn over the picture.
+    ...Object.fromEntries(
+      ['overlay.enable', 'overlay.set', 'overlay.clear'].map((type) => [
+        type,
+        (message) => {
+          // No overlay surface (the headless worker): the feature was never negotiated, so this is
+          // a protocol refusal and stays the generic `unsupported` error.
+          if (!overlay) throw new RuntimeError('unsupported', 'This page has no overlay surface');
+          // An operational overlay that fails (a malformed payload): the overlay's own failure, not a
+          // protocol error. The generic `error` closes the host's render session; `overlay.error` is
+          // consumed by the overlay adapter, and the page keeps its previous overlay and its frames.
+          try {
+            overlay.receive(message);
+          } catch (error) {
+            send({ type: 'overlay.error', request: type, error: toErrorJson(error, 'invalid_overlay') });
+          }
+        },
+      ]),
+    ),
     dispose: () => {
       disposed = true;
       assets.releaseAll();

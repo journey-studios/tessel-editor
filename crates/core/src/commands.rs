@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 use crate::perf::{self, PerfMeterCommand};
 use crate::plan::PreviewIntent;
 use crate::preview::PreviewMode;
+use crate::state::camera_edit::{CameraKeysCommand, KEY_FIELDS};
 use crate::state::inspector::{InspectorTab, PropertyKind, property_def};
 use crate::state::layout::{Destination, GroupRef, Layout, LayoutCommand, PanelKind, Region, Side};
 use crate::state::timeline::{Placement, TrackFlag};
@@ -207,6 +208,17 @@ fn parse_set_entity(target: &str, field: &str, value: &Raw) -> Result<Parsed, Co
             field: field.to_string(),
             value: value.clone(),
         }
+    } else if let Some(id) = split(target, "camera_key:") {
+        let (clip, index) = parse_camera_key_ref(id, target)?;
+        if !KEY_FIELDS.contains(&field) {
+            return Err(unknown_field(target, field));
+        }
+        Command::CameraKeys(CameraKeysCommand::Field {
+            clip,
+            index,
+            field: field.to_string(),
+            value: value.clone(),
+        })
     } else if let Some(id) = split(target, "folder:") {
         match field {
             "expanded" => Command::SetFolderExpanded {
@@ -246,6 +258,20 @@ fn parse_set_entity(target: &str, field: &str, value: &Raw) -> Result<Parsed, Co
         return parse_set_dock(target, field, value);
     };
     Ok(Parsed::Run(command))
+}
+
+/// `<clip>:<index>` of a `camera_key:` target.
+fn parse_camera_key_ref(id: &str, target: &str) -> Result<(String, usize), CommandError> {
+    id.rsplit_once(':')
+        .and_then(|(clip, index)| Some((clip.to_string(), index.parse::<usize>().ok()?)))
+        .filter(|(clip, _)| !clip.is_empty())
+        .ok_or_else(|| {
+            CommandError::new(
+                "unknown_element",
+                format!("`{target}` is not `camera_key:<clip>:<index>`"),
+            )
+            .target(target)
+        })
 }
 
 fn unknown_field(target: &str, field: &str) -> CommandError {
@@ -309,9 +335,31 @@ pub fn parse_invoke(
             },
         },
         ("monitor.reload", "invoke") => return Ok(Parsed::ReloadViewport),
+        ("camera_keys.capture", "invoke") => Command::CameraKeys(CameraKeysCommand::Capture {
+            clip: selected_scene_clip(state, target)?,
+            easing: None,
+        }),
+        ("camera.capture", "invoke") => Command::SetClipCameraFromCapture {
+            clip: selected_scene_clip(state, target)?,
+        },
+        ("camera_keys.clear", "invoke") => Command::CameraKeys(CameraKeysCommand::Replace {
+            clip: selected_scene_clip(state, target)?,
+            keys: Vec::new(),
+        }),
         _ => return parse_invoke_entity(state, target, action),
     };
     Ok(Parsed::Run(command))
+}
+
+fn selected_scene_clip(state: &EditorState, target: &str) -> Result<String, CommandError> {
+    state
+        .selected_clip()
+        .filter(|clip| clip.kind == crate::state::timeline::ClipKind::Scene)
+        .map(|clip| clip.id.to_string())
+        .ok_or_else(|| {
+            CommandError::new("no_selection", "Select a scene clip in the timeline first")
+                .target(target)
+        })
 }
 
 /// Dock invocations, or `None` when `target` is not a dock element.
@@ -426,6 +474,26 @@ fn parse_invoke_entity(
                 flag: TrackFlag::Muted,
                 value: !current.is_some_and(|track| track.muted),
             },
+            _ => return Err(unknown()),
+        }
+    } else if let Some(id) = split(target, "camera_key:") {
+        let (clip, index) = parse_camera_key_ref(id, target)?;
+        let key = state
+            .timeline
+            .clip(clip.as_str())
+            .and_then(|entry| entry.camera_keys.get(index));
+        match (action, key) {
+            ("remove", Some(key)) => Command::CameraKeys(CameraKeysCommand::Remove {
+                clip,
+                time: key.time,
+            }),
+            ("remove", None) => {
+                return Err(CommandError::new(
+                    "unknown_element",
+                    format!("`{target}` is not a camera key of the project"),
+                )
+                .target(target));
+            }
             _ => return Err(unknown()),
         }
     } else if let Some(id) = split(target, "inspector.") {

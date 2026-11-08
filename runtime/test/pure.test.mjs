@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { forEachLitCell, hasGlyph, measureText, normalizeText } from '../src/font.js';
 import { fnv1a64, meanColor } from '../src/hash.js';
 import { expandPattern } from '../src/protocol.js';
+import { layerScene, splatLayerScene } from '../src/scene.js';
 import { SPLAT_FORMATS, splatFileName } from '../src/splat-format.js';
 
 const bytes = (text) => new TextEncoder().encode(text);
@@ -112,4 +113,13 @@ test('runtime glyph coverage rejects non-core letters even when Unicode folds th
     assert.equal(hasGlyph(ch), (code >= 32 && code <= 126) || coverage.includes(ch), `U+${code.toString(16)}`);
   }
   for (const ch of ['K', 'ſ', 'ı', 'ÿ']) assert.equal(hasGlyph(ch), false, ch);
+});
+
+test('a bare splat layer is a one-splat scene turned by the plan orientation (BL143)', () => {
+  const layer = { kind: 'scene', asset: 'shot', orientation: [180, 0, 0] };
+  assert.deepEqual(splatLayerScene(layer).objects, [{ type: 'splat', asset: 'shot', rotation: [180, 0, 0] }]);
+  assert.deepEqual(layerScene({ asset: 'shot' }, { kind: 'splat' }).objects[0].rotation, [0, 0, 0]);
+  const file = { objects: [] };
+  assert.equal(layerScene(layer, { kind: 'scene', scene: file }), file);
+  assert.equal(layerScene(layer, undefined), undefined);
 });
