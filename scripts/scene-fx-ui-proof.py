@@ -27,6 +27,15 @@ What it checks, in order:
   * `flow.export_scene` (dialog) writes an MP4 whose decoded frames match the Python vignette over
     the decoded baseline export, inside the clip, and are the baseline's outside it.
 
+Nothing is skipped quietly (review R1/A2): an export that does not finish inside EXPORT_TIMEOUT_S (600 s,
+then cancelled), a failed job, a missing or empty file, an absent or short list of frame hashes, a wrong
+frame count and a run that compared fewer frames than it exported are each a recorded FAIL; the undo/redo
+walks have a step limit and a deadline; the JSON report (`--json`, atomic) is written on every exit and lists
+the surfaces exercised (window) and the ones this script does not cover (headless/lib, pointer), with their
+reason; the editor this script starts, and every process of its own session, is ended and checked gone.
+The pure parts (wait, judge, history walk, cleanup) are covered by `scene-fx-ui-proof.spec.py`, which
+starts no window and runs no export.
+
 Exit 0 only if every check passed; 1 on a failed check; 2 on a missing prerequisite. Artifacts under
 /tmp/te-fx-* (< 500 MiB), refuses to start under 12 GiB free, removed unless --keep.
 """
@@ -37,6 +46,7 @@ import math
 import os
 import pathlib
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -53,6 +63,11 @@ FRAME = 12
 # 8-bit rounding plus the GPU's float path; the pictures are flat blocks, so a probe is never on an edge.
 TOLERANCE = 3
 CODEC_TOLERANCE = 16
+# An export of 8 frames takes seconds; a job that is not done after this is a failure of the proof, not a wait.
+EXPORT_TIMEOUT_S = 600
+# The window's work, bounded: no loop of this proof may spin without a limit or a deadline.
+HISTORY_STEP_MARGIN = 4
+HISTORY_DEADLINE_S = 60
 
 failures, checks = [], []
 
@@ -223,7 +238,31 @@ def pixel(frame, width, x, y):
     return [frame[at], frame[at + 1], frame[at + 2]]
 
 
-def export(win, name, destination, frames_from, frames):
+class Clock:
+    """The time the proof waits with; a test hands a fake one so a 600 s timeout takes no time."""
+
+    def __init__(self, now=time.time, sleep=time.sleep):
+        self.now, self.sleep = now, sleep
+
+
+REAL_CLOCK = Clock()
+
+
+def wait_job(win, job, timeout=EXPORT_TIMEOUT_S, clock=REAL_CLOCK, poll=0.25):
+    """The final `job.get` of `job`, or `None` when it did not finish inside `timeout` seconds."""
+    deadline = clock.now() + timeout
+    while clock.now() < deadline:
+        ok, info = win.op({"op": "job.get", "job": job})
+        if ok and info["state"] in ("succeeded", "failed", "cancelled"):
+            return info
+        clock.sleep(poll)
+    return None
+
+
+def export(win, name, destination, frames_from, frames, check=check, timeout=EXPORT_TIMEOUT_S, clock=REAL_CLOCK):
+    """Runs one export through the dialog and returns the job's final state. Every way of not getting
+    one (the dialog does not open, a field is refused, no job appears, the job outlives `timeout`) is a
+    recorded FAIL and `None`; a caller can never mistake the silence for a pass."""
     before = job_ids(win)
     opened = win.invoke("flow.export_scene", "open")
     if not check(f"{name}: flow.export_scene opens", opened.get("ok"), opened):
@@ -236,20 +275,128 @@ def export(win, name, destination, frames_from, frames):
     submitted = win.invoke("dialog.submit")
     if not check(f"{name}: dialog.submit starts the export", submitted.get("ok"), submitted):
         return None
-    deadline, new = time.time() + 30, set()
-    while not new and time.time() < deadline:
+    deadline, new = clock.now() + 30, set()
+    while not new and clock.now() < deadline:
         new = job_ids(win) - before
-        time.sleep(0.1)
+        if not new:
+            clock.sleep(0.1)
     if not check(f"{name}: one job", len(new) == 1, new):
         return None
     job = next(iter(new))
-    deadline = time.time() + 600
-    while time.time() < deadline:
-        ok, info = win.op({"op": "job.get", "job": job})
-        if ok and info["state"] in ("succeeded", "failed", "cancelled"):
-            return info
-        time.sleep(0.25)
-    return None
+    info = wait_job(win, job, timeout, clock)
+    if info is None:
+        # The window keeps rendering a job nobody waits for: stop it, and say so.
+        cancelled, _ = win.op({"op": "job.cancel", "job": job})
+        check(f"{name}: the job finished within {timeout} s (it did not; cancel sent: {bool(cancelled)})", False, job)
+    return info
+
+
+def judge_exports(check, baseline_info, fx_info, paths, *, frames, from_frame, clip_end, decode, big=None):
+    """Compares the two exports' frames and returns how many frames were really compared.
+
+    Nothing here is skipped quietly: a missing or failed job, a missing or empty file, an absent or
+    short list of frame hashes and a wrong frame count are each a recorded FAIL, and the caller ends
+    with a coverage check, so a run that compared nothing cannot end green. `decode(path)` gives the
+    decoded RGB frames (injected, so tests need no FFmpeg)."""
+    problems = 0
+    for label, info in (("baseline export", baseline_info), ("fx export", fx_info)):
+        if info is None:
+            problems += 1
+            check(f"{label}: finished with a final job state", False, "no final state (a timeout or a lost job)")
+        elif not check(f"{label}: succeeded", info.get("state") == "succeeded", info.get("error") or info.get("state")):
+            problems += 1
+    for label, path in (("baseline export", paths[0]), ("fx export", paths[1])):
+        present = os.path.exists(path) and os.path.getsize(path) > 0
+        if not check(f"{label}: the file exists and is not empty", present, str(path)):
+            problems += 1
+    hash_lists = []
+    for label, info in (("baseline export", baseline_info), ("fx export", fx_info)):
+        listed = ((info or {}).get("result") or {}).get("frame_hashes", {}).get("list") or []
+        good = len(listed) == frames and all(isinstance(item, str) and item for item in listed)
+        if not check(f"{label}: the job reports {frames} non-empty frame hashes", good, f"{len(listed)} listed"):
+            problems += 1
+        hash_lists.append(listed)
+    if problems:
+        return 0
+    base_frames, fx_frames = decode(paths[0]), decode(paths[1])
+    if not check(f"{frames} decoded frames each", len(base_frames) == len(fx_frames) == frames, (len(base_frames), len(fx_frames))):
+        return 0
+    big = big or grid(1920, 1080)
+    compared, strongest = 0, 0
+    for index in range(frames):
+        edit_frame = from_frame + index
+        inside = edit_frame < clip_end
+        check(f"export frame {edit_frame}: hash {'differs inside' if inside else 'equals outside'} the clip",
+              (hash_lists[0][index] != hash_lists[1][index]) == inside, (hash_lists[0][index], hash_lists[1][index]))
+        worst_frame = 0
+        for x, y in big:
+            before = pixel(base_frames[index], 1920, x, y)
+            after = pixel(fx_frames[index], 1920, x, y)
+            expected = vignette(before, x, y, 1920, 1080, 1.0) if inside else before
+            worst_frame = max(worst_frame, max(abs(a - b) for a, b in zip(after, expected)))
+            strongest = max(strongest, max(abs(a - b) for a, b in zip(after, before)))
+        check(f"export frame {edit_frame}: decoded pixels equal the Python vignette over the decoded baseline (worst {worst_frame:.1f})",
+              worst_frame <= CODEC_TOLERANCE, worst_frame)
+        compared += 1
+    check(f"the export comparison discriminates (strongest change {strongest})", strongest >= 25, strongest)
+    check(f"coverage: {compared} of {frames} export frames were compared", compared == frames, compared)
+    return compared
+
+
+def walk_history(win, op, target, check=check, name="history", margin=HISTORY_STEP_MARGIN, deadline_s=HISTORY_DEADLINE_S, clock=REAL_CLOCK):
+    """Undo (`history.undo`) or redo until the undo depth is `target`, at most `|distance| + margin`
+    steps and `deadline_s` seconds. A step that does not move the depth, or a limit that is reached
+    first, is a recorded FAIL (`False`): the old loops spun for as long as `undo_depth` stayed above."""
+    start = win.undo_depth()
+    if start is None:
+        return check(f"{name}: the history status is readable", False, start)
+    limit = abs(start - target) + margin
+    direction = 1 if target > start else -1
+    deadline = clock.now() + deadline_s
+    depth = start
+    for _ in range(limit):
+        if depth == target:
+            break
+        if clock.now() >= deadline:
+            return check(f"{name}: reached depth {target} before the {deadline_s} s deadline", False, depth)
+        ok, body = win.op({"op": op})
+        now = win.undo_depth()
+        if not ok or now is None or (now - depth) * direction <= 0:
+            return check(f"{name}: {op} moved the history toward depth {target}", False, (depth, now, body))
+        depth = now
+    return check(f"{name}: reached depth {target} in at most {limit} steps (stopped at {depth})", depth == target, depth)
+
+
+def stop_lab(lab, pid, check=check):
+    """Ends the editor this proof started and every process of its own session (it was started with
+    `start_new_session`, so its group id is its pid), and proves none is left. Never touches another group."""
+    try:
+        lab.stop()
+    except Exception as error:  # the proof's own cleanup must not hide the reason of a failed run
+        print(f"lab.stop failed: {error}", flush=True)
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        if not group_alive(pid):
+            break
+        try:
+            os.killpg(pid, sig)
+        except ProcessLookupError:
+            break
+        for _ in range(20):  # up to 4 s for the signal to take effect
+            if not group_alive(pid):
+                break
+            time.sleep(0.2)
+    return check("the proof's own editor processes are all gone", not group_alive(pid), f"process group {pid} still has members")
+
+
+def group_alive(pgid):
+    """True while a live (not zombie) process is in group `pgid`; read from `ps`, so a child waiting to
+    be reaped does not count, and no signal is sent to find out."""
+    listing = subprocess.run(["ps", "-A", "-o", "pgid=,stat="], capture_output=True, text=True, check=False).stdout
+    for line in listing.splitlines():
+        fields = line.split()
+        if len(fields) == 2 and fields[0] == str(pgid) and not fields[1].startswith("Z"):
+            return True
+    return False
 
 
 def job_ids(win):
@@ -277,6 +424,36 @@ def main():
     parser.add_argument("--json")
     parser.add_argument("--shot", help="also save a native screenshot of the window with the effect applied (observation only)")
     args = parser.parse_args()
+    # The report is written whatever happens (a prerequisite, a failed check, a crash): a missing file is
+    # never the way this proof says it did not run.
+    surfaces, code = [], 1
+    try:
+        code = run(args, surfaces)
+    except Exception as error:  # noqa: BLE001 - a crash is a recorded FAIL; an interrupt or exit still unwinds
+        check("the proof ran to its end", False, f"{type(error).__name__}: {error}")
+    finally:
+        total = len(checks)
+        print(f"\n{total - len(failures)}/{total} checks passed", flush=True)
+        if args.json:
+            write_report(pathlib.Path(args.json), pathlib.Path(args.binary).resolve(), surfaces, code)
+    return 1 if failures else code
+
+
+def write_report(path, binary, surfaces, code):
+    """The JSON report, written atomically (a reader sees the old file or the whole new one)."""
+    report = {"binary": h.binary_info(str(binary)) if binary.exists() else {"path": str(binary), "present": False},
+              "git": h.git_state(), "exit_code": code, "checks": checks, "failed": failures, "expected_surfaces": EXPECTED_SURFACES,
+              "surfaces": surfaces}
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(report, indent=2))
+    os.replace(temporary, path)
+
+
+EXPECTED_SURFACES = ["window"]
+
+
+def run(args, surfaces):
+    """The whole proof; returns the exit code (0 only if every check passed, 2 on a missing prerequisite)."""
     binary = pathlib.Path(args.binary).resolve()
     for path in (binary, ROOT / "runtime" / "dist" / "runtime.js", CORPUS / "bundle.json"):
         if not path.exists():
@@ -291,9 +468,13 @@ def main():
         return 2
     lifecycle = load_lifecycle()
     work = tempfile.mkdtemp(prefix="te-fx-", dir="/tmp")
-    lab = None
+    lab, lab_pid = None, None
     try:
         lab = lifecycle.Lab(str(binary), work, {"TESSEL_VIEWPORT_INSPECT": "1"})
+        lab_pid = lab.process.pid
+        # A TERM or an interrupt unwinds through the `finally` below: the editor this proof started never outlives it.
+        for signum in (signal.SIGTERM, signal.SIGINT):
+            signal.signal(signum, lambda *_: (_ for _ in ()).throw(SystemExit(130)))
         lab.wait_ready()
         lab.invoke("window.activate")
         time.sleep(0.8)
@@ -389,12 +570,11 @@ def main():
         check("undo steps back one entry (center_y)", ok and win.field("scene.fx.clip:fx-1", "center_y") == 0.5, body)
         ok, body = win.op({"op": "history.redo"})
         check("redo brings it back", ok and win.field("scene.fx.clip:fx-1", "center_y") == 1.0, body)
-        while (win.undo_depth() or 0) > depth0:
-            win.op({"op": "history.undo"})
+        depth_before_undo = win.undo_depth()
+        walk_history(win, "history.undo", depth0, name="undo to the start")
         check("undo to the start removes the clip and the picture is the baseline again",
               (win.node("scene.fx") or {}).get("state", {}).get("clip_count") == 0 and win.repaint(FRAME) == monitor_baseline)
-        while (win.undo_depth() or 0) < depth0 + 6 and win.op({"op": "history.redo"})[0]:
-            pass
+        walk_history(win, "history.redo", depth_before_undo, name="redo to the end")
         check("redo restores the clip with its last values", win.field("scene.fx.clip:fx-1", "center_x") == 1.0 and win.field("scene.fx.clip:fx-1", "intensity") == 1.0)
 
         # ---- toggle hidden is the baseline too ----
@@ -426,52 +606,25 @@ def main():
         out = pathlib.Path(work) / "out"
         out.mkdir()
         from_frame, frames = 44, 8
-        ok, _ = win.op({"op": "scene.fx.edit", "scene": "proof", "ops": [{"op": "remove_clip", "clip": "fx-1"}]})
+        ok, body = win.op({"op": "scene.fx.edit", "scene": "proof", "ops": [{"op": "remove_clip", "clip": "fx-1"}]})
+        check("baseline export: the clip is removed before exporting", ok, body)
         baseline_info = export(win, "baseline export", out / "base.mp4", from_frame, frames)
-        ok, _ = win.op({"op": "scene.fx.edit", "scene": "proof", "ops": [
+        ok, body = win.op({"op": "scene.fx.edit", "scene": "proof", "ops": [
             {"op": "add_clip", "effect": "vignette", "start_frame": 0, "duration_frames": 48, "id": "fx-1", "params": {"intensity": 1.0}}]})
+        check("fx export: the vignette clip is added before exporting", ok, body)
         fx_info = export(win, "fx export", out / "fx.mp4", from_frame, frames)
-        if baseline_info and fx_info:
-            check("both exports succeeded", baseline_info["state"] == "succeeded" and fx_info["state"] == "succeeded", (baseline_info.get("error"), fx_info.get("error")))
-            base_frames = decode(ffmpeg, out / "base.mp4", 1920, 1080)
-            fx_frames = decode(ffmpeg, out / "fx.mp4", 1920, 1080)
-            check("eight frames each", len(base_frames) == len(fx_frames) == frames, (len(base_frames), len(fx_frames)))
-            hashes_base = (baseline_info.get("result") or {}).get("frame_hashes", {}).get("list") or []
-            hashes_fx = (fx_info.get("result") or {}).get("frame_hashes", {}).get("list") or []
-            big = grid(1920, 1080)
-            strongest = 0
-            for index in range(min(len(base_frames), len(fx_frames))):
-                edit_frame = from_frame + index
-                inside = edit_frame < 48
-                if hashes_base and hashes_fx:
-                    check(f"export frame {edit_frame}: hash {'differs inside' if inside else 'equals outside'} the clip",
-                          (hashes_base[index] != hashes_fx[index]) == inside, (hashes_base[index], hashes_fx[index]))
-                worst_frame = 0
-                for x, y in big:
-                    before = pixel(base_frames[index], 1920, x, y)
-                    after = pixel(fx_frames[index], 1920, x, y)
-                    expected = vignette(before, x, y, 1920, 1080, 1.0) if inside else before
-                    worst_frame = max(worst_frame, max(abs(a - b) for a, b in zip(after, expected)))
-                    strongest = max(strongest, max(abs(a - b) for a, b in zip(after, before)))
-                check(f"export frame {edit_frame}: decoded pixels equal the Python vignette over the decoded baseline (worst {worst_frame:.1f})",
-                      worst_frame <= CODEC_TOLERANCE, worst_frame)
-            check(f"the export comparison discriminates (strongest change {strongest})", strongest >= 25, strongest)
+        judge_exports(check, baseline_info, fx_info, (out / "base.mp4", out / "fx.mp4"), frames=frames, from_frame=from_frame, clip_end=48,
+                      decode=lambda path: decode(ffmpeg, path, 1920, 1080))
+        surfaces.append({"surface": "window", "how": "live semantic socket of a private instance: op/get/set/invoke, no pointer, no coordinates", "status": "exercised"})
+        surfaces.append({"surface": "headless/lib", "how": "N/A in this script: the same rules are crates/core/tests/scene_fx.rs and tessel-headless", "status": "not run here"})
+        surfaces.append({"surface": "pointer", "how": "N/A: BL043 stays open; the GPUI tests inject pointer input", "status": "not proved"})
     finally:
-        if lab is not None:
-            try:
-                lab.stop()
-            except Exception:
-                pass
+        if lab is not None and lab_pid is not None:
+            stop_lab(lab, lab_pid)
         if args.keep:
             print(f"kept: {work}")
         else:
             shutil.rmtree(work, ignore_errors=True)
-
-    total = len(checks)
-    print(f"\n{total - len(failures)}/{total} checks passed")
-    report = {"binary": h.binary_info(str(binary)), "git": h.git_state(), "checks": checks, "failed": failures}
-    if args.json:
-        pathlib.Path(args.json).write_text(json.dumps(report, indent=2))
     return 1 if failures else 0
 
 
