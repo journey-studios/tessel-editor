@@ -282,6 +282,44 @@ export class AssetStore {
     return bytes;
   }
 
+  /**
+   * What the store holds, by category, in bytes (CPU unless noted). Splat figures: `decoded` is Spark's packed data (16 bytes a splat, CPU copy and GPU
+   * texture alike) counted once per asset because clones share it. A report, never a limit.
+   */
+  memoryReport() {
+    const report = {
+      splat_assets: 0,
+      splat_decoded_bytes: 0,
+      splat_clones: 0,
+      still_bitmap_bytes: 0,
+      sequence_frames: 0,
+      sequence_frame_bytes: 0,
+      sequence_proxy_frames: 0,
+      sequence_proxy_bytes: 0,
+      scene_picture_bytes: this.sceneResourceBytes(),
+      gpu_texture_bytes: this.textureBytes(),
+    };
+    this.entries.forEach((entry) => {
+      if (entry.kind === 'splat') {
+        report.splat_assets += 1;
+        report.splat_decoded_bytes += (entry.mesh?.packedSplats?.numSplats ?? 0) * 16;
+        report.splat_clones += entry.clones?.length ?? 0;
+      }
+      if (entry.kind === 'still' && entry.bitmap) report.still_bitmap_bytes += rgbaBytes(entry.width, entry.height);
+      entry.frames?.forEach((frame, key) => {
+        const bytes = rgbaBytes(frame.bitmap.width, frame.bitmap.height);
+        if (isProxyKey(key)) {
+          report.sequence_proxy_frames += 1;
+          report.sequence_proxy_bytes += bytes;
+        } else {
+          report.sequence_frames += 1;
+          report.sequence_frame_bytes += bytes;
+        }
+      });
+    });
+    return report;
+  }
+
   /** Number of image textures retained right now. */
   textureCount() {
     let count = 0;
@@ -368,16 +406,21 @@ export class AssetStore {
 
   async loadSplat({ id, source, meta }) {
     const label = `\`${id}\` (${source.path})`;
-    const response = await fetchChecked(this.assetUrl(source.path), label);
-    const bytes = await response.arrayBuffer();
+    const bytes = await this.fetchSplatBytes(source, label);
     const fileName = splatFileName(meta.format, source.path);
     const mesh = await loadSplatMesh(bytes, fileName, label);
     const count = mesh.packedSplats.numSplats;
-    // The bytes stay so the GPU side can be rebuilt after a lost context (see dropGpu).
+    // The file is NOT kept (66 MB for a 1.18 M splat PLY, as much again as the decoded splats): the GPU
+    // side is rebuilt after a lost context by fetching it again (see splatLease and dropGpu).
     return {
-      entry: { bytes, fileName, label, mesh, leased: false, clones: [] },
+      entry: { source, fileName, label, mesh, leased: false, clones: [] },
       meta: { splat_count: count, format: fileName.split('.').pop() },
     };
+  }
+
+  async fetchSplatBytes(source, label) {
+    const response = await fetchChecked(this.assetUrl(source.path), label);
+    return response.arrayBuffer();
   }
 
   /**
@@ -389,12 +432,14 @@ export class AssetStore {
   async splatLease(id) {
     const entry = this.get(id);
     if (!entry.mesh) {
-      const mesh = await loadSplatMesh(entry.bytes, entry.fileName, entry.label);
+      const mesh = await loadSplatMesh(await this.fetchSplatBytes(entry.source, entry.label), entry.fileName, entry.label);
       if (this.entries.get(id) !== entry) {
         mesh.dispose();
         throw new RuntimeError('cancelled', `Asset \`${id}\` was released while loading`, { asset: id });
       }
-      entry.mesh = mesh;
+      // Two takers may rebuild at once (a lost context): the first mesh stays, the other is not kept.
+      if (entry.mesh) mesh.dispose();
+      else entry.mesh = mesh;
     }
     if (!entry.leased) {
       entry.leased = true;
@@ -610,6 +655,35 @@ export class AssetStore {
       entry.frames.delete(key);
       if (proxied) proxies -= 1;
       else originals -= 1;
+    }
+    this.trimBitmaps();
+  }
+
+  /**
+   * The count limits above are per asset; a project with many 4K clips would still hold their
+   * product in CPU bitmaps. Past `frameBitmapBytes` over all assets, the least recently used frames
+   * (bitmap and texture) go, except the ones the frame in flight pins.
+   */
+  trimBitmaps() {
+    let bytes = 0;
+    const candidates = [];
+    this.entries.forEach((entry) => {
+      entry.frames?.forEach((frame, key) => {
+        const size = rgbaBytes(frame.bitmap.width, frame.bitmap.height);
+        bytes += size;
+        candidates.push({ entry, key, frame, size });
+      });
+    });
+    if (bytes <= this.limits.frameBitmapBytes) return;
+    candidates.sort((a, b) => (a.frame.lastUsed ?? 0) - (b.frame.lastUsed ?? 0));
+    for (const { entry, key, frame, size } of candidates) {
+      if (bytes <= this.limits.frameBitmapBytes) break;
+      if (frame.texture && this.pinned.has(frame.texture)) continue;
+      frame.texture?.dispose();
+      frame.bitmap.close();
+      entry.frames.delete(key);
+      bytes -= size;
+      this.counters.add('frame_bitmap_evicted');
     }
   }
 

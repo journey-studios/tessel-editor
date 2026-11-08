@@ -274,6 +274,26 @@ O `rig_build` de 7 ms do crossfade não era o rig (uma camada: 0,1 ms): era o se
 O sort/readback por camada (BL126) e a decimação (BL127) ficam com os números acima: o crossfade já está no limite de
 41,7 ms e a espera de 3+ camadas é de GPU (~10 ms por camada com MSAA 0).
 
+## Quarta rodada: memória
+
+Tour de 4 cenas do projeto real (quadros 60, 230, 340, 480 e de volta ao 60; MSAA 2), pegada do processo WebContent
+(`footprint`, MB) e contagem do próprio runtime (`cache.memory`):
+
+| Quadro | 60 | 230 | 340 | 480 | 60 (volta) |
+|---|---|---|---|---|---|
+| Antes | 471 | 711 | 821 | 1034 | 1061 |
+| Depois (3 execuções) | 402–405 | 576–582 | 626–629 | 592–673 | 602–673 |
+
+O maior item contabilizado era o arquivo PLY bruto retido (65 MB por cena; 255 MB no fim), enquanto os splats decodificados
+somavam só 18,8 MB por cena (72,8 MB no fim). O `SplatMesh` já copia `fileBytes` antes de enviá-lo ao worker, então nem a
+cópia `slice(0)` era necessária. O restante da pegada é transitório (decodificação, coleta de lixo, estruturas do Spark) e
+não é contabilizado. Os bytes brutos deixaram de ser retidos (BL128); a sessão passou a limitar por bytes o que mantém carregado
+(BL129; o tour cabe no orçamento, então a remoção só está provada por teste) e os quadros de vídeo ganharam orçamento global
+de CPU (BL130; 10 quadros de um projeto de vídeo ≈ 35 MB, longe do limite).
+
+O processo do editor (Rust) cresce ~65 MB por cena nova antes e depois, independentemente do runtime: fica em BL122, com a
+suspeita de leitura do arquivo inteiro em `host::serve`.
+
 ## Backlog
 
 Os itens propostos foram registrados em [backlog.md](backlog.md): BL113 (MSAA 2×), BL114 (pré-carga), BL115 (cobertura),

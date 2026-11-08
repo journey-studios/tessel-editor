@@ -156,6 +156,7 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
       retain: active.retain,
       ...counters.delta(before),
       ...active.retained(),
+      memory: assets.memoryReport(),
       texture_entries: assets.textureCount(),
       texture_bytes: assets.textureBytes(),
       asset_generation: assets.generation,

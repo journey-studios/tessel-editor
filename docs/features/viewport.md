@@ -167,6 +167,12 @@ no runtime). **Só vale para cena parada**; em movimento nada muda (ver relatór
 - **Orçamento da pré-carga (PERF-7).** `PREFETCH_BUDGET_BYTES` (256 MiB de arquivos fonte) limita o que está pré-carregado e
   ainda não foi usado por um quadro; a primeira pré-carga sempre cabe e o que não cabe carrega sob demanda
   (`stats.prefetch_skipped`).
+- **Memória (PERF-8).** O runtime descarta os bytes brutos do PLY após decodificar (`SplatMesh` mantém só os dados
+  decodificados; um asset liberado ou com contexto perdido rebusca o arquivo), a sessão libera assets pesados por bytes
+  (`RETAINED_ASSET_BYTES` 256 MiB de arquivos de still/cena/splat, LRU, nunca o que o quadro precisa nem o pré-carregado;
+  `stats.evicted`) e os bitmaps de quadros de vídeo/sequência têm um orçamento global (`frameBitmapBytes` 256 MiB,
+  `frame_bitmap_evicted`). `render.frame` informa `cache.memory` com a contagem do runtime. Testes: `splat.test.mjs`,
+  `retention.test.mjs`, testes da sessão.
 
 ### Carregamento antecipado, camadas cobertas e proxy pendente (PERF-2/3/4)
 

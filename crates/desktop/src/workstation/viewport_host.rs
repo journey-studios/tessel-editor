@@ -52,6 +52,10 @@ const FRAME_TIMEOUT: Duration = Duration::from_secs(30);
 const PREVIEW_LONG_SIDE: u32 = 960;
 /// Loaded assets kept between frames before the ones the plan no longer needs are released.
 const RETAINED_ASSETS: usize = 16;
+/// Source-file bytes the monitor keeps loaded: three 66 MB splat scenes (the one on screen, the one
+/// fading out or in, and one more to scrub back to). Past it the least recently used heavy asset is
+/// released, because each scene costs ~100-250 MB in the WebView once decoded.
+const RETAINED_ASSET_BYTES: u64 = 256 << 20;
 /// Set to `1` to make the monitor's own frames carry hash/mean like explicit ones (measurement
 /// and pixel proofs); off by default because the readback is not needed to show a picture.
 pub const INSPECT_ENV: &str = "TESSEL_VIEWPORT_INSPECT";
@@ -247,6 +251,7 @@ impl ViewportHost {
         let mut session =
             ViewportSession::new(backend).with_demo_dir(tessel_editor_render::demo_dir());
         session.set_retained_assets(RETAINED_ASSETS);
+        session.set_retained_bytes(RETAINED_ASSET_BYTES);
         session.trace().set_enabled(options.trace);
         let (dist, phase) = match page {
             Ok(dist) => (Some(dist), Phase::Booting(Instant::now())),

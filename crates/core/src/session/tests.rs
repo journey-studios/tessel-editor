@@ -1477,6 +1477,84 @@ fn the_first_prefetch_always_fits_and_a_used_one_frees_the_budget() {
     assert_eq!(rig.session.prefetch(&rig.state, &[Id::lit("later")]), 1);
 }
 
+fn file_bytes_of_img(rig: &Rig) -> u64 {
+    AssetDescriptor::from_item(rig.state.library.item("img").unwrap(), None)
+        .unwrap()
+        .files()
+        .iter()
+        .map(|file| std::fs::metadata(file).unwrap().len())
+        .sum()
+}
+
+/// Draws frame `at` and completes the loads it waits for, as the monitor does while playing.
+fn show(rig: &mut Rig, at: i64, assets: &[&str]) {
+    let id = rig
+        .session
+        .request_frame(&rig.state, plan(rig, at), output(), vec![])
+        .unwrap();
+    for asset in assets {
+        rig.script.borrow_mut().events.push_back(ready(asset));
+        rig.session.pump(Duration::ZERO);
+    }
+    settle(rig, id, rig.session.revision(), 0);
+}
+
+#[test]
+fn past_the_byte_budget_the_least_recently_used_heavy_asset_is_released_first() {
+    let mut rig = rig_with_two_cuts(60, 90);
+    rig.session.capabilities().unwrap();
+    rig.session.min_evict_bytes = 0;
+    let file = file_bytes_of_img(&rig);
+    rig.session.set_retained_bytes(2 * file);
+    show(&mut rig, 0, &["img"]);
+    show(&mut rig, 60, &["next"]);
+    assert!(rig.script.borrow().released.is_empty(), "two fit");
+    // The third asset takes the total past the budget: `img` was used longest ago.
+    rig.session
+        .request_frame(&rig.state, plan(&rig, 90), output(), vec![])
+        .unwrap();
+    assert_eq!(rig.script.borrow().released, vec![Id::lit("img")]);
+    assert_eq!(rig.session.stats.evicted, 1);
+    assert!(rig.script.borrow().loaded.contains(&Id::lit("later")));
+    assert_eq!(rig.session.loaded_assets(), vec![Id::lit("next")]);
+}
+
+#[test]
+fn the_byte_budget_never_releases_what_the_frame_needs_or_a_prefetch_holds() {
+    let mut rig = rig_with_two_cuts(60, 90);
+    rig.session.capabilities().unwrap();
+    rig.session.min_evict_bytes = 0;
+    rig.session.set_retained_bytes(1);
+    show(&mut rig, 0, &["img"]);
+    assert_eq!(rig.session.prefetch(&rig.state, &[Id::lit("later")]), 1);
+    rig.script.borrow_mut().events.push_back(ready("later"));
+    rig.session.pump(Duration::ZERO);
+    rig.session
+        .request_frame(&rig.state, plan(&rig, 60), output(), vec![])
+        .unwrap();
+    // Only `img` is neither required (`next`) nor prefetched (`later`).
+    assert_eq!(rig.script.borrow().released, vec![Id::lit("img")]);
+    assert!(rig.session.assets.contains_key(&Id::lit("later")));
+    assert!(rig.session.assets.contains_key(&Id::lit("next")));
+}
+
+#[test]
+fn without_a_byte_budget_or_for_light_assets_nothing_is_released() {
+    let mut rig = rig_with_two_cuts(60, 90);
+    rig.session.capabilities().unwrap();
+    show(&mut rig, 0, &["img"]);
+    show(&mut rig, 60, &["next"]);
+    show(&mut rig, 90, &["later"]);
+    assert!(rig.script.borrow().released.is_empty(), "no budget set");
+    // A budget alone does not release assets under the heavy threshold: they free nothing worth a reload.
+    rig.session.set_retained_bytes(1);
+    rig.session
+        .request_frame(&rig.state, plan(&rig, 0), output(), vec![])
+        .unwrap();
+    assert!(rig.script.borrow().released.is_empty());
+    assert_eq!(rig.session.stats.evicted, 0);
+}
+
 #[test]
 fn a_prefetch_is_best_effort_and_never_a_failure() {
     let mut rig = rig_with_cut(60);
