@@ -1165,8 +1165,51 @@ fn the_warning_follows_hide_remove_candidate_and_scene_switch(cx: &mut TestAppCo
 // stays in its slot until cancelled, and asking the plan for it is `gesture_invalidated`: the monitor
 // must ask for the document instead, with no failure the panel does not explain.
 
+/// The verified resources of `scene`, as `scene.resources.resolve` would leave them. The plan the
+/// monitor asks for refuses a scene whose files were never approved (`scene_resources_not_loaded`),
+/// and a test window has no folder to resolve them from, so the approved map is installed directly
+/// with the paths and hashes the bundle declares. No file is read: nothing draws in a test window.
+fn load_resources(view: &Entity<Workstation>, scene: &str, cx: &mut VisualTestContext) {
+    use std::path::PathBuf;
+    use tessel_editor_core::scene_resources::{ResourceKey, ResourceKind};
+    use tessel_editor_media::scene_resources::map::{ResolvedResource, ResolvedResourceMap};
+
+    view.update(cx, |view, _| {
+        let session = view.workflow.scene_resources();
+        let generation = session.observe_project(&view.state.project.id);
+        let bundle = view.state.scenes.get(scene).unwrap().scene.bundle().clone();
+        let entries = bundle
+            .assets
+            .iter()
+            .map(|asset| ResolvedResource {
+                key: ResourceKey::asset(&asset.asset_id),
+                kind: ResourceKind::Image,
+                path: PathBuf::from("/synthetic").join(&asset.relative_path),
+                content_hash: asset.content_hash.clone(),
+                revision_id: Some(asset.revision_id.clone()),
+                bytes: 1,
+                uses: Vec::new(),
+            })
+            .collect();
+        session
+            .install(ResolvedResourceMap {
+                scene_id: scene.to_owned(),
+                bundle_id: bundle.bundle_id.clone(),
+                bundle_revision: bundle.revision_id.clone(),
+                project_id: view.state.project.id.clone(),
+                generation,
+                base: PathBuf::from("/synthetic"),
+                entries,
+                skipped: Vec::new(),
+                complete: true,
+            })
+            .expect("the synthetic map belongs to the current project and generation");
+    });
+}
+
 /// The monitor shows `street` as a directed scene, as the app does, and follows the state once.
 fn watch_street(view: &Entity<Workstation>, cx: &mut VisualTestContext) {
+    load_resources(view, "street", cx);
     view.update(cx, |view, cx| {
         view.viewport.pretend_directed_scene("street");
         view.viewport_sync(cx);
