@@ -7,6 +7,7 @@
 //! [`super::flows`]; its fields, report and buttons are also nodes of the automation tree
 //! (`flow.*` opens, `dialog.*` fills, submits or cancels), so tests never click coordinates.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -20,7 +21,7 @@ use gpui_kit::component::{ActiveTheme, Sizable, WindowExt as _, h_flex, v_flex};
 use gpui_kit::*;
 use serde_json::{Value, json};
 use tessel_editor_core::headless::{Extension, run_project_op};
-use tessel_editor_core::jobs::{JobError, JobInfo};
+use tessel_editor_core::jobs::{JobError, JobInfo, ResultState};
 use tessel_editor_core::ops::ProjectOp;
 use tessel_editor_core::session::Renderer;
 use tessel_editor_core::{Command, CommandError};
@@ -58,6 +59,44 @@ pub struct FlowDialog {
     /// `workflow_tick` fills the report when it finishes. A newer request replaces it, so an
     /// older answer is never shown for fields the user has since changed.
     report_job: Option<String>,
+    /// The verification that was refused with `renderer_busy` and will be asked again (BL144.19):
+    /// which attempt it is and when. See [`flows::VERIFY_RETRY_ATTEMPTS`].
+    retry: Option<VerifyRetry>,
+}
+
+/// The dialog's own next ask of its verification. Not the host's queue: the host remembers nothing.
+#[derive(Clone, Copy, Debug)]
+struct VerifyRetry {
+    attempt: u32,
+    due: Instant,
+}
+
+impl FlowDialog {
+    /// The verification was refused. A busy renderer is waited for a bounded number of explicit
+    /// asks; anything else, and a busy renderer that stays busy, ends in the message the dialog
+    /// shows, with no job left "verifying" (the dialog is never stuck).
+    fn verify_refused(&mut self, error: &CommandError, attempt: u32, now: Instant) {
+        self.report_job = None;
+        if flows::is_renderer_busy(error) && attempt < flows::VERIFY_RETRY_ATTEMPTS {
+            self.retry = Some(VerifyRetry {
+                attempt: attempt + 1,
+                due: now + flows::VERIFY_RETRY_EVERY,
+            });
+            self.report = Some(flows::WAITING_FOR_RENDERER.to_string());
+            self.error = None;
+        } else {
+            self.retry = None;
+            self.report = None;
+            self.error = Some(flows::describe_refusal(error));
+        }
+    }
+
+    /// The attempt number to ask again now, if one is due. Takes it: one ask per due retry.
+    fn take_due_retry(&mut self, now: Instant) -> Option<u32> {
+        let retry = self.retry.filter(|retry| retry.due <= now)?;
+        self.retry = None;
+        Some(retry.attempt)
+    }
 }
 
 pub struct Workflow {
@@ -71,9 +110,48 @@ pub struct Workflow {
     autosaved_revision: Option<u64>,
     /// The last scene attach/load chain (F043, `scene_import.rs`); its jobs finish on the tick.
     pub(super) scene_import: Option<SceneImport>,
+    /// Discard job -> the refusal that sent a result to it (`details.discard_job` of a failed
+    /// event). The discard's own event must not hide why the result was refused (F5).
+    refusals: HashMap<String, String>,
 }
 
 impl Workflow {
+    /// What the status bar says about `event`, given the refusals seen so far (F5).
+    ///
+    /// A result the project refused (`stale_result`, `claims_unavailable`) names the discard job
+    /// that now owns its files in `error.details.discard_job`; the refusal is remembered. When
+    /// that discard job ends, its line must not replace the reason: a clean discard keeps saying
+    /// why the result was refused, and one that left something behind says both.
+    pub(super) fn remember_refusal(
+        &mut self,
+        event: &Value,
+        text: String,
+        error: bool,
+    ) -> (String, bool) {
+        // `job_discarded` is the answer to an explicit `job.discard`, not a refusal.
+        if let Some(discard) = event["error"]["details"]["discard_job"].as_str()
+            && event["kind"] != "discard"
+            && event["error"]["code"] != "job_discarded"
+        {
+            self.refusals.insert(discard.to_string(), text.clone());
+            return (text, error);
+        }
+        if event["kind"] != "discard" {
+            return (text, error);
+        }
+        let Some(refusal) = event["job"]
+            .as_str()
+            .and_then(|job| self.refusals.remove(job))
+        else {
+            return (text, error);
+        };
+        if error {
+            (format!("{refusal}; {text}"), true)
+        } else {
+            (refusal, true)
+        }
+    }
+
     pub fn new() -> Self {
         // WHY a factory: an export drives its own headless renderer on its own thread, so it
         // never shares GPU state or frame timing with the live monitor's WebView.
@@ -103,6 +181,7 @@ impl Workflow {
             last_autosave: Instant::now(),
             autosaved_revision: None,
             scene_import: None,
+            refusals: HashMap::new(),
         }
     }
 
@@ -115,6 +194,25 @@ impl Workflow {
 
     pub fn has_dialog(&self) -> bool {
         self.flow.is_some() || self.jobs_open
+    }
+
+    /// Tests only: a dialog is open, as far as `has_dialog` (the monitor's visibility) can tell.
+    /// A GPUI test window has no `Root`, which a real dialog needs.
+    #[cfg(test)]
+    pub(super) fn pretend_dialog_open(&mut self, open: bool) {
+        self.jobs_open = open;
+    }
+
+    /// A job that runs until `release` is sent (or dropped), under any label: what the status
+    /// bar's jobs line shows while it lasts.
+    #[cfg(test)]
+    pub(super) fn spawn_blocked_job(&self, label: &str, release: std::sync::mpsc::Receiver<()>) {
+        self.host
+            .registry()
+            .spawn(tessel_editor_core::jobs::JobKind::Hash, label, move |_| {
+                let _ = release.recv();
+                Ok(Value::Null)
+            });
     }
 
     fn active_jobs(&self) -> Vec<JobInfo> {
@@ -189,6 +287,15 @@ impl Workstation {
 
     /// Applies finished jobs, reports them in the status bar and autosaves a dirty project.
     pub(super) fn workflow_tick(&mut self, cx: &mut Context<Self>) {
+        // The dialog's verification waiting for a busy renderer asks again when it is due.
+        if let Some(attempt) = self
+            .workflow
+            .flow
+            .as_mut()
+            .and_then(|flow| flow.take_due_retry(Instant::now()))
+        {
+            self.flow_verify_attempt(attempt, cx);
+        }
         let events = self.workflow.host.poll(&mut self.state);
         if !events.is_empty() {
             // A job that opened another project (restore) invalidates what the viewport loaded.
@@ -203,6 +310,7 @@ impl Workstation {
             for event in events {
                 self.flow_receive_report(&event);
                 let (text, error) = flows::describe_job_event(&event);
+                let (text, error) = self.workflow.remember_refusal(&event, text, error);
                 self.activity = Some(Activity {
                     source: Source::Cli,
                     text,
@@ -340,6 +448,7 @@ impl Workstation {
             report: None,
             error: None,
             report_job: None,
+            retry: None,
         });
         // Suggested destinations, so the common case is "open the dialog, press the button".
         let base = self
@@ -512,6 +621,11 @@ impl Workstation {
     /// Fills the dialog's report (preflight / recovery listing) from the same read-only
     /// operations the CLI offers.
     pub fn flow_verify(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        self.flow_verify_attempt(0, cx);
+    }
+
+    /// One ask of the dialog's verification; `attempt` counts the asks made after a busy refusal.
+    fn flow_verify_attempt(&mut self, attempt: u32, cx: &mut Context<Self>) {
         let Some(kind) = self.workflow.flow.as_ref().map(|flow| flow.kind) else {
             return;
         };
@@ -519,6 +633,9 @@ impl Workstation {
             return;
         };
         self.flow_cancel_report();
+        if let Some(flow) = &mut self.workflow.flow {
+            flow.retry = None;
+        }
         let outcome = self.run_media_op(&request, cx).or_else(|| {
             let op = tessel_editor_core::ops::parse_op(&self.state, &request)
                 .ok()
@@ -545,10 +662,7 @@ impl Workstation {
                     flow.report = Some(flows::describe_report(&report));
                     flow.error = None;
                 }
-                Some(Err(error)) => {
-                    flow.report_job = None;
-                    flow.error = Some(error.message);
-                }
+                Some(Err(error)) => flow.verify_refused(&error, attempt, Instant::now()),
                 None => {}
             }
         }
@@ -557,6 +671,9 @@ impl Workstation {
 
     /// Stops the report job of the open dialog, if one is still running.
     fn flow_cancel_report(&mut self) {
+        if let Some(flow) = &mut self.workflow.flow {
+            flow.retry = None;
+        }
         let Some(id) = self
             .workflow
             .flow
@@ -605,6 +722,10 @@ impl Workstation {
             .map(|flow| flow.kind)
             .ok_or_else(|| CommandError::new("no_dialog", "No dialog is open"))?;
         let values = self.flow_values(cx);
+        // A verification still in flight is out of date the moment the person submits: stop it so
+        // that it neither holds the renderer against the request nor writes a stale report over
+        // the answer below.
+        self.flow_cancel_report();
         let outcome = if kind.is_scene_import() {
             // A chain of jobs rather than one operation: see `scene_import.rs`.
             self.scene_import_submit(kind, &values, cx)
@@ -620,7 +741,8 @@ impl Workstation {
             }
             Err(error) => {
                 if let Some(flow) = &mut self.workflow.flow {
-                    flow.error = Some(error.message.clone());
+                    flow.report = None;
+                    flow.error = Some(flows::describe_refusal(error));
                 }
             }
         }
@@ -823,7 +945,7 @@ impl Workstation {
         nodes.push(json!({
             "id": "dialog", "kind": "dialog", "label": flow.kind.title(), "parent": "region:header",
             "children": children, "enabled": true, "visible": true, "fields": [], "actions": [],
-            "state": { "flow": flow.kind.id(), "report": flow.report, "error": flow.error, "verifying": flow.report_job.is_some() },
+            "state": { "flow": flow.kind.id(), "report": flow.report, "error": flow.error, "verifying": flow.report_job.is_some(), "retrying": flow.retry.is_some() },
         }));
         nodes
     }
@@ -1018,7 +1140,7 @@ impl Render for JobsView {
         }
         let rows = jobs.into_iter().rev().take(12).map(|job| {
             let id = job.id.clone();
-            let running = !job.state.is_final();
+            let running = !job.state.is_final() && job.kind.is_cancellable();
             let this = self.workstation.clone();
             let cancel = running.then(|| {
                 Button::new(format!("job-cancel-{id}"))
@@ -1032,11 +1154,15 @@ impl Render for JobsView {
                         });
                     })
             });
-            let detail = match (&job.error, job.state.label()) {
+            let mut detail = match (&job.error, job.state.label()) {
                 (Some(error), _) => error.message.clone(),
                 (None, state) if job.stage.is_empty() => state.to_string(),
                 (None, state) => format!("{state} · {}", job.stage),
             };
+            // A result being discarded still owns its files until the discard job ends.
+            if job.result_state == ResultState::Discarding {
+                detail.push_str(" · descartando o resultado");
+            }
             v_flex()
                 .gap_1()
                 .child(
@@ -1058,5 +1184,99 @@ impl Render for JobsView {
                 )
         });
         v_flex().gap_3().children(rows).into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod dialog_retry_tests {
+    //! BL144.19: what the export dialog does with a refused verification, with no window (a test
+    //! window has no `Root`, so the screens are proven by `scripts/live-flow-proof.py`).
+    use super::*;
+    use core::prelude::v1::test;
+
+    fn dialog() -> FlowDialog {
+        FlowDialog {
+            kind: FlowKind::Export,
+            fields: Vec::new(),
+            report: Some(flows::VERIFYING.to_string()),
+            error: None,
+            report_job: Some("job-9".to_string()),
+            retry: None,
+        }
+    }
+
+    fn busy() -> CommandError {
+        CommandError::new("renderer_busy", "The renderer belongs to someone").details(json!({
+            "retryable": true, "queued": false, "job_kind": "preflight", "stopping": true,
+        }))
+    }
+
+    #[test]
+    fn a_busy_renderer_leaves_the_dialog_waiting_not_stuck_and_asks_again_when_due() {
+        let now = Instant::now();
+        let mut flow = dialog();
+        flow.verify_refused(&busy(), 0, now);
+        assert_eq!(
+            flow.report_job, None,
+            "nothing is 'verifying': no job exists"
+        );
+        assert_eq!(flow.report.as_deref(), Some(flows::WAITING_FOR_RENDERER));
+        assert_eq!(flow.error, None);
+        // Not before it is due, once when it is, and never twice for the same refusal.
+        assert_eq!(flow.take_due_retry(now), None);
+        let later = now + flows::VERIFY_RETRY_EVERY;
+        assert_eq!(flow.take_due_retry(later), Some(1));
+        assert_eq!(flow.take_due_retry(later + Duration::from_secs(60)), None);
+    }
+
+    #[test]
+    fn a_renderer_that_stays_busy_ends_in_a_clear_message_and_no_more_asks() {
+        let now = Instant::now();
+        let mut flow = dialog();
+        flow.verify_refused(&busy(), flows::VERIFY_RETRY_ATTEMPTS, now);
+        assert_eq!(flow.retry.map(|retry| retry.attempt), None);
+        assert_eq!(flow.report, None);
+        let message = flow.error.expect("the dialog says why");
+        assert!(message.contains("Nada foi enfileirado"), "{message}");
+        assert!(message.contains("uma verificação anterior"), "{message}");
+        assert_eq!(flow.report_job, None);
+    }
+
+    #[test]
+    fn the_whole_budget_is_asked_and_then_the_dialog_gives_up_in_words() {
+        let mut now = Instant::now();
+        let mut flow = dialog();
+        flow.verify_refused(&busy(), 0, now);
+        let mut asked = 0;
+        while let Some(attempt) = {
+            now += flows::VERIFY_RETRY_EVERY;
+            flow.take_due_retry(now)
+        } {
+            asked += 1;
+            // The host is still busy at every ask.
+            flow.verify_refused(&busy(), attempt, now);
+        }
+        assert_eq!(asked, flows::VERIFY_RETRY_ATTEMPTS);
+        assert!(flow.error.is_some() && flow.report.is_none() && flow.retry.is_none());
+    }
+
+    #[test]
+    fn any_other_refusal_is_shown_as_it_is_and_never_asked_again() {
+        let mut flow = dialog();
+        flow.verify_refused(
+            &CommandError::new("invalid_request", "Expected string field `destination`"),
+            0,
+            Instant::now(),
+        );
+        assert_eq!(flow.retry.map(|retry| retry.attempt), None);
+        assert_eq!(
+            flow.error.as_deref(),
+            Some("Expected string field `destination`")
+        );
+        assert_eq!(flow.report_job, None);
+        assert_eq!(
+            flow.take_due_retry(Instant::now() + Duration::from_secs(60)),
+            None
+        );
     }
 }

@@ -6,13 +6,16 @@
 //! round-trip test keeps them honest.
 //!
 //! Every optional field is written (`null` when absent) and required on read, and an unknown key
-//! is refused: a plan that carried data this build ignores would not round-trip. New data means a
-//! new `PLAN_VERSION`, which `from_json` refuses by version before it reads anything else.
+//! is refused: a plan that carried data this build ignores would not round-trip. New data that
+//! changes meaning means a new `PLAN_VERSION`, which `from_json` refuses by version before it
+//! reads anything else. The one additive exception is `splats` (S7): written only when the scene
+//! has splat nodes, so plans without splats are byte-identical to before.
 //! Numbers are the exact `f64`s (`serde_json/float_roundtrip`); times are exact reduced ratios.
 //! Keys come out in `serde_json`'s map order (sorted), so equal plans give equal text.
 
 use serde_json::{Map, Value, json};
 
+use crate::directed_scene::fx::{FxPass, FxValue, ParamKind, effect};
 use crate::directed_scene::{
     AssetAlpha, AssetColorSpace, AssetFormat, CameraState, Fps, Mat4, NodeAnimation, NodeKind, Vec3,
 };
@@ -20,7 +23,7 @@ use crate::time::Ratio;
 
 use super::model::{
     Capability, Domain, PlanFrame, PlanLayer, PlanNode, PlanOutput, PlanParent, PlanResource,
-    PlanSource, ScenePlan, UninterpretedField, UninterpretedReason, UnsupportedDomain,
+    PlanSource, PlanSplat, ScenePlan, UninterpretedField, UninterpretedReason, UnsupportedDomain,
 };
 use super::{OUTPUT_COLOR_SPACE, PLAN_KIND, PLAN_VERSION, PlanError};
 
@@ -78,6 +81,14 @@ fn layer_json(layer: &PlanLayer) -> Value {
     })
 }
 
+fn splat_json(splat: &PlanSplat) -> Value {
+    json!({
+        "nodeId": splat.node_id,
+        "assetId": splat.asset_id,
+        "afterLayers": splat.after_layers,
+    })
+}
+
 fn resource_json(resource: &PlanResource) -> Value {
     json!({
         "assetId": resource.asset_id,
@@ -105,7 +116,7 @@ impl ScenePlan {
             } => json!({ "status": "animated", "trackIds": track_ids, "channels": channels }),
         };
         let camera = &self.camera;
-        json!({
+        let mut wire = json!({
             "kind": PLAN_KIND,
             "planVersion": self.version,
             "complete": self.is_complete(),
@@ -152,7 +163,18 @@ impl ScenePlan {
                 "pointer": field.pointer,
                 "reason": field.reason.as_str(),
             })).collect::<Vec<_>>(),
-        })
+        });
+        // WHY only when there are splats: the key is additive. A plan without splats keeps the
+        // exact bytes it had before S7 (the golden digests of the planner), and a runtime that
+        // does not know splats ignores an absent key but refuses `requires: ["splats"]`.
+        if !self.splats.is_empty() {
+            wire["splats"] = Value::Array(self.splats.iter().map(splat_json).collect());
+        }
+        // The same for `fx` (F016): written only when the frame has effect passes.
+        if !self.fx.is_empty() {
+            wire["fx"] = Value::Array(self.fx.iter().map(FxPass::to_json).collect());
+        }
+        wire
     }
 
     /// Compact JSON text of `to_json`.
@@ -445,6 +467,78 @@ fn read_layer(layer: &Obj<'_>) -> Result<PlanLayer, PlanError> {
     })
 }
 
+fn read_splat(splat: &Obj<'_>) -> Result<PlanSplat, PlanError> {
+    splat.only(&["nodeId", "assetId", "afterLayers"])?;
+    let after_layers = splat.integer("afterLayers")?;
+    Ok(PlanSplat {
+        node_id: splat.text("nodeId")?,
+        asset_id: splat.text("assetId")?,
+        after_layers: usize::try_from(after_layers)
+            .map_err(|_| splat.fail("afterLayers", "expected a non-negative integer"))?,
+    })
+}
+
+fn read_fx_value(params: &Obj<'_>, name: &str, kind: &ParamKind) -> Result<FxValue, PlanError> {
+    match kind {
+        ParamKind::Number { .. } => Ok(FxValue::Number(params.number(name)?)),
+        ParamKind::Color { .. } => {
+            let color = params.object(name)?;
+            color.only(&["r", "g", "b"])?;
+            Ok(FxValue::Color {
+                r: color.number("r")?,
+                g: color.number("g")?,
+                b: color.number("b")?,
+            })
+        }
+        ParamKind::Point { .. } => {
+            let point = params.object(name)?;
+            point.only(&["x", "y"])?;
+            Ok(FxValue::Point {
+                x: point.number("x")?,
+                y: point.number("y")?,
+            })
+        }
+    }
+}
+
+fn read_fx_pass(pass: &Obj<'_>) -> Result<FxPass, PlanError> {
+    pass.only(&[
+        "trackId",
+        "clipId",
+        "effect",
+        "frameInClip",
+        "weight",
+        "amount",
+        "params",
+        "scope",
+    ])?;
+    let name = pass.text("effect")?;
+    let spec = effect(&name).ok_or_else(|| pass.fail("effect", "not an effect of the catalog"))?;
+    let scope = pass.object("scope")?;
+    scope.only(&["kind"])?;
+    if scope.text_ref("kind")? != "output" {
+        return Err(scope.fail("kind", "only the `output` scope is supported"));
+    }
+    let raw = pass.object("params")?;
+    raw.only(&spec.params.iter().map(|param| param.id).collect::<Vec<_>>())?;
+    let mut params = Vec::with_capacity(spec.params.len());
+    for param in spec.params {
+        params.push((
+            param.id.to_string(),
+            read_fx_value(&raw, param.id, &param.kind)?,
+        ));
+    }
+    Ok(FxPass {
+        track_id: pass.text("trackId")?,
+        clip_id: pass.text("clipId")?,
+        effect: name,
+        frame_in_clip: pass.integer("frameInClip")?,
+        weight: pass.number("weight")?,
+        amount: pass.number("amount")?,
+        params,
+    })
+}
+
 fn read_resource(resource: &Obj<'_>) -> Result<PlanResource, PlanError> {
     resource.only(&[
         "assetId",
@@ -528,6 +622,8 @@ impl ScenePlan {
             "animation",
             "nodes",
             "layers",
+            "splats",
+            "fx",
             "resources",
             "unsupported",
             "uninterpreted",
@@ -641,6 +737,24 @@ impl ScenePlan {
                 .iter()
                 .map(read_layer)
                 .collect::<Result<Vec<_>, _>>()?,
+            // Optional (additive): absent means no splat nodes.
+            splats: if root.map.contains_key("splats") {
+                root.items("splats")?
+                    .iter()
+                    .map(read_splat)
+                    .collect::<Result<Vec<_>, _>>()?
+            } else {
+                Vec::new()
+            },
+            // Optional (additive): absent means no effect passes.
+            fx: if root.map.contains_key("fx") {
+                root.items("fx")?
+                    .iter()
+                    .map(read_fx_pass)
+                    .collect::<Result<Vec<_>, _>>()?
+            } else {
+                Vec::new()
+            },
             resources: root
                 .items("resources")?
                 .iter()

@@ -40,6 +40,18 @@ O chamador é dono da sessão. Não existe singleton gráfico nem processo deskt
 Para adicionar a lib em outro crate local, use `tessel-editor-core = { path = "../core" }`,
 ajustando o caminho. A API ainda é 0.1 e não tem compromisso de estabilidade pública.
 
+### Identidade da sessão de edição (BL113a)
+
+`ProjectMeta::id` é persistido e `revision` volta a 0 a cada abertura, então `(id, revision)` não
+distingue um projeto do documento reaberto. `ProjectMeta::session` (`ProjectSession`) é identidade
+só de runtime: nasce quando um `EditorState` é *construído* (`demo`, `empty`, carregar ou recuperar
+um documento, restaurar um pacote) e não muda ao salvar, editar, desfazer, refazer, consultar nem
+clonar (snapshots de undo e planos de job continuam na mesma sessão). Não entra no documento,
+não vale em outro processo e `==` a ignora (compare com `is_same`). Os jobs `scene.attach.start` e de restauração capturam `ProjectMeta::stamp()` (ID, sessão,
+revisão) e aplicam só se `ProjectStamp::is_current` ainda vale. Essa guarda não cobre todos os
+jobs: `media.prepare` confere ID do projeto e hash do asset, podendo aplicar após outra edição.
+`history.status` expõe `project.session` para scripts e provas.
+
 ## Usar pela CLI sem UI
 
 ```sh
@@ -110,7 +122,7 @@ diretos. Ver [F015](features/project-creation.md).
 Para funcionalidades futuras, o core deve montar projetos, tracks, fontes, efeitos e
 sequências a partir de parâmetros do chamador. Seleção da UI não pode ser requisito de
 operações de batch: criar comandos com IDs explícitos e manter seleção como conveniência
-do adapter. Efeitos e split/corte interno permanecem pendentes; importação, playback, persistência e exportação
+do adapter. Split/corte interno permanece pendente; efeitos têm a primeira fatia entregue (vinheta de saída, F016: [effects.md](features/effects.md)); importação, playback, persistência e exportação
 estão entregues (ver o [relatório](media-project-export-report.md) para os limites). Jobs futuros precisam de progresso,
 cancelamento e erros expostos pela mesma API, sem depender de renderização da janela.
 

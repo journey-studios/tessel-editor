@@ -1,0 +1,88 @@
+{
+ "files": {
+  "assets/bg.png": {
+   "bytes": 332,
+   "sha256": "558fc8a856d83df60ce44899c0e5213d8453090fa387d491a90dec3003118ed5"
+  },
+  "assets/mk-blue.png": {
+   "bytes": 332,
+   "sha256": "7aed8931a61a3892f3ae2801a53b30079ce0bd6aeabb77fc7a14c9be48137032"
+  },
+  "assets/mk-green.png": {
+   "bytes": 332,
+   "sha256": "dee88d164efad7fa8e8088196e50ad72504e37679632de90a2baa34071e5daf2"
+  },
+  "assets/mk-red.png": {
+   "bytes": 332,
+   "sha256": "4e54755af584a124f801dfffef09c5f2130fcdce75decd93584cc8e364951f0a"
+  },
+  "assets/mk-yellow.png": {
+   "bytes": 332,
+   "sha256": "b41a584e38e01466fa107e540495416b5fff13001fe3b5cce61d3358d998877d"
+  },
+  "audio/mix-short.wav": {
+   "bytes": 705644,
+   "sha256": "cc252a2b0f8ec9695772e0ef51b01b7700d242b72af9a1e77ca10f0eeaffba75"
+  },
+  "audio/mix.wav": {
+   "bytes": 1146644,
+   "sha256": "e089e7d141d6bbfed6df66b7b8be7e27b9d0d2f308a882cafd1a8e61e659ed48"
+  },
+  "bundle.audio-ntsc.json": {
+   "bytes": 7691,
+   "sha256": "7f3ff2e28a4f8af37b6d59e7a58290b7bb46a9655bf51a50a54b4e0e69f81c32"
+  },
+  "bundle.audio-short.json": {
+   "bytes": 7685,
+   "sha256": "7bf6766e22459eb6d404148dd8a6ffc66da9256382521d4fdade5b2fbc8eb148"
+  },
+  "bundle.audio24.json": {
+   "bytes": 7675,
+   "sha256": "1162e28ae664029843a811a4a6a33277b183b31ec00e3c42043f5715184ad157"
+  },
+  "bundle.camera-portrait.json": {
+   "bytes": 9261,
+   "sha256": "d26dd58c9f01b85688e4ddb534bba4dc22f70630330740d482aca15ae47c84d0"
+  },
+  "bundle.camera.json": {
+   "bytes": 9252,
+   "sha256": "fa6087745736309c0852387a13557f7864c9bb6a9245b509c01631ba7bc95f3f"
+  },
+  "bundle.full.json": {
+   "bytes": 9243,
+   "sha256": "efded55040d4a1136f074a360443ac9fb2b7b58b39773e188ffd93cc7a267165"
+  },
+  "bundle.splat.json": {
+   "bytes": 9027,
+   "sha256": "be2c4f08a8773bc2ad9b195947df18d77f7691cbdbdc5a337ce08027d75ffec5"
+  },
+  "expected.json": {
+   "bytes": 61226,
+   "sha256": "b87443f8f9dbccd36b561890126ee3aae5c336a0f63730d03d26ed3975ecf838"
+  },
+  "splat/sp-green.spz": {
+   "bytes": 45,
+   "sha256": "9aa9a3cda6a8803dd9aa5bdb74a756e7bf5fb5ca5a17bf21939484dfb55d1902"
+  },
+  "splat/sp-order.spz": {
+   "bytes": 62,
+   "sha256": "46a03d6e062c2c2d31f9cb0bd967b99fd4bd193b39c1658535fd4dda2378d51f"
+  },
+  "splat/sp-pair.spz": {
+   "bytes": 57,
+   "sha256": "fa122ab2a8e2ddaaa011863d96640bcb82cb14b6ec029d8b3f5db58b025e176d"
+  },
+  "splat/sp-purple.spz": {
+   "bytes": 45,
+   "sha256": "18dc77abd318264f74518a6d0f2f99856dd7fc2525c92c195b7ea04fc6c5b635"
+  },
+  "splat/sp-red.spz": {
+   "bytes": 45,
+   "sha256": "362517d47323e6330671874431fdbfa36f745ba382e862b8dd4dae33e7b9cd8d"
+  }
+ },
+ "generator": "scripts/directed-scene-acceptance/corpus.py",
+ "origin": "drawn from scratch: solid-colour PNGs, SPZ v2 written by oracle.spz_v2, sine-tone WAV from oracle.wav_bytes",
+ "private_media": false,
+ "version": 3
+}

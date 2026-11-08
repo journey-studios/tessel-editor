@@ -1,0 +1,46 @@
+{
+  "catalog_version": 1,
+  "effects": [
+    {
+      "id": "vignette",
+      "params": [
+        {
+          "id": "radius",
+          "kind": "number",
+          "min": 0.0,
+          "max": 1.5
+        },
+        {
+          "id": "softness",
+          "kind": "number",
+          "min": 0.05,
+          "max": 1.0
+        },
+        {
+          "id": "intensity",
+          "kind": "number",
+          "min": 0.0,
+          "max": 1.0
+        },
+        {
+          "id": "color",
+          "kind": "color",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "id": "roundness",
+          "kind": "number",
+          "min": 0.0,
+          "max": 1.0
+        },
+        {
+          "id": "center",
+          "kind": "vec2",
+          "min": 0.0,
+          "max": 1.0
+        }
+      ]
+    }
+  ]
+}

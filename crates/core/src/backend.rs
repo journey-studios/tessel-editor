@@ -280,7 +280,8 @@ pub struct FrameDetail {
     /// and what the caches hold now, as the runtime reported it.
     pub cache: Option<Value>,
     /// What the layers were really read from: `{ quality, proxy_layers, original_layers,
-    /// result_hits, proxy_error? }`. `None` from a runtime that predates it.
+    /// result_hits, proxy_error?, scene_samples?, reduced_scene_layers?, stale_sort_layers? }`. `None`
+    /// from a runtime that predates it.
     pub source: Option<Value>,
 }
 
@@ -291,6 +292,39 @@ impl FrameDetail {
             .as_ref()
             .and_then(|source| source["proxy_layers"].as_u64())
             .unwrap_or(0)
+    }
+
+    /// Scene layers of this frame drawn with fewer MSAA samples than the final count (0 when
+    /// unknown, which is also what a runtime that predates the reduction reports: it never reduces).
+    pub fn reduced_scene_layers(&self) -> u64 {
+        self.source
+            .as_ref()
+            .and_then(|source| source["reduced_scene_layers"].as_u64())
+            .unwrap_or(0)
+    }
+
+    /// MSAA samples the scene layers of this frame were drawn with (`None`: no scene layer, or an
+    /// older runtime).
+    pub fn scene_samples(&self) -> Option<u64> {
+        self.source
+            .as_ref()
+            .and_then(|source| source["scene_samples"].as_u64())
+    }
+
+    /// Splat scene layers of this frame painted with the order of an earlier camera's sort instead of
+    /// waiting for their own (BL130): 0 when unknown, which is also what a runtime that predates the
+    /// reuse reports (it always waits).
+    pub fn stale_sort_layers(&self) -> u64 {
+        self.source
+            .as_ref()
+            .and_then(|source| source["stale_sort_layers"].as_u64())
+            .unwrap_or(0)
+    }
+
+    /// Whether the picture is not what the final quality draws (a proxy, a scene with reduced MSAA,
+    /// or splats painted in another camera's order): the monitor replaces it once the playhead stops.
+    pub fn is_reduced(&self) -> bool {
+        self.proxy_layers() > 0 || self.reduced_scene_layers() > 0 || self.stale_sort_layers() > 0
     }
 }
 
@@ -334,6 +368,11 @@ pub enum BackendEvent {
     Asset {
         id: Id,
         status: AssetStatus,
+        /// Identity the runtime repeated from the `asset.load` it answers (`asset.identity`,
+        /// BL102b): an object with `request` and/or `scene`, exactly as received and nothing else.
+        /// `None` from a runtime that does not echo it. Judge it with
+        /// [`LoadIdentity::answered_by`](crate::bridge::LoadIdentity::answered_by).
+        echo: Option<Value>,
     },
     /// The runtime answered an `asset.proxy` message.
     Proxy {

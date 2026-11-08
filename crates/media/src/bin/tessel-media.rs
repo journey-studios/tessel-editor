@@ -30,13 +30,18 @@ fn main() {
     };
     let mut media = MediaHost::new();
     let mut output = BufWriter::new(io::stdout().lock());
-    match headless::run_session_ext(
+    let outcome = headless::run_session_ext(
         &mut state,
         None,
         Some(&mut media),
         io::stdin().lock(),
         &mut output,
-    ) {
+    );
+    // Dropping the host is what waits for a `job.discard {wait:false}` and takes back the files of
+    // results nobody applied. `process::exit` skips destructors, so it must come after this, also
+    // when a request failed (exit code 1).
+    drop(media);
+    match outcome {
         Ok(false) => {}
         Ok(true) => std::process::exit(1),
         Err(error) => {

@@ -72,7 +72,7 @@ test('a preview frame reads the proxy, an original frame never does, and the fra
     assert.equal(preview.type, 'frame.done', JSON.stringify(preview.error));
     assert.deepEqual(
       preview.source,
-      { quality: 'preview', proxy_layers: 1, original_layers: 0, result_hits: 0 },
+      { quality: 'preview', proxy_layers: 1, original_layers: 0, occluded_layers: 0, result_hits: 0 },
       'the layer was drawn from the proxy',
     );
     assert.deepEqual(

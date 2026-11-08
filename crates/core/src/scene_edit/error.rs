@@ -32,6 +32,10 @@ pub const CANDIDATE_REJECTED: &str = "CANDIDATE_REJECTED";
 /// the importer produced; reported instead of panicking so a future change in either side is loud.
 pub const DOCUMENT_MISMATCH: &str = "DOCUMENT_MISMATCH";
 
+/// A write needed to turn the first movement of a camera clip into keyframes and the camera
+/// evaluator refused (a camera standing on its own target has no view to move along).
+pub const CAMERA_CONVERSION_FAILED: &str = "CAMERA_CONVERSION_FAILED";
+
 /// An issue of the importer on the candidate, with the ops that touched the entity it points into.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LocalizedIssue {
@@ -132,9 +136,10 @@ impl EditError {
             INVALID_OP => "invalid_op",
             CANDIDATE_REJECTED => self.cause().map_or("invalid_bundle", ImportError::code),
             DOCUMENT_MISMATCH => "document_mismatch",
+            CAMERA_CONVERSION_FAILED => "invalid_camera",
             INVALID_TYPE => "invalid_type",
             INVALID_VALUE => "invalid_value",
-            _ => "invalid_edit",
+            other => super::fx::command_code(other).unwrap_or("invalid_edit"),
         }
     }
 }

@@ -105,6 +105,12 @@ def proxy_layers(frame):
     return ((frame or {}).get("source") or {}).get("proxy_layers") or 0
 
 
+def reduced_layers(frame):
+    """Layers below the final quality: a proxy copy, or a scene drawn with fewer MSAA samples (BL129)."""
+    source = (frame or {}).get("source") or {}
+    return (source.get("proxy_layers") or 0) + (source.get("reduced_scene_layers") or 0)
+
+
 def stats_of(state):
     return dict(state["session"]["stats"])
 
@@ -112,12 +118,13 @@ def stats_of(state):
 def converged(state, final_frame, refined=True):
     """The picture of the last position is on screen and nothing is left to render.
 
-    With `refined` (the default) a proxy picture does not count: the monitor must have
-    replaced it with the original-quality one (`refine_pending` false, no proxy layer left).
+    With `refined` (the default) a reduced picture does not count (a proxy, or a scene with fewer
+    MSAA samples): the monitor must have replaced it with the final-quality one (`refine_pending`
+    false, no reduced layer left).
     `refined=False` is the moment the *first* picture of the last position is up.
     """
     session = state["session"]
-    if refined and (session.get("refine_pending") or proxy_layers(state.get("last_frame"))):
+    if refined and (session.get("refine_pending") or reduced_layers(state.get("last_frame"))):
         return False
     last = state.get("last_frame")
     if state["phase"] != "ready" or session["status"] != "ready" or session.get("pending"):
@@ -374,16 +381,17 @@ def run(editor, args):
     if args.pixel_proof:
         checks.update(pixel_proof(editor, result, live, release, final_state, base, final_frame))
 
-    # Put the playhead back, like the user left it, and wait for the monitor to follow.
-    editor.seek(original["frame"])
-    settle = time.monotonic() + 10
-    while time.monotonic() < settle:
-        state = editor.viewport()
-        if converged(state, original["frame"]):
-            break
-        time.sleep(0.02)
-    result["restored_playhead"] = editor.playhead()["frame"] == original["frame"]
-    checks["the playhead is back where it was"] = result["restored_playhead"]
+    if not getattr(args, "no_restore", False):
+        # Put the playhead back, like the user left it, and wait for the monitor to follow.
+        editor.seek(original["frame"])
+        settle = time.monotonic() + 10
+        while time.monotonic() < settle:
+            state = editor.viewport()
+            if converged(state, original["frame"]):
+                break
+            time.sleep(0.02)
+        result["restored_playhead"] = editor.playhead()["frame"] == original["frame"]
+        checks["the playhead is back where it was"] = result["restored_playhead"]
 
     result["checks"] = checks
     result["pass"] = all(checks.values())
@@ -436,6 +444,7 @@ def main():
     parser.add_argument("--settle-timeout", type=float, default=10.0)
     parser.add_argument("--poll-ms", type=float, default=10.0, help="gap between `get monitor.viewport` samples")
     parser.add_argument("--pixel-proof", action="store_true")
+    parser.add_argument("--no-restore", action="store_true", help="leave the last scrub frame for caller-side inspection (isolated sessions)")
     parser.add_argument("--json", help="also write the result here")
     args = parser.parse_args()
 

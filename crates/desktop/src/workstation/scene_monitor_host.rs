@@ -1,7 +1,9 @@
 //! Asynchronous WebView adapter for the same SceneSlots/messages as the headless renderer.
 use super::*;
 use tessel_editor_core::backend::{AssetStatus, BackendEvent};
-use tessel_editor_core::bridge::{decode_event, frame_cancel};
+use tessel_editor_core::bridge::{
+    FEATURE_ASSET_IDENTITY, LoadIdentity, decode_event, frame_cancel, stamp_asset_load,
+};
 use tessel_editor_core::scene_plan::ScenePlan;
 use tessel_editor_media::scene_resources::SceneResourceSession;
 use tessel_editor_render::FrameOptions;
@@ -27,6 +29,14 @@ struct Active {
     edit_frame: Value,
 }
 
+/// The last `asset.load` sent for a slot: the resource it holds and, with `asset.identity`
+/// negotiated, the request the runtime has to echo for the answer to count (BL102).
+struct SentLoad {
+    asset_id: String,
+    generation: u64,
+    identity: Option<LoadIdentity>,
+}
+
 /// What the lifecycle rejected or survived; reported so a native proof can tell "nothing arrived"
 /// from "an old answer arrived and was refused" (BL092).
 #[derive(Default)]
@@ -46,10 +56,12 @@ pub(super) struct DirectedViewport {
     desired: Option<Intent>,
     active: Option<Active>,
     suspended: bool,
-    /// `(asset id, generation)` of the last `asset.load` sent for each slot. A slot name is
-    /// reused for another identity (LRU, new project), and the page answers loads one at a
-    /// time, so only this tells the answer of a replaced load from the answer of the current one.
-    loads: HashMap<String, (String, u64)>,
+    /// The last `asset.load` sent for each slot. A slot name is reused for another identity (LRU,
+    /// new project), and the page answers loads one at a time, so only this tells the answer of a
+    /// replaced load from the answer of the current one.
+    loads: HashMap<String, SentLoad>,
+    /// Next `asset.request`. Never reset (not even by a reload): a number is used once per host.
+    next_request: u64,
     stats: DirectedStats,
     /// `(request id, edit frame)` of the last picture that was drawn and accepted.
     shown: Option<(u64, Value)>,
@@ -65,6 +77,7 @@ impl Default for DirectedViewport {
             active: None,
             suspended: false,
             loads: HashMap::new(),
+            next_request: 1,
             stats: DirectedStats::default(),
             shown: None,
         }
@@ -78,6 +91,13 @@ impl ViewportHost {
 
     pub fn directed_scene(&self) -> Option<&str> {
         self.directed.scene.as_deref()
+    }
+
+    /// Tests only: the monitor shows `scene` without a page (a test window has no WebView), so
+    /// the gizmo adapter can be driven through the same entry the page uses.
+    #[cfg(test)]
+    pub fn pretend_directed_scene(&mut self, scene: &str) {
+        self.directed.scene = Some(scene.to_string());
     }
 
     pub fn render_scene(
@@ -318,14 +338,22 @@ impl ViewportHost {
             .collect::<Vec<_>>();
         plan.require_capabilities(&supported)
             .map_err(|e| tessel_editor_render::scene::plan_error(&e))?;
-        let prepared = self.directed.slots.prepare(&plan, &resources)?;
+        // Negotiated, not assumed: a runtime that does not list the feature gets no extra field and
+        // is judged by the heuristics it always was (`superseded_load`).
+        let identified = caps.supports(FEATURE_ASSET_IDENTITY);
+        let mut prepared = self.directed.slots.prepare(&plan, &resources)?;
         for message in &prepared.releases {
             self.session.backend_mut().transport_mut().send(message)?;
             if let Some(slot) = message["id"].as_str() {
                 self.directed.loads.remove(slot);
             }
         }
-        for load in &prepared.loads {
+        for load in &mut prepared.loads {
+            let identity = identified.then(|| {
+                let request = self.directed.next_request;
+                self.directed.next_request += 1;
+                stamp_asset_load(&mut load.message, request)
+            });
             self.session
                 .backend_mut()
                 .transport_mut()
@@ -333,10 +361,11 @@ impl ViewportHost {
             let scene = &load.message["asset"]["scene"];
             self.directed.loads.insert(
                 load.slot.clone(),
-                (
-                    scene["asset_id"].as_str().unwrap_or_default().to_owned(),
-                    scene["generation"].as_u64().unwrap_or_default(),
-                ),
+                SentLoad {
+                    asset_id: scene["asset_id"].as_str().unwrap_or_default().to_owned(),
+                    generation: scene["generation"].as_u64().unwrap_or_default(),
+                    identity,
+                },
             );
         }
         let id = self.directed.next;
@@ -408,6 +437,7 @@ impl ViewportHost {
                     let _ = reply.try_send(frame_report(&active.plan, &frame));
                 }
                 self.failure = None;
+                self.note_presented(active.edit_frame.as_i64());
                 self.directed.shown = Some((active.id, active.edit_frame));
                 self.last_frame = Some(frame);
             }
@@ -449,7 +479,7 @@ impl ViewportHost {
             .filter(|id| id.starts_with("scene-res-"));
         if let Some(slot) = slot {
             if let Ok(BackendEvent::Asset { status, .. }) = decode_event(message) {
-                self.directed_asset_state(slot, status);
+                self.directed_asset_state(slot, status, message);
             }
             self.send_directed_if_loaded();
             return true;
@@ -482,17 +512,28 @@ impl ViewportHost {
     /// `asset.state` of a scene slot. Only the answer of the load this host sent last for the slot
     /// may change the book: the page answers loads in its own order, so a replaced load can end
     /// (`cancelled`, `resource_stale`) after its successor was sent.
-    fn directed_asset_state(&mut self, slot: &str, status: AssetStatus) {
+    ///
+    /// With `asset.identity` negotiated the answer must repeat the `request` (and scene identity)
+    /// of that load: an old `ready` that reaches a slot already given to a newer load, even the
+    /// same picture, confirms nothing. Without it the slot name and the failure's details are all
+    /// there is, as before.
+    fn directed_asset_state(&mut self, slot: &str, status: AssetStatus, message: &Value) {
+        let foreign = self
+            .directed
+            .loads
+            .get(slot)
+            .and_then(|sent| sent.identity.as_ref())
+            .is_some_and(|identity| !identity.answered_by(message));
         match status {
             AssetStatus::Ready(_) => {
-                if self.directed.loads.contains_key(slot) {
+                if self.directed.loads.contains_key(slot) && !foreign {
                     self.directed.slots.mark_ready(slot);
                 } else {
                     self.directed.stats.stale_asset_states += 1;
                 }
             }
             AssetStatus::Failed(error) => {
-                if self.superseded_load(slot, &error) {
+                if foreign || self.superseded_load(slot, &error) {
                     self.directed.stats.stale_asset_states += 1;
                     return;
                 }
@@ -506,9 +547,15 @@ impl ViewportHost {
 
     /// Whether a failed load is the end of a load that was already replaced or released.
     fn superseded_load(&self, slot: &str, error: &BackendError) -> bool {
-        let Some((asset_id, generation)) = self.directed.loads.get(slot) else {
+        let Some(sent) = self.directed.loads.get(slot) else {
             return true;
         };
+        // The caller checked the echoed request: this is the end of the load that holds the slot
+        // now, so what the runtime says is a real answer, `cancelled` included.
+        if sent.identity.is_some() {
+            return false;
+        }
+        let (asset_id, generation) = (&sent.asset_id, &sent.generation);
         // The runtime ends a load that a release (or another load of the same id) overtook as `cancelled`.
         if error.code == "cancelled" {
             return true;
@@ -529,6 +576,10 @@ impl ViewportHost {
         json!({
             "scene": self.directed.scene,
             "suspended": self.directed.suspended,
+            "asset_identity": self
+                .session
+                .known_capabilities()
+                .is_some_and(|caps| caps.supports(FEATURE_ASSET_IDENTITY)),
             "active": self.directed.active.as_ref().map(|active| json!({
                 "id": active.id, "sent": active.sent, "waiting": active.waiting,
                 "explicit": active.reply.is_some(),
@@ -540,6 +591,12 @@ impl ViewportHost {
                 "occupied": self.directed.slots.occupied(),
                 "generation": self.directed.slots.generation(),
                 "tracked_loads": self.directed.loads.len(),
+                "identified_loads": self
+                    .directed
+                    .loads
+                    .values()
+                    .filter(|sent| sent.identity.is_some())
+                    .count(),
             },
             "refused": {
                 "stale_frames": self.directed.stats.stale_frames,

@@ -1,0 +1,277 @@
+{
+  "checks": [
+    {
+      "name": "JSONL: a finished adoption is pending and owns its copies",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "JSONL: job.discard waits and reports what it removed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "JSONL: the copies are gone and the folder with them",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "JSONL: the original job is discarded",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "JSONL: the discard is an observable job that succeeded",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "JSONL: job.discard -> job_discarded",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "JSONL: job.commit -> job_discarded",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "JSONL: job.discard -> unknown_element",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "JSONL: job.cancel -> job_finished",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "JSONL: refusals changed nothing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "JSONL: a committed result is applied",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "JSONL: discarding an applied result is job_applied",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "JSONL: ...and the project files are byte-identical",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "JSONL: an accepted result keeps its files after the process ends",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "JSONL: a failed job has nothing to discard",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "JSONL: a stale commit is stale_result",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "JSONL: the files were removed before the answer arrived (no UI to protect)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "JSONL: the stale job ends discarded",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "JSONL: a big pending result owns its copies before the end",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "JSONL: the process exited only after taking the files back",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the window answers semantic requests and shows no job",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "idle answers: p99 <= 100.0 ms",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "control: a window that stops answering is measured as a stall by the same request",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "control: the window answers normally again afterwards",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "control: the classifier that judges the discard fails a suspended window on p99 and on max",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the window moved the stale result through pending -> discarding -> discarded",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the tick named the discard job instead of removing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "while the discard job runs, every copied file is still there (the result owns them)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "while it runs: discard again and commit are job_discarding, the discard job is not cancellable",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the Tarefas dialog opens and closes while a result is being discarded",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the refusals changed nothing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the files and the folder are gone once the result is discarded",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the discard job succeeded and removed the three copies",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "a discarded result is job_discarded",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the probe saw the discard begin (a window of instants can be drawn)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the probe sampled the window while it removed (>= 20 answers)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "responsive while removing: p99 <= 100.0 ms and max <= 250.0 ms",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the window reported the end of the discard once (status-bar event)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the stale apply event names the discard job",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "the window refuses to discard an applied result by code",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "...and the accepted files are byte-identical and the state unchanged",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "input": "JSONL on stdin / semantic IPC (socket); no pointer, no coordinates",
+  "not_proven": [
+    "pixels or aesthetics",
+    "native file picker",
+    "two processes (BL111)",
+    "hostile writer",
+    "non-macOS",
+    "window closed with results pending (test only)"
+  ],
+  "binaries": {
+    "editor": "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-4a4b8c1d/target/debug/tessel-editor",
+    "media": "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-4a4b8c1d/target/debug/tessel-media"
+  },
+  "pad_mib": 128,
+  "ceilings_ms": {
+    "idle_p99": 100.0,
+    "discard_p99": 100.0,
+    "discard_max": 250.0,
+    "control_min_stall": 1000.0
+  },
+  "jsonl": {
+    "jsonl_exit_with_pending_seconds": 4.09
+  },
+  "window_results": {
+    "idle": {
+      "n": 60,
+      "p50_ms": 0.8,
+      "p99_ms": 34.6,
+      "max_ms": 34.6
+    },
+    "control": {
+      "suspended_window_ms": 1500,
+      "probe_saw_ms": 1532.6
+    },
+    "control_classifier": {
+      "enough_samples": false,
+      "p99_ok": false,
+      "max_ok": false,
+      "stats": {
+        "n": 2,
+        "p50_ms": 1500.1,
+        "p99_ms": 1500.1,
+        "max_ms": 1500.1
+      }
+    },
+    "timeline": [
+      "none",
+      "pending",
+      "discarding",
+      "discarded"
+    ],
+    "during_discard": {
+      "n": 523,
+      "p50_ms": 1.1,
+      "p99_ms": 14.8,
+      "max_ms": 17.0
+    },
+    "during_discard_by_answer_label": {
+      "n": 522,
+      "p50_ms": 1.1,
+      "p99_ms": 14.8,
+      "max_ms": 17.0
+    },
+    "during_discard_answered_after_the_end": 0,
+    "discard_window_seconds": 14.12,
+    "discard_window_basis": "send/receive instants (time.monotonic), not the answer label"
+  },
+  "ok": true
+}

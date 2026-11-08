@@ -257,7 +257,8 @@ impl ResolvedResourceMap {
             "bundleRevision": self.bundle_revision,
             "project": self.project_id,
             "generation": self.generation.0,
-            "base": self.base,
+            // `null` when the scene names no files and was loaded without a folder.
+            "base": Some(&self.base).filter(|base| !base.as_os_str().is_empty()),
             "complete": self.complete,
             "approvedBytes": self.approved_bytes(),
             "resources": self.entries.iter().map(|entry| json!({

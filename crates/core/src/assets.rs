@@ -130,6 +130,9 @@ pub struct Meta {
     /// The source has a variable frame rate. Its frames are conformed by timestamp to the constant
     /// grid `rate` (see `docs/features/media-io.md`), never by frame index.
     pub vfr_conformed: bool,
+    /// The camera a SHARP splat was captured with (BL143): `None` for every other asset, and for a
+    /// splat imported with `capture: ignore` or whose file carries no capture metadata.
+    pub capture: Option<crate::sharp::Capture>,
 }
 
 /// One audio stream of a container.
@@ -355,6 +358,7 @@ impl Asset {
                 "channels": stream.channels, "offset": stream.offset.to_json(),
             })).collect::<Vec<_>>(),
             "vfr_conformed": meta.vfr_conformed,
+            "capture": meta.capture.as_ref().map(crate::sharp::Capture::to_json),
         })
     }
 }
@@ -369,6 +373,8 @@ pub struct Declared {
     pub text: Option<TextSpec>,
     pub frames: Option<i64>,
     pub first: Option<i64>,
+    /// What to do with the capture metadata of a SHARP splat (BL143).
+    pub capture: crate::sharp::Choice,
 }
 
 fn io_error(path: &str, error: &std::io::Error) -> CommandError {
@@ -534,9 +540,15 @@ impl Asset {
             MediaKind::Splat => {
                 let info = crate::splat::inspect(Path::new(path))
                     .map_err(|message| invalid_asset(path, message))?;
+                let capture = if info.format == crate::splat::SplatFormat::Ply {
+                    crate::sharp::read(Path::new(path), declared.capture)?
+                } else {
+                    None
+                };
                 Meta {
                     splat_count: Some(info.count),
                     format: Some(info.format.label().into()),
+                    capture,
                     ..Meta::default()
                 }
             }

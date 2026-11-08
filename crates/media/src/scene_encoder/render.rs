@@ -44,6 +44,27 @@ pub trait SceneFrameRenderer {
     /// Largest side the renderer draws, when it says. Asking may start the renderer.
     fn max_size(&mut self) -> Result<Option<u32>, JobError>;
 
+    /// The job has taken its private byte copy of the approved resources and has not read it yet:
+    /// the mix and the first frame come next. Nothing a renderer does here reaches the job's
+    /// bytes; it exists so a caller can observe, or (in tests) change the originals, at exactly
+    /// the point where the copy must already protect the export. An error fails the job.
+    fn resources_frozen(&mut self) -> Result<(), JobError> {
+        Ok(())
+    }
+
+    /// `bytes` more of the approved resources reached the private copy: called after each chunk
+    /// was written, so the job is inside its `snapshot` stage with the copy unfinished. Like the
+    /// other observation points it changes nothing the job reads; it exists so a caller (in
+    /// tests) can hold the job at a chunk boundary and cancel it there, instead of racing the
+    /// copy's speed.
+    fn copy_progressed(&mut self, _bytes: u64) {}
+
+    /// The mix wrote `done` of `steps` one-second steps (stage `audio`) and has not started the
+    /// next. An error fails the job. Same purpose as [`Self::copy_progressed`], for the mix.
+    fn mix_stepped(&mut self, _done: u64, _steps: u64) -> Result<(), JobError> {
+        Ok(())
+    }
+
     /// Draws `job.plan` into `job.png`. A failed frame is an error: nothing is skipped or retried
     /// into a different picture.
     fn render(&mut self, job: &FrameJob<'_>) -> Result<RenderedFrame, JobError>;
@@ -60,7 +81,9 @@ pub type SceneRendererFactory =
 /// started**. WHY a frozen map and not the live session: the session forgets everything when the
 /// project changes or a resolver is invalidated, and an export that quietly switched to other
 /// bytes halfway would not be one video. The files are verified when the map is approved
-/// (`scene.resources.resolve`); this does not hash them again.
+/// (`scene.resources.resolve`); this does not hash them again. It freezes *paths* only: the job
+/// freezes the *bytes* by copying them into its staging (`ResourceSnapshot`, BL109) and hands the
+/// renderer that copy, so a file swapped after approval cannot reach a frame.
 #[derive(Debug, Clone)]
 pub struct FrozenResources(Arc<ResolvedResourceMap>);
 

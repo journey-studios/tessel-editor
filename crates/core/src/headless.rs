@@ -112,6 +112,7 @@ pub fn execute_ext(
         "split:",
         "window",
         "toolbar.theme",
+        crate::perf::TARGET,
     ]
     .iter()
     .any(|prefix| target.starts_with(prefix))
@@ -154,10 +155,12 @@ pub fn execute_ext(
     };
     match parsed {
         Parsed::Run(command) => state.execute(command),
-        Parsed::Layout(_) | Parsed::ToggleTheme | Parsed::ReloadViewport => Err(CommandError::new(
-            "desktop_required",
-            "Dock layout, theme and viewport page commands require the desktop adapter",
-        )),
+        Parsed::Layout(_) | Parsed::ToggleTheme | Parsed::PerfMeter(_) | Parsed::ReloadViewport => {
+            Err(CommandError::new(
+                "desktop_required",
+                "Dock layout, theme, performance meter and viewport page commands require the desktop adapter",
+            ))
+        }
     }
 }
 
@@ -168,6 +171,7 @@ fn run_op(
 ) -> Result<Value, CommandError> {
     match op {
         Op::Status => Ok(state.summary()),
+        Op::Header => Ok(state.header().to_json()),
         Op::Run(command) => state.execute(command),
         Op::Project(op) => run_project_op(state, renderer, op),
         Op::CreateProject(settings) => create_project(state, renderer, &settings),

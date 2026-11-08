@@ -87,6 +87,7 @@ pub fn scope_json() -> Value {
             "integrity rules the importer implements",
             "structural edit joins (cuts between shots)",
             "temporal gates (layered field of view, continuous-cut pose and velocity jumps)",
+            "the effects layer `fx` (F016): catalog `vignette`, output scope, ranges, overlap, envelope; edited by `scene.fx.edit`",
         ],
         "deferred_fields": DEFERRED_FIELDS,
         "deferred_rules": DEFERRED_RULES,

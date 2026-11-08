@@ -8,6 +8,7 @@ use core::prelude::v1::test;
 pub(super) fn fixture(cx: &mut TestAppContext) -> (Entity<Workstation>, &mut VisualTestContext) {
     cx.update(|cx| {
         gpui_kit::init(cx);
+        install_perf_meter(cx);
         crate::theme::apply(cx, true);
     });
     let (view, cx) = cx.add_window_view(Workstation::new);

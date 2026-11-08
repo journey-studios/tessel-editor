@@ -12,7 +12,7 @@
 use serde_json::{Value, json};
 
 use crate::assets::{Asset, AudioStream, MediaKind, Source};
-use crate::audio::{AudioPlan, AudioSegment};
+use crate::audio::{AudioPlan, AudioSegment, resolve_fades};
 use crate::content::{Camera, TextSpec};
 use crate::id::Id;
 use crate::state::inspector::{self, Value as PropertyValue};
@@ -134,6 +134,9 @@ pub enum Content {
     Scene {
         camera: Camera,
         time: Ratio,
+        /// Degrees around X, Y, Z (`XYZ` order) applied to the splat of a bare splat layer: the
+        /// SHARP axes (BL143). Zero for scene files and plain splats.
+        orientation: [f64; 3],
     },
     Waveform {
         peaks: Vec<f32>,
@@ -162,6 +165,10 @@ pub struct Layer {
     pub transform: Transform,
     pub opacity: f64,
     pub blend: String,
+    /// A layer above this one provably covers the whole canvas with opaque pixels, so nothing of
+    /// this layer can reach the picture: a renderer may skip preparing and drawing it. It is a
+    /// hint for speed only; ignoring it gives the same pixels. See [`mark_occluded`].
+    pub occluded: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -220,6 +227,11 @@ fn layer_json(layer: &Layer) -> Value {
             "rotation": transform.rotation, "crop": transform.crop,
         },
     });
+    if layer.occluded {
+        // Additive and only present when true, so a plan without a hidden layer is byte-for-byte
+        // the one an older runtime understands.
+        value["occluded"] = json!(true);
+    }
     match &layer.content {
         Content::Image => {}
         Content::Video {
@@ -230,9 +242,16 @@ fn layer_json(layer: &Layer) -> Value {
             value["source_frame"] = json!(source_frame);
         }
         Content::Text(text) => value["text"] = text.to_json(),
-        Content::Scene { camera, time } => {
+        Content::Scene {
+            camera,
+            time,
+            orientation,
+        } => {
             value["camera"] = camera.to_json();
             value["scene_time"] = time.to_json();
+            if *orientation != [0.0; 3] {
+                value["orientation"] = json!(orientation);
+            }
         }
         Content::Waveform { peaks, position } => {
             value["peaks"] = json!(peaks);
@@ -413,10 +432,14 @@ impl Resolver<'_> {
                     source_frame: frame,
                 }
             }
-            MediaKind::Scene | MediaKind::Splat => Content::Scene {
-                camera: scene_camera,
-                time: source_time,
-            },
+            MediaKind::Scene | MediaKind::Splat => {
+                let capture = asset.meta.capture.filter(|_| item.kind == MediaKind::Splat);
+                Content::Scene {
+                    camera: scene_camera,
+                    time: source_time,
+                    orientation: capture.map_or([0.0; 3], |_| crate::sharp::ORIENTATION),
+                }
+            }
             MediaKind::Text => match &asset.meta.text {
                 Some(text) => Content::Text(text.clone()),
                 None => {
@@ -442,6 +465,7 @@ impl Resolver<'_> {
             transform: Transform::default(),
             opacity: 1.0,
             blend: "normal".to_string(),
+            occluded: false,
         })
     }
 }
@@ -454,6 +478,41 @@ impl EditorState {
             PreviewIntent::Sequence => self.plan_sequence(request.at),
             PreviewIntent::Source { asset, time } => self.plan_source(asset, *time),
         }
+    }
+
+    /// Assets that clips *starting* in the `frames` frames after the playhead will need: what a
+    /// playback has to have loaded before it reaches them. Sequence previews only (a source
+    /// preview never moves); hidden tracks and clips already on screen are not listed, those are
+    /// the current frame's own requirements. Order is by clip start, without repeats; frames the
+    /// planner refuses are skipped. Never mutates the state.
+    pub fn assets_ahead(&self, frames: i64) -> Vec<Id> {
+        if !matches!(self.preview, PreviewIntent::Sequence) || frames <= 0 {
+            return Vec::new();
+        }
+        let timeline = &self.timeline;
+        let from = timeline.playhead;
+        let to = from.saturating_add(frames).min(timeline.length);
+        let mut starts: Vec<i64> = timeline
+            .tracks
+            .iter()
+            .filter(|track| track.kind == TrackKind::Video && !track.hidden)
+            .flat_map(|track| timeline.clips_on(&track.id))
+            .map(|clip| clip.start)
+            .filter(|start| *start > from && *start <= to)
+            .collect();
+        starts.sort_unstable();
+        starts.dedup();
+        let mut assets: Vec<Id> = Vec::new();
+        for start in starts {
+            if let Ok(plan) = self.plan_sequence(PlanTime::Frame(start)) {
+                for asset in plan.requires {
+                    if !assets.contains(&asset) {
+                        assets.push(asset);
+                    }
+                }
+            }
+        }
+        assets
     }
 
     fn plan_sequence(&self, at: PlanTime) -> Result<RenderPlan, CommandError> {
@@ -493,6 +552,7 @@ impl EditorState {
                 layers.push(layer);
             }
         }
+        self.mark_occluded(&mut layers, timeline.width, timeline.height);
         Ok(RenderPlan {
             intent: PreviewIntent::Sequence,
             width: timeline.width,
@@ -504,6 +564,86 @@ impl EditorState {
             requires: resolver.requires,
             warnings: resolver.warnings,
         })
+    }
+
+    /// Flags the layers that a layer above them hides completely (see [`Layer::occluded`]).
+    ///
+    /// Conservative on purpose: a layer only hides what is below when it is certain to be opaque
+    /// over the whole canvas. That is the case for a picture whose format has no alpha channel
+    /// (`mp4`/`m4v` video, `jpg`/`jpeg` still) drawn at full opacity with the `normal` blend,
+    /// without rotation, whose cropped, scaled and moved rectangle contains the canvas. A
+    /// scene, text, waveform, PNG or any other source is never assumed opaque. Layers are bottom
+    /// to top, so the scan goes from the top and stops looking for a cover once one is found.
+    fn mark_occluded(&self, layers: &mut [Layer], width: u32, height: u32) {
+        let (canvas_w, canvas_h) = (f64::from(width), f64::from(height));
+        let mut covered = false;
+        for layer in layers.iter_mut().rev() {
+            layer.occluded = covered;
+            if !covered && self.covers_canvas(layer, canvas_w, canvas_h) {
+                covered = true;
+            }
+        }
+    }
+
+    /// Whether `layer` paints opaque pixels over the whole `canvas_w × canvas_h` canvas. The
+    /// geometry mirrors the runtime compositor: the source is fitted ("contain") to the canvas,
+    /// multiplied by `scale`, cropped by percentages of its own size and moved by percentages of
+    /// the canvas, y growing downwards.
+    fn covers_canvas(&self, layer: &Layer, canvas_w: f64, canvas_h: f64) -> bool {
+        // NaN is not "fully opaque".
+        if layer.opacity.is_nan() || layer.opacity < 1.0 || layer.blend != "normal" {
+            return false;
+        }
+        let transform = &layer.transform;
+        if transform.rotation.rem_euclid(360.0) != 0.0 || !transform.scale.is_finite() {
+            return false;
+        }
+        let known_opaque = match layer.content {
+            Content::Video { .. } => &["mp4", "m4v"][..],
+            Content::Image => &["jpg", "jpeg"][..],
+            _ => return false,
+        };
+        let Some(asset) = layer
+            .asset
+            .and_then(|id| self.library.item(id))
+            .and_then(|item| item.asset.as_ref())
+        else {
+            return false;
+        };
+        let Source::File { path } = &asset.source else {
+            return false;
+        };
+        let extension = std::path::Path::new(path)
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(str::to_ascii_lowercase);
+        if !extension.is_some_and(|extension| known_opaque.contains(&extension.as_str())) {
+            return false;
+        }
+        let (Some(source_w), Some(source_h)) = (asset.meta.width, asset.meta.height) else {
+            return false;
+        };
+        let (source_w, source_h) = (f64::from(source_w), f64::from(source_h));
+        if source_w <= 0.0 || source_h <= 0.0 || canvas_w <= 0.0 || canvas_h <= 0.0 {
+            return false;
+        }
+        let fit = (canvas_w / source_w).min(canvas_h / source_h) * transform.scale;
+        let (layer_w, layer_h) = (source_w * fit, source_h * fit);
+        let [left, right, top, bottom] = transform.crop.map(|percent| percent / 100.0);
+        let (center_x, center_y) = (
+            transform.x / 100.0 * canvas_w,
+            -transform.y / 100.0 * canvas_h,
+        );
+        let x0 = center_x - layer_w / 2.0 + left * layer_w;
+        let x1 = center_x + layer_w / 2.0 - right * layer_w;
+        let y1 = center_y + layer_h / 2.0 - top * layer_h;
+        let y0 = center_y - layer_h / 2.0 + bottom * layer_h;
+        // Less than 1/255 of a pixel of slack: float noise on an exact fit must not defeat it.
+        let slack = 1e-3;
+        x0 <= -canvas_w / 2.0 + slack
+            && x1 >= canvas_w / 2.0 - slack
+            && y0 <= -canvas_h / 2.0 + slack
+            && y1 >= canvas_h / 2.0 - slack
     }
 
     fn clip_layer(
@@ -531,6 +671,7 @@ impl EditorState {
                     transform: Transform::default(),
                     opacity: 1.0,
                     blend: "normal".to_string(),
+                    occluded: false,
                 }
             }
             ClipKind::Audio => return Ok(None),
@@ -561,11 +702,7 @@ impl EditorState {
                 let mut layer =
                     resolver.asset_layer(item, asset, source_time, camera, layer_id, Some(clip))?;
                 if let Content::Scene { camera, .. } = &mut layer.content {
-                    let seconds = source_time
-                        .sub(clip.source_start)
-                        .unwrap_or(Ratio::ZERO)
-                        .to_f64();
-                    *camera = clip.camera.unwrap_or_default().at(seconds);
+                    *camera = self.clip_camera_at(clip, frame);
                 }
                 layer
             }
@@ -575,6 +712,44 @@ impl EditorState {
         layer.opacity = resolver.opacity(clip, frame);
         layer.blend = resolver.choice(clip, "blend");
         Ok(Some(layer))
+    }
+
+    /// Scene time (exact seconds) a clip reads at sequence `frame`: `source_start` plus the
+    /// elapsed clip time at its speed. The plan reports it as `scene_time`; camera keys use it.
+    pub fn clip_source_time(&self, clip: &Clip, frame: i64) -> Ratio {
+        Resolver {
+            state: self,
+            requires: Vec::new(),
+            warnings: Vec::new(),
+        }
+        .source_time(clip, frame)
+    }
+
+    /// Playback speed of `clip` as an exact ratio (`1` is 100 %): the value the picture, the
+    /// sound and the camera keys all read, and the one a head trim scales by.
+    pub fn clip_speed(&self, clip: &Clip) -> Ratio {
+        Resolver {
+            state: self,
+            requires: Vec::new(),
+            warnings: Vec::new(),
+        }
+        .speed_ratio(clip)
+    }
+
+    /// The camera a scene clip shows at sequence `frame`: its keyframes (BL140) at scene time, or
+    /// without keys the still/orbiting camera counted from the clip start. One function for the
+    /// plan (so preview and export agree) and for capturing a key at the playhead.
+    pub fn clip_camera_at(&self, clip: &Clip, frame: i64) -> Camera {
+        let source_time = self.clip_source_time(clip, frame);
+        if let Some(camera) = crate::camera_keys::evaluate(&clip.camera_keys, source_time.to_f64())
+        {
+            return camera;
+        }
+        let seconds = source_time
+            .sub(clip.source_start)
+            .unwrap_or(Ratio::ZERO)
+            .to_f64();
+        clip.camera.unwrap_or_default().at(seconds)
     }
 
     fn plan_source(&self, asset_id: &Id, time: Ratio) -> Result<RenderPlan, CommandError> {
@@ -640,13 +815,19 @@ impl EditorState {
                 transform: Transform::default(),
                 opacity: 1.0,
                 blend: "normal".to_string(),
+                occluded: false,
             }
         } else {
+            // A SHARP splat is previewed from the camera that took its picture (BL143).
+            let camera = asset
+                .meta
+                .capture
+                .map_or_else(Camera::default, |capture| capture.camera());
             resolver.asset_layer(
                 item,
                 asset,
                 time,
-                Camera::default().at(time.to_f64()),
+                camera.at(time.to_f64()),
                 format!("layer:source:{asset_id}"),
                 None,
             )?
@@ -833,23 +1014,24 @@ impl EditorState {
                 .map_or(0, Ratio::round);
             let output_start = sample_at(start);
             let output_end = sample_at(end);
-            let fade_samples = |frames: f64| -> u64 {
-                rate.frame_to_time(frames.round() as i64)
+            let samples_of = |frames: i64| -> u64 {
+                rate.frame_to_time(frames)
                     .mul_int(i64::from(MIX_SAMPLE_RATE))
                     .map_or(0, Ratio::round)
                     .max(0) as u64
             };
-            // Fades are relative to the clip, not to the requested range. The fades of a video
-            // clip are visual (opacity): its sound does not follow them.
-            let fade_in = if start == clip.start && !embedded {
-                fade_samples(resolver.number(clip, "fade_in"))
+            // The fades of an audio clip are relative to the clip (its current start and end,
+            // so a trim or a move changes where they sit), not to the requested range. The
+            // fades of a video clip are visual (opacity): its sound does not follow them.
+            let clip_frames = samples_of(clip.end() - clip.start);
+            let (fade_in, fade_out) = if embedded {
+                (0, 0)
             } else {
-                0
-            };
-            let fade_out = if end == clip.end() && !embedded {
-                fade_samples(resolver.number(clip, "fade_out"))
-            } else {
-                0
+                resolve_fades(
+                    samples_of(resolver.number(clip, "fade_in").round() as i64),
+                    samples_of(resolver.number(clip, "fade_out").round() as i64),
+                    clip_frames,
+                )
             };
             segments.push(AudioSegment {
                 clip: clip.id,
@@ -864,6 +1046,12 @@ impl EditorState {
                 pan: (resolver.number(clip, "pan") / 100.0) as f32,
                 fade_in,
                 fade_out,
+                clip_offset: if embedded {
+                    0
+                } else {
+                    samples_of(start - clip.start)
+                },
+                clip_frames: if embedded { 0 } else { clip_frames },
             });
         }
         Ok(AudioPlan {

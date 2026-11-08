@@ -78,6 +78,15 @@ fn spec_json(spec: &PropertySpec) -> Value {
         "default": spec.default.as_ref().map(|value| value.to_json()),
         "document_field": spec.document_field,
         "origin": spec.origin.as_str(),
+        // The property this one is a component of (`position` for `position/x`), or null.
+        "component_of": spec.component.map(|component| json!({
+            "parent": component.parent.spec().name,
+            "index": component.index,
+        })),
+        // An absent field in the bundle reads as `default`.
+        "optional": spec.optional,
+        // A change first turns the clip's first movement into keyframes (the origin's write).
+        "converts_first_movement": spec.converts_first_movement,
     })
 }
 
@@ -209,8 +218,24 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
                 "scene.tree", "scene.evaluate", "scene.plan", "scene.select", "scene.selection",
                 "scene.gesture.begin", "scene.gesture.update", "scene.gesture.commit",
                 "scene.gesture.cancel", "scene.gesture.status",
+                // F055 (docs/features/scene-gizmo.md): additive, negotiated by listing.
+                "scene.gizmo.state", "scene.gizmo.hit", "scene.pointer.down",
+                "scene.pointer.move", "scene.pointer.up", "scene.pointer.cancel",
+                "scene.translate",
+                // F016 (docs/features/effects.md): the effects layer, additive.
+                "scene.fx.edit", "scene.fx.list", "scene.fx.catalog", "scene.fx.frame",
             ],
             "max_scenes": MAX_SCENES,
+            // Additive contract of the property catalog (docs/features/scene-edit.md): a caller
+            // that does not read it gets the default property listing (including renderOrder).
+            "edit": {
+                "catalog_version": 2,
+                "components": true,
+                "render_order": true,
+                "camera_start_conversion": "origin-keyframes",
+                "batch": "atomic",
+                "properties_option_components": true,
+            },
             "scope": scope_json(),
         })),
         SceneCommand::Catalog => {
@@ -223,9 +248,18 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
             }))
         }
         SceneCommand::Describe { scene } => Ok(describe(attached(book, &scene)?)),
-        SceneCommand::Properties { scene, path_prefix } => {
+        SceneCommand::Properties {
+            scene,
+            path_prefix,
+            components,
+        } => {
             let entry = attached(book, &scene)?;
-            let properties: Vec<Value> = scene_edit::properties_of(&entry.scene)
+            let listed = if components {
+                scene_edit::properties_with_components(&entry.scene)
+            } else {
+                scene_edit::properties_of(&entry.scene)
+            };
+            let properties: Vec<Value> = listed
                 .into_iter()
                 .filter(|info| {
                     path_prefix
@@ -263,6 +297,14 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
             answer["scene"] = json!(scene);
             Ok(answer)
         }
+        SceneCommand::FxCatalog => Ok(super::fx::catalog_answer()),
+        SceneCommand::FxList { scene } => Ok(super::fx::list_answer(
+            &scene,
+            &attached(book, &scene)?.scene,
+        )),
+        SceneCommand::FxFrame { scene, at } => {
+            super::fx::frame_answer(&scene, &attached(book, &scene)?.scene, &at)
+        }
         // The F039 commands also need the session state (selection, gesture), which this
         // function does not get: they run in `interaction.rs`.
         SceneCommand::Attach { .. }
@@ -273,7 +315,9 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
         | SceneCommand::Plan { .. }
         | SceneCommand::Select { .. }
         | SceneCommand::Selection
-        | SceneCommand::Gesture(_) => Err(CommandError::new(
+        | SceneCommand::Gesture(_)
+        | SceneCommand::Gizmo(_)
+        | SceneCommand::FxEdit { .. } => Err(CommandError::new(
             "internal",
             "a scene command reached the read path that does not serve it",
         )),

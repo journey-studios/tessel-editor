@@ -13,17 +13,18 @@ calculado pelo core.
   edição da cena.
 - **Job único:** o export é um job `video-export` do `JobRegistry` existente (progresso por frame, cancelar,
   staging, publicação por rename). Não há segunda fila.
-- **Snapshot imutável:** a cena e o mapa de recursos são congelados na chamada. Editar, destacar a cena, gesto
+- **Snapshot imutável:** a cena e o mapa de recursos são congelados na chamada, e os **bytes** dos recursos
+  aprovados são congelados pelo job em uma cópia privada (BL109, abaixo). Editar, destacar a cena, gesto
   vivo (preview/candidato) ou invalidar a sessão de recursos depois **não** muda um export em andamento.
 - **Sem efeito no projeto:** o resultado não altera cena, timeline, histórico nem cria clipe. Não há `job.commit`.
-- **Áudio:** **não há áudio dirigido fictício.** Cena sem áudio exporta vídeo apenas (aviso `no_audio_sources`).
-  Cena que declara `audio` ou `narration` é **recusada** (`unsupported`) a menos que o pedido diga `audio:false`
-  (ou o preset não tenha áudio); aí o MP4 sai sem áudio e o resultado traz o aviso `audio_omitted` com os domínios
-  omitidos. Nunca um stream silencioso, nunca um mix parcial.
+- **Áudio:** o mix WAV declarado no bundle é gravado no MP4 (AAC, mesma duração do vídeo) e tem contrato
+  próprio em [F042A](scene-export-audio.md). Cena sem áudio exporta vídeo apenas (aviso `no_audio_sources`).
+  `audio:false` (ou preset sem áudio) omite o declarado com o aviso `audio_omitted`. Cena que declara
+  `narration` com áudio pedido é **recusada** (`unsupported`). Nunca um stream silencioso nem um mix parcial.
 - **Domínios sem avaliação** (por exemplo `lighting`) continuam sendo recusados antes de qualquer job, pela
   mesma regra de `ScenePlan::build`.
 
-Fora do escopo desta entrega: áudio dirigido (BL016), alpha de saída (BL090), equivalência visual contra o
+Fora do escopo desta entrega: narração/takes (BL017), alpha de saída (BL090), equivalência visual contra o
 runtime da origem (BL018/BL071). A UI está integrada pelo coordenador, com prova viva ainda pendente.
 
 ## Contrato do core / biblioteca
@@ -34,7 +35,7 @@ runtime da origem (BL018/BL071). A UI está integrada pelo coordenador, com prov
 |---|---|
 | `SceneExportSpec::from_json(&EditorState, &Value)` | Lê `{scene, preset?, from?, frames?, audio?}`; inteiros estritos (nada de float); preset por id, objeto ou o `export_preset` do projeto |
 | `SceneExportSchedule` | `[from, from+frames)`, rate da cena → rate do preset, `sample_time(i)` exato (`Ratio`), `edit_frame(bundle, i)` (igual ao `Bundle::frame_at_time`, piso), geometria do preset |
-| `AudioPlan` | `NoSources` ou `Omitted { declared }`; recusa o resto |
+| `AudioPlan` | `NoSources`, `Omitted { declared }` ou `Mix(DirectedAudioMix)` ([F042A](scene-export-audio.md)); recusa o resto |
 | `SceneExportSnapshot::capture` | Cena **commitada** (nunca candidato de gesto), `preset.validate()`, admissão (`edit_join_issues` + `temporal_issues`), cronograma, política de áudio, assets exigidos (um `ScenePlan::build` por shot tocado), plano do último frame |
 | `SceneExportSnapshot::plan(i)` | `ScenePlan::build` do frame de edição do frame de saída `i`: **o mesmo** de `scene.plan` |
 | `SceneExportSnapshot::timeline()` + `plan_with(&timeline, i)` | O laço do export usa uma `PlanTimeline` (R6) por job: mesmo plano, mesmo intervalo e mesmos erros que `plan(i)` (teste de equivalência), sem refazer o preparo por frame |
@@ -46,12 +47,41 @@ são repetidos ou pulados, **nunca** misturados. O aviso `frame_rate_conversion`
 
 - `SceneFrameRenderer` / `SceneRendererFactory`: a fronteira do renderer. Cada export constrói o seu (Chrome
   próprio), na thread do job, e o libera ao fim (`finish`) mesmo em erro.
-- `FrozenResources`: o `ResolvedResourceMap` aprovado, congelado. O renderer recebe **só** isto como
-  `ResourceResolver`.
+- `FrozenResources`: o `ResolvedResourceMap` aprovado, congelado: congela **caminhos** e identidade.
+- `scene_resources::ResourceSnapshot` (BL109): cópia privada, somente leitura, dos arquivos que o plano desenha.
+  `take(resolver, cena, chaves, dir, token, progresso)` lê cada arquivo **uma vez**, calcula SHA-256 na mesma
+  passada que grava a cópia e compara com o hash e o tamanho aprovados; implementa `ResourceResolver` com a mesma
+  identidade (hash, revisão, geração, `cache_key`) e o caminho da cópia. O renderer recebe **só** este
+  resolver, nunca o caminho original. `snapshot_bytes` informa o volume a copiar (conteúdo igual conta uma vez).
+  Opera sobre `ResourceKey`, não sobre o tipo do recurso: o mix de áudio (`ResourceKey::AudioMix`, F042A) já entra
+  nas chaves da cópia, e o `spz` do splat de S7 entra como `ResourceKey::Asset` (chave de asset, sem variante nova).
 - `SceneExport::freeze(snapshot, &SceneResourceSession, destino, replace)` recusa `scene_resources_not_loaded`,
   `stale_generation`, `resources_stale` ou o erro de resolução de um asset exigido.
 - `preflight(&SceneExport, &Tools, max_size) -> Value` e `run(...)`: ver abaixo.
 - `MediaHost::with_scene_renderer(factory)`; sem fábrica, `scene.export` responde `backend_unavailable`.
+
+### Bytes congelados (BL109)
+
+```text
+preflight (stat) ─▶ staging ─▶ snapshot: copia + SHA-256 numa passada ─▶ frames leem a cópia ─▶ verify_intact
+```
+
+- **Quando:** no job (thread própria, estágio `snapshot` com progresso em bytes, cancelável entre blocos de
+  1 MiB), nunca na UI nem em `scene.export.preflight`, que continua só com `stat`.
+- **Troca de mesmo tamanho depois do `resolve`:** o hash da cópia difere do aprovado → job falha com
+  `resource_changed` (`details.resource`, `expected {sha256, bytes}`, `got {sha256, bytes}`) antes de qualquer frame,
+  sem MP4 e sem staging.
+- **Alteração durante o job:** o renderer só abre a cópia (dentro de `.tessel-staging-scene-export-*/resources/<sha256>/`,
+  `0444`), então reescrever o original **não alcança nenhum frame** (isolamento, não detecção). `verify_intact` confere,
+  antes de finalizar, tamanho e mtime das cópias contra o que foi verificado (algo externo que as reescreva falha com
+  `resource_changed`; sem novo hash).
+- **Áudio (F042A):** o WAV do mix é uma chave a mais da mesma cópia (`ResourceKey::AudioMix`); a mistura lê só a cópia,
+  e a estimativa (`resource_copy_bytes`) e o progresso do estágio `snapshot` o incluem.
+- **Arquivo sumido/ilegível na cópia:** `resource_missing`.
+- **Cleanup:** a cópia mora no staging do próprio job. Sucesso, falha, cancelamento e `resource_changed` removem
+  só esse diretório (`Staging::drop`); outros `.tessel-staging-*` (de outro job/processo) e os originais nunca são tocados.
+- **Espaço:** o preflight inclui `estimate.resource_copy_bytes` em `staging_bytes` (`disk_full` antes de escrever).
+- **Resultado (aditivo):** `snapshot {files, bytes, verified}`; o restante e os `frame_hashes` não mudam.
 
 ### Operações (JSONL, socket e biblioteca usam o mesmo JSON)
 
@@ -63,7 +93,7 @@ são repetidos ou pulados, **nunca** misturados. O aviso `frame_rate_conversion`
 | `preset` | id (`fullhd`, `uhd4k`, …), objeto inline (validado como preset do projeto) ou omitido → `export_preset` do projeto |
 | `destination` | `.mp4`; não pode existir a menos que `replace:true` |
 | `from`, `frames` | inteiros; padrão `0` e "até o fim da edição"; fora do intervalo → `invalid_range` |
-| `audio` | `false` omite o áudio declarado (aviso `audio_omitted`); `true`/omitido recusa se há áudio declarado |
+| `audio` | `false` omite o áudio declarado (aviso `audio_omitted`); `true`/omitido mistura o WAV declarado (F042A) e recusa narração |
 | `wait` | `true` (padrão no headless) devolve o resultado; `false` (ou o host interativo) devolve `{job, state, info}` |
 | `resources_root` | conveniência do headless/`SceneHost`: roda `scene.resources.resolve` com essa base antes (como `scene.render`) |
 
@@ -99,10 +129,12 @@ warnings, verification (ffprobe), frame_hashes {count, first, last, digest, list
 | Código | Quando | Efeito |
 |---|---|---|
 | `invalid_request`, `invalid_range`, `unknown_element`, `invalid_value` | pedido, cena, intervalo ou preset inválido | recusado **antes** do job; nada muda |
-| `unsupported` | áudio/narração declarados sem `audio:false`; domínio sem avaliação | idem |
+| `unsupported` | narração declarada sem `audio:false`; mix em formato não suportado; domínio sem avaliação | idem |
 | `scene_resources_not_loaded`, `stale_generation`, `resources_stale` | recursos não aprovados/obsoletos | idem |
 | `backend_unavailable` | sem renderer (sem runtime) | idem |
 | `destination_exists`, `preflight_failed`, `disk_full` | falha do preflight do job | job falha; destino intocado; sem staging |
+| `resource_changed` | bytes de um recurso diferem do aprovado (mesmo tamanho inclusive), ou a cópia privada foi reescrita | job falha com as duas identidades; sem arquivo e sem staging |
+| `resource_missing` | original sumiu/ilegível entre o preflight e a cópia | idem |
 | `render_failed` | um frame falhou (com `backend_code`) | job falha; sem arquivo |
 | `cancelled` | `job.cancel` | sem arquivo parcial; sem staging |
 | `encode_failed`, `verification_failed` | FFmpeg ou ffprobe | sem publicação |
@@ -128,7 +160,7 @@ Não há flag nova: é só uma operação da sessão. Lacuna: `tessel-scene-rend
 
 O coordenador integrou o diálogo `flow.export_scene`, o relatório `scene.export.preflight` e a fábrica `ProcessSceneRenderer` no host da janela. Na aba Cena do inspector, o botão Exportar do cabeçalho abre esse diálogo; o fluxo normal continua disponível na aba Clipe e em `flow.export`.
 
-Campos: cena, preset, primeiro frame e quantidade opcionais, destino e áudio. O áudio só é omitido ao escolher explicitamente `no`; caso contrário o core mantém sua política de recusa para cenas com áudio. O socket usa `scene.export` e acompanha o job por `job.get`, sem bloquear a janela. Todo diálogo usa o mecanismo existente que esconde a WebView.
+Campos: cena, preset, primeiro frame e quantidade opcionais, destino e áudio. O áudio só é omitido ao escolher explicitamente `no`; caso contrário o mix WAV declarado entra no arquivo (F042A); só a narração declarada é recusada. O socket usa `scene.export` e acompanha o job por `job.get`, sem bloquear a janela. Todo diálogo usa o mecanismo existente que esconde a WebView.
 
 Compilação e 190 testes desktop passaram após a integração, incluindo dois testes do pedido e erro de campo do novo diálogo. A prova nativa/socket com export real permanece pendente da R10; testes desktop não a substituem. O patch original em `next-r1-ui.patch` é histórico e não deve ser reaplicado.
 
@@ -137,11 +169,12 @@ Compilação e 190 testes desktop passaram após a integração, incluindo dois 
 | Superfície | Estado | Evidência |
 |---|---|---|
 | Core (cronograma, snapshot, política de áudio, sem mutação, `plan_with`≡`plan`) | **V** | `crates/core/tests/scene_export.rs`: 15/15 após revisão do coordenador |
-| Pipeline FFmpeg/job sem navegador (injeção de falha) | **V** | `crates/media/tests/scene_export.rs`: 7/7 + 1 unitário (`args`). **Não** prova pixels |
-| Lib + host headless com Chrome real | **V no corpus** | `crates/render/tests/scene_export.rs`: 10/10 |
+| Pipeline FFmpeg/job sem navegador (injeção de falha) | **V** | `crates/media/tests/scene_export.rs`: 11/11 (S3) + 1 unitário (`args`). **Não** prova pixels |
+| Lib + host headless com Chrome real | **V no corpus** | `crates/render/tests/scene_export.rs`: 11/11 (S3) |
 | CLI headless (`tessel-render`) | **V no corpus** | mesmo arquivo: sessão JSONL exporta 4 frames 1080p, 2º pedido recusa o destino |
 | Socket do app / UI | **Implementado, prova viva pendente** | Integração do coordenador: desktop 190/190, dois testes novos do diálogo; R10 valida export real |
-| Áudio dirigido | **Recusado de forma explícita** | `declared_audio_and_unevaluated_domains…` |
+| Áudio dirigido | **Mix offline do WAV declarado** ([F042A](scene-export-audio.md)); narração recusada | `scene_export_audio.rs` (20), UI nativa 45/45; o WAV entra na cópia de bytes congelados (BL109) |
+| Bytes congelados (BL109) | **V (lib/host, headless, corpus)** | `media/tests/scene_export.rs`: troca de mesmo tamanho recusada antes do 1º frame (`resource_changed`, staging alheio preservado), original reescrito no frame 2 não chega ao renderer (hash do que foi aberto = aprovado, caminho dentro do staging), cleanup em falha/cancelamento; 5 unitários em `scene_resources::snapshot`; `render/tests/scene_export.rs`: troca de mesmo tamanho recusada pelo `tessel-render` com Chrome. UI/socket: V em instância própria por comandos semânticos: o diálogo fecha no submit; `job.get` e `get jobs` expõem código e details, e a Jobs view mostra `error.message`. Sem captura de pixels |
 
 O que cada teste de Chrome prova (SwiftShader, rodado sob `with-gpu-lock.py`):
 
@@ -162,7 +195,7 @@ O que cada teste de Chrome prova (SwiftShader, rodado sob `with-gpu-lock.py`):
   existente permanece byte a byte; `replace:true` troca por um MP4 verificado.
 - **Recurso sumido**: um arquivo apagado depois da aprovação bloqueia no preflight (`resource_*`), sem arquivo.
 - **Cancelamento**: `job.cancel` após ≥2 frames de 96 → `cancelled`, sem MP4 e sem staging; o progresso por frame é reportado.
-- **Áudio**: cena com `audio` declarado (WAV real + hash) é recusada (`unsupported`); com `audio:false` exporta
+- **Áudio**: cena com `audio` declarado (WAV real + hash) tem o mix no arquivo (F042A); com `audio:false` exporta
   sem stream de áudio e com `audio_omitted`; `lighting` é recusado.
 
 Tempo medido (SwiftShader, máquina de desenvolvimento, único dado de uma execução): ~210–290 ms/frame a
@@ -171,9 +204,13 @@ Tempo medido (SwiftShader, máquina de desenvolvimento, único dado de uma execu
 ### Limites declarados
 
 - **Cancelamento por frame:** um frame em desenho não é interrompido; o cancelamento vale entre frames.
-- **Recursos:** os bytes foram verificados por hash quando o mapa foi aprovado (`scene.resources.resolve`); o
-  export só confere presença e tamanho no início (um arquivo trocado por outro do mesmo tamanho durante o
-  export não é detectado).
+- **Recursos (BL109):** os bytes são verificados por hash quando o mapa é aprovado e **de novo** quando o job os copia
+  para o staging; o renderer lê a cópia. Limites: (a) o custo é uma leitura + escrita de todos os recursos usados antes
+  do primeiro frame (observável no estágio `snapshot`; sem reflink/hardlink, porque compartilhariam o inode com o
+  original); (b) uma troca entre a aprovação do mapa e a cópia é detectada, uma troca *durante* a leitura da cópia
+  também (o hash é da mesma leitura que grava), mas o export não detecta que o original mudou **depois** da cópia —
+  ele é isolado, e o vídeo reflete os bytes aprovados; (c) `verify_intact` não refaz o hash das cópias; (d) o espaço
+  de staging dobra o volume de recursos (splats grandes de S7 são copiados como qualquer asset: decidir cópia vs. verificação continua em aberto).
 - **Plano por frame:** o job usa `PlanTimeline` (BL064); o ganho no export real **não foi medido** (o custo do corpus é dominado pelo renderer e o plano vira JSON por frame).
 - **Rate:** frames de edição são repetidos/pulados na conversão; sem mistura nem interpolação.
 - **Cena sem corte longo / 4K longo:** só exports curtos foram exercitados; não há teste de resistência a
@@ -192,3 +229,17 @@ Tempo medido (SwiftShader, máquina de desenvolvimento, único dado de uma execu
 A R10 reporta 23/23 fases em `scripts/directed-scene-export-proof/results.json` (exit 0), incluindo export CLI, socket e diálogo semântico, política de áudio e restauração sem origem. Fonte e binários têm proveniência no relatório `docs/migration/next-r10-report.md`. Como houve edições após o build, repetir com a árvore final antes do aceite integrado. Não prova node:16, preflight do diálogo ou ponteiro físico.
 
 Gate final do coordenador: [R1–R10](../migration/round-r1-r10-report.md) e [prova final](../migration/round-r1-r10-results/export.json), 23/23 fases, 570 checks, binários atuais (`older_than_sources:false`), incluindo CLI, socket e diálogo. A prova anterior da R10 permanece histórica. Header node:16, preflight do diálogo e ponteiro físico continuam sem prova específica.
+
+Revisão S3: origens com hash aprovado idêntico são verificadas individualmente antes de reutilizar a cópia única. Regressão `changed_duplicate_origin_is_rejected_even_when_content_was_already_copied` cobre troca de mesmo tamanho na segunda origem.
+
+Aceite independente no head `9fbb93a`: snapshot 5/5, media/export 11/11, seis sondas negativas, render/export 11/11 em Chrome real e prova nativa 20/20. As mutações que removem o isolamento e a validação da segunda origem fazem os testes correspondentes falharem. Evidências locais: git common dir, `worktrees/t3-2d54921b/acceptance-s3/` (logs, hashes e `native_proof.py`). São comandos semânticos, sem ponteiro físico.
+
+## Integração com `job.discard` (BL094, integração S1)
+
+Um job de export nunca guarda resultado para aplicar (o arquivo é publicado pelo próprio job), então `job.discard` num job
+de export, bem-sucedido ou falho por `resource_changed`, responde `job_nothing_to_discard` e não remove o arquivo
+exportado, os originais nem o estágio de outro export. Teste: `crates/media/tests/scene_export.rs::an_export_job_has_nothing_to_discard_and_the_discard_removes_nothing`.
+
+## Posse do renderer (BL144.10)
+
+Um export (e seu preflight) pede o renderer pela política única de [F056](renderer-ownership.md): com outro export (ou preflight) no renderer, responde `renderer_busy`/`retryable` e nada é enfileirado; com um job de miniaturas no renderer, o job é parado no próximo quadro e o export é recusado até a nova tentativa (o renderer fica reservado por 30 s). Uma sonda de preflight cancelada continua dona do renderer até largá-lo (BL144.18). Validado (testes que contam renderers, prova headless e nativa; ver F056).

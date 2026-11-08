@@ -223,6 +223,53 @@ test('sequence frames: the count bound frees the oldest frame but not one the fr
   assert.equal(fetched, 24);
 });
 
+test('decoded frames of all assets share one CPU byte budget, oldest first, never the pinned ones', async () => {
+  // Each 100x100 frame is 40 000 bytes; the budget holds five of them over both clips.
+  const store = new AssetStore({
+    assetUrl: (path) => path,
+    counters: new RetentionCounters(),
+    limits: { ...LIMITS, frameBitmapBytes: 5 * 40_000 },
+  });
+  const clip = (id) => ({
+    id,
+    kind: 'video',
+    sequence: { count: 40, first: 0, pattern: 'f%d.png' },
+    frames: new Map(),
+    width: 100,
+    height: 100,
+  });
+  const [first, second] = [clip('one'), clip('two')];
+  store.entries.set('one', first);
+  store.entries.set('two', second);
+  const made = [];
+  store.fetchFrame = async () => {
+    const picture = bitmap(100, 100);
+    made.push(picture);
+    return picture;
+  };
+
+  for (let index = 0; index < 3; index += 1) {
+    store.beginFrame();
+    await store.frameTexture('one', index);
+    store.endFrame();
+  }
+  for (let index = 0; index < 3; index += 1) {
+    store.beginFrame();
+    await store.frameTexture('two', index);
+    store.endFrame();
+  }
+  assert.equal(first.frames.size + second.frames.size, 5, 'six frames do not fit five');
+  assert.equal(first.frames.has(0), false, 'the least recently used frame, of the other clip, went first');
+  assert.equal(made.filter((picture) => picture.closed).length, 1, 'its bitmap was closed');
+  assert.equal(store.counters.snapshot().frame_bitmap_evicted, 1);
+
+  // A frame draws everything it needs even when that exceeds the budget: pinned frames stay.
+  store.beginFrame();
+  for (let index = 10; index < 17; index += 1) await store.frameTexture('two', index);
+  assert.equal(second.frames.size >= 7, true, 'the frame in flight keeps all seven it draws');
+  store.endFrame();
+});
+
 test('a frame fetched for an entry that was replaced meanwhile is discarded, not cached', async () => {
   const store = new AssetStore({ assetUrl: (path) => path, counters: new RetentionCounters() });
   const original = {

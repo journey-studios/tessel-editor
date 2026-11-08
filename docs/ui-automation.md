@@ -46,7 +46,13 @@ from it (`monitor.viewport` → `last_frame.source.proxy_layers`), the refine re
 `TESSEL_VIEWPORT_INSPECT=1` the picture on screen after the drag is byte-identical to an explicit render. It also runs
 `seek-scrub-proof.py` per variant. `scripts/proxy-soak.py` repeats drags (and a policy flip) for `--seconds` and samples the
 editor's resident memory. Read-only opt-ins in the environment: `TESSEL_VIEWPORT_RESULT_CACHE=0` (splat result cache off),
-`TESSEL_VIEWPORT_SCENE_SAMPLES=0|2|4` (MSAA of scene targets). `./scripts/ui invoke monitor.preview.quality` toggles the policy;
+`TESSEL_VIEWPORT_RETAIN_MIB=<MiB>` (source-file budget of retained stills/scenes/splats before the least recently used heavy asset is released, default 256; BL151), `TESSEL_VIEWPORT_SCENE_SAMPLES=0|2|4` (final MSAA of scene targets), `TESSEL_VIEWPORT_PREVIEW_SCENE_SAMPLES=0|2|4` (MSAA of a splat
+scene while the playhead moves; default 0, 4 turns the reduction off; BL129), `TESSEL_VIEWPORT_PREVIEW_SORT=latest|exact` (whether a splat
+frame of a moving playhead is drawn with the order of the last finished sort, default `latest`, or waits for its own, `exact`, which only changes the sort, not the preview MSAA or proxies; an unreadable value is `exact` with a warning on
+stderr; BL130; the scrub/playback harness takes it through `--env`, and `--inspect` also compares the last frame the runtime returned
+after every scrub release (not the screen pixels) with an explicit `render.frame`; a release that never settles within the timeout is
+recorded as `passed: false` and the harness exits 1). `./scripts/ui invoke monitor.preview.quality` toggles the policy
+(proxy and lighter MSAA while playing/scrubbing, or the original always);
 `op preview.policy` reads/sets it; `op media.preview_proxy` builds the proxy by hand; `op render.status` carries `ui`
 (`repaints`/`skipped`, OPT04).
 
@@ -60,6 +66,12 @@ macOS does not paint a window that is fully covered, and the monitor's on-screen
 runs in `render`: run `./scripts/ui invoke window.activate` before observing or capturing
 (`screencapture -l <window id>` is the native capture used for evidence). `scripts/live-proof.py`
 drives the full flow and asserts pixels over this socket.
+
+`scripts/scene-edit-proof.py` (S6, [F034](features/scene-edit.md)) starts the direct binary with its own short `HOME` and drives it
+only with `ui op|get|set` of that binary (`scene.edit`, `scene.camera`, `history.undo`, `project.save`, the inspector's
+`set scene.property:<path>`); it runs the same scenario against `tessel-headless` (JSONL, no window) and reports the two
+surfaces separately. Run it under `scripts/directed-scene-proof/with-gpu-lock.py`; it refuses to start with fewer than 12 GiB
+free or with tracked changes (unless `--allow-dirty`, never for final evidence).
 
 ## Flows and dialogs
 
@@ -86,6 +98,14 @@ playback no relógio do dispositivo com pause/seek/resume, overlay/resize gates)
 mata **somente** o editor que o próprio script abriu (nunca um `pgrep` por nome) e o script aceita `HOME=<dir>` diferente para
 isolar o socket de outra instância do editor. `scripts/headless-flow-proof.py` faz o mesmo fluxo de mídia sem janela;
 `scripts/measure-render.py` mede preview/export e memória.
+
+## Medidor de desempenho (F049)
+
+`./scripts/ui get toolbar.perf_meter` lê o estado do medidor flutuante (`visible`, `shortcut`,
+`placement` e, só quando visível, o `readout`); `./scripts/ui invoke toolbar.perf_meter toggle` e
+`./scripts/ui set toolbar.perf_meter visible true|false` chamam o mesmo handler do atalho
+`⌘⇧D` (`Ctrl+Shift+D` fora do macOS) e do botão do cabeçalho. Contrato e limites em
+[perf-meter.md](features/perf-meter.md); a prova na janela real é `scripts/perf-meter-proof.py`.
 
 ## Headless access
 
@@ -275,6 +295,10 @@ open gesture. Native pointer evidence and command evidence remain distinct; see
 Nós da janela: `inspector.mode` (clip/scene), `scene.panel`, `scene.picker` (quando houver várias cenas), `scene.tree`, `scene.entity:<path>`, `scene.property:<path>` e `monitor.scene`. Expandir a árvore expõe descendentes; eles não são listados como visíveis quando o pai está recolhido.
 Um set de componente de propriedade usa begin/update/commit compartilhados (um undo).
 `ui op '{"op":"scene.resources.resolve","scene":"id","base":"/raiz/absoluta"}'` cria job; conferir job.get e aplicação antes de exibir. `monitor.show_scene {scene}` seleciona a apresentação; `scene.render` responde depois do frame real. `scene.plan` é a consulta core/headless. Inspeção de pixels não prova ponteiro ou aparência.
+
+### Gizmo de translação (F055)
+
+Nó `monitor.gizmo` (só com cena anexada): `get monitor.gizmo` devolve `selection`, `dragging`, `handle`, `gesture`; o overlay que a página recebeu e o que ela desenhou (com pixels amostrados por handle) estão em `get monitor.viewport` → `state.overlay`. Não há botão para clicar: `ui op '{"op":"scene.pointer.down","scene":"id","frame":N,"point":{"u":0.6,"v":0.5}}'` seguido de `scene.pointer.move`/`scene.pointer.up` (ou `scene.pointer.cancel` com `reason`) chega ao mesmo handler que as mensagens `overlay.pointer` da página, e `scene.translate` dá o mesmo resultado sem ponteiro. Coordenadas são da **imagem** (u, v em 0..1), não da tela: isto não é um ponteiro físico (BL043). `state.overlay` também traz os contadores de custo e identidade (`computed`, `adopted`, `memo_hits`, `held`, `epoch`, `stale`, `sets`): sem o feature negociado ou com o overlay desligado, `computed` não sobe; durante a reprodução só `held` sobe (uma vez). `state.overlay.error` guarda o último `overlay.error` da página (desenho que falhou ou payload recusado, com `request`): é consumido pelo adaptador fora da sessão de render, então o monitor continua disponível e as capacidades não se perdem; só o `error` genérico do protocolo derruba a sessão. Contrato em [scene-gizmo.md](features/scene-gizmo.md); `scripts/scene-gizmo-proof.py` usa só estas requisições. O relatório do script é **atômico e sempre reescrito**: um `ok:true` antigo nunca sobrevive a uma execução que falha ou é interrompida (um stub `ok:false` é gravado antes de tudo), só `ok:true` com os **dois processos** que o script lança (`headless`, o binário `tessel-headless` em JSONL, e `native`, a janela real pelo socket) — `SURFACES` tem exatamente esses dois, `final_blockers` exige os dois — o manifesto de checagens por superfície completo e a árvore limpa conta como final; `--surfaces` parcial ou `--allow-dirty` nunca são finais; o contrato do projeto tem **três superfícies** (biblioteca, CLI headless, UI), mas a biblioteca não é um terceiro processo desta prova: ela é provada pelos testes `cargo test` do core (`crates/core/tests/scene_gizmo.rs`), e a prova do script compara o arrasto entre os dois processos (`surfaces_agree_on_the_drag`); o diretório de trabalho de uma superfície que falha é mantido (`retained`) com `headless.stderr.log` e a cauda do log.
 
 ### Importação visual de cena (F043, R2)
 

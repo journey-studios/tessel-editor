@@ -1,10 +1,11 @@
 //! The export itself: frozen scene + frozen resources → staged MP4 → verified → published.
 //!
 //! ```text
-//! preflight ─▶ staging ─▶ [ plan(i) ─▶ renderer ─▶ PNG ─▶ ffmpeg pipe ]×frames ─▶ ffprobe verify ─▶ publish
+//! preflight ─▶ staging ─▶ byte snapshot ─▶ [ plan(i) ─▶ renderer ─▶ PNG ─▶ ffmpeg pipe ]×frames ─▶ ffprobe verify ─▶ publish
 //! ```
 //!
-//! Everything happens in a staging directory on the destination volume. A failure, a cancel or a
+//! Everything happens in a staging directory on the destination volume, the private byte copy of
+//! the approved resources included (BL109): the renderer reads that copy, never the originals. A failure, a cancel or a
 //! verification mismatch drops the directory with the encoder's output in it, so the destination
 //! either holds the finished, verified file or what it held before. Memory is bounded: one PNG
 //! crosses the pipe at a time.
@@ -19,14 +20,19 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tessel_editor_core::CommandError;
 use tessel_editor_core::jobs::{JobContext, JobError};
-use tessel_editor_core::scene_export::SceneExportSnapshot;
+use tessel_editor_core::scene_export::{DirectedAudioMix, SceneExportSnapshot};
+use tessel_editor_core::scene_resources::ResourceKey;
 
 use crate::export::{self, ExportRequest, Schedule};
 use crate::fsx::{self, Staging, hex, io_error};
-use crate::scene_resources::{ResolveError, ResourceResolver, SceneResourceSession};
+use crate::scene_resources::{
+    ApprovedResource, ResolveError, ResourceResolver, ResourceSnapshot, SceneResourceSession,
+    snapshot_bytes,
+};
 use crate::tools::Tools;
 
-use super::args::encode_args;
+use super::args::encode_args_with_audio;
+use super::audio::{self, InspectError};
 use super::render::{FrameJob, FrozenResources, SceneFrameRenderer};
 
 const SPACE_MARGIN: u64 = 16 << 20;
@@ -41,6 +47,9 @@ pub struct SceneExport {
     pub resources: FrozenResources,
     pub destination: PathBuf,
     pub replace: bool,
+    /// The header of the mix as `freeze` judged it. The job's preflight reads it again and a
+    /// different header is a different file (`resource_changed`), never a new verdict on this one.
+    audio_header: Option<audio::WavLayout>,
 }
 
 fn resolve_error(error: &ResolveError) -> CommandError {
@@ -89,13 +98,52 @@ impl SceneExport {
                 .resolve_asset(scene, asset)
                 .map_err(|error| resolve_error(&error).target(asset.as_str()))?;
         }
+        let mut audio_header = None;
+        if let Some(mix) = snapshot.audio().mix() {
+            let approved = resources
+                .resolve(scene, &ResourceKey::AudioMix)
+                .map_err(|error| resolve_error(&error).target("audio-mix"))?;
+            // Only the header, and only to refuse what no mix could ever use (not a WAV, 24-bit,
+            // surround, 96 kHz, shorter than its window) before a job exists. A file that cannot be
+            // opened is the job's preflight to report, like a vanished image.
+            match audio::check_layout(mix, &approved.path) {
+                Ok((layout, _)) => audio_header = Some(layout),
+                Err(InspectError::Unsupported(error)) => return Err(error.target("audio-mix")),
+                Err(InspectError::Unreadable(_)) => {}
+            }
+        }
         Ok(Self {
             snapshot,
             resources,
             destination,
             replace,
+            audio_header,
         })
     }
+}
+
+/// The approved mix file of an export that carries audio, as the frozen map names it (the
+/// original). Only the preflight looks at it, and only with a stat and the header: the mix itself
+/// reads the private copy.
+fn audio_resource(export: &SceneExport) -> Result<ApprovedResource, ResolveError> {
+    export
+        .resources
+        .resolve(export.snapshot.scene_id(), &ResourceKey::AudioMix)
+}
+
+/// What the export reads: every asset its plans draw and, when the file carries audio, the
+/// declared mix, as resource keys. The private byte copy (BL109) is taken for exactly these, so
+/// the picture and the sound are frozen by the same mechanism.
+fn required_keys(snapshot: &SceneExportSnapshot) -> Vec<ResourceKey> {
+    let mut keys: Vec<ResourceKey> = snapshot
+        .required_assets()
+        .iter()
+        .map(|asset| ResourceKey::asset(asset))
+        .collect();
+    if snapshot.audio().mix().is_some() {
+        keys.push(ResourceKey::AudioMix);
+    }
+    keys
 }
 
 fn blocker(code: &str, message: impl Into<String>) -> Value {
@@ -190,8 +238,22 @@ pub fn preflight(export: &SceneExport, tools: &Tools, max_size: Option<u32>) -> 
             },
         }
     }
+    let mut audio_bytes = 0;
+    if let Some(mix) = snapshot.audio().mix() {
+        audio_blockers(export, mix, tools, &mut blockers);
+        // The staged 48 kHz stereo WAV plus its AAC encoding.
+        audio_bytes = mix.output_samples() * 4 + audio_aac_bytes(export, mix);
+    }
     let frame_bytes = u64::from(render_w) * u64::from(render_h) * 4;
-    let needed = estimated_video_bytes(export) + frame_bytes;
+    // The private copy of the approved files (the mix included) lives in the same staging as the
+    // video and the mixed stream (BL109): all of it must fit before anything is written.
+    let copy_bytes = snapshot_bytes(
+        &export.resources,
+        snapshot.scene_id(),
+        &required_keys(snapshot),
+    )
+    .unwrap_or(0);
+    let needed = estimated_video_bytes(export) + frame_bytes + audio_bytes + copy_bytes;
     let free = export.destination.parent().and_then(fsx::free_bytes);
     if let Some(free) = free
         && free < needed.saturating_add(SPACE_MARGIN)
@@ -208,11 +270,95 @@ pub fn preflight(export: &SceneExport, tools: &Tools, max_size: Option<u32>) -> 
     json!({
         "ok": blockers.is_empty(), "blockers": blockers, "warnings": snapshot.warnings(),
         "summary": snapshot.summary(),
-        "estimate": { "output_bytes": estimated_video_bytes(export), "staging_bytes": needed,
+        "estimate": { "output_bytes": estimated_video_bytes(export)
+                + snapshot.audio().mix().map_or(0, |mix| audio_aac_bytes(export, mix)),
+            "staging_bytes": needed, "resource_copy_bytes": copy_bytes,
+            "audio_mix_bytes": audio_bytes,
             "note": "Estimates from typical content; the encoder decides the real size" },
         "free_bytes": free, "encoder": tools.h264_encoder(), "ffmpeg": tools.version,
         "destination": export.destination,
     })
+}
+
+fn audio_aac_bytes(export: &SceneExport, mix: &DirectedAudioMix) -> u64 {
+    let seconds =
+        mix.output_samples() as f64 / f64::from(tessel_editor_core::scene_export::MIX_RATE);
+    (seconds * f64::from(export.snapshot.preset().audio_kbps) * 125.0) as u64
+}
+
+/// What stops the mix: no AAC encoder, a file that vanished, changed size or cannot serve the range.
+fn audio_blockers(
+    export: &SceneExport,
+    mix: &DirectedAudioMix,
+    tools: &Tools,
+    blockers: &mut Vec<Value>,
+) {
+    let audio = |value: Value| {
+        let mut value = value;
+        value["asset"] = json!("audio-mix");
+        value
+    };
+    if !tools.has_encoder("aac") {
+        blockers.push(blocker(
+            "encoder_unavailable",
+            format!(
+                "This FFmpeg ({}) has no aac encoder for the audio mix",
+                tools.version
+            ),
+        ));
+    }
+    let approved = match audio_resource(export) {
+        Ok(approved) => approved,
+        Err(error) => {
+            blockers.push(audio(blocker("resource_unresolved", error.to_string())));
+            return;
+        }
+    };
+    match fs::metadata(&approved.path) {
+        Ok(meta) if meta.is_file() && meta.len() == approved.bytes => {}
+        Ok(_) => {
+            blockers.push(audio(blocker(
+                "resource_changed",
+                "The audio mix is not the file that was approved",
+            )));
+            return;
+        }
+        Err(error) => {
+            blockers.push(audio(blocker(
+                "resource_missing",
+                format!("The audio mix cannot be read: {error}"),
+            )));
+            return;
+        }
+    }
+    // Size alone does not say the file is the approved one: a same-size swap can change the
+    // header. The header `freeze` accepted is the one this job was asked for, so any other header
+    // (readable or not as a mix) is the file having changed since, and says so (BL016.9).
+    match (
+        audio::check_layout(mix, &approved.path),
+        export.audio_header,
+    ) {
+        (Ok((layout, _)), Some(frozen)) if layout != frozen => {
+            blockers.push(audio(changed_header(&format!(
+                "its WAV header now says {} frames at {} Hz, {} channel(s)",
+                layout.facts.frames, layout.facts.sample_rate, layout.facts.channels
+            ))));
+        }
+        (Err(error), Some(_)) => blockers.push(audio(changed_header(&format!(
+            "it no longer qualifies as the mix ({}: {})",
+            error.code(),
+            error.message()
+        )))),
+        (Err(error), None) => blockers.push(audio(blocker(error.code(), error.message()))),
+        (Ok(_), _) => {}
+    }
+}
+
+fn changed_header(why: &str) -> Value {
+    blocker(
+        "resource_changed",
+        format!("The audio mix is not the file that was approved: {why}"),
+    )
 }
 
 trait WithAsset {
@@ -287,6 +433,7 @@ struct Drawn {
 
 fn frame_loop(
     export: &SceneExport,
+    resources: &dyn ResourceResolver,
     renderer: &mut dyn SceneFrameRenderer,
     child: &mut Child,
     frame_path: &Path,
@@ -320,7 +467,7 @@ fn frame_loop(
             .render(&FrameJob {
                 scene_id: snapshot.scene_id(),
                 plan: &plan,
-                resources: &export.resources,
+                resources,
                 generation: export.resources.map().generation.0,
                 size: (width, height),
                 png: frame_path,
@@ -389,16 +536,24 @@ pub fn run(
     ctx.check()?;
     let report = preflight(export, tools, max_size);
     if report["ok"] != true {
-        let code = match report["blockers"][0]["code"].as_str() {
+        let first_blocker = &report["blockers"][0];
+        let code = match first_blocker["code"].as_str() {
             Some("disk_full") => "disk_full",
             Some("destination_exists") => "destination_exists",
+            // The mix swapped for another file is the one change the job names like the
+            // identity check that follows would: the same code whichever step sees it first.
+            Some("resource_changed") if first_blocker["asset"] == "audio-mix" => "resource_changed",
             _ => "preflight_failed",
         };
         let first = report["blockers"][0]["message"]
             .as_str()
             .unwrap_or("Export blocked")
             .to_string();
-        return Err(JobError::new(code, first).with_details(report));
+        let mut details = report;
+        if code == "resource_changed" {
+            details["resource"] = json!("audio-mix");
+        }
+        return Err(JobError::new(code, first).with_details(details));
     }
     ctx.advance(1);
 
@@ -412,11 +567,54 @@ pub fn run(
     let frame_path = staging.path().join("frame.png");
     let log = staging.path().join("ffmpeg.log");
     let log_file = File::create(&log).map_err(|error| io_error(&log, &error))?;
+    // BL109: freeze the *bytes* the plans draw and the mix reads, not only the approved paths.
+    // Everything below reads this private copy; the originals can change (or be swapped for
+    // same-size content) without reaching a frame or a sample, and a swap before this point is
+    // refused here by hash.
+    let keys = required_keys(snapshot);
+    let copy_total =
+        snapshot_bytes(&export.resources, snapshot.scene_id(), &keys).map_err(JobError::from)?;
+    ctx.stage("snapshot", copy_total);
+    let frozen = ResourceSnapshot::take(
+        &export.resources,
+        snapshot.scene_id(),
+        &keys,
+        &staging.path().join("resources"),
+        ctx.token(),
+        |bytes| {
+            ctx.advance(bytes);
+            renderer.copy_progressed(bytes);
+        },
+    )
+    .map_err(|error| as_disk_full(error, staging.path()))?;
+    renderer.resources_frozen()?;
+
+    // The mix is rendered next, from the private copy only: a swapped, unreadable or too-short
+    // file fails here, before a single frame is drawn, and the encoder is handed a finished
+    // stream exactly as long as the video.
+    let mixed = match snapshot.audio().mix() {
+        Some(mix) => {
+            let approved = frozen
+                .resolve(snapshot.scene_id(), &ResourceKey::AudioMix)
+                .map_err(JobError::from)?;
+            let wav = staging.path().join("mix.wav");
+            let report =
+                audio::render_private_observed(mix, &approved, &wav, ctx, &mut |done, steps| {
+                    renderer.mix_stepped(done, steps)
+                })
+                .map_err(|error| as_disk_full(error, staging.path()))?;
+            frozen.verify_intact()?;
+            Some((wav, report, approved))
+        }
+        None => None,
+    };
+
     let mut child = Command::new(&tools.ffmpeg)
-        .args(encode_args(
+        .args(encode_args_with_audio(
             snapshot.preset(),
             &schedule.geometry,
             schedule.output_rate,
+            mixed.as_ref().map(|(wav, ..)| wav.as_path()),
             &staged,
         ))
         .stdin(Stdio::piped())
@@ -428,7 +626,15 @@ pub fn run(
         })?;
 
     // The pipe closes when the loop's `stdin` drops, which is what lets ffmpeg finish.
-    let drawn = frame_loop(export, renderer, &mut child, &frame_path, &log, ctx);
+    let drawn = frame_loop(
+        export,
+        &frozen,
+        renderer,
+        &mut child,
+        &frame_path,
+        &log,
+        ctx,
+    );
     let drawn = match drawn {
         Ok(drawn) => drawn,
         Err(error) => {
@@ -436,6 +642,10 @@ pub fn run(
             return Err(as_disk_full(error, staging.path()));
         }
     };
+    if let Err(error) = frozen.verify_intact() {
+        kill(&mut child);
+        return Err(error);
+    }
     ctx.stage("finalize", 1);
     let status = loop {
         if ctx.is_cancelled() {
@@ -468,9 +678,9 @@ pub fn run(
             output_rate: schedule.output_rate,
             frames: schedule.frames,
             geometry: schedule.geometry,
-            audio_samples: 0,
+            audio_samples: mixed.as_ref().map_or(0, |(_, report, _)| report.samples),
         },
-        false,
+        mixed.is_some(),
     )?;
     let size = fs::metadata(&staged)
         .map_err(|error| io_error(&staged, &error))?
@@ -490,8 +700,9 @@ pub fn run(
         "duration_seconds": schedule.duration_seconds(),
         "render": { "width": schedule.geometry.render.0, "height": schedule.geometry.render.1 },
         "output": { "width": snapshot.preset().width, "height": snapshot.preset().height },
-        "audio": snapshot.audio().to_json(),
+        "audio": audio_result(snapshot, mixed.as_ref()),
         "resources": used_resources(export),
+        "snapshot": { "files": frozen.files(), "bytes": frozen.bytes(), "verified": true },
         "warnings": report["warnings"],
         "verification": verification,
         "frame_hashes": { "count": schedule.frames, "first": drawn.first, "last": drawn.last,
@@ -504,6 +715,21 @@ pub fn run(
             "pipe_ms_total": drawn.metrics.pipe_ms,
         },
     }))
+}
+
+/// `result.audio`: the plan (`included`, `declared`, `mix`) and, when a mix was written, what the
+/// file it came from was and what was measured on the stream handed to the encoder.
+fn audio_result(
+    snapshot: &SceneExportSnapshot,
+    mixed: Option<&(PathBuf, audio::MixReport, ApprovedResource)>,
+) -> Value {
+    let mut result = snapshot.audio().to_json();
+    if let Some((_, report, approved)) = mixed {
+        let extra = report.to_json(approved);
+        result["source"] = extra["source"].clone();
+        result["measured"] = extra["measured"].clone();
+    }
+    result
 }
 
 /// The resources the export drew from, as the frozen map identified them: what a reader needs to
