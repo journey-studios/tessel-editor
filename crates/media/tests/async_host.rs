@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
+use tessel_editor_core::jobs::ResultState;
 use tessel_editor_core::{CommandError, EditorState, headless};
 use tessel_editor_media::host::{MediaHost, RendererFactory};
 use tessel_editor_media::tools::Tools;
@@ -171,7 +172,12 @@ fn a_slow_import_never_blocks_the_caller_and_is_applied_once_on_poll() {
         json!({"op":"track.add","id":"during","name":"During","kind":"video"}),
     );
     assert!(state.project.revision > revision);
-    assert_eq!(host.registry().get(&job).unwrap().state.label(), "running");
+    // In flight, not necessarily started: the worker thread may not have been scheduled yet when
+    // the machine is busy (a `queued` job is just as unfinished as a `running` one).
+    assert!(
+        !host.registry().get(&job).unwrap().state.is_final(),
+        "the 0.6 s import cannot be over while the caller was only editing"
+    );
 
     let event = poll_until(&mut host, &mut state, &job);
     assert_eq!(event["state"], "succeeded", "{event}");
@@ -257,6 +263,16 @@ fn a_prepared_result_for_a_replaced_project_is_discarded() {
         state.library.items.is_empty(),
         "nothing leaked into the new project"
     );
+    // F4: the answer was `Ok`, but the project used none of it: it is not "applied".
+    assert_eq!(
+        host.registry().get(&prepare).unwrap().result_state,
+        ResultState::Discarded
+    );
+    assert_eq!(
+        host.registry().get(&import).unwrap().result_state,
+        ResultState::Applied,
+        "the import before it was applied"
+    );
 }
 
 #[test]
@@ -320,6 +336,83 @@ fn a_restore_that_lost_the_race_with_an_edit_is_discarded_not_merged() {
     assert_eq!(
         elsewhere.library.items.len(),
         library_before,
+        "nothing of the package was opened"
+    );
+}
+
+/// BL113a for restore: the same guard as the scene attach job. The destination project is
+/// closed and its document reopened while the package unpacks; the reopened one has the same ID
+/// and revision 0, and is still not the project the restore was started for.
+#[test]
+fn a_restore_started_before_the_document_was_reopened_is_discarded() {
+    let dir = temp("async-stale-reopen");
+    let video = video_with_audio(&tools(), &dir, "clip.mp4");
+    let mut host = interactive(tools());
+    let mut state = EditorState::demo();
+    new_project(&mut host, &mut state, &dir, "origin");
+    let imported = ok(
+        &mut host,
+        &mut state,
+        json!({"op":"media.import","paths":[video]}),
+    );
+    let job = imported["job"].as_str().unwrap().to_string();
+    poll_until(&mut host, &mut state, &job);
+    poll_for(&mut host, &mut state, decoded);
+    ok(
+        &mut host,
+        &mut state,
+        json!({"op":"project.save","path":dir.join("origin/origin.tessel.json")}),
+    );
+    let archive = dir.join("share/pack.tesselpack");
+    let packaged = ok(
+        &mut host,
+        &mut state,
+        json!({"op":"project.package","path":archive,"format":"archive"}),
+    );
+    let job = packaged["job"].as_str().unwrap().to_string();
+    assert_eq!(
+        poll_until(&mut host, &mut state, &job)["state"],
+        "succeeded"
+    );
+
+    let mut destination = EditorState::demo();
+    new_project(&mut host, &mut destination, &dir, "destination");
+    let document = dir.join("destination/destination.tessel.json");
+    ok(
+        &mut host,
+        &mut destination,
+        json!({"op":"project.save","path":document}),
+    );
+    let started = destination.project.stamp();
+    let restore = ok(
+        &mut host,
+        &mut destination,
+        json!({"op":"project.restore","path":archive,"folder":dir.join("restored")}),
+    );
+    let restore = restore["job"].as_str().unwrap().to_string();
+    // The destination is closed and its document opened again, before the restore is applied.
+    ok(
+        &mut host,
+        &mut destination,
+        json!({"op":"project.open","path":document}),
+    );
+    assert_eq!(destination.project.revision, 0, "the revision restarted");
+    assert!(
+        !started.is_current(&destination.project),
+        "same ID and revision, other session"
+    );
+    let reopened = destination.project.session.number();
+
+    let event = poll_until(&mut host, &mut destination, &restore);
+    assert_eq!(event["state"], "failed", "{event}");
+    assert_eq!(event["error"]["code"], "stale_result", "{event}");
+    assert_eq!(
+        destination.project.session.number(),
+        reopened,
+        "the reopened project was not replaced by the restored one"
+    );
+    assert!(
+        destination.library.items.is_empty(),
         "nothing of the package was opened"
     );
 }

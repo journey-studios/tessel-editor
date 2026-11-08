@@ -14,34 +14,45 @@ const requireObject = (condition, index, message) => {
   if (!condition) throw new RuntimeError('decode_failed', `Scene object ${index}: ${message}`);
 };
 
+/**
+ * The scene of a layer whose asset is a bare splat (a clip of a splat file, BL143): one splat object,
+ * turned by the plan's `orientation` (degrees around X, Y, Z). The SHARP axes (y down, z forward) are a
+ * half turn around X from the editor's (y up, -z forward), so the plan says `[180, 0, 0]` and the
+ * capture camera then looks at the picture the way the source image did.
+ */
+export const splatLayerScene = (layer) => ({
+  format: 'tessel-scene',
+  version: 1,
+  objects: [{ type: 'splat', asset: layer.asset, rotation: vector(layer.orientation, [0, 0, 0]) }],
+});
+
+/** The scene a `scene` layer draws: the file of a scene asset, or the synthesized one of a splat asset. */
+export const layerScene = (layer, entry) => (entry?.kind === 'splat' ? splatLayerScene(layer) : entry?.scene);
+
 /** A built scene ready to draw at a given time and camera. */
 export class SceneRig {
   /**
    * Whether the scene file has splat objects. A rig without them is a pure function of the scene
    * file, so the compositor may keep it between frames; one with splats holds leases on meshes
-   * that belong to the asset store and is built (and released) per frame.
+   * that belong to the asset store and is built (and released) per frame: the store hands the same
+   * meshes out again, so building the rig decodes nothing and creates no Spark generator (BL131).
    */
   static hasSplatObjects(sceneFile) {
     return sceneFile.objects.some((object) => object.type === 'splat');
   }
 
   /**
-   * Whether every object of the scene is a splat. Spark draws splats with alpha blending and no
-   * depth test of their own, so MSAA smooths nothing in such a scene: the compositor may give it a
-   * target without multisampling (see `Compositor.samplesFor`).
+   * Async because splat meshes may need to be (re)built after a lost graphics context. `owner` names
+   * the Spark sort lineage the rig draws in (BL130): the store lends the same mesh to the same owner
+   * and object every frame, so what the lineage sorted is still the set of splats it is handed.
    */
-  static drawsOnlySplats(sceneFile) {
-    return sceneFile.objects.length > 0 && sceneFile.objects.every((object) => object.type === 'splat');
-  }
-
-  /** Async because splat meshes may need to be (re)built after a lost graphics context. */
-  static async build(sceneFile, assets) {
+  static async build(sceneFile, assets, owner = null) {
     const leases = new Map();
     try {
       for (const [index, object] of sceneFile.objects.entries()) {
         if (object.type !== 'splat') continue;
         requireObject(assets.get(object.asset).kind === 'splat', index, `\`${object.asset}\` is not a splat asset`);
-        leases.set(index, await assets.splatLease(object.asset));
+        leases.set(index, await assets.splatLease(object.asset, owner === null ? null : `${owner}#${index}`));
       }
       return new SceneRig(sceneFile, leases);
     } catch (error) {
@@ -67,6 +78,8 @@ export class SceneRig {
     sceneFile.objects.forEach((object, index) => {
       const position = vector(object.position, [0, 0, 0]);
       const spin = vector(object.spin, [0, 0, 0]);
+      // Degrees around X, Y, Z before the spin is added: how an object is turned in the scene.
+      const turn = vector(object.rotation, [0, 0, 0]);
       let node;
       if (object.type === 'box' || object.type === 'sphere') {
         const color = new THREE.Color(object.color ?? '#cccccc');
@@ -87,7 +100,7 @@ export class SceneRig {
         throw new RuntimeError('decode_failed', `Scene object ${index}: unknown type \`${object.type}\``);
       }
       node.position.set(...position);
-      this.spinners.push({ node, spin });
+      this.spinners.push({ node, spin, turn });
       this.scene.add(node);
     });
   }
@@ -98,9 +111,11 @@ export class SceneRig {
 
   /**
    * `time` in seconds drives `spin` (degrees per second per axis). `stage` is the SplatStage of
-   * the compositor when the scene has splats; `aborted` stops the wait for a sort.
+   * the compositor when the scene has splats; `aborted` stops the wait for a sort. `motion` lets a
+   * splat scene be drawn with the order of the last finished sort (BL130, see `SplatStage.settle`).
+   * Resolves `{ stale }`: the splats were drawn with an order that is not the one for this camera.
    */
-  async draw(renderer, target, { camera: cameraSpec, time, width, height, stage, aborted }) {
+  async draw(renderer, target, { camera: cameraSpec, time, width, height, stage, aborted, motion = false }) {
     const camera = new THREE.PerspectiveCamera(cameraSpec.fov, width / height, 0.05, 1000);
     camera.position.set(...cameraSpec.position);
     camera.up.set(0, 1, 0);
@@ -108,11 +123,11 @@ export class SceneRig {
     camera.updateMatrixWorld(true);
     camera.updateProjectionMatrix();
 
-    this.spinners.forEach(({ node, spin }) => {
+    this.spinners.forEach(({ node, spin, turn }) => {
       node.rotation.set(
-        THREE.MathUtils.degToRad(spin[0] * time),
-        THREE.MathUtils.degToRad(spin[1] * time),
-        THREE.MathUtils.degToRad(spin[2] * time),
+        THREE.MathUtils.degToRad(turn[0] + spin[0] * time),
+        THREE.MathUtils.degToRad(turn[1] + spin[1] * time),
+        THREE.MathUtils.degToRad(turn[2] + spin[2] * time),
       );
       node.updateMatrixWorld(true);
     });
@@ -120,14 +135,15 @@ export class SceneRig {
     if (this.hasSplats) {
       stage.attach(this.scene);
       try {
-        await stage.settle(this.scene, camera, aborted);
+        const { stale } = await stage.settle(this.scene, camera, aborted, { motion });
         this.render(renderer, target, camera);
+        return { stale };
       } finally {
         stage.detach(this.scene);
       }
-      return;
     }
     this.render(renderer, target, camera);
+    return { stale: false };
   }
 
   render(renderer, target, camera) {

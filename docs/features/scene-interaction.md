@@ -26,8 +26,8 @@ Dar a quem automatiza e à futura UI, sobre uma cena dirigida já anexada (F036)
 4. um **ciclo de gesto** com candidato de preview separado do documento, que no commit vira
    **um lote** na pilha de undo existente.
 
-Não acrescenta regra a `directed_scene` nem a `scene_edit`: o catálogo continua com as **8
-propriedades**, o lote continua passando por importador + gates estrutural e temporal, e o histórico
+Não acrescenta regra a `directed_scene` nem a `scene_edit`: o catálogo é o de [F034](scene-edit.md) (nesta fatia eram **8
+propriedades**; a ampliação S6 para 21 entradas não muda este contrato), o lote continua passando por importador + gates estrutural e temporal, e o histórico
 continua sendo o snapshot de `EditorState`. Fora, de propósito: render/preview visual, handles e
 hit-testing (BB08), inspector (BL014), a árvore de automação da UI (`state/tree.rs`), sockets do
 desktop, composição de dois tipos de gesto (esta, de cena, e a de propriedades da frente L, que o
@@ -207,7 +207,7 @@ binário de debug; o teste `the_executable_keeps_gesture_ids_apart_…` automati
 
 ## UI e CLI da janela
 
-A janela executa os mesmos `scene.*` por `Op::Run(Command::Scene(..))`. Árvore/seleção/propriedades, Escape e confirmação por release estão em [F039-UI](scene-inspector.md). Socket e pixels foram exercitados no corpus da rodada M/N/O/P; testes GPUI injetam entrada, sem prova de ponteiro físico. Aparência e handles seguem pendentes (BL087/BL015).
+A janela executa os mesmos `scene.*` por `Op::Run(Command::Scene(..))`. Árvore/seleção/propriedades, Escape e confirmação por release estão em [F039-UI](scene-inspector.md). Socket e pixels foram exercitados no corpus da rodada M/N/O/P; testes GPUI injetam entrada, sem prova de ponteiro físico. Aparência segue pendente (BL087). O gizmo de translação (handles `x`/`y`/`z`/centro, arrasto = um gesto F039 = uma entrada de undo, `scene.translate`) está em [scene-gizmo.md](scene-gizmo.md) (F055, BL015, a validar); rotação/escala/snapping seguem pendentes (BL015.1).
 
 ## Evidências e status
 

@@ -7,6 +7,11 @@
 //! only when the worker observed it and finished its cleanup.
 //!
 //! Concurrency is bounded (`max_running`), so a large import cannot starve an export.
+//!
+//! A job that produced a result for the project holds it ([`ResultState::Pending`]) until a
+//! caller applies it or discards it (BL094). `prune` never drops a job that still holds a result
+//! or is discarding one, and [`JobRegistry::begin_discard`] is the single atomic gate that
+//! refuses an active, applied or already discarded job with a typed error.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -27,10 +32,15 @@ pub enum JobKind {
     /// Read-only checks that touch files or tools (export and package preflight, package verify).
     Preflight,
     Proxy,
+    /// Library thumbnails of splats and scenes (BL144): one frame each, through the renderer.
+    Thumbnail,
     Package,
     Restore,
     ProjectImport,
     VideoExport,
+    /// Background removal of a finished result nobody applied (`job.discard`, BL094). It is not
+    /// cancellable: it keeps the ownership of the files until it has taken them back.
+    Discard,
 }
 
 impl JobKind {
@@ -41,11 +51,54 @@ impl JobKind {
             Self::Probe => "probe",
             Self::Preflight => "preflight",
             Self::Proxy => "proxy",
+            Self::Thumbnail => "thumbnail",
             Self::Package => "package",
             Self::Restore => "restore",
             Self::ProjectImport => "project-import",
             Self::VideoExport => "video-export",
+            Self::Discard => "discard",
         }
+    }
+
+    pub fn is_cancellable(self) -> bool {
+        !matches!(self, Self::Discard)
+    }
+}
+
+/// What became of the result a job produced for the project. Part of the job's observable state
+/// (`result_state` in `job.get`/`job.list`).
+///
+/// ```text
+/// none ──(body keeps a result)──> pending ──apply──> applied
+///                                    └──job.discard──> discarding ──> discarded
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ResultState {
+    /// The job produced nothing to apply (or failed, or was cancelled): nothing to discard.
+    #[default]
+    None,
+    /// The job finished (or is finishing) with a result that waits to be applied or discarded.
+    Pending,
+    /// A discard job is taking the result's files back; the result still owns them.
+    Discarding,
+    Discarded,
+    Applied,
+}
+
+impl ResultState {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Pending => "pending",
+            Self::Discarding => "discarding",
+            Self::Discarded => "discarded",
+            Self::Applied => "applied",
+        }
+    }
+
+    /// A result in this state must outlive `prune`: dropping the record would lose its owner.
+    pub fn is_held(self) -> bool {
+        matches!(self, Self::Pending | Self::Discarding)
     }
 }
 
@@ -148,6 +201,26 @@ impl From<JobError> for CommandError {
             "verification_failed" => "verification_failed",
             "destination_exists" => "destination_exists",
             "permission_denied" => "permission_denied",
+            // The bundle importer's vocabulary (`scene.attach`), so the same refusal reads the
+            // same whether it came from the command or from the job that prepared it.
+            "bundle_unreadable" => "bundle_unreadable",
+            "bundle_too_large" => "bundle_too_large",
+            "invalid_json" => "invalid_json",
+            "invalid_bundle" => "invalid_bundle",
+            "resource_changed" => "resource_changed",
+            "resource_missing" => "resource_missing",
+            // The mix of a directed scene export (F042A) and the resolver errors a job can surface:
+            // a person can act on each of them, so none is hidden behind `job_failed`.
+            "unsupported" => "unsupported",
+            "audio_source_short" => "audio_source_short",
+            "audio_window_invalid" => "audio_window_invalid",
+            "audio_window_short" => "audio_window_short",
+            "audio_too_long" => "audio_too_long",
+            "scene_resources_not_loaded" => "scene_resources_not_loaded",
+            "resource_unknown" => "resource_unknown",
+            "resource_not_carried" => "resource_not_carried",
+            "stale_generation" => "stale_generation",
+            "resource_budget_exceeded" => "resource_budget_exceeded",
             _ => "job_failed",
         };
         let mut mapped = Self::new(code, error.message);
@@ -173,6 +246,8 @@ pub struct JobInfo {
     pub error: Option<JobError>,
     pub result: Option<Value>,
     pub cancel_requested: bool,
+    /// What became of the result of this job (BL094).
+    pub result_state: ResultState,
     pub created_ms: u64,
     pub started_ms: Option<u64>,
     pub finished_ms: Option<u64>,
@@ -199,6 +274,7 @@ impl JobInfo {
             "eta_seconds": self.eta_seconds(now_ms()),
             "warnings": self.warnings, "error": self.error.as_ref().map(JobError::to_json),
             "result": self.result, "cancel_requested": self.cancel_requested,
+            "result_state": self.result_state.label(),
             "created_ms": self.created_ms, "started_ms": self.started_ms,
             "finished_ms": self.finished_ms,
         })
@@ -308,6 +384,14 @@ impl JobContext {
         self.registry
             .update(&self.id, |info| info.warnings.push(message));
     }
+
+    /// The body is about to return a result that waits to be applied or discarded: the job is
+    /// not prunable until one of the two happens. A failure or cancellation clears it again.
+    pub fn hold_result(&self) {
+        self.registry.update(&self.id, |info| {
+            info.result_state = ResultState::Pending;
+        });
+    }
 }
 
 impl JobRegistry {
@@ -355,6 +439,7 @@ impl JobRegistry {
                 error: None,
                 result: None,
                 cancel_requested: false,
+                result_state: ResultState::None,
                 created_ms: now_ms(),
                 started_ms: None,
                 finished_ms: None,
@@ -404,10 +489,12 @@ impl JobRegistry {
                     info.state = JobState::Cancelled;
                     info.stage = "cancelled".into();
                     info.error = Some(error);
+                    info.result_state = ResultState::None;
                 }
                 Err(error) => {
                     info.state = JobState::Failed;
                     info.error = Some(error);
+                    info.result_state = ResultState::None;
                 }
             }
         }
@@ -487,6 +574,18 @@ impl JobRegistry {
             .collect()
     }
 
+    /// The jobs for which `keep` answers `true`, in creation order. Only those are cloned (a
+    /// finished job carries its whole `result` JSON), which matters for a caller that looks at the
+    /// registry on every tick of a window and wants a handful of jobs out of many.
+    pub fn matching(&self, mut keep: impl FnMut(&JobInfo) -> bool) -> Vec<JobInfo> {
+        self.lock()
+            .jobs
+            .iter()
+            .filter(|slot| keep(&slot.info))
+            .map(|slot| slot.info.clone())
+            .collect()
+    }
+
     pub fn active(&self) -> Vec<JobInfo> {
         self.list()
             .into_iter()
@@ -507,6 +606,15 @@ impl JobRegistry {
             return Err(CommandError::new(
                 "job_finished",
                 format!("Job `{id}` already {}", slot.info.state.label()),
+            ));
+        }
+        if !slot.info.kind.is_cancellable() {
+            return Err(CommandError::new(
+                "job_not_cancellable",
+                format!(
+                    "Job `{id}` is a {} job: it keeps the files of the result until it has taken them back",
+                    slot.info.kind.label()
+                ),
             ));
         }
         slot.token.cancel();
@@ -550,13 +658,16 @@ impl JobRegistry {
     }
 
     /// Drops finished jobs beyond `keep`, oldest first, so a long session does not grow forever.
+    /// A job that still holds a result nobody applied or discarded, or whose result is being
+    /// discarded, is neither dropped nor counted: forgetting it would lose the owner of its
+    /// files (BL094).
     pub fn prune(&self, keep: usize) {
         let mut inner = self.lock();
         let mut finished: VecDeque<usize> = inner
             .jobs
             .iter()
             .enumerate()
-            .filter(|(_, slot)| slot.info.state.is_final())
+            .filter(|(_, slot)| slot.info.state.is_final() && !slot.info.result_state.is_held())
             .map(|(index, _)| index)
             .collect();
         while finished.len() > keep {
@@ -565,6 +676,76 @@ impl JobRegistry {
                 finished.iter_mut().for_each(|next| *next -= 1);
             }
         }
+    }
+
+    /// The caller consumed the pending result of `id`: `applied` when the project took it,
+    /// otherwise it was refused and is gone (discarded). Only a result that is still pending
+    /// moves; one a discard already claimed stays with the discard (`false`).
+    pub fn settle(&self, id: &str, applied: bool) -> bool {
+        let mut inner = self.lock();
+        let Some(slot) = inner.jobs.iter_mut().find(|slot| slot.info.id == id) else {
+            return false;
+        };
+        let pending = slot.info.result_state == ResultState::Pending;
+        if pending {
+            slot.info.result_state = if applied {
+                ResultState::Applied
+            } else {
+                ResultState::Discarded
+            };
+        }
+        drop(inner);
+        self.shared.changed.notify_all();
+        pending
+    }
+
+    /// Claims the result of `id` for a discard, atomically: of two concurrent callers exactly one
+    /// wins, and an apply can no longer take the result. Refusals are typed and change nothing:
+    /// `unknown_element`, `job_running` (cancel it and wait for the end first), `job_applied`,
+    /// `job_discarding`, `job_discarded`, `job_nothing_to_discard` (it produced no result, or
+    /// failed or was cancelled).
+    pub fn begin_discard(&self, id: &str) -> Result<JobInfo, CommandError> {
+        let mut inner = self.lock();
+        let slot = inner
+            .jobs
+            .iter_mut()
+            .find(|slot| slot.info.id == id)
+            .ok_or_else(|| CommandError::unknown_element("job", id))?;
+        if !slot.info.state.is_final() {
+            return Err(CommandError::new(
+                "job_running",
+                format!(
+                    "Job `{id}` is still {}: cancel it and wait for its end before discarding",
+                    slot.info.state.label()
+                ),
+            ));
+        }
+        let refusal = match slot.info.result_state {
+            ResultState::Pending => None,
+            ResultState::Applied => Some((
+                "job_applied",
+                "its result was already applied to the project",
+            )),
+            ResultState::Discarding => Some(("job_discarding", "its result is being discarded")),
+            ResultState::Discarded => Some(("job_discarded", "its result was already discarded")),
+            ResultState::None => Some((
+                "job_nothing_to_discard",
+                "it produced no result (it failed, was cancelled or changes nothing)",
+            )),
+        };
+        if let Some((code, why)) = refusal {
+            return Err(CommandError::new(code, format!("Job `{id}`: {why}")));
+        }
+        slot.info.result_state = ResultState::Discarding;
+        let info = slot.info.clone();
+        drop(inner);
+        self.shared.changed.notify_all();
+        Ok(info)
+    }
+
+    /// The discard of `id` ended: its result no longer exists.
+    pub fn finish_discard(&self, id: &str) {
+        self.update(id, |info| info.result_state = ResultState::Discarded);
     }
 
     pub fn to_json(&self) -> Value {
@@ -674,6 +855,26 @@ mod tests {
         let command: CommandError = info.error.unwrap().into();
         assert_eq!(command.code, "disk_full");
 
+        // Codes a person can act on keep their own name; only the unnamed ones become `job_failed`.
+        for code in [
+            "resource_changed",
+            "resource_missing",
+            "unsupported",
+            "audio_source_short",
+            "audio_window_invalid",
+            "audio_window_short",
+            "audio_too_long",
+            "scene_resources_not_loaded",
+            "resource_unknown",
+            "stale_generation",
+        ] {
+            let command: CommandError = JobError::new(code, "x").into();
+            assert_eq!(command.code, code);
+        }
+        let unnamed: CommandError = JobError::new("something_new", "x").into();
+        assert_eq!(unnamed.code, "job_failed");
+        assert_eq!(unnamed.details.unwrap()["job_code"], "something_new");
+
         let panicked = registry.spawn(JobKind::Package, "panic", |_| panic!("boom"));
         let info = registry.wait(&panicked, Duration::from_secs(5)).unwrap();
         assert_eq!(info.state, JobState::Failed);
@@ -691,5 +892,201 @@ mod tests {
         assert!(outcome.is_ok());
         assert_eq!(registry.get(&id).unwrap().state, JobState::Succeeded);
         assert_eq!(registry.list().len(), 1);
+    }
+
+    fn finished_with_result(registry: &JobRegistry) -> JobId {
+        let id = registry.spawn(JobKind::Import, "result", |ctx| {
+            ctx.hold_result();
+            Ok(json!({ "kept": true }))
+        });
+        registry.wait(&id, Duration::from_secs(5)).unwrap();
+        id
+    }
+
+    #[test]
+    fn a_result_is_pending_until_it_is_settled_and_prune_keeps_it() {
+        let registry = JobRegistry::new(2);
+        let plain = registry.spawn(JobKind::Probe, "plain", |_| Ok(json!(1)));
+        registry.wait(&plain, Duration::from_secs(5)).unwrap();
+        let held = finished_with_result(&registry);
+        assert_eq!(
+            registry.get(&plain).unwrap().result_state,
+            ResultState::None
+        );
+        assert_eq!(
+            registry.get(&held).unwrap().result_state,
+            ResultState::Pending
+        );
+        assert_eq!(
+            registry.get(&held).unwrap().to_json()["result_state"],
+            "pending"
+        );
+
+        registry.prune(0);
+        assert!(registry.get(&plain).is_none(), "a plain job is forgotten");
+        assert!(registry.get(&held).is_some(), "a held result is not");
+
+        assert!(registry.settle(&held, true));
+        assert_eq!(
+            registry.get(&held).unwrap().result_state,
+            ResultState::Applied
+        );
+        assert!(
+            !registry.settle(&held, false),
+            "settling twice changes nothing"
+        );
+        assert_eq!(
+            registry.get(&held).unwrap().result_state,
+            ResultState::Applied
+        );
+        registry.prune(0);
+        assert!(registry.get(&held).is_none());
+    }
+
+    #[test]
+    fn a_failed_or_cancelled_job_holds_nothing() {
+        let registry = JobRegistry::new(2);
+        let failed = registry.spawn(JobKind::Import, "bad", |ctx| {
+            ctx.hold_result();
+            Err(JobError::new("io_error", "late failure"))
+        });
+        registry.wait(&failed, Duration::from_secs(5)).unwrap();
+        assert_eq!(
+            registry.get(&failed).unwrap().result_state,
+            ResultState::None
+        );
+        registry.prune(0);
+        assert!(registry.get(&failed).is_none());
+
+        // Cancelled for real: the body held a result, then observed the token and ended with
+        // `cancelled`. The cancellation (not a failure) is what clears the hold.
+        let started = CancelToken::new();
+        let seen = started.clone();
+        let cancelled = registry.spawn(JobKind::Import, "stopped", move |ctx| {
+            ctx.hold_result();
+            seen.cancel();
+            while !ctx.is_cancelled() {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            Err(JobError::cancelled())
+        });
+        while !started.is_cancelled() {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        registry.cancel(&cancelled).unwrap();
+        let info = registry.wait(&cancelled, Duration::from_secs(5)).unwrap();
+        assert_eq!(info.state, JobState::Cancelled);
+        assert_eq!(info.result_state, ResultState::None);
+        assert_eq!(
+            registry.begin_discard(&cancelled).unwrap_err().code,
+            "job_nothing_to_discard"
+        );
+        registry.prune(0);
+        assert!(registry.get(&cancelled).is_none());
+    }
+
+    #[test]
+    fn matching_clones_only_the_jobs_it_keeps() {
+        let registry = JobRegistry::new(2);
+        let ids: Vec<JobId> = (0..3)
+            .map(|index| {
+                registry.spawn(JobKind::Hash, &format!("hash {index}"), move |_| {
+                    Ok(json!({ "index": index }))
+                })
+            })
+            .collect();
+        for id in &ids {
+            registry.wait(id, Duration::from_secs(5)).unwrap();
+        }
+        let mut looked = 0;
+        let kept = registry.matching(|info| {
+            looked += 1;
+            info.label == "hash 1"
+        });
+        assert_eq!(looked, 3, "every job is looked at, under the lock");
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].id, ids[1]);
+        assert_eq!(kept[0].result.as_ref().unwrap()["index"], 1);
+    }
+
+    #[test]
+    fn begin_discard_is_one_atomic_typed_gate() {
+        let registry = JobRegistry::new(2);
+        let held = finished_with_result(&registry);
+        let code = |id: &str| registry.begin_discard(id).unwrap_err().code;
+        assert_eq!(code("job-404"), "unknown_element");
+
+        let running = registry.spawn(JobKind::Proxy, "running", |ctx| {
+            while !ctx.is_cancelled() {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            Err(JobError::cancelled())
+        });
+        while registry.get(&running).unwrap().state != JobState::Running {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(code(&running), "job_running");
+        registry.cancel(&running).unwrap();
+        registry.wait(&running, Duration::from_secs(5)).unwrap();
+        assert_eq!(
+            code(&running),
+            "job_nothing_to_discard",
+            "cancelled: nothing"
+        );
+
+        assert_eq!(
+            registry.begin_discard(&held).unwrap().result_state,
+            ResultState::Discarding
+        );
+        assert_eq!(code(&held), "job_discarding", "the second caller loses");
+        registry.finish_discard(&held);
+        assert_eq!(code(&held), "job_discarded");
+
+        let applied = finished_with_result(&registry);
+        registry.settle(&applied, true);
+        assert_eq!(code(&applied), "job_applied");
+        assert_eq!(
+            registry.get(&applied).unwrap().result_state,
+            ResultState::Applied,
+            "a refusal changes nothing"
+        );
+    }
+
+    #[test]
+    fn a_result_being_discarded_cannot_be_applied_and_is_not_pruned() {
+        let registry = JobRegistry::new(2);
+        let held = finished_with_result(&registry);
+        registry.begin_discard(&held).unwrap();
+        assert!(!registry.settle(&held, true), "the discard owns it now");
+        registry.prune(0);
+        assert_eq!(
+            registry.get(&held).unwrap().result_state,
+            ResultState::Discarding
+        );
+        registry.finish_discard(&held);
+        registry.prune(0);
+        assert!(registry.get(&held).is_none());
+    }
+
+    #[test]
+    fn a_discard_job_is_not_cancellable() {
+        let registry = JobRegistry::new(1);
+        let release = CancelToken::new();
+        let hold = release.clone();
+        let id = registry.spawn(JobKind::Discard, "discard", move |_| {
+            while !hold.is_cancelled() {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            Ok(json!(null))
+        });
+        let error = registry.cancel(&id).unwrap_err();
+        assert_eq!(error.code, "job_not_cancellable");
+        assert!(!registry.get(&id).unwrap().cancel_requested);
+        assert_eq!(registry.cancel_all(), 0);
+        release.cancel();
+        assert_eq!(
+            registry.wait(&id, Duration::from_secs(5)).unwrap().state,
+            JobState::Succeeded
+        );
     }
 }

@@ -10,13 +10,18 @@ use std::path::PathBuf;
 use serde_json::{Value, json};
 
 use crate::assets::{Asset, Declared, MediaKind, ProxyFormat};
+use crate::camera_keys::{self, CameraKey, Easing};
 use crate::content::{Camera, TextSpec};
+use crate::directed_scene::Vec3;
 use crate::id::Id;
 use crate::plan::{PlanRequest, PlanTime, PreviewIntent};
 use crate::preview::PreviewMode;
 use crate::scene_edit::{PropertyRef, parse_batch};
-use crate::scene_interaction::{FrameAt, GestureCommand, SelectMode};
+use crate::scene_interaction::{
+    CancelReason, FrameAt, GestureCommand, GizmoCommand, Point, PointerCommand, SelectMode,
+};
 use crate::scene_project::{CameraAt, SceneCommand, SceneSource};
+use crate::state::camera_edit::CameraKeysCommand;
 use crate::state::timeline::{SequenceSettings, TrackKind};
 use crate::state::{Command, CommandError, EditorState, ProjectSettings, Raw};
 use crate::time::{Rate, Ratio};
@@ -80,6 +85,8 @@ pub enum Op {
     Capabilities,
     RenderStatus,
     Status,
+    /// What the window header says about the open project (`project.header`).
+    Header,
 }
 
 fn invalid(message: impl Into<String>) -> CommandError {
@@ -131,6 +138,23 @@ fn time_field(request: &Value, key: &str) -> Result<Option<Ratio>, CommandError>
             json!({ "format": {"num": 1, "den": 24} }),
         )
     })
+}
+
+/// `None` when the request does not say: omitting the easing is never a choice of `linear`.
+fn easing_field(request: &Value) -> Result<Option<Easing>, CommandError> {
+    match request.get("easing").filter(|raw| !raw.is_null()) {
+        None => Ok(None),
+        Some(raw) => raw
+            .as_str()
+            .and_then(Easing::parse)
+            .map(Some)
+            .ok_or_else(|| {
+                CommandError::invalid_value(
+                    "`easing` is not an option",
+                    json!({ "options": Easing::labels() }),
+                )
+            }),
+    }
 }
 
 fn rate_field(request: &Value, key: &str) -> Result<Option<Rate>, CommandError> {
@@ -221,6 +245,16 @@ fn probes(request: &Value) -> Result<Vec<(u32, u32)>, CommandError> {
         .collect()
 }
 
+/// `capture`: `auto` (default) or `ignore`, what to do with the camera metadata of a SHARP splat.
+pub fn capture_choice(request: &Value) -> Result<crate::sharp::Choice, CommandError> {
+    match request.get("capture") {
+        None | Some(Value::Null) => Ok(crate::sharp::Choice::Auto),
+        Some(Value::String(raw)) => crate::sharp::Choice::parse(raw)
+            .ok_or_else(|| invalid("`capture` is `auto` or `ignore`")),
+        Some(_) => Err(invalid("`capture` is `auto` or `ignore`")),
+    }
+}
+
 fn asset_add(request: &Value) -> Result<Command, CommandError> {
     let kind = kind_field(request)?;
     let name = string(request, "name")?.to_string();
@@ -232,6 +266,7 @@ fn asset_add(request: &Value) -> Result<Command, CommandError> {
         text: None,
         frames: request.get("frames").and_then(Value::as_i64),
         first: request.get("first").and_then(Value::as_i64),
+        capture: capture_choice(request)?,
     };
     let asset = if kind == MediaKind::Text {
         let spec = request
@@ -326,6 +361,7 @@ pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, Comm
     let op = string(request, "op")?;
     let command = match op {
         "status" => return Ok(Some(Op::Status)),
+        "project.header" => return Ok(Some(Op::Header)),
         "capabilities" => return Ok(Some(Op::Capabilities)),
         "render.status" => return Ok(Some(Op::RenderStatus)),
         "project.create" => return Ok(Some(Op::CreateProject(project_create(request)?))),
@@ -348,6 +384,30 @@ pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, Comm
             clip: string(request, "clip")?.to_string(),
             camera: Camera::from_json(request)?,
         },
+        "clip.camera_capture" => Command::SetClipCameraFromCapture {
+            clip: string(request, "clip")?.to_string(),
+        },
+        "clip.camera_key" => Command::CameraKeys(CameraKeysCommand::Set {
+            clip: string(request, "clip")?.to_string(),
+            key: CameraKey::from_json(request)?,
+            easing: easing_field(request)?,
+        }),
+        "clip.camera_key.remove" => Command::CameraKeys(CameraKeysCommand::Remove {
+            clip: string(request, "clip")?.to_string(),
+            time: time_field(request, "time")?.ok_or_else(|| invalid("Expected field `time`"))?,
+        }),
+        "clip.camera_key.capture" => Command::CameraKeys(CameraKeysCommand::Capture {
+            clip: string(request, "clip")?.to_string(),
+            easing: easing_field(request)?,
+        }),
+        "clip.camera_keys" => Command::CameraKeys(CameraKeysCommand::Replace {
+            clip: string(request, "clip")?.to_string(),
+            keys: camera_keys::keys_from_json(
+                request
+                    .get("keys")
+                    .ok_or_else(|| invalid("Expected array field `keys`"))?,
+            )?,
+        }),
         "clip.property" => Command::SetClipProperty {
             clip: string(request, "clip")?.to_string(),
             property: string(request, "property")?.to_string(),
@@ -563,6 +623,22 @@ fn scene_command(op: &str, request: &Value) -> Result<SceneCommand, CommandError
             )?,
             dry_run: optional_bool(request, "dry_run")?.unwrap_or(false),
         },
+        // F016: the effects layer. Shape only; the catalog, IDs and layer rules are the core's.
+        "scene.fx.edit" => SceneCommand::FxEdit {
+            scene: scene()?,
+            ops: crate::scene_edit::parse_fx_batch(
+                request
+                    .get("ops")
+                    .ok_or_else(|| invalid("Expected array field `ops`"))?,
+            )?,
+            dry_run: optional_bool(request, "dry_run")?.unwrap_or(false),
+        },
+        "scene.fx.list" => SceneCommand::FxList { scene: scene()? },
+        "scene.fx.catalog" => SceneCommand::FxCatalog,
+        "scene.fx.frame" => SceneCommand::FxFrame {
+            scene: scene()?,
+            at: frame_at(request)?,
+        },
         "scene.list" => SceneCommand::List,
         "scene.capabilities" => SceneCommand::Capabilities,
         "scene.catalog" => SceneCommand::Catalog,
@@ -570,6 +646,7 @@ fn scene_command(op: &str, request: &Value) -> Result<SceneCommand, CommandError
         "scene.properties" => SceneCommand::Properties {
             scene: scene()?,
             path_prefix: optional_string(request, "prefix")?,
+            components: optional_bool(request, "components")?.unwrap_or(false),
         },
         "scene.get" => SceneCommand::Get {
             scene: scene()?,
@@ -622,6 +699,42 @@ fn scene_command(op: &str, request: &Value) -> Result<SceneCommand, CommandError
             gesture: string(request, "gesture")?.to_string(),
         }),
         "scene.gesture.status" => SceneCommand::Gesture(GestureCommand::Status),
+        // F055: the translation gizmo. Shape only; the geometry and every rule are the core's.
+        "scene.gizmo.state" => SceneCommand::Gizmo(GizmoCommand::State {
+            scene: scene()?,
+            at: frame_at(request)?,
+        }),
+        "scene.gizmo.hit" => SceneCommand::Gizmo(GizmoCommand::Hit {
+            scene: scene()?,
+            at: frame_at(request)?,
+            point: picture_point(request, "point")?,
+        }),
+        "scene.pointer.down" => SceneCommand::Gizmo(GizmoCommand::Pointer(PointerCommand::Down {
+            scene: scene()?,
+            at: frame_at(request)?,
+            point: picture_point(request, "point")?,
+            additive: optional_bool(request, "additive")?.unwrap_or(false),
+        })),
+        "scene.pointer.move" => SceneCommand::Gizmo(GizmoCommand::Pointer(PointerCommand::Move {
+            point: picture_point(request, "point")?,
+        })),
+        "scene.pointer.up" => SceneCommand::Gizmo(GizmoCommand::Pointer(PointerCommand::Up {
+            point: match request.get("point").filter(|raw| !raw.is_null()) {
+                Some(_) => Some(picture_point(request, "point")?),
+                None => None,
+            },
+        })),
+        "scene.pointer.cancel" => {
+            SceneCommand::Gizmo(GizmoCommand::Pointer(PointerCommand::Cancel {
+                reason: cancel_reason(request)?,
+            }))
+        }
+        "scene.translate" => SceneCommand::Gizmo(GizmoCommand::Translate {
+            scene: scene()?,
+            entity: string(request, "entity")?.to_string(),
+            at: frame_at(request)?,
+            delta: vector(request, "delta")?,
+        }),
         other => {
             return Err(CommandError::new(
                 "unknown_operation",
@@ -676,6 +789,61 @@ fn select_mode(request: &Value) -> Result<SelectMode, CommandError> {
     })
 }
 
+/// `{ "u": 0..1, "v": 0..1 }`: a position on the picture. Range is the core's to judge (a press
+/// must be inside, a move may leave), so only the shape is checked here.
+fn picture_point(request: &Value, key: &str) -> Result<Point, CommandError> {
+    let bad = || {
+        invalid(format!(
+            "Field `{key}` must be {{\"u\": number, \"v\": number}}"
+        ))
+    };
+    let raw = request.get(key).ok_or_else(bad)?;
+    let object = raw.as_object().ok_or_else(bad)?;
+    if object.keys().any(|name| name != "u" && name != "v") {
+        return Err(bad());
+    }
+    Ok(Point {
+        u: raw.get("u").and_then(Value::as_f64).ok_or_else(bad)?,
+        v: raw.get("v").and_then(Value::as_f64).ok_or_else(bad)?,
+    })
+}
+
+/// `{ "x", "y", "z" }` numbers.
+fn vector(request: &Value, key: &str) -> Result<Vec3, CommandError> {
+    let bad = || {
+        invalid(format!(
+            "Field `{key}` must be {{\"x\": number, \"y\": number, \"z\": number}}"
+        ))
+    };
+    let raw = request.get(key).ok_or_else(bad)?;
+    let object = raw.as_object().ok_or_else(bad)?;
+    if object
+        .keys()
+        .any(|name| !["x", "y", "z"].contains(&name.as_str()))
+    {
+        return Err(bad());
+    }
+    let axis = |name: &str| raw.get(name).and_then(Value::as_f64).ok_or_else(bad);
+    Ok(Vec3 {
+        x: axis("x")?,
+        y: axis("y")?,
+        z: axis("z")?,
+    })
+}
+
+/// `api` unless the request says otherwise.
+fn cancel_reason(request: &Value) -> Result<CancelReason, CommandError> {
+    let Some(raw) = optional_string(request, "reason")? else {
+        return Ok(CancelReason::Api);
+    };
+    CancelReason::parse(&raw).ok_or_else(|| {
+        CommandError::invalid_value(
+            format!("`{raw}` is not a cancel reason"),
+            json!({ "options": ["escape", "blur", "pointer_cancel", "hidden", "unavailable", "api"] }),
+        )
+    })
+}
+
 /// Exactly one of `frame` or `time` (exact seconds).
 fn frame_at(request: &Value) -> Result<FrameAt, CommandError> {
     let frame = request.get("frame").filter(|raw| !raw.is_null());
@@ -686,8 +854,9 @@ fn frame_at(request: &Value) -> Result<FrameAt, CommandError> {
     }
 }
 
-/// Exactly one of `bundle` (a JSON object), `text` (the bundle as a string) or `path`.
-fn scene_source(request: &Value) -> Result<SceneSource, CommandError> {
+/// Exactly one of `bundle` (a JSON object), `text` (the bundle as a string) or `path`. Public so
+/// an adapter that attaches off-thread reads the same request shape as `scene.attach`.
+pub fn scene_source(request: &Value) -> Result<SceneSource, CommandError> {
     let given: Vec<&str> = ["bundle", "text", "path"]
         .into_iter()
         .filter(|key| request.get(key).is_some_and(|value| !value.is_null()))

@@ -6,8 +6,10 @@
 
 use serde_json::{Value, json};
 
+use crate::perf::{self, PerfMeterCommand};
 use crate::plan::PreviewIntent;
 use crate::preview::PreviewMode;
+use crate::state::camera_edit::{CameraKeysCommand, KEY_FIELDS};
 use crate::state::inspector::{InspectorTab, PropertyKind, property_def};
 use crate::state::layout::{Destination, GroupRef, Layout, LayoutCommand, PanelKind, Region, Side};
 use crate::state::timeline::{Placement, TrackFlag};
@@ -24,6 +26,8 @@ pub enum Parsed {
     /// A change to the dock; the server validates it against the live area.
     Layout(LayoutCommand),
     ToggleTheme,
+    /// Show, hide or toggle the debug performance meter (F049). Window state, like the theme.
+    PerfMeter(PerfMeterCommand),
     /// Reload the viewport page. A window concern: headless sessions have no page.
     ReloadViewport,
 }
@@ -85,6 +89,13 @@ pub fn parse_set(target: &str, field: &str, value: &Raw) -> Result<Parsed, Comma
         },
         ("dock", "layout") => {
             return Ok(Parsed::Layout(LayoutCommand::Load { json: value.text() }));
+        }
+        (perf::TARGET, "visible") => {
+            return Ok(Parsed::PerfMeter(if value.boolean()? {
+                PerfMeterCommand::Show
+            } else {
+                PerfMeterCommand::Hide
+            }));
         }
         _ => return parse_set_entity(target, field, value),
     };
@@ -188,6 +199,26 @@ fn parse_set_entity(target: &str, field: &str, value: &Raw) -> Result<Parsed, Co
             edge,
             frame: value.integer()?,
         }
+    } else if let Some(id) = split(target, "clip_text:") {
+        if !["content", "size", "color"].contains(&field) {
+            return Err(unknown_field(target, field));
+        }
+        Command::SetClipTextField {
+            clip: id.to_string(),
+            field: field.to_string(),
+            value: value.clone(),
+        }
+    } else if let Some(id) = split(target, "camera_key:") {
+        let (clip, index) = parse_camera_key_ref(id, target)?;
+        if !KEY_FIELDS.contains(&field) {
+            return Err(unknown_field(target, field));
+        }
+        Command::CameraKeys(CameraKeysCommand::Field {
+            clip,
+            index,
+            field: field.to_string(),
+            value: value.clone(),
+        })
     } else if let Some(id) = split(target, "folder:") {
         match field {
             "expanded" => Command::SetFolderExpanded {
@@ -229,6 +260,20 @@ fn parse_set_entity(target: &str, field: &str, value: &Raw) -> Result<Parsed, Co
     Ok(Parsed::Run(command))
 }
 
+/// `<clip>:<index>` of a `camera_key:` target.
+fn parse_camera_key_ref(id: &str, target: &str) -> Result<(String, usize), CommandError> {
+    id.rsplit_once(':')
+        .and_then(|(clip, index)| Some((clip.to_string(), index.parse::<usize>().ok()?)))
+        .filter(|(clip, _)| !clip.is_empty())
+        .ok_or_else(|| {
+            CommandError::new(
+                "unknown_element",
+                format!("`{target}` is not `camera_key:<clip>:<index>`"),
+            )
+            .target(target)
+        })
+}
+
 fn unknown_field(target: &str, field: &str) -> CommandError {
     CommandError::new(
         "unknown_field",
@@ -254,6 +299,7 @@ pub fn parse_invoke(
     }
     let command = match (target, action) {
         ("toolbar.theme", "toggle") => return Ok(Parsed::ToggleTheme),
+        (perf::TARGET, "toggle") => return Ok(Parsed::PerfMeter(PerfMeterCommand::Toggle)),
         ("timeline.snap", "toggle") => Command::SetSnap {
             snap: !state.timeline.snap,
         },
@@ -289,9 +335,31 @@ pub fn parse_invoke(
             },
         },
         ("monitor.reload", "invoke") => return Ok(Parsed::ReloadViewport),
+        ("camera_keys.capture", "invoke") => Command::CameraKeys(CameraKeysCommand::Capture {
+            clip: selected_scene_clip(state, target)?,
+            easing: None,
+        }),
+        ("camera.capture", "invoke") => Command::SetClipCameraFromCapture {
+            clip: selected_scene_clip(state, target)?,
+        },
+        ("camera_keys.clear", "invoke") => Command::CameraKeys(CameraKeysCommand::Replace {
+            clip: selected_scene_clip(state, target)?,
+            keys: Vec::new(),
+        }),
         _ => return parse_invoke_entity(state, target, action),
     };
     Ok(Parsed::Run(command))
+}
+
+fn selected_scene_clip(state: &EditorState, target: &str) -> Result<String, CommandError> {
+    state
+        .selected_clip()
+        .filter(|clip| clip.kind == crate::state::timeline::ClipKind::Scene)
+        .map(|clip| clip.id.to_string())
+        .ok_or_else(|| {
+            CommandError::new("no_selection", "Select a scene clip in the timeline first")
+                .target(target)
+        })
 }
 
 /// Dock invocations, or `None` when `target` is not a dock element.
@@ -406,6 +474,26 @@ fn parse_invoke_entity(
                 flag: TrackFlag::Muted,
                 value: !current.is_some_and(|track| track.muted),
             },
+            _ => return Err(unknown()),
+        }
+    } else if let Some(id) = split(target, "camera_key:") {
+        let (clip, index) = parse_camera_key_ref(id, target)?;
+        let key = state
+            .timeline
+            .clip(clip.as_str())
+            .and_then(|entry| entry.camera_keys.get(index));
+        match (action, key) {
+            ("remove", Some(key)) => Command::CameraKeys(CameraKeysCommand::Remove {
+                clip,
+                time: key.time,
+            }),
+            ("remove", None) => {
+                return Err(CommandError::new(
+                    "unknown_element",
+                    format!("`{target}` is not a camera key of the project"),
+                )
+                .target(target));
+            }
             _ => return Err(unknown()),
         }
     } else if let Some(id) = split(target, "inspector.") {
@@ -606,7 +694,9 @@ mod tests {
         match parsed.unwrap() {
             Parsed::Run(command) => command,
             Parsed::Layout(command) => panic!("unexpected dock command {command:?}"),
-            Parsed::ToggleTheme | Parsed::ReloadViewport => panic!("unexpected window command"),
+            Parsed::ToggleTheme | Parsed::PerfMeter(_) | Parsed::ReloadViewport => {
+                panic!("unexpected window command")
+            }
         }
     }
 
@@ -722,7 +812,46 @@ mod tests {
             Parsed::ToggleTheme
         );
         assert_eq!(
+            parse_invoke(&state, &default_layout(), "toolbar.perf_meter", "toggle").unwrap(),
+            Parsed::PerfMeter(PerfMeterCommand::Toggle)
+        );
+        assert_eq!(
             parse_invoke(&state, &default_layout(), "clip:x", "explode")
+                .unwrap_err()
+                .code,
+            "unknown_action"
+        );
+    }
+
+    #[test]
+    fn the_perf_meter_is_toggled_shown_and_hidden_through_one_parser() {
+        let state = EditorState::default();
+        let set = |value: Raw| parse_set(perf::TARGET, "visible", &value);
+        assert_eq!(
+            set(Raw::Bool(true)).unwrap(),
+            Parsed::PerfMeter(PerfMeterCommand::Show)
+        );
+        assert_eq!(
+            set(Raw::Text("false".into())).unwrap(),
+            Parsed::PerfMeter(PerfMeterCommand::Hide)
+        );
+        // A value that is not a boolean is refused, and no other field exists.
+        assert_eq!(
+            set(Raw::Text("maybe".into())).unwrap_err().code,
+            "invalid_value"
+        );
+        assert_eq!(
+            parse_set(perf::TARGET, "size", &Raw::Number(1.0))
+                .unwrap_err()
+                .code,
+            "unknown_field"
+        );
+        assert_eq!(
+            parse_invoke(&state, &default_layout(), perf::TARGET, "toggle").unwrap(),
+            Parsed::PerfMeter(PerfMeterCommand::Toggle)
+        );
+        assert_eq!(
+            parse_invoke(&state, &default_layout(), perf::TARGET, "explode")
                 .unwrap_err()
                 .code,
             "unknown_action"

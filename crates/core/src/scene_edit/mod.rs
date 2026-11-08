@@ -1,9 +1,10 @@
 //! BB04 (minimal): a catalog of editable properties and atomic, ID-addressed edit batches over a
 //! [`DirectedScene`](crate::directed_scene::DirectedScene).
 //!
-//! * [`catalog`] lists what can be edited: node `position`/`rotation`/`scale`, image-plane
-//!   `width`/`height`, and the start pose of a camera clip, each with a stable path, kind, unit,
-//!   default, range and applicability.
+//! * [`catalog`] lists what can be edited: node `position`/`rotation`/`scale` (and `position/x`
+//!   ... `scale/z` one component at a time), image-plane `width`/`height`/`renderOrder`, and the
+//!   start pose of a camera clip (position and target by component too), each with a stable path,
+//!   kind, unit, default, range and applicability.
 //! * [`EditOp`] sets or resets one property of one node or clip by ID. No selection is involved
 //!   and no op takes free-form JSON that skips the catalog.
 //! * [`apply`] / [`dry_run`] take an immutable scene and a batch. Either every op is valid and
@@ -32,23 +33,31 @@
 //! ```
 
 mod batch;
+mod camera_keys;
 mod catalog;
 mod error;
+mod fx;
 mod op;
 mod reference;
 mod value;
 
 pub use batch::{
     EditOutcome, EditSummary, PropertyChange, PropertyInfo, apply, apply_with, dry_run,
-    dry_run_with, properties_of, read_property,
+    dry_run_with, properties_of, properties_with_components, read_property,
 };
+pub use camera_keys::MovementConversion;
 pub use catalog::{
-    Applicability, CameraProperty, Limit, NodeProperty, NumberRange, OriginRelation, PropertyId,
-    PropertySpec, Unit, catalog,
+    Applicability, CameraProperty, ComponentOf, Limit, NodeProperty, NumberRange, OriginRelation,
+    PropertyId, PropertySpec, Unit, catalog,
 };
 pub use error::{
-    CANDIDATE_REJECTED, DOCUMENT_MISMATCH, EditError, INVALID_OP, LocalizedIssue, NO_DEFAULT,
-    NOT_APPLICABLE, UNKNOWN_CLIP, UNKNOWN_NODE, UNKNOWN_PATH, UNKNOWN_SCENE,
+    CAMERA_CONVERSION_FAILED, CANDIDATE_REJECTED, DOCUMENT_MISMATCH, EditError, INVALID_OP,
+    LocalizedIssue, NO_DEFAULT, NOT_APPLICABLE, UNKNOWN_CLIP, UNKNOWN_NODE, UNKNOWN_PATH,
+    UNKNOWN_SCENE,
+};
+pub use fx::{
+    AddClip, ClipField, FxChange, FxOp, FxOutcome, FxSummary, apply_fx, apply_fx_with, dry_run_fx,
+    parse_fx_batch,
 };
 pub use op::{EditOp, parse_batch};
 pub use reference::PropertyRef;

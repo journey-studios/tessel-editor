@@ -158,7 +158,7 @@ fn dispatch_now(
     let data = match request["command"].as_str() {
         Some("tree") => {
             let mut nodes = workstation.read(cx).tree_nodes(cx);
-            let header_nodes = header::nodes();
+            let header_nodes = header::nodes(&workstation.read(cx).state.header().label());
             let roots: Vec<Value> = header_nodes
                 .iter()
                 .filter(|node| node["parent"] == "region:header")
@@ -227,7 +227,7 @@ fn dispatch_now(
 /// layout so one `get dock` answers every question about it.
 fn lookup(workstation: &Entity<Workstation>, id: &str, cx: &App) -> Result<Value, CommandError> {
     let node = if id.starts_with("node:") {
-        header::node(id)
+        header::node(id, &workstation.read(cx).state.header().label())
     } else {
         workstation.read(cx).tree_node(id, cx)
     };
@@ -253,6 +253,21 @@ fn require_enabled(node: &Value) -> Result<(), CommandError> {
 fn run(workstation: &Entity<Workstation>, command: Command, cx: &mut App) -> Value {
     match workstation.update(cx, |workstation, cx| {
         workstation.execute(command, Source::Cli, cx)
+    }) {
+        Ok(outcome) => json!({"ok":true,"version":1,"data":outcome}),
+        Err(error) => error.to_json(),
+    }
+}
+
+/// The debug meter (F049): the same `Workstation::execute_perf` the header button and the
+/// shortcut call.
+fn run_perf(
+    workstation: &Entity<Workstation>,
+    command: tessel_editor_core::perf::PerfMeterCommand,
+    cx: &mut App,
+) -> Value {
+    match workstation.update(cx, |workstation, cx| {
+        workstation.execute_perf(command, Source::Cli, cx)
     }) {
         Ok(outcome) => json!({"ok":true,"version":1,"data":outcome}),
         Err(error) => error.to_json(),
@@ -346,6 +361,7 @@ fn set(
     match prepared {
         Ok(Parsed::Run(command)) => run(workstation, command, cx),
         Ok(Parsed::Layout(command)) => run_layout(workstation, command, window, cx),
+        Ok(Parsed::PerfMeter(command)) => run_perf(workstation, command, cx),
         Ok(Parsed::ToggleTheme | Parsed::ReloadViewport) => {
             CommandError::new("unknown_field", "Not settable").to_json()
         }
@@ -369,7 +385,7 @@ fn move_item(
     match prepared {
         Ok(Parsed::Run(command)) => run(workstation, command, cx),
         Ok(Parsed::Layout(command)) => run_layout(workstation, command, window, cx),
-        Ok(Parsed::ToggleTheme | Parsed::ReloadViewport) => {
+        Ok(Parsed::PerfMeter(_) | Parsed::ToggleTheme | Parsed::ReloadViewport) => {
             CommandError::new("unknown_action", "Not movable").to_json()
         }
         Err(error) => error.to_json(),
@@ -468,6 +484,7 @@ fn invoke(
     match prepared {
         Ok(Parsed::Run(command)) => run(workstation, command, cx),
         Ok(Parsed::Layout(command)) => run_layout(workstation, command, window, cx),
+        Ok(Parsed::PerfMeter(command)) => run_perf(workstation, command, cx),
         Ok(Parsed::ReloadViewport) => {
             let reloaded =
                 workstation.update(cx, |workstation, cx| workstation.viewport_reload(cx));

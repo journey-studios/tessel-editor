@@ -47,7 +47,10 @@ class Collector:
 
 def tool_versions():
     def first_line(binary):
-        out = subprocess.run([binary, "-version"], capture_output=True, text=True)
+        try:
+            out = subprocess.run([binary, "-version"], capture_output=True, text=True)
+        except OSError:  # not installed (the fallback path does not exist on this host): the report says so instead of crashing
+            return "unavailable"
         return out.stdout.splitlines()[0] if out.stdout else "unavailable"
     return {"ffmpeg": first_line(FFMPEG), "ffprobe": first_line(FFPROBE)}
 

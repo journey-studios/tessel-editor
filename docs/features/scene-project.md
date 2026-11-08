@@ -4,7 +4,7 @@
 
 | Superfície | Estado | Evidência |
 |---|---|---|
-| Lib (`tessel_editor_core::scene_project`, `EditorState::scenes`, `Command::Scene`) | **V** — validada pelo coordenador via Cargo | `crates/core/tests/scene_project.rs` (19 testes) e 11 testes unitários em `scene_project/{mod,scope,store}.rs` |
+| Lib (`tessel_editor_core::scene_project`, `EditorState::scenes`, `Command::Scene`) | **V** — validada pelo coordenador via Cargo | `crates/core/tests/scene_project.rs` (19 testes) e 11 testes unitários em `scene_project/{mod,scope,store}.rs`; BL100a: `scene_attach_facts.rs` (5: fatos = os do bundle, mesma resposta/documento por todas as fontes, recusas idênticas, orçamento exato e atômico, attach não escala com o bundle) |
 | CLI headless (`tessel-headless`, JSON Lines) | **V** — mesmo parser/executor, sessão JSONL e executável headless testados | `a_json_lines_session_runs_the_whole_flow_in_process`, `the_headless_executable_answers_exactly_like_the_library` |
 | Socket / `ui op` da janela | **P** — roteia por `Op::Run(Command::Scene)` sem tocar o desktop; **não provado** (exige a janela). Um socket não prova a CLI headless, nem o contrário | — |
 | UI visual (árvore, inspetor, gesto) | **P** — sem controle, sem nó em `tree.rs`, sem apresentação | — |
@@ -57,12 +57,15 @@ ordem de anexação. Cada `scene.*` é um `SceneCommand` dentro de `Command::Sce
 | `op` | Campos | Efeito | Histórico |
 |---|---|---|---|
 | `scene.attach` | `id?`, `name?`, **um de** `bundle` (objeto) · `text` (string JSON) · `path` (arquivo) | importa, roda os gates estrutural e temporal, anexa | "Attach scene" |
+| `scene.attach.start` (host de mídia, [F043](scene-import-ui.md)) | os mesmos campos + `wait?` | o mesmo attach, mas ler/importar/validar roda num job (`AdmittedScene::prepare`) e o resultado só é aplicado se projeto, **sessão de edição** e revisão forem os da partida (BL113a) | "Attach scene" |
 | `scene.detach` | `scene` | remove | "Remove scene" |
 | `scene.edit` | `scene`, `ops[]` (`{"set","value"}`/`{"reset"}` da F034), `dry_run?` | lote atômico via `scene_edit::apply`/`dry_run` | "Edit scene" (uma entrada por lote) |
+| `scene.fx.edit` | `scene`, `ops[]` (`add_clip`, `remove_clip`, `set_param`, `set_field`, `set_hidden`; F016), `dry_run?` | lote atômico via `scene_edit::apply_fx`/`dry_run_fx` | "Edit effects" (uma entrada por lote) |
+| `scene.fx.list` / `scene.fx.frame` / `scene.fx.catalog` | `scene` (+ `frame`\|`time`) | consulta; sem entrada de histórico | — |
 | `scene.list` | — | `id`, `name`, `bundle_id`, `revision_id`, contagens | — |
 | `scene.describe` | `scene` | fps, duração, definições/nós, instâncias, shots, clipes, notices, famílias adiadas em uso, chaves de entrada desconhecidas | — |
-| `scene.catalog` | — | as 8 propriedades (`path`, `kind`, `unit`, `range`, `default`, `applies_to`, `origin`) | — |
-| `scene.properties` | `scene`, `prefix?` | cada propriedade aplicável com o valor atual | — |
+| `scene.catalog` | — | as 21 propriedades (as 8 originais primeiro; `path`, `kind`, `unit`, `range`, `default`, `applies_to`, `origin`) | — |
+| `scene.properties` | `scene`, `prefix?`, `components?` | cada propriedade aplicável com o valor atual; `components: true` acrescenta `position/x` ... (F034, negociado por `scene.capabilities.edit`) | — |
 | `scene.get` | `scene`, `property` (caminho canônico) | uma propriedade | — |
 | `scene.camera` | `scene`, **um de** `frame` · `time` (`{"num","den"}` exato) · `clip`+`clip_frame` | câmera via `evaluate_camera` / `camera_at_clip_frame` (mapeamento shot→instância→clipe incluso) | — |
 | `scene.plan`, `scene.tree`, `scene.evaluate`, `scene.select`, `scene.selection`, `scene.gesture.*` | ver [F039](scene-interaction.md) | Árvore/seleção, câmera e nós por frame, gesto com candidato isolado; status e evidências em F039 | Só commit é edição |
@@ -90,6 +93,16 @@ target, fovDeg, velocity, fovVelocityDegPerFrame}`).
 - **Gates na entrada.** `attach` e a abertura do documento executam `admit`: importador (já feito pela
   importação), `edit_join_issues()` e `temporal_issues()`. Um bundle que importa mas quebra um gate
   (ex.: `MISSING_TRANSITION`, `CONTINUOUS_VELOCITY_JUMP`) não entra.
+- **Fatos do bundle medidos uma vez (BL100a).** `AdmittedScene::prepare` é o único caminho que
+  produz uma cena admitida (os três `SceneSource` de texto/valor/arquivo passam por ele dentro do
+  próprio `scene.attach`): além dos gates, mede o tamanho compacto do documento, as contagens, os
+  avisos (`notices`) e as famílias adiadas em uso (`deferred_in_use`) a partir do bundle, nunca de um
+  número recebido, e guarda tudo no valor opaco `AdmittedScene` (`serialized_len()` é só leitura).
+  O attach só confere ID, sala e orçamento com o tamanho já medido (`SceneBook::insert_measured`) e
+  monta o relatório movendo esses fatos; não varre nem serializa o bundle. Quem prepara fora da
+  thread de quem aplica (o job de F043) leva o custo O(bundle) para o job. Regras, erros, ordem das
+  checagens (ID/sala antes do orçamento) e atomicidade são as de antes; prova de equivalência em
+  `crates/core/tests/scene_attach_facts.rs`.
 - **Limites.** 64 cenas, 128 MiB de JSON compacto em attach/open/edições. Save, autosave e
   pacote limitam o JSON realmente serializado a 256 MiB, antes da escrita, incluindo indentação.
 
@@ -188,6 +201,6 @@ zero falhas e 2 ignorados** (ZIP64 de 4,5 GiB); clippy com warnings negados e
 formatação passaram. Os 19 testes públicos de cena incluem executável headless real;
 as 4 guardas de mídia também passaram. UI visual/socket continuam sem prova específica.
 
-O tamanho compacto de cada bundle é contado ao inserir/substituir e mantido em cache no `SceneBook`; consultas de orçamento não reserializam cenas inalteradas. Clone, remoção, substituição e rejeição preservam os contadores (testes de `scene_project::edit_budget_tests`).
+O tamanho compacto de cada bundle é contado ao inserir/substituir (no attach, já medido por `AdmittedScene::prepare`) e mantido em cache no `SceneBook`; consultas de orçamento não reserializam cenas inalteradas. Clone, remoção, substituição e rejeição preservam os contadores (testes de `scene_project::edit_budget_tests`).
 
 F039 adiciona consultas de nós por `scene.evaluate`, árvore/seleção e gestos semânticos; o status e as evidências desses caminhos estão em `scene-interaction.md`. O V de F036 refere-se aos fluxos da F036, não valida automaticamente F039.

@@ -153,6 +153,7 @@ mod occlusion {
             Content::Scene {
                 camera: Camera::default(),
                 time: Ratio::ZERO,
+                orientation: [0.0; 3],
             },
         );
         assert_eq!(

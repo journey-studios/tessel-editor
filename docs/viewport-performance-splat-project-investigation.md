@@ -1,5 +1,12 @@
 # Investigação de performance: projeto splat + vídeos
 
+> **Estado após a integração com a `main`.** Este relatório registra as medições feitas na branch `t3/debug-perf-splat-project`
+> **antes** de integrar a `main`, que nesse meio tempo ganhou soluções próprias para parte do que aqui foi medido: MSAA por
+> movimento (BL129, no lugar do MSAA 2 padrão e do MSAA 0 em cena só de splats), ordem dos splats por movimento (BL130) e malhas
+> emprestadas por asset (BL131, no lugar dos clones). Essas três otimizações da investigação **foram retiradas**; seus números
+> ficam como evidência do raciocínio, não do código final. Permanecem, com IDs novos (BL146–BL155): carga antecipada com
+> orçamento de bytes, camadas cobertas, aviso de proxy pendente e as melhorias de memória (seção "Quarta rodada").
+
 Investigação (só medição) pedida porque, com vários vídeos e cenas, a reprodução "não está super fluida" mesmo com o monitor
 mostrando ~16 ms. **Nenhuma otimização foi implementada.** A instrumentação é local, não commitada
 (`scripts/perf-investigation/`, `rust-instrumentation.patch`); nada neste relatório altera `docs/backlog.md`.
@@ -308,9 +315,12 @@ tendência. Ler o PLY em intervalos de 4 MiB no JS reduziu o editor a ~5 MB ness
 
 ## Backlog
 
-Os itens propostos foram registrados em [backlog.md](backlog.md): BL113 (MSAA 2×), BL114 (pré-carga), BL115 (cobertura),
-BL116 (aviso de proxy) e as hipóteses restantes BL117–BL122 (quadros de vídeo à frente, `PackedSplats` compartilhado,
-LoD, pipeline do `settle`, fps no cabeçalho, RSS).
+Registrado em [backlog.md](backlog.md), seção "Performance do monitor — projeto splat de amostra": BL146 (carga antecipada),
+BL147 (orçamento da pré-carga), BL148 (camadas cobertas), BL149 (proxy pendente), BL150–BL153 (memória do monitor), BL154 (memória
+do editor) e BL155 (LoD/decimação, pendente). Os IDs BL113–BL131 que este relatório usava antes da integração foram reaproveitados
+pela `main` para outros assuntos; leia os "BL1xx" das seções anteriores como a numeração antiga: BL113 MSAA 2× e BL123 MSAA 0 em cena só
+de splats (retirados, ver BL129), BL114→BL146, BL115→BL148, BL116→BL149, BL124 clones (retirados, ver BL131), BL125→BL147,
+BL128→BL150, BL129→BL151, BL130→BL152, BL131→BL153, BL122→BL154, BL119/BL127→BL155.
 
 ## Estado da instrumentação
 

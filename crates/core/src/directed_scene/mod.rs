@@ -28,6 +28,7 @@
 //! ```
 
 mod animation;
+pub mod fx;
 mod graph;
 mod integrity;
 mod issue;
@@ -64,6 +65,7 @@ pub use refs::{Entity, EntityKind, Reference};
 pub use temporal::{
     CameraEvaluation, CameraPose, CameraState, CameraTimeline, FrameEvaluation, FrameMapping,
     LAYER_FOV_SWEEP_MAX_FRAMES, NodeAnimation, SegmentPoses, TemporalError, Unsupported,
+    apply_easing, movement_end_pose, movement_pose_at,
 };
 pub use transform::{Mat4, Quat, Transform, Vec3};
 
@@ -238,6 +240,7 @@ impl DirectedScene {
             shots: draft.shots,
             composition_passes: draft.passes,
             audio: draft.audio,
+            fx: draft.fx,
         };
         Ok(Self {
             document: value,

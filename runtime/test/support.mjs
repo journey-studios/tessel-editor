@@ -218,8 +218,8 @@ export const openSplatPage = async (browser, port) => {
     messages,
     waitFor,
     send,
-    hello: async (extra = {}) => {
-      await send({ type: 'hello', ...extra });
+    hello: async () => {
+      await send({ type: 'hello' });
       return waitFor((m) => m.type === 'ready');
     },
     load: async (asset) => {
@@ -358,7 +358,7 @@ export const makeProject = () => {
  * Opens the built runtime in headless Chrome (SwiftShader: the same pixels on every machine)
  * and returns helpers to talk bridge v1 to it. `close()` frees the browser and the server.
  */
-export const openRuntime = async ({ project, hello = {}, extraFiles = [], extraPatterns = [] } = {}) => {
+export const openRuntime = async ({ project, hello = {}, extraFiles = [], extraPatterns = [], overlay = false } = {}) => {
   const { default: puppeteer } = await import('puppeteer-core');
   const allowList = new AllowList();
   if (project) {
@@ -379,7 +379,9 @@ export const openRuntime = async ({ project, hello = {}, extraFiles = [], extraP
   const page = await browser.newPage();
   const messages = [];
   await page.exposeFunction('__tesselPost', (raw) => messages.push(JSON.parse(raw)));
-  await page.goto(`http://127.0.0.1:${port}/`);
+  // `overlay: true` is the desktop page: a page driven through `__tesselPost` (the headless worker)
+  // has no gizmo overlay unless it asks for one with `?overlay=gizmo` (F055).
+  await page.goto(`http://127.0.0.1:${port}/${overlay ? '?overlay=gizmo' : ''}`);
   const send = (message) => page.evaluate((payload) => window.TesselRuntime.receive(payload), { v: 1, ...message });
   const waitFor = async (predicate, label = 'message') => {
     for (let attempt = 0; attempt < 600; attempt += 1) {

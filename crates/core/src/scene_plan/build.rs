@@ -4,15 +4,16 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde_json::Value;
 
+use crate::directed_scene::fx::Fx;
 use crate::directed_scene::{
-    AssetAlpha, Bundle, DirectedScene, FrameEvaluation, NodeKind, Parent, SceneGraph,
+    AssetAlpha, Bundle, CameraState, DirectedScene, FrameEvaluation, NodeKind, Parent, SceneGraph,
 };
 
 use super::model::{
     Domain, PlanFrame, PlanLayer, PlanNode, PlanOutput, PlanParent, PlanResource, PlanSource,
-    ScenePlan, UninterpretedField, UninterpretedReason, UnsupportedDomain,
+    PlanSplat, ScenePlan, UninterpretedField, UninterpretedReason, UnsupportedDomain,
 };
-use super::validate::derive_requires;
+use super::validate::{derive_requires, derive_splat_slots};
 use super::{PLAN_VERSION, PlanError};
 
 /// How `ScenePlan::build_with` treats a frame that declares domains the plan does not evaluate.
@@ -86,11 +87,10 @@ fn output_alpha(document: &Value) -> Result<AssetAlpha, PlanError> {
 /// Every declared domain of the frame's scene that the plan does not evaluate, sorted.
 ///
 /// Scene-level domains and `rigBind`/`reveal` come from the evaluator's own list
-/// (`unevaluated`); the node's data maps and the splat nodes are added here. The nodes' sections
+/// (`unevaluated`); the node's data maps are added here (splats are evaluated: S7). The nodes' sections
 /// are read from the raw document because the typed model does not keep them.
 fn unsupported_domains(
     unevaluated: &[&'static str],
-    graph: &SceneGraph,
     raw_nodes: &[Value],
 ) -> Vec<UnsupportedDomain> {
     let mut found: BTreeSet<UnsupportedDomain> = BTreeSet::new();
@@ -116,16 +116,6 @@ fn unsupported_domains(
                 });
             }
         }
-    }
-    for node in graph
-        .nodes()
-        .iter()
-        .filter(|node| node.kind == NodeKind::Splat)
-    {
-        found.insert(UnsupportedDomain {
-            domain: Domain::Splat,
-            subject: Some(node.id.clone()),
-        });
     }
     // The evaluator said a node section is declared; if the scan found no node for it, the domain
     // is still reported (without a subject) rather than dropped.
@@ -307,7 +297,7 @@ impl<'a> Prepared<'a> {
             .ok_or_else(|| PlanError::MalformedDocument {
                 pointer: format!("/sceneDefinitions/{definition_index}/nodes"),
             })?;
-        let unsupported = unsupported_domains(&frame.unevaluated, graph, raw_nodes);
+        let unsupported = unsupported_domains(&frame.unevaluated, raw_nodes);
         Ok(Self {
             definition_id,
             definition_index,
@@ -327,7 +317,9 @@ impl<'a> Prepared<'a> {
         })
     }
 
-    /// The validated plan of the frame. Its parts that do not depend on the frame (`source`,
+    /// The plan of the frame, structurally validated (`validate_structure`: the similarity of the
+    /// splat matrices is the caller's per-frame check, `check_splat_transforms`, so that a shot's
+    /// template never carries one frame's refusal to the others). Its parts that do not depend on the frame (`source`,
     /// `output`, kinds, parents, assets, `layers`, `resources`, `requires`, `unsupported`,
     /// `uninterpreted`) are what `ScenePlan::at_frame` reuses.
     pub(super) fn assemble(
@@ -338,6 +330,7 @@ impl<'a> Prepared<'a> {
         let bundle = scene.bundle();
         let nodes = plan_nodes(frame, self.graph)?;
         let layers = plan_layers(bundle, frame, &self.definition_id)?;
+        let splats = plan_splats(&nodes, &layers, &frame.camera)?;
         let resources = plan_resources(bundle, &nodes)?;
         let uninterpreted = uninterpreted_fields(
             scene,
@@ -347,7 +340,8 @@ impl<'a> Prepared<'a> {
             &resources,
             self.definition,
         );
-        let requires = derive_requires(&nodes, &layers, &frame.node_animation);
+        let fx = bundle.fx.resolve(edit_frame_i64(frame));
+        let requires = derive_requires(&nodes, &layers, &splats, &frame.node_animation, &fx);
 
         let profile = &bundle.render_profile;
         let mapping = &frame.mapping;
@@ -370,6 +364,8 @@ impl<'a> Prepared<'a> {
             animation: frame.node_animation.clone(),
             nodes,
             layers,
+            splats,
+            fx,
             resources,
             requires,
             unsupported: self.unsupported.clone(),
@@ -378,9 +374,13 @@ impl<'a> Prepared<'a> {
         // WHY validate what was just built: the invariants (draw order, resource list, requires)
         // are what a runtime relies on, so a build that would break them fails here, loudly,
         // instead of shipping a plan that `from_json_str` would later refuse.
-        plan.validate()?;
+        plan.validate_structure()?;
         Ok(plan)
     }
+}
+
+fn edit_frame_i64(frame: &FrameEvaluation<'_>) -> i64 {
+    i64::try_from(frame.mapping.edit_frame).unwrap_or(i64::MAX)
 }
 
 fn plan_frame(frame: &FrameEvaluation<'_>) -> PlanFrame {
@@ -419,7 +419,9 @@ impl ScenePlan {
         let frame = scene.bundle().evaluate_frame(edit_frame)?;
         let prepared = Prepared::new(scene, &frame)?;
         prepared.refuse_unsupported(options)?;
-        prepared.assemble(scene, &frame)
+        let plan = prepared.assemble(scene, &frame)?;
+        plan.check_splat_transforms()?;
+        Ok(plan)
     }
 
     /// This plan moved to another frame of the same shot: what the frame changes (times, camera,
@@ -428,7 +430,7 @@ impl ScenePlan {
     /// The nodes of a shot's frames are the same list in the same order (they come from one scene
     /// definition), so a frame that does not line up with this plan is a bug, reported as the node
     /// that does not resolve instead of a plan with some other frame's nodes in it.
-    pub(super) fn at_frame(&self, frame: &FrameEvaluation<'_>) -> Result<Self, PlanError> {
+    pub(super) fn at_frame(&self, frame: &FrameEvaluation<'_>, fx: &Fx) -> Result<Self, PlanError> {
         let states = frame.nodes.nodes();
         // The first position where the two lists stop agreeing (one list may simply be longer).
         let misaligned = (0..states.len().max(self.nodes.len())).find_map(|at| {
@@ -449,6 +451,28 @@ impl ScenePlan {
             node.local_matrix = state.local_matrix;
             node.world_matrix = state.world_matrix;
         }
+        let ids: Vec<&str> = plan
+            .splats
+            .iter()
+            .map(|splat| splat.node_id.as_str())
+            .collect();
+        let slots = derive_splat_slots(&plan.camera, &plan.nodes, &plan.layers, &ids);
+        for (splat, slot) in plan.splats.iter_mut().zip(slots) {
+            splat.after_layers = slot;
+        }
+        // The effects are a function of the edit frame alone, so they are resolved again here
+        // (the template holds the first frame's), and `requires` follows them.
+        plan.fx = fx.resolve(edit_frame_i64(frame));
+        plan.requires = derive_requires(
+            &plan.nodes,
+            &plan.layers,
+            &plan.splats,
+            &plan.animation,
+            &plan.fx,
+        );
+        // The same refusal as `build_with` gives for this frame (the template may be of a frame
+        // whose splat matrices were fine).
+        plan.check_splat_transforms()?;
         Ok(plan)
     }
 }
@@ -534,14 +558,45 @@ fn plan_layers(
         .collect()
 }
 
-/// The textures the image planes use, deduplicated by `assetId` and ascending by it. The metadata
-/// comes from the bundle's `assets[]` record; the importer guarantees that the node's own
-/// `assetRef` equals it.
+/// The splat nodes, in document order, each with the asset it reads and the slot it takes among
+/// the layers. Their matrices stay in `nodes`; the runtime draws them with the camera of the plan.
+fn plan_splats(
+    nodes: &[PlanNode],
+    layers: &[PlanLayer],
+    camera: &CameraState,
+) -> Result<Vec<PlanSplat>, PlanError> {
+    let splat_nodes: Vec<&PlanNode> = nodes
+        .iter()
+        .filter(|node| node.kind == NodeKind::Splat)
+        .collect();
+    let ids: Vec<&str> = splat_nodes.iter().map(|node| node.id.as_str()).collect();
+    let slots = derive_splat_slots(camera, nodes, layers, &ids);
+    splat_nodes
+        .into_iter()
+        .zip(slots)
+        .map(|(node, after_layers)| {
+            let asset_id = node.asset_id.clone().ok_or_else(|| PlanError::Unresolved {
+                kind: "asset reference",
+                id: node.id.clone(),
+            })?;
+            Ok(PlanSplat {
+                node_id: node.id.clone(),
+                asset_id,
+                after_layers,
+            })
+        })
+        .collect()
+}
+
+/// The textures the image planes use and the splat files the splat nodes read, deduplicated by
+/// `assetId` and ascending by it. The metadata comes from the bundle's `assets[]` record; the
+/// importer guarantees that the node's own `assetRef` equals it (and that a plane reads a `png`,
+/// a splat an `spz`).
 fn plan_resources(bundle: &Bundle, nodes: &[PlanNode]) -> Result<Vec<PlanResource>, PlanError> {
     let mut resources: BTreeMap<String, PlanResource> = BTreeMap::new();
     for node in nodes
         .iter()
-        .filter(|node| node.kind == NodeKind::ImagePlane)
+        .filter(|node| matches!(node.kind, NodeKind::ImagePlane | NodeKind::Splat))
     {
         let Some(asset_id) = &node.asset_id else {
             return Err(PlanError::Unresolved {

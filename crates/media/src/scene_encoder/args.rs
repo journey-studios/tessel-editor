@@ -11,8 +11,8 @@ fn rate_arg(rate: Rate) -> String {
     format!("{}/{}", rate.num(), rate.den())
 }
 
-/// Video only: a directed scene has no mix to carry (`SceneExportSnapshot` refuses or omits
-/// declared audio explicitly), so there is no `-map 1:a` branch to get wrong.
+/// Video only: the command of a scene that declares no audio, or whose export left it out on purpose.
+/// The declared mix travels through [`encode_args_with_audio`].
 ///
 /// WHY a second builder next to `export::encode_args`: that one is private to the project export
 /// and interleaves the audio input; the picture half (`filter_chain`, codec, color tags, CFR,
@@ -23,6 +23,18 @@ pub fn encode_args(
     preset: &Preset,
     geometry: &Geometry,
     output_rate: Rate,
+    output: &Path,
+) -> Vec<String> {
+    encode_args_with_audio(preset, geometry, output_rate, None, output)
+}
+
+/// The same command with the rendered mix (`audio`: 48 kHz stereo PCM16 WAV, exactly as long as the
+/// video) as the second input, encoded as AAC at the preset's bitrate.
+pub fn encode_args_with_audio(
+    preset: &Preset,
+    geometry: &Geometry,
+    output_rate: Rate,
+    audio: Option<&Path>,
     output: &Path,
 ) -> Vec<String> {
     let rate = rate_arg(output_rate);
@@ -39,8 +51,14 @@ pub fn encode_args(
     .into();
     args.push(rate.clone());
     args.extend(["-c:v", "png", "-i", "-"].map(String::from));
+    if let Some(audio) = audio {
+        args.extend(["-i".to_string(), audio.to_string_lossy().into_owned()]);
+    }
     args.extend(["-vf".to_string(), filter_chain(geometry)]);
     args.extend(["-map", "0:v:0"].map(String::from));
+    if audio.is_some() {
+        args.extend(["-map", "1:a:0"].map(String::from));
+    }
     args.extend(
         [
             "-c:v",
@@ -69,6 +87,10 @@ pub fn encode_args(
         .map(String::from),
     );
     args.extend(["-r".to_string(), rate, "-fps_mode".into(), "cfr".into()]);
+    if audio.is_some() {
+        args.extend(["-c:a", "aac", "-ar", "48000", "-ac", "2"].map(String::from));
+        args.extend(["-b:a".to_string(), format!("{}k", preset.audio_kbps)]);
+    }
     args.extend(
         [
             "-map_metadata",
@@ -88,6 +110,27 @@ pub fn encode_args(
 mod tests {
     use super::*;
     use tessel_editor_core::preset::builtins;
+
+    #[test]
+    fn the_mix_is_the_second_input_mapped_as_aac_at_the_preset_bitrate() {
+        let preset = builtins().remove(0);
+        let geometry = preset.geometry(320, 180);
+        let args = encode_args_with_audio(
+            &preset,
+            &geometry,
+            Rate::new(24, 1).unwrap(),
+            Some(Path::new("mix.wav")),
+            Path::new("out.mp4"),
+        );
+        let joined = args.join(" ");
+        assert!(joined.contains("-i mix.wav"), "{joined}");
+        assert!(joined.contains("-map 0:v:0 -map 1:a:0"), "{joined}");
+        assert!(joined.contains("-c:a aac -ar 48000 -ac 2"), "{joined}");
+        assert!(
+            joined.contains(&format!("-b:a {}k", preset.audio_kbps)),
+            "{joined}"
+        );
+    }
 
     #[test]
     fn the_command_is_video_only_and_tags_bt709_tv_range() {

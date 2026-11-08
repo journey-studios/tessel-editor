@@ -11,11 +11,71 @@ use super::{CommandError, EditorState};
 use crate::id::Id;
 use crate::preset::Preset;
 
+/// Which in-memory editing session of a project an `EditorState` is (BL113a).
+///
+/// `ProjectMeta::id` is persisted, so opening the same document twice yields the same ID, and
+/// `revision` restarts at 0 on every open: `(id, revision)` alone cannot tell a result computed
+/// for the session that was closed from one computed for the session that replaced it. A
+/// `ProjectSession` can. It is minted from a process-wide counter whenever a state is *built*
+/// (`EditorState::demo`/`empty`, loading or recovering a document, restoring a package), never
+/// when one is saved, edited, undone, redone or cloned, so a clone made for an undo snapshot or a
+/// job plan is still the same session.
+///
+/// It is runtime identity only: it is not written to the document, it means nothing in another
+/// process, and `==` ignores it so two states with the same content stay equal (compare
+/// sessions with [`ProjectSession::is_same`]).
+#[derive(Debug, Clone, Copy)]
+pub struct ProjectSession(u64);
+
+static SESSIONS: AtomicU64 = AtomicU64::new(1);
+
+impl ProjectSession {
+    fn mint() -> Self {
+        Self(SESSIONS.fetch_add(1, Ordering::Relaxed))
+    }
+
+    /// The counter value, for diagnostics (`history.status` and the status answers report it).
+    pub fn number(self) -> u64 {
+        self.0
+    }
+
+    pub fn is_same(self, other: Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl PartialEq for ProjectSession {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+/// What a job captured about the project it was started for, to be compared with the open
+/// project when its result is applied: the same ID, the same editing session and the same
+/// revision (any registered edit, undo or redo since makes the result stale).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProjectStamp {
+    id: String,
+    session: ProjectSession,
+    revision: u64,
+}
+
+impl ProjectStamp {
+    /// Whether `project` is still exactly the project this stamp was taken from.
+    pub fn is_current(&self, project: &ProjectMeta) -> bool {
+        self.id == project.id
+            && self.session.is_same(project.session)
+            && self.revision == project.revision
+    }
+}
+
 /// What a project document carries besides the model: identity and bookkeeping.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProjectMeta {
     /// Stable across saves and renames; autosave and recovery are keyed by it.
     pub id: String,
+    /// The editing session this state is; see [`ProjectSession`]. Never persisted.
+    pub session: ProjectSession,
     /// Bumped by every edit, undo and redo. Not persisted as the edit counter of the next session.
     pub revision: u64,
     /// Revision that is on disk, `None` while the project was never saved.
@@ -34,6 +94,7 @@ impl ProjectMeta {
     pub fn new() -> Self {
         Self {
             id: new_project_id(),
+            session: ProjectSession::mint(),
             revision: 0,
             saved_revision: None,
             workspace: None,
@@ -47,9 +108,19 @@ impl ProjectMeta {
         self.saved_revision != Some(self.revision)
     }
 
+    /// Captures `(id, session, revision)` for a job that will apply its result later.
+    pub fn stamp(&self) -> ProjectStamp {
+        ProjectStamp {
+            id: self.id.clone(),
+            session: self.session,
+            revision: self.revision,
+        }
+    }
+
     pub fn to_json(&self) -> Value {
         json!({
-            "id": self.id, "revision": self.revision, "saved_revision": self.saved_revision,
+            "id": self.id, "session": self.session.number(), "revision": self.revision,
+            "saved_revision": self.saved_revision,
             "dirty": self.is_dirty(),
             "workspace": self.workspace.as_ref().map(|path| path.to_string_lossy()),
             "document": self.document.as_ref().map(|path| path.to_string_lossy()),

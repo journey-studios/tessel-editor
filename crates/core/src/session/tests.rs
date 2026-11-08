@@ -196,6 +196,7 @@ fn ready(id: &str) -> BackendEvent {
     BackendEvent::Asset {
         id: Id::lit(id),
         status: AssetStatus::Ready(json!({})),
+        echo: None,
     }
 }
 
@@ -334,6 +335,7 @@ fn asset_failures_from_the_runtime_surface_with_the_asset_id() {
         .push_back(BackendEvent::Asset {
             id: Id::lit("img"),
             status: AssetStatus::Failed(BackendError::new("decode_failed", "bad PNG")),
+            echo: None,
         });
     rig.session
         .request_frame(&rig.state, plan(&rig, 0), output(), vec![])
@@ -1392,6 +1394,32 @@ fn a_frame_waiting_on_a_prefetch_in_flight_does_not_start_a_second_load() {
     ));
 }
 
+// ---- BL129: scene MSAA by motion (playback, scrub) and the refine to the final count ----
+
+/// A frame answer as the runtime reports a scene layer drawn with `samples` MSAA samples, of which
+/// `reduced` layers are below the final count.
+fn scene_frame(id: RequestId, revision: u64, samples: u64, reduced: u64) -> FrameResult {
+    let mut result = frame(id, revision);
+    result.detail.source = Some(json!({ "quality": "preview", "proxy_layers": 0,
+        "original_layers": 0, "result_hits": 0,
+        "scene_samples": samples, "reduced_scene_layers": reduced }));
+    result
+}
+
+fn finish_scene(rig: &mut Rig, id: RequestId, samples: u64, reduced: u64) {
+    let revision = rig.session.revision();
+    rig.script
+        .borrow_mut()
+        .events
+        .push_back(BackendEvent::FrameDone(scene_frame(
+            id, revision, samples, reduced,
+        )));
+    assert!(matches!(
+        rig.session.pump(Duration::ZERO),
+        Some(SessionEvent::Frame(_))
+    ));
+}
+
 /// `rig_with_cut` plus a third still ("later") that starts at `start`, with the same file.
 fn rig_with_two_cuts(first: i64, start: i64) -> Rig {
     let mut rig = rig_with_cut(first);
@@ -1578,6 +1606,7 @@ fn a_prefetch_is_best_effort_and_never_a_failure() {
         .push_back(BackendEvent::Asset {
             id: Id::lit("next"),
             status: AssetStatus::Failed(BackendError::new("decode_failed", "bad")),
+            echo: None,
         });
     assert_eq!(
         rig.session.pump(Duration::ZERO),
@@ -1585,4 +1614,259 @@ fn a_prefetch_is_best_effort_and_never_a_failure() {
     );
     assert_eq!(rig.session.status().label(), "idle");
     assert!(rig.session.loaded_assets().is_empty());
+}
+
+/// A frame answer of a splat scene drawn at the final MSAA with `stale` layers painted in the order of
+/// an earlier camera's sort (BL130).
+fn sorted_frame(id: RequestId, revision: u64, stale: u64) -> FrameResult {
+    let mut result = frame(id, revision);
+    result.detail.source = Some(json!({ "quality": "preview", "proxy_layers": 0,
+        "original_layers": 0, "result_hits": 0, "scene_samples": 4,
+        "reduced_scene_layers": 0, "stale_sort_layers": stale }));
+    result
+}
+
+fn finish_sorted(rig: &mut Rig, id: RequestId, stale: u64) {
+    let revision = rig.session.revision();
+    rig.script
+        .borrow_mut()
+        .events
+        .push_back(BackendEvent::FrameDone(sorted_frame(id, revision, stale)));
+    assert!(matches!(
+        rig.session.pump(Duration::ZERO),
+        Some(SessionEvent::Frame(_))
+    ));
+}
+
+fn finish_at_current_revision(rig: &mut Rig, id: RequestId) -> Option<SessionEvent> {
+    let revision = rig.session.revision();
+    finish(rig, id, revision)
+}
+
+#[test]
+fn playback_frames_ask_for_the_preview_quality_and_everything_else_for_the_final_one() {
+    let (mut rig, first) = rig_rendering_preview();
+    assert_eq!(rig.script.borrow().qualities, vec![Quality::Preview]);
+    finish_scene(&mut rig, first, 2, 1);
+    // An explicit frame (`render.frame`, a proof, export) is the final quality by definition.
+    rig.session
+        .request_frame(&rig.state, plan(&rig, 3), output(), vec![])
+        .unwrap();
+    assert_eq!(
+        rig.script.borrow().qualities.last(),
+        Some(&Quality::Original)
+    );
+    // So is a frame that asks for pixels, even when the monitor is the one asking.
+    let with_png = Output {
+        png: Some("/tmp/x.png".into()),
+        ..output()
+    };
+    rig.session
+        .request_preview(&rig.state, plan(&rig, 4), with_png)
+        .unwrap();
+    assert_eq!(
+        rig.script.borrow().qualities.last(),
+        Some(&Quality::Original)
+    );
+}
+
+#[test]
+fn a_scene_drawn_with_fewer_samples_is_refined_when_the_playhead_stops() {
+    let (mut rig, first) = rig_rendering_preview();
+    let mut in_flight = (first, rig.session.revision());
+    // Playback: a new frame every tick; each one is drawn reduced and none is refined while the
+    // playhead keeps moving (a refine is only due after REFINE_DELAY without a new intent).
+    for step in 1..=6 {
+        finish_scene(&mut rig, in_flight.0, 2, 1);
+        assert!(
+            rig.session.refine_pending(),
+            "step {step}: a reduced picture is on screen"
+        );
+        let Preview::Submitted(next) = scrub_to(&mut rig, step * 2) else {
+            panic!("nothing in flight: the next frame is submitted")
+        };
+        assert!(
+            !rig.session.refine_pending(),
+            "a new intent drops the refine of the picture it replaces"
+        );
+        in_flight = (next, rig.session.revision());
+    }
+    assert_eq!(rig.session.stats.refined, 0);
+    finish_scene(&mut rig, in_flight.0, 2, 1);
+    assert!(rig.session.refine_pending());
+
+    // Stop: not before the monitor has been still, then one final-quality frame of the very
+    // position on screen, without the user asking.
+    let now = Instant::now();
+    assert!(rig.session.dispatch_refine(&rig.state, now).is_none());
+    let later = now + REFINE_DELAY + Duration::from_millis(10);
+    let on_screen = rig.session.presented;
+    let refined = rig
+        .session
+        .dispatch_refine(&rig.state, later)
+        .expect("the stopped monitor refines")
+        .unwrap();
+    assert_eq!(
+        rig.script.borrow().qualities.last(),
+        Some(&Quality::Original)
+    );
+    assert_eq!(rig.session.stats.refined, 1);
+    assert_eq!(
+        rig.session.active_plan().and_then(|plan| plan.frame),
+        on_screen.and_then(|(_, frame)| frame),
+        "the refine redraws the position that is on screen"
+    );
+    // The refined picture is the final one: nothing left to refine, nothing more is drawn.
+    finish_scene(&mut rig, refined, 4, 0);
+    assert!(!rig.session.refine_pending());
+    assert!(rig.session.dispatch_refine(&rig.state, later).is_none());
+    assert!(!rig.session.has_pending());
+}
+
+#[test]
+fn a_new_intent_during_the_refine_supersedes_it_and_the_monitor_never_stays_reduced() {
+    let (mut rig, first) = rig_rendering_preview();
+    finish_scene(&mut rig, first, 2, 1);
+    let later = Instant::now() + REFINE_DELAY + Duration::from_millis(10);
+    let refined = rig
+        .session
+        .dispatch_refine(&rig.state, later)
+        .unwrap()
+        .unwrap();
+    // Playback resumes while the final-quality frame is still drawing: it is cancelled, not waited for.
+    let Preview::Submitted(next) = scrub_to(&mut rig, 5) else {
+        panic!("a refine in flight is superseded, not coalesced into");
+    };
+    assert!(rig.script.borrow().cancelled.contains(&refined));
+    // That frame is reduced again, so stopping again refines again.
+    finish_scene(&mut rig, next, 2, 1);
+    assert!(rig.session.refine_pending());
+    // The new intent stamped its own time: wait out the delay from *now*, not from before it.
+    let after_stop = Instant::now() + REFINE_DELAY + Duration::from_millis(10);
+    assert!(
+        rig.session
+            .dispatch_refine(&rig.state, after_stop)
+            .is_some()
+    );
+    assert_eq!(rig.session.stats.refined, 2);
+}
+
+// ---- BL130: the Spark sort of a moving playhead and the refine to the exact order ----
+
+#[test]
+fn splats_painted_in_an_earlier_cameras_order_are_refined_when_the_playhead_stops() {
+    let (mut rig, first) = rig_rendering_preview();
+    // Full MSAA: the stale order is the only thing that makes this picture differ from the final one.
+    finish_sorted(&mut rig, first, 1);
+    assert!(
+        rig.session.refine_pending(),
+        "a picture with a reused order is on screen"
+    );
+    let later = Instant::now() + REFINE_DELAY + Duration::from_millis(10);
+    let on_screen = rig.session.presented;
+    let refined = rig
+        .session
+        .dispatch_refine(&rig.state, later)
+        .expect("the stopped monitor refines")
+        .unwrap();
+    assert_eq!(
+        rig.script.borrow().qualities.last(),
+        Some(&Quality::Original),
+        "the refine waits for the sort of its own camera"
+    );
+    assert_eq!(
+        rig.session.active_plan().and_then(|plan| plan.frame),
+        on_screen.and_then(|(_, frame)| frame),
+        "the position on screen is the one redrawn"
+    );
+    // The exact picture: nothing is left to refine.
+    finish_sorted(&mut rig, refined, 0);
+    assert!(!rig.session.refine_pending());
+    assert!(rig.session.dispatch_refine(&rig.state, later).is_none());
+}
+
+#[test]
+fn a_frame_whose_order_was_its_own_has_nothing_to_refine() {
+    let (mut rig, first) = rig_rendering_preview();
+    // The first frame of a scene (or a cut) waits for its own sort: preview quality, exact order.
+    finish_sorted(&mut rig, first, 0);
+    assert!(!rig.session.refine_pending());
+}
+
+#[test]
+fn an_explicit_frame_is_never_a_candidate_for_the_sort_refine() {
+    let (mut rig, first) = rig_rendering_preview();
+    finish_sorted(&mut rig, first, 2);
+    assert!(rig.session.refine_pending());
+    // `render.frame`, export and probes ask for the final quality: even an answer that claims a stale
+    // order (it cannot, the runtime waits for the sort) is not something the monitor would refine.
+    let id = rig
+        .session
+        .request_frame(&rig.state, plan(&rig, 3), output(), vec![])
+        .unwrap();
+    assert_eq!(
+        rig.script.borrow().qualities.last(),
+        Some(&Quality::Original)
+    );
+    assert!(!rig.session.refine_pending());
+    let revision = rig.session.revision();
+    rig.script
+        .borrow_mut()
+        .events
+        .push_back(BackendEvent::FrameDone(sorted_frame(id, revision, 2)));
+    rig.session.pump(Duration::ZERO);
+    assert!(!rig.session.refine_pending());
+}
+
+#[test]
+fn a_scene_at_the_final_samples_has_nothing_to_refine() {
+    let (mut rig, first) = rig_rendering_preview();
+    // Preview quality, but nothing was reduced: a runtime asked for 4 samples, a host that lowers
+    // every frame, or a frame without a scene layer. The monitor does not redraw for nothing.
+    finish_scene(&mut rig, first, 4, 0);
+    assert!(!rig.session.refine_pending());
+    let Preview::Submitted(next) = scrub_to(&mut rig, 2) else {
+        panic!("submitted");
+    };
+    finish_scene(&mut rig, next, 0, 0);
+    assert!(!rig.session.refine_pending());
+    // A runtime that predates the field reports nothing: never reduced.
+    let Preview::Submitted(last) = scrub_to(&mut rig, 3) else {
+        panic!("submitted");
+    };
+    assert!(matches!(
+        finish_at_current_revision(&mut rig, last),
+        Some(SessionEvent::Frame(_))
+    ));
+    assert!(!rig.session.refine_pending());
+}
+
+#[test]
+fn an_explicit_frame_or_an_edit_drops_the_refine_of_a_reduced_picture() {
+    let (mut rig, first) = rig_rendering_preview();
+    finish_scene(&mut rig, first, 2, 1);
+    assert!(rig.session.refine_pending());
+    let explicit = rig
+        .session
+        .request_frame(&rig.state, plan(&rig, 2), output(), vec![])
+        .unwrap();
+    assert!(!rig.session.refine_pending());
+    // The explicit answer is the final quality and is never a reason to refine.
+    finish_scene(&mut rig, explicit, 4, 0);
+    assert!(!rig.session.refine_pending());
+}
+
+#[test]
+fn the_original_policy_draws_the_final_samples_while_playing() {
+    let mut rig = rig();
+    rig.session.set_preview_policy(PreviewPolicy {
+        mode: crate::preview::PreviewMode::Original,
+        ..PreviewPolicy::default()
+    });
+    rig.script.borrow_mut().events.push_back(ready("img"));
+    rig.session
+        .request_preview(&rig.state, plan(&rig, 0), output())
+        .unwrap();
+    rig.session.pump(Duration::ZERO);
+    assert_eq!(rig.script.borrow().qualities, vec![Quality::Original]);
 }

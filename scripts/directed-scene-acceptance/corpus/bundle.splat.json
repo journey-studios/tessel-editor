@@ -1,0 +1,374 @@
+{
+  "assets": [
+    {
+      "alphaMode": "opaque",
+      "assetId": "bg",
+      "colorSpace": "srgb",
+      "contentHash": "558fc8a856d83df60ce44899c0e5213d8453090fa387d491a90dec3003118ed5",
+      "heightPx": 8,
+      "relativePath": "assets/bg.png",
+      "revisionId": "rev-1",
+      "widthPx": 8
+    },
+    {
+      "alphaMode": "opaque",
+      "assetId": "sp-red",
+      "colorSpace": "srgb",
+      "contentHash": "362517d47323e6330671874431fdbfa36f745ba382e862b8dd4dae33e7b9cd8d",
+      "format": "spz",
+      "heightPx": 1,
+      "relativePath": "splat/sp-red.spz",
+      "revisionId": "rev-1",
+      "widthPx": 1
+    },
+    {
+      "alphaMode": "opaque",
+      "assetId": "sp-green",
+      "colorSpace": "srgb",
+      "contentHash": "9aa9a3cda6a8803dd9aa5bdb74a756e7bf5fb5ca5a17bf21939484dfb55d1902",
+      "format": "spz",
+      "heightPx": 1,
+      "relativePath": "splat/sp-green.spz",
+      "revisionId": "rev-1",
+      "widthPx": 1
+    },
+    {
+      "alphaMode": "opaque",
+      "assetId": "sp-order",
+      "colorSpace": "srgb",
+      "contentHash": "46a03d6e062c2c2d31f9cb0bd967b99fd4bd193b39c1658535fd4dda2378d51f",
+      "format": "spz",
+      "heightPx": 1,
+      "relativePath": "splat/sp-order.spz",
+      "revisionId": "rev-1",
+      "widthPx": 1
+    },
+    {
+      "alphaMode": "opaque",
+      "assetId": "sp-pair",
+      "colorSpace": "srgb",
+      "contentHash": "fa122ab2a8e2ddaaa011863d96640bcb82cb14b6ec029d8b3f5db58b025e176d",
+      "format": "spz",
+      "heightPx": 1,
+      "relativePath": "splat/sp-pair.spz",
+      "revisionId": "rev-1",
+      "widthPx": 1
+    },
+    {
+      "alphaMode": "opaque",
+      "assetId": "sp-purple",
+      "colorSpace": "srgb",
+      "contentHash": "18dc77abd318264f74518a6d0f2f99856dd7fc2525c92c195b7ea04fc6c5b635",
+      "format": "spz",
+      "heightPx": 1,
+      "relativePath": "splat/sp-purple.spz",
+      "revisionId": "rev-1",
+      "widthPx": 1
+    }
+  ],
+  "bundleId": "s10-splat",
+  "cameraClips": [
+    {
+      "id": "cam-a",
+      "initialFovDeg": 50,
+      "initialPosition": {
+        "x": 0,
+        "y": 0.5,
+        "z": 8
+      },
+      "initialTarget": {
+        "x": 0,
+        "y": 0.5,
+        "z": 0
+      },
+      "segments": [
+        {
+          "distanceSceneUnits": 2.0,
+          "durationFrames": 24,
+          "easing": "easeInOutCubic",
+          "from": "initial",
+          "recipe": "dollyIn"
+        }
+      ]
+    },
+    {
+      "id": "cam-b",
+      "initialFovDeg": 50,
+      "initialPosition": {
+        "x": 0,
+        "y": 0.5,
+        "z": 8
+      },
+      "initialTarget": {
+        "x": 0,
+        "y": 0.5,
+        "z": 0
+      },
+      "segments": [
+        {
+          "distanceSceneUnits": 1.5,
+          "durationFrames": 24,
+          "easing": "easeOutCubic",
+          "from": "initial",
+          "recipe": "truckRight"
+        }
+      ]
+    }
+  ],
+  "compositionPasses": [],
+  "editDurationFrames": 48,
+  "fps": {
+    "denominator": 1,
+    "numerator": 24
+  },
+  "performanceTracks": [],
+  "renderProfile": {
+    "alphaMode": "straight",
+    "browserChannel": "synthetic-acceptance-s10",
+    "colorSpace": "srgb-display",
+    "fps": {
+      "denominator": 1,
+      "numerator": 24
+    },
+    "height": 360,
+    "premultiplyOnUpload": false,
+    "threeRevision": "0.187.0",
+    "videoCodec": "h264-yuv420p",
+    "width": 640
+  },
+  "revisionId": "rev-1",
+  "sceneDefinitions": [
+    {
+      "id": "scene-a",
+      "nodes": [
+        {
+          "id": "root",
+          "localPosition": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "w": 1,
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localScale": {
+            "x": 1.0,
+            "y": 1.0,
+            "z": 1.0
+          },
+          "parentId": null,
+          "type": "group"
+        },
+        {
+          "assetRef": {
+            "assetId": "bg",
+            "contentHash": "558fc8a856d83df60ce44899c0e5213d8453090fa387d491a90dec3003118ed5",
+            "relativePath": "assets/bg.png",
+            "revisionId": "rev-1"
+          },
+          "heightSceneUnits": 40,
+          "id": "bg",
+          "localPosition": {
+            "x": 0,
+            "y": 0,
+            "z": -12
+          },
+          "localRotation": {
+            "w": 1,
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localScale": {
+            "x": 1.0,
+            "y": 1.0,
+            "z": 1.0
+          },
+          "parentId": "root",
+          "renderOrder": 0,
+          "type": "imagePlane",
+          "widthSceneUnits": 40
+        },
+        {
+          "assetRef": {
+            "assetId": "sp-red",
+            "contentHash": "362517d47323e6330671874431fdbfa36f745ba382e862b8dd4dae33e7b9cd8d",
+            "relativePath": "splat/sp-red.spz",
+            "revisionId": "rev-1"
+          },
+          "id": "s-red",
+          "localPosition": {
+            "x": -3.5,
+            "y": 1.2,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 1,
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localScale": {
+            "x": 1.0,
+            "y": 1.0,
+            "z": 1.0
+          },
+          "parentId": "root",
+          "type": "splat"
+        },
+        {
+          "assetRef": {
+            "assetId": "sp-green",
+            "contentHash": "9aa9a3cda6a8803dd9aa5bdb74a756e7bf5fb5ca5a17bf21939484dfb55d1902",
+            "relativePath": "splat/sp-green.spz",
+            "revisionId": "rev-1"
+          },
+          "id": "s-green",
+          "localPosition": {
+            "x": 3.2,
+            "y": -1.0,
+            "z": -2.0
+          },
+          "localRotation": {
+            "w": 1,
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localScale": {
+            "x": 1.0,
+            "y": 1.0,
+            "z": 1.0
+          },
+          "parentId": "root",
+          "type": "splat"
+        },
+        {
+          "assetRef": {
+            "assetId": "sp-order",
+            "contentHash": "46a03d6e062c2c2d31f9cb0bd967b99fd4bd193b39c1658535fd4dda2378d51f",
+            "relativePath": "splat/sp-order.spz",
+            "revisionId": "rev-1"
+          },
+          "id": "s-order",
+          "localPosition": {
+            "x": 0.5,
+            "y": -0.2,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 1,
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localScale": {
+            "x": 1.0,
+            "y": 1.0,
+            "z": 1.0
+          },
+          "parentId": "root",
+          "type": "splat"
+        },
+        {
+          "assetRef": {
+            "assetId": "sp-pair",
+            "contentHash": "fa122ab2a8e2ddaaa011863d96640bcb82cb14b6ec029d8b3f5db58b025e176d",
+            "relativePath": "splat/sp-pair.spz",
+            "revisionId": "rev-1"
+          },
+          "id": "s-pair",
+          "localPosition": {
+            "x": -2.4,
+            "y": -1.0,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.8660254037844387,
+            "x": 0,
+            "y": 0.49999999999999994,
+            "z": 0
+          },
+          "localScale": {
+            "x": 1.0,
+            "y": 1.0,
+            "z": 1.0
+          },
+          "parentId": "root",
+          "type": "splat"
+        },
+        {
+          "assetRef": {
+            "assetId": "sp-purple",
+            "contentHash": "18dc77abd318264f74518a6d0f2f99856dd7fc2525c92c195b7ea04fc6c5b635",
+            "relativePath": "splat/sp-purple.spz",
+            "revisionId": "rev-1"
+          },
+          "id": "s-purple",
+          "localPosition": {
+            "x": 1.6,
+            "y": 1.9,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 1,
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localScale": {
+            "x": 1.5,
+            "y": 1.5,
+            "z": 1.5
+          },
+          "parentId": "root",
+          "type": "splat"
+        }
+      ],
+      "rootNodeId": "root",
+      "schemaVersion": "1.0"
+    }
+  ],
+  "sceneInstances": [
+    {
+      "durationFrames": 48,
+      "id": "inst-a",
+      "performanceTrackIds": [],
+      "sceneDefinitionId": "scene-a"
+    }
+  ],
+  "schemaVersion": "1.0",
+  "shots": [
+    {
+      "cameraClipId": "cam-a",
+      "cameraInFrame": 0,
+      "editRange": {
+        "endFrameExclusive": 24,
+        "startFrame": 0
+      },
+      "id": "shot-a",
+      "instanceStartFrame": 0,
+      "intent": "s10 shot-a",
+      "sceneInstanceId": "inst-a"
+    },
+    {
+      "cameraClipId": "cam-b",
+      "cameraInFrame": 0,
+      "editRange": {
+        "endFrameExclusive": 48,
+        "startFrame": 24
+      },
+      "id": "shot-b",
+      "instanceStartFrame": 24,
+      "intent": "s10 shot-b",
+      "sceneInstanceId": "inst-a",
+      "transitionInto": {
+        "reason": "second camera move",
+        "type": "cut"
+      }
+    }
+  ]
+}

@@ -42,6 +42,7 @@ pub(super) struct Draft {
     pub shots: Vec<Shot>,
     pub passes: Vec<CompositionPass>,
     pub audio: Option<AudioMix>,
+    pub fx: super::fx::Fx,
     /// `metadata.pilotFrameAudit` is present (the origin refuses it: `LEGACY_FRAME_AUDIT`).
     pub legacy_frame_audit: bool,
 }
@@ -738,6 +739,11 @@ pub(super) fn read_bundle(root: &Value, sink: &Sink) -> Option<Draft> {
         .array("compositionPasses", 0)
         .and_then(|a| a.objects(|_, o| composition_pass(o)));
     let audio = audio(&obj);
+    let fx = match obj.opt_object("fx") {
+        Some(Some(fx_obj)) => super::fx::read_fx(&fx_obj, duration, sink),
+        Some(None) => Some(super::fx::Fx::default()),
+        None => None,
+    };
     obj.deferred("narration");
     obj.deferred("outline");
     let metadata = obj.deferred("metadata");
@@ -767,6 +773,7 @@ pub(super) fn read_bundle(root: &Value, sink: &Sink) -> Option<Draft> {
         shots: shots?,
         passes: passes?,
         audio: audio?,
+        fx: fx?,
         legacy_frame_audit,
     })
 }

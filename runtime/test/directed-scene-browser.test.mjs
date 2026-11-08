@@ -27,7 +27,7 @@ import {
   vec,
 } from './directed-scene-fixtures.mjs';
 import { frameMessage, glMemory, loseDuring, loseNow, post, restore } from './lifecycle-fixtures.mjs';
-import { imageLayer, picture, shuffled, skipUnavailable, stillAsset } from './support.mjs';
+import { holdFetches, imageLayer, picture, shuffled, skipUnavailable, stillAsset } from './support.mjs';
 
 const PROBES = [
   [69, 34], // top-left quadrant of a 4x4 plane at the origin
@@ -106,7 +106,7 @@ test('the plan is drawn as listed: orientation, straight and opaque alpha, paint
     const ready = await runtime.hello();
     assert.ok(ready.capabilities.features.includes('directed_scene'));
     assert.equal(ready.capabilities.directed_scene.plan_kind, 'tessel-scene-plan');
-    assert.deepEqual(ready.capabilities.directed_scene.capabilities.length, 8);
+    assert.deepEqual(ready.capabilities.directed_scene.capabilities.length, 10);
     const refs = await loadAll(runtime, paths);
 
     // Orientation: image top is plane top (the V axis is flipped on purpose), left is left.
@@ -457,6 +457,102 @@ test('the resource budget is a limit the runtime enforces, with the pictures it 
     // A resource of a kind that is not a still is not a scene resource.
     const notStill = await runtime.load({ ...sceneAsset('s-6', paths.red, 'red'), kind: 'audio' });
     assert.equal(notStill.error.code, 'unsupported_format');
+  } finally {
+    await runtime.close();
+  }
+});
+
+test('asset.state repeats the identity of the load it answers, so a reused slot can tell an old answer from the new one (BL102)', async (t) => {
+  if (skipUnavailable(t, assert)) return;
+  const paths = files(t);
+  const runtime = await directedRuntime(paths);
+  try {
+    const ready = await runtime.hello();
+    assert.ok(ready.capabilities.features.includes('asset.identity'));
+    assert.deepEqual(ready.capabilities.asset_identity.echo, ['request', 'scene']);
+
+    const states = (slot) => runtime.messages.filter((m) => m.type === 'asset.state' && m.id === slot);
+    const settled = (slot, request) => (m) =>
+      m.type === 'asset.state' && m.id === slot && m.request === request && m.state !== 'loading';
+    const identity = (name) => ({
+      asset_id: name,
+      revision_id: `${name}-r1`,
+      content_hash: `hash-${name}`,
+      generation: GENERATION,
+    });
+
+    // Every state of one load (loading and ready) repeats the request and the scene identity.
+    await runtime.send({ type: 'asset.load', asset: { ...sceneAsset('slot', paths.red, 'red'), request: 11 } });
+    const first = await runtime.waitFor(settled('slot', 11), 'ready of request 11');
+    assert.equal(first.state, 'ready');
+    assert.deepEqual(first.scene, identity('red'));
+    assert.deepEqual(
+      states('slot').map((m) => [m.state, m.request]),
+      [['loading', 11]],
+      'the loading state of the same request was echoed too (ready was consumed)',
+    );
+    runtime.messages.length = 0;
+
+    // Hold request 21 at its real fetch: separate CDP calls alone do not prove it is still
+    // loading, especially when the image is cached or the suite is under load (BL102c).
+    const gate = await holdFetches(runtime.page, (url) => decodeURIComponent(url).includes(paths.red));
+    try {
+      await runtime.send({ type: 'asset.load', asset: { ...sceneAsset('slot', paths.red, 'red'), request: 21 } });
+      await gate.held();
+      await runtime.send({ type: 'asset.load', asset: { ...sceneAsset('slot', paths.green, 'green'), request: 22 } });
+      const replacing = await runtime.waitFor(settled('slot', 22), 'ready of request 22');
+      assert.equal(replacing.state, 'ready');
+      assert.deepEqual(replacing.scene, identity('green'));
+      await gate.open();
+      const ended = await runtime.waitFor(settled('slot', 21), 'end of request 21');
+      assert.deepEqual(
+        [ended.state, ended.error.code, ended.scene.asset_id],
+        ['failed', 'cancelled', 'red'],
+        'the replaced load ends as cancelled, naming its own request and picture, never as a ready',
+      );
+      assert.equal(states('slot').filter((m) => m.request === 21 && m.state === 'ready').length, 0);
+    } finally {
+      await gate.close();
+    }
+
+    // The same picture loaded into the same slot again is a different request.
+    runtime.messages.length = 0;
+    await runtime.send({ type: 'asset.load', asset: { ...sceneAsset('slot', paths.green, 'green'), request: 23 } });
+    assert.equal((await runtime.waitFor(settled('slot', 23), 'ready of request 23')).request, 23);
+
+    // A failure carries the identity as well.
+    runtime.messages.length = 0;
+    await runtime.send({ type: 'asset.load', asset: { ...sceneAsset('gone', `${paths.red}.missing`, 'red'), request: 31 } });
+    const failed = await runtime.waitFor((m) => m.type === 'asset.state' && m.id === 'gone' && m.state === 'failed', 'failed load');
+    assert.equal(failed.request, 31);
+    assert.deepEqual(failed.scene, identity('red'));
+
+    // A request that is not a non-negative integer is refused as a load, with no echo to trust.
+    runtime.messages.length = 0;
+    await runtime.send({ type: 'asset.load', asset: { ...sceneAsset('bad', paths.red, 'red'), request: -1 } });
+    const invalid = await runtime.waitFor((m) => m.type === 'asset.state' && m.id === 'bad', 'refused request');
+    assert.deepEqual([invalid.state, invalid.error.code, invalid.request], ['failed', 'invalid_request', undefined]);
+    assert.equal(runtime.messages.some((m) => m.type === 'asset.state' && m.id === 'bad' && m.state === 'ready'), false);
+  } finally {
+    await runtime.close();
+  }
+});
+
+test('a load without identity gets the asset.state messages it always got (bridge v1 stays compatible)', async (t) => {
+  if (skipUnavailable(t, assert)) return;
+  const paths = files(t);
+  const runtime = await directedRuntime(paths);
+  try {
+    runtime.messages.length = 0;
+    const loaded = await runtime.load({ id: 'plain', kind: 'still', source: { type: 'file', path: paths.red }, meta: {} });
+    assert.deepEqual(Object.keys(loaded).sort(), ['id', 'meta', 'state', 'type', 'v']);
+    const loading = runtime.messages.find((m) => m.type === 'asset.state' && m.id === 'plain' && m.state === 'loading');
+    assert.deepEqual(Object.keys(loading).sort(), ['id', 'state', 'type', 'v']);
+
+    // A scene load of a host that never learned `request` still works, and is not echoed a request.
+    const scene = await runtime.load(sceneAsset('slot', paths.green, 'green'));
+    assert.equal(scene.state, 'ready');
+    assert.equal(scene.request, undefined);
   } finally {
     await runtime.close();
   }

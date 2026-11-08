@@ -13,6 +13,9 @@
 
 #[path = "scene_monitor_host.rs"]
 mod directed;
+#[path = "viewport_overlay.rs"]
+mod overlay_host;
+use overlay_host::OverlayHost;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -24,10 +27,11 @@ use std::time::{Duration, Instant};
 use async_channel::{Receiver, Sender};
 use serde_json::{Value, json};
 use tessel_editor_core::CommandError;
-use tessel_editor_core::backend::{BackendError, FrameResult, Output};
-use tessel_editor_core::bridge::{BridgeBackend, HelloOptions, Transport};
+use tessel_editor_core::backend::{BackendError, FrameDetail, FrameResult, Output};
+use tessel_editor_core::bridge::{BridgeBackend, HelloOptions, PreviewSort, Transport};
 use tessel_editor_core::headless::{backend_error, frame_geometry, frame_report, plan_summary};
 use tessel_editor_core::ops::RenderFrame;
+use tessel_editor_core::perf::Meter;
 use tessel_editor_core::plan::{PlanRequest, RenderPlan};
 use tessel_editor_core::preview::ProxyCoverage;
 use tessel_editor_core::session::{Preview, SessionEvent, Status, ViewportSession};
@@ -36,6 +40,8 @@ use tessel_editor_core::trace::TraceHandle;
 use tessel_editor_render::SetupError;
 use tessel_editor_render::host::{AssetAccess, Served, serve, write_png};
 use wry::http::{Request, Response};
+
+use super::perf_meter::PerfClock;
 
 /// Scheme and host the page is served from. A custom scheme keeps the page same-origin with
 /// its assets and unreachable from any web page.
@@ -68,38 +74,26 @@ pub const TRACE_ENV: &str = "TESSEL_VIEWPORT_TRACE";
 pub const RETAIN_ENV: &str = "TESSEL_VIEWPORT_RETAIN";
 /// Set to `0` to make every splat scene frame sort and draw again (rollback of the result cache).
 pub const RESULT_CACHE_ENV: &str = "TESSEL_VIEWPORT_RESULT_CACHE";
-/// `0`, `2` or `4` MSAA samples for scene targets of the monitor. Unset means
-/// [`MONITOR_SCENE_SAMPLES`]: the interactive preview trades 4× edge smoothing for speed (a 1.18 M
-/// splat take costs ~52 ms at 4× and ~14 ms at 2× on the reference machine, see
-/// `docs/viewport-performance-splat-project-investigation.md`). Set `4` to get the runtime's
-/// full-quality target back. Export and headless renders do not go through this host and keep 4.
+/// `0`, `2` or `4` MSAA samples for scene targets. Unset keeps the runtime's 4 (OPT07 measured
+/// fewer samples as a real gain on large splat scenes but a visible edge-quality trade).
 pub const SCENE_SAMPLES_ENV: &str = "TESSEL_VIEWPORT_SCENE_SAMPLES";
 /// How far ahead of the playhead playback loads the assets of clips that are about to start.
 pub const PREFETCH_SECONDS: i64 = 2;
-/// MSAA samples of scene targets in the monitor when [`SCENE_SAMPLES_ENV`] is not set.
-pub const MONITOR_SCENE_SAMPLES: u32 = 2;
-/// MSAA samples of scenes made only of splats in the monitor when [`SCENE_SAMPLES_ENV`] is not set.
-/// Splats are alpha blended, so multisampling smooths nothing in them: on the reference machine a
-/// 1.18 M splat layer costs ~27 ms of GPU at 2× and ~10 ms at 0×, and the pictures differ by
-/// 62-66 dB PSNR.
-pub const MONITOR_SPLAT_SAMPLES: u32 = 0;
-
-/// The sample count the monitor asks for: the env value when it is one of 0/2/4, else the default.
-pub fn monitor_scene_samples(value: Option<&str>) -> u32 {
-    value
-        .and_then(|value| value.parse().ok())
-        .filter(|samples| [0, 2, 4].contains(samples))
-        .unwrap_or(MONITOR_SCENE_SAMPLES)
-}
-
-/// The sample count of splat-only scenes: the env value when it is one of 0/2/4 (an explicit choice
-/// applies to every scene), else [`MONITOR_SPLAT_SAMPLES`].
-pub fn monitor_splat_samples(value: Option<&str>) -> u32 {
-    value
-        .and_then(|value| value.parse().ok())
-        .filter(|samples| [0, 2, 4].contains(samples))
-        .unwrap_or(MONITOR_SPLAT_SAMPLES)
-}
+/// `0`, `2` or `4` MSAA samples of scene layers in the monitor's interactive frames (playback and
+/// scrub, BL129); the picture is refined to the final count when the playhead stops. Unset keeps the
+/// runtime's default; `4` turns the reduction off (A/B and rollback). Explicit frames and export
+/// never read it: they draw at the final count.
+pub const PREVIEW_SCENE_SAMPLES_ENV: &str = "TESSEL_VIEWPORT_PREVIEW_SCENE_SAMPLES";
+/// `latest` or `exact`: how a splat scene of the monitor's interactive frames (playback and scrub,
+/// BL130) gets its draw order. `latest` paints with the order of the last finished sort and sorts for
+/// the camera behind the frame; the picture is replaced by the exact one when the playhead stops.
+/// `exact` waits for the sort of every frame (A/B and rollback). Unset (or empty) keeps the runtime's
+/// default (`latest`); any other value is a typo and is read as `exact`, the safe order, with a warning
+/// on stderr: a mistyped rollback must never leave the reused order on. This only orders splats: the
+/// MSAA of a preview frame (`TESSEL_VIEWPORT_PREVIEW_SCENE_SAMPLES`) and the proxies of a video stay as
+/// they are, and the monitor policy `monitor.preview.quality = original` is what draws an interactive
+/// frame at the original quality. Explicit frames and export never read it: they wait for their own sort.
+pub const PREVIEW_SORT_ENV: &str = "TESSEL_VIEWPORT_PREVIEW_SORT";
 
 /// Opt-ins read once when the host is created.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -109,7 +103,35 @@ pub struct HostOptions {
     pub retain: Option<bool>,
     pub result_cache: Option<bool>,
     pub scene_samples: Option<u32>,
-    pub splat_samples: Option<u32>,
+    pub preview_scene_samples: Option<u32>,
+    pub preview_sort: Option<PreviewSort>,
+}
+
+/// A MSAA sample count the runtime accepts, from an environment value.
+fn samples_from_env(name: &str) -> Option<u32> {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .filter(|samples| [0, 2, 4].contains(samples))
+}
+
+/// The preview sort an environment value asks for: `Ok(None)` when it is unset or empty, and `Err(warning)`
+/// with the order that is used instead (`exact`) when it is neither name.
+pub(super) fn preview_sort_from_env(
+    value: Option<&str>,
+) -> Result<Option<PreviewSort>, (PreviewSort, String)> {
+    match value.map(str::trim) {
+        None | Some("") => Ok(None),
+        Some(text) => match PreviewSort::parse(text) {
+            Some(sort) => Ok(Some(sort)),
+            None => Err((
+                PreviewSort::Exact,
+                format!(
+                    "{PREVIEW_SORT_ENV}={text:?} is not `latest` or `exact`: using `exact` (every interactive frame waits for its own sort)"
+                ),
+            )),
+        },
+    }
 }
 
 impl HostOptions {
@@ -122,12 +144,20 @@ impl HostOptions {
             result_cache: std::env::var(RESULT_CACHE_ENV)
                 .is_ok_and(|value| value == "0")
                 .then_some(false),
-            scene_samples: Some(monitor_scene_samples(
-                std::env::var(SCENE_SAMPLES_ENV).ok().as_deref(),
-            )),
-            splat_samples: Some(monitor_splat_samples(
-                std::env::var(SCENE_SAMPLES_ENV).ok().as_deref(),
-            )),
+            scene_samples: samples_from_env(SCENE_SAMPLES_ENV),
+            preview_scene_samples: samples_from_env(PREVIEW_SCENE_SAMPLES_ENV),
+            preview_sort: match preview_sort_from_env(
+                std::env::var_os(PREVIEW_SORT_ENV)
+                    .as_deref()
+                    .map(std::ffi::OsStr::to_string_lossy)
+                    .as_deref(),
+            ) {
+                Ok(sort) => sort,
+                Err((sort, warning)) => {
+                    eprintln!("tessel-editor: {warning}");
+                    Some(sort)
+                }
+            },
         }
     }
 }
@@ -149,6 +179,26 @@ pub struct WebTransport {
     outbox: Rc<RefCell<VecDeque<String>>>,
     inbox: Rc<RefCell<VecDeque<Value>>>,
     access: Rc<RefCell<AssetAccess>>,
+}
+
+/// What the monitor's header adds when the picture is not the final quality: a proxy copy of a
+/// video, a scene drawn with fewer MSAA samples, and/or splats painted in the order of an earlier
+/// camera (the refine replaces all of them once the playhead stops). Empty for a final-quality picture.
+fn reduced_label(detail: &FrameDetail) -> String {
+    let mut label = String::new();
+    if detail.proxy_layers() > 0 {
+        label.push_str(" · proxy");
+    }
+    if detail.reduced_scene_layers() > 0 {
+        match detail.scene_samples() {
+            Some(samples) => label.push_str(&format!(" · MSAA {samples}")),
+            None => label.push_str(" · MSAA"),
+        }
+    }
+    if detail.stale_sort_layers() > 0 {
+        label.push_str(" · sort");
+    }
+    label
 }
 
 /// JSON is almost JavaScript: only these two separators are legal in JSON strings and not
@@ -188,6 +238,12 @@ impl Transport for WebTransport {
     }
 }
 
+/// Where presented pictures are reported for the debug meter (F049), and the clock it uses.
+struct MeterLink {
+    meter: Rc<RefCell<Meter>>,
+    clock: PerfClock,
+}
+
 struct Waiter {
     request: u64,
     reply: Sender<Result<Value, CommandError>>,
@@ -196,6 +252,8 @@ struct Waiter {
 
 pub struct ViewportHost {
     directed: directed::DirectedViewport,
+    /// F055: the gizmo overlay the page draws over the picture.
+    overlay: OverlayHost,
     dist: Option<PathBuf>,
     session: ViewportSession<BridgeBackend<WebTransport>>,
     outbox: Rc<RefCell<VecDeque<String>>>,
@@ -224,6 +282,10 @@ pub struct ViewportHost {
     /// took the same rounded milliseconds). OPT04: the window only repaints for the former.
     ui_repaints: u64,
     ui_skipped: u64,
+    /// The debug meter, when the workstation attached one. It records only while it is enabled.
+    meter: Option<MeterLink>,
+    /// Sequence frame of the newest accepted picture (see [`ViewportHost::note_presented`]).
+    presented: Option<i64>,
 }
 
 impl ViewportHost {
@@ -246,7 +308,8 @@ impl ViewportHost {
                 presented: options.trace,
                 result_cache: options.result_cache,
                 scene_samples: options.scene_samples,
-                splat_samples: options.splat_samples,
+                preview_scene_samples: options.preview_scene_samples,
+                preview_sort: options.preview_sort,
             });
         let mut session =
             ViewportSession::new(backend).with_demo_dir(tessel_editor_render::demo_dir());
@@ -278,11 +341,48 @@ impl ViewportHost {
             proxy_coverage: ProxyCoverage::default(),
             on_screen: true,
             directed: directed::DirectedViewport::default(),
+            overlay: OverlayHost::from_env(),
             ui_repaints: 0,
             ui_skipped: 0,
+            meter: None,
+            presented: None,
         };
         host.set_inspect_previews(std::env::var(INSPECT_ENV).is_ok_and(|value| value == "1"));
         host
+    }
+
+    /// Lets the debug meter hear every picture the monitor accepts, on the meter's clock.
+    pub(super) fn attach_meter(&mut self, meter: Rc<RefCell<Meter>>, clock: PerfClock) {
+        self.meter = Some(MeterLink { meter, clock });
+    }
+
+    /// One accepted picture (`frame.done` of the request in flight), with its sequence frame.
+    /// A hidden meter returns at once inside `monitor_presented`: nothing is kept. The frame is
+    /// remembered whatever the meter does (one `Option<i64>`, no sample): the meter needs to
+    /// know what the monitor shows at the instant it is switched on or playback starts.
+    pub(super) fn note_presented(&mut self, frame: Option<i64>) {
+        self.presented = frame;
+        if let Some(link) = &self.meter {
+            link.meter
+                .borrow_mut()
+                .monitor_presented(link.clock.elapsed(), frame);
+        }
+    }
+
+    /// The sequence frame of the newest picture the monitor accepted (`None`: a source preview,
+    /// nothing yet, or the project was replaced or the viewport reloaded since).
+    pub fn presented_frame(&self) -> Option<i64> {
+        self.presented
+    }
+
+    /// The last picture the runtime finished, for the meter's context rows.
+    pub fn last_frame(&self) -> Option<&FrameResult> {
+        self.last_frame.as_ref()
+    }
+
+    /// Whether the runtime can produce pictures at all (the meter says "indisponível" otherwise).
+    pub fn monitor_available(&self) -> bool {
+        self.phase == Phase::Ready
     }
 
     /// The recorder of host-side spans (see [`TRACE_ENV`]); the window records its own into it.
@@ -334,6 +434,7 @@ impl ViewportHost {
             return false;
         };
         self.forget_directed_runtime(&BackendError::new("cancelled", "The viewport is reloading"));
+        self.overlay_forget();
         self.session.reset_project();
         self.access.borrow_mut().clear();
         self.inbox.borrow_mut().clear();
@@ -344,6 +445,8 @@ impl ViewportHost {
         self.last_key = None;
         self.dirty = true;
         self.last_frame = None;
+        // The reloaded page shows nothing until its first new picture.
+        self.presented = None;
         true
     }
 
@@ -355,6 +458,8 @@ impl ViewportHost {
         self.access.borrow_mut().clear();
         self.last_key = None;
         self.last_frame = None;
+        // Frame IDs may now mean something else: what the monitor showed is not known anymore.
+        self.presented = None;
         self.dirty = true;
     }
 
@@ -369,6 +474,7 @@ impl ViewportHost {
     }
 
     fn set_unavailable(&mut self, error: BackendError) {
+        self.overlay_forget();
         self.fail_waiters(&error);
         self.phase = Phase::Unavailable(error);
     }
@@ -762,6 +868,7 @@ impl ViewportHost {
                     let _ = waiter.reply.try_send(frame_report(&waiter.summary, &frame));
                 }
                 self.last_frame = Some(frame);
+                self.note_presented(self.session.presented_frame());
             }
             SessionEvent::Failed(error) => {
                 self.request_started = None;
@@ -835,11 +942,7 @@ impl ViewportHost {
                                 frame.height,
                                 frame.render_ms,
                                 // Never hide that the picture is a preview copy.
-                                if frame.detail.proxy_layers() > 0 {
-                                    " · proxy"
-                                } else {
-                                    ""
-                                }
+                                reduced_label(&frame.detail)
                             ) + &self.proxy_note()
                         }
                         None => "Aguardando quadro".to_string(),
@@ -896,6 +999,7 @@ impl ViewportHost {
         json!({
             "directed_scene": self.directed_scene(),
             "directed": self.directed_report(),
+            "overlay": self.overlay_report(),
             "phase": phase,
             "headline": self.headline(),
             "on_screen": self.on_screen,

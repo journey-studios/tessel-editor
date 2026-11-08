@@ -102,7 +102,21 @@ fn catalog_describes_every_property_with_unit_default_range_and_applicability() 
             "height",
             "start/position",
             "start/target",
-            "start/fov"
+            "start/fov",
+            // Appended by S6: renderOrder, then the components (`scene_edit_properties.rs`).
+            "renderOrder",
+            "position/x",
+            "position/y",
+            "position/z",
+            "scale/x",
+            "scale/y",
+            "scale/z",
+            "start/position/x",
+            "start/position/y",
+            "start/position/z",
+            "start/target/x",
+            "start/target/y",
+            "start/target/z",
         ]
     );
 
@@ -164,7 +178,7 @@ fn catalog_describes_every_property_with_unit_default_range_and_applicability() 
     // The relation to the origin is stated per property, never implied.
     assert_eq!(
         CameraProperty::StartPosition.spec().origin,
-        OriginRelation::PathNarrowerWrite
+        OriginRelation::PathEquivalentWrite
     );
     assert_eq!(
         CameraProperty::StartTarget.spec().origin,
@@ -234,7 +248,11 @@ fn unknown_paths_are_refused_with_the_known_names() {
     );
     refused("light/lamp/intensity");
     refused("scene/street/node//position");
-    refused("scene/street/node/hero-plane/position/x");
+    refused("scene/street/node/hero-plane/position/w");
+    refused("scene/street/node/hero-plane/rotation/x");
+    refused("scene/street/node/hero-plane/position/x/y");
+    // A `/` escaped inside one segment is an ID-style escape, never a two-part name.
+    refused("scene/street/node/hero-plane/position%2Fx");
     refused("camera/wide/track/0/segment/0/end/position");
     refused("scene/street/node/hero-plane/position%");
     refused("scene/street/node/hero-plane/position%zz");
@@ -245,8 +263,9 @@ fn unknown_paths_are_refused_with_the_known_names() {
 fn properties_of_lists_what_applies_with_current_values_and_no_selection() {
     let scene = fixture();
     let properties = properties_of(&scene);
-    // Groups root and stage: 3 each. Image planes bg, hero and prop: 5 each. One clip: 3.
-    assert_eq!(properties.len(), 6 + 15 + 3);
+    // Groups root and stage: 3 each. Image planes bg, hero and prop: 5 + renderOrder each. One
+    // clip: 3. Components are not listed (`properties_with_components` does).
+    assert_eq!(properties.len(), 6 + 18 + 3);
 
     let value_of = |reference: PropertyRef| {
         properties

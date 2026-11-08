@@ -4,9 +4,11 @@
 
 import * as THREE from 'three';
 
+import { ASSET_IDENTITY_CAPABILITIES, assetEcho } from './asset-identity.js';
 import { AssetStore } from './assets.js';
-import { Compositor, describePixels } from './compositor.js';
+import { Compositor, DEFAULT_PREVIEW_SORT, describePixels } from './compositor.js';
 import { DIRECTED_SCENE_CAPABILITIES } from './directed-scene.js';
+import { refreshAfterFrame } from './overlay.js';
 import { RetentionCounters } from './retention.js';
 import { SPLAT_FORMATS } from './splat-format.js';
 import { SPARK_VERSION } from './splat-stage.js';
@@ -46,9 +48,14 @@ const FEATURES = [
   'frame.quality',
   'scene.result_cache',
   'directed_scene',
+  'asset.identity',
 ];
+// F055: announced only by a page that has an overlay surface (the desktop WebView, see
+// `wantsOverlay`), never by the headless worker (same bundle, no surface): a host sends `overlay.*`
+// messages only to a runtime that says it can draw them.
+const OVERLAY_FEATURE = 'overlay.gizmo';
 
-export const createRuntime = ({ post, assetUrl, canvas }) => {
+export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
   const send = (message) => post({ v: BRIDGE_VERSION, ...message });
   const counters = new RetentionCounters();
   const assets = new AssetStore({ assetUrl, counters });
@@ -73,7 +80,8 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
     try {
       compositor = new Compositor(canvas, { retain: options.retain, resultCache: options.resultCache, counters });
       if (options.sceneSamples !== undefined) compositor.setSceneSamples(options.sceneSamples);
-      compositor.setSplatSamples(options.splatSamples ?? null);
+      if (options.previewSceneSamples !== undefined) compositor.setPreviewSceneSamples(options.previewSceneSamples);
+      if (options.previewSort !== undefined) compositor.setPreviewSort(options.previewSort);
     } catch (error) {
       throw error instanceof RuntimeError
         ? error
@@ -110,9 +118,16 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
     compositor?.setResultCache(options.resultCache);
     options.sceneSamples = Number.isInteger(message.scene_samples) ? message.scene_samples : undefined;
     if (options.sceneSamples !== undefined) compositor?.setSceneSamples(options.sceneSamples);
-    options.splatSamples = Number.isInteger(message.splat_samples) ? message.splat_samples : undefined;
-    compositor?.setSplatSamples(options.splatSamples ?? null);
+    // Additive (BL129): MSAA of scene layers in `preview` frames; absent keeps the runtime's default.
+    options.previewSceneSamples = Number.isInteger(message.preview_scene_samples) ? message.preview_scene_samples : undefined;
+    if (options.previewSceneSamples !== undefined) compositor?.setPreviewSceneSamples(options.previewSceneSamples);
+    // Additive (BL130): how a splat scene of a `preview` frame is ordered. Every hello says it whole: absent is the
+    // default (`latest`), also on a later hello that follows one that asked for `exact`; a name that is not one of
+    // the two is `exact` (see `Compositor.setPreviewSort`).
+    options.previewSort = message.preview_sort ?? DEFAULT_PREVIEW_SORT;
+    compositor?.setPreviewSort(options.previewSort);
     compositor?.setRetain(options.retain);
+    assets.setRetainSplatMeshes(options.retain);
     if (!options.retain) assets.dropTextures();
   };
 
@@ -132,21 +147,33 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
         layers: LAYERS,
         formats: FORMATS,
         max_size: active.maxSize,
-        features: FEATURES,
+        features: overlay ? [...FEATURES, OVERLAY_FEATURE] : FEATURES,
         native_video: NATIVE_VIDEO,
         // Additive: what a `directed_scene` layer needs and how its resources are identified.
         directed_scene: DIRECTED_SCENE_CAPABILITIES,
+        // Additive: `asset.state` repeats the `request`/`scene` identity of the `asset.load` it answers.
+        asset_identity: ASSET_IDENTITY_CAPABILITIES,
       },
     });
   };
 
   const loadAsset = async (descriptor) => {
-    send({ type: 'asset.state', id: descriptor.id, state: 'loading' });
+    // Every state of this load carries the identity of the request that caused it, including the
+    // `cancelled` of a load a release overtook: the host tells it from the answer of the load that
+    // took its slot (BL102). A descriptor without identity gets the messages it always got.
+    let echo;
+    try {
+      echo = assetEcho(descriptor);
+    } catch (error) {
+      send({ type: 'asset.state', id: descriptor.id, state: 'failed', error: toErrorJson(error, 'invalid_request') });
+      return;
+    }
+    send({ type: 'asset.state', id: descriptor.id, state: 'loading', ...echo });
     try {
       const meta = await assets.load(descriptor);
-      send({ type: 'asset.state', id: descriptor.id, state: 'ready', meta });
+      send({ type: 'asset.state', id: descriptor.id, state: 'ready', meta, ...echo });
     } catch (error) {
-      send({ type: 'asset.state', id: descriptor.id, state: 'failed', error: toErrorJson(error, 'asset_unreadable') });
+      send({ type: 'asset.state', id: descriptor.id, state: 'failed', error: toErrorJson(error, 'asset_unreadable'), ...echo });
     }
   };
 
@@ -248,6 +275,11 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
       if (output.png) message.png_data = canvas.toDataURL('image/png').split(',')[1];
       send(message);
       if (options.presented) announcePresented(id, revision);
+      // The canvas may have changed shape with this picture: an active overlay re-checks that it
+      // still describes it (F055). After `frame.done` and `frame.presented`, so it never delays
+      // them, and isolated: a failure here is the overlay's, never `frame.failed` after a success.
+      refreshAfterFrame(overlay, (error) =>
+        send({ type: 'overlay.error', error: toErrorJson(error, 'overlay_failed') }));
     } catch (error) {
       send({ type: 'frame.failed', id, revision, error: failureOf(error, lostDuringFrame()) });
     } finally {
@@ -279,6 +311,25 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
       cancelled.add(message.id);
     },
     'viewport.resize': () => {},
+    // F055 (additive, negotiated by the `overlay.gizmo` feature): the gizmo drawn over the picture.
+    ...Object.fromEntries(
+      ['overlay.enable', 'overlay.set', 'overlay.clear'].map((type) => [
+        type,
+        (message) => {
+          // No overlay surface (the headless worker): the feature was never negotiated, so this is
+          // a protocol refusal and stays the generic `unsupported` error.
+          if (!overlay) throw new RuntimeError('unsupported', 'This page has no overlay surface');
+          // An operational overlay that fails (a malformed payload): the overlay's own failure, not a
+          // protocol error. The generic `error` closes the host's render session; `overlay.error` is
+          // consumed by the overlay adapter, and the page keeps its previous overlay and its frames.
+          try {
+            overlay.receive(message);
+          } catch (error) {
+            send({ type: 'overlay.error', request: type, error: toErrorJson(error, 'invalid_overlay') });
+          }
+        },
+      ]),
+    ),
     dispose: () => {
       disposed = true;
       assets.releaseAll();
@@ -331,6 +382,7 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
     retention: () => ({
       retain: options.retain,
       presented: options.presented,
+      preview_sort: compositor?.previewSort ?? null,
       ...(compositor?.retained() ?? {}),
       texture_entries: assets.textureCount(),
       texture_bytes: assets.textureBytes(),
@@ -348,6 +400,10 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
       return { textures: info.memory.textures, geometries: info.memory.geometries, programs: info.programs?.length ?? 0 };
     },
     idle: () => renderQueue,
+    // Every SparkRenderer alive, to inject a failure into one or count them (tests and measurements).
+    splatStages: () => compositor?.liveStages() ?? [],
+    // The compositor, to make one pass of a frame fail on purpose (tests): the frame must report it and the next must draw.
+    compositor: () => compositor,
     // The store itself and the bounds, so a test can hold a frame at an await or shrink a budget.
     assets,
     setLimits: (limits) => {

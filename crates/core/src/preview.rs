@@ -8,6 +8,9 @@
 //!   interactive frames**. Everything that asks for pixels (explicit `render.frame`, probes, PNG
 //!   output, export) draws the original, and the monitor refines the picture to the original
 //!   when the scrub settles (`ViewportSession::dispatch_pending`).
+//! * The same `Preview` quality also lets the runtime draw scene layers with fewer MSAA samples
+//!   (BL129): it is the *interactive* quality (playback and scrub), so `Original` means final
+//!   MSAA as well, and the refine that follows a stop replaces the reduced picture too.
 //!
 //! Quality is never hidden: every frame answer says how many layers used a proxy and the
 //! policy can be queried with the reason for each asset (`preview.policy`).
@@ -47,7 +50,8 @@ impl PreviewMode {
 }
 
 /// Quality a frame is drawn at. `Preview` allows the runtime to use an attached proxy per
-/// layer; a layer without a (valid) proxy is drawn from the original either way.
+/// layer (a layer without a (valid) proxy is drawn from the original either way) and to draw
+/// scene layers with fewer MSAA samples; `Original` is the final picture.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Quality {
     Preview,
