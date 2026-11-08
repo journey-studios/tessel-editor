@@ -237,6 +237,9 @@ pub(super) struct HistoryView {
     /// The answer to the last button: an export path or an error, in words.
     note: Option<(String, bool)>,
     exports: u32,
+    /// How many refreshes the timer asked for (the 4 Hz rule is about this number).
+    #[cfg(test)]
+    ticks: u64,
 }
 
 impl HistoryView {
@@ -247,6 +250,8 @@ impl HistoryView {
             timer: None,
             note: None,
             exports: 0,
+            #[cfg(test)]
+            ticks: 0,
         }
     }
 
@@ -254,6 +259,11 @@ impl HistoryView {
     #[cfg(test)]
     pub(super) fn timer_armed(&self) -> bool {
         self.timer.is_some()
+    }
+
+    #[cfg(test)]
+    pub(super) fn ticks(&self) -> u64 {
+        self.ticks
     }
 
     fn ensure_timer(&mut self, moving: bool, cx: &mut Context<Self>) {
@@ -276,6 +286,10 @@ impl HistoryView {
 
     /// One 4 Hz refresh: the next paint is the diagnostic's own and is not a UI frame.
     fn tick(&mut self, cx: &mut Context<Self>) {
+        #[cfg(test)]
+        {
+            self.ticks += 1;
+        }
         let workstation = self.workstation.read(cx);
         if workstation.perf.meter().borrow().enabled() {
             workstation.perf.own_redraw().set(true);

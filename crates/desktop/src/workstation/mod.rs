@@ -842,6 +842,8 @@ mod identity_tests;
 #[cfg(test)]
 mod input_tests;
 #[cfg(test)]
+mod perf_history_tests;
+#[cfg(test)]
 mod perf_tests;
 #[cfg(test)]
 mod scene_fx_tests;
