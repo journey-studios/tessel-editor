@@ -136,17 +136,22 @@ sendo só uma entrada de caminhos; `capture` se escolhe por `media.import`/`asse
 
 | Superfície | Evidência | Estado |
 |---|---|---|
-| Lib | `crates/core/tests/sharp_import.rs` (6 testes: leitura, câmera e giro no plano, simples/ignore sem câmera, recusas com estado intacto + mesmo arquivo com `ignore`, restaurar/undo, salvar/reabrir/schema/FOV recalculado/documento inválido) + 6 unitários em `sharp.rs` + `runtime/test/pure.test.mjs` | V (anteriores à revisão) |
-| Lib (revisão, BL143.4–.9) | `sharp.rs`: 6 unitários novos (PLY comum, captura não localizável, duplicados/tokens extras, cabeçalho hostil, `color_space` ausente, `whole`); `sharp_import.rs`: 5 novos (PLY comum com `auto`/`ignore`, cabeçalho hostil, aviso de `color_space`, captura em ativo não splat, fidelidade de cor/enquadramento com oráculo independente e controles negativos) | **A validar — escritos, não executados** (disco abaixo do piso; só `rustfmt`) |
-| CLI headless | `crates/media/tests/sharp_import.rs` (3: job de import com falha por arquivo, salvar/reabrir/empacotar/restaurar, relink recusado) e `scripts/sharp-import-proof.py` (24 checks JSONL, processo `tessel-headless`) | V (anteriores à revisão) |
-| CLI headless (revisão) | `crates/media/tests/sharp_import.rs`: 3 novos (avisos no relatório do `media.import`, duplicado com outra escolha de `capture`, cabeçalho hostil/truncado por arquivo no lote) | **A validar — escritos, não executados** |
+| Lib | `crates/core/tests/sharp_import.rs` (6 testes: leitura, câmera e giro no plano, simples/ignore sem câmera, recusas com estado intacto + mesmo arquivo com `ignore`, restaurar/undo, salvar/reabrir/schema/FOV recalculado/documento inválido) + 6 unitários em `sharp.rs` + `runtime/test/pure.test.mjs` | V |
+| Lib (revisão, BL143.4–.9) | `sharp.rs`: 6 unitários novos (PLY comum, captura não localizável, duplicados/tokens extras, cabeçalho hostil, `color_space` ausente, `whole`); `sharp_import.rs`: 5 novos (PLY comum com `auto`/`ignore`, cabeçalho hostil, aviso de `color_space`, captura em ativo não splat, fidelidade de cor/enquadramento com oráculo independente e controles negativos) | V (executados na integração com `main`) |
+| CLI headless | `crates/media/tests/sharp_import.rs` (3: job de import com falha por arquivo, salvar/reabrir/empacotar/restaurar, relink recusado) e `scripts/sharp-import-proof.py` (24 checks JSONL, processo `tessel-headless`) | V |
+| CLI headless (revisão) | `crates/media/tests/sharp_import.rs`: 3 novos (avisos no relatório do `media.import`, duplicado com outra escolha de `capture`, cabeçalho hostil/truncado por arquivo no lote) | V (executados na integração com `main`) |
 | UI | `crates/desktop/.../sharp_capture_tests.rs` (2 GPUI) e `scripts/sharp-import-proof.py` na janela real própria (30 checks por `ui op/get/invoke`, 5 sondas de pixel nos lugares previstos, a importação simples do mesmo arquivo fora deles, captura nativa [`assets/bl143-sharp-import-window.png`](assets/bl143-sharp-import-window.png)) | V (sem clique de ponteiro) |
 | Pixels reais | `crates/render/tests/sharp_frames.rs` (Chrome + SwiftShader + Spark): cada gaussiana cai no pixel previsto **só pelas intrínsecas do arquivo** (pinhole calculado fora do código sob teste), idem na visualização de fonte, idem no vídeo exportado (H.264); sem o giro de eixos ou com a câmera virada para outro lado a prova falha (mutação executada: `ORIENTATION = [0,0,0]` derruba os dois testes de quadro) | V |
 
-Executado × atribuído: as linhas marcadas **V** foram executadas antes da revisão, com arquivos sintéticos. As correções da
-revisão (BL143.4–.9) foram escritas sem rodar Cargo, build ou render, porque o disco livre estava abaixo do piso de segurança:
-só `rustfmt` e leitura. **Não** foi executado com uma saída real do SHARP (nenhum modelo roda aqui): o formato segue a fonte
-primária e o espelho sintético; a conferência com um PLY real é BL143.1. Um revisor leu o cabeçalho primário de quatro PLYs reais
+Executado × atribuído: **integração com `main` (PR #23, após o merge da PR #20): gates reais executados** em máquina com 18–21 GiB
+livres (piso de 12 GiB), runtime real, Chrome, FFmpeg. `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked --no-fail-fast`:
+**1634 passaram, 0 falharam, 12 ignorados**, incluindo os 3 de `crates/render/tests/sharp_frames.rs` (pixels no quadro, na visualização e no MP4);
+`clippy -D warnings` e `fmt --check` limpos; `./scripts/runtime test` 176/176; `scripts/sharp-import-proof.py` (com `with-gpu-lock.py`):
+**headless 24/24, janela 30/30**, 0 SKIP; todos os `scripts/*.spec.py` passam (helper 29/29 normal e `-O`); `cargo tree -p tessel-editor-core`
+sem gpui/wry. Nota de operação: o bundle `runtime/dist` não é versionado e precisa de `./scripts/runtime build` depois de trocar de branch
+(com o bundle antigo os 3 testes de pixels falham com `Cannot read properties of undefined (reading 'objects')`, que **não** é defeito do código).
+**Não** foi executado com uma saída real do SHARP (nenhum modelo roda aqui): o formato segue a fonte primária e o espelho sintético; a
+conferência com um PLY real é BL143.1. Um revisor leu o cabeçalho primário de quatro PLYs reais
 (1 179 648 pontos, 1672×941, fx=fy=1330,3168, cx 836, cy 470,5, `color_space` 0, versão 1.5.0, FOV vertical 38,955°): confirma o
 formato em parte, não a execução em Rust nem os pixels.
 
@@ -162,6 +167,6 @@ splat com captura não herda câmera nem giro (BL143.2, mas `rotation` por objet
 (BL143.3); cores linearRGB só avisam (BL139.color); o preview nativo (WKWebView) e o export (Chrome) são pilhas GL
 diferentes (ver [viewport](viewport.md)).
 
-R2: rejeitados centros principais e extrínseca não finitos; replace_asset agora aplica a mesma recusa de captura em ativo não-splat. Regressões escritas para NaN/Inf e preservação de estado, sem execução Rust por disco. O teste de cor do contrato não prova fidelidade de render nem independência total do oráculo; BL143.8 permanece pendente de comparação contra fonte real por caminho independente. F052 fica I até gates e provas reais.
+R2: rejeitados centros principais e extrínseca não finitos; replace_asset agora aplica a mesma recusa de captura em ativo não-splat. Regressões escritas para NaN/Inf e preservação de estado, sem execução Rust por disco. O teste de cor do contrato não prova fidelidade de render nem independência total do oráculo; BL143.8 permanece pendente de comparação contra fonte real por caminho independente. F052 está V para o contrato sintético; leitura de PLY real e cor/pixels contra a fonte seguem em BL143.1/BL143.8.
 
 A provaSHARP também usa run_surface (criação/cleanup/relatório por superfície), saída absoluta e captura indisponívelSKIP. Helper canônico da câmera28/28 adotado por merge da base. Caller passou py_compile, sem prova real.
