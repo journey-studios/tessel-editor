@@ -426,5 +426,33 @@ Escolher uma cena já exibida por fallback preserva o gesto de FX; entrar na cen
 gesto também não o cancela. A comparação usa scene_active_id, não apenas chosen.
 Gestos de propriedades agora registram a última recusa em status, preservam candidato
 e documento, e limpam a recusa no próximo update válido, como os gestos FX.
-Regressão core scene_interaction: 23/23 nesta correção. Teste GPUI adicionado; os gates
-de b5b077e acima não validam estas alterações posteriores. Revalidar antes de merge.
+Regressão core scene_interaction: 23/23 nesta correção (24/24 com a prova abaixo).
+
+### Validação do residual em `7deb23c` (código; só documentação vem depois)
+
+`5694e0e` (correção) + `7deb23c` (só testes e prova: nenhuma linha de produção mudou). Main `30ac65b` já era
+ancestral: nada a integrar. Runtime reconstruído nesta árvore (`./scripts/runtime setup`, `dist/runtime.js`
+sha256 `7b6b4338…2a98`, igual ao de `b5b077e`); `tessel-editor` sha256 `3aa5a83c…622b`.
+
+| Gate em `7deb23c` (`TESSEL_REQUIRE_RUNTIME=1`, `./scripts/cargo`) | Resultado |
+|---|---|
+| `cargo fmt --all -- --check` | exit 0 |
+| `check --workspace --locked` / `clippy --workspace --all-targets --locked -- -D warnings` | exit 0 / exit 0 |
+| `test --workspace --locked --no-fail-fast` | exit 0: 106 suítes, **1880 passaram, 0 falharam, 12 ignoradas**, nenhum SKIPPED |
+| `build -p tessel-editor --locked`; `cargo tree -p tessel-editor-core` filtrado por `gpui\|wry` | exit 0; vazio |
+| `scene_fx_tests` | 29/29 (a regressão do fallback + 3 novos) |
+| `scene-fx-ui-proof.spec.py` e `directed-scene-proof`/`proof-surface`/`scene-lifecycle` specs, normal e `-O` | exit 0 nos dois modos (24, 4+15, 29, 7) |
+| `pilot-fx-corpus.py verify` | exit 0 (10 casos, 6 de gesto, 11 fontes; origem não relida) |
+| `scene-fx-ui-proof.py` (janela real, instância própria, lock de GPU, só `op`/`get`/`set`/`invoke`) | **116/116**, 0 FAIL, 0 SKIP (o novo: o seletor na cena já exibida mantém o gesto aberto); pior pixel do export 4/255 |
+
+Casos validados do residual: o gesto fica na cena realmente exibida quando a escolha é nula, inexistente
+(`detached`) ou igual; trocar de cena (inclusive a partir do fallback) cancela e não confirma nada; entrar na
+cena dona do gesto o preserva; uma recusa de propriedade fica no `status`, mantém o último candidato legal e o
+documento, e um update válido a limpa; uma recusa depois de gesto invalidado ou de verbo do outro tipo **não**
+grava recusa (`scene_interaction.rs`, `scene_fx_gesture.rs`). Mutações: voltar `scene_follow` à comparação com
+`chosen` derruba 3 testes GPUI; remover só a exceção da cena dona derruba 1; gravar a recusa antes de
+`ensure_live` derruba o teste de core. JSONL em processo real (`tessel-headless`): begin, update, recusa
+(`gesture_target_mismatch`), `status.refusal.code` igual, update válido zera, recusa de novo e commit do último
+candidato legal (x=3, +1 undo), undo restaura 0.5, e update de gesto invalidado dá `gesture_invalidated` sem
+recusa registrada. Limites inalterados: `ORIGIN_NOT_EXECUTED`, `ORIGIN_GOLDEN_NOT_COMPARABLE`; sem ponteiro
+físico, GPU real nem paridade integral.
