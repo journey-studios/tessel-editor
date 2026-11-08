@@ -95,8 +95,14 @@ fade — [BL142.2](../backlog.md); o fade aparece só sob **Áudio**/Fades para 
 vendo Entrada/Saída como opacidade em Tempo); nenhum sinal foi **ouvido** em dispositivo (`render.audio` e o export
 são mix offline; a escuta em hardware continua sem prova, como em F018).
 
-Revisão B: a prova usa o helper canônico da PR20, roda cada superfície com relatório/cleanup e marca captura indisponível comoSKIP. A checagem vazia no cruzamento zero do seno foi substituída por atenuação de uma janela com amostras nãozero. Testes de borda receberam tolerância discriminante e foram escritos casos23.976/29.97 com erro permitido baseado em uma amostra de envelope. Esses testes Rust e provas reais NÃO foram executados após a correção: disco abaixo do piso12GiB. Não há clipe subframe no modelo de timeline inteira; áudio-fonte menor que um quadro permanece um caso adicional a validar.
+Revisão B e R2 (histórico): a prova usa o helper canônico da PR #20, roda cada superfície com relatório/cleanup e marca captura
+indisponível como SKIP; a checagem vazia no cruzamento zero do seno foi trocada por atenuação de uma janela com amostras não zero;
+casos 23.976/29.97 com erro permitido de uma amostra de envelope e a última amostra do fade conferida separadamente do silêncio.
 
-R2: teste fracionário agora confere separadamente a última amostra do fade e o silêncio após o clipe. Matriz F051 permanece I até gates compilados; rustfmt passou, teste Rust não executado por disco.
-
-Helper canônico atualizado:28/28 Python normal/-O, subclasses/timeout/saída nãozero cobertos. Caller usa saída absoluta antes do wrapper de fixtures. Sem nova execução de áudio/Cargo ou prova nativa.
+**Integração com `main` (PR #22, após os merges das PRs #20 e #23): gates reais executados** (17–18 GiB livres, piso de 12 GiB,
+runtime real, FFmpeg, Chrome). `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked --no-fail-fast`: **1646 passaram,
+0 falharam, 12 ignorados** (inclui os testes de fade de áudio, o export FFmpeg real e os 2 GPUI do slider); `clippy -D warnings` e
+`fmt --check` limpos; `scripts/audio-fades-proof.py` (com `with-gpu-lock.py`): **headless 23/23, janela 28/28**, 0 SKIP; todos os
+`scripts/*.spec.py` passam; `cargo tree -p tessel-editor-core` sem gpui/wry. Não foi ouvido sinal em dispositivo e não houve clique de
+ponteiro (limites acima). Não foi reexecutado após o merge o caso subframe: áudio-fonte menor que um quadro segue como caso a validar.
+Na integração, `Applies::SoundClip` (fades de áudio) e `Applies::Scene` (câmera de cena, F054) convivem no inspetor.
