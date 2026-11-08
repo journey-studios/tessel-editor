@@ -87,6 +87,11 @@ pub struct Workstation {
     pub geometry: Geometry,
     dock: DockHost,
     search: Entity<InputState>,
+    /// The text input of the inspector's "Texto" section (title clips). Like the search box it
+    /// follows the model: `title_text_shown` is the `(clip, content)` last pushed into it, so the
+    /// model is written back only when it changed, never over what is being typed.
+    title_text: Entity<InputState>,
+    title_text_shown: Option<(String, String)>,
     sliders: HashMap<&'static str, Entity<SliderState>>,
     selects: HashMap<&'static str, OptionSelect>,
     library_tree: Entity<TreeState>,
@@ -133,6 +138,20 @@ impl Workstation {
                 this.dispatch(Command::SetMediaSearch { query }, cx);
             }
         })
+        .detach();
+
+        let title_text = cx.new(|cx| InputState::new(window, cx).placeholder("Texto do título"));
+        // Enter or leaving the field commits ONE `SetClipTextField` (one undo entry), never one
+        // per keystroke; a refused text (a character the font cannot draw) puts the model's back.
+        cx.subscribe_in(
+            &title_text,
+            window,
+            |this, input, event: &InputEvent, _window, cx| {
+                if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
+                    this.commit_title_text(input, cx);
+                }
+            },
+        )
         .detach();
 
         let mut sliders = HashMap::new();
@@ -302,6 +321,8 @@ impl Workstation {
             geometry: Geometry::default(),
             dock,
             search,
+            title_text,
+            title_text_shown: None,
             sliders,
             selects,
             library_tree,
@@ -817,6 +838,8 @@ mod scene_tests;
 mod sharp_capture_tests;
 #[cfg(test)]
 mod slider_gesture_tests;
+#[cfg(test)]
+mod title_text_tests;
 #[cfg(test)]
 mod viewport_host_tests;
 #[cfg(test)]

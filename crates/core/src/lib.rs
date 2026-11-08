@@ -34,6 +34,7 @@ pub mod session;
 pub mod sharp;
 pub mod splat;
 pub mod state;
+pub mod text;
 pub mod time;
 pub mod trace;
 

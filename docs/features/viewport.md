@@ -8,7 +8,7 @@ monitor e o mixer de áudio offline. O core decide tempo, camadas, câmera e tri
 JS só desenha o que o plano manda e não repete regras de edição.
 
 **Entregue e validado** (ver [relatório](../viewport-foundation-report.md) para números):
-imagem, vídeo por sequência de frames, texto (fonte bitmap 5×7), cena Three.js procedural e
+imagem, vídeo por sequência de frames, texto (fonte bitmap 5×7, com acentos do português: [F050](accented-titles.md)), cena Three.js procedural e
 Gaussian splat via **Spark 2.4.0** ([F030](spark.md)), compostos em camadas por track; waveform de áudio no preview de
 fonte; mix de áudio **processado offline**.
 

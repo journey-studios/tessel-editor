@@ -18,6 +18,7 @@ use super::inspector::{
 use super::layout::{Layout, Node as LayoutNode, PanelKind};
 use super::timeline::{ClipKind, TrackKind, ZOOM_MAX, ZOOM_MIN};
 use super::{EditorState, WorkspaceTab};
+use crate::content::TextSpec;
 use crate::plan::PreviewIntent;
 use crate::preview::PreviewMode;
 
@@ -775,12 +776,22 @@ fn build_inspector(state: &EditorState, nodes: &mut Vec<Node>) {
             .state("modified", modified)
             .field("expanded", "boolean", json!({}))
             .action("toggle");
-        node = if applicable {
+        // The text of a title has no default to go back to: its section has no reset.
+        node = if applicable && section.id != "text" {
             node.action("reset")
         } else {
             node
         };
         nodes.push(node);
+        if section.id == "text" {
+            let visible = in_tab && applicable && inspector.is_expanded(section.id);
+            let text = clip
+                .filter(|clip| clip.kind == ClipKind::Title)
+                .and_then(|entry| entry.text.as_ref().map(|text| (entry, text)));
+            if let Some((entry, text)) = text {
+                nodes.push(clip_text_node(entry.id.as_ref(), text, &id, visible));
+            }
+        }
         for property in section_properties(section.id) {
             // One node per property: a fade is listed by the section that owns it for the
             // selected clip's kind.
@@ -901,6 +912,27 @@ fn build_camera_keys(
         }
         nodes.push(node);
     }
+}
+
+/// The text of the selected title: `set clip_text:<clip> content|size|color <value>` is the same
+/// command as the inspector's input (`SetClipTextField`).
+fn clip_text_node(clip: &str, text: &TextSpec, parent: &str, visible: bool) -> Node {
+    Node::new(format!("clip_text:{clip}"), "text-input", "Texto do título")
+        .parent(parent)
+        .visible(visible)
+        .state("clip", format!("clip:{clip}"))
+        .state("content", text.content.clone())
+        .state("size", text.size)
+        .state("color", text.color.clone())
+        .state("normalization", "NFC")
+        .field(
+            "content",
+            "text",
+            json!({ "max_chars": crate::content::TEXT_MAX_CHARS, "single_line": true,
+                "accepts": "printable ASCII, Portuguese and Western European accents (NFC or NFD)" }),
+        )
+        .field("size", "number", json!({ "min": 1, "max": 100, "unit": "% of the canvas height" }))
+        .field("color", "text", json!({ "format": "#rrggbb" }))
 }
 
 fn property_node(state: &EditorState, parent: &str, property: &PropertyDef, visible: bool) -> Node {
@@ -1314,5 +1346,54 @@ mod tests {
         assert_eq!(source["actions"][0]["enabled"], false);
         // The sequence mode never depends on a selection.
         assert_eq!(node(&state, "monitor.preview.sequence")["enabled"], true);
+    }
+
+    #[test]
+    fn the_title_text_is_a_node_only_for_a_selected_title() {
+        let mut state = EditorState::demo();
+        let layout = default_layout();
+        let metrics = HashMap::new();
+        let found = |state: &EditorState, id: &str| {
+            let cx = TreeContext {
+                theme: "dark",
+                metrics: &metrics,
+                layout: &layout,
+                perf_meter: false,
+            };
+            find(state, &cx, id)
+        };
+        let run = |state: &mut EditorState, request: Value| {
+            crate::headless::execute(state, &request).unwrap();
+        };
+        run(
+            &mut state,
+            json!({"op":"invoke","target":"clip:title-north","action":"select"}),
+        );
+        run(
+            &mut state,
+            json!({"op":"set","target":"clip_text:title-north","field":"content",
+                "value":"Ac\u{0327}a\u{0303}o"}),
+        );
+        let node =
+            found(&state, "clip_text:title-north").expect("a selected title has a text node");
+        assert_eq!(node["state"]["content"], "Ação");
+        assert_eq!(node["state"]["normalization"], "NFC");
+        assert_eq!(node["parent"], "inspector.text");
+        assert_eq!(node["fields"].as_array().unwrap().len(), 3);
+        let section = found(&state, "inspector.text").unwrap();
+        assert_eq!(section["visible"], true);
+        assert!(
+            !section["actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|a| a["action"] == "reset")
+        );
+        // Another kind of clip has no text node.
+        run(
+            &mut state,
+            json!({"op":"invoke","target":"clip:basalt-cliffs","action":"select"}),
+        );
+        assert!(found(&state, "clip_text:title-north").is_none());
     }
 }

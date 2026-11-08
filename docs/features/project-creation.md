@@ -34,7 +34,7 @@ mostra agora o estado salvo/não salvo e as tarefas em andamento.
 | `clip.add` | `track`, `asset?`, `start`, `duration`, `id?`, `source_start?`, `text?`, `camera?`, `properties?` |
 | `clip.camera_key` / `clip.camera_key.remove` / `clip.camera_key.capture` / `clip.camera_keys` | `clip` + `time`, `position`,`target`,`fov`,`easing` / `time` / `easing` / `keys` ([F054](camera-keys.md)) |
 | `clip.camera_capture` | `clip` ([F052](sharp-import.md)); `asset.add`/`media.import` aceitam `capture` (`auto`/`ignore`) |
-| `clip.text` / `clip.camera` / `clip.property` | `clip`, e `text` / `position,target,fov,orbit` / `property`+`value` |
+| `clip.text` / `clip.camera` / `clip.property` | `clip`, e `text` (`content` em NFC ou NFD, ASCII + acentos do português; [F050](accented-titles.md)) / `position,target,fov,orbit` / `property`+`value` |
 | `sequence.length`, `preview.set`, `seek` | `frames`; `intent`; `frame` ou `time` |
 | `plan`, `render.frame`, `render.audio`, `capabilities`, `render.status`, `status` | ver [F021](viewport.md) |
 

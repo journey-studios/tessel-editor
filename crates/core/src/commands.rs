@@ -199,6 +199,15 @@ fn parse_set_entity(target: &str, field: &str, value: &Raw) -> Result<Parsed, Co
             edge,
             frame: value.integer()?,
         }
+    } else if let Some(id) = split(target, "clip_text:") {
+        if !["content", "size", "color"].contains(&field) {
+            return Err(unknown_field(target, field));
+        }
+        Command::SetClipTextField {
+            clip: id.to_string(),
+            field: field.to_string(),
+            value: value.clone(),
+        }
     } else if let Some(id) = split(target, "camera_key:") {
         let (clip, index) = parse_camera_key_ref(id, target)?;
         if !KEY_FIELDS.contains(&field) {

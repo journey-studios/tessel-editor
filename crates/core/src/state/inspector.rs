@@ -70,6 +70,8 @@ pub enum PropertyKind {
 pub enum Applies {
     Visual,
     Audio,
+    /// Only title clips (the text of a title).
+    Title,
     /// The fades of a clip that is only sound: the same properties as the visual fades.
     SoundClip,
     /// Scene clips only (their camera keyframes, BL140).
@@ -82,6 +84,7 @@ impl Applies {
             Self::Visual => matches!(kind, ClipKind::Video | ClipKind::Title | ClipKind::Scene),
             // A video clip carries its own sound: its levels are the same controls as an audio clip's.
             Self::Audio => matches!(kind, ClipKind::Audio | ClipKind::Video),
+            Self::Title => kind == ClipKind::Title,
             Self::SoundClip => kind == ClipKind::Audio,
             Self::Scene => kind == ClipKind::Scene,
         }
@@ -90,6 +93,7 @@ impl Applies {
     fn label(self) -> &'static str {
         match self {
             Self::Visual => "video and title clips",
+            Self::Title => "title clips",
             Self::Audio => "audio and video clips",
             Self::SoundClip => "audio clips",
             Self::Scene => "scene clips",
@@ -132,6 +136,13 @@ const fn slider(min: f64, max: f64, step: f64, decimals: u32, unit: &'static str
 }
 
 pub const SECTIONS: &[SectionDef] = &[
+    SectionDef {
+        id: "text",
+        label: "Texto",
+        tab: InspectorTab::Video,
+        applies: Applies::Title,
+        expanded: true,
+    },
     SectionDef {
         id: "transform",
         label: "Transformar",

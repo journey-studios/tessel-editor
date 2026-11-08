@@ -213,6 +213,13 @@ pub enum Command {
         clip: String,
         text: TextSpec,
     },
+    /// Edits one field (`content`, `size` or `color`) of a title's text, keeping the others. The
+    /// whole new text is validated and normalized (NFC) before anything is stored.
+    SetClipTextField {
+        clip: String,
+        field: String,
+        value: Raw,
+    },
     SetClipCamera {
         clip: String,
         camera: Camera,
@@ -287,7 +294,7 @@ impl Command {
             Self::AddAsset { .. } => "Add asset",
             Self::ReplaceAsset { .. } => "Relink asset",
             Self::AddClip { .. } => "Add clip",
-            Self::SetClipText { .. } => "Edit text",
+            Self::SetClipText { .. } | Self::SetClipTextField { .. } => "Edit text",
             Self::SetClipCamera { .. } => "Edit camera",
             Self::SetClipCameraFromCapture { .. } => "Use capture camera",
             Self::CameraKeys(_) => "Edit camera keys",
@@ -420,6 +427,27 @@ impl EditorState {
         self.selected_clip()
             .map(|clip| (clip.id, clip.kind))
             .ok_or_else(|| CommandError::new("no_selection", "Select a clip in the timeline first"))
+    }
+
+    /// Stores a validated text on a title clip; the same rule for `clip.text`, `set clip_text:` and the
+    /// inspector input.
+    fn apply_clip_text(&mut self, clip: &str, text: TextSpec) -> Result<Value, CommandError> {
+        text.validate()?;
+        let (id, kind) = self.clip_ref(clip)?;
+        if kind != ClipKind::Title {
+            return Err(
+                CommandError::new("not_applicable", "Only title clips carry text")
+                    .target(format!("clip:{id}")),
+            );
+        }
+        let entry = self.timeline.clips.iter_mut().find(|entry| entry.id == id);
+        let Some(entry) = entry else {
+            return Err(CommandError::unknown_element("clip", clip));
+        };
+        let changed = entry.text.as_ref() != Some(&text);
+        entry.text = Some(text.clone());
+        Ok(json!({ "target": format!("clip:{id}"), "field": "text",
+            "value": text.to_json(), "changed": changed }))
     }
 
     /// The SHARP capture of the splat a scene clip shows (BL143), if there is one.
@@ -705,23 +733,32 @@ impl EditorState {
                 let (clip, kind) = self.clip_ref(&clip)?;
                 self.inspector.set_property(clip, kind, &property, &value)
             }
-            Command::SetClipText { clip, text } => {
-                text.validate()?;
+            Command::SetClipText { clip, text } => self.apply_clip_text(&clip, text),
+            Command::SetClipTextField { clip, field, value } => {
                 let (id, kind) = self.clip_ref(&clip)?;
-                if kind != ClipKind::Title {
-                    return Err(
+                let current = self
+                    .timeline
+                    .clip(&clip)
+                    .and_then(|entry| entry.text.clone())
+                    .filter(|_| kind == ClipKind::Title)
+                    .ok_or_else(|| {
                         CommandError::new("not_applicable", "Only title clips carry text")
-                            .target(format!("clip:{id}")),
-                    );
-                }
-                let entry = self.timeline.clips.iter_mut().find(|entry| entry.id == id);
-                let Some(entry) = entry else {
-                    return Err(CommandError::unknown_element("clip", &clip));
+                            .target(format!("clip:{id}"))
+                    })?;
+                let text = match field.as_str() {
+                    "content" => TextSpec::new(value.text(), current.size, current.color)?,
+                    "size" => TextSpec::new(current.content, value.number()?, current.color)?,
+                    "color" => TextSpec::new(current.content, current.size, value.text())?,
+                    _ => {
+                        return Err(CommandError::new(
+                            "unknown_field",
+                            format!("A title's text has no field `{field}`"),
+                        )
+                        .target(format!("clip_text:{id}"))
+                        .details(json!({ "available": ["content", "size", "color"] })));
+                    }
                 };
-                let changed = entry.text.as_ref() != Some(&text);
-                entry.text = Some(text.clone());
-                Ok(json!({ "target": format!("clip:{id}"), "field": "text",
-                    "value": text.to_json(), "changed": changed }))
+                self.apply_clip_text(&clip, text)
             }
             Command::SetClipCamera { clip, camera } => {
                 camera.validate()?;
