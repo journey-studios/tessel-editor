@@ -455,6 +455,8 @@ máquina carregada, média de carga 5-20):
 | `f294b1c` | 2 testes GPUI novos de integração (gesto + gravação; gravação iniciada/limpa/parada sob arrasto) | passam |
 | `e22299f` | `fx-history-smoke-proof.py` (janela real, debug e release) | 39/39 nos dois |
 | `e22299f` | `perf-history-proof.py` (release, janela real) | `ok: true`, 64 checks, 0 falhas |
+| `5258e8c` (mescla dos resíduos da branch + dobra de falha no recorder) | fmt, check, clippy `-D warnings`, `TESSEL_REQUIRE_RUNTIME=1 test --workspace --locked` (desktop 370, core 457; 2004 testes no total, 0 falhas), build, tree; specs `perf-history-proof` (18) e `scene-fx-ui-proof` (24) normal e `-O` | tudo verde |
+| `5258e8c` | `perf-history-proof.py` e `fx-history-smoke-proof.py` (release, janela real, carga 13-17) | 64/64 e 39/39 |
 
 Smoke `scripts/fx-history-smoke-proof.py` (só `op`/`get`/`set`/`invoke`, instância própria, corpus
 sintético): grava, arrasta um efeito (o monitor desenha o candidato), congela e seleciona **com o
@@ -466,14 +468,17 @@ o gesto não cria `playback_started`, `request_failed` nem `runtime_unavailable`
 O `git_sha` do documento exportado é `null` (o build não definiu `TESSEL_GIT_SHA`), então a identidade do
 build vem do relatório do driver: `source.git_head` e o sha256 do binário.
 
-Build reproduzível: o binário release deste head tem sha256
-`cf2133029c3fa4556ba306d5dbc6d110b260a27167efc9be3c5b7f9f7e4c9969`, o mesmo em duas compilações.
+Build reproduzível: o binário release de `e22299f` tem sha256
+`cf2133029c3fa4556ba306d5dbc6d110b260a27167efc9be3c5b7f9f7e4c9969` (o mesmo em duas compilações) e o de
+`5258e8c` tem `293ec471ddf501c2482d8ffca60c4c0e4f77872bd9fb890ac66f4da6c65bedfd` (também igual em duas compilações).
 
 Custo no head `e22299f` (release, `--seconds 10 --rounds 3`, ordem alternada, carga 17-20): CPU s/s por
 tempo de parede medido: desligado 0,301, gravando com o painel fechado 0,308, painel aberto 0,366; 240
 quadros aceitos e 0 perdidos nos três braços; a memória em 4 minutos não cresce
 (`growth_after_warmup_mib = 0,2`). Mesma leitura de antes: fechado ≈ desligado dentro do ruído; painel
-aberto ~+0,06 CPU s/s; **sem afirmar custo zero**. Os dois conjuntos (`76b14ae` e `e22299f`) concordam em
+aberto ~+0,06 CPU s/s; **sem afirmar custo zero**. Repetido em `5258e8c` (carga 13-17): desligado 0,340, gravando
+fechado 0,340, aberto 0,404 CPU s/s; 238-240 quadros aceitos e 0 perdidos nos três braços; RSS sem
+crescimento (`growth_after_warmup_mib = -0,2`). Os três conjuntos (`76b14ae`, `e22299f` e `5258e8c`) concordam em
 ordem de grandeza.
 
 O que continua sem prova na janela real: um quadro **em voo** atravessando a troca de cena (cobertura: testes
