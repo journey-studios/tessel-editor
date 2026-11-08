@@ -205,9 +205,10 @@ nos helpers de `viewport_host_tests.rs`.
 - **Exportação**: a escrita é em segundo plano a partir de uma cópia coerente (BL145.3); um volume de
   rede lento deixa o estado em `writing` por mais tempo, sem travar a janela. O temporário de outro
   escritor é `perf_history_export_temporary_busy`; hard link é requisito do volume (seção Export).
-- A prova na janela real de perda/restauração do contexto com a cena dirigida e da exportação em segundo
-  plano **não foi executada** para este head (disco); a cobertura é de teste GPUI com relógio controlado,
-  escrito e **não executado**.
+- A perda/restauração do contexto **com a cena dirigida real** e uma troca de cena com quadro em voo não
+  foram provocadas na janela real (o driver não monta cena dirigida); a cobertura é de testes GPUI com
+  relógio controlado e de uma prova de mutação (ver BL145.6). A exportação em segundo plano foi provada na
+  janela real.
 
 ## Evidências e status
 
@@ -334,27 +335,12 @@ os **64 jobs mais novos** do registro (antes os 64 mais antigos, e um export pos
 evento); um pedido que falha com o mesmo código sem novo pedido admitido no meio (um plano que o
 core recusa a cada mudança de estado) é **um** evento `request_failed`, não um por `sync`; o pedido
 explícito `render.frame` usa a taxa-alvo do seu próprio plano, não a do preview anterior;
-`--buffer-minutes` acima do que o fixture cobre (10) nomeia a própria opção. **Segue pendente** (não
-corrigido nesta rodada): o quadro em voo da cena anterior pode cair no segmento da cena nova na troca
-de cena dirigida.
+`--buffer-minutes` acima do que o fixture cobre (10) nomeia a própria opção. A correlação do quadro em
+voo na troca de cena está em BL145.6, abaixo.
 
-Escritas (core, adaptadores, testes, driver e documentos) e **formatadas com `rustfmt`**; o único
-comando executado com resultado foi `python3 scripts/perf-history-proof.spec.py` (16 testes, OK).
-Nenhuma etapa que usa Cargo, build, runtime, navegador ou render foi executada por disco
-(~9,8 GiB livres, abaixo da reserva de 16 GiB e do piso de 12 GiB; sem limpeza e sem matar
-processo de terceiros). Estados, sem PASS:
-
-| Gate / prova | Estado |
-| --- | --- |
-| `cargo fmt --all -- --check` | **BLOCKED** (só `rustfmt --edition 2024` nos arquivos tocados) |
-| `./scripts/cargo check --workspace --locked` | **BLOCKED** (disco) |
-| `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings` | **BLOCKED** (disco) |
-| `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked` | **BLOCKED** (disco): nenhum teste novo foi rodado |
-| `./scripts/cargo build -p tessel-editor --locked` e release | **BLOCKED** (disco) |
-| `cargo tree -p tessel-editor-core` sem gpui/wry | **BLOCKED**; o core não ganhou dependência (nenhum `Cargo.toml` mudou) |
-| Prova na janela real (`scripts/ui`, sem coordenadas, trava de GPU) | **BLOCKED** (sem binário do head) |
-| Custo off / gravando escondido / visível e buffer | **BLOCKED**: sem medição do head; números antigos acima são de `2560bbf` |
-| `python3 scripts/perf-history-proof.spec.py` | **executado, OK** (16 testes) |
+As correções de BL145.3/.4/.5 foram **escritas num estado sem disco** e só depois compiladas e provadas;
+o estado vivo está em "BL145.6 e evidências do head `76b14ae`" abaixo. Esta seção descreve o desenho; o
+resultado dos gates e da janela real é o da seção seguinte, não o de commits anteriores.
 
 O driver `perf-history-proof.py` foi corrigido (BL145.5) e o spec discrimina cada erro:
 `--buffer-minutes` é validado antes de iniciar o editor (número finito ≥ 0), o passo de leitura
@@ -366,3 +352,79 @@ tempo não positivo ou contador que recuou; o relatório nomeia o commit, se há
 commitadas e se o binário é mais antigo que as fontes (uma falha de check, a menos de
 `--allow-stale-binary`); o export é lido como assíncrono (`export_outcome`: recusado x escrita
 falhou x pronto x pendente, para separar `exists` de `temporary_busy`).
+
+## BL145.6 e evidências do head `76b14ae`
+
+### Quadro em voo na troca de cena (BL145.6)
+
+Um pedido da cena dirigida admitido antes de uma troca interativa de cena pode responder depois dela
+(a troca interativa estaciona o pedido novo e **não** cancela o que está em voo). Antes, esse quadro
+era medido no segmento da cena nova (intervalo, latência, `render_ms`, textura) ou, se falhasse,
+abria um `request_failed` no segmento que nunca o viu começar.
+
+Regra agora: o host guarda uma **época do histórico** que `note_session` incrementa, e carimba cada
+pedido dirigido e cada carga de recurso com a época vigente **na admissão** (o momento
+autoritativo; independe de haver gravação). Na resposta:
+
+- época igual: caminho de sempre (`note_image` / `note_failed`);
+- época antiga: o quadro **não** vira amostra nem evento; só `note_stale` (`stale_responses` do recorder,
+  que já não tem o pedido em `pending`, pois a troca de sessão o limpou). O quadro apresentado continua
+  valendo para quem o pediu;
+- falha de pedido antigo: nada no segmento novo; fim de carga cujo início ficou numa época anterior:
+  nenhum `resource_load_finished` sem o início correspondente (o par é fechado pela época, não por heurística).
+
+A resposta ao chamador **não muda**: a imagem é entregue e a propriedade do quadro é a de sempre.
+Latência, textura e falha seguem a mesma regra que o sucesso. Só `scene_lifecycle_tests` muda no
+desktop de teste; o core não tem regra nova (é o recorder que já tratava `response_stale`).
+
+Testes (GPUI, relógio controlado) que o provam: quadro antigo que volta depois da troca não é medição
+do segmento novo; quadro antigo que falha depois da troca não é evento do segmento novo; resposta fora de
+ordem de pedido cancelado (guarda do caminho que já era correto, passa também sem a época); carga da cena
+deixada não termina num segmento que não a viu começar. **Mutação**: trocar `note_image_of` por `note_image`
+incondicional, e abrir os portões de época na falha e na carga, faz os 3 testes que discriminam falharem
+(`21 passed; 3 failed`); o código foi restaurado e os testes voltam a passar.
+
+### Executado no head `76b14ae` (código); anterior a docs/backlog
+
+Máquina de desenvolvimento **carregada** (média de carga 18-20 em 11 CPUs durante todos os testes e a
+prova; há outras tarefas no host), macOS, GPU do sistema; o runtime Three.js rende **por software ou
+pela GPU do sistema conforme o ambiente decide, e isto não foi isolado**: não afirme GPU real nem
+SwiftShader a partir destes números. Nenhum ponteiro físico (tudo semântico).
+
+| Gate / prova | Resultado |
+| --- | --- |
+| `cargo fmt --all -- --check` | exit 0 |
+| `./scripts/cargo check --workspace --locked` | exit 0 |
+| `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings` | exit 0 |
+| `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked --no-fail-fast` | exit 0 (desktop 348, core 450, 0 falhas) |
+| `./scripts/cargo build -p tessel-editor --locked` e `--release` | exit 0 |
+| `cargo tree -p tessel-editor-core` sem gpui/wry | nenhuma linha (grep sem achado) |
+| 17 specs Python, normal e `-O` | 17/17 OK nos dois modos (`perf-history-proof.spec.py`: 17 testes) |
+| `scripts/perf-history-proof.py` (release, janela real, trava de GPU) | `ok: true`, 64 checks, 0 falhas |
+
+Release: `target/release/tessel-editor` sha256 `e5e3f61f0af4dfcf4cda2db55bebb222b27fae137257fba7020c1731d07bbeb1`,
+`source.git_head` `76b14ae…`, sem fontes não commitadas e binário não mais velho que as fontes. O
+`git_sha` do documento exportado é `null` porque este build não definiu `TESSEL_GIT_SHA` (desconhecido,
+não adivinhado); o commit do binário vem do relatório do driver, não do arquivo exportado.
+
+Custo (`--seconds 10 --rounds 3`, ordem alternada por rodada: off/hidden/visible, visible/hidden/off,
+off/hidden/visible; CPU dividida pelo **tempo de parede medido** de cada corrida, ~11,1-11,3 s):
+
+| Braço | CPU s/s (média de 3) | quadros aceitos | perdidos | maior intervalo (quadros) |
+| --- | --- | --- | --- | --- |
+| desligado | 0,337 | 240 | 0 | 1 |
+| gravando, painel fechado | 0,340 | 240 | 0 | 1 |
+| gravando, painel aberto | 0,404 | 240,3 | 0 | 1 |
+
+Leitura honesta: fechado, a diferença para desligado (0,003 CPU s/s) está dentro do ruído de uma máquina
+com carga 18; com o painel aberto há **~0,07 CPU s/s a mais** (o painel repinta 4 Hz e desenha gráficos),
+que não é zero e não é conclusivo com 3 corridas sob carga. Nenhum quadro foi perdido em nenhum braço.
+**Não afirmamos custo zero.** A memória em 4 minutos de reprodução contínua gravando: 240 baldes o tempo
+todo, eventos dentro da capacidade, reprodução ainda andando ao final, RSS 204 MiB no primeiro ponto
+(inclui o aquecimento do projeto) e 84 MiB no último, sem crescimento (`growth_after_warmup_mib = -31,2`,
+12 leituras conhecidas). O JSON exportado (128 268 bytes) é `tessel.perf-history` v1, sem caminho local.
+Capturas nativas (escuro/claro, painel congelado com seleção, destino do export) foram geradas e
+inspecionadas pelo driver (`screencapture -l`, janela própria).
+
+Não executado: perda de contexto e troca de cena **em voo** na janela real (só testes GPUI), GPU
+real isolada, ponteiro físico, execução em outra máquina.
