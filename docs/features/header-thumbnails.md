@@ -147,21 +147,21 @@ Gates (macOS, SwiftShader, `TESSEL_REQUIRE_RUNTIME=1`, runtime de `./scripts/run
 | CLI headless | `scripts/header-thumbnails-proof.py --only headless` com `tessel-render` (runtime real, sem janela): **123 passam, 0 SKIP** | V |
 | Janela nativa | `scripts/header-thumbnails-proof.py --only native`, `HOME` próprio, só `ui op/get/set`, captura do SO pelo id da janela (`screencapture -l`): **131 passam, 0 SKIP** | V (sem ponteiro físico) |
 
-O que a prova mostra, nas duas superfícies, com identidades e pixels conferidos por um oráculo em Python puro (leitor de
+O que a prova mostra, nas superfícies indicadas abaixo, com identidades e pixels conferidos por um oráculo em Python puro (leitor de
 PNG e projeção pinhole, sem o código do adaptador):
 
 - cabeçalho vivo `Projeto / Sequência` depois de criar, abrir e reabrir projetos (a renomeação só tem teste de lib); miniaturas de splat e cena desenhadas
   (caixa laranja, esfera azul, nuvem no meio, cantos de fundo);
-- **mudança de dependência:** `media.relink` do splat (com `accept_changed`) muda as identidades do splat e da cena e as
-  duas imagens, e as medições de pixel continuam valendo. **Faltando→presente não tem caminho ao vivo**: `media.import` de
+- **mudança de dependência:** `media.relink` do splat (com `accept_changed`) muda as identidades e os caminhos das miniaturas do splat e da cena; as medições de pixel continuam valendo.
+  Não há comparação explícita de todo o conteúdo de cada imagem antes e depois. **Faltando→presente não tem caminho ao vivo**: `media.import` de
   uma cena cujo splat não está na biblioteca é recusado com `missing_dependency`; esse caso só tem teste de lib;
 - **A→B→A no mesmo documento e sessão** sem aplicar resultado de outro projeto (`stale`);
 - **cancelamento** visto em andamento (`running`, alguns quadros e não todos), depois `cancelled` com `done < total`,
   nada aplicado e job novo correto; resultado de outra sessão recusado (`stale`);
-- **retomada e pausa do usuário:** `job.cancel` do usuário pausa o agendamento por 5 s sem novo job e sem imagens novas;
+- **retomada e pausa do usuário (janela nativa):** `job.cancel` do usuário pausa o agendamento por 5 s sem novo job e sem imagens novas;
   `media.thumbnails` explícito retoma;
-- **mesmo documento reaberto** (outra sessão): o job da sessão antiga termina `cancelled` no meio e a nova desenha sozinha;
-  `job.commit` de outra sessão responde `stale`, sem tocar a biblioteca (headless);
+- **mesmo documento reaberto** (outra sessão): na janela nativa, o job da sessão antiga termina `cancelled` no meio e a nova desenha automaticamente.
+  No headless, `job.commit` de outra sessão responde `stale`, sem tocar a biblioteca, e a prova solicita as miniaturas explicitamente;
 - **janela com clipe real e monitor `ready`:** a captura (`screencapture -l`) mostra o cabeçalho `Chalk / cut-c`, as duas
   miniaturas reais e o monitor com a cena desenhada. Captura que o SO recusa é SKIP, nunca PASS (houve 0).
 
