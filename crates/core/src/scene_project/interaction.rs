@@ -30,14 +30,14 @@ use crate::state::{CommandError, EditorState};
 use super::run::{changes_json, with_conversions};
 
 impl EditorState {
-    fn attached_scene(&self, id: &str) -> Result<&super::AttachedScene, CommandError> {
+    pub(super) fn attached_scene(&self, id: &str) -> Result<&super::AttachedScene, CommandError> {
         self.scenes
             .get(id)
             .ok_or_else(|| CommandError::unknown_element("scene", id))
     }
 
     /// Fails with the typed `gesture_invalidated` when the gesture can no longer be applied.
-    fn ensure_live(&self, gesture: &Gesture) -> Result<(), CommandError> {
+    pub(super) fn ensure_live(&self, gesture: &Gesture) -> Result<(), CommandError> {
         match gesture.invalidation(&self.scenes, self.project.revision) {
             Some(reason) => Err(gesture.invalidated_error(reason)),
             None => Ok(()),
@@ -208,7 +208,7 @@ impl EditorState {
         }
     }
 
-    fn gesture_begin(
+    pub(super) fn gesture_begin(
         &mut self,
         scene: &str,
         targets: &[String],
@@ -276,7 +276,11 @@ impl EditorState {
     /// Computes the candidate for `ops` from the gesture's base. A rejection (any `scene_edit`
     /// error, a target outside the gesture's, an oversized scene) returns before the gesture is
     /// touched, so the previous good candidate is still the one that commit would apply.
-    fn gesture_update(&mut self, id: &str, ops: Vec<EditOp>) -> Result<Value, CommandError> {
+    pub(super) fn gesture_update(
+        &mut self,
+        id: &str,
+        ops: Vec<EditOp>,
+    ) -> Result<Value, CommandError> {
         let gesture = self.scene_interaction.gesture.find(id)?;
         self.ensure_live(gesture)?;
         let scene = gesture.scene().to_string();
@@ -337,7 +341,7 @@ impl EditorState {
     /// Applies the gesture as ONE `scene.edit` batch. The gesture leaves the slot before the
     /// edit runs and goes back if the edit is rejected, so a rejection keeps the gesture (and
     /// everything else) exactly as it was and the caller can update or cancel.
-    fn gesture_commit(&mut self, id: &str) -> Result<Value, CommandError> {
+    pub(super) fn gesture_commit(&mut self, id: &str) -> Result<Value, CommandError> {
         let gesture = self.scene_interaction.gesture.find(id)?;
         self.ensure_live(gesture)?;
         let scene = gesture.scene().to_string();
@@ -366,7 +370,7 @@ impl EditorState {
         }
     }
 
-    fn gesture_cancel(&mut self, id: &str) -> Result<Value, CommandError> {
+    pub(super) fn gesture_cancel(&mut self, id: &str) -> Result<Value, CommandError> {
         let gesture = self.scene_interaction.gesture.find(id)?;
         let invalidation = gesture.invalidation(&self.scenes, self.project.revision);
         let answer = json!({

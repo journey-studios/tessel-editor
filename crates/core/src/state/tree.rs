@@ -553,6 +553,24 @@ fn build_monitor(state: &EditorState, nodes: &mut Vec<Node>) {
             .parent("region:monitor")
             .action("invoke"),
     );
+    // F055: the translation gizmo is drawn and hit on a canvas inside the page, so it has no
+    // control of its own to click: this node shows what the core holds for it, and the semantic
+    // way to drive it is `scene.pointer.*` / `scene.translate` (`ui op`, `scripts/headless`).
+    // Only with a scene attached, so the tree of a project without scenes is what it always was.
+    if !state.scenes.is_empty() {
+        let drag = state.scene_interaction.drag();
+        nodes.push(
+            Node::new("monitor.gizmo", "gizmo", "Translation gizmo (canvas)")
+                .parent("region:monitor")
+                .state(
+                    "selection",
+                    state.scene_interaction.selection().entries().len() as u64,
+                )
+                .state("dragging", drag.is_some())
+                .state("handle", drag.map_or("", |drag| drag.handle().as_str()))
+                .state("gesture", drag.map_or("", |drag| drag.gesture())),
+        );
+    }
 }
 
 fn build_timeline(state: &EditorState, nodes: &mut Vec<Node>) {
@@ -977,6 +995,71 @@ mod tests {
             crate::commands::Parsed::Run(command) => state.execute(command).map(|_| ()),
             _ => unreachable!("selecting a sequence is a state command"),
         }
+    }
+
+    #[test]
+    fn the_gizmo_node_exists_only_with_a_scene_and_follows_the_drag() {
+        use std::path::Path;
+        let layout = default_layout();
+        let metrics = HashMap::new();
+        let cx = TreeContext {
+            theme: "dark",
+            metrics: &metrics,
+            layout: &layout,
+            perf_meter: false,
+        };
+        let has =
+            |state: &EditorState| nodes(state, &cx).iter().any(|n| n["id"] == "monitor.gizmo");
+        // A project without scenes has the tree it always had.
+        assert!(!has(&EditorState::demo()));
+
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../docs/migration/fixtures/bundles/valid-minimal-continuous.bundle.json");
+        let bundle: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let mut state = EditorState::demo();
+        let run = |state: &mut EditorState, request: Value| {
+            crate::headless::execute(state, &request).unwrap_or_else(|e| panic!("{request}: {e:?}"))
+        };
+        run(&mut state, json!({"op":"project.create","name":"Tree"}));
+        run(
+            &mut state,
+            json!({"op":"scene.attach","id":"street","bundle":bundle}),
+        );
+        assert!(has(&state));
+        let idle = node(&state, "monitor.gizmo");
+        assert_eq!(idle["parent"], "region:monitor");
+        assert_eq!(idle["state"]["dragging"], false);
+        assert_eq!(idle["state"]["selection"], 0);
+
+        let figure = "scene/scene-a/node/figure";
+        run(
+            &mut state,
+            json!({"op":"scene.select","scene":"street","entities":[figure]}),
+        );
+        let shown = run(
+            &mut state,
+            json!({"op":"scene.gizmo.state","scene":"street","frame":0}),
+        );
+        let tip = shown["overlay"]["handles"][0]["to"].clone();
+        run(
+            &mut state,
+            json!({"op":"scene.pointer.down","scene":"street","frame":0,"point":tip}),
+        );
+        let dragging = node(&state, "monitor.gizmo");
+        assert_eq!(dragging["state"]["dragging"], true);
+        assert_eq!(dragging["state"]["handle"], "x");
+        assert_eq!(dragging["state"]["selection"], 1);
+        // The summary a polling client reads shows the same drag.
+        assert_eq!(state.summary()["scene_interaction"]["drag"]["handle"], "x");
+
+        run(
+            &mut state,
+            json!({"op":"scene.pointer.cancel","reason":"escape"}),
+        );
+        let after = node(&state, "monitor.gizmo");
+        assert_eq!(after["state"]["dragging"], false);
+        assert_eq!(after["state"]["handle"], "");
+        assert!(state.summary()["scene_interaction"]["drag"].is_null());
     }
 
     #[test]

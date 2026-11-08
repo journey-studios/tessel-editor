@@ -692,9 +692,9 @@ fn the_loader_refuses_an_orbit_with_keys_like_editing_does_and_keeps_the_state()
         .find(|clip| clip["id"] == "c-scene")
         .unwrap();
     scene["camera"]["orbit"] = json!(30);
-    let error = EditorState::from_document(&document, None)
-        .err()
-        .expect("orbit + keys must not load");
+    let Err(error) = EditorState::from_document(&document, None) else {
+        panic!("orbit + keys must not load");
+    };
     assert_eq!(error.code, edit, "the loader and the edit give one code");
     assert_eq!(error.code, "camera_orbit_conflict");
     // The open project was not touched by the failed load.

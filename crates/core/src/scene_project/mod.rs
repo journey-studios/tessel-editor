@@ -41,6 +41,7 @@ use crate::id::MAX_ID_LEN;
 use crate::state::CommandError;
 
 mod command;
+mod gizmo;
 mod interaction;
 mod query;
 mod run;

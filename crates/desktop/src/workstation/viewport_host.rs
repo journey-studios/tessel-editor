@@ -13,6 +13,9 @@
 
 #[path = "scene_monitor_host.rs"]
 mod directed;
+#[path = "viewport_overlay.rs"]
+mod overlay_host;
+use overlay_host::OverlayHost;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -242,6 +245,8 @@ struct Waiter {
 
 pub struct ViewportHost {
     directed: directed::DirectedViewport,
+    /// F055: the gizmo overlay the page draws over the picture.
+    overlay: OverlayHost,
     dist: Option<PathBuf>,
     session: ViewportSession<BridgeBackend<WebTransport>>,
     outbox: Rc<RefCell<VecDeque<String>>>,
@@ -324,6 +329,7 @@ impl ViewportHost {
             output_size: None,
             on_screen: true,
             directed: directed::DirectedViewport::default(),
+            overlay: OverlayHost::from_env(),
             ui_repaints: 0,
             ui_skipped: 0,
             meter: None,
@@ -416,6 +422,7 @@ impl ViewportHost {
             return false;
         };
         self.forget_directed_runtime(&BackendError::new("cancelled", "The viewport is reloading"));
+        self.overlay_forget();
         self.session.reset_project();
         self.access.borrow_mut().clear();
         self.inbox.borrow_mut().clear();
@@ -455,6 +462,7 @@ impl ViewportHost {
     }
 
     fn set_unavailable(&mut self, error: BackendError) {
+        self.overlay_forget();
         self.fail_waiters(&error);
         self.phase = Phase::Unavailable(error);
     }
@@ -946,6 +954,7 @@ impl ViewportHost {
         json!({
             "directed_scene": self.directed_scene(),
             "directed": self.directed_report(),
+            "overlay": self.overlay_report(),
             "phase": phase,
             "headline": self.headline(),
             "on_screen": self.on_screen,
