@@ -23,7 +23,14 @@ pub fn quantize_control(raw: f64, min: f64, max: f64, step: f64, integer: bool) 
     if integer {
         return snapped.round();
     }
-    let decimals = (-step.log10().floor()).clamp(0.0, 9.0) as i32;
+    // The decimals the step itself needs (`0.01` two, `0.25` two, `0.125` three), not the order
+    // of magnitude of its first digit: `0.25` rounded to one decimal would leave the grid.
+    let decimals = (0..=9)
+        .find(|places| {
+            let scaled = step * 10f64.powi(*places);
+            (scaled - scaled.round()).abs() < 1e-9
+        })
+        .unwrap_or(9);
     let scale = 10f64.powi(decimals);
     ((snapped * scale).round() / scale).clamp(min, max)
 }
@@ -47,6 +54,15 @@ mod tests {
             0.35
         );
         assert_eq!(quantize_control(0.0, 0.05, 1.0, 0.01, false), 0.05);
+    }
+
+    #[test]
+    fn a_step_with_more_digits_than_its_magnitude_keeps_every_grid_point() {
+        // `0.25` has two decimals: 0.75 is on the grid and must not come back as 0.8.
+        assert_eq!(quantize_control(0.74, 0.0, 1.0, 0.25, false), 0.75);
+        assert_eq!(quantize_control(0.26, 0.0, 1.0, 0.25, false), 0.25);
+        assert_eq!(quantize_control(0.13, 0.0, 1.0, 0.125, false), 0.125);
+        assert_eq!(quantize_control(0.4, 0.0, 1.0, 0.05, false), 0.4);
     }
 
     #[test]

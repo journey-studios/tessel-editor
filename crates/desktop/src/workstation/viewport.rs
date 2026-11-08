@@ -126,7 +126,16 @@ impl Workstation {
                 .state
                 .scene_interaction
                 .gesture()
-                .filter(|gesture| gesture.scene() == scene)
+                // A gesture the core can no longer apply (an external edit, an undo, a swapped
+                // scene) stays in its slot until cancelled or replaced, and asking the plan for
+                // it is `gesture_invalidated`: the monitor must show the document then, not a
+                // failure that nothing in the panel explains (the panel ignores it too).
+                .filter(|gesture| {
+                    gesture.scene() == scene
+                        && gesture
+                            .invalidation(&self.state.scenes, self.state.project.revision)
+                            .is_none()
+                })
                 .map(|gesture| gesture.id().to_owned());
             let frame = self.state.scene_frame_at_playhead(&scene);
             let shown = frame.and_then(|frame| {

@@ -236,6 +236,13 @@ de cena (`scene_interaction::GestureSlot`); a janela só traduz entrada em coman
   o gesto vira `gesture_invalidated` (só pode ser cancelado), outro projeto é `unknown_gesture`, outra sessão
   `no_gesture`. Perda de foco da janela é um `commit` do que está aberto (definido, sem *commit* duplo: o gesto
   some do slot); Escape é `cancel`.
+- **Plano e export.** `scene.plan`/`scene.evaluate`/`scene.fx.list|frame` com `gesture` consomem o **candidato** (é
+  assim que o monitor o desenha). O export de cena e o plano **sem** `gesture` usam só a cena **confirmada**
+  (`scene_export/snapshot.rs`): um gesto aberto nunca entra num vídeo. Um gesto que o core já não aplica
+  (`gesture_invalidated`) não é mais pedido pelo monitor, que volta a mostrar o documento.
+  *Revisão independente do head `c834ff7`:* esta regra do monitor e a quantização por casas decimais do passo
+  (`0.25` não vira `0.3`; teste novo em `control.rs`) foram **escritas sem compilar** (disco abaixo do piso); só
+  `cargo fmt --check` foi executado. Reexecutar `check/clippy/test` e o teste de janela antes de confiar nelas.
 - **Um commit que muda algo é UMA entrada de undo ("Edit effects")**; commit sem mudança e cancelar são **zero**.
   Undo/redo restauram valores **e pixels** (prova nos pixels em `scene_fx_gesture_frames.rs`).
 - **Inserção no quadro exibido**: o botão `+` usa `EditorState::scene_frame_at_playhead` (o tempo do playhead da
