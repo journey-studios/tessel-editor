@@ -40,6 +40,10 @@ pub struct HelloOptions {
     /// MSAA samples of scene targets, 0, 2 or 4 (see `docs/features/viewport.md`, OPT07): a
     /// visible quality choice, so it is only sent when the host asks. `None` is the runtime's 4.
     pub scene_samples: Option<u32>,
+    /// MSAA samples (0, 2 or 4) of scenes made only of splats, which MSAA cannot smooth (they are
+    /// alpha blended): the same visible result for a fraction of the GPU time. `None` treats them
+    /// like any scene (`scene_samples`, or the runtime's 4): what export and headless renders get.
+    pub splat_samples: Option<u32>,
 }
 
 /// Messages sent to the runtime.
@@ -61,6 +65,9 @@ pub fn hello_with(host: &str, options: HelloOptions) -> Value {
     }
     if let Some(samples) = options.scene_samples {
         message["scene_samples"] = json!(samples);
+    }
+    if let Some(samples) = options.splat_samples {
+        message["splat_samples"] = json!(samples);
     }
     message
 }
@@ -455,6 +462,7 @@ mod tests {
                 presented: true,
                 result_cache: Some(false),
                 scene_samples: Some(2),
+                splat_samples: Some(0),
             },
         );
         assert_eq!(with["retain"], false);
@@ -466,6 +474,8 @@ mod tests {
             ),
             (Some(false), Some(2))
         );
+        assert_eq!(with["splat_samples"].as_u64(), Some(0));
+        assert!(hello("tessel-editor").get("splat_samples").is_none());
         assert_eq!(with["host"], "tessel-editor");
     }
 

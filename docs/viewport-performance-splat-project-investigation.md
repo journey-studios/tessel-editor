@@ -223,6 +223,42 @@ Limites: sem comparação visual de pixels entre MSAA 2 e 4 (só hash idêntico 
 medida isoladamente em memória; o aviso de proxy no cabeçalho só tem teste de unidade/relatório, sem captura de tela;
 `render_ms` segue sendo só o tempo do JS.
 
+## Segunda rodada: onde está o custo do readback
+
+Hipótese de partida: com 2 camadas o `readback` (6 → ~48 ms) era uma espera de sincronização. Medido com GPU drenada por
+camada (variantes `layers`/`layersnd` do harness, `Q`/`L-*` em `/tmp/perf/results-new`):
+
+| Cenário (MSAA) | GPU por camada (drain) | Leitura sem drain |
+|---|---|---|
+| 1 camada, 4× | 53 ms | render 64–70 ms |
+| 1 camada, 2× | 32 ms | render 14 ms (GPU escondida no intervalo de 41,7 ms) |
+| 2 camadas, 2× | 29 + 24 ms | render 73 ms; `readback` da camada 1: 21 ms, da camada 2: 29 ms |
+| 1 camada, 0× | 11 ms | render 29 ms (com drain) |
+| 2 camadas, 0× | 10 + 9 ms | render 52 ms; fps 17,6 |
+
+Conclusão: o "readback" é onde a CPU espera a GPU da camada anterior; a causa é tempo de GPU por camada, dominado pelo
+MSAA em cenas de splats (que nada suaviza). Com 2 camadas a segunda leitura fica atrás do desenho da primeira, por isso o
+custo não é linear. Fora o MSAA, cada camada ainda paga ~6 ms de readback + ~6 ms de sort (em série, um `SparkRenderer`
+por contexto) e ~7–10 ms de reconstrução do rig por quadro.
+
+**Qualidade (MSAA).** `render.frame` 1280×720 do mesmo quadro (60, 230, 340, 480) com 0×, 2× e 4× e PSNR do ffmpeg:
+2× vs 4× = 63,7–67,3 dB; 0× vs 4× = 62,6–66,0 dB (acima de ~60 dB a diferença é de arredondamento). Os quadros são só de
+splats e texto/imagens; cenas com caixa ou esfera ainda dependem de MSAA e não foram incluídas.
+
+**Decisão implementada (PERF-5).** Cena só de splats usa 0 amostras no monitor (`hello.splat_samples`), sem mudar export
+nem cenas com geometria. A/B pareado (2 rodadas, load 12–29, MSAA 2 nas demais cenas):
+
+| Cenário | MSAA 2 (antes) | Splat-only 0× | 
+|---|---|---|
+| Crossfade (`x2`) JS render p50 | 68 / 72 ms (14,5 / 13,3 fps) | 50 / 56 ms (19,1 / 17,3 fps) |
+| Take A JS render p50 | 18 / 16 ms | 15 / 16 ms (p95 37/32 → 22/28) |
+
+**Decimação (hipótese 8).** PLYs com ½ dos splats (copiados para `/tmp`, originais intactos): crossfade em MSAA 0 de 52 para
+36 ms (24 fps), take A de 29 para 20 ms (drain). ¼ dos splats expirou (30 s) sob load 15–30 e não foi concluído.
+
+**Memória da pré-carga.** Projeto inteiro, MSAA 2, uma execução cada: footprint do WebContent 357 MB (antes) vs 572 MB
+(com pré-carga); GPU 439 vs 454 MB. É coerente com uma cena de 66 MB a mais carregada, mas é só uma execução.
+
 ## Backlog
 
 Os itens propostos foram registrados em [backlog.md](backlog.md): BL113 (MSAA 2×), BL114 (pré-carga), BL115 (cobertura),

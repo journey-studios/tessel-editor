@@ -165,6 +165,8 @@ export class Compositor {
     // Reuse of a splat scene's picture when nothing it depends on changed (see sceneResultKey).
     this.resultCache = resultCache;
     this.sceneSamples = DEFAULT_SCENE_SAMPLES;
+    // Samples for scenes made only of splats; `null` means "the same as sceneSamples" (export, headless).
+    this.splatSamples = null;
     this.counters = counters;
     this.limits = limits;
     // Bumped when the context is lost: everything retained for the old one is dropped with it.
@@ -256,6 +258,23 @@ export class Compositor {
     this.sceneSamples = samples;
     // A target made for other samples must not be reused or serve a cached result.
     for (const { value } of this.targets.entries.values()) value.result = null;
+  }
+
+  /**
+   * MSAA samples for scenes that hold nothing but splats (0, 2 or 4), or `null` to treat them like any
+   * scene. Measured on a 1.18 M splat scene: ~27 ms of GPU per layer at 2x, ~10 ms at 0x, and the
+   * pictures differ by 62-66 dB PSNR (splats are alpha blended, MSAA has no edge to smooth).
+   */
+  setSplatSamples(samples) {
+    const next = SCENE_SAMPLE_CHOICES.includes(samples) ? samples : null;
+    if (next === this.splatSamples) return;
+    this.splatSamples = next;
+    for (const { value } of this.targets.entries.values()) value.result = null;
+  }
+
+  /** The MSAA sample count of the target a scene file renders into. */
+  samplesFor(sceneFile) {
+    return this.splatSamples !== null && SceneRig.drawsOnlySplats(sceneFile) ? this.splatSamples : this.sceneSamples;
   }
 
   /** Turns the splat result cache on or off (A/B and rollback); what it holds is forgotten either way. */
@@ -455,8 +474,9 @@ export class Compositor {
       }
       case 'scene': {
         const entry = this.entryFor(layer, frame);
-        const key = this.sceneResultKey(layer, entry, frame);
-        const { target, cached } = this.sceneTarget(frame.order, width, height, keep);
+        const samples = this.samplesFor(entry.scene);
+        const key = this.sceneResultKey(layer, entry, frame, samples);
+        const { target, cached } = this.sceneTarget(frame.order, width, height, keep, samples);
         if (key && cached?.result === key) {
           this.counters.add('result_hit');
           frame.sources.result_hits += 1;
@@ -585,22 +605,22 @@ export class Compositor {
    * when it fits the byte budget; a target that does not (export-size scenes) is never retained,
    * so it can never serve a cached result either.
    */
-  sceneTarget(slot, width, height, keep) {
+  sceneTarget(slot, width, height, keep, samples = this.sceneSamples) {
     const create = () =>
       new THREE.WebGLRenderTarget(width, height, {
-        samples: this.sceneSamples,
+        samples,
         depthBuffer: true,
         colorSpace: THREE.NoColorSpace,
       });
-    const bytes = targetBytes(width, height, this.sceneSamples);
+    const bytes = targetBytes(width, height, samples);
     if (!this.retain || bytes > this.limits.targetBytes) return { target: keep(create()), cached: null };
     const key = `${slot}`;
     const cached = this.targets.get(key);
-    if (cached && cached.width === width && cached.height === height && cached.samples === this.sceneSamples) {
+    if (cached && cached.width === width && cached.height === height && cached.samples === samples) {
       this.counters.add('target_reused');
       return { target: cached.target, cached };
     }
-    const entry = { target: create(), width, height, samples: this.sceneSamples, result: null };
+    const entry = { target: create(), width, height, samples, result: null };
     this.targets.set(key, entry, bytes);
     this.counters.add('target_created');
     return { target: entry.target, cached: entry };
@@ -620,7 +640,7 @@ export class Compositor {
    * it, so they are not part of the key. Only scenes with splats are keyed: without Spark there
    * is no sort to skip and the draw is already well under a millisecond.
    */
-  sceneResultKey(layer, entry, { assets, used, width, height }) {
+  sceneResultKey(layer, entry, { assets, used, width, height }, samples) {
     if (!this.retain || !this.resultCache || !SceneRig.hasSplatObjects(entry.scene)) return null;
     const splats = [];
     for (const object of entry.scene.objects) {
@@ -637,7 +657,7 @@ export class Compositor {
       camera: layer.camera,
       time: animated ? layer.scene_time.seconds : null,
       size: [width, height],
-      samples: this.sceneSamples,
+      samples,
       context: this.contextGeneration,
     });
   }

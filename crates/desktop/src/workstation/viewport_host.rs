@@ -74,6 +74,11 @@ pub const SCENE_SAMPLES_ENV: &str = "TESSEL_VIEWPORT_SCENE_SAMPLES";
 pub const PREFETCH_SECONDS: i64 = 2;
 /// MSAA samples of scene targets in the monitor when [`SCENE_SAMPLES_ENV`] is not set.
 pub const MONITOR_SCENE_SAMPLES: u32 = 2;
+/// MSAA samples of scenes made only of splats in the monitor when [`SCENE_SAMPLES_ENV`] is not set.
+/// Splats are alpha blended, so multisampling smooths nothing in them: on the reference machine a
+/// 1.18 M splat layer costs ~27 ms of GPU at 2× and ~10 ms at 0×, and the pictures differ by
+/// 62-66 dB PSNR.
+pub const MONITOR_SPLAT_SAMPLES: u32 = 0;
 
 /// The sample count the monitor asks for: the env value when it is one of 0/2/4, else the default.
 pub fn monitor_scene_samples(value: Option<&str>) -> u32 {
@@ -81,6 +86,15 @@ pub fn monitor_scene_samples(value: Option<&str>) -> u32 {
         .and_then(|value| value.parse().ok())
         .filter(|samples| [0, 2, 4].contains(samples))
         .unwrap_or(MONITOR_SCENE_SAMPLES)
+}
+
+/// The sample count of splat-only scenes: the env value when it is one of 0/2/4 (an explicit choice
+/// applies to every scene), else [`MONITOR_SPLAT_SAMPLES`].
+pub fn monitor_splat_samples(value: Option<&str>) -> u32 {
+    value
+        .and_then(|value| value.parse().ok())
+        .filter(|samples| [0, 2, 4].contains(samples))
+        .unwrap_or(MONITOR_SPLAT_SAMPLES)
 }
 
 /// Opt-ins read once when the host is created.
@@ -91,6 +105,7 @@ pub struct HostOptions {
     pub retain: Option<bool>,
     pub result_cache: Option<bool>,
     pub scene_samples: Option<u32>,
+    pub splat_samples: Option<u32>,
 }
 
 impl HostOptions {
@@ -104,6 +119,9 @@ impl HostOptions {
                 .is_ok_and(|value| value == "0")
                 .then_some(false),
             scene_samples: Some(monitor_scene_samples(
+                std::env::var(SCENE_SAMPLES_ENV).ok().as_deref(),
+            )),
+            splat_samples: Some(monitor_splat_samples(
                 std::env::var(SCENE_SAMPLES_ENV).ok().as_deref(),
             )),
         }
@@ -224,6 +242,7 @@ impl ViewportHost {
                 presented: options.trace,
                 result_cache: options.result_cache,
                 scene_samples: options.scene_samples,
+                splat_samples: options.splat_samples,
             });
         let mut session =
             ViewportSession::new(backend).with_demo_dir(tessel_editor_render::demo_dir());

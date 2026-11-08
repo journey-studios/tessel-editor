@@ -73,6 +73,7 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
     try {
       compositor = new Compositor(canvas, { retain: options.retain, resultCache: options.resultCache, counters });
       if (options.sceneSamples !== undefined) compositor.setSceneSamples(options.sceneSamples);
+      compositor.setSplatSamples(options.splatSamples ?? null);
     } catch (error) {
       throw error instanceof RuntimeError
         ? error
@@ -109,6 +110,8 @@ export const createRuntime = ({ post, assetUrl, canvas }) => {
     compositor?.setResultCache(options.resultCache);
     options.sceneSamples = Number.isInteger(message.scene_samples) ? message.scene_samples : undefined;
     if (options.sceneSamples !== undefined) compositor?.setSceneSamples(options.sceneSamples);
+    options.splatSamples = Number.isInteger(message.splat_samples) ? message.splat_samples : undefined;
+    compositor?.setSplatSamples(options.splatSamples ?? null);
     compositor?.setRetain(options.retain);
     if (!options.retain) assets.dropTextures();
   };

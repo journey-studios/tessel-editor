@@ -25,6 +25,15 @@ export class SceneRig {
     return sceneFile.objects.some((object) => object.type === 'splat');
   }
 
+  /**
+   * Whether every object of the scene is a splat. Spark draws splats with alpha blending and no
+   * depth test of their own, so MSAA smooths nothing in such a scene: the compositor may give it a
+   * target without multisampling (see `Compositor.samplesFor`).
+   */
+  static drawsOnlySplats(sceneFile) {
+    return sceneFile.objects.length > 0 && sceneFile.objects.every((object) => object.type === 'splat');
+  }
+
   /** Async because splat meshes may need to be (re)built after a lost graphics context. */
   static async build(sceneFile, assets) {
     const leases = new Map();

@@ -218,8 +218,8 @@ export const openSplatPage = async (browser, port) => {
     messages,
     waitFor,
     send,
-    hello: async () => {
-      await send({ type: 'hello' });
+    hello: async (extra = {}) => {
+      await send({ type: 'hello', ...extra });
       return waitFor((m) => m.type === 'ready');
     },
     load: async (asset) => {

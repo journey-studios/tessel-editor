@@ -17,7 +17,8 @@ use tessel_editor_render::SetupError;
 use wry::http::Request;
 
 use super::viewport_host::{
-    HostOptions, MONITOR_SCENE_SAMPLES, PAGE_URL, ViewportHost, monitor_scene_samples,
+    HostOptions, MONITOR_SCENE_SAMPLES, MONITOR_SPLAT_SAMPLES, PAGE_URL, ViewportHost,
+    monitor_scene_samples, monitor_splat_samples,
 };
 
 fn scratch(tag: &str) -> PathBuf {
@@ -957,15 +958,27 @@ fn the_monitor_defaults_to_two_samples_and_the_env_can_restore_four_or_turn_them
     );
     assert_eq!(monitor_scene_samples(Some("abc")), 2);
     assert!(HostOptions::from_env().scene_samples.is_some());
+    assert_eq!(MONITOR_SPLAT_SAMPLES, 0);
+    assert_eq!(monitor_splat_samples(None), 0);
+    assert_eq!(
+        monitor_splat_samples(Some("2")),
+        2,
+        "an explicit choice applies to splat scenes too"
+    );
+    assert_eq!(monitor_splat_samples(Some("4")), 4);
+    assert_eq!(monitor_splat_samples(Some("3")), 0);
 
     let state = empty_state();
     let options = HostOptions {
         scene_samples: Some(MONITOR_SCENE_SAMPLES),
+        splat_samples: Some(MONITOR_SPLAT_SAMPLES),
         ..HostOptions::default()
     };
     let mut host = ViewportHost::with_options(Ok(page("hello-samples")), options);
     from_page(&mut host, &state, json!({"type":"page.ready"}));
-    assert_eq!(sent(&mut host)[0]["scene_samples"], 2);
+    let hello = &sent(&mut host)[0];
+    assert_eq!(hello["scene_samples"], 2);
+    assert_eq!(hello["splat_samples"], 0);
 }
 
 #[test]

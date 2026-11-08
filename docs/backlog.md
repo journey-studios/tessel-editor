@@ -462,3 +462,13 @@ local (macOS/WebKit, load 6–17, quadros de 960×540); sem comparação visual 
 | BL120 | F-viewport/PERF | Pipeline do `settle` com prova de apresentação | Pendente | `frame.presented` | – | Sem aumento de p95/p99; hoje só hipótese |
 | BL121 | F-viewport/PERF | Mostrar fps exibido e quadros perdidos no cabeçalho | Pendente | – | – | A UI informa fluidez, não só `render_ms` (que mede só o JS) |
 | BL122 | F-viewport/PERF | Investigar crescimento de RSS do editor em reprodução longa (340→550 MB em 25 s) | Pendente | – | – | RSS estável em 5 min |
+
+### Performance do monitor — segunda rodada (readback e MSAA de splats)
+
+| ID | Área | Pendência | Estado | Dependências | Responsável | Aceite |
+|---|---|---|---|---|---|---|
+| BL123 | F-viewport/PERF-5 | Cena só de splats renderiza sem MSAA no monitor (`hello.splat_samples`, padrão 0) | A validar | BL113 | Perf | Implementado, teste de navegador e de bridge/host. PSNR 62–66 dB entre 0× e 4× (4 quadros); GPU por camada ≈27→10 ms; crossfade 68–72→50–56 ms sob load 12–29. Falta comparação com GPU/telas diferentes e cenas com caixa+splat (mantêm `scene_samples`) |
+| BL124 | F-viewport/PERF | Reaproveitar o `SplatMesh`/rig entre quadros (hoje cena com splats reconstrói o rig a cada quadro: ~7–10 ms por camada no crossfade) | Pendente | BL123 | – | `rig_build_ms` ≈ 0 em reprodução sem trocar de cena; hash idêntico (teste de ordem e de contexto perdido) |
+| BL125 | F-viewport/PERF | Medir e limitar a memória da pré-carga (BL114) | Pendente | BL114 | – | Footprint do WebContent no fim do projeto: 357 MB sem pré-carga e 572 MB com (uma execução cada, ruidoso); definir limite em bytes e provar com 3–4 cenas de 66 MB |
+| BL126 | F-viewport/PERF | Sort e leitura de profundidade do Spark por camada (6 ms de readback + 6 ms de sort por camada, em série) | Pendente | BL120 | – | Com 2 camadas ≤ 1,3× o custo de 1; exige mais de um `SparkRenderer` ou ordenação em paralelo, com prova de pixels |
+| BL127 | F-viewport/PERF | Projeto decimado (preview com ½ dos splats) | Pendente | BL119 | – | Medido: metade dos splats reduz crossfade 52→36 ms (MSAA 0). Falta qualidade visual e um fluxo de geração; execuções com ¼ dos splats expiraram (30 s) sob load alto e não foram concluídas |
