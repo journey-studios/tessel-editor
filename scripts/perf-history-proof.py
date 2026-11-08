@@ -144,6 +144,11 @@ def buffer_sample_every(minutes):
     return min(20.0, max(1.0, minutes * 60.0 / MIN_BUFFER_SAMPLES))
 
 
+def buffer_wait(every, deadline, now):
+    """Bound the next wait by the remaining run time, including earlier sampling overhead."""
+    return min(every, max(0.0, deadline - now))
+
+
 def buffer_growth(samples):
     """RSS growth over the run and after the first third (warm-up), in MiB. A reading that is
     missing is missing (`None`), not zero, and too few readings judge nothing: each result is
@@ -473,8 +478,9 @@ def main():
             started_at = time.monotonic()
             samples = []
             every = buffer_sample_every(buffer_minutes)
-            while time.monotonic() - started_at < buffer_minutes * 60:
-                time.sleep(every)
+            deadline = started_at + buffer_minutes * 60
+            while time.monotonic() < deadline:
+                time.sleep(buffer_wait(every, deadline, time.monotonic()))
                 state = history(editor)
                 samples.append({
                     "t_s": round(time.monotonic() - started_at),

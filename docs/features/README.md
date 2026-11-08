@@ -202,3 +202,5 @@ F016 / BL082.20: revisão incremental PR37 corrige anúncio dos verbos FX, pré-
 F016/F039: resíduos da revisão PR37 (fallback do seletor e recusa de gesto de propriedade) corrigidos em `5694e0e` e **validados no código `7deb23c`** (só testes/prova a mais): fmt, check, clippy, build, `cargo tree` do core sem gpui/wry, `test --workspace` 1880 passaram/0 falharam, `scene_fx_tests` 29/29, specs Python normal e `-O`, janela real 116/116 e JSONL em processo real; sem ponteiro físico nem GPU real.
 
 F016 — correção residual de seleção de cena validada no código `f5f6d1deb6d69a7d925bf5d747a76ccf0a6b6a59`: workspace1881/0/12, FX GPUI30/30, janela116/116, check/clippy/build limpos. Veja effects.md para limites.
+
+F049: feedback de export e seleção independentes, conclusão sem nomear destino editável, driver com prazo total limitado; check desktop passou; testes/prova GPUI ainda pendentes. BL145.6 e dedup após iniciar/clear continuam pendentes.

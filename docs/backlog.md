@@ -1056,3 +1056,5 @@ Código validado `f5f6d1deb6d69a7d925bf5d747a76ccf0a6b6a59`: mudar o painel de Y
 BL145.5/.6 — PR36 integrada com main9215c27 (PR37 FX): conflitos documentais preservam
 estados/evidências de F049 e F016. A integração não fecha BL145.6 (frame de cena antiga
 no segmento novo) nem valida o Rust combinado; fmt/specs Python e diffcheck conferidos.
+
+BL145.4/.5/.6 — revisão OCR0632d3a: corrigida apresentação do export sem atribuí-lo ao destino atual, nota de seleção não oculta resultado do export, e espera da prova limitada pelo deadline. Python18/18 e check desktop passaram; GPUI/janela não provados nesta rodada. Dedup de falha anterior à gravação/clear e frame atravessando cena continuam abertos antes de merge.

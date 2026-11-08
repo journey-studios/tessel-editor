@@ -132,5 +132,13 @@ class ExportOutcomeTests(unittest.TestCase):
             self.assertIsNone(proof.export_code(outcome))
 
 
+class BufferDeadlineTests(unittest.TestCase):
+    def test_last_wait_and_sampling_overhead_do_not_extend_the_run(self):
+        self.assertEqual(proof.buffer_wait(20.0, 123.0, 120.0), 3.0)
+        self.assertEqual(proof.buffer_wait(20.0, 123.0, 122.75), 0.25)
+        self.assertEqual(proof.buffer_wait(20.0, 123.0, 124.0), 0.0)
+        self.assertEqual(proof.buffer_wait(20.0, 123.0, 100.0), 20.0)
+
+
 if __name__ == "__main__":
     unittest.main()

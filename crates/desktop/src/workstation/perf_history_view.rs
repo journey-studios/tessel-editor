@@ -650,18 +650,16 @@ struct Reading {
     export_writing: bool,
 }
 
-/// The last export in words for the panel. The destination is the user's own field, shown back to
-/// them; the status JSON never carries it.
-fn export_note(status: &ExportStatus, destination: &str) -> Option<(String, bool)> {
+/// The last export in words for the panel, independent of the editable destination field.
+/// The status JSON and the completion note never infer a path from that field.
+fn export_note(status: &ExportStatus) -> Option<(String, bool)> {
     match status {
         ExportStatus::Idle => None,
         ExportStatus::Writing { .. } => {
             Some(("Exportando… (gravando em segundo plano)".into(), false))
         }
         ExportStatus::Done { bytes, .. } => Some((
-            format!(
-                "Exportado: {destination} ({bytes} bytes). Arquivo novo: nada foi substituído."
-            ),
+            format!("Exportação concluída: {bytes} bytes. Arquivo novo: nada foi substituído."),
             false,
         )),
         ExportStatus::Failed { code, message, .. } => {
@@ -692,10 +690,7 @@ impl Render for HistoryView {
                 selected_bucket,
                 monitor_on_screen: recorder.context().and_then(|c| c.monitor_on_screen),
                 destination: workstation.perf.history.destination.clone(),
-                export: export_note(
-                    &workstation.perf.history.export,
-                    workstation.perf.history.destination.trim(),
-                ),
+                export: export_note(&workstation.perf.history.export),
                 export_writing: workstation.perf.history.export.writing(),
                 snapshot,
             }
@@ -858,18 +853,16 @@ impl Render for HistoryView {
             .snapshot
             .as_ref()
             .map(|snapshot| footer(snapshot, reading.monitor_on_screen, &t, mono.clone()));
-        // A refusal of the last button wins; otherwise the last export's outcome, which arrives
-        // from the background write.
-        let note = self
-            .note
-            .as_ref()
-            .or(reading.export.as_ref())
-            .map(|(text, error)| {
+        // Selection/button feedback and the asynchronous export are independent outcomes:
+        // neither may hide the other, including a write that finished after a later selection.
+        let note = v_flex().children(self.note.iter().chain(reading.export.iter()).map(
+            |(text, error)| {
                 div()
                     .text_size(px(11.))
                     .text_color(if *error { t.bad } else { t.dim })
                     .child(text.clone())
-            });
+            },
+        ));
 
         v_flex()
             .gap_2()
@@ -887,7 +880,7 @@ impl Render for HistoryView {
             )
             .child(toolbar)
             .child(destination)
-            .children(note)
+            .child(note)
             .children(empty)
             .children(rows)
             .children(events)
