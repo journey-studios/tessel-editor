@@ -329,6 +329,15 @@ sistemas; não reintroduzir fallback rename inseguro. Nenhum gate Rust ou janela
 
 ### BL145.3 / BL145.4 / BL145.5 — correções das pendências da PR (estado deste head)
 
+Itens do feedback da PR também corrigidos (escritos, não compilados): a observação de exports guarda
+os **64 jobs mais novos** do registro (antes os 64 mais antigos, e um export posterior nunca virava
+evento); um pedido que falha com o mesmo código sem novo pedido admitido no meio (um plano que o
+core recusa a cada mudança de estado) é **um** evento `request_failed`, não um por `sync`; o pedido
+explícito `render.frame` usa a taxa-alvo do seu próprio plano, não a do preview anterior;
+`--buffer-minutes` acima do que o fixture cobre (10) nomeia a própria opção. **Segue pendente** (não
+corrigido nesta rodada): o quadro em voo da cena anterior pode cair no segmento da cena nova na troca
+de cena dirigida.
+
 Escritas (core, adaptadores, testes, driver e documentos) e **formatadas com `rustfmt`**; o único
 comando executado com resultado foi `python3 scripts/perf-history-proof.spec.py` (16 testes, OK).
 Nenhuma etapa que usa Cargo, build, runtime, navegador ou render foi executada por disco

@@ -123,15 +123,18 @@ def rss_mib(pid):
 MIN_BUFFER_SAMPLES = 6
 
 
-def parse_buffer_minutes(text):
-    """`--buffer-minutes`: a positive finite number of minutes (0 means off). Anything else is
-    refused up front, before an editor is started, rather than failing minutes into a run."""
+def parse_buffer_minutes(text, max_seconds=600):
+    """`--buffer-minutes`: a finite number of minutes (0 means off) that the fixture can cover
+    (`max_seconds` is the fixture helper's limit, 10 minutes). Anything else is refused up front,
+    before an editor is started, with a message that names this option, not `--seconds`."""
     try:
         minutes = float(text)
     except (TypeError, ValueError):
         raise ValueError(f"--buffer-minutes needs a number, got {text!r}") from None
     if not math.isfinite(minutes) or minutes < 0:
         raise ValueError(f"--buffer-minutes must be a finite number >= 0, got {text!r}")
+    if minutes * 60.0 > max_seconds:
+        raise ValueError(f"--buffer-minutes must be at most {max_seconds / 60:g} (the fixture covers {max_seconds} s), got {text!r}")
     return minutes
 
 
@@ -278,7 +281,7 @@ def main():
     seconds = float(arg("--seconds", "8"))
     rounds = int(arg("--rounds", "3"))
     try:
-        buffer_minutes = parse_buffer_minutes(arg("--buffer-minutes", "0"))
+        buffer_minutes = parse_buffer_minutes(arg("--buffer-minutes", "0"), pmp.MAX_SECONDS)
     except ValueError as error:
         print(error)
         return 2
@@ -342,7 +345,9 @@ def main():
         latency = seen.get("latency_ms") or {}
         render = seen.get("render_ms") or {}
         check("latency (admission to acceptance) is kept apart from render_ms (CPU)", latency.get("max") is not None and render.get("max") is not None and latency["max"] >= render["min"], [latency, render])
-        events = [event["kind"] for event in (state["view"]["events"]["newest"])]
+        view = state.get("view")
+        check("the recording produced a view to read events from", isinstance(view, dict), state)
+        events = [event["kind"] for event in ((view or {}).get("events") or {}).get("newest", [])]
         check("playback and recording are events of the timeline", "recording_started" in events and "playback_started" in events, events)
 
         # --- the panel

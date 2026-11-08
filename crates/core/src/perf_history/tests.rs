@@ -1204,6 +1204,33 @@ fn export_events(recorder: &Recorder, now: u64) -> Vec<(EventKind, Option<String
 }
 
 #[test]
+fn past_the_job_bound_the_newest_exports_are_the_ones_observed() {
+    let mut recorder = started(0);
+    // 70 old, finished jobs (oldest first, as the registry lists them): more than are kept.
+    let mut jobs: Vec<ExportJob> = (0..70)
+        .map(|n| export_job(&format!("old-{n}"), JobState::Succeeded, None))
+        .collect();
+    recorder.exports_observed(at(10), &jobs);
+    jobs.push(export_job("latest", JobState::Queued, None));
+    recorder.exports_observed(at(1_100), &jobs);
+    jobs.pop();
+    jobs.push(export_job(
+        "latest",
+        JobState::Failed,
+        Some("encoder_failed"),
+    ));
+    recorder.exports_observed(at(2_200), &jobs);
+    assert_eq!(
+        export_events(&recorder, 2_300),
+        vec![
+            (EventKind::ExportStarted, None),
+            (EventKind::ExportFailed, Some("encoder_failed".to_string())),
+        ],
+        "a job created after the 64 oldest is seen, not dropped with the tail"
+    );
+}
+
+#[test]
 fn export_jobs_become_events_only_for_what_was_seen_to_change_after_the_baseline() {
     let mut recorder = started(0);
     assert!(recorder.exports_due(at(0)));

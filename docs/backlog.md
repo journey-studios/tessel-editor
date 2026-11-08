@@ -1016,3 +1016,4 @@ BL145.3/.4/.5 — PR36: acesso reentrante do seletor de destino corrigido por ad
 regressão GPUI escrita; benchmark usa duração monotônica medida, não seconds+2.5.
 Não compilado nem provado na janela. Achados adicionais de sessão/FPS explícito/export
 após64 jobs/eventos repetidos mantidos no contrato como pendências antes de aceite.
+Atualização: export após 64 jobs, FPS explícito de `render.frame` e repetição de `request_failed` por `sync` foram corrigidos no código (escritos, não compilados); segue pendente a correlação do quadro em voo na troca de cena.

@@ -320,11 +320,7 @@ pub fn describe(metric: Metric, agg: &Agg) -> String {
     };
     match metric {
         Metric::UiFrames | Metric::MonitorFrames => {
-            format!(
-                "{} quadros · {} fps",
-                agg.count,
-                format!("{:.0}", rate_fps(agg.count))
-            )
+            format!("{} quadros · {:.0} fps", agg.count, rate_fps(agg.count))
         }
         Metric::LostFrames => format!("{} perdidos (em {} leituras)", agg.sum as u64, agg.count),
         _ => format!(
@@ -1033,7 +1029,10 @@ impl Recorder {
         let baseline = self.exports.is_none();
         let known = self.exports.take().unwrap_or_default();
         let mut next = HashMap::with_capacity(jobs.len().min(MAX_EXPORT_JOBS));
-        for job in jobs.iter().take(MAX_EXPORT_JOBS) {
+        // The registry lists jobs oldest first: past the bound it is the **newest** ones that
+        // matter (the oldest are long finished), so a later export is never left unobserved.
+        let skipped = jobs.len().saturating_sub(MAX_EXPORT_JOBS);
+        for job in jobs.iter().skip(skipped) {
             let before = known.get(&job.id).copied();
             next.insert(job.id.clone(), job.state);
             if baseline || before == Some(job.state) {

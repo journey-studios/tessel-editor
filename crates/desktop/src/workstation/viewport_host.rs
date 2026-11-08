@@ -724,7 +724,14 @@ impl ViewportHost {
     fn report_failure(&mut self, error: BackendError) {
         // A frame timeout and a request the core refused never come back as a session `Failed`
         // event: this is where the history learns about them (the code is kept only when plain).
-        if let Some(link) = &self.meter {
+        // The same failure repeated with no request admitted in between (a plan the core
+        // refuses is asked again on every state change) is one event, not one per sync: a
+        // success or a new request clears `failure`, so the next failure is news again.
+        let repeated = self
+            .failure
+            .as_ref()
+            .is_some_and(|known| known.code == error.code);
+        if let Some(link) = self.meter.as_ref().filter(|_| !repeated) {
             link.meter
                 .borrow_mut()
                 .request_failed(link.clock.elapsed(), None, &error.code);
@@ -807,6 +814,9 @@ impl ViewportHost {
         // The next `sync` must re-evaluate against what is on the canvas now.
         self.last_key = None;
         self.output_size = Some((width, height));
+        // The picture of an explicit request is aimed at this plan's rate, not at whatever the
+        // previous preview left in the context.
+        self.target_fps = plan.frame.is_some().then(|| plan.rate.as_f64());
         self.request(
             state,
             plan,

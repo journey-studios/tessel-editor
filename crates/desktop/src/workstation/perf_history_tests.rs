@@ -848,6 +848,46 @@ fn the_context_carries_the_sequence_rate_and_never_a_target_nobody_knows() {
 }
 
 #[test]
+fn a_plan_the_core_refuses_is_one_failure_event_not_one_per_state_change() {
+    use tessel_editor_core::plan::PreviewIntent;
+    use tessel_editor_core::time::Ratio;
+    let (meter, clock, mut host, mut state) = recording_host("refused-plan");
+    sent(&mut host);
+    let failures = |meter: &Rc<RefCell<Meter>>| {
+        event_kinds(meter, &clock)
+            .into_iter()
+            .filter(|kind| *kind == EventKind::RequestFailed)
+            .count()
+    };
+    // A preview of an asset that is not in the project: the planner refuses it, every time.
+    state.preview = PreviewIntent::Source {
+        asset: tessel_editor_core::Id::new("gone").unwrap(),
+        time: Ratio::ZERO,
+    };
+    for _ in 0..5 {
+        host.sync(&state);
+    }
+    assert_eq!(
+        failures(&meter),
+        1,
+        "the same refusal repeated is one event"
+    );
+    // Back to a plan the core accepts, then refused again: that is news.
+    state.preview = PreviewIntent::Sequence;
+    host.sync(&state);
+    state.preview = PreviewIntent::Source {
+        asset: tessel_editor_core::Id::new("gone").unwrap(),
+        time: Ratio::ZERO,
+    };
+    host.sync(&state);
+    assert_eq!(
+        failures(&meter),
+        2,
+        "a failure after a new request is a new event"
+    );
+}
+
+#[test]
 fn leaving_a_directed_scene_is_one_scene_change_and_staying_is_none() {
     let (meter, clock, mut host, _state) = recording_host("scene-change");
     // The monitor going back to the sequence when no scene was shown is not a scene change.

@@ -71,6 +71,13 @@ class BufferMinutesTests(unittest.TestCase):
             with self.assertRaises(ValueError, msg=repr(text)):
                 proof.parse_buffer_minutes(text)
 
+    def test_more_than_the_fixture_covers_is_refused_naming_this_option(self):
+        self.assertEqual(proof.parse_buffer_minutes("10", 600), 10.0)
+        with self.assertRaises(ValueError) as caught:
+            proof.parse_buffer_minutes("10.5", 600)
+        self.assertIn("--buffer-minutes", str(caught.exception))
+        self.assertNotIn("--seconds", str(caught.exception))
+
     def test_the_reading_step_is_bounded_and_a_short_run_is_not_stretched(self):
         self.assertEqual(proof.buffer_sample_every(3), 20.0)
         self.assertEqual(proof.buffer_sample_every(1), 10.0)
