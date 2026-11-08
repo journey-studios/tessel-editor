@@ -18,6 +18,20 @@ habilitado para ele.
 | Pixels no runtime após a correção do ping-pong | V (SwiftShader) | `directed-scene-fx-browser.test.mjs` 7/7: ordem com cores distintas, 5 e 9 passes, resize, erro e perda de contexto; igual à referência nas duas ordens |
 | Pixels no export | V no corpus (head anterior) | MP4 decodificado == referência sobre o baseline decodificado (pior 7/255 pela lib, 7 pela janela), fora do clipe == baseline |
 
+**Atualização P0+P1 (branch `t3/fx-candidate-preview`, BL036/BL018/BL019/BL082.6/.16/.17).** O código da correção R1
+foi **compilado e executado** neste head (antes: "não compilado"); o gesto de efeito, o aviso de orçamento e a
+inserção no quadro exibido são do **core** e passam pelos mesmos handlers em lib, JSONL e janela; o corpus pequeno da
+vinheta tem proveniência fixada. Estado por superfície depois desta entrega:
+
+| Superfície | Estado | Evidência executada neste branch |
+|---|---|---|
+| Lib (gesto, aviso, tempo→quadro, corpus) | V | `crates/core/tests/scene_fx_gesture.rs` (16), `pilot_fx_corpus.rs` (5) |
+| CLI headless (JSONL, processo real, sem janela) | V | `scene_fx_gesture.rs::the_headless_executable_runs_the_gesture_without_a_window…` (processo `tessel-headless`), mesmos `scene.fx.gesture.*` |
+| UI GPUI (ponteiro injetado, teclado do adaptador) | V (entrada injetada; **não** é ponteiro/teclado físico) | `workstation/scene_fx_tests.rs` (20) |
+| Janela real, só comandos semânticos | V | `scripts/scene-fx-ui-proof.py` 113/113 (`op`/`get`/`set`/`invoke`, instância privada, lock de GPU) |
+| Pixels (runtime/Chrome SwiftShader) | V | `crates/render/tests/scene_fx_gesture_frames.rs` (candidato antes do commit, commit == prévia, cancelar, undo/redo) |
+
+
 ## Decisão de domínio (antes de implementar)
 
 O efeito vive **uma vez**, em `fx`, chave de primeiro nível do **documento do bundle dirigido**
@@ -151,7 +165,7 @@ trazem `budget {max_passes, policy:"warn", peak_passes, over_budget, first_frame
 `warnings[]` (`{code:"FX_PASS_BUDGET", ...}` só quando há quadros acima); `scene.fx.frame` traz
 `max_passes`, `over_budget` e `warnings`; `scene.fx.catalog` declara a política (`scope.pass_budget`). O plano **mantém
 todos** os passes na ordem das trilhas e o runtime desenha todos (dois alvos qualquer que seja a contagem).
-Gap registrado: a janela ainda **não mostra** esse aviso (BL082.16).
+A janela mostra o aviso (BL082.16, ver "Gesto de efeito").
 
 ## Entrada compartilhada (lib · JSONL · janela)
 
@@ -205,6 +219,63 @@ Nós semânticos: `scene.fx` (ação `add:vignette`; `state.clip_count`, `effect
 `start_frame`, `duration_frames`, `fade_in_frames`, `fade_out_frames` e `hidden`; ações `remove`, `toggle_hidden`).
 `set` de um componente de ponto/cor mantém os irmãos como o documento os tem; quadros exigem inteiros.
 
+### Gesto de efeito (`scene.fx.gesture.*`, BL082.6)
+
+O candidato de um arrasto/teclado é do **core** (`scene_project/fx_gesture.rs`), no mesmo *slot* único dos gestos
+de cena (`scene_interaction::GestureSlot`); a janela só traduz entrada em comandos. Ciclo JSONL (os mesmos
+`SceneCommand::FxGesture` da janela): `scene.fx.gesture.begin {scene, clip, label?}` → `update {gesture, ops[]}`
+(quantas vezes) → `commit {gesture}` | `cancel {gesture}`; `status`. `scene.fx.list/frame` e `scene.plan` aceitam
+`gesture` e então mostram/desenham o **candidato**; o monitor e a seção Efeitos fazem o mesmo.
+
+- **Amarra** projeto, cena, clipe e a revisão-base (`Arc::ptr_eq` da cena + revisão do projeto). Cada `update` deriva
+  da **base** do `begin`, nunca do candidato anterior (um valor volta ao original se o `update` o restaura).
+- **A prévia não escreve** documento, arquivo, histórico nem revisão. Um `update` inválido devolve o erro tipado
+  (`param_out_of_range`, `invalid_op`, `gesture_op_not_allowed`, …) e **mantém o último candidato legal**;
+  a recusa fica em `gesture.refusal`.
+- **Cancelar, trocar de cena/projeto, undo/edição externa e revisão velha nunca confirmam valores antigos**:
+  o gesto vira `gesture_invalidated` (só pode ser cancelado), outro projeto é `unknown_gesture`, outra sessão
+  `no_gesture`. Perda de foco da janela é um `commit` do que está aberto (definido, sem *commit* duplo: o gesto
+  some do slot); Escape é `cancel`.
+- **Um commit que muda algo é UMA entrada de undo ("Edit effects")**; commit sem mudança e cancelar são **zero**.
+  Undo/redo restauram valores **e pixels** (prova nos pixels em `scene_fx_gesture_frames.rs`).
+- **Inserção no quadro exibido**: o botão `+` usa `EditorState::scene_frame_at_playhead` (o tempo do playhead da
+  sequência convertido pelo relógio do **bundle**; 30 fps → 24 fps: playhead 15 = quadro 12), a duração cabe na
+  edição e um quadro fora da edição é recusado atomicamente (`fx_clip_out_of_range`). `add_clip` aceita exatamente
+  um entre `start_frame` e `start_time` (inteiro em segundos ou `{num,den}`).
+- **Teclado/faixa/quantização** são uma só regra (`directed_scene::fx::quantize_control`) usada pelo ponteiro e pelo
+  teclado do adaptador; confirmar e cancelar são os mesmos comandos. Isto prova o **adaptador**, não um teclado físico.
+- **Aviso de orçamento (BL082.16)**: a seção Efeitos mostra a linha `fx-budget-warning` e o nó `scene.fx.budget`
+  (`visible`, `state.over_budget/peak_passes/first_frame_over/frames_over/message/warnings[FX_PASS_BUDGET]`,
+  `state.source: document|gesture`) a partir da **mesma** visão; atualiza ao editar, ocultar, remover, no candidato
+  de um gesto e na troca de cena. **Só avisa**: nunca trunca, recusa, reduz qualidade ou esconde (o plano mantém
+  os nove passes).
+
+| Código | Quando |
+|---|---|
+| `gesture_active` / `gesture_kind_mismatch` | já há um gesto aberto / outro tipo de gesto |
+| `gesture_target_mismatch` / `gesture_scene_mismatch` / `gesture_op_not_allowed` | op fora do clipe ou cena do gesto |
+| `gesture_invalidated` / `unknown_gesture` / `no_gesture` | base velha, outro projeto, outra sessão |
+| `param_out_of_range`, `invalid_op`, `unknown_element`, `invalid_bundle` | refusas do `apply_fx` no candidato |
+
+### Corpus pequeno e proveniência (P0, BL036/BL018/BL019)
+
+`docs/migration/fixtures/pilot-fx/{cases.json,manifest.json}`, gerados e verificados por
+`scripts/pilot-fx-corpus.py generate|verify [--origin PATH]`. As expectativas vêm das **fórmulas do piloto** (GLSL,
+cor, envelope de fade, catálogo) lidas **somente por `git show`** do snapshot `d40ac3f7c0` da origem (nada
+instalado, executado nem alterado) e calculadas por uma implementação **independente em Python**; o manifesto grava
+git blob e sha256 de cada fonte, o hash do corpus e os bloqueios. Casos: janela de quadros (defaults, fades, intensidade
+0, oculto, ordem de trilhas, últimos quadros), pixels de uma imagem 8×4 (centro, centro deslocado com cor, `amount`
+0, sem efeito; tolerância 1/255), comportamento do gesto (prévia sem registro, um undo por arrasto, recusa mantém o
+último legal, cancelar, no-op) e recusas por faixa. `crates/core/tests/pilot_fx_corpus.rs` confere o core contra
+eles, com controle negativo (expectativa adulterada é pega).
+
+- **Divergência declarada** (`release-on-refusal`): ao soltar depois de uma recusa, o piloto **volta à camada do
+  pressionar**; aqui o `commit` confirma o **último candidato legal** (uma entrada de undo) e a recusa fica visível
+  no gesto. Decisão de produto pendente (BL082.6); o caso grava `origin` e `rust` e o teste prova o comportamento atual.
+- **Bloqueios que ficam abertos** (`manifest.json`): `ORIGIN_GOLDEN_NOT_COMPARABLE` (o PNG dourado da origem exige o
+  harness dela, não executado) e `ORIGIN_NOT_EXECUTED` (não se executou a origem; as expectativas são fórmulas
+  transcritas, não saídas do piloto). Não há paridade pixel-a-pixel com o piloto alegada.
+
 ## Evidências
 
 Duas camadas, para não misturar o que rodou com o que só foi escrito. **Executado neste head (correção R1)**:
@@ -257,10 +328,8 @@ abaixo marcados "head anterior" são os da entrega 32860ec e **não** foram repe
 
 ## Limites e gaps (todos em [backlog](../backlog.md) BL028/BL036/BL082)
 
-- **Correção R1 (BL082.7–BL082.15) não compilada nem testada em Rust**: o disco ficou abaixo do piso; ver a
-  linha de cada ID no backlog. O que existe é código e testes escritos, revisados à mão e formatados.
+- Histórico: a correção R1 (BL082.7–BL082.15) ficou sem compilar por falta de disco; **foi compilada e testada no branch P0+P1** (gates no backlog BL082.17).
 - A medição de custo é SwiftShader (comparação antes/depois); a GPU nativa não foi medida.
-- A janela não mostra o aviso do orçamento de passes (BL082.16); ele está na lib/JSONL.
 
 - Só `vignette`. Os outros efeitos do piloto (59 shaders) **não** foram portados; cada efeito novo é uma entrada no
   catálogo, um shader no runtime e um teste de pixel.
@@ -270,9 +339,9 @@ abaixo marcados "head anterior" são os da entrega 32860ec e **não** foram repe
   **dois** quadros de origem (precisa que o plano e o runtime desenhem dois shots no mesmo quadro: capacidade nova
   `transitionBlend`), e o ripple/roll de shots será um comando de edição estrutural do core sobre `shots[]` que
   mantém o join/temporal gates; nenhum dos dois tem nó, comando nem botão ainda.
-- Sem prévia ao vivo durante o arrasto do slider (a imagem muda ao soltar) e sem teclado nos sliders da seção
-  (o gesto de teclado da seção de cena não foi ligado): a edição por nó/CLI é o caminho acessível.
-- O botão adiciona no quadro 0 (não no playhead); uma segunda vinheta nos mesmos quadros vai para uma trilha nova.
+- A prévia ao vivo, o teclado do adaptador e a inserção no quadro exibido existem (seção "Gesto de efeito").
+  **Lacuna:** o gizmo de cena (F055) ainda usa o número do playhead como quadro do bundle; só o monitor e a
+  inserção de efeito convertem o tempo (registrado em BL082.6).
 - Ponteiro físico real continua não provado (BL043); a prova da janela é semântica e o GPUI injeta entrada.
 - Não há dithering (o runtime escreve 8 bits como a cena); gradientes suaves podem mostrar bandas de 1/255.
 - A janela pinta a seção só com uma cena anexada; sem cena, a edição é por `scene.fx.edit` (headless).
