@@ -291,7 +291,8 @@ impl EditorState {
     /// (its sequence rate) converted by the *scene's own* clock (`frame_at_time`, floor). The
     /// playhead is a frame of the sequence and a bundle frame is a frame of the bundle: they are
     /// the same number only when the two rates are, so no adapter may hand one to the other. An
-    /// instant the edit does not hold is the typed error of the conversion, never a clamped frame.
+    /// instant past the edit converts to its honest frame (never a clamped one); the plan and the
+    /// insertion refuse it by name.
     pub fn scene_frame_at_playhead(&self, scene: &str) -> Result<i64, CommandError> {
         let entry = self.attached_scene(scene)?;
         let time = self.timeline.time_of(self.timeline.playhead);

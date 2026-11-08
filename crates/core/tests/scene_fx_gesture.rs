@@ -556,6 +556,40 @@ fn one_gesture_at_a_time_and_the_two_kinds_do_not_cross() {
 }
 
 #[test]
+fn the_playhead_of_the_sequence_is_converted_to_the_frame_of_the_bundle() {
+    // A 30 fps sequence over a 24 fps bundle: the playhead number is NOT the bundle frame.
+    let mut settings = ProjectSettings::default();
+    settings.sequence.rate = tessel_editor_core::time::Rate::new(30, 1).unwrap();
+    let mut state = EditorState::empty(&settings).unwrap();
+    ok(
+        &mut state,
+        json!({"op":"scene.attach","id":"street","bundle":bundle()}),
+    );
+    ok(&mut state, json!({"op":"seek","frame":15}));
+    // 15 / 30 = 0.5 s = frame 12 of the 24 fps bundle.
+    assert_eq!(state.scene_frame_at_playhead("street").unwrap(), 12);
+    ok(&mut state, json!({"op":"seek","frame":30}));
+    assert_eq!(state.scene_frame_at_playhead("street").unwrap(), 24);
+    // Past the bundle's edit (96 frames = 4 s; the sequence is longer) the conversion is honest
+    // about the frame (120) and the consumers refuse it: the plan, and an insertion there.
+    ok(&mut state, json!({"op":"seek","frame":150}));
+    let late = state.scene_frame_at_playhead("street").unwrap();
+    assert_eq!(late, 120);
+    let before = footprint(&state);
+    err(
+        &mut state,
+        json!({"op":"scene.plan","scene":"street","frame":late}),
+    );
+    let refused = err(
+        &mut state,
+        json!({"op":"scene.fx.edit","scene":"street","ops":[
+            {"op":"add_clip","effect":"vignette","start_frame":late,"id":"v9"}]}),
+    );
+    assert_eq!(refused.code, "fx_clip_out_of_range", "{refused:?}");
+    assert_eq!(footprint(&state), before);
+}
+
+#[test]
 fn a_vignette_is_inserted_where_the_time_falls_in_the_edit_and_a_bad_time_refuses_atomically() {
     let mut state = session();
     // 24 fps: half a second is frame 12; a quarter of a frame later is still frame 12.
