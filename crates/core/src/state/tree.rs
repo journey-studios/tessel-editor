@@ -455,6 +455,13 @@ fn build_library(state: &EditorState, nodes: &mut Vec<Node>) {
                 .state("media_kind", item.kind.label())
                 .state("folder", format!("folder:{}", item.folder))
                 .state("demo_image", item.image.is_some())
+                .state(
+                    "capture",
+                    item.asset
+                        .as_ref()
+                        .and_then(|asset| asset.meta.capture)
+                        .map(|capture| capture.to_json()),
+                )
                 .state("selected", state.selected_media == Some(item.id))
                 .action("select"),
         );
@@ -788,6 +795,8 @@ fn build_inspector(state: &EditorState, nodes: &mut Vec<Node>) {
     }
 }
 
+const NO_CAPTURE: &str = "The clip's asset has no SHARP capture camera";
+const CAMERA_KEYED: &str = "The clip has camera keys: clear them to use the capture camera";
 const NO_KEYS: &str = "The clip has no camera keys";
 const PLAYHEAD_OUTSIDE: &str = "Move the playhead over the clip to key its camera";
 const ORBIT_CONFLICT: &str =
@@ -822,6 +831,23 @@ fn build_camera_keys(
         capture = capture.disabled(PLAYHEAD_OUTSIDE);
     }
     nodes.push(capture);
+    let capture_camera = state.capture_of_clip(clip.id);
+    let mut from_capture = Node::new("camera.capture", "button", "Use capture camera")
+        .parent(parent)
+        .visible(shown)
+        .state("clip", format!("clip:{}", clip.id))
+        .state("capture", capture_camera.map(|capture| capture.to_json()))
+        .state(
+            "matches",
+            capture_camera.map(|capture| clip.camera == Some(capture.camera())),
+        )
+        .action("invoke");
+    if capture_camera.is_none() {
+        from_capture = from_capture.disabled(NO_CAPTURE);
+    } else if !clip.camera_keys.is_empty() {
+        from_capture = from_capture.disabled(CAMERA_KEYED);
+    }
+    nodes.push(from_capture);
     let mut clear = Node::new("camera_keys.clear", "button", "Remove all camera keys")
         .parent(parent)
         .visible(shown)

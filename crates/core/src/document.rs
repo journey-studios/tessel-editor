@@ -119,6 +119,13 @@ fn meta_json(meta: &Meta) -> Value {
     if meta.vfr_conformed {
         map.insert("vfr_conformed".into(), json!(true));
     }
+    put_opt(
+        &mut map,
+        "capture",
+        meta.capture
+            .as_ref()
+            .map(crate::sharp::Capture::to_document),
+    );
     if !meta.requires.is_empty() {
         map.insert(
             "requires".into(),
@@ -202,6 +209,11 @@ impl EditorState {
     /// Smallest schema that can preserve this project's data when it is saved.
     pub fn document_schema_version(&self) -> u64 {
         if self.scenes.has_document_data()
+            || self.library.items.iter().any(|item| {
+                item.asset
+                    .as_ref()
+                    .is_some_and(|a| a.meta.capture.is_some())
+            })
             || self.all_sequences().any(|timeline| {
                 timeline
                     .clips
@@ -518,6 +530,12 @@ fn parse_library(value: &Value, base: Option<&Path>) -> Result<Library, CommandE
             Some(asset) => Some(parse_asset(asset, id, base)?),
             None => None,
         };
+        if kind != MediaKind::Splat && asset.as_ref().is_some_and(|a| a.meta.capture.is_some()) {
+            return Err(invalid(format!(
+                "Asset `{id}` is a {} but carries a SHARP capture: only splats do",
+                kind.label()
+            )));
+        }
         let image = item["demo_image"].as_str().and_then(demo_image);
         library
             .add_item(MediaItem {
@@ -648,6 +666,13 @@ fn parse_asset(value: &Value, id: Id, base: Option<&Path>) -> Result<Asset, Comm
             None => Vec::new(),
         },
         vfr_conformed: m["vfr_conformed"].as_bool().unwrap_or(false),
+        capture: match m.get("capture") {
+            None | Some(Value::Null) => None,
+            Some(capture) => Some(
+                crate::sharp::Capture::from_document(capture)
+                    .map_err(|message| invalid(format!("Asset `{id}`: {message}")))?,
+            ),
+        },
     };
     let i = &value["identity"];
     let identity = Identity {

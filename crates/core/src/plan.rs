@@ -134,6 +134,9 @@ pub enum Content {
     Scene {
         camera: Camera,
         time: Ratio,
+        /// Degrees around X, Y, Z (`XYZ` order) applied to the splat of a bare splat layer: the
+        /// SHARP axes (BL143). Zero for scene files and plain splats.
+        orientation: [f64; 3],
     },
     Waveform {
         peaks: Vec<f32>,
@@ -230,9 +233,16 @@ fn layer_json(layer: &Layer) -> Value {
             value["source_frame"] = json!(source_frame);
         }
         Content::Text(text) => value["text"] = text.to_json(),
-        Content::Scene { camera, time } => {
+        Content::Scene {
+            camera,
+            time,
+            orientation,
+        } => {
             value["camera"] = camera.to_json();
             value["scene_time"] = time.to_json();
+            if *orientation != [0.0; 3] {
+                value["orientation"] = json!(orientation);
+            }
         }
         Content::Waveform { peaks, position } => {
             value["peaks"] = json!(peaks);
@@ -413,10 +423,14 @@ impl Resolver<'_> {
                     source_frame: frame,
                 }
             }
-            MediaKind::Scene | MediaKind::Splat => Content::Scene {
-                camera: scene_camera,
-                time: source_time,
-            },
+            MediaKind::Scene | MediaKind::Splat => {
+                let capture = asset.meta.capture.filter(|_| item.kind == MediaKind::Splat);
+                Content::Scene {
+                    camera: scene_camera,
+                    time: source_time,
+                    orientation: capture.map_or([0.0; 3], |_| crate::sharp::ORIENTATION),
+                }
+            }
             MediaKind::Text => match &asset.meta.text {
                 Some(text) => Content::Text(text.clone()),
                 None => {
@@ -676,11 +690,16 @@ impl EditorState {
                 blend: "normal".to_string(),
             }
         } else {
+            // A SHARP splat is previewed from the camera that took its picture (BL143).
+            let camera = asset
+                .meta
+                .capture
+                .map_or_else(Camera::default, |capture| capture.camera());
             resolver.asset_layer(
                 item,
                 asset,
                 time,
-                Camera::default().at(time.to_f64()),
+                camera.at(time.to_f64()),
                 format!("layer:source:{asset_id}"),
                 None,
             )?
