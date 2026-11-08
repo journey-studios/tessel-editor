@@ -2,12 +2,16 @@
 
 ## Status
 
-**Parcial.** Uma fatia completa de ponta a ponta: o efeito **vinheta** com escopo **saída** (a imagem
+**Catálogo parcial; cobertura da vinheta por superfície na tabela P0+P1 abaixo.** Uma fatia completa de ponta a ponta: o efeito **vinheta** com escopo **saída** (a imagem
 final da cena dirigida), criado, editado e removido pela biblioteca, pelo JSONL sem janela e pela janela;
 avaliado por quadro no core; persistido; desfeito em uma entrada; desenhado pelo monitor e pelo export.
 Não é a migração do motor de efeitos: o catálogo tem **um** efeito e o piloto tem 59 shaders. O restante
 (catálogo, transições, edição de shots) continua pendente em BL028/BL036/BL082 e **não** há placeholder
 habilitado para ele.
+
+### Histórico anterior à entrega P0+P1
+
+A tabela a seguir registra os heads anteriores e a correção R1 ainda sem build naquela ocasião. Não descreve o estado atual; veja a atualização P0+P1 e os registros por SHA abaixo.
 
 | Superfície | Estado | Evidência (ver "Evidências": o que foi executado e o que **não** foi) |
 |---|---|---|
@@ -460,3 +464,7 @@ físico, GPU real nem paridade integral.
 ### Correção residual — gesto de uma terceira cena
 
 Código validado `f5f6d1deb6d69a7d925bf5d747a76ccf0a6b6a59`: mudar o painel de Y para Z cancela somente o gesto de Y; um gesto de X permanece aberto. A regressão GPUI com três cenas falhou antes da correção e passou depois. Executado neste código: fmt/check/clippy workspace com -D warnings, workspace com TESSEL_REQUIRE_RUNTIME=1 (1881/0/12), build desktop, FX GPUI30/30, specs da prova normal/-O e janela116/116 sem falha/skip. Core tree sem gpui/wry. Logs locais em /tmp/pr37-thirdscene-final. Alterações posteriores deste registro são somente documentais. Sem ponteiro físico ou GPU real; gaps P0 preservados.
+
+## Resíduos da revisão após o merge da PR37
+
+Código `1ad715901df6edb14503ea081ae407c18bd0e94d` validado: budget só para FX live e cancelamento de Change inválido respeita id substituto. Core19/19, GPUI32/32, workspace1885/0/12 e janela116/116; fmt/check/clippy/build limpos. [Relatório e comentários tratados](../migration/pr37-review-followup-results.md). Os gates anteriores permanecem históricos; BL043 e gaps P0 mantidos.
