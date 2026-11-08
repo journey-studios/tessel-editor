@@ -22,6 +22,7 @@
 //! ([`Fx::resolve`]); the plan (`scene_plan`) carries the result to a runtime, which only draws.
 
 mod catalog;
+mod control;
 mod read;
 mod reference;
 
@@ -32,6 +33,7 @@ pub use catalog::{
     VIGNETTE_INTENSITY, VIGNETTE_RADIUS, VIGNETTE_ROUNDNESS, VIGNETTE_SOFTNESS, catalog,
     catalog_json, effect,
 };
+pub use control::quantize_control;
 pub(super) use read::read_fx;
 pub use read::{ParamProblem, parse_param};
 pub use reference::{

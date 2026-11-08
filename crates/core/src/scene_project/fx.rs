@@ -105,7 +105,7 @@ pub(super) fn frame_answer(
     }))
 }
 
-fn changes_json(summary: &FxSummary) -> Vec<Value> {
+pub(super) fn changes_json(summary: &FxSummary) -> Vec<Value> {
     summary
         .changes
         .iter()

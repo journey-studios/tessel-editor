@@ -1337,3 +1337,45 @@ fn a_json_lines_session_runs_the_whole_interaction_flow_in_process() {
         "the attach is the only entry left after the undo"
     );
 }
+
+#[test]
+fn property_gesture_status_retains_a_refusal_until_the_next_legal_update() {
+    let mut state = street();
+    let gesture = begin(&mut state);
+    update(&mut state, &gesture, vec![move_figure(2.0)]);
+    let before = document_of(&state, "street");
+    let refused = err(
+        &mut state,
+        json!({"op":"scene.gesture.update","gesture":gesture,
+        "ops":[{"set":FOV,"value":55}]}),
+    );
+    let status = ok(&mut state, json!({"op":"scene.gesture.status"}));
+    assert_eq!(status["gesture"]["refusal"]["code"], json!(refused.code));
+    assert_eq!(document_of(&state, "street"), before);
+    update(&mut state, &gesture, vec![move_figure(3.0)]);
+    let status = ok(&mut state, json!({"op":"scene.gesture.status"}));
+    assert!(status["gesture"]["refusal"].is_null());
+}
+
+#[test]
+fn a_refusal_is_never_recorded_for_a_gesture_the_update_never_reached() {
+    let mut state = street();
+    let gesture = begin(&mut state);
+    update(&mut state, &gesture, vec![move_figure(2.0)]);
+    // Another edit lands first: the gesture is stale and the update is refused before any candidate
+    // is computed, so there is no refusal of the gesture's own proposal to publish.
+    ok(
+        &mut state,
+        json!({"op":"scene.edit","scene":"street","ops":[{"set":FOV,"value":55}]}),
+    );
+    let error = err(
+        &mut state,
+        json!({"op":"scene.gesture.update","gesture":gesture,"ops":[{"set":FOV,"value":60}]}),
+    );
+    assert_eq!(error.code, "gesture_invalidated");
+    let status = ok(&mut state, json!({"op":"scene.gesture.status"}));
+    assert!(
+        status["gesture"]["refusal"].is_null(),
+        "a stale gesture keeps no refusal: {status}"
+    );
+}

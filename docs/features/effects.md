@@ -18,6 +18,20 @@ habilitado para ele.
 | Pixels no runtime após a correção do ping-pong | V (SwiftShader) | `directed-scene-fx-browser.test.mjs` 7/7: ordem com cores distintas, 5 e 9 passes, resize, erro e perda de contexto; igual à referência nas duas ordens |
 | Pixels no export | V no corpus (head anterior) | MP4 decodificado == referência sobre o baseline decodificado (pior 7/255 pela lib, 7 pela janela), fora do clipe == baseline |
 
+**Atualização P0+P1 (branch `t3/fx-candidate-preview`, BL036/BL018/BL019/BL082.6/.16/.17).** O código da correção R1
+foi **compilado e executado** neste head (antes: "não compilado"); o gesto de efeito, o aviso de orçamento e a
+inserção no quadro exibido são do **core** e passam pelos mesmos handlers em lib, JSONL e janela; o corpus pequeno da
+vinheta tem proveniência fixada. Estado por superfície depois desta entrega (números reexecutados no head `b5b077e`; ver "Âncoras de SHA"):
+
+| Superfície | Estado | Evidência executada neste branch |
+|---|---|---|
+| Lib (gesto, aviso, tempo→quadro, corpus) | V | `crates/core/tests/scene_fx_gesture.rs` (16), `pilot_fx_corpus.rs` (5) |
+| CLI headless (JSONL, processo real, sem janela) | V | `scene_fx_gesture.rs::the_headless_executable_runs_the_gesture_without_a_window…` (processo `tessel-headless`), mesmos `scene.fx.gesture.*` |
+| UI GPUI (ponteiro injetado, teclado do adaptador, **monitor**) | V (entrada injetada; **não** é ponteiro/teclado físico) | `workstation/scene_fx_tests.rs` (25 em `b5b077e`, incluindo os 3 do monitor e o `set` semântico de ponto/cor) |
+| Janela real, só comandos semânticos | V | `scripts/scene-fx-ui-proof.py` **115/115 em `b5b077e`** (`op`/`get`/`set`/`invoke`, instância privada, lock de GPU; 113/113 no `88d1715` anterior) |
+| Pixels (runtime/Chrome SwiftShader) | V | `crates/render/tests/scene_fx_gesture_frames.rs` (candidato antes do commit, commit == prévia, cancelar, undo/redo) |
+
+
 ## Decisão de domínio (antes de implementar)
 
 O efeito vive **uma vez**, em `fx`, chave de primeiro nível do **documento do bundle dirigido**
@@ -151,7 +165,7 @@ trazem `budget {max_passes, policy:"warn", peak_passes, over_budget, first_frame
 `warnings[]` (`{code:"FX_PASS_BUDGET", ...}` só quando há quadros acima); `scene.fx.frame` traz
 `max_passes`, `over_budget` e `warnings`; `scene.fx.catalog` declara a política (`scope.pass_budget`). O plano **mantém
 todos** os passes na ordem das trilhas e o runtime desenha todos (dois alvos qualquer que seja a contagem).
-Gap registrado: a janela ainda **não mostra** esse aviso (BL082.16).
+A janela mostra o aviso (BL082.16, ver "Gesto de efeito").
 
 ## Entrada compartilhada (lib · JSONL · janela)
 
@@ -205,7 +219,124 @@ Nós semânticos: `scene.fx` (ação `add:vignette`; `state.clip_count`, `effect
 `start_frame`, `duration_frames`, `fade_in_frames`, `fade_out_frames` e `hidden`; ações `remove`, `toggle_hidden`).
 `set` de um componente de ponto/cor mantém os irmãos como o documento os tem; quadros exigem inteiros.
 
+### Gesto de efeito (`scene.fx.gesture.*`, BL082.6)
+
+O candidato de um arrasto/teclado é do **core** (`scene_project/fx_gesture.rs`), no mesmo *slot* único dos gestos
+de cena (`scene_interaction::GestureSlot`); a janela só traduz entrada em comandos. Ciclo JSONL (os mesmos
+`SceneCommand::FxGesture` da janela): `scene.fx.gesture.begin {scene, clip, label?}` → `update {gesture, ops[]}`
+(quantas vezes) → `commit {gesture}` | `cancel {gesture}`; `status`. `scene.fx.list/frame` e `scene.plan` aceitam
+`gesture` e então mostram/desenham o **candidato**; o monitor e a seção Efeitos fazem o mesmo.
+
+- **Amarra** projeto, cena, clipe e a revisão-base (`Arc::ptr_eq` da cena + revisão do projeto). Cada `update` deriva
+  da **base** do `begin`, nunca do candidato anterior (um valor volta ao original se o `update` o restaura).
+- **A prévia não escreve** documento, arquivo, histórico nem revisão. Um `update` inválido devolve o erro tipado
+  (`param_out_of_range`, `invalid_op`, `gesture_op_not_allowed`, …) e **mantém o último candidato legal**;
+  a recusa fica em `gesture.refusal`.
+- **Cancelar, trocar de cena/projeto, undo/edição externa e revisão velha nunca confirmam valores antigos**:
+  o gesto vira `gesture_invalidated` (só pode ser cancelado), outro projeto é `unknown_gesture`, outra sessão
+  `no_gesture`. Perda de foco da janela é um `commit` do que está aberto (definido, sem *commit* duplo: o gesto
+  some do slot); Escape é `cancel`.
+- **Plano e export.** `scene.plan`/`scene.evaluate`/`scene.fx.list|frame` com `gesture` consomem o **candidato** (é
+  assim que o monitor o desenha). O export de cena e o plano **sem** `gesture` usam só a cena **confirmada**
+  (`scene_export/snapshot.rs`): um gesto aberto nunca entra num vídeo. Um gesto que o core já não aplica
+  (`gesture_invalidated`) não é mais pedido pelo monitor, que volta a mostrar o documento.
+  *Revisão independente do head `c834ff7`:* esta regra do monitor e a quantização por casas decimais do passo
+  (`0.25` não vira `0.3`; teste novo em `control.rs`) foram **escritas sem compilar** (disco abaixo do piso); só
+  `cargo fmt --check` foi executado. **Executadas depois em `b5b077e`** (ver "Âncoras de SHA"): `check`, `clippy`,
+  testes do workspace e prova da janela passaram, incluindo o teste novo de `control.rs`.
+  *BL082.20 (teste de janela do **monitor**, executado em `b5b077e`):* o gesto invalidado por **undo** ou por
+  **edição externa** no meio do arrasto continua no slot do core, mas o monitor **não o pede** (o plano que ele
+  guarda é o da cena confirmada, sem `gesture_invalidated` e sem falha na tela), o painel mostra o mesmo valor, o
+  `commit` velho é recusado com `gesture_invalidated` sem entrada de undo (e o redo continua disponível), e
+  trocar de cena, Escape e um polegar em repouso deixam o monitor no documento. Os testes leem o pedido que o
+  monitor guarda (`ViewportHost::directed_desired_plan`, só em teste: uma janela de teste não tem WebView), não
+  pixels. Corrigido junto: cancelar o gesto ao trocar de cena e ao desistir de um `commit` recusado agora **sincroniza
+  o monitor na hora** (antes ele só voltava ao documento no próximo comando alheio).
+  O `set` semântico de uma componente de ponto/cor (`center_y`, `color_g`...) agora parte do **documento**, não do
+  candidato de um gesto aberto no mesmo clipe: o irmão não confirmado de um arrasto não vaza para o documento
+  (`a_semantic_set_never_writes_the_candidate_of_an_open_gesture_into_the_document`, executado em `b5b077e`).
+- **Um commit que muda algo é UMA entrada de undo ("Edit effects")**; commit sem mudança e cancelar são **zero**.
+  Undo/redo restauram valores **e pixels** (prova nos pixels em `scene_fx_gesture_frames.rs`).
+- **Inserção no quadro exibido**: o botão `+` usa `EditorState::scene_frame_at_playhead` (o tempo do playhead da
+  sequência convertido pelo relógio do **bundle**; 30 fps → 24 fps: playhead 15 = quadro 12), a duração cabe na
+  edição e um quadro fora da edição é recusado atomicamente (`fx_clip_out_of_range`). `add_clip` aceita exatamente
+  um entre `start_frame` e `start_time` (inteiro em segundos ou `{num,den}`).
+- **Teclado/faixa/quantização** são uma só regra (`directed_scene::fx::quantize_control`) usada pelo ponteiro e pelo
+  teclado do adaptador; confirmar e cancelar são os mesmos comandos. Isto prova o **adaptador**, não um teclado físico.
+- **Aviso de orçamento (BL082.16)**: a seção Efeitos mostra a linha `fx-budget-warning` e o nó `scene.fx.budget`
+  (`visible`, `state.over_budget/peak_passes/first_frame_over/frames_over/message/warnings[FX_PASS_BUDGET]`,
+  `state.source: document|gesture`) a partir da **mesma** visão; atualiza ao editar, ocultar, remover, no candidato
+  de um gesto e na troca de cena. **Só avisa**: nunca trunca, recusa, reduz qualidade ou esconde (o plano mantém
+  os nove passes).
+
+| Código | Quando |
+|---|---|
+| `gesture_active` / `gesture_kind_mismatch` | já há um gesto aberto / outro tipo de gesto |
+| `gesture_target_mismatch` / `gesture_scene_mismatch` / `gesture_op_not_allowed` | op fora do clipe ou cena do gesto |
+| `gesture_invalidated` / `unknown_gesture` / `no_gesture` | base velha, outro projeto, outra sessão |
+| `param_out_of_range`, `invalid_op`, `unknown_element`, `invalid_bundle` | refusas do `apply_fx` no candidato |
+
+### Corpus pequeno e proveniência (P0, BL036/BL018/BL019)
+
+`docs/migration/fixtures/pilot-fx/{cases.json,manifest.json}`, gerados e verificados por
+`scripts/pilot-fx-corpus.py generate|verify [--origin PATH]`. As expectativas vêm das **fórmulas do piloto** (GLSL,
+cor, envelope de fade, catálogo) lidas **somente por `git show`** do snapshot `d40ac3f7c0` da origem (nada
+instalado, executado nem alterado) e calculadas por uma implementação **independente em Python**; o manifesto grava
+git blob e sha256 de cada fonte, o hash do corpus e os bloqueios. Casos: janela de quadros (defaults, fades, intensidade
+0, oculto, ordem de trilhas, últimos quadros), pixels de uma imagem 8×4 (centro, centro deslocado com cor, `amount`
+0, sem efeito; tolerância 1/255), comportamento do gesto (prévia sem registro, um undo por arrasto, recusa mantém o
+último legal, cancelar, no-op) e recusas por faixa. `crates/core/tests/pilot_fx_corpus.rs` confere o core contra
+eles, com controle negativo (expectativa adulterada é pega).
+
+- **Divergência declarada** (`release-on-refusal`): ao soltar depois de uma recusa, o piloto **volta à camada do
+  pressionar**; aqui o `commit` confirma o **último candidato legal** (uma entrada de undo) e a recusa fica visível
+  no gesto. **O plano autorizado** ([pilot-parity-execution-plan.md](../migration/pilot-parity-execution-plan.md), item 2 de P1)
+  manda manter o **último candidato legal** e dar erro tipado: a camada do pressionar do piloto **não** é a regra
+  daqui, é só a divergência registrada; o caso grava `origin` e `rust` e o teste prova o comportamento atual.
+- **Bloqueios que ficam abertos** (`manifest.json`): `ORIGIN_GOLDEN_NOT_COMPARABLE` (o PNG dourado da origem exige o
+  harness dela, não executado) e `ORIGIN_NOT_EXECUTED` (não se executou a origem; as expectativas são fórmulas
+  transcritas, não saídas do piloto). Não há paridade pixel-a-pixel com o piloto alegada.
+
 ## Evidências
+
+**Âncoras de SHA da matriz (a conferir antes de confiar em qualquer número abaixo).** O código de produção da PR37
+é o de `85ba335` (cabeça remota inicial desta rodada); o **único** commit de código acrescentado depois é `b5b077e`
+(`test(fx): Approve the scene's resources before the monitor tests ask for its plan`: só `scene_fx_tests.rs`). Os
+gates completos e a prova da janela desta rodada rodaram em **`b5b077e`** (um commit só de documentação vem depois e
+não altera código). Antes disso, o último head com gates completos era `88d1715` e a janela real 113/113 usou o binário
+de `96e3b64`; `3cf7178`, `53ac7b8`, o merge `9c53744` e `85ba335` estavam **sem compilar**. Isso foi corrigido:
+
+| Gate em `b5b077e` (`TESSEL_REQUIRE_RUNTIME=1`, `./scripts/cargo`, runtime `dist/runtime.js` sha256 `7b6b4338…2a98`) | Resultado |
+|---|---|
+| `cargo fmt --all -- --check` | exit 0 |
+| `check --workspace --locked` | exit 0 |
+| `clippy --workspace --all-targets --locked -- -D warnings` | exit 0 |
+| `build -p tessel-editor --locked` (`tessel-editor` sha256 `3707c7ed…7324`) | exit 0 |
+| `cargo tree -p tessel-editor-core` filtrado por `gpui\|wry` | vazio (grep exit 1 = nenhuma ocorrência) |
+| `test --workspace --locked --no-fail-fast` | exit 0: 106 suítes, **1874 passaram, 0 falharam, 12 ignoradas** |
+| `python3 scripts/pilot-fx-corpus.py verify` | exit 0 (10 casos, 6 de gesto, 11 fontes; origem não relida) |
+| `scene-fx-ui-proof.spec.py` normal e `-O` | 24/24 nos dois |
+| `scene-fx-ui-proof.py` (janela real, instância própria, lock de GPU, só `op`/`get`/`set`/`invoke`) | **115/115**, 0 FAIL, 0 SKIP; monitor == vinheta independente em Python (pior 7/255 no export); SwiftShader |
+
+**Defeito achado e corrigido nesta rodada (só de teste).** Na primeira execução do head `85ba335` (1871 passaram, 3
+falharam) os três testes de janela do **monitor** de BL082.20 falharam porque a janela de teste não tem pasta para
+`scene.resources.resolve`: o plano era recusado com `scene_resources_not_loaded` e o monitor nunca guardava o
+pedido. Nenhuma lógica de produção estava errada. O teste agora instala o mapa aprovado que o bundle declara
+(`load_resources`) antes de o monitor seguir a cena. Discriminação provada por mutação: sem o filtro de invalidação em
+`viewport_sync`, falham o teste do undo e o da edição externa; trocando a sincronização do monitor ao cancelar por um
+simples repaint, falha o de troca de cena/Escape/polegar em repouso (25/25 de `scene_fx_tests` no código real).
+
+As lacunas do P0 seguem explícitas e **não** foram fechadas: `ORIGIN_NOT_EXECUTED`
+e `ORIGIN_GOLDEN_NOT_COMPARABLE` (a origem `d40ac3f7c0` só foi lida por `git show`; não se executou nem se instalou).
+O ponteiro/teclado físicos, a GPU real e a paridade integral com o piloto **não** estão provados; o monitor foi
+provado pelo pedido que guarda (testes) e por pixels do SwiftShader (prova da janela e `scene_fx_gesture_frames.rs`).
+
+**Reconciliação por head (P0+P1).** Os parágrafos abaixo guardam o histórico e os limites de cada entrega
+(32860ec, R1, R2); onde dizem "não compilado/não reexecutado", isso era verdade **naquele head**. No branch
+`t3/fx-candidate-preview` o Rust foi compilado e executado: `fmt`, `check`, `clippy -D warnings` e
+`test --workspace --locked` (105 suítes, 1855 passaram, 0 falharam, 12 ignoradas, `TESSEL_REQUIRE_RUNTIME=1`, nenhum
+SKIPPED), `cargo tree -p tessel-editor-core` sem gpui/wry, e a prova da janela 113/113. (Contagens e `build` do head
+final: tabela "Âncoras de SHA" acima, em `b5b077e`.)
 
 Duas camadas, para não misturar o que rodou com o que só foi escrito. **Executado neste head (correção R1)**:
 runtime (`node --test` dos arquivos de efeito: 11 puros + 7 em Chrome/SwiftShader), medição pareada, e a
@@ -257,10 +388,8 @@ abaixo marcados "head anterior" são os da entrega 32860ec e **não** foram repe
 
 ## Limites e gaps (todos em [backlog](../backlog.md) BL028/BL036/BL082)
 
-- **Correção R1 (BL082.7–BL082.15) não compilada nem testada em Rust**: o disco ficou abaixo do piso; ver a
-  linha de cada ID no backlog. O que existe é código e testes escritos, revisados à mão e formatados.
+- Histórico: a correção R1 (BL082.7–BL082.15) ficou sem compilar por falta de disco; **foi compilada e testada no branch P0+P1** (gates no backlog BL082.17).
 - A medição de custo é SwiftShader (comparação antes/depois); a GPU nativa não foi medida.
-- A janela não mostra o aviso do orçamento de passes (BL082.16); ele está na lib/JSONL.
 
 - Só `vignette`. Os outros efeitos do piloto (59 shaders) **não** foram portados; cada efeito novo é uma entrada no
   catálogo, um shader no runtime e um teste de pixel.
@@ -270,9 +399,9 @@ abaixo marcados "head anterior" são os da entrega 32860ec e **não** foram repe
   **dois** quadros de origem (precisa que o plano e o runtime desenhem dois shots no mesmo quadro: capacidade nova
   `transitionBlend`), e o ripple/roll de shots será um comando de edição estrutural do core sobre `shots[]` que
   mantém o join/temporal gates; nenhum dos dois tem nó, comando nem botão ainda.
-- Sem prévia ao vivo durante o arrasto do slider (a imagem muda ao soltar) e sem teclado nos sliders da seção
-  (o gesto de teclado da seção de cena não foi ligado): a edição por nó/CLI é o caminho acessível.
-- O botão adiciona no quadro 0 (não no playhead); uma segunda vinheta nos mesmos quadros vai para uma trilha nova.
+- A prévia ao vivo, o teclado do adaptador e a inserção no quadro exibido existem (seção "Gesto de efeito").
+  **Lacuna:** o gizmo de cena (F055) ainda usa o número do playhead como quadro do bundle; só o monitor e a
+  inserção de efeito convertem o tempo (registrado em BL082.6).
 - Ponteiro físico real continua não provado (BL043); a prova da janela é semântica e o GPUI injeta entrada.
 - Não há dithering (o runtime escreve 8 bits como a cena); gradientes suaves podem mostrar bandas de 1/255.
 - A janela pinta a seção só com uma cena anexada; sem cena, a edição é por `scene.fx.edit` (headless).
@@ -282,3 +411,52 @@ abaixo marcados "head anterior" são os da entrega 32860ec e **não** foram repe
 Corrigidos os resíduos de revisão do head07dde5a: limpeza da camada só quando o documento líquido mudou (add/remove sobre camada vazia autorada preserva documento e undo); fixture numérica usa floats para campos f64 do catálogo; orçamento espera 10 quadros acima do limite (0..5 e10..15); inicialização falha do runtime também limpa temporários; interrupção do proof registra FAIL e o mesmo código no processo/JSON. O teste de lote neutro agora confere documento e profundidade de undo.
 
 Executado pelo coordenador: Python24/24 (inclui interrupção), Node puro output-fx11/11 (inclui contrato da fixture), fmt --check, node --check do medidor e git diff --check. **Rust continua não compilado/testado e prova nativa não repetida**: disco3,9GiB abaixo do piso12/reserva16. Não promover as evidências do head32860ec ao código novo. Aceite/merge permanecem pendentes em BL082.17.
+
+## Correções após aviso de check da PR37 (2026-11-08)
+
+`scene.capabilities` passa a anunciar os cinco verbos de gesto FX. A prova de troca de
+cena exige begin/update bem-sucedidos e verifica a chave real `active`. Quantização não
+limpa para inteiro passos menores que 1e-9: sem grade decimal representável em até nove
+casas conserva o valor já encaixado. Regressões Rust adicionadas, **não executadas** por
+disco abaixo do piso. Check CodeRabbit NEUTRAL não é aprovação; build/prova final pendentes.
+
+## Revisão residual após gates de b5b077e
+
+Escolher uma cena já exibida por fallback preserva o gesto de FX; entrar na cena dona do
+gesto também não o cancela. A comparação usa scene_active_id, não apenas chosen.
+Gestos de propriedades agora registram a última recusa em status, preservam candidato
+e documento, e limpam a recusa no próximo update válido, como os gestos FX.
+Regressão core scene_interaction: 23/23 nesta correção (24/24 com a prova abaixo).
+
+### Validação do residual em `7deb23c` (código; só documentação vem depois)
+
+`5694e0e` (correção) + `7deb23c` (só testes e prova: nenhuma linha de produção mudou). Main `30ac65b` já era
+ancestral: nada a integrar. Runtime reconstruído nesta árvore (`./scripts/runtime setup`, `dist/runtime.js`
+sha256 `7b6b4338…2a98`, igual ao de `b5b077e`); `tessel-editor` sha256 `3aa5a83c…622b`.
+
+| Gate em `7deb23c` (`TESSEL_REQUIRE_RUNTIME=1`, `./scripts/cargo`) | Resultado |
+|---|---|
+| `cargo fmt --all -- --check` | exit 0 |
+| `check --workspace --locked` / `clippy --workspace --all-targets --locked -- -D warnings` | exit 0 / exit 0 |
+| `test --workspace --locked --no-fail-fast` | exit 0: 106 suítes, **1880 passaram, 0 falharam, 12 ignoradas**, nenhum SKIPPED |
+| `build -p tessel-editor --locked`; `cargo tree -p tessel-editor-core` filtrado por `gpui\|wry` | exit 0; vazio |
+| `scene_fx_tests` | 29/29 (a regressão do fallback + 3 novos) |
+| `scene-fx-ui-proof.spec.py` e `directed-scene-proof`/`proof-surface`/`scene-lifecycle` specs, normal e `-O` | exit 0 nos dois modos (24, 4+15, 29, 7) |
+| `pilot-fx-corpus.py verify` | exit 0 (10 casos, 6 de gesto, 11 fontes; origem não relida) |
+| `scene-fx-ui-proof.py` (janela real, instância própria, lock de GPU, só `op`/`get`/`set`/`invoke`) | **116/116**, 0 FAIL, 0 SKIP (o novo: o seletor na cena já exibida mantém o gesto aberto); pior pixel do export 4/255 |
+
+Casos validados do residual: o gesto fica na cena realmente exibida quando a escolha é nula, inexistente
+(`detached`) ou igual; trocar de cena (inclusive a partir do fallback) cancela e não confirma nada; entrar na
+cena dona do gesto o preserva; uma recusa de propriedade fica no `status`, mantém o último candidato legal e o
+documento, e um update válido a limpa; uma recusa depois de gesto invalidado ou de verbo do outro tipo **não**
+grava recusa (`scene_interaction.rs`, `scene_fx_gesture.rs`). Mutações: voltar `scene_follow` à comparação com
+`chosen` derruba 3 testes GPUI; remover só a exceção da cena dona derruba 1; gravar a recusa antes de
+`ensure_live` derruba o teste de core. JSONL em processo real (`tessel-headless`): begin, update, recusa
+(`gesture_target_mismatch`), `status.refusal.code` igual, update válido zera, recusa de novo e commit do último
+candidato legal (x=3, +1 undo), undo restaura 0.5, e update de gesto invalidado dá `gesture_invalidated` sem
+recusa registrada. Limites inalterados: `ORIGIN_NOT_EXECUTED`, `ORIGIN_GOLDEN_NOT_COMPARABLE`; sem ponteiro
+físico, GPU real nem paridade integral.
+
+### Correção residual — gesto de uma terceira cena
+
+Código validado `f5f6d1deb6d69a7d925bf5d747a76ccf0a6b6a59`: mudar o painel de Y para Z cancela somente o gesto de Y; um gesto de X permanece aberto. A regressão GPUI com três cenas falhou antes da correção e passou depois. Executado neste código: fmt/check/clippy workspace com -D warnings, workspace com TESSEL_REQUIRE_RUNTIME=1 (1881/0/12), build desktop, FX GPUI30/30, specs da prova normal/-O e janela116/116 sem falha/skip. Core tree sem gpui/wry. Logs locais em /tmp/pr37-thirdscene-final. Alterações posteriores deste registro são somente documentais. Sem ponteiro físico ou GPU real; gaps P0 preservados.

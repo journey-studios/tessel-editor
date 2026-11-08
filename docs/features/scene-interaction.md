@@ -73,6 +73,12 @@ novo, o documento, o histórico nem a revisão. Um ID desta sessão que não é 
 errado) tem `details.reason = "not_current"`; `details.current` traz o ID aberto (ou `null`).
 Scripts que gravam `gesture-1` à mão deixam de funcionar: leia o ID da resposta de `begin`.
 
+**Slot compartilhado com o gesto de efeito (BL082.6).** O gesto de propriedades e o gesto de efeito
+(`scene.fx.gesture.*`, [F016](effects.md)) disputam o **mesmo** slot: há um gesto aberto por vez e o segundo
+`begin` devolve `gesture_active` (um gesto já invalidado é substituído e dito na resposta). Cada gesto tem um `kind`
+(`properties` | `fx`) e `scene.gesture.*` recusa o ID de um gesto de efeito com `gesture_kind_mismatch`; a
+invalidação (cena trocada ou destacada, undo, edição externa, outro projeto) é a mesma para os dois tipos.
+
 ### Endereço de entidade
 
 O endereço é o **prefixo** do caminho de propriedade da F034 (`scene/<def>/node/<node>/<prop>`,
@@ -255,3 +261,5 @@ Antes da correção os testes de BL066 (mesmo ID em dois projetos) e BL069 (sele
 conforme alguém consultou ou não) **falharam** contra o código anterior; ver o relatório.
 
 Integração pelo coordenador: testes públicos 21/21, unitários no gate core (197/197 no conjunto) e clippy lib limpo. Corrigidas duas expectativas: alvo fora do gesto é recusado antes de validar nó inexistente (`gesture_target_mismatch`). O executável headless passou uma sessão real de 13 requests (attach, árvore, seleção, evaluate, begin/update/commit, get, undo/redo). A integração posterior da janela está em F039-UI; testes e CLI sem janela não provam ponteiro físico.
+
+A última proposta recusada de um gesto de propriedades é exposta em `gesture.refusal`, sem alterar o candidato legal ou o documento. Um update válido limpa a recusa; segue o mesmo contrato do gesto FX. Um update recusado antes de calcular candidato (gesto invalidado ou de outro tipo) não grava recusa. Evidência em processo real (`tessel-headless`) e testes em `scene_interaction.rs` no código `7deb23c`.
