@@ -19,7 +19,7 @@ use core::prelude::v1::test;
 use serde_json::{Value, json};
 use tessel_editor_core::commands::{Parsed, parse_invoke, parse_set};
 use tessel_editor_core::perf::{Meter, REFRESH_EVERY};
-use tessel_editor_core::perf_history::{self, EventKind, HistoryCommand, Metric};
+use tessel_editor_core::perf_history::{self, EventKind, HistoryCommand, Metric, SessionKind};
 use tessel_editor_core::{CommandError, Raw};
 
 use super::viewport_host_tests::{
@@ -689,5 +689,208 @@ fn the_destination_field_of_the_open_panel_and_the_command_agree(cx: &mut TestAp
     assert_eq!(
         node(&view, cx)["state"]["export_destination"],
         json!("/tmp/typed.json")
+    );
+}
+
+/// A host that records into a fresh meter on the wall clock, with the page ready.
+fn recording_host(tag: &str) -> (Rc<RefCell<Meter>>, PerfClock, ViewportHost, EditorState) {
+    let state = titled_state("Um");
+    let meter = Rc::new(RefCell::new(Meter::default()));
+    let clock = PerfClock::wall();
+    meter
+        .borrow_mut()
+        .start_recording(clock.elapsed(), None, None);
+    let mut host = ViewportHost::new(Ok(page(tag)));
+    host.attach_meter(meter.clone(), clock.clone());
+    from_page(&mut host, &state, json!({"type":"page.ready"}));
+    sent(&mut host);
+    from_page(&mut host, &state, ready_message());
+    (meter, clock, host, state)
+}
+
+fn event_kinds(meter: &Rc<RefCell<Meter>>, clock: &PerfClock) -> Vec<EventKind> {
+    meter
+        .borrow()
+        .recorder()
+        .snapshot(clock.elapsed())
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.kind)
+        .collect()
+}
+
+#[test]
+fn the_context_carries_the_sequence_rate_and_never_a_target_nobody_knows() {
+    let (meter, clock, mut host, state) = recording_host("target-fps");
+    let request = sent(&mut host).remove(0);
+    from_page(
+        &mut host,
+        &state,
+        frame_done(
+            request["id"].as_u64().unwrap(),
+            request["revision"].as_u64().unwrap(),
+        ),
+    );
+    let snapshot = meter.borrow().recorder().snapshot(clock.elapsed()).unwrap();
+    let context = snapshot.context.expect("a picture was accepted");
+    assert_eq!(
+        context.sequence_fps,
+        Some(24.0),
+        "the project's 24 fps, not an assumed 60"
+    );
+    assert_eq!(
+        context.ui_target_fps, None,
+        "the interface has no known target"
+    );
+    let document = meter
+        .borrow()
+        .recorder()
+        .export_document(clock.elapsed())
+        .unwrap();
+    assert_eq!(document["context"]["sequence_target_fps"], json!(24.0));
+    assert_eq!(document["context"]["ui_target_fps"], Value::Null);
+}
+
+#[test]
+fn leaving_a_directed_scene_is_one_scene_change_and_staying_is_none() {
+    let (meter, clock, mut host, _state) = recording_host("scene-change");
+    // The monitor going back to the sequence when no scene was shown is not a scene change.
+    host.leave_directed();
+    let before = meter.borrow().recorder().snapshot(clock.elapsed()).unwrap();
+    assert_eq!(before.segments.len(), 1, "only the recording's own segment");
+    assert!(!event_kinds(&meter, &clock).contains(&EventKind::SceneChanged));
+
+    host.pretend_directed_scene("scene-a");
+    host.leave_directed();
+    assert_eq!(host.directed_scene(), None);
+    let after = meter.borrow().recorder().snapshot(clock.elapsed()).unwrap();
+    assert_eq!(after.segments.len(), 2);
+    assert_eq!(
+        after.segments.last().map(|segment| segment.kind),
+        Some(SessionKind::SceneChanged)
+    );
+    let changes = event_kinds(&meter, &clock)
+        .into_iter()
+        .filter(|kind| *kind == EventKind::SceneChanged)
+        .count();
+    assert_eq!(changes, 1);
+    // The event never says which scene: the id is the segment number and the host's clock.
+    let text = serde_json::to_string(
+        &meter
+            .borrow()
+            .recorder()
+            .export_document(clock.elapsed())
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(!text.contains("scene-a"), "no scene name in the export");
+}
+
+#[test]
+fn a_lost_and_restored_context_are_seen_once_each_in_the_event_line() {
+    let (meter, clock, mut host, state) = recording_host("context-events");
+    let request = sent(&mut host).remove(0);
+    from_page(
+        &mut host,
+        &state,
+        frame_done(
+            request["id"].as_u64().unwrap(),
+            request["revision"].as_u64().unwrap(),
+        ),
+    );
+    from_page(&mut host, &state, json!({"type":"context.lost"}));
+    // The page repeating itself while the context is down is still one loss.
+    from_page(&mut host, &state, json!({"type":"context.lost"}));
+    from_page(&mut host, &state, json!({"type":"context.restored"}));
+    let kinds = event_kinds(&meter, &clock);
+    let lost = kinds
+        .iter()
+        .filter(|kind| **kind == EventKind::ContextLost)
+        .count();
+    let restored = kinds
+        .iter()
+        .filter(|kind| **kind == EventKind::ContextRestored)
+        .count();
+    assert_eq!((lost, restored), (1, 1), "{kinds:?}");
+    let lost_at = kinds
+        .iter()
+        .position(|kind| *kind == EventKind::ContextLost);
+    let restored_at = kinds
+        .iter()
+        .position(|kind| *kind == EventKind::ContextRestored);
+    assert!(lost_at < restored_at, "{kinds:?}");
+    assert!(
+        !kinds.contains(&EventKind::RequestFailed),
+        "a loss is not also a failed request"
+    );
+}
+
+#[test]
+fn only_export_jobs_reach_the_history_and_only_their_id_state_and_error_code() {
+    use tessel_editor_core::jobs::{JobKind, JobRegistry, JobState};
+    use tessel_editor_core::perf_history::ExportJob;
+    let registry = JobRegistry::new(2);
+    let (release, wait) = std::sync::mpsc::channel::<()>();
+    let export = registry.spawn(JobKind::VideoExport, "Meu filme", move |_| {
+        let _ = wait.recv();
+        Ok(Value::Null)
+    });
+    registry.spawn(JobKind::Hash, "other work", |_| Ok(Value::Null));
+    let wait_for = |wanted: JobState| {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let jobs = super::perf_meter::export_jobs(&registry);
+            if jobs.iter().any(|job| job.state == wanted) {
+                return jobs;
+            }
+            assert!(std::time::Instant::now() < deadline, "never {wanted:?}");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    };
+    let running = wait_for(JobState::Running);
+    assert_eq!(running.len(), 1, "a hash job is not an export");
+    assert_eq!(
+        running[0],
+        ExportJob {
+            id: export.clone(),
+            state: JobState::Running,
+            error_code: None
+        }
+    );
+    // The jobs feed the recorder as events: the start, then the end, each once.
+    let mut meter = Meter::default();
+    meter.start_recording(Duration::ZERO, None, None);
+    let recorder = meter.recorder_mut();
+    recorder.exports_observed(Duration::from_millis(10), &[]);
+    recorder.exports_observed(Duration::from_millis(1_100), &running);
+    release.send(()).unwrap();
+    let finished = wait_for(JobState::Succeeded);
+    meter
+        .recorder_mut()
+        .exports_observed(Duration::from_millis(2_200), &finished);
+    let kinds: Vec<EventKind> = meter
+        .recorder()
+        .snapshot(Duration::from_secs(3))
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.kind)
+        .filter(|kind| matches!(kind, EventKind::ExportStarted | EventKind::ExportFinished))
+        .collect();
+    assert_eq!(
+        kinds,
+        vec![EventKind::ExportStarted, EventKind::ExportFinished]
+    );
+    let text = serde_json::to_string(
+        &meter
+            .recorder()
+            .export_document(Duration::from_secs(3))
+            .unwrap(),
+    )
+    .unwrap();
+    assert!(
+        !text.contains("Meu filme"),
+        "a job's label never reaches the history"
     );
 }

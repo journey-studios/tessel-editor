@@ -109,6 +109,8 @@ impl ViewportHost {
     ) -> Result<Option<FrameWaiter>, CommandError> {
         let (plan, map, mut options) =
             tessel_editor_render::scene_operation::prepare(state, request, resources)?;
+        // The rate the scene's bundle aims at (its `fps`), for the history's context.
+        let target_fps = plan.output.fps.rate().map(|rate| rate.as_f64());
         // WHY refuse now instead of queueing: a queued explicit request waits on something that
         // only an event can end (the runtime booting, a context restore), and the monitor's own
         // re-sync after that event replaces the queue, so the caller would never hear back (BL092).
@@ -139,7 +141,15 @@ impl ViewportHost {
             self.fail_waiters(&BackendError::new("cancelled", "Directed scene selected"));
             self.last_key = None;
         }
-        self.directed.scene = request["scene"].as_str().map(str::to_owned);
+        let scene = request["scene"].as_str().map(str::to_owned);
+        // Another scene under the same monitor is another session for the history: one segment
+        // per switch (and for entering a scene from the sequence), none for a new frame of the
+        // same scene, which is the same measurement continuing.
+        if self.directed.scene != scene {
+            self.note_session(SessionKind::SceneChanged);
+        }
+        self.directed.scene = scene;
+        self.target_fps = target_fps;
         self.directed.key = Some(key);
         let (sender, receiver) = async_channel::bounded(1);
         if let Some(old) = self.directed.desired.take()
@@ -296,6 +306,9 @@ impl ViewportHost {
         match result {
             Ok(mut active) => {
                 active.reply = intent.reply;
+                // The host admitted this request: the history's latency starts here, with the
+                // runtime's own request id (the ids of this adapter never meet the sequence's).
+                self.note_admitted(active.id);
                 self.directed.active = Some(active);
                 self.request_started = Some(Instant::now());
                 self.failure = None;
@@ -359,6 +372,7 @@ impl ViewportHost {
                 .transport_mut()
                 .send(&load.message)?;
             let scene = &load.message["asset"]["scene"];
+            self.note_event(EventKind::ResourceLoadStarted, None);
             self.directed.loads.insert(
                 load.slot.clone(),
                 SentLoad {
@@ -437,13 +451,20 @@ impl ViewportHost {
                     let _ = reply.try_send(frame_report(&active.plan, &frame));
                 }
                 self.failure = None;
-                self.note_presented(active.edit_frame.as_i64());
+                self.note_image(active.edit_frame.as_i64(), &frame);
                 self.directed.shown = Some((active.id, active.edit_frame));
                 self.last_frame = Some(frame);
             }
             Err(error) => {
                 if let Some(reply) = active.reply {
                     let _ = reply.try_send(Err(backend_error(error.clone())));
+                }
+                if let Some(link) = &self.meter {
+                    link.meter.borrow_mut().request_failed(
+                        link.clock.elapsed(),
+                        Some(active.id),
+                        &error.code,
+                    );
                 }
                 self.directed.key = None;
                 self.failure = Some(error);
@@ -527,6 +548,7 @@ impl ViewportHost {
         match status {
             AssetStatus::Ready(_) => {
                 if self.directed.loads.contains_key(slot) && !foreign {
+                    self.note_event(EventKind::ResourceLoadFinished, Some("ready"));
                     self.directed.slots.mark_ready(slot);
                 } else {
                     self.directed.stats.stale_asset_states += 1;
@@ -537,6 +559,7 @@ impl ViewportHost {
                     self.directed.stats.stale_asset_states += 1;
                     return;
                 }
+                self.note_event(EventKind::ResourceLoadFinished, Some(&error.code));
                 self.directed.loads.remove(slot);
                 self.directed.slots.mark_failed(slot);
                 self.finish_directed(Err(error));

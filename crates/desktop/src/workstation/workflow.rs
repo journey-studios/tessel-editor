@@ -218,6 +218,11 @@ impl Workflow {
             });
     }
 
+    /// A handle on the shared job registry, for the performance history's look at export jobs.
+    pub(super) fn job_registry(&self) -> tessel_editor_core::jobs::JobRegistry {
+        self.host.registry().clone()
+    }
+
     fn active_jobs(&self) -> Vec<JobInfo> {
         self.host
             .registry()

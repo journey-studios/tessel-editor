@@ -32,7 +32,7 @@ use tessel_editor_core::bridge::{BridgeBackend, HelloOptions, PreviewSort, Trans
 use tessel_editor_core::headless::{backend_error, frame_geometry, frame_report, plan_summary};
 use tessel_editor_core::ops::RenderFrame;
 use tessel_editor_core::perf::{FrameContext, Meter};
-use tessel_editor_core::perf_history::{Context, Image, SessionKind};
+use tessel_editor_core::perf_history::{Context, EventKind, Image, SessionKind};
 use tessel_editor_core::plan::{PlanRequest, RenderPlan};
 use tessel_editor_core::preview::ProxyCoverage;
 use tessel_editor_core::session::{Preview, SessionEvent, Status, ViewportSession};
@@ -300,8 +300,12 @@ pub struct ViewportHost {
     ui_skipped: u64,
     /// The debug meter, when the workstation attached one. It records only while it is enabled.
     meter: Option<MeterLink>,
-    /// Sequence frame of the newest accepted picture (see [`ViewportHost::note_presented`]).
+    /// Sequence frame of the newest accepted picture.
     presented: Option<i64>,
+    /// The rate the monitor aims at: the sequence's for a sequence preview, the directed
+    /// scene's for a scene. `None` for a source preview or before the first request, so the
+    /// history never assumes one (and never 60: this is not the interface's target).
+    target_fps: Option<f64>,
 }
 
 impl ViewportHost {
@@ -362,6 +366,7 @@ impl ViewportHost {
             ui_skipped: 0,
             meter: None,
             presented: None,
+            target_fps: None,
         };
         host.set_inspect_previews(std::env::var(INSPECT_ENV).is_ok_and(|value| value == "1"));
         host
@@ -372,10 +377,12 @@ impl ViewportHost {
         self.meter = Some(MeterLink { meter, clock });
     }
 
-    /// One accepted picture (`frame.done` of the request in flight), with its sequence frame.
-    /// A hidden meter returns at once inside `monitor_presented`: nothing is kept. The frame is
-    /// remembered whatever the meter does (one `Option<i64>`, no sample): the meter needs to
-    /// know what the monitor shows at the instant it is switched on or playback starts.
+    /// Tests only: one accepted picture with its sequence frame and no request. A hidden meter
+    /// returns at once inside `monitor_presented`: nothing is kept. The frame is remembered
+    /// whatever the meter does (one `Option<i64>`, no sample): the meter needs to know what the
+    /// monitor shows at the instant it is switched on or playback starts. Real pictures arrive
+    /// through [`Self::note_image`].
+    #[cfg(test)]
     pub(super) fn note_presented(&mut self, frame: Option<i64>) {
         self.presented = frame;
         if let Some(link) = &self.meter {
@@ -387,7 +394,7 @@ impl ViewportHost {
 
     /// One accepted picture of the three.js runtime, with what the host knows about it: its
     /// request (latency), `render_ms` (CPU) and the texture estimate go to the history.
-    fn note_image(&mut self, frame: Option<i64>, result: &FrameResult) {
+    pub(super) fn note_image(&mut self, frame: Option<i64>, result: &FrameResult) {
         self.presented = frame;
         if let Some(link) = &self.meter
             && link.meter.borrow().enabled()
@@ -412,6 +419,7 @@ impl ViewportHost {
                     stale_sort_layers: context.stale_sort_layers,
                     reduced_scene_layers: context.reduced_scene_layers,
                     monitor_on_screen: Some(self.on_screen),
+                    sequence_fps: self.target_fps,
                     ..Context::default()
                 },
             );
@@ -419,7 +427,7 @@ impl ViewportHost {
     }
 
     /// The host admitted request `id` (history latency starts here).
-    fn note_admitted(&self, id: u64) {
+    pub(super) fn note_admitted(&self, id: u64) {
         if let Some(link) = &self.meter {
             link.meter
                 .borrow_mut()
@@ -427,12 +435,32 @@ impl ViewportHost {
         }
     }
 
-    fn note_session(&self, kind: SessionKind) {
+    pub(super) fn note_session(&self, kind: SessionKind) {
         if let Some(link) = &self.meter {
             link.meter
                 .borrow_mut()
                 .session_changed(link.clock.elapsed(), kind);
         }
+    }
+
+    /// A fact the history's event line should show (a resource load, a context restore). Nothing
+    /// is built unless the history records: the recorder refuses it first.
+    pub(super) fn note_event(&self, kind: EventKind, detail: Option<&str>) {
+        if let Some(link) = &self.meter {
+            link.meter
+                .borrow_mut()
+                .history_event(link.clock.elapsed(), kind, detail);
+        }
+    }
+
+    /// The monitor stops showing a directed scene for the sequence (an ordinary preview was
+    /// chosen): that is a scene change, one segment, and then the scene's state is dropped.
+    pub fn leave_directed(&mut self) {
+        if self.directed_scene().is_some() {
+            self.note_session(SessionKind::SceneChanged);
+            self.target_fps = None;
+        }
+        self.clear_directed();
     }
 
     /// The sequence frame of the newest picture the monitor accepted (`None`: a source preview,
@@ -513,6 +541,7 @@ impl ViewportHost {
         self.last_frame = None;
         // The reloaded page shows nothing until its first new picture.
         self.presented = None;
+        self.target_fps = None;
         self.note_session(SessionKind::ViewportReloaded);
         true
     }
@@ -527,6 +556,7 @@ impl ViewportHost {
         self.last_frame = None;
         // Frame IDs may now mean something else: what the monitor showed is not known anymore.
         self.presented = None;
+        self.target_fps = None;
         self.note_session(SessionKind::ProjectReplaced);
         self.dirty = true;
     }
@@ -652,6 +682,8 @@ impl ViewportHost {
     /// playhead moved (the session parks the newest intent), so a scrub keeps presenting.
     /// Anything that supersedes it answers the explicit waiter, if any, as cancelled.
     fn request_preview(&mut self, state: &EditorState, plan: RenderPlan, output: Output) {
+        // Only a sequence preview has a sequence frame, and so a rate the monitor aims at.
+        self.target_fps = plan.frame.is_some().then(|| plan.rate.as_f64());
         match self.session.request_preview(state, plan, output) {
             // Only an interactive frame is ever coalesced into, and explicit requests (the ones
             // with a waiter) are never interactive: nothing to answer here.
@@ -856,6 +888,7 @@ impl ViewportHost {
         if self.session.needs_redraw {
             // The context came back without its picture (and without its textures).
             self.session.needs_redraw = false;
+            self.note_event(EventKind::ContextRestored, None);
             self.dirty = true;
         }
         if self.dirty && self.is_ready() {

@@ -37,10 +37,13 @@ use gpui_kit::component::h_flex;
 use gpui_kit::*;
 use serde_json::{Value, json};
 use tessel_editor_core::CommandError;
+use tessel_editor_core::jobs::{JobKind, JobRegistry};
 use tessel_editor_core::perf::{
     self, CARD_HEIGHT, CARD_MARGIN, CARD_WIDTH, FrameContext, Meter, PerfMeterCommand, Placement,
     REFRESH_EVERY, Readout, Rect,
 };
+
+use tessel_editor_core::perf_history::ExportJob;
 
 use super::tokens::Tokens;
 use super::{Activity, Source, Workstation};
@@ -396,12 +399,14 @@ impl Workstation {
                 self.perf.clock(),
                 self.perf.own_redraw.clone(),
             );
+            let jobs = self.workflow.job_registry();
             let recorder = canvas(
                 |_, _, _| (),
                 move |_, _, _, _| {
                     if !own.replace(false) {
                         meter.borrow_mut().ui_painted(clock.elapsed());
                         sample_rss(&meter, &clock);
+                        observe_exports(&meter, &clock, &jobs);
                     }
                 },
             )
@@ -479,6 +484,7 @@ impl Workstation {
         let meter = self.perf.meter.clone();
         let clock = self.perf.clock();
         let own = self.perf.own_redraw.clone();
+        let jobs = self.workflow.job_registry();
         let geometry = self.geometry.clone();
         let used = (area, viewport);
         let on_screen = self.viewport.on_screen;
@@ -497,6 +503,7 @@ impl Workstation {
                 if !own.replace(false) {
                     meter.borrow_mut().ui_painted(clock.elapsed());
                     sample_rss(&meter, &clock);
+                    observe_exports(&meter, &clock, &jobs);
                 }
             },
         )
@@ -543,6 +550,34 @@ fn sample_rss(meter: &Rc<RefCell<Meter>>, clock: &PerfClock) {
     }
     let rss = memory_stats::memory_stats().map(|usage| usage.physical_mem as u64);
     meter.borrow_mut().recorder_mut().rss_read(now, rss);
+}
+
+/// Looks at the export jobs for the history's event line, at most once per second and only while
+/// recording. Called from the paint probe like the memory gauge: a window that does not paint
+/// looks at nothing, and an event is stamped with the moment it was seen (never earlier).
+fn observe_exports(meter: &Rc<RefCell<Meter>>, clock: &PerfClock, registry: &JobRegistry) {
+    let now = clock.elapsed();
+    if !meter.borrow().recorder().exports_due(now) {
+        return;
+    }
+    meter
+        .borrow_mut()
+        .recorder_mut()
+        .exports_observed(now, &export_jobs(registry));
+}
+
+/// The video export jobs of the registry, reduced to what the history keeps: an id, a state and
+/// an error code. No label, no path, no result (only these jobs are cloned).
+pub(super) fn export_jobs(registry: &JobRegistry) -> Vec<ExportJob> {
+    registry
+        .matching(|info| info.kind == JobKind::VideoExport)
+        .into_iter()
+        .map(|info| ExportJob {
+            id: info.id,
+            state: info.state,
+            error_code: info.error.map(|error| error.code),
+        })
+        .collect()
 }
 
 /// Width of the label column: `render_ms`, the longest label, is nine monospace glyphs.

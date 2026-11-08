@@ -369,7 +369,7 @@ impl Workstation {
             self.perf_playhead_moved();
         }
         if result.is_ok() && ordinary_preview {
-            self.viewport.clear_directed();
+            self.viewport.leave_directed();
         }
         if let Ok(outcome) = &result
             && outcome.get("overlay").is_some()
