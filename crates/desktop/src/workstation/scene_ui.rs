@@ -28,6 +28,7 @@ use tessel_editor_core::scene_interaction::{
 };
 use tessel_editor_core::scene_project::SceneCommand;
 
+use super::scene_fx::{self, FxUi};
 use super::scene_gesture::{SceneSliderGesture, SliderKey};
 use super::scene_model::{
     Availability, MAX_LISTED_ENTITIES, PropertyView, Scrub, Snapshot, SnapshotCache, Target,
@@ -100,6 +101,8 @@ pub struct SceneUi {
     picker_choices: Vec<(String, String)>,
     pub sliders: HashMap<SliderKey, SliderEntry>,
     pub gesture: SceneSliderGesture,
+    /// The effects section's sliders and drag buffer (`scene_fx.rs`).
+    pub fx: FxUi,
     pub notice: Option<Notice>,
 }
 
@@ -154,6 +157,7 @@ impl SceneUi {
             picker_choices: Vec::new(),
             sliders: HashMap::new(),
             gesture: SceneSliderGesture::default(),
+            fx: FxUi::default(),
             notice: None,
         }
     }
@@ -381,6 +385,7 @@ impl Workstation {
     pub(super) fn scene_project_changed(&mut self) {
         self.scene_ui.gesture.clear();
         self.scene_ui.sliders.clear();
+        self.scene_ui.fx.clear();
         self.scene_ui.chosen = None;
         self.scene_ui.notice = None;
         self.scene_ui.pushed_selection = None;
@@ -525,6 +530,8 @@ impl Workstation {
         };
 
         panel_children.push(json!("scene.tree"));
+        panel_children.push(json!(scene_fx::SECTION_ID));
+        nodes.extend(self.fx_nodes());
         let mut visible = Vec::new();
         TreeEntry::visible(
             &snapshot.entries,
@@ -734,6 +741,9 @@ impl Workstation {
         action: Option<&str>,
         cx: &mut Context<Self>,
     ) -> Option<Result<Value, CommandError>> {
+        if let Some(outcome) = self.fx_invoke(target, action, cx) {
+            return Some(outcome);
+        }
         if let Some(path) = target.strip_prefix(ENTITY_PREFIX) {
             return Some(self.invoke_entity(target, path, action, cx));
         }
@@ -853,6 +863,9 @@ impl Workstation {
                 }));
             }
             _ => {}
+        }
+        if let Some(outcome) = self.fx_set(target, field, raw, cx) {
+            return Some(outcome);
         }
         let path = target.strip_prefix(PROPERTY_PREFIX)?;
         Some(self.set_property_component(target, path, field, raw, cx))

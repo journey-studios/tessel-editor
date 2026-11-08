@@ -190,6 +190,11 @@ impl EditorState {
                 mode,
             } => self.scene_select(scene.as_deref(), &entities, mode),
             SceneCommand::Selection => Ok(self.scene_selection()),
+            SceneCommand::FxEdit {
+                scene,
+                ops,
+                dry_run,
+            } => self.edit_fx(&scene, &ops, dry_run),
             SceneCommand::Gesture(gesture) => self.apply_gesture(gesture),
             SceneCommand::Gizmo(gizmo) => self.apply_gizmo(gizmo),
             read => query::run(&self.scenes, read),

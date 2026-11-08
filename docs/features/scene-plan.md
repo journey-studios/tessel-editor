@@ -85,7 +85,8 @@ Evidência de custo e tamanho (medida, não suposta): ver "BL064 — medição" 
 | `nodes` | Todos os nós da definição, em ordem de documento: tipo, pai (nó ou socket), posição/rotação (Euler°)/escala locais, `local_matrix` e `world_matrix` (column-major, 16 números), `renderOrder` próprio, `asset_id`, tamanho em unidades de cena |
 | `layers` | Planos de imagem **de trás para frente**: nó, `asset_id`, `alpha` do asset, `render_order` próprio, `pass_order` (passe de composição) |
 | `resources` | Texturas requeridas, **ordenadas por `assetId` (bytes), sem repetição**: `revision_id`, `content_hash`, `relative_path`, formato, dimensões, alpha, espaço de cor, `used_by` (nós, em ordem de documento) |
-| `requires` | `Capability`s que o conteúdo exige: `camera`, `nodeTransforms`, `sockets`, `performanceChannels`, `imagePlanes`, `straightAlpha`, `opaqueAlpha`, `compositionPassOrder`, `splats` (só com nó `splat`; F048). Ascendente. Um plano sem camada opaca não pede `opaqueAlpha` |
+| `requires` | `Capability`s que o conteúdo exige: `camera`, `nodeTransforms`, `sockets`, `performanceChannels`, `imagePlanes`, `straightAlpha`, `opaqueAlpha`, `compositionPassOrder`, `splats` (só com nó `splat`; F048), `outputFx` (só com passe de efeito no quadro; F016). Ascendente. Um plano sem camada opaca não pede `opaqueAlpha` |
+| `fx` | **Desde F016.** Passes de efeito resolvidos para o quadro, na ordem das trilhas e dos clipes: `trackId`, `clipId`, `effect`, `frameInClip`, `weight`, `amount`, `params`, `scope: {kind:"output"}` (ver [effects.md](effects.md)). Só existe quando há passe: planos sem efeito mantêm os bytes. O validador recalcula `amount = clamp(intensity × weight)` e a capacidade `outputFx` |
 | `unsupported` | `UnsupportedDomain { domain, subject }` ordenados; vazio no plano completo |
 | `uninterpreted` | Campos do bundle que o importador preservou e o plano não interpreta (JSON Pointer + motivo), ordenados por ponteiro |
 

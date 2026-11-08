@@ -29,6 +29,7 @@ import {
 } from './directed-scene.js';
 import { forEachLitCell, measureText, GLYPH_ROWS } from './font.js';
 import { fnv1a64, meanColor } from './hash.js';
+import { drawOutputFx } from './output-fx.js';
 import { BLEND_MODES, RuntimeError } from './protocol.js';
 import { LIMITS, LruCache, RetentionCounters, rgbaBytes, targetBytes } from './retention.js';
 import { SceneRig } from './scene.js';
@@ -726,7 +727,15 @@ export class Compositor {
     }
     frame.sources.directed_scene_layers = (frame.sources.directed_scene_layers ?? 0) + 1;
     if (splatScenes.length > 0) frame.sources.directed_scene_splats = (frame.sources.directed_scene_splats ?? 0) + spec.splats.length;
-    return { texture: target.texture, width: size.width, height: size.height, fit: false, flipV: true };
+    // The output-scope effects of the plan (F016): the core resolved them for this frame, they are
+    // drawn here over the finished picture in the plan's order, each into its own plain target.
+    const texture = drawOutputFx(this.renderer, target, spec.fx, {
+      targetOf: (index) => this.sceneTarget(`dsfx:${frame.order}:${index}`, size.width, size.height, keep, 0).target,
+      keep,
+      size,
+    });
+    if (spec.fx.length > 0) frame.sources.directed_scene_fx = (frame.sources.directed_scene_fx ?? 0) + spec.fx.length;
+    return { texture, width: size.width, height: size.height, fit: false, flipV: true };
   }
 
   /** Same retention rule as `layerMaterial`: one material per layer slot keeps its shader program linked. */

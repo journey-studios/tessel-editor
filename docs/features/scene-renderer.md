@@ -41,7 +41,7 @@ desconhecidos, então o transporte reaproveita `asset.load`, `asset.release`, `f
 | Onde | Acréscimo |
 |---|---|
 | `ready.capabilities.features` | `"directed_scene"`. Um runtime que não lista não recebe o layer (o host recusa antes: `backend_unavailable` com o comando de rebuild) |
-| `ready.capabilities.directed_scene` | `{ layer_kind, plan_kind: "tessel-scene-plan", plan_versions: [1], capabilities: [9 nomes de Capability::as_str], resource_identity: ["generation","asset_id","revision_id","content_hash"], resource_kinds: ["still","splat"] }`. Os 9 nomes (com `splats`, F048) são exatamente `Capability::ALL` (teste) |
+| `ready.capabilities.directed_scene` | `{ layer_kind, plan_kind: "tessel-scene-plan", plan_versions: [1], capabilities: [10 nomes de Capability::as_str], resource_identity: ["generation","asset_id","revision_id","content_hash"], resource_kinds: ["still","splat"] }`. Os 10 nomes (com `splats`, F048, e `outputFx`, F016) são exatamente `Capability::ALL` (teste) |
 | `asset.load` → `asset.scene` | `{ asset_id, revision_id, content_hash, generation }`. Para `kind: "still"` (PNG) e `kind: "splat"` (`meta.format: "spz"`, F048); vincula o **slot** (o `asset.id` do runtime) à identidade |
 | `frame.render` → `plan.layers[]` | `kind: "directed_scene"`, `scene_plan` (o `ScenePlan::to_json()` inteiro) e `resources: [{ asset_id, slot, revision_id, content_hash, generation }]` |
 | `ready.capabilities.layers` | **Não** muda: lista os tipos do plano comum; o gate é `features` |

@@ -282,7 +282,7 @@ fn is_within(pointer: &str, entity: &str) -> bool {
 
 /// The error for a candidate the importer refused, with each finding attributed to the ops that
 /// changed the node or clip it points into.
-fn rejected(error: ImportError, touched: &[(usize, String)]) -> EditError {
+pub(super) fn rejected(error: ImportError, touched: &[(usize, String)]) -> EditError {
     let issues: Vec<LocalizedIssue> = error
         .issues()
         .iter()
