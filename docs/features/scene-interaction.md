@@ -116,7 +116,7 @@ O `scene` (ID de anexação) acompanha a seleção; o endereço não o repete.
 a restauração tirou algo da seleção; sem nada podado, a resposta é a de sempre.
 
 As respostas trazem `changed` (o **estado de sessão** mudou) e `document_changed` (o projeto mudou;
-só o commit pode torná-lo verdadeiro). `scene.capabilities` lista os novos comandos.
+só o commit pode torná-lo verdadeiro). `scene.capabilities` lista os comandos de propriedades acima e os verbos `scene.fx.gesture.begin|update|commit|cancel|status` de FX; contrato completo e orçamento em [F016](effects.md).
 
 ### Garantias
 
@@ -154,7 +154,7 @@ só o commit pode torná-lo verdadeiro). `scene.capabilities` lista os novos com
 ### Erros tipados
 
 `unknown_entity`, `invalid_entity_path`, `selection_limit`, `no_gesture`, `unknown_gesture`,
-`gesture_active`, `gesture_invalidated`, `gesture_target_mismatch`, `gesture_scene_mismatch`; mais os
+`gesture_active`, `gesture_invalidated`, `gesture_kind_mismatch`, `gesture_target_mismatch`, `gesture_scene_mismatch`; mais os
 já existentes: `unknown_element` (cena), `invalid_value`, `invalid_request`, `unknown_node`,
 `unknown_path`, `frame_out_of_range`, `invalid_bundle`.
 

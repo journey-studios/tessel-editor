@@ -1003,21 +1003,29 @@ fn the_vignette_is_inserted_where_the_monitor_is_and_a_frame_outside_the_edit_re
         "the duration fits the edit: {state}"
     );
 
-    // The very end of the sequence is past this 96 frame edit when the sequence is longer: the
-    // core refuses atomically and the panel says why.
+    // Extend the fixture if necessary so this assertion cannot silently skip the refusal.
     let past = view.update(cx, |view, _| {
-        let length = view.state.timeline.length;
-        view.state.timeline.set_playhead(length);
-        view.state.scene_frame_at_playhead("street").is_err()
+        view.state.timeline.length = view.state.timeline.length.max(192);
+        let frame = view.state.timeline.length - 1;
+        view.state.timeline.set_playhead(frame);
+        let bundle_frame = view.state.scene_frame_at_playhead("street").unwrap();
+        let duration = view
+            .state
+            .scenes
+            .get("street")
+            .unwrap()
+            .scene
+            .bundle()
+            .edit_duration_frames;
+        bundle_frame >= i64::try_from(duration).unwrap()
     });
-    if past {
-        let depth = undo_depth(&view, cx);
-        let clips_before = clips(&view, cx);
-        let error = invoke(&view, cx, "scene.fx", "add:vignette").unwrap_err();
-        assert!(!error.code.is_empty());
-        assert_eq!(undo_depth(&view, cx), depth);
-        assert_eq!(clips(&view, cx), clips_before);
-    }
+    assert!(past, "the premise must be outside the bundle edit");
+    let depth = undo_depth(&view, cx);
+    let clips_before = clips(&view, cx);
+    let error = invoke(&view, cx, "scene.fx", "add:vignette").unwrap_err();
+    assert!(!error.code.is_empty());
+    assert_eq!(undo_depth(&view, cx), depth);
+    assert_eq!(clips(&view, cx), clips_before);
 }
 
 fn nine_vignettes(cx: &mut TestAppContext) -> (Entity<Workstation>, &mut VisualTestContext) {
@@ -1615,5 +1623,72 @@ fn switching_between_other_scenes_keeps_a_third_scenes_gesture(cx: &mut TestAppC
         still,
         Some(gesture),
         "leaving street must not cancel a gesture owned by yard"
+    );
+}
+
+#[gpui_kit::test]
+fn another_change_after_invalidation_cancels_only_the_old_drag(cx: &mut TestAppContext) {
+    let (view, cx) = monitored(cx);
+    let control = key("street", "fx-1", "intensity");
+    change(&view, cx, control.clone(), 0.2);
+    view.update(cx, |view, cx| {
+        view.run_op(
+            &json!({"op":"scene.edit","scene":"street",
+        "ops":[{"set":"scene/scene-a/node/figure/width","value":3.0}]}),
+            cx,
+        )
+    })
+    .unwrap();
+    assert!(gesture_invalidated(&view, cx));
+    let depth = total_depth(&view, cx);
+    change(&view, cx, control.clone(), 0.3);
+    assert!(
+        !gesture_open(&view, cx),
+        "Change must give back the invalidated slot before release"
+    );
+    assert_monitor_shows_the_document(&view, cx, 0.7, "invalidated Change");
+    release(&view, cx, control);
+    assert_eq!(total_depth(&view, cx), depth);
+    assert_monitor_shows_the_document(&view, cx, 0.7, "release after invalidated Change");
+}
+
+#[gpui_kit::test]
+fn another_change_after_invalidation_preserves_a_replacement_gesture(cx: &mut TestAppContext) {
+    let (view, cx) = monitored(cx);
+    let control = key("street", "fx-1", "intensity");
+    change(&view, cx, control.clone(), 0.2);
+    view.update(cx, |view, cx| {
+        view.run_op(
+            &json!({"op":"scene.edit","scene":"street",
+        "ops":[{"set":"scene/scene-a/node/figure/width","value":3.0}]}),
+            cx,
+        )
+    })
+    .unwrap();
+    view.update(cx, |view, cx| {
+        view.run_op(
+            &json!({
+        "op":"scene.fx.gesture.begin","scene":"street","clip":"fx-1"}),
+            cx,
+        )
+    })
+    .unwrap();
+    let id = view.read_with(cx, |view, _| {
+        view.state
+            .scene_interaction
+            .gesture()
+            .unwrap()
+            .id()
+            .to_owned()
+    });
+    change(&view, cx, control.clone(), 0.3);
+    release(&view, cx, control);
+    assert_eq!(
+        view.read_with(cx, |view, _| view
+            .state
+            .scene_interaction
+            .gesture()
+            .map(|gesture| gesture.id().to_owned())),
+        Some(id)
     );
 }
