@@ -243,6 +243,17 @@ de cena (`scene_interaction::GestureSlot`); a janela só traduz entrada em coman
   *Revisão independente do head `c834ff7`:* esta regra do monitor e a quantização por casas decimais do passo
   (`0.25` não vira `0.3`; teste novo em `control.rs`) foram **escritas sem compilar** (disco abaixo do piso); só
   `cargo fmt --check` foi executado. Reexecutar `check/clippy/test` e o teste de janela antes de confiar nelas.
+  *BL082.20 (teste de janela do **monitor**, escrito e não executado):* o gesto invalidado por **undo** ou por
+  **edição externa** no meio do arrasto continua no slot do core, mas o monitor **não o pede** (o plano que ele
+  guarda é o da cena confirmada, sem `gesture_invalidated` e sem falha na tela), o painel mostra o mesmo valor, o
+  `commit` velho é recusado com `gesture_invalidated` sem entrada de undo (e o redo continua disponível), e
+  trocar de cena, Escape e um polegar em repouso deixam o monitor no documento. Os testes leem o pedido que o
+  monitor guarda (`ViewportHost::directed_desired_plan`, só em teste: uma janela de teste não tem WebView), não
+  pixels. Corrigido junto: cancelar o gesto ao trocar de cena e ao desistir de um `commit` recusado agora **sincroniza
+  o monitor na hora** (antes ele só voltava ao documento no próximo comando alheio).
+  O `set` semântico de uma componente de ponto/cor (`center_y`, `color_g`...) agora parte do **documento**, não do
+  candidato de um gesto aberto no mesmo clipe: o irmão não confirmado de um arrasto não vaza para o documento
+  (teste de janela escrito, não executado).
 - **Um commit que muda algo é UMA entrada de undo ("Edit effects")**; commit sem mudança e cancelar são **zero**.
   Undo/redo restauram valores **e pixels** (prova nos pixels em `scene_fx_gesture_frames.rs`).
 - **Inserção no quadro exibido**: o botão `+` usa `EditorState::scene_frame_at_playhead` (o tempo do playhead da
@@ -278,12 +289,25 @@ eles, com controle negativo (expectativa adulterada é pega).
 
 - **Divergência declarada** (`release-on-refusal`): ao soltar depois de uma recusa, o piloto **volta à camada do
   pressionar**; aqui o `commit` confirma o **último candidato legal** (uma entrada de undo) e a recusa fica visível
-  no gesto. Decisão de produto pendente (BL082.6); o caso grava `origin` e `rust` e o teste prova o comportamento atual.
+  no gesto. **O plano autorizado** ([pilot-parity-execution-plan.md](../migration/pilot-parity-execution-plan.md), item 2 de P1)
+  manda manter o **último candidato legal** e dar erro tipado: a camada do pressionar do piloto **não** é a regra
+  daqui, é só a divergência registrada; o caso grava `origin` e `rust` e o teste prova o comportamento atual.
 - **Bloqueios que ficam abertos** (`manifest.json`): `ORIGIN_GOLDEN_NOT_COMPARABLE` (o PNG dourado da origem exige o
   harness dela, não executado) e `ORIGIN_NOT_EXECUTED` (não se executou a origem; as expectativas são fórmulas
   transcritas, não saídas do piloto). Não há paridade pixel-a-pixel com o piloto alegada.
 
 ## Evidências
+
+**Âncoras de SHA da matriz (a conferir antes de confiar em qualquer número abaixo).** O **último código com
+os gates completos registrados** é `88d1715` (`refactor(fx): Use matches! ...`; `fbae5f7` e `c834ff7` são só
+documentação). A prova da janela real 113/113 usou um binário do head anterior `96e3b64`, diferente de `88d1715` só
+pelo `matches!` de `scene_project/interaction.rs`. Tudo o que mudou **depois** disso é **não testado** (escrito;
+no máximo `rustfmt`): `3cf7178` (monitor sem gesto invalidado; quantização por casas do passo), `53ac7b8` (grades
+finas e verbos do gesto nas capabilities), o merge `9c53744` (traz miniaturas de `main`, sem código de efeito) e o
+commit de **BL082.20** desta rodada (testes de janela do monitor, sincronização do monitor ao cancelar, accessor de
+teste). Um número de teste, de suíte ou de prova só vale para o SHA que o produziu; **nenhum** deles foi reexecutado
+nos heads posteriores a `88d1715`. As lacunas do P0 seguem explícitas e **não** foram fechadas: `ORIGIN_NOT_EXECUTED`
+e `ORIGIN_GOLDEN_NOT_COMPARABLE` (a origem `d40ac3f7c0` só foi lida por `git show`; não se executou nem se instalou).
 
 **Reconciliação por head (P0+P1).** Os parágrafos abaixo guardam o histórico e os limites de cada entrega
 (32860ec, R1, R2); onde dizem "não compilado/não reexecutado", isso era verdade **naquele head**. No branch

@@ -1002,6 +1002,13 @@ Validado na PR #31, sobre `main` com as PRs #30 e #32 (`10683c5`); código de pr
   ignora os jobs anteriores à reabertura (`ignore=`); um job novo que termine sem ser visto continua sendo falha (teste de spec).
 - Fica aberto: BL144.13 (eixos SPZ/PLY com render real; o fixture sintético só prova os eixos do SHARP escritos aqui), BL143.8 (PLY real) e a prova em GPU real.
 
+BL082.20 — PR37, teste de janela do monitor: undo/edição externa no meio do arrasto, troca de cena, Escape e
+polegar em repouso (monitor pede o documento sem falha; commit velho recusado sem undo; redo preservado) e
+sincronização do monitor ao cancelar. Escrito, **não compilado nem executado** (disco 8,8 GiB, reserva 16/piso 12):
+gates e janela BLOCKED. Âncoras: gates completos e janela 113/113 em `88d1715` (binário `96e3b64`); `3cf7178`,
+`53ac7b8`, `9c53744` e este commit sem teste. Lacunas P0 `ORIGIN_NOT_EXECUTED` e `ORIGIN_GOLDEN_NOT_COMPARABLE`
+explícitas; o JS `d40ac3f7c0` não foi executado nem instalado. Não encerra aceite.
+
 BL082.20 — integração PR37 com main30ac65b (PR31 SHARP): conflito somente documental
 no backlog, preservadas notas FX e evidências de miniaturas. Fmt, specs Python e diffcheck
 executados nesta integração; gates Rust/build/renderer/janela continuam BLOCKED_DISK.

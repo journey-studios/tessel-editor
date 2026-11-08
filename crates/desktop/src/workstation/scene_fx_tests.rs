@@ -1156,3 +1156,273 @@ fn the_warning_follows_hide_remove_candidate_and_scene_switch(cx: &mut TestAppCo
     choose(&view, cx, "street");
     assert_eq!(budget(&view, cx)["state"]["over_budget"], json!(true));
 }
+
+// ---- BL082.20: the MONITOR goes back to the confirmed scene when a gesture is invalidated or ends ------------
+//
+// A test window has no page, so the picture itself is not drawn here; what is proven is the request
+// the monitor holds for its next picture (`directed_desired_plan`: the same plan the page would get)
+// and the failure it would show. A gesture the core can no longer apply (an undo, an external edit)
+// stays in its slot until cancelled, and asking the plan for it is `gesture_invalidated`: the monitor
+// must ask for the document instead, with no failure the panel does not explain.
+
+/// The monitor shows `street` as a directed scene, as the app does, and follows the state once.
+fn watch_street(view: &Entity<Workstation>, cx: &mut VisualTestContext) {
+    view.update(cx, |view, cx| {
+        view.viewport.pretend_directed_scene("street");
+        view.viewport_sync(cx);
+    });
+    cx.run_until_parked();
+}
+
+/// `street` with a vignette (`fx-1`, intensity 0.7, from frame 0 and with no fades), on the monitor.
+fn monitored(cx: &mut TestAppContext) -> (Entity<Workstation>, &mut VisualTestContext) {
+    let (view, cx) = mounted(cx);
+    add_vignette(&view, cx);
+    watch_street(&view, cx);
+    (view, cx)
+}
+
+/// The plan the monitor holds for its next picture.
+fn monitor_plan(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> Value {
+    view.read_with(cx, |view, _| view.viewport.directed_desired_plan())
+        .expect("the monitor holds a request for the scene it shows")
+}
+
+/// The vignette's amount in that plan: frame 0 is the clip's first frame, so it is the intensity.
+fn monitor_amount(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> Value {
+    monitor_plan(view, cx)["fx"][0]["amount"].clone()
+}
+
+/// The code of the failure the monitor shows, if any.
+fn monitor_failure(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> Option<String> {
+    view.read_with(cx, |view, _| {
+        view.viewport.failure().map(|error| error.code.to_string())
+    })
+}
+
+/// The plan the core gives for the CONFIRMED scene at the playhead, with no gesture: what the monitor
+/// must be asked to draw once only the document is left to show.
+fn document_plan(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> Value {
+    view.update(cx, |view, _| {
+        let frame = view.state.scene_frame_at_playhead("street").unwrap();
+        let request = json!({ "scene": "street", "frame": frame, "gesture": null });
+        tessel_editor_render::scene_operation::prepare(
+            &mut view.state,
+            &request,
+            &view.workflow.scene_resources(),
+        )
+        .unwrap()
+        .0
+        .to_json()
+    })
+}
+
+/// The core holds a gesture it can no longer apply.
+fn gesture_invalidated(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> bool {
+    view.read_with(cx, |view, _| {
+        view.state
+            .scene_interaction
+            .gesture()
+            .is_some_and(|gesture| {
+                gesture
+                    .invalidation(&view.state.scenes, view.state.project.revision)
+                    .is_some()
+            })
+    })
+}
+
+/// The monitor draws the document: the confirmed amount, the plan the core gives with no gesture,
+/// and no failure.
+fn assert_monitor_shows_the_document(
+    view: &Entity<Workstation>,
+    cx: &mut VisualTestContext,
+    amount: f64,
+    why: &str,
+) {
+    assert_eq!(monitor_failure(view, cx), None, "{why}: no failure");
+    assert_eq!(monitor_amount(view, cx), json!(amount), "{why}: the amount");
+    let expected = document_plan(view, cx);
+    assert_eq!(
+        monitor_plan(view, cx),
+        expected,
+        "{why}: the plan is the confirmed scene's"
+    );
+}
+
+#[gpui_kit::test]
+fn an_external_edit_under_the_drag_sends_the_monitor_back_to_the_document_and_the_commit_is_refused(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = monitored(cx);
+    let intensity_key = key("street", "fx-1", "intensity");
+    assert_monitor_shows_the_document(&view, cx, 0.7, "before the drag");
+
+    change(&view, cx, intensity_key.clone(), 0.2);
+    assert_eq!(
+        monitor_amount(&view, cx),
+        json!(0.2),
+        "the premise: the monitor draws the candidate while the drag is valid"
+    );
+    assert_eq!(monitor_failure(&view, cx), None);
+
+    // Another writer (a script, the CLI) edits the scene under the drag.
+    view.update(cx, |view, cx| {
+        view.run_op(
+            &json!({"op":"scene.edit","scene":"street","ops":[
+                {"set": "scene/scene-a/node/figure/width", "value": 3.0}]}),
+            cx,
+        )
+    })
+    .unwrap();
+    cx.run_until_parked();
+    assert!(
+        gesture_invalidated(&view, cx),
+        "the premise: the gesture stays in its slot, no longer applicable"
+    );
+    let depth = undo_depth(&view, cx);
+
+    // The monitor does not ask for the invalid gesture (that would be `gesture_invalidated`): it
+    // draws the document, and the panel, which ignores the gesture too, shows the same value.
+    assert_monitor_shows_the_document(&view, cx, 0.7, "after the external edit");
+    assert_eq!(field_value(&node(&view, cx, CLIP), "intensity"), json!(0.7));
+
+    // The release is a stale commit: refused with the typed error, no entry, no value written.
+    release(&view, cx, intensity_key);
+    assert_eq!(
+        panel_notice(&view, cx)["code"],
+        json!("gesture_invalidated")
+    );
+    assert_eq!(undo_depth(&view, cx), depth, "no extra undo entry");
+    assert_eq!(intensity(&view, cx, "fx-1"), 0.7);
+    assert!(
+        !gesture_open(&view, cx),
+        "the refused gesture was given back"
+    );
+    assert_monitor_shows_the_document(&view, cx, 0.7, "after the refused commit");
+}
+
+#[gpui_kit::test]
+fn an_undo_under_the_drag_sends_the_monitor_to_the_undone_scene_and_redo_is_not_lost(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = monitored(cx);
+    let intensity_key = key("street", "fx-1", "intensity");
+    // A confirmed edit first, so there is something to undo: 0.7 -> 0.5.
+    change(&view, cx, intensity_key.clone(), 0.5);
+    release(&view, cx, intensity_key.clone());
+    assert_eq!(intensity(&view, cx, "fx-1"), 0.5);
+    assert_monitor_shows_the_document(&view, cx, 0.5, "after the confirmed edit");
+
+    change(&view, cx, intensity_key.clone(), 0.2);
+    assert_eq!(
+        monitor_amount(&view, cx),
+        json!(0.2),
+        "the premise: the second drag is on the monitor"
+    );
+
+    view.update(cx, |view, cx| view.execute(Command::Undo, Source::Cli, cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(intensity(&view, cx, "fx-1"), 0.7);
+    assert!(
+        gesture_invalidated(&view, cx),
+        "the premise: the undo left the drag invalid in its slot"
+    );
+    let depth = total_depth(&view, cx);
+
+    // Neither the candidate (0.2) nor the undone value (0.5): the scene as confirmed after the undo.
+    assert_monitor_shows_the_document(&view, cx, 0.7, "after the undo");
+    assert_eq!(field_value(&node(&view, cx, CLIP), "intensity"), json!(0.7));
+
+    release(&view, cx, intensity_key);
+    assert_eq!(
+        total_depth(&view, cx),
+        depth,
+        "the stale commit added nothing"
+    );
+    assert_eq!(intensity(&view, cx, "fx-1"), 0.7);
+    assert_monitor_shows_the_document(&view, cx, 0.7, "after the refused commit");
+    // The refusal wrote nothing, so the redo stack is still there for the user.
+    view.update(cx, |view, cx| view.execute(Command::Redo, Source::Cli, cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert_eq!(intensity(&view, cx, "fx-1"), 0.5);
+    assert_monitor_shows_the_document(&view, cx, 0.5, "after the redo");
+}
+
+#[gpui_kit::test]
+fn switching_the_scene_cancelling_and_a_resting_thumb_leave_the_monitor_on_the_document(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = two_scenes(cx);
+    watch_street(&view, cx);
+    let depth = total_depth(&view, cx);
+    let intensity_key = key("street", "fx-1", "intensity");
+
+    // The panel moves to another scene mid-drag: the core drops the gesture and the monitor, which
+    // was drawing its candidate, is told at once (not at the next unrelated command).
+    change(&view, cx, intensity_key.clone(), 0.2);
+    assert_eq!(monitor_amount(&view, cx), json!(0.2), "the premise");
+    choose(&view, cx, "yard");
+    assert!(!gesture_open(&view, cx));
+    assert_monitor_shows_the_document(&view, cx, 0.7, "after the switch");
+    choose(&view, cx, "street");
+
+    // Escape drops the drag and the monitor goes back.
+    change(&view, cx, intensity_key.clone(), 0.3);
+    assert_eq!(monitor_amount(&view, cx), json!(0.3), "the premise");
+    view.update(cx, |view, cx| view.fx_cancel_drag(cx));
+    cx.run_until_parked();
+    assert!(!gesture_open(&view, cx));
+    assert_monitor_shows_the_document(&view, cx, 0.7, "after Escape");
+
+    // A thumb that rests where the document already is writes nothing and shows nothing else.
+    change(&view, cx, intensity_key.clone(), 0.7);
+    assert_monitor_shows_the_document(&view, cx, 0.7, "during a resting thumb");
+    release(&view, cx, intensity_key);
+    assert_monitor_shows_the_document(&view, cx, 0.7, "after a resting thumb");
+    assert_eq!(
+        total_depth(&view, cx),
+        depth,
+        "none of the three made an entry"
+    );
+    assert_eq!(intensity_in(&view, cx, "street", "fx-1"), 0.7);
+    assert_eq!(intensity_in(&view, cx, "yard", "fx-1"), 0.7);
+}
+
+#[gpui_kit::test]
+fn a_semantic_set_never_writes_the_candidate_of_an_open_gesture_into_the_document(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = mounted(cx);
+    add_vignette(&view, cx);
+    let before_x = field_value(&node(&view, cx, CLIP), "center_x");
+    // A drag moves `center_x` (a candidate: nothing is written yet) ...
+    change(&view, cx, key("street", "fx-1", "center_x"), 0.2);
+    assert_eq!(
+        field_value(&node(&view, cx, CLIP), "center_x"),
+        json!(0.2),
+        "the premise: the panel shows the candidate"
+    );
+    // ... and a script sets the SIBLING component of the same point. The write keeps the document's
+    // `center_x`, not the drag's uncommitted one.
+    set(&view, cx, CLIP, "center_y", Raw::Number(0.8)).unwrap();
+    assert_eq!(
+        field_value(&node(&view, cx, CLIP), "center_x"),
+        before_x,
+        "the candidate's component did not leak into the document"
+    );
+    assert_eq!(field_value(&node(&view, cx, CLIP), "center_y"), json!(0.8));
+}
+
+#[test]
+fn the_grid_of_a_fine_step_is_not_lost_through_the_adapter() {
+    // The rule is shared by pointer, keyboard and scripts: a 0.25 or 0.125 step stays on its grid
+    // (0.25 is not 0.3) and a value past the range goes to the range's end.
+    use tessel_editor_core::directed_scene::fx::quantize_control;
+    assert_eq!(quantize_control(0.74, 0.0, 1.0, 0.25, false), 0.75);
+    assert_eq!(quantize_control(0.26, 0.0, 1.0, 0.25, false), 0.25);
+    assert_eq!(quantize_control(0.13, 0.0, 1.0, 0.125, false), 0.125);
+    assert_eq!(quantize_control(0.4, 0.0, 1.0, 0.01, false), 0.4);
+    assert_eq!(quantize_control(1.7, 0.0, 1.0, 0.25, false), 1.0);
+}

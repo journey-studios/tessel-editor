@@ -591,7 +591,9 @@ impl Workstation {
         source: Source,
         cx: &mut Context<Self>,
     ) -> Result<Value, CommandError> {
-        let view = self.fx_view().ok_or_else(no_scene)?;
+        // From the DOCUMENT: a component of a point or a colour keeps the siblings the document has,
+        // never the uncommitted candidate of a gesture that happens to be open on the same clip.
+        let view = self.fx_document_view().ok_or_else(no_scene)?;
         let found = self.fx_known(&view, clip)?;
         let controls = controls_of(&found.clip, view.edit_frames);
         let Some(target) = controls.iter().find(|candidate| candidate.id == control) else {
@@ -768,7 +770,9 @@ impl Workstation {
             let _ = self.state.execute(Command::Scene(SceneCommand::FxGesture(
                 FxGestureCommand::Cancel { gesture },
             )));
-            cx.notify();
+            // The monitor was drawing that candidate: it goes back to the confirmed scene now,
+            // not at the next unrelated command.
+            self.viewport_sync(cx);
         }
     }
 
@@ -812,7 +816,8 @@ impl Workstation {
                     let _ = self.state.execute(Command::Scene(SceneCommand::Gesture(
                         GestureCommand::Cancel { gesture: id },
                     )));
-                    cx.notify();
+                    // The monitor may still hold the candidate that was just given up.
+                    self.viewport_sync(cx);
                 }
             }
         }
