@@ -428,3 +428,44 @@ inspecionadas pelo driver (`screencapture -l`, janela própria).
 
 Não executado: perda de contexto e troca de cena **em voo** na janela real (só testes GPUI), GPU
 real isolada, ponteiro físico, execução em outra máquina.
+
+### Integração com o gesto de efeito (BL082.20), head `e22299f`
+
+A PR #37 (gesto de efeito) entrou em `main` e `main` foi mesclado nesta branch (`196109d`) enquanto o
+carimbo de época era validado; `7efeca4` mescla esse estado (sem conflito) e `e22299f` é o head de
+código final desta entrega (depois dele só há documentos). Matriz por SHA (cada linha executada naquele head;
+máquina carregada, média de carga 5-20):
+
+| Head | O que foi executado | Resultado |
+| --- | --- | --- |
+| `76b14ae` (antes da mescla) | fmt, check, clippy, test (348 no desktop), build, tree; 17 specs Python (normal e `-O`); `perf-history-proof.py` release | tudo verde; prova 64/64 |
+| `7efeca4` (mescla de `196109d`) | fmt, check, clippy `-D warnings`, `TESSEL_REQUIRE_RUNTIME=1 test --workspace --locked` (365 no desktop), build, tree | tudo verde, 0 falhas |
+| `7efeca4` | `scene-fx-ui-proof.py` (debug, janela real) | 116/116 |
+| `f294b1c` | 2 testes GPUI novos de integração (gesto + gravação; gravação iniciada/limpa/parada sob arrasto) | passam |
+| `e22299f` | `fx-history-smoke-proof.py` (janela real, debug e release) | 39/39 nos dois |
+| `e22299f` | `perf-history-proof.py` (release, janela real) | `ok: true`, 64 checks, 0 falhas |
+
+Smoke `scripts/fx-history-smoke-proof.py` (só `op`/`get`/`set`/`invoke`, instância própria, corpus
+sintético): grava, arrasta um efeito (o monitor desenha o candidato), congela e seleciona **com o
+gesto aberto**, exporta o snapshot congelado, cancela, confirma (uma entrada de desfazer), desfaz e troca
+de cena sob um gesto. Conferências: a janela, os eventos e os segmentos do arquivo exportado **são iguais**
+à vista congelada que a janela mostrava; o arquivo não tem caminho local; a gravação sobrevive a cada passo;
+o gesto não cria `playback_started`, `request_failed` nem `runtime_unavailable`; a troca de cena gera
+`scene_changed` e a carga de recurso da cena nova (`resource_load_started`/`finished`) no segmento certo.
+O `git_sha` do documento exportado é `null` (o build não definiu `TESSEL_GIT_SHA`), então a identidade do
+build vem do relatório do driver: `source.git_head` e o sha256 do binário.
+
+Build reproduzível: o binário release deste head tem sha256
+`cf2133029c3fa4556ba306d5dbc6d110b260a27167efc9be3c5b7f9f7e4c9969`, o mesmo em duas compilações.
+
+Custo no head `e22299f` (release, `--seconds 10 --rounds 3`, ordem alternada, carga 17-20): CPU s/s por
+tempo de parede medido: desligado 0,301, gravando com o painel fechado 0,308, painel aberto 0,366; 240
+quadros aceitos e 0 perdidos nos três braços; a memória em 4 minutos não cresce
+(`growth_after_warmup_mib = 0,2`). Mesma leitura de antes: fechado ≈ desligado dentro do ruído; painel
+aberto ~+0,06 CPU s/s; **sem afirmar custo zero**. Os dois conjuntos (`76b14ae` e `e22299f`) concordam em
+ordem de grandeza.
+
+O que continua sem prova na janela real: um quadro **em voo** atravessando a troca de cena (cobertura: testes
+GPUI + mutação, BL145.6), perda de contexto com a cena dirigida, GPU real isolada, ponteiro físico. O gesto sob
+gravação foi provado só por requisições semânticas; o arrasto por ponteiro continua sendo BL043.
+
