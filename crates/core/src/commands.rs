@@ -134,9 +134,15 @@ fn parse_set_history(field: &str, value: &Raw) -> Result<Parsed, CommandError> {
                     json!("milliseconds"),
                 ));
             }
-            HistoryCommand::Select(Some(std::time::Duration::from_secs_f64(
-                milliseconds / 1000.0,
-            )))
+            // A finite but absurd value (`1e300`) overflows a `Duration`: refuse it, never panic.
+            let at =
+                std::time::Duration::try_from_secs_f64(milliseconds / 1000.0).map_err(|_| {
+                    CommandError::invalid_value(
+                        "Milliseconds are too large to be an instant on the monotonic clock",
+                        json!("milliseconds"),
+                    )
+                })?;
+            HistoryCommand::Select(Some(at))
         }
         "export_to" => HistoryCommand::Export(std::path::PathBuf::from(value.text())),
         // What typing (or picking) a path in the panel's field does; `invoke ... export` is the
@@ -1296,6 +1302,17 @@ mod tests {
         );
         assert_eq!(
             set("selected_ms", Raw::Text("soon".into()))
+                .unwrap_err()
+                .code,
+            "invalid_value"
+        );
+        // Finite, non-negative and still not an instant: refused, not a panic in the parser.
+        assert_eq!(
+            set("selected_ms", Raw::Number(1e300)).unwrap_err().code,
+            "invalid_value"
+        );
+        assert_eq!(
+            set("selected_ms", Raw::Text("1e300".into()))
                 .unwrap_err()
                 .code,
             "invalid_value"

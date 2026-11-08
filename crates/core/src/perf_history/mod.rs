@@ -76,7 +76,9 @@ pub const MAX_PENDING: usize = 32;
 pub const REST_AFTER: Duration = Duration::from_millis(1000);
 /// Gauges (memory) are sampled at most this often.
 pub const GAUGE_EVERY: Duration = Duration::from_millis(1000);
-/// Seeks closer than this to the previous seek are one event with a repeat count.
+/// Seeks closer than this to the **first** seek of a group are one event with a repeat count
+/// (the event keeps the group's start time and the newest frame), so a long scrub reads as a
+/// series of at most 250 ms events rather than one that hides its length.
 pub const SEEK_COALESCE: Duration = Duration::from_millis(250);
 /// Version of the exported schema.
 pub const SCHEMA_VERSION: u32 = 1;

@@ -820,6 +820,12 @@ fn selection_commands_validate_against_the_window_and_clear_with_none() {
         )
         .unwrap_err();
     assert_eq!(outside.code, "perf_history_outside_window");
+    // The largest instant a `Duration` holds must not wrap into a valid bucket of this young
+    // recording (its first bucket is negative) nor overflow the index arithmetic.
+    let absurd = recorder
+        .apply(&HistoryCommand::Select(Some(Duration::MAX)), at(1_100))
+        .unwrap_err();
+    assert_eq!(absurd.code, "perf_history_outside_window");
     assert_eq!(
         recorder.selected(),
         Some(at(1_050)),
@@ -1010,12 +1016,30 @@ fn export_errors_are_typed_observable_and_change_nothing() {
             .count,
         1
     );
-    // A folder that refuses the write: typed error, the old file survives, no temporary left.
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
+/// A folder that refuses the write: typed error, nothing written, no temporary left. Unix only
+/// (permission bits), and skipped when the process can write anyway (root, some CI containers).
+#[cfg(unix)]
+#[test]
+fn a_folder_that_refuses_the_write_is_a_typed_error_and_leaves_no_sibling() {
     use std::os::unix::fs::PermissionsExt;
+    let directory = scratch("locked");
     let locked = directory.join("locked");
     std::fs::create_dir(&locked).unwrap();
-    let target = locked.join("a.json");
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).unwrap();
+    let probe = locked.join("probe");
+    if std::fs::write(&probe, b"x").is_ok() {
+        // The permission is not enforced for this process: nothing to prove here.
+        let _ = std::fs::remove_file(&probe);
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let _ = std::fs::remove_dir_all(&directory);
+        return;
+    }
+    let mut recorder = started(0);
+    recorder.sample(Metric::RenderMs, at(100), 1.0);
+    let target = locked.join("a.json");
     let refused = recorder
         .apply(&HistoryCommand::Export(target.clone()), at(200))
         .unwrap_err();

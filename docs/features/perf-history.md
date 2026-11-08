@@ -73,7 +73,7 @@ de mídia: o destino digitado vive só na janela (`get` o mostra) e não entra n
 
 | Superfície | Estado | Como |
 | --- | --- | --- |
-| Biblioteca | Implementada | `Recorder`, `Snapshot`, `HistoryCommand`; 49 testes do módulo com relógio injetado |
+| Biblioteca | Implementada | `Recorder`, `Snapshot`, `HistoryCommand`; 58 testes do módulo com relógio injetado (escritos; a execução do head atual está a validar) |
 | CLI headless | **N/A justificado** | a medição só existe com a janela e o monitor vivos; `tessel-headless` responde `desktop_required` ao alvo `perf.history` (teste em `crates/core/tests/headless.rs`). O core funciona com entradas sintéticas e sem GPUI/wry (`cargo tree`) |
 | UI da janela | Implementada | botão `toolbar-perf-history` no cabeçalho e painel (diálogo Root do Kit) com gráficos nativos |
 | CLI da janela | Implementada | `get perf.history`; `set perf.history recording\|visible\|frozen\|selected_ms\|export_to\|export_destination`; `invoke perf.history record_start\|record_stop\|show\|hide\|freeze\|resume\|clear\|snapshot\|clear_selection\|export` — mesmo handler do painel (`Workstation::execute_perf_history`). `export_to <caminho>` escreve direto; `export_destination <caminho>` só preenche o campo do painel (como digitar ou escolher) e `invoke export` é o botão |
@@ -147,6 +147,18 @@ nos helpers de `viewport_host_tests.rs`.
   para olhar o monitor e o histórico ao mesmo tempo.
 - `ui_target_fps` é `null` (a interface não tem alvo conhecido; o histórico não assume 60).
 - Overhead: 3 rodadas de 8 s sob carga externa não provam custo zero (veja a seção de custo).
+- **Intervalo da interface acima de 1 s** (`REST_AFTER`) não vira amostra de `ui_interval_ms`, mesmo com a
+  reprodução andando: a interface não tem relógio de movimento esperado, então uma trava longa da própria
+  thread de UI só aparece como lacuna de `ui_frames` (e no intervalo do monitor, que sim conhece o movimento
+  esperado). Registrado, não corrigido (revisão independente do head `0e81076`).
+- **Cena dirigida ociosa**: o aviso `context.lost`/`context.restored` da página só vira evento pelo caminho da
+  sessão comum (quadro que falhou com `context_lost`, `needs_redraw`). Perda e restauração com a cena dirigida
+  sem quadro em voo não chegam ao histórico; nada foi provocado numa janela real.
+- **Exportação**: um temporário `.<nome>.tmp-<pid>` que já exista (outro escritor, ou sobra de um processo de
+  mesmo PID) recusa a exportação como `perf_history_export_exists` sem apagar o arquivo alheio; a mensagem
+  fala de "arquivo já existe" mesmo quando o destino está livre. A gravação e o `sync` rodam na thread da
+  UI (arquivo pequeno, mas um volume de rede pode bloquear). Volume sem hard link devolve o tipo do erro do
+  SO (`io_kind`), sem dizer que o motivo é o hard link.
 
 ## Evidências e status
 
@@ -238,3 +250,11 @@ foram forçados nem houve limpeza de cache. Nenhum deles é declarado PASS; a CI
 rodada com disco livre deve cobri-los.
 
 Correção do coordenador: publicar exige hard link sem substituição; volumes sem suporte são recusados. Limpeza remove somente temporário criado pela própria chamada. Teste de colisão do temporário escrito, não executado por disco; o head atual permanece sem validação compilada.
+
+Revisão independente do head `0e81076` (estática; sem Cargo, build nem janela por limite de disco): correções
+**escritas e não executadas** — `set perf.history selected_ms` com valor finito absurdo (`1e300`) é recusado
+(`invalid_value`) em vez de entrar em pânico, e `Snapshot::index_at` não deixa um instante enorme virar um balde
+válido; o cartão mostrado no meio de uma gravação começa a medir do momento em que aparece (sem "pior
+intervalo" falso); falhas síncronas e timeouts de quadro viram `request_failed`; parar a gravação limpa a marca
+de redesenho do próprio diagnóstico; o teste da pasta bloqueada é só Unix e se ignora quando o processo escreve
+mesmo assim. Nenhum gate foi executado sobre este head: estado **a validar**.

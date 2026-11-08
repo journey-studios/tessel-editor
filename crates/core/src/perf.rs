@@ -477,12 +477,19 @@ impl Meter {
     /// progress keeps its samples.
     pub fn enable(&mut self, now: Duration, playing_from: Option<i64>, on_screen: Option<i64>) {
         let collecting = self.enabled();
+        let card_was_hidden = !self.card;
         self.card = true;
         if collecting {
-            // A recording was already running: keep what the shared counters hold, and say that
-            // frames are expected when a clock runs (the card's windows are fresh).
-            if self.playing {
-                self.monitor.set_motion(true, now);
+            // A recording was already running: keep what the shared counters hold. The card's own
+            // windows were not fed while it was hidden, but a playback that began meanwhile left
+            // its motion anchor at that moment (`set_motion` keeps an older anchor), so the first
+            // picture would read as a stall of the whole hidden time: start them fresh, and say
+            // that frames are expected when a clock runs.
+            if card_was_hidden {
+                self.monitor.clear();
+                if self.playing {
+                    self.monitor.set_motion(true, now);
+                }
             }
             return;
         }
@@ -1825,5 +1832,24 @@ mod tests {
         let snapshot = meter.recorder().snapshot(at(100)).unwrap();
         assert_eq!(snapshot.summary(Metric::RenderMs).unwrap().count, 1);
         assert_eq!(snapshot.summary(Metric::LatencyMs).unwrap().max, 40.0);
+    }
+
+    #[test]
+    fn showing_the_card_mid_recording_does_not_blame_its_first_picture_for_the_hidden_time() {
+        let mut meter = Meter::default();
+        // Recording began with the card hidden and a playback clock running.
+        assert!(meter.start_recording(at(0), Some(0), None));
+        meter.enable(at(10_000), Some(0), None);
+        meter.monitor_presented(at(10_040), None);
+        meter.monitor_presented(at(10_080), None);
+        match meter.monitor.reading(at(10_100)) {
+            Reading::Live {
+                worst_interval_ms, ..
+            } => assert!(
+                worst_interval_ms < 100.0,
+                "the card measures from the moment it was shown: {worst_interval_ms}"
+            ),
+            other => panic!("expected a live reading, got {other:?}"),
+        }
     }
 }

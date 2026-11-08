@@ -186,7 +186,11 @@ impl Snapshot {
 
     /// The bucket `at` falls in, `None` outside the window.
     pub fn index_at(&self, at: Duration) -> Option<usize> {
-        let index = bucket_of(at) as i64 - self.first_bucket;
+        // Checked all the way: an absurd instant must not wrap into a valid bucket (a recording
+        // younger than the window has a negative first bucket) nor overflow the subtraction.
+        let index = i64::try_from(bucket_of(at))
+            .ok()?
+            .checked_sub(self.first_bucket)?;
         usize::try_from(index).ok().filter(|index| *index < BUCKETS)
     }
 

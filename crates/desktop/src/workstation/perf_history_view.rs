@@ -138,7 +138,14 @@ impl Workstation {
                 .borrow_mut()
                 .start_recording(now, playing, on_screen)
         } else {
-            self.perf.meter().borrow_mut().stop_recording(now)
+            let stopped = self.perf.meter().borrow_mut().stop_recording(now);
+            if stopped {
+                // A refresh tick may have marked the next paint as the diagnostic's own and then
+                // lost its probe to this stop before that paint: the mark must not swallow a real
+                // frame of the next recording.
+                self.perf.own_redraw().set(false);
+            }
+            stopped
         };
         json!({
             "target": perf_history::TARGET,

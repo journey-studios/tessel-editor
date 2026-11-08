@@ -827,6 +827,26 @@ fn a_lost_and_restored_context_are_seen_once_each_in_the_event_line() {
 }
 
 #[test]
+fn a_frame_that_times_out_reaches_the_event_line_as_a_failed_request() {
+    let (meter, clock, mut host, _state) = recording_host("timeout-event");
+    sent(&mut host);
+    assert!(host.tick(std::time::Instant::now() + Duration::from_secs(31)));
+    assert_eq!(host.failure().unwrap().code, "timeout");
+    let events = meter
+        .borrow()
+        .recorder()
+        .snapshot(clock.elapsed())
+        .unwrap()
+        .events;
+    let failed: Vec<_> = events
+        .iter()
+        .filter(|event| event.kind == EventKind::RequestFailed)
+        .collect();
+    assert_eq!(failed.len(), 1, "{events:?}");
+    assert_eq!(failed[0].detail.as_deref(), Some("timeout"));
+}
+
+#[test]
 fn only_export_jobs_reach_the_history_and_only_their_id_state_and_error_code() {
     use tessel_editor_core::jobs::{JobKind, JobRegistry, JobState};
     use tessel_editor_core::perf_history::ExportJob;

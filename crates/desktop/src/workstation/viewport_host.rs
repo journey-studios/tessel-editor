@@ -711,6 +711,13 @@ impl ViewportHost {
     }
 
     fn report_failure(&mut self, error: BackendError) {
+        // A frame timeout and a request the core refused never come back as a session `Failed`
+        // event: this is where the history learns about them (the code is kept only when plain).
+        if let Some(link) = &self.meter {
+            link.meter
+                .borrow_mut()
+                .request_failed(link.clock.elapsed(), None, &error.code);
+        }
         self.session.cancel();
         self.request_started = None;
         self.last_frame = None;
