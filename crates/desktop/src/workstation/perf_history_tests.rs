@@ -78,9 +78,10 @@ fn recording(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> bool {
 }
 
 fn open_panel(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> Entity<HistoryView> {
-    view.update(cx, |view, cx| {
+    view.update_in(cx, |view, window, cx| {
         let this = cx.entity();
-        let panel = cx.new(|cx| HistoryView::new(this, cx));
+        let destination = cx.new(|cx| InputState::new(window, cx));
+        let panel = cx.new(|cx| HistoryView::new(this, destination, cx));
         view.history_mark_open(panel.clone());
         panel
     })
@@ -589,4 +590,104 @@ fn a_host_with_no_recording_keeps_nothing_of_what_it_hears() {
     assert!(!meter.enabled());
     assert!(meter.recorder().snapshot(Duration::from_secs(1)).is_none());
     assert_eq!(meter.recorder().events_held(), 0);
+}
+
+#[gpui_kit::test]
+fn the_export_goes_only_where_the_user_said_and_refuses_what_it_would_have_to_guess_or_replace(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = fixture(cx);
+    let dir = std::env::temp_dir().join(format!("tessel-history-dest-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let state_of = |view: &Entity<Workstation>, cx: &mut VisualTestContext| {
+        node(view, cx)["state"]["export_destination"].clone()
+    };
+    assert_eq!(
+        state_of(&view, cx),
+        json!(""),
+        "no destination until one is given"
+    );
+
+    run(&view, cx, HistoryCommand::Record(true)).unwrap();
+    for _ in 0..3 {
+        paint(cx);
+    }
+    // No destination: refused, nothing written anywhere (not even the temp folder).
+    let none = run(&view, cx, HistoryCommand::ExportToDestination).unwrap_err();
+    assert_eq!(none.code, "perf_history_export_path_missing");
+
+    // A relative path would land wherever the editor started: refused.
+    let said = run(
+        &view,
+        cx,
+        HistoryCommand::Destination("history.json".into()),
+    )
+    .unwrap();
+    assert_eq!(said["export_destination"], "history.json");
+    assert_eq!(state_of(&view, cx), json!("history.json"));
+    let relative = run(&view, cx, HistoryCommand::ExportToDestination).unwrap_err();
+    assert_eq!(relative.code, "perf_history_export_relative");
+
+    // Choosing the path writes nothing by itself; the export does, once.
+    let target = dir.join("chosen.json");
+    run(
+        &view,
+        cx,
+        HistoryCommand::Destination(target.to_string_lossy().into_owned()),
+    )
+    .unwrap();
+    assert!(!target.exists(), "a destination is not an export");
+    let done = run(&view, cx, HistoryCommand::ExportToDestination).unwrap();
+    assert!(done["bytes"].as_u64().unwrap() > 0, "{done}");
+    let written = std::fs::read_to_string(&target).unwrap();
+    let document: Value = serde_json::from_str(&written).unwrap();
+    assert_eq!(document["schema"], "tessel.perf-history");
+
+    // The same name again is an existing file: refused, the first export is untouched.
+    let again = run(&view, cx, HistoryCommand::ExportToDestination).unwrap_err();
+    assert_eq!(again.code, "perf_history_export_exists");
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), written);
+
+    // A file that is not ours (a project) is never replaced either.
+    let project = dir.join("project.tessel.json");
+    std::fs::write(&project, "{}").unwrap();
+    run(
+        &view,
+        cx,
+        HistoryCommand::Destination(project.to_string_lossy().into_owned()),
+    )
+    .unwrap();
+    let refused = run(&view, cx, HistoryCommand::ExportToDestination).unwrap_err();
+    assert_eq!(refused.code, "perf_history_export_exists");
+    assert_eq!(std::fs::read_to_string(&project).unwrap(), "{}");
+    let names = std::fs::read_dir(&dir).unwrap().count();
+    assert_eq!(names, 2, "no temporary and nothing else was created");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[gpui_kit::test]
+fn the_destination_field_of_the_open_panel_and_the_command_agree(cx: &mut TestAppContext) {
+    let (view, cx) = fixture(cx);
+    let panel = open_panel(&view, cx);
+    run(
+        &view,
+        cx,
+        HistoryCommand::Destination("/tmp/from-the-cli.json".into()),
+    )
+    .unwrap();
+    assert_eq!(
+        panel.read_with(cx, |panel, cx| panel.destination_text(cx)),
+        "/tmp/from-the-cli.json",
+        "set export_destination fills the field the user sees"
+    );
+    // What is typed in the field is what `get` reports (the panel mirrors every edit).
+    panel.update_in(cx, |panel, window, cx| {
+        panel.type_destination("/tmp/typed.json", window, cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        node(&view, cx)["state"]["export_destination"],
+        json!("/tmp/typed.json")
+    );
 }

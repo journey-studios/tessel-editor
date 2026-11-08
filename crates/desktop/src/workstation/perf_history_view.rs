@@ -24,6 +24,7 @@ use std::time::Duration;
 
 use gpui_kit::component::button::Button;
 use gpui_kit::component::dialog::DialogButtonProps;
+use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme, Disableable as _, Sizable, WindowExt as _, h_flex, v_flex};
 use gpui_kit::*;
 use serde_json::{Value, json};
@@ -48,6 +49,9 @@ const DIALOG_WIDTH: f32 = 900.0;
 #[derive(Default)]
 pub(super) struct HistoryState {
     view: Option<Entity<HistoryView>>,
+    /// The destination of the JSON export as typed or picked (a path entry, nothing more). Empty
+    /// until the user gives one: nothing is exported to a place nobody chose.
+    destination: String,
 }
 
 impl Workstation {
@@ -82,6 +86,16 @@ impl Workstation {
             HistoryCommand::Record(on) => Ok(self.history_record(*on, now)),
             HistoryCommand::Show => self.history_show(window, cx),
             HistoryCommand::Hide => Ok(self.history_hide(window, cx)),
+            HistoryCommand::Destination(text) => Ok(self.history_destination(text, window, cx)),
+            HistoryCommand::ExportToDestination => {
+                // The same write as `export_to <path>`: only the path comes from the field.
+                let path = std::path::PathBuf::from(self.perf.history.destination.trim());
+                self.perf
+                    .meter()
+                    .borrow_mut()
+                    .recorder_mut()
+                    .apply(&HistoryCommand::Export(path), now)
+            }
             other => self
                 .perf
                 .meter()
@@ -152,7 +166,12 @@ impl Workstation {
             .target(perf_history::TARGET));
         }
         let this = cx.entity();
-        let view = cx.new(|cx| HistoryView::new(this.clone(), cx));
+        let destination = cx.new(|cx| {
+            InputState::new(window, cx).placeholder("Caminho absoluto de um arquivo .json novo")
+        });
+        let remembered = self.perf.history.destination.clone();
+        destination.update(cx, |input, cx| input.set_value(remembered, window, cx));
+        let view = cx.new(|cx| HistoryView::new(this.clone(), destination, cx));
         self.history_mark_open(view.clone());
         let closing = this.clone();
         window.open_dialog(cx, move |dialog, _, _| {
@@ -179,6 +198,27 @@ impl Workstation {
         Ok(json!({
             "target": perf_history::TARGET, "action": "show", "changed": true, "visible": true,
         }))
+    }
+
+    /// Fills the export destination (typed in the field, picked, or `set ... export_destination`).
+    /// It only remembers a path: nothing is written until the export button (or `invoke export`).
+    fn history_destination(
+        &mut self,
+        text: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Value {
+        let changed = self.perf.history.destination != text;
+        self.perf.history.destination = text.to_string();
+        if let Some(view) = &self.perf.history.view {
+            let input = view.read(cx).destination.clone();
+            let shown = text.to_string();
+            input.update(cx, |input, cx| input.set_value(shown, window, cx));
+        }
+        json!({
+            "target": perf_history::TARGET, "action": "destination", "changed": changed,
+            "export_destination": text,
+        })
     }
 
     fn history_hide(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Value {
@@ -221,6 +261,7 @@ impl Workstation {
         }
         node["state"]["visible"] = json!(self.workflow.history_open);
         node["state"]["card_visible"] = json!(meter.card_visible());
+        node["state"]["export_destination"] = json!(self.perf.history.destination);
         node["state"]["refresh_hz"] = json!(1000 / REFRESH_EVERY.as_millis().max(1));
         node["label"] = json!("Histórico de desempenho (60 s)");
     }
@@ -236,23 +277,61 @@ pub(super) struct HistoryView {
     timer: Option<Task<()>>,
     /// The answer to the last button: an export path or an error, in words.
     note: Option<(String, bool)>,
-    exports: u32,
+    /// Where the JSON goes: a path entry, mirrored in `HistoryState::destination`.
+    destination: Entity<InputState>,
     /// How many refreshes the timer asked for (the 4 Hz rule is about this number).
     #[cfg(test)]
     ticks: u64,
 }
 
 impl HistoryView {
-    pub(super) fn new(workstation: Entity<Workstation>, _cx: &mut Context<Self>) -> Self {
+    pub(super) fn new(
+        workstation: Entity<Workstation>,
+        destination: Entity<InputState>,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        // Typing is the only way the field changes by itself (`set_value` emits nothing), so the
+        // workstation hears every edit and `get` can say what the field holds.
+        cx.subscribe(&destination, |this, input, event: &InputEvent, cx| {
+            if matches!(event, InputEvent::Change) {
+                let text = input.read(cx).value().to_string();
+                this.workstation.update(cx, |workstation, _| {
+                    workstation.perf.history.destination = text;
+                });
+            }
+        })
+        .detach();
         Self {
             workstation,
             chart: Rc::new(Cell::new(None)),
             timer: None,
             note: None,
-            exports: 0,
+            destination,
             #[cfg(test)]
             ticks: 0,
         }
+    }
+
+    /// What the destination field shows (tests).
+    #[cfg(test)]
+    pub(super) fn destination_text(&self, cx: &App) -> String {
+        self.destination.read(cx).value().to_string()
+    }
+
+    /// Types into the destination field as a person would (tests): the field emits the change
+    /// the workstation listens to, so the subscription is what is being exercised.
+    #[cfg(test)]
+    pub(super) fn type_destination(
+        &mut self,
+        text: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let text = text.to_string();
+        self.destination.update(cx, |input, cx| {
+            input.set_value(text, window, cx);
+            cx.emit(InputEvent::Change);
+        });
     }
 
     /// Whether a timer is armed (tests).
@@ -309,16 +388,21 @@ impl HistoryView {
         cx.notify();
     }
 
+    /// The export button: writes to the destination the user gave, through the same command as
+    /// `invoke perf.history export`. A refusal (no destination, a relative path, an existing file)
+    /// is shown in words and nothing is written.
     fn export(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.exports += 1;
-        let path = std::env::temp_dir().join(format!(
-            "tessel-perf-history-{}-{}.json",
-            std::process::id(),
-            self.exports
-        ));
+        let destination = self
+            .workstation
+            .read(cx)
+            .perf
+            .history
+            .destination
+            .trim()
+            .to_string();
         let result = self.workstation.update(cx, |workstation, cx| {
             workstation.execute_perf_history(
-                HistoryCommand::Export(path.clone()),
+                HistoryCommand::ExportToDestination,
                 Source::Gesture,
                 window,
                 cx,
@@ -327,8 +411,7 @@ impl HistoryView {
         self.note = Some(match result {
             Ok(done) => (
                 format!(
-                    "Exportado: {} ({} bytes)",
-                    path.display(),
+                    "Exportado: {destination} ({} bytes). Arquivo novo: nada foi substituído.",
                     done["bytes"].as_u64().unwrap_or(0)
                 ),
                 false,
@@ -336,6 +419,30 @@ impl HistoryView {
             Err(error) => (error.to_string(), true),
         });
         cx.notify();
+    }
+
+    /// The native save dialog as a path entry: it only fills the field; writing is the export
+    /// button's job. Cancelling changes nothing.
+    fn pick_destination(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let base = self
+            .workstation
+            .read(cx)
+            .state
+            .project
+            .workspace
+            .clone()
+            .unwrap_or_else(std::env::temp_dir);
+        let receiver = cx.prompt_for_new_path(&base, Some("tessel-perf-history.json"));
+        cx.spawn_in(window, async move |this, cx| {
+            let Some(path) = receiver.await.ok().and_then(Result::ok).flatten() else {
+                return;
+            };
+            let text = path.to_string_lossy().into_owned();
+            let _ = this.update_in(cx, |this, window, cx| {
+                this.run(HistoryCommand::Destination(text), window, cx);
+            });
+        })
+        .detach();
     }
 
     /// A click on a chart selects the instant under it (never one before the recording began).
@@ -376,6 +483,7 @@ struct Reading {
     inspection: Option<Inspection>,
     selected_bucket: Option<usize>,
     monitor_on_screen: Option<bool>,
+    destination: String,
 }
 
 impl Render for HistoryView {
@@ -399,6 +507,7 @@ impl Render for HistoryView {
                 inspection: recorder.inspection(now),
                 selected_bucket,
                 monitor_on_screen: recorder.context().and_then(|c| c.monitor_on_screen),
+                destination: workstation.perf.history.destination.clone(),
                 snapshot,
             }
         };
@@ -498,13 +607,35 @@ impl Render for HistoryView {
                     .small()
                     .label("Exportar JSON")
                     .accessibility_label("Exportar o histórico como JSON local")
-                    .disabled(!reading.has_data)
-                    .tooltip(if reading.has_data {
-                        "Grava um JSON local (sem caminhos nem textos do projeto)"
-                    } else {
+                    .disabled(!reading.has_data || reading.destination.trim().is_empty())
+                    .tooltip(if !reading.has_data {
                         "Indisponível: não há histórico para exportar"
+                    } else if reading.destination.trim().is_empty() {
+                        "Indisponível: informe o destino do arquivo ao lado"
+                    } else {
+                        "Grava um JSON novo no destino informado (sem caminhos nem textos do projeto)"
                     })
                     .on_click(cx.listener(|this, _, window, cx| this.export(window, cx))),
+            );
+        let destination = h_flex()
+            .gap_2()
+            .items_center()
+            .child(
+                div()
+                    .w(px(LABEL_WIDTH))
+                    .flex_shrink_0()
+                    .text_size(px(11.))
+                    .text_color(t.dim)
+                    .child("Destino do JSON (caminho absoluto)"),
+            )
+            .child(div().flex_1().child(Input::new(&self.destination)))
+            .child(
+                Button::new("history-export-pick")
+                    .small()
+                    .label("Escolher…")
+                    .accessibility_label("Escolher o arquivo de destino da exportação")
+                    .tooltip("Abre o seletor do sistema; ele só preenche o caminho")
+                    .on_click(cx.listener(|this, _, window, cx| this.pick_destination(window, cx))),
             );
 
         let rows = match &reading.snapshot {
@@ -554,6 +685,7 @@ impl Render for HistoryView {
                     .child("Memória local deste processo. Nada vai ao projeto, ao desfazer, ao autosave nem à rede. Fechar o painel não para a gravação."),
             )
             .child(toolbar)
+            .child(destination)
             .children(note)
             .children(empty)
             .children(rows)

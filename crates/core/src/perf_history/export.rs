@@ -26,8 +26,13 @@ pub enum HistoryError {
     },
     /// No destination was given.
     ExportPathMissing,
+    /// The destination is a relative path: where it would land depends on the process, so an
+    /// explicit destination must be absolute.
+    ExportRelative,
     /// The destination is a directory.
     ExportIsDirectory,
+    /// A file is already there. The diagnostic never replaces anything: name a new file.
+    ExportExists,
     /// The destination's folder does not exist.
     ExportParentMissing,
     /// The file could not be written; `kind` is the OS error kind, never a path.
@@ -40,7 +45,9 @@ impl HistoryError {
             Self::NoRecording => "perf_history_empty",
             Self::OutsideWindow { .. } => "perf_history_outside_window",
             Self::ExportPathMissing => "perf_history_export_path_missing",
+            Self::ExportRelative => "perf_history_export_relative",
             Self::ExportIsDirectory => "perf_history_export_is_directory",
+            Self::ExportExists => "perf_history_export_exists",
             Self::ExportParentMissing => "perf_history_export_parent_missing",
             Self::ExportWriteFailed { .. } => "perf_history_export_failed",
         }
@@ -56,8 +63,16 @@ impl HistoryError {
                 "The selected instant is outside the 60-second window being read".to_string()
             }
             Self::ExportPathMissing => "Name the file to write the diagnostic to".to_string(),
+            Self::ExportRelative => {
+                "Use an absolute path: a relative one would land wherever the editor was started"
+                    .to_string()
+            }
             Self::ExportIsDirectory => {
                 "The destination is a folder: name a file inside it".to_string()
+            }
+            Self::ExportExists => {
+                "A file already exists there; the diagnostic never replaces one. Name a new file"
+                    .to_string()
             }
             Self::ExportParentMissing => {
                 "The destination's folder does not exist; create it first".to_string()
@@ -100,21 +115,29 @@ pub fn build_info() -> Value {
     })
 }
 
-/// Writes `document` to `path` atomically and returns the byte count.
+/// Writes `document` to a new file at `path` and returns the byte count.
 ///
-/// The destination must be a file path whose folder exists. The bytes go to a hidden sibling
-/// (`create_new`, so nothing is overwritten by accident), are synced, and replace the target by
-/// a rename; on any failure the sibling is removed and the target is as it was.
+/// The destination must be a new file at an absolute path whose folder exists. The bytes go to a
+/// hidden sibling (`create_new`), are synced, and are linked to the target, which fails if
+/// anything appeared there meanwhile: an existing file is refused, never replaced, and a
+/// failure leaves no sibling behind and nothing changed.
 pub fn write_export(path: &Path, document: &Value) -> Result<usize, HistoryError> {
     if path.as_os_str().is_empty() {
         return Err(HistoryError::ExportPathMissing);
     }
+    if !path.is_absolute() {
+        return Err(HistoryError::ExportRelative);
+    }
     if path.is_dir() {
         return Err(HistoryError::ExportIsDirectory);
     }
+    // `symlink_metadata`: a dangling link is also "something there".
+    if fs::symlink_metadata(path).is_ok() {
+        return Err(HistoryError::ExportExists);
+    }
     let parent = match path.parent() {
         Some(parent) if !parent.as_os_str().is_empty() => parent,
-        _ => Path::new("."),
+        _ => return Err(HistoryError::ExportPathMissing),
     };
     if !parent.is_dir() {
         return Err(HistoryError::ExportParentMissing);
@@ -140,10 +163,22 @@ pub fn write_export(path: &Path, document: &Value) -> Result<usize, HistoryError
         file.write_all(&bytes)?;
         file.write_all(b"\n")?;
         file.sync_all()?;
-        fs::rename(&temporary, path)
+        // No-clobber publish: unlike a rename, a hard link fails when the name exists.
+        match fs::hard_link(&temporary, path) {
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Err(error),
+            // A volume without hard links (FAT, exFAT): check once more, then rename.
+            Err(_) if fs::symlink_metadata(path).is_ok() => {
+                Err(std::io::ErrorKind::AlreadyExists.into())
+            }
+            Err(_) => fs::rename(&temporary, path),
+            Ok(()) => Ok(()),
+        }
     })();
+    let _ = fs::remove_file(&temporary);
     if let Err(error) = written {
-        let _ = fs::remove_file(&temporary);
+        if error.kind() == std::io::ErrorKind::AlreadyExists {
+            return Err(HistoryError::ExportExists);
+        }
         return Err(failed(error));
     }
     Ok(bytes.len() + 1)

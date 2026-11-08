@@ -139,6 +139,9 @@ fn parse_set_history(field: &str, value: &Raw) -> Result<Parsed, CommandError> {
             )))
         }
         "export_to" => HistoryCommand::Export(std::path::PathBuf::from(value.text())),
+        // What typing (or picking) a path in the panel's field does; `invoke ... export` is the
+        // button that writes to it.
+        "export_destination" => HistoryCommand::Destination(value.text()),
         _ => {
             return Err(CommandError::new(
                 "unknown_field",
@@ -146,7 +149,7 @@ fn parse_set_history(field: &str, value: &Raw) -> Result<Parsed, CommandError> {
             )
             .target(perf_history::TARGET)
             .details(
-                json!({ "fields": ["recording", "visible", "frozen", "selected_ms", "export_to"] }),
+                json!({ "fields": ["recording", "visible", "frozen", "selected_ms", "export_to", "export_destination"] }),
             ));
         }
     };
@@ -164,6 +167,7 @@ fn parse_invoke_history(action: &str) -> Result<Parsed, CommandError> {
         "clear" => HistoryCommand::Clear,
         "snapshot" => HistoryCommand::Snapshot,
         "clear_selection" => HistoryCommand::Select(None),
+        "export" => HistoryCommand::ExportToDestination,
         _ => {
             return Err(CommandError::new(
                 "unknown_action",
@@ -1283,6 +1287,10 @@ mod tests {
             HistoryCommand::Export("/tmp/a.json".into())
         );
         assert_eq!(
+            history(set("export_destination", Raw::Text("/tmp/b.json".into()))),
+            HistoryCommand::Destination("/tmp/b.json".into())
+        );
+        assert_eq!(
             set("selected_ms", Raw::Number(-1.0)).unwrap_err().code,
             "invalid_value"
         );
@@ -1318,6 +1326,7 @@ mod tests {
             ("clear", HistoryCommand::Clear),
             ("snapshot", HistoryCommand::Snapshot),
             ("clear_selection", HistoryCommand::Select(None)),
+            ("export", HistoryCommand::ExportToDestination),
         ] {
             assert_eq!(invoke(action), expected, "{action}");
             assert!(

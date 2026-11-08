@@ -257,7 +257,8 @@ fn build(state: &EditorState, cx: &TreeContext) -> Vec<Node> {
     .field("visible", "boolean", json!({}))
     .field("frozen", "boolean", json!({}))
     .field("selected_ms", "number", json!({ "min": 0 }))
-    .field("export_to", "string", json!({}));
+    .field("export_to", "string", json!({}))
+    .field("export_destination", "string", json!({}));
     for action in crate::perf_history::ACTIONS {
         history = history.action(action);
     }
@@ -1349,7 +1350,14 @@ mod tests {
             .collect();
         assert_eq!(
             fields,
-            ["recording", "visible", "frozen", "selected_ms", "export_to"]
+            [
+                "recording",
+                "visible",
+                "frozen",
+                "selected_ms",
+                "export_to",
+                "export_destination"
+            ]
         );
         assert_eq!(found["state"]["recording"], false, "off by default");
     }

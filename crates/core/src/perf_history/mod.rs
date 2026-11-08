@@ -34,11 +34,12 @@ mod snapshot;
 #[cfg(test)]
 mod tests;
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::time::Duration;
 
 use serde_json::{Value, json};
 
+use crate::jobs::JobState;
 use crate::state::CommandError;
 
 pub use export::{HistoryError, build_info, write_export};
@@ -47,7 +48,7 @@ pub use snapshot::{Inspection, MetricSummary, Snapshot};
 /// Automation target of the history.
 pub const TARGET: &str = "perf.history";
 /// Actions of `invoke perf.history <action>`; fields of `set` are in `commands`.
-pub const ACTIONS: [&str; 9] = [
+pub const ACTIONS: [&str; 10] = [
     "record_start",
     "record_stop",
     "show",
@@ -57,6 +58,7 @@ pub const ACTIONS: [&str; 9] = [
     "clear",
     "snapshot",
     "clear_selection",
+    "export",
 ];
 /// Length of the rolling window.
 pub const WINDOW: Duration = Duration::from_secs(60);
@@ -669,6 +671,10 @@ pub struct Recorder {
     context: Option<Context>,
     /// Frame format of the last picture, to emit one event per change.
     format: Option<(u32, u32, Option<String>)>,
+    /// Export jobs as of the last look at the registry (`None`: no baseline yet, so what already
+    /// ran before the recording is not announced as news).
+    exports: Option<HashMap<String, JobState>>,
+    exports_tried: Option<Duration>,
 }
 
 impl Default for Recorder {
@@ -692,6 +698,8 @@ impl Default for Recorder {
             counters: Counters::default(),
             context: None,
             format: None,
+            exports: None,
+            exports_tried: None,
         }
     }
 }
@@ -923,7 +931,91 @@ impl Recorder {
         if let Some(id) = id {
             self.pending.retain(|(pending, _)| *pending != id);
         }
+        if error_code == "context_lost" {
+            // The graphics context went away: that is the event, not just a failed request.
+            self.context_lost(at, id);
+            return;
+        }
         self.push(at, EventKind::RequestFailed, None, id, code(error_code));
+    }
+
+    /// The graphics context was lost (a frame failed with `context_lost`, or the page said so).
+    /// One event per loss: the page's notice and the failed frame it caused are the same loss.
+    pub fn context_lost(&mut self, at: Duration, request: Option<u64>) {
+        if !self.live() || self.context_is_lost() {
+            return;
+        }
+        self.push(
+            at,
+            EventKind::ContextLost,
+            None,
+            request,
+            Some("context_lost".to_string()),
+        );
+    }
+
+    /// The graphics context came back. Nothing is carried over: the picture it lost is not
+    /// reported as shown, and the next accepted picture is a new measurement.
+    pub fn context_restored(&mut self, at: Duration) {
+        if !self.live() {
+            return;
+        }
+        self.push(at, EventKind::ContextRestored, None, None, None);
+    }
+
+    /// Whether the newest context event still in the window is a loss without a restore.
+    fn context_is_lost(&self) -> bool {
+        self.events
+            .iter()
+            .rev()
+            .find_map(|event| match event.kind {
+                EventKind::ContextLost => Some(true),
+                EventKind::ContextRestored => Some(false),
+                _ => None,
+            })
+            .unwrap_or(false)
+    }
+
+    /// Whether the export jobs should be looked at now (at most once per second).
+    pub fn exports_due(&self, at: Duration) -> bool {
+        self.live() && self.gauge_due(self.exports_tried, at)
+    }
+
+    /// The export jobs as the registry shows them at `at`. The first look after the recording
+    /// began is only the baseline (an export that already ran is not news); after that every
+    /// transition seen becomes one event, and a job first seen already finished yields only its
+    /// end, since its start was not observed. Times are the moment of the look, so an event can
+    /// be late by at most the look interval; they are never earlier than the truth.
+    pub fn exports_observed(&mut self, at: Duration, jobs: &[ExportJob]) {
+        if !self.live() {
+            return;
+        }
+        self.exports_tried = Some(at);
+        let baseline = self.exports.is_none();
+        let known = self.exports.take().unwrap_or_default();
+        let mut next = HashMap::with_capacity(jobs.len().min(MAX_EXPORT_JOBS));
+        for job in jobs.iter().take(MAX_EXPORT_JOBS) {
+            let before = known.get(&job.id).copied();
+            next.insert(job.id.clone(), job.state);
+            if baseline || before == Some(job.state) {
+                continue;
+            }
+            let was_final = before.is_some_and(JobState::is_final);
+            match job.state {
+                JobState::Queued | JobState::Running if before.is_none() => {
+                    self.push(at, EventKind::ExportStarted, None, None, None);
+                }
+                JobState::Queued | JobState::Running => {}
+                _ if was_final => {}
+                JobState::Succeeded => self.push(at, EventKind::ExportFinished, None, None, None),
+                JobState::Failed => {
+                    let detail = job.error_code.as_deref().and_then(code);
+                    self.push(at, EventKind::ExportFailed, None, None, detail);
+                }
+                JobState::Cancelled => self.push(at, EventKind::ExportCancelled, None, None, None),
+            }
+        }
+        self.exports = Some(next);
     }
 
     /// A playback run began (start, resume after a pause or a seek): its counter starts at zero,
@@ -1273,10 +1365,14 @@ impl Recorder {
                     "frozen": document["recording"]["frozen"],
                     "range": document["window"] })
             }
-            HistoryCommand::Record(_) | HistoryCommand::Show | HistoryCommand::Hide => {
+            HistoryCommand::Record(_)
+            | HistoryCommand::Show
+            | HistoryCommand::Hide
+            | HistoryCommand::Destination(_)
+            | HistoryCommand::ExportToDestination => {
                 return Err(CommandError::new(
                     "desktop_required",
-                    "Recording and visibility are applied by the adapter that owns the clock and the window",
+                    "Recording, visibility and the export destination are applied by the adapter that owns the clock and the window",
                 )
                 .target(target));
             }
@@ -1286,6 +1382,18 @@ impl Recorder {
         Ok(result)
     }
 }
+
+/// The part of an export job the history needs: no label, no path, no result.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExportJob {
+    pub id: String,
+    pub state: JobState,
+    /// The job's error code when it failed.
+    pub error_code: Option<String>,
+}
+
+/// Export jobs remembered between two looks at the registry.
+const MAX_EXPORT_JOBS: usize = 64;
 
 /// What a gesture, `ui invoke|set` or a test asks of the history.
 #[derive(Debug, Clone, PartialEq)]
@@ -1305,4 +1413,9 @@ pub enum HistoryCommand {
     Snapshot,
     /// Write the document to an explicit path.
     Export(std::path::PathBuf),
+    /// Fill the panel's destination field (a path typed or picked). Applied by the window.
+    Destination(String),
+    /// Write the document to the panel's destination field. Applied by the window, which turns
+    /// it into [`Self::Export`]; an empty field is `perf_history_export_path_missing`.
+    ExportToDestination,
 }

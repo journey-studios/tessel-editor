@@ -953,7 +953,6 @@ fn the_document_carries_no_path_project_text_or_credential() {
 fn exporting_writes_a_valid_file_atomically_and_leaves_no_temporary_behind() {
     let directory = scratch("export");
     let target = directory.join("diagnostic.json");
-    std::fs::write(&target, "old contents").unwrap();
     let mut recorder = started(0);
     recorder.sample(Metric::RenderMs, at(100), 33.0);
     let result = recorder
@@ -1016,7 +1015,6 @@ fn export_errors_are_typed_observable_and_change_nothing() {
     let locked = directory.join("locked");
     std::fs::create_dir(&locked).unwrap();
     let target = locked.join("a.json");
-    std::fs::write(&target, "keep me").unwrap();
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).unwrap();
     let refused = recorder
         .apply(&HistoryCommand::Export(target.clone()), at(200))
@@ -1024,9 +1022,244 @@ fn export_errors_are_typed_observable_and_change_nothing() {
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
     assert_eq!(refused.code, "perf_history_export_failed");
     assert!(refused.details.is_some());
-    assert_eq!(std::fs::read_to_string(&target).unwrap(), "keep me");
-    assert_eq!(std::fs::read_dir(&locked).unwrap().count(), 1);
+    assert!(!target.exists(), "nothing was written");
+    assert_eq!(
+        std::fs::read_dir(&locked).unwrap().count(),
+        0,
+        "no sibling left"
+    );
     let _ = std::fs::remove_dir_all(&directory);
+}
+
+#[test]
+fn an_explicit_destination_must_be_absolute_and_new_and_nothing_is_ever_replaced() {
+    let directory = scratch("destination");
+    let mut recorder = started(0);
+    recorder.sample(Metric::RenderMs, at(100), 1.0);
+    let code_of = |recorder: &mut Recorder, path: PathBuf| {
+        recorder
+            .apply(&HistoryCommand::Export(path), at(200))
+            .unwrap_err()
+            .code
+    };
+    assert_eq!(
+        code_of(&mut recorder, PathBuf::from("diagnostic.json")),
+        "perf_history_export_relative"
+    );
+    assert_eq!(
+        code_of(&mut recorder, PathBuf::from("../diagnostic.json")),
+        "perf_history_export_relative"
+    );
+    // An existing file (the project, a note) is refused and left byte for byte as it was.
+    let existing = directory.join("project.tessel.json");
+    std::fs::write(&existing, "{\"precious\":true}").unwrap();
+    assert_eq!(
+        code_of(&mut recorder, existing.clone()),
+        "perf_history_export_exists"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&existing).unwrap(),
+        "{\"precious\":true}"
+    );
+    // A dangling link is also something that is there.
+    let link = directory.join("link.json");
+    std::os::unix::fs::symlink(directory.join("nowhere.json"), &link).unwrap();
+    assert_eq!(code_of(&mut recorder, link), "perf_history_export_exists");
+    assert!(!directory.join("nowhere.json").exists());
+    // The refusals left no temporary behind, and the first export to a new name works once.
+    let target = directory.join("new.json");
+    recorder
+        .apply(&HistoryCommand::Export(target.clone()), at(200))
+        .unwrap();
+    assert_eq!(
+        code_of(&mut recorder, target.clone()),
+        "perf_history_export_exists"
+    );
+    let mut names: Vec<String> = std::fs::read_dir(&directory)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    assert_eq!(names, vec!["link.json", "new.json", "project.tessel.json"]);
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
+#[test]
+fn the_destination_commands_belong_to_the_window_not_to_the_recorder() {
+    let mut recorder = started(0);
+    for command in [
+        HistoryCommand::Destination("/tmp/a.json".to_string()),
+        HistoryCommand::ExportToDestination,
+    ] {
+        assert_eq!(
+            recorder.apply(&command, at(10)).unwrap_err().code,
+            "desktop_required"
+        );
+    }
+}
+
+#[test]
+fn a_lost_context_is_one_event_until_it_is_restored_and_a_failed_frame_is_not_a_second_one() {
+    let mut recorder = started(0);
+    recorder.request_admitted(5, at(100));
+    // The page says it lost the context and the frame in flight fails with the same code.
+    recorder.context_lost(at(110), None);
+    recorder.request_failed(at(112), Some(5), "context_lost");
+    recorder.context_restored(at(400));
+    recorder.request_failed(at(900), None, "context_lost");
+    let kinds: Vec<EventKind> = recorder
+        .snapshot(at(1_000))
+        .unwrap()
+        .events
+        .iter()
+        .map(|event| event.kind)
+        .collect();
+    assert_eq!(
+        kinds,
+        vec![
+            EventKind::RecordingStarted,
+            EventKind::ContextLost,
+            EventKind::ContextRestored,
+            EventKind::ContextLost,
+        ]
+    );
+    assert_eq!(
+        recorder.pending_requests(),
+        0,
+        "the failed request is not waited for"
+    );
+    // Another failure is still a failed request, not a context loss.
+    recorder.request_failed(at(950), None, "render_failed");
+    let events = recorder.snapshot(at(1_000)).unwrap().events;
+    assert_eq!(
+        events.last().map(|event| event.kind),
+        Some(EventKind::RequestFailed)
+    );
+}
+
+#[test]
+fn context_events_are_not_recorded_while_not_recording() {
+    let mut recorder = Recorder::default();
+    recorder.context_lost(at(10), None);
+    recorder.context_restored(at(20));
+    assert!(!recorder.has_data());
+}
+
+fn export_job(id: &str, state: JobState, error: Option<&str>) -> ExportJob {
+    ExportJob {
+        id: id.to_string(),
+        state,
+        error_code: error.map(str::to_string),
+    }
+}
+
+fn export_events(recorder: &Recorder, now: u64) -> Vec<(EventKind, Option<String>)> {
+    recorder
+        .snapshot(at(now))
+        .unwrap()
+        .events
+        .iter()
+        .filter(|event| {
+            matches!(
+                event.kind,
+                EventKind::ExportStarted
+                    | EventKind::ExportFinished
+                    | EventKind::ExportFailed
+                    | EventKind::ExportCancelled
+            )
+        })
+        .map(|event| (event.kind, event.detail.clone()))
+        .collect()
+}
+
+#[test]
+fn export_jobs_become_events_only_for_what_was_seen_to_change_after_the_baseline() {
+    let mut recorder = started(0);
+    assert!(recorder.exports_due(at(0)));
+    // The baseline: an export that already ran, and one that is running, are not announced.
+    recorder.exports_observed(
+        at(10),
+        &[
+            export_job("old", JobState::Succeeded, None),
+            export_job("busy", JobState::Running, None),
+        ],
+    );
+    assert!(!recorder.exports_due(at(500)), "at most once per second");
+    assert!(recorder.exports_due(at(1_010)));
+    assert!(export_events(&recorder, 1_100).is_empty());
+    recorder.exports_observed(
+        at(1_010),
+        &[
+            export_job("old", JobState::Succeeded, None),
+            export_job("busy", JobState::Succeeded, None),
+            export_job("new", JobState::Queued, None),
+        ],
+    );
+    recorder.exports_observed(
+        at(2_100),
+        &[
+            export_job("old", JobState::Succeeded, None),
+            export_job("busy", JobState::Succeeded, None),
+            export_job("new", JobState::Running, None),
+        ],
+    );
+    recorder.exports_observed(
+        at(3_200),
+        &[
+            export_job("busy", JobState::Succeeded, None),
+            export_job("new", JobState::Failed, Some("encoder_failed")),
+            // Seen for the first time already finished: only its end is known.
+            export_job("quick", JobState::Cancelled, None),
+        ],
+    );
+    // Looking again at the same states adds nothing.
+    recorder.exports_observed(
+        at(4_300),
+        &[
+            export_job("new", JobState::Failed, Some("encoder_failed")),
+            export_job("quick", JobState::Cancelled, None),
+        ],
+    );
+    assert_eq!(
+        export_events(&recorder, 4_400),
+        vec![
+            (EventKind::ExportFinished, None),
+            (EventKind::ExportStarted, None),
+            (EventKind::ExportFailed, Some("encoder_failed".to_string())),
+            (EventKind::ExportCancelled, None),
+        ]
+    );
+}
+
+#[test]
+fn an_export_error_that_is_not_a_plain_code_is_kept_out_of_the_event() {
+    let mut recorder = started(0);
+    recorder.exports_observed(at(0), &[]);
+    recorder.exports_observed(
+        at(1_000),
+        &[export_job(
+            "a",
+            JobState::Failed,
+            Some("/Users/me/secret.mp4"),
+        )],
+    );
+    assert_eq!(
+        export_events(&recorder, 1_100),
+        vec![(EventKind::ExportFailed, None)]
+    );
+}
+
+#[test]
+fn a_new_recording_takes_a_new_baseline_for_exports() {
+    let mut recorder = started(0);
+    recorder.exports_observed(at(0), &[export_job("a", JobState::Running, None)]);
+    recorder.stop(at(500));
+    assert!(recorder.start(at(600), false));
+    recorder.exports_observed(at(700), &[export_job("a", JobState::Succeeded, None)]);
+    assert!(
+        export_events(&recorder, 800).is_empty(),
+        "what finished between recordings is not news of this one"
+    );
 }
 
 #[test]
