@@ -201,11 +201,10 @@ canônico da `main`): binário ausente, processo que morre, resposta que não é
 - **BL144.3 (impressão do runtime):** o cache só é invalidado por `VERSION`/`CACHE_VERSION`; reconstruir `runtime/dist` não
   refaz imagens guardadas. Plano: o runtime expõe o hash do bundle em `capabilities`, o adaptador o inclui na impressão do
   cache e `media.thumbnails {rebuild: true}` limpa só as miniaturas. Não implementado.
-- **BL144.10:** implementado em [F056](renderer-ownership.md) (um export iniciado atrás de um quadro de miniatura é
+- **BL144.10:** validado em [F056](renderer-ownership.md) (um export iniciado atrás de um quadro de miniatura é
   recusado com `renderer_busy`/`retryable`, o job de miniaturas é mandado parar e o renderer fica reservado para o
-  export; a pausa do usuário não é tocada). **Escrito e não executado** (disco): segue a validar até a execução dos
-  gates e dos testes de `renderer_exclusion`. Limites: BL144.18 (sonda do preflight cancelado) e BL144.19 (o diálogo
-  não repete sozinho).
+  export; a pausa do usuário sobrevive a export e preflight, concluídos, cancelados ou falhos). Limites: BL144.18
+  (a sonda do preflight cancelado) foi corrigida e BL144.19 (o diálogo) tem política e prova; ver F056.
 - **BL144.13:** a convenção de eixos do SPZ e do PLY no Spark só é provada por testes unitários do core (medida entre
   formatos); a prova ponta a ponta e o teste de runtime usam `.splat`.
 - **BL144.14:** o custo de montar identidades (BFS) por paint/tick não foi medido.

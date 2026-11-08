@@ -55,6 +55,74 @@ class Recording:
         self.skips.append((name, reason))
 
 
+class RendererOwnershipTests(unittest.TestCase):
+    """BL144.10: how the proof reads a busy renderer and retries (no renderer started)."""
+
+    def busy(self, **details):
+        base = {'retryable': True, 'queued': False}
+        base.update(details)
+        return {'code': 'renderer_busy', 'message': 'busy', 'details': base}
+
+    def test_a_typed_retryable_refusal_that_queues_nothing_is_accepted(self):
+        check = Recording()
+        details = proof.require_busy_refusal(check, 'x', False, self.busy(stopping=True, reserved_for_export=True),
+                                             stopping=True, reserved=True)
+        self.assertTrue(details['stopping'])
+
+    def test_a_request_that_was_accepted_is_not_a_refusal(self):
+        with self.assertRaises(proof.ProofFailure):
+            proof.require_busy_refusal(Recording(), 'x', True, {'job': 'job-1'})
+
+    def test_a_refusal_that_promises_a_queue_or_is_not_retryable_fails(self):
+        for details in ({'retryable': True, 'queued': True}, {'retryable': False, 'queued': False}, {}):
+            with self.assertRaises(proof.ProofFailure, msg=str(details)):
+                proof.require_busy_refusal(Recording(), 'x', False,
+                                           {'code': 'renderer_busy', 'details': details})
+
+    def test_the_wrong_code_fails(self):
+        with self.assertRaises(proof.ProofFailure):
+            proof.require_busy_refusal(Recording(), 'x', False, {'code': 'invalid_request', 'details': {}})
+
+    def test_stopping_and_reserved_must_match_what_was_asked(self):
+        with self.assertRaises(proof.ProofFailure):
+            proof.require_busy_refusal(Recording(), 'x', False, self.busy(), stopping=True)
+        with self.assertRaises(proof.ProofFailure):
+            proof.require_busy_refusal(Recording(), 'x', False, self.busy(reserved_for_export=True), reserved=False)
+
+    def test_the_retry_asks_again_until_the_renderer_is_free_and_counts_the_asks(self):
+        answers = [(False, self.busy()), (False, self.busy()), (True, {'job': 'job-3'})]
+        asked = []
+
+        def ask(request):
+            asked.append(request)
+            return answers.pop(0)
+
+        payload, attempts = proof.retry_until_granted({'op': 'export.start'}, ask, sleep=lambda _: None)
+        self.assertEqual((payload, attempts, len(asked)), ({'job': 'job-3'}, 3, 3))
+
+    def test_another_error_is_a_failure_at_once_never_retried(self):
+        asked = []
+
+        def ask(request):
+            asked.append(request)
+            return False, {'code': 'invalid_request', 'message': 'bad'}
+
+        with self.assertRaises(proof.ProofFailure):
+            proof.retry_until_granted({'op': 'export.start'}, ask, sleep=lambda _: None)
+        self.assertEqual(len(asked), 1)
+
+    def test_a_renderer_that_never_frees_is_a_failure_not_a_pass(self):
+        clock = iter(range(0, 1000, 10))
+        with self.assertRaises(proof.ProofFailure):
+            proof.retry_until_granted({'op': 'export.start'}, lambda _: (False, self.busy()), seconds=30,
+                                      sleep=lambda _: None, clock=lambda: next(clock))
+
+    def test_the_export_jobs_are_found_by_kind(self):
+        jobs = lambda: [{'kind': 'thumbnail', 'id': 'a'}, {'kind': 'video-export', 'id': 'b'}]
+        self.assertEqual([j['id'] for j in proof.jobs_of_kind(jobs, 'video-export')], ['b'])
+        self.assertEqual(proof.jobs_of_kind(lambda: [], 'video-export'), [])
+
+
 class OracleTests(unittest.TestCase):
     def test_the_box_projects_left_of_the_sphere_and_the_origin_near_the_middle(self):
         box = proof.project_point((-2.2, 0.0, 0.0), 240, 136)
