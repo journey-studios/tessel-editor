@@ -92,6 +92,21 @@ def peaks(state):
     return ((state.get("view") or {}).get("peaks")) or {}
 
 
+def history_parts(state):
+    """Return optional window and event data without treating a missing view as zero."""
+    view = state.get("view") or {}
+    return view.get("window") or {}, view.get("events") or {}
+
+
+def freeze_data(state):
+    """A freeze probe is usable only with an observed endpoint and UI sample count."""
+    window, _ = history_parts(state)
+    count = (peaks(state).get("ui_frames") or {}).get("count")
+    end = window.get("end_ms")
+    ready = type(end) in (int, float) and math.isfinite(end) and type(count) in (int, float) and math.isfinite(count)
+    return window, count, ready
+
+
 def viewport_on_screen(editor):
     return editor.viewport().get("on_screen")
 
@@ -366,29 +381,31 @@ def main():
         # --- freeze, inspect, resume
         frozen = editor.invoke(NODE, "freeze")
         check("freeze fixes one snapshot", frozen.get("ok") and history(editor)["frozen"] is True, frozen)
-        window = history(editor)["view"]["window"]
-        count_then = peaks(history(editor))["ui_frames"]["count"]
-        time.sleep(1.5)
-        check("the frozen view does not move while the recording continues", peaks(history(editor))["ui_frames"]["count"] == count_then and history(editor)["recording"] is True)
-        again = editor.invoke(NODE, "freeze")
-        check("freezing twice keeps the first snapshot and says so", again.get("ok") and again["data"]["changed"] is False, again)
-        outside = editor.set(NODE, "selected_ms", window["end_ms"] + 5000)
-        check("a selection outside the window is a typed error", (outside.get("error") or {}).get("code") == "perf_history_outside_window", outside)
-        inside = editor.set(NODE, "selected_ms", window["end_ms"] - 4000)
-        inspection = (inside.get("data") or {}).get("inspection") or {}
-        check("a selection inside the window returns numbers and events", inside.get("ok") and "metrics" in inspection and "events" in inspection, str(inside)[:300])
-        report["inspection"] = inspection
-        report["shot_inspect"] = editor.shot(shots, "history-frozen-inspect")
-        # The same panel in the light theme: bars, lane and markers come from the Kit's tokens.
-        editor.invoke("theme.light")
-        pmp.settle(editor, 1.2)
-        report["shot_light"] = editor.shot(shots, "history-frozen-inspect-light")
-        editor.invoke("theme.dark")
-        pmp.settle(editor, 0.8)
-        editor.invoke(NODE, "clear_selection")
-        check("clear_selection clears it", history(editor)["selected_ms"] is None)
-        resumed = editor.invoke(NODE, "resume")
-        check("resume goes back to the moving window", resumed.get("ok") and history(editor)["frozen"] is False, resumed)
+        freeze_state = history(editor)
+        window, count_then, freeze_ready = freeze_data(freeze_state)
+        check("freeze has an observed window endpoint and UI frame count", freeze_ready, freeze_state.get("view"))
+        if freeze_ready:
+            time.sleep(1.5)
+            check("the frozen view does not move while the recording continues", (peaks(history(editor)).get("ui_frames") or {}).get("count") == count_then and history(editor)["recording"] is True)
+            again = editor.invoke(NODE, "freeze")
+            check("freezing twice keeps the first snapshot and says so", again.get("ok") and again["data"]["changed"] is False, again)
+            outside = editor.set(NODE, "selected_ms", window["end_ms"] + 5000)
+            check("a selection outside the window is a typed error", (outside.get("error") or {}).get("code") == "perf_history_outside_window", outside)
+            inside = editor.set(NODE, "selected_ms", window["end_ms"] - 4000)
+            inspection = (inside.get("data") or {}).get("inspection") or {}
+            check("a selection inside the window returns numbers and events", inside.get("ok") and "metrics" in inspection and "events" in inspection, str(inside)[:300])
+            report["inspection"] = inspection
+            report["shot_inspect"] = editor.shot(shots, "history-frozen-inspect")
+            # The same panel in the light theme: bars, lane and markers come from the Kit's tokens.
+            editor.invoke("theme.light")
+            pmp.settle(editor, 1.2)
+            report["shot_light"] = editor.shot(shots, "history-frozen-inspect-light")
+            editor.invoke("theme.dark")
+            pmp.settle(editor, 0.8)
+            editor.invoke(NODE, "clear_selection")
+            check("clear_selection clears it", history(editor)["selected_ms"] is None)
+            resumed = editor.invoke(NODE, "resume")
+            check("resume goes back to the moving window", resumed.get("ok") and history(editor)["frozen"] is False, resumed)
 
         # --- export
         target = os.path.join(work, "exported-history.json")
@@ -482,19 +499,26 @@ def main():
             while time.monotonic() < deadline:
                 time.sleep(buffer_wait(every, deadline, time.monotonic()))
                 state = history(editor)
+                sample_window, sample_events = history_parts(state)
+                check("buffer sample has a history window", bool(sample_window), state.get("view"))
                 samples.append({
                     "t_s": round(time.monotonic() - started_at),
                     "rss_mib": rss_mib(editor.process.pid),
-                    "buckets": state["view"]["window"]["buckets"],
-                    "events_held": state["view"]["events"]["held"],
-                    "events_dropped": state["view"]["events"]["dropped"],
+                    "buckets": sample_window.get("buckets"),
+                    "events_held": sample_events.get("held"),
+                    "events_dropped": sample_events.get("dropped"),
                 })
             report["buffer_samples"] = samples
             final = history(editor)
-            check("the ring stays 240 buckets after minutes", final["view"]["window"]["buckets"] == 240 and final["view"]["window"]["duration_ms"] == 60000, final["view"]["window"])
-            check("the events stay within their capacity", final["view"]["events"]["held"] <= final["view"]["events"]["capacity"], final["view"]["events"])
-            check("the window really is 60 s: the oldest bucket is not older than the window", final["view"]["window"]["end_ms"] - final["view"]["window"]["start_ms"] <= 60250, final["view"]["window"])
-            check("playback was still running at the end (the buffer was measured under load)", (final["view"].get("state") or {}).get("expected_motion") is True, final["view"].get("state"))
+            final_window, final_events = history_parts(final)
+            check("the ring stays 240 buckets after minutes", final_window.get("buckets") == 240 and final_window.get("duration_ms") == 60000, final_window)
+            held, capacity = final_events.get("held"), final_events.get("capacity")
+            check("the events stay within their capacity", type(held) is int and type(capacity) is int and held <= capacity, final_events)
+            start_ms, end_ms = final_window.get("start_ms"), final_window.get("end_ms")
+            known_range = type(start_ms) in (int, float) and type(end_ms) in (int, float)
+            check("the window really is 60 s: the oldest bucket is not older than the window", known_range and end_ms - start_ms <= 60250, final_window)
+            final_state = (final.get("view") or {}).get("state") or {}
+            check("playback was still running at the end (the buffer was measured under load)", final_state.get("expected_motion") is True, final_state)
             growth = buffer_growth(samples)
             report["buffer_rss"] = growth
             check(

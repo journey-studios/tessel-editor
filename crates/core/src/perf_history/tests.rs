@@ -1092,11 +1092,14 @@ fn an_explicit_destination_must_be_absolute_and_new_and_nothing_is_ever_replaced
         std::fs::read_to_string(&existing).unwrap(),
         "{\"precious\":true}"
     );
-    // A dangling link is also something that is there.
-    let link = directory.join("link.json");
-    std::os::unix::fs::symlink(directory.join("nowhere.json"), &link).unwrap();
-    assert_eq!(code_of(&mut recorder, link), "perf_history_export_exists");
-    assert!(!directory.join("nowhere.json").exists());
+    #[cfg(unix)]
+    {
+        // A dangling link is also something that is there.
+        let link = directory.join("link.json");
+        std::os::unix::fs::symlink(directory.join("nowhere.json"), &link).unwrap();
+        assert_eq!(code_of(&mut recorder, link), "perf_history_export_exists");
+        assert!(!directory.join("nowhere.json").exists());
+    }
     // The refusals left no temporary behind, and the first export to a new name works once.
     let target = directory.join("new.json");
     recorder
@@ -1111,7 +1114,12 @@ fn an_explicit_destination_must_be_absolute_and_new_and_nothing_is_ever_replaced
         .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
         .collect();
     names.sort();
-    assert_eq!(names, vec!["link.json", "new.json", "project.tessel.json"]);
+    let mut expected = vec!["new.json", "project.tessel.json"];
+    if cfg!(unix) {
+        expected.push("link.json");
+    }
+    expected.sort();
+    assert_eq!(names, expected);
     let _ = std::fs::remove_dir_all(&directory);
 }
 
@@ -1910,7 +1918,7 @@ fn a_prepared_export_of_the_frozen_view_says_so_and_refuses_what_needs_no_disk()
     let frozen = recorder
         .prepare_export(
             at(900),
-            PathBuf::from("/tmp/prepared-and-never-written.json"),
+            std::env::temp_dir().join("prepared-and-never-written.json"),
         )
         .unwrap();
     assert!(frozen.frozen());
@@ -1930,7 +1938,7 @@ fn a_prepared_export_of_the_frozen_view_says_so_and_refuses_what_needs_no_disk()
     );
     assert_eq!(
         Recorder::default()
-            .prepare_export(at(0), PathBuf::from("/tmp/x.json"))
+            .prepare_export(at(0), std::env::temp_dir().join("x.json"))
             .unwrap_err()
             .code(),
         "perf_history_empty",

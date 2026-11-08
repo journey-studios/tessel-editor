@@ -73,7 +73,7 @@ Não gravar no projeto, undo, autosave nem serviço remoto.
 
 ## Ownership e coordenação
 
-Projeto: Rust de vídeo a raiz local do checkout, repo journey-studios/tessel-editor.
+Projeto: editor Rust de vídeo (raiz do checkout local), repositório journey-studios/tessel-editor.
 Cursor claude-sonnet-5-5 via delegate_task, isolation worktree, mode async, sem subagentes.
 Partir de main atualizada no checkout isolado preparado pelo T3, sem criar worktree pelo shell.
 Plano novo pode ser lido na raiz; preservar integralmente backlog e planos sujos da raiz.
