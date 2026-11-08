@@ -2,7 +2,7 @@
 //!
 //! The document itself is [`Snapshot::to_document`](super::Snapshot::to_document). This file only
 //! decides where and how it lands: an explicit destination, written to a temporary sibling,
-//! synced and renamed, so a failure leaves either the old file or none, never half a document.
+//! synced and published without replacement, so the target is never a partial document.
 //! Nothing here touches the project, and nothing exports by itself.
 
 use std::fs;
@@ -155,26 +155,22 @@ pub fn write_export(path: &Path, document: &Value) -> Result<usize, HistoryError
     let failed = |error: std::io::Error| HistoryError::ExportWriteFailed {
         kind: format!("{:?}", error.kind()),
     };
+    let mut owns_temporary = false;
     let written = (|| {
         let mut file = fs::OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&temporary)?;
+        owns_temporary = true;
         file.write_all(&bytes)?;
         file.write_all(b"\n")?;
         file.sync_all()?;
         // No-clobber publish: unlike a rename, a hard link fails when the name exists.
-        match fs::hard_link(&temporary, path) {
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Err(error),
-            // A volume without hard links (FAT, exFAT): check once more, then rename.
-            Err(_) if fs::symlink_metadata(path).is_ok() => {
-                Err(std::io::ErrorKind::AlreadyExists.into())
-            }
-            Err(_) => fs::rename(&temporary, path),
-            Ok(()) => Ok(()),
-        }
+        fs::hard_link(&temporary, path)
     })();
-    let _ = fs::remove_file(&temporary);
+    if owns_temporary {
+        let _ = fs::remove_file(&temporary);
+    }
     if let Err(error) = written {
         if error.kind() == std::io::ErrorKind::AlreadyExists {
             return Err(HistoryError::ExportExists);

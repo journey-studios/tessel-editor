@@ -61,7 +61,7 @@ gravação, janela, contexto não sensível, métricas com unidade/fonte/amostra
 resumo, eventos, segmentos, contadores e a lista de limites. O destino é **sempre escolhido
 pelo usuário** (nada é exportado sozinho, nem para o temp) e a escrita é **sem sobrescrever**:
 arquivo irmão temporário (`create_new`) + `sync` + `hard_link` ao destino, que falha se algo
-apareceu ali (em volume sem hard link, uma checagem final e `rename`); o temporário sempre é
+apareceu ali (em volume sem hard link, erro tipado; nenhum fallback que sobrescreva o destino); o temporário sempre é
 removido. Erros tipados: `perf_history_empty`, `perf_history_export_path_missing`,
 `perf_history_export_relative` (o caminho precisa ser absoluto), `perf_history_export_is_directory`,
 `perf_history_export_exists` (um arquivo, ou um link, já está lá: o projeto ou outro arquivo
@@ -236,3 +236,5 @@ a 1ª rodada (a 2ª adiciona testes a ambos).
 (`REFUSED_DISK`: 11 GiB livres com piso de 12 GiB, ocupado por builds de outros agentes) e não
 foram forçados nem houve limpeza de cache. Nenhum deles é declarado PASS; a CI da PR ou uma nova
 rodada com disco livre deve cobri-los.
+
+Correção do coordenador: publicar exige hard link sem substituição; volumes sem suporte são recusados. Limpeza remove somente temporário criado pela própria chamada. Teste de colisão do temporário escrito, não executado por disco; o head atual permanece sem validação compilada.

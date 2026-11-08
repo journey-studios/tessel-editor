@@ -1006,3 +1006,5 @@ eventos, freeze/inspeção e export JSON; recording separado de visibility.
 [Plano e contrato de implementação](migration/perf-history-execution-plan.md).
 Entrega independente de BL082/P0P1; coordenador reserva subitens BL145 livres na integração.
 Encaminhamento pendente de confirmação T3, nenhum comportamento declarado entregue.
+
+BL145.2 — correção coordenador: export sem fallback rename (evita sobrescrita concorrente), temporário só é removido se criado pela chamada; teste colisão escrito, não executado por disco8,9GiB. Fmt estático somente, validação compilada continua pendente.

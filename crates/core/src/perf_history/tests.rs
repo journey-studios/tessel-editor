@@ -1439,3 +1439,20 @@ fn values_read_with_their_own_unit_and_an_empty_bucket_says_so() {
     assert_ne!(Metric::RssBytes.group(), Metric::RenderMs.group());
     assert_ne!(Metric::RssBytes.unit(), Metric::LatencyMs.unit());
 }
+
+#[test]
+fn refusing_a_busy_temporary_preserves_the_other_writers_bytes() {
+    let directory = scratch("busy-temporary");
+    let target = directory.join("history.json");
+    let temporary = directory.join(format!(".history.json.tmp-{}", std::process::id()));
+    std::fs::write(&temporary, b"other writer").unwrap();
+    let mut recorder = started(0);
+    recorder.sample(Metric::RenderMs, at(100), 1.0);
+    let error = recorder
+        .apply(&HistoryCommand::Export(target.clone()), at(200))
+        .unwrap_err();
+    assert_eq!(error.code, "perf_history_export_exists");
+    assert!(!target.exists());
+    assert_eq!(std::fs::read(&temporary).unwrap(), b"other writer");
+    std::fs::remove_dir_all(directory).unwrap();
+}
