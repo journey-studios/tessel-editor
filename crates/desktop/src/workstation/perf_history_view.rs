@@ -855,14 +855,16 @@ impl Render for HistoryView {
             .map(|snapshot| footer(snapshot, reading.monitor_on_screen, &t, mono.clone()));
         // Selection/button feedback and the asynchronous export are independent outcomes:
         // neither may hide the other, including a write that finished after a later selection.
-        let note = v_flex().children(self.note.iter().chain(reading.export.iter()).map(
-            |(text, error)| {
+        let note = self
+            .note
+            .iter()
+            .chain(reading.export.iter())
+            .map(|(text, error)| {
                 div()
                     .text_size(px(11.))
                     .text_color(if *error { t.bad } else { t.dim })
                     .child(text.clone())
-            },
-        ));
+            });
 
         v_flex()
             .gap_2()
@@ -880,7 +882,7 @@ impl Render for HistoryView {
             )
             .child(toolbar)
             .child(destination)
-            .child(note)
+            .children(note)
             .children(empty)
             .children(rows)
             .children(events)

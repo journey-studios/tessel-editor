@@ -378,3 +378,5 @@ Ainda abertos antes de aceite: dedup de falhas cuja primeira ocorrência não fo
 (iniciar/limpar a gravação) e BL145.6 de frame antigo atravessando a sessão da cena.
 
 A primeira checagem desta correção encontrou `.children` recebendo um elemento único; ajustado para `.child`, checagem repetida com exit 0. Não equivale a build/testes workspace nem prova da janela.
+
+Revisão 4508061197: o painel insere diretamente as mensagens existentes, sem contêiner vazio ou gap extra quando não há aviso. Check desktop e formatação passaram; aparência nativa não reavaliada nesta correção.

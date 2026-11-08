@@ -1066,3 +1066,5 @@ backlog; preservados registros F049 e resíduos FX validados em 1ad7159. A integ
 não fecha dedup após record/clear ou BL145.6; aceite final da PR36 continua pendente.
 
 Integração PR36 com main d1f62ef: fmt, check workspace --locked, diffcheck e specs Python18+24 passaram. Sem execução de testes Rust, clippy, build ou prova de janela desta combinação; não fecha o aceite funcional.
+
+BL145.4/.5 — PR36, 4508061197: removido contêiner de aviso vazio; mensagens continuam independentes. Check desktop/fmt/diffcheck passaram; sem nova prova nativa e sem fechar dedup/BL145.6.
