@@ -191,6 +191,7 @@ impl EditorState {
             } => self.scene_select(scene.as_deref(), &entities, mode),
             SceneCommand::Selection => Ok(self.scene_selection()),
             SceneCommand::Gesture(gesture) => self.apply_gesture(gesture),
+            SceneCommand::Gizmo(gizmo) => self.apply_gizmo(gizmo),
             read => query::run(&self.scenes, read),
         }
     }

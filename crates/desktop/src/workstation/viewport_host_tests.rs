@@ -1687,3 +1687,193 @@ fn the_context_rows_come_from_the_last_finished_frame_and_msaa_is_absent_without
     assert_eq!(context.msaa, None);
     assert_eq!(context.reduced_scene_layers, None);
 }
+
+// --- F055: the gizmo overlay ------------------------------------------------------------------
+
+fn gizmo_ready_message() -> Value {
+    let mut message = ready_message();
+    message["capabilities"]["features"] = json!(["overlay.gizmo"]);
+    message
+}
+
+fn gizmo_host(tag: &str, state: &EditorState) -> ViewportHost {
+    let mut host = ViewportHost::new(Ok(page(tag)));
+    from_page(&mut host, state, json!({"type":"page.ready"}));
+    let _ = sent(&mut host);
+    from_page(&mut host, state, gizmo_ready_message());
+    assert!(host.overlay_supported());
+    let _ = sent(&mut host); // the first frame the handshake asks for
+    host
+}
+
+fn overlay_payload(origin: f64) -> Value {
+    json!({"version":1,"visible":true,"entity":"scene/a/node/n","origin":{"u":origin,"v":0.5},
+        "handles":[],"outlines":[],"active":null,"aspect":1.7777,
+        "stamp":{"scene":"a","session":"s","revision":1,"frame":0}})
+}
+
+#[test]
+fn the_overlay_is_never_sent_to_a_page_that_did_not_announce_it() {
+    let state = empty_state();
+    let mut host = ready_host("overlay-old", &state);
+    let _ = sent(&mut host); // the first frame the handshake asks for
+    assert!(!host.overlay_supported());
+    assert!(!host.overlay_set_enabled(true), "nothing to switch on");
+    assert!(!host.overlay_show(&overlay_payload(0.5)));
+    assert!(sent(&mut host).is_empty());
+    assert_eq!(host.report()["overlay"]["supported"], false);
+    assert_eq!(host.report()["overlay"]["enabled"], false);
+}
+
+#[test]
+fn the_overlay_is_switched_on_once_and_an_unchanged_overlay_is_not_resent() {
+    let state = empty_state();
+    let mut host = gizmo_host("overlay-on", &state);
+    // Nothing is sent before it is switched on.
+    assert!(!host.overlay_show(&overlay_payload(0.5)));
+    assert!(host.overlay_set_enabled(true));
+    assert!(!host.overlay_set_enabled(true), "already on");
+    assert!(host.overlay_show(&overlay_payload(0.5)));
+    assert!(
+        !host.overlay_show(&overlay_payload(0.5)),
+        "same JSON: not sent again"
+    );
+    assert!(host.overlay_show(&overlay_payload(0.6)));
+    let messages = sent(&mut host);
+    assert_eq!(
+        kinds(&messages),
+        ["overlay.enable", "overlay.set", "overlay.set"]
+    );
+    assert_eq!(messages[0]["enabled"], true);
+    assert_eq!(messages[0]["v"], 1);
+    assert_eq!(messages[2]["overlay"]["origin"]["u"], 0.6);
+    assert_eq!(messages[1]["ack"], false, "the ack is opt-in");
+
+    assert!(host.overlay_set_enabled(false));
+    assert!(
+        !host.overlay_show(&overlay_payload(0.7)),
+        "off: nothing is sent"
+    );
+    assert_eq!(kinds(&sent(&mut host)), ["overlay.enable"]);
+    // Back on, the first overlay is sent again even if it equals the last one before.
+    assert!(host.overlay_set_enabled(true));
+    assert!(host.overlay_show(&overlay_payload(0.6)));
+    assert_eq!(host.report()["overlay"]["sets"], 3);
+}
+
+#[test]
+fn what_the_page_reports_is_counted_and_a_reload_forgets_the_overlay() {
+    let state = empty_state();
+    let mut host = gizmo_host("overlay-report", &state);
+    assert!(host.overlay_set_enabled(true));
+    assert!(host.overlay_show(&overlay_payload(0.5)));
+    for message in [
+        json!({"type":"overlay.pointer","phase":"down","seq":1,"point":{"u":0.5,"v":0.5}}),
+        json!({"type":"overlay.pointer","phase":"cancel","seq":2,"reason":"escape"}),
+        json!({"type":"overlay.layout","pane":{"width":800,"height":600}}),
+        json!({"type":"overlay.drawn","draws":1,"visible":true,"probes":[],
+               "stamp":{"scene":"a","session":"s","revision":1,"frame":0}}),
+    ] {
+        assert!(host.overlay_note(&message), "{message}");
+    }
+    assert!(
+        !host.overlay_note(&json!({"type":"frame.done"})),
+        "not an overlay message"
+    );
+    let report = host.report()["overlay"].clone();
+    assert_eq!(report["pointer_events"], 2);
+    assert_eq!(report["last_phase"], "cancel");
+    assert_eq!(report["layout"]["pane"]["width"], 800);
+    assert_eq!(report["drawn"]["draws"], 1);
+    assert_eq!(report["stale"], 0);
+
+    // An ack of an overlay that is not the current one (a reload and a new project happened
+    // since) is counted and never recorded as what the page shows now.
+    assert!(
+        host.overlay_show(&json!({
+        "version":1,"visible":false,"entity":null,"origin":null,"handles":[],"outlines":[],
+        "active":null,"aspect":1.7777,"stamp":{"scene":"a","session":"s","revision":2,"frame":0}}))
+    );
+    assert!(
+        host.overlay_note(&json!({"type":"overlay.drawn","draws":2,"visible":true,
+        "probes":[],"stamp":{"scene":"a","session":"s","revision":1,"frame":0}}))
+    );
+    let stale = host.report()["overlay"].clone();
+    assert_eq!(stale["stale"], 1);
+    assert_eq!(
+        stale["drawn"]["draws"], 1,
+        "the old ack did not replace the last good one"
+    );
+
+    host.begin_reload();
+    let after = host.report()["overlay"].clone();
+    assert_eq!(after["enabled"], false);
+    assert_eq!(after["pointer_events"], 0);
+    assert_eq!(after["supported"], false);
+}
+
+/// M2 of the PR #25 review: what the adapter spends on the overlay is gated and counted.
+#[test]
+fn the_overlay_gates_and_counters_are_the_hosts_and_a_reload_resets_them() {
+    let state = empty_state();
+    let mut host = gizmo_host("overlay-gates", &state);
+    // Off: nothing is enabled, so the adapter has no reason to plan the scene.
+    assert!(!host.overlay_enabled());
+    assert!(!host.overlay_memo_hit("k"), "off: never a memo hit");
+    assert!(!host.overlay_hold(), "off: nothing to clear");
+    assert!(host.overlay_set_enabled(true));
+    assert!(host.overlay_enabled());
+    assert!(!host.overlay_memo_hit("k"), "nothing computed yet");
+    host.overlay_computed("k".to_string());
+    assert!(host.overlay_memo_hit("k"));
+    assert!(
+        !host.overlay_memo_hit("other"),
+        "another state is not a hit"
+    );
+    host.overlay_adopted("adopted".to_string());
+    assert!(host.overlay_memo_hit("adopted"));
+    let report = host.report()["overlay"].clone();
+    assert_eq!(
+        (
+            report["computed"].clone(),
+            report["adopted"].clone(),
+            report["memo_hits"].clone()
+        ),
+        (json!(1), json!(1), json!(2))
+    );
+    // Playback: cleared once, then nothing until a state is computed again.
+    let _ = sent(&mut host);
+    assert!(host.overlay_hold());
+    assert!(!host.overlay_hold(), "held: not cleared again every tick");
+    assert_eq!(kinds(&sent(&mut host)), ["overlay.clear"]);
+    assert!(
+        !host.overlay_memo_hit("adopted"),
+        "the page holds nothing now"
+    );
+    assert_eq!(host.report()["overlay"]["held"], true);
+    host.overlay_computed("again".to_string());
+    assert_eq!(host.report()["overlay"]["held"], false);
+}
+
+/// M4 of the PR #25 review: every page incarnation has its own epoch, which the adapter puts in
+/// the stamps it sends, so the queued messages of the page before a reload are never current.
+#[test]
+fn every_reload_of_the_page_is_a_new_overlay_epoch() {
+    let state = empty_state();
+    let mut host = gizmo_host("overlay-epoch", &state);
+    let first = host.overlay_epoch();
+    assert_eq!(host.overlay_epoch(), first, "reading it changes nothing");
+    assert!(host.overlay_set_enabled(true));
+    assert!(host.overlay_show(&overlay_payload(0.5)));
+    assert_eq!(
+        host.overlay_epoch(),
+        first,
+        "overlays of one page share its epoch"
+    );
+    assert!(host.begin_reload());
+    let second = host.overlay_epoch();
+    assert_ne!(second, first, "the reloaded page is another incarnation");
+    assert_eq!(host.report()["overlay"]["epoch"], second);
+    assert!(host.begin_reload());
+    assert_ne!(host.overlay_epoch(), second, "and so is the next one");
+}
