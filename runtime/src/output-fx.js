@@ -37,6 +37,12 @@ const invalid = (pointer, message) =>
 
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 
+// WHY own-property checks everywhere a name from a plan indexes a table: `OUTPUT_FX_EFFECTS.constructor`,
+// `.toString` and `.__proto__` are not undefined, so a plain lookup took them for effects (and then
+// failed with a TypeError instead of the typed refusal) and `'toString' in params` called a method a
+// parameter. A plan's names are data, never keys into the prototype chain.
+const own = (table, name) => typeof name === 'string' && Object.hasOwn(table, name);
+
 const finiteIn = (value, pointer, min, max) => {
   if (typeof value !== 'number' || !Number.isFinite(value)) throw invalid(pointer, 'expected a finite number');
   if (value < min || value > max) throw invalid(pointer, `expected a number from ${min} to ${max}, got ${value}`);
@@ -65,14 +71,15 @@ export const parseOutputFx = (raw, requires) => {
   return raw.map((entry, index) => {
     const at = `/fx/${index}`;
     if (!isObject(entry)) throw invalid(at, 'expected an object');
-    const known = OUTPUT_FX_EFFECTS[entry.effect];
-    if (!known) {
-      throw new RuntimeError('unsupported', `This runtime does not draw the effect \`${entry.effect}\``, {
+    if (!own(OUTPUT_FX_EFFECTS, entry.effect)) {
+      const named = typeof entry.effect === 'string' ? entry.effect : null;
+      throw new RuntimeError('unsupported', `This runtime does not draw the effect ${named === null ? 'of that kind' : `\`${named}\``}`, {
         unsupported: 'fx_effect',
-        effect: entry.effect ?? null,
+        effect: named,
         pointer: `${at}/effect`,
       });
     }
+    const known = OUTPUT_FX_EFFECTS[entry.effect];
     if (!isObject(entry.scope) || entry.scope.kind !== 'output') {
       throw new RuntimeError('unsupported', 'This runtime draws effects of the output scope only', {
         unsupported: 'fx_scope',
@@ -87,10 +94,10 @@ export const parseOutputFx = (raw, requires) => {
     if (!isObject(entry.params)) throw invalid(`${at}/params`, 'expected an object');
     const params = {};
     for (const [name, spec] of Object.entries(known.params)) {
-      if (!(name in entry.params)) throw invalid(`${at}/params/${name}`, 'missing parameter');
+      if (!own(entry.params, name)) throw invalid(`${at}/params/${name}`, 'missing parameter');
       params[name] = parseParam(spec, entry.params[name], `${at}/params/${name}`);
     }
-    const extra = Object.keys(entry.params).find((name) => !(name in known.params));
+    const extra = Object.keys(entry.params).find((name) => !own(known.params, name));
     if (extra !== undefined) throw invalid(`${at}/params/${extra}`, 'not a parameter of the effect');
     return { effect: entry.effect, clipId: entry.clipId, weight, amount, params };
   });
@@ -140,55 +147,117 @@ void main() {
   gl_FragColor = vec4(linearToSrgb(mixed), source.a);
 }`;
 
-/** The material of one pass over `texture`. `size` is the picture in pixels (the aspect of the ellipse). */
-export const createFxMaterial = (pass, texture, size) => {
-  const { params } = pass;
-  return new THREE.ShaderMaterial({
+const FRAGMENTS = { vignette: VIGNETTE_FRAGMENT };
+
+/**
+ * The material of an effect, built once and kept: the program is linked here, never again for the
+ * next pass or frame. Its uniforms hold placeholders until `bindPass` writes a pass into them.
+ */
+export const createFxMaterial = (effect) =>
+  new THREE.ShaderMaterial({
     uniforms: {
-      tMap: { value: texture },
-      uAmount: { value: pass.amount },
-      uRadius: { value: params.radius },
-      uSoftness: { value: params.softness },
-      uRoundness: { value: params.roundness },
-      uAspect: { value: size.width / size.height },
-      // The plan states the centre with y DOWN (like the rest of the project); the texture's V is up.
-      uCenter: { value: new THREE.Vector2(params.center[0], 1 - params.center[1]) },
-      uColor: { value: new THREE.Vector3(...params.color) },
+      tMap: { value: null },
+      uAmount: { value: 0 },
+      uRadius: { value: 0 },
+      uSoftness: { value: 0 },
+      uRoundness: { value: 0 },
+      uAspect: { value: 1 },
+      uCenter: { value: new THREE.Vector2() },
+      uColor: { value: new THREE.Vector3() },
     },
     vertexShader: VERTEX,
-    fragmentShader: VIGNETTE_FRAGMENT,
+    fragmentShader: FRAGMENTS[effect],
     depthTest: false,
     depthWrite: false,
     blending: THREE.NoBlending,
     toneMapped: false,
   });
+
+/** Writes one pass over `texture` into the uniforms of its effect's material. `size` is the picture in pixels (the aspect of the ellipse). */
+export const bindPass = (material, pass, texture, size) => {
+  const { uniforms } = material;
+  const { params } = pass;
+  uniforms.tMap.value = texture;
+  uniforms.uAmount.value = pass.amount;
+  uniforms.uRadius.value = params.radius;
+  uniforms.uSoftness.value = params.softness;
+  uniforms.uRoundness.value = params.roundness;
+  uniforms.uAspect.value = size.width / size.height;
+  // The plan states the centre with y DOWN (like the rest of the project); the texture's V is up.
+  uniforms.uCenter.value.set(params.center[0], 1 - params.center[1]);
+  uniforms.uColor.value.set(...params.color);
 };
 
 /**
- * Draws the passes over `source` (a render target holding the finished picture), each pass reading
- * the one before. `targetOf(index)` gives the target pass `index` draws into (non-MSAA, the
- * picture's size). Returns the texture of the last pass, or `source.texture` when there are none.
+ * What draws the passes of a plan, kept between frames (A1): the fullscreen quad, its scene and
+ * camera, and one material per effect of the catalog (so one linked program per effect, however
+ * many passes use it, and whatever the frame). Three.js uploads uniforms at each `render`, so one
+ * material serves the passes of a frame in turn; what a pass changes lives in the uniforms.
+ *
+ * Lifetime: the compositor owns it (`Compositor.fx`) and calls `dispose` when the context is lost,
+ * when retention is turned off, after a frame that failed in a pass (the next frame builds a new
+ * one: nothing half-written survives an error) and when the compositor goes. A host that does not
+ * retain builds one per frame and disposes it with the frame. It has no size of its own: the
+ * targets it draws into come from the caller, so a resize cannot leave it stale.
  */
-export const drawOutputFx = (renderer, source, passes, { targetOf, keep, size }) => {
-  if (passes.length === 0) return source.texture;
-  const scene = new THREE.Scene();
-  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  const quad = new THREE.Mesh(keep(new THREE.PlaneGeometry(2, 2)));
-  quad.frustumCulled = false;
-  scene.add(quad);
-  let texture = source.texture;
-  try {
-    passes.forEach((pass, index) => {
-      const target = targetOf(index);
-      quad.material = keep(createFxMaterial(pass, texture, size));
-      renderer.setRenderTarget(target);
-      renderer.setClearColor(0x000000, 0);
-      renderer.clear(true, true, true);
-      renderer.render(scene, camera);
-      texture = target.texture;
-    });
-  } finally {
-    renderer.setRenderTarget(null);
+export class OutputFxPipeline {
+  constructor() {
+    this.scene = new THREE.Scene();
+    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    this.geometry = new THREE.PlaneGeometry(2, 2);
+    this.quad = new THREE.Mesh(this.geometry);
+    this.quad.frustumCulled = false;
+    this.scene.add(this.quad);
+    this.materials = new Map();
+    this.disposed = false;
   }
-  return texture;
-};
+
+  /** The kept material of an effect; `created` says whether this call built (and so will link) it. */
+  materialOf(effect) {
+    let material = this.materials.get(effect);
+    const created = material === undefined;
+    if (created) {
+      material = createFxMaterial(effect);
+      this.materials.set(effect, material);
+    }
+    return { material, created };
+  }
+
+  /**
+   * Draws `passes` over `source` (a render target holding the finished picture), each pass reading
+   * the one before, and returns the texture of the last one (`source.texture` when there are none).
+   * Pass `i` draws into `targetOf(i % 2)`: two plain targets (no depth, no MSAA) of the picture's
+   * size, ping-pong, so any number of passes needs two and a pass never reads what it writes.
+   * `onMaterial(created)` reports each material lookup (the host's counters).
+   */
+  draw(renderer, source, passes, { targetOf, size, onMaterial = () => {} }) {
+    if (this.disposed) throw new Error('The output-fx pipeline was disposed');
+    if (passes.length === 0) return source.texture;
+    let texture = source.texture;
+    try {
+      passes.forEach((pass, index) => {
+        const target = targetOf(index % 2);
+        const { material, created } = this.materialOf(pass.effect);
+        onMaterial(created);
+        bindPass(material, pass, texture, size);
+        this.quad.material = material;
+        renderer.setRenderTarget(target);
+        // No clear: the quad covers every pixel with NoBlending and writes alpha too.
+        renderer.render(this.scene, this.camera);
+        texture = target.texture;
+      });
+    } finally {
+      renderer.setRenderTarget(null);
+      // Do not keep a reference to a texture of a target the cache may free after this frame.
+      for (const material of this.materials.values()) material.uniforms.tMap.value = null;
+    }
+    return texture;
+  }
+
+  dispose() {
+    this.disposed = true;
+    for (const material of this.materials.values()) material.dispose();
+    this.materials.clear();
+    this.geometry.dispose();
+  }
+}

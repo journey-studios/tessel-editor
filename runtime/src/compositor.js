@@ -29,7 +29,7 @@ import {
 } from './directed-scene.js';
 import { forEachLitCell, measureText, GLYPH_ROWS } from './font.js';
 import { fnv1a64, meanColor } from './hash.js';
-import { drawOutputFx } from './output-fx.js';
+import { OutputFxPipeline } from './output-fx.js';
 import { BLEND_MODES, RuntimeError } from './protocol.js';
 import { LIMITS, LruCache, RetentionCounters, rgbaBytes, targetBytes } from './retention.js';
 import { SceneRig } from './scene.js';
@@ -192,6 +192,8 @@ export class Compositor {
     this.limits = limits;
     // Bumped when the context is lost: everything retained for the old one is dropped with it.
     this.contextGeneration = 0;
+    // What draws the output-scope effects (output-fx.js), made by the first frame that has effect passes.
+    this.fx = null;
     const evicted = (name) => () => counters.add(name);
     this.text = new LruCache({
       maxEntries: limits.textEntries,
@@ -334,6 +336,9 @@ export class Compositor {
       // SparkRenderers alive: the lineages kept for moving frames and the one shared stage (BL130).
       stage_entries: this.stages.size,
       shared_stage_entries: this.splats ? 1 : 0,
+      // The output-fx pipeline (quad + one material per effect) kept for effect passes.
+      fx_pipeline_entries: this.fx ? 1 : 0,
+      fx_material_entries: this.fx?.materials.size ?? 0,
     };
   }
 
@@ -344,6 +349,7 @@ export class Compositor {
    */
   dropRetained() {
     this.contextGeneration += 1;
+    this.dropFxPipeline();
     for (const cache of [this.text, this.materials, this.rigs, this.targets, this.stages]) {
       try {
         cache.clear();
@@ -351,6 +357,29 @@ export class Compositor {
         // The context is already gone; there is nothing left to free on it.
       }
     }
+  }
+
+  /** Frees the output-fx pipeline (its GPU state belongs to a context that is gone, or it failed mid-frame). */
+  dropFxPipeline() {
+    const pipeline = this.fx;
+    this.fx = null;
+    try {
+      pipeline?.dispose();
+    } catch {
+      // The context is already gone; there is nothing left to free on it.
+    }
+  }
+
+  /**
+   * The pipeline for this frame's effect passes: the kept one, or (without retention) one the
+   * frame frees when it ends. Counted, so a test can tell "built" from "reused".
+   */
+  fxPipeline(keep) {
+    if (!this.retain) return keep(new OutputFxPipeline());
+    if (this.fx) return this.fx;
+    this.fx = new OutputFxPipeline();
+    this.counters.add('fx_pipeline_created');
+    return this.fx;
   }
 
   /** An asset id was released or replaced: what was built from its old entry dies with it. */
@@ -728,12 +757,30 @@ export class Compositor {
     frame.sources.directed_scene_layers = (frame.sources.directed_scene_layers ?? 0) + 1;
     if (splatScenes.length > 0) frame.sources.directed_scene_splats = (frame.sources.directed_scene_splats ?? 0) + spec.splats.length;
     // The output-scope effects of the plan (F016): the core resolved them for this frame, they are
-    // drawn here over the finished picture in the plan's order, each into its own plain target.
-    const texture = drawOutputFx(this.renderer, target, spec.fx, {
-      targetOf: (index) => this.sceneTarget(`dsfx:${frame.order}:${index}`, size.width, size.height, keep, 0).target,
-      keep,
-      size,
-    });
+    // drawn here over the finished picture in the plan's order. The pipeline and its materials are kept
+    // (no relink per frame, A1); the passes ping-pong between two plain targets (A5), so any number of
+    // passes holds two. A target slot is looked up once per draw, so a target too big to retain is still
+    // one object per slot, never one per pass.
+    let texture = target.texture;
+    if (spec.fx.length > 0) {
+      const pipeline = this.fxPipeline(keep);
+      const slots = [null, null];
+      try {
+        texture = pipeline.draw(this.renderer, target, spec.fx, {
+          targetOf: (slot) =>
+            (slots[slot] ??= this.sceneTarget(`dsfx:${frame.order}:${slot}`, size.width, size.height, keep, 0, false).target),
+          size,
+          onMaterial: (created) => this.counters.add(created ? 'fx_program_created' : 'fx_program_reused'),
+        });
+      } catch (error) {
+        // A pass that failed leaves nothing half-built behind: the next frame makes a new pipeline.
+        if (this.fx === pipeline) {
+          this.counters.add('fx_pipeline_discarded');
+          this.dropFxPipeline();
+        }
+        throw error;
+      }
+    }
     if (spec.fx.length > 0) frame.sources.directed_scene_fx = (frame.sources.directed_scene_fx ?? 0) + spec.fx.length;
     return { texture, width: size.width, height: size.height, fit: false, flipV: true };
   }
@@ -807,22 +854,22 @@ export class Compositor {
    * when it fits the byte budget; a target that does not (export-size scenes) is never retained,
    * so it can never serve a cached result either.
    */
-  sceneTarget(slot, width, height, keep, samples = this.sceneSamples) {
+  sceneTarget(slot, width, height, keep, samples = this.sceneSamples, depth = true) {
     const create = () =>
       new THREE.WebGLRenderTarget(width, height, {
         samples,
-        depthBuffer: true,
+        depthBuffer: depth,
         colorSpace: THREE.NoColorSpace,
       });
-    const bytes = targetBytes(width, height, samples);
+    const bytes = targetBytes(width, height, samples, depth);
     if (!this.retain || bytes > this.limits.targetBytes) return { target: keep(create()), cached: null };
     const key = `${slot}`;
     const cached = this.targets.get(key);
-    if (cached && cached.width === width && cached.height === height && cached.samples === samples) {
+    if (cached && cached.width === width && cached.height === height && cached.samples === samples && cached.depth === depth) {
       this.counters.add('target_reused');
       return { target: cached.target, cached };
     }
-    const entry = { target: create(), width, height, samples, result: null };
+    const entry = { target: create(), width, height, samples, depth, result: null };
     this.targets.set(key, entry, bytes);
     this.counters.add('target_created');
     return { target: entry.target, cached: entry };
