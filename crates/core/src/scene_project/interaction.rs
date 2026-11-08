@@ -37,11 +37,11 @@ pub(super) fn ensure_kind(
     wanted: &GestureKind,
     use_instead: &str,
 ) -> Result<(), CommandError> {
-    let matches = match (gesture.kind(), wanted) {
-        (GestureKind::Properties, GestureKind::Properties) => true,
-        (GestureKind::Fx { .. }, GestureKind::Fx { .. }) => true,
-        _ => false,
-    };
+    let matches = matches!(
+        (gesture.kind(), wanted),
+        (GestureKind::Properties, GestureKind::Properties)
+            | (GestureKind::Fx { .. }, GestureKind::Fx { .. })
+    );
     if matches {
         return Ok(());
     }
