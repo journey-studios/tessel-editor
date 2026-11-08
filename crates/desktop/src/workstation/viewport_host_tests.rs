@@ -1064,6 +1064,26 @@ fn a_moving_playhead_keeps_drawing_reduced_frames_and_only_stopping_refines() {
 }
 
 #[test]
+fn the_retention_budget_reads_mebibytes_and_ignores_what_it_cannot_use() {
+    use super::viewport_host::retained_bytes_from_env as read;
+    assert_eq!(read(None), None);
+    assert_eq!(read(Some("64")), Some(64 << 20));
+    assert_eq!(read(Some(" 8 ")), Some(8 << 20));
+    assert_eq!(
+        read(Some("0")),
+        None,
+        "zero would release everything: keep the default"
+    );
+    assert_eq!(read(Some("lots")), None);
+    assert_eq!(read(Some("-4")), None);
+    assert_eq!(
+        read(Some("18446744073709551615")),
+        None,
+        "an overflow keeps the default"
+    );
+}
+
+#[test]
 fn an_unreadable_preview_sort_is_the_safe_order_and_says_so() {
     use super::viewport_host::preview_sort_from_env as read;
     assert_eq!(read(None), Ok(None), "unset keeps the runtime's default");

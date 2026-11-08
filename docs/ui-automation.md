@@ -46,7 +46,7 @@ from it (`monitor.viewport` → `last_frame.source.proxy_layers`), the refine re
 `TESSEL_VIEWPORT_INSPECT=1` the picture on screen after the drag is byte-identical to an explicit render. It also runs
 `seek-scrub-proof.py` per variant. `scripts/proxy-soak.py` repeats drags (and a policy flip) for `--seconds` and samples the
 editor's resident memory. Read-only opt-ins in the environment: `TESSEL_VIEWPORT_RESULT_CACHE=0` (splat result cache off),
-`TESSEL_VIEWPORT_SCENE_SAMPLES=0|2|4` (final MSAA of scene targets), `TESSEL_VIEWPORT_PREVIEW_SCENE_SAMPLES=0|2|4` (MSAA of a splat
+`TESSEL_VIEWPORT_RETAIN_MIB=<MiB>` (source-file budget of retained stills/scenes/splats before the least recently used heavy asset is released, default 256; BL151), `TESSEL_VIEWPORT_SCENE_SAMPLES=0|2|4` (final MSAA of scene targets), `TESSEL_VIEWPORT_PREVIEW_SCENE_SAMPLES=0|2|4` (MSAA of a splat
 scene while the playhead moves; default 0, 4 turns the reduction off; BL129), `TESSEL_VIEWPORT_PREVIEW_SORT=latest|exact` (whether a splat
 frame of a moving playhead is drawn with the order of the last finished sort, default `latest`, or waits for its own, `exact`, which only changes the sort, not the preview MSAA or proxies; an unreadable value is `exact` with a warning on
 stderr; BL130; the scrub/playback harness takes it through `--env`, and `--inspect` also compares the last frame the runtime returned
