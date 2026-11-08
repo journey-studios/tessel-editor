@@ -1,0 +1,1076 @@
+{
+  "base_bundle": "docs/migration/fixtures/bundles/valid-minimal-continuous.bundle.json",
+  "cases": [
+    {
+      "frames": [
+        {
+          "frame": 9,
+          "passes": []
+        },
+        {
+          "frame": 10,
+          "passes": [
+            {
+              "amount": 0.7,
+              "clip": "c1",
+              "frame_in_clip": 0,
+              "intensity": 0.7,
+              "track": "t1",
+              "weight": 1.0
+            }
+          ]
+        },
+        {
+          "frame": 25,
+          "passes": [
+            {
+              "amount": 0.7,
+              "clip": "c1",
+              "frame_in_clip": 15,
+              "intensity": 0.7,
+              "track": "t1",
+              "weight": 1.0
+            }
+          ]
+        },
+        {
+          "frame": 39,
+          "passes": [
+            {
+              "amount": 0.7,
+              "clip": "c1",
+              "frame_in_clip": 29,
+              "intensity": 0.7,
+              "track": "t1",
+              "weight": 1.0
+            }
+          ]
+        },
+        {
+          "frame": 40,
+          "passes": []
+        }
+      ],
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 30,
+                "effect": "vignette",
+                "id": "c1",
+                "startFrame": 10
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "id": "defaults-window",
+      "kind": "frames",
+      "origin_basis": "fx-clip-sample.ts envelopeWeight, fx-compositor.ts applyPass, fx-frame-decks.ts effectsOn",
+      "title": "A default vignette draws on [start, start+duration) and nowhere else; amount is intensity (0.7)"
+    },
+    {
+      "frames": [
+        {
+          "frame": 19,
+          "passes": []
+        },
+        {
+          "frame": 20,
+          "passes": [
+            {
+              "amount": 0.1,
+              "clip": "c1",
+              "frame_in_clip": 0,
+              "intensity": 0.8,
+              "track": "t1",
+              "weight": 0.125
+            }
+          ]
+        },
+        {
+          "frame": 21,
+          "passes": [
+            {
+              "amount": 0.30000000000000004,
+              "clip": "c1",
+              "frame_in_clip": 1,
+              "intensity": 0.8,
+              "track": "t1",
+              "weight": 0.375
+            }
+          ]
+        },
+        {
+          "frame": 22,
+          "passes": [
+            {
+              "amount": 0.5,
+              "clip": "c1",
+              "frame_in_clip": 2,
+              "intensity": 0.8,
+              "track": "t1",
+              "weight": 0.625
+            }
+          ]
+        },
+        {
+          "frame": 23,
+          "passes": [
+            {
+              "amount": 0.7000000000000001,
+              "clip": "c1",
+              "frame_in_clip": 3,
+              "intensity": 0.8,
+              "track": "t1",
+              "weight": 0.875
+            }
+          ]
+        },
+        {
+          "frame": 24,
+          "passes": [
+            {
+              "amount": 0.8,
+              "clip": "c1",
+              "frame_in_clip": 4,
+              "intensity": 0.8,
+              "track": "t1",
+              "weight": 1.0
+            }
+          ]
+        },
+        {
+          "frame": 30,
+          "passes": [
+            {
+              "amount": 0.8,
+              "clip": "c1",
+              "frame_in_clip": 10,
+              "intensity": 0.8,
+              "track": "t1",
+              "weight": 1.0
+            }
+          ]
+        },
+        {
+          "frame": 35,
+          "passes": [
+            {
+              "amount": 0.8,
+              "clip": "c1",
+              "frame_in_clip": 15,
+              "intensity": 0.8,
+              "track": "t1",
+              "weight": 1.0
+            }
+          ]
+        },
+        {
+          "frame": 36,
+          "passes": [
+            {
+              "amount": 0.7000000000000001,
+              "clip": "c1",
+              "frame_in_clip": 16,
+              "intensity": 0.8,
+              "track": "t1",
+              "weight": 0.875
+            }
+          ]
+        },
+        {
+          "frame": 37,
+          "passes": [
+            {
+              "amount": 0.5,
+              "clip": "c1",
+              "frame_in_clip": 17,
+              "intensity": 0.8,
+              "track": "t1",
+              "weight": 0.625
+            }
+          ]
+        },
+        {
+          "frame": 38,
+          "passes": [
+            {
+              "amount": 0.30000000000000004,
+              "clip": "c1",
+              "frame_in_clip": 18,
+              "intensity": 0.8,
+              "track": "t1",
+              "weight": 0.375
+            }
+          ]
+        },
+        {
+          "frame": 39,
+          "passes": [
+            {
+              "amount": 0.1,
+              "clip": "c1",
+              "frame_in_clip": 19,
+              "intensity": 0.8,
+              "track": "t1",
+              "weight": 0.125
+            }
+          ]
+        },
+        {
+          "frame": 40,
+          "passes": []
+        }
+      ],
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 20,
+                "effect": "vignette",
+                "fadeInFrames": 4,
+                "fadeOutFrames": 4,
+                "id": "c1",
+                "params": {
+                  "intensity": 0.8
+                },
+                "startFrame": 20
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "id": "fades",
+      "kind": "frames",
+      "origin_basis": "fx-clip-sample.ts envelopeWeight",
+      "title": "fadeIn/fadeOut weigh the clip at the MIDDLE of each frame; amount = intensity * weight"
+    },
+    {
+      "frames": [
+        {
+          "frame": 4,
+          "passes": []
+        },
+        {
+          "frame": 5,
+          "passes": [
+            {
+              "amount": 0.0,
+              "clip": "c1",
+              "frame_in_clip": 0,
+              "intensity": 0.0,
+              "track": "t1",
+              "weight": 1.0
+            }
+          ]
+        },
+        {
+          "frame": 9,
+          "passes": [
+            {
+              "amount": 0.0,
+              "clip": "c1",
+              "frame_in_clip": 4,
+              "intensity": 0.0,
+              "track": "t1",
+              "weight": 1.0
+            }
+          ]
+        },
+        {
+          "frame": 14,
+          "passes": [
+            {
+              "amount": 0.0,
+              "clip": "c1",
+              "frame_in_clip": 9,
+              "intensity": 0.0,
+              "track": "t1",
+              "weight": 1.0
+            }
+          ]
+        },
+        {
+          "frame": 15,
+          "passes": []
+        }
+      ],
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 10,
+                "effect": "vignette",
+                "id": "c1",
+                "params": {
+                  "intensity": 0.0
+                },
+                "startFrame": 5
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "id": "intensity-zero",
+      "kind": "frames",
+      "origin_basis": "fx-compositor.ts applyPass (clampUnit(0 * weight) = 0)",
+      "title": "Intensity 0 still resolves a pass (the clip is there) whose amount is exactly 0"
+    },
+    {
+      "frames": [
+        {
+          "frame": 0,
+          "passes": [
+            {
+              "amount": 0.7,
+              "clip": "visible",
+              "frame_in_clip": 0,
+              "intensity": 0.7,
+              "track": "t3",
+              "weight": 1.0
+            }
+          ]
+        },
+        {
+          "frame": 20,
+          "passes": [
+            {
+              "amount": 0.7,
+              "clip": "visible",
+              "frame_in_clip": 20,
+              "intensity": 0.7,
+              "track": "t3",
+              "weight": 1.0
+            }
+          ]
+        },
+        {
+          "frame": 39,
+          "passes": [
+            {
+              "amount": 0.7,
+              "clip": "visible",
+              "frame_in_clip": 39,
+              "intensity": 0.7,
+              "track": "t3",
+              "weight": 1.0
+            }
+          ]
+        }
+      ],
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 40,
+                "effect": "vignette",
+                "id": "hidden-track-clip",
+                "startFrame": 0
+              }
+            ],
+            "hidden": true,
+            "id": "t1",
+            "label": "FX t1"
+          },
+          {
+            "clips": [
+              {
+                "durationFrames": 40,
+                "effect": "vignette",
+                "hidden": true,
+                "id": "hidden-clip",
+                "startFrame": 0
+              }
+            ],
+            "id": "t2",
+            "label": "FX t2"
+          },
+          {
+            "clips": [
+              {
+                "durationFrames": 40,
+                "effect": "vignette",
+                "id": "visible",
+                "startFrame": 0
+              }
+            ],
+            "id": "t3",
+            "label": "FX t3"
+          }
+        ],
+        "transitions": []
+      },
+      "id": "hidden",
+      "kind": "frames",
+      "origin_basis": "fx-frame-decks.ts visibleClips (track.hidden, clip.hidden)",
+      "title": "A hidden clip and a hidden track draw nothing; the visible clip still does"
+    },
+    {
+      "frames": [
+        {
+          "frame": 5,
+          "passes": [
+            {
+              "amount": 0.3,
+              "clip": "a",
+              "frame_in_clip": 5,
+              "intensity": 0.3,
+              "track": "t1",
+              "weight": 1.0
+            }
+          ]
+        },
+        {
+          "frame": 15,
+          "passes": [
+            {
+              "amount": 0.3,
+              "clip": "a",
+              "frame_in_clip": 15,
+              "intensity": 0.3,
+              "track": "t1",
+              "weight": 1.0
+            },
+            {
+              "amount": 0.6,
+              "clip": "b",
+              "frame_in_clip": 5,
+              "intensity": 0.6,
+              "track": "t2",
+              "weight": 1.0
+            }
+          ]
+        },
+        {
+          "frame": 25,
+          "passes": [
+            {
+              "amount": 0.6,
+              "clip": "b",
+              "frame_in_clip": 15,
+              "intensity": 0.6,
+              "track": "t2",
+              "weight": 1.0
+            }
+          ]
+        }
+      ],
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 20,
+                "effect": "vignette",
+                "id": "a",
+                "params": {
+                  "intensity": 0.3
+                },
+                "startFrame": 0
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          },
+          {
+            "clips": [
+              {
+                "durationFrames": 20,
+                "effect": "vignette",
+                "id": "b",
+                "params": {
+                  "intensity": 0.6
+                },
+                "startFrame": 10
+              }
+            ],
+            "id": "t2",
+            "label": "FX t2"
+          }
+        ],
+        "transitions": []
+      },
+      "id": "track-order",
+      "kind": "frames",
+      "origin_basis": "fx-frame-decks.ts outputEffects: the order of the tracks",
+      "title": "Passes come in the order of the tracks, whatever the frame"
+    },
+    {
+      "frames": [
+        {
+          "frame": 89,
+          "passes": []
+        },
+        {
+          "frame": 90,
+          "passes": [
+            {
+              "amount": 0.7,
+              "clip": "c1",
+              "frame_in_clip": 0,
+              "intensity": 0.7,
+              "track": "t1",
+              "weight": 1.0
+            }
+          ]
+        },
+        {
+          "frame": 95,
+          "passes": [
+            {
+              "amount": 0.7,
+              "clip": "c1",
+              "frame_in_clip": 5,
+              "intensity": 0.7,
+              "track": "t1",
+              "weight": 1.0
+            }
+          ]
+        }
+      ],
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 6,
+                "effect": "vignette",
+                "id": "c1",
+                "startFrame": 90
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "id": "last-frames-of-the-edit",
+      "kind": "frames",
+      "origin_basis": "fx-clip-sample.ts envelopeWeight (frame is relative to the clip)",
+      "title": "A clip may end exactly on the last frame of the edit (96 frames)"
+    },
+    {
+      "expected_rgba_hex": "000000ff06081fff433e86ff6851a6ff7a51a2ff6b3e79ff1a0819ff000000ff000000ff2c4876ff5f79baff737bb7ff867bb2ff9679a9ff664863ff000000ff000000ff2c5d76ff5f9abaff739cb7ff869cb2ff969aa9ff665d63ff000000ff000000ff061e1fff438686ff68ada6ff7aada2ff6b8679ff1a1e19ff000000ff",
+      "frame": 5,
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 20,
+                "effect": "vignette",
+                "id": "c1",
+                "params": {
+                  "intensity": 1.0,
+                  "radius": 0.3,
+                  "roundness": 0.6,
+                  "softness": 0.4
+                },
+                "startFrame": 0
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "height": 4,
+      "id": "pixels-centre",
+      "identity": false,
+      "input_rgba_hex": "3c5ac8ff4e5ac3ff615abdff735ab7ff865ab2ff985aacffab5aa6ffbe5aa0ff3c7bc8ff4e7bc3ff617bbdff737bb7ff867bb2ff987bacffab7ba6ffbe7ba0ff3c9cc8ff4e9cc3ff619cbdff739cb7ff869cb2ff989cacffab9ca6ffbe9ca0ff3cbec8ff4ebec3ff61bebdff73beb7ff86beb2ff98beacffabbea6ffbebea0ff",
+      "kind": "pixels",
+      "origin_basis": "vignette.ts shader + params.ts + color.ts",
+      "title": "Full intensity, black, centred: the corners darken, the middle does not",
+      "tolerance_per_channel": 1,
+      "width": 8
+    },
+    {
+      "expected_rgba_hex": "0000bcff0000bcff0000bcff0000bcff0000bcff0000bcff0000bcff0000bcff0000bcff0000bcff0000bcff0000bcff0000bcff0000bcff0000bcff160abbff0000bcff0000bcff0000bcff0000bcff0000bcff1616bbff796eb2ffad8ea6ff0000bcff0000bcff0000bcff0000bcff0000bcff5b72b7ffa8bba7ffbebea0ff",
+      "frame": 5,
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 20,
+                "effect": "vignette",
+                "id": "c1",
+                "params": {
+                  "center": {
+                    "x": 1.0,
+                    "y": 1.0
+                  },
+                  "color": {
+                    "b": 0.5,
+                    "g": 0.0,
+                    "r": 0.0
+                  },
+                  "intensity": 1.0,
+                  "radius": 0.3,
+                  "roundness": 0.6,
+                  "softness": 0.4
+                },
+                "startFrame": 0
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "height": 4,
+      "id": "pixels-off-centre-colour",
+      "identity": false,
+      "input_rgba_hex": "3c5ac8ff4e5ac3ff615abdff735ab7ff865ab2ff985aacffab5aa6ffbe5aa0ff3c7bc8ff4e7bc3ff617bbdff737bb7ff867bb2ff987bacffab7ba6ffbe7ba0ff3c9cc8ff4e9cc3ff619cbdff739cb7ff869cb2ff989cacffab9ca6ffbe9ca0ff3cbec8ff4ebec3ff61bebdff73beb7ff86beb2ff98beacffabbea6ffbebea0ff",
+      "kind": "pixels",
+      "origin_basis": "vignette.ts shader + params.ts centre y flip",
+      "title": "Centre at the bottom right, a blue tint: the dark region moves with the centre",
+      "tolerance_per_channel": 1,
+      "width": 8
+    },
+    {
+      "expected_rgba_hex": "3c5ac8ff4e5ac3ff615abdff735ab7ff865ab2ff985aacffab5aa6ffbe5aa0ff3c7bc8ff4e7bc3ff617bbdff737bb7ff867bb2ff987bacffab7ba6ffbe7ba0ff3c9cc8ff4e9cc3ff619cbdff739cb7ff869cb2ff989cacffab9ca6ffbe9ca0ff3cbec8ff4ebec3ff61bebdff73beb7ff86beb2ff98beacffabbea6ffbebea0ff",
+      "frame": 5,
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 20,
+                "effect": "vignette",
+                "id": "c1",
+                "params": {
+                  "intensity": 0.0,
+                  "radius": 0.3,
+                  "roundness": 0.6,
+                  "softness": 0.4
+                },
+                "startFrame": 0
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "height": 4,
+      "id": "pixels-amount-zero",
+      "identity": true,
+      "input_rgba_hex": "3c5ac8ff4e5ac3ff615abdff735ab7ff865ab2ff985aacffab5aa6ffbe5aa0ff3c7bc8ff4e7bc3ff617bbdff737bb7ff867bb2ff987bacffab7ba6ffbe7ba0ff3c9cc8ff4e9cc3ff619cbdff739cb7ff869cb2ff989cacffab9ca6ffbe9ca0ff3cbec8ff4ebec3ff61bebdff73beb7ff86beb2ff98beacffabbea6ffbebea0ff",
+      "kind": "pixels",
+      "origin_basis": "fx-compositor.ts amount = 0",
+      "title": "Intensity 0 keeps the picture byte for byte",
+      "tolerance_per_channel": 1,
+      "width": 8
+    },
+    {
+      "expected_rgba_hex": "3c5ac8ff4e5ac3ff615abdff735ab7ff865ab2ff985aacffab5aa6ffbe5aa0ff3c7bc8ff4e7bc3ff617bbdff737bb7ff867bb2ff987bacffab7ba6ffbe7ba0ff3c9cc8ff4e9cc3ff619cbdff739cb7ff869cb2ff989cacffab9ca6ffbe9ca0ff3cbec8ff4ebec3ff61bebdff73beb7ff86beb2ff98beacffabbea6ffbebea0ff",
+      "frame": 5,
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 5,
+                "effect": "vignette",
+                "id": "c1",
+                "params": {
+                  "intensity": 1.0,
+                  "radius": 0.3,
+                  "roundness": 0.6,
+                  "softness": 0.4
+                },
+                "startFrame": 10
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "height": 4,
+      "id": "pixels-no-effect",
+      "identity": true,
+      "input_rgba_hex": "3c5ac8ff4e5ac3ff615abdff735ab7ff865ab2ff985aacffab5aa6ffbe5aa0ff3c7bc8ff4e7bc3ff617bbdff737bb7ff867bb2ff987bacffab7ba6ffbe7ba0ff3c9cc8ff4e9cc3ff619cbdff739cb7ff869cb2ff989cacffab9ca6ffbe9ca0ff3cbec8ff4ebec3ff61bebdff73beb7ff86beb2ff98beacffabbea6ffbebea0ff",
+      "kind": "pixels",
+      "origin_basis": "fx-frame-decks.ts: no pass outside the clip",
+      "title": "No clip at the frame keeps the picture byte for byte",
+      "tolerance_per_channel": 1,
+      "width": 8
+    }
+  ],
+  "edit_duration_frames": 96,
+  "gesture_cases": [
+    {
+      "expect": {
+        "candidate_intensity": 0.2,
+        "document_intensity": 0.5,
+        "undo_entries_added": 0
+      },
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 30,
+                "effect": "vignette",
+                "id": "v1",
+                "params": {
+                  "intensity": 0.5
+                },
+                "startFrame": 10
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "id": "preview-records-nothing",
+      "origin": "useFxEdit.ts: runs the command and shows it in the preview WITHOUT recording anything",
+      "steps": [
+        {
+          "do": "begin"
+        },
+        {
+          "do": "update",
+          "intensity": 0.6
+        },
+        {
+          "do": "update",
+          "intensity": 0.2
+        },
+        {
+          "do": "status"
+        }
+      ]
+    },
+    {
+      "expect": {
+        "document_intensity": 0.2,
+        "undo_entries_added": 1
+      },
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 30,
+                "effect": "vignette",
+                "id": "v1",
+                "params": {
+                  "intensity": 0.5
+                },
+                "startFrame": 10
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "id": "one-undo-per-drag",
+      "origin": "useFxEdit.ts: releasing records ONE undo step",
+      "steps": [
+        {
+          "do": "begin"
+        },
+        {
+          "do": "update",
+          "intensity": 0.6
+        },
+        {
+          "do": "update",
+          "intensity": 0.5
+        },
+        {
+          "do": "update",
+          "intensity": 0.2
+        },
+        {
+          "do": "commit"
+        }
+      ]
+    },
+    {
+      "expect": {
+        "candidate_intensity": 0.3,
+        "document_intensity": 0.5,
+        "undo_entries_added": 0
+      },
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 30,
+                "effect": "vignette",
+                "id": "v1",
+                "params": {
+                  "intensity": 0.5
+                },
+                "startFrame": 10
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "id": "refusal-keeps-last-legal",
+      "origin": "useFxEdit.ts: a proposal the engine refuses is not shown: the preview keeps the last legal state",
+      "steps": [
+        {
+          "do": "begin"
+        },
+        {
+          "do": "update",
+          "intensity": 0.3
+        },
+        {
+          "code": "param_out_of_range",
+          "do": "update_refused",
+          "intensity": 2.0
+        }
+      ]
+    },
+    {
+      "divergence": {
+        "origin": "revert to the layer at press",
+        "rust": "commit the last legal candidate"
+      },
+      "expect": {
+        "document_intensity": 0.3,
+        "undo_entries_added": 1
+      },
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 30,
+                "effect": "vignette",
+                "id": "v1",
+                "params": {
+                  "intensity": 0.5
+                },
+                "startFrame": 10
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "id": "release-on-refusal",
+      "origin": "useFxEdit.ts: letting go on a refusal changes nothing (the layer goes back)",
+      "rust": "DIVERGENCE (by the P1 contract): the commit confirms the last LEGAL candidate",
+      "steps": [
+        {
+          "do": "begin"
+        },
+        {
+          "do": "update",
+          "intensity": 0.3
+        },
+        {
+          "code": "param_out_of_range",
+          "do": "update_refused",
+          "intensity": 2.0
+        },
+        {
+          "do": "commit"
+        }
+      ]
+    },
+    {
+      "expect": {
+        "document_intensity": 0.5,
+        "undo_entries_added": 0
+      },
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 30,
+                "effect": "vignette",
+                "id": "v1",
+                "params": {
+                  "intensity": 0.5
+                },
+                "startFrame": 10
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "id": "cancel-changes-nothing",
+      "origin": "useFxEdit.ts onCancel: live.cancel() puts the layer back",
+      "steps": [
+        {
+          "do": "begin"
+        },
+        {
+          "do": "update",
+          "intensity": 0.9
+        },
+        {
+          "do": "cancel"
+        }
+      ]
+    },
+    {
+      "expect": {
+        "document_intensity": 0.5,
+        "undo_entries_added": 0
+      },
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 30,
+                "effect": "vignette",
+                "id": "v1",
+                "params": {
+                  "intensity": 0.5
+                },
+                "startFrame": 10
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "id": "noop-records-nothing",
+      "origin": "fxSlice.ts applyFx: domain.commit(...) answers changed=false when nothing changed",
+      "steps": [
+        {
+          "do": "begin"
+        },
+        {
+          "do": "update",
+          "intensity": 0.5
+        },
+        {
+          "do": "update",
+          "intensity": 0.9
+        },
+        {
+          "do": "update",
+          "intensity": 0.5
+        },
+        {
+          "do": "commit"
+        }
+      ]
+    }
+  ],
+  "note": "Generated by scripts/pilot-fx-corpus.py; edit nothing by hand (verify fails).",
+  "refusals": [
+    {
+      "basis": "origin catalog: intensity is 0..1 (vignette.ts). The code is the Rust core's own",
+      "code": "param_out_of_range",
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 30,
+                "effect": "vignette",
+                "id": "c1",
+                "startFrame": 10
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "id": "intensity-above-range",
+      "op": {
+        "clip": "c1",
+        "op": "set_param",
+        "param": "intensity",
+        "value": 2.0
+      }
+    },
+    {
+      "basis": "origin catalog: radius is 0..1.5 (vignette.ts). The code is the Rust core's own",
+      "code": "param_out_of_range",
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 30,
+                "effect": "vignette",
+                "id": "c1",
+                "startFrame": 10
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "id": "radius-above-range",
+      "op": {
+        "clip": "c1",
+        "op": "set_param",
+        "param": "radius",
+        "value": 1.6
+      }
+    }
+  ],
+  "schema": 1
+}
