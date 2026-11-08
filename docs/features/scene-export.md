@@ -239,3 +239,7 @@ Aceite independente no head `9fbb93a`: snapshot 5/5, media/export 11/11, seis so
 Um job de export nunca guarda resultado para aplicar (o arquivo é publicado pelo próprio job), então `job.discard` num job
 de export, bem-sucedido ou falho por `resource_changed`, responde `job_nothing_to_discard` e não remove o arquivo
 exportado, os originais nem o estágio de outro export. Teste: `crates/media/tests/scene_export.rs::an_export_job_has_nothing_to_discard_and_the_discard_removes_nothing`.
+
+## Posse do renderer (BL144.10)
+
+Um export (e seu preflight) pede o renderer pela política única de [F056](renderer-ownership.md): com outro export (ou preflight) no renderer, responde `renderer_busy`/`retryable` e nada é enfileirado; com um job de miniaturas no renderer, o job é parado no próximo quadro e o export é recusado até a nova tentativa (o renderer fica reservado por 30 s). Uma sonda de preflight cancelada continua dona do renderer até largá-lo (BL144.18). Validado (testes que contam renderers, prova headless e nativa; ver F056).

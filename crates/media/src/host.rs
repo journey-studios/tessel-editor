@@ -33,8 +33,8 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::sync::{Arc, Mutex, Weak};
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 use tessel_editor_core::assets::{
@@ -48,6 +48,7 @@ use tessel_editor_core::jobs::{
 };
 use tessel_editor_core::preset::{self, Preset};
 use tessel_editor_core::preview::{PreviewPolicy, Reason};
+use tessel_editor_core::renderer_claims::{self, Claimant, Holder, Refusal, Verdict};
 use tessel_editor_core::scene_export::{SceneExportSnapshot, SceneExportSpec};
 use tessel_editor_core::scene_project::{AdmittedScene, SceneCommand, SceneSource};
 use tessel_editor_core::scene_resources::ResourceManifest;
@@ -273,6 +274,26 @@ pub struct MediaHost {
     /// the tick (that would undo the cancel in a loop); `media.thumbnails` asks for it explicitly,
     /// and another project or another opening of it starts fresh.
     thumb_paused: Option<ThumbStamp>,
+    /// Thumbnail jobs the host itself asked to stop so that an export could have the renderer
+    /// (BL144.10), with the number of cancel requests the job had once the host had stopped it.
+    /// Their end is *not* the user's cancel: it must not pause the automatic drawing. A later
+    /// request that raises the job's `cancel_requests` above that number is a person asking, by
+    /// any door (`job.cancel`, the jobs dialog, a direct registry call), and the user's decision
+    /// wins.
+    thumb_yielded: HashMap<JobId, u32>,
+    /// While set, in the future and for the project that is open, the renderer is reserved for an
+    /// export that was refused behind a thumbnail job or a probe: nothing nobody asked for starts,
+    /// and explicit thumbnails are refused. It is cleared when an export is granted, it expires,
+    /// and another project (or another opening of this one) never inherits it (see
+    /// `renderer_claims`).
+    export_reserved: Option<(Instant, ThumbStamp)>,
+    export_priority: Duration,
+    /// The `export.preflight` jobs that probe the renderer's limits (they build one). The registry
+    /// kind `preflight` is shared with checks that use none, so the host names these. Each carries
+    /// a [`ProbeClaim`] witness: the job is over when its body returns, but the renderer it asked
+    /// for lives on a side thread until that thread drops it (BL144.18), and the probe owns the
+    /// renderer until then.
+    renderer_preflights: Vec<(JobId, Weak<()>)>,
     /// `(asset, hash, height, format)` whose proxy failed: not retried until one of them changes.
     proxy_failed: Vec<ProxyKey>,
     proxy_assets: HashMap<JobId, Vec<ProxyKey>>,
@@ -377,6 +398,10 @@ impl MediaHost {
             scene_renderer: None,
             thumb_job: None,
             thumb_paused: None,
+            thumb_yielded: HashMap::new(),
+            export_reserved: None,
+            export_priority: Duration::from_secs(renderer_claims::EXPORT_PRIORITY_SECONDS),
+            renderer_preflights: Vec::new(),
             pending: HashMap::new(),
             interactive: false,
             auto_prepare: None,
@@ -414,6 +439,14 @@ impl MediaHost {
     /// `backend_unavailable`. Like `with_renderer`, each export builds its own on its own thread.
     pub fn with_scene_renderer(mut self, factory: Arc<SceneRendererFactory>) -> Self {
         self.scene_renderer = Some(factory);
+        self
+    }
+
+    /// How long a refused export keeps the renderer free of new thumbnail work (default
+    /// [`renderer_claims::EXPORT_PRIORITY_SECONDS`]). A seam for tests; `Duration::ZERO` turns the
+    /// reservation off (the retry then has to win against the window's tick on its own).
+    pub fn with_export_priority(mut self, hold: Duration) -> Self {
+        self.export_priority = hold;
         self
     }
 
@@ -511,9 +544,19 @@ impl MediaHost {
     /// renderer. A job the user cancelled, for the project that is open, leaves that project's
     /// automatic drawing paused. `poll` calls it when it sees the job finish; `job.commit` and
     /// `job.discard` call it too, because a result taken by a request is never seen by `poll`.
+    ///
+    /// A job the host stopped on behalf of an export (`thumb_yielded`) is not the user's cancel:
+    /// the drawing stays unpaused and starts again once the renderer is free.
     fn release_thumbnail_job(&mut self, state: &EditorState, id: &str, cancelled: bool) {
+        // Stopped by the host and by nobody else since: not the user's cancel.
+        let host_stop = self.thumb_yielded.remove(id).is_some_and(|at| {
+            self.registry
+                .get(id)
+                .is_none_or(|info| info.cancel_requests <= at)
+        });
         if let Some((_, stamp)) = self.thumb_job.take_if(|(job, _)| job == id)
             && cancelled
+            && !host_stop
             && stamp.is_current(state)
         {
             self.thumb_paused = Some(stamp);
@@ -531,13 +574,105 @@ impl MediaHost {
         }
     }
 
-    /// Whether a video export is running: it owns a renderer and the GPU, and a thumbnail that
-    /// nobody asked for does not compete with it (it starts when the export is over).
-    fn export_running(&self) -> bool {
-        !self
+    /// The jobs that own a renderer right now, read from the registry (the one source of truth: a
+    /// job registered is a renderer that is, or is about to be, built, and a job that was asked
+    /// to stop still owns it until its body returns). `renderer_claims` is the rule.
+    fn renderer_holders(&self) -> Vec<Holder> {
+        let mut holders: Vec<Holder> = self
             .registry
-            .matching(|info| info.kind == JobKind::VideoExport && !info.state.is_final())
-            .is_empty()
+            .matching(|info| !info.state.is_final() && renderer_claims::uses_renderer(info.kind))
+            .iter()
+            .filter_map(Holder::of)
+            .collect();
+        // The kind `preflight` also covers jobs without a renderer, so the host names the ones
+        // that probe it.
+        // A probe owns the renderer while its job is not over *or* while its side thread still
+        // holds the renderer it built: cancelling the job does not free the renderer.
+        holders.extend(
+            self.renderer_preflights
+                .iter()
+                .filter(|(job, claim)| {
+                    claim.strong_count() > 0
+                        || self
+                            .registry
+                            .get(job)
+                            .is_some_and(|info| !info.state.is_final())
+                })
+                .map(|(job, _)| Holder {
+                    job: job.clone(),
+                    kind: JobKind::Preflight,
+                }),
+        );
+        holders
+    }
+
+    /// Whether the renderer is reserved for an export that was refused behind a thumbnail job or a
+    /// probe, for the project that is open now.
+    fn export_reserved(&self, state: &EditorState) -> bool {
+        self.export_reserved
+            .as_ref()
+            .is_some_and(|(until, stamp)| Instant::now() < *until && stamp.is_current(state))
+    }
+
+    /// The policy's answer for `claimant` now.
+    fn verdict(&self, state: &EditorState, claimant: Claimant) -> Verdict {
+        renderer_claims::decide(
+            claimant,
+            &self.renderer_holders(),
+            self.export_reserved(state),
+        )
+    }
+
+    /// Carries out a refusal: asks the thumbnail job in the way to stop (export priority), reserves
+    /// the renderer for the export, and returns the retryable error. Nothing is queued: the caller
+    /// asks again.
+    fn refuse(&mut self, state: &EditorState, refusal: &Refusal) -> CommandError {
+        for job in &refusal.preempt {
+            let Some(info) = self.registry.get(job) else {
+                continue;
+            };
+            // Somebody already asked it to stop (the user, the host for this export or for
+            // another project): ask no second time, so that a later request is never mistaken
+            // for this one. Only a job nobody has stopped yet is marked as stopped for the export.
+            if info.cancel_requests > 0 || info.state.is_final() {
+                continue;
+            }
+            if info.kind == JobKind::Thumbnail {
+                self.thumb_yielded
+                    .insert(job.clone(), info.cancel_requests + 1);
+            }
+            let _ = self.registry.cancel(job);
+        }
+        if refusal.reserve {
+            self.export_reserved = Some((
+                Instant::now() + self.export_priority,
+                state.thumbnail_stamp(),
+            ));
+        }
+        refusal.error()
+    }
+
+    /// Admission of an export-class job (`export.start`, `scene.export`, the preflight that probes
+    /// the renderer). Called right before the job is registered, after every refusal that needs no
+    /// renderer, so a request that would fail anyway never stops a thumbnail job.
+    fn admit_export(
+        &mut self,
+        state: &EditorState,
+        claimant: Claimant,
+    ) -> Result<(), CommandError> {
+        let registry = self.registry.clone();
+        self.renderer_preflights.retain(|(job, claim)| {
+            claim.strong_count() > 0 || registry.get(job).is_some_and(|info| !info.state.is_final())
+        });
+        match self.verdict(state, claimant) {
+            Verdict::Grant => {
+                // The reservation did its job: the retry arrived and owns the renderer from now
+                // on (an export, or the probe its dialog asked for). Nothing waits any more.
+                self.export_reserved = None;
+                Ok(())
+            }
+            Verdict::Refuse(refusal) => Err(self.refuse(state, &refusal)),
+        }
     }
 
     /// Starts the one thumbnail job the open project needs (splats and scenes with no picture
@@ -554,7 +689,10 @@ impl MediaHost {
                 .thumb_paused
                 .as_ref()
                 .is_some_and(|stamp| stamp.is_current(state))
-            || self.export_running()
+            || !matches!(
+                self.verdict(state, Claimant::AutomaticThumbnails),
+                Verdict::Grant
+            )
         {
             return;
         }
@@ -617,12 +755,16 @@ impl MediaHost {
                 }
             }
         }
-        if self.export_running() {
-            return Err(CommandError::new(
-                "renderer_busy",
-                "A video export owns the renderer; retry thumbnails after the export finishes",
-            )
-            .details(json!({ "retryable": true })));
+        // The one policy for the renderer (`renderer_claims`): an export (or its preflight) in
+        // flight, or reserved, refuses this request; it is not queued and the caller asks again.
+        // A thumbnail job in flight is arbitrated here, below, by its stamp (reuse, or wait for the
+        // job of another project): that part needs the host's own state, not the registry's.
+        match self.verdict(state, Claimant::ExplicitThumbnails) {
+            Verdict::Grant => {}
+            Verdict::Refuse(refusal) if !refusal.same_family || self.thumb_job.is_none() => {
+                return Err(self.refuse(state, &refusal));
+            }
+            Verdict::Refuse(_) => {}
         }
         if let Some((job, stamp)) = &self.thumb_job {
             if stamp.is_current(state) {
@@ -978,6 +1120,9 @@ impl MediaHost {
             "job.get" => self.job_get(request),
             "job.wait" => self.job_wait(request),
             "job.cancel" => {
+                // The user's cancel wins over a stop the host asked for: the job's end pauses the
+                // automatic drawing, as for any cancel of the user (BL144.10). The registry counts
+                // the request, so the same holds for a cancel that does not come through here.
                 let info = self.registry.cancel(text(request, "job")?)?;
                 Ok(json!({ "action": "job.cancel", "info": info.to_json() }))
             }
@@ -1678,11 +1823,19 @@ impl MediaHost {
         let tools = self.tools.clone();
         let (snapshot, export) = Self::export_request(state, request)?;
         let factory = self.renderer.clone();
+        let probes_renderer = factory.is_some();
+        if probes_renderer {
+            // The probe builds a renderer: it asks for it like an export (BL144.10).
+            self.admit_export(state, Claimant::Preflight)?;
+        }
+        // Held by the job body and by the probe's side thread, whichever ends last (BL144.18).
+        let claim = Arc::new(());
+        let witness = Arc::downgrade(&claim);
         let (id, slot) = self.start(JobKind::Preflight, "Export preflight", move |ctx| {
             let tools = tools.get()?;
             ctx.stage("renderer", 1);
             let capabilities = factory
-                .map(|factory| probe_capabilities(factory, ctx))
+                .map(|factory| probe_capabilities(factory, claim, ctx))
                 .transpose()?
                 .flatten();
             ctx.advance(1);
@@ -1692,6 +1845,9 @@ impl MediaHost {
             ctx.advance(1);
             Ok((None, report))
         });
+        if probes_renderer {
+            self.renderer_preflights.push((id.clone(), witness));
+        }
         self.finish(state, request, id, slot)
     }
 
@@ -1708,6 +1864,7 @@ impl MediaHost {
             )
         })?;
         let (snapshot, export) = Self::export_request(state, request)?;
+        self.admit_export(state, Claimant::Export)?;
         let (id, slot) = self.start(JobKind::VideoExport, "Export video", move |ctx| {
             let tools = tools.get()?;
             let mut renderer = factory()?;
@@ -1735,6 +1892,7 @@ impl MediaHost {
             )
         })?;
         let export = self.freeze_scene_export(state, request)?;
+        self.admit_export(state, Claimant::Export)?;
         let tools = self.tools.clone();
         let (id, slot) = self.start(JobKind::VideoExport, "Export scene", move |ctx| {
             let tools = tools.get()?;
@@ -2027,8 +2185,14 @@ fn decode_all(
 /// Asks the renderer for its limits on a side thread, so the job can still be cancelled while a
 /// renderer is slow to start. `None` when the renderer is unavailable: the preflight then
 /// reports without its limits instead of failing.
+///
+/// Cancelling does **not** free the renderer: the side thread owns it until it drops it, however
+/// long that takes. `claim` is the host's witness of that ownership (BL144.18): the thread keeps
+/// it alive past the renderer's drop, so the host counts the probe as the owner of the renderer
+/// until the renderer is really gone, not until the job reports `cancelled`.
 fn probe_capabilities(
     factory: Arc<RendererFactory>,
+    claim: Arc<()>,
     ctx: &JobContext,
 ) -> Result<Option<tessel_editor_core::backend::Capabilities>, JobError> {
     let (sender, receiver) = std::sync::mpsc::channel();
@@ -2036,6 +2200,8 @@ fn probe_capabilities(
         let capabilities = factory()
             .ok()
             .and_then(|mut renderer| renderer.capabilities().ok());
+        // The renderer is dropped by now (the closure above owned it); only then is it free.
+        drop(claim);
         let _ = sender.send(capabilities);
     });
     loop {

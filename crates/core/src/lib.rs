@@ -25,6 +25,7 @@ pub mod persist;
 pub mod plan;
 pub mod preset;
 pub mod preview;
+pub mod renderer_claims;
 pub mod scene_edit;
 pub mod scene_export;
 pub mod scene_interaction;

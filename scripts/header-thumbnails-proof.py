@@ -46,11 +46,21 @@ A precondition that does not hold (the job finished before it could be cancelled
 FAIL, never a pass. A missing OS capture is a recorded SKIP (the run is then `complete: false`, exit 2).
 Screenshots are written under `--out`; they are copied elsewhere only with `--copy-screenshots`.
 
+BL144.10 (both surfaces, real runtime): a thumbnail job seen running is refused an export with `renderer_busy`
+(`retryable`, `queued: false`, `stopping`, reserved for the export); the refused export is never a job and never
+appears by itself; an explicit thumbnail request is refused while the renderer is reserved; the stopped job ends
+cancelled between frames; the explicit retry is granted and the movie is written; the renderer probe of
+`export.preflight` cancelled and re-asked at once is a refusal followed by a granted retry. Native only: the user's
+pause survives an export that runs in the middle (no thumbnail job for 5 s after it, pictures pending) and an
+explicit request resumes the drawing; after an export that stopped the drawing the window draws again by itself.
+Counting renderers is `crates/media/tests/renderer_exclusion.rs` (doubles that count themselves); here the real
+runtime is observed through the same operations a caller has.
+
 Not proven here: a physical pointer, a real GPU (SwiftShader), a real SHARP file (BL143, another PR), a
 black-monitor root cause (BL144.4: the earlier captures were of a sequence with no clip), a dependency going from
 missing to present (a scene whose splat is not in the library is refused by `media.import` with
 `missing_dependency`, so no operation reaches that state; `crates/media/tests/thumbnails.rs` covers it with the
-library edited directly), the user's pause surviving a video export (BL144.10), an export racing a thumbnail.
+library edited directly), a physical pointer in the export dialog (the dialog's own retry is covered by `crates/desktop` unit tests; its screens by `scripts/live-flow-proof.py`).
 """
 import argparse
 import json
@@ -246,6 +256,47 @@ def require_cancelled_midway(check, label, info):
     state, done, total = info.get('state'), info.get('done') or 0, info.get('total') or 0
     check(f'{label}: the job ended cancelled (not {state!r})', state == 'cancelled', info)
     check(f'{label}: it was cancelled midway ({done} of {total} frames drawn)', 0 < total and done < total, info)
+
+
+# ---- BL144.10: one renderer between exports and thumbnails ----
+
+def require_busy_refusal(check, label, good, error, stopping=None, reserved=None):
+    """The answer of a request the host refused because the renderer is not free: typed, retryable, and
+    explicitly NOT queued (`queued: false`). `stopping`/`reserved`, when given, must match."""
+    error = error if isinstance(error, dict) else {}
+    details = error.get('details') or {}
+    check(f'{label}: refused with renderer_busy (not accepted)', good is False and error.get('code') == 'renderer_busy',
+          error)
+    check(f'{label}: the refusal is retryable and says nothing was queued',
+          details.get('retryable') is True and details.get('queued') is False, details)
+    if stopping is not None:
+        check(f'{label}: the job in the way {"was" if stopping else "was not"} asked to stop',
+              bool(details.get('stopping')) is stopping, details)
+    if reserved is not None:
+        check(f'{label}: the renderer {"is" if reserved else "is not"} reserved for the export',
+              bool(details.get('reserved_for_export')) is reserved, details)
+    return details
+
+
+def retry_until_granted(request, ask, seconds=120, sleep=time.sleep, clock=time.time):
+    """The caller's explicit retry after `renderer_busy`: the request is sent again, never remembered by the host.
+    Returns `(payload, attempts)`. Any other error is a FAIL at once; a renderer that never frees is a FAIL."""
+    deadline = clock() + seconds
+    attempts = 0
+    while True:
+        attempts += 1
+        good, payload = ask(request)
+        if good:
+            return payload, attempts
+        if not isinstance(payload, dict) or payload.get('code') != 'renderer_busy':
+            raise ProofFailure(f'{request.get("op")}: refused for another reason than a busy renderer: {payload}')
+        if clock() >= deadline:
+            raise ProofFailure(f'{request.get("op")}: the renderer was still busy after {seconds}s ({attempts} asks)')
+        sleep(0.25)
+
+
+def jobs_of_kind(read_jobs, kind):
+    return [job for job in read_jobs() if job.get('kind') == kind]
 
 
 def capture(surface, check, path, what):
@@ -570,6 +621,114 @@ def make_scenario(fixtures, variants):
             shot = capture(surface, check, scratch / 'bl144-window.png', 'the window with a clip on the monitor')
             if shot:
                 shots.append(shot)
+        # ---- BL144.10: an export and the thumbnails take turns on the one renderer (the real runtime) ----
+        tiny = {'id': 'tiny', 'name': 'Tiny', 'width': 320, 'height': 180, 'fps': 24}
+
+        def export_request(workspace, name):
+            return {'op': 'export.start', 'preset': tiny, 'destination': str(workspace / name), 'range': [0, 12],
+                    'wait': False}
+
+        def preflight_request(workspace, name):
+            return {'op': 'export.preflight', 'preset': tiny, 'destination': str(workspace / name), 'range': [0, 12],
+                    'wait': False}
+
+        def exports():
+            return jobs_of_kind(thumbnail_jobs, 'video-export')
+
+        def job_final(job_id):
+            found = {j['id']: j for j in thumbnail_jobs()}.get(job_id)
+            return found if found and is_final(found) else None
+
+        def project_with_clip(name, sequence, workspace):
+            create(name, sequence, workspace)
+            import_media(base_files_for_export)
+            ok({'op': 'track.add', 'id': 'ex-track', 'name': 'Export', 'kind': 'video'})
+            ok({'op': 'clip.add', 'id': 'ex-clip', 'track': 'ex-track', 'asset': SCENE_ID, 'start': 0,
+                'duration': 24})
+
+        base_files_for_export = [fixtures / 'cloud.splat', fixtures / 'scene.tessel-scene.json'] + variants
+        ws_d = scratch / 'ws-d'
+        project_with_clip('Dune', 'cut-d', ws_d)
+        # Thumbnail first, export asked while its frame is in flight.
+        if surface.name == 'headless':
+            ok({'op': 'media.thumbnails', 'wait': False})
+        running = await_in_flight(thumbnail_jobs, 'Dune\'s thumbnail job')
+        check(f'Dune\'s thumbnail job is running ({running["done"]} of {running["total"]} frames drawn)',
+              in_flight(running), running)
+        good, refused = surface.op(export_request(ws_d, 'a.mp4'))
+        require_busy_refusal(check, 'export.start behind a running thumbnail job', good, refused, stopping=True,
+                             reserved=True)
+        check('the refused export is not a job (nothing was queued)', not exports(), exports())
+        good, explicit = surface.op({'op': 'media.thumbnails'})
+        require_busy_refusal(check, 'media.thumbnails while the renderer is reserved for the export', good, explicit,
+                             reserved=True)
+        stopped = wait_for(lambda: job_final(running['id']), 'the thumbnail job the host stopped for the export')
+        check('the thumbnail job ended cancelled (stopped between frames, not finished)',
+              stopped['state'] == 'cancelled', stopped)
+        time.sleep(2)
+        check('the refused export never appears by itself', not exports() and not (ws_d / 'a.mp4').exists(),
+              exports())
+        started, asks = retry_until_granted(export_request(ws_d, 'a.mp4'), surface.op)
+        export_id = started['job']
+        check(f'the explicit retry is granted after {asks} ask(s) and is a real export job', bool(export_id), started)
+        done = wait_for(lambda: job_final(export_id), 'the export', 900)
+        check('the export succeeded', done['state'] == 'succeeded', done)
+        movie = ws_d / 'a.mp4'
+        check('the movie exists and is not empty', movie.is_file() and movie.stat().st_size > 1000,
+              movie.stat().st_size if movie.exists() else None)
+        if surface.name == 'native':
+            # The stop for the export is not the user's cancel: the window draws again by itself.
+            wait_for(lambda: all(a['thumbnail']['state'] == 'ready' for a in library().values()),
+                     'the window to draw the thumbnails again after the export', 600)
+            check('the thumbnails came back after the export without anybody asking again', True)
+        else:
+            report = ok({'op': 'media.thumbnails'})
+            check('the explicit request after the export draws every picture', report['applied']['failed'] == [],
+                  report)
+            check('every picture of Dune is ready',
+                  all(a['thumbnail']['state'] == 'ready' for a in library().values()), library())
+
+        # The dialog's preflight: asked and re-asked right after cancelling the previous one (BL144.18/.19).
+        first_probe, asks = retry_until_granted(preflight_request(ws_d, 'p.mp4'), surface.op)
+        probe_id = first_probe['job']
+        ok({'op': 'job.cancel', 'job': probe_id})
+        good, again = surface.op(preflight_request(ws_d, 'p2.mp4'))
+        if good:
+            check('the second preflight right after the cancel was granted (the old probe had already let go)', True,
+                  again)
+            second_probe = again
+        else:
+            require_busy_refusal(check, 'a preflight right after cancelling the previous one', good, again,
+                                 stopping=True)
+            second_probe, asks = retry_until_granted(preflight_request(ws_d, 'p2.mp4'), surface.op)
+        report_done = wait_for(lambda: job_final(second_probe['job']), 'the second preflight', 600)
+        check('the retried preflight finished with a report', report_done['state'] == 'succeeded'
+              and 'blockers' in (report_done.get('result') or {}), report_done)
+
+        # Native only (the window has the tick): the user's pause survives an export that runs in the middle.
+        if surface.name == 'native':
+            ws_e = scratch / 'ws-e'
+            project_with_clip('Ember', 'cut-e', ws_e)
+            running = await_in_flight(thumbnail_jobs, 'Ember\'s window job')
+            ok({'op': 'job.cancel', 'job': running['id']})
+            stopped = wait_for(lambda: job_final(running['id']), 'the job the user cancelled to end')
+            require_cancelled_midway(check, 'Ember\'s job, cancelled by the user', stopped)
+            granted, asks = retry_until_granted(export_request(ws_e, 'b.mp4'), surface.op, seconds=30)
+            check('with the drawing paused by the user the export is granted at once', asks == 1, asks)
+            done = wait_for(lambda: job_final(granted['job']), 'the export between the pause', 900)
+            check('the export between the pause succeeded', done['state'] == 'succeeded', done)
+            ids_at_end = {j['id'] for j in thumbnail_jobs() if j.get('kind') == 'thumbnail'}
+            time.sleep(PAUSE_SECONDS)
+            ids_later = {j['id'] for j in thumbnail_jobs() if j.get('kind') == 'thumbnail'}
+            check(f'the user\'s pause survived the export: no thumbnail job started in the {PAUSE_SECONDS}s after it',
+                  ids_later == ids_at_end, (ids_at_end, ids_later))
+            check('every picture of Ember is still pending (the pause held)',
+                  all(a['thumbnail']['state'] == 'pending' for a in library().values()), library())
+            ok({'op': 'media.thumbnails'})
+            wait_for(lambda: all(a['thumbnail']['state'] == 'ready' for a in library().values()),
+                     'the explicit request to resume the drawing', 600)
+            check('the explicit request resumed the drawing after the export', True)
+
         return shots
     return scenario
 

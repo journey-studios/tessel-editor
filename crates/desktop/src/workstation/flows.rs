@@ -5,6 +5,8 @@
 //! `media.import`, `project.package`, `export.start`, …). That is what keeps the dialog, the
 //! automation tree and the CLI on one set of rules; the dialog only collects strings.
 
+use std::time::Duration;
+
 use serde_json::{Value, json};
 use tessel_editor_core::CommandError;
 use tessel_editor_core::preset::BUILTIN_IDS;
@@ -431,6 +433,56 @@ pub fn report_request(kind: FlowKind, values: &[(&str, String)]) -> Option<Value
 /// Shown in a dialog's report while its preflight job runs.
 pub const VERIFYING: &str = "Verificando…";
 
+/// Shown in a dialog's report while its verification waits for the renderer (BL144.19).
+pub const WAITING_FOR_RENDERER: &str = "Aguardando o renderer ficar livre…";
+
+/// How the dialog answers `renderer_busy` to its own verification (BL144.19). The host never
+/// queues: a refusal is not a promise. The dialog's *verification* is read-only and idempotent, so
+/// the dialog itself asks again, explicitly, every [`VERIFY_RETRY_EVERY`] up to
+/// [`VERIFY_RETRY_ATTEMPTS`] times (about ten seconds, the time a stopped frame or probe needs),
+/// then stops and says so, leaving the *Verificar* button to try again. The dialog's *submit* never
+/// retries by itself: a request that changes something is the person's to repeat, so an export is
+/// never started later than the click that asked for it.
+pub const VERIFY_RETRY_EVERY: Duration = Duration::from_millis(250);
+pub const VERIFY_RETRY_ATTEMPTS: u32 = 40;
+
+/// Whether `error` is the host saying "the renderer is not free now, ask again".
+pub fn is_renderer_busy(error: &CommandError) -> bool {
+    error.code == "renderer_busy"
+        && error
+            .details
+            .as_deref()
+            .is_some_and(|details| details["retryable"] == true)
+}
+
+/// What a dialog says about a refusal: the host's own message, except `renderer_busy`, which gets
+/// the plain account of who holds the renderer, whether it was told to stop, and that **nothing was
+/// queued** (the next click is a new request).
+pub fn describe_refusal(error: &CommandError) -> String {
+    if !is_renderer_busy(error) {
+        return error.message.clone();
+    }
+    let details = error.details.as_deref();
+    let holder = match details.and_then(|details| details["job_kind"].as_str()) {
+        Some("video-export") => "uma exportação",
+        Some("preflight") => "uma verificação anterior",
+        Some("thumbnail") => "o desenho das miniaturas",
+        _ => "outra tarefa",
+    };
+    let stopping = details.is_some_and(|details| details["stopping"] == true);
+    if stopping {
+        format!(
+            "O renderer está ocupado com {holder}, que foi mandado parar. Nada foi enfileirado: \
+             tente de novo em instantes."
+        )
+    } else {
+        format!(
+            "O renderer está ocupado com {holder}. Nada foi enfileirado: tente de novo quando \
+             ela terminar."
+        )
+    }
+}
+
 /// One-line account of a preflight/listing report, for the dialog and the status bar.
 pub fn describe_report(report: &Value) -> String {
     let blockers = report["blockers"].as_array().map_or(0, Vec::len);
@@ -621,6 +673,50 @@ mod tests {
                 .unwrap()
                 .get("audio")
                 .is_none()
+        );
+    }
+
+    fn busy(details: Value) -> CommandError {
+        CommandError::new("renderer_busy", "The renderer belongs to someone").details(details)
+    }
+
+    #[test]
+    fn a_busy_renderer_is_retryable_only_when_the_host_says_so() {
+        assert!(is_renderer_busy(&busy(json!({"retryable": true}))));
+        assert!(!is_renderer_busy(&busy(json!({"retryable": false}))));
+        assert!(!is_renderer_busy(&CommandError::new(
+            "renderer_busy",
+            "no details"
+        )));
+        assert!(!is_renderer_busy(
+            &CommandError::new("invalid_request", "x").details(json!({"retryable": true}))
+        ));
+    }
+
+    #[test]
+    fn a_busy_refusal_says_who_holds_the_renderer_and_that_nothing_was_queued() {
+        let stopping = describe_refusal(&busy(
+            json!({"retryable": true, "queued": false, "job_kind": "preflight", "stopping": true}),
+        ));
+        assert!(stopping.contains("uma verificação anterior"), "{stopping}");
+        assert!(stopping.contains("mandado parar"), "{stopping}");
+        assert!(stopping.contains("Nada foi enfileirado"), "{stopping}");
+        let export = describe_refusal(&busy(
+            json!({"retryable": true, "queued": false, "job_kind": "video-export"}),
+        ));
+        assert!(export.contains("uma exportação"), "{export}");
+        assert!(!export.contains("mandado parar"), "{export}");
+        let thumbnails = describe_refusal(&busy(
+            json!({"retryable": true, "job_kind": "thumbnail", "stopping": true}),
+        ));
+        assert!(thumbnails.contains("miniaturas"), "{thumbnails}");
+        // Any other error keeps the host's own words.
+        assert_eq!(
+            describe_refusal(&CommandError::new(
+                "invalid_request",
+                "Expected `destination`"
+            )),
+            "Expected `destination`"
         );
     }
 

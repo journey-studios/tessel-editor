@@ -75,8 +75,10 @@ cabeçalho mudou, sem alterar rótulos nem handlers de desempenho.
 - **Prazos declarados:** o cancelamento é observado **entre quadros**: no pior caso, um quadro em andamento
   (`FRAME_TIMEOUT` = 60 s) mais a partida do renderizador; o `Renderer` bloqueia e não é interrompível no meio do quadro.
   Não há retentativa infinita: uma falha é lembrada por identidade e só `retry: true` a refaz.
-- **Recursos:** com um export de vídeo em andamento (`export_running`) o tick **não** inicia miniaturas que ninguém pediu
-  (elas começam quando o export acaba). O custo por tick é só montar as identidades (consultas ao modelo, sem clonar o
+- **Recursos:** um renderer por vez entre exports e miniaturas, pela política única de [F056](renderer-ownership.md)
+  (BL144.10): com um export (ou seu preflight) em andamento, ou o renderer reservado para um export recusado, o tick
+  **não** inicia miniaturas que ninguém pediu (elas começam quando o export acaba) e `media.thumbnails` responde
+  `renderer_busy`/`retryable`. O custo por tick é só montar as identidades (consultas ao modelo, sem clonar o
   estado nem ler arquivos); a cópia do projeto só acontece ao iniciar um job e é mínima. Não há número medido de
   custo por tick neste head.
 - O resultado volta pelo `poll` do tick da janela; a UI não espera por job algum.
@@ -199,9 +201,10 @@ canônico da `main`): binário ausente, processo que morre, resposta que não é
 - **BL144.3 (impressão do runtime):** o cache só é invalidado por `VERSION`/`CACHE_VERSION`; reconstruir `runtime/dist` não
   refaz imagens guardadas. Plano: o runtime expõe o hash do bundle em `capabilities`, o adaptador o inclui na impressão do
   cache e `media.thumbnails {rebuild: true}` limpa só as miniaturas. Não implementado.
-- **BL144.10:** um export de vídeo iniciado depois de uma miniatura ainda pode sobrepor renderers; só a miniatura explícita
-  durante um export responde `renderer_busy`/`retryable`. Não há garantia de renderer exclusivo, e a pausa do usuário
-  sobrevivendo a um export não foi provada.
+- **BL144.10:** validado em [F056](renderer-ownership.md) (um export iniciado atrás de um quadro de miniatura é
+  recusado com `renderer_busy`/`retryable`, o job de miniaturas é mandado parar e o renderer fica reservado para o
+  export; a pausa do usuário sobrevive a export e preflight, concluídos, cancelados ou falhos). Limites: BL144.18
+  (a sonda do preflight cancelado) foi corrigida e BL144.19 (o diálogo) tem política e prova; ver F056.
 - **BL144.13:** a convenção de eixos do SPZ e do PLY no Spark só é provada por testes unitários do core (medida entre
   formatos); a prova ponta a ponta e o teste de runtime usam `.splat`.
 - **BL144.14:** o custo de montar identidades (BFS) por paint/tick não foi medido.
@@ -210,12 +213,16 @@ canônico da `main`): binário ausente, processo que morre, resposta que não é
 - Mudou o runtime da `main` (PR #28, perf do viewport) em relação ao `ce71ce9`; as execuções acima são todas sobre o
   runtime novo (hashes acima).
 
-## Política de requisições (R2, vigente)
+## Política de requisições (R2, vigente; export: F056)
 
 `media.thumbnails` valida os ativos antes de alterar a pausa por cancelamento. Durante cancelamento ou ao pedir
 filtro/retry com um job atual, responde `thumbnail_busy` com `retryable: true`; o chamador repete depois do término. O
-pedido não é aceito nem enfileirado nesses casos. Durante export responde `renderer_busy`/`retryable`: é um erro
-transitório, não uma fila. O agendamento automático espera o export acabar; uma miniatura explícita nunca preempta o
-export nem desfaz a pausa do usuário. O cancelamento é conferido antes de enviar cada quadro ao renderer. O teto de
+pedido não é aceito nem enfileirado nesses casos. Com um export (normal, dirigido ou seu preflight) em andamento, ou o
+renderer reservado para um export que foi recusado atrás de um job de miniaturas, responde `renderer_busy`/`retryable`:
+é um erro transitório, não uma fila. O agendamento automático espera o export acabar; uma miniatura explícita nunca
+preempta o export nem desfaz a pausa do usuário. Inversamente, um export pedido com um job de miniaturas no renderer é
+recusado (`renderer_busy`), o job é mandado parar no próximo quadro (sem pausar o desenho: não é cancelamento do
+usuário) e o renderer fica reservado por 30 s para a nova tentativa ([F056](renderer-ownership.md)). O cancelamento é
+conferido antes de enviar cada quadro ao renderer. O teto de
 amostragem é 20 mil posições. Os lados da miniatura são pares entre 2 e `MAX_SIDE` mesmo em proporções extremas (aspecto
 extremo é aproximado).
