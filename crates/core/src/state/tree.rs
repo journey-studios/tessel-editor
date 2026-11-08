@@ -12,7 +12,8 @@ use std::collections::HashMap;
 use serde_json::{Map, Value, json};
 
 use super::inspector::{
-    InspectorTab, PropertyDef, PropertyKind, SECTIONS, section_def, section_properties,
+    InspectorTab, PropertyDef, PropertyKind, SECTIONS, property_section, section_def,
+    section_properties,
 };
 use super::layout::{Layout, Node as LayoutNode, PanelKind};
 use super::timeline::{ClipKind, TrackKind, ZOOM_MAX, ZOOM_MIN};
@@ -781,6 +782,11 @@ fn build_inspector(state: &EditorState, nodes: &mut Vec<Node>) {
         };
         nodes.push(node);
         for property in section_properties(section.id) {
+            // One node per property: a fade is listed by the section that owns it for the
+            // selected clip's kind.
+            if property_section(property, clip.map(|clip| clip.kind)) != section.id {
+                continue;
+            }
             nodes.push(property_node(
                 state,
                 &id,
@@ -901,7 +907,8 @@ fn property_node(state: &EditorState, parent: &str, property: &PropertyDef, visi
     let inspector = &state.inspector;
     let clip = state.inspector_clip();
     let applicable = clip.is_some_and(|clip| {
-        section_def(property.section).is_some_and(|section| section.applies.includes(clip.kind))
+        section_def(property_section(property, Some(clip.kind)))
+            .is_some_and(|section| section.applies.includes(clip.kind))
     });
     let mut node = Node::new(
         format!("property:{}", property.id),
@@ -910,7 +917,10 @@ fn property_node(state: &EditorState, parent: &str, property: &PropertyDef, visi
     )
     .parent(parent)
     .visible(visible)
-    .state("section", property.section)
+    .state(
+        "section",
+        property_section(property, clip.map(|clip| clip.kind)),
+    )
     .state("default", property.default.to_json());
     let editable = applicable && clip.is_some_and(|clip| inspector.is_enabled(clip.id, property));
     node = match (clip, applicable) {

@@ -211,8 +211,49 @@ pub struct AudioSegment {
     pub gain: f32,
     /// `-1.0` left .. `1.0` right.
     pub pan: f32,
+    /// Fade-in length in output sample frames, from the clip's first sample. Already resolved
+    /// against the clip length by [`resolve_fades`]; `0` is no fade.
     pub fade_in: u64,
+    /// Fade-out length in output sample frames, up to the clip's last sample.
     pub fade_out: u64,
+    /// Output sample frames from the clip's first sample to this segment's first sample. A
+    /// segment is only the part of a clip inside the requested interval, so the fades are
+    /// placed by the clip, never by the interval: a mix in chunks is the mix in one piece.
+    pub clip_offset: u64,
+    /// Output sample frames of the whole clip (its fades are relative to this length).
+    pub clip_frames: u64,
+}
+
+impl AudioSegment {
+    /// The fade multiplier of the `index`-th output frame of this segment: a linear ramp from
+    /// silence over the first `fade_in` frames of the clip and to silence over the last
+    /// `fade_out`, `1.0` everywhere else.
+    pub fn fade_gain(&self, index: u64) -> f32 {
+        let at = self.clip_offset + index;
+        let mut gain = 1.0;
+        if self.fade_in > 0 && at < self.fade_in {
+            gain *= at as f32 / self.fade_in as f32;
+        }
+        let remaining = self.clip_frames.saturating_sub(at);
+        if self.fade_out > 0 && remaining <= self.fade_out {
+            gain *= remaining as f32 / self.fade_out as f32;
+        }
+        gain
+    }
+}
+
+/// Fade lengths for a clip of `clip_frames` output frames. Fades that fit are kept as they
+/// are. When their sum is longer than the clip they are shortened in proportion to their
+/// requested lengths until they exactly fill it, so the two ramps meet at full gain at one
+/// frame and never multiply each other into a dip; a single fade longer than the clip is
+/// cut to the clip.
+pub fn resolve_fades(fade_in: u64, fade_out: u64, clip_frames: u64) -> (u64, u64) {
+    let total = fade_in + fade_out;
+    if total <= clip_frames {
+        return (fade_in, fade_out);
+    }
+    let shortened = (u128::from(fade_in) * u128::from(clip_frames) / u128::from(total)) as u64;
+    (shortened, clip_frames - shortened)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -235,6 +276,7 @@ impl AudioPlan {
                 "source_start": segment.source_start, "source_rate": segment.source_rate,
                 "speed": segment.speed, "gain": segment.gain, "pan": segment.pan,
                 "fade_in": segment.fade_in, "fade_out": segment.fade_out,
+                "clip_offset": segment.clip_offset, "clip_frames": segment.clip_frames,
             })).collect::<Vec<_>>(),
         })
     }
@@ -246,7 +288,7 @@ pub trait AudioBackend {
     fn mix(&mut self, plan: &AudioPlan) -> Result<Pcm, BackendError>;
 }
 
-/// Reference mixer: decodes WAV files and sums segments with gain, pan and linear fades.
+/// Reference mixer: decodes WAV files and sums segments with gain, pan and linear fades (placed by the clip, see [`AudioSegment::fade_gain`]).
 #[derive(Debug, Default)]
 pub struct OfflineMixer {
     cache: HashMap<String, Pcm>,
@@ -313,11 +355,8 @@ impl AudioBackend for OfflineMixer {
                     (channel(0) * balance_left, channel(1) * balance_right)
                 };
                 let mut gain = segment.gain;
-                if segment.fade_in > 0 && index < segment.fade_in {
-                    gain *= index as f32 / segment.fade_in as f32;
-                }
-                if segment.fade_out > 0 && segment.frames - index <= segment.fade_out {
-                    gain *= (segment.frames - index) as f32 / segment.fade_out as f32;
+                if segment.fade_in > 0 || segment.fade_out > 0 {
+                    gain *= segment.fade_gain(index);
                 }
                 let at = (segment.output_start + index) as usize * 2;
                 if let Some(slot) = out.get_mut(at) {
@@ -386,6 +425,8 @@ mod tests {
             pan,
             fade_in: 0,
             fade_out: 0,
+            clip_offset: 0,
+            clip_frames: 100,
         };
         let plan = AudioPlan {
             sample_rate: 1000,
@@ -424,6 +465,8 @@ mod tests {
                 pan: 0.0,
                 fade_in: 0,
                 fade_out: 0,
+                clip_offset: 0,
+                clip_frames: 10,
             }],
         };
         assert_eq!(

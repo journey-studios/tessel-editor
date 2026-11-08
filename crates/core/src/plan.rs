@@ -12,7 +12,7 @@
 use serde_json::{Value, json};
 
 use crate::assets::{Asset, AudioStream, MediaKind, Source};
-use crate::audio::{AudioPlan, AudioSegment};
+use crate::audio::{AudioPlan, AudioSegment, resolve_fades};
 use crate::content::{Camera, TextSpec};
 use crate::id::Id;
 use crate::state::inspector::{self, Value as PropertyValue};
@@ -886,23 +886,24 @@ impl EditorState {
                 .map_or(0, Ratio::round);
             let output_start = sample_at(start);
             let output_end = sample_at(end);
-            let fade_samples = |frames: f64| -> u64 {
-                rate.frame_to_time(frames.round() as i64)
+            let samples_of = |frames: i64| -> u64 {
+                rate.frame_to_time(frames)
                     .mul_int(i64::from(MIX_SAMPLE_RATE))
                     .map_or(0, Ratio::round)
                     .max(0) as u64
             };
-            // Fades are relative to the clip, not to the requested range. The fades of a video
-            // clip are visual (opacity): its sound does not follow them.
-            let fade_in = if start == clip.start && !embedded {
-                fade_samples(resolver.number(clip, "fade_in"))
+            // The fades of an audio clip are relative to the clip (its current start and end,
+            // so a trim or a move changes where they sit), not to the requested range. The
+            // fades of a video clip are visual (opacity): its sound does not follow them.
+            let clip_frames = samples_of(clip.end() - clip.start);
+            let (fade_in, fade_out) = if embedded {
+                (0, 0)
             } else {
-                0
-            };
-            let fade_out = if end == clip.end() && !embedded {
-                fade_samples(resolver.number(clip, "fade_out"))
-            } else {
-                0
+                resolve_fades(
+                    samples_of(resolver.number(clip, "fade_in").round() as i64),
+                    samples_of(resolver.number(clip, "fade_out").round() as i64),
+                    clip_frames,
+                )
             };
             segments.push(AudioSegment {
                 clip: clip.id,
@@ -917,6 +918,12 @@ impl EditorState {
                 pan: (resolver.number(clip, "pan") / 100.0) as f32,
                 fade_in,
                 fade_out,
+                clip_offset: if embedded {
+                    0
+                } else {
+                    samples_of(start - clip.start)
+                },
+                clip_frames: if embedded { 0 } else { clip_frames },
             });
         }
         Ok(AudioPlan {

@@ -164,6 +164,73 @@ fn exports_video_and_audio_that_match_the_plan() {
     assert!(expected_rms > 0.05, "the tone is audible in the mix");
 }
 
+/// BL142: an audio clip whose fade-in crosses the 10 s chunk the export mixes by. The reported
+/// RMS is the one of the chunked mix, so it must be the RMS of the whole sequence mixed in one
+/// piece; a fade placed by the chunk instead of by the clip would jump to full gain at the cut.
+#[test]
+fn an_audio_fade_that_crosses_the_export_chunks_is_the_fade_of_the_whole_mix() {
+    use tessel_editor_core::audio::{AudioBackend, OfflineMixer, Pcm, encode_wav_pcm16};
+    let dir = temp("export-fade-chunks");
+    let wav = dir.join("dc.wav");
+    let dc = Pcm {
+        sample_rate: 48_000,
+        channels: 1,
+        samples: vec![0.5; 48_000 * 4],
+    };
+    fs::write(&wav, encode_wav_pcm16(&dc)).unwrap();
+    let mut state = EditorState::demo();
+    for request in [
+        json!({"op":"project.create","name":"F","sequence":"main","rate":24,"width":64,"height":36,"length":300}),
+        json!({"op":"asset.add","kind":"audio","id":"dc","name":"DC","path":wav}),
+        json!({"op":"track.add","id":"a","name":"A","kind":"audio"}),
+        // Frames 230..290; the first export chunk ends at frame 240 (10 s).
+        json!({"op":"clip.add","id":"c","track":"a","asset":"dc","start":230,"duration":60,
+            "properties":{"pan":-100}}),
+        json!({"op":"clip.property","clip":"c","property":"fade_in","value":48}),
+        json!({"op":"clip.property","clip":"c","property":"fade_out","value":24}),
+    ] {
+        headless::execute(&mut state, &request).unwrap();
+    }
+    let whole = {
+        let plan = state.plan_audio(0, 300).unwrap();
+        OfflineMixer::default().mix(&plan).unwrap()
+    };
+    let mut energy = 0f64;
+    for at in 0..whole.frames() {
+        for channel in 0..2 {
+            // The export writes PCM16: quantize the same way.
+            let value = (whole.sample(at, channel).clamp(-1.0, 1.0) * 32767.0).round() / 32767.0;
+            energy += f64::from(value).powi(2);
+        }
+    }
+    let expected = (energy / (whole.frames() * 2) as f64).sqrt();
+    let target = dir.join("out/fade.mp4");
+    let request = ExportRequest::new(custom("t64", 64, 36, None), &target);
+    let mut renderer = Mock::new(Settings::default());
+    let report = export(&state, &request, &mut renderer).unwrap();
+    assert_eq!(report["verification"]["ok"], true, "{report}");
+    let rms = report["audio"]["rms"].as_f64().unwrap();
+    assert!(
+        (rms - expected).abs() < 1e-6,
+        "chunked rms {rms} vs whole {expected}"
+    );
+    // The decoded file ramps up through the cut: each 0.25 s window is louder than the last.
+    let pcm = decoded_audio(&tools(), &target, &dir);
+    let window = |index: usize| {
+        let (from, to) = (index * 12_000, (index + 1) * 12_000);
+        let sum: f64 = (from..to)
+            .map(|at| f64::from(pcm.sample(at, 0)).powi(2))
+            .sum();
+        (sum / 12_000.0).sqrt()
+    };
+    let first = 230 * 2000 / 12_000; // the window holding the clip start (frame 230)
+    let ramp: Vec<f64> = (first + 1..first + 7).map(window).collect();
+    for pair in ramp.windows(2) {
+        assert!(pair[1] > pair[0], "the ramp is not monotonic: {ramp:?}");
+    }
+    assert!(ramp[0] < 0.1, "starts near silence: {ramp:?}");
+}
+
 #[test]
 fn frame_rate_override_picks_the_sequence_frame_showing_at_each_instant() {
     let dir = temp("export-fps");
