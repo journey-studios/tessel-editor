@@ -952,18 +952,18 @@ Base `497d895`; código de produção validado em `9325927` (PR #30). `core::ren
 
 ### BL144.2 — câmera SHARP nas miniaturas (2026-11-08)
 
-Validado na PR #31, sobre `main` com a PR #30 (código de produção em `5c19925`, mais só prova e documentação). Sem GPU real (SwiftShader).
+Validado na PR #31, sobre `main` com as PRs #30 e #32 (`10683c5`); código de produção validado em `3c260a6`, mais só correção de lint de teste, prova e documentação. Sem GPU real (SwiftShader).
 
 - Core: `splat_framing::fit_capture` (câmera e eixos da captura, giro único, `z <= 0` recusado), `Framing.rotation` e
   `splat_framing::identity_token` (`fit:default` sem captura; `capture:cv1:<L>x<A>:f=…:c=…` com ela) usado por `thumbnails::identity_of`.
 - Adaptador: `media::thumbnails` escolhe `fit_capture`/`fit` por `asset.meta.capture` e escreve `rotation` na cena de apoio só quando há giro.
-- Testes executados (`TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked --no-fail-fast`: **1833 passam, 0 falham, 12 ignorados**):
+- Testes executados (`TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked --no-fail-fast`: **1834 passam, 0 falham, 12 ignorados**):
   unitários em `splat_framing.rs` (pinhole independente e assimétrico, mutação sem giro/giro duplo, atrás da câmera, identidade que muda com
   cada parte da captura); `core/tests/thumbnails.rs`; `media/tests/thumbnails.rs` (cena de apoio, `orientation` do plano zerada, câmera,
   cache com/sem captura, recusa sem chegar ao renderer); render real em `render/tests/thumbnail_frames.rs` (cinco gaussianas sobre pixels
   conhecidos da imagem 160×120; `capture: ignore` é outra imagem).
 - Prova nas duas superfícies (`scripts/header-thumbnails-proof.py`, fase BL144.2, oráculo em Python puro): headless (`tessel-render`) **152 passam**,
-  janela nativa (`scripts/ui`, sem coordenadas) **167 passam**, 0 SKIP. As cinco cores estão sobre os pixels da imagem de origem (escalada à
+  janela nativa (`scripts/ui`, sem coordenadas) **167 passam**, 0 SKIP, na integração final (binários debug `tessel-editor` `b289968e…`, `tessel-render` `62fe287e…`). As cinco cores estão sobre os pixels da imagem de origem (escalada à
   altura e centrada): vermelho em cima à esquerda, verde em cima à direita, azul embaixo à esquerda, amarelo embaixo à direita, branco no centro;
   lido com `capture: ignore` o mesmo arquivo é outro caminho de cache e a imagem fica girada 180° (1 de 5 pontos coincide). As imagens foram
   vistas; a janela mostra o tile de `sharp.ply` com a miniatura em pé.

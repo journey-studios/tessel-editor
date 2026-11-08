@@ -30,6 +30,10 @@ use tessel_editor_media::host::{MediaHost, RendererFactory};
 
 use common::{temp, tools};
 
+/// What a scene file puts on screen: the splats it draws, where each is placed `(position, scale)` and
+/// how each is turned (`rotation`, degrees).
+type SceneSplats = (Vec<String>, Vec<([f64; 3], f64)>, Vec<[f64; 3]>);
+
 /// One frame the double was asked for.
 #[derive(Debug, Clone, PartialEq)]
 struct Frame {
@@ -94,46 +98,43 @@ impl Renderer for Double {
             .library
             .item(&asset)
             .expect("the plan names a library asset");
-        let (splats, placed, turned): (Vec<String>, Vec<([f64; 3], f64)>, Vec<[f64; 3]>) =
-            match &item.asset.as_ref().unwrap().source {
-                tessel_editor_core::assets::Source::File { path }
-                    if item.kind.label() == "scene" =>
-                {
-                    let scene: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
-                    let objects: Vec<&Value> = scene["objects"]
-                        .as_array()
-                        .unwrap()
+        let (splats, placed, turned): SceneSplats = match &item.asset.as_ref().unwrap().source {
+            tessel_editor_core::assets::Source::File { path } if item.kind.label() == "scene" => {
+                let scene: Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+                let objects: Vec<&Value> = scene["objects"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|object| object["type"] == "splat")
+                    .collect();
+                let vector = |value: &Value| -> [f64; 3] {
+                    match value.as_array() {
+                        Some(items) => std::array::from_fn(|i| items[i].as_f64().unwrap()),
+                        None => [0.0; 3],
+                    }
+                };
+                (
+                    objects
                         .iter()
-                        .filter(|object| object["type"] == "splat")
-                        .collect();
-                    let vector = |value: &Value| -> [f64; 3] {
-                        match value.as_array() {
-                            Some(items) => std::array::from_fn(|i| items[i].as_f64().unwrap()),
-                            None => [0.0; 3],
-                        }
-                    };
-                    (
-                        objects
-                            .iter()
-                            .map(|object| object["asset"].as_str().unwrap().to_string())
-                            .collect(),
-                        objects
-                            .iter()
-                            .map(|object| {
-                                (
-                                    vector(&object["position"]),
-                                    object["scale"].as_f64().unwrap_or(1.0),
-                                )
-                            })
-                            .collect(),
-                        objects
-                            .iter()
-                            .map(|object| vector(&object["rotation"]))
-                            .collect(),
-                    )
-                }
-                _ => (Vec::new(), Vec::new(), Vec::new()),
-            };
+                        .map(|object| object["asset"].as_str().unwrap().to_string())
+                        .collect(),
+                    objects
+                        .iter()
+                        .map(|object| {
+                            (
+                                vector(&object["position"]),
+                                object["scale"].as_f64().unwrap_or(1.0),
+                            )
+                        })
+                        .collect(),
+                    objects
+                        .iter()
+                        .map(|object| vector(&object["rotation"]))
+                        .collect(),
+                )
+            }
+            _ => (Vec::new(), Vec::new(), Vec::new()),
+        };
         self.0.frames.lock().unwrap().push(Frame {
             asset: asset.clone(),
             splats,

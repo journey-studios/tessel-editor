@@ -195,13 +195,14 @@ Capturas vão para `--out`; só `--copy-screenshots DIR` as copia (nada é escri
 canônico da `main`): binário ausente, processo que morre, resposta que não é JSON, EOF ou tempo esgotado viram falha
 **dessa** superfície, a outra ainda roda e o relatório é escrito.
 
-**Evidência do BL144.2 (PR #31, código de produção em `5c19925`, macOS, SwiftShader).**
+**Evidência do BL144.2 (PR #31, integrada com `main` `10683c5`, código de produção validado em `3c260a6`, macOS, SwiftShader).**
 
 - `cargo fmt --check`, `./scripts/cargo check` e `clippy --all-targets -- -D warnings` limpos; `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test
-  --workspace --locked --no-fail-fast`: **1833 passam, 0 falham, 12 ignorados**, incluindo
+  --workspace --locked --no-fail-fast`: **1834 passam, 0 falham, 12 ignorados**, incluindo
   `a_sharp_splat_thumbnail_is_the_source_picture_upright_and_a_plain_reading_is_not` (runtime real, `runtime.js` sha256 `7b6b4338…`, sem
-  mudança nesta PR); `tessel-editor` e `tessel-render` compilam com `--locked`; `cargo tree -p tessel-editor-core` sem `gpui` nem `wry`;
-  `header-thumbnails-proof.spec.py` (31 testes) passa normal e `-O`.
+  mudança nesta PR); `tessel-editor` e `tessel-render` compilam com `--locked` (debug `b289968e…` e `62fe287e…`); `cargo tree -p tessel-editor-core` sem `gpui` nem `wry`;
+  `header-thumbnails-proof.spec.py` (31 testes) passa normal e `-O`. O clippy da primeira integração reprovou um tipo complexo no teste
+  de `media` (`type_complexity`); corrigido com um alias, sem `allow`.
 - `scripts/header-thumbnails-proof.py`, fase BL144.2, as duas superfícies: headless **152 passam**, janela nativa **167 passam**, 0 SKIP.
   Cada superfície importa `sharp.ply` (cinco gaussianas sobre pixels conhecidos da imagem 160×120), desenha a miniatura e confere, por um oráculo
   em Python puro, as cinco cores sobre os pixels da imagem de origem escalada à altura e centrada; a mesma importação com `capture: ignore`
