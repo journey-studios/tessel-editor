@@ -140,7 +140,7 @@ impl SceneUi {
                     return;
                 };
                 let id = id.clone();
-                this.scene_follow(&id);
+                this.scene_follow(&id, cx);
                 cx.notify();
             },
         )
@@ -368,18 +368,18 @@ impl Workstation {
         if self.state.scenes.get(scene).is_none() {
             return Err(CommandError::unknown_element("scene", scene));
         }
-        self.scene_follow(scene);
+        self.scene_follow(scene, cx);
         cx.notify();
         Ok(json!({ "target": "scene.picker", "field": "value", "value": scene, "changed": true }))
     }
 
-    /// The panel follows another attached scene (the picker, or `set scene.picker value`). What a
-    /// gesture of the scene it leaves was holding is dropped here, never carried into the new one: a drag
-    /// buffer is a value for one control of one scene, and the control of the same name in the next scene
-    /// is another control (`FxUi::retain_scene`).
-    pub(super) fn scene_follow(&mut self, scene: &str) {
+    /// The panel follows another attached scene (the picker, or `set scene.picker value`). What an
+    /// effect gesture of the scene it leaves was holding is cancelled in the core here, never carried
+    /// into the new one: a gesture is a candidate for one clip of one scene, and the control of the
+    /// same name in the next scene is another control (F016, BL082.6).
+    pub(super) fn scene_follow(&mut self, scene: &str, cx: &mut Context<Self>) {
         if self.scene_ui.chosen.as_deref() != Some(scene) {
-            self.scene_ui.fx.retain_scene(scene);
+            self.fx_scene_left(cx);
         }
         self.scene_ui.chosen = Some(scene.to_string());
     }

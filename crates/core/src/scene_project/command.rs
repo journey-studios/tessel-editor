@@ -10,7 +10,9 @@ use serde_json::Value;
 use crate::directed_scene::DirectedScene;
 
 use crate::scene_edit::{EditOp, FxOp, PropertyRef};
-use crate::scene_interaction::{FrameAt, GestureCommand, GizmoCommand, PointerCommand, SelectMode};
+use crate::scene_interaction::{
+    FrameAt, FxGestureCommand, GestureCommand, GizmoCommand, PointerCommand, SelectMode,
+};
 use crate::time::Ratio;
 
 /// Where the bytes of a bundle come from. It is read and validated when the command *executes*,
@@ -178,17 +180,23 @@ pub enum SceneCommand {
         ops: Vec<FxOp>,
         dry_run: bool,
     },
-    /// F016: the effects layer of a scene (tracks, clips, every parameter resolved).
+    /// F016: the effects layer of a scene (tracks, clips, every parameter resolved). With a
+    /// `gesture`, the layer of that gesture's candidate (what a preview shows), not the document's.
     FxList {
         scene: String,
+        gesture: Option<String>,
     },
     /// F016: the effects the editor draws, with their parameters and ranges.
     FxCatalog,
     /// F016: the passes the layer resolves at an edit frame (what the plan hands a runtime).
+    /// With a `gesture`, the passes of its candidate.
     FxFrame {
         scene: String,
         at: FrameAt,
+        gesture: Option<String>,
     },
+    /// F016 (BL082.6): the begin/update/commit/cancel cycle over one effect clip.
+    FxGesture(FxGestureCommand),
 }
 
 impl SceneCommand {
@@ -210,6 +218,9 @@ impl SceneCommand {
             Self::Gizmo(GizmoCommand::Pointer(PointerCommand::Up { .. })) => Some("Edit scene"),
             Self::Gizmo(GizmoCommand::Translate { .. }) => Some("Edit scene"),
             Self::FxEdit { dry_run: false, .. } => Some("Edit effects"),
+            // The commit of an fx gesture IS a `scene.fx.edit` of the same ops (it runs through
+            // `edit_fx`), so it shows the same entry; `changed: false` records nothing.
+            Self::FxGesture(FxGestureCommand::Commit { .. }) => Some("Edit effects"),
             _ => None,
         }
     }

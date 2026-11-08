@@ -128,14 +128,18 @@ impl Workstation {
                 .gesture()
                 .filter(|gesture| gesture.scene() == scene)
                 .map(|gesture| gesture.id().to_owned());
-            let request = serde_json::json!({ "scene": scene, "frame": self.state.timeline.playhead,
-                "gesture": gesture });
-            if let Err(error) = self.viewport.render_scene(
-                &mut self.state,
-                &self.workflow.scene_resources(),
-                &request,
-                false,
-            ) {
+            let frame = self.state.scene_frame_at_playhead(&scene);
+            let shown = frame.and_then(|frame| {
+                let request = serde_json::json!({ "scene": scene, "frame": frame,
+                    "gesture": gesture });
+                self.viewport.render_scene(
+                    &mut self.state,
+                    &self.workflow.scene_resources(),
+                    &request,
+                    false,
+                )
+            });
+            if let Err(error) = shown {
                 self.viewport.scene_error(&error);
             }
         } else {

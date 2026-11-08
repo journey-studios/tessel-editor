@@ -22,12 +22,42 @@ use serde_json::{Value, json};
 use crate::directed_scene::Entity;
 use crate::scene_edit::{self, EditOp, EditOutcome};
 use crate::scene_interaction::{
-    Dropped, FrameAt, Gesture, GestureCommand, Invalidation, SelectMode, Selected, ensure_exists,
-    entity_of_property, entity_path, frame_json, parse_entity, tree_json,
+    Dropped, FrameAt, Gesture, GestureCommand, GestureKind, Invalidation, SelectMode, Selected,
+    ensure_exists, entity_of_property, entity_path, frame_json, parse_entity, tree_json,
 };
 use crate::state::{CommandError, EditorState};
 
 use super::run::{changes_json, with_conversions};
+
+/// A gesture of one kind refuses the verbs of the other: its candidate and its ops are of a
+/// different type, and its commit has a different history entry. `use_instead` names the verb
+/// that does apply, so the error says what to call.
+pub(super) fn ensure_kind(
+    gesture: &Gesture,
+    wanted: &GestureKind,
+    use_instead: &str,
+) -> Result<(), CommandError> {
+    let matches = match (gesture.kind(), wanted) {
+        (GestureKind::Properties, GestureKind::Properties) => true,
+        (GestureKind::Fx { .. }, GestureKind::Fx { .. }) => true,
+        _ => false,
+    };
+    if matches {
+        return Ok(());
+    }
+    Err(CommandError::new(
+        "gesture_kind_mismatch",
+        format!(
+            "Gesture `{}` edits {}; use `{use_instead}` for it. Nothing was applied",
+            gesture.id(),
+            gesture.kind().as_str(),
+        ),
+    )
+    .target(gesture.id())
+    .details(json!({
+        "gesture": gesture.id(), "kind": gesture.kind().as_str(), "use": use_instead,
+    })))
+}
 
 impl EditorState {
     pub(super) fn attached_scene(&self, id: &str) -> Result<&super::AttachedScene, CommandError> {
@@ -234,23 +264,7 @@ impl EditorState {
         }
         let base = Arc::clone(&entry.scene);
 
-        // One gesture at a time, like one pointer: a second `begin` would silently orphan the
-        // first one's candidate. A stale gesture is dead already, so it is replaced and said so.
-        let mut replaced_stale = Value::Null;
-        if let Some(open) = self.scene_interaction.gesture.current() {
-            let Some(reason) = open.invalidation(&self.scenes, self.project.revision) else {
-                return Err(CommandError::new(
-                    "gesture_active",
-                    format!(
-                        "Gesture `{}` is already in progress; commit or cancel it first",
-                        open.id()
-                    ),
-                )
-                .target(open.id())
-                .details(json!({ "gesture": open.id(), "scene": open.scene() })));
-            };
-            replaced_stale = json!({ "gesture": open.id(), "reason": reason.as_str() });
-        }
+        let replaced_stale = self.claim_gesture_slot()?;
 
         let id = self.scene_interaction.gesture.next_id();
         let gesture = Gesture::new(
@@ -273,6 +287,38 @@ impl EditorState {
         Ok(answer)
     }
 
+    /// The frame of the attached scene `scene` that the NLE playhead shows: the playhead's time
+    /// (its sequence rate) converted by the *scene's own* clock (`frame_at_time`, floor). The
+    /// playhead is a frame of the sequence and a bundle frame is a frame of the bundle: they are
+    /// the same number only when the two rates are, so no adapter may hand one to the other. An
+    /// instant the edit does not hold is the typed error of the conversion, never a clamped frame.
+    pub fn scene_frame_at_playhead(&self, scene: &str) -> Result<i64, CommandError> {
+        let entry = self.attached_scene(scene)?;
+        let time = self.timeline.time_of(self.timeline.playhead);
+        Ok(entry.scene.bundle().frame_at_time(time)?)
+    }
+
+    /// One gesture at a time, like one pointer: a second `begin` would silently orphan the first
+    /// one's candidate. A stale gesture is dead already, so it is replaced and said so (the
+    /// returned value names it; `null` when the slot was empty). Shared by every kind of gesture.
+    pub(super) fn claim_gesture_slot(&self) -> Result<Value, CommandError> {
+        let Some(open) = self.scene_interaction.gesture.current() else {
+            return Ok(Value::Null);
+        };
+        let Some(reason) = open.invalidation(&self.scenes, self.project.revision) else {
+            return Err(CommandError::new(
+                "gesture_active",
+                format!(
+                    "Gesture `{}` is already in progress; commit or cancel it first",
+                    open.id()
+                ),
+            )
+            .target(open.id())
+            .details(json!({ "gesture": open.id(), "scene": open.scene() })));
+        };
+        Ok(json!({ "gesture": open.id(), "reason": reason.as_str() }))
+    }
+
     /// Computes the candidate for `ops` from the gesture's base. A rejection (any `scene_edit`
     /// error, a target outside the gesture's, an oversized scene) returns before the gesture is
     /// touched, so the previous good candidate is still the one that commit would apply.
@@ -283,6 +329,7 @@ impl EditorState {
     ) -> Result<Value, CommandError> {
         let gesture = self.scene_interaction.gesture.find(id)?;
         self.ensure_live(gesture)?;
+        ensure_kind(gesture, &GestureKind::Properties, "scene.fx.gesture.update")?;
         let scene = gesture.scene().to_string();
         let base = Arc::clone(gesture.base());
         if !gesture.targets().is_empty() {
@@ -344,6 +391,7 @@ impl EditorState {
     pub(super) fn gesture_commit(&mut self, id: &str) -> Result<Value, CommandError> {
         let gesture = self.scene_interaction.gesture.find(id)?;
         self.ensure_live(gesture)?;
+        ensure_kind(gesture, &GestureKind::Properties, "scene.fx.gesture.commit")?;
         let scene = gesture.scene().to_string();
         let ops = gesture.ops().to_vec();
         let taken = self.scene_interaction.gesture.take();
@@ -384,7 +432,7 @@ impl EditorState {
         Ok(answer)
     }
 
-    fn gesture_status(&self) -> Value {
+    pub(super) fn gesture_status(&self) -> Value {
         match self.scene_interaction.gesture.current() {
             None => json!({
                 "action": "scene.gesture.status", "active": false, "gesture": null,

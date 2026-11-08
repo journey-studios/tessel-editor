@@ -42,6 +42,7 @@ use crate::state::CommandError;
 
 mod command;
 mod fx;
+mod fx_gesture;
 mod gizmo;
 mod interaction;
 mod query;

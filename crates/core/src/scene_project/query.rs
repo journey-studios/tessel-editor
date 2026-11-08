@@ -298,13 +298,10 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
             Ok(answer)
         }
         SceneCommand::FxCatalog => Ok(super::fx::catalog_answer()),
-        SceneCommand::FxList { scene } => Ok(super::fx::list_answer(
-            &scene,
-            &attached(book, &scene)?.scene,
+        SceneCommand::FxList { .. } | SceneCommand::FxFrame { .. } => Err(CommandError::new(
+            "internal",
+            "an fx read reached the path that has no gesture slot",
         )),
-        SceneCommand::FxFrame { scene, at } => {
-            super::fx::frame_answer(&scene, &attached(book, &scene)?.scene, &at)
-        }
         // The F039 commands also need the session state (selection, gesture), which this
         // function does not get: they run in `interaction.rs`.
         SceneCommand::Attach { .. }
@@ -317,6 +314,7 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
         | SceneCommand::Selection
         | SceneCommand::Gesture(_)
         | SceneCommand::Gizmo(_)
+        | SceneCommand::FxGesture(_)
         | SceneCommand::FxEdit { .. } => Err(CommandError::new(
             "internal",
             "a scene command reached the read path that does not serve it",
