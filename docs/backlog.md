@@ -488,3 +488,11 @@ a encaminhar: P0 (corpus/proveniência) + P1 (BL082.6/.16, vinheta utilizável).
 Responsável pretendido: Cursor Sonnet 5.5 em checkout isolado, sem merge.
 Encaminhamento só fica confirmado com link/retorno do T3; nenhuma feature concluída.
 Demais fases permanecem planejadas, com IDs/aceites no backlog e sem atribuição nova.
+
+### BL145 / F049 — histórico de desempenho autorizado (2026-11-08)
+
+Usuário autorizou implementar com Cursor Sonnet 5.5: histórico móvel60s, gráficos com picos,
+eventos, freeze/inspeção e export JSON; recording separado de visibility.
+[Plano e contrato de implementação](migration/perf-history-execution-plan.md).
+Entrega independente de BL082/P0P1; coordenador reserva subitens BL145 livres na integração.
+Encaminhamento pendente de confirmação T3, nenhum comportamento declarado entregue.
