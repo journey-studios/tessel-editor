@@ -11,8 +11,7 @@ execução posterior, com o contrato e as provas da fase anterior disponíveis.
 
 ## Base e limites
 
-- Projeto correto: `/Users/wallyssonnunes/www/tessel-editor`, repositório
-  `journey-studios/tessel-editor`; não é o Tessel RPG nem o monorepo JS.
+- Projeto correto: repositório `journey-studios/tessel-editor`; não é o Tessel RPG nem o monorepo JS.
 - Main auditada: `10683c5357c244692063099e13ccb5685385e0fa`. Atualizar referências e
   conferir PRs ao começar; não implementar sobre a branch antiga de documentação.
 - Origem: inventário do piloto, snapshot declarado `d40ac3f7c0`. Reabrir blobs fixados
