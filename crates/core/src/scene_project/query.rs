@@ -224,6 +224,8 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
                 "scene.translate",
                 // F016 (docs/features/effects.md): the effects layer, additive.
                 "scene.fx.edit", "scene.fx.list", "scene.fx.catalog", "scene.fx.frame",
+                "scene.fx.gesture.begin", "scene.fx.gesture.update", "scene.fx.gesture.commit",
+                "scene.fx.gesture.cancel", "scene.fx.gesture.status",
             ],
             "max_scenes": MAX_SCENES,
             // Additive contract of the property catalog (docs/features/scene-edit.md): a caller

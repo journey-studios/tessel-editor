@@ -643,11 +643,13 @@ def run(args, surfaces):
         depth = win.undo_depth()
         ok, began = win.op({"op": "scene.fx.gesture.begin", "scene": "proof", "clip": "fx-1"})
         gesture = began.get("gesture") if ok else None
-        win.op({"op": "scene.fx.gesture.update", "gesture": gesture,
+        check("begin the gesture before switching scenes", ok and bool(gesture), began)
+        updated, update_body = win.op({"op": "scene.fx.gesture.update", "gesture": gesture,
                 "ops": [{"op": "set_param", "clip": "fx-1", "param": "intensity", "value": 0.2}]})
+        check("update the gesture before switching scenes", updated, update_body)
         check("the panel follows the picker to the other scene", win.set("scene.picker", "value", "yard").get("ok"))
         ok, status = win.op({"op": "scene.fx.gesture.status"})
-        check("the scene switch cancelled the gesture in the core", ok and not status.get("gesture") and not status.get("open"), status)
+        check("the scene switch cancelled the gesture in the core", ok and not status.get("gesture") and status.get("active") is False, status)
         ok, body = win.op({"op": "scene.fx.gesture.commit", "gesture": gesture})
         check("committing the dead gesture is refused", not ok, body)
         check("nothing was committed: the value and the history are as before",

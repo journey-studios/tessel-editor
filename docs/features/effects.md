@@ -366,3 +366,11 @@ abaixo marcados "head anterior" são os da entrega 32860ec e **não** foram repe
 Corrigidos os resíduos de revisão do head07dde5a: limpeza da camada só quando o documento líquido mudou (add/remove sobre camada vazia autorada preserva documento e undo); fixture numérica usa floats para campos f64 do catálogo; orçamento espera 10 quadros acima do limite (0..5 e10..15); inicialização falha do runtime também limpa temporários; interrupção do proof registra FAIL e o mesmo código no processo/JSON. O teste de lote neutro agora confere documento e profundidade de undo.
 
 Executado pelo coordenador: Python24/24 (inclui interrupção), Node puro output-fx11/11 (inclui contrato da fixture), fmt --check, node --check do medidor e git diff --check. **Rust continua não compilado/testado e prova nativa não repetida**: disco3,9GiB abaixo do piso12/reserva16. Não promover as evidências do head32860ec ao código novo. Aceite/merge permanecem pendentes em BL082.17.
+
+## Correções após aviso de check da PR37 (2026-11-08)
+
+`scene.capabilities` passa a anunciar os cinco verbos de gesto FX. A prova de troca de
+cena exige begin/update bem-sucedidos e verifica a chave real `active`. Quantização não
+limpa para inteiro passos menores que 1e-9: sem grade decimal representável em até nove
+casas conserva o valor já encaixado. Regressões Rust adicionadas, **não executadas** por
+disco abaixo do piso. Check CodeRabbit NEUTRAL não é aprovação; build/prova final pendentes.

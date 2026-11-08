@@ -971,3 +971,7 @@ sort por camada) foram retirados em favor de BL129, BL130 e BL131 da seção de 
 ### BL144.10 — coordenação export × miniaturas (2026-11-08)
 
 Base `497d895`; código de produção validado em `9325927` (PR #30). `core::renderer_claims` (regra pura, sem GPUI); `MediaHost` admite `export.start`, `scene.export` e `export.preflight` (com renderer) e consulta a mesma regra no tick e em `media.thumbnails`. Um export (ou preflight) pedido atrás de um job de miniaturas ou de uma sonda é recusado (`renderer_busy`, `retryable`, `queued:false`), o job é parado no próximo quadro e o renderer fica reservado por até 30 s para o projeto que pediu; um export em andamento nunca é parado; a sonda do preflight é dona do renderer até a thread lateral largá-lo (BL144.18); o fim de um job parado pelo host não é pausa do usuário e qualquer cancelamento posterior do usuário, por qualquer porta, vence (contagem de cancelamentos em `JobInfo`). Diálogo (BL144.19): a verificação é re-pedida de forma limitada e explícita, o export nunca. Gates, testes que contam renderers, mutações e provas headless/nativa: ver a linha BL144.10 e [renderer-ownership.md](features/renderer-ownership.md).
+
+BL082.20 — revisão incremental PR37: descoberta dos verbos FX em capabilities, prova de
+troca de cena com pré-condições e `active`, e quantização sub-1e-9 corrigidas por código.
+Regressões adicionadas; Rust e janela não executados por disco. Não encerra aceite.

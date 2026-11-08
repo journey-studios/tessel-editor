@@ -25,12 +25,16 @@ pub fn quantize_control(raw: f64, min: f64, max: f64, step: f64, integer: bool) 
     }
     // The decimals the step itself needs (`0.01` two, `0.25` two, `0.125` three), not the order
     // of magnitude of its first digit: `0.25` rounded to one decimal would leave the grid.
-    let decimals = (0..=9)
-        .find(|places| {
-            let scaled = step * 10f64.powi(*places);
-            (scaled - scaled.round()).abs() < 1e-9
-        })
-        .unwrap_or(9);
+    let decimals = (0..=9).find(|places| {
+        let scaled = step * 10f64.powi(*places);
+        scaled.round() >= 1.0
+            && (scaled - scaled.round()).abs() <= 8.0 * f64::EPSILON * scaled.abs()
+    });
+    // No decimal grid up to nine places: retain the snapped value rather than round a
+    // sub-nanounit step to zero (or impose a different grid on a non-decimal step).
+    let Some(decimals) = decimals else {
+        return snapped;
+    };
     let scale = 10f64.powi(decimals);
     ((snapped * scale).round() / scale).clamp(min, max)
 }
@@ -63,6 +67,17 @@ mod tests {
         assert_eq!(quantize_control(0.26, 0.0, 1.0, 0.25, false), 0.25);
         assert_eq!(quantize_control(0.13, 0.0, 1.0, 0.125, false), 0.125);
         assert_eq!(quantize_control(0.4, 0.0, 1.0, 0.05, false), 0.4);
+    }
+
+    #[test]
+    fn subnanounit_steps_keep_their_grid_instead_of_becoming_whole_numbers() {
+        let step = 5e-10;
+        for index in [1.0, 7.0, 123.0] {
+            let expected = index * step;
+            let actual = quantize_control(expected, 0.0, 1e-6, step, false);
+            assert!((actual - expected).abs() <= expected * 1e-12);
+        }
+        assert_eq!(quantize_control(2.4, 0.0, 10.0, 2.5, false), 2.5);
     }
 
     #[test]

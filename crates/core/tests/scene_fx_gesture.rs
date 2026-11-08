@@ -795,3 +795,13 @@ fn the_headless_executable_runs_the_gesture_without_a_window_and_refuses_with_a_
         "a session with a refused request exits 1"
     );
 }
+
+#[test]
+fn capabilities_advertise_every_effect_gesture_command() {
+    let mut state = EditorState::empty(&ProjectSettings::default()).unwrap();
+    let answer = ok(&mut state, json!({"op": "scene.capabilities"}));
+    let commands = answer["commands"].as_array().unwrap();
+    for verb in ["begin", "update", "commit", "cancel", "status"] {
+        assert!(commands.contains(&json!(format!("scene.fx.gesture.{verb}"))));
+    }
+}
