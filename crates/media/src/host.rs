@@ -463,12 +463,7 @@ impl MediaHost {
             if self.auto_proxy.as_deref() == Some(id.as_str()) {
                 self.auto_proxy = None;
             }
-            if let Some((_, stamp)) = self.thumb_job.take_if(|(job, _)| *job == id)
-                && info.state == JobState::Cancelled
-                && stamp.is_current(state)
-            {
-                self.thumb_paused = Some(stamp);
-            }
+            self.release_thumbnail_job(state, &id, info.state == JobState::Cancelled);
             let proxied = self.proxy_assets.remove(&id);
             let automatic = self.auto_assets.remove(&id);
             let outcome = Self::outcome(&info).and_then(|result| {
@@ -510,6 +505,19 @@ impl MediaHost {
         self.schedule_proxies(state);
         self.schedule_thumbnails(state);
         events
+    }
+
+    /// Frees the thumbnail slot if `id` was its job: the job is over, and so is its claim on the one
+    /// renderer. A job the user cancelled, for the project that is open, leaves that project's
+    /// automatic drawing paused. `poll` calls it when it sees the job finish; `job.commit` and
+    /// `job.discard` call it too, because a result taken by a request is never seen by `poll`.
+    fn release_thumbnail_job(&mut self, state: &EditorState, id: &str, cancelled: bool) {
+        if let Some((_, stamp)) = self.thumb_job.take_if(|(job, _)| job == id)
+            && cancelled
+            && stamp.is_current(state)
+        {
+            self.thumb_paused = Some(stamp);
+        }
     }
 
     /// Cancels the thumbnail job of a project that is no longer the open one (another project,
@@ -974,7 +982,7 @@ impl MediaHost {
                 Ok(json!({ "action": "job.cancel", "info": info.to_json() }))
             }
             "job.commit" => self.job_commit(state, request),
-            "job.discard" => self.job_discard(request),
+            "job.discard" => self.job_discard(state, request),
             _ => Err(invalid(format!("Unknown media operation `{op}`"))),
         }
     }
@@ -1837,6 +1845,7 @@ impl MediaHost {
                 format!("Job `{id}` has nothing to apply or was already applied"),
             )
         })?;
+        self.release_thumbnail_job(state, id, info.state == JobState::Cancelled);
         let outcome = apply(
             &self.registry.clone(),
             id,
@@ -1864,9 +1873,14 @@ impl MediaHost {
     /// off this thread and keeps owning them until it has finished. The answer names that job
     /// (`job`) and the one it discards (`discards`). A host without a window waits for it unless
     /// `wait: false`; an interactive one always answers at once and `poll` reports the end.
-    fn job_discard(&mut self, request: &Value) -> Result<Value, CommandError> {
+    fn job_discard(&mut self, state: &EditorState, request: &Value) -> Result<Value, CommandError> {
         let id = text(request, "job")?;
+        let cancelled = self
+            .registry
+            .get(id)
+            .is_some_and(|info| info.state == JobState::Cancelled);
         self.registry.begin_discard(id)?;
+        self.release_thumbnail_job(state, id, cancelled);
         let slot = self.pending.remove(id);
         if self.auto_prepare.as_deref() == Some(id) {
             self.auto_prepare = None;

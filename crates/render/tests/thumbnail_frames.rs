@@ -331,13 +331,17 @@ fn a_displaced_cloud_of_any_size_is_in_the_middle_of_its_thumbnail() {
         std::env::temp_dir().join(format!("tessel-thumb-displaced-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("set")).unwrap();
+    // Spark stores a splat's centre as three float16 values: that is the runtime's limit, not the
+    // thumbnail's. `capture` is the biggest cloud it can hold (tens of thousands of units from the
+    // origin, every coordinate inside +-65504); `beyond` is past that and cannot be drawn.
     let cases = [
         ("far", [1000.0, -200.0, 300.0], 5.0),
         ("tiny", [0.2, 0.1, -0.3], 0.01),
-        ("capture", [-80_000.0, 20_000.0, 90_000.0], 3_000.0),
+        ("capture", [-30_000.0, 8_000.0, 40_000.0], 3_000.0),
     ];
+    let beyond = ("beyond", [-80_000.0, 20_000.0, 90_000.0], 3_000.0);
     let mut paths = Vec::new();
-    for (name, center, radius) in cases {
+    for (name, center, radius) in cases.into_iter().chain([beyond]) {
         let path = dir.join("set").join(format!("{name}.splat"));
         fs::write(&path, ball(center, radius, 3000)).unwrap();
         paths.push(path);
@@ -357,7 +361,7 @@ fn a_displaced_cloud_of_any_size_is_in_the_middle_of_its_thumbnail() {
         &json!({"op":"media.import","paths":paths}),
     )
     .unwrap();
-    assert_eq!(imported["applied"]["imported"], 3, "{imported}");
+    assert_eq!(imported["applied"]["imported"], 4, "{imported}");
 
     let probes = vec![(width / 2, height / 2), (2, 2), (width - 3, height - 3)];
     let seen = Arc::new(Mutex::new(Vec::new()));
@@ -380,6 +384,11 @@ fn a_displaced_cloud_of_any_size_is_in_the_middle_of_its_thumbnail() {
     )
     .unwrap();
     assert_eq!(report["ready"], 3, "{report}");
+    // What the runtime cannot hold comes out as the background only: named, never offered as a picture.
+    let lost = state.thumbnail_report(beyond.0);
+    assert_eq!(lost["state"], "failed", "{lost}");
+    assert_eq!(lost["code"], "empty_picture", "{lost}");
+    assert!(state.thumbnail(beyond.0).is_none());
 
     let frames = seen.lock().unwrap().clone();
     for (name, _, _) in cases {

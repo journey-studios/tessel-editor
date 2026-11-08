@@ -30,8 +30,10 @@ cabeçalho mudou, sem alterar rótulos nem handlers de desempenho.
 - **Enquadramento do splat avulso** (`core::splat` + `core::splat_framing`, sem GPUI): o adaptador **mede** o arquivo
   (`.splat`, PLY binário e SPZ; amostra de posições, extremos robustos) e a câmera é calculada a partir dessa medida: a
   nuvem é normalizada para a esfera unitária (posição e escala do objeto de cena) e a câmera a enquadra com margem. Não há
-  regra em JS; funciona para nuvem deslocada, minúscula ou na escala de uma captura real (dezenas de milhares de unidades,
-  dentro de near/far 0.05/1000). Nuvem sem extensão, não finita ou grande demais é `splat_not_drawable`. Depois do quadro,
+  regra em JS; funciona para nuvem deslocada ou minúscula e para uma nuvem **a até ±65 504 unidades por eixo** da origem,
+  dentro de near/far 0.05/1000. **Limite medido (BL144.16):** o Spark 2.4.0 guarda os centros em `float16` (`PackedSplats`,
+  máximo 65 504); uma nuvem além disso vira só fundo no renderizador, e o adaptador a reporta como `empty_picture`, sem
+  miniatura (o teste de runtime usa uma nuvem a 90 000 u para provar a recusa). Nuvem sem extensão, não finita ou grande demais é `splat_not_drawable`. Depois do quadro,
   25 sondas e a média decidem se saiu **só fundo**: então é `empty_picture`, nunca uma miniatura. A convenção de eixos do
   SPZ no Spark não foi verificada com um arquivo real; a checagem de imagem vazia é a rede de segurança.
 - **Identidade** de uma miniatura (v2): `v2|<tipo>|<hash do arquivo>|<L>x<A>|deps=<id>=<tipo>:<hash>,...|framing=fit:default|own`.
@@ -117,60 +119,103 @@ traz `thumbnail.state: "ready"` e o `path` de cada PNG. Com `"wait":false` o job
 
 ## Evidências e status
 
-**Estado: corrigido, a validar.** Esta revisão (correção dos achados da revisão independente B da PR #24) foi **escrita
-sem compilar nem executar** os gates de Rust, runtime e janela: o disco ficou abaixo do piso de 12 GiB e a regra da tarefa
-proibia Cargo/build/GPU. As contagens e execuções abaixo, anteriores a esta revisão (workspace 1508/0/12, runtime 148/148,
-provas 53/56), **não foram reexecutadas pelo revisor nem por mim** e não valem para este head. Só rodou o teste puro de Python
-da prova (`scripts/header-thumbnails-proof.spec.py`, 18 testes, com e sem `-O`).
+**Estado: validado na base `6639976` (main depois das PRs #24 e #28) nas três superfícies, com os limites abaixo.**
+Tudo desta seção foi **executado na PR de validação** (BL144.17), sobre dados sintéticos de `./scripts/fixtures` e dos
+geradores da própria prova; as contagens antigas (workspace 1508/0/12, runtime 148/148, provas 53/56) não valem para este
+head e não são citadas como evidência.
 
-| Superfície | Evidência escrita neste head | Estado |
+Gates (macOS, SwiftShader, `TESSEL_REQUIRE_RUNTIME=1`, runtime de `./scripts/runtime setup`
+`runtime.js` sha256 `7b6b43381b55f4d9768164931783f943944608bada70240016d366eb803a2a98`,
+`index.html` `707fd90fac224637b486d78a74babbd274e749e02e60aa95da8a314644c484a6`):
+
+| Comando | Resultado |
+|---|---|
+| `cargo fmt --all -- --check` | limpo |
+| `./scripts/cargo check --workspace --locked` | limpo |
+| `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings` | limpo |
+| `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked --no-fail-fast` | **1785 passam, 0 falham, 12 ignorados** (101 binários; os 12 são `#[ignore]` explícitos de medição/disco/GPU, sem linha `SKIPPED`) |
+| `./scripts/cargo build -p tessel-editor --locked` (+ `tessel-render`) | ok; sha256 `tessel-editor` `5c04cc26…584e`, `tessel-render` `18fba0d1…2079` (debug, esta máquina) |
+| `./scripts/cargo tree -p tessel-editor-core --locked` | sem `gpui` nem `wry` |
+| `scripts/header-thumbnails-proof.spec.py` (18), `proof-surface.spec.py` (29), `scene-lifecycle-proof.spec.py` (7) | passam, normal e `-O` |
+
+| Superfície | Evidência executada | Estado |
 |---|---|---|
-| Lib (core) | `crates/core/tests/thumbnails.rs`: dependências (religar/importar depois da falha/remover/transitivo/ciclo/outro projeto), snapshot mínimo, ID do stand-in curto e sem colisão, medida entre formatos; unitários de `splat`, `splat_framing` (projeção pinhole) e `thumbnails`; `crates/core/tests/headless.rs` agora compara o **resumo completo** de dois estados do mesmo projeto (clone), sem remover `project_id` | a validar (não compilado) |
-| Lib (media) | `crates/media/tests/thumbnails.rs`: enquadramento de nuvens deslocadas/escaladas/várias na mesma sessão/ID reaproveitado com outro arquivo (câmera conferida por um pinhole do teste), nuvem não desenhável e imagem vazia, dependência ausente → importada → desenhada, hash de dependência muda o cache, cache íntegro/7 danos (truncado, ausente, IHDR, bloco de pixel, bytes após IEND, outro tamanho, vazio), `png_dimensions`, ID de 64 bytes e colisão, **A→A′→B→A″ com o mesmo ID de documento e renderizador retido** (job antigo `cancelled`, nunca aplicado), `job.commit` de outra abertura = `stale`, `waiting` em vez de `reused`, pausa após cancelamento do usuário, sem miniaturas durante export | a validar (não compilado) |
-| Runtime real | `crates/render/tests/thumbnail_frames.rs`: splat avulso enquadrado (centro da imagem, cantos de fundo) e **nuvens deslocadas** (1000 u, 0,01 u, 90 000 u) no meio da miniatura; o espião devolve ao adaptador as sondas dele | a validar (não executado; exige runtime) |
-| UI (GPUI) | `workstation/identity_tests.rs` e `library_panel::tests` (sem mudança de código nesta revisão) | execução anterior, não repetida |
-| Headless | `scripts/header-thumbnails-proof.py` (`tessel-render`) refeito sobre `scripts/proof_surface.py`: job **observado em andamento** (`running`, alguns quadros e não todos) → `job.cancel` → `cancelled` no meio, resultado recusado, novo job correto; A→B→A com `stale`; splat deslocado | não executado |
-| Janela nativa | mesmo script, `HOME` próprio, só `ui op/get/set`: job de B observado em andamento e substituído por A (precisa terminar `cancelled` antes de desenhar tudo; senão **falha**, não passa); monitor com **clipe** desenhando um quadro real (hash, fase `ready`); captura do SO da própria janela pelo id da janela (recusa vira SKIP, nunca check verdadeiro) | não executado |
+| Lib (core) | `crates/core/tests/thumbnails.rs` (dependências, snapshot mínimo, stand-in curto/sem colisão, medida entre formatos), unitários de `splat`, `splat_framing` e `thumbnails`. Mutações: tirar a sessão do carimbo → 3 testes falham; tirar as dependências da identidade → 6 falham (4 core e 2 media) | V |
+| Lib (media) | `crates/media/tests/thumbnails.rs` (21 testes): enquadramento por arquivo, cache íntegro e 7 danos, A→A′→B→A″ com o mesmo ID de documento, `stale` em `job.commit`, `waiting`, pausa do usuário, sem miniaturas durante export, e o novo `a_thumbnail_job_ended_by_commit_or_discard_frees_the_slot_for_the_next_one` (vermelho antes da correção do host, verde depois) | V |
+| Runtime real (Chrome) | `crates/render/tests/thumbnail_frames.rs` com `TESSEL_REQUIRE_RUNTIME=1`: splat avulso, nuvens deslocadas (1 000 u, 0,01 u e uma captura a 40 000 u) no meio da imagem (centro > 40, cantos ≤ 12, limiares inalterados) e a nuvem a 90 000 u recusada como `empty_picture` (BL144.16) | V |
+| UI (GPUI) | `workstation/identity_tests.rs` (cabeçalho segue o projeto aberto, o tile só mostra a imagem do seu ativo) | V (sem ponteiro físico: não há controle novo) |
+| CLI headless | `scripts/header-thumbnails-proof.py --only headless` com `tessel-render` (runtime real, sem janela): **123 passam, 0 SKIP** | V |
+| Janela nativa | `scripts/header-thumbnails-proof.py --only native`, `HOME` próprio, só `ui op/get/set`, captura do SO pelo id da janela (`screencapture -l`): **131 passam, 0 SKIP** | V (sem ponteiro físico) |
 
-Rodar: `python3 scripts/directed-scene-proof/with-gpu-lock.py python3 scripts/header-thumbnails-proof.py`. Capturas vão
-para `--out`; só `--copy-screenshots DIR` as copia (nada é escrito em `docs/` por padrão). Código de saída: 0 completo,
-1 falhou, 2 incompleto (SKIP).
+O que a prova mostra, nas superfícies indicadas abaixo, com identidades e pixels conferidos por um oráculo em Python puro (leitor de
+PNG e projeção pinhole, sem o código do adaptador):
 
-`scripts/proof_surface.py` é o helper compartilhado (BL140–BL144); aqui é a cópia **idêntica byte a byte** do blob
-`bb555f0983061374708a4ae6d97e38546fa4dc59` de `origin/feat/bl140-camera-keyframes` (último commit que o toca:
-`420a0b160de8b88cd3f6871b715eb13a8b273c85`). Outro agente corrige a lógica dele nas PRs #20/#23; **não é editado aqui** e
-a integração reconcilia as duas cópias. O script desta feature usa só a API do helper (`Headless`, `Native`, `run_surface`,
-`Native.capture`) e cada superfície roda dentro de `run_surface`: binário ausente, processo que morre, resposta que não é
-JSON, EOF ou tempo esgotado viram falha **dessa** superfície, a outra ainda roda e o relatório é escrito. A prova pura de
-Python (`header-thumbnails-proof.spec.py`) cobre isso com processos duplos, o oráculo, a regra "terminou antes de poder ser
-cancelado = falha" e a regra da captura.
+- cabeçalho vivo `Projeto / Sequência` depois de criar, abrir e reabrir projetos (a renomeação só tem teste de lib); miniaturas de splat e cena desenhadas
+  (caixa laranja, esfera azul, nuvem no meio, cantos de fundo);
+- **mudança de dependência:** `media.relink` do splat (com `accept_changed`) muda as identidades e os caminhos das miniaturas do splat e da cena; as medições de pixel continuam valendo.
+  Não há comparação explícita de todo o conteúdo de cada imagem antes e depois. **Faltando→presente não tem caminho ao vivo**: `media.import` de
+  uma cena cujo splat não está na biblioteca é recusado com `missing_dependency`; esse caso só tem teste de lib;
+- **A→B→A no mesmo documento e sessão** sem aplicar resultado de outro projeto (`stale`);
+- **cancelamento** visto em andamento (`running`, alguns quadros e não todos), depois `cancelled` com `done < total`,
+  nada aplicado e job novo correto; resultado de outra sessão recusado (`stale`);
+- **retomada e pausa do usuário (janela nativa):** `job.cancel` do usuário pausa o agendamento por 5 s sem novo job e sem imagens novas;
+  `media.thumbnails` explícito retoma;
+- **mesmo documento reaberto** (outra sessão): na janela nativa, o job da sessão antiga termina `cancelled` no meio e a nova desenha automaticamente.
+  No headless, `job.commit` de outra sessão responde `stale`, sem tocar a biblioteca, e a prova solicita as miniaturas explicitamente;
+- **janela com clipe real e monitor `ready`:** a captura (`screencapture -l`) mostra o cabeçalho `Chalk / cut-c`, as duas
+  miniaturas reais e o monitor com a cena desenhada. Captura que o SO recusa é SKIP, nunca PASS (houve 0).
 
-**Limites declarados.**
+Rodar (os dois bloqueios de GPU, `/tmp/tessel-scene-gpu.lock` e `/tmp/tessel-video-bl140-bl144-review-gpu.lock`, se outro
+agente os usa):
 
-- **Monitor preto (BL144.4):** as capturas antigas eram de uma sequência com **0 clipes**; um monitor sem clipe é preto por
-  desenho. Isso **não** confirma um defeito da WebView nem o contrário: é prova **incompleta**. As capturas sintéticas
-  históricas ficam só como evidência parcial do cabeçalho e da biblioteca. A prova nativa agora põe um clipe da cena na linha
-  do tempo e exige um quadro real do monitor (hash e fase `ready`) antes da captura; essa execução está pendente.
-- SwiftShader, não GPU real; sem ponteiro físico (não há controle novo para clicar).
-- Imagem parada e vídeo seguem com glifo (BL144.1). A identidade não contém a captura do SHARP e o splat do SHARP seria
-  desenhado sem a orientação dela (BL144.2: o enquadramento já aceita `view`, falta a PR #23 fornecer a orientação).
+```sh
+./scripts/runtime setup
+./scripts/cargo build -p tessel-editor --locked && ./scripts/cargo build -p tessel-editor-render --bin tessel-render --locked
+python3 scripts/header-thumbnails-proof.py --editor target/debug/tessel-editor --render target/debug/tessel-render \
+  --only headless --report /tmp/proof-headless.json
+python3 scripts/header-thumbnails-proof.py --editor target/debug/tessel-editor --render target/debug/tessel-render \
+  --only native --report /tmp/proof-native.json --copy-screenshots /tmp/shots
+```
+
+Capturas vão para `--out`; só `--copy-screenshots DIR` as copia (nada é escrito em `docs/`). Código de saída: 0 completo,
+1 falhou, 2 incompleto (SKIP). Cada superfície roda dentro de `run_surface` (`scripts/proof_surface.py`, o helper
+canônico da `main`): binário ausente, processo que morre, resposta que não é JSON, EOF ou tempo esgotado viram falha
+**dessa** superfície, a outra ainda roda e o relatório é escrito.
+
+**Defeitos reais achados e corrigidos na validação.**
+
+- `MediaHost` ficava preso a um job de miniatura que já terminara quando `job.commit` ou `job.discard` o encerrava antes
+  do `poll`: a janela nunca mais desenhava e `media.thumbnails` respondia `reused` com um job já encerrado. A pausa do
+  usuário de um job cancelado também se perdia por esse caminho. `release_thumbnail_job` é agora o único ponto que libera
+  o slot (`poll`, `job.commit`, `job.discard`).
+- O Spark guarda os centros em `float16` (máximo 65 504): o contrato prometia "dezenas de milhares de unidades" para uma
+  captura real. Nuvens além desse valor viram só fundo e são recusadas como `empty_picture` (BL144.16).
+- Quatro testes já falhavam na `main` (BL156) por erros do próprio teste, não da lógica: ver o backlog.
+
+**Limites declarados (não provados nesta validação; os IDs seguem abertos no backlog).**
+
+- **BL144.1:** imagem parada e vídeo seguem com glifo.
+- **BL144.2:** a identidade não contém a captura do SHARP e o splat do SHARP seria desenhado sem a orientação dela.
 - **BL144.3 (impressão do runtime):** o cache só é invalidado por `VERSION`/`CACHE_VERSION`; reconstruir `runtime/dist` não
-  refaz imagens guardadas. Plano: o fabricante do renderizador expõe uma impressão (hash do bundle) em `capabilities`, o
-  adaptador a inclui na impressão do cache (não na identidade do core, que não conhece o runtime) e um comando
-  `media.thumbnails {rebuild: true}` limpa só as miniaturas. Ainda não implementado.
-- A prova nativa tem janela real, mas o enquadramento de formatos PLY/SPZ só é provado por testes unitários do core (medida
-  entre formatos); a prova ponta a ponta usa `.splat`.
-- Mutações dirigidas anteriores (aplicar sem conferir o carimbo, mostrar sem conferir a identidade, título fixo, assinatura da
-  árvore sem rótulo) valiam para o código anterior; **as mutações desta revisão ainda não foram executadas** (por exemplo,
-  um host que reutiliza a sessão, uma identidade sem dependências, um enquadramento fixo): os testes foram escritos para
-  falhar com elas, sem prova de execução.
+  refaz imagens guardadas. Plano: o runtime expõe o hash do bundle em `capabilities`, o adaptador o inclui na impressão do
+  cache e `media.thumbnails {rebuild: true}` limpa só as miniaturas. Não implementado.
+- **BL144.10:** um export de vídeo iniciado depois de uma miniatura ainda pode sobrepor renderers; só a miniatura explícita
+  durante um export responde `renderer_busy`/`retryable`. Não há garantia de renderer exclusivo, e a pausa do usuário
+  sobrevivendo a um export não foi provada.
+- **BL144.13:** a convenção de eixos do SPZ e do PLY no Spark só é provada por testes unitários do core (medida entre
+  formatos); a prova ponta a ponta e o teste de runtime usam `.splat`.
+- **BL144.14:** o custo de montar identidades (BFS) por paint/tick não foi medido.
+- **BL144.15:** uma falha ao montar o snapshot no agendamento pode ser engolida.
+- SwiftShader, não GPU real; **sem ponteiro físico** (não há controle novo para clicar); faltando→presente só em lib.
+- Mudou o runtime da `main` (PR #28, perf do viewport) em relação ao `ce71ce9`; as execuções acima são todas sobre o
+  runtime novo (hashes acima).
 
-R2: tamanhos extremos agora cabem em MAX_SIDE com lados pares (mínimo2; aspecto extremo é aproximado). Chamadas explícitas de miniatura aguardam export ativo. Um export válido iniciado com miniatura ainda em curso cancela a miniatura e devolve renderer_busy/retryable até seu frame terminar, sem iniciar outro renderer; o chamador repete após concluir o cancelamento. A pausa automática é desfeita por uma nova solicitação explícita. Isso não é uma fila automática de export e deve ser tratado na UI/CLI como erro transitório. Testes escritos, não executados por disco. Spec do helper comum incluída nesta branch. SPZ/PLY e orientaçãoSHARP continuam a validar em runtime, custo de BFS por paint e falha de snapshot silenciosa seguem limites pendentes.
+## Política de requisições (R2, vigente)
 
-Política vigente após comentários adicionais: retirada a guarda de export que cancelava miniaturas e mudava a pausa do usuário. Thumbnail explícita durante export retorna renderer_busy/retryable, sem anunciar fila. Agendamento automático espera export; export iniciado depois de thumbnail ainda pode sobrepor renderers (BL144.10 pendente). Não há garantia de renderer exclusivo. Esta regra substitui o parágrafo anterior sobre preempção de export. Testes Rust não executados por disco.
-
-## Complemento R2 — requisições e validação pendente
-
-`media.thumbnails` valida os ativos antes de alterar a pausa por cancelamento. Durante cancelamento ou ao pedir filtro/retry com um job atual, responde `thumbnail_busy` com `retryable: true`; o chamador deve repetir depois do término. O pedido não é aceito nem enfileirado nesses casos. Durante export responde `renderer_busy/retryable`. Export iniciado depois de uma miniatura ainda pode sobrepor renderers (BL144.10); não há garantia de exclusividade global.
-
-O cancelamento é conferido antes de enviar cada quadro ao renderer. O teto de amostragem é 20 mil posições. Os lados da miniatura são pares entre 2 e MAX_SIDE mesmo em proporções extremas. Testes Rust e de runtime foram escritos mas não executados nesta revisão. Helper Python: 28/28; spec de miniaturas: 18/18, ambos também com `-O`. A prova ao vivo continua pendente, e as células F053 permanecem I.
+`media.thumbnails` valida os ativos antes de alterar a pausa por cancelamento. Durante cancelamento ou ao pedir
+filtro/retry com um job atual, responde `thumbnail_busy` com `retryable: true`; o chamador repete depois do término. O
+pedido não é aceito nem enfileirado nesses casos. Durante export responde `renderer_busy`/`retryable`: é um erro
+transitório, não uma fila. O agendamento automático espera o export acabar; uma miniatura explícita nunca preempta o
+export nem desfaz a pausa do usuário. O cancelamento é conferido antes de enviar cada quadro ao renderer. O teto de
+amostragem é 20 mil posições. Os lados da miniatura são pares entre 2 e `MAX_SIDE` mesmo em proporções extremas (aspecto
+extremo é aproximado).
