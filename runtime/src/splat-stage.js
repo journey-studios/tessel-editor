@@ -25,7 +25,8 @@ const WAIT_POLL_MS = 25;
 
 /** Decodes splat bytes into a mesh whose data is ready; Spark's own errors become decode_failed. */
 export const loadSplatMesh = async (bytes, fileName, label) => {
-  const mesh = new SplatMesh({ fileBytes: bytes.slice(0), fileName });
+  // No copy of `bytes` here: Spark copies what it sends to its worker, so a caller's buffer is only read.
+  const mesh = new SplatMesh({ fileBytes: bytes, fileName });
   try {
     await mesh.initialized;
   } catch (error) {

@@ -28,6 +28,8 @@ export const MIB = 1024 * 1024;
 export const LIMITS = {
   /** GPU bytes of retained image textures (stills and sequence frames); evicted ones re-upload from the bitmap. */
   imageTextureBytes: 256 * MIB,
+  /** CPU bytes of decoded sequence/video frames across all assets (the per-asset frame count alone cannot bound them). */
+  frameBitmapBytes: 256 * MIB,
   textEntries: 32,
   textBytes: 32 * MIB,
   materials: 24,
@@ -68,6 +70,7 @@ export class RetentionCounters {
       texture_created: 0,
       texture_reused: 0,
       texture_evicted: 0,
+      frame_bitmap_evicted: 0,
       text_created: 0,
       text_reused: 0,
       text_evicted: 0,

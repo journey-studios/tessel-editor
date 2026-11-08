@@ -33,6 +33,7 @@ use tessel_editor_core::headless::{backend_error, frame_geometry, frame_report, 
 use tessel_editor_core::ops::RenderFrame;
 use tessel_editor_core::perf::Meter;
 use tessel_editor_core::plan::{PlanRequest, RenderPlan};
+use tessel_editor_core::preview::ProxyCoverage;
 use tessel_editor_core::session::{Preview, SessionEvent, Status, ViewportSession};
 use tessel_editor_core::state::EditorState;
 use tessel_editor_core::trace::TraceHandle;
@@ -57,6 +58,10 @@ const FRAME_TIMEOUT: Duration = Duration::from_secs(30);
 const PREVIEW_LONG_SIDE: u32 = 960;
 /// Loaded assets kept between frames before the ones the plan no longer needs are released.
 const RETAINED_ASSETS: usize = 16;
+/// Source-file bytes the monitor keeps loaded: three 66 MB splat scenes (the one on screen, the one
+/// fading out or in, and one more to scrub back to). Past it the least recently used heavy asset is
+/// released, because each scene costs ~100-250 MB in the WebView once decoded.
+const RETAINED_ASSET_BYTES: u64 = 256 << 20;
 /// Set to `1` to make the monitor's own frames carry hash/mean like explicit ones (measurement
 /// and pixel proofs); off by default because the readback is not needed to show a picture.
 pub const INSPECT_ENV: &str = "TESSEL_VIEWPORT_INSPECT";
@@ -72,6 +77,8 @@ pub const RESULT_CACHE_ENV: &str = "TESSEL_VIEWPORT_RESULT_CACHE";
 /// `0`, `2` or `4` MSAA samples for scene targets. Unset keeps the runtime's 4 (OPT07 measured
 /// fewer samples as a real gain on large splat scenes but a visible edge-quality trade).
 pub const SCENE_SAMPLES_ENV: &str = "TESSEL_VIEWPORT_SCENE_SAMPLES";
+/// How far ahead of the playhead playback loads the assets of clips that are about to start.
+pub const PREFETCH_SECONDS: i64 = 2;
 /// `0`, `2` or `4` MSAA samples of scene layers in the monitor's interactive frames (playback and
 /// scrub, BL129); the picture is refined to the final count when the playhead stops. Unset keeps the
 /// runtime's default; `4` turns the reduction off (A/B and rollback). Explicit frames and export
@@ -265,6 +272,9 @@ pub struct ViewportHost {
     failure: Option<BackendError>,
     last_frame: Option<FrameResult>,
     output_size: Option<(u32, u32)>,
+    /// Proxy coverage of the sequence's videos as of the last sync: while some are pending the
+    /// monitor draws them from full-size frames, which is much slower, and says so.
+    proxy_coverage: ProxyCoverage,
     /// Whether the monitor is on screen; reported, and used to skip work while hidden.
     pub on_screen: bool,
     /// Messages from the page that changed what the monitor shows (and so repainted the window)
@@ -304,6 +314,7 @@ impl ViewportHost {
         let mut session =
             ViewportSession::new(backend).with_demo_dir(tessel_editor_render::demo_dir());
         session.set_retained_assets(RETAINED_ASSETS);
+        session.set_retained_bytes(RETAINED_ASSET_BYTES);
         session.trace().set_enabled(options.trace);
         let (dist, phase) = match page {
             Ok(dist) => (Some(dist), Phase::Booting(Instant::now())),
@@ -327,6 +338,7 @@ impl ViewportHost {
             failure: None,
             last_frame: None,
             output_size: None,
+            proxy_coverage: ProxyCoverage::default(),
             on_screen: true,
             directed: directed::DirectedViewport::default(),
             overlay: OverlayHost::from_env(),
@@ -500,6 +512,7 @@ impl ViewportHost {
         let trace = self.session.trace().clone();
         let sync_started = trace.start();
         self.session.set_preview_policy(state.preview_policy);
+        self.proxy_coverage = state.preview_policy.coverage(state);
         let planned = trace.start();
         let plan = state.plan(&PlanRequest::of(state));
         if let Some(started) = planned {
@@ -544,6 +557,27 @@ impl ViewportHost {
         };
         self.request_preview(state, plan, output);
         trace.span("sync", sync_started);
+    }
+
+    /// While the playhead moves: starts loading what clips about to start will need, so a cut or
+    /// crossfade does not stall its first frame on the fetch + decode of a large splat (see
+    /// [`ViewportSession::prefetch`]). Looks [`PREFETCH_SECONDS`] ahead. Best effort, never an error;
+    /// does nothing for a directed scene, a source preview or a runtime that is not ready.
+    /// Returns how many loads started.
+    pub fn prefetch_ahead(&mut self, state: &EditorState) -> usize {
+        if self.directed_scene().is_some() || !self.is_ready() {
+            return 0;
+        }
+        let frames = state
+            .timeline
+            .rate
+            .nominal_fps()
+            .saturating_mul(PREFETCH_SECONDS);
+        let assets = state.assets_ahead(frames);
+        if assets.is_empty() {
+            return 0;
+        }
+        self.session.prefetch(state, &assets)
     }
 
     /// The monitor's own frame. A frame already rendering is left to finish when only the
@@ -901,18 +935,29 @@ impl ViewportHost {
                     Status::Loading(_) => "Carregando mídia…".to_string(),
                     Status::Rendering(_) => "Renderizando…".to_string(),
                     _ => match &self.last_frame {
-                        Some(frame) => format!(
-                            "Three.js · {}×{} · {:.0} ms{}",
-                            frame.width,
-                            frame.height,
-                            frame.render_ms,
-                            // Never hide that the picture is a preview copy.
-                            reduced_label(&frame.detail)
-                        ),
+                        Some(frame) => {
+                            format!(
+                                "Three.js · {}×{} · {:.0} ms{}",
+                                frame.width,
+                                frame.height,
+                                frame.render_ms,
+                                // Never hide that the picture is a preview copy.
+                                reduced_label(&frame.detail)
+                            ) + &self.proxy_note()
+                        }
                         None => "Aguardando quadro".to_string(),
                     },
                 }
             }
+        }
+    }
+
+    /// Why playback may be slower than the picture's cost suggests: videos of the sequence whose
+    /// preview proxy is still being built are drawn from their full-size frames.
+    fn proxy_note(&self) -> String {
+        match self.proxy_coverage.pending {
+            0 => String::new(),
+            pending => format!(" · gerando proxy ({pending})"),
         }
     }
 
@@ -963,6 +1008,7 @@ impl ViewportHost {
             "capabilities": capabilities,
             "session": summary,
             "ui": json!({ "repaints": self.ui_repaints, "skipped": self.ui_skipped }),
+            "proxy_coverage": self.proxy_coverage.to_json(),
             "last_frame": self.last_frame.as_ref().map(FrameResult::to_json),
         })
     }

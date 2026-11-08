@@ -976,7 +976,8 @@ fn a_damaged_cached_picture_is_drawn_again_not_trusted() {
         "intact: not drawn again"
     );
 
-    let damage: Vec<(&str, Box<dyn Fn() + '_>)> = vec![
+    type Damage<'a> = Box<dyn Fn() + 'a>;
+    let damage: Vec<(&str, Damage<'_>)> = vec![
         (
             "truncated",
             Box::new(|| fs::write(&picture, &good[..good.len() / 2]).unwrap()),

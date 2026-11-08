@@ -1077,18 +1077,17 @@ fn a_batch_that_changes_nothing_leaves_the_document_the_scene_and_the_history_al
     assert!(before.get("fx").is_some());
     let depth = undo_depth(&state);
     let scene = Arc::clone(&state.scenes.get("street").unwrap().scene);
-    for ops in [json!([])] {
-        let answer = edit(&mut state, ops.clone());
-        assert_eq!(answer["changed"], false, "{ops}");
-        assert_eq!(answer["noop"], true, "{ops}");
-        assert_eq!(answer["changed_ops"], 0, "{ops}");
-        assert_eq!(document(&state), before, "{ops}");
-        assert_eq!(undo_depth(&state), depth, "{ops}");
-        assert!(Arc::ptr_eq(
-            &scene,
-            &state.scenes.get("street").unwrap().scene
-        ));
-    }
+    let ops = json!([]);
+    let answer = edit(&mut state, ops.clone());
+    assert_eq!(answer["changed"], false, "{ops}");
+    assert_eq!(answer["noop"], true, "{ops}");
+    assert_eq!(answer["changed_ops"], 0, "{ops}");
+    assert_eq!(document(&state), before, "{ops}");
+    assert_eq!(undo_depth(&state), depth, "{ops}");
+    assert!(Arc::ptr_eq(
+        &scene,
+        &state.scenes.get("street").unwrap().scene
+    ));
     // The same on a scene with a clip, with a batch of only no-ops, and on one without any layer.
     edit(&mut state, json!([add(0, 10, json!({}))]));
     let depth = undo_depth(&state);
@@ -1206,18 +1205,18 @@ fn track_labels_are_unique_after_a_removal() {
 #[test]
 fn the_limits_of_the_layer_are_importer_issues_with_the_fx_limit_code() {
     let track = |n: usize| json!({"id": format!("t{n}"), "label": "FX", "clips": []});
-    let mut document = bundle();
-    document["fx"] = json!({"catalogVersion":1,"transitions":[],
+    let mut bundle_doc = bundle();
+    bundle_doc["fx"] = json!({"catalogVersion":1,"transitions":[],
         "tracks": (0..fx::MAX_FX_TRACKS).map(track).collect::<Vec<_>>()});
     assert!(
-        DirectedScene::import_value(document.clone()).is_ok(),
+        DirectedScene::import_value(bundle_doc.clone()).is_ok(),
         "64 tracks fit"
     );
-    document["fx"]["tracks"]
+    bundle_doc["fx"]["tracks"]
         .as_array_mut()
         .unwrap()
         .push(track(64));
-    let error = DirectedScene::import_value(document).unwrap_err();
+    let error = DirectedScene::import_value(bundle_doc).unwrap_err();
     let found: Vec<(String, String)> = error
         .issues()
         .iter()
@@ -1225,11 +1224,11 @@ fn the_limits_of_the_layer_are_importer_issues_with_the_fx_limit_code() {
         .collect();
     assert_eq!(found, [("FX_LIMIT".to_string(), "/fx/tracks".to_string())]);
 
-    let mut document = bundle();
-    document["fx"] = json!({"catalogVersion":1,"transitions":[],"tracks":[{
+    let mut bundle_doc = bundle();
+    bundle_doc["fx"] = json!({"catalogVersion":1,"transitions":[],"tracks":[{
         "id":"t","label":"FX","clips":(0..=fx::MAX_FX_CLIPS_PER_TRACK).map(|n| json!({
             "id": format!("c{n}"), "effect":"vignette", "startFrame": 0, "durationFrames": 1})).collect::<Vec<_>>()}]});
-    let codes: Vec<String> = DirectedScene::import_value(document)
+    let codes: Vec<String> = DirectedScene::import_value(bundle_doc)
         .unwrap_err()
         .issues()
         .iter()

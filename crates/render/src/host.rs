@@ -215,6 +215,23 @@ fn parse_range(header: &str, size: u64) -> Option<Result<(u64, u64), ()>> {
     })
 }
 
+/// The most one answer carries. The body is one `Vec` handed to the WebView, and a freed block this
+/// large stays in the allocator's cache: answering a whole 66 MB splat file (or a `<video>`'s open
+/// `bytes=0-`) left ~60 MB resident per file, for good. A range answer may be shorter than asked
+/// (`Content-Range` says what it is), so players and `fetch` loops simply ask for the rest.
+pub const MAX_RANGE_BODY: u64 = 4 << 20;
+
+/// Cuts a range to [`MAX_RANGE_BODY`]: from its start, or, for a suffix range (`bytes=-n`), keeping the tail.
+fn clamp_range(start: u64, end: u64, suffix: bool) -> (u64, u64) {
+    if end - start < MAX_RANGE_BODY {
+        (start, end)
+    } else if suffix {
+        (end + 1 - MAX_RANGE_BODY, end)
+    } else {
+        (start, start + MAX_RANGE_BODY - 1)
+    }
+}
+
 /// Answers `GET <path>?<query>`: the page (`/`, `/runtime.js`) from `dist`, or a registered
 /// asset (`/asset?p=<absolute path>`), with byte ranges.
 pub fn serve(
@@ -248,7 +265,11 @@ pub fn serve(
     let kind = content_type(&file);
     let ranged = range.and_then(|header| parse_range(header, size));
     let (start, end, status) = match ranged {
-        Some(Ok((start, end))) => (start, end, 206),
+        Some(Ok((start, end))) => {
+            let (start, end) =
+                clamp_range(start, end, range.is_some_and(|h| h.starts_with("bytes=-")));
+            (start, end, 206)
+        }
         Some(Err(())) => {
             return Served {
                 status: 416,
@@ -259,7 +280,13 @@ pub fn serve(
         }
         None => (0, size.saturating_sub(1), 200),
     };
-    let mut body = Vec::new();
+    // Exact capacity: `read_to_end` on an empty Vec doubles by `realloc` (1, 2, 4 ... 64 MiB for a splat
+    // file), and every step leaves a freed block the allocator keeps resident.
+    let mut body = Vec::with_capacity(if size > 0 {
+        (end - start + 1) as usize
+    } else {
+        0
+    });
     if size > 0
         && (handle.seek(SeekFrom::Start(start)).is_err()
             || handle.take(end - start + 1).read_to_end(&mut body).is_err())
@@ -325,6 +352,42 @@ mod tests {
         path.to_string_lossy()
             .replace('/', "%2F")
             .replace(' ', "%20")
+    }
+
+    #[test]
+    fn a_range_answer_never_exceeds_the_body_cap_and_says_what_it_carries() {
+        let dir = scratch("cap");
+        let size = 2 * MAX_RANGE_BODY + 10;
+        let mut content = vec![b'a'; size as usize];
+        content[size as usize - 1] = b'z';
+        std::fs::write(dir.join("big.ply"), &content).unwrap();
+        let mut access = AssetAccess::default();
+        access.register(&json!({"source": {"type": "file", "path": dir.join("big.ply")}}));
+        let query = format!("p={}", encode(&dir.join("big.ply")));
+
+        let open = serve(&dir, &access, "/asset", &query, Some("bytes=5-"));
+        assert_eq!((open.status, open.body.len() as u64), (206, MAX_RANGE_BODY));
+        assert_eq!(
+            open.content_range,
+            Some(format!("bytes 5-{}/{size}", 5 + MAX_RANGE_BODY - 1))
+        );
+        let tail = serve(&dir, &access, "/asset", &query, Some("bytes=-100000000"));
+        assert_eq!(tail.body.len() as u64, MAX_RANGE_BODY);
+        assert_eq!(
+            tail.body.last(),
+            Some(&b'z'),
+            "a suffix range keeps the end of the file"
+        );
+        assert_eq!(
+            tail.content_range,
+            Some(format!(
+                "bytes {}-{}/{size}",
+                size - MAX_RANGE_BODY,
+                size - 1
+            ))
+        );
+        let small = serve(&dir, &access, "/asset", &query, Some("bytes=0-9"));
+        assert_eq!(small.body.len(), 10, "a range under the cap is untouched");
     }
 
     #[test]

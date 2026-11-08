@@ -206,10 +206,10 @@ test('a splat resource is bound only to a splat loaded as spz with exactly the p
   assert.equal(refusal(() => resolveSceneResources(spec, { has: () => false, get: () => null })).code, 'resource_unresolved');
 });
 
-test('the budget counts a splat file by its kept bytes and packed splats, a picture by its RGBA', async () => {
+test('the budget counts a splat file by its packed splats (the file itself is not kept), a picture by its RGBA', async () => {
   const { AssetStore } = await import('../src/assets.js');
   const store = new AssetStore({ assetUrl: (path) => path });
-  assert.equal(store.sceneEntryBytes({ kind: 'splat', bytes: new ArrayBuffer(1000), count: 50 }), 1000 + 50 * 16);
+  assert.equal(store.sceneEntryBytes({ kind: 'splat', count: 50 }), 50 * 16);
   assert.equal(store.sceneEntryBytes({ kind: 'still', width: 8, height: 4 }), 8 * 4 * 4);
 });
 

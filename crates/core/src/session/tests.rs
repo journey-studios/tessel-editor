@@ -1264,6 +1264,136 @@ fn an_edit_or_an_explicit_frame_drops_the_pending_refine() {
     assert!(!rig.session.refine_pending());
 }
 
+/// `rig()` plus a second still on the same track, starting at `start`: a cut the playhead has not
+/// reached yet.
+fn rig_with_cut(start: i64) -> Rig {
+    let mut rig = rig();
+    let image = rig
+        .state
+        .library
+        .item("img")
+        .unwrap()
+        .asset
+        .clone()
+        .unwrap();
+    rig.state
+        .execute(Command::AddAsset {
+            id: Some("next".into()),
+            name: "Next".into(),
+            kind: MediaKind::Still,
+            asset: Box::new(image),
+            folder: None,
+        })
+        .unwrap();
+    rig.state
+        .execute(Command::AddClip {
+            id: Some("c2".into()),
+            name: None,
+            track: "v1".into(),
+            asset: Some("next".into()),
+            start,
+            duration: 24,
+            source_start: None,
+            text: None,
+            camera: None,
+            properties: vec![],
+        })
+        .unwrap();
+    rig
+}
+
+#[test]
+fn assets_ahead_lists_clips_that_start_inside_the_window_only() {
+    let mut rig = rig_with_cut(60);
+    assert!(
+        rig.state.assets_ahead(24).is_empty(),
+        "frame 60 is past 0 + 24"
+    );
+    assert_eq!(rig.state.assets_ahead(60), vec![Id::lit("next")]);
+    assert!(rig.state.assets_ahead(0).is_empty());
+    // A clip that is already on screen is the current frame's own business, not "ahead".
+    rig.state
+        .execute(Command::SetPlayhead {
+            frame: crate::Raw::Number(60.0),
+        })
+        .unwrap();
+    assert!(rig.state.assets_ahead(24).is_empty());
+    rig.state
+        .execute(Command::SetPlayhead {
+            frame: crate::Raw::Number(40.0),
+        })
+        .unwrap();
+    assert_eq!(rig.state.assets_ahead(24), vec![Id::lit("next")]);
+}
+
+#[test]
+fn assets_ahead_is_empty_for_a_source_preview() {
+    let mut rig = rig_with_cut(60);
+    rig.state.preview = PreviewIntent::Source {
+        asset: Id::lit("img"),
+        time: crate::time::Ratio::new(0, 1).unwrap(),
+    };
+    assert!(rig.state.assets_ahead(120).is_empty());
+}
+
+#[test]
+fn prefetch_loads_ahead_without_a_frame_and_the_frame_that_needs_it_does_not_load_again() {
+    let mut rig = rig_with_cut(60);
+    rig.session.capabilities().unwrap();
+    let ahead = vec![Id::lit("next")];
+    assert_eq!(rig.session.prefetch(&rig.state, &ahead), 1);
+    assert_eq!(
+        rig.session.prefetch(&rig.state, &ahead),
+        0,
+        "already loading"
+    );
+    assert_eq!(rig.script.borrow().loaded, vec![Id::lit("next")]);
+    assert_eq!(rig.session.status().label(), "idle", "no frame, no status");
+    assert_eq!(rig.session.revision(), 0);
+    assert_eq!(rig.session.stats.requests, 0);
+    assert_eq!(rig.session.stats.prefetched, 1);
+
+    // The answer arrives with nothing waiting for it.
+    rig.script.borrow_mut().events.push_back(ready("next"));
+    assert_eq!(
+        rig.session.pump(Duration::ZERO),
+        Some(SessionEvent::Progress)
+    );
+    assert_eq!(rig.session.loaded_assets(), vec![Id::lit("next")]);
+
+    // The frame at the cut finds it ready: only the first clip's asset is loaded, and the frame
+    // is submitted as soon as that one is ready.
+    let id = rig
+        .session
+        .request_frame(&rig.state, plan(&rig, 60), output(), vec![])
+        .unwrap();
+    assert_eq!(rig.script.borrow().loaded, vec![Id::lit("next")]);
+    assert_eq!(rig.script.borrow().submitted.last(), Some(&(id, 1)));
+}
+
+#[test]
+fn a_frame_waiting_on_a_prefetch_in_flight_does_not_start_a_second_load() {
+    let mut rig = rig_with_cut(60);
+    rig.session.capabilities().unwrap();
+    rig.session.prefetch(&rig.state, &[Id::lit("next")]);
+    let id = rig
+        .session
+        .request_frame(&rig.state, plan(&rig, 60), output(), vec![])
+        .unwrap();
+    assert_eq!(rig.session.status().label(), "loading");
+    assert_eq!(rig.script.borrow().loaded, vec![Id::lit("next")]);
+    rig.script
+        .borrow_mut()
+        .events
+        .extend([ready("next"), BackendEvent::FrameDone(frame(id, 1))]);
+    rig.session.pump(Duration::ZERO);
+    assert_eq!(rig.session.status().label(), "rendering");
+    assert!(matches!(
+        rig.session.pump(Duration::ZERO),
+        Some(SessionEvent::Frame(_))
+    ));
+}
+
 // ---- BL129: scene MSAA by motion (playback, scrub) and the refine to the final count ----
 
 /// A frame answer as the runtime reports a scene layer drawn with `samples` MSAA samples, of which
@@ -1288,6 +1418,202 @@ fn finish_scene(rig: &mut Rig, id: RequestId, samples: u64, reduced: u64) {
         rig.session.pump(Duration::ZERO),
         Some(SessionEvent::Frame(_))
     ));
+}
+
+/// `rig_with_cut` plus a third still ("later") that starts at `start`, with the same file.
+fn rig_with_two_cuts(first: i64, start: i64) -> Rig {
+    let mut rig = rig_with_cut(first);
+    let image = rig
+        .state
+        .library
+        .item("img")
+        .unwrap()
+        .asset
+        .clone()
+        .unwrap();
+    rig.state
+        .execute(Command::AddAsset {
+            id: Some("later".into()),
+            name: "Later".into(),
+            kind: MediaKind::Still,
+            asset: Box::new(image),
+            folder: None,
+        })
+        .unwrap();
+    rig.state
+        .execute(Command::AddClip {
+            id: Some("c3".into()),
+            name: None,
+            track: "v1".into(),
+            asset: Some("later".into()),
+            start,
+            duration: 24,
+            source_start: None,
+            text: None,
+            camera: None,
+            properties: vec![],
+        })
+        .unwrap();
+    rig
+}
+
+#[test]
+fn a_burst_of_prefetches_stops_at_the_byte_budget_and_a_frame_still_loads_what_was_skipped() {
+    let mut rig = rig_with_two_cuts(60, 90);
+    rig.session.capabilities().unwrap();
+    let file_bytes: u64 = AssetDescriptor::from_item(rig.state.library.item("img").unwrap(), None)
+        .unwrap()
+        .files()
+        .iter()
+        .map(|file| std::fs::metadata(file).unwrap().len())
+        .sum();
+    assert!(file_bytes > 0);
+    // Room for exactly one of the two.
+    rig.session.set_prefetch_budget(file_bytes);
+    let both = vec![Id::lit("next"), Id::lit("later")];
+    assert_eq!(rig.session.prefetch(&rig.state, &both), 1);
+    assert_eq!(rig.session.stats.prefetch_skipped, 1);
+    assert_eq!(rig.script.borrow().loaded, vec![Id::lit("next")]);
+
+    // Skipped is not failed: the frame that needs it loads it on demand.
+    rig.script.borrow_mut().events.push_back(ready("next"));
+    rig.session.pump(Duration::ZERO);
+    rig.session
+        .request_frame(&rig.state, plan(&rig, 90), output(), vec![])
+        .unwrap();
+    assert!(
+        rig.script.borrow().loaded.contains(&Id::lit("later")),
+        "the frame loads the asset the prefetch skipped"
+    );
+}
+
+#[test]
+fn the_first_prefetch_always_fits_and_a_used_one_frees_the_budget() {
+    let mut rig = rig_with_two_cuts(60, 90);
+    rig.session.capabilities().unwrap();
+    rig.session.set_prefetch_budget(1);
+    // One scene bigger than the whole budget still prefetches: the budget limits a burst.
+    assert_eq!(rig.session.prefetch(&rig.state, &[Id::lit("next")]), 1);
+    assert_eq!(rig.session.prefetch(&rig.state, &[Id::lit("later")]), 0);
+    assert_eq!(rig.session.stats.prefetch_skipped, 1);
+    // A frame that uses the prefetched asset turns it into an ordinary one: the budget is free again.
+    rig.script.borrow_mut().events.push_back(ready("next"));
+    rig.session.pump(Duration::ZERO);
+    rig.session
+        .request_frame(&rig.state, plan(&rig, 60), output(), vec![])
+        .unwrap();
+    assert_eq!(rig.session.prefetch(&rig.state, &[Id::lit("later")]), 1);
+}
+
+fn file_bytes_of_img(rig: &Rig) -> u64 {
+    AssetDescriptor::from_item(rig.state.library.item("img").unwrap(), None)
+        .unwrap()
+        .files()
+        .iter()
+        .map(|file| std::fs::metadata(file).unwrap().len())
+        .sum()
+}
+
+/// Draws frame `at` and completes the loads it waits for, as the monitor does while playing.
+fn show(rig: &mut Rig, at: i64, assets: &[&str]) {
+    let id = rig
+        .session
+        .request_frame(&rig.state, plan(rig, at), output(), vec![])
+        .unwrap();
+    for asset in assets {
+        rig.script.borrow_mut().events.push_back(ready(asset));
+        rig.session.pump(Duration::ZERO);
+    }
+    settle(rig, id, rig.session.revision(), 0);
+}
+
+#[test]
+fn past_the_byte_budget_the_least_recently_used_heavy_asset_is_released_first() {
+    let mut rig = rig_with_two_cuts(60, 90);
+    rig.session.capabilities().unwrap();
+    rig.session.min_evict_bytes = 0;
+    let file = file_bytes_of_img(&rig);
+    rig.session.set_retained_bytes(2 * file);
+    show(&mut rig, 0, &["img"]);
+    show(&mut rig, 60, &["next"]);
+    assert!(rig.script.borrow().released.is_empty(), "two fit");
+    // The third asset takes the total past the budget: `img` was used longest ago.
+    rig.session
+        .request_frame(&rig.state, plan(&rig, 90), output(), vec![])
+        .unwrap();
+    assert_eq!(rig.script.borrow().released, vec![Id::lit("img")]);
+    assert_eq!(rig.session.stats.evicted, 1);
+    assert!(rig.script.borrow().loaded.contains(&Id::lit("later")));
+    assert_eq!(rig.session.loaded_assets(), vec![Id::lit("next")]);
+}
+
+#[test]
+fn the_byte_budget_never_releases_what_the_frame_needs_or_a_prefetch_holds() {
+    let mut rig = rig_with_two_cuts(60, 90);
+    rig.session.capabilities().unwrap();
+    rig.session.min_evict_bytes = 0;
+    rig.session.set_retained_bytes(1);
+    show(&mut rig, 0, &["img"]);
+    assert_eq!(rig.session.prefetch(&rig.state, &[Id::lit("later")]), 1);
+    rig.script.borrow_mut().events.push_back(ready("later"));
+    rig.session.pump(Duration::ZERO);
+    rig.session
+        .request_frame(&rig.state, plan(&rig, 60), output(), vec![])
+        .unwrap();
+    // Only `img` is neither required (`next`) nor prefetched (`later`).
+    assert_eq!(rig.script.borrow().released, vec![Id::lit("img")]);
+    assert!(rig.session.assets.contains_key(&Id::lit("later")));
+    assert!(rig.session.assets.contains_key(&Id::lit("next")));
+}
+
+#[test]
+fn without_a_byte_budget_or_for_light_assets_nothing_is_released() {
+    let mut rig = rig_with_two_cuts(60, 90);
+    rig.session.capabilities().unwrap();
+    show(&mut rig, 0, &["img"]);
+    show(&mut rig, 60, &["next"]);
+    show(&mut rig, 90, &["later"]);
+    assert!(rig.script.borrow().released.is_empty(), "no budget set");
+    // A budget alone does not release assets under the heavy threshold: they free nothing worth a reload.
+    rig.session.set_retained_bytes(1);
+    rig.session
+        .request_frame(&rig.state, plan(&rig, 0), output(), vec![])
+        .unwrap();
+    assert!(rig.script.borrow().released.is_empty());
+    assert_eq!(rig.session.stats.evicted, 0);
+}
+
+#[test]
+fn a_prefetch_is_best_effort_and_never_a_failure() {
+    let mut rig = rig_with_cut(60);
+    // Before the runtime announced itself there is nothing to load into.
+    assert_eq!(rig.session.prefetch(&rig.state, &[Id::lit("next")]), 0);
+    rig.session.capabilities().unwrap();
+    assert_eq!(
+        rig.session
+            .prefetch(&rig.state, &[Id::lit("not-in-the-library")]),
+        0
+    );
+    rig.script.borrow_mut().fail_load = Some(BackendError::new("asset_unreadable", "gone"));
+    assert_eq!(rig.session.prefetch(&rig.state, &[Id::lit("next")]), 0);
+    assert_eq!(rig.session.status().label(), "idle");
+    // A runtime that refuses the load later is ignored unless a frame needs the asset.
+    rig.script.borrow_mut().fail_load = None;
+    assert_eq!(rig.session.prefetch(&rig.state, &[Id::lit("next")]), 1);
+    rig.script
+        .borrow_mut()
+        .events
+        .push_back(BackendEvent::Asset {
+            id: Id::lit("next"),
+            status: AssetStatus::Failed(BackendError::new("decode_failed", "bad")),
+            echo: None,
+        });
+    assert_eq!(
+        rig.session.pump(Duration::ZERO),
+        Some(SessionEvent::Progress)
+    );
+    assert_eq!(rig.session.status().label(), "idle");
+    assert!(rig.session.loaded_assets().is_empty());
 }
 
 /// A frame answer of a splat scene drawn at the final MSAA with `stale` layers painted in the order of

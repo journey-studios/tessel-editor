@@ -211,10 +211,10 @@ export class AssetStore {
 
   /**
    * What a directed-scene resource holds on the CPU side (GPU textures have their own budget): the
-   * decoded RGBA of a picture; for a splat file the kept bytes plus its packed splats (16 bytes each).
+   * decoded RGBA of a picture; for a splat file its packed splats (16 bytes each; the file itself is not kept).
    */
   sceneEntryBytes(entry) {
-    if (entry.kind === 'splat' || entry.bytes) return (entry.bytes?.byteLength ?? 0) + (entry.count ?? 0) * 16;
+    if (entry.kind === 'splat') return (entry.count ?? 0) * 16;
     return rgbaBytes(entry.width, entry.height);
   }
 
@@ -322,6 +322,44 @@ export class AssetStore {
     return bytes;
   }
 
+  /**
+   * What the store holds, by category, in bytes (CPU unless noted). Splat figures: `decoded` is Spark's packed data (16 bytes a splat, CPU copy and GPU
+   * texture alike) counted once per asset because every mesh of its pool shares it. A report, never a limit.
+   */
+  memoryReport() {
+    const report = {
+      splat_assets: 0,
+      splat_decoded_bytes: 0,
+      splat_spare_meshes: 0,
+      still_bitmap_bytes: 0,
+      sequence_frames: 0,
+      sequence_frame_bytes: 0,
+      sequence_proxy_frames: 0,
+      sequence_proxy_bytes: 0,
+      scene_picture_bytes: this.sceneResourceBytes(),
+      gpu_texture_bytes: this.textureBytes(),
+    };
+    this.entries.forEach((entry) => {
+      if (entry.kind === 'splat') {
+        report.splat_assets += 1;
+        report.splat_decoded_bytes += (entry.pool?.source.packedSplats?.numSplats ?? 0) * 16;
+        report.splat_spare_meshes += Math.max((entry.pool?.free.length ?? 1) - 1, 0);
+      }
+      if (entry.kind === 'still' && entry.bitmap) report.still_bitmap_bytes += rgbaBytes(entry.width, entry.height);
+      entry.frames?.forEach((frame, key) => {
+        const bytes = rgbaBytes(frame.bitmap.width, frame.bitmap.height);
+        if (isProxyKey(key)) {
+          report.sequence_proxy_frames += 1;
+          report.sequence_proxy_bytes += bytes;
+        } else {
+          report.sequence_frames += 1;
+          report.sequence_frame_bytes += bytes;
+        }
+      });
+    });
+    return report;
+  }
+
   /** Number of image textures retained right now. */
   textureCount() {
     let count = 0;
@@ -400,24 +438,33 @@ export class AssetStore {
 
   async loadAudio({ id, source }) {
     // Audio is mixed offline by the core; the viewport only needs to know the file is there.
-    await fetchChecked(this.assetUrl(source.path), `\`${id}\` (${source.path})`).then((response) =>
-      response.body?.cancel(),
-    );
+    // One byte proves it is readable; the whole file would pass through the editor's memory for nothing.
+    const label = `\`${id}\` (${source.path})`;
+    const response = await fetch(this.assetUrl(source.path), { headers: { Range: 'bytes=0-0' } }).catch((error) => {
+      throw new RuntimeError('asset_unreadable', `Cannot fetch ${label}: ${error.message}`);
+    });
+    if (!response.ok) throw new RuntimeError('asset_unreadable', `Cannot read ${label}: HTTP ${response.status}`);
+    await response.body?.cancel();
     return { entry: {}, meta: { readable: true } };
   }
 
   async loadSplat({ id, source, meta }) {
     const label = `\`${id}\` (${source.path})`;
-    const response = await fetchChecked(this.assetUrl(source.path), label);
-    const bytes = await response.arrayBuffer();
+    const bytes = await this.fetchSplatBytes(source, label);
     const fileName = splatFileName(meta.format, source.path);
     const mesh = await loadSplatMesh(bytes, fileName, label);
     const count = mesh.packedSplats.numSplats;
-    // The bytes stay so the GPU side can be rebuilt after a lost context (see dropGpu).
+    // The file is NOT kept (66 MB for a 1.18 M splat PLY, as much again as the decoded splats): the GPU
+    // side is rebuilt after a lost context by fetching it again (see splatLease and dropGpu).
     return {
-      entry: { bytes, fileName, label, mesh, pool: splatPool(mesh), count },
+      entry: { source, fileName, label, mesh, pool: splatPool(mesh), count },
       meta: { splat_count: count, format: fileName.split('.').pop() },
     };
+  }
+
+  async fetchSplatBytes(source, label) {
+    const response = await fetchChecked(this.assetUrl(source.path), label);
+    return response.arrayBuffer();
   }
 
   /**
@@ -464,7 +511,7 @@ export class AssetStore {
   async rebuildSplatPool(id, entry) {
     entry.rebuilding ??= (async () => {
       try {
-        const mesh = await loadSplatMesh(entry.bytes, entry.fileName, entry.label);
+        const mesh = await loadSplatMesh(await this.fetchSplatBytes(entry.source, entry.label), entry.fileName, entry.label);
         this.counters.add('splat_decoded');
         if (this.entries.get(id) !== entry) {
           mesh.dispose();
@@ -709,6 +756,35 @@ export class AssetStore {
       entry.frames.delete(key);
       if (proxied) proxies -= 1;
       else originals -= 1;
+    }
+    this.trimBitmaps();
+  }
+
+  /**
+   * The count limits above are per asset; a project with many 4K clips would still hold their
+   * product in CPU bitmaps. Past `frameBitmapBytes` over all assets, the least recently used frames
+   * (bitmap and texture) go, except the ones the frame in flight pins.
+   */
+  trimBitmaps() {
+    let bytes = 0;
+    const candidates = [];
+    this.entries.forEach((entry) => {
+      entry.frames?.forEach((frame, key) => {
+        const size = rgbaBytes(frame.bitmap.width, frame.bitmap.height);
+        bytes += size;
+        candidates.push({ entry, key, frame, size });
+      });
+    });
+    if (bytes <= this.limits.frameBitmapBytes) return;
+    candidates.sort((a, b) => (a.frame.lastUsed ?? 0) - (b.frame.lastUsed ?? 0));
+    for (const { entry, key, frame, size } of candidates) {
+      if (bytes <= this.limits.frameBitmapBytes) break;
+      if (frame.texture && this.pinned.has(frame.texture)) continue;
+      frame.texture?.dispose();
+      frame.bitmap.close();
+      entry.frames.delete(key);
+      bytes -= size;
+      this.counters.add('frame_bitmap_evicted');
     }
   }
 

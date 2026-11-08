@@ -424,6 +424,7 @@ export class Compositor {
     sources.proxy_layers = 0;
     sources.original_layers = 0;
     sources.result_hits = 0;
+    sources.occluded_layers = 0;
     // MSAA of the scene layers of this frame (`source.scene_samples`, and `source.reduced_scene_layers`
     // for the ones drawn with fewer samples than the final count: the monitor refines such a picture
     // once the playhead stops). Both appear only when the frame has a scene layer.
@@ -448,6 +449,13 @@ export class Compositor {
             layer: layer.id,
             supported: BLEND_MODES,
           });
+        }
+        // The core proved a layer above covers the canvas with opaque pixels: nothing of this one
+        // can reach the picture, so it is not prepared (decoded, uploaded, sorted) nor drawn. The
+        // pixels are the ones of drawing it; `order` is kept so the layers above keep their slots.
+        if (layer.occluded === true) {
+          sources.occluded_layers += 1;
+          continue;
         }
         const prepareStarted = performance.now();
         const prepared = await this.prepareLayer(layer, { ...frame, order });

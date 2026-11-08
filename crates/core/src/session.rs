@@ -22,7 +22,7 @@ use serde_json::{Value, json};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use crate::assets::ProxyFrames;
+use crate::assets::{MediaKind, ProxyFrames};
 use crate::backend::{
     AssetDescriptor, AssetStatus, BackendError, BackendEvent, Capabilities, FrameRequest,
     FrameResult, Output, ProxyState, RenderBackend, RequestId,
@@ -86,7 +86,22 @@ pub struct Stats {
     pub proxy_attached: u64,
     pub proxy_failed: u64,
     pub refined: u64,
+    /// Loads started ahead of any frame that needs them (see [`ViewportSession::prefetch`]).
+    pub prefetched: u64,
+    /// Prefetches skipped because the files already prefetched and not yet used fill the budget.
+    pub prefetch_skipped: u64,
+    /// Heavy assets released, least recently used first, to stay inside the byte budget.
+    pub evicted: u64,
 }
+
+/// Assets below this size are never evicted for memory: releasing them frees nothing worth a reload.
+const HEAVY_ASSET_BYTES: u64 = 1 << 20;
+
+/// Bytes of source files the session may hold prefetched and not yet used by a frame. A 66 MB PLY
+/// of 1.18 M splats takes ~100-250 MB once decoded, so the budget keeps a burst of clips that
+/// start together from loading every scene of the next two seconds at once; what does not fit
+/// loads when a frame needs it, as before.
+pub const PREFETCH_BUDGET_BYTES: u64 = 256 << 20;
 
 /// How long the monitor must be still before a reduced picture (proxy, or lighter MSAA) is
 /// replaced by the final-quality one. WHY not immediately: a scrub that pauses for a tick would
@@ -149,6 +164,16 @@ pub struct ViewportSession<B: RenderBackend> {
     active: Option<Active>,
     pending: Option<Pending>,
     retain: Option<usize>,
+    /// Assets the monitor asked the runtime to load ahead of any frame that needs them (see
+    /// [`ViewportSession::prefetch`]); the retention release keeps them like a required asset.
+    prefetched: HashMap<Id, u64>,
+    prefetch_budget: u64,
+    /// Bytes of source files of every asset loaded or loading, and the request that last needed it.
+    asset_bytes: HashMap<Id, u64>,
+    last_used: HashMap<Id, u64>,
+    retain_bytes: Option<u64>,
+    /// Assets below this size are never evicted for memory (see [`HEAVY_ASSET_BYTES`]).
+    min_evict_bytes: u64,
     policy: PreviewPolicy,
     /// What the runtime holds as the proxy of each loaded asset (the descriptor it was sent).
     proxies: HashMap<Id, Value>,
@@ -185,6 +210,12 @@ impl<B: RenderBackend> ViewportSession<B> {
             active: None,
             pending: None,
             retain: None,
+            prefetched: HashMap::new(),
+            prefetch_budget: PREFETCH_BUDGET_BYTES,
+            asset_bytes: HashMap::new(),
+            last_used: HashMap::new(),
+            retain_bytes: None,
+            min_evict_bytes: HEAVY_ASSET_BYTES,
             policy: PreviewPolicy::default(),
             proxies: HashMap::new(),
             refused: HashMap::new(),
@@ -431,6 +462,19 @@ impl<B: RenderBackend> ViewportSession<B> {
         self.retain = Some(limit);
     }
 
+    /// Bytes of source files the loaded assets may add up to. Past it, a request releases the heavy
+    /// assets it does not need, least recently used first (never the ones it needs, nor the ones
+    /// prefetched for the next cut). The count limit of [`Self::set_retained_assets`] cannot do
+    /// this: sixteen assets can be sixteen scenes of 66 MB, each ~100-250 MB once decoded.
+    pub fn set_retained_bytes(&mut self, limit: u64) {
+        self.retain_bytes = Some(limit);
+    }
+
+    /// Overrides [`PREFETCH_BUDGET_BYTES`] (tests).
+    pub fn set_prefetch_budget(&mut self, bytes: u64) {
+        self.prefetch_budget = bytes;
+    }
+
     /// The plan being drawn, if a request is in flight.
     pub fn active_plan(&self) -> Option<&RenderPlan> {
         self.active.as_ref().map(|active| &active.request.plan)
@@ -438,6 +482,58 @@ impl<B: RenderBackend> ViewportSession<B> {
 
     pub fn has_pending(&self) -> bool {
         self.pending.is_some()
+    }
+
+    /// Starts loading `assets` that are not loaded or loading, without a frame waiting for them.
+    ///
+    /// WHY: a cut or crossfade into a scene whose splats were never loaded stalls the first frame
+    /// that draws it for the whole fetch + decode (≈ 200 ms for a 1.18 M splat PLY, measured in
+    /// `docs/viewport-performance-splat-project-investigation.md`). The monitor calls this while
+    /// the playhead is moving with the assets the sequence will need a moment ahead, so the load
+    /// overlaps the frames before the cut. It is best effort and never an error: a missing or
+    /// unreadable asset is reported by the frame that actually needs it, and nothing here
+    /// changes the status, the revision or the request in flight. Returns how many loads started.
+    pub fn prefetch(&mut self, state: &EditorState, assets: &[Id]) -> usize {
+        if self.capabilities.is_none() {
+            return 0;
+        }
+        let mut started = 0;
+        for asset in assets {
+            if self.assets.contains_key(asset) {
+                continue;
+            }
+            let Some(item) = state.library.item(asset) else {
+                continue;
+            };
+            let Ok(descriptor) = AssetDescriptor::from_item(item, self.demo_dir.as_deref()) else {
+                continue;
+            };
+            let files = descriptor.files();
+            if files
+                .iter()
+                .any(|file| !std::path::Path::new(file).is_file())
+            {
+                continue;
+            }
+            let bytes = files_bytes(&files);
+            // The first prefetch always fits: the budget limits a burst, not a single big scene.
+            let held: u64 = self.prefetched.values().sum();
+            if held > 0 && held.saturating_add(bytes) > self.prefetch_budget {
+                self.stats.prefetch_skipped += 1;
+                continue;
+            }
+            if self.backend.load_asset(&descriptor).is_err() {
+                continue;
+            }
+            self.assets.insert(*asset, Slot::Loading);
+            self.loaded_from.insert(*asset, decoded_key(state, asset));
+            self.prefetched.insert(*asset, bytes);
+            self.asset_bytes
+                .insert(*asset, memory_bytes(descriptor.kind, bytes));
+            self.stats.prefetched += 1;
+            started += 1;
+        }
+        started
     }
 
     fn start(
@@ -478,8 +574,12 @@ impl<B: RenderBackend> ViewportSession<B> {
         if let Some(limit) = self.retain
             && self.loaded_assets().len() > limit
         {
-            self.release_except(&required.iter().copied().collect());
+            let mut keep: HashSet<Id> = required.iter().copied().collect();
+            keep.extend(self.prefetched.keys().copied());
+            self.release_except(&keep);
         }
+        // From here on a prefetched asset that this frame needs is an ordinary one.
+        self.prefetched.retain(|asset, _| !required.contains(asset));
         // Explicit requests keep today's behaviour byte for byte; only the monitor's own
         // frames may skip the readback, and only when nothing asked for pixels.
         let monitor = origin != Origin::Explicit;
@@ -560,12 +660,20 @@ impl<B: RenderBackend> ViewportSession<B> {
                     if let Err(error) = self.backend.load_asset(&descriptor) {
                         return Err(self.fail(error));
                     }
+                    self.asset_bytes.insert(
+                        *asset,
+                        memory_bytes(descriptor.kind, files_bytes(&descriptor.files())),
+                    );
                     self.assets.insert(*asset, Slot::Loading);
                     self.loaded_from.insert(*asset, decoded_key(state, asset));
                     pending.push(*asset);
                 }
             }
         }
+        for asset in &required {
+            self.last_used.insert(*asset, id);
+        }
+        self.release_over_budget(&required);
         self.active = Some(Active {
             request,
             required,
@@ -707,6 +815,7 @@ impl<B: RenderBackend> ViewportSession<B> {
                 self.assets.clear();
                 self.proxies.clear();
                 self.refused.clear();
+                self.prefetched.clear();
                 let error = BackendError::new("context_lost", "The graphics context was lost");
                 SessionEvent::Failed(self.fail(error))
             }
@@ -716,6 +825,7 @@ impl<B: RenderBackend> ViewportSession<B> {
             }
             BackendEvent::Closed(reason) => {
                 self.assets.clear();
+                self.prefetched.clear();
                 self.proxies.clear();
                 self.refused.clear();
                 self.capabilities = None;
@@ -840,6 +950,48 @@ impl<B: RenderBackend> ViewportSession<B> {
         }
     }
 
+    /// Releases the least recently used heavy assets until the bytes of the loaded ones fit the
+    /// budget. What `required` names or a prefetch holds for the next cut is never released.
+    fn release_over_budget(&mut self, required: &[Id]) {
+        let Some(limit) = self.retain_bytes else {
+            return;
+        };
+        let mut total: u64 = self
+            .assets
+            .keys()
+            .map(|id| self.asset_bytes.get(id).copied().unwrap_or(0))
+            .sum();
+        if total <= limit {
+            return;
+        }
+        let mut candidates: Vec<(u64, Id)> = self
+            .assets
+            .keys()
+            .filter(|id| !required.contains(*id) && !self.prefetched.contains_key(*id))
+            .filter(|id| self.asset_bytes.get(*id).copied().unwrap_or(0) >= self.min_evict_bytes)
+            .map(|id| (self.last_used.get(id).copied().unwrap_or(0), *id))
+            .collect();
+        candidates.sort();
+        for (_, id) in candidates {
+            if total <= limit {
+                break;
+            }
+            total = total.saturating_sub(self.asset_bytes.get(&id).copied().unwrap_or(0));
+            let _ = self.backend.release_asset(id);
+            self.forget_asset(&id);
+            self.stats.evicted += 1;
+        }
+    }
+
+    fn forget_asset(&mut self, id: &Id) {
+        self.assets.remove(id);
+        self.proxies.remove(id);
+        self.refused.remove(id);
+        self.prefetched.remove(id);
+        self.asset_bytes.remove(id);
+        self.last_used.remove(id);
+    }
+
     /// Releases loaded assets that are not in `keep` (the monitor left them).
     pub fn release_except(&mut self, keep: &HashSet<Id>) {
         let drop: Vec<Id> = self
@@ -850,9 +1002,7 @@ impl<B: RenderBackend> ViewportSession<B> {
             .collect();
         for id in drop {
             let _ = self.backend.release_asset(id);
-            self.assets.remove(&id);
-            self.proxies.remove(&id);
-            self.refused.remove(&id);
+            self.forget_asset(&id);
         }
     }
 
@@ -871,6 +1021,9 @@ impl<B: RenderBackend> ViewportSession<B> {
     pub fn shutdown(&mut self) {
         self.cancel();
         self.assets.clear();
+        self.prefetched.clear();
+        self.asset_bytes.clear();
+        self.last_used.clear();
         self.proxies.clear();
         self.refused.clear();
         self.capabilities = None;
@@ -889,6 +1042,7 @@ impl<B: RenderBackend> ViewportSession<B> {
                 "cancelled": self.stats.cancelled, "dropped_stale": self.stats.dropped_stale,
                 "coalesced": self.stats.coalesced, "proxy_attached": self.stats.proxy_attached,
                 "proxy_failed": self.stats.proxy_failed, "refined": self.stats.refined,
+                "prefetched": self.stats.prefetched, "prefetch_skipped": self.stats.prefetch_skipped, "evicted": self.stats.evicted,
             },
             "preview_policy": self.policy.to_json(), "refine_pending": self.refine.is_some(),
             "proxy_error": self.proxy_error.as_ref().map(|(id, error)| json!({ "asset": id, "error": error.to_json() })),
@@ -906,6 +1060,25 @@ impl<B: RenderBackend> ViewportSession<B> {
 
 /// What the runtime is told about a proxy, and the identity under which the session remembers
 /// it. `None` when a file of the sequence is missing: the original stays in use.
+/// Bytes of the source files an asset is loaded from.
+fn files_bytes(files: &[String]) -> u64 {
+    files
+        .iter()
+        .filter_map(|file| std::fs::metadata(file).ok())
+        .map(|meta| meta.len())
+        .sum()
+}
+
+/// What a file of this size keeps in memory once loaded, for the byte budget: stills, scenes and
+/// splats are decoded whole into the runtime; video and audio stream from disk or from frame
+/// files read on demand, under their own cache limits, so their file size says nothing.
+fn memory_bytes(kind: MediaKind, file_bytes: u64) -> u64 {
+    match kind {
+        MediaKind::Video | MediaKind::Audio | MediaKind::Timeline => 0,
+        _ => file_bytes,
+    }
+}
+
 /// What identifies the frames an asset is drawn from, see `Session::loaded_from`.
 fn decoded_key(state: &EditorState, asset: &Id) -> Option<String> {
     let item = state.library.item(asset)?;

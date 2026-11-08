@@ -435,6 +435,11 @@ impl Workstation {
                 frame: Raw::Number(frame as f64),
             });
             self.viewport_sync(cx);
+            // The clock is moving: load what the next couple of seconds will need, so a cut into
+            // a large splat does not stall the first frame that draws it.
+            if self.viewport.prefetch_ahead(&self.state) > 0 {
+                self.viewport_flush(cx);
+            }
         }
         cx.notify();
         true

@@ -226,6 +226,45 @@ limites e medição) está em [spark.md](spark.md#ordem-dos-splats-em-movimento-
   mais tarde (262 → 355 ms). O quadro de movimento não é o exato; a diferença por bloco está no README da medição, sem afirmar "sem popping". Tabela completa, invariantes e limites no spark.md e em
   [bl130-spark-settle](../viewport-performance-results/bl130-spark-settle/README.md).
 
+### Carga antecipada, camadas cobertas, proxy pendente e memória (BL146–BL154)
+
+Entregues sobre o MSAA por movimento (BL129), a ordem dos splats (BL130) e as malhas emprestadas (BL131) da `main`; os
+equivalentes que esta investigação tinha (MSAA 2 padrão, MSAA 0 em cena só de splats e clones de malha) foram retirados em
+favor deles. Resultados medidos no relatório [viewport-performance-splat-project-investigation.md](../viewport-performance-splat-project-investigation.md).
+
+- **Carregamento antecipado (BL146).** Durante a reprodução, a cada avanço do playhead o monitor chama
+  `EditorState::assets_ahead(2 s)` (clipes que **começam** na janela, sem os já visíveis) e
+  `ViewportSession::prefetch`, que envia `asset.load` dos que ainda não estão carregados, sem pedido de quadro, sem mudar
+  `status` nem `revision`. Um corte para uma cena de 1,18 M de splats custava ~230–260 ms no primeiro quadro que a usava
+  (fetch + decode); agora a carga corre durante os quadros anteriores. É melhor esforço: arquivo ausente ou falha do
+  runtime não vira erro (quem precisa do asset reporta). Só reprodução: scrub/seek não pré-carregam. Contador:
+  `session.stats.prefetched`.
+- **Camadas cobertas (BL148).** O plano marca `occluded` (aditivo, só aparece quando `true`) nas camadas que uma camada
+  acima esconde por completo: a de cima precisa ser **comprovadamente opaca** (vídeo `mp4`/`m4v` ou foto `jpg`/`jpeg`; PNG,
+  `mov`, cena, texto e forma de onda nunca são presumidos opacos), opacidade 1, mistura `normal`, sem rotação, com o
+  retângulo (fit "contain" × escala, corte e deslocamento) contendo o canvas. O runtime não prepara nem desenha camada
+  `occluded` (`frame.done.source.occluded_layers`); os pixels são os de desenhá-la (teste
+  `runtime/test/occlusion-browser.test.mjs`). `requires` não muda (o asset continua carregado).
+- **Proxy pendente (BL149).** `PreviewPolicy::coverage(state)` conta, uma vez por asset, os vídeos da sequência com proxy
+  pronto, pendente (ausente ou velho) e sem frames decodificados ainda. Enquanto houver pendente, o cabeçalho do monitor
+  acrescenta ` · gerando proxy (N)` (sem proxy, 4 vídeos 720p custam 105 ms por quadro contra 31 ms com proxy);
+  `render.status` traz `proxy_coverage` e `preview.policy` traz `sequence_coverage`. Política `original` nunca conta
+  pendente. O proxy continua sendo construído pelo job automático existente; nada bloqueia o play.
+
+- **Orçamento da pré-carga (BL147).** `PREFETCH_BUDGET_BYTES` (256 MiB de arquivos fonte) limita o que está pré-carregado e
+  ainda não foi usado por um quadro; a primeira pré-carga sempre cabe e o que não cabe carrega sob demanda
+  (`stats.prefetch_skipped`).
+- **Memória do monitor (BL150–BL153).** O runtime descarta os bytes brutos do PLY após decodificar (`SplatMesh` mantém só os dados
+  decodificados; um asset liberado ou com contexto perdido rebusca o arquivo), a sessão libera assets pesados por bytes
+  (`RETAINED_ASSET_BYTES` 256 MiB de arquivos de still/cena/splat, LRU, nunca o que o quadro precisa nem o pré-carregado;
+  `stats.evicted`) e os bitmaps de quadros de vídeo/sequência têm um orçamento global (`frameBitmapBytes` 256 MiB,
+  `frame_bitmap_evicted`). `render.frame` informa `cache.memory` com a contagem do runtime. Testes: `splat.test.mjs`,
+  `retention.test.mjs`, testes da sessão.
+- **Memória do editor (BL154).** `host::serve` aloca o corpo com capacidade exata (antes `read_to_end` dobrava por `realloc`,
+  deixando blocos liberados de 1 a 32 MiB residentes) e nenhuma resposta de intervalo passa de `MAX_RANGE_BODY` (4 MiB; o
+  `Content-Range` diz o que foi enviado). A carga de áudio sonda 1 byte (`Range: bytes=0-0`). Teste:
+  `a_range_answer_never_exceeds_the_body_cap_and_says_what_it_carries`.
+
 ### Retenção de GPU no runtime
 
 O runtime não recria mais textura, material, programa e alvo de render a cada quadro. Tudo que é mantido tem dono,
