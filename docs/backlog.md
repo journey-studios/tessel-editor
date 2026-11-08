@@ -888,3 +888,6 @@ BL140 R2: nenhum bloqueador identificado por leitura, sem compilação. Matriz F
 BL140.9: helper28/28 normal e -O passam. Timeout encerra o filho próprio e não permite próximo pedido; subclass extra e crash após última resposta cobertos; Native INSPECT habilitado para provas, não benchmark. Sem Rust/render.
 
 BL140.6/BL143: callerSHARP convertido para run_surface e capturaSKIP, saída absoluta; merge20preserva helper28/28 canônico. Prova real permanece suspensa.
+
+BL144 — integração com `main` (PR #24, depois dos merges das PRs #20, #23, #22 e #21): conflitos resolvidos (`core/lib.rs` e `state/tree.rs` com os dois lados; helper `proof_surface.py` canônico de `main`, com o status 1 do `tessel-headless` após recusas). Executado neste head: `cargo fmt --check` e `cargo check --workspace --locked`, limpos. **Não executados:** clippy, testes do workspace, build, prova nativa/headless de miniaturas e o spec de 18 testes: o volume ficou com 4–9 GiB livres (abaixo do piso de 12 GiB) por gravações de `instruments*.ktrace` em `$TMPDIR` que não são desta tarefa, e nada foi apagado. F053 permanece I; o merge da PR #24 depende desses gates.
+
