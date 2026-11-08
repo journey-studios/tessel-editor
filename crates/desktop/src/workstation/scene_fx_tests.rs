@@ -1617,3 +1617,200 @@ fn switching_between_other_scenes_keeps_a_third_scenes_gesture(cx: &mut TestAppC
         "leaving street must not cancel a gesture owned by yard"
     );
 }
+
+// --- Integration: an effect gesture while the diagnostic history records (BL082.20 x BL145.6) ---
+//
+// The two features were built on separate branches. Here they run in one window: the gesture is a
+// core object that the monitor draws only through `viewport_sync`, and the history is a recorder fed
+// by paints and by the monitor host. Neither may stop, inflate or invent anything for the other.
+
+fn history(
+    view: &Entity<Workstation>,
+    cx: &mut VisualTestContext,
+    command: tessel_editor_core::perf_history::HistoryCommand,
+) -> Result<Value, tessel_editor_core::CommandError> {
+    let result = view.update_in(cx, |view, window, cx| {
+        view.execute_perf_history(command, Source::Cli, window, cx)
+    });
+    cx.run_until_parked();
+    result
+}
+
+fn paint_a_frame(cx: &mut VisualTestContext) {
+    cx.update(|window, cx| {
+        window.refresh();
+        window.simulate_next_frame(cx);
+    });
+    cx.run_until_parked();
+}
+
+/// The frames the LIVE recorder holds, whatever the panel shows (frozen or not).
+fn live_history_frames(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> u64 {
+    use tessel_editor_core::perf_history::Metric;
+    view.read_with(cx, |view, _| {
+        let now = view.perf.elapsed();
+        let meter = view.perf.meter();
+        let meter = meter.borrow();
+        meter
+            .recorder()
+            .snapshot(now)
+            .and_then(|snapshot| snapshot.summary(Metric::UiFrames))
+            .map_or(0, |summary| summary.count)
+    })
+}
+
+fn history_events(
+    view: &Entity<Workstation>,
+    cx: &mut VisualTestContext,
+) -> Vec<tessel_editor_core::perf_history::EventKind> {
+    view.read_with(cx, |view, _| {
+        let now = view.perf.elapsed();
+        let meter = view.perf.meter();
+        let meter = meter.borrow();
+        meter
+            .recorder()
+            .snapshot(now)
+            .map(|snapshot| snapshot.events.iter().map(|event| event.kind).collect())
+            .unwrap_or_default()
+    })
+}
+
+fn history_recording(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> bool {
+    view.read_with(cx, |view, _| {
+        view.perf.meter().borrow().recorder().recording()
+    })
+}
+
+#[gpui_kit::test]
+fn a_gesture_during_a_history_recording_neither_stops_it_nor_leaks_into_it(
+    cx: &mut TestAppContext,
+) {
+    use std::time::Duration;
+    use tessel_editor_core::perf_history::{EventKind, HistoryCommand};
+
+    let (view, cx) = two_scenes(cx);
+    watch_street(&view, cx);
+    let intensity_key = key("street", "fx-1", "intensity");
+    history(&view, cx, HistoryCommand::Record(true)).unwrap();
+    for _ in 0..3 {
+        paint_a_frame(cx);
+    }
+    cx.executor().advance_clock(Duration::from_millis(600));
+    paint_a_frame(cx);
+    let depth = total_depth(&view, cx);
+
+    // A drag: the monitor draws the candidate and the recording does not notice.
+    change(&view, cx, intensity_key.clone(), 0.2);
+    paint_a_frame(cx);
+    assert_eq!(monitor_amount(&view, cx), json!(0.2), "the premise");
+    assert!(history_recording(&view, cx), "a drag does not stop it");
+
+    // Freeze mid-drag: one immutable window, while the recording and the drag go on underneath.
+    history(&view, cx, HistoryCommand::Freeze).unwrap();
+    let frozen_at = live_history_frames(&view, cx);
+    change(&view, cx, intensity_key.clone(), 0.3);
+    for _ in 0..3 {
+        paint_a_frame(cx);
+    }
+    assert!(
+        live_history_frames(&view, cx) >= frozen_at + 3,
+        "the recording continues while frozen and dragging"
+    );
+    assert_eq!(monitor_amount(&view, cx), json!(0.3), "the drag continues");
+
+    // Select inside the frozen window, then export it, both while the drag is open.
+    let captured = view.read_with(cx, |view, _| {
+        view.perf
+            .meter()
+            .borrow()
+            .recorder()
+            .frozen()
+            .unwrap()
+            .captured_at
+    });
+    let inspected = history(
+        &view,
+        cx,
+        HistoryCommand::Select(Some(captured - Duration::from_millis(100))),
+    )
+    .unwrap();
+    assert!(inspected["inspection"].is_object(), "{inspected}");
+    let dir = std::env::temp_dir().join(format!("tessel-fx-history-smoke-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let target = dir.join("history.json");
+    history(&view, cx, HistoryCommand::Export(target.clone())).unwrap();
+    let text = std::fs::read_to_string(&target).expect("the export was written");
+    let document: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(document["schema"], json!("tessel.perf-history"));
+    assert!(
+        !text.contains(dir.to_str().unwrap()),
+        "no local path in the document"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+    history(&view, cx, HistoryCommand::Select(None)).unwrap();
+    history(&view, cx, HistoryCommand::Resume).unwrap();
+
+    // The release is one undo entry and the monitor returns to the document.
+    release(&view, cx, intensity_key.clone());
+    assert_eq!(total_depth(&view, cx), depth + 1, "one entry");
+    assert_eq!(intensity_in(&view, cx, "street", "fx-1"), 0.3);
+    assert_monitor_shows_the_document(&view, cx, 0.3, "after the release");
+
+    // Undo, cancel and a scene switch under a drag: each one leaves the monitor on the document.
+    view.update(cx, |view, cx| view.execute(Command::Undo, Source::Cli, cx))
+        .unwrap();
+    cx.run_until_parked();
+    assert_monitor_shows_the_document(&view, cx, 0.7, "after the undo");
+    change(&view, cx, intensity_key.clone(), 0.4);
+    view.update(cx, |view, cx| view.fx_cancel_drag(cx));
+    cx.run_until_parked();
+    assert!(!gesture_open(&view, cx));
+    assert_monitor_shows_the_document(&view, cx, 0.7, "after Escape");
+    change(&view, cx, intensity_key, 0.2);
+    choose(&view, cx, "yard");
+    assert!(!gesture_open(&view, cx));
+    assert_monitor_shows_the_document(&view, cx, 0.7, "after the switch");
+
+    // Through all of it the recording ran, and the effect gesture invented no event of its own.
+    assert!(history_recording(&view, cx));
+    paint_a_frame(cx);
+    let events = history_events(&view, cx);
+    assert_eq!(
+        events.first(),
+        Some(&EventKind::RecordingStarted),
+        "{events:?}"
+    );
+    for forbidden in [
+        EventKind::PlaybackStarted,
+        EventKind::RequestFailed,
+        EventKind::RuntimeUnavailable,
+    ] {
+        assert!(
+            !events.contains(&forbidden),
+            "a gesture is no {forbidden:?}: {events:?}"
+        );
+    }
+    assert_eq!(monitor_failure(&view, cx), None);
+}
+
+#[gpui_kit::test]
+fn starting_and_clearing_the_history_during_a_drag_does_not_touch_the_gesture(
+    cx: &mut TestAppContext,
+) {
+    use tessel_editor_core::perf_history::HistoryCommand;
+
+    let (view, cx) = monitored(cx);
+    let intensity_key = key("street", "fx-1", "intensity");
+    change(&view, cx, intensity_key.clone(), 0.2);
+    // Recording starts, is cleared and stops under an open drag: the candidate stays what it was.
+    history(&view, cx, HistoryCommand::Record(true)).unwrap();
+    paint_a_frame(cx);
+    history(&view, cx, HistoryCommand::Clear).unwrap();
+    history(&view, cx, HistoryCommand::Record(false)).unwrap();
+    assert!(gesture_open(&view, cx));
+    assert_eq!(monitor_amount(&view, cx), json!(0.2));
+    release(&view, cx, intensity_key);
+    assert_eq!(intensity(&view, cx, "fx-1"), 0.2);
+    assert_monitor_shows_the_document(&view, cx, 0.2, "after the release");
+}
