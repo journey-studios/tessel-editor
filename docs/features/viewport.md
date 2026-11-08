@@ -157,6 +157,17 @@ no runtime). **Só vale para cena parada**; em movimento nada muda (ver relatór
   (2× vs 4×: 64–67 dB); GPU por camada de 1,18 M splats ≈ 27 ms (2×) → ≈ 10 ms (0×); crossfade 68–72 ms → 50–56 ms.
   Teste: `runtime/test/splat-samples.test.mjs` (bytes do alvo por tipo de cena) e `bridge::tests` / `viewport_host_tests`.
 
+- **Clones de splat reaproveitados (PERF-6).** A malha do asset vai ao primeiro uso; um segundo uso (dois objetos da cena, ou duas
+  camadas do quadro, de cenas diferentes, que usam o mesmo splat, como `vfx-ring`) recebe um **clone** que compartilha os
+  dados decodificados (`cloneSplatMesh`), guardado no asset (`entry.clones`) e devolvido ao conjunto na liberação, em vez de
+  decodificar o arquivo de novo a cada quadro (7 ms por quadro com 2 camadas). O clone nunca é dono dos dados
+  (`disposeSplatMeshes`). Medido (crossfade, 3 rodadas pareadas, load 7–9): render 48–50 → 41–42 ms, 19–20 → 23–24 fps.
+  Teste: `runtime/test/splat-clone.test.mjs` (hash idêntico ao de malhas decodificadas separadamente, em todos os quadros e
+  após liberar e recarregar o asset).
+- **Orçamento da pré-carga (PERF-7).** `PREFETCH_BUDGET_BYTES` (256 MiB de arquivos fonte) limita o que está pré-carregado e
+  ainda não foi usado por um quadro; a primeira pré-carga sempre cabe e o que não cabe carrega sob demanda
+  (`stats.prefetch_skipped`).
+
 ### Carregamento antecipado, camadas cobertas e proxy pendente (PERF-2/3/4)
 
 - **Carregamento antecipado (PERF-2).** Durante a reprodução, a cada avanço do playhead o monitor chama

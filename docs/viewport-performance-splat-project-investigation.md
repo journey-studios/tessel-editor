@@ -259,6 +259,21 @@ nem cenas com geometria. A/B pareado (2 rodadas, load 12–29, MSAA 2 nas demais
 **Memória da pré-carga.** Projeto inteiro, MSAA 2, uma execução cada: footprint do WebContent 357 MB (antes) vs 572 MB
 (com pré-carga); GPU 439 vs 454 MB. É coerente com uma cena de 66 MB a mais carregada, mas é só uma execução.
 
+## Terceira rodada: clones de splat e orçamento da pré-carga
+
+O `rig_build` de 7 ms do crossfade não era o rig (uma camada: 0,1 ms): era o segundo uso do mesmo asset (`vfx-ring`,
+53 k splats somados) decodificando o arquivo de novo a cada quadro (`lease_decode` 7 ms, 2 por quadro). Agora o segundo uso
+é um clone que compartilha os dados e é reaproveitado.
+
+| Crossfade `x2` (MSAA 2, splat sem MSAA), 3 rodadas pareadas | render p50 | fps mostrado | `rig_build` |
+|---|---|---|---|
+| Antes (decodifica a cada quadro) | 50 / 49 / 48 ms | 18,7 / 20,1 / 19,8 | 7 ms |
+| Depois (clone no conjunto) | 41 / 41 / 42 ms | 23,9 / 23,4 / 23,0 | 0 ms |
+| 4 camadas (`x4`) antes / depois | 72 ms / 80 ms | 12,6 / 12,6 | 8 → 0 ms (a espera passou ao readback: é GPU) |
+
+O sort/readback por camada (BL126) e a decimação (BL127) ficam com os números acima: o crossfade já está no limite de
+41,7 ms e a espera de 3+ camadas é de GPU (~10 ms por camada com MSAA 0).
+
 ## Backlog
 
 Os itens propostos foram registrados em [backlog.md](backlog.md): BL113 (MSAA 2×), BL114 (pré-carga), BL115 (cobertura),

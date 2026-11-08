@@ -1392,6 +1392,91 @@ fn a_frame_waiting_on_a_prefetch_in_flight_does_not_start_a_second_load() {
     ));
 }
 
+/// `rig_with_cut` plus a third still ("later") that starts at `start`, with the same file.
+fn rig_with_two_cuts(first: i64, start: i64) -> Rig {
+    let mut rig = rig_with_cut(first);
+    let image = rig
+        .state
+        .library
+        .item("img")
+        .unwrap()
+        .asset
+        .clone()
+        .unwrap();
+    rig.state
+        .execute(Command::AddAsset {
+            id: Some("later".into()),
+            name: "Later".into(),
+            kind: MediaKind::Still,
+            asset: Box::new(image),
+            folder: None,
+        })
+        .unwrap();
+    rig.state
+        .execute(Command::AddClip {
+            id: Some("c3".into()),
+            name: None,
+            track: "v1".into(),
+            asset: Some("later".into()),
+            start,
+            duration: 24,
+            source_start: None,
+            text: None,
+            camera: None,
+            properties: vec![],
+        })
+        .unwrap();
+    rig
+}
+
+#[test]
+fn a_burst_of_prefetches_stops_at_the_byte_budget_and_a_frame_still_loads_what_was_skipped() {
+    let mut rig = rig_with_two_cuts(60, 90);
+    rig.session.capabilities().unwrap();
+    let file_bytes: u64 = AssetDescriptor::from_item(rig.state.library.item("img").unwrap(), None)
+        .unwrap()
+        .files()
+        .iter()
+        .map(|file| std::fs::metadata(file).unwrap().len())
+        .sum();
+    assert!(file_bytes > 0);
+    // Room for exactly one of the two.
+    rig.session.set_prefetch_budget(file_bytes);
+    let both = vec![Id::lit("next"), Id::lit("later")];
+    assert_eq!(rig.session.prefetch(&rig.state, &both), 1);
+    assert_eq!(rig.session.stats.prefetch_skipped, 1);
+    assert_eq!(rig.script.borrow().loaded, vec![Id::lit("next")]);
+
+    // Skipped is not failed: the frame that needs it loads it on demand.
+    rig.script.borrow_mut().events.push_back(ready("next"));
+    rig.session.pump(Duration::ZERO);
+    rig.session
+        .request_frame(&rig.state, plan(&rig, 90), output(), vec![])
+        .unwrap();
+    assert!(
+        rig.script.borrow().loaded.contains(&Id::lit("later")),
+        "the frame loads the asset the prefetch skipped"
+    );
+}
+
+#[test]
+fn the_first_prefetch_always_fits_and_a_used_one_frees_the_budget() {
+    let mut rig = rig_with_two_cuts(60, 90);
+    rig.session.capabilities().unwrap();
+    rig.session.set_prefetch_budget(1);
+    // One scene bigger than the whole budget still prefetches: the budget limits a burst.
+    assert_eq!(rig.session.prefetch(&rig.state, &[Id::lit("next")]), 1);
+    assert_eq!(rig.session.prefetch(&rig.state, &[Id::lit("later")]), 0);
+    assert_eq!(rig.session.stats.prefetch_skipped, 1);
+    // A frame that uses the prefetched asset turns it into an ordinary one: the budget is free again.
+    rig.script.borrow_mut().events.push_back(ready("next"));
+    rig.session.pump(Duration::ZERO);
+    rig.session
+        .request_frame(&rig.state, plan(&rig, 60), output(), vec![])
+        .unwrap();
+    assert_eq!(rig.session.prefetch(&rig.state, &[Id::lit("later")]), 1);
+}
+
 #[test]
 fn a_prefetch_is_best_effort_and_never_a_failure() {
     let mut rig = rig_with_cut(60);

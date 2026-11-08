@@ -13,7 +13,7 @@ import { closeVideo, frameCount, openVideo, proveVideo, readFrame } from './nati
 import { RuntimeError, expandPattern } from './protocol.js';
 import { LIMITS, RetentionCounters, rgbaBytes } from './retention.js';
 import { splatFileName } from './splat-format.js';
-import { loadSplatMesh } from './splat-stage.js';
+import { cloneSplatMesh, disposeSplatMeshes, loadSplatMesh } from './splat-stage.js';
 
 const FRAME_CACHE_LIMIT = 16;
 // Preview-proxy frames are small (a 540p picture is ~2 MiB decoded), and a scrub that turns back
@@ -147,7 +147,7 @@ export class AssetStore {
     const { entry, meta, after } = loaded;
     if (this.loading.get(id) !== token) {
       // Released (or reloaded) while loading: nothing of this load may outlive it.
-      entry.mesh?.dispose();
+      disposeSplatMeshes(entry);
       if (entry.video) closeVideo(entry.video);
       after?.close?.();
       throw new RuntimeError('cancelled', `Asset \`${id}\` was released while loading`, { asset: id });
@@ -250,7 +250,7 @@ export class AssetStore {
     this.loading.delete(id);
     const entry = this.entries.get(id);
     if (!entry) return;
-    entry.mesh?.dispose();
+    disposeSplatMeshes(entry);
     this.disposeTextures(entry);
     entry.bitmap?.close?.();
     entry.frames?.forEach((frame) => frame.bitmap.close());
@@ -375,14 +375,16 @@ export class AssetStore {
     const count = mesh.packedSplats.numSplats;
     // The bytes stay so the GPU side can be rebuilt after a lost context (see dropGpu).
     return {
-      entry: { bytes, fileName, label, mesh, leased: false },
+      entry: { bytes, fileName, label, mesh, leased: false, clones: [] },
       meta: { splat_count: count, format: fileName.split('.').pop() },
     };
   }
 
   /**
    * A splat mesh for one scene to draw. A mesh has a single parent, so the asset's own mesh goes
-   * to the first taker and further takers (two objects, or layers of one frame) decode their own.
+   * to the first taker; further takers (two objects, or layers of one frame) get a clone that
+   * shares the decoded splats (no PLY parse, pack or upload of its own). Clones are kept on the
+   * entry and reused by the next frame: building one per frame cost ~3.5 ms per layer.
    */
   async splatLease(id) {
     const entry = this.get(id);
@@ -405,8 +407,15 @@ export class AssetStore {
         },
       };
     }
-    const mesh = await loadSplatMesh(entry.bytes, entry.fileName, entry.label);
-    return { mesh, release: () => mesh.dispose() };
+    const mesh = entry.clones.pop() ?? cloneSplatMesh(entry.mesh);
+    return {
+      mesh,
+      release: () => {
+        mesh.removeFromParent();
+        // An entry that was released or rebuilt meanwhile has already disposed what it kept.
+        if (this.entries.get(id) === entry && entry.mesh) entry.clones.push(mesh);
+      },
+    };
   }
 
   /** Spark keeps splat data in textures of the WebGL context; after a loss they are rebuilt from the bytes. */
@@ -415,8 +424,9 @@ export class AssetStore {
       // Textures of the lost context are gone with it; they are made again from the bitmaps.
       this.disposeTextures(entry);
       if (entry.kind !== 'splat') return;
-      entry.mesh?.dispose();
+      disposeSplatMeshes(entry);
       entry.mesh = null;
+      entry.clones = [];
       entry.leased = false;
     });
     this.pinned.clear();

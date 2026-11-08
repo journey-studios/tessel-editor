@@ -87,7 +87,15 @@ pub struct Stats {
     pub refined: u64,
     /// Loads started ahead of any frame that needs them (see [`ViewportSession::prefetch`]).
     pub prefetched: u64,
+    /// Prefetches skipped because the files already prefetched and not yet used fill the budget.
+    pub prefetch_skipped: u64,
 }
+
+/// Bytes of source files the session may hold prefetched and not yet used by a frame. A 66 MB PLY
+/// of 1.18 M splats takes ~100-250 MB once decoded, so the budget keeps a burst of clips that
+/// start together from loading every scene of the next two seconds at once; what does not fit
+/// loads when a frame needs it, as before.
+pub const PREFETCH_BUDGET_BYTES: u64 = 256 << 20;
 
 /// How long the monitor must be still before a proxy picture is replaced by the original.
 /// WHY not immediately: a scrub that pauses for a tick would pay an original-quality render
@@ -151,7 +159,8 @@ pub struct ViewportSession<B: RenderBackend> {
     retain: Option<usize>,
     /// Assets the monitor asked the runtime to load ahead of any frame that needs them (see
     /// [`ViewportSession::prefetch`]); the retention release keeps them like a required asset.
-    prefetched: HashSet<Id>,
+    prefetched: HashMap<Id, u64>,
+    prefetch_budget: u64,
     policy: PreviewPolicy,
     /// What the runtime holds as the proxy of each loaded asset (the descriptor it was sent).
     proxies: HashMap<Id, Value>,
@@ -188,7 +197,8 @@ impl<B: RenderBackend> ViewportSession<B> {
             active: None,
             pending: None,
             retain: None,
-            prefetched: HashSet::new(),
+            prefetched: HashMap::new(),
+            prefetch_budget: PREFETCH_BUDGET_BYTES,
             policy: PreviewPolicy::default(),
             proxies: HashMap::new(),
             refused: HashMap::new(),
@@ -429,6 +439,11 @@ impl<B: RenderBackend> ViewportSession<B> {
         self.retain = Some(limit);
     }
 
+    /// Overrides [`PREFETCH_BUDGET_BYTES`] (tests).
+    pub fn set_prefetch_budget(&mut self, bytes: u64) {
+        self.prefetch_budget = bytes;
+    }
+
     /// The plan being drawn, if a request is in flight.
     pub fn active_plan(&self) -> Option<&RenderPlan> {
         self.active.as_ref().map(|active| &active.request.plan)
@@ -462,11 +477,22 @@ impl<B: RenderBackend> ViewportSession<B> {
             let Ok(descriptor) = AssetDescriptor::from_item(item, self.demo_dir.as_deref()) else {
                 continue;
             };
-            if descriptor
-                .files()
-                .into_iter()
-                .any(|file| !std::path::Path::new(&file).is_file())
+            let files = descriptor.files();
+            if files
+                .iter()
+                .any(|file| !std::path::Path::new(file).is_file())
             {
+                continue;
+            }
+            let bytes: u64 = files
+                .iter()
+                .filter_map(|file| std::fs::metadata(file).ok())
+                .map(|meta| meta.len())
+                .sum();
+            // The first prefetch always fits: the budget limits a burst, not a single big scene.
+            let held: u64 = self.prefetched.values().sum();
+            if held > 0 && held.saturating_add(bytes) > self.prefetch_budget {
+                self.stats.prefetch_skipped += 1;
                 continue;
             }
             if self.backend.load_asset(&descriptor).is_err() {
@@ -474,7 +500,7 @@ impl<B: RenderBackend> ViewportSession<B> {
             }
             self.assets.insert(*asset, Slot::Loading);
             self.loaded_from.insert(*asset, decoded_key(state, asset));
-            self.prefetched.insert(*asset);
+            self.prefetched.insert(*asset, bytes);
             self.stats.prefetched += 1;
             started += 1;
         }
@@ -520,11 +546,11 @@ impl<B: RenderBackend> ViewportSession<B> {
             && self.loaded_assets().len() > limit
         {
             let mut keep: HashSet<Id> = required.iter().copied().collect();
-            keep.extend(self.prefetched.iter().copied());
+            keep.extend(self.prefetched.keys().copied());
             self.release_except(&keep);
         }
         // From here on a prefetched asset that this frame needs is an ordinary one.
-        self.prefetched.retain(|asset| !required.contains(asset));
+        self.prefetched.retain(|asset, _| !required.contains(asset));
         // Explicit requests keep today's behaviour byte for byte; only the monitor's own
         // frames may skip the readback, and only when nothing asked for pixels.
         let monitor = origin != Origin::Explicit;
@@ -937,7 +963,7 @@ impl<B: RenderBackend> ViewportSession<B> {
                 "cancelled": self.stats.cancelled, "dropped_stale": self.stats.dropped_stale,
                 "coalesced": self.stats.coalesced, "proxy_attached": self.stats.proxy_attached,
                 "proxy_failed": self.stats.proxy_failed, "refined": self.stats.refined,
-                "prefetched": self.stats.prefetched,
+                "prefetched": self.stats.prefetched, "prefetch_skipped": self.stats.prefetch_skipped,
             },
             "preview_policy": self.policy.to_json(), "refine_pending": self.refine.is_some(),
             "proxy_error": self.proxy_error.as_ref().map(|(id, error)| json!({ "asset": id, "error": error.to_json() })),

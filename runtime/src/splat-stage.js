@@ -32,6 +32,24 @@ export const loadSplatMesh = async (bytes, fileName, label) => {
   return mesh;
 };
 
+/**
+ * A second mesh over the splats `source` already decoded: the data (and its GPU textures) is
+ * shared, position, scale and rotation are the clone's own. A clone never owns the data, see
+ * `disposeSplatMeshes`.
+ */
+export const cloneSplatMesh = (source) => new SplatMesh({ packedSplats: source.packedSplats });
+
+/** Frees the meshes of a splat asset entry: the clones drop the shared data first, the owner frees it. */
+export const disposeSplatMeshes = (entry) => {
+  for (const clone of entry.clones ?? []) {
+    clone.removeFromParent();
+    clone.packedSplats = undefined;
+    clone.dispose();
+  }
+  if (entry.clones) entry.clones = [];
+  entry.mesh?.dispose();
+};
+
 export class SplatStage {
   constructor(renderer) {
     // minSortIntervalMs 0: a sort is never deferred to a timer, which `settle` relies on.
