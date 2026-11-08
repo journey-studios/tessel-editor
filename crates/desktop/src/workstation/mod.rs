@@ -800,6 +800,8 @@ impl Render for Workstation {
 }
 
 #[cfg(test)]
+mod camera_keys_tests;
+#[cfg(test)]
 mod dock_tests;
 #[cfg(test)]
 mod input_tests;

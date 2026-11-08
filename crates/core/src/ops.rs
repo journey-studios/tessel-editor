@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use serde_json::{Value, json};
 
 use crate::assets::{Asset, Declared, MediaKind, ProxyFormat};
+use crate::camera_keys::{self, CameraKey, Easing};
 use crate::content::{Camera, TextSpec};
 use crate::directed_scene::Vec3;
 use crate::id::Id;
@@ -20,6 +21,7 @@ use crate::scene_interaction::{
     CancelReason, FrameAt, GestureCommand, GizmoCommand, Point, PointerCommand, SelectMode,
 };
 use crate::scene_project::{CameraAt, SceneCommand, SceneSource};
+use crate::state::camera_edit::CameraKeysCommand;
 use crate::state::timeline::{SequenceSettings, TrackKind};
 use crate::state::{Command, CommandError, EditorState, ProjectSettings, Raw};
 use crate::time::{Rate, Ratio};
@@ -134,6 +136,23 @@ fn time_field(request: &Value, key: &str) -> Result<Option<Ratio>, CommandError>
             json!({ "format": {"num": 1, "den": 24} }),
         )
     })
+}
+
+/// `None` when the request does not say: omitting the easing is never a choice of `linear`.
+fn easing_field(request: &Value) -> Result<Option<Easing>, CommandError> {
+    match request.get("easing").filter(|raw| !raw.is_null()) {
+        None => Ok(None),
+        Some(raw) => raw
+            .as_str()
+            .and_then(Easing::parse)
+            .map(Some)
+            .ok_or_else(|| {
+                CommandError::invalid_value(
+                    "`easing` is not an option",
+                    json!({ "options": Easing::labels() }),
+                )
+            }),
+    }
 }
 
 fn rate_field(request: &Value, key: &str) -> Result<Option<Rate>, CommandError> {
@@ -351,6 +370,27 @@ pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, Comm
             clip: string(request, "clip")?.to_string(),
             camera: Camera::from_json(request)?,
         },
+        "clip.camera_key" => Command::CameraKeys(CameraKeysCommand::Set {
+            clip: string(request, "clip")?.to_string(),
+            key: CameraKey::from_json(request)?,
+            easing: easing_field(request)?,
+        }),
+        "clip.camera_key.remove" => Command::CameraKeys(CameraKeysCommand::Remove {
+            clip: string(request, "clip")?.to_string(),
+            time: time_field(request, "time")?.ok_or_else(|| invalid("Expected field `time`"))?,
+        }),
+        "clip.camera_key.capture" => Command::CameraKeys(CameraKeysCommand::Capture {
+            clip: string(request, "clip")?.to_string(),
+            easing: easing_field(request)?,
+        }),
+        "clip.camera_keys" => Command::CameraKeys(CameraKeysCommand::Replace {
+            clip: string(request, "clip")?.to_string(),
+            keys: camera_keys::keys_from_json(
+                request
+                    .get("keys")
+                    .ok_or_else(|| invalid("Expected array field `keys`"))?,
+            )?,
+        }),
         "clip.property" => Command::SetClipProperty {
             clip: string(request, "clip")?.to_string(),
             property: string(request, "property")?.to_string(),

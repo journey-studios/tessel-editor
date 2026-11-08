@@ -8,6 +8,7 @@ pub mod assets;
 pub mod audio;
 pub mod backend;
 pub mod bridge;
+pub mod camera_keys;
 pub mod commands;
 pub mod content;
 pub mod directed_scene;
