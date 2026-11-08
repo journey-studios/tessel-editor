@@ -106,6 +106,17 @@ impl ViewportHost {
         self.directed.scene = Some(scene.to_string());
     }
 
+    /// Tests only: the plan of the request the monitor holds for its next picture (a test window
+    /// has no page, so the request is parked), as the page would receive it. What the monitor is
+    /// about to draw: the candidate of an open gesture or the confirmed scene.
+    #[cfg(test)]
+    pub fn directed_desired_plan(&self) -> Option<Value> {
+        self.directed
+            .desired
+            .as_ref()
+            .map(|intent| intent.plan.to_json())
+    }
+
     pub fn render_scene(
         &mut self,
         state: &mut EditorState,

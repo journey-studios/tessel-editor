@@ -1,17 +1,29 @@
 //! The "Efeitos" section of the scene inspector (F016, `docs/features/effects.md`).
 //!
-//! Nothing here owns an effect. The section is built each frame from the attached scene's
-//! `bundle.fx` (`scene.fx.list`'s own data), and every gesture is one `scene.fx.edit` through
-//! [`Workstation::execute`] (`Command::Scene(SceneCommand::FxEdit)`): one command, one undo entry,
-//! the core's atomic refusal and typed error codes. The semantic nodes (`scene.fx`,
-//! `scene.fx.clip:<id>`) answer `get`/`set`/`invoke` through the handlers the pointer uses.
+//! Nothing here owns an effect or a candidate. The section is built each frame from the attached
+//! scene's `bundle.fx` (`scene.fx.list`'s own data) or, while an effect gesture is open on it,
+//! from that gesture's candidate (`scene.fx.list {gesture}`'s data); the monitor draws the same
+//! candidate (`viewport_sync` passes the open gesture to the render request). Every write is a
+//! core command through [`Workstation::execute`]: a one-shot `scene.fx.edit` (`set`, `invoke`,
+//! the buttons) or the gesture cycle `scene.fx.gesture.begin|update|commit|cancel` that the
+//! sliders and the keyboard drive (BL082.6/.16). So the library, `tessel-headless`, `ui op` and
+//! this panel share the handlers, the typed errors and the single undo entry of a commit.
 //!
-//! A slider is a *drag buffer*, not a gesture: `Change` only remembers the value the thumb shows,
-//! `Release` (or the window losing focus) sends the single edit, Escape drops it. There is no live
-//! preview of the picture while dragging (recorded as a gap in the feature doc); the release
-//! redraws the monitor like any other edit.
+//! The adapter below only translates input into those commands (like `scene_gesture.rs`):
+//!
+//! - **Begin**: the first `Change` of a slider (or a fresh key press) after the last interaction.
+//! - **Update**: every later `Change` and key repeat, as an absolute value from the document the
+//!   gesture began on. A refused value (the core's typed error is on screen) keeps the last legal
+//!   candidate, so the preview and the commit never show or confirm the refused one.
+//! - **Commit**: `Release`, the key-up of a step key, Enter, or the window losing focus.
+//! - **Cancel**: Escape, or the panel following another scene. Nothing was written.
+//!
+//! The semantic nodes (`scene.fx`, `scene.fx.clip:<id>`, `scene.fx.budget`) answer
+//! `get`/`set`/`invoke` through the same handlers; the pass-budget warning is on screen in the
+//! section AND on the `scene.fx.budget` node, from the same view, so they cannot disagree.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
@@ -20,18 +32,20 @@ use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use serde_json::{Value, json};
+use tessel_editor_core::directed_scene::fx::PassBudget;
 use tessel_editor_core::directed_scene::fx::{
     self, EffectSpec, FxClip, FxValue, ParamKind, ParamSpec,
 };
 use tessel_editor_core::scene_edit::{AddClip, ClipField, FxOp};
+use tessel_editor_core::scene_interaction::{FxGestureCommand, Gesture, GestureCommand};
 use tessel_editor_core::scene_project::SceneCommand;
 
-use super::controls::tool_button;
+use super::controls::{glyph, tool_button, value_after_key};
 use super::scene_model::{PanelFit, format_number};
 use super::scene_panel::SliderRow;
 use super::tokens::Tokens;
 use super::{Source, Workstation};
-use crate::state::{CommandError, Raw};
+use crate::state::{Command, CommandError, Raw};
 
 const SLIDER_EPSILON: f32 = 1e-4;
 
@@ -58,34 +72,54 @@ pub struct FxSlider {
     range: (f64, f64, f64),
 }
 
-/// Presentation state of the section: the Kit sliders and the value a drag shows before release.
+/// Where the interaction with the control being driven stands.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Phase {
+    /// The core has an open effect gesture with this ID; values go to it.
+    Open(String),
+    /// The gesture ended (Escape, a rejected begin, a stale target, focus loss) while the pointer
+    /// or key is still down: ignore everything until the release or the next press.
+    Ended,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum End {
+    Commit,
+    Cancel,
+}
+
+/// Presentation state of the section: the Kit sliders and the control being driven. The value a
+/// drag shows is NOT kept here: it is the core's candidate.
 #[derive(Default)]
 pub struct FxUi {
     sliders: HashMap<FxKey, FxSlider>,
-    pending: HashMap<FxKey, f64>,
+    tracked: Option<(FxKey, Phase)>,
 }
 
 impl FxUi {
     pub fn clear(&mut self) {
         self.sliders.clear();
-        self.pending.clear();
+        self.tracked = None;
     }
 
-    /// Drops every drag buffer that belongs to a scene other than `scene` (the panel moved on).
-    pub fn retain_scene(&mut self, scene: &str) {
-        self.pending.retain(|key, _| key.scene == scene);
+    fn is_tracked(&self, key: &FxKey) -> bool {
+        self.tracked
+            .as_ref()
+            .is_some_and(|(tracked, _)| tracked == key)
     }
 
     #[cfg(test)]
-    pub fn pending(&self) -> usize {
-        self.pending.len()
+    pub fn is_tracking(&self) -> bool {
+        self.tracked.is_some()
     }
+}
 
-    /// A drag buffer as the slider would have left it (tests: the pointer path is covered separately).
-    #[cfg(test)]
-    pub fn hold(&mut self, key: FxKey, value: f64) {
-        self.pending.insert(key, value);
-    }
+/// Errors that mean the core no longer holds the gesture the drag was feeding.
+fn gesture_is_gone(error: &CommandError) -> bool {
+    matches!(
+        error.code,
+        "gesture_invalidated" | "no_gesture" | "unknown_gesture"
+    )
 }
 
 // ---- the model: what the section shows, with no GPUI ----
@@ -261,22 +295,20 @@ pub fn controls_of(clip: &FxClip, edit_frames: i64) -> Vec<FxControl> {
 impl FxControl {
     /// What a slider thumb at `raw` means for this control: the step's grid (anchored at the minimum),
     /// inside the range, written in the decimals of the step. The Kit slider hands over an `f32`, so
-    /// `0.4` arrives as `0.4000000059604645`; the document must hold `0.4`, not that. Only the pointer
+    /// `0.4` arrives as `0.4000000059604645`; the document must hold `0.4`, not that. The rule is the
+    /// core's (`fx::quantize_control`), so the pointer, the keyboard and a script agree. Only the
     /// gesture quantizes: a value typed or sent through `set` is the author's own and is checked, not
     /// rounded, by the core.
     pub fn quantize(&self, raw: f64) -> f64 {
-        if !raw.is_finite() || self.step <= 0.0 {
-            return raw;
-        }
-        let steps = ((raw - self.min) / self.step).round();
-        let snapped = (self.min + steps * self.step).clamp(self.min, self.max);
-        if self.integer {
-            return snapped.round();
-        }
-        // Decimals of the step (0.01 -> 2) remove the float dust of `min + n * step`.
-        let decimals = (-self.step.log10().floor()).clamp(0.0, 9.0) as i32;
-        let scale = 10f64.powi(decimals);
-        ((snapped * scale).round() / scale).clamp(self.min, self.max)
+        fx::quantize_control(raw, self.min, self.max, self.step, self.integer)
+    }
+
+    /// The value a key press means, from `from`: the Kit's keyboard stepping (arrows, shift for
+    /// ten steps, page keys, home/end) inside this control's range, on the same grid as the pointer.
+    /// `None` for keys the slider ignores.
+    pub fn after_key(&self, key: &str, shift: bool, from: f64) -> Option<f64> {
+        value_after_key(key, shift, from, self.min, self.max, self.step)
+            .map(|next| self.quantize(next))
     }
 
     /// The edit op that moves this control of `clip` to `value`. A component of a point or a
@@ -350,6 +382,14 @@ pub struct FxView {
     pub scene: String,
     pub edit_frames: i64,
     pub clips: Vec<ClipView>,
+    /// The gesture whose candidate this view shows; `None` for the document.
+    pub gesture: Option<String>,
+    /// The layer against the pass budget, for what the view shows (the candidate while a gesture
+    /// is open): the section's warning and the `scene.fx.budget` node are this.
+    pub budget: PassBudget,
+    /// The frame of the scene's own edit that the monitor shows now (the core converts the NLE
+    /// playhead; `None` when the playhead is outside the edit). Where an insertion lands.
+    pub frame_here: Option<i64>,
 }
 
 impl FxView {
@@ -359,8 +399,40 @@ impl FxView {
 }
 
 pub const CLIP_PREFIX: &str = "scene.fx.clip:";
+/// The node of the pass-budget warning: always present, `visible` only past the budget.
+pub const BUDGET_ID: &str = "scene.fx.budget";
 pub const SECTION_ID: &str = "scene.fx";
 const ADD_PREFIX: &str = "add:";
+
+/// The words of the warning, one string for the screen and the node. It says what happens (the
+/// frames are slower) and what does not (no pass is dropped, nothing is refused or hidden).
+pub fn budget_message(budget: &PassBudget) -> String {
+    format!(
+        "{} quadros desenham mais de {} passes de efeito (até {}, a partir do quadro {}). \
+         Todos os passes são desenhados; esses quadros ficam mais lentos.",
+        budget.frames_over,
+        budget.budget,
+        budget.peak,
+        budget.first_frame_over.unwrap_or(0),
+    )
+}
+
+fn budget_node(view: &FxView) -> Value {
+    let budget = &view.budget;
+    json!({
+        "id": BUDGET_ID, "kind": "warning", "label": "Aviso de passes de efeito",
+        "parent": SECTION_ID, "children": [], "enabled": true, "visible": budget.over(),
+        "fields": [], "actions": [],
+        "state": {
+            "over_budget": budget.over(), "max_passes": budget.budget,
+            "peak_passes": budget.peak, "first_frame_over": budget.first_frame_over,
+            "frames_over": budget.frames_over, "policy": "warn",
+            "source": if view.gesture.is_some() { "gesture" } else { "document" },
+            "message": budget.over().then(|| budget_message(budget)),
+            "warnings": budget.warnings(),
+        },
+    })
+}
 
 pub fn clip_node_id(clip: &str) -> String {
     format!("{CLIP_PREFIX}{clip}")
@@ -369,11 +441,37 @@ pub fn clip_node_id(clip: &str) -> String {
 // ---- the window: reads, writes, nodes, painting ----
 
 impl Workstation {
-    /// The effects of the scene the panel follows; `None` without an attached scene.
+    /// The open effect gesture of `scene`, while the core can still apply it.
+    fn fx_open_gesture(&self, scene: &str) -> Option<&Gesture> {
+        let gesture = self.state.scene_interaction.gesture()?;
+        (gesture.scene() == scene
+            && gesture.fx_clip().is_some()
+            && gesture
+                .invalidation(&self.state.scenes, self.state.project.revision)
+                .is_none())
+        .then_some(gesture)
+    }
+
+    /// The effects of the scene the panel follows, as the panel shows them: the candidate of the
+    /// open effect gesture, else the document. `None` without an attached scene.
     pub(super) fn fx_view(&self) -> Option<FxView> {
+        self.fx_view_with(true)
+    }
+
+    /// The same, always from the document: what an update of a gesture derives from.
+    fn fx_document_view(&self) -> Option<FxView> {
+        self.fx_view_with(false)
+    }
+
+    fn fx_view_with(&self, candidate: bool) -> Option<FxView> {
         let id = self.scene_active_id()?;
         let attached = self.state.scenes.get(&id)?;
-        let bundle = attached.scene.bundle();
+        let open = candidate.then(|| self.fx_open_gesture(&id)).flatten();
+        let scene = match open {
+            Some(gesture) => Arc::clone(gesture.preview_scene()),
+            None => Arc::clone(&attached.scene),
+        };
+        let bundle = scene.bundle();
         let clips = bundle
             .fx
             .tracks
@@ -387,9 +485,12 @@ impl Workstation {
             })
             .collect();
         Some(FxView {
+            frame_here: self.state.scene_frame_at_playhead(&id).ok(),
             scene: id,
             edit_frames: i64::try_from(bundle.edit_duration_frames).unwrap_or(i64::MAX),
             clips,
+            gesture: open.map(|gesture| gesture.id().to_owned()),
+            budget: bundle.fx.pass_budget(bundle.edit_duration_frames),
         })
     }
 
@@ -413,7 +514,10 @@ impl Workstation {
         )
     }
 
-    /// Adds a clip of `effect` at the start of the edit, on the first track where it fits.
+    /// Adds a clip of `effect` where the monitor is: the NLE playhead's *time*, which the core
+    /// converts to the frame of this scene's own edit (`start_time`, so a sequence frame is never
+    /// taken for a bundle frame). It lands on the first track where it fits; a time the edit does
+    /// not hold is refused atomically with the core's typed error.
     pub(super) fn fx_add(
         &mut self,
         effect: &str,
@@ -426,6 +530,7 @@ impl Workstation {
             clip: None,
             effect: effect.to_string(),
             start_frame: 0,
+            start_time: Some(self.state.timeline.time_of(self.state.timeline.playhead)),
             duration_frames: None,
             params: Vec::new(),
         });
@@ -467,14 +572,7 @@ impl Workstation {
     fn fx_view_of(&self, scene: &str) -> Result<FxView, CommandError> {
         let view = self.fx_view().ok_or_else(no_scene)?;
         if view.scene != scene {
-            return Err(CommandError::new(
-                "stale_gesture",
-                format!(
-                    "The effect gesture belonged to scene `{scene}` and the panel now shows `{}`: it was dropped, nothing changed",
-                    view.scene
-                ),
-            )
-            .target(scene));
+            return Err(stale_scene(scene, &view.scene));
         }
         Ok(view)
     }
@@ -493,7 +591,9 @@ impl Workstation {
         source: Source,
         cx: &mut Context<Self>,
     ) -> Result<Value, CommandError> {
-        let view = self.fx_view().ok_or_else(no_scene)?;
+        // From the DOCUMENT: a component of a point or a colour keeps the siblings the document has,
+        // never the uncommitted candidate of a gesture that happens to be open on the same clip.
+        let view = self.fx_document_view().ok_or_else(no_scene)?;
         let found = self.fx_known(&view, clip)?;
         let controls = controls_of(&found.clip, view.edit_frames);
         let Some(target) = controls.iter().find(|candidate| candidate.id == control) else {
@@ -509,7 +609,7 @@ impl Workstation {
         self.fx_run(&view.scene, op, source, cx)
     }
 
-    // ---- drag buffer ----
+    // ---- the gesture adapter: input in, core commands out ----
 
     pub(super) fn fx_slider_event(
         &mut self,
@@ -518,73 +618,266 @@ impl Workstation {
         cx: &mut Context<Self>,
     ) {
         match event {
-            SliderEvent::Change(value) => {
-                self.scene_ui.fx.pending.insert(key, f64::from(value.end()));
-                cx.notify();
+            SliderEvent::Change(value) => self.fx_changed(&key, f64::from(value.end()), cx),
+            SliderEvent::Release(_) => self.fx_released(&key, cx),
+        }
+    }
+
+    /// A new press: whatever is still tracked lost its release and ends as released.
+    pub(super) fn fx_pressed(&mut self, cx: &mut Context<Self>) {
+        self.fx_settle(cx);
+    }
+
+    /// The control `key` is now at `raw` (a thumb position or a key step): begin the gesture on the
+    /// first value, update it on every later one.
+    pub(super) fn fx_changed(&mut self, key: &FxKey, raw: f64, cx: &mut Context<Self>) {
+        if self
+            .scene_ui
+            .fx
+            .tracked
+            .as_ref()
+            .is_some_and(|(tracked, _)| tracked != key)
+        {
+            // Another slider took over (focus moved while a key was held).
+            self.fx_settle(cx);
+        }
+        let phase = self
+            .scene_ui
+            .fx
+            .tracked
+            .as_ref()
+            .map(|(_, phase)| phase.clone());
+        let id = match phase {
+            Some(Phase::Ended) => return,
+            Some(Phase::Open(id)) => id,
+            None => {
+                let begun = self.fx_gesture_begin(key, cx);
+                self.scene_ui.fx.tracked =
+                    Some((key.clone(), begun.clone().map_or(Phase::Ended, Phase::Open)));
+                let Some(id) = begun else {
+                    return;
+                };
+                id
             }
-            SliderEvent::Release(_) => self.fx_commit_pending(&key, cx),
-        }
-    }
-
-    /// The drag of `key` ends: one edit with the value the thumb shows, in the scene the gesture began
-    /// on. A drag whose scene is no longer the one the panel shows, or whose clip is gone, is not
-    /// applied to whatever is there now: it is dropped and the typed reason goes on screen like any
-    /// refusal. A thumb that rests where the document already is sends nothing.
-    fn fx_commit_pending(&mut self, key: &FxKey, cx: &mut Context<Self>) {
-        let Some(value) = self.scene_ui.fx.pending.remove(key) else {
-            return;
         };
-        if let Err(error) = self.fx_commit_value(key, value, cx) {
-            self.scene_report(error, cx);
+        let ops = match self.fx_update_op(key, raw) {
+            Ok(op) => op.into_iter().collect(),
+            Err(error) => {
+                self.scene_report(error, cx);
+                return;
+            }
+        };
+        let update = SceneCommand::FxGesture(FxGestureCommand::Update { gesture: id, ops });
+        // A rejected value leaves the gesture open with its last legal candidate: the panel shows
+        // the typed error and the next value may be fine. Only a gesture the core dropped stops
+        // the drag.
+        if let Err(error) = self.scene_execute(update, Source::Gesture, cx)
+            && gesture_is_gone(&error)
+        {
+            self.scene_ui.fx.tracked = Some((key.clone(), Phase::Ended));
         }
-        cx.notify();
     }
 
-    fn fx_commit_value(
-        &mut self,
-        key: &FxKey,
-        value: f64,
-        cx: &mut Context<Self>,
-    ) -> Result<Option<Value>, CommandError> {
-        let view = self.fx_view_of(&key.scene)?;
+    /// `scene.fx.gesture.begin` on the clip of `key`, in the scene the panel shows.
+    fn fx_gesture_begin(&mut self, key: &FxKey, cx: &mut Context<Self>) -> Option<String> {
+        let result = self.fx_view_of(&key.scene).and_then(|view| {
+            self.fx_known(&view, &key.clip)?;
+            self.scene_execute(
+                SceneCommand::FxGesture(FxGestureCommand::Begin {
+                    scene: key.scene.clone(),
+                    clip: key.clip.clone(),
+                    label: None,
+                }),
+                Source::Gesture,
+                cx,
+            )
+        });
+        match result {
+            Ok(outcome) => outcome["gesture"].as_str().map(str::to_string),
+            Err(error) => {
+                // A panel that moved on (or a clip that is gone) is shown like any refusal.
+                self.scene_report(error, cx);
+                None
+            }
+        }
+    }
+
+    /// The op that moves the control of `key` to the (quantized) `raw`, from the DOCUMENT's clip:
+    /// every update restarts from the base the gesture began on, and a component of a point or a
+    /// colour keeps its siblings as the document has them. `None` when the thumb rests where the
+    /// document already is: the update is then empty, so the commit is a no-op (writing down a
+    /// default the clip leaves out would be a change of the document, and a tap is not an edit).
+    fn fx_update_op(&self, key: &FxKey, raw: f64) -> Result<Option<FxOp>, CommandError> {
+        let view = self.fx_document_view().ok_or_else(no_scene)?;
+        if view.scene != key.scene {
+            return Err(stale_scene(&key.scene, &view.scene));
+        }
         let found = self.fx_known(&view, &key.clip)?;
         let controls = controls_of(&found.clip, view.edit_frames);
         let control = controls
             .iter()
             .find(|candidate| candidate.id == key.control)
-            .ok_or_else(|| {
-                CommandError::new(
-                    "unknown_field",
-                    format!(
-                        "`{}` has no settable field `{}`",
-                        clip_node_id(&key.clip),
-                        key.control
-                    ),
-                )
-            })?;
-        let value = control.quantize(value);
+            .ok_or_else(|| unknown_control(&key.clip, &key.control))?;
+        let value = control.quantize(raw);
         if (value - control.value).abs() < 1e-9 {
-            // Nothing to write: no command, no history entry, and a stale notice is left as it was.
             return Ok(None);
         }
-        let op = control.op(&found.clip, value)?;
-        self.fx_run(&view.scene, op, Source::Gesture, cx).map(Some)
+        control.op(&found.clip, value).map(Some)
     }
 
-    /// The window lost the focus: a release may never arrive, so what a drag shows is committed.
+    /// The pointer was released or the step key came up (or Enter): the gesture is committed.
+    pub(super) fn fx_released(&mut self, key: &FxKey, cx: &mut Context<Self>) {
+        let Some((tracked, phase)) = self.scene_ui.fx.tracked.clone() else {
+            return;
+        };
+        if &tracked != key {
+            return;
+        }
+        self.scene_ui.fx.tracked = None;
+        self.fx_finish(phase, End::Commit, cx);
+    }
+
+    /// The window lost the focus: a release may never arrive, so the gesture is committed ONCE
+    /// (the tracking ends, so a late release finds nothing to commit again).
     pub(super) fn fx_focus_lost(&mut self, cx: &mut Context<Self>) {
-        let keys: Vec<FxKey> = self.scene_ui.fx.pending.keys().cloned().collect();
-        for key in keys {
-            self.fx_commit_pending(&key, cx);
+        let Some((key, phase)) = self.scene_ui.fx.tracked.clone() else {
+            return;
+        };
+        self.scene_ui.fx.tracked = Some((key, Phase::Ended));
+        self.fx_finish(phase, End::Commit, cx);
+    }
+
+    /// Escape: the gesture is cancelled and the rest of the press is ignored.
+    pub(super) fn fx_cancel_drag(&mut self, cx: &mut Context<Self>) {
+        let Some((key, phase)) = self.scene_ui.fx.tracked.clone() else {
+            return;
+        };
+        self.scene_ui.fx.tracked = Some((key, Phase::Ended));
+        self.fx_finish(phase, End::Cancel, cx);
+    }
+
+    /// The panel follows another scene (or the project changed): what the old scene's gesture
+    /// holds is dropped in the core, never carried over to the control of the same name there.
+    pub(super) fn fx_scene_left(&mut self, cx: &mut Context<Self>) {
+        self.scene_ui.fx.tracked = None;
+        let open = self
+            .state
+            .scene_interaction
+            .gesture()
+            .filter(|gesture| gesture.fx_clip().is_some())
+            .map(|gesture| gesture.id().to_owned());
+        if let Some(gesture) = open {
+            let _ = self.state.execute(Command::Scene(SceneCommand::FxGesture(
+                FxGestureCommand::Cancel { gesture },
+            )));
+            // The monitor was drawing that candidate: it goes back to the confirmed scene now,
+            // not at the next unrelated command.
+            self.viewport_sync(cx);
         }
     }
 
-    /// Escape: the drag is dropped and the slider goes back to the document's value.
-    pub(super) fn fx_cancel_drag(&mut self, cx: &mut Context<Self>) {
-        if !self.scene_ui.fx.pending.is_empty() {
-            self.scene_ui.fx.pending.clear();
-            cx.notify();
+    fn fx_settle(&mut self, cx: &mut Context<Self>) {
+        let Some((_, phase)) = self.scene_ui.fx.tracked.take() else {
+            return;
+        };
+        self.fx_finish(phase, End::Commit, cx);
+    }
+
+    /// Sends `end` for the gesture of `phase`, unless the core no longer holds it (another edit
+    /// invalidated it, the project was swapped): there is then nothing to report.
+    fn fx_finish(&mut self, phase: Phase, end: End, cx: &mut Context<Self>) {
+        let Phase::Open(id) = phase else {
+            return;
+        };
+        if self
+            .state
+            .scene_interaction
+            .gesture()
+            .is_none_or(|open| open.id() != id)
+        {
+            return;
         }
+        match end {
+            End::Cancel => {
+                let _ = self.scene_execute(
+                    SceneCommand::FxGesture(FxGestureCommand::Cancel { gesture: id }),
+                    Source::Gesture,
+                    cx,
+                );
+            }
+            End::Commit => {
+                let commit = SceneCommand::FxGesture(FxGestureCommand::Commit {
+                    gesture: id.clone(),
+                });
+                if self.scene_execute(commit, Source::Gesture, cx).is_err() {
+                    // A rejected commit gives the gesture back to the core (so a caller could
+                    // retry). A drag has nothing to retry with: drop the candidate so the panel
+                    // shows the document again, and keep the typed error on screen.
+                    let _ = self.state.execute(Command::Scene(SceneCommand::Gesture(
+                        GestureCommand::Cancel { gesture: id },
+                    )));
+                    // The monitor may still hold the candidate that was just given up.
+                    self.viewport_sync(cx);
+                }
+            }
+        }
+    }
+
+    /// A key press on the slider of `key`. Arrows, shift, page keys and home/end step the value
+    /// on the control's own grid and range (the same rule as the pointer); Enter confirms the
+    /// gesture in progress. Escape is the window's (it cancels). Returns whether the key was the
+    /// slider's. `held` is auto-repeat: it continues the gesture instead of starting another.
+    pub(super) fn fx_key_down(
+        &mut self,
+        key: &FxKey,
+        pressed: &str,
+        shift: bool,
+        held: bool,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if pressed == "enter" {
+            if self.scene_ui.fx.is_tracked(key) {
+                self.fx_released(key, cx);
+                return true;
+            }
+            return false;
+        }
+        let Some(from) = self.fx_control_now(key) else {
+            return false;
+        };
+        let Some(next) = from.1.after_key(pressed, shift, from.0) else {
+            return false;
+        };
+        if !held {
+            self.fx_pressed(cx);
+        }
+        self.fx_changed(key, next, cx);
+        true
+    }
+
+    /// The key-up that commits a keyboard gesture. Only step keys count: releasing Shift while an
+    /// arrow is still held must not end the gesture.
+    pub(super) fn fx_key_up(&mut self, key: &FxKey, released: &str, cx: &mut Context<Self>) {
+        let is_step = self
+            .fx_control_now(key)
+            .is_some_and(|(value, control)| control.after_key(released, false, value).is_some());
+        if is_step {
+            self.fx_released(key, cx);
+        }
+    }
+
+    /// What the control of `key` shows now (the candidate's value while its gesture is open) and
+    /// the control, for stepping.
+    fn fx_control_now(&self, key: &FxKey) -> Option<(f64, FxControl)> {
+        let view = self.fx_view()?;
+        if view.scene != key.scene {
+            return None;
+        }
+        let clip = &view.clip(&key.clip)?.clip;
+        controls_of(clip, view.edit_frames)
+            .into_iter()
+            .find(|control| control.id == key.control)
+            .map(|control| (control.value, control))
     }
 
     // ---- automation ----
@@ -638,6 +931,15 @@ impl Workstation {
                 },
             }));
         }
+        children.push(json!(BUDGET_ID));
+        nodes.push(budget_node(&view));
+        let gesture = self
+            .state
+            .scene_interaction
+            .gesture()
+            .filter(|open| open.scene() == view.scene && open.fx_clip().is_some());
+        let gesture_state =
+            gesture.map(|open| open.to_json(&self.state.scenes, self.state.project.revision));
         let actions: Vec<Value> = fx::catalog()
             .iter()
             .map(|spec| {
@@ -659,6 +961,10 @@ impl Workstation {
                     "clip_count": view.clips.len(), "scope": ["output"],
                     "effects": fx::catalog().iter().map(|spec| spec.id).collect::<Vec<_>>(),
                     "edit_duration_frames": view.edit_frames,
+                    "playhead_frame": view.frame_here,
+                    "source": if view.gesture.is_some() { "gesture" } else { "document" },
+                    "gesture": gesture_state,
+                    "over_budget": view.budget.over(),
                 },
             }),
         );
@@ -770,6 +1076,31 @@ impl Workstation {
         }
         header = header.child(adds);
         let mut section = v_flex().w_full().child(header);
+        if view.budget.over() {
+            section = section.child(
+                h_flex()
+                    .id("fx-budget-warning")
+                    .relative()
+                    .child(self.geometry.probe("control:fx-budget-warning"))
+                    .items_start()
+                    .gap(px(6.))
+                    .mx(px(10.))
+                    .mt(px(4.))
+                    .p(px(6.))
+                    .rounded(px(3.))
+                    .border_1()
+                    .border_color(t.title_border)
+                    .text_size(px(10.))
+                    .text_color(t.text)
+                    .child(glyph(IconName::CircleAlert, 14.0, t.title_border))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w(px(0.))
+                            .child(budget_message(&view.budget)),
+                    ),
+            );
+        }
         if view.clips.is_empty() {
             section = section.child(
                 div()
@@ -863,13 +1194,9 @@ impl Workstation {
                 clip: clip.id.clone(),
                 control: control.id.clone(),
             };
-            let shown = self
-                .scene_ui
-                .fx
-                .pending
-                .get(&key)
-                .copied()
-                .unwrap_or(control.value);
+            // The candidate's value while a gesture is open (the view is the candidate's), else the
+            // document's: never a buffer of the widget.
+            let shown = control.value;
             let element = key.element_id();
             let slider = self.fx_slider(&key, &control, window, cx);
             let value = if control.integer {
@@ -913,7 +1240,7 @@ impl Workstation {
             .sliders
             .get(key)
             .is_some_and(|slider| slider.range != range);
-        if stale && !self.scene_ui.fx.pending.contains_key(key) {
+        if stale && !self.scene_ui.fx.is_tracked(key) {
             self.scene_ui.fx.sliders.remove(key);
         }
         if !self.scene_ui.fx.sliders.contains_key(key) {
@@ -939,18 +1266,37 @@ impl Workstation {
         let state = entry.state.clone();
         // While a drag owns the control the thumb is the user's; otherwise it follows the model.
         // `set_value` does not emit a change, so following it cannot loop.
-        if !self.scene_ui.fx.pending.contains_key(key) {
+        if !self.scene_ui.fx.is_tracked(key) {
             let target = control.value as f32;
             if (state.read(cx).value().end() - target).abs() > SLIDER_EPSILON {
                 state.update(cx, |slider, cx| slider.set_value(target, window, cx));
             }
         }
         let element = key.element_id();
+        let stepper = key.clone();
+        let releaser = key.clone();
         div()
             .id(SharedString::from(format!("fx-slider-{element}")))
             .relative()
             .flex_1()
+            .focusable()
             .child(self.geometry.probe(format!("control:{element}")))
+            // Capture phase: the Kit thumb stops its own mouse-down.
+            .capture_any_mouse_down(fx_slider_press(cx))
+            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
+                if this.fx_key_down(
+                    &stepper,
+                    event.keystroke.key.as_str(),
+                    event.keystroke.modifiers.shift,
+                    event.is_held,
+                    cx,
+                ) {
+                    cx.stop_propagation();
+                }
+            }))
+            .on_key_up(cx.listener(move |this, event: &KeyUpEvent, _, cx| {
+                this.fx_key_up(&releaser, event.keystroke.key.as_str(), cx);
+            }))
             .child(
                 Slider::new(&state)
                     .horizontal()
@@ -958,6 +1304,36 @@ impl Workstation {
             )
             .into_any_element()
     }
+}
+
+/// A capture-phase press listener for a slider's wrapper: a new press settles what a lost
+/// release left tracked, and ends a framework drag whose mouse-up never came.
+fn fx_slider_press(
+    cx: &mut Context<Workstation>,
+) -> impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static {
+    cx.listener(|this, event: &MouseDownEvent, window, cx| {
+        if event.button == MouseButton::Left {
+            cx.stop_active_drag(window);
+            this.fx_pressed(cx);
+        }
+    })
+}
+
+fn stale_scene(was: &str, now: &str) -> CommandError {
+    CommandError::new(
+        "stale_gesture",
+        format!(
+            "The effect gesture belonged to scene `{was}` and the panel now shows `{now}`: it was dropped, nothing changed"
+        ),
+    )
+    .target(was)
+}
+
+fn unknown_control(clip: &str, control: &str) -> CommandError {
+    CommandError::new(
+        "unknown_field",
+        format!("`{}` has no settable field `{control}`", clip_node_id(clip)),
+    )
 }
 
 fn no_scene() -> CommandError {

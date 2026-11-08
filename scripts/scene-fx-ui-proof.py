@@ -519,8 +519,10 @@ def run(args, surfaces):
         added = win.invoke("scene.fx", "add:vignette")
         check("invoke scene.fx add:vignette", added.get("ok") and added["data"].get("changed") is True, added)
         clip = win.node("scene.fx.clip:fx-1") or {}
-        check("scene.fx.clip:fx-1 exists with the catalog defaults",
-              win.field("scene.fx.clip:fx-1", "intensity") == 0.7 and clip.get("state", {}).get("start_frame") == 0, clip.get("state"))
+        # The add action inserts at the bundle frame the playhead displays (FRAME, here) and fits the edit.
+        check("scene.fx.clip:fx-1 exists with the catalog defaults, at the displayed frame, fitting the edit",
+              win.field("scene.fx.clip:fx-1", "intensity") == 0.7 and clip.get("state", {}).get("start_frame") == FRAME
+              and clip.get("state", {}).get("end_frame_exclusive") == EDIT_FRAMES, clip.get("state"))
         check("one gesture, one history entry", win.undo_depth() == depth0 + 1, (depth0, win.undo_depth()))
         check("set intensity 1", win.set("scene.fx.clip:fx-1", "intensity", 1.0).get("ok"))
         check("two edits, two entries", win.undo_depth() == depth0 + 2, win.undo_depth())
@@ -581,6 +583,108 @@ def run(args, surfaces):
               (win.node("scene.fx") or {}).get("state", {}).get("clip_count") == 0 and win.repaint(FRAME) == monitor_baseline)
         walk_history(win, "history.redo", depth_before_undo, name="redo to the end")
         check("redo restores the clip with its last values", win.field("scene.fx.clip:fx-1", "center_x") == 1.0 and win.field("scene.fx.clip:fx-1", "intensity") == 1.0)
+
+        # ---- a gesture: the candidate is drawn before the commit (B-BL082.6, semantic ops only) ----
+        document_hash = win.repaint(FRAME)
+        depth = win.undo_depth()
+        ok, began = win.op({"op": "scene.fx.gesture.begin", "scene": "proof", "clip": "fx-1"})
+        gesture = began.get("gesture") if ok else None
+        check("scene.fx.gesture.begin on the clip", ok and gesture, began)
+        ok, body = win.op({"op": "scene.fx.gesture.update", "gesture": gesture,
+                           "ops": [{"op": "set_param", "clip": "fx-1", "param": "intensity", "value": 0.4}]})
+        check("scene.fx.gesture.update to 0.4", ok, body)
+        candidate_hash = win.repaint(FRAME)
+        check("the monitor draws the candidate BEFORE the commit (picture differs from the document's)",
+              candidate_hash and candidate_hash != document_hash, f"{candidate_hash} vs {document_hash}")
+        ok, document_list = win.op({"op": "scene.fx.list", "scene": "proof"})
+        ok_c, candidate_list = win.op({"op": "scene.fx.list", "scene": "proof", "gesture": gesture})
+        check("the document still holds 1.0, the candidate 0.4, and the history did not move during the drag",
+              ok and ok_c and document_list["tracks"][0]["clips"][0]["params"]["intensity"] == 1.0
+              and candidate_list["tracks"][0]["clips"][0]["params"]["intensity"] == 0.4 and win.undo_depth() == depth,
+              (document_list, candidate_list, win.undo_depth(), depth))
+        check("the panel's control shows the candidate while the drag is open", win.field("scene.fx.clip:fx-1", "intensity") == 0.4)
+        ok, body = win.op({"op": "scene.fx.gesture.update", "gesture": gesture,
+                           "ops": [{"op": "set_param", "clip": "fx-1", "param": "intensity", "value": 3.0}]})
+        check("an out-of-range update is the typed param_out_of_range", not ok and body.get("code") == "param_out_of_range", body)
+        check("the refused update kept the last legal candidate on screen", win.repaint(FRAME) == candidate_hash)
+        ok, body = win.op({"op": "scene.fx.gesture.cancel", "gesture": gesture})
+        check("scene.fx.gesture.cancel", ok, body)
+        check("cancel: the document's picture, value and history are untouched",
+              win.repaint(FRAME) == document_hash and win.field("scene.fx.clip:fx-1", "intensity") == 1.0 and win.undo_depth() == depth)
+        ok, began = win.op({"op": "scene.fx.gesture.begin", "scene": "proof", "clip": "fx-1"})
+        gesture = began.get("gesture") if ok else None
+        ok, body = win.op({"op": "scene.fx.gesture.update", "gesture": gesture,
+                           "ops": [{"op": "set_param", "clip": "fx-1", "param": "intensity", "value": 0.4}]})
+        check("a second gesture reaches the same candidate", ok and win.repaint(FRAME) == candidate_hash)
+        ok, body = win.op({"op": "scene.fx.gesture.commit", "gesture": gesture})
+        check("scene.fx.gesture.commit", ok, body)
+        check("the commit is ONE undo entry", win.undo_depth() == depth + 1, (depth, win.undo_depth()))
+        committed_hash = win.repaint(FRAME)
+        committed = win.render(FRAME, points)
+        check("the committed picture is the picture the preview drew", committed_hash == candidate_hash == committed["hash"],
+              f"{committed_hash} / {candidate_hash} / {committed['hash']}")
+        want_gesture = [vignette(p[:3], x, y, WIDTH, HEIGHT, 0.4, center=(1.0, 1.0)) for p, (x, y) in zip(baseline_probes, points)]
+        delta = worst(committed["probes"], want_gesture)
+        check(f"the committed gesture equals the Python vignette (worst {delta:.1f})", delta <= TOLERANCE, delta)
+        ok, body = win.op({"op": "history.undo"})
+        check("ONE undo restores the value and the pixels",
+              ok and win.field("scene.fx.clip:fx-1", "intensity") == 1.0 and win.repaint(FRAME) == document_hash, body)
+        ok, body = win.op({"op": "history.redo"})
+        check("redo restores the value and the pixels",
+              ok and win.field("scene.fx.clip:fx-1", "intensity") == 0.4 and win.repaint(FRAME) == committed_hash, body)
+        ok, began = win.op({"op": "scene.fx.gesture.begin", "scene": "proof", "clip": "fx-1"})
+        ok2, body = win.op({"op": "scene.fx.gesture.commit", "gesture": began.get("gesture")})
+        check("a gesture without an update commits as a no-op: zero undo entries", ok and ok2 and win.undo_depth() == depth + 1, (body, win.undo_depth()))
+        check("set intensity back to 1", win.set("scene.fx.clip:fx-1", "intensity", 1.0).get("ok"))
+
+        # ---- a scene switch cancels the open gesture and never commits it ----
+        ok, body = win.op({"op": "scene.attach", "id": "yard", "path": str(CORPUS / "bundle.swap.json")})
+        check("scene.attach of a second scene", ok, body)
+        depth = win.undo_depth()
+        ok, began = win.op({"op": "scene.fx.gesture.begin", "scene": "proof", "clip": "fx-1"})
+        gesture = began.get("gesture") if ok else None
+        check("begin the gesture before switching scenes", ok and bool(gesture), began)
+        updated, update_body = win.op({"op": "scene.fx.gesture.update", "gesture": gesture,
+                "ops": [{"op": "set_param", "clip": "fx-1", "param": "intensity", "value": 0.2}]})
+        check("update the gesture before switching scenes", updated, update_body)
+        check("choosing the scene already shown moves nothing: the gesture stays open",
+              win.set("scene.picker", "value", "proof").get("ok")
+              and (win.op({"op": "scene.fx.gesture.status"})[1].get("gesture") or {}).get("id") == gesture,
+              win.op({"op": "scene.fx.gesture.status"})[1])
+        check("the panel follows the picker to the other scene", win.set("scene.picker", "value", "yard").get("ok"))
+        ok, status = win.op({"op": "scene.fx.gesture.status"})
+        check("the scene switch cancelled the gesture in the core", ok and not status.get("gesture") and status.get("active") is False, status)
+        ok, body = win.op({"op": "scene.fx.gesture.commit", "gesture": gesture})
+        check("committing the dead gesture is refused", not ok, body)
+        check("nothing was committed: the value and the history are as before",
+              win.undo_depth() == depth and win.set("scene.picker", "value", "proof").get("ok") and win.field("scene.fx.clip:fx-1", "intensity") == 1.0)
+
+        # ---- the pass budget: a visible, queryable warning that never drops a pass ----
+        budget = win.node("scene.fx.budget") or {}
+        check("scene.fx.budget exists and is quiet inside the budget",
+              budget.get("state", {}).get("over_budget") is False and budget.get("visible") is False, budget)
+        extra = [{"op": "add_clip", "effect": "vignette", "start_frame": 0, "duration_frames": 48, "id": f"b{n}", "params": {"intensity": 0.1}}
+                 for n in range(1, 9)]
+        ok, body = win.op({"op": "scene.fx.edit", "scene": "proof", "ops": extra})
+        check("eight more clips make nine overlapping passes (the edit is NOT refused)", ok, body)
+        budget = win.node("scene.fx.budget") or {}
+        state = budget.get("state", {})
+        check("the warning node is visible with peak 9 and code FX_PASS_BUDGET",
+              budget.get("visible") is True and state.get("over_budget") and state.get("peak_passes") == 9
+              and state.get("warnings", [{}])[0].get("code") == "FX_PASS_BUDGET", budget)
+        ok, plan = win.op({"op": "scene.plan", "scene": "proof", "frame": FRAME})
+        check("the plan still carries all nine passes (warn, never truncate)", ok and len(plan["plan"].get("fx", [])) == 9, plan.get("plan", {}).get("fx") if ok else plan)
+        check("hiding one clip is an edit and clears the warning", win.set("scene.fx.clip:b1", "hidden", True).get("ok")
+              and (win.node("scene.fx.budget") or {}).get("state", {}).get("over_budget") is False)
+        check("showing it warns again", win.set("scene.fx.clip:b1", "hidden", False).get("ok")
+              and (win.node("scene.fx.budget") or {}).get("state", {}).get("over_budget") is True)
+        win.set("scene.picker", "value", "yard")
+        check("another scene has its own layer: no warning there", (win.node("scene.fx.budget") or {}).get("state", {}).get("over_budget") is False)
+        win.set("scene.picker", "value", "proof")
+        check("the warning is back with the first scene", (win.node("scene.fx.budget") or {}).get("state", {}).get("over_budget") is True)
+        removal = [{"op": "remove_clip", "clip": f"b{n}"} for n in range(1, 9)]
+        ok, body = win.op({"op": "scene.fx.edit", "scene": "proof", "ops": removal})
+        check("removing the extra clips clears the warning", ok and (win.node("scene.fx.budget") or {}).get("state", {}).get("over_budget") is False, body)
 
         # ---- toggle hidden is the baseline too ----
         check("invoke toggle_hidden", win.invoke("scene.fx.clip:fx-1", "toggle_hidden").get("ok"))
