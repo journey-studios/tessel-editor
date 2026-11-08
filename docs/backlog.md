@@ -466,3 +466,16 @@ Plano e contratos: [wave-s1-s10-plan.md](migration/wave-s1-s10-plan.md). R1–R1
 | S8 | BL015/BL042 | Preparada para delegação | gizmo de translação e comando semântico equivalentes |
 | S9 | BL016 | Preparada para delegação | mix offline dirigido e áudio no export |
 | S10 | BL019 (ampliação) | Preparada para delegação | provas independentes e controles negativos |
+
+### BL028 / BL036 / BL082 — auditoria de paridade (2026-11-08)
+
+Mapeamento documental concluído contra `origin/main` `10683c5357c244692063099e13ccb5685385e0fa`, sem implementação nova.
+[Relatório por capacidade e critérios](migration/pilot-parity-audit-2026-11-08.md) e
+[catálogo individual](migration/pilot-parity-catalog.json): 1 de 59 entradas implementada
+(vinheta output, paridade parcial); 30 looks e 28 transições pendentes. BL082.1–.6/.16,
+BL004/BL014/BL017/BL022–BL029/BL036/BL018–BL019 mantêm seus estados e responsáveis;
+nenhuma tarefa foi atribuída. Próximo recorte recomendado: fixar corpus do delta e reconciliar
+proveniência F016 (BL036/BL019/BL082.17), depois preview/teclado/playhead e orçamento
+(BL082.6/.16). Divergência documental F016: matriz marca Lib/JSONL V, contrato ainda conserva
+R1 não compilada; resolver por SHA e prova, sem aceitar por inferência. Esta auditoria conferiu
+código/refs/PRs e documentos, não executou testes/build/UI/render. PR31 continua frente separada.
