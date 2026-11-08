@@ -869,7 +869,7 @@ adaptou identidade/título, sem alterar rótulos nem handlers de desempenho.
 |---|---|---|---|---|---|---|
 | BL144 | Filme SHARP | Depois de `project.open` pela CLI o cabeçalho continuava `North / Master`; miniaturas de splat/cena ficavam vazias na biblioteca | Validado (lib, CLI headless e janela nativa) na base `6639976`, ver BL144.17 e `features/header-thumbnails.md`; limites BL144.1/.2/.3/.10/.13/.14/.15 seguem pendentes | — | Cursor Sonnet 5.5; coordenador revisa | Cabeçalho = `Projeto / Sequência` do aberto; splat e cena com miniatura real em job/adaptador, cancelado e nunca aplicado a outro projeto. Validado na base `6639976` pela PR de validação (BL144.17): fmt/check/clippy `-D warnings` limpos; `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked --no-fail-fast` 1785 passam, 0 falham, 12 ignorados (101 binários); prova headless (`tessel-render`) 123/123 e prova da janela nativa 131/131, sem SKIP; specs 18/29/7 com e sem `-O`. Sem ponteiro físico (não há controle novo); SwiftShader, não GPU real
 | BL144.1 | F053 | Imagem parada e vídeo continuam com glifo na biblioteca: a operação `media.thumbnail` (FFmpeg) existe mas não está ligada ao tile | Pendente | BL144 | — | Tile de imagem/vídeo mostra o quadro real pelo mesmo job/identidade, com prova de pixel |
-| BL144.2 | F053/BL143 | Depois da PR #23, o splat do SHARP seria desenhado sem a orientação da captura e a identidade da miniatura não inclui a captura | Pendente (bloqueada pela PR #23; o enquadramento já recebe `view` e a identidade traz `framing=fit:default`) | BL143 | — | Miniatura de um splat com captura usa a câmera/eixos dela e muda de identidade se a captura mudar |
+| BL144.2 | F053/BL143 | O splat do SHARP era desenhado sem a orientação da captura e a identidade da miniatura não incluía a captura | Validado na PR #31 (testes de core, media e render real; prova headless 152 e janela nativa 167; SwiftShader, sem GPU real; ver seção abaixo) | BL143, BL144.10 | Cursor Sonnet 5.5 | Miniatura de um splat com captura usa a câmera/eixos dela (uma só rotação), a identidade traz os parâmetros da captura e a troca invalida o cache; sem captura, enquadramento comum; render real independente executado |
 | BL144.3 | F053 | O cache de miniaturas só é invalidado por `VERSION`/`CACHE_VERSION`: reconstruir o runtime (`runtime/dist`) não refaz as imagens já guardadas | Limite documentado, com plano (não implementado): o renderizador expõe a impressão do bundle em `capabilities`, o adaptador a põe na impressão do cache (não na identidade do core) e `media.thumbnails {rebuild:true}` limpa só as miniaturas | BL144 | — | Reconstruir o runtime refaz as miniaturas, com teste; ou comando de limpeza só delas |
 | BL144.4 | F053/UI | O monitor preto das capturas antigas do `header-thumbnails-proof.py` era de uma sequência com **0 clipes** (monitor sem clipe é preto por desenho): **prova incompleta, não defeito confirmado da WebView**. As capturas sintéticas antigas ficam como evidência parcial do cabeçalho e da biblioteca | Validado: a prova nativa põe um clipe de cena na linha do tempo, exige quadro real do monitor (hash e fase `ready`) e a captura do SO da janela mostra o quadro (caixa laranja e esfera azul), 131/131 sem SKIP (BL144.17) | — | — | Execução nativa com clipe mostrando o quadro real, ou causa registrada com evidência |
 | BL144.5 | F053/revisão B | Identidade da miniatura ignorava os ativos referenciados (religar/substituir o splat, dependência importada depois de uma falha) | Corrigido, a validar (identidade v2 com `deps=` transitivo; falha lembrada deixa de valer; testes core/media escritos, não executados) | BL144 | Sub-agente PR #24 | Cena com splat religado ou importado depois muda de identidade e é redesenhada; testes passam e reprovam sem a dependência na identidade |
@@ -927,7 +927,7 @@ BL142.4: helper canônico28/28 adotado, filho encerrado após timeout, subclasse
 | BL143.11 | R2 | replace_asset não recusava captura em ativo não-splat | Corrigido e validado (teste executado na integração) | BL143.9 | Coordenador | Mesma regra add/replace/load e estado intacto na recusa |
 | BL143.12 | F052/real | `render.frame` do PLY real `t4-batalha` (1672×941) não responde em 60 s (`timeout`, requisição cancelada) em duas execuções seguidas, com a máquina sob carga (load ~56); `t1`–`t3`, com o mesmo número de gaussianas, respondem em segundos. Sem diagnóstico: pode ser carga, conteúdo ou o limite de 60 s do host | Pendente (observado, sem causa) | BL143.8 | Cursor Sonnet 5.5 | Repetir com a máquina ociosa e `--gl gpu`; se persistir, medir ordenação/raster do Spark e decidir limite ou defeito; não relaxar o prazo para passar |
 
-Prioridade das pendências desta rodada (IDs existentes; a ordem é a de trabalho): **P1** BL144.10 (export iniciado depois da miniatura, incluindo a CLI explícita, sem desfazer a pausa do cancelamento do usuário; validado na PR #30); **P2** BL144.2 (orientação/captura/enquadramento na miniatura do splat com a PR #23 integrada); **P3** BL140.8 (`source_start` negativo ao estender o início), BL144.3 (impressão do runtime no cache de miniaturas), BL144.13 (eixos SPZ/PLY com o renderer real; a prova do PLY do SHARP já existe em BL143.8), BL144.14 (custo do BFS/identidade por tick), BL144.15 (erro de snapshot engolido no agendamento). BL144.x vivem na PR #24 até ela entrar; BL143.1/BL143.8 deixaram de ser P1.
+Prioridade das pendências desta rodada (IDs existentes; a ordem é a de trabalho): **P1** BL144.10 (export iniciado depois da miniatura, incluindo a CLI explícita, sem desfazer a pausa do cancelamento do usuário; validado na PR #30); **P2** BL144.2 (orientação/captura/enquadramento na miniatura do splat; validado na PR #31); **P3** BL140.8 (`source_start` negativo ao estender o início), BL144.3 (impressão do runtime no cache de miniaturas), BL144.13 (eixos SPZ/PLY com o renderer real; a prova do PLY do SHARP já existe em BL143.8), BL144.14 (custo do BFS/identidade por tick), BL144.15 (erro de snapshot engolido no agendamento). BL144.x vivem na PR #24 até ela entrar; BL143.1/BL143.8 deixaram de ser P1.
 BL143.8: independência/fidelidade do teste de cor não demonstradas; não promover a V sem render contra fonte primária. Novos testes receberam rustfmt apenas, disco insuficiente para Cargo.
 | BL140.8 | R2 / limite | Estender início pode produzir source_start negativo | Pendente | BL140.2 | Coordenador | Definir recusa/clamp conforme tipo sem deslocar conteúdo/câmera e cobrir por testes |
 BL140 R2: nenhum bloqueador identificado por leitura, sem compilação. Matriz F054 rebaixada aI até gates reais.
@@ -975,3 +975,34 @@ Base `497d895`; código de produção validado em `9325927` (PR #30). `core::ren
 BL082.20 — revisão incremental PR37: descoberta dos verbos FX em capabilities, prova de
 troca de cena com pré-condições e `active`, e quantização sub-1e-9 corrigidas por código.
 Regressões adicionadas; Rust e janela não executados por disco. Não encerra aceite.
+
+### BL144.2 — câmera SHARP nas miniaturas (2026-11-08)
+
+Validado na PR #31, sobre `main` com as PRs #30 e #32 (`10683c5`); código de produção validado em `3c260a6`, mais só correção de lint de teste, prova e documentação. Sem GPU real (SwiftShader).
+
+- Core: `splat_framing::fit_capture` (câmera e eixos da captura, giro único, `z <= 0` recusado), `Framing.rotation` e
+  `splat_framing::identity_token` (`fit:default` sem captura; `capture:cv1:<L>x<A>:f=…:c=…` com ela) usado por `thumbnails::identity_of`.
+- Adaptador: `media::thumbnails` escolhe `fit_capture`/`fit` por `asset.meta.capture` e escreve `rotation` na cena de apoio só quando há giro.
+- Testes executados (`TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked --no-fail-fast`: **1834 passam, 0 falham, 12 ignorados**):
+  unitários em `splat_framing.rs` (pinhole independente e assimétrico, mutação sem giro/giro duplo, atrás da câmera, identidade que muda com
+  cada parte da captura); `core/tests/thumbnails.rs`; `media/tests/thumbnails.rs` (cena de apoio, `orientation` do plano zerada, câmera,
+  cache com/sem captura, recusa sem chegar ao renderer); render real em `render/tests/thumbnail_frames.rs` (cinco gaussianas sobre pixels
+  conhecidos da imagem 160×120; `capture: ignore` é outra imagem).
+- Prova nas duas superfícies (`scripts/header-thumbnails-proof.py`, fase BL144.2, oráculo em Python puro): headless (`tessel-render`) **152 passam**,
+  janela nativa (`scripts/ui`, sem coordenadas) **167 passam**, 0 SKIP, na integração final (binários debug `tessel-editor` `b289968e…`, `tessel-render` `62fe287e…`). As cinco cores estão sobre os pixels da imagem de origem (escalada à
+  altura e centrada): vermelho em cima à esquerda, verde em cima à direita, azul embaixo à esquerda, amarelo embaixo à direita, branco no centro;
+  lido com `capture: ignore` o mesmo arquivo é outro caminho de cache e a imagem fica girada 180° (1 de 5 pontos coincide). As imagens foram
+  vistas; a janela mostra o tile de `sharp.ply` com a miniatura em pé.
+- Verificações sem alterar fontes: `cx`/`cy` não entram na câmera (só o FOV vertical), o que é exato porque a importação recusa um ponto
+  principal a mais de 1 px do centro (`PRINCIPAL_TOLERANCE_PX`), e a identidade ainda os nomeia; `float16` do Spark (centros até 65 504) vale
+  para uma captura como para qualquer splat (BL144.16 recusa o que vira só fundo), e as profundidades de uma captura são pequenas; nenhum
+  truncamento de `fx`/`fy`/`vfov` na identidade além do formato do `f64`.
+- Um defeito de prova achado e corrigido: o observador `await_in_flight` falhava (1 em 2 execuções nativas) ao pedir o job da nova sessão
+  logo após reabrir o mesmo documento, porque só os jobs finais da sessão antiga estavam listados e a janela ainda não iniciara o novo. Agora
+  ignora os jobs anteriores à reabertura (`ignore=`); um job novo que termine sem ser visto continua sendo falha (teste de spec).
+- Fica aberto: BL144.13 (eixos SPZ/PLY com render real; o fixture sintético só prova os eixos do SHARP escritos aqui), BL143.8 (PLY real) e a prova em GPU real.
+
+BL082.20 — integração PR37 com main30ac65b (PR31 SHARP): conflito somente documental
+no backlog, preservadas notas FX e evidências de miniaturas. Fmt, specs Python e diffcheck
+executados nesta integração; gates Rust/build/renderer/janela continuam BLOCKED_DISK.
+CodeRabbit NEUTRAL por quota não é revisão nem aceite. Sem merge da PR para main.

@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 use tessel_editor_core::backend::{BackendError, Capabilities, FrameResult, Output};
-use tessel_editor_core::fixtures::write_standard_set;
+use tessel_editor_core::fixtures::{SHARP_FIXTURE_PIXELS, write_standard_set};
 use tessel_editor_core::plan::{PreviewIntent, RenderPlan};
 use tessel_editor_core::session::Renderer;
 use tessel_editor_core::state::ProjectSettings;
@@ -415,5 +415,141 @@ fn a_displaced_cloud_of_any_size_is_in_the_middle_of_its_thumbnail() {
             .unwrap_or_else(|| panic!("a thumbnail for {name}"));
         assert_eq!(png_size(&thumbnail.path), (width, height), "{name}");
     }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+/// What each of the five SHARP fixture points looks like on the dark background, as the channels
+/// that must be lit (red, green, blue, yellow, white).
+const DOMINANT: [[bool; 3]; 5] = [
+    [true, false, false],
+    [false, true, false],
+    [false, false, true],
+    [true, true, false],
+    [true, true, true],
+];
+
+fn lit_as(color: [u8; 4], dominant: [bool; 3]) -> bool {
+    (0..3).all(|channel| {
+        if dominant[channel] {
+            color[channel] > 150
+        } else {
+            color[channel] < 90
+        }
+    })
+}
+
+/// Draws the thumbnail of the SHARP fixture imported with `capture` and returns the pixels under
+/// the five points' expected positions, in the order of `SHARP_FIXTURE_PIXELS`.
+fn sharp_probes(config: &RuntimeConfig, dir: &std::path::Path, capture: &str) -> Vec<[u8; 4]> {
+    let set = write_standard_set(&dir.join(format!("set-{capture}"))).unwrap();
+    let mut state = EditorState::empty(&ProjectSettings {
+        name: format!("Sharp {capture}"),
+        workspace: Some(dir.join(format!("project-{capture}"))),
+        ..ProjectSettings::default()
+    })
+    .unwrap();
+    let (width, height) = size_for(state.timeline.width, state.timeline.height);
+    let mut importer = MediaHost::new();
+    let imported = headless::execute_ext(
+        &mut state,
+        None,
+        Some(&mut importer),
+        &json!({"op":"media.import","paths":[set.sharp],"capture":capture}),
+    )
+    .unwrap();
+    assert_eq!(imported["applied"]["imported"], 1, "{imported}");
+
+    // The oracle is the source picture, not the renderer and not the core's camera: the fixture puts
+    // each Gaussian over a known pixel of its 160 x 120 image; the thumbnail keeps the lens (the
+    // vertical field of view), so that pixel is where the same height-scaled, centred picture has it.
+    let scale = f64::from(height) / 120.0;
+    let probes: Vec<(u32, u32)> = SHARP_FIXTURE_PIXELS
+        .iter()
+        .map(|pixel| {
+            (
+                (f64::from(width) / 2.0 + (pixel[0] - 80.0) * scale).round() as u32,
+                (f64::from(height) / 2.0 + (pixel[1] - 60.0) * scale).round() as u32,
+            )
+        })
+        .collect();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let factory: Arc<RendererFactory> = {
+        let (seen, probes, config) = (seen.clone(), probes.clone(), config.clone());
+        Arc::new(move || {
+            Ok(Box::new(Spy {
+                inner: Box::new(session(&config)),
+                probes: probes.clone(),
+                seen: seen.clone(),
+            }))
+        })
+    };
+    let mut host = MediaHost::new().with_renderer(factory);
+    let report = headless::execute_ext(
+        &mut state,
+        None,
+        Some(&mut host),
+        &json!({"op":"media.thumbnails"}),
+    )
+    .unwrap();
+    let thumbnail = state.thumbnail_report("sharp");
+    // A plain reading may draw or fail as an empty picture; either way this is what it says.
+    if capture == "auto" {
+        assert_eq!(report["ready"], 1, "{report} {thumbnail}");
+        let made = state.thumbnail("sharp").expect("a thumbnail");
+        assert_eq!(png_size(&made.path), (width, height));
+    }
+    let id = state.thumbnail_stand_in_id("sharp");
+    let frames = seen.lock().unwrap().clone();
+    frames
+        .iter()
+        .find(|(asset, _)| *asset == id)
+        .map(|(_, frame)| frame.probes.clone())
+        .unwrap_or_default()
+}
+
+/// BL144.2: the real runtime draws a SHARP splat through its capture, upright, over the pixels the
+/// source image had; read as a plain splat (`capture: ignore`) the same file does not.
+#[test]
+fn a_sharp_splat_thumbnail_is_the_source_picture_upright_and_a_plain_reading_is_not() {
+    let config = match RuntimeConfig::discover() {
+        Ok(config) => config,
+        Err(setup) => {
+            assert!(
+                std::env::var("TESSEL_REQUIRE_RUNTIME").as_deref() != Ok("1"),
+                "the runtime is required but unavailable: {}",
+                setup.message()
+            );
+            eprintln!("SKIPPED (runtime unavailable): {}", setup.message());
+            return;
+        }
+    };
+    let dir: PathBuf =
+        std::env::temp_dir().join(format!("tessel-thumb-sharp-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+
+    let seen = sharp_probes(&config, &dir, "auto");
+    assert_eq!(seen.len(), 5);
+    for (index, dominant) in DOMINANT.iter().enumerate() {
+        assert!(
+            lit_as(seen[index], *dominant),
+            "point {index} ({:?}) over source pixel {:?}: {:?}",
+            dominant,
+            SHARP_FIXTURE_PIXELS[index],
+            seen[index]
+        );
+    }
+
+    // Mutation: the same file framed as any splat (no capture) is not that picture.
+    let plain = sharp_probes(&config, &dir, "ignore");
+    let hits = DOMINANT
+        .iter()
+        .enumerate()
+        .filter(|(index, dominant)| plain.get(*index).is_some_and(|c| lit_as(*c, **dominant)))
+        .count();
+    assert!(
+        hits < 5,
+        "a plain reading matched {hits} of 5 source pixels: {plain:?}"
+    );
     let _ = fs::remove_dir_all(&dir);
 }
