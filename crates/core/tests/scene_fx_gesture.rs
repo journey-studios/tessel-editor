@@ -808,3 +808,33 @@ fn capabilities_advertise_every_effect_gesture_command() {
         assert!(commands.contains(&json!(format!("scene.fx.gesture.{verb}"))));
     }
 }
+
+#[test]
+fn fx_status_budget_exists_only_for_a_live_effect_candidate() {
+    let mut state = session();
+    begin(&mut state);
+    let live = ok(&mut state, json!({"op":"scene.fx.gesture.status"}));
+    assert!(live.get("budget").is_some());
+    assert!(live.get("warnings").is_some());
+    ok(
+        &mut state,
+        json!({"op":"scene.fx.edit","scene":"street","ops":[
+        {"op":"set_field","clip":"v1","field":"fade_in_frames","value":3}]}),
+    );
+    let stale = ok(&mut state, json!({"op":"scene.fx.gesture.status"}));
+    assert!(stale.get("budget").is_none(), "{stale}");
+    assert!(stale.get("warnings").is_none(), "{stale}");
+}
+
+#[test]
+fn fx_status_budget_never_describes_a_property_gesture() {
+    let mut state = session();
+    ok(
+        &mut state,
+        json!({"op":"scene.gesture.begin","scene":"street",
+        "targets":["scene/scene-a/node/figure"]}),
+    );
+    let status = ok(&mut state, json!({"op":"scene.fx.gesture.status"}));
+    assert!(status.get("budget").is_none(), "{status}");
+    assert!(status.get("warnings").is_none(), "{status}");
+}

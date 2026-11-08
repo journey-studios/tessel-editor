@@ -94,17 +94,12 @@ pub enum FxGestureCommand {
     },
     /// Replaces the candidate with `ops` applied to the scene as it was at `begin`. Only
     /// `set_param`, `set_field` and `set_hidden` on the gesture's own clip are accepted.
-    Update {
-        gesture: String,
-        ops: Vec<FxOp>,
-    },
-    Commit {
-        gesture: String,
-    },
+    Update { gesture: String, ops: Vec<FxOp> },
+    /// Commits the last legal candidate as one undo entry; a no-op creates none.
+    Commit { gesture: String },
     /// Discards the candidate; always allowed, also on a gesture that went stale.
-    Cancel {
-        gesture: String,
-    },
+    Cancel { gesture: String },
+    /// Reports the slot, with FX budget/warnings only for a live effect candidate.
     Status,
 }
 

@@ -97,6 +97,7 @@ pub struct FxUi {
 }
 
 impl FxUi {
+    /// Drops widget tracking when the section resets; candidate ownership stays with the core.
     pub fn clear(&mut self) {
         self.sliders.clear();
         self.tracked = None;
@@ -611,6 +612,7 @@ impl Workstation {
 
     // ---- the gesture adapter: input in, core commands out ----
 
+    /// Translates Kit Change/Release events into the same core gesture cycle used by semantic clients.
     pub(super) fn fx_slider_event(
         &mut self,
         key: FxKey,
@@ -667,13 +669,28 @@ impl Workstation {
                 return;
             }
         };
-        let update = SceneCommand::FxGesture(FxGestureCommand::Update { gesture: id, ops });
+        let update = SceneCommand::FxGesture(FxGestureCommand::Update {
+            gesture: id.clone(),
+            ops,
+        });
         // A rejected value leaves the gesture open with its last legal candidate: the panel shows
-        // the typed error and the next value may be fine. Only a gesture the core dropped stops
+        // the typed error and the next value may be fine. A lost or invalidated gesture stops
         // the drag.
         if let Err(error) = self.scene_execute(update, Source::Gesture, cx)
             && gesture_is_gone(&error)
         {
+            // A replacement may already own the slot. Give back only the gesture this drag used.
+            if self
+                .state
+                .scene_interaction
+                .gesture()
+                .is_some_and(|open| open.id() == id)
+            {
+                let _ = self.state.execute(Command::Scene(SceneCommand::FxGesture(
+                    FxGestureCommand::Cancel { gesture: id },
+                )));
+            }
+            self.viewport_sync(cx);
             self.scene_ui.fx.tracked = Some((key.clone(), Phase::Ended));
         }
     }
@@ -776,6 +793,7 @@ impl Workstation {
         }
     }
 
+    /// Settles the tracked drag once when focus changes; an already ended phase cannot commit again.
     fn fx_settle(&mut self, cx: &mut Context<Self>) {
         let Some((_, phase)) = self.scene_ui.fx.tracked.take() else {
             return;
