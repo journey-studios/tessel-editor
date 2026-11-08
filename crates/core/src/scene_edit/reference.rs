@@ -114,11 +114,18 @@ impl PropertyRef {
             return Err(unknown(format!("`{path}` is not valid URI encoding")));
         };
         let parts: Vec<&str> = decoded.iter().map(String::as_str).collect();
+        // A property name is one segment (`position`) or two (`position/x`, `start/fov`). A single
+        // segment that decodes to something holding a `/` is an ID-style escape, not a name.
+        let name_of = |segments: &[&str]| -> Option<String> {
+            (segments.len() <= 2 && segments.iter().all(|part| !part.contains('/')))
+                .then(|| segments.join("/"))
+        };
         match parts.as_slice() {
-            ["scene", scene_id, "node", node_id, name]
-                if !scene_id.is_empty() && !node_id.is_empty() =>
+            ["scene", scene_id, "node", node_id, rest @ ..]
+                if !scene_id.is_empty() && !node_id.is_empty() && (1..=2).contains(&rest.len()) =>
             {
-                let Some(property) = NodeProperty::from_name(name) else {
+                let name = name_of(rest).unwrap_or_default();
+                let Some(property) = NodeProperty::from_name(&name) else {
                     return Err(unknown(format!(
                         "no node property `{name}`; known: {}",
                         known_names(NodeProperty::ALL.map(|property| property.spec().name))
@@ -126,8 +133,11 @@ impl PropertyRef {
                 };
                 Ok(Self::node(scene_id, node_id, property))
             }
-            ["camera", clip_id, "start", name] if !clip_id.is_empty() => {
-                let Some(property) = CameraProperty::from_start_name(name) else {
+            ["camera", clip_id, "start", rest @ ..]
+                if !clip_id.is_empty() && (1..=2).contains(&rest.len()) =>
+            {
+                let name = name_of(rest).unwrap_or_default();
+                let Some(property) = CameraProperty::from_start_name(&name) else {
                     return Err(unknown(format!(
                         "no camera property `start/{name}`; known: {}",
                         known_names(CameraProperty::ALL.map(|property| property.spec().name))
@@ -137,7 +147,8 @@ impl PropertyRef {
             }
             _ => Err(unknown(format!(
                 "`{path}` is not a property path; paths look like \
-                 scene/<sceneId>/node/<nodeId>/position or camera/<clipId>/start/fov"
+                 scene/<sceneId>/node/<nodeId>/position, scene/<sceneId>/node/<nodeId>/position/x \
+                 or camera/<clipId>/start/fov"
             ))),
         }
     }

@@ -3,11 +3,14 @@
 //! here decides whether a bundle or an edit is valid.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use serde_json::Value;
 
-use crate::scene_edit::{EditOp, PropertyRef};
-use crate::scene_interaction::{FrameAt, GestureCommand, SelectMode};
+use crate::directed_scene::DirectedScene;
+
+use crate::scene_edit::{EditOp, FxOp, PropertyRef};
+use crate::scene_interaction::{FrameAt, GestureCommand, GizmoCommand, PointerCommand, SelectMode};
 use crate::time::Ratio;
 
 /// Where the bytes of a bundle come from. It is read and validated when the command *executes*,
@@ -20,6 +23,65 @@ pub enum SceneSource {
     /// A `render-bundle.json` on disk. Only the file is read: the resources it names by relative
     /// path are not opened.
     Path(PathBuf),
+    /// A scene that was already read, imported and admitted (see [`AdmittedScene`]): attaching
+    /// it only checks ID, room and budget, so the heavy work can run on a job thread.
+    Admitted(AdmittedScene),
+}
+
+/// A bundle that passed the importer and the structural and temporal gates of `admit`, held
+/// ready to attach, together with every fact attach needs that depends only on the bundle.
+/// WHY opaque: the only way to make one is [`AdmittedScene::prepare`], so `SceneSource::Admitted`
+/// can skip validation without letting a caller skip the rules, and the facts below are always
+/// derived by the core from the very scene they travel with (a caller cannot hand in a count).
+/// WHY the facts live here (BL100a): they cost O(bundle) (serializing 24 MiB of JSON to learn its
+/// size, scanning every node for deferred families, one notice per unknown field) and `prepare`
+/// runs on a job thread, whereas attaching runs on the caller's (the window's) thread.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AdmittedScene {
+    scene: Arc<DirectedScene>,
+    // `Arc` so that cloning an admitted scene never copies what can be tens of thousands of notices.
+    facts: Arc<SceneFacts>,
+}
+
+/// What `scene.attach` reports and budgets, computed once by [`AdmittedScene::prepare`].
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct SceneFacts {
+    /// Compact JSON size of the document: what the project's scene budget counts.
+    pub(super) serialized_len: usize,
+    pub(super) counts: Value,
+    pub(super) notices: Vec<Value>,
+    pub(super) deferred_in_use: Vec<Value>,
+}
+
+impl AdmittedScene {
+    pub(super) fn new(scene: DirectedScene) -> Self {
+        let facts = SceneFacts {
+            serialized_len: super::serialized_len(&scene),
+            counts: super::query::counts(&scene),
+            notices: super::query::notices_json(&scene),
+            deferred_in_use: super::scope::deferred_in_use(scene.document()),
+        };
+        Self {
+            scene: Arc::new(scene),
+            facts: Arc::new(facts),
+        }
+    }
+
+    pub fn scene(&self) -> &DirectedScene {
+        &self.scene
+    }
+
+    /// Compact JSON bytes this scene will count against the project's scene budget
+    /// ([`MAX_SCENE_BYTES`](super::MAX_SCENE_BYTES)), measured when it was prepared.
+    pub fn serialized_len(&self) -> usize {
+        self.facts.serialized_len
+    }
+
+    /// The scene and its facts, the facts moved out when this is their only owner.
+    pub(super) fn into_parts(self) -> (Arc<DirectedScene>, SceneFacts) {
+        let facts = Arc::try_unwrap(self.facts).unwrap_or_else(|shared| (*shared).clone());
+        (self.scene, facts)
+    }
 }
 
 /// The frame a camera query asks about.
@@ -64,6 +126,10 @@ pub enum SceneCommand {
         scene: String,
         /// Keeps the properties whose canonical path starts with it (`scene/street/node/`).
         path_prefix: Option<String>,
+        /// Also lists the component properties (`position/x`); off by default. The default
+        /// listing is not the first slice's: it lists the original eight kinds plus `renderOrder`
+        /// of image planes; only the components are opt-in.
+        components: bool,
     },
     Get {
         scene: String,
@@ -103,6 +169,26 @@ pub enum SceneCommand {
     Selection,
     /// F039: the begin/update/commit/cancel cycle.
     Gesture(GestureCommand),
+    /// F055: the translation gizmo (overlay, hit test, pointer drag, semantic translate).
+    Gizmo(GizmoCommand),
+    /// F016: an atomic batch on the effects layer of a scene. `dry_run` validates exactly as a
+    /// real run would and changes nothing.
+    FxEdit {
+        scene: String,
+        ops: Vec<FxOp>,
+        dry_run: bool,
+    },
+    /// F016: the effects layer of a scene (tracks, clips, every parameter resolved).
+    FxList {
+        scene: String,
+    },
+    /// F016: the effects the editor draws, with their parameters and ranges.
+    FxCatalog,
+    /// F016: the passes the layer resolves at an edit frame (what the plan hands a runtime).
+    FxFrame {
+        scene: String,
+        at: FrameAt,
+    },
 }
 
 impl SceneCommand {
@@ -118,6 +204,12 @@ impl SceneCommand {
             // commit carries `changed`, and `EditorState::execute` records nothing when it is
             // false (empty gesture, net no-op) or when the commit is rejected.
             Self::Gesture(GestureCommand::Commit { .. }) => Some("Edit scene"),
+            // The release of a gizmo drag IS that commit, and `scene.translate` IS a
+            // `scene.edit`: both report `changed` as "the document changed", so a click that
+            // moved nothing leaves no entry. Press, move, cancel and the reads never do.
+            Self::Gizmo(GizmoCommand::Pointer(PointerCommand::Up { .. })) => Some("Edit scene"),
+            Self::Gizmo(GizmoCommand::Translate { .. }) => Some("Edit scene"),
+            Self::FxEdit { dry_run: false, .. } => Some("Edit effects"),
             _ => None,
         }
     }

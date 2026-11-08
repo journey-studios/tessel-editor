@@ -23,6 +23,7 @@ use serde_json::{Value, json};
 use tessel_editor_core::backend::BackendError;
 use tessel_editor_core::directed_scene::{DirectedScene, Issue};
 use tessel_editor_core::scene_plan::{PlanError, PlanResource, ScenePlan};
+use tessel_editor_core::splat::{self, SplatFormat};
 
 /// `kind` of the layer a runtime that has the `directed_scene` feature draws.
 pub const DIRECTED_LAYER_KIND: &str = "directed_scene";
@@ -33,6 +34,10 @@ pub const DIRECTED_FEATURE: &str = "directed_scene";
 pub const DEFAULT_SLOTS: usize = 32;
 /// Decoded RGBA bytes (`width * height * 4`) the host lets its slots hold at once.
 pub const DEFAULT_BYTE_BUDGET: u64 = 512 * 1024 * 1024;
+/// Splats a frame may draw in all, the sum over its splat *nodes* of the splats of the file each
+/// reads (a file used by many nodes counts once per node: each is sorted and drawn, even though the
+/// decode is shared). The runtime's `LIMITS.frameSplats` is the same number.
+pub const DEFAULT_FRAME_SPLATS: u64 = 8 * 1024 * 1024;
 
 fn error(code: &str, message: impl Into<String>) -> BackendError {
     BackendError::new(code, message)
@@ -287,6 +292,7 @@ impl Prepared {
 pub struct SceneSlots {
     slots: Vec<Slot>,
     byte_budget: u64,
+    frame_splats: u64,
     clock: u64,
     /// Highest generation any map has used.
     generation: u64,
@@ -298,9 +304,16 @@ impl Default for SceneSlots {
     }
 }
 
-fn bytes_of(resource: &PlanResource) -> u64 {
-    // The plan stores the height as a float; for a picture it is a whole number of pixels.
+/// What the runtime holds for a picture: its decoded RGBA. The plan stores the height as a float;
+/// for a picture it is a whole number of pixels.
+fn picture_bytes(resource: &PlanResource) -> u64 {
     (resource.width_px as f64 * resource.height_px * 4.0) as u64
+}
+
+/// What the runtime holds for a splat file: the kept bytes plus 16 packed bytes per splat (the
+/// same count the runtime's own budget uses).
+fn splat_bytes(length: u64, count: u64) -> u64 {
+    length.saturating_add(count.saturating_mul(16))
 }
 
 impl SceneSlots {
@@ -314,9 +327,16 @@ impl SceneSlots {
                 })
                 .collect(),
             byte_budget,
+            frame_splats: DEFAULT_FRAME_SPLATS,
             clock: 0,
             generation: 0,
         }
+    }
+
+    /// The most splats one frame may draw across all its splat nodes (see `DEFAULT_FRAME_SPLATS`).
+    pub fn with_frame_splats(mut self, limit: u64) -> Self {
+        self.frame_splats = limit;
+        self
     }
 
     pub fn generation(&self) -> u64 {
@@ -390,12 +410,12 @@ impl SceneSlots {
         }
 
         let wanted = self.resolve(plan, resources)?;
-        let needed_bytes: u64 = plan.resources.iter().map(bytes_of).sum();
+        let needed_bytes: u64 = wanted.iter().map(|(_, _, _, bytes)| bytes).sum();
         if needed_bytes > self.byte_budget || wanted.len() > self.slots.len() {
             return Err(error(
                 "resource_budget",
                 format!(
-                    "The frame needs {} pictures ({needed_bytes} bytes); the host keeps at most {} ({} bytes)",
+                    "The frame needs {} resources ({needed_bytes} bytes); the host keeps at most {} ({} bytes)",
                     wanted.len(),
                     self.slots.len(),
                     self.byte_budget
@@ -424,18 +444,19 @@ impl SceneSlots {
         }
 
         self.clock += 1;
-        let identities: Vec<&Identity> = wanted.iter().map(|(_, identity, _)| identity).collect();
+        let identities: Vec<&Identity> =
+            wanted.iter().map(|(_, identity, _, _)| identity).collect();
         let incoming: u64 = wanted
             .iter()
-            .filter(|(_, identity, _)| self.index_of(identity).is_none())
-            .map(|(resource, _, _)| bytes_of(resource))
+            .filter(|(_, identity, _, _)| self.index_of(identity).is_none())
+            .map(|(_, _, _, bytes)| *bytes)
             .sum();
         releases.extend(self.evict_to_fit(&identities, incoming));
 
         let mut loads = Vec::new();
         let mut waiting = Vec::new();
         let mut references = Vec::new();
-        for (resource, identity, path) in &wanted {
+        for (resource, identity, path, bytes) in &wanted {
             // `wanted.len() <= slots.len()` was checked, and every slot the frame already uses
             // is excluded from eviction, so a slot is always left for a picture that has none.
             let Some(index) = self
@@ -453,7 +474,7 @@ impl SceneSlots {
                 Some((_, SlotState::Ready, _)) => {}
                 Some((_, SlotState::Loading, _)) => waiting.push(slot.name.clone()),
                 None => {
-                    slot.held = Some((identity.clone(), SlotState::Loading, bytes_of(resource)));
+                    slot.held = Some((identity.clone(), SlotState::Loading, *bytes));
                     loads.push(PendingLoad {
                         slot: slot.name.clone(),
                         message: load_message(&slot.name, identity, resource, path),
@@ -541,8 +562,9 @@ impl SceneSlots {
         &self,
         plan: &'a ScenePlan,
         resources: &SceneResourceMap,
-    ) -> Result<Vec<(&'a PlanResource, Identity, PathBuf)>, BackendError> {
+    ) -> Result<Vec<(&'a PlanResource, Identity, PathBuf, u64)>, BackendError> {
         let mut wanted = Vec::new();
+        let mut frame_splats: u64 = 0;
         for resource in &plan.resources {
             let asset_id = &resource.asset_id;
             let resolved = resources.get(asset_id).ok_or_else(|| {
@@ -575,6 +597,33 @@ impl SceneSlots {
                 )
                 .with_details(json!({ "asset_id": asset_id })));
             }
+            let bytes = if resource.is_splat() {
+                match splat::inspect(&resolved.path) {
+                    Ok(info) if info.format == SplatFormat::Spz => {
+                        // Every node that reads the file sorts and draws all of its splats.
+                        let nodes = resource.used_by.len().max(1) as u64;
+                        frame_splats =
+                            frame_splats.saturating_add(info.count.saturating_mul(nodes));
+                        splat_bytes(
+                            std::fs::metadata(&resolved.path).map_or(0, |meta| meta.len()),
+                            info.count,
+                        )
+                    }
+                    _ => {
+                        return Err(error(
+                            "resource_mismatch",
+                            format!(
+                                "`{asset_id}` is planned as an SPZ splat but the file is not one"
+                            ),
+                        )
+                        .with_details(
+                            json!({ "asset_id": asset_id, "expected": { "format": "spz" } }),
+                        ));
+                    }
+                }
+            } else {
+                picture_bytes(resource)
+            };
             wanted.push((
                 resource,
                 Identity {
@@ -584,7 +633,20 @@ impl SceneSlots {
                     content_hash: resource.content_hash.clone(),
                 },
                 resolved.path.clone(),
+                bytes,
             ));
+        }
+        if frame_splats > self.frame_splats {
+            return Err(error(
+                "resource_budget",
+                format!(
+                    "The frame would draw {frame_splats} splats across its splat nodes; the host allows {}",
+                    self.frame_splats
+                ),
+            )
+            .with_details(json!({
+                "frame_splats": frame_splats, "max_frame_splats": self.frame_splats,
+            })));
         }
         Ok(wanted)
     }
@@ -638,12 +700,22 @@ fn release_message(slot: &str) -> Value {
 }
 
 fn load_message(slot: &str, identity: &Identity, resource: &PlanResource, path: &Path) -> Value {
+    // A splat is loaded as the runtime's `splat` kind (the same descriptor the Spark asset uses);
+    // anything else in a plan is a still picture.
+    let (kind, meta) = if resource.is_splat() {
+        ("splat", json!({ "format": "spz" }))
+    } else {
+        (
+            "still",
+            json!({ "width": resource.width_px, "height": resource.height_px }),
+        )
+    };
     json!({
         "v": tessel_editor_core::bridge::BRIDGE_VERSION, "type": "asset.load",
         "asset": {
-            "id": slot, "kind": "still",
+            "id": slot, "kind": kind,
             "source": { "type": "file", "path": path.to_string_lossy() },
-            "meta": { "width": resource.width_px, "height": resource.height_px },
+            "meta": meta,
             // Additive field of the descriptor: the identity the runtime binds this slot to.
             "scene": {
                 "asset_id": identity.asset_id, "revision_id": identity.revision_id,

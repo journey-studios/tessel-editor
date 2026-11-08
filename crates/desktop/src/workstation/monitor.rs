@@ -53,7 +53,7 @@ impl Workstation {
                 text: "O visualizador não pôde ser criado".to_string(),
             },
         };
-        let stage = render_viewport(t, content);
+        let stage = render_viewport(t, &self.geometry, content);
         let headline = self.viewport.headline();
         // A directed scene is attached but nothing can draw it yet: say so where the picture
         // would be, instead of leaving the monitor silent about it (see `scene_monitor.rs`).

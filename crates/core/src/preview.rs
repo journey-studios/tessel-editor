@@ -8,6 +8,9 @@
 //!   interactive frames**. Everything that asks for pixels (explicit `render.frame`, probes, PNG
 //!   output, export) draws the original, and the monitor refines the picture to the original
 //!   when the scrub settles (`ViewportSession::dispatch_pending`).
+//! * The same `Preview` quality also lets the runtime draw scene layers with fewer MSAA samples
+//!   (BL129): it is the *interactive* quality (playback and scrub), so `Original` means final
+//!   MSAA as well, and the refine that follows a stop replaces the reduced picture too.
 //!
 //! Quality is never hidden: every frame answer says how many layers used a proxy and the
 //! policy can be queried with the reason for each asset (`preview.policy`).
@@ -47,7 +50,8 @@ impl PreviewMode {
 }
 
 /// Quality a frame is drawn at. `Preview` allows the runtime to use an attached proxy per
-/// layer; a layer without a (valid) proxy is drawn from the original either way.
+/// layer (a layer without a (valid) proxy is drawn from the original either way) and to draw
+/// scene layers with fewer MSAA samples; `Original` is the final picture.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Quality {
     Preview,
@@ -108,7 +112,53 @@ impl Reason {
     }
 }
 
+/// How much of the video the sequence uses already has the proxy the policy wants. A video
+/// without one is drawn from its full-size frames, which is several times slower to play
+/// (measured: 4 stacked 720p videos, 31 ms per frame with proxies and 105 ms without), so the
+/// monitor says so while it is still being built instead of leaving the slowness unexplained.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ProxyCoverage {
+    /// Videos the policy wants a proxy for and has one.
+    pub ready: usize,
+    /// Videos the policy wants a proxy for and does not have yet (missing or stale).
+    pub pending: usize,
+    /// Videos the policy would give a proxy to but whose frames are not decoded yet.
+    pub undecoded: usize,
+}
+
+impl ProxyCoverage {
+    pub fn to_json(self) -> Value {
+        json!({ "ready": self.ready, "pending": self.pending, "undecoded": self.undecoded })
+    }
+}
+
 impl PreviewPolicy {
+    /// Proxy coverage of the videos the sequence uses (each asset once). Videos the policy never
+    /// gives a proxy to (`original` mode, already small, not video) do not count.
+    pub fn coverage(self, state: &EditorState) -> ProxyCoverage {
+        let mut seen: Vec<crate::id::Id> = Vec::new();
+        let mut coverage = ProxyCoverage::default();
+        for clip in &state.timeline.clips {
+            let Some(media) = clip.media else {
+                continue;
+            };
+            if seen.contains(&media) {
+                continue;
+            }
+            seen.push(media);
+            let Some(item) = state.library.item(media) else {
+                continue;
+            };
+            match self.assess(item.kind, item.asset.as_ref()) {
+                Reason::Ready => coverage.ready += 1,
+                Reason::Missing | Reason::Stale => coverage.pending += 1,
+                Reason::NoFrames => coverage.undecoded += 1,
+                Reason::NotVideo | Reason::PolicyOriginal | Reason::SmallEnough => {}
+            }
+        }
+        coverage
+    }
+
     pub fn to_json(self) -> Value {
         json!({ "mode": self.mode.label(), "max_height": self.max_height,
             "format": self.format.label() })
@@ -184,7 +234,8 @@ impl PreviewPolicy {
             })
             .collect();
         json!({ "policy": self.to_json(), "interactive_quality": self.interactive_quality().label(),
-            "export": "original", "explicit_frames": "original", "assets": assets })
+            "export": "original", "explicit_frames": "original", "assets": assets,
+            "sequence_coverage": self.coverage(state).to_json() })
     }
 }
 
@@ -386,5 +437,77 @@ mod tests {
         assert!(decoded(&state).proxy.is_none());
         assert!(!state.set_preview_proxy("vid", Some(proxy(540, "/c/f%06d.png"))));
         assert!(!state.set_preview_proxy("missing", None));
+    }
+
+    #[test]
+    fn coverage_counts_each_video_of_the_sequence_once_by_what_the_policy_wants() {
+        use crate::state::timeline::TrackKind;
+        use crate::state::{Command, ProjectSettings};
+        let mut state = EditorState::empty(&ProjectSettings::default()).unwrap();
+        state
+            .execute(Command::CreateTrack {
+                id: Some("v1".into()),
+                name: "V1".into(),
+                kind: TrackKind::Video,
+            })
+            .unwrap();
+        let assets = [
+            ("ready", video(1080, Some(proxy(540, "/c/f%06d.png")))),
+            ("missing", video(1080, None)),
+            ("stale", video(1080, Some(proxy(540, "/other/f%06d.png")))),
+            ("small", video(360, None)),
+            ("raw", {
+                let mut asset = video(1080, None);
+                asset.decoded = None;
+                asset
+            }),
+        ];
+        for (index, (id, asset)) in assets.into_iter().enumerate() {
+            state
+                .execute(Command::AddAsset {
+                    id: Some(id.into()),
+                    name: id.into(),
+                    kind: MediaKind::Video,
+                    asset: Box::new(asset),
+                    folder: None,
+                })
+                .unwrap();
+            // Two clips of the first asset: it still counts once.
+            for copy in 0..(if index == 0 { 2 } else { 1 }) {
+                state
+                    .execute(Command::AddClip {
+                        id: Some(format!("{id}-{copy}").as_str().into()),
+                        name: None,
+                        track: "v1".into(),
+                        asset: Some(id.into()),
+                        start: (index * 50 + copy * 25) as i64,
+                        duration: 20,
+                        source_start: None,
+                        text: None,
+                        camera: None,
+                        properties: vec![],
+                    })
+                    .unwrap();
+            }
+        }
+        let policy = PreviewPolicy::default();
+        assert_eq!(
+            policy.coverage(&state),
+            ProxyCoverage {
+                ready: 1,
+                pending: 2,
+                undecoded: 1
+            }
+        );
+        let original = PreviewPolicy {
+            mode: PreviewMode::Original,
+            ..policy
+        };
+        assert_eq!(
+            original.coverage(&state),
+            ProxyCoverage::default(),
+            "the person asked for originals: nothing is pending"
+        );
+        assert_eq!(policy.report(&state)["sequence_coverage"]["pending"], 2);
     }
 }

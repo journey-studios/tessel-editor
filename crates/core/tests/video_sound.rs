@@ -125,6 +125,22 @@ fn a_video_clip_plays_its_own_sound_without_an_audio_track() {
 }
 
 #[test]
+fn the_visual_fades_of_a_video_clip_never_shape_its_sound() {
+    // BL142: audio clips fade their gain through the same `fade_*` properties, a video's are an
+    // opacity ramp. Its sound is the same samples with or without them.
+    let dir = temp("visual-fades");
+    let plain = project(&dir, Ratio::ZERO, json!({}));
+    let faded = project(
+        &dir,
+        Ratio::ZERO,
+        json!({"properties":{"fade_in":12,"fade_out":12}}),
+    );
+    let segment = &faded.plan_audio(0, 48).unwrap().segments[0];
+    assert_eq!((segment.fade_in, segment.fade_out), (0, 0));
+    assert_eq!(mix(&faded, 0, 48).samples, mix(&plain, 0, 48).samples);
+}
+
+#[test]
 fn trim_and_timeline_offset_move_the_source_position_exactly() {
     let dir = temp("trim");
     // Clip starts at 0.5 s on the timeline and reads from source 1 s.

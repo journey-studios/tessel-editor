@@ -12,11 +12,12 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 use tessel_editor_core::assets::{Asset, Identity, MediaKind, Storage};
 use tessel_editor_core::jobs::{JobContext, JobError};
+use tessel_editor_core::sharp::{Capture, Choice};
 use tessel_editor_core::state::Command;
 use tessel_editor_core::{CommandError, EditorState};
 
 use crate::fsx::{self, Staging, hash_file, io_error, safe_file_name};
-use crate::probe::{Probe, probe};
+use crate::probe::{Probe, probe_with};
 use crate::tools::Tools;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,6 +43,8 @@ pub struct ImportRequest {
     pub paths: Vec<PathBuf>,
     pub mode: ImportMode,
     pub folder: Option<String>,
+    /// What to do with the camera metadata of a SHARP splat (BL143).
+    pub capture: Choice,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -63,6 +66,9 @@ pub struct PreparedItem {
     pub asset: Option<Asset>,
     pub probe: Option<Value>,
     pub warnings: Vec<String>,
+    /// The SHARP capture this import resolved for the file (`None`: not a SHARP file, or
+    /// `capture: ignore`). A duplicate is compared with the library asset on it (BL143.6).
+    pub capture: Option<Capture>,
     pub error: Option<JobError>,
 }
 
@@ -76,6 +82,7 @@ impl PreparedItem {
             asset: None,
             probe: None,
             warnings: Vec::new(),
+            capture: None,
             error: Some(error),
         }
     }
@@ -162,12 +169,13 @@ fn prepare_one(
     tools: &Tools,
     workspace: &Path,
     mode: ImportMode,
+    capture: Choice,
     known: &mut HashMap<String, String>,
     source: &Path,
     ctx: &JobContext,
 ) -> Result<PreparedItem, JobError> {
     let source = absolute(source);
-    let probed = probe(tools, &source)?;
+    let probed = probe_with(tools, &source, capture)?;
     let name = display_name(&source);
     let mut item = PreparedItem {
         source: source.clone(),
@@ -177,6 +185,7 @@ fn prepare_one(
         asset: None,
         probe: Some(probed.to_json()),
         warnings: probed.warnings.clone(),
+        capture: probed.meta.capture,
         error: None,
     };
     let size = probed.size;
@@ -275,7 +284,15 @@ pub fn prepare(
     let mut items = Vec::new();
     for path in &request.paths {
         ctx.check()?;
-        let item = match prepare_one(tools, workspace, request.mode, &mut known, path, ctx) {
+        let item = match prepare_one(
+            tools,
+            workspace,
+            request.mode,
+            request.capture,
+            &mut known,
+            path,
+            ctx,
+        ) {
             Ok(item) => item,
             Err(error) if error.is_cancelled() => return Err(error),
             Err(error) => PreparedItem::failed(path, error),
@@ -316,6 +333,41 @@ fn asset_id_for(state: &EditorState, name: &str, taken: &[String]) -> String {
         .unwrap_or(base)
 }
 
+/// A duplicate (same bytes already in the library) whose requested SHARP capture choice differs
+/// from what the existing asset kept: `capture: auto` over an asset imported with `ignore`, or
+/// `ignore` over one imported with its camera. Silently reporting `duplicate` would drop what the
+/// caller asked for, so the file is refused (`capture_conflict`) and nothing about the existing
+/// asset, its clips, the project or the undo history changes.
+fn capture_conflict(state: &EditorState, item: &PreparedItem) -> Option<JobError> {
+    let ItemStatus::Duplicate { of } = &item.status else {
+        return None;
+    };
+    // Ids of the same batch (`pending:<path>`) are not in the library: same request, same choice.
+    let existing = state.library.item(of)?.asset.as_ref()?;
+    if existing.meta.capture == item.capture {
+        return None;
+    }
+    let state_of = |capture: &Option<Capture>| if capture.is_some() { "with" } else { "without" };
+    Some(
+        JobError::new(
+            "capture_conflict",
+            format!(
+                "`{}` has the same bytes as library asset `{of}`, which was imported {} its \
+                 capture camera; this import asks for the other choice. Nothing changed: remove \
+                 `{of}` first, or import the file with the same `capture` choice",
+                item.source.display(),
+                state_of(&existing.meta.capture),
+            ),
+        )
+        .with_details(json!({
+            "existing_asset": of,
+            "existing_has_capture": existing.meta.capture.is_some(),
+            "requested_has_capture": item.capture.is_some(),
+            "requested": state_of(&item.capture),
+        })),
+    )
+}
+
 /// Registers every `Ready` item as ONE undo unit. Returns the per-file report.
 pub fn commit(
     state: &mut EditorState,
@@ -350,8 +402,17 @@ pub fn commit(
         })?;
     }
     let mut imported = 0;
+    let mut conflicts = 0;
     for item in items {
         let mut entry = item.to_json();
+        if let Some(error) = capture_conflict(state, item) {
+            entry["status"] = json!("failed");
+            entry["duplicate_of"] = Value::Null;
+            entry["error"] = error.to_json();
+            conflicts += 1;
+            report.push(entry);
+            continue;
+        }
         // A duplicate of a file earlier in the same batch points at the ID that file received.
         if let ItemStatus::Duplicate { of } = &item.status
             && let Some(source) = of.strip_prefix("pending:")
@@ -371,11 +432,13 @@ pub fn commit(
     let failed = items
         .iter()
         .filter(|item| item.status == ItemStatus::Failed)
-        .count();
+        .count()
+        + conflicts;
     let duplicates = items
         .iter()
         .filter(|item| matches!(item.status, ItemStatus::Duplicate { .. }))
-        .count();
+        .count()
+        - conflicts;
     Ok(
         json!({ "action": "media.import", "imported": imported, "duplicates": duplicates,
         "failed": failed, "items": report, "changed": imported > 0 }),
@@ -421,7 +484,8 @@ pub fn status(state: &EditorState) -> Value {
                         FileState::Changed => "changed", FileState::NotFile => "n/a" },
                     "storage": asset.identity.storage.label(),
                     "path": match &asset.source { tessel_editor_core::assets::Source::File { path } => Some(path.clone()), _ => None },
-                    "hash": asset.identity.hash, "size": asset.identity.size })
+                    "hash": asset.identity.hash, "size": asset.identity.size,
+                    "thumbnail": state.thumbnail_report(item.id.as_str()) })
             })
         })
         .collect();
@@ -443,7 +507,14 @@ pub fn relink_candidate(
     let candidate = absolute(candidate);
     let mut replacement = asset.clone();
     let mut warnings = Vec::new();
-    let probed = probe(tools, &candidate)?;
+    // A splat imported with its capture is compared with the candidate's; one imported without
+    // (`capture: ignore`, or a plain splat) stays without.
+    let capture = if asset.meta.capture.is_some() {
+        Choice::Auto
+    } else {
+        Choice::Ignore
+    };
+    let probed = probe_with(tools, &candidate, capture)?;
     let (hash, size) = hash_file(&candidate, ctx.token(), |_| {})?;
     let same_bytes = asset.identity.hash.as_deref() == Some(hash.as_str());
     if !same_bytes {
@@ -454,7 +525,8 @@ pub fn relink_candidate(
             && old.height == new.height
             && old.sample_rate == new.sample_rate
             && old.channels == new.channels
-            && old.splat_count == new.splat_count;
+            && old.splat_count == new.splat_count
+            && old.capture == new.capture;
         if !accept_changed || !comparable {
             return Err(JobError::new(
                 "relink_mismatch",

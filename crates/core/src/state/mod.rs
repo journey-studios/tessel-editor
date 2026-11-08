@@ -4,6 +4,7 @@
 //! socket, becomes a [`Command`] and goes through [`EditorState::execute`].
 //! There is no second copy of this state anywhere.
 
+pub mod camera_edit;
 pub mod error;
 pub mod history;
 pub mod inspector;
@@ -20,7 +21,7 @@ pub use error::{CommandError, Raw};
 use history::History;
 use inspector::{Inspector, InspectorTab};
 use library::{Library, MediaItem};
-pub use project::ProjectMeta;
+pub use project::{ProjectMeta, ProjectSession, ProjectStamp};
 use timeline::{Clip, ClipKind, Placement, SequenceSettings, Timeline, TrackFlag, TrackKind};
 
 use crate::assets::{Asset, MediaKind, ProxyFormat};
@@ -28,7 +29,7 @@ use crate::content::{Camera, TextSpec};
 use crate::id::Id;
 use crate::plan::PreviewIntent;
 use crate::preview::{PreviewMode, PreviewPolicy};
-use crate::scene_interaction::SceneInteraction;
+use crate::scene_interaction::{GizmoCommand, PointerCommand, SceneInteraction};
 use crate::scene_project::{SceneBook, SceneCommand};
 use crate::time::Ratio;
 
@@ -95,6 +96,9 @@ pub struct EditorState {
     /// playhead: not in the document, not in an undo snapshot (so undo/redo never restores it),
     /// and empty in every project that is created or opened.
     pub scene_interaction: SceneInteraction,
+    /// BL144: library thumbnails of splats and scenes. Session state like the playhead: not in
+    /// the document, not in an undo snapshot, empty in every project that is created or opened.
+    pub thumbnails: crate::thumbnails::ThumbnailBook,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -212,9 +216,20 @@ pub enum Command {
         clip: String,
         text: TextSpec,
     },
+    /// Edits one field (`content`, `size` or `color`) of a title's text, keeping the others. The
+    /// whole new text is validated and normalized (NFC) before anything is stored.
+    SetClipTextField {
+        clip: String,
+        field: String,
+        value: Raw,
+    },
     SetClipCamera {
         clip: String,
         camera: Camera,
+    },
+    /// Puts the camera of the splat's capture (BL143) back on a scene clip of that splat.
+    SetClipCameraFromCapture {
+        clip: String,
     },
     SetSequenceLength {
         frames: i64,
@@ -258,6 +273,8 @@ pub enum Command {
         sequence: String,
         name: String,
     },
+    /// A `clip.camera_key*` edit of a scene clip's camera keyframes (BL140, see `camera_edit`).
+    CameraKeys(camera_edit::CameraKeysCommand),
     /// A `scene.*` operation on the directed scenes of the project (see `scene_project`).
     Scene(SceneCommand),
     /// One slider drag as a single undoable edit: begin, update (live preview), then commit
@@ -280,8 +297,10 @@ impl Command {
             Self::AddAsset { .. } => "Add asset",
             Self::ReplaceAsset { .. } => "Relink asset",
             Self::AddClip { .. } => "Add clip",
-            Self::SetClipText { .. } => "Edit text",
+            Self::SetClipText { .. } | Self::SetClipTextField { .. } => "Edit text",
             Self::SetClipCamera { .. } => "Edit camera",
+            Self::SetClipCameraFromCapture { .. } => "Use capture camera",
+            Self::CameraKeys(_) => "Edit camera keys",
             Self::SetSequenceLength { .. } => "Sequence length",
             Self::AddSequence { .. } => "Add sequence",
             Self::ActivateSequence { .. } => return None,
@@ -344,6 +363,7 @@ impl EditorState {
             preview_policy: PreviewPolicy::default(),
             scenes: SceneBook::default(),
             scene_interaction: SceneInteraction::default(),
+            thumbnails: Default::default(),
         }
     }
 
@@ -375,6 +395,7 @@ impl EditorState {
             preview_policy: PreviewPolicy::default(),
             scenes: SceneBook::default(),
             scene_interaction: SceneInteraction::default(),
+            thumbnails: Default::default(),
         })
     }
 }
@@ -413,6 +434,41 @@ impl EditorState {
             .ok_or_else(|| CommandError::new("no_selection", "Select a clip in the timeline first"))
     }
 
+    /// Stores a validated text on a title clip; the same rule for `clip.text`, `set clip_text:` and the
+    /// inspector input.
+    fn apply_clip_text(&mut self, clip: &str, text: TextSpec) -> Result<Value, CommandError> {
+        text.validate()?;
+        let (id, kind) = self.clip_ref(clip)?;
+        if kind != ClipKind::Title {
+            return Err(
+                CommandError::new("not_applicable", "Only title clips carry text")
+                    .target(format!("clip:{id}")),
+            );
+        }
+        let entry = self.timeline.clips.iter_mut().find(|entry| entry.id == id);
+        let Some(entry) = entry else {
+            return Err(CommandError::unknown_element("clip", clip));
+        };
+        let changed = entry.text.as_ref() != Some(&text);
+        entry.text = Some(text.clone());
+        Ok(json!({ "target": format!("clip:{id}"), "field": "text",
+            "value": text.to_json(), "changed": changed }))
+    }
+
+    /// The SHARP capture of the splat a scene clip shows (BL143), if there is one.
+    pub fn capture_of_clip(&self, id: Id) -> Option<crate::sharp::Capture> {
+        let clip = self.timeline.clip(id.as_str())?;
+        if clip.kind != ClipKind::Scene {
+            return None;
+        }
+        let item = self.library.item(clip.media?)?;
+        // Only a splat has a capture camera, whatever an asset description claims.
+        if item.kind != MediaKind::Splat {
+            return None;
+        }
+        item.asset.as_ref()?.meta.capture
+    }
+
     fn clip_ref(&self, id: &str) -> Result<(Id, ClipKind), CommandError> {
         self.timeline
             .clip(id)
@@ -438,6 +494,7 @@ impl EditorState {
         let mut summary = json!({
             "demonstration": self.demonstration,
             "project": self.project_name,
+            "header": self.header().to_json(),
             // What an editor needs to show "saved / unsaved" without reading the files.
             "persistence": {
                 "document": self.project.document,
@@ -504,7 +561,7 @@ impl EditorState {
             other => other,
         };
         // An edit never runs on top of a slider gesture that is still previewing.
-        if command.settles_property_gesture() {
+        if command.settles_property_gesture() && !self.is_idle_gizmo_release(&command) {
             self.settle_property_gesture();
         }
         let Some(label) = command.history_label() else {
@@ -516,6 +573,22 @@ impl EditorState {
             self.record_edit(label, before);
         }
         Ok(outcome)
+    }
+
+    /// A `scene.pointer.up` while no gizmo drag is open (a script, a release the page sends late)
+    /// writes nothing, so it is not an edit that has to settle a slider gesture somebody else
+    /// opened: it never commits it (S1 of the PR #25 review). With a *live* drag open it is the
+    /// commit of that drag and settles like every edit. "Live" is the criterion `pointer_up`
+    /// itself uses ([`SceneInteraction::live_drag`]): a drag whose gesture another command
+    /// settled (`scene.gesture.cancel`) is stored but dead, `pointer_up` answers `noop` for it,
+    /// so it must not settle the slider gesture either.
+    fn is_idle_gizmo_release(&self, command: &Command) -> bool {
+        matches!(
+            command,
+            Command::Scene(SceneCommand::Gizmo(GizmoCommand::Pointer(
+                PointerCommand::Up { .. }
+            )))
+        ) && self.scene_interaction.live_drag().is_none()
     }
 
     fn apply(&mut self, command: Command) -> Result<Value, CommandError> {
@@ -552,6 +625,13 @@ impl EditorState {
             }
             Command::ResetSection { section } => {
                 let (clip, kind) = self.require_clip()?;
+                if section == "camera" && kind == ClipKind::Scene {
+                    // The camera section has no sliders: resetting it removes the keyframes.
+                    return self.apply_camera_keys(camera_edit::CameraKeysCommand::Replace {
+                        clip: clip.to_string(),
+                        keys: Vec::new(),
+                    });
+                }
                 self.inspector.reset_section(clip, kind, &section)
             }
             Command::SetProperty { property, value } => {
@@ -590,7 +670,12 @@ impl EditorState {
                 Ok(outcome)
             }
             Command::TrimClip { clip, edge, frame } => {
-                let outcome = self.timeline.trim_clip(&clip, edge, frame)?;
+                // The head shift of a trim is counted in source time, which runs at the speed.
+                let speed = self
+                    .timeline
+                    .clip(&clip)
+                    .map_or(Ratio::from_int(1), |entry| self.clip_speed(entry));
+                let outcome = self.timeline.trim_clip(&clip, edge, frame, speed)?;
                 self.subject = Subject::Clip;
                 Ok(outcome)
             }
@@ -654,23 +739,32 @@ impl EditorState {
                 let (clip, kind) = self.clip_ref(&clip)?;
                 self.inspector.set_property(clip, kind, &property, &value)
             }
-            Command::SetClipText { clip, text } => {
-                text.validate()?;
+            Command::SetClipText { clip, text } => self.apply_clip_text(&clip, text),
+            Command::SetClipTextField { clip, field, value } => {
                 let (id, kind) = self.clip_ref(&clip)?;
-                if kind != ClipKind::Title {
-                    return Err(
+                let current = self
+                    .timeline
+                    .clip(&clip)
+                    .and_then(|entry| entry.text.clone())
+                    .filter(|_| kind == ClipKind::Title)
+                    .ok_or_else(|| {
                         CommandError::new("not_applicable", "Only title clips carry text")
-                            .target(format!("clip:{id}")),
-                    );
-                }
-                let entry = self.timeline.clips.iter_mut().find(|entry| entry.id == id);
-                let Some(entry) = entry else {
-                    return Err(CommandError::unknown_element("clip", &clip));
+                            .target(format!("clip:{id}"))
+                    })?;
+                let text = match field.as_str() {
+                    "content" => TextSpec::new(value.text(), current.size, current.color)?,
+                    "size" => TextSpec::new(current.content, value.number()?, current.color)?,
+                    "color" => TextSpec::new(current.content, current.size, value.text())?,
+                    _ => {
+                        return Err(CommandError::new(
+                            "unknown_field",
+                            format!("A title's text has no field `{field}`"),
+                        )
+                        .target(format!("clip_text:{id}"))
+                        .details(json!({ "available": ["content", "size", "color"] })));
+                    }
                 };
-                let changed = entry.text.as_ref() != Some(&text);
-                entry.text = Some(text.clone());
-                Ok(json!({ "target": format!("clip:{id}"), "field": "text",
-                    "value": text.to_json(), "changed": changed }))
+                self.apply_clip_text(&clip, text)
             }
             Command::SetClipCamera { clip, camera } => {
                 camera.validate()?;
@@ -686,11 +780,66 @@ impl EditorState {
                 let Some(entry) = entry else {
                     return Err(CommandError::unknown_element("clip", &clip));
                 };
+                if camera.orbit != 0.0 && !entry.camera_keys.is_empty() {
+                    return Err(CommandError::new(
+                        "camera_orbit_conflict",
+                        "The clip has camera keys, which replace the orbit: clear them first",
+                    )
+                    .target(format!("clip:{id}")));
+                }
+                // WHY: with keys the clip camera is never drawn (the keys are the camera), so a
+                // different `clip.camera` would be an undo entry and `changed: true` that alter
+                // nothing visible. Refuse it; edit the keys, or clear them to use this camera.
+                if !entry.camera_keys.is_empty() && entry.camera != Some(camera) {
+                    return Err(CommandError::new(
+                        "camera_keys_override",
+                        "The clip has camera keys, which replace its camera: edit the keys or clear them first",
+                    )
+                    .target(format!("clip:{id}")));
+                }
                 let changed = entry.camera != Some(camera);
                 entry.camera = Some(camera);
                 Ok(json!({ "target": format!("clip:{id}"), "field": "camera",
                     "value": camera.to_json(), "changed": changed }))
             }
+            Command::SetClipCameraFromCapture { clip } => {
+                let (id, kind) = self.clip_ref(&clip)?;
+                let target = format!("clip:{id}");
+                let capture = self.capture_of_clip(id).ok_or_else(|| {
+                    CommandError::new(
+                        "no_capture",
+                        if kind == ClipKind::Scene {
+                            "The clip's asset has no SHARP capture camera (a plain splat, a scene \
+                                 file or an import with `capture: ignore`)"
+                        } else {
+                            "Only scene clips of a SHARP splat carry a capture camera"
+                        },
+                    )
+                    .target(target.clone())
+                })?;
+                let camera = capture.camera();
+                let Some(entry) = self.timeline.clips.iter_mut().find(|entry| entry.id == id)
+                else {
+                    return Err(CommandError::unknown_element("clip", &clip));
+                };
+                // The capture camera has no orbit, so this is not an orbit conflict: with keys the
+                // clip camera is never drawn, and applying it would be an inert undo entry
+                // (the same refusal `clip.camera` gives, BL140.7).
+                if !entry.camera_keys.is_empty() && entry.camera != Some(camera) {
+                    return Err(CommandError::new(
+                        "camera_keys_override",
+                        "The clip has camera keys, which replace its camera: clear them first",
+                    )
+                    .target(target));
+                }
+                let changed = entry.camera != Some(camera);
+                entry.camera = Some(camera);
+                Ok(
+                    json!({ "target": target, "field": "camera", "source": "capture",
+                    "value": camera.to_json(), "changed": changed }),
+                )
+            }
+            Command::CameraKeys(command) => self.apply_camera_keys(command),
             Command::SetSequenceLength { frames } => self.timeline.set_length(frames),
             Command::SavePreset { preset } => self.save_preset(&preset),
             Command::DeletePreset { id } => self.delete_preset(&id),
@@ -811,6 +960,18 @@ impl EditorState {
                     CommandError::new("unknown_element", "The library has no bin")
                 })?,
             };
+        // A capture camera is a property of a splat file (BL143): any other asset carrying one
+        // is a corrupt description, refused before it reaches the library or a plan.
+        if kind != MediaKind::Splat && asset.meta.capture.is_some() {
+            return Err(CommandError::new(
+                "invalid_asset",
+                format!(
+                    "A {} asset cannot carry a SHARP capture camera: only splats do",
+                    kind.label()
+                ),
+            )
+            .target(id.as_str()));
+        }
         // WHY: a scene that names a missing splat would fail only at render time; failing
         // at registration keeps the project free of dangling references.
         for required in &asset.meta.requires {
@@ -853,12 +1014,27 @@ impl EditorState {
             asset: Some(asset),
         };
         let description = item.asset.as_ref().map(|asset| asset.to_json(kind));
+        let warnings: Vec<Value> = item
+            .asset
+            .as_ref()
+            .and_then(|asset| asset.meta.capture)
+            .map(|capture| {
+                capture
+                    .warnings()
+                    .into_iter()
+                    .map(|(code, message)| json!({ "code": code, "message": message }))
+                    .collect()
+            })
+            .unwrap_or_default();
         self.library.add_item(item)?;
         self.selected_media = Some(id);
-        Ok(
-            json!({ "target": format!("media:{id}"), "action": "create", "kind": kind.label(),
-            "folder": format!("folder:{folder}"), "asset": description, "changed": true }),
-        )
+        let mut outcome = json!({ "target": format!("media:{id}"), "action": "create",
+            "kind": kind.label(), "folder": format!("folder:{folder}"), "asset": description,
+            "changed": true });
+        if !warnings.is_empty() {
+            outcome["warnings"] = Value::Array(warnings);
+        }
+        Ok(outcome)
     }
 
     fn replace_asset(&mut self, id: &str, asset: Asset) -> Result<Value, CommandError> {
@@ -867,6 +1043,13 @@ impl EditorState {
             .item(id)
             .ok_or_else(|| CommandError::unknown_element("media", id))?;
         let kind = item.kind;
+        if kind != MediaKind::Splat && asset.meta.capture.is_some() {
+            return Err(CommandError::new(
+                "invalid_asset",
+                "Only splat assets can carry a SHARP capture camera",
+            )
+            .target(id));
+        }
         let old = item.asset.as_ref().ok_or_else(|| {
             CommandError::new(
                 "asset_unavailable",
@@ -1078,7 +1261,13 @@ impl EditorState {
         }
         let camera = match (kind, args.camera) {
             (ClipKind::Scene, camera) => {
-                let camera = camera.unwrap_or_default();
+                // WHY: a SHARP splat is only right seen from the camera that took its picture;
+                // the default `0,1.2,5` orbit would look at it from a place it was never captured.
+                let captured = media
+                    .and_then(|item| item.asset.as_ref())
+                    .and_then(|asset| asset.meta.capture)
+                    .map(|capture| capture.camera());
+                let camera = camera.or(captured).unwrap_or_default();
                 camera.validate()?;
                 Some(camera)
             }
@@ -1113,6 +1302,7 @@ impl EditorState {
             source_start,
             text,
             camera,
+            camera_keys: Vec::new(),
         });
         let mut outcome = outcome?;
         self.subject = Subject::Clip;
@@ -1145,7 +1335,13 @@ fn asset_summary(kind: MediaKind, asset: &Asset) -> String {
             meta.sample_rate.unwrap_or_default(),
             meta.channels.unwrap_or_default()
         ),
-        MediaKind::Splat => format!(" · {} splats", meta.splat_count.unwrap_or_default()),
+        MediaKind::Splat => format!(
+            " · {} splats{}",
+            meta.splat_count.unwrap_or_default(),
+            meta.capture
+                .map(|capture| format!(" · {}", capture.label()))
+                .unwrap_or_default()
+        ),
         MediaKind::Video => meta
             .duration
             .map(|duration| format!(" · {:.2} s", duration.to_f64()))

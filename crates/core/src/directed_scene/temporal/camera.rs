@@ -196,7 +196,7 @@ pub(in crate::directed_scene) fn distance(a: Vec3, b: Vec3) -> f64 {
 // WHY not `f64::clamp`: the origin answers a positive zero for `-0` and passes NaN through
 // unchanged; `clamp` keeps the sign of a negative zero. The branches keep the origin's bits.
 #[allow(clippy::manual_clamp)]
-fn apply_easing(t: f64, easing: &str) -> Result<f64, TemporalError> {
+pub fn apply_easing(t: f64, easing: &str) -> Result<f64, TemporalError> {
     let t = if t <= 0.0 {
         0.0
     } else if t >= 1.0 {
@@ -689,6 +689,26 @@ fn state_of(pose: CameraPose, velocity: Vec3, fov_velocity: f64) -> CameraState 
         velocity,
         fov_velocity_deg_per_frame: fov_velocity,
     }
+}
+
+/// The pose a single movement ends on when it starts on `start` (`segmentEndPose`). Pure and
+/// stateless, for callers that rewrite a movement (scene editing turns a recipe into keys).
+pub fn movement_end_pose(
+    start: &CameraPose,
+    segment: &CameraSegment,
+) -> Result<CameraPose, TemporalError> {
+    segment_end_pose(start, segment)
+}
+
+/// The pose a single movement has at `local` (0..durationFrames-1) of itself when it starts on
+/// `start`: the arithmetic the resolver uses, so a conversion can reproduce it frame by frame
+/// (`poseOfMovementAt`).
+pub fn movement_pose_at(
+    start: &CameraPose,
+    segment: &CameraSegment,
+    local: u64,
+) -> Result<CameraPose, TemporalError> {
+    interpolate_segment(start, segment, local)
 }
 
 /// A camera clip laid out for evaluation: build it once, ask for as many frames as you like in

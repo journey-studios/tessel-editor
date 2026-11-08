@@ -18,10 +18,15 @@ use std::io::{Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 use directed_resources_common::*;
+use serde_json::json;
 use tessel_editor_core::directed_scene::DirectedScene;
 use tessel_editor_core::jobs::CancelToken;
+use tessel_editor_core::state::ProjectSettings;
+use tessel_editor_core::{EditorState, headless};
 use tessel_editor_media::directed_resources::Options;
-use tessel_editor_media::scene_resources::{Adoption, ResourceBase, adopt, tracked_under};
+use tessel_editor_media::scene_resources::{
+    Adoption, AdoptionTarget, PendingAdoption, ResourceBase, adopt, tracked_under,
+};
 
 fn world(name: &str) -> (Sandbox, DirectedScene, PathBuf) {
     let sandbox = Sandbox::new(&format!("te-own-{name}"));
@@ -89,7 +94,7 @@ fn discarding_the_first_adoption_keeps_the_files_the_second_one_reused_and_accep
     first.provisional().discard();
     assert_intact(&workspace, &sandbox);
 
-    drop(second.provisional().release());
+    second.provisional().accept().unwrap();
     assert_intact(&workspace, &sandbox);
     assert_no_claims(&workspace);
 }
@@ -101,7 +106,7 @@ fn accepting_the_second_adoption_first_and_discarding_the_first_after_keeps_the_
     let mut second = adopt_into(&scene, &workspace, &sandbox.src);
     assert_reuse_only(&second);
 
-    drop(second.provisional().release());
+    second.provisional().accept().unwrap();
     let report = first.provisional().discard();
     assert_intact(&workspace, &sandbox);
     assert!(
@@ -118,7 +123,7 @@ fn accepting_the_first_adoption_keeps_the_files_when_the_second_one_that_reused_
     let mut second = adopt_into(&scene, &workspace, &sandbox.src);
     assert_reuse_only(&second);
 
-    drop(first.provisional().release());
+    first.provisional().accept().unwrap();
     second.provisional().discard();
     assert_intact(&workspace, &sandbox);
 }
@@ -131,7 +136,7 @@ fn discarding_the_second_adoption_and_then_accepting_the_first_keeps_the_files()
 
     second.provisional().discard();
     assert_intact(&workspace, &sandbox);
-    drop(first.provisional().release());
+    first.provisional().accept().unwrap();
     assert_intact(&workspace, &sandbox);
 }
 
@@ -141,7 +146,7 @@ fn dropping_an_adoption_an_accepted_one_had_reused_leaves_the_accepted_files() {
     // files and is dropped unapplied. The files were never the second one's.
     let (sandbox, scene, workspace) = world("accepted-then-dropped");
     let mut first = adopt_into(&scene, &workspace, &sandbox.src);
-    drop(first.provisional().release());
+    first.provisional().accept().unwrap();
     drop(first);
 
     let mut second = adopt_into(&scene, &workspace, &sandbox.src);
@@ -196,7 +201,7 @@ fn three_holders_keep_the_files_until_the_last_one_leaves_or_one_accepts() {
     let mut second = adopt_into(&scene, &workspace, &sandbox.src);
     let mut third = adopt_into(&scene, &workspace, &sandbox.src);
     second.provisional().discard();
-    drop(third.provisional().release());
+    third.provisional().accept().unwrap();
     first.provisional().discard();
     assert_intact(&workspace, &sandbox);
     assert_no_claims(&workspace);
@@ -244,7 +249,7 @@ fn a_root_that_was_there_before_keeps_the_accepted_files_when_the_first_one_is_d
     let mut first = adopt_into(&scene, &workspace, &sandbox.src);
     let mut second = adopt_into(&scene, &workspace, &sandbox.src);
 
-    drop(second.provisional().release());
+    second.provisional().accept().unwrap();
     first.provisional().discard();
     assert_intact(&workspace, &sandbox);
     assert_eq!(fs::read(root.join("assets/notes.txt")).unwrap(), b"mine");
@@ -261,7 +266,7 @@ fn the_same_workspace_spelled_differently_is_still_one_owner_of_each_file() {
 
     first.provisional().discard();
     assert_intact(&workspace, &sandbox);
-    drop(second.provisional().release());
+    second.provisional().accept().unwrap();
     assert_intact(&workspace, &sandbox);
 }
 
@@ -398,7 +403,7 @@ fn results_sharing_a_folder_across_threads_never_lose_an_accepted_file() {
                     };
                     barrier.wait();
                     if index == accepter {
-                        drop(adoption.provisional().release());
+                        adoption.provisional().accept().unwrap();
                     } else {
                         adoption.provisional().discard();
                     }
@@ -645,4 +650,78 @@ fn measure_discarding_a_result_with_a_large_file() {
         EXTRA as f64 / f64::from(1 << 20) / elapsed.as_secs_f64()
     );
     assert_eq!(report.removed_files, 2, "{report:?}");
+}
+
+// ------------------------------------------------------- BL094/BL112 seam, for BL111 --
+//
+// What a persistent, cross-process owner of the claims (BL111) has to keep true for the job that
+// discards a refused result: `settle` answers without reading or removing a file, a refusal hands
+// the adoption back **still owning** its copies (and their claims), and only `discard` takes them.
+
+fn settled_world(name: &str) -> (Sandbox, PathBuf, PendingAdoption, EditorState) {
+    let (sandbox, scene, workspace) = world(name);
+    let bundle = sandbox.root.join("bundle.json");
+    fs::write(
+        &bundle,
+        serde_json::to_vec(&standard_bundle(&sandbox)).unwrap(),
+    )
+    .unwrap();
+    let mut state = EditorState::empty(&ProjectSettings::default()).unwrap();
+    state.project.workspace = Some(workspace.clone());
+    headless::execute(
+        &mut state,
+        &json!({"op":"scene.attach","id":"street","path":bundle}),
+    )
+    .unwrap();
+    let target = AdoptionTarget::of(&state, "street");
+    let mut adoption = adopt_into(&scene, &workspace, &sandbox.src);
+    let pending = PendingAdoption::new(target, &mut adoption);
+    (sandbox, workspace, pending, state)
+}
+
+#[test]
+fn settle_accepts_without_touching_a_file_and_the_claims_end_with_it() {
+    let (sandbox, workspace, pending, state) = settled_world("settle-ok");
+    assert!(
+        tracked_under(&workspace) > 0,
+        "pending: the result is the owner"
+    );
+    pending
+        .settle(&state)
+        .expect("same project, workspace and scene");
+    assert_intact(&workspace, &sandbox);
+    assert_no_claims(&workspace);
+}
+
+#[test]
+fn a_refused_settle_returns_the_adoption_still_owning_its_copies_until_it_is_discarded() {
+    let (sandbox, workspace, pending, mut state) = settled_world("settle-stale");
+    state.project.id = "another-project".to_string();
+
+    let stale = *pending.settle(&state).expect_err("another project is open");
+    assert_eq!(stale.why, "another project is open now");
+    assert_eq!(stale.pending.scene(), "street");
+    // The refusal removed nothing and released nothing: that is the job's work, off the UI thread.
+    assert_intact(&workspace, &sandbox);
+    assert!(
+        tracked_under(&workspace) > 0,
+        "the files keep their owner while they wait for the discard"
+    );
+
+    let report = stale.pending.discard();
+    assert!(report.is_clean(), "{report:?}");
+    assert_eq!(report.removed_files, 2, "{report:?}");
+    assert!(!workspace.join("scenes").exists());
+    assert_no_claims(&workspace);
+}
+
+#[test]
+fn apply_is_settle_plus_the_removal_with_the_same_refusal() {
+    let (_sandbox, workspace, pending, mut state) = settled_world("apply-stale");
+    state.project.id = "another-project".to_string();
+    let error = pending.apply(&state).unwrap_err();
+    assert_eq!(error.code, "stale_result", "{error:?}");
+    assert!(error.message.contains("2 file(s)"), "{}", error.message);
+    assert!(!workspace.join("scenes").exists(), "apply removes inline");
+    assert_no_claims(&workspace);
 }

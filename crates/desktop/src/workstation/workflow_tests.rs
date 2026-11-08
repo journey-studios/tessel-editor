@@ -191,9 +191,8 @@ fn an_import_is_a_job_the_window_keeps_editing_through_and_applies_on_its_tick(
     cx: &mut TestAppContext,
 ) {
     let (view, cx) = fixture(cx);
-    let dir = std::env::temp_dir().join(format!("tessel-window-import-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+    let scratch = ClaimsScratch::new("import");
+    let dir = &scratch.0;
     let picture = dir.join("still.jpg");
     let made = std::process::Command::new("ffmpeg")
         .args([
@@ -266,7 +265,94 @@ fn an_import_is_a_job_the_window_keeps_editing_through_and_applies_on_its_tick(
         );
         assert_eq!(view.jobs_report()["recent"][0]["job"], job.as_str());
     });
-    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// Ticks the window until the job `id` appears among the finished events the status bar reads.
+fn tick_until_reported(view: &Entity<Workstation>, cx: &mut VisualTestContext, id: &str) -> Value {
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    loop {
+        view.update(cx, |view, cx| view.workflow_tick(cx));
+        let event = view.read_with(cx, |view, _| {
+            view.jobs_report()["recent"]
+                .as_array()
+                .and_then(|recent| recent.iter().find(|event| event["job"] == id).cloned())
+        });
+        if let Some(event) = event {
+            return event;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the tick never reported {id}"
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
+}
+
+#[gpui_kit::test]
+fn the_claims_operations_are_jobs_with_typed_refusals_and_the_window_reports_them(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = fixture(cx);
+    // No workspace yet: both refuse before any job exists, and nothing is created.
+    let jobs_before = view.read_with(cx, |view, _| view.jobs_report()["all"].clone());
+    for name in ["scene.resources.claims", "scene.resources.recover"] {
+        let error = op(&view, cx, json!({ "op": name })).unwrap_err();
+        assert_eq!(error.code, "no_workspace", "{name}");
+    }
+    assert_eq!(
+        view.read_with(cx, |view, _| view.jobs_report()["all"].clone()),
+        jobs_before,
+        "a refusal starts no job"
+    );
+
+    let scratch = ClaimsScratch::new("claims");
+    let dir = &scratch.0;
+    op(
+        &view,
+        cx,
+        json!({"op":"project.create","name":"Claims","dir":dir.join("project"),"width":160,"height":90,"length":48}),
+    )
+    .unwrap();
+    let workspace = dir.join("project");
+
+    // The UI thread only starts the jobs; the tick reports them; the answer says what it did.
+    let started = op(&view, cx, json!({"op":"scene.resources.claims"})).unwrap();
+    let job = started["job"].as_str().expect("a job id").to_string();
+    let event = tick_until_reported(&view, cx, &job);
+    assert_eq!(
+        event["result"]["action"], "scene.resources.claims",
+        "{event}"
+    );
+    assert_eq!(
+        event["result"]["readOnly"], false,
+        "claims reaps: not read-only"
+    );
+    assert_eq!(event["result"]["orphans"], 0);
+
+    let started = op(&view, cx, json!({"op":"scene.resources.recover"})).unwrap();
+    let job = started["job"].as_str().expect("a job id").to_string();
+    let event = tick_until_reported(&view, cx, &job);
+    assert_eq!(event["result"]["recovery"]["orphans"], 0, "{event}");
+
+    // A ledger that cannot be read: the job fails with the typed code and the window says so.
+    std::fs::create_dir_all(workspace.join(".tessel-claims")).unwrap();
+    let ledger = workspace.join(".tessel-claims/claims.json");
+    std::fs::write(&ledger, b"not a ledger").unwrap();
+    std::fs::write(workspace.join(".tessel-claims/ledger.lock"), b"").unwrap();
+    let started = op(&view, cx, json!({"op":"scene.resources.recover"})).unwrap();
+    let job = started["job"].as_str().expect("a job id").to_string();
+    let event = tick_until_reported(&view, cx, &job);
+    // The window's events carry the command-level error: the job's own code is `details.job_code`.
+    assert_eq!(event["state"], "failed", "{event}");
+    assert_eq!(
+        event["error"]["details"]["job_code"], "claims_unavailable",
+        "{event}"
+    );
+    assert_eq!(
+        std::fs::read(&ledger).unwrap(),
+        b"not a ledger",
+        "nothing repaired"
+    );
 }
 
 /// Ticks the window's playback clock the way its timer does, until `done` or the time runs out.
@@ -298,7 +384,10 @@ fn playback_follows_the_audio_clock_or_says_why_it_cannot(cx: &mut TestAppContex
     match report["clock"].as_str().unwrap() {
         // A machine with an output device: the sample clock drives the playhead.
         "audio_device" => {
-            assert_eq!(report["audio"]["output"]["sample_rate"], 48_000, "{report}");
+            // The device's own rate, whatever the machine's default output is (44.1/48/96 kHz, or
+            // 24 kHz for a Bluetooth headset): the test must not depend on which one is plugged in.
+            let rate = report["audio"]["output"]["sample_rate"].as_u64();
+            assert!(rate.is_some_and(|rate| rate >= 8_000), "{report}");
             assert!(report["audio"]["latency_ms"].as_f64().unwrap() >= 0.0);
             assert_eq!(
                 report["audio"]["heard"], false,
@@ -336,11 +425,90 @@ fn playback_follows_the_audio_clock_or_says_why_it_cannot(cx: &mut TestAppContex
     let moved = tick_playback(&view, cx, |report| {
         report["frame"].as_i64().unwrap_or(0) > 30
     });
-    assert!(moved["frame"].as_i64().unwrap() >= 30, "{moved}");
+    assert!(moved["frame"].as_i64().unwrap() > 30, "{moved}");
     assert_eq!(moved["state"], "playing");
 
     let stopped = op(&view, cx, json!({"op":"playback.stop"})).unwrap();
     assert_eq!(stopped["report"]["state"], "stopped");
     let idle = op(&view, cx, json!({"op":"playback.pause"})).unwrap_err();
     assert_eq!(idle.code, "not_playing");
+}
+
+/// Removes this test's project even when an assertion unwinds.
+struct ClaimsScratch(std::path::PathBuf);
+
+impl ClaimsScratch {
+    fn new(kind: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!("tessel-window-{kind}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        Self(dir)
+    }
+}
+
+impl Drop for ClaimsScratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// F5: the status line keeps the reason a result was refused when the discard job that took it
+/// ends, and says both when that discard left something behind.
+#[test]
+fn a_discard_never_hides_why_its_result_was_refused() {
+    let mut workflow = workflow::Workflow::new();
+    let refused = json!({"job": "job-3", "state": "failed", "kind": "scene-adopt",
+        "error": {"code": "claims_unavailable", "message": "the ledger said no",
+            "details": {"discard_job": "job-9", "phase": "accept"}}});
+    let (text, error) = flows::describe_job_event(&refused);
+    assert_eq!(
+        workflow.remember_refusal(&refused, text.clone(), error),
+        (text.clone(), true),
+        "the refusal itself reads as it always did"
+    );
+
+    let clean = json!({"job": "job-9", "state": "succeeded", "kind": "discard",
+        "result": {"cleanup": {"removedFiles": 2, "kept": [], "busyRoots": 0}}});
+    let (line, line_error) = flows::describe_job_event(&clean);
+    assert_eq!(line, "Resultado descartado");
+    assert_eq!(
+        workflow.remember_refusal(&clean, line, line_error),
+        (text.clone(), true),
+        "a clean discard keeps saying why the result was refused"
+    );
+
+    // Remembered once: the same discard cannot hide a later message again.
+    let (line, line_error) = flows::describe_job_event(&clean);
+    assert_eq!(
+        workflow.remember_refusal(&clean, line.clone(), line_error),
+        (line, false)
+    );
+
+    // A discard that kept files says both.
+    workflow.remember_refusal(&refused, text.clone(), true);
+    let kept = json!({"job": "job-9", "state": "succeeded", "kind": "discard",
+        "result": {"cleanup": {"kept": ["`/w/a.png`: its content changed"], "busyRoots": 0}}});
+    let (line, line_error) = flows::describe_job_event(&kept);
+    let (both, both_error) = workflow.remember_refusal(&kept, line.clone(), line_error);
+    assert!(both_error);
+    assert!(both.starts_with(&text) && both.ends_with(&line), "{both}");
+}
+
+/// An explicit `job.discard` is not a refusal: its `job_discarded` event is not remembered, so the
+/// discard that follows keeps its own line.
+#[test]
+fn an_explicit_discard_is_not_remembered_as_a_refusal() {
+    let mut workflow = workflow::Workflow::new();
+    let discarded = json!({"job": "job-3", "state": "failed", "kind": "scene-attach",
+        "error": {"code": "job_discarded", "message": "gone",
+            "details": {"discard_job": "job-9"}}});
+    let (text, error) = flows::describe_job_event(&discarded);
+    workflow.remember_refusal(&discarded, text, error);
+    let clean = json!({"job": "job-9", "state": "succeeded", "kind": "discard",
+        "result": {"cleanup": {"removedFiles": 0, "kept": [], "busyRoots": 0}}});
+    let (line, line_error) = flows::describe_job_event(&clean);
+    assert_eq!(
+        workflow.remember_refusal(&clean, line.clone(), line_error),
+        (line, false)
+    );
 }

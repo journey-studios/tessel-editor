@@ -10,11 +10,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use tessel_editor_core::jobs::JobError;
 use tessel_editor_core::state::ProjectSettings;
 use tessel_editor_core::{CommandError, EditorState, headless};
@@ -34,6 +35,24 @@ enum Fault {
     FailAt(u64),
     WrongSize,
     SlowFrames,
+    /// BL109: rewrite one approved original, same size, different bytes, while the export runs.
+    TamperAt(u64),
+}
+
+/// What the renderer found behind a resource the plan names: the file it was told to open.
+#[derive(Debug, Clone)]
+struct Seen {
+    asset: String,
+    path: PathBuf,
+    sha256: String,
+    approved_sha256: String,
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 struct StillRenderer {
@@ -41,6 +60,9 @@ struct StillRenderer {
     fault: Fault,
     drawn: Arc<AtomicU64>,
     finished: Arc<AtomicU64>,
+    /// The original the `TamperAt` fault rewrites.
+    victim: PathBuf,
+    seen: Arc<Mutex<Vec<Seen>>>,
 }
 
 impl SceneFrameRenderer for StillRenderer {
@@ -58,7 +80,25 @@ impl SceneFrameRenderer for StillRenderer {
                 ));
             }
             Fault::SlowFrames => std::thread::sleep(Duration::from_millis(25)),
+            Fault::TamperAt(at) if at == index => {
+                let size = fs::metadata(&self.victim).unwrap().len();
+                fs::write(&self.victim, vec![0xAA; size as usize]).unwrap();
+            }
             _ => {}
+        }
+        // Open what the plan names the way a real renderer does: through the approved path.
+        for resource in &job.plan.resources {
+            let approved = job
+                .resources
+                .resolve_asset(job.scene_id, &resource.asset_id)
+                .unwrap();
+            let bytes = fs::read(&approved.path).unwrap();
+            self.seen.lock().unwrap().push(Seen {
+                asset: resource.asset_id.clone(),
+                sha256: sha256_hex(&bytes),
+                approved_sha256: approved.content_hash,
+                path: approved.path,
+            });
         }
         let source = match self.fault {
             Fault::WrongSize => self.png.with_file_name("small.png"),
@@ -83,6 +123,9 @@ struct Lab {
     work: PathBuf,
     drawn: Arc<AtomicU64>,
     finished: Arc<AtomicU64>,
+    seen: Arc<Mutex<Vec<Seen>>>,
+    /// The folder the resources were approved from (a private copy of the corpus when isolated).
+    base: PathBuf,
 }
 
 impl Lab {
@@ -125,6 +168,12 @@ fn preset() -> Value {
 }
 
 fn lab(name: &str, fault: Fault, with_renderer: bool) -> Option<Lab> {
+    lab_in(name, fault, with_renderer, false)
+}
+
+/// `isolated` approves the resources from a private copy of the corpus, so a test may rewrite
+/// the originals without touching the repository.
+fn lab_in(name: &str, fault: Fault, with_renderer: bool, isolated: bool) -> Option<Lab> {
     let tools = match Tools::discover() {
         Ok(tools) => tools,
         Err(error) => {
@@ -151,18 +200,34 @@ fn lab(name: &str, fault: Fault, with_renderer: bool) -> Option<Lab> {
             .unwrap();
         assert!(made.success());
     }
+    let base = if isolated {
+        let copy = work.join("corpus-copy");
+        let status = Command::new("cp")
+            .arg("-R")
+            .arg(corpus())
+            .arg(&copy)
+            .status();
+        assert!(status.unwrap().success());
+        copy
+    } else {
+        corpus()
+    };
     let drawn = Arc::new(AtomicU64::new(0));
     let finished = Arc::new(AtomicU64::new(0));
+    let seen = Arc::new(Mutex::new(Vec::new()));
     let mut host = MediaHost::new();
     if with_renderer {
         let png = work.join("frame.png");
-        let (counter, done) = (drawn.clone(), finished.clone());
+        let (counter, done, spy) = (drawn.clone(), finished.clone(), seen.clone());
+        let victim = base.join("assets/sky.png");
         let factory: Arc<SceneRendererFactory> = Arc::new(move || {
             Ok(Box::new(StillRenderer {
                 png: png.clone(),
                 fault,
                 drawn: counter.clone(),
                 finished: done.clone(),
+                victim: victim.clone(),
+                seen: spy.clone(),
             }))
         });
         host = host.with_scene_renderer(factory);
@@ -173,9 +238,11 @@ fn lab(name: &str, fault: Fault, with_renderer: bool) -> Option<Lab> {
         work,
         drawn,
         finished,
+        seen,
+        base: base.clone(),
     };
     lab.ok(json!({"op":"scene.attach","id":"street","path":corpus().join("bundle.json")}));
-    lab.ok(json!({"op":"scene.resources.resolve","scene":"street","base":corpus()}));
+    lab.ok(json!({"op":"scene.resources.resolve","scene":"street","base":base}));
     Some(lab)
 }
 
@@ -340,4 +407,203 @@ fn preflight_reports_what_would_block_without_a_job_a_file_or_a_renderer() {
     assert_eq!(fs::read(lab.work.join("taken.mp4")).unwrap(), b"x");
     assert_eq!(lab.ok(json!({"op":"job.list"})), jobs_before);
     assert!(lab.leftovers().is_empty());
+}
+
+fn same_size_garbage(path: &Path) {
+    let size = fs::metadata(path).unwrap().len();
+    fs::write(path, vec![0xBB; size as usize]).unwrap();
+}
+
+#[test]
+fn a_same_size_swap_after_resolve_is_refused_before_any_frame_and_leaves_nothing() {
+    let Some(mut lab) = lab_in("swap", Fault::None, true, true) else {
+        return;
+    };
+    // The map was approved by hash; now an original changes to other bytes of the very same size.
+    // A presence-and-size check cannot see it.
+    let original = lab.base.join("assets/mid.png");
+    let before = fs::read(&original).unwrap();
+    same_size_garbage(&original);
+    // Another export's staging that happens to sit next to the destination is not ours to clean.
+    let foreign = lab.work.join(".tessel-staging-scene-export-foreign-0");
+    fs::create_dir_all(&foreign).unwrap();
+    fs::write(foreign.join("keep"), b"theirs").unwrap();
+
+    let error = lab.export("swap.mp4", 6, true).unwrap_err();
+    assert_eq!(error.code, "resource_changed", "{}", error.message);
+    let details = error.details.expect("both identities are named");
+    assert_eq!(details["resource"], "asset:mid");
+    assert_ne!(details["got"]["sha256"], details["expected"]["sha256"]);
+    assert_eq!(details["got"]["bytes"], details["expected"]["bytes"]);
+
+    assert!(!lab.work.join("swap.mp4").exists());
+    assert_eq!(lab.drawn.load(Ordering::SeqCst), 0, "no frame was drawn");
+    assert_eq!(
+        lab.finished.load(Ordering::SeqCst),
+        1,
+        "the renderer is still released"
+    );
+    assert_eq!(lab.leftovers(), [".tessel-staging-scene-export-foreign-0"]);
+    assert_eq!(fs::read(foreign.join("keep")).unwrap(), b"theirs");
+    assert_ne!(
+        fs::read(&original).unwrap(),
+        before,
+        "the original is never repaired or removed"
+    );
+}
+
+#[test]
+fn an_original_rewritten_during_the_job_cannot_reach_a_frame() {
+    let Some(mut lab) = lab_in("during", Fault::TamperAt(2), true, true) else {
+        return;
+    };
+    let sky = lab.base.join("assets/sky.png");
+    let approved_bytes = fs::read(&sky).unwrap();
+
+    let result = lab.export("during.mp4", 6, true).unwrap();
+    assert_eq!(result["verification"]["ok"], true);
+    assert_ne!(
+        fs::read(&sky).unwrap(),
+        approved_bytes,
+        "the fault really rewrote the original mid-job"
+    );
+
+    let seen = lab.seen.lock().unwrap().clone();
+    assert!(seen.iter().any(|frame| frame.asset == "sky"), "{seen:?}");
+    for frame in &seen {
+        assert_eq!(
+            frame.sha256, frame.approved_sha256,
+            "{frame:?}: the bytes drawn are the approved bytes"
+        );
+        assert!(
+            !frame.path.starts_with(lab.base.canonicalize().unwrap()),
+            "{frame:?}: the renderer reads the private copy, not the original"
+        );
+        assert!(
+            frame
+                .path
+                .to_string_lossy()
+                .contains(".tessel-staging-scene-export")
+        );
+    }
+    assert_eq!(result["snapshot"]["verified"], true);
+    assert!(result["snapshot"]["files"].as_u64().unwrap() >= 1);
+    assert!(lab.leftovers().is_empty(), "{:?}", lab.leftovers());
+}
+
+#[test]
+fn a_private_copy_is_removed_when_the_job_fails_or_is_cancelled() {
+    // Failure after the copy (a frame fails): the copy lived in the staging and goes with it.
+    let Some(mut failing) = lab_in("copy-fail", Fault::FailAt(2), true, true) else {
+        return;
+    };
+    let error = failing.export("a.mp4", 6, true).unwrap_err();
+    assert_eq!(error.code, "render_failed");
+    assert!(failing.leftovers().is_empty(), "{:?}", failing.leftovers());
+    assert!(
+        failing
+            .seen
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|frame| frame.sha256 == frame.approved_sha256),
+        "the failing run still read approved bytes"
+    );
+    // The originals are untouched by the cleanup.
+    assert!(failing.base.join("assets/sky.png").is_file());
+
+    // Cancel while frames render: same.
+    let Some(mut slow) = lab_in("copy-cancel", Fault::SlowFrames, true, true) else {
+        return;
+    };
+    let started = slow.export("b.mp4", 96, false).unwrap();
+    let job = started["job"].as_str().unwrap().to_string();
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        let info = slow.ok(json!({"op":"job.get","job":job}));
+        if info["stage"] == "render" && info["done"].as_u64().unwrap_or(0) >= 2 {
+            break;
+        }
+        assert!(Instant::now() < deadline, "never rendered: {info}");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    slow.ok(json!({"op":"job.cancel","job":job}));
+    let info = slow.ok(json!({"op":"job.wait","job":job,"timeout_ms":60000}));
+    assert_eq!(info["state"], "cancelled", "{info}");
+    assert!(slow.leftovers().is_empty(), "{:?}", slow.leftovers());
+    assert!(slow.base.join("assets/sky.png").is_file());
+}
+
+#[test]
+fn preflight_counts_the_private_copy_in_the_space_it_asks_for() {
+    let Some(mut lab) = lab("copy-space", Fault::None, false) else {
+        return;
+    };
+    let destination = lab.work.join("space.mp4");
+    let report = lab.ok(
+        json!({"op":"scene.export.preflight","scene":"street","preset":preset(),
+        "from":0,"frames":6,"destination":destination}),
+    );
+    let copy = report["estimate"]["resource_copy_bytes"].as_u64().unwrap();
+    assert!(copy > 0, "{report}");
+    assert!(report["estimate"]["staging_bytes"].as_u64().unwrap() >= copy);
+}
+
+/// BL094 x BL109: `job.discard` gives up a result nobody applied; an export never has one (its
+/// file is published by the job itself), so discarding its job is refused by code and removes
+/// nothing: not the exported file, not the originals the snapshot read.
+#[test]
+fn an_export_job_has_nothing_to_discard_and_the_discard_removes_nothing() {
+    let Some(mut ok) = lab_in("discard-ok", Fault::None, true, true) else {
+        return;
+    };
+    let started = ok.export("kept.mp4", 6, false).unwrap();
+    let job = started["job"].as_str().unwrap().to_string();
+    let waited = ok.ok(json!({"op":"job.wait","job":job,"timeout_ms":60000}));
+    assert_eq!(waited["state"], "succeeded", "{waited}");
+    assert_eq!(waited["result_state"], "none", "{waited}");
+    let published = ok.work.join("kept.mp4");
+    let exported = fs::read(&published).unwrap();
+    let original = fs::read(ok.base.join("assets/sky.png")).unwrap();
+
+    let refused = ok.run(json!({"op":"job.discard","job":job})).unwrap_err();
+    assert_eq!(
+        refused.code, "job_nothing_to_discard",
+        "{}",
+        refused.message
+    );
+    assert_eq!(
+        fs::read(&published).unwrap(),
+        exported,
+        "the export is kept"
+    );
+    assert_eq!(fs::read(ok.base.join("assets/sky.png")).unwrap(), original);
+    let after = ok.ok(json!({"op":"job.get","job":job}));
+    assert_eq!(after["result_state"], "none", "a refusal changes nothing");
+    assert!(ok.leftovers().is_empty(), "{:?}", ok.leftovers());
+
+    // A job that failed on a changed resource (S3) has none either, and the changed original is
+    // not repaired, removed or taken for a discardable result.
+    let Some(mut changed) = lab_in("discard-changed", Fault::None, true, true) else {
+        return;
+    };
+    let victim = changed.base.join("assets/mid.png");
+    same_size_garbage(&victim);
+    let tampered = fs::read(&victim).unwrap();
+    let started = changed.export("never.mp4", 6, false).unwrap();
+    let job = started["job"].as_str().unwrap().to_string();
+    let waited = changed.ok(json!({"op":"job.wait","job":job,"timeout_ms":60000}));
+    assert_eq!(waited["state"], "failed", "{waited}");
+    assert_eq!(waited["error"]["code"], "resource_changed", "{waited}");
+    let refused = changed
+        .run(json!({"op":"job.discard","job":job}))
+        .unwrap_err();
+    assert_eq!(
+        refused.code, "job_nothing_to_discard",
+        "{}",
+        refused.message
+    );
+    assert_eq!(fs::read(&victim).unwrap(), tampered);
+    assert!(!changed.work.join("never.mp4").exists());
+    assert!(changed.leftovers().is_empty(), "{:?}", changed.leftovers());
 }

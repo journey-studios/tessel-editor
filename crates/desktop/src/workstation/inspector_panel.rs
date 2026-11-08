@@ -5,6 +5,8 @@
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::accordion::Accordion;
+use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::scroll::ScrollableElement;
 use gpui_kit::component::select::Select;
 use gpui_kit::component::slider::Slider;
@@ -14,17 +16,20 @@ use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
-use super::Workstation;
 use super::controls::{
     TabSpec, TabStyle, command_tabs, glyph, property_row, quantize, tool_button, value_after_key,
 };
 use super::media::demo_image;
 use super::slider_gesture::{slider_key_up, slider_keys, slider_press};
 use super::tokens::Tokens;
+use super::{Source, Workstation};
+use crate::state::camera_edit::CameraKeysCommand;
 use crate::state::inspector::{
     InspectorTab, PropertyDef, PropertyKind, SECTIONS, SectionDef, Value, section_properties,
 };
+use crate::state::timeline::ClipKind;
 use crate::state::{Command, Raw};
+use tessel_editor_core::camera_keys::Easing;
 
 fn tab_label(tab: InspectorTab) -> &'static str {
     match tab {
@@ -42,6 +47,60 @@ fn format_number(value: f64, decimals: u32) -> String {
 const SLIDER_EPSILON: f32 = 1e-4;
 
 impl Workstation {
+    /// Writes the input's text into the selected title, through the shared command.
+    pub(super) fn commit_title_text(&mut self, input: &Entity<InputState>, cx: &mut Context<Self>) {
+        let Some(clip) = self
+            .state
+            .inspector_clip()
+            .filter(|entry| entry.kind == ClipKind::Title)
+            .map(|entry| entry.id.to_string())
+        else {
+            return;
+        };
+        // An event from the old input must not edit the newly selected clip.
+        if self.title_text_shown.as_ref().map(|shown| shown.0.as_str()) != Some(clip.as_str()) {
+            return;
+        }
+        let content = input.read(cx).value().to_string();
+        let _ = self.execute(
+            Command::SetClipTextField {
+                clip: clip.clone(),
+                field: "content".to_string(),
+                value: Raw::Text(content),
+            },
+            Source::Gesture,
+            cx,
+        );
+        // Also resync an equivalent NFD edit whose normalized model is unchanged.
+        self.title_text_shown = None;
+        cx.notify();
+    }
+
+    /// Pushes the selected title's text into the input when the clip or its text changed.
+    fn sync_title_text(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let wanted = self
+            .state
+            .inspector_clip()
+            .filter(|entry| entry.kind == ClipKind::Title)
+            .and_then(|entry| {
+                entry
+                    .text
+                    .as_ref()
+                    .map(|text| (entry.id.to_string(), text.content.clone()))
+            });
+        let Some(wanted) = wanted else {
+            return;
+        };
+        if self.title_text_shown.as_ref() == Some(&wanted) {
+            return;
+        }
+        let content = wanted.1.clone();
+        // `set_value` does not emit `Change`/`Blur`, so this cannot loop.
+        self.title_text
+            .update(cx, |input, cx| input.set_value(content, window, cx));
+        self.title_text_shown = Some(wanted);
+    }
+
     fn property_control(
         &mut self,
         t: &Tokens,
@@ -200,11 +259,35 @@ impl Workstation {
         clip: &'static str,
     ) -> impl IntoElement + use<> {
         let mut body = div().flex().flex_col().w_full().py(px(4.)).bg(t.panel);
+        if section.id == "text" {
+            self.sync_title_text(window, cx);
+            return body
+                .child(
+                    div().px(px(10.)).py(px(4.)).child(
+                        Input::new(&self.title_text)
+                            .small()
+                            .aria_label("Texto do título"),
+                    ),
+                )
+                .child(
+                    div()
+                        .px(px(10.))
+                        .pb(px(4.))
+                        .text_size(px(10.))
+                        .text_color(t.faint)
+                        .child(
+                            "Enter confirma. ASCII e acentos do português (á é ã ç…); uma linha.",
+                        ),
+                );
+        }
         if section.id == "transform" {
             body = body.child(self.inspector_thumbnail(t));
         }
         for property in section_properties(section.id) {
             body = body.child(self.property_control(t, window, cx, property, clip));
+        }
+        if section.id == "camera" {
+            body = body.child(self.camera_keys_body(t, cx, clip));
         }
         let timing_entry = self
             .state
@@ -232,6 +315,198 @@ impl Workstation {
             }
         }
         body
+    }
+
+    /// Camera keyframes of a scene clip (BL140): add a key at the playhead, one row per key
+    /// (time, easing that cycles on click, remove) and a button that removes them all. Every
+    /// button runs a `CameraKeysCommand`, the same handler `ui op`/`set`/`invoke` reach; the
+    /// numeric fields of a key are edited with `set camera_key:<clip>:<n>`.
+    fn camera_keys_body(
+        &mut self,
+        t: &Tokens,
+        cx: &mut Context<Self>,
+        clip: &'static str,
+    ) -> impl IntoElement + use<> {
+        let Some(entry) = self.state.timeline.clip(clip) else {
+            return div().into_any_element();
+        };
+        let playhead = self.state.timeline.playhead;
+        let inside = playhead >= entry.start && playhead < entry.end();
+        let keys = entry.camera_keys.clone();
+        let orbiting = entry.camera.is_some_and(|camera| camera.orbit != 0.0);
+        let capture = self.state.capture_of_clip(entry.id);
+        let capture_row = capture.map(|capture| {
+            let button = Button::new("camera-capture-use")
+                .ghost()
+                .xsmall()
+                .icon(IconName::Camera)
+                .label("Câmera da captura")
+                .tooltip("Volta a câmera do clipe para a que fotografou o PLY do SHARP")
+                .accessibility_label("Usar a câmera da captura")
+                .disabled(!keys.is_empty())
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.dispatch(
+                        Command::SetClipCameraFromCapture {
+                            clip: clip.to_string(),
+                        },
+                        cx,
+                    );
+                }));
+            v_flex()
+                .items_start()
+                .gap(px(2.))
+                .child(
+                    div()
+                        .text_size(px(10.))
+                        .text_color(t.faint)
+                        .child(capture.label()),
+                )
+                .child(button)
+        });
+        let hint = if keys.is_empty() {
+            "Sem chaves: a câmera é a do clipe. Posicione o playhead e adicione uma chave."
+        } else if !inside {
+            "Mova o playhead sobre o clipe para gravar uma chave."
+        } else {
+            "A câmera interpola entre as chaves; o easing vale para o trecho seguinte."
+        };
+        // The same refusals `Capture` applies and the tree node announces as `disabled_reason`.
+        let capture_blocked = if orbiting {
+            Some("A câmera orbita: zere a órbita (clip.camera) antes de gravar chaves.")
+        } else if !inside {
+            Some("Mova o playhead sobre o clipe para gravar uma chave.")
+        } else {
+            None
+        };
+        let add = Button::new("camera-key-add")
+            .ghost()
+            .xsmall()
+            .icon(IconName::Plus)
+            .label("Chave no playhead")
+            .tooltip(
+                capture_blocked
+                    .unwrap_or("Grava a câmera atual no playhead como uma chave")
+                    .to_string(),
+            )
+            .accessibility_label("Adicionar chave de câmera no playhead")
+            .disabled(capture_blocked.is_some())
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.dispatch(
+                    Command::CameraKeys(CameraKeysCommand::Capture {
+                        clip: clip.to_string(),
+                        easing: None,
+                    }),
+                    cx,
+                );
+            }));
+        let clear = Button::new("camera-key-clear")
+            .ghost()
+            .xsmall()
+            .icon(IconName::Trash)
+            .tooltip("Remover todas as chaves de câmera")
+            .accessibility_label("Remover todas as chaves de câmera")
+            .disabled(keys.is_empty())
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.dispatch(
+                    Command::CameraKeys(CameraKeysCommand::Replace {
+                        clip: clip.to_string(),
+                        keys: Vec::new(),
+                    }),
+                    cx,
+                );
+            }));
+        let mut column = v_flex()
+            .w_full()
+            .gap(px(2.))
+            .px(px(10.))
+            .py(px(4.))
+            .children(capture_row)
+            .child(
+                h_flex()
+                    .items_center()
+                    .justify_between()
+                    .child(add)
+                    .child(clear),
+            )
+            .child(
+                div()
+                    .text_size(px(10.))
+                    .text_color(t.faint)
+                    .child(hint.to_string()),
+            );
+        if orbiting {
+            column = column.child(
+                div()
+                    .text_size(px(10.))
+                    .text_color(t.faint)
+                    .child("A câmera orbita: zere a órbita (clip.camera) antes de gravar chaves."),
+            );
+        }
+        for (index, key) in keys.iter().enumerate() {
+            let next = {
+                let at = Easing::ALL
+                    .iter()
+                    .position(|easing| *easing == key.easing)
+                    .unwrap_or(0);
+                Easing::ALL[(at + 1) % Easing::ALL.len()]
+            };
+            let cycle = Button::new(SharedString::from(format!("camera-key-easing-{index}")))
+                .ghost()
+                .xsmall()
+                .label(key.easing.label())
+                .tooltip("Alternar o easing do trecho que começa nesta chave")
+                .accessibility_label(format!("Easing da chave {index}"))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.dispatch(
+                        Command::CameraKeys(CameraKeysCommand::Field {
+                            clip: clip.to_string(),
+                            index,
+                            field: "easing".to_string(),
+                            value: Raw::Text(next.label().to_string()),
+                        }),
+                        cx,
+                    );
+                }));
+            let time = key.time;
+            let remove = tool_button(
+                SharedString::from(format!("camera-key-remove-{index}")),
+                IconName::Trash,
+                &format!("Remover a chave em {:.2} s", time.to_f64()),
+            )
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.dispatch(
+                    Command::CameraKeys(CameraKeysCommand::Remove {
+                        clip: clip.to_string(),
+                        time,
+                    }),
+                    cx,
+                );
+            }));
+            column = column.child(
+                h_flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .h(px(24.))
+                    .text_size(px(11.))
+                    .child(
+                        div()
+                            .w(px(46.))
+                            .text_color(t.text)
+                            .child(format!("{:.2} s", key.time.to_f64())),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w(px(0.))
+                            .truncate()
+                            .text_color(t.dim)
+                            .child(format!("z {:.2} · fov {:.0}°", key.position[2], key.fov)),
+                    )
+                    .child(cycle)
+                    .child(remove),
+            );
+        }
+        column.into_any_element()
     }
 
     fn inspector_empty(&self, t: &Tokens, message: &str) -> impl IntoElement + use<> {
@@ -274,7 +549,7 @@ impl Workstation {
             .text_size(px(12.))
             .text_color(t.text)
             .child(section.label)
-            .child(reset)
+            .when(section.id != "text", |row| row.child(reset))
     }
 
     pub(super) fn render_clip_inspector(
@@ -385,7 +660,13 @@ impl Workstation {
                     .multiple(true)
                     .bordered(false);
                 for (index, section) in applicable.iter().enumerate() {
-                    let modified = self.state.inspector.section_modified(clip_id, section.id);
+                    let modified = self.state.inspector.section_modified(clip_id, section.id)
+                        || (section.id == "camera"
+                            && self
+                                .state
+                                .timeline
+                                .clip(clip_id.as_str())
+                                .is_some_and(|entry| !entry.camera_keys.is_empty()));
                     let title = self.section_title(t, cx.weak_entity(), section, modified);
                     // An expanded section's body is built; a collapsed one is
                     // skipped, and collapsing leaves its values intact.

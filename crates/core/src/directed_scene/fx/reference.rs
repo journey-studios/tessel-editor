@@ -1,0 +1,211 @@
+//! The reference of what a pass does to a picture, written independently of the runtime's GLSL.
+//!
+//! It is the specification the vignette's pixels are compared with (the proof compares frames the
+//! runtime drew against this function, not against another render). It follows the pilot's shader
+//! (`runtime/fx/shaders/vignette.ts`): the picture is decoded sRGB → linear light, mixed with the
+//! colour by `shade × amount` and encoded again; an effect at `amount <= 0` returns its input
+//! exactly (no decode/encode round trip, so zero intensity cannot move a pixel).
+
+use super::{FxPass, FxValue};
+
+/// `smoothstep(edge0, edge1, x)` as GLSL defines it.
+pub fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
+    let t = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// sRGB-encoded 0..1 → linear light (the IEC 61966-2-1 curve).
+pub fn srgb_to_linear(encoded: f64) -> f64 {
+    if encoded <= 0.040_45 {
+        encoded / 12.92
+    } else {
+        ((encoded + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+/// Linear light → sRGB-encoded 0..1; the input is clamped to 0..1.
+pub fn linear_to_srgb(linear: f64) -> f64 {
+    let linear = linear.clamp(0.0, 1.0);
+    if linear <= 0.003_130_8 {
+        linear * 12.92
+    } else {
+        1.055 * linear.powf(1.0 / 2.4) - 0.055
+    }
+}
+
+/// How dark the vignette is at a point: 0 (untouched) .. 1 (fully the colour, before `amount`).
+/// `u`, `v` are picture fractions, `v` measured DOWN from the top row (the plan's `center` has
+/// the same convention), and `width`/`height` the picture size in pixels.
+///
+/// The distance is `|(p - center) × 2 × shape| / max(|shape|, 1)` with
+/// `shape = (mix(1, width/height, roundness), 1)`, then `smoothstep(radius, radius + softness, d)`.
+pub fn vignette_shade(pass: &FxPass, u: f64, v: f64, width: f64, height: f64) -> Option<f64> {
+    let radius = pass.number("radius")?;
+    let softness = pass.number("softness")?;
+    let roundness = pass.number("roundness")?;
+    let FxValue::Point { x: cx, y: cy } = pass.param("center")? else {
+        return None;
+    };
+    let stretch = 1.0 + (width / height - 1.0) * roundness;
+    let shape = (stretch, 1.0);
+    // The shader works with `y` up; the plan states `center` with `y` down.
+    let dx = (u - cx) * 2.0 * shape.0;
+    let dy = ((1.0 - v) - (1.0 - cy)) * 2.0 * shape.1;
+    let norm = (shape.0 * shape.0 + shape.1 * shape.1).sqrt().max(1.0);
+    let distance = (dx * dx + dy * dy).sqrt() / norm;
+    Some(smoothstep(radius, radius + softness, distance))
+}
+
+/// One pass over one pixel: `rgb` is sRGB-encoded 0..1, `(x, y)` the pixel's column and row from
+/// the top-left of a `width` × `height` picture (the pixel's centre is sampled). Returns the
+/// encoded result, or `None` for an effect this reference does not know.
+pub fn apply_pass_to_srgb(
+    pass: &FxPass,
+    rgb: [f64; 3],
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+) -> Option<[f64; 3]> {
+    if pass.effect != "vignette" {
+        return None;
+    }
+    if pass.amount <= 0.0 {
+        return Some(rgb);
+    }
+    let u = (x as f64 + 0.5) / width as f64;
+    let v = (y as f64 + 0.5) / height as f64;
+    let shade = vignette_shade(pass, u, v, width as f64, height as f64)?;
+    let FxValue::Color { r, g, b } = pass.param("color")? else {
+        return None;
+    };
+    let weight = shade * pass.amount;
+    let mix = |source: f64, color: f64| {
+        let linear = srgb_to_linear(source);
+        linear_to_srgb(linear + (color - linear) * weight)
+    };
+    Some([mix(rgb[0], r), mix(rgb[1], g), mix(rgb[2], b)])
+}
+
+/// The pass over a whole RGBA8 picture (row 0 on top, alpha untouched). `false` when the effect
+/// is unknown or the buffer is not `width × height × 4` bytes; the buffer is then left alone.
+pub fn apply_pass_to_rgba8(pass: &FxPass, rgba: &mut [u8], width: usize, height: usize) -> bool {
+    if rgba.len() != width * height * 4 || pass.effect != "vignette" {
+        return false;
+    }
+    if pass.amount <= 0.0 {
+        return true;
+    }
+    for y in 0..height {
+        for x in 0..width {
+            let at = (y * width + x) * 4;
+            let source = [
+                f64::from(rgba[at]) / 255.0,
+                f64::from(rgba[at + 1]) / 255.0,
+                f64::from(rgba[at + 2]) / 255.0,
+            ];
+            let Some(out) = apply_pass_to_srgb(pass, source, x, y, width, height) else {
+                return false;
+            };
+            for (channel, value) in out.iter().enumerate() {
+                rgba[at + channel] = (value * 255.0).round().clamp(0.0, 255.0) as u8;
+            }
+        }
+    }
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use core::prelude::v1::test;
+
+    use super::*;
+    use crate::directed_scene::fx::catalog::VIGNETTE;
+
+    fn pass_with(overrides: &[(&str, FxValue)]) -> FxPass {
+        pass(overrides, 1.0)
+    }
+
+    fn pass(overrides: &[(&str, FxValue)], amount: f64) -> FxPass {
+        let params = VIGNETTE
+            .params
+            .iter()
+            .map(|spec| {
+                let value = overrides
+                    .iter()
+                    .find(|(name, _)| *name == spec.id)
+                    .map_or_else(|| spec.kind.default_value(), |(_, value)| *value);
+                (spec.id.to_string(), value)
+            })
+            .collect();
+        FxPass {
+            track_id: "t".into(),
+            clip_id: "c".into(),
+            effect: "vignette".into(),
+            frame_in_clip: 0,
+            weight: 1.0,
+            amount,
+            params,
+        }
+    }
+
+    #[test]
+    fn the_srgb_curves_are_inverses_and_match_known_values() {
+        for level in 0..=255 {
+            let encoded = f64::from(level) / 255.0;
+            assert!((linear_to_srgb(srgb_to_linear(encoded)) - encoded).abs() < 1e-12);
+        }
+        assert!((srgb_to_linear(0.5) - 0.214_041).abs() < 1e-5);
+        assert!((linear_to_srgb(0.18) - 0.4614).abs() < 1e-3);
+        assert_eq!(linear_to_srgb(-1.0), 0.0);
+        assert!((linear_to_srgb(3.0) - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn the_centre_is_untouched_and_the_corner_is_dark() {
+        let pass = pass(&[], 1.0);
+        let centre = apply_pass_to_srgb(&pass, [0.8, 0.8, 0.8], 50, 50, 101, 101).unwrap();
+        for channel in centre {
+            assert!((channel - 0.8).abs() < 1e-9, "{centre:?}");
+        }
+        let corner = apply_pass_to_srgb(&pass, [0.8, 0.8, 0.8], 0, 0, 101, 101).unwrap();
+        // The default vignette (radius 0.75, softness 0.45) reaches 55% at the corner.
+        for channel in corner {
+            assert!(channel < 0.6 && channel > 0.4, "{corner:?}");
+        }
+        let hard = pass_with(&[
+            ("radius", FxValue::Number(0.0)),
+            ("softness", FxValue::Number(0.05)),
+        ]);
+        let black = apply_pass_to_srgb(&hard, [0.8, 0.8, 0.8], 0, 0, 101, 101).unwrap();
+        assert!(black.iter().all(|channel| *channel < 1e-6), "{black:?}");
+    }
+
+    #[test]
+    fn zero_amount_returns_the_input_bit_for_bit() {
+        let pass = pass(&[], 0.0);
+        let out = apply_pass_to_srgb(&pass, [0.123, 0.456, 0.789], 0, 0, 16, 9).unwrap();
+        assert_eq!(out, [0.123, 0.456, 0.789]);
+        let mut rgba = vec![200_u8; 16 * 9 * 4];
+        let before = rgba.clone();
+        assert!(apply_pass_to_rgba8(&pass, &mut rgba, 16, 9));
+        assert_eq!(rgba, before);
+    }
+
+    #[test]
+    fn the_centre_moves_the_dark_region() {
+        let left = pass(&[("center", FxValue::Point { x: 0.0, y: 0.5 })], 1.0);
+        // At the left edge middle the vignette is centred: untouched; at the right edge: dark.
+        let near = apply_pass_to_srgb(&left, [0.9, 0.9, 0.9], 0, 50, 100, 100).unwrap();
+        let far = apply_pass_to_srgb(&left, [0.9, 0.9, 0.9], 99, 50, 100, 100).unwrap();
+        assert!(near[0] > far[0] + 0.3, "{near:?} {far:?}");
+    }
+
+    #[test]
+    fn a_wrong_buffer_is_refused_untouched() {
+        let pass = pass(&[], 1.0);
+        let mut rgba = vec![7_u8; 10];
+        assert!(!apply_pass_to_rgba8(&pass, &mut rgba, 4, 4));
+        assert_eq!(rgba, vec![7_u8; 10]);
+    }
+}

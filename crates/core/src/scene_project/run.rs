@@ -6,21 +6,23 @@
 //! entry itself is not made here: `EditorState::execute` snapshots before and records after when
 //! the outcome says `changed`, so there is one history and one transaction per command.
 
-use std::fs;
+use std::fs::{self, File};
+use std::io::Read;
 use std::path::Path;
 use std::sync::Arc;
 
 use serde_json::{Map, Value, json};
 
 use crate::directed_scene::{DirectedScene, ImportError, Limits};
+use crate::jobs::CancelToken;
 use crate::scene_edit::{self, EditOp, EditSummary};
 use crate::scene_interaction::Dropped;
 use crate::state::{CommandError, EditorState};
 
-use super::command::{SceneCommand, SceneSource};
+use super::AttachedScene;
+use super::command::{AdmittedScene, SceneCommand, SceneSource};
 use super::query;
-use super::scope::{deferred_in_use, scope_json};
-use super::{AttachedScene, check_scene_id};
+use super::scope::scope_json;
 
 /// The gates a scene must pass to live in a project: the importer already ran (that is how a
 /// `DirectedScene` exists), and the structural and temporal gates run here, the same ones
@@ -50,25 +52,76 @@ fn unreadable(path: &Path, error: &std::io::Error) -> CommandError {
 }
 
 /// Reads a bundle file, refusing a file larger than the importer's limit before reading it: the
-/// importer enforces the same bound, but only after the text is already in memory.
-fn read_bundle_file(path: &Path) -> Result<String, CommandError> {
+/// importer enforces the same bound, but only after the text is already in memory. Reads in
+/// blocks so a job can be cancelled while a large file is still coming in.
+fn read_bundle_file(path: &Path, token: &CancelToken) -> Result<String, CommandError> {
+    const BLOCK: usize = 1 << 20;
     let max = Limits::default().max_bytes;
     let meta = fs::metadata(path).map_err(|error| unreadable(path, &error))?;
     let bytes = usize::try_from(meta.len()).unwrap_or(usize::MAX);
     if bytes > max {
         return Err(ImportError::TooLarge { bytes, max }.into());
     }
-    fs::read_to_string(path).map_err(|error| unreadable(path, &error))
+    let mut file = File::open(path).map_err(|error| unreadable(path, &error))?;
+    let mut data = Vec::with_capacity(bytes.min(max));
+    let mut block = vec![0_u8; BLOCK];
+    loop {
+        token.check().map_err(CommandError::from)?;
+        let read = file
+            .read(&mut block)
+            .map_err(|error| unreadable(path, &error))?;
+        if read == 0 {
+            break;
+        }
+        data.extend_from_slice(&block[..read]);
+        // The file may have grown after the size check.
+        if data.len() > max {
+            return Err(ImportError::TooLarge {
+                bytes: data.len(),
+                max,
+            }
+            .into());
+        }
+    }
+    String::from_utf8(data).map_err(|error| {
+        unreadable(
+            path,
+            &std::io::Error::new(std::io::ErrorKind::InvalidData, error),
+        )
+    })
 }
 
 impl SceneSource {
-    fn import(self) -> Result<DirectedScene, CommandError> {
+    /// Reads and imports the bundle. `token` only matters for a file: it is checked between
+    /// blocks, so a cancelled job stops reading instead of finishing a large file.
+    fn import(self, token: &CancelToken) -> Result<DirectedScene, CommandError> {
         let scene = match self {
             Self::Bundle(value) => DirectedScene::import_value(value),
             Self::Text(text) => DirectedScene::import_str(&text),
-            Self::Path(path) => DirectedScene::import_str(&read_bundle_file(&path)?),
+            Self::Path(path) => DirectedScene::import_str(&read_bundle_file(&path, token)?),
+            Self::Admitted(admitted) => return Ok(admitted.scene().clone()),
         };
         Ok(scene?)
+    }
+}
+
+impl AdmittedScene {
+    /// Everything attach does that costs time: read, parse, import, then the structural and
+    /// temporal gates. It touches no project, so it may run on a job thread; attaching the result
+    /// (`SceneSource::Admitted`) is cheap. `token` is checked between phases (and between blocks
+    /// of a file): a cancelled preparation fails with the `cancelled` code and holds no scene.
+    /// Errors are the ones `scene.attach` answers (`bundle_unreadable`, `invalid_bundle`, ...).
+    pub fn prepare(source: SceneSource, token: &CancelToken) -> Result<Self, CommandError> {
+        let cancelled = || token.check().map_err(CommandError::from);
+        if let SceneSource::Admitted(admitted) = source {
+            return Ok(admitted);
+        }
+        cancelled()?;
+        let scene = source.import(token)?;
+        cancelled()?;
+        let scene = admit(scene)?;
+        cancelled()?;
+        Ok(Self::new(scene))
     }
 }
 
@@ -86,6 +139,26 @@ pub(super) fn changes_json(summary: &EditSummary) -> Vec<Value> {
             })
         })
         .collect()
+}
+
+/// Adds `conversions` to an edit answer when the batch turned movements into keyframes. Absent
+/// otherwise, so the answer of every other batch keeps the shape it always had.
+pub(super) fn with_conversions(mut answer: Value, summary: &EditSummary) -> Value {
+    if !summary.conversions.is_empty() {
+        let conversions: Vec<Value> = summary
+            .conversions
+            .iter()
+            .map(|conversion| {
+                json!({
+                    "index": conversion.index, "clip": conversion.clip,
+                    "segment": conversion.segment, "recipe": conversion.recipe,
+                    "keys": conversion.keys,
+                })
+            })
+            .collect();
+        answer["conversions"] = Value::Array(conversions);
+    }
+    answer
 }
 
 impl EditorState {
@@ -117,7 +190,13 @@ impl EditorState {
                 mode,
             } => self.scene_select(scene.as_deref(), &entities, mode),
             SceneCommand::Selection => Ok(self.scene_selection()),
+            SceneCommand::FxEdit {
+                scene,
+                ops,
+                dry_run,
+            } => self.edit_fx(&scene, &ops, dry_run),
             SceneCommand::Gesture(gesture) => self.apply_gesture(gesture),
+            SceneCommand::Gizmo(gizmo) => self.apply_gizmo(gizmo),
             read => query::run(&self.scenes, read),
         }
     }
@@ -128,40 +207,36 @@ impl EditorState {
         name: Option<String>,
         source: SceneSource,
     ) -> Result<Value, CommandError> {
-        let id = match id {
-            Some(raw) => {
-                check_scene_id(&raw)?;
-                raw
-            }
-            None => self.scenes.fresh_id(),
+        self.scenes.check_attach(id.as_deref(), name.as_deref())?;
+        let id = id.unwrap_or_else(|| self.scenes.fresh_id());
+        let name = name.map(|raw| raw.trim().to_string());
+        // One door for every source: a bundle that was not prepared elsewhere is prepared here,
+        // by the same function a job thread runs, so the gates and the facts cannot differ.
+        let admitted = match source {
+            SceneSource::Admitted(admitted) => admitted,
+            source => AdmittedScene::prepare(source, &CancelToken::new())?,
         };
-        self.scenes.check_room(&id)?;
-        let name = match name.map(|raw| raw.trim().to_string()) {
-            Some(trimmed) if trimmed.is_empty() => {
-                return Err(CommandError::invalid_value(
-                    "A scene name cannot be blank",
-                    json!("a non-empty string"),
-                ));
-            }
-            other => other,
-        };
-        let scene = admit(source.import()?)?;
+        let (scene, facts) = admitted.into_parts();
         let name = name.unwrap_or_else(|| scene.bundle().bundle_id.clone());
-        let report = json!({
+        let mut report = json!({
             "action": "scene.attach", "scene": id, "name": name,
             "bundle_id": scene.bundle().bundle_id, "revision_id": scene.bundle().revision_id,
-            "counts": query::counts(&scene),
-            "notices": query::notices_json(&scene),
-            "deferred_in_use": deferred_in_use(scene.document()),
             "scope": scope_json(),
             "changed": true,
         });
-        self.scenes.insert(AttachedScene {
-            id,
-            name,
-            scene: Arc::new(scene),
-            extra: Map::new(),
-        })?;
+        // Moved in, not copied through `json!`: the lists can hold one entry per node.
+        report["counts"] = facts.counts;
+        report["notices"] = Value::Array(facts.notices);
+        report["deferred_in_use"] = Value::Array(facts.deferred_in_use);
+        self.scenes.insert_measured(
+            AttachedScene {
+                id,
+                name,
+                scene,
+                extra: Map::new(),
+            },
+            facts.serialized_len,
+        )?;
         Ok(report)
     }
 
@@ -200,27 +275,36 @@ impl EditorState {
             if summary.modified {
                 self.scenes.check_replacement_size(id, &outcome.candidate)?;
             }
-            return Ok(json!({
-                "action": "scene.edit", "scene": id, "dry_run": true, "changed": false,
-                "would_change": summary.modified, "changed_ops": summary.changed_count(),
-                "changes": changes_json(&summary),
-            }));
+            return Ok(with_conversions(
+                json!({
+                    "action": "scene.edit", "scene": id, "dry_run": true, "changed": false,
+                    "would_change": summary.modified, "changed_ops": summary.changed_count(),
+                    "changes": changes_json(&summary),
+                }),
+                &summary,
+            ));
         }
         if !summary.modified {
-            // WHY not replace with the equal candidate: it may spell a restored number
-            // differently (`1` vs `1.0`), and a command that changes nothing must not dirty the
-            // project nor leave an undo entry.
-            return Ok(json!({
-                "action": "scene.edit", "scene": id, "dry_run": false, "changed": false,
-                "noop": true, "changed_ops": summary.changed_count(),
-                "changes": changes_json(&summary),
-            }));
+            // WHY no replacement: a command whose net effect is nil must not dirty the project
+            // nor leave an undo entry. The candidate is the input scene itself in that case (no
+            // restored number spelled differently, no keys from a conversion made on the way).
+            return Ok(with_conversions(
+                json!({
+                    "action": "scene.edit", "scene": id, "dry_run": false, "changed": false,
+                    "noop": true, "changed_ops": summary.changed_count(),
+                    "changes": changes_json(&summary),
+                }),
+                &summary,
+            ));
         }
         self.scenes.replace_scene(id, outcome.candidate)?;
-        Ok(json!({
-            "action": "scene.edit", "scene": id, "dry_run": false, "changed": true,
-            "noop": false, "changed_ops": summary.changed_count(),
-            "changes": changes_json(&summary),
-        }))
+        Ok(with_conversions(
+            json!({
+                "action": "scene.edit", "scene": id, "dry_run": false, "changed": true,
+                "noop": false, "changed_ops": summary.changed_count(),
+                "changes": changes_json(&summary),
+            }),
+            &summary,
+        ))
     }
 }

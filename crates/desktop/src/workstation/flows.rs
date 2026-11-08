@@ -5,6 +5,8 @@
 //! `media.import`, `project.package`, `export.start`, …). That is what keeps the dialog, the
 //! automation tree and the CLI on one set of rules; the dialog only collects strings.
 
+use std::time::Duration;
+
 use serde_json::{Value, json};
 use tessel_editor_core::CommandError;
 use tessel_editor_core::preset::BUILTIN_IDS;
@@ -21,8 +23,8 @@ pub enum FlowKind {
     Package,
     Export,
     ExportScene,
-    /// F043: `scene.attach` of a render-bundle, then (with a resource folder) adopt, load,
-    /// select and show it. See `scene_import.rs`.
+    /// F043: `scene.attach.start` of a render-bundle (a job), then adopt (with a resource folder),
+    /// load, select and show it. See `scene_import.rs`.
     AttachScene,
     /// F043: load or re-adopt the resources of a scene that is already attached.
     SceneResources,
@@ -259,7 +261,7 @@ const FRAME_COUNT: FieldSpec = FieldSpec {
 };
 const SCENE_AUDIO: FieldSpec = FieldSpec {
     name: "audio",
-    label: "Incluir áudio (ainda indisponível para cenas)",
+    label: "Incluir a mix de áudio declarada (no = só imagem)",
     placeholder: "yes",
     picker: Picker::None,
     options: &["yes", "no"],
@@ -386,7 +388,8 @@ pub fn build_request(kind: FlowKind, values: &[(&str, String)]) -> Result<Value,
             request
         }
         FlowKind::AttachScene => {
-            let mut request = json!({ "op": "scene.attach", "path": required("bundle")? });
+            // Read and validated by a job (BL100); the core's `scene.attach` runs when it is applied.
+            let mut request = json!({ "op": "scene.attach.start", "path": required("bundle")? });
             for name in ["id", "name"] {
                 let text = value(name);
                 if !text.is_empty() {
@@ -430,6 +433,56 @@ pub fn report_request(kind: FlowKind, values: &[(&str, String)]) -> Option<Value
 /// Shown in a dialog's report while its preflight job runs.
 pub const VERIFYING: &str = "Verificando…";
 
+/// Shown in a dialog's report while its verification waits for the renderer (BL144.19).
+pub const WAITING_FOR_RENDERER: &str = "Aguardando o renderer ficar livre…";
+
+/// How the dialog answers `renderer_busy` to its own verification (BL144.19). The host never
+/// queues: a refusal is not a promise. The dialog's *verification* is read-only and idempotent, so
+/// the dialog itself asks again, explicitly, every [`VERIFY_RETRY_EVERY`] up to
+/// [`VERIFY_RETRY_ATTEMPTS`] times (about ten seconds, the time a stopped frame or probe needs),
+/// then stops and says so, leaving the *Verificar* button to try again. The dialog's *submit* never
+/// retries by itself: a request that changes something is the person's to repeat, so an export is
+/// never started later than the click that asked for it.
+pub const VERIFY_RETRY_EVERY: Duration = Duration::from_millis(250);
+pub const VERIFY_RETRY_ATTEMPTS: u32 = 40;
+
+/// Whether `error` is the host saying "the renderer is not free now, ask again".
+pub fn is_renderer_busy(error: &CommandError) -> bool {
+    error.code == "renderer_busy"
+        && error
+            .details
+            .as_deref()
+            .is_some_and(|details| details["retryable"] == true)
+}
+
+/// What a dialog says about a refusal: the host's own message, except `renderer_busy`, which gets
+/// the plain account of who holds the renderer, whether it was told to stop, and that **nothing was
+/// queued** (the next click is a new request).
+pub fn describe_refusal(error: &CommandError) -> String {
+    if !is_renderer_busy(error) {
+        return error.message.clone();
+    }
+    let details = error.details.as_deref();
+    let holder = match details.and_then(|details| details["job_kind"].as_str()) {
+        Some("video-export") => "uma exportação",
+        Some("preflight") => "uma verificação anterior",
+        Some("thumbnail") => "o desenho das miniaturas",
+        _ => "outra tarefa",
+    };
+    let stopping = details.is_some_and(|details| details["stopping"] == true);
+    if stopping {
+        format!(
+            "O renderer está ocupado com {holder}, que foi mandado parar. Nada foi enfileirado: \
+             tente de novo em instantes."
+        )
+    } else {
+        format!(
+            "O renderer está ocupado com {holder}. Nada foi enfileirado: tente de novo quando \
+             ela terminar."
+        )
+    }
+}
+
 /// One-line account of a preflight/listing report, for the dialog and the status bar.
 pub fn describe_report(report: &Value) -> String {
     let blockers = report["blockers"].as_array().map_or(0, Vec::len);
@@ -460,9 +513,71 @@ pub fn describe_report(report: &Value) -> String {
     report.to_string().chars().take(160).collect()
 }
 
+/// How many `kept` reasons the status bar spells out before it counts the rest.
+const KEPT_REASONS_SHOWN: usize = 3;
+
+/// What the status bar says when a discard job ended. A discard that could not take everything
+/// back (an item `kept`, a root that stayed busy) is not a plain success: it says what was not
+/// completed, as an error, because that is the part a person has to act on (BL112, F5).
+///
+/// `kept` is **not** "stayed on disk" (N5): an item is there too when the file *was* removed and
+/// only the ledger could not record that afterwards (`removedFiles` and `kept` can name the same
+/// path). The text says "não foram concluídos", gives the removed files as their own count and
+/// spells out the reasons (each one carries its path and what happened), up to
+/// [`KEPT_REASONS_SHOWN`], then counts the rest.
+fn describe_discard(cleanup: &Value) -> (String, bool) {
+    let kept: Vec<&str> = cleanup["kept"]
+        .as_array()
+        .map(|items| items.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    let kept_count = cleanup["kept"].as_array().map_or(0, Vec::len);
+    let busy = cleanup["busyRoots"].as_u64().unwrap_or(0);
+    if kept_count == 0 && busy == 0 {
+        return ("Resultado descartado".to_string(), false);
+    }
+    let mut parts: Vec<String> = Vec::new();
+    if kept_count > 0 {
+        let mut part = format!("{kept_count} item(ns) não foram concluídos");
+        if !kept.is_empty() {
+            let shown = kept
+                .iter()
+                .take(KEPT_REASONS_SHOWN)
+                .copied()
+                .collect::<Vec<_>>()
+                .join("; ");
+            part.push_str(&format!(" ({shown}"));
+            if kept_count > KEPT_REASONS_SHOWN {
+                part.push_str(&format!("; e mais {}", kept_count - KEPT_REASONS_SHOWN));
+            }
+            part.push(')');
+        }
+        parts.push(part);
+    }
+    if busy > 0 {
+        parts.push(format!(
+            "{busy} pasta(s) ocupada(s) ficaram para recuperação"
+        ));
+    }
+    let mut text = format!("Resultado descartado, mas {}", parts.join("; "));
+    if let Some(removed) = cleanup["removedFiles"].as_u64().filter(|count| *count > 0) {
+        text.push_str(&format!(" · {removed} arquivo(s) removido(s)"));
+    }
+    (text, true)
+}
+
 /// What the status bar says when a background job finishes.
 pub fn describe_job_event(event: &Value) -> (String, bool) {
     let kind = event["kind"].as_str().unwrap_or("job");
+    if kind == "discard" {
+        // The files of a result nobody applied are back (or the reason they were not).
+        return match event["state"].as_str() {
+            Some("succeeded") => describe_discard(&event["result"]["cleanup"]),
+            _ => {
+                let message = event["error"]["message"].as_str().unwrap_or("falhou");
+                (format!("Descarte falhou: {message}"), true)
+            }
+        };
+    }
     let label = match kind {
         "video-export" => "Exportação",
         "package" => "Pacote",
@@ -471,6 +586,7 @@ pub fn describe_job_event(event: &Value) -> (String, bool) {
         "restore" => "Restauração",
         "proxy" => "Preparo de mídia",
         "preflight" => "Verificação",
+        "thumbnail" => "Miniaturas",
         _ => "Tarefa",
     };
     match event["state"].as_str() {
@@ -560,6 +676,50 @@ mod tests {
         );
     }
 
+    fn busy(details: Value) -> CommandError {
+        CommandError::new("renderer_busy", "The renderer belongs to someone").details(details)
+    }
+
+    #[test]
+    fn a_busy_renderer_is_retryable_only_when_the_host_says_so() {
+        assert!(is_renderer_busy(&busy(json!({"retryable": true}))));
+        assert!(!is_renderer_busy(&busy(json!({"retryable": false}))));
+        assert!(!is_renderer_busy(&CommandError::new(
+            "renderer_busy",
+            "no details"
+        )));
+        assert!(!is_renderer_busy(
+            &CommandError::new("invalid_request", "x").details(json!({"retryable": true}))
+        ));
+    }
+
+    #[test]
+    fn a_busy_refusal_says_who_holds_the_renderer_and_that_nothing_was_queued() {
+        let stopping = describe_refusal(&busy(
+            json!({"retryable": true, "queued": false, "job_kind": "preflight", "stopping": true}),
+        ));
+        assert!(stopping.contains("uma verificação anterior"), "{stopping}");
+        assert!(stopping.contains("mandado parar"), "{stopping}");
+        assert!(stopping.contains("Nada foi enfileirado"), "{stopping}");
+        let export = describe_refusal(&busy(
+            json!({"retryable": true, "queued": false, "job_kind": "video-export"}),
+        ));
+        assert!(export.contains("uma exportação"), "{export}");
+        assert!(!export.contains("mandado parar"), "{export}");
+        let thumbnails = describe_refusal(&busy(
+            json!({"retryable": true, "job_kind": "thumbnail", "stopping": true}),
+        ));
+        assert!(thumbnails.contains("miniaturas"), "{thumbnails}");
+        // Any other error keeps the host's own words.
+        assert_eq!(
+            describe_refusal(&CommandError::new(
+                "invalid_request",
+                "Expected `destination`"
+            )),
+            "Expected `destination`"
+        );
+    }
+
     #[test]
     fn every_kind_has_fields_and_a_distinct_id() {
         let mut ids: Vec<_> = FlowKind::ALL.iter().map(|kind| kind.id()).collect();
@@ -642,6 +802,83 @@ mod tests {
         );
         assert!(error && text.contains("disco cheio"));
         assert!(!describe_job_event(&json!({ "kind": "import", "state": "cancelled" })).1);
+        assert_eq!(
+            describe_job_event(&json!({ "kind": "thumbnail", "state": "cancelled" })),
+            ("Miniaturas cancelada".to_string(), false)
+        );
+        assert_eq!(
+            describe_job_event(&json!({ "kind": "discard", "state": "succeeded" })),
+            ("Resultado descartado".to_string(), false)
+        );
+        assert!(describe_job_event(&json!({ "kind": "discard", "state": "failed" })).1);
+    }
+
+    /// F5: a discard that left something behind is not announced as a plain success.
+    #[test]
+    fn a_discard_that_kept_something_says_so_and_a_clean_one_does_not() {
+        let clean = json!({ "kind": "discard", "state": "succeeded",
+            "result": { "cleanup": { "removedFiles": 2, "kept": [], "shared": ["a"], "busyRoots": 0 } } });
+        assert_eq!(
+            describe_job_event(&clean),
+            ("Resultado descartado".to_string(), false),
+            "shared files belong to someone else: not a leftover"
+        );
+        let kept = json!({ "kind": "discard", "state": "succeeded",
+            "result": { "cleanup": { "removedFiles": 0, "kept": ["`/w/a.png`: its content changed"], "busyRoots": 0 } } });
+        let (text, error) = describe_job_event(&kept);
+        assert!(error, "{text}");
+        assert!(
+            text.contains("1 item(ns)") && text.contains("a.png"),
+            "{text}"
+        );
+        let busy = json!({ "kind": "discard", "state": "succeeded",
+            "result": { "cleanup": { "kept": [], "busyRoots": 2 } } });
+        let (text, error) = describe_job_event(&busy);
+        assert!(error && text.contains("2 pasta(s)"), "{text}");
+    }
+
+    /// N5: a file that *was* removed, whose claim the ledger then could not drop, is in
+    /// `removedFiles` and in `kept` under the same path. The bar must not say it stayed on disk.
+    #[test]
+    fn a_removed_file_whose_claim_stayed_is_not_reported_as_left_on_disk() {
+        let removed_but_claim_kept = json!({ "kind": "discard", "state": "succeeded",
+            "result": { "cleanup": { "removedFiles": 1, "busyRoots": 0, "kept": [
+                "`/w/a.png`: it was handled, but the claims ledger could not record that (disk full); the claim stays for recovery"
+            ] } } });
+        let (text, error) = describe_job_event(&removed_but_claim_kept);
+        assert!(error, "{text}");
+        assert!(
+            !text.contains("permaneceram") && !text.contains("no disco"),
+            "it does not claim the file stayed on disk: {text}"
+        );
+        assert!(
+            text.contains("não foram concluídos") && text.contains("1 arquivo(s) removido(s)"),
+            "the removal is counted apart from the item that was not completed: {text}"
+        );
+        assert!(
+            text.contains("disk full"),
+            "the reason is preserved: {text}"
+        );
+    }
+
+    #[test]
+    fn every_reason_a_discard_kept_is_spelled_out_or_counted() {
+        let many = json!({ "kind": "discard", "state": "succeeded",
+            "result": { "cleanup": { "removedFiles": 0, "busyRoots": 1,
+                "kept": ["`a`: one", "`b`: two", "`c`: three", "`d`: four", "`e`: five"] } } });
+        let (text, error) = describe_job_event(&many);
+        assert!(error);
+        for reason in ["one", "two", "three"] {
+            assert!(text.contains(reason), "{reason} is shown: {text}");
+        }
+        assert!(
+            !text.contains("four") && text.contains("e mais 2"),
+            "the rest is counted, not dropped: {text}"
+        );
+        assert!(
+            text.contains("5 item(ns)") && text.contains("1 pasta(s)"),
+            "{text}"
+        );
     }
 
     #[test]

@@ -7,26 +7,34 @@
 //! transaction on the caller's thread (`wait: true`, the default, does both in one call;
 //! `wait: false` returns a job ID and `job.commit` applies it when the job succeeded).
 //!
-//! Operations: `media.import|relink|search|status|prepare|thumbnail|waveform|proxy`,
+//! Operations: `media.import|relink|search|status|prepare|thumbnail|thumbnails|waveform|proxy`,
 //! `project.package_preflight|package|verify|restore|import|import_scenes`,
-//! `scene.resources.status|preflight|resolve|adopt|release|invalidate` (F040),
+//! `scene.attach.start` (F043: read/validate a bundle on a job, attach it as one undo step),
+//! `scene.resources.status|preflight|resolve|adopt|release|invalidate|claims|recover` (F040),
 //! `export.preflight|start`, `scene.export[.preflight]` (F042: a directed scene as video, same jobs),
-//! `job.list|get|wait|cancel|commit`. Presets (`preset.*`) belong to the core.
+//! `job.list|get|wait|cancel|commit|discard`. Presets (`preset.*`) belong to the core.
+//!
+//! A finished result nobody applied is discarded with `job.discard {job}` (BL094): a `discard` job
+//! takes back the files the result owns, off the caller's thread, and the result keeps owning them
+//! (and `prune` keeps its record) until that job ends. An active, applied or already discarded job is
+//! refused with a typed error (`job_running`, `job_applied`, `job_discarding`, `job_discarded`,
+//! `job_nothing_to_discard`). A window never hashes or deletes on its own thread: a stale result found
+//! by [`MediaHost::poll`] and a host dropped with results pending are discarded by such jobs.
 //!
 //! Anything that reads files, runs a tool or builds a renderer (probe, decode, verify, restore,
 //! preflight) is a job; the caller's thread only snapshots the project and later applies the
 //! result. A result is applied only if the project it was computed for is still the open one
-//! (same ID, same revision for whole-project swaps, same content hash per asset for decoded
+//! (same ID, editing session and revision for whole-project swaps and scene attach, same content hash per asset for decoded
 //! media), so a slow job can never overwrite what the user did meanwhile.
 //!
 //! Media is prepared automatically: export and the render CLIs decode what they need, and an
 //! interactive host schedules a "Prepare media" job (`MediaHost::poll`) for every asset that lacks
 //! decoded frames/audio, so nobody has to know the `media.prepare` command.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::sync::{Arc, Mutex, Weak};
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 use tessel_editor_core::assets::{
@@ -36,14 +44,17 @@ use tessel_editor_core::directed_scene::DirectedScene;
 use tessel_editor_core::headless::{Extension, open_summary};
 use tessel_editor_core::interchange::apply_import;
 use tessel_editor_core::jobs::{
-    JobContext, JobError, JobId, JobInfo, JobKind, JobRegistry, JobState,
+    JobContext, JobError, JobId, JobInfo, JobKind, JobRegistry, JobState, ResultState,
 };
 use tessel_editor_core::preset::{self, Preset};
 use tessel_editor_core::preview::{PreviewPolicy, Reason};
+use tessel_editor_core::renderer_claims::{self, Claimant, Holder, Refusal, Verdict};
 use tessel_editor_core::scene_export::{SceneExportSnapshot, SceneExportSpec};
+use tessel_editor_core::scene_project::{AdmittedScene, SceneCommand, SceneSource};
 use tessel_editor_core::scene_resources::ResourceManifest;
 use tessel_editor_core::session::Renderer;
-use tessel_editor_core::state::Command;
+use tessel_editor_core::state::{Command, ProjectStamp};
+use tessel_editor_core::thumbnails::Stamp as ThumbStamp;
 use tessel_editor_core::{CommandError, EditorState};
 
 use crate::derive::Cache;
@@ -58,6 +69,7 @@ use crate::scene_resources::{
     AdoptionTarget, Invalidation, LoadRequest, PendingAdoption, ResolvedResourceMap, ResourceBase,
     SceneResourceSession,
 };
+use crate::thumbnails::{self as thumbs, Made};
 use crate::tools::Tools;
 
 /// Builds the renderer one export drives. It runs on the export's own thread, so a session that
@@ -93,19 +105,118 @@ enum Pending {
     },
     /// Scenes whose files are already in the workspace, attached as one undo step.
     SceneImport(Box<PreparedSceneImport>),
+    /// A bundle read, imported and admitted off the caller's thread (BL100), attached as one undo
+    /// step only while the open project is still the exact `stamp` it was started for: same ID,
+    /// same editing session (BL113a: reopening a document is a new session even with the same ID
+    /// and revision 0) and same revision. It owns no files.
+    SceneAttach {
+        stamp: ProjectStamp,
+        id: Option<String>,
+        name: Option<String>,
+        scene: AdmittedScene,
+        /// What loading its resources will need, computed with the scene on the job thread.
+        resources: Value,
+    },
     /// Files an adoption copied, kept only while the project, its workspace and the scene's
     /// bundle are still the ones the job was started for; otherwise removed (BL089). Changes no
     /// project data. Dropped unapplied (host gone, job never committed) it removes them too,
     /// except what another pending or accepted result relies on (BL096).
     SceneAdopt(Box<PendingAdoption>),
     /// A restored project, already loaded and validated off the caller's thread, that replaces the
-    /// open project only if that one is still at `(project, revision)`.
+    /// open project only if that one is still the exact `stamp` the restore was started for (same
+    /// guard as [`Pending::SceneAttach`]).
     Open {
-        project: String,
-        revision: u64,
+        stamp: ProjectStamp,
         candidate: Box<EditorState>,
         summary: Value,
     },
+    /// Thumbnails of splats and scenes drawn for the project (and editing session) `stamp`
+    /// names; each applies only while its asset still has the identity it was drawn from.
+    Thumbnails {
+        stamp: ThumbStamp,
+        made: Vec<Made>,
+    },
+}
+
+impl Pending {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Import { .. } => "import",
+            Self::Relink(_) => "relink",
+            Self::ProjectImport(_) => "project-import",
+            Self::Decoded { .. } => "decoded-media",
+            Self::Proxies { .. } => "preview-proxies",
+            Self::SceneResources { .. } => "scene-resources",
+            Self::SceneImport(_) => "scene-import",
+            Self::SceneAttach { .. } => "scene-attach",
+            Self::SceneAdopt(_) => "scene-adopt",
+            Self::Open { .. } => "restored-project",
+            Self::Thumbnails { .. } => "thumbnails",
+        }
+    }
+
+    /// Whether dropping this result removes files from disk (hashing each first): the work that
+    /// must never run on a window's thread.
+    fn owns_files(&self) -> bool {
+        matches!(self, Self::SceneImport(_) | Self::SceneAdopt(_))
+    }
+
+    /// Gives the result up. A result that owns files takes back exactly those (BL089, BL096,
+    /// BL097) and says what it kept; the others only hold memory. The result keeps its claims in
+    /// the ledger until this has finished, so another process sees a live holder (BL111). Blocks
+    /// for as long as the hashing takes, so it runs on a discard job.
+    fn discard(self) -> Value {
+        let kind = self.label();
+        let cleanup = match self {
+            Self::SceneImport(prepared) => Some(prepared.discard().to_json()),
+            Self::SceneAdopt(pending) => Some(pending.discard().to_json()),
+            other => {
+                drop(other);
+                None
+            }
+        };
+        json!({ "discarded": kind, "cleanup": cleanup })
+    }
+}
+
+/// Marks the result of `original` as discarded when the discard job ends, however it ends (a panic
+/// while removing included): by then the result has dropped everything it owned.
+struct DiscardGuard {
+    registry: JobRegistry,
+    original: JobId,
+}
+
+impl Drop for DiscardGuard {
+    fn drop(&mut self) {
+        self.registry.finish_discard(&self.original);
+    }
+}
+
+/// Starts the job that removes `pending` for `original`, which must already be `discarding`.
+/// The result moves into the job: it keeps owning its files until the job has taken them back.
+fn spawn_discard(registry: &JobRegistry, original: &str, pending: Option<Pending>) -> JobId {
+    let guard = DiscardGuard {
+        registry: registry.clone(),
+        original: original.to_string(),
+    };
+    let original = original.to_string();
+    registry.spawn(
+        JobKind::Discard,
+        &format!("Discard the result of {original}"),
+        move |ctx| {
+            let guard = guard;
+            ctx.stage("cleanup", 1);
+            let mut report = pending.map_or_else(
+                || json!({ "discarded": null, "cleanup": null }),
+                Pending::discard,
+            );
+            ctx.advance(1);
+            report["action"] = json!("job.discard");
+            report["discards"] = json!(original);
+            drop(guard);
+            Ok(report)
+        },
+    )
 }
 
 /// FFmpeg discovery runs a subprocess, so it happens on a job thread the first time and is shared.
@@ -156,12 +267,52 @@ pub struct MediaHost {
     auto_assets: HashMap<JobId, AutoAssets>,
     /// The automatic "Build preview proxy" job in flight, if any.
     auto_proxy: Option<JobId>,
+    /// The thumbnail job in flight and the project it draws for (BL144). One at a time: it owns
+    /// a renderer. A job whose project is no longer the open one is cancelled by `poll`.
+    thumb_job: Option<(JobId, ThumbStamp)>,
+    /// The project whose automatic thumbnail job the user cancelled: it is not started again by
+    /// the tick (that would undo the cancel in a loop); `media.thumbnails` asks for it explicitly,
+    /// and another project or another opening of it starts fresh.
+    thumb_paused: Option<ThumbStamp>,
+    /// Thumbnail jobs the host itself asked to stop so that an export could have the renderer
+    /// (BL144.10), with the number of cancel requests the job had once the host had stopped it.
+    /// Their end is *not* the user's cancel: it must not pause the automatic drawing. A later
+    /// request that raises the job's `cancel_requests` above that number is a person asking, by
+    /// any door (`job.cancel`, the jobs dialog, a direct registry call), and the user's decision
+    /// wins.
+    thumb_yielded: HashMap<JobId, u32>,
+    /// While set, in the future and for the project that is open, the renderer is reserved for an
+    /// export that was refused behind a thumbnail job or a probe: nothing nobody asked for starts,
+    /// and explicit thumbnails are refused. It is cleared when an export is granted, it expires,
+    /// and another project (or another opening of this one) never inherits it (see
+    /// `renderer_claims`).
+    export_reserved: Option<(Instant, ThumbStamp)>,
+    export_priority: Duration,
+    /// The `export.preflight` jobs that probe the renderer's limits (they build one). The registry
+    /// kind `preflight` is shared with checks that use none, so the host names these. Each carries
+    /// a [`ProbeClaim`] witness: the job is over when its body returns, but the renderer it asked
+    /// for lives on a side thread until that thread drops it (BL144.18), and the probe owns the
+    /// renderer until then.
+    renderer_preflights: Vec<(JobId, Weak<()>)>,
     /// `(asset, hash, height, format)` whose proxy failed: not retried until one of them changes.
     proxy_failed: Vec<ProxyKey>,
     proxy_assets: HashMap<JobId, Vec<ProxyKey>>,
     /// Approved scene resources of the open project (BL010). Shared with jobs and, through
     /// [`MediaHost::scene_resources`], with a renderer.
     scene_resources: SceneResourceSession,
+    /// Discard jobs [`MediaHost::poll`] already told the window about.
+    reported_discards: HashSet<JobId>,
+    /// `(original, discard job)` for a result discarded **before** [`MediaHost::poll`] had
+    /// reported its job. The slot of such a job leaves `pending` with the discard, so the tick
+    /// would never say how it ended: whoever waits for that job (a chain of jobs, a dialog's
+    /// report) would wait forever. `poll` reports each once, as a failure `job_discarded`.
+    discarded_unreported: Vec<(JobId, JobId)>,
+    /// The event of a job whose result `job.commit` applied (or refused) **before**
+    /// [`MediaHost::poll`] had seen the job finish (BL094.10). `job.commit` takes the slot out of
+    /// `pending`, so the tick would never report the job: a chain or a dialog waiting for it would
+    /// wait forever, exactly like a discard before the tick. Interactive hosts only (a host without
+    /// a window has no tick); `poll` delivers each once, shaped like its own events.
+    committed_unreported: Vec<Value>,
 }
 
 type ProxyKey = (String, Option<String>, u32, ProxyFormat);
@@ -245,6 +396,12 @@ impl MediaHost {
             registry: JobRegistry::new(2),
             renderer: None,
             scene_renderer: None,
+            thumb_job: None,
+            thumb_paused: None,
+            thumb_yielded: HashMap::new(),
+            export_reserved: None,
+            export_priority: Duration::from_secs(renderer_claims::EXPORT_PRIORITY_SECONDS),
+            renderer_preflights: Vec::new(),
             pending: HashMap::new(),
             interactive: false,
             auto_prepare: None,
@@ -254,6 +411,9 @@ impl MediaHost {
             proxy_failed: Vec::new(),
             proxy_assets: HashMap::new(),
             scene_resources: SceneResourceSession::default(),
+            reported_discards: HashSet::new(),
+            discarded_unreported: Vec::new(),
+            committed_unreported: Vec::new(),
         }
     }
 
@@ -282,6 +442,14 @@ impl MediaHost {
         self
     }
 
+    /// How long a refused export keeps the renderer free of new thumbnail work (default
+    /// [`renderer_claims::EXPORT_PRIORITY_SECONDS`]). A seam for tests; `Duration::ZERO` turns the
+    /// reservation off (the retry then has to win against the window's tick on its own).
+    pub fn with_export_priority(mut self, hold: Duration) -> Self {
+        self.export_priority = hold;
+        self
+    }
+
     /// Uses these tools instead of discovering them: an explicit configuration, and the seam
     /// the tests use to run the host against deliberately slow or failing tool wrappers.
     pub fn with_tools(self, tools: Tools) -> Self {
@@ -305,6 +473,7 @@ impl MediaHost {
     /// or was cancelled changed nothing and is reported once. Call it from the UI thread's tick.
     pub fn poll(&mut self, state: &mut EditorState) -> Vec<Value> {
         self.scene_resources.observe_project(&state.project.id);
+        self.cancel_stale_thumbnails(state);
         let finished: Vec<JobId> = self
             .pending
             .keys()
@@ -327,11 +496,13 @@ impl MediaHost {
             if self.auto_proxy.as_deref() == Some(id.as_str()) {
                 self.auto_proxy = None;
             }
+            self.release_thumbnail_job(state, &id, info.state == JobState::Cancelled);
             let proxied = self.proxy_assets.remove(&id);
             let automatic = self.auto_assets.remove(&id);
             let outcome = Self::outcome(&info).and_then(|result| {
                 let applied = apply(
                     &self.registry.clone(),
+                    &id,
                     slot.as_ref().and_then(take),
                     state,
                     false,
@@ -360,8 +531,327 @@ impl MediaHost {
                 }
             });
         }
+        events.extend(self.discarded_before_report());
+        events.extend(std::mem::take(&mut self.committed_unreported));
+        events.extend(self.finished_discards());
         self.schedule_prepare(state);
         self.schedule_proxies(state);
+        self.schedule_thumbnails(state);
+        events
+    }
+
+    /// Frees the thumbnail slot if `id` was its job: the job is over, and so is its claim on the one
+    /// renderer. A job the user cancelled, for the project that is open, leaves that project's
+    /// automatic drawing paused. `poll` calls it when it sees the job finish; `job.commit` and
+    /// `job.discard` call it too, because a result taken by a request is never seen by `poll`.
+    ///
+    /// A job the host stopped on behalf of an export (`thumb_yielded`) is not the user's cancel:
+    /// the drawing stays unpaused and starts again once the renderer is free.
+    fn release_thumbnail_job(&mut self, state: &EditorState, id: &str, cancelled: bool) {
+        // Stopped by the host and by nobody else since: not the user's cancel.
+        let host_stop = self.thumb_yielded.remove(id).is_some_and(|at| {
+            self.registry
+                .get(id)
+                .is_none_or(|info| info.cancel_requests <= at)
+        });
+        if let Some((_, stamp)) = self.thumb_job.take_if(|(job, _)| job == id)
+            && cancelled
+            && !host_stop
+            && stamp.is_current(state)
+        {
+            self.thumb_paused = Some(stamp);
+        }
+    }
+
+    /// Cancels the thumbnail job of a project that is no longer the open one (another project,
+    /// or the same document opened again). The job notices between targets and applies nothing;
+    /// even a result that slips through is refused by its stamp.
+    fn cancel_stale_thumbnails(&mut self, state: &EditorState) {
+        if let Some((job, stamp)) = &self.thumb_job
+            && !stamp.is_current(state)
+        {
+            let _ = self.registry.cancel(job);
+        }
+    }
+
+    /// The jobs that own a renderer right now, read from the registry (the one source of truth: a
+    /// job registered is a renderer that is, or is about to be, built, and a job that was asked
+    /// to stop still owns it until its body returns). `renderer_claims` is the rule.
+    fn renderer_holders(&self) -> Vec<Holder> {
+        let mut holders: Vec<Holder> = self
+            .registry
+            .matching(|info| !info.state.is_final() && renderer_claims::uses_renderer(info.kind))
+            .iter()
+            .filter_map(Holder::of)
+            .collect();
+        // The kind `preflight` also covers jobs without a renderer, so the host names the ones
+        // that probe it.
+        // A probe owns the renderer while its job is not over *or* while its side thread still
+        // holds the renderer it built: cancelling the job does not free the renderer.
+        holders.extend(
+            self.renderer_preflights
+                .iter()
+                .filter(|(job, claim)| {
+                    claim.strong_count() > 0
+                        || self
+                            .registry
+                            .get(job)
+                            .is_some_and(|info| !info.state.is_final())
+                })
+                .map(|(job, _)| Holder {
+                    job: job.clone(),
+                    kind: JobKind::Preflight,
+                }),
+        );
+        holders
+    }
+
+    /// Whether the renderer is reserved for an export that was refused behind a thumbnail job or a
+    /// probe, for the project that is open now.
+    fn export_reserved(&self, state: &EditorState) -> bool {
+        self.export_reserved
+            .as_ref()
+            .is_some_and(|(until, stamp)| Instant::now() < *until && stamp.is_current(state))
+    }
+
+    /// The policy's answer for `claimant` now.
+    fn verdict(&self, state: &EditorState, claimant: Claimant) -> Verdict {
+        renderer_claims::decide(
+            claimant,
+            &self.renderer_holders(),
+            self.export_reserved(state),
+        )
+    }
+
+    /// Carries out a refusal: asks the thumbnail job in the way to stop (export priority), reserves
+    /// the renderer for the export, and returns the retryable error. Nothing is queued: the caller
+    /// asks again.
+    fn refuse(&mut self, state: &EditorState, refusal: &Refusal) -> CommandError {
+        for job in &refusal.preempt {
+            let Some(info) = self.registry.get(job) else {
+                continue;
+            };
+            // Somebody already asked it to stop (the user, the host for this export or for
+            // another project): ask no second time, so that a later request is never mistaken
+            // for this one. Only a job nobody has stopped yet is marked as stopped for the export.
+            if info.cancel_requests > 0 || info.state.is_final() {
+                continue;
+            }
+            if info.kind == JobKind::Thumbnail {
+                self.thumb_yielded
+                    .insert(job.clone(), info.cancel_requests + 1);
+            }
+            let _ = self.registry.cancel(job);
+        }
+        if refusal.reserve {
+            self.export_reserved = Some((
+                Instant::now() + self.export_priority,
+                state.thumbnail_stamp(),
+            ));
+        }
+        refusal.error()
+    }
+
+    /// Admission of an export-class job (`export.start`, `scene.export`, the preflight that probes
+    /// the renderer). Called right before the job is registered, after every refusal that needs no
+    /// renderer, so a request that would fail anyway never stops a thumbnail job.
+    fn admit_export(
+        &mut self,
+        state: &EditorState,
+        claimant: Claimant,
+    ) -> Result<(), CommandError> {
+        let registry = self.registry.clone();
+        self.renderer_preflights.retain(|(job, claim)| {
+            claim.strong_count() > 0 || registry.get(job).is_some_and(|info| !info.state.is_final())
+        });
+        match self.verdict(state, claimant) {
+            Verdict::Grant => {
+                // The reservation did its job: the retry arrived and owns the renderer from now
+                // on (an export, or the probe its dialog asked for). Nothing waits any more.
+                self.export_reserved = None;
+                Ok(())
+            }
+            Verdict::Refuse(refusal) => Err(self.refuse(state, &refusal)),
+        }
+    }
+
+    /// Starts the one thumbnail job the open project needs (splats and scenes with no picture
+    /// yet), after the media is prepared: the renderer is the heavy part and runs alone. Each
+    /// tick this costs the identities of the splats and scenes (model lookups, no clone); the
+    /// project is copied only when a job starts, and then only the assets it draws.
+    fn schedule_thumbnails(&mut self, state: &EditorState) {
+        if !self.interactive
+            || self.thumb_job.is_some()
+            || self.auto_prepare.is_some()
+            || self.auto_proxy.is_some()
+            || state.project.workspace.is_none()
+            || self
+                .thumb_paused
+                .as_ref()
+                .is_some_and(|stamp| stamp.is_current(state))
+            || !matches!(
+                self.verdict(state, Claimant::AutomaticThumbnails),
+                Verdict::Grant
+            )
+        {
+            return;
+        }
+        let targets = state.thumbnail_targets(false);
+        if targets.is_empty() {
+            return;
+        }
+        let _ = self.thumbnail_job(state, targets, "Draw library thumbnails");
+    }
+
+    /// The job behind every thumbnail run, explicit or automatic.
+    fn thumbnail_job(
+        &mut self,
+        state: &EditorState,
+        targets: Vec<tessel_editor_core::thumbnails::Target>,
+        label: &str,
+    ) -> Result<(JobId, Slot), CommandError> {
+        let workspace = workspace(state)?;
+        let stamp = state.thumbnail_stamp();
+        let job_stamp = stamp.clone();
+        let snapshot = state.thumbnail_snapshot(&targets)?;
+        let factory = self.renderer.clone();
+        let (id, slot) = self.start(JobKind::Thumbnail, label, move |ctx| {
+            let cache = Cache::new(&workspace);
+            let made = thumbs::make(&snapshot, &targets, &cache, factory, ctx)?;
+            let ready = made
+                .iter()
+                .filter(|made| matches!(made, Made::Ready(..)))
+                .count();
+            let report = json!({ "action": "media.thumbnails",
+                "assets": made.iter().map(Made::asset).collect::<Vec<_>>(),
+                "ready": ready, "failed": made.len() - ready });
+            Ok((
+                Some(Pending::Thumbnails {
+                    stamp: job_stamp,
+                    made,
+                }),
+                report,
+            ))
+        });
+        if self.interactive {
+            self.thumb_job = Some((id.clone(), stamp));
+        }
+        Ok((id, slot))
+    }
+
+    /// `media.thumbnails {assets?, retry?}`: draws the thumbnails of splats and scenes that have
+    /// none (`assets` limits it, `retry` asks again for the ones that failed). A window answers
+    /// with the job and `poll` applies it; a CLI waits and applies it before answering.
+    fn thumbnails(
+        &mut self,
+        state: &mut EditorState,
+        request: &Value,
+    ) -> Result<Value, CommandError> {
+        let wanted = strings(request, "assets")?;
+        if let Some(wanted) = &wanted {
+            for id in wanted {
+                if state.library.item(id).is_none() {
+                    return Err(CommandError::unknown_element("asset", id));
+                }
+            }
+        }
+        // The one policy for the renderer (`renderer_claims`): an export (or its preflight) in
+        // flight, or reserved, refuses this request; it is not queued and the caller asks again.
+        // A thumbnail job in flight is arbitrated here, below, by its stamp (reuse, or wait for the
+        // job of another project): that part needs the host's own state, not the registry's.
+        match self.verdict(state, Claimant::ExplicitThumbnails) {
+            Verdict::Grant => {}
+            Verdict::Refuse(refusal) if !refusal.same_family || self.thumb_job.is_none() => {
+                return Err(self.refuse(state, &refusal));
+            }
+            Verdict::Refuse(_) => {}
+        }
+        if let Some((job, stamp)) = &self.thumb_job {
+            if stamp.is_current(state) {
+                if wanted.is_some()
+                    || flag(request, "retry", false)
+                    || self
+                        .registry
+                        .get(job)
+                        .is_some_and(|info| info.cancel_requested)
+                {
+                    return Err(CommandError::new(
+                        "thumbnail_busy",
+                        "A thumbnail job is still ending or drawing; retry this request after it finishes",
+                    )
+                    .details(json!({ "retryable": true, "job": job })));
+                }
+                return Ok(json!({ "job": job, "state": "running", "reused": true }));
+            }
+            // The job in flight belongs to another project (or another opening of this one): it
+            // is not an answer for this one, and two renderers are not started. It is told to
+            // stop; it ends at the next frame boundary, within `FRAME_TIMEOUT` of the renderer
+            // answering, and the tick then starts this project's own job.
+            let _ = self.registry.cancel(job);
+            self.thumb_paused = None;
+            return Ok(json!({ "action": "media.thumbnails", "state": "waiting",
+                "reused": false, "waiting_for": job, "assets": [],
+                "reason": "the thumbnail job of another project is still ending; one renderer at a time",
+                "deadline_seconds": thumbs::FRAME_TIMEOUT.as_secs() }));
+        }
+        self.thumb_paused = None;
+        let targets: Vec<_> = state
+            .thumbnail_targets(flag(request, "retry", false))
+            .into_iter()
+            .filter(|target| {
+                wanted
+                    .as_ref()
+                    .is_none_or(|ids| ids.contains(&target.asset))
+            })
+            .collect();
+        if targets.is_empty() {
+            return Ok(json!({ "action": "media.thumbnails", "assets": [],
+                "reason": "no splat or scene needs a thumbnail" }));
+        }
+        let (id, slot) = self.thumbnail_job(state, targets, "Draw library thumbnails")?;
+        self.finish(state, request, id, slot)
+    }
+
+    /// One `failed` event (`job_discarded`) for every job whose result was discarded before the
+    /// tick reported the job itself, so a chain or a dialog waiting for that job learns it ended.
+    /// The discard job has its own event, reported when it ends.
+    fn discarded_before_report(&mut self) -> Vec<Value> {
+        std::mem::take(&mut self.discarded_unreported)
+            .into_iter()
+            .filter_map(|(original, discard)| {
+                let info = self.registry.get(&original)?;
+                let error = CommandError::new(
+                    "job_discarded",
+                    format!(
+                        "The result of job `{original}` was discarded before it was applied; nothing was changed"
+                    ),
+                )
+                .details(json!({ "discard_job": discard }));
+                Some(json!({ "job": original, "state": "failed", "kind": info.kind.label(),
+                    "error": error.to_json()["error"] }))
+            })
+            .collect()
+    }
+
+    /// One event for every discard job that ended since the last call, so a window learns that the
+    /// files of a discarded result are back without watching the job list.
+    fn finished_discards(&mut self) -> Vec<Value> {
+        let mut events = Vec::new();
+        // Only the discard jobs not reported yet are cloned: this runs on every tick of the
+        // window, and a finished job carries its whole result.
+        let reported = &self.reported_discards;
+        let ended = self.registry.matching(|info| {
+            info.kind == JobKind::Discard && info.state.is_final() && !reported.contains(&info.id)
+        });
+        for info in ended {
+            self.reported_discards.insert(info.id.clone());
+            let mut event = json!({ "job": info.id, "state": info.state.label(), "kind": "discard",
+                "result": info.result });
+            if let Some(error) = &info.error {
+                event["error"] = error.to_json();
+            }
+            events.push(event);
+        }
         events
     }
 
@@ -507,6 +997,7 @@ impl MediaHost {
         self.auto_prepare = Some(id);
     }
 
+    /// Shares the job registry used by JSONL and window adapters; it does not apply pending results.
     pub fn registry(&self) -> &JobRegistry {
         &self.registry
     }
@@ -523,6 +1014,10 @@ impl MediaHost {
         let target = slot.clone();
         let id = self.registry.spawn(kind, label, move |ctx| {
             let (pending, report) = body(ctx)?;
+            if pending.is_some() {
+                // Not prunable, and discardable, until it is applied or discarded (BL094).
+                ctx.hold_result();
+            }
             *target
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner()) = pending;
@@ -532,6 +1027,7 @@ impl MediaHost {
         (id, slot)
     }
 
+    /// Waits for terminal job state within a deadline and refuses jobs that disappear.
     fn wait_final(&self, id: &str, timeout: Duration) -> Result<JobInfo, CommandError> {
         let deadline = std::time::Instant::now() + timeout;
         loop {
@@ -566,14 +1062,19 @@ impl MediaHost {
         let info = self.wait_final(&id, Duration::from_secs(60 * 60 * 24))?;
         self.pending.remove(&id);
         let result = Self::outcome(&info)?;
-        let applied = apply(&self.registry.clone(), take(&slot), state, true)?;
+        let applied = apply(&self.registry.clone(), &id, take(&slot), state, true)?;
         Ok(merge_applied(result, &id, applied))
     }
 
+    /// Maps terminal results to command replies, preserving stored errors and partial cancellation details.
     fn outcome(info: &JobInfo) -> Result<Value, CommandError> {
         match info.state {
             JobState::Succeeded => Ok(info.result.clone().unwrap_or(Value::Null)),
-            JobState::Cancelled => Err(JobError::cancelled().into()),
+            JobState::Cancelled => Err(info
+                .error
+                .clone()
+                .unwrap_or_else(JobError::cancelled)
+                .into()),
             _ => Err(info.error.clone().map_or_else(
                 || CommandError::new("job_failed", "The job failed"),
                 CommandError::from,
@@ -594,6 +1095,7 @@ impl MediaHost {
             "media.search" => self.search(state, request),
             "media.prepare" => self.prepare(state, request),
             "media.preview_proxy" => self.preview_proxy(state, request),
+            "media.thumbnails" => self.thumbnails(state, request),
             "media.thumbnail" | "media.waveform" | "media.proxy" => self.derive(state, op, request),
             "project.package_preflight" => self.package_preflight(state, request),
             "project.package" => self.package(state, request),
@@ -601,12 +1103,15 @@ impl MediaHost {
             "project.restore" => self.restore(state, request),
             "project.import" => self.project_import(state, request),
             "project.import_scenes" => self.import_scenes(state, request),
+            "scene.attach.start" => self.scene_attach(state, request),
             "scene.resources.status" => Ok(self.scene_resources_status(state)),
             "scene.resources.preflight" => self.scene_preflight(state, request),
             "scene.resources.resolve" => self.scene_resolve(state, request),
             "scene.resources.adopt" => self.scene_adopt(state, request),
             "scene.resources.release" => self.scene_release(request),
             "scene.resources.invalidate" => self.scene_invalidate(request),
+            "scene.resources.claims" => self.scene_claims(state, request),
+            "scene.resources.recover" => self.scene_recover(state, request),
             "export.preflight" => self.export_preflight(state, request),
             "export.start" => self.export_start(state, request),
             "scene.export" => self.scene_export(state, request),
@@ -615,10 +1120,14 @@ impl MediaHost {
             "job.get" => self.job_get(request),
             "job.wait" => self.job_wait(request),
             "job.cancel" => {
+                // The user's cancel wins over a stop the host asked for: the job's end pauses the
+                // automatic drawing, as for any cancel of the user (BL144.10). The registry counts
+                // the request, so the same holds for a cancel that does not come through here.
                 let info = self.registry.cancel(text(request, "job")?)?;
                 Ok(json!({ "action": "job.cancel", "info": info.to_json() }))
             }
             "job.commit" => self.job_commit(state, request),
+            "job.discard" => self.job_discard(state, request),
             _ => Err(invalid(format!("Unknown media operation `{op}`"))),
         }
     }
@@ -637,12 +1146,14 @@ impl MediaHost {
                 .ok_or_else(|| invalid("`mode` is `copy` or `reference`"))?,
         };
         let folder = optional_text(request, "folder")?.map(str::to_string);
+        let capture = tessel_editor_core::ops::capture_choice(request)?;
         let prepare = flag(request, "prepare", true);
         let known = import::known_hashes(state);
         let import_request = ImportRequest {
             paths,
             mode,
             folder: folder.clone(),
+            capture,
         };
         let (id, slot) = self.start(JobKind::Import, "Import media", move |ctx| {
             let tools = tools.get()?;
@@ -811,7 +1322,7 @@ impl MediaHost {
         let info = self.wait_final(&id, Duration::from_secs(60 * 60 * 24))?;
         self.pending.remove(&id);
         Self::outcome(&info)?;
-        apply(&self.registry.clone(), take(&slot), state, true)?;
+        apply(&self.registry.clone(), &id, take(&slot), state, true)?;
         Ok(())
     }
 
@@ -875,7 +1386,7 @@ impl MediaHost {
         let package = PathBuf::from(text(request, "path")?);
         let folder = PathBuf::from(text(request, "folder")?);
         let open = flag(request, "open", true);
-        let (project, revision) = (state.project.id.clone(), state.project.revision);
+        let stamp = state.project.stamp();
         let (id, slot) = self.start(JobKind::Restore, "Restore package", move |ctx| {
             let report = package::restore(&package, &folder, ctx)?;
             if !open {
@@ -887,8 +1398,7 @@ impl MediaHost {
             let summary = open_summary(&candidate, &document);
             Ok((
                 Some(Pending::Open {
-                    project,
-                    revision,
+                    stamp,
                     candidate: Box::new(candidate),
                     summary,
                 }),
@@ -949,6 +1459,69 @@ impl MediaHost {
         Ok(ResourceBase::managed(&workspace(state)?, id)?)
     }
 
+    /// [`Self::scene_base`], except that a scene whose manifest names no files needs no folder
+    /// and so no workspace either (BL101): it loads against [`ResourceBase::unbound`]. Anything
+    /// else keeps the error that says why there is no base.
+    fn scene_base_for(
+        state: &EditorState,
+        request: &Value,
+        id: &str,
+        scene: &DirectedScene,
+    ) -> Result<ResourceBase, CommandError> {
+        match Self::scene_base(state, request, id) {
+            Err(error)
+                if error.code == "no_workspace" && !crate::scene_resources::needs_files(scene) =>
+            {
+                Ok(ResourceBase::unbound())
+            }
+            outcome => outcome,
+        }
+    }
+
+    /// `scene.attach.start {path | bundle | text, id?, name?, wait?}`: `scene.attach` with the
+    /// slow part on a job (BL100). Reading, parsing, importing and the structural and temporal
+    /// gates run off the caller's thread (cancellable, `bundle_unreadable`/`invalid_bundle`/...
+    /// as the job's typed error); the scene is attached as one undo step by `poll`, `job.commit`
+    /// or, for a host that may block, at once. The attach itself is still `scene.attach`'s core
+    /// command, so the ID, room and byte-budget rules are not repeated here.
+    ///
+    /// The result applies only while the open project is exactly the one it was started for (ID,
+    /// editing session and revision); otherwise it fails `stale_result` and nothing is attached. The answer carries
+    /// `resources`: how many files the scene needs and whether it can load without a folder.
+    fn scene_attach(
+        &mut self,
+        state: &mut EditorState,
+        request: &Value,
+    ) -> Result<Value, CommandError> {
+        let source = tessel_editor_core::ops::scene_source(request)?;
+        let id = optional_text(request, "id")?.map(str::to_string);
+        let name = optional_text(request, "name")?.map(str::to_string);
+        // Refused here, before any file is read, exactly as `scene.attach` would.
+        state.scenes.check_attach(id.as_deref(), name.as_deref())?;
+        let stamp = state.project.stamp();
+        let (job, slot) = self.start(JobKind::Import, "Attach scene", move |ctx| {
+            ctx.stage("read", 1);
+            let scene = AdmittedScene::prepare(source, ctx.token())?;
+            ctx.advance(1);
+            let resources = scene_resources_needed(scene.scene());
+            let report = json!({ "action": "scene.attach.start",
+                "bundle_id": scene.scene().bundle().bundle_id,
+                "revision_id": scene.scene().bundle().revision_id,
+                "resources": resources });
+            Ok((
+                Some(Pending::SceneAttach {
+                    stamp,
+                    id,
+                    name,
+                    scene,
+                    resources,
+                }),
+                report,
+            ))
+        });
+        self.finish(state, request, job, slot)
+    }
+
     /// `scene.resources.status`: what the session holds and, per attached scene, whether that is
     /// still current for the scene's bundle and where its managed base is.
     fn scene_resources_status(&self, state: &EditorState) -> Value {
@@ -988,7 +1561,7 @@ impl MediaHost {
         request: &Value,
     ) -> Result<Value, CommandError> {
         let (id, scene) = Self::scene_of(state, request)?;
-        let base = Self::scene_base(state, request, &id)?;
+        let base = Self::scene_base_for(state, request, &id, &scene)?;
         let (id_job, slot) = self.start(
             JobKind::Preflight,
             "Scene resources preflight",
@@ -1019,7 +1592,7 @@ impl MediaHost {
         request: &Value,
     ) -> Result<Value, CommandError> {
         let (id, scene) = Self::scene_of(state, request)?;
-        let base = Self::scene_base(state, request, &id)?;
+        let base = Self::scene_base_for(state, request, &id, &scene)?;
         let project = state.project.id.clone();
         let generation = self.scene_resources.observe_project(&project);
         let session = self.scene_resources.clone();
@@ -1101,6 +1674,67 @@ impl MediaHost {
             json!({ "action": "scene.resources.invalidate", "reason": reason.as_str(),
             "generation": generation.0 }),
         )
+    }
+
+    /// `scene.resources.claims`: who holds what in the claims ledger of the project's workspace
+    /// (BL111). A job like every operation that touches files, but **not read-only**: opening the
+    /// ledger reaps the owners whose lease is gone, and the answer says so (`readOnly: false`,
+    /// `effects`, `reaped`). It removes no resource file and hashes nothing. Changes no project
+    /// data. A ledger that cannot be read is an answer (`available: false`, `fault`), not a failure.
+    fn scene_claims(
+        &mut self,
+        state: &mut EditorState,
+        request: &Value,
+    ) -> Result<Value, CommandError> {
+        let workspace = workspace(state)?;
+        // `Preflight` is the nearest kind: it is the one for jobs that look at files and change
+        // no project; the label and the answer carry the exact meaning.
+        let (id_job, slot) = self.start(JobKind::Preflight, "Scene resources claims", move |ctx| {
+            ctx.stage("ledger", 1);
+            ctx.check()?;
+            let report = crate::scene_resources::claims_status(&workspace);
+            ctx.progress(1);
+            Ok((None, report))
+        });
+        self.finish(state, request, id_job, slot)
+    }
+
+    /// `scene.resources.recover`: takes back what a result that no longer exists left claimed in
+    /// the project's workspace: orphans only, after the same content proof as any cleanup, under
+    /// the lease of each root (BL111). It hashes every orphan file, so it is a cancellable job
+    /// with progress in orphan files; `claims_unavailable` when the ledger cannot be used,
+    /// with any partial removals reported in details, as for `cancelled`. Changes no
+    /// project data. `Hash` is the kind of the job that reads file bytes.
+    fn scene_recover(
+        &mut self,
+        state: &mut EditorState,
+        request: &Value,
+    ) -> Result<Value, CommandError> {
+        let workspace = workspace(state)?;
+        let (id_job, slot) = self.start(JobKind::Hash, "Recover scene resources", move |ctx| {
+            ctx.stage("recover", 0);
+            let recovery = crate::scene_resources::recover_with(
+                &workspace,
+                ctx.token(),
+                &mut |done, total| {
+                    if done == 0 {
+                        ctx.stage("recover", total as u64);
+                    } else {
+                        ctx.progress(done as u64);
+                    }
+                },
+            )?;
+            for kept in &recovery.report.kept {
+                ctx.warn(kept.clone());
+            }
+            Ok((
+                None,
+                json!({ "action": "scene.resources.recover",
+                "workspace": workspace.display().to_string(),
+                "recovery": recovery.to_json() }),
+            ))
+        });
+        self.finish(state, request, id_job, slot)
     }
 
     /// `project.import_scenes`: carries scenes (their bundle and files) from another project or
@@ -1189,11 +1823,19 @@ impl MediaHost {
         let tools = self.tools.clone();
         let (snapshot, export) = Self::export_request(state, request)?;
         let factory = self.renderer.clone();
+        let probes_renderer = factory.is_some();
+        if probes_renderer {
+            // The probe builds a renderer: it asks for it like an export (BL144.10).
+            self.admit_export(state, Claimant::Preflight)?;
+        }
+        // Held by the job body and by the probe's side thread, whichever ends last (BL144.18).
+        let claim = Arc::new(());
+        let witness = Arc::downgrade(&claim);
         let (id, slot) = self.start(JobKind::Preflight, "Export preflight", move |ctx| {
             let tools = tools.get()?;
             ctx.stage("renderer", 1);
             let capabilities = factory
-                .map(|factory| probe_capabilities(factory, ctx))
+                .map(|factory| probe_capabilities(factory, claim, ctx))
                 .transpose()?
                 .flatten();
             ctx.advance(1);
@@ -1203,6 +1845,9 @@ impl MediaHost {
             ctx.advance(1);
             Ok((None, report))
         });
+        if probes_renderer {
+            self.renderer_preflights.push((id.clone(), witness));
+        }
         self.finish(state, request, id, slot)
     }
 
@@ -1219,6 +1864,7 @@ impl MediaHost {
             )
         })?;
         let (snapshot, export) = Self::export_request(state, request)?;
+        self.admit_export(state, Claimant::Export)?;
         let (id, slot) = self.start(JobKind::VideoExport, "Export video", move |ctx| {
             let tools = tools.get()?;
             let mut renderer = factory()?;
@@ -1246,6 +1892,7 @@ impl MediaHost {
             )
         })?;
         let export = self.freeze_scene_export(state, request)?;
+        self.admit_export(state, Claimant::Export)?;
         let tools = self.tools.clone();
         let (id, slot) = self.start(JobKind::VideoExport, "Export scene", move |ctx| {
             let tools = tools.get()?;
@@ -1290,6 +1937,7 @@ impl MediaHost {
         )
     }
 
+    /// Returns observable job state without applying its pending project mutation.
     fn job_get(&mut self, request: &Value) -> Result<Value, CommandError> {
         let id = text(request, "job")?;
         let info = self
@@ -1299,6 +1947,7 @@ impl MediaHost {
         Ok(info.to_json())
     }
 
+    /// Waits without committing in headless sessions; interactive callers get a snapshot at once.
     fn job_wait(&mut self, request: &Value) -> Result<Value, CommandError> {
         let id = text(request, "job")?;
         if self.interactive {
@@ -1315,6 +1964,7 @@ impl MediaHost {
         Ok(info.to_json())
     }
 
+    /// Applies a successful pending result once; terminal errors retain their cleanup details.
     fn job_commit(
         &mut self,
         state: &mut EditorState,
@@ -1331,6 +1981,21 @@ impl MediaHost {
                 format!("Job `{id}` has not finished"),
             ));
         }
+        match info.result_state {
+            ResultState::Discarding => {
+                return Err(CommandError::new(
+                    "job_discarding",
+                    format!("Job `{id}`: its result is being discarded and cannot be applied"),
+                ));
+            }
+            ResultState::Discarded => {
+                return Err(CommandError::new(
+                    "job_discarded",
+                    format!("Job `{id}`: its result was discarded and cannot be applied"),
+                ));
+            }
+            _ => {}
+        }
         let result = Self::outcome(&info)?;
         let slot = self.pending.remove(id).ok_or_else(|| {
             CommandError::new(
@@ -1338,13 +2003,71 @@ impl MediaHost {
                 format!("Job `{id}` has nothing to apply or was already applied"),
             )
         })?;
-        let applied = apply(
+        self.release_thumbnail_job(state, id, info.state == JobState::Cancelled);
+        let outcome = apply(
             &self.registry.clone(),
+            id,
             take(&slot),
             state,
             !self.interactive,
-        )?;
-        Ok(merge_applied(result, id, applied))
+        );
+        if self.interactive {
+            // `poll` never saw this job finish: it reports the end (see the field).
+            let kind = info.kind.label();
+            self.committed_unreported.push(match &outcome {
+                Ok(applied) => json!({ "job": id, "state": "succeeded", "kind": kind,
+                    "result": result.clone(), "applied": applied }),
+                Err(error) => json!({ "job": id, "state": "failed", "kind": kind,
+                    "error": error.to_json()["error"] }),
+            });
+        }
+        Ok(merge_applied(result, id, outcome?))
+    }
+
+    /// `job.discard {job, wait?}`: gives up the finished, unapplied result of `job` (BL094).
+    ///
+    /// The result is claimed atomically (`begin_discard`), so a concurrent commit or a second
+    /// discard loses with a typed error, and it moves into a `discard` job that removes its files
+    /// off this thread and keeps owning them until it has finished. The answer names that job
+    /// (`job`) and the one it discards (`discards`). A host without a window waits for it unless
+    /// `wait: false`; an interactive one always answers at once and `poll` reports the end.
+    fn job_discard(&mut self, state: &EditorState, request: &Value) -> Result<Value, CommandError> {
+        let id = text(request, "job")?;
+        let cancelled = self
+            .registry
+            .get(id)
+            .is_some_and(|info| info.state == JobState::Cancelled);
+        self.registry.begin_discard(id)?;
+        self.release_thumbnail_job(state, id, cancelled);
+        let slot = self.pending.remove(id);
+        if self.auto_prepare.as_deref() == Some(id) {
+            self.auto_prepare = None;
+        }
+        if self.auto_proxy.as_deref() == Some(id) {
+            self.auto_proxy = None;
+        }
+        self.proxy_assets.remove(id);
+        self.auto_assets.remove(id);
+        let pending = slot.as_ref().and_then(take);
+        let discard = spawn_discard(&self.registry, id, pending);
+        if self.interactive && slot.is_some() {
+            // `poll` never saw this job finish: it reports the end (see the field).
+            self.discarded_unreported
+                .push((id.to_string(), discard.clone()));
+        }
+        if self.interactive || !flag(request, "wait", true) {
+            let info = self.registry.get(&discard).map(|info| info.to_json());
+            return Ok(
+                json!({ "action": "job.discard", "job": discard, "discards": id,
+                "state": "discarding", "info": info }),
+            );
+        }
+        let info = self.wait_final(&discard, Duration::from_secs(60 * 60 * 24))?;
+        self.reported_discards.insert(discard.clone());
+        let mut report = Self::outcome(&info)?;
+        report["job"] = json!(discard);
+        report["state"] = json!("discarded");
+        Ok(report)
     }
 }
 
@@ -1373,6 +2096,17 @@ fn package_inputs(request: &Value) -> Result<PackageInputs, CommandError> {
     Ok(PackageInputs {
         scene_bases: scene_bases(request)?,
     })
+}
+
+/// What a scene's resources ask of the project, from the core's own manifest: `files` is how many
+/// distinct files a load opens (`null` when the manifest is blocked and has no plan) and
+/// `needs_folder` is whether loading needs a folder at all (BL101: `false` for data-only scenes).
+fn scene_resources_needed(scene: &DirectedScene) -> Value {
+    let files = ResourceManifest::from_scene(scene)
+        .transport_plan()
+        .ok()
+        .map(|plan| plan.items.len());
+    json!({ "files": files, "needs_folder": crate::scene_resources::needs_files(scene) })
 }
 
 /// Files a scene's supported resources need: the job's progress total.
@@ -1451,8 +2185,14 @@ fn decode_all(
 /// Asks the renderer for its limits on a side thread, so the job can still be cancelled while a
 /// renderer is slow to start. `None` when the renderer is unavailable: the preflight then
 /// reports without its limits instead of failing.
+///
+/// Cancelling does **not** free the renderer: the side thread owns it until it drops it, however
+/// long that takes. `claim` is the host's witness of that ownership (BL144.18): the thread keeps
+/// it alive past the renderer's drop, so the host counts the probe as the owner of the renderer
+/// until the renderer is really gone, not until the job reports `cancelled`.
 fn probe_capabilities(
     factory: Arc<RendererFactory>,
+    claim: Arc<()>,
     ctx: &JobContext,
 ) -> Result<Option<tessel_editor_core::backend::Capabilities>, JobError> {
     let (sender, receiver) = std::sync::mpsc::channel();
@@ -1460,6 +2200,8 @@ fn probe_capabilities(
         let capabilities = factory()
             .ok()
             .and_then(|mut renderer| renderer.capabilities().ok());
+        // The renderer is dropped by now (the closure above owned it); only then is it free.
+        drop(claim);
         let _ = sender.send(capabilities);
     });
     loop {
@@ -1472,6 +2214,7 @@ fn probe_capabilities(
     }
 }
 
+/// Consumes the pending result once so two application paths cannot own the same files.
 fn take(slot: &Slot) -> Option<Pending> {
     slot.lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -1482,8 +2225,13 @@ fn take(slot: &Slot) -> Option<Pending> {
 /// and only for the project the job was computed for. `decode_inline` is for callers that may
 /// block (the CLIs): an import then also decodes its new media before answering; a window leaves
 /// that to the automatic preparation job.
+///
+/// `decode_inline` is also "may block": a window's tick (`false`) must not delete files, so a result
+/// that owns files and no longer fits the project goes to a discard job (BL112) instead of being
+/// removed here. Either way the job's `result_state` ends `applied` or `discarded`/`discarding`.
 fn apply(
     registry: &JobRegistry,
+    id: &str,
     pending: Option<Pending>,
     state: &mut EditorState,
     decode_inline: bool,
@@ -1491,6 +2239,68 @@ fn apply(
     let Some(pending) = pending else {
         return Ok(None);
     };
+    // `took` is what the project did with the result, said by the arm that did it: `Ok` and
+    // "applied" are not the same thing. An import can change the project and still fail to decode
+    // what it brought (applied, with an error), and a decoded or proxy result that is stale
+    // answers `Ok` without changing anything (discarded).
+    let mut took = false;
+    let outcome = apply_pending(registry, id, pending, state, decode_inline, &mut took);
+    // A result that was refused is gone (or already claimed by the discard job it was handed to).
+    registry.settle(id, took);
+    outcome
+}
+
+/// Hands a refused result that owns files to a discard job and reports why it was refused.
+///
+/// `refusal` is the project's own error when it said no (ID taken, scene limit) or the ledger
+/// refused the acceptance (`claims_unavailable`): it keeps its code and details, which gain the
+/// discard job that now owns the files. Without one the result is plain `stale_result`.
+fn defer_discard(
+    registry: &JobRegistry,
+    id: &str,
+    pending: Pending,
+    message: String,
+    refusal: Option<CommandError>,
+) -> CommandError {
+    // The job is final and its result pending: the claim cannot be refused.
+    let claimed = registry.begin_discard(id).is_ok();
+    let discard = spawn_discard(registry, id, Some(pending));
+    let mut error = CommandError::new("stale_result", message);
+    let mut details = json!({ "discard_job": discard, "claimed": claimed });
+    if let Some(refusal) = refusal {
+        error.code = refusal.code;
+        if let Some(Value::Object(own)) = refusal.details.map(|own| *own) {
+            for (key, value) in own {
+                details[key] = value;
+            }
+        }
+    }
+    error.details = Some(Box::new(details));
+    error
+}
+
+/// An error of a step that ran **after** the project took the result: it says so in
+/// `details.applied`, so a caller never reads "failed" as "nothing changed".
+fn applied_but(mut error: CommandError) -> CommandError {
+    let mut details = match error.details.take().map(|details| *details) {
+        Some(details @ Value::Object(_)) => details,
+        _ => json!({}),
+    };
+    details["applied"] = json!(true);
+    error.details(details)
+}
+
+/// Applies `pending` to the project. `took` is set the moment the project has taken the result
+/// (so it answers `true` even if a later step of the same arm fails) and stays `false` when
+/// nothing of it was used.
+fn apply_pending(
+    registry: &JobRegistry,
+    id: &str,
+    pending: Pending,
+    state: &mut EditorState,
+    decode_inline: bool,
+    took: &mut bool,
+) -> Result<Option<Value>, CommandError> {
     match pending {
         Pending::Import {
             items,
@@ -1498,12 +2308,14 @@ fn apply(
             prepare: decode,
         } => {
             let mut report = import::commit(state, &items, folder.as_deref())?;
+            // The assets are in the project from here on, whatever the decoding below does.
+            *took = true;
             if decode
                 && decode_inline
                 && let Ok(workspace) = workspace(state)
             {
                 let cache = Cache::new(&workspace);
-                let tools = Tools::discover()?;
+                let tools = Tools::discover().map_err(|error| applied_but(error.into()))?;
                 let items: Vec<(String, MediaKind, Asset)> = report["items"]
                     .as_array()
                     .into_iter()
@@ -1521,7 +2333,7 @@ fn apply(
                     decoded = decode_all(&tools, &cache, &items, ctx)?;
                     Ok(Value::Null)
                 });
-                outcome.map_err(CommandError::from)?;
+                outcome.map_err(|error| applied_but(error.into()))?;
                 report["decoded"] = json!(decoded.iter().map(|(id, ..)| id).collect::<Vec<_>>());
                 for (id, _, outcome) in decoded {
                     state.set_decoded(&id, outcome);
@@ -1540,6 +2352,7 @@ fn apply(
                 }
                 Ok(())
             })?;
+            *took = true;
             Ok(Some(
                 json!({ "action": "media.relink", "assets": ids, "changed": true }),
             ))
@@ -1551,6 +2364,7 @@ fn apply(
                 &prepared.plan,
                 &prepared.replacements,
             )?;
+            *took = true;
             Ok(Some(report))
         }
         Pending::Proxies { project, items } => {
@@ -1574,8 +2388,38 @@ fn apply(
                     stale.push(id);
                 }
             }
+            // Everything stale: the answer is `Ok` but the project used none of it.
+            *took = !applied.is_empty();
             Ok(Some(
                 json!({ "action": "media.preview_proxy", "applied": applied, "stale": stale }),
+            ))
+        }
+        Pending::Thumbnails { stamp, made } => {
+            if !stamp.is_current(state) {
+                return Ok(Some(json!({ "action": "media.thumbnails", "stale": true,
+                    "reason": "another project is open now", "applied": [] })));
+            }
+            let (mut applied, mut failed, mut stale) = (Vec::new(), Vec::new(), Vec::new());
+            for made in made {
+                let asset = made.asset().to_string();
+                let stored = match made {
+                    Made::Ready(id, thumbnail) => state
+                        .set_thumbnail(&stamp, &id, thumbnail)
+                        .map(|()| applied.push(asset.clone())),
+                    Made::Failed(id, failure) => state
+                        .set_thumbnail_failure(&stamp, &id, failure)
+                        .map(|()| failed.push(asset.clone())),
+                };
+                if stored.is_err() {
+                    stale.push(asset);
+                }
+            }
+            state.prune_thumbnails();
+            // Failures are recorded (so they are not retried every tick) but are not pictures.
+            *took = !applied.is_empty() || !failed.is_empty();
+            Ok(Some(
+                json!({ "action": "media.thumbnails", "applied": applied,
+                "failed": failed, "stale": stale }),
             ))
         }
         Pending::Decoded { project, items } => {
@@ -1597,6 +2441,7 @@ fn apply(
                 state.set_decoded(&id, decoded);
                 applied.push(id);
             }
+            *took = !applied.is_empty();
             Ok(Some(
                 json!({ "action": "media.prepare", "applied": applied, "stale": stale }),
             ))
@@ -1620,6 +2465,7 @@ fn apply(
             let installed = session
                 .install(*map)
                 .map_err(|error| CommandError::new(error.code(), error.to_string()))?;
+            *took = true;
             Ok(Some(
                 json!({ "action": "scene.resources.resolve", "installed": true,
                 "scene": installed.scene_id, "generation": installed.generation.0,
@@ -1627,18 +2473,97 @@ fn apply(
                 "approvedBytes": installed.approved_bytes() }),
             ))
         }
-        Pending::SceneImport(prepared) => Ok(Some(scene_import::apply(state, *prepared)?)),
-        Pending::SceneAdopt(pending) => {
+        Pending::SceneAttach {
+            stamp,
+            id,
+            name,
+            scene,
+            resources,
+        } => {
+            if !stamp.is_current(&state.project) {
+                return Err(CommandError::new(
+                    "stale_result",
+                    "The open project changed (an edit, or another project or a reopened document took its place) while the scene bundle was being read; nothing was attached (attach it again)",
+                ));
+            }
+            let mut report = state.execute(Command::Scene(SceneCommand::Attach {
+                id,
+                name,
+                source: SceneSource::Admitted(scene),
+            }))?;
+            report["resources"] = resources;
+            *took = true;
+            Ok(Some(report))
+        }
+        Pending::SceneImport(prepared) if decode_inline => {
+            let report = scene_import::apply(state, *prepared)?;
+            *took = true;
+            Ok(Some(report))
+        }
+        Pending::SceneImport(prepared) => match scene_import::try_apply(state, *prepared) {
+            Ok(report) => {
+                *took = true;
+                Ok(Some(report))
+            }
+            Err(rejected) => {
+                let rejected = *rejected;
+                let message = format!(
+                    "{}; the files it copied are being removed by a background job",
+                    rejected.error.message
+                );
+                // The refusal keeps its own code (the project said no, or the ledger would not
+                // record the acceptance) and the job owns the files until it has removed them.
+                Err(defer_discard(
+                    registry,
+                    id,
+                    Pending::SceneImport(Box::new(rejected.prepared)),
+                    message,
+                    Some(rejected.error),
+                ))
+            }
+        },
+        Pending::SceneAdopt(pending) if decode_inline => {
             pending.apply(state)?;
+            *took = true;
             Ok(None)
         }
+        Pending::SceneAdopt(pending) => match pending.settle(state) {
+            Ok(()) => {
+                *took = true;
+                Ok(None)
+            }
+            Err(stale) => {
+                let stale = *stale;
+                // A ledger refusal is not staleness: `claims_unavailable` with the ledger's details,
+                // and a message that does not claim the scene changed (it did not).
+                let refusal = stale.refusal_error();
+                let message = match &refusal {
+                    Some(refusal) => format!(
+                        "The resources of scene `{}` were not confirmed: {}; the files this adoption copied are being removed by a background job",
+                        stale.pending.scene(),
+                        refusal.message
+                    ),
+                    None => format!(
+                        "Scene `{}` changed while its resources were adopted ({}); the files this adoption copied are being removed by a background job",
+                        stale.pending.scene(),
+                        stale.why
+                    ),
+                };
+                Err(defer_discard(
+                    registry,
+                    id,
+                    Pending::SceneAdopt(Box::new(stale.pending)),
+                    message,
+                    refusal,
+                ))
+            }
+        },
         Pending::Open {
-            project,
-            revision,
+            stamp,
             candidate,
             summary,
         } => {
-            if state.project.id != project || state.project.revision != revision {
+            if !stamp.is_current(&state.project) {
                 return Err(CommandError::new(
                     "stale_result",
                     "The open project changed while the package was restoring; the files were \
@@ -1646,7 +2571,99 @@ fn apply(
                 ));
             }
             *state = *candidate;
+            *took = true;
             Ok(Some(summary))
+        }
+    }
+}
+
+/// Gives a result that owns files to a discard job, **never** dropping it on the caller's thread.
+///
+/// A job whose slot is already filled but which is not final yet (the body returned, the
+/// registry has not marked it finished: a window of microseconds) cannot be claimed by
+/// `begin_discard`. The result then waits on a thread of its own for the job to end and is claimed
+/// or dropped there, so a caller that must not block (the window's) never hashes or unlinks.
+fn hand_over(registry: &JobRegistry, id: &str, pending: Pending) {
+    match registry.begin_discard(id) {
+        Ok(_) => {
+            spawn_discard(registry, id, Some(pending));
+        }
+        Err(_) => {
+            let (registry, id) = (registry.clone(), id.to_string());
+            defer_until_final(registry.clone(), id.clone(), pending, move |pending| {
+                if registry.begin_discard(&id).is_ok() {
+                    spawn_discard(&registry, &id, Some(pending));
+                }
+                // Refused for good (nothing pending to claim): `pending` is dropped here, on this
+                // helper thread, which is where a removal may block.
+            });
+        }
+    }
+}
+
+/// Runs `then(payload)` on a thread of its own once job `id` is final (or gone from the registry).
+/// `payload` is dropped there too if `then` does not consume it: never on the calling thread.
+fn defer_until_final<T: Send + 'static>(
+    registry: JobRegistry,
+    id: String,
+    payload: T,
+    then: impl FnOnce(T) + Send + 'static,
+) {
+    std::thread::spawn(move || {
+        while registry.wait(&id, Duration::from_secs(60)).is_none() && registry.get(&id).is_some() {
+        }
+        then(payload);
+    });
+}
+
+impl MediaHost {
+    /// Blocks until every discard job still queued or running has ended.
+    ///
+    /// A host without a window is driven by a script that ends with its input: the process must
+    /// not leave while a `job.discard {wait:false}` is still taking files back (BL112). A job
+    /// waits only for what has to run: discard jobs are never cancelled.
+    ///
+    /// The discard jobs queue behind the registry's running slots, so they are waited for behind
+    /// whatever occupies those slots (`export.start`, a package, an adoption started with
+    /// `wait:false`). Nothing else may outlive the process (their results are thrown away), so
+    /// everything that is not a discard is cancelled **first** (`cancel_all` skips discards, which
+    /// are not cancellable), and the wait is then for the discards and for the cancelled jobs to
+    /// give their slots back; it no longer depends on a job that would run for as long as it
+    /// likes (N2).
+    fn wait_for_discards(&self) {
+        let active = self
+            .registry
+            .matching(|info| info.kind == JobKind::Discard && !info.state.is_final());
+        if active.is_empty() {
+            return;
+        }
+        self.registry.cancel_all();
+        for info in active {
+            while self
+                .registry
+                .wait(&info.id, Duration::from_secs(60))
+                .is_none()
+                && self.registry.get(&info.id).is_some()
+            {}
+        }
+    }
+}
+
+impl Drop for MediaHost {
+    fn drop(&mut self) {
+        // A host without a window waits for the discard jobs it started and drops what is left in
+        // place, so the files are back before the CLI process exits.
+        if !self.interactive {
+            self.wait_for_discards();
+            return;
+        }
+        // A window never deletes on its own thread: results that own files go to discard jobs,
+        // which finish on their own threads.
+        for (id, slot) in std::mem::take(&mut self.pending) {
+            let Some(pending) = take(&slot).filter(Pending::owns_files) else {
+                continue;
+            };
+            hand_over(&self.registry, &id, pending);
         }
     }
 }
@@ -1677,6 +2694,7 @@ impl Extension for MediaHost {
             || op.starts_with("export.")
             || op.starts_with("scene.resources.")
             || op == "scene.export"
+            || op == "scene.attach.start"
             || op == "scene.export.preflight"
             || matches!(
                 op,
@@ -1702,4 +2720,104 @@ fn merge_applied(mut report: Value, id: &str, applied: Option<Value>) -> Value {
         report["applied"] = applied;
     }
     report
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::mpsc;
+
+    use super::*;
+
+    /// Reports the thread it was dropped on.
+    struct DroppedOn(mpsc::Sender<std::thread::ThreadId>);
+
+    impl Drop for DroppedOn {
+        fn drop(&mut self) {
+            let _ = self.0.send(std::thread::current().id());
+        }
+    }
+
+    /// F6 (BL112.2): a result whose job is not final yet cannot be claimed; it must wait on another
+    /// thread, and be dropped there, not on the thread that let go of the host.
+    #[test]
+    fn a_result_of_a_job_that_is_not_final_is_never_dropped_on_the_callers_thread() {
+        let registry = JobRegistry::new(2);
+        let release = tessel_editor_core::jobs::CancelToken::new();
+        let hold = release.clone();
+        let job = registry.spawn(JobKind::Proxy, "not final yet", move |_| {
+            while !hold.is_cancelled() {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            Ok(Value::Null)
+        });
+        while registry.get(&job).unwrap().state != JobState::Running {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        let (sender, dropped) = mpsc::channel();
+        let me = std::thread::current().id();
+        defer_until_final(
+            registry.clone(),
+            job.clone(),
+            DroppedOn(sender),
+            |_payload| {},
+        );
+        assert!(
+            dropped.recv_timeout(Duration::from_millis(100)).is_err(),
+            "nothing is dropped while the job is not final"
+        );
+        release.cancel();
+        let thread = dropped
+            .recv_timeout(Duration::from_secs(10))
+            .expect("dropped once the job ended");
+        assert_ne!(thread, me, "dropped on the helper thread");
+    }
+
+    /// The same path through the hand-over itself: refused by `begin_discard` (the job is not
+    /// final), so the result goes to the waiting thread instead of the caller's scope.
+    #[test]
+    fn hand_over_defers_a_result_it_cannot_claim_yet() {
+        let registry = JobRegistry::new(2);
+        let release = tessel_editor_core::jobs::CancelToken::new();
+        let hold = release.clone();
+        let job = registry.spawn(JobKind::Proxy, "not final yet", move |ctx| {
+            ctx.hold_result();
+            while !hold.is_cancelled() {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            Ok(Value::Null)
+        });
+        while registry.get(&job).unwrap().state != JobState::Running {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        // `begin_discard` refuses a running job (`job_running`): this is the case being covered.
+        assert_eq!(
+            registry.begin_discard(&job).unwrap_err().code,
+            "job_running"
+        );
+        hand_over(&registry, &job, Pending::Relink(Vec::new()));
+        assert_eq!(
+            registry.get(&job).unwrap().result_state,
+            tessel_editor_core::jobs::ResultState::Pending,
+            "nothing claimed it while the job ran"
+        );
+        release.cancel();
+        // Once the job is final the waiting thread claims the result and a discard job ends it.
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while registry.get(&job).unwrap().result_state
+            != tessel_editor_core::jobs::ResultState::Discarded
+        {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the result was never handed to a discard job"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(
+            registry
+                .matching(|info| info.kind == JobKind::Discard)
+                .len(),
+            1,
+            "exactly one discard job took the result"
+        );
+    }
 }

@@ -41,8 +41,8 @@ desconhecidos, então o transporte reaproveita `asset.load`, `asset.release`, `f
 | Onde | Acréscimo |
 |---|---|
 | `ready.capabilities.features` | `"directed_scene"`. Um runtime que não lista não recebe o layer (o host recusa antes: `backend_unavailable` com o comando de rebuild) |
-| `ready.capabilities.directed_scene` | `{ layer_kind, plan_kind: "tessel-scene-plan", plan_versions: [1], capabilities: [8 nomes de Capability::as_str], resource_identity: ["generation","asset_id","revision_id","content_hash"], resource_kinds: ["still"] }`. Os 8 nomes são exatamente `Capability::ALL` (teste) |
-| `asset.load` → `asset.scene` | `{ asset_id, revision_id, content_hash, generation }`. Só para `kind: "still"`; vincula o **slot** (o `asset.id` do runtime) à identidade |
+| `ready.capabilities.directed_scene` | `{ layer_kind, plan_kind: "tessel-scene-plan", plan_versions: [1], capabilities: [10 nomes de Capability::as_str], resource_identity: ["generation","asset_id","revision_id","content_hash"], resource_kinds: ["still","splat"] }`. Os 10 nomes (com `splats`, F048, e `outputFx`, F016) são exatamente `Capability::ALL` (teste) |
+| `asset.load` → `asset.scene` | `{ asset_id, revision_id, content_hash, generation }`. Para `kind: "still"` (PNG) e `kind: "splat"` (`meta.format: "spz"`, F048); vincula o **slot** (o `asset.id` do runtime) à identidade |
 | `frame.render` → `plan.layers[]` | `kind: "directed_scene"`, `scene_plan` (o `ScenePlan::to_json()` inteiro) e `resources: [{ asset_id, slot, revision_id, content_hash, generation }]` |
 | `ready.capabilities.layers` | **Não** muda: lista os tipos do plano comum; o gate é `features` |
 | Telemetria | `frame.done.source.directed_scene_layers`; `cache`/`debug.retention`: `scene_resources`, `scene_generation` |
@@ -76,9 +76,9 @@ Todos com `code` estável, sem desenho parcial:
 | `unsupported_plan_version` | `planVersion` ≠ 1 (checado antes de ler outros campos) |
 | `unsupported` | plano parcial (`complete: false`; `details.domains`) ou `requires` que o runtime não anuncia (`details.missing`) |
 | `resource_unresolved` | sem entrada no mapa, slot não carregado, arquivo ausente ou raiz ilegível |
-| `resource_mismatch` | revisão/hash difere do plano, tamanho difere, ou não é `still` |
+| `resource_mismatch` | revisão/hash difere do plano, tamanho difere, ou o tipo não é o do plano (`still` para PNG; `splat` `.spz` para splat — o host recusa antes um arquivo que não é SPZ) |
 | `resource_stale` | geração mais velha que a em uso, ou slot de outra identidade/geração |
-| `resource_budget` | slots/bytes além do orçamento (host: 32 slots, 512 MiB RGBA; runtime: 64 e 768 MiB) |
+| `resource_budget` | slots/bytes além do orçamento (host: 32 slots, 512 MiB; runtime: 64 e 768 MiB). Um splat conta os bytes do arquivo mais 16 bytes por splat, uma vez por recurso, nos dois lados. Além disso o quadro soma os splats de cada nó `splat` (arquivo compartilhado conta por nó) e é recusado acima de 8 Mi (`details.frame_splats`; host `DEFAULT_FRAME_SPLATS`, runtime `LIMITS.frameSplats`), BL125 |
 | `resource_path_invalid` | caminho relativo no mapa ou link que sai da raiz aprovada |
 | `bundle_invalid` | importação ou gates (`edit_join_issues` + `temporal_issues`) do bundle (`details.issues`) |
 | `cancelled` | frame substituído por outro mais novo (último ganha) ou `frame.cancel` |
@@ -174,11 +174,61 @@ os três casos em `reset_directed_runtime_for` (libera), `forget_directed_runtim
 ### Limites do BL092
 
 - A perda de contexto é **forçada** (`WEBGL_lose_context`); reset real de driver não foi provado.
-- Resta uma janela estreita: um `asset.state ready` atrasado de um load substituído **para o mesmo slot** não carrega a
-  identidade da cena, então o host não consegue distingui-lo de um `ready` novo. O runtime hoje responde `cancelled` para
-  loads substituídos (ignorado pelo host); fechar a janela por completo pede eco da identidade em `asset.state` no
-  runtime (patch aditivo sugerido no relatório R8, `index.js` não foi editado).
+- A janela de um `asset.state ready` atrasado de um load substituído **para o mesmo slot** foi fechada por BL102/BL102b
+  (seção abaixo; janela e headless) para runtimes que anunciam `asset.identity`; com um runtime antigo continua valendo a heurística por slot
+  e por detalhes do erro, sem garantia contra esse `ready`.
 - Medido só em macOS / Apple GPU com o corpus de 3 recursos; orçamento com muitos recursos não foi exercitado nativamente.
+
+## Identidade de carga em `asset.load`/`asset.state` (BL102)
+
+Antes, o host só sabia o **nome do slot** (`scene-res-N`) de um `asset.state`. O nome é reaproveitado (LRU, troca de
+projeto, timeout) e a página responde as cargas na sua ordem: um `ready` velho que chegasse depois de o slot ser dado a
+uma carga nova era indistinguível do `ready` novo e destravava o frame antes da hora (desenhava com a imagem errada ou
+sem ela). Agora a identidade do pedido viaja e volta. Bridge continua v1; tudo é aditivo e negociado.
+
+| Peça | Contrato |
+|---|---|
+| Capability | `ready.capabilities.features` lista `asset.identity`; `capabilities.asset_identity = { echo: ["request","scene"], scene_fields: [...] }` |
+| Pedido | `asset.load.asset.request`: inteiro não negativo opcional, um por mensagem enviada, nunca reutilizado pelo host (nem após reload da página). O host só o envia se o runtime anunciou `asset.identity` |
+| Eco | todo `asset.state` (`loading`, `ready`, `failed`, inclusive o `cancelled` de uma carga que um release ultrapassou) repete `request` e, se o descritor tinha `scene` completo, `scene{asset_id,revision_id,content_hash,generation}`. Só esses campos; nunca o caminho. Descritor sem identidade recebe as mensagens de sempre |
+| `request` inválido | `asset.state failed` com `error.code = invalid_request`, sem eco; a carga não acontece |
+| Regra do host | `bridge::LoadIdentity::answered_by` (core, puro): só vale a resposta cujo `request` é o da carga **atual** do slot e cuja `scene` volta inteira e igual. Sem eco, eco parcial ou de outro pedido: recusado e contado em `directed.refused.stale_asset_states`, sem tocar o livro. Com o eco certo, uma falha é real (inclusive `cancelled`) e falha o frame |
+| Runtime antigo / sem a feature | nenhum campo novo é enviado; vale a heurística anterior (`superseded_load`) |
+
+O mesmo `request` não se repete nem para a mesma imagem no mesmo slot: um `ready` do primeiro load de `red` no slot não
+confirma o segundo load de `red` (teste `the_same_picture_loaded_again_into_a_slot_is_a_different_request`).
+`render.status`/`monitor.viewport` ganham `directed.asset_identity` (negociado) e `directed.slots.identified_loads`.
+
+Superfícies: **lib** (`stamp_asset_load`, `LoadIdentity`, `FEATURE_ASSET_IDENTITY` em `tessel_editor_core::bridge`, 6 testes
+puros) · **runtime** (`runtime/src/asset-identity.js`, 6 testes Node + 2 testes em Chrome) · **host dirigido/janela**
+(`scene_monitor_host.rs`, 4 testes novos de `scene_lifecycle_tests.rs`, mutação verificada: sem a comparação 2 falham; prova
+nativa S0/S6). Evidência executada nesta rodada: `cargo test -p tessel-editor scene_lifecycle` 17/17; `cargo test -p tessel-editor-core
+--lib bridge` 11/11; `node --test` do runtime 93/93 em Chrome real (SwiftShader); prova nativa
+`scene-lifecycle-proof.py` completa S0–S10 com **221/221 checks** num WKWebView real (o host negocia `asset.identity`, 3/3 cargas
+carimbadas, `refused.stale_asset_states` ≥ 1 na troca de projeto). **Limite da prova nativa:** a página real não
+injeta um `ready` velho de propósito; a corrida do mesmo slot é provada no host com página roteirizada e no runtime
+real em Chrome (ordem de eco), não reproduzida deterministicamente no WKWebView.
+
+### Headless (`SceneRenderer`, BL102b)
+
+`BackendEvent::Asset` ganhou o campo aditivo `echo: Option<Value>` (só `request` e/ou `scene`, como recebidos; `None` de
+runtime sem eco; nunca caminho). `bridge::decode_event` o preenche; a regra de julgamento continua uma só,
+`LoadIdentity::answered_by`. O `SceneRenderer` (lib, `tessel-scene-render`, export dirigido) agora faz o mesmo que o host da janela:
+
+| Peça | Contrato |
+|---|---|
+| Negociação | `ensure_ready` lê `features` do `ready`: `asset.identity` presente liga `asset_identity()`; ausente (runtime antigo) não envia campo novo e vale a heurística por slot, sem contar recusas |
+| Carimbo | cada `asset.load` recebe `asset.request` (1, 2, 3…), contador do renderer **nunca reiniciado**, nem em `shutdown`/reinício do runtime: um eco tardio de um processo anterior nunca casa com carga nova |
+| Regra | `ready`/`failed` só altera o livro de slots se repetir a identidade da carga que **detém o slot agora**; sem eco, eco parcial, de outro `request` ou de outra imagem: recusado e contado em `refused_asset_states()`, sem destravar nem falhar o frame |
+| Falha real | só com o eco certo (inclusive `cancelled`), e então a carga é esquecida para ser tentada de novo |
+| Escopo do estado | `loads` limpo por `release`, `release_all`, `shutdown`, `Closed`; `identified` reavaliado no próximo handshake |
+
+Efeito observável: um runtime que negociou e não ecoa (ou ecoa outro pedido) não destrava o frame: a espera termina em `timeout`
+(`the pictures`) com `refused_asset_states() > 0`, em vez de desenhar com a imagem errada. Superfícies: **lib** (6 testes novos em
+`crates/render/tests/scene_seam.rs` com transporte roteirizado, mais 2 de `decode_event` no core; mutação verificada: sem a conferência 3
+falham, incluindo o ready velho no mesmo slot, com `SceneSlots::new(3, ..)` para que o slot seja realmente reaproveitado) · **CLI JSONL**
+(`tessel-scene-render` usa o mesmo `SceneRenderer`: prova real em `scene_frames.rs`, que exige `asset_identity()` negociado com o runtime
+do repositório) · **UI**: N/A, a janela usa o host dirigido (acima). Limite: com runtime antigo continua sem garantia contra o ready velho.
 
 ## Retenção e invalidação (sem regressão do preview comum)
 
@@ -197,7 +247,7 @@ em execução serializada.
   sai opaco). Alpha de saída é trabalho futuro de BL008.
 - **Sem desempate por profundidade**: a ordem do plano é a ordem de pintura, de propósito.
 - **Sem cache de resultado de frame dirigido**: cada frame é redesenhado (medir em BL064 antes de otimizar).
-- **Só imagens estáticas** (`still`/PNG nos testes); vídeo, splat, luz, clima, rigs, efeitos continuam recusados
+- **Imagens estáticas e splats SPZ** (F048); vídeo, luz, clima, rigs, efeitos continuam recusados
   como domínio não avaliado.
 - **O hash do conteúdo não é verificado aqui.** O runtime compara o que o mapa declara com o que o plano exige;
   provar que os bytes têm aquele hash é do adaptador que materializa/verifica (N/`media`).
@@ -241,3 +291,11 @@ Provas finais e limites em [round-mnop-report.md](../migration/round-mnop-report
 ## Correções da revisão PR #3
 
 `--bundle bundle.json` sem pai usa a pasta atual como raiz de recursos. O runtime revalida o número de recursos imediatamente antes do registro, além de geração e bytes; cargas concorrentes não ultrapassam sceneResourceEntries. `scene.plan` aplica admissão por referência, evitando cópia profunda do bundle por frame, com os mesmos gates.
+
+Integração de S4 com main `2bc340d` (S3): conflitos apenas no backlog/matriz, preservando identidade negociada e snapshot. Coordenador reconferiu fmt, check/clippy workspace, core, media/export 11/11, desktop/lifecycle 17/17, render scene_frames/scene_seam/scene_export com runtime obrigatório e lock GPU, build do editor e testes JS puros de identidade 6/6. Log local `/tmp/tessel-s4-main-gates.log`; revisão CodeRabbit continua pendente.
+
+BL102c (validação do runtime): a suíte completa do S7 teve 107/108 com falha na substituição de request21 por22; seis execuções isoladas verdes não encerravam essa falha. O teste agora retém o fetch real de21 com holdFetches até22 ser admitido e libera/fecha a interceptação em finally. O teste filtrado passou em Chrome real (1/1, TESSEL_REQUIRE_RUNTIME=1, lockGPU); a suíte completa após a correção ainda precisa ser executada. Nenhuma lógica de produção foi alterada por esse ajuste.
+
+Suíte completa após o fix (execução do **coordenador**, atribuída, não repetida aqui): `./scripts/runtime test` com `TESSEL_REQUIRE_RUNTIME=1` e lock da GPU, head `2c7cf7c`, saída 0, `# tests 108`, `# pass 108`, `# fail 0` (UTC 2026-11-06T16:11:18Z–16:12:26Z, livre mínimo 26,8 GiB); log `runtime-after-bl102c.log` sha256 `2f1844e8283b2391…` (cópia em `/tmp/te-711b-final/coordinator-runtime/`). Os 6/6 isolados anteriores seguem sem anular a falha 107/108 da execução antiga.
+
+No head `586a671` (runner dos gates, `TESSEL_REQUIRE_RUNTIME=1`, lock da GPU), a suíte completa deu 108/108 em duas execuções e 107/108 em outra: falhou `video B2: a frame superseded while it seeks is cancelled and the next one is exact` (`video.test.mjs:208`), um teste fora do diff do S7; registrado como BL128, sem relaxar nada. Detalhes em [scene-splat.md](scene-splat.md#revalidação-no-head-586a671-executado-com-proveniência).

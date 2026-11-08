@@ -28,8 +28,11 @@ use crate::state::CommandError;
 
 use super::ChannelProperty;
 
+pub use camera::apply_easing;
 pub(in crate::directed_scene) use camera::distance;
-pub use camera::{CameraPose, CameraState, CameraTimeline, SegmentPoses};
+pub use camera::{
+    CameraPose, CameraState, CameraTimeline, SegmentPoses, movement_end_pose, movement_pose_at,
+};
 pub use frame::{CameraEvaluation, FrameEvaluation, FrameMapping, NodeAnimation, Unsupported};
 pub use gate::LAYER_FOV_SWEEP_MAX_FRAMES;
 pub(in crate::directed_scene) use gate::layered_fov_issues;
