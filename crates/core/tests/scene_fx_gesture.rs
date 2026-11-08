@@ -533,6 +533,9 @@ fn one_gesture_at_a_time_and_the_two_kinds_do_not_cross() {
         json!({"op":"scene.gesture.update","gesture":gesture,"ops":[]}),
     );
     assert_eq!(crossed.code, "gesture_kind_mismatch");
+    // A verb of the other kind never reached the candidate: it is not a refusal of the gesture.
+    let status = ok(&mut state, json!({"op":"scene.fx.gesture.status"}));
+    assert!(status["gesture"]["refusal"].is_null(), "{status}");
     let crossed = err(
         &mut state,
         json!({"op":"scene.gesture.commit","gesture":gesture}),

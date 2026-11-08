@@ -170,6 +170,12 @@ impl SceneUi {
         self.chosen = Some(scene.to_string());
     }
 
+    /// The panel with no choice at all: it shows the first attached scene by fallback.
+    #[cfg(test)]
+    pub fn clear_chosen_for_test(&mut self) {
+        self.chosen = None;
+    }
+
     pub fn is_expanded(&self, path: &str, depth: usize) -> bool {
         self.expansion
             .get(path)

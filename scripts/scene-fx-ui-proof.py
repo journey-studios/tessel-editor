@@ -647,6 +647,10 @@ def run(args, surfaces):
         updated, update_body = win.op({"op": "scene.fx.gesture.update", "gesture": gesture,
                 "ops": [{"op": "set_param", "clip": "fx-1", "param": "intensity", "value": 0.2}]})
         check("update the gesture before switching scenes", updated, update_body)
+        check("choosing the scene already shown moves nothing: the gesture stays open",
+              win.set("scene.picker", "value", "proof").get("ok")
+              and (win.op({"op": "scene.fx.gesture.status"})[1].get("gesture") or {}).get("id") == gesture,
+              win.op({"op": "scene.fx.gesture.status"})[1])
         check("the panel follows the picker to the other scene", win.set("scene.picker", "value", "yard").get("ok"))
         ok, status = win.op({"op": "scene.fx.gesture.status"})
         check("the scene switch cancelled the gesture in the core", ok and not status.get("gesture") and status.get("active") is False, status)

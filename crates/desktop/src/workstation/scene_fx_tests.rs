@@ -1483,3 +1483,87 @@ fn choosing_the_displayed_fallback_scene_keeps_its_effect_candidate(cx: &mut Tes
         "the displayed scene did not change"
     );
 }
+
+/// The scene the panel shows by fallback (no choice, or a choice that is no longer attached) and the
+/// other one.
+fn shown_and_other(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> (String, String) {
+    let shown = view.read_with(cx, |view, _| view.scene_active_id().unwrap());
+    let other = if shown == "street" { "yard" } else { "street" };
+    (shown, other.to_string())
+}
+
+#[gpui_kit::test]
+fn a_panel_with_no_choice_keeps_the_gesture_of_the_scene_it_shows_and_drops_it_for_the_other(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = two_scenes(cx);
+    view.update(cx, |view, _| view.scene_ui.clear_chosen_for_test());
+    let (shown, other) = shown_and_other(&view, cx);
+    let depth = total_depth(&view, cx);
+
+    change(&view, cx, key(&shown, "fx-1", "intensity"), 0.2);
+    assert!(gesture_open(&view, cx));
+    choose(&view, cx, &shown);
+    assert!(
+        gesture_open(&view, cx),
+        "the fallback scene was already the one displayed"
+    );
+
+    choose(&view, cx, &other);
+    assert!(
+        !gesture_open(&view, cx) && !driving(&view, cx),
+        "another scene drops the candidate of the displayed one"
+    );
+    blur(&view, cx);
+    assert_eq!(intensity_in(&view, cx, &shown, "fx-1"), 0.7);
+    assert_eq!(intensity_in(&view, cx, &other, "fx-1"), 0.7);
+    assert_eq!(total_depth(&view, cx), depth, "nothing was committed");
+}
+
+#[gpui_kit::test]
+fn a_detached_choice_falls_back_and_another_scene_still_drops_the_gesture(cx: &mut TestAppContext) {
+    let (view, cx) = two_scenes(cx);
+    view.update(cx, |view, _| view.scene_ui.set_chosen_for_test("detached"));
+    let (shown, other) = shown_and_other(&view, cx);
+    let depth = total_depth(&view, cx);
+
+    change(&view, cx, key(&shown, "fx-1", "intensity"), 0.2);
+    assert!(gesture_open(&view, cx));
+    choose(&view, cx, &other);
+    assert!(!gesture_open(&view, cx), "the displayed scene did change");
+    assert_eq!(intensity_in(&view, cx, &shown, "fx-1"), 0.7);
+    assert_eq!(total_depth(&view, cx), depth);
+}
+
+#[gpui_kit::test]
+fn entering_the_scene_that_owns_the_gesture_keeps_it(cx: &mut TestAppContext) {
+    let (view, cx) = two_scenes(cx);
+    let gesture = view
+        .update(cx, |view, cx| {
+            view.scene_execute(
+                SceneCommand::FxGesture(
+                    tessel_editor_core::scene_interaction::FxGestureCommand::Begin {
+                        scene: "yard".into(),
+                        clip: "fx-1".into(),
+                        label: None,
+                    },
+                ),
+                Source::Cli,
+                cx,
+            )
+        })
+        .unwrap()["gesture"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(gesture_open(&view, cx), "begun on `yard`, shown: `street`");
+
+    choose(&view, cx, "yard");
+    let still = view.read_with(cx, |view, _| {
+        view.state
+            .scene_interaction
+            .gesture()
+            .map(|open| open.id().to_owned())
+    });
+    assert_eq!(still, Some(gesture), "entering the owning scene keeps it");
+}
