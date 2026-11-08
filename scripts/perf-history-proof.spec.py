@@ -140,5 +140,19 @@ class BufferDeadlineTests(unittest.TestCase):
         self.assertEqual(proof.buffer_wait(20.0, 123.0, 100.0), 20.0)
 
 
+class MissingViewTests(unittest.TestCase):
+    def test_missing_window_and_ui_samples_are_unknown(self):
+        for state in ({}, {"view": None}, {"view": {}}, {"view": {"window": {"end_ms": 1000}}}):
+            self.assertFalse(proof.freeze_data(state)[2])
+            window, events = proof.history_parts(state)
+            self.assertIsNone(window.get("buckets"))
+            self.assertIsNone(events.get("held"))
+
+    def test_a_real_frozen_probe_is_usable(self):
+        state = {"view": {"window": {"end_ms": 1000}, "peaks": {"ui_frames": {"count": 3}}}}
+        self.assertTrue(proof.freeze_data(state)[2])
+        self.assertEqual(proof.freeze_data(state)[1], 3)
+
+
 if __name__ == "__main__":
     unittest.main()

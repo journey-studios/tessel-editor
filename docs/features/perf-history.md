@@ -125,7 +125,7 @@ de mídia: o destino digitado vive só na janela (`get` o mostra) e não entra n
 
 | Superfície | Estado | Como |
 | --- | --- | --- |
-| Biblioteca | Implementada | `Recorder`, `Snapshot`, `HistoryCommand`; 58 testes do módulo com relógio injetado (escritos; a execução do head atual está a validar) |
+| Biblioteca | Implementada | `Recorder`, `Snapshot`, `HistoryCommand`; testes com relógio injetado; ver seção de evidências por SHA (execução do head atual a validar) |
 | CLI headless | **N/A justificado** | a medição só existe com a janela e o monitor vivos; `tessel-headless` responde `desktop_required` ao alvo `perf.history` (teste em `crates/core/tests/headless.rs`). O core funciona com entradas sintéticas e sem GPUI/wry (`cargo tree`) |
 | UI da janela | Implementada | botão `toolbar-perf-history` no cabeçalho e painel (diálogo Root do Kit) com gráficos nativos |
 | CLI da janela | Implementada | `get perf.history`; `set perf.history recording\|visible\|frozen\|selected_ms\|export_to\|export_destination`; `invoke perf.history record_start\|record_stop\|show\|hide\|freeze\|resume\|clear\|snapshot\|clear_selection\|export` — mesmo handler do painel (`Workstation::execute_perf_history`). `export_to <caminho>` inicia a escrita em segundo plano (resposta `state: writing`; o fim, em `get perf.history` → `export`); `export_destination <caminho>` só preenche o campo do painel (como digitar ou escolher) e `invoke export` é o botão |
@@ -494,3 +494,14 @@ Ainda abertos antes de aceite: dedup de falhas cuja primeira ocorrência não fo
 A primeira checagem desta correção encontrou `.children` recebendo um elemento único; ajustado para `.child`, checagem repetida com exit 0. Não equivale a build/testes workspace nem prova da janela.
 
 Revisão 4508061197: o painel insere diretamente as mensagens existentes, sem contêiner vazio ou gap extra quando não há aviso. Check desktop e formatação passaram; aparência nativa não reavaliada nesta correção.
+
+## Resíduos CodeRabbit 5820155331
+
+Teste de symlink restrito a Unix; destinos dos testes prepare_export usam temp_dir. O driver
+registra falha nomeada e pula a seção de freeze se faltam endpoint/count, mantém campos
+ausentes do buffer como null e não inventa seleção 0 quando o endpoint é inválido.
+Contagens removidas da tabela quando não ancoradas em execução. Gates gerais anteriores
+são de 76b14ae/7efeca4; provas de janela/smoke posteriores têm seus próprios SHAs na matriz.
+5258e8c inclui dedup posterior e não herda esses gates. Esta rodada requer validação final.
+
+Validação direcionada desta revisão: `./scripts/cargo test -p tessel-editor-core --lib perf_history --locked` 81/81; spec Python20/20 normal e -O; py_compile dos dois drivers, fmt e diffcheck passam. Sem execução Windows, janela, benchmark ou gates workspace desta revisão.

@@ -135,8 +135,11 @@ def run(args):
         check("the frozen view did not move while the recording and the drag went on", view(win) == frozen_view and state(win).get("recording") is True,
               [view(win).get("window"), frozen_view.get("window")])
         end_ms = window.get("end_ms")
-        selected = win.set(NODE, "selected_ms", (end_ms - 500.0) if isinstance(end_ms, (int, float)) else 0.0)
-        check("a selection inside the frozen window is an inspection", selected.get("ok") and isinstance(state(win).get("selected_ms"), (int, float)), selected)
+        numeric_end = type(end_ms) in (int, float)
+        check("the frozen window has a numeric endpoint before selection", numeric_end, window)
+        if numeric_end:
+            selected = win.set(NODE, "selected_ms", end_ms - 500.0)
+            check("a selection inside the frozen window is an inspection", selected.get("ok") and isinstance(state(win).get("selected_ms"), (int, float)), selected)
         target = os.path.join(work, "history-under-gesture.json")
         exported = win.set(NODE, "export_to", target)
         deadline = time.monotonic() + 20
