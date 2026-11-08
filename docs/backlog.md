@@ -479,3 +479,12 @@ proveniência F016 (BL036/BL019/BL082.17), depois preview/teclado/playhead e or�
 (BL082.6/.16). Divergência documental F016: matriz marca Lib/JSONL V, contrato ainda conserva
 R1 não compilada; resolver por SHA e prova, sem aceitar por inferência. Esta auditoria conferiu
 código/refs/PRs e documentos, não executou testes/build/UI/render. PR31 continua frente separada.
+
+### BL028 / BL036 / BL082 — plano e encaminhamento Cursor (2026-11-08)
+
+Usuário solicitou plano das lacunas e direcionamento ao Cursor Claude Sonnet 5.5.
+[Plano P0–P8](migration/pilot-parity-execution-plan.md) preparado; primeira entrega
+a encaminhar: P0 (corpus/proveniência) + P1 (BL082.6/.16, vinheta utilizável).
+Responsável pretendido: Cursor Sonnet 5.5 em checkout isolado, sem merge.
+Encaminhamento só fica confirmado com link/retorno do T3; nenhuma feature concluída.
+Demais fases permanecem planejadas, com IDs/aceites no backlog e sem atribuição nova.
