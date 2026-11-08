@@ -259,7 +259,8 @@ favor deles. Resultados medidos no relatório [viewport-performance-splat-projec
   (`RETAINED_ASSET_BYTES` 256 MiB de arquivos de still/cena/splat, LRU, nunca o que o quadro precisa nem o pré-carregado;
   `stats.evicted`) e os bitmaps de quadros de vídeo/sequência têm um orçamento global (`frameBitmapBytes` 256 MiB,
   `frame_bitmap_evicted`). `render.frame` informa `cache.memory` com a contagem do runtime. Testes: `splat.test.mjs`,
-  `retention.test.mjs`, testes da sessão.
+  `retention.test.mjs`, testes da sessão. `TESSEL_VIEWPORT_RETAIN_MIB=<MiB>` troca o orçamento da retenção (padrão 256; `0`
+  ou valor ilegível mantém o padrão), o que permite exercitar a remoção numa janela real com um projeto pequeno.
 - **Memória do editor (BL154).** `host::serve` aloca o corpo com capacidade exata (antes `read_to_end` dobrava por `realloc`,
   deixando blocos liberados de 1 a 32 MiB residentes) e nenhuma resposta de intervalo passa de `MAX_RANGE_BODY` (4 MiB; o
   `Content-Range` diz o que foi enviado). A carga de áudio sonda 1 byte (`Range: bytes=0-0`). Teste:
