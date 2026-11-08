@@ -109,6 +109,24 @@ class HeadlessTests(unittest.TestCase):
         with self.assertRaisesRegex(ps.SurfaceError, 'cannot start'):
             ps.Headless(os.path.join(self.dir, 'no-such-binary'))
 
+    def test_exit_status_one_is_expected_exactly_after_a_refused_request(self):
+        # tessel-headless exits 1 when any request failed: a scenario that refuses edits is clean.
+        refusing = ECHO + '\nsys.exit(1)\n'
+        surface = self.surface(refusing.replace("'ok': True, 'result': {'echo': request.get('op')}",
+                                                "'ok': False, 'error': {'code': 'refused'}"))
+        self.assertEqual(surface.op({'op': 'plan'})[0], False)
+        self.assertEqual(surface.stop(), [])
+        self.assertEqual(surface.exit_code, 1)
+        # The same status with no refusal seen is an I/O failure of the process: reported.
+        surface = self.surface(refusing)
+        self.assertEqual(surface.op({'op': 'plan'})[0], True)
+        self.assertEqual(len(surface.stop()), 1)
+        # Any other status is reported even after a refusal.
+        surface = self.surface(refusing.replace('sys.exit(1)', 'sys.exit(2)').replace(
+            "'ok': True, 'result': {'echo': request.get('op')}", "'ok': False, 'error': {'code': 'refused'}"))
+        surface.op({'op': 'plan'})
+        self.assertRegex(surface.stop()[0], 'status 2 \\(expected 1\\)')
+
     def test_stop_never_raises_even_when_the_process_is_gone(self):
         surface = self.surface(ECHO)
         surface.process.kill()

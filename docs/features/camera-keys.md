@@ -119,22 +119,26 @@ na janela** (BL140.1). Nós: `inspector.camera` (accordion), `camera_keys.captur
 
 ## Evidências e status
 
-**Estado desta correção (revisão independente da PR #20): implementada e escrita, não executada.** O disco livre ficou
-abaixo do piso de 12 GiB durante a correção; nenhum Cargo, build, render nem prova nativa foi rodado depois das mudanças
-abaixo. As execuções da coluna "Anterior" são do head `a5d9d19`, antes delas, e **não** provam o código novo.
+**Integração com `main` (PR #20, após o merge de F055/gizmo): gates reais executados.** Máquina com 24–28 GiB livres,
+piso de 12 GiB respeitado, runtime real (`./scripts/runtime setup`, Chrome, FFmpeg, Node 22).
 
-| Superfície | Evidência | Estado |
+| Superfície | Evidência executada | Estado |
 |---|---|---|
-| Lib | Anterior (`a5d9d19`): 12 testes de integração + 5 unitários + 1 em `state/tree.rs`, executados. Novo, **não executado**: `crates/core/tests/camera_keys.rs` (aparar o início/mover/aparar o fim a 50/100/200 % para cena, vídeo e áudio com oráculo aritmético independente; easing preservado em `Set`/`Capture` por op e por `invoke`, com undo e no-op; carregador recusa órbita+chaves com o código da edição e schema 1 com chaves; `clip.camera` inerte recusado; `orbit` numa chave recusado; FOV 170 excluído) + 3 unitários de `trim_clip` em `state/timeline.rs` + 1 de `state/tree.rs` (captura desabilitada com motivo na órbita) | A validar (testes escritos, não executados) |
-| CLI headless | Anterior: `scripts/camera-keys-proof.py` com 19 checks (JSONL, sem janela), executado em `a5d9d19`. Novo, não executado: o script ganhou o hold depois da última chave (agora observa um instante após ela), easing por omissão, recusas novas e a aparagem a 200 %; contagens a refazer | A validar |
-| UI | Anterior: 3 testes GPUI + 24 checks nativos (`ui op/get/set/invoke`, 3 `render.frame` distintos, captura nativa [`assets/bl140-camera-keys-window.png`](assets/bl140-camera-keys-window.png)), sem clique de ponteiro. Novo, não executado: teste GPUI de captura desabilitada na órbita e botão com o mesmo motivo; a captura do SO ausente agora é **SKIP explícito** (`complete: false`), não PASS (`--require-capture` a torna falha) | A validar |
-| Harness | `scripts/proof-surface.spec.py` (26 testes Python puros, **executados**): EOF, não-JSON, broken pipe, timeout, binário ausente, payload `None`, `swift`/`screencapture` com prazo, `stop` que não levanta, uma superfície falhando não impede a outra | V (só o harness) |
-| Preview = export | Anterior: `crates/render/tests/export.rs::keyed_camera_export_matches_the_frames_the_monitor_draws` (runtime real, H.264), executado em `a5d9d19`; não reexecutado | V no head anterior |
+| Lib | `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked`: 1599 passaram, 0 falharam, 12 ignorados (medidores marcados `#[ignore]`). Entre eles `crates/core/tests/camera_keys.rs` (20), os 3 unitários de `trim_clip`, os 2 de `state/tree.rs` e os 5 de `camera_keys::tests`. `cargo tree -p tessel-editor-core` sem gpui/wry | V |
+| CLI headless | `scripts/camera-keys-proof.py` (via `with-gpu-lock.py`): **26/26**, 0 SKIP, em `tessel-headless` (JSONL, sem janela) | V |
+| UI | 4 testes GPUI (`camera_keys_tests.rs`) + `scripts/camera-keys-proof.py` na janela própria: **32/32**, 0 SKIP (`ui op/get/set/invoke`, 3 `render.frame` com hashes distintos, captura do SO da janela). Sem clique de ponteiro | V (semântico) |
+| Preview = export | `crates/render/tests/export.rs::keyed_camera_export_matches_the_frames_the_monitor_draws` (Chrome real, H.264), 1/1 | V |
+| Runtime JS | `./scripts/runtime test`: 175/175 | V |
+| Harness | `scripts/proof-surface.spec.py` 29/29 em modo normal e `-O` | V (só o harness) |
 
-Limites: sem ponteiro físico/clique de coordenada; a captura nativa mostra a janela, não substitui o teste de pixel do
+Defeito achado na primeira execução real e corrigido na integração: `tessel-headless` encerra com status 1 quando qualquer
+requisição falhou, e a prova recusa edições de propósito; o helper (BL140.9) tratava esse status como falha de cleanup e a
+superfície headless saía como `FAILED` após 26 checks passarem. Agora o status 1 só é esperado quando houve resposta
+`ok:false` (outro status, ou 1 sem recusa, continua sendo problema reportado). Também: `clippy::err_expect` em
+`crates/core/tests/camera_keys.rs` (primeira compilação do código não compilado).
+
+Limites: sem ponteiro físico/clique de coordenada; a captura nativa mostra a janela e não substitui o teste de pixel do
 export; sem curva além dos três easings; o preview nativo (WKWebView) e o export (Chrome) são pilhas GL diferentes (ver
-[viewport](viewport.md)) e a igualdade provada é a do plano e a de pixels entre `render.frame` e export.
-
-R2 de código não identificou bloqueador funcional neste head. Isso não recompila os testes nem valida UI/render: F054 fica I até gates. Extensão do início que produz source_start negativo permanece pendente (BL140.8), sem promoção de comportamento por leitura. Os subIDs propostos pela revisão que colidiam com cadastro existente foram mantidos no registro canônico do coordenador.
-
-Helper: subclasses Headless recebem extra; timeout torna transporte encerrado e termina somente o filho próprio; falha de processo após última resposta não é PASS. Native habilita INSPECT para provas de hash (não benchmark). Diretório de saída absoluto antes do wrapper de fixtures. Testes puros do helper reexecutados, sem Cargo.
+[viewport](viewport.md)). A captura do SO foi gravada pela prova em `target/`, sem substituir
+[`assets/bl140-camera-keys-window.png`](assets/bl140-camera-keys-window.png). Extensão do início com `source_start`
+negativo permanece pendente (BL140.8).
