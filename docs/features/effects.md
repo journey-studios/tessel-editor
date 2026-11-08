@@ -278,6 +278,14 @@ eles, com controle negativo (expectativa adulterada é pega).
 
 ## Evidências
 
+**Reconciliação por head (P0+P1).** Os parágrafos abaixo guardam o histórico e os limites de cada entrega
+(32860ec, R1, R2); onde dizem "não compilado/não reexecutado", isso era verdade **naquele head**. No branch
+`t3/fx-candidate-preview` o Rust foi compilado e executado: `fmt`, `check`, `clippy -D warnings` e
+`test --workspace --locked` (105 suítes, 1855 passaram, 0 falharam, 12 ignoradas, `TESSEL_REQUIRE_RUNTIME=1`, nenhum
+SKIPPED), `cargo tree -p tessel-editor-core` sem gpui/wry, e a prova da janela 113/113. O `build -p tessel-editor
+--locked` do head final não foi repetido (disco abaixo do piso de 12 GiB: `REFUSED_DISK`); o binário da prova da janela
+vem de um head anterior, diferente só pelo `matches!` de `scene_project/interaction.rs`.
+
 Duas camadas, para não misturar o que rodou com o que só foi escrito. **Executado neste head (correção R1)**:
 runtime (`node --test` dos arquivos de efeito: 11 puros + 7 em Chrome/SwiftShader), medição pareada, e a
 `scene-fx-ui-proof.spec.py` (23 testes, sem janela). **Escrito neste head e não executado** (o disco da máquina ficou
