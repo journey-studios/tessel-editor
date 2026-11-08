@@ -12,6 +12,7 @@
 //   scene rig (no splat) Compositor.rigs         scene asset id + entry    release/load of the id, context loss, count LRU
 //   scene render target Compositor.targets       slot + size               size change, context loss, count/byte LRU
 //   splat mesh (spare)  AssetStore entry         the splat asset           release/load of the id, context loss, count per asset
+//   output-fx pipeline  Compositor.fx            the compositor (one quad + one material per effect)  context loss, retention off, a failed fx pass, dispose
 //   Spark stage         Compositor.stages        scene asset + nth layer   release/load of the scene id, context loss, count LRU, a failed sort
 //   Spark stage (shared) Compositor.splats       the one for exact draws   context loss, a failed sort (directed scenes, scenes past the stage budget)
 //
@@ -79,6 +80,13 @@ export class RetentionCounters {
       target_created: 0,
       target_reused: 0,
       target_evicted: 0,
+      // Output-fx pipeline (output-fx.js): built once per context and kept; `program_created` is a material (so a
+      // program link) made for an effect, `program_reused` a pass that found its effect's material already kept;
+      // `pipeline_discarded` a pipeline thrown away after a failed pass.
+      fx_pipeline_created: 0,
+      fx_pipeline_discarded: 0,
+      fx_program_created: 0,
+      fx_program_reused: 0,
       // Preview proxies (assets.js) and the result cache of static splat scenes (compositor.js).
       proxy_attached: 0,
       proxy_failed: 0,
@@ -201,5 +209,10 @@ export class LruCache {
 /** Byte size of a texture that holds `width`x`height` RGBA8 pixels (no mipmaps are generated). */
 export const rgbaBytes = (width, height) => width * height * 4;
 
-/** Estimated GPU bytes of one MSAA render target: samples x (color + depth) plus the resolve texture. */
-export const targetBytes = (width, height, samples) => width * height * 4 * (samples * 2 + 1);
+/**
+ * Estimated GPU bytes of one render target: samples x (color + depth) plus the resolve texture.
+ * Without a depth buffer (the output-fx ping-pong targets) the depth share is not counted; those
+ * targets are not multisampled either, so they are one RGBA texture.
+ */
+export const targetBytes = (width, height, samples, depth = true) =>
+  width * height * 4 * (samples * (depth ? 2 : 1) + 1);

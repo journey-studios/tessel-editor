@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde_json::Value;
 
+use crate::directed_scene::fx::Fx;
 use crate::directed_scene::{
     AssetAlpha, Bundle, CameraState, DirectedScene, FrameEvaluation, NodeKind, Parent, SceneGraph,
 };
@@ -339,7 +340,8 @@ impl<'a> Prepared<'a> {
             &resources,
             self.definition,
         );
-        let requires = derive_requires(&nodes, &layers, &splats, &frame.node_animation);
+        let fx = bundle.fx.resolve(edit_frame_i64(frame));
+        let requires = derive_requires(&nodes, &layers, &splats, &frame.node_animation, &fx);
 
         let profile = &bundle.render_profile;
         let mapping = &frame.mapping;
@@ -363,6 +365,7 @@ impl<'a> Prepared<'a> {
             nodes,
             layers,
             splats,
+            fx,
             resources,
             requires,
             unsupported: self.unsupported.clone(),
@@ -374,6 +377,10 @@ impl<'a> Prepared<'a> {
         plan.validate_structure()?;
         Ok(plan)
     }
+}
+
+fn edit_frame_i64(frame: &FrameEvaluation<'_>) -> i64 {
+    i64::try_from(frame.mapping.edit_frame).unwrap_or(i64::MAX)
 }
 
 fn plan_frame(frame: &FrameEvaluation<'_>) -> PlanFrame {
@@ -423,7 +430,7 @@ impl ScenePlan {
     /// The nodes of a shot's frames are the same list in the same order (they come from one scene
     /// definition), so a frame that does not line up with this plan is a bug, reported as the node
     /// that does not resolve instead of a plan with some other frame's nodes in it.
-    pub(super) fn at_frame(&self, frame: &FrameEvaluation<'_>) -> Result<Self, PlanError> {
+    pub(super) fn at_frame(&self, frame: &FrameEvaluation<'_>, fx: &Fx) -> Result<Self, PlanError> {
         let states = frame.nodes.nodes();
         // The first position where the two lists stop agreeing (one list may simply be longer).
         let misaligned = (0..states.len().max(self.nodes.len())).find_map(|at| {
@@ -453,6 +460,16 @@ impl ScenePlan {
         for (splat, slot) in plan.splats.iter_mut().zip(slots) {
             splat.after_layers = slot;
         }
+        // The effects are a function of the edit frame alone, so they are resolved again here
+        // (the template holds the first frame's), and `requires` follows them.
+        plan.fx = fx.resolve(edit_frame_i64(frame));
+        plan.requires = derive_requires(
+            &plan.nodes,
+            &plan.layers,
+            &plan.splats,
+            &plan.animation,
+            &plan.fx,
+        );
         // The same refusal as `build_with` gives for this frame (the template may be of a frame
         // whose splat matrices were fine).
         plan.check_splat_transforms()?;

@@ -401,6 +401,8 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
     idle: () => renderQueue,
     // Every SparkRenderer alive, to inject a failure into one or count them (tests and measurements).
     splatStages: () => compositor?.liveStages() ?? [],
+    // The compositor, to make one pass of a frame fail on purpose (tests): the frame must report it and the next must draw.
+    compositor: () => compositor,
     // The store itself and the bounds, so a test can hold a frame at an await or shrink a budget.
     assets,
     setLimits: (limits) => {

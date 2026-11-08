@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use crate::directed_scene::DirectedScene;
 
-use crate::scene_edit::{EditOp, PropertyRef};
+use crate::scene_edit::{EditOp, FxOp, PropertyRef};
 use crate::scene_interaction::{FrameAt, GestureCommand, GizmoCommand, PointerCommand, SelectMode};
 use crate::time::Ratio;
 
@@ -171,6 +171,24 @@ pub enum SceneCommand {
     Gesture(GestureCommand),
     /// F055: the translation gizmo (overlay, hit test, pointer drag, semantic translate).
     Gizmo(GizmoCommand),
+    /// F016: an atomic batch on the effects layer of a scene. `dry_run` validates exactly as a
+    /// real run would and changes nothing.
+    FxEdit {
+        scene: String,
+        ops: Vec<FxOp>,
+        dry_run: bool,
+    },
+    /// F016: the effects layer of a scene (tracks, clips, every parameter resolved).
+    FxList {
+        scene: String,
+    },
+    /// F016: the effects the editor draws, with their parameters and ranges.
+    FxCatalog,
+    /// F016: the passes the layer resolves at an edit frame (what the plan hands a runtime).
+    FxFrame {
+        scene: String,
+        at: FrameAt,
+    },
 }
 
 impl SceneCommand {
@@ -191,6 +209,7 @@ impl SceneCommand {
             // moved nothing leaves no entry. Press, move, cancel and the reads never do.
             Self::Gizmo(GizmoCommand::Pointer(PointerCommand::Up { .. })) => Some("Edit scene"),
             Self::Gizmo(GizmoCommand::Translate { .. }) => Some("Edit scene"),
+            Self::FxEdit { dry_run: false, .. } => Some("Edit effects"),
             _ => None,
         }
     }

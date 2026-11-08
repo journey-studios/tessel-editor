@@ -264,10 +264,11 @@ fn layers_are_back_to_front_with_the_composition_pass_first() {
         .map(|node| node.id.as_str())
         .collect();
     assert_eq!(layer_ids(&plan), painted);
-    // Every capability but `splats`: this scene has no splat node (S7, `scene_plan_splat.rs`).
+    // Every capability but `splats` (this scene has no splat node, S7, `scene_plan_splat.rs`) and
+    // `outputFx` (it has no effect clip, F016, `scene_fx.rs`).
     let without_splats: Vec<Capability> = Capability::ALL
         .into_iter()
-        .filter(|capability| *capability != Capability::Splats)
+        .filter(|capability| !matches!(capability, Capability::Splats | Capability::OutputFx))
         .collect();
     assert_eq!(plan.requires, without_splats);
 }

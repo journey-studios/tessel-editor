@@ -623,6 +623,22 @@ fn scene_command(op: &str, request: &Value) -> Result<SceneCommand, CommandError
             )?,
             dry_run: optional_bool(request, "dry_run")?.unwrap_or(false),
         },
+        // F016: the effects layer. Shape only; the catalog, IDs and layer rules are the core's.
+        "scene.fx.edit" => SceneCommand::FxEdit {
+            scene: scene()?,
+            ops: crate::scene_edit::parse_fx_batch(
+                request
+                    .get("ops")
+                    .ok_or_else(|| invalid("Expected array field `ops`"))?,
+            )?,
+            dry_run: optional_bool(request, "dry_run")?.unwrap_or(false),
+        },
+        "scene.fx.list" => SceneCommand::FxList { scene: scene()? },
+        "scene.fx.catalog" => SceneCommand::FxCatalog,
+        "scene.fx.frame" => SceneCommand::FxFrame {
+            scene: scene()?,
+            at: frame_at(request)?,
+        },
         "scene.list" => SceneCommand::List,
         "scene.capabilities" => SceneCommand::Capabilities,
         "scene.catalog" => SceneCommand::Catalog,

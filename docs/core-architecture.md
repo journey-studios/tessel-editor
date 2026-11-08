@@ -122,7 +122,7 @@ diretos. Ver [F015](features/project-creation.md).
 Para funcionalidades futuras, o core deve montar projetos, tracks, fontes, efeitos e
 sequências a partir de parâmetros do chamador. Seleção da UI não pode ser requisito de
 operações de batch: criar comandos com IDs explícitos e manter seleção como conveniência
-do adapter. Efeitos e split/corte interno permanecem pendentes; importação, playback, persistência e exportação
+do adapter. Split/corte interno permanece pendente; efeitos têm a primeira fatia entregue (vinheta de saída, F016: [effects.md](features/effects.md)); importação, playback, persistência e exportação
 estão entregues (ver o [relatório](media-project-export-report.md) para os limites). Jobs futuros precisam de progresso,
 cancelamento e erros expostos pela mesma API, sem depender de renderização da janela.
 
