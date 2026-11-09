@@ -62,7 +62,7 @@ def kinds(events):
     return [event.get("kind") for event in events]
 
 
-def run(args):
+def run(args, report, surfaces):
     binary = pathlib.Path(args.binary).resolve()
     for path in (binary, ROOT / "runtime" / "dist" / "runtime.js", fx.CORPUS / "bundle.json", fx.CORPUS / "bundle.swap.json"):
         if not path.exists():
@@ -74,7 +74,7 @@ def run(args):
     lifecycle = fx.load_lifecycle()
     work = tempfile.mkdtemp(prefix="te-fxh-", dir="/tmp")
     lab, pid = None, None
-    report = {"binary": h.binary_info(str(binary)), "git": h.git_state()}
+    report.update({"binary": h.binary_info(str(binary)), "git": h.git_state()})
     try:
         lab = lifecycle.Lab(str(binary), work, {"TESSEL_VIEWPORT_INSPECT": "1"})
         pid = lab.process.pid
@@ -84,6 +84,7 @@ def run(args):
         lab.invoke("window.activate")
         time.sleep(0.8)
         win = fx.Win(lab, lifecycle)
+        surfaces.append({"surface": "window", "how": "live semantic socket of a private instance: op/get/set/invoke, no pointer, no coordinates", "status": "exercised"})
         ok, body = win.op({"op": "project.create", "name": "fxh", "sequence": "main", "rate": 24, "width": fx.WIDTH, "height": fx.HEIGHT,
                            "length": fx.EDIT_FRAMES, "dir": os.path.join(work, "ws", "fxh")})
         if not check("project.create", ok, body):
@@ -214,6 +215,19 @@ def run(args):
     return 1 if fx.failures else 0
 
 
+def write_report(path, binary, surfaces, report, code):
+    """The effect proof's report plus what this smoke collected (export build, events, bytes, load).
+
+    `fx.write_report` knows only its own fields, so the surface list and the smoke's findings
+    would be lost; the file is still written atomically."""
+    fx.write_report(path, binary, surfaces, code)
+    document = json.loads(path.read_text())
+    document["smoke"] = report
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(document, indent=2))
+    os.replace(temporary, path)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--binary", default=str(ROOT / "target" / "release" / "tessel-editor"))
@@ -221,8 +235,9 @@ def main():
     parser.add_argument("--keep", action="store_true")
     args = parser.parse_args()
     code = 1
+    report, surfaces = {}, []
     try:
-        code = run(args)
+        code = run(args, report, surfaces)
     except (SystemExit, KeyboardInterrupt) as error:
         code = error.code if isinstance(error, SystemExit) and isinstance(error.code, int) and error.code != 0 else 130
         check("the proof was interrupted", False, f"{type(error).__name__}: {error}")
@@ -234,7 +249,7 @@ def main():
         total = len(fx.checks)
         print(f"\n{total - len(fx.failures)}/{total} checks passed", flush=True)
         if args.json:
-            fx.write_report(pathlib.Path(args.json), pathlib.Path(args.binary).resolve(), [], code)
+            write_report(pathlib.Path(args.json), pathlib.Path(args.binary).resolve(), surfaces, report, code)
     return code
 
 
