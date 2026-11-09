@@ -1,0 +1,166 @@
+"""Pure-logic tests of the scene warm A/B harness; no editor, GPU or runtime page is started."""
+import fcntl
+import importlib.util
+from pathlib import Path
+import tempfile
+import unittest
+
+spec = importlib.util.spec_from_file_location("scene_warm_proof", Path(__file__).with_name("scene-warm-proof.py"))
+proof = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(proof)
+
+
+def shot(id, shown, done, latency=10.0):
+    return {"id": id, "shown_frame": shown, "done_ms": done, "submit_to_done_ms": latency, "runtime_total_ms": latency / 2}
+
+
+class FixtureTests(unittest.TestCase):
+    def test_a_cloud_is_whole_splats_and_is_reproducible_from_its_seed(self):
+        first = proof.splat_bytes(50, 7)
+        self.assertEqual(len(first), 50 * 32)
+        self.assertEqual(first, proof.splat_bytes(50, 7))
+        self.assertNotEqual(first, proof.splat_bytes(50, 8), "another cut has another cloud, or the pixel control is vacuous")
+
+    def test_the_arms_alternate_and_stay_balanced(self):
+        self.assertEqual(proof.arm_order(1), ["warm", "cold"])
+        order = proof.arm_order(4)
+        self.assertEqual(order, ["warm", "cold", "cold", "warm", "warm", "cold", "cold", "warm"])
+        self.assertEqual(order.count("warm"), order.count("cold"))
+
+
+class TraceTests(unittest.TestCase):
+    def test_overlapping_trace_windows_count_each_picture_once(self):
+        seen = {}
+        proof.merge_frames(seen, [shot(1, 0, 0), shot(2, 1, 40)])
+        proof.merge_frames(seen, [shot(2, 1, 40), shot(3, 2, 83)])
+        proof.merge_frames(seen, None)
+        self.assertEqual(sorted(seen), [1, 2, 3])
+
+    def test_the_entry_is_the_first_picture_of_the_cut_and_its_gap_is_to_the_picture_before(self):
+        shots = [shot(1, 70, 0), shot(2, 71, 40), shot(3, 72, 140, latency=95.0), shot(4, 73, 180)]
+        entry = proof.entry_report(shots, 72)
+        self.assertEqual((entry["shown_frame"], entry["latency_ms"], entry["gap_ms"]), (72, 95.0, 100.0))
+
+    def test_a_cut_the_clock_skipped_is_entered_by_the_next_picture_inside_the_window(self):
+        shots = [shot(1, 71, 0), shot(2, 74, 120, latency=80.0)]
+        self.assertEqual(proof.entry_report(shots, 72)["shown_frame"], 74)
+
+    def test_an_entry_with_no_picture_is_missing_and_never_invented(self):
+        shots = [shot(1, 60, 0), shot(2, 100, 900)]
+        self.assertEqual(proof.entry_report(shots, 72), {"cut": 72, "missing": True})
+
+    def test_slow_intervals_are_the_ones_above_a_frame_and_a_half(self):
+        shots = [shot(i, i, done) for i, done in enumerate([0, 41, 82, 150, 190, 232])]
+        summary = proof.run_summary({s["id"]: s for s in shots}, [0], [(0, 100.0), (1, 140.0), (2, 120.0)], {"skipped_frames": 2, "max_gap_frames": 3})
+        self.assertEqual(summary["slow_intervals"], 1, "only the 68 ms gap")
+        self.assertEqual(summary["worst_interval_ms"], 68)
+        self.assertEqual(summary["memory_mib"], {"samples": 3, "median": 120.0, "peak": 140.0})
+        self.assertEqual((summary["skipped_frames"], summary["max_gap_frames"]), (2, 3))
+
+    def test_a_peak_above_the_median_is_reported_as_both(self):
+        series = [(i, value) for i, value in enumerate([100.0, 100.0, 100.0, 400.0])]
+        memory = proof.run_summary({}, [0], series, None)["memory_mib"]
+        self.assertEqual((memory["median"], memory["peak"]), (100.0, 400.0))
+
+    def test_the_medians_skip_a_run_that_has_no_such_entry(self):
+        runs = [{"summary": {"entries": [{"latency_ms": 20.0}, {"missing": True}]}},
+                {"summary": {"entries": [{"latency_ms": 60.0}, {"latency_ms": 5.0}]}}]
+        out = proof.medians(runs, [0, 72])
+        self.assertEqual((out[0]["runs"], out[0]["median_ms"], out[0]["max_ms"]), (2, 40.0, 60.0))
+        self.assertEqual((out[1]["runs"], out[1]["median_ms"]), (1, 5.0))
+
+
+class ValidityTests(unittest.TestCase):
+    def test_a_warm_run_that_never_warmed_measured_the_other_arm(self):
+        self.assertFalse(proof.run_is_valid("warm", {"warmed": 0})[0])
+        self.assertTrue(proof.run_is_valid("warm", {"warmed": 3})[0])
+
+    def test_a_cold_run_that_warmed_is_invalid_and_so_is_one_without_the_counter(self):
+        self.assertFalse(proof.run_is_valid("cold", {"warmed": 1})[0])
+        self.assertTrue(proof.run_is_valid("cold", {"warmed": 0})[0])
+        self.assertFalse(proof.run_is_valid("cold", {})[0])
+        self.assertFalse(proof.run_is_valid("warm", None)[0])
+
+    def test_the_analysis_leaves_an_invalid_run_out_and_says_so(self):
+        entries = [{"latency_ms": 10.0}]
+        memory = {"median": 100.0, "peak": 120.0}
+        good = {"arm": "warm", "valid": True, "summary": {"entries": entries, "memory_mib": memory, "slow_intervals": 0, "worst_interval_ms": 50}}
+        bad = {"arm": "warm", "valid": False, "summary": {"entries": [{"latency_ms": 999.0}], "memory_mib": memory, "slow_intervals": 9, "worst_interval_ms": 900}}
+        report = proof.analysis([good, bad], [0])
+        self.assertEqual(report["arms"]["warm"]["valid_runs"], 1)
+        self.assertEqual(report["arms"]["warm"]["entries"][0]["max_ms"], 10.0)
+        self.assertEqual(report["arms"]["cold"]["valid_runs"], 0)
+
+
+class PixelTests(unittest.TestCase):
+    @staticmethod
+    def session(arm, order, hashes, monitor=None):
+        return {"arm": arm, "order": order,
+                "hashes": {f: {"hash": h, "inspected": True} for f, h in hashes.items()},
+                "monitor": {f: {"hash": (monitor or hashes)[f], "converged": True} for f in hashes}}
+
+    def verdicts(self, sessions, frames):
+        return {name: ok for name, ok, _ in proof.pixel_verdicts(sessions, frames)}
+
+    def test_identical_hashes_in_all_four_orders_and_distinct_cuts_pass(self):
+        sessions = [self.session(a, o, {1: "x", 2: "y"}) for a, o in (("warm", "hot"), ("cold", "hot"), ("warm", "cold"), ("cold", "cold"))]
+        self.assertTrue(all(self.verdicts(sessions, [1, 2]).values()))
+
+    def test_one_arm_drawing_a_different_picture_fails_that_frame(self):
+        sessions = [self.session("warm", "hot", {1: "x", 2: "y"}), self.session("cold", "hot", {1: "x", 2: "z"})]
+        verdicts = self.verdicts(sessions, [1, 2])
+        self.assertTrue(verdicts["frame 1: the explicit render is byte-identical in warm/cold x hot/cold-seek"])
+        self.assertFalse(verdicts["frame 2: the explicit render is byte-identical in warm/cold x hot/cold-seek"])
+
+    def test_a_stuck_or_blank_picture_shared_by_two_cuts_fails_the_control(self):
+        sessions = [self.session("warm", "hot", {1: "blank", 2: "blank"})]
+        self.assertFalse(self.verdicts(sessions, [1, 2])["control: the frames of two different cuts do not share a picture"])
+
+    def test_a_missing_hash_never_passes(self):
+        sessions = [self.session("warm", "hot", {1: None})]
+        self.assertFalse(self.verdicts(sessions, [1])["frame 1: the explicit render is byte-identical in warm/cold x hot/cold-seek"])
+
+    def test_the_monitor_picture_after_the_pause_must_be_the_explicit_one(self):
+        sessions = [self.session("warm", "hot", {1: "x"}, monitor={1: "stale-order"})]
+        self.assertFalse(self.verdicts(sessions, [1])["after the pause the monitor shows the explicit render's picture"])
+
+
+class LockTests(unittest.TestCase):
+    def test_free_locks_are_taken_and_a_held_one_is_never_waited_for_past_the_deadline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths = [str(Path(directory) / "a.lock"), str(Path(directory) / "b.lock")]
+            held = proof.acquire_locks(0, paths)
+            self.assertEqual(len(held), 2)
+            clock = [0.0]
+            ticks = []
+
+            def sleep(seconds):
+                ticks.append(seconds)
+                clock[0] += seconds
+
+            blocked = proof.acquire_locks(3.0, paths, sleep=sleep, now=lambda: clock[0])
+            self.assertIsNone(blocked, "the same file locked twice from another handle is busy")
+            self.assertEqual(sum(ticks), 3.0)
+            for handle in held:
+                fcntl.flock(handle, fcntl.LOCK_UN)
+                handle.close()
+            again = proof.acquire_locks(0, paths)
+            self.assertEqual(len(again), 2, "a failed attempt leaves nothing held")
+            for handle in again:
+                handle.close()
+
+    def test_preparing_is_retried_until_it_answers_and_then_given_up(self):
+        answers = iter([{"ok": False, "error": {"code": "media_preparing"}}, {"ok": True}])
+        self.assertTrue(proof.retry_while_preparing(lambda: next(answers), sleep=lambda s: None)["ok"])
+        clock = [0.0]
+
+        def tick():
+            clock[0] += 10
+            return clock[0]
+
+        stuck = proof.retry_while_preparing(lambda: {"ok": False, "error": {"code": "media_preparing"}}, timeout=25, sleep=lambda s: None, now=tick)
+        self.assertEqual(proof.error_code(stuck), "media_preparing", "a wait that never ends is the caller's failure, not a pass")
+
+
+if __name__ == "__main__":
+    unittest.main()
