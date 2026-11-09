@@ -175,8 +175,10 @@ export class LruCache {
   }
 
   /**
-   * Frees least-recently-used entries this frame did not touch until one more entry fits the count bound,
-   * so a new entry never makes the peak go past `maxEntries` while an idle one could have made room.
+   * Frees least-recently-used entries this frame did not touch (and `keep` does not name) until one more entry
+   * fits the count bound, so a new entry never makes the peak go past `maxEntries` while an idle one could have
+   * made room. Returns whether it fits now: when every entry is used or kept it does not, and the caller must not
+   * insert (the bound is `maxEntries`, and `keep` is never freed to honour it).
    */
   makeRoom(keep = null) {
     for (const key of [...this.entries.keys()]) {
@@ -185,6 +187,7 @@ export class LruCache {
       this.delete(key);
       this.onEvict();
     }
+    return this.entries.size < this.maxEntries;
   }
 
   /** Whether one more entry fits now or after freeing entries neither the last frame nor `keep` touched. */
@@ -193,11 +196,11 @@ export class LruCache {
     return [...this.entries.keys()].some((key) => !this.used.has(key) && !keep?.has(key));
   }
 
-  /** Frees least-recently-used entries the last frame did not touch until both bounds hold. */
-  trim() {
+  /** Frees least-recently-used entries the last frame did not touch, and `keep` does not name, until both bounds hold. */
+  trim(keep = null) {
     for (const key of [...this.entries.keys()]) {
       if (this.entries.size <= this.maxEntries && this.bytes <= this.maxBytes) break;
-      if (this.used.has(key)) continue;
+      if (this.used.has(key) || keep?.has(key)) continue;
       this.delete(key);
       this.onEvict();
     }
