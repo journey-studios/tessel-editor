@@ -336,7 +336,8 @@ nesse tour porque ele só usa `seek`, sem reprodução; os números dela estão 
 
 Mesmos binários release (`ce71ce9` contra `main` com BL146–BL155), editor frio a cada execução, reprodução cronometrada pelo
 traço do host (`play_tour.py`, local), 3 execuções intercaladas de cada; a máquina estava com carga de 21 a 30 (outros processos),
-igual para os dois lados, então vale a comparação e não o valor absoluto.
+igual para os dois lados, então vale a comparação e não o valor absoluto. Na linha dos 6 vídeos empilhados há **3 resultados "antes" e
+só 2 "depois"**: o registro tem apenas esses dois, a terceira execução "depois" não consta e não é reconstruída aqui.
 
 | Cenário | Medida | antes | depois |
 |---|---|---|---|
@@ -350,6 +351,42 @@ Sobram entradas de 100–290 ms nas trocas de cena (BL157). A medida de `p99` de
 o `p99` é o segundo maior intervalo, que é do início da reprodução. Registrei também uma falha intermitente de abertura que
 acontece nos dois binários (BL158). A medição do aviso de proxy pendente (BL149) e um burst grande para o orçamento da
 pré-carga (BL147) não foram feitos.
+
+### Por que a entrada de cena ainda custa 60–150 ms (BL157)
+
+O host só traça `runtime_render_ms` e `runtime_total_ms`, então o runtime foi reconstruído localmente para pôr as fases de **CPU**
+nesses dois campos (`phase-runtime.py`, só no harness local, nada no produto; nunca foi versionado) e a reprodução 0–26 s foi repetida
+por fase. Nos quadros de entrada (186, 268, 410) o tempo de CPU está em `prepare_ms` (69–151 ms), enquanto `draw` e `flush` ficam em
+0–1 ms de CPU. **Isso não mede a GPU**: `flush` entrega os comandos à GPU e não espera a conclusão, então a rasterização na GPU pode
+ter levado mais do que esse 0–1 ms; uma medição de GPU separada (o modo `drain`) não foi feita para este quadro. Dentro de
+`prepare_ms`, a montagem do rig é ~0 de CPU e a ordenação do Spark é 52–69 ms. É a regra de `SplatStage.settle`: um quadro em
+movimento só é desenhado de imediato com a ordem anterior quando o Spark já tem uma ordenação para o mesmo conjunto de splats; no
+primeiro quadro da cena o estágio da linhagem é novo (um por asset) e o quadro espera a própria ordenação. A pré-carga carrega e
+decodifica, mas não cria o estágio nem ordena, então esse custo continuava no caminho crítico. Correção e riscos: backlog BL157.
+
+### Aquecimento da cena na pré-carga (BL157, entregue; revisado na PR #34)
+
+A correção é a que o backlog descrevia, com uma mensagem própria (`frame.warm`, feature `scene.warm`) em vez de um campo em `asset.load`,
+porque a pré-carga de assets e a de uma cena têm momentos diferentes (a cena só pode ser aquecida depois que todos os seus assets
+carregaram). Contrato e regras (linhagem, orçamento, donos de malha, espera cancelável, contexto perdido): [features/viewport.md](features/viewport.md).
+
+**As medições da primeira versão da PR foram descartadas.** Elas vinham do harness local não versionado (`play_tour.py`), de um runtime
+reconstruído à mão que não anunciava `scene.warm` (`mkrt.py`) e de um código que a revisão provou errado em quatro pontos (orçamento do
+LRU, numeração das linhagens, reserva de donos de malha, espera sem cancelamento). Os números daquela versão (média do pior quadro
+nas entradas 96 → 22 ms em três de cinco entradas, pico de memória 956–1008 contra 879–1037 MB) não valem para o código corrigido e não
+são repetidos aqui. Em particular, **não vale** a frase de que o aquecimento "não aumenta o pico": a mediana caiu, mas o maior pico
+observado foi maior com aquecimento, e a causa dos atrasos de fila (9 em 6 execuções com aquecimento contra 3 em 5 sem) ficou
+**inconclusiva**, não explicada pela carga da máquina.
+
+A medição foi refeita com um harness versionado, o **mesmo binário** com e sem `TESSEL_VIEWPORT_WARM=0`, quatro pares alternados, todas
+as entradas e execuções listadas, memória por mediana e pico, e a prova de pixel nas quatro combinações de (com/sem) × (quente/frio):
+[viewport-scene-entry-report.md](viewport-scene-entry-report.md). Resumo e limites: num projeto **sintético** de 5 cenas de 300 000 splats
+a latência da entrada de cena foi de mediana 32,9 ms (máx 57,5) sem aquecimento para 2,2 ms (máx 9,2) com, 16 entradas por lado, com a
+imagem idêntica byte a byte; a máquina estava com carga 21–36, o aceite no projeto de amostra (mídia privada) não foi repetido e a
+memória não mostra efeito além da dispersão entre execuções.
+
+Outras medições desta rodada: build de debug contra release no mesmo tour (BL137) e uma abertura com `Falha: timeout` também no projeto
+de splats, com o binário de debug e carga de 50 (BL158). Não investigados ainda: BL133, BL155 e a memória do WebContent.
 
 ## Backlog
 

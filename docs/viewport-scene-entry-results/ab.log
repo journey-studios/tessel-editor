@@ -1,0 +1,146 @@
+build e6bf44d8f binary sha256 db9f01a5fdb6
+PASS the proof project is created
+PASS the clouds import
+PASS the import job applied
+PASS every cloud is a splat asset
+PASS setup track.add scenes
+PASS setup asset.add scn0
+PASS setup asset.add scn1
+PASS setup asset.add scn2
+PASS setup asset.add scn3
+PASS setup asset.add scn4
+PASS setup clip.add c0
+PASS setup clip.add c1
+PASS setup clip.add c2
+PASS setup clip.add c3
+PASS setup clip.add c4
+PASS setup project.save 
+PASS run 0 (warm) is valid
+PASS run 0 (warm) has a picture for every cut
+PASS run 1 (cold) is valid
+PASS run 1 (cold) has a picture for every cut
+PASS run 2 (cold) is valid
+PASS run 2 (cold) has a picture for every cut
+PASS run 3 (warm) is valid
+PASS run 3 (warm) has a picture for every cut
+PASS run 4 (warm) is valid
+PASS run 4 (warm) has a picture for every cut
+PASS run 5 (cold) is valid
+PASS run 5 (cold) has a picture for every cut
+PASS run 6 (cold) is valid
+PASS run 6 (cold) has a picture for every cut
+PASS run 7 (warm) is valid
+PASS run 7 (warm) has a picture for every cut
+PASS pixel session warm/hot ran
+PASS pixel session cold/hot ran
+PASS pixel session warm/cold ran
+PASS pixel session cold/cold ran
+PASS the warm arm warmed in the hot pass
+PASS the cold arm never warmed in the hot pass
+PASS frame 77: the explicit render is byte-identical in warm/cold x hot/cold-seek
+PASS frame 112: the explicit render is byte-identical in warm/cold x hot/cold-seek
+PASS frame 149: the explicit render is byte-identical in warm/cold x hot/cold-seek
+PASS frame 293: the explicit render is byte-identical in warm/cold x hot/cold-seek
+PASS control: the frames of two different cuts do not share a picture
+PASS control: every picture was read back (inspected)
+PASS after the pause the monitor shows the explicit render's picture
+{
+  "arms": {
+    "warm": {
+      "valid_runs": 4,
+      "entries": [
+        {
+          "cut": 72,
+          "runs": 4,
+          "median_ms": 2.3,
+          "max_ms": 2.4
+        },
+        {
+          "cut": 144,
+          "runs": 4,
+          "median_ms": 1.8,
+          "max_ms": 9.2
+        },
+        {
+          "cut": 216,
+          "runs": 4,
+          "median_ms": 3.8,
+          "max_ms": 5.9
+        },
+        {
+          "cut": 288,
+          "runs": 4,
+          "median_ms": 2.6,
+          "max_ms": 4.2
+        }
+      ],
+      "memory_median_of_medians_mib": 409.5,
+      "memory_median_of_peaks_mib": 446.4,
+      "memory_max_peak_mib": 508.3,
+      "slow_intervals_per_run": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "worst_interval_ms_per_run": [
+        52.9,
+        56.6,
+        57.0,
+        64.4
+      ]
+    },
+    "cold": {
+      "valid_runs": 4,
+      "entries": [
+        {
+          "cut": 72,
+          "runs": 4,
+          "median_ms": 19.9,
+          "max_ms": 34.7
+        },
+        {
+          "cut": 144,
+          "runs": 4,
+          "median_ms": 36.0,
+          "max_ms": 57.5
+        },
+        {
+          "cut": 216,
+          "runs": 4,
+          "median_ms": 32.9,
+          "max_ms": 39.4
+        },
+        {
+          "cut": 288,
+          "runs": 4,
+          "median_ms": 31.7,
+          "max_ms": 41.3
+        }
+      ],
+      "memory_median_of_medians_mib": 426.4,
+      "memory_median_of_peaks_mib": 471.2,
+      "memory_max_peak_mib": 523.8,
+      "slow_intervals_per_run": [
+        2,
+        4,
+        4,
+        2
+      ],
+      "worst_interval_ms_per_run": [
+        100.2,
+        77.6,
+        82.1,
+        81.9
+      ]
+    }
+  },
+  "caveats": [
+    "RSS of the editor plus the WebKit processes new since the baseline; not the physical footprint, not GPU memory",
+    "latency is host admission to acceptance (submit_to_done_ms), CPU-side readback included; it is not photon latency",
+    "the pair count bounds what an A/B can say: report the per-run values, do not read a mean as an acceptance",
+    "CPU/GPU interference with other work on the machine is recorded (load average) but not controlled"
+  ]
+}
+ALL checks done; failed: []
+EXIT 0

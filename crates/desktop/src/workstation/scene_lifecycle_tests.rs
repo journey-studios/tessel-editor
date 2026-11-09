@@ -1183,3 +1183,82 @@ fn a_load_of_the_scene_that_was_left_ends_in_no_segment_that_never_saw_it_start(
         json!(started)
     );
 }
+
+#[test]
+fn a_directed_frame_that_timed_out_is_retried_twice_and_a_change_starts_the_count_over() {
+    let (mut host, mut state, resources) = directed_host("directed-retry");
+    let timeout = Duration::from_secs(31);
+    // The window's own path: a change, then the directed frame.
+    host.note_change();
+    host.render_scene(&mut state, &resources, &frame_request(20), false)
+        .unwrap();
+    let loads = sent(&mut host);
+    confirm_loads(&mut host, &state, &loads);
+    assert!(host.tick(Instant::now() + timeout));
+    assert_eq!(host.failure().unwrap().code, "timeout");
+    assert!(
+        !host.retry_due(Instant::now()),
+        "after a pause, not at once"
+    );
+    assert!(host.retry_due(Instant::now() + Duration::from_secs(2)));
+
+    // The retry asks for the same frame by the same path, without counting a change.
+    host.render_scene(&mut state, &resources, &frame_request(20), false)
+        .unwrap();
+    let again = sent(&mut host);
+    assert!(
+        again.iter().any(|m| m["type"] == "asset.load"),
+        "the pictures were released with the timeout: the retry loads them again"
+    );
+    confirm_loads(&mut host, &state, &again);
+    assert!(host.tick(Instant::now() + timeout));
+    assert!(!host.retry_due(Instant::now() + Duration::from_secs(2)));
+    assert!(host.retry_due(Instant::now() + Duration::from_secs(4)));
+    host.render_scene(&mut state, &resources, &frame_request(20), false)
+        .unwrap();
+    let last = sent(&mut host);
+    confirm_loads(&mut host, &state, &last);
+    assert!(host.tick(Instant::now() + timeout));
+    assert!(
+        !host.retry_due(Instant::now() + Duration::from_secs(3600)),
+        "two retries, then the failure stays"
+    );
+
+    host.note_change();
+    host.render_scene(&mut state, &resources, &frame_request(20), false)
+        .unwrap();
+    let fresh = sent(&mut host);
+    confirm_loads(&mut host, &state, &fresh);
+    assert!(host.tick(Instant::now() + timeout));
+    assert!(host.retry_due(Instant::now() + Duration::from_secs(2)));
+}
+
+#[test]
+fn a_directed_frame_that_fails_with_another_code_leaves_no_retry_behind() {
+    let (mut host, mut state, resources) = directed_host("directed-retry-clear");
+    host.note_change();
+    host.render_scene(&mut state, &resources, &frame_request(20), false)
+        .unwrap();
+    let loads = sent(&mut host);
+    confirm_loads(&mut host, &state, &loads);
+    assert!(host.tick(Instant::now() + Duration::from_secs(31)));
+    assert!(host.failure().is_some());
+
+    // Before the retry fires the user asks for another frame, and the page answers with another error.
+    host.note_change();
+    host.render_scene(&mut state, &resources, &frame_request(36), false)
+        .unwrap();
+    let messages = sent(&mut host);
+    let render = render_after_loads(&mut host, &state, &messages);
+    from_page(
+        &mut host,
+        &state,
+        json!({"type":"frame.failed","id":render["id"],"revision":render["revision"],
+            "error":{"code":"render_failed","message":"boom"}}),
+    );
+    assert_eq!(host.failure().unwrap().code, "render_failed");
+    assert!(
+        !host.retry_due(Instant::now() + Duration::from_secs(60)),
+        "the retry of the timeout is gone with it, and another code is not retried"
+    );
+}

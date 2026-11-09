@@ -409,6 +409,12 @@ pub trait RenderBackend {
     fn set_proxy(&mut self, _id: Id, _proxy: Option<&Value>) -> Result<(), BackendError> {
         Ok(())
     }
+    /// Asks the runtime to prepare the splat scenes of `plan` (their sort stage and first sort)
+    /// for a frame that will draw them soon, without drawing anything. Only sent to a runtime that
+    /// announced `scene.warm`; backends without it ignore it.
+    fn warm_scene(&mut self, _plan: &RenderPlan) -> Result<(), BackendError> {
+        Ok(())
+    }
     fn submit(&mut self, request: &FrameRequest) -> Result<(), BackendError>;
     fn cancel(&mut self, id: RequestId) -> Result<(), BackendError>;
     fn resize(&mut self, width: u32, height: u32) -> Result<(), BackendError>;

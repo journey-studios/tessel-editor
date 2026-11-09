@@ -239,6 +239,36 @@ favor deles. Resultados medidos no relatório [viewport-performance-splat-projec
   (fetch + decode); agora a carga corre durante os quadros anteriores. É melhor esforço: arquivo ausente ou falha do
   runtime não vira erro (quem precisa do asset reporta). Só reprodução: scrub/seek não pré-carregam. Contador:
   `session.stats.prefetched`.
+- **Aquecimento da cena (BL157).** O custo que sobrava na entrada de uma cena de splats era o estágio novo da linhagem esperar a
+  própria ordenação (50–70 ms, CPU do runtime). Quando os assets de um corte futuro (`EditorState::plans_ahead(2 s)`) já estão
+  carregados, o host envia `frame.warm {plan}` (feature aditiva `scene.warm`, anunciada em `ready.capabilities.features`; só vai a
+  runtime que anuncia, sem resposta) uma vez por conjunto de assets (`ViewportSession::warm`, contador `session.stats.warmed`);
+  `prefetch_ahead` chama `warm` mesmo sem corte à frente, para esquecer os que saíram da janela. `TESSEL_VIEWPORT_WARM=0` desliga o
+  envio sem tocar no runtime: o **mesmo binário** mede os dois lados (`scripts/scene-warm-proof.py`). Regras do runtime
+  (`Compositor.warmScenes`), cada uma com teste de Chrome real em `runtime/test/scene-warm.test.mjs`:
+  - **Linhagem** = `(asset, n)`, `n` contando **todas** as camadas de cena com splats daquele asset do plano, cobertas ou não
+    (`splatUses`); só as desenhadas pedem estágio. O aquecimento e o quadro numeram igual, então o quadro do corte encontra o estágio.
+  - **Orçamento** (`splatStages` = 2) intacto: o aquecimento ocupa um espaço livre ou o estágio que o último quadro não desenhou e que
+    nenhum aquecimento está ordenando; `LruCache.makeRoom(keep)` informa se a entrada cabe, `trim(keep)` nunca solta o protegido, e um
+    estágio que não cabe falha com `resource_budget` em vez de passar do limite.
+  - **Donos de malha**: o aquecimento reserva (`reserveSplatOwners`) os donos que o quadro desenha e os dos outros aquecimentos antes
+    de montar o rig, então nunca leva a malha sobressalente da cena que está na tela.
+  - **Espera cancelável**: o quadro que precisa da linhagem enquanto a ordenação corre espera no máximo 1 s (`WARM_WAIT_MS`) e consulta o
+    cancelamento a cada 25 ms; um quadro mais novo o substitui sem esperar.
+  - **Contexto perdido** descarta os aquecimentos em curso, e uma ordenação antiga não desfaz um aquecimento mais novo.
+
+  O quadro do corte desenha com essa ordem (`stale_sort_layers`, refinada na pausa como no BL130): o pixel final é o mesmo (provado em
+  Chrome real e na janela, relatório). Melhor esforço, nunca erro. Limites e medidas: [relatório](../viewport-scene-entry-report.md),
+  [backlog.md](../backlog.md) BL157.
+- **Nova tentativa do quadro com `timeout` (BL158).** Um quadro que falha com `timeout` é pedido de novo depois de 1 s e
+  de 3 s (`RETRY_DELAYS`); outros erros não são repetidos. A contagem tem **um só dono**, o `ViewportHost`:
+  `note_change()` (a janela chama a cada mudança do usuário, por qualquer caminho: prévia comum ou cena dirigida) zera as tentativas;
+  `retry_due()` consome o horário e conta; `clear_failure()` (novo pedido admitido ou imagem entregue) apaga a falha **e** a tentativa
+  pendente dela; `delivered()` devolve todas as tentativas à próxima falha. A tentativa que o monitor agenda segue o mesmo caminho de
+  uma mudança (`viewport_follow`) **sem** `note_change`, então não reinicia a própria contagem. A partir da segunda falha por `timeout`
+  a sessão desiste das cargas que o quadro esperava (`ViewportSession::cancel_timed_out`: libera e esquece o que ainda está `Loading`, conta
+  em `stats.reloaded`) e as pede de novo; a falha `cancelled` que o runtime reporta para uma carga que a sessão abandonou é ignorada
+  (não é resposta da carga nova). Um cancelamento comum continua esperando a mesma carga: a primeira expiração pode ser só uma carga lenta.
 - **Camadas cobertas (BL148).** O plano marca `occluded` (aditivo, só aparece quando `true`) nas camadas que uma camada
   acima esconde por completo: a de cima precisa ser **comprovadamente opaca** (vídeo `mp4`/`m4v` ou foto `jpg`/`jpeg`; PNG,
   `mov`, cena, texto e forma de onda nunca são presumidos opacos), opacidade 1, mistura `normal`, sem rotação, com o
@@ -356,7 +386,7 @@ retenção ligada) e `hello.telemetry.presented:true` (pede `frame.presented`, q
 (`frame.presented`, `cache.telemetry`); `frame.done` ganha `timings.{prepare_ms, draw_ms, flush_ms}` e `cache`
 (textura/texto/material/rig/alvo × criado/reaproveitado/expulso e o que está retido). Campos antigos e `settle_ms`
 continuam. `HelloOptions` padrão gera a mesma mensagem de antes, byte a byte (`hello_defaults_stay_byte_identical…`).
-Mais um campo aditivo (BL102, ainda v1): `asset.load.asset.request` (inteiro) e o eco `request`/`scene` em todo `asset.state`, negociados por `capabilities.features` `asset.identity`; só é enviado a runtime que o anuncia, e o runtime antigo ignora. Contrato em [scene-renderer.md](scene-renderer.md#identidade-de-carga-em-assetloadassetstate-bl102).
+Mais um grupo aditivo (BL157, ainda v1): host→página `frame.warm {plan}` (sem resposta), enviado **somente** a runtime que anuncia `scene.warm` em `ready.capabilities.features`; o runtime antigo nunca o recebe (um tipo desconhecido vira `error` de protocolo). Mais um campo aditivo (BL102, ainda v1): `asset.load.asset.request` (inteiro) e o eco `request`/`scene` em todo `asset.state`, negociados por `capabilities.features` `asset.identity`; só é enviado a runtime que o anuncia, e o runtime antigo ignora. Contrato em [scene-renderer.md](scene-renderer.md#identidade-de-carga-em-assetloadassetstate-bl102).
 Mais um grupo aditivo (F055/BL015, ainda v1): feature `overlay.gizmo` em `ready.capabilities.features` (a página só anuncia com o canvas de overlay); host→página `overlay.enable|set|clear` e página→host `overlay.pointer|layout|drawn` (`drawn` só com `TESSEL_VIEWPORT_OVERLAY_ACK=1`), enviados **somente** a quem anuncia o feature; o runtime antigo nunca os recebe e o host antigo rejeitaria o tipo. O overlay é desenhado e acertado por um canvas 2D dentro da página, nunca por GPUI sobre a WKWebView. Contrato, carimbo de identidade e política de cancelamento em [scene-gizmo.md](scene-gizmo.md).
 Versão incompatível vira `backend_unavailable` mencionando a bridge. O worker Node e a WebView falam o mesmo protocolo.
 

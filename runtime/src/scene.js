@@ -109,20 +109,8 @@ export class SceneRig {
     return this.splats.length > 0;
   }
 
-  /**
-   * `time` in seconds drives `spin` (degrees per second per axis). `stage` is the SplatStage of
-   * the compositor when the scene has splats; `aborted` stops the wait for a sort. `motion` lets a
-   * splat scene be drawn with the order of the last finished sort (BL130, see `SplatStage.settle`).
-   * Resolves `{ stale }`: the splats were drawn with an order that is not the one for this camera.
-   */
-  async draw(renderer, target, { camera: cameraSpec, time, width, height, stage, aborted, motion = false }) {
-    const camera = new THREE.PerspectiveCamera(cameraSpec.fov, width / height, 0.05, 1000);
-    camera.position.set(...cameraSpec.position);
-    camera.up.set(0, 1, 0);
-    camera.lookAt(...cameraSpec.target);
-    camera.updateMatrixWorld(true);
-    camera.updateProjectionMatrix();
-
+  /** Turns every object to where `time` (seconds) puts it: its own rotation plus its spin. */
+  pose(time) {
     this.spinners.forEach(({ node, spin, turn }) => {
       node.rotation.set(
         THREE.MathUtils.degToRad(turn[0] + spin[0] * time),
@@ -131,6 +119,29 @@ export class SceneRig {
       );
       node.updateMatrixWorld(true);
     });
+  }
+
+  /** The camera a plan layer names, at the aspect of the picture. */
+  static camera(cameraSpec, width, height) {
+    const camera = new THREE.PerspectiveCamera(cameraSpec.fov, width / height, 0.05, 1000);
+    camera.position.set(...cameraSpec.position);
+    camera.up.set(0, 1, 0);
+    camera.lookAt(...cameraSpec.target);
+    camera.updateMatrixWorld(true);
+    camera.updateProjectionMatrix();
+    return camera;
+  }
+
+  /**
+   * `time` in seconds drives `spin` (degrees per second per axis). `stage` is the SplatStage of
+   * the compositor when the scene has splats; `aborted` stops the wait for a sort. `motion` lets a
+   * splat scene be drawn with the order of the last finished sort (BL130, see `SplatStage.settle`).
+   * Resolves `{ stale }`: the splats were drawn with an order that is not the one for this camera.
+   */
+  async draw(renderer, target, { camera: cameraSpec, time, width, height, stage, aborted, motion = false }) {
+    const camera = SceneRig.camera(cameraSpec, width, height);
+
+    this.pose(time);
 
     if (this.hasSplats) {
       stage.attach(this.scene);

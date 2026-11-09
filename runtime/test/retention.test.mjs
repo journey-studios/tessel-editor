@@ -56,6 +56,40 @@ test('LruCache frees the oldest entry first and never one the last frame used', 
   assert.deepEqual(freed, ['A', 'B'], 'the next frame frees what was not used, oldest first');
 });
 
+test('LruCache never frees a kept entry to make room or to trim, and says when nothing fits', () => {
+  const freed = [];
+  const cache = new LruCache({ maxEntries: 2, dispose: (value) => freed.push(value) });
+  cache.set('a', 'A');
+  cache.set('warm', 'W');
+  cache.beginFrame();
+  const keep = new Set(['warm']);
+  cache.get('a');
+
+  // One entry is used by the frame and the other is kept: nothing can go, so nothing fits and nothing is freed.
+  assert.equal(cache.hasRoom(keep), false);
+  assert.equal(cache.makeRoom(keep), false, 'the caller is told it must not insert');
+  assert.deepEqual(freed, []);
+  cache.trim(keep);
+  assert.deepEqual(freed, [], 'trim keeps what is kept even when only that is over the bound');
+
+  // An idle entry makes room; the kept one still stays.
+  cache.beginFrame();
+  assert.equal(cache.hasRoom(keep), true);
+  assert.equal(cache.makeRoom(keep), true);
+  assert.deepEqual(freed, ['A'], 'the idle one is freed, not the kept one');
+  cache.set('b', 'B');
+  cache.beginFrame();
+  cache.get('b');
+  cache.set('c', 'C');
+  cache.trim(keep);
+  assert.deepEqual(freed, ['A'], 'over the bound with every entry used or kept: the bound waits, nothing protected is freed');
+  cache.beginFrame();
+  cache.get('c');
+  cache.trim(keep);
+  assert.deepEqual(freed, ['A', 'B'], 'the next frame frees the unused one, never the kept one');
+  assert.equal(cache.entries.has('warm'), true);
+});
+
 test('LruCache counts bytes, replaces without leaking and clears everything', () => {
   const freed = [];
   const cache = new LruCache({ maxEntries: 10, maxBytes: 100, dispose: (value) => freed.push(value) });

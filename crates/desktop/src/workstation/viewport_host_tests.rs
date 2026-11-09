@@ -530,6 +530,106 @@ fn a_frame_that_never_comes_is_cancelled_after_the_timeout() {
 }
 
 #[test]
+fn a_frame_that_timed_out_is_asked_for_again_twice_and_then_left_alone() {
+    let mut state = titled_state("Titulo");
+    let mut host = ready_host("frame-retry", &state);
+    sent(&mut host);
+    let timeout = Duration::from_secs(31);
+    assert!(host.tick(Instant::now() + timeout));
+    assert_eq!(host.failure().unwrap().code, "timeout");
+    assert!(
+        !host.retry_due(Instant::now()),
+        "after a pause, not at once"
+    );
+    assert!(host.retry_due(Instant::now() + Duration::from_secs(2)));
+    assert!(
+        !host.retry_due(Instant::now() + Duration::from_secs(2)),
+        "one retry per due time"
+    );
+    // The retry is the sync a change would make: the frame is asked for again.
+    host.sync(&state);
+    assert_eq!(kinds(&sent(&mut host)).last(), Some(&"frame.render"));
+    assert!(host.failure().is_none());
+
+    // Second timeout, second retry (a longer pause); a third one is not made.
+    assert!(host.tick(Instant::now() + timeout));
+    assert!(!host.retry_due(Instant::now() + Duration::from_secs(2)));
+    assert!(host.retry_due(Instant::now() + Duration::from_secs(4)));
+    host.sync(&state);
+    assert_eq!(kinds(&sent(&mut host)).last(), Some(&"frame.render"));
+    assert!(host.tick(Instant::now() + timeout));
+    assert!(!host.retry_due(Instant::now() + Duration::from_secs(3600)));
+    assert_eq!(
+        host.failure().unwrap().code,
+        "timeout",
+        "the failure stays on the header"
+    );
+
+    // A change the user makes starts the retries over (the window says so with `note_change`).
+    seek(&mut state, 3);
+    host.note_change();
+    host.sync(&state);
+    assert_eq!(kinds(&sent(&mut host)).last(), Some(&"frame.render"));
+    assert!(host.tick(Instant::now() + timeout));
+    assert!(host.retry_due(Instant::now() + Duration::from_secs(2)));
+}
+
+#[test]
+fn a_picture_that_arrives_gives_the_next_failure_all_its_retries() {
+    let mut state = titled_state("Titulo");
+    let mut host = ready_host("retry-delivered", &state);
+    let timeout = Duration::from_secs(31);
+    sent(&mut host);
+    assert!(host.tick(Instant::now() + timeout));
+    assert!(host.retry_due(Instant::now() + Duration::from_secs(2)));
+    host.sync(&state);
+    let render = sent(&mut host);
+    let id = render.last().unwrap()["id"].as_u64().unwrap();
+    let revision = render.last().unwrap()["revision"].as_u64().unwrap();
+    from_page(&mut host, &state, frame_done(id, revision));
+    assert!(host.failure().is_none());
+
+    // Had the count survived the picture, this would be the second retry (3 s), not the first (1 s).
+    seek(&mut state, 3);
+    host.note_change();
+    host.sync(&state);
+    assert!(host.tick(Instant::now() + timeout));
+    assert!(host.retry_due(Instant::now() + Duration::from_secs(2)));
+}
+
+#[test]
+fn another_failure_while_a_retry_is_due_takes_the_retry_with_it() {
+    let state = titled_state("Titulo");
+    let mut host = ready_host("retry-other-code", &state);
+    let first = sent(&mut host);
+    assert!(host.tick(Instant::now() + Duration::from_secs(31)));
+    assert_eq!(host.failure().unwrap().code, "timeout");
+    // Before the retry fires, the frame is asked for by a change and the page answers with another error.
+    host.note_change();
+    host.sync(&state);
+    let second = sent(&mut host);
+    let (id, revision) = {
+        let render = second.last().unwrap();
+        (
+            render["id"].as_u64().unwrap(),
+            render["revision"].as_u64().unwrap(),
+        )
+    };
+    assert_ne!(Some(id), first.last().unwrap()["id"].as_u64());
+    from_page(
+        &mut host,
+        &state,
+        json!({"type":"frame.failed","id":id,"revision":revision,
+            "error":{"code":"render_failed","message":"boom"}}),
+    );
+    assert_eq!(host.failure().unwrap().code, "render_failed");
+    assert!(
+        !host.retry_due(Instant::now() + Duration::from_secs(60)),
+        "only a timeout is retried, and the retry that was due belonged to the failure that is gone"
+    );
+}
+
+#[test]
 fn a_script_the_page_refuses_is_reported_not_retried() {
     let state = empty_state();
     let mut host = ready_host("script", &state);

@@ -33,6 +33,8 @@ struct Script {
     qualities: Vec<Quality>,
     /// Optional features this fake runtime announces.
     features: Vec<&'static str>,
+    /// `frame.warm` calls in order: the assets each plan requires.
+    warmed: Vec<Vec<Id>>,
 }
 
 #[derive(Clone)]
@@ -74,6 +76,10 @@ impl RenderBackend for Fake {
     }
     fn set_proxy(&mut self, id: Id, proxy: Option<&Value>) -> Result<(), BackendError> {
         self.0.borrow_mut().proxies.push((id, proxy.cloned()));
+        Ok(())
+    }
+    fn warm_scene(&mut self, plan: &RenderPlan) -> Result<(), BackendError> {
+        self.0.borrow_mut().warmed.push(plan.requires.clone());
         Ok(())
     }
     fn submit(&mut self, request: &FrameRequest) -> Result<(), BackendError> {
@@ -1869,4 +1875,305 @@ fn the_original_policy_draws_the_final_samples_while_playing() {
         .unwrap();
     rig.session.pump(Duration::ZERO);
     assert_eq!(rig.script.borrow().qualities, vec![Quality::Original]);
+}
+
+/// `rig_with_cut`, but the clip that starts at `start` is a scene (and its splat), so the plan at the cut has a
+/// scene layer and requires `scn` and `cloud`.
+fn rig_with_scene_cut(start: i64) -> Rig {
+    let mut rig = rig();
+    rig.script.borrow_mut().features = vec!["scene.warm"];
+    // One directory per call: the tests that use it run in parallel, and writing a fixture set truncates
+    // the files another test is probing.
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!(
+        "tessel-session-scene-{}-{start}-{n}",
+        std::process::id()
+    ));
+    let set = write_standard_set(&dir).unwrap();
+    for (id, kind, path) in [
+        ("cloud", MediaKind::Splat, &set.splat),
+        ("scn", MediaKind::Scene, &set.scene),
+    ] {
+        let asset = Asset::probe(kind, &path.to_string_lossy(), &Declared::default()).unwrap();
+        rig.state
+            .execute(Command::AddAsset {
+                id: Some(id.into()),
+                name: id.into(),
+                kind,
+                asset: Box::new(asset),
+                folder: None,
+            })
+            .unwrap();
+    }
+    rig.state
+        .execute(Command::AddClip {
+            id: Some("cs".into()),
+            name: None,
+            track: "v1".into(),
+            asset: Some("scn".into()),
+            start,
+            duration: 24,
+            source_start: None,
+            text: None,
+            camera: None,
+            properties: vec![],
+        })
+        .unwrap();
+    rig
+}
+
+#[test]
+fn a_cut_into_a_scene_is_warmed_once_its_assets_are_loaded_and_not_before() {
+    let mut rig = rig_with_scene_cut(60);
+    rig.session.capabilities().unwrap();
+    let plans = rig.state.plans_ahead(60);
+    assert_eq!(plans.len(), 1);
+    let ahead = rig.state.assets_ahead(60);
+    assert_eq!(ahead.len(), 2, "the scene and its splat: {ahead:?}");
+
+    // Nothing is loaded yet: there is nothing to sort.
+    assert_eq!(rig.session.warm(&plans), 0);
+    assert_eq!(rig.session.prefetch(&rig.state, &ahead), 2);
+    assert_eq!(rig.session.warm(&plans), 0, "still loading");
+    // One of the two is not enough: a warm never makes the runtime wait for a file.
+    rig.script.borrow_mut().events.push_back(ready("scn"));
+    rig.session.pump(Duration::ZERO);
+    assert_eq!(rig.session.warm(&plans), 0);
+    rig.script.borrow_mut().events.push_back(ready("cloud"));
+    rig.session.pump(Duration::ZERO);
+
+    assert_eq!(rig.session.warm(&plans), 1);
+    assert_eq!(rig.script.borrow().warmed.len(), 1);
+    assert_eq!(rig.session.stats.warmed, 1);
+    assert_eq!(rig.session.warm(&plans), 0, "once per cut");
+    // Nothing about a warm is a frame: no request, no status, no revision.
+    assert_eq!(rig.session.stats.requests, 0);
+    assert_eq!(rig.session.status().label(), "idle");
+    assert_eq!(rig.session.revision(), 0);
+}
+
+#[test]
+fn a_cut_is_warmed_again_after_it_was_passed_released_or_the_context_was_lost() {
+    let mut rig = rig_with_scene_cut(60);
+    rig.session.capabilities().unwrap();
+    let plans = rig.state.plans_ahead(60);
+    let ahead = rig.state.assets_ahead(60);
+    rig.session.prefetch(&rig.state, &ahead);
+    for id in ["scn", "cloud"] {
+        rig.script.borrow_mut().events.push_back(ready(id));
+        rig.session.pump(Duration::ZERO);
+    }
+    assert_eq!(rig.session.warm(&plans), 1);
+
+    // The playhead passed the cut (it is no longer ahead) and came back before it.
+    assert_eq!(rig.session.warm(&[]), 0);
+    assert_eq!(rig.session.warm(&plans), 1, "a later pass warms it again");
+
+    // Its assets were released: their stage went with them.
+    rig.session.release_except(&HashSet::new());
+    rig.session.prefetch(&rig.state, &ahead);
+    for id in ["scn", "cloud"] {
+        rig.script.borrow_mut().events.push_back(ready(id));
+        rig.session.pump(Duration::ZERO);
+    }
+    assert_eq!(rig.session.warm(&plans), 1);
+
+    // A lost context took every stage.
+    rig.script
+        .borrow_mut()
+        .events
+        .push_back(BackendEvent::ContextLost);
+    rig.session.pump(Duration::ZERO);
+    rig.session.prefetch(&rig.state, &ahead);
+    for id in ["scn", "cloud"] {
+        rig.script.borrow_mut().events.push_back(ready(id));
+        rig.session.pump(Duration::ZERO);
+    }
+    assert_eq!(rig.session.warm(&plans), 1);
+    assert_eq!(rig.script.borrow().warmed.len(), 4);
+}
+
+#[test]
+fn a_runtime_without_the_warm_and_a_cut_without_a_scene_are_never_sent_one() {
+    // Still image cut, runtime that announces it.
+    let mut rig = rig_with_cut(60);
+    rig.script.borrow_mut().features = vec!["scene.warm"];
+    rig.session.capabilities().unwrap();
+    let plans = rig.state.plans_ahead(60);
+    rig.session
+        .prefetch(&rig.state, &rig.state.assets_ahead(60));
+    rig.script.borrow_mut().events.push_back(ready("next"));
+    rig.session.pump(Duration::ZERO);
+    assert_eq!(rig.session.warm(&plans), 0, "an image has no sort");
+
+    // Scene cut, runtime that predates the warm.
+    let mut rig = rig_with_scene_cut(60);
+    rig.script.borrow_mut().features = vec![];
+    rig.session.capabilities().unwrap();
+    let plans = rig.state.plans_ahead(60);
+    rig.session
+        .prefetch(&rig.state, &rig.state.assets_ahead(60));
+    for id in ["scn", "cloud"] {
+        rig.script.borrow_mut().events.push_back(ready(id));
+        rig.session.pump(Duration::ZERO);
+    }
+    assert_eq!(rig.session.warm(&plans), 0);
+    assert!(rig.script.borrow().warmed.is_empty());
+}
+
+#[test]
+fn a_cut_is_never_warmed_when_the_host_turned_the_warm_off() {
+    let mut rig = rig_with_scene_cut(60);
+    rig.session.set_warm(false);
+    rig.session.capabilities().unwrap();
+    let plans = rig.state.plans_ahead(60);
+    let ahead = rig.state.assets_ahead(60);
+    rig.session.prefetch(&rig.state, &ahead);
+    for id in ["scn", "cloud"] {
+        rig.script.borrow_mut().events.push_back(ready(id));
+        rig.session.pump(Duration::ZERO);
+    }
+    assert_eq!(
+        rig.session.warm(&plans),
+        0,
+        "the runtime announces it, the host does not use it"
+    );
+    assert!(rig.script.borrow().warmed.is_empty());
+    assert_eq!(rig.session.stats.warmed, 0);
+    // The same session, switched on, warms the same cut: nothing else differed.
+    rig.session.set_warm(true);
+    assert_eq!(rig.session.warm(&plans), 1);
+}
+
+fn cancelled_load(id: &str) -> BackendEvent {
+    BackendEvent::Asset {
+        id: Id::lit(id),
+        status: AssetStatus::Failed(BackendError::new(
+            "cancelled",
+            "Asset was released while loading",
+        )),
+        echo: None,
+    }
+}
+
+#[test]
+fn a_frame_that_timed_out_gives_up_its_pending_load_and_asks_for_it_again() {
+    let mut rig = rig();
+    let first = rig
+        .session
+        .request_frame(&rig.state, plan(&rig, 0), output(), vec![])
+        .unwrap();
+    assert_eq!(rig.script.borrow().loaded, vec![Id::lit("img")]);
+    assert_eq!(rig.session.status().label(), "loading");
+
+    // The host gave up on the frame while the asset was still loading.
+    rig.session.cancel_timed_out();
+    assert_eq!(
+        rig.script.borrow().released,
+        vec![Id::lit("img")],
+        "the runtime ends that load"
+    );
+    assert_eq!(rig.session.stats.reloaded, 1);
+    assert_eq!(rig.script.borrow().cancelled, vec![first]);
+
+    // The next request loads the asset anew instead of waiting for the answer that never came.
+    let second = rig
+        .session
+        .request_frame(&rig.state, plan(&rig, 0), output(), vec![])
+        .unwrap();
+    assert_eq!(
+        rig.script.borrow().loaded,
+        vec![Id::lit("img"), Id::lit("img")]
+    );
+
+    // The runtime reports the old load as cancelled: that is not the answer of the new one.
+    rig.script
+        .borrow_mut()
+        .events
+        .push_back(cancelled_load("img"));
+    assert_eq!(
+        rig.session.pump(Duration::ZERO),
+        Some(SessionEvent::Progress)
+    );
+    assert_eq!(
+        rig.session.status().label(),
+        "loading",
+        "the new load and its frame are still waiting"
+    );
+    assert!(rig.script.borrow().submitted.is_empty());
+
+    rig.script
+        .borrow_mut()
+        .events
+        .extend([ready("img"), BackendEvent::FrameDone(frame(second, 2))]);
+    assert_eq!(
+        rig.session.pump(Duration::ZERO),
+        Some(SessionEvent::Progress)
+    );
+    assert_eq!(rig.session.status().label(), "rendering");
+    assert!(matches!(
+        rig.session.pump(Duration::ZERO),
+        Some(SessionEvent::Frame(_))
+    ));
+}
+
+#[test]
+fn a_plain_cancel_a_finished_asset_and_a_prefetch_are_never_given_up() {
+    // A plain cancel keeps waiting for the same load: the first timeout is a slow load, not a stuck one.
+    let mut rig = rig();
+    rig.session
+        .request_frame(&rig.state, plan(&rig, 0), output(), vec![])
+        .unwrap();
+    rig.session.cancel();
+    assert!(rig.script.borrow().released.is_empty());
+    rig.session
+        .request_frame(&rig.state, plan(&rig, 0), output(), vec![])
+        .unwrap();
+    assert_eq!(
+        rig.script.borrow().loaded.len(),
+        1,
+        "the same load is waited for"
+    );
+
+    // An asset that finished loading is not reloaded because a later frame timed out.
+    rig.script.borrow_mut().events.push_back(ready("img"));
+    rig.session.pump(Duration::ZERO);
+    rig.session.cancel_timed_out();
+    assert!(rig.script.borrow().released.is_empty());
+    assert_eq!(rig.session.stats.reloaded, 0);
+
+    // A load nobody's frame waits for (a prefetch) is not given up with someone else's frame.
+    let mut rig = rig_with_cut(60);
+    rig.session
+        .request_frame(&rig.state, plan(&rig, 0), output(), vec![])
+        .unwrap();
+    rig.session
+        .prefetch(&rig.state, &rig.state.assets_ahead(60));
+    let before = rig.script.borrow().loaded.len();
+    assert!(
+        before >= 2,
+        "the frame's asset and the prefetched one: {before}"
+    );
+    rig.session.cancel_timed_out();
+    assert_eq!(
+        rig.script.borrow().released,
+        vec![Id::lit("img")],
+        "only what the frame was waiting for"
+    );
+}
+
+#[test]
+fn a_cancelled_load_nobody_replaced_is_still_just_progress() {
+    // An old load the session released and no frame asked for again: its `cancelled` changes nothing.
+    let mut rig = rig();
+    rig.script
+        .borrow_mut()
+        .events
+        .push_back(cancelled_load("img"));
+    assert_eq!(
+        rig.session.pump(Duration::ZERO),
+        Some(SessionEvent::Progress)
+    );
+    assert_eq!(rig.session.status().label(), "idle");
 }

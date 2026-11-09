@@ -486,6 +486,21 @@ impl EditorState {
     /// the current frame's own requirements. Order is by clip start, without repeats; frames the
     /// planner refuses are skipped. Never mutates the state.
     pub fn assets_ahead(&self, frames: i64) -> Vec<Id> {
+        let mut assets: Vec<Id> = Vec::new();
+        for plan in self.plans_ahead(frames) {
+            for asset in plan.requires {
+                if !assets.contains(&asset) {
+                    assets.push(asset);
+                }
+            }
+        }
+        assets
+    }
+
+    /// The plan at each frame where a clip starts inside the `frames` frames after the playhead, in
+    /// order of start (see [`assets_ahead`](Self::assets_ahead), which lists what they require).
+    /// What a monitor can prepare for a cut before the playhead reaches it. Never mutates the state.
+    pub fn plans_ahead(&self, frames: i64) -> Vec<RenderPlan> {
         if !matches!(self.preview, PreviewIntent::Sequence) || frames <= 0 {
             return Vec::new();
         }
@@ -502,17 +517,10 @@ impl EditorState {
             .collect();
         starts.sort_unstable();
         starts.dedup();
-        let mut assets: Vec<Id> = Vec::new();
-        for start in starts {
-            if let Ok(plan) = self.plan_sequence(PlanTime::Frame(start)) {
-                for asset in plan.requires {
-                    if !assets.contains(&asset) {
-                        assets.push(asset);
-                    }
-                }
-            }
-        }
-        assets
+        starts
+            .into_iter()
+            .filter_map(|start| self.plan_sequence(PlanTime::Frame(start)).ok())
+            .collect()
     }
 
     fn plan_sequence(&self, at: PlanTime) -> Result<RenderPlan, CommandError> {
