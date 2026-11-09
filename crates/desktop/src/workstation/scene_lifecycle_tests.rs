@@ -952,6 +952,7 @@ fn proof_frame_left_in_flight(
 fn an_old_frame_that_comes_back_after_a_scene_switch_is_no_measurement_of_the_new_segment() {
     let (mut host, mut state, resources) = two_scene_host("history-stale-image");
     let (meter, clock) = recording(&mut host);
+    meter.borrow_mut().enable(clock.elapsed(), None, None);
     let (old, waiter) = proof_frame_left_in_flight(&mut host, &mut state, &resources, true);
     let waiter = waiter.unwrap();
     // The control: the first frame was answered inside its own segment and was recorded.
@@ -962,6 +963,7 @@ fn an_old_frame_that_comes_back_after_a_scene_switch_is_no_measurement_of_the_ne
             "{metric:?} of the control frame"
         );
     }
+    assert_eq!(meter.borrow().samples().1, 1);
     assert_eq!(stale_answers(&meter), 0);
     let segment_of_the_old_scene = meter.borrow().recorder().segment();
 
@@ -980,6 +982,11 @@ fn an_old_frame_that_comes_back_after_a_scene_switch_is_no_measurement_of_the_ne
 
     // The old answer arrives. Whoever asked for it is answered, and the new segment hears none of it.
     complete(&mut host, &state, &old);
+    assert_eq!(
+        meter.borrow().samples().1,
+        2,
+        "the old picture was still displayed"
+    );
     assert!(
         waiter.try_recv().unwrap().is_ok(),
         "the caller keeps its answer"
@@ -1019,6 +1026,7 @@ fn an_old_frame_that_comes_back_after_a_scene_switch_is_no_measurement_of_the_ne
     let loads = sent(&mut host);
     let new = render_after_loads(&mut host, &state, &loads);
     complete(&mut host, &state, &new);
+    assert_eq!(meter.borrow().samples().1, 3);
     assert_eq!(samples(&meter, &clock, Metric::MonitorFrames), 2);
     assert_eq!(samples(&meter, &clock, Metric::LatencyMs), 2);
     assert_eq!(stale_answers(&meter), 1);

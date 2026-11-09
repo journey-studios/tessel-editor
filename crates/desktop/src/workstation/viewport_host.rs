@@ -449,7 +449,11 @@ impl ViewportHost {
             return;
         }
         self.presented = frame;
-        self.note_stale(result.id);
+        if let Some(link) = &self.meter {
+            link.meter
+                .borrow_mut()
+                .monitor_stale_image(link.clock.elapsed(), frame, result.id);
+        }
     }
 
     /// The answer to request `id` came back after its session ended: counted, never measured.

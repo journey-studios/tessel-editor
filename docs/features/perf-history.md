@@ -560,3 +560,21 @@ Limites que continuam: quadro em voo atravessando a troca de cena e perda de con
 testes GPUI; GPU real isolada; ponteiro físico (BL043); Windows (os testes `cfg(unix)` não rodam lá);
 mutações não repetidas neste head; a janela de dobra de seeks (250 ms) conta do primeiro seek do grupo, como o
 teste fixa, e não do anterior. Não é aprovação humana nem merge.
+
+
+## Resíduos da revisão OpenCodeReview 5820222247 (BL145.7)
+
+Correção em validação: uma imagem aceita de época anterior continua alimentando a cadência do
+cartão e o rastreador de perdas do playback. No histórico, ela conta apenas como resposta antiga;
+não fornece quadro, intervalo, latência, renderização ou textura ao novo segmento. A API pura
+`Meter::monitor_stale_image` aplica essa separação e o host a chama para imagens realmente mostradas.
+
+O smoke passa a exportar o snapshot completo depois de retomar e parar a gravação. A afirmação
+sobre ausência de eventos proibidos só vale quando a gravação inteira cabe na janela e
+`events_dropped == 0`. A consulta compacta tem apenas 30 eventos: no congelamento, sua contagem
+e sua cauda são comparadas ao export, sem tratá-la como lista completa. Pico `monitor_frames`
+ausente ou nulo gera falha nomeada na contagem, sem abortar as verificações finais.
+
+Regressões escritas: cartão/perdas sem amostra histórica, cartão no retorno de quadro antigo
+entre cenas, evento proibido anterior à cauda de 30, export congelado com mais de 30 eventos,
+cobertura incompleta e picos nulos. Os gates anteriores permanecem históricos até a execução final.

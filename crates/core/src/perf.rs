@@ -585,6 +585,16 @@ impl Meter {
         self.presented(at, frame, Some(image));
     }
 
+    /// A picture from an older history epoch was actually displayed. Keep the card's
+    /// cadence and playback loss accurate, but exclude it from the current history segment.
+    pub fn monitor_stale_image(&mut self, at: Duration, frame: Option<i64>, request: u64) {
+        if self.card {
+            self.monitor.record(at);
+        }
+        self.loss.shown(frame);
+        self.recorder.response_stale(request);
+    }
+
     fn presented(&mut self, at: Duration, frame: Option<i64>, image: Option<&Image>) {
         if !self.enabled() {
             return;
@@ -1851,5 +1861,32 @@ mod tests {
             ),
             other => panic!("expected a live reading, got {other:?}"),
         }
+    }
+    #[test]
+    fn a_displayed_old_epoch_picture_feeds_the_card_and_loss_but_not_history() {
+        let mut meter = Meter::default();
+        meter.enable(at(0), Some(0), None);
+        meter.start_recording(at(0), Some(0), None);
+        meter.monitor_image(at(10), Some(0), &picture(1));
+        meter.playback_clock(1);
+        meter.monitor_stale_image(at(20), Some(1), 2);
+        meter.playback_clock(2);
+        meter.monitor_image(at(30), Some(2), &picture(3));
+        assert_eq!(
+            meter.samples().1,
+            3,
+            "all three pictures reached the screen"
+        );
+        assert!(matches!(
+            meter.loss.reading(),
+            LossReading::Live {
+                lost: 0,
+                presented_frames: 3,
+                ..
+            }
+        ));
+        let snapshot = meter.recorder().snapshot(at(40)).unwrap();
+        assert_eq!(snapshot.summary(Metric::MonitorFrames).unwrap().count, 2);
+        assert_eq!(snapshot.summary(Metric::RenderMs).unwrap().count, 2);
     }
 }

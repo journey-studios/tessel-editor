@@ -14,12 +14,13 @@ the history proofs: it checks that they do not disturb each other, in this order
     nor pauses the recording, and the recording does not move the gesture;
   * freeze under the open gesture is one immutable view while the recording continues; a selection
     inside it is an inspection; the export of the frozen snapshot is a local `tessel.perf-history` v1
-    file whose window, events and segments EQUAL the frozen view the window showed, and whose text
+    file whose window, event count/tail and segments match the frozen view the window showed, and whose text
     carries no local path (the build's commit is reported, never guessed);
   * cancel, commit (one undo entry), undo and a scene switch under a gesture each leave the document's
     picture and value as the effect proof promises;
   * through all of it the history holds no `playback_started`, `request_failed` or
-    `runtime_unavailable` event that the gesture could have invented, and recording is still on.
+    `runtime_unavailable` event that the gesture could have invented. The final full export is
+    checked after stopping, with no event eviction or dropped events accepted as complete coverage.
 
 The report is one JSON object on the last line (`ok`, `failures`, `checks`); the exit status is 1 on a
 failed check and 2 on a missing prerequisite. Limits: the history is recorded on a loaded machine, the
@@ -29,6 +30,7 @@ provoked here, and nothing in this script measures cost.
 import argparse
 import importlib.util
 import json
+import math
 import os
 import pathlib
 import shutil
@@ -60,6 +62,46 @@ def view(win):
 
 def kinds(events):
     return [event.get("kind") for event in events]
+
+
+def monitor_sample_count(current):
+    """Missing/null peaks are unavailable measurements, never a driver exception."""
+    peak = (((current.get("view") or {}).get("peaks") or {}).get("monitor_frames") or {})
+    count = peak.get("count")
+    return count if isinstance(count, (int, float)) and not isinstance(count, bool) and math.isfinite(count) and count >= 0 else 0
+
+
+def complete_events(document):
+    """Audit the full export, refusing eviction, overflow and malformed evidence."""
+    events = document.get("events")
+    recording = document.get("recording") or {}
+    window = document.get("window") or {}
+    start, retained = recording.get("started_at_ms"), window.get("start_ms")
+    numeric = lambda value: isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    complete = (document.get("schema") == "tessel.perf-history" and document.get("schema_version") == 1
+                and isinstance(events, list) and all(isinstance(event, dict) and isinstance(event.get("kind"), str) for event in events)
+                and document.get("events_dropped") == 0 and numeric(start) and numeric(retained) and start >= retained)
+    return complete, kinds(events) if isinstance(events, list) and all(isinstance(event, dict) for event in events) else []
+
+
+def frozen_events_match(compact, document):
+    """The UI exposes a tail; match its count and tail against the complete export."""
+    summary = compact.get("events") or {}
+    events, tail = document.get("events"), summary.get("newest")
+    return (isinstance(events, list) and isinstance(tail, list) and summary.get("held") == len(events)
+            and summary.get("dropped") == 0 and document.get("events_dropped") == 0
+            and len(tail) == min(30, len(events)) and tail == (events[-len(tail):] if tail else []))
+
+
+def export_snapshot(win, target):
+    """Wait for this explicit asynchronous export, then read its owned output."""
+    submitted = win.set(NODE, "export_to", str(target))
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline and (state(win).get("export") or {}).get("state") == "writing":
+        time.sleep(0.1)
+    done = submitted.get("ok") and (state(win).get("export") or {}).get("state") == "done" and pathlib.Path(target).is_file()
+    check("the final full snapshot export completed", done, state(win).get("export"))
+    return json.loads(pathlib.Path(target).read_text()) if done else {}
 
 
 def run(args, report, surfaces):
@@ -156,10 +198,8 @@ def run(args, report, surfaces):
             doc_window = document.get("window") or {}
             check("the export's window equals the frozen view's", doc_window.get("start_ms") == window.get("start_ms") and doc_window.get("end_ms") == window.get("end_ms"),
                   [doc_window, window])
-            held = (frozen_view.get("events") or {}).get("newest") or []
             doc_events = document.get("events") or []
-            as_set = lambda items: sorted((item.get("at_ms"), item.get("kind")) for item in items)  # noqa: E731
-            check("the export's events equal the frozen view's events", as_set(doc_events) == as_set(held) and bool(doc_events), [kinds(doc_events), kinds(held)])
+            check("the full export count and tail agree with the frozen view", frozen_events_match(frozen_view, document), frozen_view.get("events"))
             check("the export's segments equal the frozen view's", document.get("segments") == frozen_view.get("segments"), [document.get("segments"), frozen_view.get("segments")])
             report["export_build"] = document.get("build")
             report["export_events"] = kinds(doc_events)
@@ -196,13 +236,19 @@ def run(args, report, surfaces):
 
         # ---- the history never invented an event for the gesture ----
         final = state(win)
-        events = kinds(((final.get("view") or {}).get("events") or {}).get("newest") or [])
-        report["final_events"] = events
-        check("the history starts at the recording start", "recording_started" in events, events)
-        check("the history invented no playback, failure or runtime event", not [kind for kind in events if kind in FORBIDDEN], events)
-        check("a monitor frame of the gesture was counted (the monitor fed the history)", ((final.get("view") or {}).get("peaks") or {}).get("monitor_frames", {}).get("count", 0) > 0, final.get("view", {}).get("peaks"))
+        count = monitor_sample_count(final)
+        check("a monitor frame of the gesture was counted (the monitor fed the history)", count > 0, (final.get("view") or {}).get("peaks"))
         stopped = win.set(NODE, "recording", False)
         check("stopping keeps the data readable", stopped.get("ok") and state(win).get("has_data") is True and state(win).get("recording") is False)
+        document = export_snapshot(win, pathlib.Path(work) / "history-final.json")
+        complete, events = complete_events(document)
+        report["final_events"] = events
+        report["final_export_build"] = document.get("build")
+        report["final_events_complete"] = complete
+        check("the full recording's event coverage is complete (no eviction or dropped events)", complete, {"window": document.get("window"), "recording": document.get("recording"), "dropped": document.get("events_dropped")})
+        check("the history starts at the recording start", complete and "recording_started" in events, events)
+        check("the history invented no playback, failure or runtime event", complete and not [kind for kind in events if kind in FORBIDDEN], events)
+
     finally:
         if lab is not None and pid is not None:
             fx.stop_lab(lab, pid)

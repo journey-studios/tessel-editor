@@ -206,3 +206,5 @@ F016 — correção residual de seleção de cena validada no código `f5f6d1deb
 Registro histórico de etapa anterior: F049: feedback de export e seleção independentes, conclusão sem nomear destino editável, driver com prazo total limitado; check desktop passou; testes/prova GPUI ainda pendentes. BL145.6 e dedup após iniciar/clear continuam pendentes.
 
 F049 — estado atual: os gates de `5258e8c` e a validação final de `d348b8d` estão registrados na matriz por SHA de [perf-history.md](perf-history.md). Esses resultados não precisam ser repetidos por falta de registro; alterações posteriores exigem evidência própria. Pendências da revisão atual e o aceite de merge continuam abertos; limitações nativas/físicas preservadas.
+
+F049 — BL145.7: correções OCR de cartão/perdas e evidência completa do smoke em validação na PR36; os gates acima não validam estas alterações posteriores. Ver [contrato](perf-history.md).
