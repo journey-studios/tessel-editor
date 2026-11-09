@@ -83,6 +83,9 @@ pub const TRACE_ENV: &str = "TESSEL_VIEWPORT_TRACE";
 pub const RETAIN_ENV: &str = "TESSEL_VIEWPORT_RETAIN";
 /// Set to `0` to make every splat scene frame sort and draw again (rollback of the result cache).
 pub const RESULT_CACHE_ENV: &str = "TESSEL_VIEWPORT_RESULT_CACHE";
+/// `TESSEL_VIEWPORT_WARM=0` stops the monitor from sending `frame.warm` (BL157), whatever the runtime announces: the
+/// same build with and without the warm is how its effect is measured. Anything else leaves it on.
+pub const WARM_ENV: &str = "TESSEL_VIEWPORT_WARM";
 /// `0`, `2` or `4` MSAA samples for scene targets. Unset keeps the runtime's 4 (OPT07 measured
 /// fewer samples as a real gain on large splat scenes but a visible edge-quality trade).
 pub const SCENE_SAMPLES_ENV: &str = "TESSEL_VIEWPORT_SCENE_SAMPLES";
@@ -116,6 +119,8 @@ pub struct HostOptions {
     pub preview_sort: Option<PreviewSort>,
     /// Bytes of heavy assets the session keeps loaded; `None` is [`RETAINED_ASSET_BYTES`].
     pub retained_bytes: Option<u64>,
+    /// `Some(false)` never sends `frame.warm`; `None` keeps the default (on, for a runtime that announces it).
+    pub warm: Option<bool>,
 }
 
 /// A MSAA sample count the runtime accepts, from an environment value.
@@ -161,6 +166,9 @@ impl HostOptions {
                 .is_ok_and(|value| value == "0")
                 .then_some(false),
             result_cache: std::env::var(RESULT_CACHE_ENV)
+                .is_ok_and(|value| value == "0")
+                .then_some(false),
+            warm: std::env::var(WARM_ENV)
                 .is_ok_and(|value| value == "0")
                 .then_some(false),
             scene_samples: samples_from_env(SCENE_SAMPLES_ENV),
@@ -293,8 +301,6 @@ pub struct ViewportHost {
     /// Retries already made for the failure on show, and when the next one is due (BL158).
     retries: usize,
     retry_due: Option<Instant>,
-    /// The next [`sync`](Self::sync) is a retry, not a change the user made.
-    retrying: bool,
     last_frame: Option<FrameResult>,
     output_size: Option<(u32, u32)>,
     /// Proxy coverage of the sequence's videos as of the last sync: while some are pending the
@@ -350,6 +356,7 @@ impl ViewportHost {
             ViewportSession::new(backend).with_demo_dir(tessel_editor_render::demo_dir());
         session.set_retained_assets(RETAINED_ASSETS);
         session.set_retained_bytes(options.retained_bytes.unwrap_or(RETAINED_ASSET_BYTES));
+        session.set_warm(options.warm != Some(false));
         session.trace().set_enabled(options.trace);
         let (dist, phase) = match page {
             Ok(dist) => (Some(dist), Phase::Booting(Instant::now())),
@@ -373,7 +380,6 @@ impl ViewportHost {
             failure: None,
             retries: 0,
             retry_due: None,
-            retrying: false,
             last_frame: None,
             output_size: None,
             proxy_coverage: ProxyCoverage::default(),
@@ -658,12 +664,29 @@ impl ViewportHost {
         )
     }
 
+    /// A change the user made asks for the next picture: the retries of an earlier failure start over. The window
+    /// calls it for every change (and for none of the retries the monitor schedules itself, see
+    /// [`retry_due`](Self::retry_due)), whichever way the picture is then asked for (an ordinary preview or a
+    /// directed scene), so the count lives in one place and a path that never reaches `sync` cannot leave it stale.
+    pub(super) fn note_change(&mut self) {
+        self.retries = 0;
+    }
+
+    /// The failure on show goes away (a new request was admitted, or a picture arrived): so does the retry
+    /// that was due for it, which belonged to that failure and to no other.
+    fn clear_failure(&mut self) {
+        self.failure = None;
+        self.retry_due = None;
+    }
+
+    /// A picture was delivered: the next failure starts with all its retries.
+    fn delivered(&mut self) {
+        self.clear_failure();
+        self.retries = 0;
+    }
+
     /// Follows the editor state: asks for a new picture if what the monitor shows changed.
     pub fn sync(&mut self, state: &EditorState) {
-        // Anything but a retry is a change the user made: it starts the retries over.
-        if !std::mem::take(&mut self.retrying) {
-            self.retries = 0;
-        }
         if self.directed_scene().is_some() {
             self.dispatch_directed();
             return;
@@ -737,17 +760,19 @@ impl ViewportHost {
             .nominal_fps()
             .saturating_mul(PREFETCH_SECONDS);
         let plans = state.plans_ahead(frames);
-        if plans.is_empty() {
-            return 0;
-        }
         let mut assets = Vec::new();
         for asset in plans.iter().flat_map(|plan| plan.requires.iter()) {
             if !assets.contains(asset) {
                 assets.push(*asset);
             }
         }
-        let started = self.session.prefetch(state, &assets);
-        // What was loaded on an earlier tick gets its splat scenes' first sort now, not at the cut (BL157).
+        let started = if assets.is_empty() {
+            0
+        } else {
+            self.session.prefetch(state, &assets)
+        };
+        // What was loaded on an earlier tick gets its splat scenes' first sort now, not at the cut (BL157). Also
+        // with nothing ahead: the cuts that left the window are forgotten, so a return to one warms it again.
         started + self.session.warm(&plans)
     }
 
@@ -764,7 +789,7 @@ impl ViewportHost {
             Ok(Preview::Submitted(id)) => {
                 self.note_admitted(id);
                 self.request_started = Some(Instant::now());
-                self.failure = None;
+                self.clear_failure();
                 self.png_paths.clear();
                 Self::cancel_waiters(std::mem::take(&mut self.waiters));
             }
@@ -794,7 +819,13 @@ impl ViewportHost {
                 .borrow_mut()
                 .request_failed(link.clock.elapsed(), None, &error.code);
         }
-        self.session.cancel();
+        // The first timeout is waited out again (a load that is slow is not a load that is stuck); at the second a
+        // load still pending is given up and asked for anew, so the retry cannot wait on an answer that never comes.
+        if error.code == "timeout" && self.retries >= 1 {
+            self.session.cancel_timed_out();
+        } else {
+            self.session.cancel();
+        }
         self.request_started = None;
         self.last_frame = None;
         self.png_paths.clear();
@@ -812,15 +843,14 @@ impl ViewportHost {
         self.failure = Some(error);
     }
 
-    /// Whether the failure on show is due its retry. Consumes the due time: the caller then runs
-    /// [`sync`](Self::sync), which asks for the frame again.
+    /// Whether the failure on show is due its retry. Consumes the due time and counts the retry: the caller then
+    /// asks for the frame again by the path a change takes, without [`note_change`](Self::note_change).
     pub fn retry_due(&mut self, now: Instant) -> bool {
         if self.failure.is_none() || !self.retry_due.is_some_and(|due| now >= due) {
             return false;
         }
         self.retry_due = None;
         self.retries += 1;
-        self.retrying = true;
         // The plan is the one that failed, so only `dirty` keeps `sync` from taking it for "unchanged".
         self.dirty = true;
         true
@@ -841,7 +871,7 @@ impl ViewportHost {
             Ok(id) => {
                 self.note_admitted(id);
                 self.request_started = Some(Instant::now());
-                self.failure = None;
+                self.clear_failure();
                 if let Some(path) = png {
                     self.png_paths.insert(id, PathBuf::from(path));
                 }
@@ -892,6 +922,8 @@ impl ViewportHost {
             }),
         };
         let (reply, receiver) = async_channel::bounded(1);
+        // An explicit request is the user asking again: an earlier failure's retries start over.
+        self.note_change();
         self.dirty = false;
         // The next `sync` must re-evaluate against what is on the canvas now.
         self.last_key = None;
@@ -1015,7 +1047,7 @@ impl ViewportHost {
             Some(Ok(id)) => {
                 self.note_admitted(id);
                 self.request_started = Some(Instant::now());
-                self.failure = None;
+                self.clear_failure();
             }
             Some(Err(error)) => self.report_failure(error),
             None => {}
@@ -1055,7 +1087,7 @@ impl ViewportHost {
             Some(Ok(id)) => {
                 self.note_admitted(id);
                 self.request_started = Some(now);
-                self.failure = None;
+                self.clear_failure();
                 true
             }
             Some(Err(error)) => {
@@ -1077,9 +1109,7 @@ impl ViewportHost {
             }
             SessionEvent::Frame(frame) => {
                 self.request_started = None;
-                self.failure = None;
-                self.retries = 0;
-                self.retry_due = None;
+                self.delivered();
                 self.png_paths.remove(&frame.id);
                 if let Some(index) = self
                     .waiters

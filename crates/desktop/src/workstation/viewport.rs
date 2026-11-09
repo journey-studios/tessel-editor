@@ -117,8 +117,16 @@ impl Workstation {
         cx.notify();
     }
 
-    /// Follows the editor state after a command.
+    /// Follows the editor state after a command: a change the user made, so the retries of an earlier timeout
+    /// start over (BL158).
     pub(super) fn viewport_sync(&mut self, cx: &mut Context<Self>) {
+        self.viewport.note_change();
+        self.viewport_follow(cx);
+    }
+
+    /// Asks the monitor for its picture again (a directed scene or the sequence preview, whichever it shows) without
+    /// starting the retries over: what a retry does, and what a change does after counting itself as one.
+    fn viewport_follow(&mut self, cx: &mut Context<Self>) {
         // A gizmo drag that nobody can finish is over before the monitor follows the state.
         self.settle_gizmo_drag(cx);
         if let Some(scene) = self.viewport.directed_scene().map(str::to_owned) {
@@ -219,9 +227,10 @@ impl Workstation {
         if self.viewport.tick(now) {
             cx.notify();
         }
-        // A frame that timed out is asked for again after a pause (BL158), by the path a change takes.
+        // A frame that timed out is asked for again after a pause (BL158), by the path a change takes but
+        // counted as a retry (a directed scene is asked for by the same path as the sequence preview).
         if self.viewport.retry_due(now) {
-            self.viewport_sync(cx);
+            self.viewport_follow(cx);
         }
     }
 

@@ -92,7 +92,7 @@ impl Default for DirectedViewport {
 impl ViewportHost {
     pub fn scene_error(&mut self, error: &CommandError) {
         self.reset_directed_runtime();
-        self.failure = Some(BackendError::new(error.code, error.to_string()));
+        self.show_failure(BackendError::new(error.code, error.to_string()));
     }
 
     pub fn directed_scene(&self) -> Option<&str> {
@@ -342,7 +342,7 @@ impl ViewportHost {
                 self.note_admitted(active.id);
                 self.directed.active = Some(active);
                 self.request_started = Some(Instant::now());
-                self.failure = None;
+                self.clear_failure();
                 self.send_directed_if_loaded();
             }
             Err(error) => {
@@ -350,7 +350,7 @@ impl ViewportHost {
                     let _ = reply.try_send(Err(backend_error(error.clone())));
                 }
                 self.directed.key = None;
-                self.failure = Some(error);
+                self.show_failure(error);
             }
         }
     }
@@ -483,7 +483,7 @@ impl ViewportHost {
                 if let Some(reply) = active.reply {
                     let _ = reply.try_send(frame_report(&active.plan, &frame));
                 }
-                self.failure = None;
+                self.delivered();
                 // The caller was answered above whatever happened since; the history hears it
                 // only if the session it was asked in is still the open one.
                 self.note_image_of(active.epoch, active.edit_frame.as_i64(), &frame);
@@ -501,7 +501,7 @@ impl ViewportHost {
                     self.note_stale(active.id);
                 }
                 self.directed.key = None;
-                self.failure = Some(error);
+                self.show_failure(error);
             }
         }
         self.dispatch_directed();
@@ -520,7 +520,7 @@ impl ViewportHost {
                 // A context that is never restored must be visible, not a frozen last picture.
                 // The ordinary monitor reports its own loss through the session.
                 if self.directed.scene.is_some() {
-                    self.failure = Some(error);
+                    self.show_failure(error);
                 }
             }
             Some("context.restored") => {

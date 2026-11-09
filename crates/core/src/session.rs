@@ -94,6 +94,8 @@ pub struct Stats {
     pub evicted: u64,
     /// Cuts whose splat scenes the runtime was asked to prepare ahead (see [`ViewportSession::warm`]).
     pub warmed: u64,
+    /// Loads given up and asked for again after a frame ran out of time (see [`ViewportSession::cancel_timed_out`]).
+    pub reloaded: u64,
 }
 
 /// Assets below this size are never evicted for memory: releasing them frees nothing worth a reload.
@@ -172,6 +174,8 @@ pub struct ViewportSession<B: RenderBackend> {
     prefetch_budget: u64,
     /// The cuts (by the assets their plan requires) the runtime was already asked to warm.
     warmed: HashSet<Vec<Id>>,
+    /// Whether a runtime that announces `scene.warm` is sent warms (on unless the host turns it off).
+    warm_enabled: bool,
     /// Bytes of source files of every asset loaded or loading, and the request that last needed it.
     asset_bytes: HashMap<Id, u64>,
     last_used: HashMap<Id, u64>,
@@ -217,6 +221,7 @@ impl<B: RenderBackend> ViewportSession<B> {
             prefetched: HashMap::new(),
             prefetch_budget: PREFETCH_BUDGET_BYTES,
             warmed: HashSet::new(),
+            warm_enabled: true,
             asset_bytes: HashMap::new(),
             last_used: HashMap::new(),
             retain_bytes: None,
@@ -559,10 +564,11 @@ impl<B: RenderBackend> ViewportSession<B> {
         // A cut the playhead passed (or that left the window) is forgotten: a later pass warms it again.
         self.warmed
             .retain(|key| plans.iter().any(|plan| &plan.requires == key));
-        if !self
-            .capabilities
-            .as_ref()
-            .is_some_and(|caps| caps.supports("scene.warm"))
+        if !self.warm_enabled
+            || !self
+                .capabilities
+                .as_ref()
+                .is_some_and(|caps| caps.supports("scene.warm"))
         {
             return 0;
         }
@@ -588,6 +594,16 @@ impl<B: RenderBackend> ViewportSession<B> {
             sent += 1;
         }
         sent
+    }
+
+    /// Turns the warm off (or on again): the monitor then never sends `frame.warm`, whatever the runtime
+    /// announces. The same build with and without it is how its effect is measured
+    /// (`scripts/scene-warm-proof.py`); a cut is then drawn exactly as before BL157.
+    pub fn set_warm(&mut self, enabled: bool) {
+        self.warm_enabled = enabled;
+        if !enabled {
+            self.warmed.clear();
+        }
     }
 
     fn start(
@@ -926,6 +942,9 @@ impl<B: RenderBackend> ViewportSession<B> {
                 }
                 SessionEvent::Progress
             }
+            // The answer of a load a release overtook (the runtime reports `cancelled` for it): a load this session gave
+            // up on, or replaced, is not the one now in flight for the asset, whose slot and request it must not touch.
+            AssetStatus::Failed(error) if error.code == "cancelled" => SessionEvent::Progress,
             AssetStatus::Failed(error) => {
                 self.assets.remove(&id);
                 let needed = self
@@ -991,6 +1010,33 @@ impl<B: RenderBackend> ViewportSession<B> {
                 Some(SessionEvent::Failed(error)) => return Err(error),
                 _ => {}
             }
+        }
+    }
+
+    /// [`cancel`](Self::cancel) for a request that ran out of time. A load it was still waiting for is given up
+    /// too: the runtime is told to release the asset (which ends that load) and the session forgets it, so the
+    /// next request for the frame sends a new `asset.load` instead of waiting again for one that may never
+    /// answer. The runtime's `cancelled` for the load that was given up is ignored (see `on_asset`), so it
+    /// cannot be taken for the answer of the new one. Loads that were not part of the request (a prefetch) and
+    /// assets that finished loading are left alone.
+    pub fn cancel_timed_out(&mut self) {
+        let stuck: Vec<Id> = self
+            .active
+            .as_ref()
+            .map(|active| {
+                active
+                    .required
+                    .iter()
+                    .filter(|asset| matches!(self.assets.get(*asset), Some(Slot::Loading)))
+                    .copied()
+                    .collect()
+            })
+            .unwrap_or_default();
+        self.cancel();
+        for asset in stuck {
+            let _ = self.backend.release_asset(asset);
+            self.forget_asset(&asset);
+            self.stats.reloaded += 1;
         }
     }
 
@@ -1100,7 +1146,7 @@ impl<B: RenderBackend> ViewportSession<B> {
                 "cancelled": self.stats.cancelled, "dropped_stale": self.stats.dropped_stale,
                 "coalesced": self.stats.coalesced, "proxy_attached": self.stats.proxy_attached,
                 "proxy_failed": self.stats.proxy_failed, "refined": self.stats.refined,
-                "prefetched": self.stats.prefetched, "prefetch_skipped": self.stats.prefetch_skipped, "evicted": self.stats.evicted, "warmed": self.stats.warmed,
+                "prefetched": self.stats.prefetched, "prefetch_skipped": self.stats.prefetch_skipped, "evicted": self.stats.evicted, "warmed": self.stats.warmed, "reloaded": self.stats.reloaded,
             },
             "preview_policy": self.policy.to_json(), "refine_pending": self.refine.is_some(),
             "proxy_error": self.proxy_error.as_ref().map(|(id, error)| json!({ "asset": id, "error": error.to_json() })),

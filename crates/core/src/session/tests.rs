@@ -1882,8 +1882,12 @@ fn the_original_policy_draws_the_final_samples_while_playing() {
 fn rig_with_scene_cut(start: i64) -> Rig {
     let mut rig = rig();
     rig.script.borrow_mut().features = vec!["scene.warm"];
+    // One directory per call: the tests that use it run in parallel, and writing a fixture set truncates
+    // the files another test is probing.
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let dir = std::env::temp_dir().join(format!(
-        "tessel-session-scene-{}-{start}",
+        "tessel-session-scene-{}-{start}-{n}",
         std::process::id()
     ));
     let set = write_standard_set(&dir).unwrap();
@@ -2016,4 +2020,160 @@ fn a_runtime_without_the_warm_and_a_cut_without_a_scene_are_never_sent_one() {
     }
     assert_eq!(rig.session.warm(&plans), 0);
     assert!(rig.script.borrow().warmed.is_empty());
+}
+
+#[test]
+fn a_cut_is_never_warmed_when_the_host_turned_the_warm_off() {
+    let mut rig = rig_with_scene_cut(60);
+    rig.session.set_warm(false);
+    rig.session.capabilities().unwrap();
+    let plans = rig.state.plans_ahead(60);
+    let ahead = rig.state.assets_ahead(60);
+    rig.session.prefetch(&rig.state, &ahead);
+    for id in ["scn", "cloud"] {
+        rig.script.borrow_mut().events.push_back(ready(id));
+        rig.session.pump(Duration::ZERO);
+    }
+    assert_eq!(
+        rig.session.warm(&plans),
+        0,
+        "the runtime announces it, the host does not use it"
+    );
+    assert!(rig.script.borrow().warmed.is_empty());
+    assert_eq!(rig.session.stats.warmed, 0);
+    // The same session, switched on, warms the same cut: nothing else differed.
+    rig.session.set_warm(true);
+    assert_eq!(rig.session.warm(&plans), 1);
+}
+
+fn cancelled_load(id: &str) -> BackendEvent {
+    BackendEvent::Asset {
+        id: Id::lit(id),
+        status: AssetStatus::Failed(BackendError::new(
+            "cancelled",
+            "Asset was released while loading",
+        )),
+        echo: None,
+    }
+}
+
+#[test]
+fn a_frame_that_timed_out_gives_up_its_pending_load_and_asks_for_it_again() {
+    let mut rig = rig();
+    let first = rig
+        .session
+        .request_frame(&rig.state, plan(&rig, 0), output(), vec![])
+        .unwrap();
+    assert_eq!(rig.script.borrow().loaded, vec![Id::lit("img")]);
+    assert_eq!(rig.session.status().label(), "loading");
+
+    // The host gave up on the frame while the asset was still loading.
+    rig.session.cancel_timed_out();
+    assert_eq!(
+        rig.script.borrow().released,
+        vec![Id::lit("img")],
+        "the runtime ends that load"
+    );
+    assert_eq!(rig.session.stats.reloaded, 1);
+    assert_eq!(rig.script.borrow().cancelled, vec![first]);
+
+    // The next request loads the asset anew instead of waiting for the answer that never came.
+    let second = rig
+        .session
+        .request_frame(&rig.state, plan(&rig, 0), output(), vec![])
+        .unwrap();
+    assert_eq!(
+        rig.script.borrow().loaded,
+        vec![Id::lit("img"), Id::lit("img")]
+    );
+
+    // The runtime reports the old load as cancelled: that is not the answer of the new one.
+    rig.script
+        .borrow_mut()
+        .events
+        .push_back(cancelled_load("img"));
+    assert_eq!(
+        rig.session.pump(Duration::ZERO),
+        Some(SessionEvent::Progress)
+    );
+    assert_eq!(
+        rig.session.status().label(),
+        "loading",
+        "the new load and its frame are still waiting"
+    );
+    assert!(rig.script.borrow().submitted.is_empty());
+
+    rig.script
+        .borrow_mut()
+        .events
+        .extend([ready("img"), BackendEvent::FrameDone(frame(second, 2))]);
+    assert_eq!(
+        rig.session.pump(Duration::ZERO),
+        Some(SessionEvent::Progress)
+    );
+    assert_eq!(rig.session.status().label(), "rendering");
+    assert!(matches!(
+        rig.session.pump(Duration::ZERO),
+        Some(SessionEvent::Frame(_))
+    ));
+}
+
+#[test]
+fn a_plain_cancel_a_finished_asset_and_a_prefetch_are_never_given_up() {
+    // A plain cancel keeps waiting for the same load: the first timeout is a slow load, not a stuck one.
+    let mut rig = rig();
+    rig.session
+        .request_frame(&rig.state, plan(&rig, 0), output(), vec![])
+        .unwrap();
+    rig.session.cancel();
+    assert!(rig.script.borrow().released.is_empty());
+    rig.session
+        .request_frame(&rig.state, plan(&rig, 0), output(), vec![])
+        .unwrap();
+    assert_eq!(
+        rig.script.borrow().loaded.len(),
+        1,
+        "the same load is waited for"
+    );
+
+    // An asset that finished loading is not reloaded because a later frame timed out.
+    rig.script.borrow_mut().events.push_back(ready("img"));
+    rig.session.pump(Duration::ZERO);
+    rig.session.cancel_timed_out();
+    assert!(rig.script.borrow().released.is_empty());
+    assert_eq!(rig.session.stats.reloaded, 0);
+
+    // A load nobody's frame waits for (a prefetch) is not given up with someone else's frame.
+    let mut rig = rig_with_cut(60);
+    rig.session
+        .request_frame(&rig.state, plan(&rig, 0), output(), vec![])
+        .unwrap();
+    rig.session
+        .prefetch(&rig.state, &rig.state.assets_ahead(60));
+    let before = rig.script.borrow().loaded.len();
+    assert!(
+        before >= 2,
+        "the frame's asset and the prefetched one: {before}"
+    );
+    rig.session.cancel_timed_out();
+    assert_eq!(
+        rig.script.borrow().released,
+        vec![Id::lit("img")],
+        "only what the frame was waiting for"
+    );
+}
+
+#[test]
+fn a_cancelled_load_nobody_replaced_is_still_just_progress() {
+    // An old load the session released and no frame asked for again: its `cancelled` changes nothing.
+    let mut rig = rig();
+    rig.script
+        .borrow_mut()
+        .events
+        .push_back(cancelled_load("img"));
+    assert_eq!(
+        rig.session.pump(Duration::ZERO),
+        Some(SessionEvent::Progress)
+    );
+    assert_eq!(rig.session.status().label(), "idle");
 }
