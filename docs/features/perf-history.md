@@ -1,0 +1,620 @@
+# F049 — Histórico de desempenho (60 s)
+
+## Objetivo e limites
+
+Uma janela móvel dos últimos **60 segundos** das métricas que o [medidor de debug](perf-meter.md)
+mostra só no instante: o que a interface pintou, o que o monitor apresentou, quando a fluidez
+caiu e **o que aconteceu perto** (play, pausa, seek, troca de projeto, recarga do viewport, falha
+de pedido). Serve para responder "por que travou há 20 segundos?" sem repetir a reprodução.
+Backlog: BL145.2 (subitem de [BL145](../backlog.md)); plano em
+[perf-history-execution-plan.md](../migration/perf-history-execution-plan.md).
+
+É uma ferramenta de **diagnóstico local**: nada vai ao projeto, ao desfazer, ao autosave, à rede
+ou a qualquer serviço. **Desligada por padrão**: sem gravação não existe anel alocado, e cada
+ponto de coleta volta num único teste de `bool`. **Gravar e mostrar são estados separados**:
+fechar o painel não para a gravação e iniciar a gravação não abre o painel.
+
+## Contrato do core (`tessel_editor_core::perf_history`, sem GPUI)
+
+- **Anel de 240 baldes de 250 ms** (60 s) com `count/min/soma/max` por métrica (memória fixa,
+  sem amostras brutas, sem percentis). A média é **ponderada pela contagem**. A janela é
+  fotografada em `now`: baldes mais velhos que 60 s saem **pelo tempo**, não por contagem, e um
+  intervalo sem amostra é `null`, nunca zero.
+- **Anel de eventos** à parte (1024) que informa `dropped` quando descarta; segmentos de sessão
+  (64) que isolam o que não pode ser comparado.
+- **Relógio injetado**: toda a API recebe um `Duration` desde a origem monotônica; os testes não
+  dormem.
+
+| Métrica | Unidade | Fonte |
+| --- | --- | --- |
+| `ui_frames` / `ui_interval_ms` | quadros por balde / ms | pintura efetiva do GPUI (`Window::draw`), nunca um timer |
+| `monitor_frames` / `monitor_interval_ms` | quadros por balde / ms | imagem **aceita pelo host** (`frame.done` da requisição em curso) |
+| `render_ms` | ms | CPU do runtime até a submissão (telemetria da própria imagem) |
+| `latency_ms` | ms | da **admissão do pedido** pelo host até a aceitação da imagem do **mesmo id**; sem id casado, sem latência |
+| `lost_frames` | quadros | delta do contador de perdas **por corrida** de reprodução (um seek abre outra corrida) |
+| `rss_bytes` | bytes | RSS do processo do editor (sem WebKit), no máximo 1 Hz |
+| `texture_bytes` | bytes | estimativa do runtime a partir do tamanho das imagens, no máximo 1 Hz; **não é memória de GPU** |
+
+Regras de honestidade (cada uma tem teste): repouso **não** é travamento (silêncio depois de
+`REST_AFTER` = 1 s sem reprodução é "parado"; com o relógio de reprodução andando, silêncio é
+travamento); falha ou perda de contexto **não carregam** o último valor; resposta de sessão
+antiga ou de pedido superado é descartada e contada; trocar de projeto ou recarregar o viewport
+**abre um segmento** (nenhum intervalo, delta ou latência cruza a borda); latência e `render_ms`
+são métricas separadas (a primeira inclui fila e readback do runtime, a segunda é só CPU).
+
+**Intervalos acima de 1 s com a reprodução andando** (BL145.3): `REST_AFTER` é a fronteira entre
+"parado" e "travou" **só quando há movimento esperado** (o relógio de reprodução andando, ou uma
+gravação que começou durante o play). Com movimento esperado, um intervalo de pintura da UI de
+2 s é uma amostra de `ui_interval_ms` (o pior intervalo e a contagem a guardam como o monitor
+guarda os dele); sem movimento (ocioso, primeiro quadro, painel reaberto, nova sessão, reset) o
+mesmo intervalo **não** é amostra e não se inventa nenhuma. Repinturas do próprio diagnóstico
+(`own_redraw`) nunca contam como quadro. Mín/máx/contagens e os eventos correlacionados
+(`inspect` os une à maior espera) são preservados; nada é preenchido.
+
+**Contexto gráfico** (BL145.3): perda e restauração são eventos **observados**, sem pedido de
+render e sem timer de pintura. Uma perda tem um evento só: o aviso da página, o quadro que falhou
+e o `needs_redraw` são a mesma perda, e o estado "contexto fora" é do recorder (não do anel de
+eventos de 60 s: uma perda mais longa que a janela não gera um segundo evento). Em voo, o evento
+nomeia o id do pedido e o pendente é esquecido; ocioso, não tem id. Uma restauração sem perda no
+meio não é uma segunda restauração; uma restauração cuja perda é anterior à gravação é observada
+e entra. Recarregar o viewport zera o estado. O tempo é o relógio do host, nunca o do JS.
+
+**Contexto de reprodução ao iniciar** (BL145.4): iniciar (ou limpar) a gravação com o relógio de
+reprodução já andando **não** inventa um `playback_started`: o evento `recording_started` /
+`recording_cleared` carrega o detalhe `playing` (o contexto em que começou) e os quadros passam a
+ser esperados a partir daquele instante (uma trava é medida dali, nunca de um play que ninguém
+viu). Uma pausa seguinte é um evento real. Sem reprodução, o evento não tem detalhe.
+
+**`clear` x congelar** (BL145.4): congelar fixa **uma cópia imutável** (a gravação continua por
+baixo, `freeze` duas vezes mantém a primeira). `clear` é explícito do usuário e esquece **tudo**:
+anel, eventos, segmentos, âncoras e deltas, seleção **e o snapshot congelado** (o documento de um
+histórico limpo não sobrevive "congelado"). Uma gravação em curso continua do instante do `clear`
+com âncoras novas (nenhum delta contra um valor anterior) e um segmento `Cleared`; uma parada
+fica vazia. O resultado informa se um congelamento foi liberado (`released_freeze`). O projeto não
+é tocado, e uma exportação **já em escrita** não é afetada (ela tem a sua cópia).
+
+**Eventos**: gravação iniciada/parada/limpa, play, pausa/stop, seek (seeks a menos de 250 ms
+viram um evento com `repeat`), projeto trocado, **cena trocada**, viewport recarregado, mudança
+de formato do quadro, pedido que falhou, **carga de recurso** (cena dirigida), **exportação de
+vídeo** (início, fim, falha com o código, cancelamento) e **perda/restauração do contexto
+gráfico**. Só entra o que foi **realmente observado** (tabela de ganchos abaixo); o tempo é o do
+relógio monotônico do host, nunca o relógio JS. O detalhe de um evento passa por `code()`: só letras, dígitos, `_-.` e
+no máximo 48 caracteres; um caminho ou um título **nunca** entra.
+
+**Snapshot e inspeção**: `freeze` fixa **um** snapshot imutável e limitado (240×9 agregados e no
+máximo 1024 eventos); a gravação continua por baixo. `select` (um instante dentro da janela)
+devolve os números do balde (contagem/mín/média/máx), os extremos e os **eventos correlacionados**
+(os do balde mais os que ocorreram durante a maior espera que terminou nele). Fora da janela,
+erro tipado `perf_history_outside_window`.
+
+**Export** (`tessel.perf-history`, `schema_version` 1): build, origem monotônica, intervalo da
+gravação, janela, contexto não sensível, métricas com unidade/fonte/amostragem, séries por balde,
+resumo, eventos, segmentos, contadores e a lista de limites. O destino é **sempre escolhido
+pelo usuário** (nada é exportado sozinho, nem para o temp) e a escrita é **sem sobrescrever**:
+arquivo irmão temporário `.<nome>.tmp-<pid>` (`create_new`) + `sync` + `hard_link` ao destino, que
+falha se algo apareceu ali; **não há fallback por rename**, e só o temporário criado **pela própria
+chamada** é removido (um temporário alheio, um destino preexistente, um link pendente ou um destino
+que apareceu durante a escrita ficam intactos). **Restrição do hard link:** publicar sem
+substituir exige um volume com hard links; em outro (alguns de rede ou FAT/exFAT) a exportação é
+recusada com `perf_history_export_failed` (`stage: publish`) e nada é criado: escolha uma pasta de
+outro volume. Erros tipados: `perf_history_empty`, `perf_history_export_path_missing`,
+`perf_history_export_relative` (o caminho precisa ser absoluto), `perf_history_export_is_directory`,
+`perf_history_export_exists` (o **destino** já existe: um arquivo, ou um link; nunca é
+substituído), `perf_history_export_temporary_busy` (o **temporário** `.<nome>.tmp-<pid>` já estava
+no caminho, de outro escritor ou de um processo de mesmo PID: o destino pode estar livre e o
+outro arquivo não foi tocado; é a colisão de temporário, distinta de um `exists` real),
+`perf_history_export_parent_missing`, `perf_history_export_failed` (`details`: só `io_kind` e
+`stage` em `serialize|create_temporary|write|sync|publish`, nunca o caminho).
+
+**Escrita fora da thread da janela** (BL145.3): a API do core segue síncrona
+(`Recorder::export`, usada por biblioteca e testes), e a janela usa `Recorder::prepare_export` — uma
+**cópia coerente** do documento tirada no instante do comando, congelada ou móvel — que o adaptador
+grava no executor de segundo plano (`PreparedExport::write`). Nenhum I/O de disco corre na thread da
+UI. O que não precisa de disco é recusado na hora, com a mesma precedência (`perf_history_empty`,
+caminho ausente, relativo) e `perf_history_export_in_progress` (uma exportação por vez); o que
+depende do arquivo é o **resultado tipado da escrita**, observável em
+`get perf.history` → `export`: `{state: idle}`, `{state: writing, id}`,
+`{state: done, id, bytes}` ou `{state: failed, id, error: {code, message, details}}`. O comando
+responde `state: writing` e `export_id`; o que cai no arquivo é a cópia do instante do comando, mesmo que a
+gravação continue, seja limpa ou parada enquanto escreve. Parar ou desligar a gravação não depende da
+exportação nem a cancela. A barra de atividade diz "exportando…" e depois "export concluído" ou o
+erro, e o botão fica desabilitado enquanto escreve. Sem caminhos, textos do projeto, credenciais nem conteúdo
+de mídia: o destino digitado vive só na janela (`get` o mostra) e não entra no documento.
+
+## Superfícies
+
+| Superfície | Estado | Como |
+| --- | --- | --- |
+| Biblioteca | Implementada | `Recorder`, `Snapshot`, `HistoryCommand`; testes com relógio injetado; ver seção de evidências por SHA (execução do head atual a validar) |
+| CLI headless | **N/A justificado** | a medição só existe com a janela e o monitor vivos; `tessel-headless` responde `desktop_required` ao alvo `perf.history` (teste em `crates/core/tests/headless.rs`). O core funciona com entradas sintéticas e sem GPUI/wry (`cargo tree`) |
+| UI da janela | Implementada | botão `toolbar-perf-history` no cabeçalho e painel (diálogo Root do Kit) com gráficos nativos |
+| CLI da janela | Implementada | `get perf.history`; `set perf.history recording\|visible\|frozen\|selected_ms\|export_to\|export_destination`; `invoke perf.history record_start\|record_stop\|show\|hide\|freeze\|resume\|clear\|snapshot\|clear_selection\|export` — mesmo handler do painel (`Workstation::execute_perf_history`). `export_to <caminho>` inicia a escrita em segundo plano (resposta `state: writing`; o fim, em `get perf.history` → `export`); `export_destination <caminho>` só preenche o campo do painel (como digitar ou escolher) e `invoke export` é o botão |
+
+### O painel
+
+Um diálogo **Root do Kit** com corpo em `Entity` própria (`HistoryView`): o cartão do medidor
+continua transparente ao ponteiro e não ganha controles. Contém o estado ("Gravando", "Congelado",
+"Parado", "Desligado"), os botões Gravar/Parar, Congelar/Retomar, Limpar seleção, Limpar
+histórico e Exportar JSON (desabilitados com dica do motivo quando não há dados ou destino), o
+**campo "Destino do JSON"** (entrada do Kit; "Escolher…" abre o seletor nativo de arquivo novo, que
+**só preenche o caminho**), nove linhas de
+gráfico (uma por métrica, **cada uma com a sua escala**: unidades diferentes nunca dividem eixo),
+a linha de **eventos e sessões**, o bloco do instante selecionado (clique num gráfico) e os
+contadores do que o recorder recusou (respostas obsoletas, imagens sem pedido, pedidos esquecidos,
+amostras tardias, leituras de memória indisponíveis, eventos descartados).
+
+- Um balde sem amostra **não tem barra** (lacuna); um zero é uma barra de 1 px; a faixa gravada
+  aparece como pista, o intervalo anterior à gravação fica vazio.
+- Cada barra é o nível do balde: taxa para contadores de quadros, soma para perdas, média para
+  medidores e o pior valor para esperas.
+- `Workflow::has_dialog` inclui o painel: a WebView nativa é escondida como em qualquer diálogo.
+  O monitor **continua produzindo** imagens e o histórico continua gravando-as; o contexto
+  registra `monitor_on_screen`. Só um diálogo por vez: abrir o painel com outro aberto é
+  `dialog_open`.
+- **Custo da UI**: o único timer fica dentro do painel aberto, roda no máximo a 4 Hz e só
+  enquanto a gravação anda (congelado, parado ou fechado não há timer; fechar derruba a entidade
+  e a tarefa). O redraw que ele causa é marcado como **do próprio diagnóstico**
+  (`PerfState::own_redraw`) e não conta como quadro de UI. Se um quadro real cai no mesmo draw
+  do refresh, ele é subcontado em 1: limite aceito e documentado.
+- **Captura leve**: gravando com o cartão escondido, a janela só tem uma sonda de pintura de
+  tamanho zero (conta quadros e lê RSS a cada ≥ 1 s); sem overlay, sem timer de repouso, sem
+  readout.
+
+## Ganchos mínimos (ownership)
+
+| Ponto | Arquivo | O que faz |
+| --- | --- | --- |
+| Pedido admitido, imagem aceita (id, `render_ms`, textura, contexto), resposta obsoleta, pedido que falhou | `workstation/viewport_host.rs` | alimenta o `Meter` já anexado; `enabled()` falso retorna antes de construir qualquer coisa |
+| Troca de projeto, recarga do viewport | `viewport_host.rs` (`reset_project`, `begin_reload`) | abre segmento |
+| **Troca de cena** dirigida | `scene_monitor_host.rs` (`render_scene`: o id da cena mudou ou entrou-se numa cena), `viewport_host.rs` (`leave_directed`, chamado por `execute` ao escolher um preview comum) | um segmento `scene_changed` e um evento por troca; um quadro novo da **mesma** cena não abre nada. O id é o número do segmento e o relógio do host: o nome da cena nunca entra |
+| Telemetria do monitor dirigido | `scene_monitor_host.rs` (`dispatch_directed`, `finish_directed`) | admissão do pedido (id do adaptador, ≥ 2⁴⁸, nunca colide com o da sequência), imagem aceita com `render_ms`/textura/contexto, falha com id. Latência = do pedido admitido (inclui esperar recursos) até o `frame.done` do mesmo id |
+| Carga de recurso (cena dirigida) | `scene_monitor_host.rs` (`prepare_directed`, `directed_asset_state`) | `resource_load_started` ao enviar cada `asset.load`; `resource_load_finished` com detalhe `ready` ou o código da falha; respostas obsoletas não contam |
+| Perda e restauração do contexto | `core::perf_history` (`request_failed` com `context_lost`), `viewport_host.rs` (`drain`: `needs_redraw`) | um `context_lost` por perda (o aviso da página e o quadro que falhou são a mesma perda) e um `context_restored`; não é também um `request_failed`. A cena dirigida ociosa (sem pedido em voo) também chega: `scene_monitor_host.rs` (`suspend_directed`) passa o id em voo, ou nenhum, e o aviso da página não precisa de pedido de render nem de timer |
+| Exportação de vídeo | `workstation/perf_meter.rs` (`observe_exports`, na sonda de pintura, ≤ 1 Hz) | transições de jobs `VideoExport` do registro: início, fim, falha (código), cancelamento. A primeira olhada da gravação é só a linha de base: o que já rodava não vira notícia; um job visto já terminado só tem o fim. O tempo é o da olhada (nunca anterior ao fato) |
+| Taxa-alvo do contexto | `viewport_host.rs` (`target_fps`: `request_preview`, `render_scene`) | `sequence_target_fps` = taxa da sequência (preview de sequência) ou o `fps` do bundle da cena; `null` para preview de fonte e antes do primeiro pedido. `ui_target_fps` continua `null`: não há alvo conhecido e nunca se assume 60 |
+| Seek intencional (`execute(SetPlayhead)`, `playback_seek`) | `workstation/mod.rs`, `playback.rs` | evento `seek`; os ticks do relógio de reprodução não são seek |
+| `has_dialog` | `workstation/workflow.rs` | `history_open` |
+| Botão do cabeçalho | `header.rs` | mesmo `execute_perf_history` |
+| Alvo `perf.history` | `automation/server.rs`, `core::commands` | `Parsed::PerfHistory` |
+
+Nenhum arquivo de FX, `scene_fx`, `scene_ui`, `scene_monitor` ou do viewport de outros agentes
+foi alterado além de `viewport_host.rs` (feeds do host, diff mínimo) e de visibilidade `pub(super)`
+nos helpers de `viewport_host_tests.rs`.
+
+## Lacunas declaradas
+
+- **Fontes do monitor da cena dirigida**: agora há admissão, imagem aceita (com `render_ms`,
+  textura e contexto), falha e eventos de recurso. A latência inclui a espera dos recursos
+  (a admissão acontece quando o adaptador aceita o pedido), diferente da sequência, onde os
+  recursos já estão carregados; compare os dois com isso em mente. Nada disso é GPU concluída.
+- `resource_load_*` só existe na cena dirigida: a sessão da sequência (`core::session`) não
+  expõe o início/fim de carga de recurso ao host e **não foi alterada** para isso (é código
+  compartilhado com o headless). Fica registrado, não inventado.
+- O evento `export_*` vem de olhar o registro de jobs a cada ≤ 1 s numa pintura: uma janela sem
+  nenhuma pintura durante a exportação só a vê na próxima pintura (o horário é o da olhada).
+  Exportações de cena em processo separado que não passam pelo registro de jobs não aparecem.
+- O RSS é amostrado nas pinturas: uma janela completamente parada deixa lacuna (`null`), que é a
+  leitura honesta; **nunca** se preenche com o valor antigo.
+- O painel é modal (diálogo Root): enquanto ele está aberto, a WebView está escondida; não dá
+  para olhar o monitor e o histórico ao mesmo tempo.
+- `ui_target_fps` é `null` (a interface não tem alvo conhecido; o histórico não assume 60).
+- Overhead: 3 rodadas de 8 s sob carga externa não provam custo zero (veja a seção de custo).
+- **Intervalo da interface sem reprodução**: acima de 1 s sem movimento esperado é repouso, não amostra
+  (decisão documentada acima, não uma lacuna). Uma trava da thread de UI **fora** de um play só aparece
+  como lacuna de `ui_frames`.
+- **Exportação**: a escrita é em segundo plano a partir de uma cópia coerente (BL145.3); um volume de
+  rede lento deixa o estado em `writing` por mais tempo, sem travar a janela. O temporário de outro
+  escritor é `perf_history_export_temporary_busy`; hard link é requisito do volume (seção Export).
+- A perda/restauração do contexto **com a cena dirigida real** e uma troca de cena com quadro em voo não
+  foram provocadas na janela real (o driver não monta cena dirigida); a cobertura é de testes GPUI com
+  relógio controlado e de uma prova de mutação (ver BL145.6). A exportação em segundo plano foi provada na
+  janela real.
+
+## Evidências e status
+
+Veja o estado vivo em [backlog.md](../backlog.md) (BL145.2). Resumo do que foi executado e do que
+ainda é "a validar" está na seção de evidências abaixo, atualizada com a entrega.
+
+### Testes
+
+- `cargo test -p tessel-editor-core`: módulo `perf_history` (relógio injetado: anel e evicção por
+  tempo, lacunas, repouso x travamento, média ponderada, latência por id, perdas por corrida,
+  RSS ≤ 1 Hz, eventos e `dropped`, segmentos, freeze/select/resume, export e erros tipados,
+  limite de memória após minutos simulados), `core::perf` (cartão e gravação independentes),
+  `core::commands` (parser único de `set`/`invoke`) e `state::tree` (nó `perf.history`).
+- `cargo test -p tessel-editor` (GPUI, relógio controlado):
+  `workstation::perf_history_tests` — desligado por padrão e sem custo; gravar com o cartão
+  escondido não arma timer; cartão e gravação independentes; painel esconde o monitor sem parar
+  nem iniciar a gravação; snapshot congelado imutável com seleção dentro da janela; export local
+  versionado sem caminhos e erros tipados; `set`/`invoke` no mesmo handler; seek como evento;
+  refresh de no máximo 4 Hz que só existe enquanto a gravação anda e cujo redraw não conta; feeds
+  do host (latência, resposta obsoleta, segmentos) e host sem gravação; BL145.3/.4: exportação
+  fora da thread da janela com cópia coerente e resultado em `get perf.history` → `export`;
+  perda/restauração do contexto da cena dirigida ociosa e em voo (um evento, sem pedido de render,
+  sem timer).
+- `core::perf_history` (BL145.3/.4/.5, relógio injetado): intervalo da UI > 1 s com reprodução x
+  ocioso/primeiro quadro/reexibição/reset de sessão; contexto perdido/restaurado sem duplicar e com
+  perda maior que a janela; gravar durante o play sem `playback_started` inventado (linha de base,
+  corrida, parar/iniciar); `clear` x congelar; preparar a exportação e escrever depois com cópia
+  imutável; colisão do temporário x `exists` real.
+- `scripts/perf-history-proof.py` (+ `.spec.py`): prova na janela real; veja abaixo.
+
+### Prova na janela real (histórico do commit `2560bbf`; NÃO é evidência do head atual)
+
+**Escopo desta seção:** o que abaixo foi executado vale **somente** para o código de `2560bbf` (1ª rodada); os heads `51811e0` e posteriores, e as correções de BL145.3/.4/.5, **não** foram provados na janela real.
+A 2ª rodada (destino de export explícito sem sobrescrita, `scene_changed`, telemetria do monitor
+dirigido, eventos de recurso/exportação/contexto, taxa-alvo do contexto) foi **escrita, mas ainda
+não compilada nem provada na janela real**: `perf-history-proof.py` já cobre o campo de destino
+(`export_destination` + `invoke export`, recusas e uma captura), porém não rodou. A cena dirigida
+e a perda de contexto reais também não foram provocadas numa janela; ficam cobertas só pelos
+testes (quando rodarem) e **a validar**.
+
+`TESSEL_RUNTIME_DIR=/tmp/phr python3 scripts/directed-scene-proof/with-gpu-lock.py python3
+scripts/perf-history-proof.py --binary <release> --seconds 8 --rounds 3 --buffer-minutes 3`, em
+instância própria (home temporária), só com requisições semânticas (`perf.history`, `playback.*`,
+`theme.*`). Resultado: `ok: true`, 0 falhas, cobrindo: desligado por padrão e sem dado; gravar com
+o cartão escondido (as 5 métricas com amostra e o monitor continua na tela); latência separada de
+`render_ms`; o painel esconde a WebView como qualquer diálogo e abrir/fechar não muda a gravação;
+congelar fixa um snapshot, selecionar fora da janela é erro tipado, retomar volta à janela móvel;
+export `tessel.perf-history` v1 sem caminhos locais, nulos preservados e erros tipados (diretório,
+pasta ausente); limpar esquece o histórico.
+
+Capturas inspecionadas (painel congelado com seleção): tema
+[escuro](assets/f049-history-frozen-inspect-dark.png) e
+[claro](assets/f049-history-frozen-inspect-light.png). Os gráficos nativos usam os tokens do tema
+(sem hex solto); as barras ocupam só o trecho já gravado e o resto da janela de 60 s fica vazio,
+não preenchido.
+
+### Custo e buffer (medidos em `2560bbf`, release; histórico, NÃO é o custo do head atual)
+
+Números **de `2560bbf`**, anteriores à escrita assíncrona do export, ao tratamento de intervalo da UI e às correções do driver: não descrevem o head atual e não devem ser citados como tal. Média de 3 rodadas de 8 s de playback, ordem dos braços alternada, build release, mesmo clipe de
+1280x720, CPU do processo em s/s: **desligado 0,302**, **gravando com painel escondido 0,290**,
+**painel visível 0,353**. Os ticks, imagens aceitas e redraws foram equivalentes nos três braços
+(sem quadros pulados). Leitura honesta: gravar escondido ficou dentro do ruído do desligado; o
+painel visível custou cerca de 0,05 s/s a mais (nove gráficos a 4 Hz), custo de diagnóstico
+aceito enquanto o painel está aberto. **Ressalva:** a máquina estava com load average 14–21
+(builds e editores de outros agentes), então a diferença de ~17% do braço visível e a ausência de
+diferença do escondido não são medida de laboratório; 3 rodadas não dão intervalo de confiança.
+
+Também de `2560bbf`: buffer de 3 minutos com gravação contínua: 240 baldes (cheios) o tempo todo; eventos expiram por
+tempo (5 → 0 retidos) e `dropped` ficou 0; RSS 101 MiB aos 20 s e 92 MiB aos 180 s (variação
+−14,8 MiB após o aquecimento, sem crescimento). Não foi feita medição de 10+ minutos: **a
+validar**.
+
+### Gates
+
+Executados com sucesso nesta entrega:
+
+- `cargo fmt --all -- --check` (saída 0).
+- `./scripts/cargo build -p tessel-editor --release --locked` do estado final do código
+  (usado nas provas acima).
+- `./scripts/cargo test -p tessel-editor-core perf_history` (51 testes) e o conjunto do core
+  (421 testes) no estado anterior aos últimos ajustes de layout do painel; os 11 testes de
+  `workstation::perf_history_tests` passaram no mesmo ponto.
+- `python3 scripts/perf-history-proof.spec.py` (4 testes, então; hoje são 16, veja BL145.5 abaixo).
+- `cargo tree -p tessel-editor-core`: nenhuma ocorrência de `gpui` ou `wry`.
+
+**2ª rodada (sem build desde a 1ª):** todo o código e os testes novos foram só formatados
+(`cargo fmt --all`); nenhum `cargo check/clippy/test/build` foi executado depois deles. Nenhum
+teste novo foi rodado, e os números "51 testes do módulo" / "11 testes do desktop" acima descrevem
+a 1ª rodada (a 2ª adiciona testes a ambos).
+
+**Não executados com sucesso nesta rodada (a validar):** `./scripts/cargo check --workspace
+--locked`, `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings`,
+`./scripts/cargo test --workspace --locked` e `./scripts/cargo build -p tessel-editor --locked`
+(debug) sobre o estado final. Os quatro foram **recusados pela guarda de disco**
+(`REFUSED_DISK`: 11 GiB livres com piso de 12 GiB, ocupado por builds de outros agentes) e não
+foram forçados nem houve limpeza de cache. Nenhum deles é declarado PASS; a CI da PR ou uma nova
+rodada com disco livre deve cobri-los.
+
+Correção do coordenador: publicar exige hard link sem substituição; volumes sem suporte são recusados. Limpeza remove somente temporário criado pela própria chamada. Teste de colisão do temporário escrito, não executado por disco; o head atual permanece sem validação compilada.
+
+Revisão independente do head `0e81076` (estática; sem Cargo, build nem janela por limite de disco): correções
+**escritas e não executadas** — `set perf.history selected_ms` com valor finito absurdo (`1e300`) é recusado
+(`invalid_value`) em vez de entrar em pânico, e `Snapshot::index_at` não deixa um instante enorme virar um balde
+válido; o cartão mostrado no meio de uma gravação começa a medir do momento em que aparece (sem "pior
+intervalo" falso); falhas síncronas e timeouts de quadro viram `request_failed`; parar a gravação limpa a marca
+de redesenho do próprio diagnóstico; o teste da pasta bloqueada é só Unix e se ignora quando o processo escreve
+mesmo assim. Nenhum gate foi executado sobre este head: estado **a validar**.
+
+## Correções após notificação PR36 (2026-11-08)
+
+Destino escolhido no próprio painel não relê HistoryView durante seu update: o campo
+é sincronizado pelo adapter antes do comando. Regressão GPUI adicionada, não executada
+por disco. Benchmark passa a dividir CPU pelo tempo monotônico efetivamente medido,
+incluindo preparação e espera; números anteriores não comprovam custo desse head.
+Permanecem a revisar: correlação de quadro antigo na troca de cena, FPS de pedido explícito,
+observação após 64 exports, repetição de falhas inundando eventos, além dos limites BL145.4.
+Publicação do JSON exige hardlink suportado no destino e falha sem sobrescrever em outros
+sistemas; não reintroduzir fallback rename inseguro. Nenhum gate Rust ou janela reexecutado.
+
+### BL145.3 / BL145.4 / BL145.5 — correções das pendências da PR (estado deste head)
+
+Itens do feedback da PR também corrigidos (escritos, não compilados): a observação de exports guarda
+os **64 jobs mais novos** do registro (antes os 64 mais antigos, e um export posterior nunca virava
+evento); um pedido que falha com o mesmo código sem novo pedido admitido no meio (um plano que o
+core recusa a cada mudança de estado) é **um** evento `request_failed`, não um por `sync`; o pedido
+explícito `render.frame` usa a taxa-alvo do seu próprio plano, não a do preview anterior;
+`--buffer-minutes` acima do que o fixture cobre (10) nomeia a própria opção. A correlação do quadro em
+voo na troca de cena está em BL145.6, abaixo.
+
+As correções de BL145.3/.4/.5 foram **escritas num estado sem disco** e só depois compiladas e provadas;
+o estado vivo está em "BL145.6 e evidências do head `76b14ae`" abaixo. Esta seção descreve o desenho; o
+resultado dos gates e da janela real é o da seção seguinte, não o de commits anteriores.
+
+O driver `perf-history-proof.py` foi corrigido (BL145.5) e o spec discrimina cada erro:
+`--buffer-minutes` é validado antes de iniciar o editor (número finito ≥ 0), o passo de leitura
+não alonga uma corrida curta, o crescimento de RSS só é julgado com ≥ 6 leituras **conhecidas**
+(leitura ausente é desconhecida, nunca zero, e poucas leituras não passam "vazias") e exige a
+reprodução ainda andando no fim; `cpu_s_per_s` divide pelo **tempo de parede medido** entre as
+duas leituras (antes: `--seconds + 2,5`, um palpite) e vale `None` com leitura desconhecida,
+tempo não positivo ou contador que recuou; o relatório nomeia o commit, se há fontes não
+commitadas e se o binário é mais antigo que as fontes (uma falha de check, a menos de
+`--allow-stale-binary`); o export é lido como assíncrono (`export_outcome`: recusado x escrita
+falhou x pronto x pendente, para separar `exists` de `temporary_busy`).
+
+## BL145.6 e evidências do head `76b14ae`
+
+### Quadro em voo na troca de cena (BL145.6)
+
+Um pedido da cena dirigida admitido antes de uma troca interativa de cena pode responder depois dela
+(a troca interativa estaciona o pedido novo e **não** cancela o que está em voo). Antes, esse quadro
+era medido no segmento da cena nova (intervalo, latência, `render_ms`, textura) ou, se falhasse,
+abria um `request_failed` no segmento que nunca o viu começar.
+
+Regra agora: o host guarda uma **época do histórico** que `note_session` incrementa, e carimba cada
+pedido dirigido e cada carga de recurso com a época vigente **na admissão** (o momento
+autoritativo; independe de haver gravação). Na resposta:
+
+- época igual: caminho de sempre (`note_image` / `note_failed`);
+- época antiga: o quadro **não** vira amostra nem evento do histórico; `monitor_stale_image`
+  registra `stale_responses` e preserva a cadência do cartão e as perdas do playback para a imagem
+  realmente apresentada (BL145.7). O pedido já saiu de `pending` na troca de sessão; a resposta
+  continua valendo para quem a pediu;
+- falha de pedido antigo: nada no segmento novo; fim de carga cujo início ficou numa época anterior:
+  nenhum `resource_load_finished` sem o início correspondente (o par é fechado pela época, não por heurística).
+
+A resposta ao chamador **não muda**: a imagem é entregue e a propriedade do quadro é a de sempre.
+Latência, textura e falha seguem a mesma regra que o sucesso. O contador de resposta antiga já
+existia no recorder; BL145.7 acrescenta `Meter::monitor_stale_image` para separar esse contador
+do cartão e das perdas, com regressões no core e em `scene_lifecycle_tests`.
+
+Testes (GPUI, relógio controlado) que o provam: quadro antigo que volta depois da troca não é medição
+do segmento novo; quadro antigo que falha depois da troca não é evento do segmento novo; resposta fora de
+ordem de pedido cancelado (guarda do caminho que já era correto, passa também sem a época); carga da cena
+deixada não termina num segmento que não a viu começar. **Mutação**: trocar `note_image_of` por `note_image`
+incondicional, e abrir os portões de época na falha e na carga, faz os 3 testes que discriminam falharem
+(`21 passed; 3 failed`); o código foi restaurado e os testes voltam a passar.
+
+### Falha repetida sem pedido: quem dobra é o recorder
+
+O host dobrava `request_failed` repetido olhando a **sua** falha na tela (`failure`). Uma falha mostrada
+com a gravação parada, ou antes de uma limpeza, ficava na tela e fazia a primeira falha da gravação
+nova parecer "repetição": o evento nunca existia. A regra agora é do recorder (`failure_open`): dobra
+só o mesmo código, sem pedido próprio, que **esta** gravação já registrou, e termina com um pedido
+admitido, uma imagem aceita, uma troca de sessão, `clear` ou uma gravação nova. Falha de pedido com id
+nunca é dobrada. Testes: 2 no core (dobra e termina; antes da gravação e depois de limpar/parar/iniciar é
+notícia) e 1 no host (falha dita com o histórico parado, repetida depois de começar a gravar: 1 evento).
+Mutação: sem os dois reinícios (`image` e troca de sessão) os 2 testes do core falham.
+
+### Executado no head `76b14ae` (código); anterior a docs/backlog
+
+Máquina de desenvolvimento **carregada** (média de carga 18-20 em 11 CPUs durante todos os testes e a
+prova; há outras tarefas no host), macOS, GPU do sistema; o runtime Three.js rende **por software ou
+pela GPU do sistema conforme o ambiente decide, e isto não foi isolado**: não afirme GPU real nem
+SwiftShader a partir destes números. Nenhum ponteiro físico (tudo semântico).
+
+| Gate / prova | Resultado |
+| --- | --- |
+| `cargo fmt --all -- --check` | exit 0 |
+| `./scripts/cargo check --workspace --locked` | exit 0 |
+| `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings` | exit 0 |
+| `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked --no-fail-fast` | exit 0 (desktop 348, core 450, 0 falhas) |
+| `./scripts/cargo build -p tessel-editor --locked` e `--release` | exit 0 |
+| `cargo tree -p tessel-editor-core` sem gpui/wry | nenhuma linha (grep sem achado) |
+| 17 specs Python, normal e `-O` | 17/17 OK nos dois modos (`perf-history-proof.spec.py`: 17 testes) |
+| `scripts/perf-history-proof.py` (release, janela real, trava de GPU) | `ok: true`, 64 checks, 0 falhas |
+
+Release: `target/release/tessel-editor` sha256 `e5e3f61f0af4dfcf4cda2db55bebb222b27fae137257fba7020c1731d07bbeb1`,
+`source.git_head` `76b14ae…`, sem fontes não commitadas e binário não mais velho que as fontes. O
+`git_sha` do documento exportado é `null` porque este build não definiu `TESSEL_GIT_SHA` (desconhecido,
+não adivinhado); o commit do binário vem do relatório do driver, não do arquivo exportado.
+
+Custo (`--seconds 10 --rounds 3`, ordem alternada por rodada: off/hidden/visible, visible/hidden/off,
+off/hidden/visible; CPU dividida pelo **tempo de parede medido** de cada corrida, ~11,1-11,3 s):
+
+| Braço | CPU s/s (média de 3) | quadros aceitos | perdidos | maior intervalo (quadros) |
+| --- | --- | --- | --- | --- |
+| desligado | 0,337 | 240 | 0 | 1 |
+| gravando, painel fechado | 0,340 | 240 | 0 | 1 |
+| gravando, painel aberto | 0,404 | 240,3 | 0 | 1 |
+
+Leitura honesta: fechado, a diferença para desligado (0,003 CPU s/s) está dentro do ruído de uma máquina
+com carga 18; com o painel aberto há **~0,07 CPU s/s a mais** (o painel repinta 4 Hz e desenha gráficos),
+que não é zero e não é conclusivo com 3 corridas sob carga. Nenhum quadro foi perdido em nenhum braço.
+**Não afirmamos custo zero.** A memória em 4 minutos de reprodução contínua gravando: 240 baldes o tempo
+todo, eventos dentro da capacidade, reprodução ainda andando ao final, RSS 204 MiB no primeiro ponto
+(inclui o aquecimento do projeto) e 84 MiB no último, sem crescimento (`growth_after_warmup_mib = -31,2`,
+12 leituras conhecidas). O JSON exportado (128 268 bytes) é `tessel.perf-history` v1, sem caminho local.
+Capturas nativas (escuro/claro, painel congelado com seleção, destino do export) foram geradas e
+inspecionadas pelo driver (`screencapture -l`, janela própria).
+
+Não executado: perda de contexto e troca de cena **em voo** na janela real (só testes GPUI), GPU
+real isolada, ponteiro físico, execução em outra máquina.
+
+### Integração com o gesto de efeito (BL082.20), head `e22299f`
+
+A PR #37 (gesto de efeito) entrou em `main` e `main` foi mesclado nesta branch (`196109d`) enquanto o
+carimbo de época era validado; `7efeca4` mescla esse estado (sem conflito) e `e22299f` é o head de
+código final desta entrega (depois dele só há documentos). Matriz por SHA (cada linha executada naquele head;
+máquina carregada, média de carga 5-20):
+
+| Head | O que foi executado | Resultado |
+| --- | --- | --- |
+| `76b14ae` (antes da mescla) | fmt, check, clippy, test (348 no desktop), build, tree; 17 specs Python (normal e `-O`); `perf-history-proof.py` release | tudo verde; prova 64/64 |
+| `7efeca4` (mescla de `196109d`) | fmt, check, clippy `-D warnings`, `TESSEL_REQUIRE_RUNTIME=1 test --workspace --locked` (365 no desktop), build, tree | tudo verde, 0 falhas |
+| `7efeca4` | `scene-fx-ui-proof.py` (debug, janela real) | 116/116 |
+| `f294b1c` | 2 testes GPUI novos de integração (gesto + gravação; gravação iniciada/limpa/parada sob arrasto) | passam |
+| `e22299f` | `fx-history-smoke-proof.py` (janela real, debug e release) | 39/39 nos dois |
+| `e22299f` | `perf-history-proof.py` (release, janela real) | `ok: true`, 64 checks, 0 falhas |
+| `5258e8c` (mescla dos resíduos da branch + dobra de falha no recorder) | fmt, check, clippy `-D warnings`, `TESSEL_REQUIRE_RUNTIME=1 test --workspace --locked` (desktop 370, core 457; 2004 testes no total, 0 falhas), build, tree; specs `perf-history-proof` (18) e `scene-fx-ui-proof` (24) normal e `-O` | tudo verde |
+| `5258e8c` | `perf-history-proof.py` e `fx-history-smoke-proof.py` (release, janela real, carga 13-17) | 64/64 e 39/39 |
+
+Smoke `scripts/fx-history-smoke-proof.py` (só `op`/`get`/`set`/`invoke`, instância própria, corpus
+sintético): grava, arrasta um efeito (o monitor desenha o candidato), congela e seleciona **com o
+gesto aberto**, exporta o snapshot congelado, cancela, confirma (uma entrada de desfazer), desfaz e troca
+de cena sob um gesto. Conferências: a janela, os eventos e os segmentos do arquivo exportado **são iguais**
+à vista congelada que a janela mostrava; o arquivo não tem caminho local; a gravação sobrevive a cada passo;
+o gesto não cria `playback_started`, `request_failed` nem `runtime_unavailable`; a troca de cena gera
+`scene_changed` e a carga de recurso da cena nova (`resource_load_started`/`finished`) no segmento certo.
+O `git_sha` do documento exportado é `null` (o build não definiu `TESSEL_GIT_SHA`), então a identidade do
+build vem do relatório do driver: `source.git_head` e o sha256 do binário.
+
+Build reproduzível: o binário release de `e22299f` tem sha256
+`cf2133029c3fa4556ba306d5dbc6d110b260a27167efc9be3c5b7f9f7e4c9969` (o mesmo em duas compilações) e o de
+`5258e8c` tem `293ec471ddf501c2482d8ffca60c4c0e4f77872bd9fb890ac66f4da6c65bedfd` (também igual em duas compilações).
+
+Custo no head `e22299f` (release, `--seconds 10 --rounds 3`, ordem alternada, carga 17-20): CPU s/s por
+tempo de parede medido: desligado 0,301, gravando com o painel fechado 0,308, painel aberto 0,366; 240
+quadros aceitos e 0 perdidos nos três braços; a memória em 4 minutos não cresce
+(`growth_after_warmup_mib = 0,2`). Mesma leitura de antes: fechado ≈ desligado dentro do ruído; painel
+aberto ~+0,06 CPU s/s; **sem afirmar custo zero**. Repetido em `5258e8c` (carga 13-17): desligado 0,340, gravando
+fechado 0,340, aberto 0,404 CPU s/s; 238-240 quadros aceitos e 0 perdidos nos três braços; RSS sem
+crescimento (`growth_after_warmup_mib = -0,2`). Os três conjuntos (`76b14ae`, `e22299f` e `5258e8c`) concordam em
+ordem de grandeza.
+
+O que continua sem prova na janela real: um quadro **em voo** atravessando a troca de cena (cobertura: testes
+GPUI + mutação, BL145.6), perda de contexto com a cena dirigida, GPU real isolada, ponteiro físico. O gesto sob
+gravação foi provado só por requisições semânticas; o arrasto por ponteiro continua sendo BL043.
+
+## Resíduos de revisão do head 0632d3a
+
+A mensagem de conclusão de export informa bytes, sem atribuir o resultado ao campo de
+destino editável (que pode já nomear outro arquivo). Feedback de seleção e resultado do
+export aparecem independentemente, para uma nota antiga não ocultar erro assíncrono.
+A prova longa limita cada espera ao prazo restante, incluindo custo das consultas
+anteriores. Regressão Python executada (18/18); `./scripts/cargo check -p tessel-editor --locked` passou. Prova GPUI/janela ainda pendente.
+Ainda abertos antes de aceite: dedup de falhas cuja primeira ocorrência não foi gravada
+(iniciar/limpar a gravação) e BL145.6 de frame antigo atravessando a sessão da cena.
+**Atualização (BL145.6, head desta entrega): os dois foram fechados**; o frame antigo pela época do host (seção abaixo) e a repetição de falha pelo recorder (próximo parágrafo).
+
+A primeira checagem desta correção encontrou `.children` recebendo um elemento único; ajustado para `.child`, checagem repetida com exit 0. Não equivale a build/testes workspace nem prova da janela.
+
+Revisão 4508061197: o painel insere diretamente as mensagens existentes, sem contêiner vazio ou gap extra quando não há aviso. Check desktop e formatação passaram; aparência nativa não reavaliada nesta correção.
+
+## Resíduos CodeRabbit 5820155331
+
+Teste de symlink restrito a Unix; destinos dos testes prepare_export usam temp_dir. O driver
+registra falha nomeada e pula a seção de freeze se faltam endpoint/count, mantém campos
+ausentes do buffer como null e não inventa seleção 0 quando o endpoint é inválido.
+Contagens removidas da tabela quando não ancoradas em execução. Gates gerais anteriores
+são de 76b14ae/7efeca4; provas de janela/smoke posteriores têm seus próprios SHAs na matriz.
+5258e8c inclui dedup posterior e não herda esses gates. Esta rodada requer validação final.
+
+Validação direcionada desta revisão: `./scripts/cargo test -p tessel-editor-core --lib perf_history --locked` 81/81; spec Python20/20 normal e -O; py_compile dos dois drivers, fmt e diffcheck passam. Sem execução Windows, janela, benchmark ou gates workspace desta revisão.
+
+## Validação final do código `d348b8d` (= `8e80a83`), revisão 5820155331
+
+`8e80a83` só acrescenta documentos a `d348b8d`: as árvores `crates/`, `runtime/`, `Cargo.lock` e
+`rust-toolchain.toml` são idênticas (ids de árvore conferidos), então os resultados abaixo, obtidos
+numa árvore limpa de `d348b8d` (remoto confirmado em `8e80a83` antes do push), valem para o código do head
+publicado. Nada herdado de `76b14ae`, `7efeca4`, `e22299f` ou `5258e8c`. Máquina carregada (média de
+carga 17-21, 11 CPUs), macOS, sem isolar GPU real; instância própria, só requisições semânticas.
+
+| Gate / prova | Resultado |
+| --- | --- |
+| `cargo fmt --all -- --check` | exit 0 |
+| `./scripts/cargo check --workspace --locked` | exit 0 |
+| `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings` | exit 0 |
+| `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked --no-fail-fast` | exit 0: 2004 passam, 0 falham, 12 `ignored` declarados (core 457, desktop 370, 22 de `perf_history_tests`; suítes do runtime levaram até 126 s, ou seja, rodaram) |
+| `./scripts/cargo build -p tessel-editor --locked` (debug) e `--release` | exit 0; sha256 debug `7340cb73…2c650341`, release `0abe9397…c6e58`, **idênticos em duas compilações** |
+| `cargo tree -p tessel-editor-core` | nenhuma linha com gpui/wry |
+| specs Python, normal e `-O` | `perf-history-proof` 20/20, `scene-fx-ui-proof` 24/24, `proof-surface` 29/29, `perf-meter-proof` 41/41; `py_compile` dos drivers |
+| `fx-history-smoke-proof.py` (janela real) | debug 40/40 e release 40/40 |
+| `perf-history-proof.py --seconds 10 --rounds 3 --buffer-minutes 4` (release, janela real, trava de GPU) | `ok: true`, 77 checks, 0 falhas; `source.git_head` = `d348b8d`, sem fontes sujas, binário não mais velho que as fontes |
+
+Custo (rodadas na ordem off/hidden/visible, visible/hidden/off, off/hidden/visible; CPU dividida pelo
+tempo de parede medido de cada corrida, 11,1-11,3 s): desligado 0,340, gravando com o painel fechado 0,331,
+painel aberto 0,372 CPU s/s; 239-240 quadros aceitos, 0 perdidos e maior intervalo de 1 quadro nos três braços.
+Com 3 corridas sob carga ~19 a diferença do braço fechado está dentro do ruído e o painel aberto custa cerca de
++0,03 a +0,07 CPU s/s: **não é custo zero** nem intervalo de confiança. Buffer de 240 s (4 min, 12 leituras de
+RSS conhecidas): 240 baldes o tempo todo, eventos dentro da capacidade (0 descartados), reprodução ainda andando
+ao final, RSS 245,9 MiB no primeiro ponto (aquecimento) e 96,4 MiB no último
+(`growth_after_warmup_mib = -12,4`). O JSON exportado (128 406 bytes) é `tessel.perf-history` v1 sem caminho
+local; `git_sha` do documento é `null` (o build não define `TESSEL_GIT_SHA`), então a identidade do build é o
+sha256 do binário e `source.git_head` do driver. As capturas escura e clara do painel congelado com seleção
+foram inspecionadas: nove gráficos com unidade por série, a seleção `-4,0 s a -3,7 s` bate com o resumo
+(14 quadros, 7 imagens do monitor) e com o JSON do mesmo snapshot (o smoke compara janela, eventos e segmentos
+do arquivo com a vista congelada).
+
+Itens do review 5820155331 conferidos no código do head: teste de symlink e da pasta bloqueada atrás de
+`cfg(unix)` e lista esperada por plataforma; `prepare_export` com `temp_dir`; âncoras do BL145.6 por SHA;
+contagem "58" removida; notas históricas marcadas; `freeze_ready` e buffer com checks nomeados e `null`;
+smoke sem seleção 0 com `end_ms` inválido; frase do plano corrigida. Correção mínima desta validação, só de
+driver: o `--json` do smoke registrava `surfaces: []` (a janela parecia não exercida) e perdia export, eventos e
+carga; agora grava `window: exercised` e os achados em `smoke`.
+
+Intervenção do `mbx`: entre os gates e a releitura do smoke a coleta **automática** do mbx removeu o `target`
+gerenciado deste checkout (nenhum `clean`/`gc` manual meu); os binários foram recompilados (mesmo sha256) e
+copiados para fora do cache antes das provas seguintes.
+
+Limites que continuam: quadro em voo atravessando a troca de cena e perda de contexto com cena dirigida só em
+testes GPUI; GPU real isolada; ponteiro físico (BL043); Windows (os testes `cfg(unix)` não rodam lá);
+mutações não repetidas neste head; a janela de dobra de seeks (250 ms) conta do primeiro seek do grupo, como o
+teste fixa, e não do anterior. Não é aprovação humana nem merge.
+
+
+## Resíduos da revisão OpenCodeReview 5820222247 (BL145.7)
+
+Correção validada no código `1d251746dd76a540f244c0a1da30e16a70b72582`: uma imagem aceita de época anterior continua alimentando a cadência do
+cartão e o rastreador de perdas do playback. No histórico, ela conta apenas como resposta antiga;
+não fornece quadro, intervalo, latência, renderização ou textura ao novo segmento. A API pura
+`Meter::monitor_stale_image` aplica essa separação e o host a chama para imagens realmente mostradas.
+
+O smoke passa a exportar o snapshot completo depois de retomar e parar a gravação. A afirmação
+sobre ausência de eventos proibidos só vale quando a gravação inteira cabe na janela e
+`events_dropped == 0`. A consulta compacta tem apenas 30 eventos: no congelamento, sua contagem
+e sua cauda são comparadas ao export, sem tratá-la como lista completa. Pico `monitor_frames`
+ausente ou nulo gera falha nomeada na contagem, sem abortar as verificações finais.
+
+Regressões escritas: cartão/perdas sem amostra histórica, cartão no retorno de quadro antigo
+entre cenas, evento proibido anterior à cauda de 30, export congelado com mais de 30 eventos,
+cobertura incompleta e picos nulos. A mutação que volta o host a chamar apenas `response_stale`
+reprova a regressão GPUI (cartão com 1 imagem em vez de 2); o código foi restaurado antes dos gates.
+
+Execução final no código `1d25174`, sem herdar os resultados de `d348b8d`:
+
+| Verificação | Resultado |
+|---|---|
+| fmt; check workspace locked; clippy workspace/all-targets `-D warnings` | exit 0 |
+| workspace `TESSEL_REQUIRE_RUNTIME=1`, locked, no-fail-fast | 2005 passam, 0 falham, 12 ignorados declarados; nenhuma linha SKIPPED |
+| build desktop debug e release; árvore do core | exit 0; sem gpui/wry no core |
+| runtime setup | reconstruído; runtime.js `7b6b4338…a2a98`, index.html `707fd90f…84a6` |
+| specs Python normal e `-O` | smoke 4, histórico 20, FX 24, superfície 29, medidor 41; todos passam |
+| smoke janela debug/release | 42/42 em cada, cobertura final completa; export identifica build `1d25174` |
+| prova de histórico release | 77/77; buffer de 4 minutos, capturas clara/escura inspecionadas |
+
+Binários frescos copiados para fora do cache antes das provas: debug SHA-256
+`634388ba87662a0e217a65e461d1b063d59a56bfcdc4975faf51ca945b29bdb3`; release
+`ffb28c343001af474c2e066637e97ebeadbd0f2988e5266d23d07c53dbe6c406`.
+As provas usaram instância própria, comandos semânticos e os dois locks compartilhados de GPU.
+Logs e relatórios locais: `/tmp/pr36-residuals/`.
+
+Custo release (3 rodadas de 10 s, ordem alternada, CPU dividida pelo tempo de parede):
+
+| Modo | CPU s/s | Imagens aceitas por corrida, média | Quadros perdidos |
+|---|---:|---:|---:|
+| Desligado | 0,307 | 240,0 | 0 |
+| Gravando, painel fechado | 0,294 | 240,3 | 0 |
+| Gravando, painel aberto | 0,335 | 240,3 | 0 |
+
+Gravar oculto ficou dentro do ruído da referência; painel aberto custou ~0,028 CPU s/s a mais.
+Três rodadas sob carga não dão intervalo de confiança nem demonstram custo zero. Em 4 minutos,
+o anel manteve 240 baldes e zero eventos descartados; RSS 296,6 MiB em 20 s e 121,0 MiB em 240 s,
+com +5,6 MiB após o aquecimento, dentro do critério do driver. Não é prova de crescimento zero
+ou de uma corrida de 10 minutos. Espaço livre observado: início ~29 GiB, mínimo ~16 GiB,
+final ~35 GiB; sem limpeza manual. O mbx registrou sua coleta automática.
+
+Limites preservados: quadro em voo na troca de cena e perda de contexto dirigida só em testes GPUI;
+GPU real isolada, ponteiro físico (BL043) e Windows não provados. Lacunas P0 da origem não mudaram.
+CodeRabbit NEUTRAL por cota não é aprovação; revisão e merge são estados separados destes gates.

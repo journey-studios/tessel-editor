@@ -1,0 +1,117 @@
+{
+  "blockers": [
+    {
+      "consequence": "Pixel equivalence with the origin is `origin-formula` (an independent float64 evaluation of its shader), never golden equivalence. Matrix status for visual parity stays partial.",
+      "detail": "The origin golden (catalog/__golden__/vignette.png, a strip drawn at 320x180 over the origin's own test plates, tolerance 2/255 on 0.5% of pixels) needs its harness: a build of the engine and a browser, i.e. executing the origin. That is forbidden in this delivery, and the plates are not part of the snapshot's blobs listed here. No golden was invented and none is compared.",
+      "id": "ORIGIN_GOLDEN_NOT_COMPARABLE"
+    },
+    {
+      "consequence": "A future execution of the origin (in its own, authorised environment) may replace `origin-formula` by `origin-output` per case.",
+      "detail": "Expectations are transcribed formulas, not the origin's outputs. A misreading shared by this script and the Rust reference would pass both. Mitigation: constants and the formula lines are checked against the origin text at generation and by `verify --origin`; the shader, the colour curves and the centre convention were read from their own blobs.",
+      "id": "ORIGIN_NOT_EXECUTED"
+    }
+  ],
+  "corpus": {
+    "base_bundle": "docs/migration/fixtures/bundles/valid-minimal-continuous.bundle.json",
+    "file": "cases.json",
+    "generator": "scripts/pilot-fx-corpus.py",
+    "regenerate": "scripts/pilot-fx-corpus.py generate --origin <path to the origin repo>",
+    "sha256": "5f0a9a907e3cf883dd3c8452130b27738ecf8c965dcefb49f91a622295f86498"
+  },
+  "expectation_kinds": {
+    "origin-formula": "read from the origin source and evaluated in float64 by the generator; the origin was not run",
+    "origin-source-behavior": "gesture behaviour stated in the comments of the origin hooks; not executed",
+    "rust-contract": "a code or behaviour of the Rust core, flagged as such (not claimed of the origin)"
+  },
+  "origin": {
+    "access": "git show / cat-file of the blobs below",
+    "repository": "journeystudios/tesselapp (read only; never installed, built or executed)",
+    "snapshot": "d40ac3f7c0",
+    "snapshot_commit": "d40ac3f7c0be4feccc54103e7619bbe7301dc325"
+  },
+  "pixel_tolerance": {
+    "per_channel": 1,
+    "why": "the reference is float64 with the origin's curves; the Rust one may differ by the last rounding of pow"
+  },
+  "purpose": "Provenance of the pilot vignette corpus (cases.json): where each expectation comes from.",
+  "schema": 1,
+  "sources": [
+    {
+      "bytes": 1883,
+      "git_blob": "95b137d2a386f6f75dc5bbdb1a89255ac6410684",
+      "path": "packages/scene-engine/src/fx/catalog/vignette.ts",
+      "role": "catalog: params, ranges, defaults",
+      "sha256": "6bd55eb8c9c129e90ca0cd7a1e515090100cb5511dbabb12b401ca867a2255c8"
+    },
+    {
+      "bytes": 1470,
+      "git_blob": "040a21eb7f80a051ab622fe85c0acbd064251146",
+      "path": "packages/scene-engine/src/runtime/fx/shaders/vignette.ts",
+      "role": "shader: the falloff and the mix",
+      "sha256": "b29678d62782ce5b6715980b97c3264fe29f1c65faecc4994da411ae1587cdf6"
+    },
+    {
+      "bytes": 2526,
+      "git_blob": "d07c4121ef510f747216f6fdd660b81fb99bafb1",
+      "path": "packages/scene-engine/src/runtime/fx/shaders/chunks/params.ts",
+      "role": "centre: y flipped for the shader",
+      "sha256": "54c57388c7899e8cf467ac1de489a11a739ead8948c71cbf4a071e71b3f6b67d"
+    },
+    {
+      "bytes": 1719,
+      "git_blob": "65551d862b648bf6739f46d1812c97a5cc8765da",
+      "path": "packages/scene-engine/src/runtime/fx/shaders/chunks/color.ts",
+      "role": "sRGB <-> linear curves",
+      "sha256": "eeee8044ce867b59c9e188e4c7aa90c8153cb6bf83166f23116a5f41a7459948"
+    },
+    {
+      "bytes": 9401,
+      "git_blob": "bb4e4860bedf83900365db88907ae89175bba965",
+      "path": "packages/scene-engine/src/fx/fx-clip-sample.ts",
+      "role": "envelopeWeight: fadeIn/fadeOut at mid-frame",
+      "sha256": "9291c2e5df1806d793ce269fd1c207969ee5bb2a8af0d1b1b83e4ab44cdba691"
+    },
+    {
+      "bytes": 8796,
+      "git_blob": "3adf58c6510c13442f47a950e493ed196ab3a428",
+      "path": "packages/scene-engine/src/fx/fx-frame-decks.ts",
+      "role": "order of tracks, hidden clips and tracks",
+      "sha256": "dedc9994f62d500d123e4d6bb2ee31a3c15f0e93bebbdb2d1f29dc1e36db07a8"
+    },
+    {
+      "bytes": 12148,
+      "git_blob": "17ab35a3d6c8c4624e6abd56dc06bd7f30fab037",
+      "path": "packages/scene-engine/src/runtime/fx/fx-compositor.ts",
+      "role": "amount = clamp01(intensity * weight)",
+      "sha256": "ae9c446fbd02045b75723e75118e46bcb6b9b25815c216155575cba358753729"
+    },
+    {
+      "bytes": 4322,
+      "git_blob": "0ca7ce3b839c69303d5ad65c2de7df74a65d586c",
+      "path": "apps/scene-studio/src/hooks/useFxEdit.ts",
+      "role": "gesture: preview records nothing, one undo, refusal",
+      "sha256": "2540384ed3206cc1db34d3bf65e86bd1cac91dc28767d5d13f51f36be06b3e9a"
+    },
+    {
+      "bytes": 5178,
+      "git_blob": "17546a438b4eb509e757d13ed4e7e0dc677d5e7e",
+      "path": "apps/scene-studio/src/engine/fxSlice.ts",
+      "role": "commit that changes nothing records nothing",
+      "sha256": "d73b5ac86b11d92fc6e87fcce0800a18c748919f4cc77bf2759bd6e36a4fb90b"
+    },
+    {
+      "bytes": 34942,
+      "git_blob": "944ca8af538b29813572679182f003e774ce0c31",
+      "path": "packages/scene-engine/src/fx/catalog/__golden__/vignette.png",
+      "role": "GOLDEN (blocked: not comparable)",
+      "sha256": "b6c437df4c2545c975fab4fd8f03ae03f9595575cd9cc73547c5bd79138fd3e6"
+    },
+    {
+      "bytes": 6026,
+      "git_blob": "105838df3f0859eafc2627fe969901bfb3451086",
+      "path": "packages/scene-engine/scripts/fx-golden.mjs",
+      "role": "golden harness and tolerance (blocked: not run)",
+      "sha256": "8c7e1f352202e6fb16b3e1ea2b2a32241e2ba2612356189795123014ede541a4"
+    }
+  ]
+}

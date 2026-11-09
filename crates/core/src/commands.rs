@@ -7,6 +7,7 @@
 use serde_json::{Value, json};
 
 use crate::perf::{self, PerfMeterCommand};
+use crate::perf_history::{self, HistoryCommand};
 use crate::plan::PreviewIntent;
 use crate::preview::PreviewMode;
 use crate::state::camera_edit::{CameraKeysCommand, KEY_FIELDS};
@@ -28,6 +29,9 @@ pub enum Parsed {
     ToggleTheme,
     /// Show, hide or toggle the debug performance meter (F049). Window state, like the theme.
     PerfMeter(PerfMeterCommand),
+    /// The rolling performance history (BL145.2): record, show, freeze, select, clear, export.
+    /// Window state: it measures the live window and monitor.
+    PerfHistory(HistoryCommand),
     /// Reload the viewport page. A window concern: headless sessions have no page.
     ReloadViewport,
 }
@@ -97,9 +101,89 @@ pub fn parse_set(target: &str, field: &str, value: &Raw) -> Result<Parsed, Comma
                 PerfMeterCommand::Hide
             }));
         }
+        (perf_history::TARGET, field) => return parse_set_history(field, value),
         _ => return parse_set_entity(target, field, value),
     };
     Ok(Parsed::Run(command))
+}
+
+/// `set perf.history <field> <value>`: the same commands as the panel's controls.
+fn parse_set_history(field: &str, value: &Raw) -> Result<Parsed, CommandError> {
+    let command = match field {
+        "recording" => HistoryCommand::Record(value.boolean()?),
+        "visible" => {
+            if value.boolean()? {
+                HistoryCommand::Show
+            } else {
+                HistoryCommand::Hide
+            }
+        }
+        "frozen" => {
+            if value.boolean()? {
+                HistoryCommand::Freeze
+            } else {
+                HistoryCommand::Resume
+            }
+        }
+        // Milliseconds on the history's monotonic clock (`get` publishes the window in them).
+        "selected_ms" => {
+            let milliseconds = value.number()?;
+            if milliseconds < 0.0 {
+                return Err(CommandError::invalid_value(
+                    "Expected milliseconds since the monotonic origin (>= 0); `clear_selection` clears",
+                    json!("milliseconds"),
+                ));
+            }
+            // A finite but absurd value (`1e300`) overflows a `Duration`: refuse it, never panic.
+            let at =
+                std::time::Duration::try_from_secs_f64(milliseconds / 1000.0).map_err(|_| {
+                    CommandError::invalid_value(
+                        "Milliseconds are too large to be an instant on the monotonic clock",
+                        json!("milliseconds"),
+                    )
+                })?;
+            HistoryCommand::Select(Some(at))
+        }
+        "export_to" => HistoryCommand::Export(std::path::PathBuf::from(value.text())),
+        // What typing (or picking) a path in the panel's field does; `invoke ... export` is the
+        // button that writes to it.
+        "export_destination" => HistoryCommand::Destination(value.text()),
+        _ => {
+            return Err(CommandError::new(
+                "unknown_field",
+                format!("`{}` has no settable field `{field}`", perf_history::TARGET),
+            )
+            .target(perf_history::TARGET)
+            .details(
+                json!({ "fields": ["recording", "visible", "frozen", "selected_ms", "export_to", "export_destination"] }),
+            ));
+        }
+    };
+    Ok(Parsed::PerfHistory(command))
+}
+
+fn parse_invoke_history(action: &str) -> Result<Parsed, CommandError> {
+    let command = match action {
+        "record_start" => HistoryCommand::Record(true),
+        "record_stop" => HistoryCommand::Record(false),
+        "show" => HistoryCommand::Show,
+        "hide" => HistoryCommand::Hide,
+        "freeze" => HistoryCommand::Freeze,
+        "resume" => HistoryCommand::Resume,
+        "clear" => HistoryCommand::Clear,
+        "snapshot" => HistoryCommand::Snapshot,
+        "clear_selection" => HistoryCommand::Select(None),
+        "export" => HistoryCommand::ExportToDestination,
+        _ => {
+            return Err(CommandError::new(
+                "unknown_action",
+                format!("`{}` has no action `{action}`", perf_history::TARGET),
+            )
+            .target(perf_history::TARGET)
+            .details(json!({ "actions": perf_history::ACTIONS })));
+        }
+    };
+    Ok(Parsed::PerfHistory(command))
 }
 
 fn parse_panel(id: &str, target: &str) -> Result<PanelKind, CommandError> {
@@ -300,6 +384,7 @@ pub fn parse_invoke(
     let command = match (target, action) {
         ("toolbar.theme", "toggle") => return Ok(Parsed::ToggleTheme),
         (perf::TARGET, "toggle") => return Ok(Parsed::PerfMeter(PerfMeterCommand::Toggle)),
+        (perf_history::TARGET, action) => return parse_invoke_history(action),
         ("timeline.snap", "toggle") => Command::SetSnap {
             snap: !state.timeline.snap,
         },
@@ -694,7 +779,10 @@ mod tests {
         match parsed.unwrap() {
             Parsed::Run(command) => command,
             Parsed::Layout(command) => panic!("unexpected dock command {command:?}"),
-            Parsed::ToggleTheme | Parsed::PerfMeter(_) | Parsed::ReloadViewport => {
+            Parsed::ToggleTheme
+            | Parsed::PerfMeter(_)
+            | Parsed::PerfHistory(_)
+            | Parsed::ReloadViewport => {
                 panic!("unexpected window command")
             }
         }
@@ -1161,6 +1249,118 @@ mod tests {
         assert_eq!(
             go(json!({"group":"group:9999"})).unwrap_err().code,
             "unknown_element"
+        );
+    }
+
+    #[test]
+    fn the_perf_history_is_driven_by_set_and_invoke_through_one_parser() {
+        use std::time::Duration;
+        let set = |field: &str, value: Raw| parse_set(perf_history::TARGET, field, &value);
+        let history = |parsed: Result<Parsed, CommandError>| match parsed.unwrap() {
+            Parsed::PerfHistory(command) => command,
+            other => panic!("expected a history command, got {other:?}"),
+        };
+        assert_eq!(
+            history(set("recording", Raw::Bool(true))),
+            HistoryCommand::Record(true)
+        );
+        assert_eq!(
+            history(set("recording", Raw::Text("off".into()))),
+            HistoryCommand::Record(false)
+        );
+        assert_eq!(
+            history(set("visible", Raw::Bool(true))),
+            HistoryCommand::Show
+        );
+        assert_eq!(
+            history(set("visible", Raw::Bool(false))),
+            HistoryCommand::Hide
+        );
+        assert_eq!(
+            history(set("frozen", Raw::Bool(true))),
+            HistoryCommand::Freeze
+        );
+        assert_eq!(
+            history(set("frozen", Raw::Bool(false))),
+            HistoryCommand::Resume
+        );
+        assert_eq!(
+            history(set("selected_ms", Raw::Number(1500.0))),
+            HistoryCommand::Select(Some(Duration::from_millis(1500)))
+        );
+        assert_eq!(
+            history(set("export_to", Raw::Text("/tmp/a.json".into()))),
+            HistoryCommand::Export("/tmp/a.json".into())
+        );
+        assert_eq!(
+            history(set("export_destination", Raw::Text("/tmp/b.json".into()))),
+            HistoryCommand::Destination("/tmp/b.json".into())
+        );
+        assert_eq!(
+            set("selected_ms", Raw::Number(-1.0)).unwrap_err().code,
+            "invalid_value"
+        );
+        assert_eq!(
+            set("selected_ms", Raw::Text("soon".into()))
+                .unwrap_err()
+                .code,
+            "invalid_value"
+        );
+        // Finite, non-negative and still not an instant: refused, not a panic in the parser.
+        assert_eq!(
+            set("selected_ms", Raw::Number(1e300)).unwrap_err().code,
+            "invalid_value"
+        );
+        assert_eq!(
+            set("selected_ms", Raw::Text("1e300".into()))
+                .unwrap_err()
+                .code,
+            "invalid_value"
+        );
+        assert_eq!(
+            set("recording", Raw::Number(1.0)).unwrap_err().code,
+            "invalid_value"
+        );
+        assert_eq!(
+            set("speed", Raw::Number(1.0)).unwrap_err().code,
+            "unknown_field"
+        );
+        let invoke = |action: &str| {
+            history(parse_invoke(
+                &EditorState::demo(),
+                &default_layout(),
+                perf_history::TARGET,
+                action,
+            ))
+        };
+        for (action, expected) in [
+            ("record_start", HistoryCommand::Record(true)),
+            ("record_stop", HistoryCommand::Record(false)),
+            ("show", HistoryCommand::Show),
+            ("hide", HistoryCommand::Hide),
+            ("freeze", HistoryCommand::Freeze),
+            ("resume", HistoryCommand::Resume),
+            ("clear", HistoryCommand::Clear),
+            ("snapshot", HistoryCommand::Snapshot),
+            ("clear_selection", HistoryCommand::Select(None)),
+            ("export", HistoryCommand::ExportToDestination),
+        ] {
+            assert_eq!(invoke(action), expected, "{action}");
+            assert!(
+                perf_history::ACTIONS.contains(&action),
+                "{action} is documented"
+            );
+        }
+        assert_eq!(
+            parse_invoke(
+                &EditorState::demo(),
+                &default_layout(),
+                perf_history::TARGET,
+                "explode"
+            )
+            .unwrap_err()
+            .code,
+            "unknown_action"
         );
     }
 }

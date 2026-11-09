@@ -176,7 +176,7 @@ determinístico, uma GPU real pode diferir; o corpus é de um único modelo (qua
 0,955055), e o controle `capture: ignore` de `t4` cai para 0,016. O tempo limite **não é do arquivo**: com o SwiftShader (o padrão do `tessel-render`
 e da janela) e a máquina com carga ~40, `render.frame` a 1280×720 respondeu em 33,5 s para `t3-chao` e **excedeu 60 s** para `t1-teatro`, `t2-estudio` e
 `t4-batalha`, e a miniatura de 240×136 falhou (`render_failed`, `timeout`) nos quatro: o custo é por gaussiana (1 179 648 em cada arquivo), não por pixel, de um
-rasterizador por CPU. Na GPU real um quadro leva 0,6–2 s. O prazo de 60 s do host não foi mudado. Consequência de produto, registrada em BL157: a janela, que
+rasterizador por CPU. Na GPU real um quadro leva 0,6–2 s. O prazo de 60 s do host não foi mudado. Consequência de produto, registrada em BL159: a janela, que
 usa o SwiftShader por padrão, não desenha nem exporta um SHARP real sem `TESSEL_GL=gpu` (o export falhou com `Frame 0: No frame within 120s`).
 
 **Filme de 60 s a partir dos quatro arquivos crus (2026-11-08).** Em uma cópia derivada (`/Users/wallyssonnunes/www/tessel-video-splat-derived-20261108`, fora do
@@ -186,9 +186,17 @@ efeitos de runas e o áudio já existente. O projeto foi montado e exportado **p
 `TESSEL_GL=gpu`: `work/tessel-splat-preview-60s-h.mp4` (1280×720, 24 fps, 60,000 s, H.264 + AAC, 23 812 564 bytes, sha256 `85de1ac392a48eb5…`; 1440 quadros em cerca de 4,5 min de
 relógio com a máquina sob carga) e `work/tessel-splat-preview-60s-v.mp4` (720×1280, 22 102 333 bytes, sha256 `951eb9e67fafe0cf…`). Os dois passam pela
 verificação do próprio export. Os quadros dos dois foram vistos (tomadas, fades, títulos, cartão final). Limites: **a trilha existente tem 25 s** (usada duas vezes
-com fades, e a voz existente cobre só os títulos principais; ver BL158); os títulos finais são PNGs porque a camada de texto do editor é uma linha centrada em fonte 5×7
+com fades, e a voz existente cobre só os títulos principais; ver BL160); os títulos finais são PNGs porque a camada de texto do editor é uma linha centrada em fonte 5×7
 só de maiúsculas (BL141.1/BL053); o 9:16 mostra um terço da largura da imagem 16:9 (a lente é a mesma), então a câmera varre o assunto por chaves escritas à mão
-(BL159) e a borda inferior de algumas tomadas mostra o fundo preto onde a nuvem acaba. A pasta `work/` contém só derivados locais.
+(BL161) e a borda inferior de algumas tomadas mostra o fundo preto onde a nuvem acaba. A pasta `work/` contém só derivados locais.
+
+**Revisão r2 do filme (2026-11-08; procedência conferida por leitura em 2026-11-09).** Numa cópia nova (`…-20261108-r2`, a r1 intacta) os mesmos quatro PLYs
+crus (SHA-256 iguais aos da origem `~/www/tessel-video-splat`, só lida) foram exportados de novo pela janela nativa com `TESSEL_GL=gpu` por um binário release
+construído de `5258e8c` (PR #36; não é a `main` atual): `…-60s-h-r2.mp4` (1280×720) e `…-60s-v-r2.mp4` (720×1280), cada um H.264 + AAC, 24 fps, 60,000 s, 1440 quadros.
+A r2 repete a trilha de 25 s três vezes com emendas de **48 quadros (2 s)** em 23–25 s e 46–48 s (BL160, sem áudio novo) e dá à câmera vertical chaves de
+manter-mover-manter com inclinação por take (BL161). Medido sobre o MP4: sem silêncio digital, trecho calado mais longo 0,5 s, queda de nível de 7,7 e 5,6 dB nas emendas,
+108 quadros de varredura (um a cada 12, de 120; o cartão final fica de fora) sem faixa preta acima de 1 %. **Não é aceite humano:** ninguém ouviu as emendas nem
+viu os 60 s inteiros, e 120 amostras não são o filme. Os arquivos ficam fora do Git; nada foi copiado para este repositório.
 
 **Cor (BL143.8).** As sondas de pixel antigas comparam a cor dominante sobre preto, o que **não detecta escurecimento**. O runtime
 já traz a correção BL019-F1; não se repete correção de cor sem prova. O teste novo `colours_and_framing_match_an_independent_oracle_...`

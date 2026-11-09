@@ -39,10 +39,11 @@ pub use address::{
     ensure_exists, entity_json, entity_of_property, entity_path, exists, kind_label, parse_entity,
 };
 pub use command::{
-    CancelReason, FrameAt, GestureCommand, GizmoCommand, PointerCommand, SelectMode,
+    CancelReason, FrameAt, FxGestureCommand, GestureCommand, GizmoCommand, PointerCommand,
+    SelectMode,
 };
 pub use frame::frame_json;
-pub use gesture::{Gesture, GestureSlot, Invalidation};
+pub use gesture::{Gesture, GestureKind, GestureSlot, Invalidation, Refusal};
 pub use gizmo::{
     Anchor, CENTER_RADIUS, HANDLE_LENGTH, HIT_RADIUS, Handle, Hidden, Layout, OUTSIDE_LIMIT,
     Overlay, Point, View, local_delta, movable, outline, pick_plane, world_origin,

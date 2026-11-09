@@ -241,6 +241,28 @@ fn build(state: &EditorState, cx: &TreeContext) -> Vec<Node> {
         .state("visible", cx.perf_meter)
         .state("shortcut", crate::perf::SHORTCUT),
     );
+    // The rolling history and its diagnostic panel (BL145.2). The desktop adapter fills the live
+    // values (`recording`, `frozen`, `view`...): the state of a recorder that measures the
+    // window and the monitor exists nowhere else, and the headless tree has no such node values.
+    let mut history = Node::new(
+        crate::perf_history::TARGET,
+        "panel",
+        "Performance history (60 s)",
+    )
+    .parent("region:toolbar")
+    .state("recording", false)
+    .state("visible", false)
+    .state("frozen", false)
+    .field("recording", "boolean", json!({}))
+    .field("visible", "boolean", json!({}))
+    .field("frozen", "boolean", json!({}))
+    .field("selected_ms", "number", json!({ "min": 0 }))
+    .field("export_to", "string", json!({}))
+    .field("export_destination", "string", json!({}));
+    for action in crate::perf_history::ACTIONS {
+        history = history.action(action);
+    }
+    nodes.push(history);
     build_dock(cx.layout, &mut nodes);
 
     build_library(state, &mut nodes);
@@ -1306,6 +1328,38 @@ mod tests {
         assert_eq!(found["fields"][0]["field"], "visible");
         assert_eq!(found["state"]["visible"], false);
         assert_eq!(found["state"]["shortcut"], crate::perf::SHORTCUT);
+    }
+
+    #[test]
+    fn the_perf_history_is_a_toolbar_panel_with_its_fields_and_actions() {
+        let state = EditorState::demo();
+        let found = node(&state, crate::perf_history::TARGET);
+        assert_eq!(found["parent"], "region:toolbar");
+        let actions: Vec<&str> = found["actions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|action| action["action"].as_str().unwrap())
+            .collect();
+        assert_eq!(actions, crate::perf_history::ACTIONS);
+        let fields: Vec<&str> = found["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|field| field["field"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            fields,
+            [
+                "recording",
+                "visible",
+                "frozen",
+                "selected_ms",
+                "export_to",
+                "export_destination"
+            ]
+        );
+        assert_eq!(found["state"]["recording"], false, "off by default");
     }
 
     #[test]

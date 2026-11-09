@@ -49,6 +49,11 @@ fn json_and_library_flows_have_the_same_state_and_reject_without_mutation() {
     for request in [
         json!({"op":"invoke", "target":"toolbar.perf_meter", "action":"toggle"}),
         json!({"op":"set", "target":"toolbar.perf_meter", "field":"visible", "value":true}),
+        // BL145.2: the rolling history measures the live window and monitor: N/A headless, and
+        // the session invents no presentation clock to record against.
+        json!({"op":"invoke", "target":"perf.history", "action":"record_start"}),
+        json!({"op":"set", "target":"perf.history", "field":"recording", "value":true}),
+        json!({"op":"set", "target":"perf.history", "field":"export_to", "value":"/tmp/never.json"}),
     ] {
         assert_eq!(
             headless::execute(&mut json_session, &request)

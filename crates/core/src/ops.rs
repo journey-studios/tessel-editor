@@ -18,7 +18,8 @@ use crate::plan::{PlanRequest, PlanTime, PreviewIntent};
 use crate::preview::PreviewMode;
 use crate::scene_edit::{PropertyRef, parse_batch};
 use crate::scene_interaction::{
-    CancelReason, FrameAt, GestureCommand, GizmoCommand, Point, PointerCommand, SelectMode,
+    CancelReason, FrameAt, FxGestureCommand, GestureCommand, GizmoCommand, Point, PointerCommand,
+    SelectMode,
 };
 use crate::scene_project::{CameraAt, SceneCommand, SceneSource};
 use crate::state::camera_edit::CameraKeysCommand;
@@ -633,12 +634,37 @@ fn scene_command(op: &str, request: &Value) -> Result<SceneCommand, CommandError
             )?,
             dry_run: optional_bool(request, "dry_run")?.unwrap_or(false),
         },
-        "scene.fx.list" => SceneCommand::FxList { scene: scene()? },
+        "scene.fx.list" => SceneCommand::FxList {
+            scene: scene()?,
+            gesture: optional_string(request, "gesture")?,
+        },
         "scene.fx.catalog" => SceneCommand::FxCatalog,
         "scene.fx.frame" => SceneCommand::FxFrame {
             scene: scene()?,
             at: frame_at(request)?,
+            gesture: optional_string(request, "gesture")?,
         },
+        // F016 (BL082.6): the gesture cycle over one effect clip. Shape only, like `scene.gesture.*`.
+        "scene.fx.gesture.begin" => SceneCommand::FxGesture(FxGestureCommand::Begin {
+            scene: scene()?,
+            clip: string(request, "clip")?.to_string(),
+            label: optional_string(request, "label")?,
+        }),
+        "scene.fx.gesture.update" => SceneCommand::FxGesture(FxGestureCommand::Update {
+            gesture: string(request, "gesture")?.to_string(),
+            ops: crate::scene_edit::parse_fx_batch(
+                request
+                    .get("ops")
+                    .ok_or_else(|| invalid("Expected array field `ops`"))?,
+            )?,
+        }),
+        "scene.fx.gesture.commit" => SceneCommand::FxGesture(FxGestureCommand::Commit {
+            gesture: string(request, "gesture")?.to_string(),
+        }),
+        "scene.fx.gesture.cancel" => SceneCommand::FxGesture(FxGestureCommand::Cancel {
+            gesture: string(request, "gesture")?.to_string(),
+        }),
+        "scene.fx.gesture.status" => SceneCommand::FxGesture(FxGestureCommand::Status),
         "scene.list" => SceneCommand::List,
         "scene.capabilities" => SceneCommand::Capabilities,
         "scene.catalog" => SceneCommand::Catalog,

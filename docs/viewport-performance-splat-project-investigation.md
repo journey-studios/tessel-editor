@@ -327,6 +327,30 @@ As três execuções de cada lado diferem em ≤ 3 MB. Com `TESSEL_VIEWPORT_RETA
 (`stats.evicted` chega a 5, `splat_assets` cai de 3 para 2 e volta a 3 ao revisitar a cena, editor estável). A pré-carga não aparece
 nesse tour porque ele só usa `seek`, sem reprodução; os números dela estão nas seções anteriores.
 
+### Validação da pré-carga e das camadas cobertas na `main` integrada
+
+> Registro histórico por SHA: as medidas abaixo são da `main` `10683c5` (com BL146–BL155) contra `ce71ce9`. A `main` atual
+> (`3ae4ce5`) incorporou depois a PR #36 (histórico de desempenho), que alterou `viewport_host.rs`; as medidas **não** foram
+> repetidas nela e não valem como gate da `main` atual. O harness `play_tour.py` é local e não está versionado: estes números
+> não são reproduzíveis só a partir do repositório (a PR #34 versiona o harness que reproduz a medição de BL157).
+
+Mesmos binários release (`ce71ce9` contra `main` com BL146–BL155), editor frio a cada execução, reprodução cronometrada pelo
+traço do host (`play_tour.py`, local), 3 execuções intercaladas de cada; a máquina estava com carga de 21 a 30 (outros processos),
+igual para os dois lados, então vale a comparação e não o valor absoluto.
+
+| Cenário | Medida | antes | depois |
+|---|---|---|---|
+| Projeto inteiro, 0–26 s | maior intervalo entre quadros (ms) | 507 / 571 / 508 | 103 / 290 / 215 |
+| | quadros apresentados (de 601) | 576 / 565 / 574 | 599 / 588 / 596 |
+| 6 vídeos empilhados, 7 s | quadros apresentados | 117 / 148 / 130 | 163 / 172 |
+| | maior intervalo (ms) | 134 / 107 / 114 | 71 / 60 |
+| 4 vídeos sobre o take A, 5 s | intervalos > 62 ms | 13 / 9 / 11 | 3 / 5 / 3 |
+
+Sobram entradas de 100–290 ms nas trocas de cena (BL157). A medida de `p99` de `hmix` não serve: a amostra é de ~120 quadros, então
+o `p99` é o segundo maior intervalo, que é do início da reprodução. Registrei também uma falha intermitente de abertura que
+acontece nos dois binários (BL158). A medição do aviso de proxy pendente (BL149) e um burst grande para o orçamento da
+pré-carga (BL147) não foram feitos.
+
 ## Backlog
 
 Registrado em [backlog.md](backlog.md), seção "Performance do monitor — projeto splat de amostra": BL146 (carga antecipada),
