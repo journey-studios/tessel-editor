@@ -367,15 +367,17 @@ pedido dirigido e cada carga de recurso com a época vigente **na admissão** (o
 autoritativo; independe de haver gravação). Na resposta:
 
 - época igual: caminho de sempre (`note_image` / `note_failed`);
-- época antiga: o quadro **não** vira amostra nem evento; só `note_stale` (`stale_responses` do recorder,
-  que já não tem o pedido em `pending`, pois a troca de sessão o limpou). O quadro apresentado continua
-  valendo para quem o pediu;
+- época antiga: o quadro **não** vira amostra nem evento do histórico; `monitor_stale_image`
+  registra `stale_responses` e preserva a cadência do cartão e as perdas do playback para a imagem
+  realmente apresentada (BL145.7). O pedido já saiu de `pending` na troca de sessão; a resposta
+  continua valendo para quem a pediu;
 - falha de pedido antigo: nada no segmento novo; fim de carga cujo início ficou numa época anterior:
   nenhum `resource_load_finished` sem o início correspondente (o par é fechado pela época, não por heurística).
 
 A resposta ao chamador **não muda**: a imagem é entregue e a propriedade do quadro é a de sempre.
-Latência, textura e falha seguem a mesma regra que o sucesso. Só `scene_lifecycle_tests` muda no
-desktop de teste; o core não tem regra nova (é o recorder que já tratava `response_stale`).
+Latência, textura e falha seguem a mesma regra que o sucesso. O contador de resposta antiga já
+existia no recorder; BL145.7 acrescenta `Meter::monitor_stale_image` para separar esse contador
+do cartão e das perdas, com regressões no core e em `scene_lifecycle_tests`.
 
 Testes (GPUI, relógio controlado) que o provam: quadro antigo que volta depois da troca não é medição
 do segmento novo; quadro antigo que falha depois da troca não é evento do segmento novo; resposta fora de
@@ -564,7 +566,7 @@ teste fixa, e não do anterior. Não é aprovação humana nem merge.
 
 ## Resíduos da revisão OpenCodeReview 5820222247 (BL145.7)
 
-Correção em validação: uma imagem aceita de época anterior continua alimentando a cadência do
+Correção validada no código `1d251746dd76a540f244c0a1da30e16a70b72582`: uma imagem aceita de época anterior continua alimentando a cadência do
 cartão e o rastreador de perdas do playback. No histórico, ela conta apenas como resposta antiga;
 não fornece quadro, intervalo, latência, renderização ou textura ao novo segmento. A API pura
 `Meter::monitor_stale_image` aplica essa separação e o host a chama para imagens realmente mostradas.
@@ -577,4 +579,42 @@ ausente ou nulo gera falha nomeada na contagem, sem abortar as verificações fi
 
 Regressões escritas: cartão/perdas sem amostra histórica, cartão no retorno de quadro antigo
 entre cenas, evento proibido anterior à cauda de 30, export congelado com mais de 30 eventos,
-cobertura incompleta e picos nulos. Os gates anteriores permanecem históricos até a execução final.
+cobertura incompleta e picos nulos. A mutação que volta o host a chamar apenas `response_stale`
+reprova a regressão GPUI (cartão com 1 imagem em vez de 2); o código foi restaurado antes dos gates.
+
+Execução final no código `1d25174`, sem herdar os resultados de `d348b8d`:
+
+| Verificação | Resultado |
+|---|---|
+| fmt; check workspace locked; clippy workspace/all-targets `-D warnings` | exit 0 |
+| workspace `TESSEL_REQUIRE_RUNTIME=1`, locked, no-fail-fast | 2005 passam, 0 falham, 12 ignorados declarados; nenhuma linha SKIPPED |
+| build desktop debug e release; árvore do core | exit 0; sem gpui/wry no core |
+| runtime setup | reconstruído; runtime.js `7b6b4338…a2a98`, index.html `707fd90f…84a6` |
+| specs Python normal e `-O` | smoke 4, histórico 20, FX 24, superfície 29, medidor 41; todos passam |
+| smoke janela debug/release | 42/42 em cada, cobertura final completa; export identifica build `1d25174` |
+| prova de histórico release | 77/77; buffer de 4 minutos, capturas clara/escura inspecionadas |
+
+Binários frescos copiados para fora do cache antes das provas: debug SHA-256
+`634388ba87662a0e217a65e461d1b063d59a56bfcdc4975faf51ca945b29bdb3`; release
+`ffb28c343001af474c2e066637e97ebeadbd0f2988e5266d23d07c53dbe6c406`.
+As provas usaram instância própria, comandos semânticos e os dois locks compartilhados de GPU.
+Logs e relatórios locais: `/tmp/pr36-residuals/`.
+
+Custo release (3 rodadas de 10 s, ordem alternada, CPU dividida pelo tempo de parede):
+
+| Modo | CPU s/s | Imagens aceitas por corrida, média | Quadros perdidos |
+|---|---:|---:|---:|
+| Desligado | 0,307 | 240,0 | 0 |
+| Gravando, painel fechado | 0,294 | 240,3 | 0 |
+| Gravando, painel aberto | 0,335 | 240,3 | 0 |
+
+Gravar oculto ficou dentro do ruído da referência; painel aberto custou ~0,028 CPU s/s a mais.
+Três rodadas sob carga não dão intervalo de confiança nem demonstram custo zero. Em 4 minutos,
+o anel manteve 240 baldes e zero eventos descartados; RSS 296,6 MiB em 20 s e 121,0 MiB em 240 s,
+com +5,6 MiB após o aquecimento, dentro do critério do driver. Não é prova de crescimento zero
+ou de uma corrida de 10 minutos. Espaço livre observado: início ~29 GiB, mínimo ~16 GiB,
+final ~35 GiB; sem limpeza manual. O mbx registrou sua coleta automática.
+
+Limites preservados: quadro em voo na troca de cena e perda de contexto dirigida só em testes GPUI;
+GPU real isolada, ponteiro físico (BL043) e Windows não provados. Lacunas P0 da origem não mudaram.
+CodeRabbit NEUTRAL por cota não é aprovação; revisão e merge são estados separados destes gates.
