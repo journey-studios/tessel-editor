@@ -357,14 +357,23 @@ def retry_while_preparing(call, timeout=60.0, sleep=time.sleep, now=time.monoton
         sleep(0.5)
 
 
-def wait_job(lab, job, timeout=300.0):
-    deadline = time.time() + timeout
-    while time.time() < deadline:
+def job_settled(info):
+    """A job is settled when it ended AND, if it succeeded, the window applied its result: a succeeded job whose
+    result is still pending has changed nothing yet."""
+    if info.get("state") in (None, "queued", "running"):
+        return False
+    return info.get("state") != "succeeded" or info.get("result_state") not in (None, "pending")
+
+
+def wait_job(lab, job, timeout=300.0, sleep=time.sleep, now=time.monotonic):
+    deadline = now() + timeout
+    info = {}
+    while now() < deadline:
         info = lab.op({"op": "job.wait", "job": job}).get("data") or {}
-        if info.get("state") not in ("queued", "running"):
+        if job_settled(info):
             return info
-        time.sleep(0.25)
-    return {}
+        sleep(0.25)
+    return info
 
 
 def build_project(binary, work, splats, cuts, cut_frames):

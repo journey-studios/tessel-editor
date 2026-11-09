@@ -131,6 +131,24 @@ class PixelTests(unittest.TestCase):
         self.assertFalse(self.verdicts(sessions, [1])["after the pause the monitor shows the explicit render's picture"])
 
 
+class JobTests(unittest.TestCase):
+    def test_a_succeeded_job_whose_result_the_window_has_not_applied_is_not_settled(self):
+        self.assertFalse(proof.job_settled({"state": "running"}))
+        self.assertFalse(proof.job_settled({"state": "succeeded", "result_state": "pending"}))
+        self.assertFalse(proof.job_settled({"state": "succeeded"}))
+        self.assertTrue(proof.job_settled({"state": "succeeded", "result_state": "applied"}))
+        self.assertTrue(proof.job_settled({"state": "failed"}), "a failure is an answer")
+
+    def test_the_wait_asks_again_until_the_result_is_applied(self):
+        class Lab:
+            answers = iter([{"state": "succeeded", "result_state": "pending"}, {"state": "succeeded", "result_state": "applied"}])
+
+            def op(self, request):
+                return {"data": next(self.answers)}
+
+        self.assertEqual(proof.wait_job(Lab(), "j", sleep=lambda s: None)["result_state"], "applied")
+
+
 class LockTests(unittest.TestCase):
     def test_free_locks_are_taken_and_a_held_one_is_never_waited_for_past_the_deadline(self):
         with tempfile.TemporaryDirectory() as directory:
