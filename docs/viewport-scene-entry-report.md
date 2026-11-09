@@ -67,7 +67,7 @@ anterior); eles protegem contra regressão e não provam correção nova. O runt
 | `./scripts/runtime test` com `TESSEL_REQUIRE_RUNTIME=1`, Chrome real (SwiftShader) | 212 testes, 212 passam, 0 falham, 0 SKIP (carga da máquina 41; um teste de cancelamento usava limite absoluto de 600 ms e falhou sob carga; passou a comparar com uma linha de base medida na própria execução) |
 | `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked --no-fail-fast` | 2018 passam, 0 falham, 12 ignorados |
 | clippy workspace/all-targets `-D warnings`, `cargo fmt --check`, `cargo check --workspace --locked` | limpos |
-| build release do desktop | gerado e usado no A/B (binário `4aaf7f8`) |
+| build release do desktop | gerado e usado no A/B (SHA-256 `db9f01a5fdb6…`) |
 | `cargo tree -p tessel-editor-core` | sem gpui nem wry |
 | harness `scripts/scene-warm-proof.spec.py` | 24 testes passam |
 
