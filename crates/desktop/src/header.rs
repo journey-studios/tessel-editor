@@ -9,7 +9,7 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::toolbar::Toolbar;
-use gpui_kit::component::{ActiveTheme, Selectable, Sizable, h_flex};
+use gpui_kit::component::{ActiveTheme, Icon, Selectable, Sizable, h_flex};
 use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::*;
 use serde_json::{Value, json};
@@ -25,10 +25,123 @@ const TITLE_NODE_LABEL: &str = "";
 /// The node that carries the open project's title.
 const TITLE_NODE: u32 = 13;
 
-/// Strip height; the native traffic lights are centred in it.
+/// Strip height; the native traffic lights (macOS) and the caption buttons are centred in it.
 pub const HEIGHT: f32 = 40.0;
+/// macOS paints the native traffic lights over the transparent title bar, on the left.
+/// Everywhere else the window has no native caption, so the header draws its own buttons
+/// on the right (`caption_buttons`) and needs no room on the left.
+const NATIVE_TRAFFIC_LIGHTS: bool = cfg!(target_os = "macos");
 /// Room the traffic lights take on the left, see `traffic_light_position`.
 const TRAFFIC_LIGHTS: f32 = 80.0;
+/// Left inset when there are no traffic lights.
+const PLAIN_INSET: f32 = 12.0;
+/// Width of each drawn caption button (Windows' own are 46 px).
+const CAPTION_BUTTON_WIDTH: f32 = 46.0;
+
+/// The buttons the header draws on platforms without native traffic lights.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Caption {
+    Minimize,
+    Maximize,
+    Restore,
+    Close,
+}
+
+impl Caption {
+    fn id(self) -> &'static str {
+        match self {
+            Self::Minimize => "caption-minimize",
+            Self::Maximize => "caption-maximize",
+            Self::Restore => "caption-restore",
+            Self::Close => "caption-close",
+        }
+    }
+
+    fn icon(self) -> IconName {
+        match self {
+            Self::Minimize => IconName::WindowMinimize,
+            Self::Maximize => IconName::WindowMaximize,
+            Self::Restore => IconName::WindowRestore,
+            Self::Close => IconName::WindowClose,
+        }
+    }
+
+    /// Windows resolves the click itself from this hit-test area (`WM_NCHITTEST`), which also
+    /// gives the snap-layouts flyout; the button must not handle the click as well.
+    fn area(self) -> WindowControlArea {
+        match self {
+            Self::Minimize => WindowControlArea::Min,
+            Self::Maximize | Self::Restore => WindowControlArea::Max,
+            Self::Close => WindowControlArea::Close,
+        }
+    }
+
+    /// The same operations the automation `window.*` actions run.
+    fn run(self, window: &mut Window) {
+        match self {
+            Self::Minimize => window.minimize_window(),
+            Self::Maximize | Self::Restore => window.zoom_window(),
+            Self::Close => window.remove_window(),
+        }
+    }
+}
+
+/// Minimize, maximize/restore and close, drawn flush with the right edge of the strip.
+fn caption_buttons(window: &Window, cx: &App) -> impl IntoElement {
+    let theme = cx.theme();
+    let (hover, hover_text, active) = (
+        theme.secondary_hover,
+        theme.secondary_foreground,
+        theme.secondary_active,
+    );
+    let (close_hover, close_text, close_active) =
+        (theme.danger, theme.danger_foreground, theme.danger_active);
+    let text = theme.foreground;
+    let maximized = window.is_maximized();
+    let button = |kind: Caption| {
+        let close = kind == Caption::Close;
+        let (hover, hover_text, active) = if close {
+            (close_hover, close_text, close_active)
+        } else {
+            (hover, hover_text, active)
+        };
+        div()
+            .id(kind.id())
+            .flex()
+            .items_center()
+            .justify_center()
+            .flex_shrink_0()
+            .w(px(CAPTION_BUTTON_WIDTH))
+            .h_full()
+            .text_color(text)
+            .hover(|style| style.bg(hover).text_color(hover_text))
+            .active(|style| style.bg(active).text_color(hover_text))
+            .window_control_area(kind.area())
+            // Only Linux has no hit-test area for the click, so it is handled here.
+            .when(cfg!(target_os = "linux"), |this| {
+                this.on_mouse_down(MouseButton::Left, |_, window, cx| {
+                    window.prevent_default();
+                    cx.stop_propagation();
+                })
+                .on_click(move |_, window, cx| {
+                    cx.stop_propagation();
+                    kind.run(window);
+                })
+            })
+            .child(Icon::new(kind.icon()).small())
+    };
+    h_flex()
+        .id("header-caption")
+        .flex_shrink_0()
+        .h_full()
+        .child(button(Caption::Minimize))
+        .child(button(if maximized {
+            Caption::Restore
+        } else {
+            Caption::Maximize
+        }))
+        .child(button(Caption::Close))
+}
 
 /// A static header element: `(node number, kind, label, parent node, hidden)`.
 type StaticNode = (u32, &'static str, Option<&'static str>, Option<u32>, bool);
@@ -282,17 +395,36 @@ impl Render for Header {
             .items_center()
             .justify_between()
             .gap_2()
-            .pl(px(TRAFFIC_LIGHTS))
-            .pr_2()
+            .pl(px(if NATIVE_TRAFFIC_LIGHTS {
+                TRAFFIC_LIGHTS
+            } else {
+                PLAIN_INSET
+            }))
+            // Drawn caption buttons sit flush with the edge, the actions keep their own gap.
+            .when(NATIVE_TRAFFIC_LIGHTS, |this| this.pr_2())
             .bg(colors.title_bar)
             .border_b_1()
             .border_color(colors.title_bar_border)
             .child(self.probe.probe("region:header"))
             .child(
+                // The title zone is the drag handle and takes the free width. It never overlaps a
+                // button: on Windows the first hit-test area under the cursor wins.
                 h_flex()
                     .gap_2()
                     .min_w(px(0.))
+                    .flex_1()
+                    .h_full()
                     .items_center()
+                    .when(!NATIVE_TRAFFIC_LIGHTS, |this| {
+                        this.window_control_area(WindowControlArea::Drag).when(
+                            cfg!(target_os = "linux"),
+                            |this| {
+                                this.on_mouse_down(MouseButton::Left, |_, window, _| {
+                                    window.start_window_move();
+                                })
+                            },
+                        )
+                    })
                     .child(
                         div()
                             .min_w(px(0.))
@@ -320,8 +452,12 @@ impl Render for Header {
                     .child(div().w(px(1.)).h(px(16.)).bg(colors.border))
                     .child(toggles)
                     .child(div().w(px(1.)).h(px(16.)).bg(colors.border))
-                    .child(controls),
+                    .child(controls)
+                    .when(!NATIVE_TRAFFIC_LIGHTS, |this| this.pr_2()),
             )
+            .when(!NATIVE_TRAFFIC_LIGHTS, |this| {
+                this.child(caption_buttons(window, cx))
+            })
     }
 }
 
