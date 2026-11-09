@@ -185,6 +185,12 @@ test('a frame that waits on a warm sort stops waiting when a newer frame replace
   if (skipUnavailable(t, assert)) return;
   const files = kit(['a', 'c']);
   await withRuntime(files, SAME_MSAA, async (runtime) => {
+    // What drawing `a` costs on this machine right now (the stage exists after the first draw): the yardstick, so the
+    // test measures the wait a cancel must end and not how loaded the machine is.
+    await draw(runtime, [at('scene-a', 0)], PREVIEW);
+    const started = Date.now();
+    await draw(runtime, [at('scene-a', 0)], PREVIEW);
+    const baseline = Date.now() - started;
     await holdWarmSort(runtime, 'scene-c');
     await sendWarm(runtime, [at('scene-c', -1)]);
     assert.equal(await warming(runtime), 1);
@@ -207,7 +213,7 @@ test('a frame that waits on a warm sort stops waiting when a newer frame replace
     const old = await runtime.waitFor((message) => message.id === 100, 'the superseded frame');
     assert.equal(old.type, 'frame.failed');
     assert.equal(old.error.code, 'cancelled', 'the frame a newer one replaced is reported as cancelled');
-    assert.ok(waited < 600, `the newer frame was held ${waited} ms behind a wait that a cancel must end (the bound is 1000 ms)`);
+    assert.ok(waited < baseline + 500, `the newer frame took ${waited} ms against ${baseline} ms alone: held behind a wait that a cancel must end (a wait that is not cancelled adds 1000 ms)`);
     assert.equal(await warming(runtime), 1, 'the warm itself is untouched');
     await releaseGate(runtime);
     await settled(runtime);

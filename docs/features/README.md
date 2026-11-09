@@ -37,7 +37,7 @@ Lib V significa testes do modelo demo, não um motor real de edição.
 | F018 | [Playback e relógio de transporte](playback.md) | V⁶ | V⁶ | N/A⁶ | V⁶ | `SetPlayhead` + `playback.*` (adapter do desktop, `crates/audio`) + plano de áudio do core |
 | F019 | [Importar e processar mídia real](media-io.md) | V⁴ | V | V | V | `media.import\|relink\|search\|status\|prepare\|thumbnail\|waveform\|proxy\|preview_proxy` |
 | F020 | [Persistência, undo e exportação](persistence-export.md) (índice, desmembrada em F022–F029) | — | — | — | — | Ver F022–F029 |
-| F021 | [Viewport multimídia e composição](viewport.md) | V⁵ | V | V | V | `RenderPlan` / bridge v1 / `preview.policy` |
+| F021 | [Viewport multimídia e composição](viewport.md) | V⁵ | V | V | V | `RenderPlan` / bridge v1 / `preview.policy`; `frame.warm` (`scene.warm`) e a nova tentativa do quadro com `timeout` (BL157, BL158): só o monitor nativo (headless N/A: não pré-carrega nem aquece), prova em [relatório](../viewport-scene-entry-report.md) |
 | F022 | [Documento do projeto: salvar, abrir, autosave, recuperar](project-document.md) | V | V | V | V | `project.save\|open\|autosave\|recover\|discard_recovery\|describe` |
 | F023 | [Múltiplas sequências](sequences.md) | V⁷ | V | V | V | `sequence.add\|activate\|remove\|rename\|length` + nó `timeline.sequence` |
 | F024 | [Desfazer e refazer](history.md) | V | V | V | V | `history.undo\|redo\|status` |
