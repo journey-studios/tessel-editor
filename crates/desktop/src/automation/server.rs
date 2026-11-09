@@ -274,6 +274,22 @@ fn run_perf(
     }
 }
 
+/// The rolling performance history (F049): the panel's buttons and the header call the same
+/// `Workstation::execute_perf_history`.
+fn run_perf_history(
+    workstation: &Entity<Workstation>,
+    command: tessel_editor_core::perf_history::HistoryCommand,
+    window: &mut Window,
+    cx: &mut App,
+) -> Value {
+    match workstation.update(cx, |workstation, cx| {
+        workstation.execute_perf_history(command, Source::Cli, window, cx)
+    }) {
+        Ok(outcome) => json!({"ok":true,"version":1,"data":outcome}),
+        Err(error) => error.to_json(),
+    }
+}
+
 /// Dock edits go through the same handler as the header buttons and panel menus.
 fn run_layout(
     workstation: &Entity<Workstation>,
@@ -362,6 +378,7 @@ fn set(
         Ok(Parsed::Run(command)) => run(workstation, command, cx),
         Ok(Parsed::Layout(command)) => run_layout(workstation, command, window, cx),
         Ok(Parsed::PerfMeter(command)) => run_perf(workstation, command, cx),
+        Ok(Parsed::PerfHistory(command)) => run_perf_history(workstation, command, window, cx),
         Ok(Parsed::ToggleTheme | Parsed::ReloadViewport) => {
             CommandError::new("unknown_field", "Not settable").to_json()
         }
@@ -385,9 +402,12 @@ fn move_item(
     match prepared {
         Ok(Parsed::Run(command)) => run(workstation, command, cx),
         Ok(Parsed::Layout(command)) => run_layout(workstation, command, window, cx),
-        Ok(Parsed::PerfMeter(_) | Parsed::ToggleTheme | Parsed::ReloadViewport) => {
-            CommandError::new("unknown_action", "Not movable").to_json()
-        }
+        Ok(
+            Parsed::PerfMeter(_)
+            | Parsed::PerfHistory(_)
+            | Parsed::ToggleTheme
+            | Parsed::ReloadViewport,
+        ) => CommandError::new("unknown_action", "Not movable").to_json(),
         Err(error) => error.to_json(),
     }
 }
@@ -485,6 +505,7 @@ fn invoke(
         Ok(Parsed::Run(command)) => run(workstation, command, cx),
         Ok(Parsed::Layout(command)) => run_layout(workstation, command, window, cx),
         Ok(Parsed::PerfMeter(command)) => run_perf(workstation, command, cx),
+        Ok(Parsed::PerfHistory(command)) => run_perf_history(workstation, command, window, cx),
         Ok(Parsed::ReloadViewport) => {
             let reloaded =
                 workstation.update(cx, |workstation, cx| workstation.viewport_reload(cx));

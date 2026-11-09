@@ -195,6 +195,11 @@ impl EditorState {
                 ops,
                 dry_run,
             } => self.edit_fx(&scene, &ops, dry_run),
+            SceneCommand::FxList { scene, gesture } => self.fx_list(&scene, gesture.as_deref()),
+            SceneCommand::FxFrame { scene, at, gesture } => {
+                self.fx_frame(&scene, &at, gesture.as_deref())
+            }
+            SceneCommand::FxGesture(gesture) => self.apply_fx_gesture(gesture),
             SceneCommand::Gesture(gesture) => self.apply_gesture(gesture),
             SceneCommand::Gizmo(gizmo) => self.apply_gizmo(gizmo),
             read => query::run(&self.scenes, read),

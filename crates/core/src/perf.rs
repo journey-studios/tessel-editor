@@ -23,6 +23,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 
 use crate::backend::FrameResult;
+use crate::perf_history::{Context, EventKind, Image, Recorder, SessionKind};
 
 /// Frames of the last second give the rate.
 pub const RATE_WINDOW: Duration = Duration::from_millis(1000);
@@ -430,41 +431,120 @@ pub struct Readout {
     pub playing: bool,
 }
 
-/// Sampling state of the meter. Records nothing while disabled.
+/// Sampling state of the meter. Records nothing while neither the card is shown nor the history
+/// records.
+///
+/// Two independent reasons keep it collecting (BL145.2): the floating **card** is shown (the
+/// original F049 contract) and the rolling **history** records. Hiding the card no longer turns a
+/// recording off, and showing the card never starts one; with neither, every feed returns on one
+/// `bool` and nothing is kept.
 #[derive(Debug, Clone, Default)]
 pub struct Meter {
-    enabled: bool,
+    card: bool,
     ui: FrameClock,
     monitor: FrameClock,
     loss: PlaybackLoss,
     /// Playback runs (tracked even while disabled, so enabling mid-playback is right).
     playing: bool,
+    /// The rolling history; empty (no ring allocated) until a recording starts.
+    recorder: Recorder,
+    /// Playback run the loss counter belongs to: every start and seek opens a new one.
+    loss_run: u64,
 }
 
 impl Meter {
+    /// Whether anything is being collected: the card is shown or the history records.
     pub fn enabled(&self) -> bool {
-        self.enabled
+        self.card || self.recorder.recording()
     }
 
-    /// Starts collecting. `playing_from` is the playback clock's frame when a clock is
-    /// *running* (a paused playback has none: silence is a rest, not a stall) and `on_screen`
-    /// the sequence frame the monitor shows right now.
+    /// Whether the floating card (or its status-bar strip) is shown.
+    pub fn card_visible(&self) -> bool {
+        self.card
+    }
+
+    pub fn recorder(&self) -> &Recorder {
+        &self.recorder
+    }
+
+    pub fn recorder_mut(&mut self) -> &mut Recorder {
+        &mut self.recorder
+    }
+
+    /// Shows the card and starts collecting for it. `playing_from` is the playback clock's frame
+    /// when a clock is *running* (a paused playback has none: silence is a rest, not a stall) and
+    /// `on_screen` the sequence frame the monitor shows right now. A recording already in
+    /// progress keeps its samples.
     pub fn enable(&mut self, now: Duration, playing_from: Option<i64>, on_screen: Option<i64>) {
-        self.clear();
-        self.enabled = true;
+        let collecting = self.enabled();
+        let card_was_hidden = !self.card;
+        self.card = true;
+        if collecting {
+            // A recording was already running: keep what the shared counters hold. The card's own
+            // windows were not fed while it was hidden, but a playback that began meanwhile left
+            // its motion anchor at that moment (`set_motion` keeps an older anchor), so the first
+            // picture would read as a stall of the whole hidden time: start them fresh, and say
+            // that frames are expected when a clock runs.
+            if card_was_hidden {
+                self.monitor.clear();
+                if self.playing {
+                    self.monitor.set_motion(true, now);
+                }
+            }
+            return;
+        }
+        self.clear_clocks();
         self.playing = playing_from.is_some();
         if let Some(frame) = playing_from {
             self.start_run(now, frame, on_screen);
         }
     }
 
-    /// Stops collecting and forgets every sample.
+    /// Hides the card. Samples are forgotten unless the history is still recording.
     pub fn disable(&mut self) {
-        self.clear();
-        self.enabled = false;
+        self.card = false;
+        // The card's own windows go either way; the loss counter only when nothing records.
+        self.ui.clear();
+        self.monitor.clear();
+        if !self.recorder.recording() {
+            self.loss.stop();
+        }
     }
 
-    fn clear(&mut self) {
+    /// Starts a new recording at `now` (see [`Recorder::start`]). `false` when already recording.
+    /// Showing or hiding the card is separate and unaffected.
+    pub fn start_recording(
+        &mut self,
+        now: Duration,
+        playing_from: Option<i64>,
+        on_screen: Option<i64>,
+    ) -> bool {
+        if self.recorder.recording() {
+            return false;
+        }
+        let collecting = self.enabled();
+        self.recorder.start(now, playing_from.is_some());
+        if !collecting {
+            self.clear_clocks();
+            self.playing = playing_from.is_some();
+            if let Some(frame) = playing_from {
+                self.start_run(now, frame, on_screen);
+            }
+        }
+        true
+    }
+
+    /// Stops the recording; what it kept stays readable. The card's windows are forgotten when
+    /// the card is hidden too.
+    pub fn stop_recording(&mut self, now: Duration) -> bool {
+        let stopped = self.recorder.stop(now);
+        if stopped && !self.card {
+            self.clear_clocks();
+        }
+        stopped
+    }
+
+    fn clear_clocks(&mut self) {
         self.ui.clear();
         self.monitor.clear();
         self.loss.stop();
@@ -473,6 +553,12 @@ impl Meter {
     fn start_run(&mut self, now: Duration, frame: i64, on_screen: Option<i64>) {
         self.monitor.set_motion(true, now);
         self.loss.start(frame, on_screen);
+        self.new_loss_run();
+    }
+
+    fn new_loss_run(&mut self) {
+        self.loss_run += 1;
+        self.recorder.loss_run_started(self.loss_run);
     }
 
     /// Frames held per source, `(window, monitor)`: nothing while disabled.
@@ -482,16 +568,47 @@ impl Meter {
 
     /// The window painted a frame.
     pub fn ui_painted(&mut self, at: Duration) {
-        if self.enabled {
+        if self.card {
             self.ui.record(at);
         }
+        self.recorder.ui_painted(at);
     }
 
     /// The viewport accepted a picture; `frame` is its sequence frame when it has one.
     pub fn monitor_presented(&mut self, at: Duration, frame: Option<i64>) {
-        if self.enabled {
+        self.presented(at, frame, None);
+    }
+
+    /// Like [`monitor_presented`](Self::monitor_presented) for a picture the host knows
+    /// everything about: its request, `render_ms` and texture estimate go to the history, once.
+    pub fn monitor_image(&mut self, at: Duration, frame: Option<i64>, image: &Image) {
+        self.presented(at, frame, Some(image));
+    }
+
+    /// A picture from an older history epoch was actually displayed. Keep the card's
+    /// cadence and playback loss accurate, but exclude it from the current history segment.
+    pub fn monitor_stale_image(&mut self, at: Duration, frame: Option<i64>, request: u64) {
+        if self.card {
             self.monitor.record(at);
-            self.loss.shown(frame);
+        }
+        self.loss.shown(frame);
+        self.recorder.response_stale(request);
+    }
+
+    fn presented(&mut self, at: Duration, frame: Option<i64>, image: Option<&Image>) {
+        if !self.enabled() {
+            return;
+        }
+        if self.card {
+            self.monitor.record(at);
+        }
+        self.loss.shown(frame);
+        match image {
+            Some(image) => self.recorder.image(at, image),
+            None => self.recorder.monitor_presented(at),
+        }
+        if let LossReading::Live { lost, .. } = self.loss.reading() {
+            self.recorder.loss_observed(at, self.loss_run, lost);
         }
     }
 
@@ -500,36 +617,84 @@ impl Meter {
     /// playback that never paused) must not wipe the counts it has gathered.
     pub fn playback_started(&mut self, now: Duration, frame: i64, on_screen: Option<i64>) {
         let was_running = std::mem::replace(&mut self.playing, true);
-        if self.enabled && !was_running {
+        if self.enabled() && !was_running {
             self.start_run(now, frame, on_screen);
+            self.recorder.playback_started(now, frame);
         }
     }
 
     pub fn playback_clock(&mut self, frame: i64) {
-        if self.enabled {
+        if self.enabled() {
             self.loss.clock(frame);
         }
     }
 
     /// A seek during playback restarts the comparison from the new frame.
     pub fn playback_seeked(&mut self, frame: i64, on_screen: Option<i64>) {
-        if self.enabled && self.playing {
+        if self.enabled() && self.playing {
             self.loss.start(frame, on_screen);
+            self.new_loss_run();
         }
+    }
+
+    /// The playhead was moved on purpose (a seek, a scrub, a click on the ruler): an event of
+    /// the history, whether or not playback runs. Not a sample.
+    pub fn playhead_moved(&mut self, now: Duration, frame: i64) {
+        self.recorder.seeked(now, frame);
     }
 
     pub fn playback_stopped(&mut self, now: Duration) {
         self.playing = false;
-        if self.enabled {
+        if self.enabled() {
             self.monitor.set_motion(false, now);
             self.loss.stop();
+            self.recorder.playback_stopped(now);
         }
+    }
+
+    /// The host admitted a request for a picture (history latency starts here).
+    pub fn request_admitted(&mut self, id: u64, at: Duration) {
+        self.recorder.request_admitted(id, at);
+    }
+
+    /// The host discarded an answer as obsolete.
+    pub fn response_stale(&mut self, id: u64) {
+        self.recorder.response_stale(id);
+    }
+
+    /// A request failed (`error_code` is kept only when it is a plain code).
+    pub fn request_failed(&mut self, at: Duration, id: Option<u64>, error_code: &str) {
+        self.recorder.request_failed(at, id, error_code);
+    }
+
+    /// An observed fact for the history's event line.
+    pub fn history_event(&mut self, at: Duration, kind: EventKind, detail: Option<&str>) {
+        self.recorder.event(at, kind, detail);
+    }
+
+    /// What the newest picture was made of (size, quality, proxy layers...). Whether a playback
+    /// clock runs is the meter's own knowledge and fills `playing`. Ignored unless recording.
+    pub fn picture_context(&mut self, at: Duration, mut context: Context) {
+        if !self.recorder.recording() {
+            return;
+        }
+        context.playing = self.playing;
+        self.recorder.set_context(at, context);
+    }
+
+    /// The session under the measurements changed (project replaced, scene changed, viewport
+    /// reloaded).
+    pub fn session_changed(&mut self, at: Duration, kind: SessionKind) {
+        // The card's own windows are untouched (its contract is unchanged); the history opens a
+        // segment and forgets its anchors.
+        self.recorder.session_changed(at, kind);
     }
 
     /// When the adapter should wake once to show that a source came to rest. `None` while
     /// disabled, playing, or when both are already at rest.
     pub fn next_wakeup(&self, now: Duration) -> Option<Duration> {
-        if !self.enabled {
+        // A hidden card has nothing to redraw: a recording alone never asks for a timer.
+        if !self.card {
             return None;
         }
         [self.ui.idle_in(now), self.monitor.idle_in(now)]
@@ -816,6 +981,7 @@ pub fn place(area: (f32, f32), blocked: &[Rect]) -> Placement {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::perf_history::Metric;
 
     fn at(ms: u64) -> Duration {
         Duration::from_millis(ms)
@@ -1508,5 +1674,219 @@ mod tests {
         let b = Rect::new(10.0, 0.0, 10.0, 10.0);
         assert!(!a.intersects(&b));
         assert!(a.intersects(&Rect::new(9.0, 9.0, 5.0, 5.0)));
+    }
+
+    // ---- history and the card are independent reasons to collect (BL145.2)
+
+    fn picture(request: u64) -> Image {
+        Image {
+            request: Some(request),
+            frame: None,
+            render_ms: Some(4.0),
+            texture_bytes: None,
+        }
+    }
+
+    #[test]
+    fn with_no_card_and_no_recording_nothing_is_kept_and_no_ring_exists() {
+        let mut meter = Meter::default();
+        meter.ui_painted(at(10));
+        meter.monitor_image(at(20), Some(1), &picture(1));
+        meter.request_admitted(1, at(5));
+        meter.session_changed(at(30), SessionKind::ProjectReplaced);
+        assert!(!meter.enabled());
+        assert_eq!(meter.samples(), (0, 0));
+        assert!(meter.recorder().snapshot(at(40)).is_none());
+        assert_eq!(meter.recorder().events_held(), 0);
+        assert_eq!(meter.next_wakeup(at(40)), None);
+    }
+
+    #[test]
+    fn a_recording_continues_with_the_card_hidden_and_asks_for_no_wakeup() {
+        let mut meter = Meter::default();
+        assert!(meter.start_recording(at(0), None, None));
+        assert!(meter.enabled());
+        assert!(!meter.card_visible(), "recording never shows the card");
+        meter.ui_painted(at(10));
+        meter.monitor_image(at(20), Some(1), &picture(1));
+        assert_eq!(
+            meter.samples(),
+            (0, 0),
+            "the card's windows are only fed while it is shown"
+        );
+        let snapshot = meter.recorder().snapshot(at(100)).unwrap();
+        assert_eq!(snapshot.summary(Metric::UiFrames).unwrap().count, 1);
+        assert_eq!(snapshot.summary(Metric::MonitorFrames).unwrap().count, 1);
+        assert_eq!(
+            meter.next_wakeup(at(100)),
+            None,
+            "no timer for a hidden card"
+        );
+    }
+
+    #[test]
+    fn hiding_the_card_keeps_a_recording_and_showing_it_never_starts_one() {
+        let mut meter = Meter::default();
+        meter.enable(at(0), None, None);
+        assert!(
+            !meter.recorder().recording(),
+            "showing the card is not recording"
+        );
+        meter.ui_painted(at(10));
+        assert!(meter.recorder().snapshot(at(20)).is_none());
+        meter.start_recording(at(100), None, None);
+        meter.ui_painted(at(110));
+        meter.disable();
+        assert!(
+            meter.enabled(),
+            "hiding the card does not turn the recording off"
+        );
+        meter.ui_painted(at(120));
+        let snapshot = meter.recorder().snapshot(at(200)).unwrap();
+        assert_eq!(snapshot.summary(Metric::UiFrames).unwrap().count, 2);
+        assert_eq!(
+            meter.samples(),
+            (0, 0),
+            "the card's windows were forgotten on hide"
+        );
+        meter.stop_recording(at(300));
+        assert!(!meter.enabled());
+        meter.ui_painted(at(310));
+        assert_eq!(
+            meter
+                .recorder()
+                .snapshot(at(400))
+                .unwrap()
+                .summary(Metric::UiFrames)
+                .unwrap()
+                .count,
+            2
+        );
+    }
+
+    #[test]
+    fn starting_a_recording_with_the_card_shown_keeps_the_card_numbers() {
+        let mut meter = Meter::default();
+        meter.enable(at(0), None, None);
+        for t in [0, 100, 200] {
+            meter.monitor_presented(at(t), None);
+        }
+        assert_eq!(meter.samples(), (0, 3));
+        meter.start_recording(at(250), None, None);
+        assert_eq!(meter.samples(), (0, 3), "the card's samples survive");
+        meter.stop_recording(at(300));
+        assert_eq!(meter.samples(), (0, 3), "the card is still shown");
+        meter.disable();
+        assert_eq!(meter.samples(), (0, 0));
+    }
+
+    #[test]
+    fn losses_reach_the_history_as_deltas_and_a_seek_opens_a_new_run() {
+        let mut meter = Meter::default();
+        meter.start_recording(at(0), Some(0), Some(0));
+        // Frames 0, 1, 3 shown: frame 2 was lost.
+        meter.playback_clock(3);
+        for (t, frame) in [(40, 1), (80, 3)] {
+            meter.monitor_presented(at(t), Some(frame));
+        }
+        let sum = |meter: &Meter| {
+            meter
+                .recorder()
+                .snapshot(at(1_000))
+                .unwrap()
+                .buckets
+                .iter()
+                .map(|aggs| aggs[Metric::LostFrames.index()].sum)
+                .sum::<f64>()
+        };
+        assert_eq!(sum(&meter), 1.0);
+        meter.playback_seeked(100, Some(3));
+        meter.playback_clock(101);
+        // Frame 100 was never shown and 101 was: one new loss. The old run's total (1) is not
+        // added again, which would read 3.
+        meter.monitor_presented(at(120), Some(101));
+        assert_eq!(sum(&meter), 2.0);
+        meter.playback_clock(102);
+        meter.monitor_presented(at(160), Some(102));
+        assert_eq!(sum(&meter), 2.0, "102 follows 101: nothing more was lost");
+    }
+
+    #[test]
+    fn playback_events_and_a_picture_are_recorded_once_each() {
+        let mut meter = Meter::default();
+        meter.start_recording(at(0), None, None);
+        meter.playback_started(at(10), 5, None);
+        meter.playback_started(at(20), 5, None);
+        meter.request_admitted(1, at(30));
+        meter.monitor_image(at(70), Some(6), &picture(1));
+        meter.playhead_moved(at(80), 9);
+        meter.playback_stopped(at(90));
+        let events: Vec<EventKind> = meter
+            .recorder()
+            .snapshot(at(100))
+            .unwrap()
+            .events
+            .iter()
+            .map(|event| event.kind)
+            .collect();
+        assert_eq!(
+            events,
+            vec![
+                EventKind::RecordingStarted,
+                EventKind::PlaybackStarted,
+                EventKind::Seek,
+                EventKind::PlaybackStopped
+            ],
+            "a second `started` of a running playback is not a second event"
+        );
+        let snapshot = meter.recorder().snapshot(at(100)).unwrap();
+        assert_eq!(snapshot.summary(Metric::RenderMs).unwrap().count, 1);
+        assert_eq!(snapshot.summary(Metric::LatencyMs).unwrap().max, 40.0);
+    }
+
+    #[test]
+    fn showing_the_card_mid_recording_does_not_blame_its_first_picture_for_the_hidden_time() {
+        let mut meter = Meter::default();
+        // Recording began with the card hidden and a playback clock running.
+        assert!(meter.start_recording(at(0), Some(0), None));
+        meter.enable(at(10_000), Some(0), None);
+        meter.monitor_presented(at(10_040), None);
+        meter.monitor_presented(at(10_080), None);
+        match meter.monitor.reading(at(10_100)) {
+            Reading::Live {
+                worst_interval_ms, ..
+            } => assert!(
+                worst_interval_ms < 100.0,
+                "the card measures from the moment it was shown: {worst_interval_ms}"
+            ),
+            other => panic!("expected a live reading, got {other:?}"),
+        }
+    }
+    #[test]
+    fn a_displayed_old_epoch_picture_feeds_the_card_and_loss_but_not_history() {
+        let mut meter = Meter::default();
+        meter.enable(at(0), Some(0), None);
+        meter.start_recording(at(0), Some(0), None);
+        meter.monitor_image(at(10), Some(0), &picture(1));
+        meter.playback_clock(1);
+        meter.monitor_stale_image(at(20), Some(1), 2);
+        meter.playback_clock(2);
+        meter.monitor_image(at(30), Some(2), &picture(3));
+        assert_eq!(
+            meter.samples().1,
+            3,
+            "all three pictures reached the screen"
+        );
+        assert!(matches!(
+            meter.loss.reading(),
+            LossReading::Live {
+                lost: 0,
+                presented_frames: 3,
+                ..
+            }
+        ));
+        let snapshot = meter.recorder().snapshot(at(40)).unwrap();
+        assert_eq!(snapshot.summary(Metric::MonitorFrames).unwrap().count, 2);
+        assert_eq!(snapshot.summary(Metric::RenderMs).unwrap().count, 2);
     }
 }

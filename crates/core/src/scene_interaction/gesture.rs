@@ -30,7 +30,7 @@ use std::sync::{Arc, OnceLock};
 use serde_json::{Value, json};
 
 use crate::directed_scene::{DirectedScene, Entity};
-use crate::scene_edit::{EditOp, EditSummary};
+use crate::scene_edit::{EditOp, EditSummary, FxOp, FxSummary};
 use crate::scene_project::SceneBook;
 use crate::state::CommandError;
 
@@ -60,15 +60,50 @@ impl Invalidation {
     }
 }
 
+/// What a gesture edits. The slot, the revision binding, the invalidation and the candidate are
+/// the same for both; only the ops (and so the commit) differ.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GestureKind {
+    /// Catalog properties of nodes and camera clips (`scene.gesture.*`).
+    Properties,
+    /// One effect clip of the scene's `fx` layer (`scene.fx.gesture.*`, F016).
+    Fx { clip: String },
+}
+
+impl GestureKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Properties => "properties",
+            Self::Fx { .. } => "fx",
+        }
+    }
+}
+
+/// How the latest rejected update failed. Kept so a status read can say that the candidate on
+/// screen is the last LEGAL one and why the newest proposal is not on it. An accepted update
+/// clears it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Refusal {
+    pub code: &'static str,
+    pub message: String,
+}
+
+#[derive(Debug, Clone)]
+enum Summary {
+    Properties(EditSummary),
+    Fx(FxSummary),
+}
+
 #[derive(Debug, Clone)]
 struct Candidate {
     scene: Arc<DirectedScene>,
-    summary: EditSummary,
+    summary: Summary,
 }
 
 #[derive(Debug, Clone)]
 pub struct Gesture {
     id: String,
+    kind: GestureKind,
     scene: String,
     label: Option<String>,
     targets: Vec<Entity>,
@@ -78,8 +113,11 @@ pub struct Gesture {
     revision: u64,
     /// The ops of the latest accepted update (empty: nothing to commit).
     ops: Vec<EditOp>,
+    /// Same, for a [`GestureKind::Fx`] gesture.
+    fx_ops: Vec<FxOp>,
     candidate: Option<Candidate>,
     updates: u64,
+    refusal: Option<Refusal>,
 }
 
 impl Gesture {
@@ -93,15 +131,61 @@ impl Gesture {
     ) -> Self {
         Self {
             id,
+            kind: GestureKind::Properties,
             scene,
             label,
             targets,
             base,
             revision,
             ops: Vec::new(),
+            fx_ops: Vec::new(),
             candidate: None,
             updates: 0,
+            refusal: None,
         }
+    }
+
+    /// A gesture over one effect clip. It is bound to the scene (by `Arc` identity), the project
+    /// revision and the clip it began on, exactly like a property gesture.
+    pub(crate) fn new_fx(
+        id: String,
+        scene: String,
+        label: Option<String>,
+        clip: String,
+        base: Arc<DirectedScene>,
+        revision: u64,
+    ) -> Self {
+        let mut gesture = Self::new(id, scene, label, Vec::new(), base, revision);
+        gesture.kind = GestureKind::Fx { clip };
+        gesture
+    }
+
+    pub fn kind(&self) -> &GestureKind {
+        &self.kind
+    }
+
+    /// The effect clip an fx gesture edits.
+    pub fn fx_clip(&self) -> Option<&str> {
+        match &self.kind {
+            GestureKind::Fx { clip } => Some(clip),
+            GestureKind::Properties => None,
+        }
+    }
+
+    pub fn fx_ops(&self) -> &[FxOp] {
+        &self.fx_ops
+    }
+
+    /// The newest proposal this gesture refused, if the latest update was refused.
+    pub fn refusal(&self) -> Option<&Refusal> {
+        self.refusal.as_ref()
+    }
+
+    pub(crate) fn note_refusal(&mut self, error: &CommandError) {
+        self.refusal = Some(Refusal {
+            code: error.code,
+            message: error.message.clone(),
+        });
     }
 
     pub fn id(&self) -> &str {
@@ -145,7 +229,7 @@ impl Gesture {
         &self.base
     }
 
-    pub(crate) fn summary(&self) -> Option<&EditSummary> {
+    fn summary(&self) -> Option<&Summary> {
         self.candidate.as_ref().map(|candidate| &candidate.summary)
     }
 
@@ -157,8 +241,27 @@ impl Gesture {
         candidate: Option<(Arc<DirectedScene>, EditSummary)>,
     ) {
         self.ops = ops;
-        self.candidate = candidate.map(|(scene, summary)| Candidate { scene, summary });
+        self.candidate = candidate.map(|(scene, summary)| Candidate {
+            scene,
+            summary: Summary::Properties(summary),
+        });
         self.updates += 1;
+        self.refusal = None;
+    }
+
+    /// [`set_candidate`](Self::set_candidate) for an fx gesture.
+    pub(crate) fn set_fx_candidate(
+        &mut self,
+        ops: Vec<FxOp>,
+        candidate: Option<(Arc<DirectedScene>, FxSummary)>,
+    ) {
+        self.fx_ops = ops;
+        self.candidate = candidate.map(|(scene, summary)| Candidate {
+            scene,
+            summary: Summary::Fx(summary),
+        });
+        self.updates += 1;
+        self.refusal = None;
     }
 
     /// `None` while the gesture can still be applied.
@@ -198,6 +301,8 @@ impl Gesture {
         let invalidation = self.invalidation(book, revision);
         let mut value = json!({
             "id": self.id,
+            "kind": self.kind.as_str(),
+            "clip": self.fx_clip(),
             "scene": self.scene,
             "label": self.label,
             "state": if invalidation.is_some() { "invalidated" } else { "open" },
@@ -207,10 +312,21 @@ impl Gesture {
             "has_candidate": self.candidate.is_some(),
             "revision": self.revision,
         });
-        if let Some(summary) = self.summary() {
-            value["would_change"] = json!(summary.modified);
-            value["changed_ops"] = json!(summary.changed_count());
+        match self.summary() {
+            Some(Summary::Properties(summary)) => {
+                value["would_change"] = json!(summary.modified);
+                value["changed_ops"] = json!(summary.changed_count());
+            }
+            Some(Summary::Fx(summary)) => {
+                value["would_change"] = json!(summary.modified);
+                value["changed_ops"] = json!(summary.changed_count());
+            }
+            None => {}
         }
+        value["refusal"] = match &self.refusal {
+            Some(refusal) => json!({ "code": refusal.code, "message": refusal.message }),
+            None => Value::Null,
+        };
         value
     }
 }

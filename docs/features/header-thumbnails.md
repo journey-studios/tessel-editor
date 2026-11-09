@@ -12,7 +12,7 @@ Duas lacunas do filme SHARP (BL144):
 
 Apresentação e cache descartável: nada disto é edição (sem revisão, sem undo, sem `dirty`). **Fora do escopo:** imagem
 parada e vídeo (BL144.1, a operação `media.thumbnail` do FFmpeg não está ligada à biblioteca), invalidação por
-reconstrução do runtime (BL144.3) e miniatura orientada pela captura do SHARP (BL144.2, depende da PR #23). O medidor e a
+reconstrução do runtime (BL144.3). A miniatura de um splat do SHARP passa pela câmera e pelos eixos da captura (BL144.2, abaixo). O medidor e a
 telemetria da PR #18 não foram tocados (`perf_meter.rs`, `status_bar.rs`, `perf.rs`); só a identidade/título do
 cabeçalho mudou, sem alterar rótulos nem handlers de desempenho.
 
@@ -36,14 +36,25 @@ cabeçalho mudou, sem alterar rótulos nem handlers de desempenho.
   miniatura (o teste de runtime usa uma nuvem a 90 000 u para provar a recusa). Nuvem sem extensão, não finita ou grande demais é `splat_not_drawable`. Depois do quadro,
   25 sondas e a média decidem se saiu **só fundo**: então é `empty_picture`, nunca uma miniatura. A convenção de eixos do
   SPZ no Spark não foi verificada com um arquivo real; a checagem de imagem vazia é a rede de segurança.
-- **Identidade** de uma miniatura (v2): `v2|<tipo>|<hash do arquivo>|<L>x<A>|deps=<id>=<tipo>:<hash>,...|framing=fit:default|own`.
+- **Identidade** de uma miniatura (v2): `v2|<tipo>|<hash do arquivo>|<L>x<A>|deps=<id>=<tipo>:<hash>,...|framing=<enquadramento>`, onde o enquadramento é `own` (cena), `fit:default` (splat sem captura) ou `capture:cv1:<L>x<A>:f=<fx>,<fy>:c=<cx>,<cy>` (splat com captura do SHARP).
   Uma cena é desenhada **com os splats que ela nomeia**; por isso cada ativo de que ela depende (`meta.requires`,
   transitivo, por ID da biblioteca, ordenado) entra na identidade com tipo e hash, ou como `missing` quando a biblioteca não
   o tem (`unhashed`: sem identidade ainda, a miniatura espera). Religar/substituir o splat, importar a dependência que faltava
   depois de uma falha ou remover um ativo mudam a identidade: a imagem antiga nunca é mostrada e **uma falha lembrada deixa de
   valer quando a causa some**. Edições na linha do tempo não a invalidam. `framing=fit:default` é a vista usada no
-  enquadramento do splat avulso (a PR #23 passa a orientação da captura por `view`, ver BL144.2). A miniatura só é mostrada
+  enquadramento do splat avulso sem captura; com captura o componente nomeia a imagem de origem, as focais e o ponto principal
+  (o que muda a imagem), de modo que **outra captura, ou o mesmo arquivo lido sem ela (`capture: ignore`), é outra imagem** e o
+  cache em disco nunca devolve a anterior. A cor e a versão da escrita não entram (não mudam o desenho). A miniatura só é mostrada
   (`EditorState::thumbnail`) enquanto a identidade guardada é a atual. Calculada do modelo, sem ler arquivo.
+- **Splat do SHARP (BL144.2).** Um splat com `meta.capture` (validada na importação, `sharp::Capture`) **não é re-enquadrado**:
+  o adaptador usa `splat_framing::fit_capture`, que mantém a nuvem onde o arquivo a põe (`position` 0, `scale` 1), gira-a **uma
+  vez** por `sharp::ORIENTATION` (`rotation: [180,0,0]` no objeto `splat` da cena de apoio, os eixos y para baixo/z à frente do
+  arquivo para y para cima/-z à frente do editor) e usa a câmera da captura (`Capture::camera`: na origem, olhando para -z, FOV
+  **vertical** das intrínsecas). A miniatura é a imagem de origem, em pé, como a visualização do clipe. A cena de apoio é uma
+  *cena*: a camada do plano não leva `orientation` (só um clipe de splat com captura leva), então o giro existe em um único
+  lugar. Numa proporção diferente da imagem de origem a lente é a mesma e o corte muda (como no monitor). Sem captura vale o
+  enquadramento comum, inalterado byte a byte (o objeto só ganha `rotation` quando há giro). Uma nuvem inteira atrás da câmera
+  (`z <= 0` no arquivo) é `splat_not_drawable` com a causa, e nunca desenhada de outro lado; `empty_picture` segue valendo.
 - **Carimbo (`Stamp`)** = ID do projeto + número da sessão (`ProjectSession`). Reabrir o mesmo documento é outra sessão.
   `set_thumbnail`/`set_thumbnail_failure` recusam com `stale_result` um resultado de outro carimbo ou de um ativo que mudou
   no meio do desenho, sem alterar nada. `prune_thumbnails` remove o que deixou de existir.
@@ -184,6 +195,21 @@ Capturas vão para `--out`; só `--copy-screenshots DIR` as copia (nada é escri
 canônico da `main`): binário ausente, processo que morre, resposta que não é JSON, EOF ou tempo esgotado viram falha
 **dessa** superfície, a outra ainda roda e o relatório é escrito.
 
+**Evidência do BL144.2 (PR #31, integrada com `main` `10683c5`, código de produção validado em `3c260a6`, macOS, SwiftShader).**
+
+- `cargo fmt --check`, `./scripts/cargo check` e `clippy --all-targets -- -D warnings` limpos; `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test
+  --workspace --locked --no-fail-fast`: **1834 passam, 0 falham, 12 ignorados**, incluindo
+  `a_sharp_splat_thumbnail_is_the_source_picture_upright_and_a_plain_reading_is_not` (runtime real, `runtime.js` sha256 `7b6b4338…`, sem
+  mudança nesta PR); `tessel-editor` e `tessel-render` compilam com `--locked` (debug `b289968e…` e `62fe287e…`); `cargo tree -p tessel-editor-core` sem `gpui` nem `wry`;
+  `header-thumbnails-proof.spec.py` (31 testes) passa normal e `-O`. O clippy da primeira integração reprovou um tipo complexo no teste
+  de `media` (`type_complexity`); corrigido com um alias, sem `allow`.
+- `scripts/header-thumbnails-proof.py`, fase BL144.2, as duas superfícies: headless **152 passam**, janela nativa **167 passam**, 0 SKIP.
+  Cada superfície importa `sharp.ply` (cinco gaussianas sobre pixels conhecidos da imagem 160×120), desenha a miniatura e confere, por um oráculo
+  em Python puro, as cinco cores sobre os pixels da imagem de origem escalada à altura e centrada; a mesma importação com `capture: ignore`
+  é outro caminho de cache e a imagem não coincide (1 de 5). Vistas: a miniatura em pé (vermelho/verde em cima, azul/amarelo embaixo,
+  branco no centro), a leitura sem captura girada 180° e a janela com o tile de `sharp.ply`.
+- Aprovação visual por um humano, GPU real e ponteiro físico continuam distintos e **não** foram executados (I).
+
 **Defeitos reais achados e corrigidos na validação.**
 
 - `MediaHost` ficava preso a um job de miniatura que já terminara quando `job.commit` ou `job.discard` o encerrava antes
@@ -197,7 +223,7 @@ canônico da `main`): binário ausente, processo que morre, resposta que não é
 **Limites declarados (não provados nesta validação; os IDs seguem abertos no backlog).**
 
 - **BL144.1:** imagem parada e vídeo seguem com glifo.
-- **BL144.2:** a identidade não contém a captura do SHARP e o splat do SHARP seria desenhado sem a orientação dela.
+- **BL144.2:** validado na PR #31 (ver "Evidência do BL144.2" acima); SwiftShader, sem GPU real, só o fixture sintético de cinco gaussianas (um PLY real do SHARP é BL143.8; eixos SPZ/PLY, BL144.13).
 - **BL144.3 (impressão do runtime):** o cache só é invalidado por `VERSION`/`CACHE_VERSION`; reconstruir `runtime/dist` não
   refaz imagens guardadas. Plano: o runtime expõe o hash do bundle em `capabilities`, o adaptador o inclui na impressão do
   cache e `media.thumbnails {rebuild: true}` limpa só as miniaturas. Não implementado.

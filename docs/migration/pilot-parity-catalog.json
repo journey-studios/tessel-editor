@@ -1,0 +1,362 @@
+{
+  "audit_date": "2026-11-08",
+  "rust_commit": "10683c5357c244692063099e13ccb5685385e0fa",
+  "source": "pilot-fx-shots-studio-features.md §2.1/§2.2; snapshot declared d40ac3f7c0, not rerun",
+  "verification": "static only",
+  "effects": [
+    {
+      "id": "bleachBypass",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "bloom",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "breathingZoom",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "cameraShake",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "candlelight",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "chromaticAberration",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "colorGrade",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "dream",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "dust",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "fade",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "film",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "filmGrain",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "fire",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "flameLife",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "flicker",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "godRays",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "halation",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "heatHaze",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "ink",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "inkPrint",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "lensBlur",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "letterbox",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "lightLeak",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "mist",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "moonlight",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "scalePunch",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "scanlines",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "smoke",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "smokeBillow",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "smokeWisp",
+      "family": "look",
+      "status": "pendente",
+      "backlog": "BL082.1"
+    },
+    {
+      "id": "vignette",
+      "family": "look",
+      "status": "parcial",
+      "backlog": "BL082"
+    },
+    {
+      "id": "additiveDissolve",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "blinds",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "burn",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "crossDissolve",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "cut",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "defocusDissolve",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "dipToBlack",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "dipToColor",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "dipToWhite",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "eyeBlink",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "fadeThroughVignette",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "filmDissolve",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "glitch",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "heartbeatCut",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "inkBleed",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "iris",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "lightningFlash",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "lumaWipe",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "push",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "shadowSweep",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "shockwave",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "slide",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "smokeFog",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "staticNoise",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "whipPan",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "wipeLinear",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "wipeRadial",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    },
+    {
+      "id": "zoomCross",
+      "family": "transition",
+      "status": "pendente",
+      "backlog": "BL082.4"
+    }
+  ]
+}

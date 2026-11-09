@@ -529,6 +529,7 @@ impl Workstation {
         active.wall.seek(frame as f64);
         active.frame = frame;
         self.perf_playback_seeked(frame);
+        self.perf_playhead_moved_to(frame);
         let _ = self.state.execute(Command::SetPlayhead {
             frame: Raw::Number(frame as f64),
         });
