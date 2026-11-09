@@ -510,3 +510,53 @@ são de 76b14ae/7efeca4; provas de janela/smoke posteriores têm seus próprios 
 5258e8c inclui dedup posterior e não herda esses gates. Esta rodada requer validação final.
 
 Validação direcionada desta revisão: `./scripts/cargo test -p tessel-editor-core --lib perf_history --locked` 81/81; spec Python20/20 normal e -O; py_compile dos dois drivers, fmt e diffcheck passam. Sem execução Windows, janela, benchmark ou gates workspace desta revisão.
+
+## Validação final do código `d348b8d` (= `8e80a83`), revisão 5820155331
+
+`8e80a83` só acrescenta documentos a `d348b8d`: as árvores `crates/`, `runtime/`, `Cargo.lock` e
+`rust-toolchain.toml` são idênticas (ids de árvore conferidos), então os resultados abaixo, obtidos
+numa árvore limpa de `d348b8d` (remoto confirmado em `8e80a83` antes do push), valem para o código do head
+publicado. Nada herdado de `76b14ae`, `7efeca4`, `e22299f` ou `5258e8c`. Máquina carregada (média de
+carga 17-21, 11 CPUs), macOS, sem isolar GPU real; instância própria, só requisições semânticas.
+
+| Gate / prova | Resultado |
+| --- | --- |
+| `cargo fmt --all -- --check` | exit 0 |
+| `./scripts/cargo check --workspace --locked` | exit 0 |
+| `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings` | exit 0 |
+| `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked --no-fail-fast` | exit 0: 2004 passam, 0 falham, 12 `ignored` declarados (core 457, desktop 370, 22 de `perf_history_tests`; suítes do runtime levaram até 126 s, ou seja, rodaram) |
+| `./scripts/cargo build -p tessel-editor --locked` (debug) e `--release` | exit 0; sha256 debug `7340cb73…2c650341`, release `0abe9397…c6e58`, **idênticos em duas compilações** |
+| `cargo tree -p tessel-editor-core` | nenhuma linha com gpui/wry |
+| specs Python, normal e `-O` | `perf-history-proof` 20/20, `scene-fx-ui-proof` 24/24, `proof-surface` 29/29, `perf-meter-proof` 41/41; `py_compile` dos drivers |
+| `fx-history-smoke-proof.py` (janela real) | debug 40/40 e release 40/40 |
+| `perf-history-proof.py --seconds 10 --rounds 3 --buffer-minutes 4` (release, janela real, trava de GPU) | `ok: true`, 77 checks, 0 falhas; `source.git_head` = `d348b8d`, sem fontes sujas, binário não mais velho que as fontes |
+
+Custo (rodadas na ordem off/hidden/visible, visible/hidden/off, off/hidden/visible; CPU dividida pelo
+tempo de parede medido de cada corrida, 11,1-11,3 s): desligado 0,340, gravando com o painel fechado 0,331,
+painel aberto 0,372 CPU s/s; 239-240 quadros aceitos, 0 perdidos e maior intervalo de 1 quadro nos três braços.
+Com 3 corridas sob carga ~19 a diferença do braço fechado está dentro do ruído e o painel aberto custa cerca de
++0,03 a +0,07 CPU s/s: **não é custo zero** nem intervalo de confiança. Buffer de 240 s (4 min, 12 leituras de
+RSS conhecidas): 240 baldes o tempo todo, eventos dentro da capacidade (0 descartados), reprodução ainda andando
+ao final, RSS 245,9 MiB no primeiro ponto (aquecimento) e 96,4 MiB no último
+(`growth_after_warmup_mib = -12,4`). O JSON exportado (128 406 bytes) é `tessel.perf-history` v1 sem caminho
+local; `git_sha` do documento é `null` (o build não define `TESSEL_GIT_SHA`), então a identidade do build é o
+sha256 do binário e `source.git_head` do driver. As capturas escura e clara do painel congelado com seleção
+foram inspecionadas: nove gráficos com unidade por série, a seleção `-4,0 s a -3,7 s` bate com o resumo
+(14 quadros, 7 imagens do monitor) e com o JSON do mesmo snapshot (o smoke compara janela, eventos e segmentos
+do arquivo com a vista congelada).
+
+Itens do review 5820155331 conferidos no código do head: teste de symlink e da pasta bloqueada atrás de
+`cfg(unix)` e lista esperada por plataforma; `prepare_export` com `temp_dir`; âncoras do BL145.6 por SHA;
+contagem "58" removida; notas históricas marcadas; `freeze_ready` e buffer com checks nomeados e `null`;
+smoke sem seleção 0 com `end_ms` inválido; frase do plano corrigida. Correção mínima desta validação, só de
+driver: o `--json` do smoke registrava `surfaces: []` (a janela parecia não exercida) e perdia export, eventos e
+carga; agora grava `window: exercised` e os achados em `smoke`.
+
+Intervenção do `mbx`: entre os gates e a releitura do smoke a coleta **automática** do mbx removeu o `target`
+gerenciado deste checkout (nenhum `clean`/`gc` manual meu); os binários foram recompilados (mesmo sha256) e
+copiados para fora do cache antes das provas seguintes.
+
+Limites que continuam: quadro em voo atravessando a troca de cena e perda de contexto com cena dirigida só em
+testes GPUI; GPU real isolada; ponteiro físico (BL043); Windows (os testes `cfg(unix)` não rodam lá);
+mutações não repetidas neste head; a janela de dobra de seeks (250 ms) conta do primeiro seek do grupo, como o
+teste fixa, e não do anterior. Não é aprovação humana nem merge.
