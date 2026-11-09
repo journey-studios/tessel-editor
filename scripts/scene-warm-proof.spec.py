@@ -28,6 +28,9 @@ class FixtureTests(unittest.TestCase):
         self.assertEqual(order.count("warm"), order.count("cold"))
 
 
+OPENING = [shot(90, 86, -3000), shot(91, 0, -1800)]
+
+
 class TraceTests(unittest.TestCase):
     def test_overlapping_trace_windows_count_each_picture_once(self):
         seen = {}
@@ -37,34 +40,40 @@ class TraceTests(unittest.TestCase):
         self.assertEqual(sorted(seen), [1, 2, 3])
 
     def test_the_entry_is_the_first_picture_of_the_cut_and_its_gap_is_to_the_picture_before(self):
-        shots = [shot(1, 70, 0), shot(2, 71, 40), shot(3, 72, 140, latency=95.0), shot(4, 73, 180)]
+        shots = OPENING + [shot(1, 70, 0), shot(2, 71, 40), shot(3, 72, 140, latency=95.0), shot(4, 73, 180)]
         entry = proof.entry_report(shots, 72)
         self.assertEqual((entry["shown_frame"], entry["latency_ms"], entry["gap_ms"]), (72, 95.0, 100.0))
 
     def test_a_cut_the_clock_skipped_is_entered_by_the_next_picture_inside_the_window(self):
-        shots = [shot(1, 71, 0), shot(2, 74, 120, latency=80.0)]
+        shots = OPENING + [shot(1, 71, 0), shot(2, 74, 120, latency=80.0)]
         self.assertEqual(proof.entry_report(shots, 72)["shown_frame"], 74)
 
     def test_an_entry_with_no_picture_is_missing_and_never_invented(self):
-        shots = [shot(1, 60, 0), shot(2, 100, 900)]
+        shots = OPENING + [shot(1, 60, 0), shot(2, 100, 900)]
         self.assertEqual(proof.entry_report(shots, 72), {"cut": 72, "missing": True})
 
     def test_slow_intervals_are_the_ones_above_a_frame_and_a_half(self):
-        shots = [shot(i, i, done) for i, done in enumerate([0, 41, 82, 150, 190, 232])]
+        shots = OPENING + [shot(10 + i, 1 + i, done) for i, done in enumerate([0, 41, 82, 150, 190, 232])]
         summary = proof.run_summary({s["id"]: s for s in shots}, [0], [(0, 100.0), (1, 140.0), (2, 120.0)], {"skipped_frames": 2, "max_gap_frames": 3})
         self.assertEqual(summary["slow_intervals"], 1, "only the 68 ms gap")
         self.assertEqual(summary["worst_interval_ms"], 68)
         self.assertEqual(summary["memory_mib"], {"samples": 3, "median": 120.0, "peak": 140.0})
         self.assertEqual((summary["skipped_frames"], summary["max_gap_frames"]), (2, 3))
 
-    def test_the_silence_between_the_opening_picture_and_the_first_tick_is_not_a_stall(self):
-        shots = [shot(0, 0, 0), shot(1, 1, 1300), shot(2, 2, 1340), shot(3, 3, 1380)]
+    def test_the_silence_between_the_opening_pictures_and_the_first_tick_is_not_a_stall_of_the_play(self):
+        shots = [shot(0, 86, -3000), shot(1, 0, -1700), shot(2, 0, -1500), shot(3, 1, 0), shot(4, 2, 40), shot(5, 3, 80)]
         self.assertEqual(proof.intervals(shots), [40.0, 40.0])
+        self.assertEqual(proof.start_ms(shots), 1500.0, "reported on its own: the playback clock starting")
         self.assertEqual(proof.intervals([shot(0, 0, 0)]), [])
-        self.assertIsNone(proof.entry_report(shots, 0)["gap_ms"], "entry 0 has no picture of the play before it")
+        self.assertIsNone(proof.start_ms([shot(0, 0, 0)]))
+
+    def test_a_picture_before_the_first_tick_is_never_an_entry(self):
+        # The project opened at frame 86; that picture is not the entry of a cut at 84.
+        shots = OPENING + [shot(1, 1, 0), shot(2, 2, 40)]
+        self.assertEqual(proof.entry_report(shots, 84), {"cut": 84, "missing": True})
 
     def test_a_slow_interval_is_located_by_the_frames_around_it(self):
-        shots = [shot(0, 0, 0), shot(1, 1, 100), shot(2, 2, 141), shot(3, 3, 400), shot(4, 4, 441)]
+        shots = OPENING + [shot(10, 1, 100), shot(11, 2, 141), shot(12, 3, 400), shot(13, 4, 441)]
         self.assertEqual(proof.slow_detail(shots), [(2, 3, 259.0)])
         self.assertEqual(proof.run_summary({s["id"]: s for s in shots}, [0], [], None)["slow_detail"], [(2, 3, 259.0)])
 

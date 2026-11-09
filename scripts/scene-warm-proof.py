@@ -114,14 +114,14 @@ def pictures(frames):
 
 
 def entry_report(shots, cut):
-    """What the first picture at or after `cut` cost: its own latency and the gap since the picture before it.
+    """What the first picture of the play at or after `cut` cost: its own latency and the gap since the picture before it.
 
     The picture is the first with `shown_frame` in [cut, cut + ENTRY_WINDOW]; none means the entry is `missing`
     (the report never invents one)."""
+    start = play_start(shots)
     for index, shot in enumerate(shots):
-        if cut <= shot["shown_frame"] <= cut + ENTRY_WINDOW:
-            # Entry 0 follows the picture the project showed when it opened, not a picture of the play: no gap.
-            before = shots[index - 1] if index and cut > 0 else None
+        if start is not None and index >= start and cut <= shot["shown_frame"] <= cut + ENTRY_WINDOW:
+            before = shots[index - 1] if index else None
             return {
                 "cut": cut,
                 "shown_frame": shot["shown_frame"],
@@ -132,15 +132,30 @@ def entry_report(shots, cut):
     return {"cut": cut, "missing": True}
 
 
-def playing(shots):
-    """The pictures from the first one the clock produced (a frame after 0) on.
+def play_start(shots):
+    """Index of the first picture the clock produced: the first frame after 0 that follows a picture of frame 0.
 
-    The picture of frame 0 that the project shows when it opens is not part of the play: the silence between it and
-    the first tick is the harness's own pause, not a stall."""
+    The project shows pictures when it opens (wherever its playhead was, then frame 0 when the play starts); the silence
+    before the first tick is the playback clock starting, not a stall of the play, and it is reported on its own."""
+    seen_zero = False
     for index, shot in enumerate(shots):
-        if shot["shown_frame"] >= 1:
-            return shots[index:]
-    return []
+        if shot["shown_frame"] == 0:
+            seen_zero = True
+        elif seen_zero and shot["shown_frame"] >= 1:
+            return index
+    return None
+
+
+def playing(shots):
+    """The pictures of the play itself (from the first tick on)."""
+    start = play_start(shots)
+    return [] if start is None else shots[start:]
+
+
+def start_ms(shots):
+    """Silence between the last picture before the first tick and the first tick, in milliseconds."""
+    start = play_start(shots)
+    return round(shots[start]["done_ms"] - shots[start - 1]["done_ms"], 1) if start else None
 
 
 def intervals(shots):
@@ -164,6 +179,7 @@ def run_summary(frames, cuts, memory, played):
     return {
         "pictures": len(shots),
         "entries": [entry_report(shots, cut) for cut in cuts],
+        "start_ms": start_ms(shots),
         "slow_intervals": sum(1 for gap in gaps if gap > SLOW_MS),
         "slow_detail": slow_detail(shots),
         "worst_interval_ms": max(gaps) if gaps else None,
@@ -653,12 +669,14 @@ def main():
             return 1
         if not args.skip_timing:
             for number, arm in enumerate(arm_order(args.pairs)):
-                run = timing_run(str(binary), document, arm, cuts, os.path.join(work, f"run{number}"), args.cuts * args.cut_frames)
+                run = timing_run(str(binary), document, arm, cuts[1:], os.path.join(work, f"run{number}"), args.cuts * args.cut_frames)
                 run["number"] = number
                 report["runs"].append(run)
                 check(f"run {number} ({arm}) is valid", run.get("valid") and not run.get("error"),
                       run.get("error") or run.get("valid_why"))
-            report["analysis"] = analysis(report["runs"], cuts)
+                missing = [e["cut"] for e in (run.get("summary") or {}).get("entries", []) if e.get("missing")]
+                check(f"run {number} ({arm}) has a picture for every cut", bool(run.get("summary")) and not missing, f"missing {missing}")
+            report["analysis"] = analysis(report["runs"], cuts[1:])
         if not args.skip_pixels:
             frames = sorted({cuts[1] + 5, cuts[2] + 5, cuts[-1] + 5, cuts[1] + 40})
             sessions = []
