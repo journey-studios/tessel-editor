@@ -329,6 +329,11 @@ nesse tour porque ele só usa `seek`, sem reprodução; os números dela estão 
 
 ### Validação da pré-carga e das camadas cobertas na `main` integrada
 
+> Registro histórico por SHA: as medidas abaixo são da `main` `10683c5` (com BL146–BL155) contra `ce71ce9`. A `main` atual
+> (`3ae4ce5`) incorporou depois a PR #36 (histórico de desempenho), que alterou `viewport_host.rs`; as medidas **não** foram
+> repetidas nela e não valem como gate da `main` atual. O harness `play_tour.py` é local e não está versionado: estes números
+> não são reproduzíveis só a partir do repositório (a PR #34 versiona o harness que reproduz a medição de BL157).
+
 Mesmos binários release (`ce71ce9` contra `main` com BL146–BL155), editor frio a cada execução, reprodução cronometrada pelo
 traço do host (`play_tour.py`, local), 3 execuções intercaladas de cada; a máquina estava com carga de 21 a 30 (outros processos),
 igual para os dois lados, então vale a comparação e não o valor absoluto.
