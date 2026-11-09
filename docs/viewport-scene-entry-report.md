@@ -26,7 +26,8 @@ quatro pontos; nada disso vale para o código corrigido. Tudo abaixo foi refeito
   copiado do cache antes de o `mbx` limpar o alvo. **Runtime** carregado (`TESSEL_RUNTIME_DIR` fixado pelo harness):
   `runtime/dist/runtime.js` SHA-256 `a703245a76d61189ff0b728bea1fddaf03f3e351e907c3f34c2905321c923b49`, reconstruído da fonte desta PR.
 - **Harness**: `scripts/scene-warm-proof.py` no commit `e6bf44d` (o campo `git` do `ab.json`); 24 testes puros em
-  `scripts/scene-warm-proof.spec.py`. Os commits posteriores só mexem em documentação.
+  `scripts/scene-warm-proof.spec.py`. Os commits posteriores mexem em documentação e no limite relativo de um teste do runtime
+  (`runtime/test/scene-warm.test.mjs`); `crates/`, `runtime/src` e `Cargo.lock` são idênticos aos de `e6bf44d`.
 - **Lado**: com aquecimento = padrão; sem = `TESSEL_VIEWPORT_WARM=0` (o host nunca envia `frame.warm`). O **runtime é o mesmo**.
   Uma execução "com" que não aqueceu (`stats.warmed == 0`) ou uma "sem" que aqueceu seria **inválida**: as 8 foram válidas
   (com: `warmed` 4 em cada uma; sem: 0).
@@ -71,8 +72,10 @@ anterior); eles protegem contra regressão e não provam correção nova. O runt
 | `cargo tree -p tessel-editor-core` | sem gpui nem wry |
 | harness `scripts/scene-warm-proof.spec.py` | 24 testes passam |
 
-Limite: o build debug do desktop não foi repetido (o disco livre estava em 18 GiB, abaixo da reserva de 16 GiB para carga pesada nova
-somada ao piso de 12 GiB); os testes de crate já compilam o desktop em perfil de teste.
+Limite: o build debug do desktop não foi repetido nessa rodada. A razão registrada antes ("18 GiB, abaixo da reserva de 16 GiB") estava
+errada: 18 GiB não é menor que 16. A razão que cabe é a conta do passo: o debug do desktop ocupa cerca de 3,5 GiB (medido no `target`
+de outro worktree desta PR: `debug` 3,5 GiB, `check` 0,85 GiB), e com o piso de 12 GiB só se começa quando sobram mais de 15,5 GiB livres.
+Os testes de crate já compilam o desktop em perfil de teste, mas isso não é o build do binário nem a janela.
 
 ## 2. Custo da entrada de cena, mesma build, com e sem o aquecimento
 
@@ -188,3 +191,37 @@ python3 scripts/scene-warm-proof.py --binary /caminho/tessel-editor --pairs 4 --
 O harness toma os dois locks (espera no máximo `--lock-wait` segundos e sai com 2), exige 16 GiB livres, usa um `HOME` isolado por
 execução (nunca o editor do usuário), só requisições semânticas pelo socket da janela (`op`, `get`, `set`, `invoke`) e sai com 1 se
 uma execução for inválida, uma checagem falhar ou um corte ficar sem imagem.
+
+## 7. Revisão independente no head `d77ef97` (2026-11-09, validador da PR #34)
+
+Árvore limpa em `d77ef97` (a árvore de `main` `3b39efa` é a de `35d8c92`, já ancestral da PR: `git merge-tree` de `d77ef97` com `main` dá a árvore
+`5181de17…`, a mesma de `d77ef97`; nenhuma integração foi necessária; durante a revisão a coordenadora integrou `main` com a PR #35 em `cd5814e`, que só muda `docs/backlog.md` e `docs/features/sharp-import.md`: `crates/`, `runtime/` e `Cargo.lock` seguem idênticos). Logs em `/tmp/pr34-val/` (locais, não versionados). Disco: 16,7 GiB
+livres no início, piso de 12 GiB, sem `clean`/`gc` manual.
+
+| Comando (head `d77ef97`) | Saída | Resultado |
+|---|---|---|
+| `python3 scripts/scene-warm-proof.spec.py` e as demais `scripts/*.spec.py` | 24 testes; as 14 specs saem 0 (a de `scene-lifecycle` só depois do `runtime setup`: precisa do `dist`) | PASS |
+| `cargo fmt --all -- --check` | 0 | PASS |
+| `./scripts/runtime setup`, depois `TESSEL_REQUIRE_RUNTIME=1 pnpm test` (Chrome real) | 212 testes, 212 passam, 0 SKIP, `dist/runtime.js` SHA-256 `a703245a…` (o do A/B) | PASS |
+| `./scripts/cargo check --workspace --locked` | 0 (3 min 4 s) | PASS |
+| `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 (5 min 28 s) | PASS |
+| `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test -p tessel-editor-core --locked` | 1036 passam, 0 falham (todos os binários e doctests; 466 na lib) | PASS |
+| `./scripts/cargo tree -p tessel-editor-core --locked` | 13 pacotes, nenhum `gpui`/`wry` | PASS |
+| `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test -p tessel-editor-render --locked` (renderer headless, Chrome real) | 100 passam, 0 falham, 3 `ignored` declarados do crate (provas de exportação sob o lock de GPU ou da janela, não executadas aqui) | PASS |
+| `target/debug/tessel-render` (SHA-256 `15d578a7…`) com `proof.jsonl`: `render.frame` 0, `seek` 30, `render.frame` 30, `render.frame` 9999, `render.frame` 30, em dois processos | hashes `a438a16c0113c567` (quadro 0) e `82b84918ee05e83b` (30) iguais nos dois processos; o quadro 9999 recusa com `invalid_time` e o 30 seguinte devolve o mesmo hash (estado intacto); saída 1 do processo é o erro pedido | PASS |
+
+**Controle negativo do teste de cancelamento** (`a frame that waits on a warm sort stops waiting when a newer frame replaces it`). O limite
+`waited < baseline + 500` é relativo à linha de base medida na própria execução. Mutação única em `awaitWarm` (remover o `if (aborted()) throw`,
+`runtime/dist` reconstruído): o teste **reprova** com "the newer frame took 1086 ms against 6 ms alone" (a espera de `WARM_WAIT_MS` = 1000 ms
+mais a linha de base); uma segunda mutação nas quatro esperas por ordenação reprova igual (1033 ms contra 6 ms). Runtime restaurado e
+reconstruído (SHA-256 `a703245a…`, igual), e o teste volta a passar. A tolerância não foi aumentada. O que o limite relativo **não** garante:
+um quadro de 500 ms ou mais acima da linha de base por carga (máquina com carga de 28–35 nesta rodada) ainda o reprovaria; a distância para o
+defeito (1000 ms) é o dobro do limite.
+
+**Lacunas desta rodada (nada declarado como PASS):** `cargo test --workspace`, `cargo build -p tessel-editor` (debug e release), a prova de
+janela própria por `scripts/ui` e o headless de `tessel-editor` **não foram executados**. Depois de check, clippy e dos testes de core e render
+sobravam 13,4 GiB livres; o `target/debug` do desktop mede cerca de 3,5 GiB (ver seção 1) e o piso de 12 GiB deixa 1,4 GiB, então
+`./scripts/disk-guard.sh 4 12` recusou (saída 3). Equivalência: `crates/`, `runtime/src` e `Cargo.lock` de `d77ef97` são idênticos aos de
+`e6bf44d`, onde o workspace deu 2018 passam, 0 falham, 12 ignorados; essa é equivalência de fonte, **não** reexecução, e não prova o binário do
+head. A produção não mudou depois do A/B (`db9f01a5…`, runtime `a703245a…`), por isso o A/B não foi repetido (as mudanças desde ali são
+documentação e um limite de teste). BL157 (aceite no projeto de amostra) e BL158 (causa do `timeout`) seguem como estavam.
