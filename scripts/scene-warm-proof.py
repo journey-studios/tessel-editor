@@ -149,6 +149,13 @@ def intervals(shots):
     return [round(b["done_ms"] - a["done_ms"], 1) for a, b in zip(shots, shots[1:])]
 
 
+def slow_detail(shots):
+    """Where each interval above the threshold is: (frame shown before the gap, frame shown after it, gap in ms)."""
+    shots = playing(shots)
+    return [(a["shown_frame"], b["shown_frame"], round(b["done_ms"] - a["done_ms"], 1))
+            for a, b in zip(shots, shots[1:]) if b["done_ms"] - a["done_ms"] > SLOW_MS]
+
+
 def run_summary(frames, cuts, memory, played):
     """Everything one run says, with no judgement."""
     shots = pictures(frames)
@@ -158,6 +165,7 @@ def run_summary(frames, cuts, memory, played):
         "pictures": len(shots),
         "entries": [entry_report(shots, cut) for cut in cuts],
         "slow_intervals": sum(1 for gap in gaps if gap > SLOW_MS),
+        "slow_detail": slow_detail(shots),
         "worst_interval_ms": max(gaps) if gaps else None,
         "excess_ms": round(sum(gap - PERIOD_MS for gap in gaps if gap > SLOW_MS), 1),
         "skipped_frames": (played or {}).get("skipped_frames"),
@@ -500,6 +508,8 @@ def timing_run(binary, document, arm, cuts, work, total_frames):
         run["memory_series"] = sampler.stop()
         sampler = None
         run["summary"] = run_summary(frames, cuts, run["memory_series"], played)
+        # The raw pictures of the run, so any figure of the report can be recomputed from the JSON.
+        run["pictures_raw"] = [[f["shown_frame"], f["done_ms"], f["submit_to_done_ms"], f.get("interactive")] for f in pictures(frames)]
         run["valid"], run["valid_why"] = run_is_valid(arm, stats)
         return run
     finally:

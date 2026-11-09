@@ -63,6 +63,11 @@ class TraceTests(unittest.TestCase):
         self.assertEqual(proof.intervals([shot(0, 0, 0)]), [])
         self.assertIsNone(proof.entry_report(shots, 0)["gap_ms"], "entry 0 has no picture of the play before it")
 
+    def test_a_slow_interval_is_located_by_the_frames_around_it(self):
+        shots = [shot(0, 0, 0), shot(1, 1, 100), shot(2, 2, 141), shot(3, 3, 400), shot(4, 4, 441)]
+        self.assertEqual(proof.slow_detail(shots), [(2, 3, 259.0)])
+        self.assertEqual(proof.run_summary({s["id"]: s for s in shots}, [0], [], None)["slow_detail"], [(2, 3, 259.0)])
+
     def test_a_peak_above_the_median_is_reported_as_both(self):
         series = [(i, value) for i, value in enumerate([100.0, 100.0, 100.0, 400.0])]
         memory = proof.run_summary({}, [0], series, None)["memory_mib"]
