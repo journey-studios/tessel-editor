@@ -33,7 +33,10 @@ Rust 1.99.1 is pinned in `rust-toolchain.toml`: `gpui-pre` 0.3.11 uses
 `std::hint::cold_path`, which does not compile on the previous 1.94.1 pin (E0658).
 Only `gpui-kit` is declared; GPUI comes through it (`gpui_kit::*`), so there is a
 single GPUI family in `Cargo.lock`. The default backend is `gpui-pre` with a persistent native WebView; `gpui-fast` is experimental
-(see the viewport reports). Linux and Windows have not been validated.
+(see the viewport reports). Linux has not been validated. On Windows the editor builds and opens with
+plain `cargo build -p tessel-editor --locked` (MSVC Build Tools, `pnpm install --frozen-lockfile && pnpm run build` in
+`runtime/`), but the `ui` automation CLI is disabled there (Unix socket only); see BL054 in
+[docs/backlog.md](docs/backlog.md).
 
 ## Validate
 

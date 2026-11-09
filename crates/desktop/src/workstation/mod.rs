@@ -58,6 +58,7 @@ use self::playback::PlaybackState;
 use self::scene_ui::SceneUi;
 use self::slider_gesture::SliderGesture;
 pub use self::tokens::Tokens;
+#[cfg_attr(not(unix), allow(unused_imports))]
 pub use self::viewport_host::FrameWaiter;
 use self::viewport_host::ViewportHost;
 use self::workflow::Workflow;
