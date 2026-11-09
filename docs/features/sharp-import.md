@@ -165,7 +165,7 @@ SwiftShader + Spark) a 1672×941, com a câmera e os eixos só da captura, foi c
 | `t3-chao` | 0,9530 | 0,069 | 122/81/58 × 124/81/58 | 2 / 2 |
 | `t4-batalha` | 0,9241 | 0,016 | 115/99/88 × 117/100/88 | 2 / 3 |
 
-Resultado: enquadramento certo (sem espelho nem inversão) e sem escurecimento (≤ 2/255 por canal, ~0,8 %); o controle sem captura cai para
+Resultado: enquadramento certo (sem espelho nem inversão) e sem escurecimento acima da tolerância declarada (≤ 2/255 por canal nos três casos SwiftShader; até 3/255 em `t4` na GPU); o controle sem captura cai para
 SSIM ≤ 0,17, então a métrica distingue o certo do errado. A diferença residual de SSIM é a natural de Gaussianas contra os pixels originais.
 `scripts/sharp-real-check.py` repete a conferência (só leitura, caminhos locais, tolerâncias declaradas no cabeçalho do script:
 SSIM ≥ 0,90, cor ≤ 4/255, controle ≥ 0,5 abaixo). **Limites:** é a pilha do preview/export (Chrome headless), não a WKWebView nativa; o SwiftShader é
