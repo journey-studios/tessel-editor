@@ -57,6 +57,12 @@ class TraceTests(unittest.TestCase):
         self.assertEqual(summary["memory_mib"], {"samples": 3, "median": 120.0, "peak": 140.0})
         self.assertEqual((summary["skipped_frames"], summary["max_gap_frames"]), (2, 3))
 
+    def test_the_silence_between_the_opening_picture_and_the_first_tick_is_not_a_stall(self):
+        shots = [shot(0, 0, 0), shot(1, 1, 1300), shot(2, 2, 1340), shot(3, 3, 1380)]
+        self.assertEqual(proof.intervals(shots), [40.0, 40.0])
+        self.assertEqual(proof.intervals([shot(0, 0, 0)]), [])
+        self.assertIsNone(proof.entry_report(shots, 0)["gap_ms"], "entry 0 has no picture of the play before it")
+
     def test_a_peak_above_the_median_is_reported_as_both(self):
         series = [(i, value) for i, value in enumerate([100.0, 100.0, 100.0, 400.0])]
         memory = proof.run_summary({}, [0], series, None)["memory_mib"]

@@ -120,7 +120,8 @@ def entry_report(shots, cut):
     (the report never invents one)."""
     for index, shot in enumerate(shots):
         if cut <= shot["shown_frame"] <= cut + ENTRY_WINDOW:
-            before = shots[index - 1] if index else None
+            # Entry 0 follows the picture the project showed when it opened, not a picture of the play: no gap.
+            before = shots[index - 1] if index and cut > 0 else None
             return {
                 "cut": cut,
                 "shown_frame": shot["shown_frame"],
@@ -131,8 +132,20 @@ def entry_report(shots, cut):
     return {"cut": cut, "missing": True}
 
 
+def playing(shots):
+    """The pictures from the first one the clock produced (a frame after 0) on.
+
+    The picture of frame 0 that the project shows when it opens is not part of the play: the silence between it and
+    the first tick is the harness's own pause, not a stall."""
+    for index, shot in enumerate(shots):
+        if shot["shown_frame"] >= 1:
+            return shots[index:]
+    return []
+
+
 def intervals(shots):
-    """Gaps between consecutive accepted pictures, in milliseconds."""
+    """Gaps between consecutive accepted pictures of the play, in milliseconds."""
+    shots = playing(shots)
     return [round(b["done_ms"] - a["done_ms"], 1) for a, b in zip(shots, shots[1:])]
 
 
@@ -364,7 +377,7 @@ def build_project(binary, work, splats, cuts, cut_frames):
         path = os.path.join(clouds, f"cloud{index}.splat")
         pathlib.Path(path).write_bytes(splat_bytes(splats, 1000 + index))
         paths.append(path)
-    lab = Lab(binary, os.path.join(work, "setup"), {})
+    lab = Lab(binary, os.path.join(work, "setup"), {"TESSEL_RUNTIME_DIR": str(ROOT / "runtime")})
     try:
         lab.wait_ready()
         total = cuts * cut_frames
@@ -421,7 +434,8 @@ def private_copy(document, destination):
 
 
 def env_for(arm, inspect):
-    env = {"TESSEL_VIEWPORT_TRACE": "1"}
+    # The runtime the report's `runtime_dist_sha256` names, whatever directory the binary was copied to.
+    env = {"TESSEL_VIEWPORT_TRACE": "1", "TESSEL_RUNTIME_DIR": str(ROOT / "runtime")}
     if arm == "cold":
         env["TESSEL_VIEWPORT_WARM"] = "0"
     if inspect:
@@ -611,6 +625,8 @@ def main():
     try:
         digest = subprocess.run(["shasum", "-a", "256", str(binary)], capture_output=True, text=True).stdout.split()[0]
         report["binary_sha256"] = digest
+        report["runtime_dist_sha256"] = subprocess.run(["shasum", "-a", "256", str(ROOT / "runtime" / "dist" / "runtime.js")],
+                                                       capture_output=True, text=True).stdout.split()[0]
         print(f"build {sha[:9]} binary sha256 {digest[:12]}", flush=True)
         cuts = [index * args.cut_frames for index in range(args.cuts)]
         document = build_project(str(binary), os.path.join(work, "build"), args.splats, args.cuts, args.cut_frames)
@@ -625,7 +641,7 @@ def main():
                       run.get("error") or run.get("valid_why"))
             report["analysis"] = analysis(report["runs"], cuts)
         if not args.skip_pixels:
-            frames = [cuts[1] + 5, cuts[2] + 5, cuts[-1] + 5, cuts[1] + 40]
+            frames = sorted({cuts[1] + 5, cuts[2] + 5, cuts[-1] + 5, cuts[1] + 40})
             sessions = []
             for number, (arm, order) in enumerate([("warm", "hot"), ("cold", "hot"), ("warm", "cold"), ("cold", "cold")]):
                 session = pixel_session(str(binary), document, arm, order, frames, args.cut_frames, os.path.join(work, f"px{number}"))
