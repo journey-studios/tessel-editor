@@ -165,7 +165,7 @@ SwiftShader + Spark) a 1672×941, com a câmera e os eixos só da captura, foi c
 | `t3-chao` | 0,9530 | 0,069 | 122/81/58 × 124/81/58 | 2 / 2 |
 | `t4-batalha` | 0,9241 | 0,016 | 115/99/88 × 117/100/88 | 2 / 3 |
 
-Resultado: enquadramento certo (sem espelho nem inversão) e sem escurecimento acima da tolerância declarada (≤ 2/255 por canal nos três casos SwiftShader; até 3/255 em `t4` na GPU); o controle sem captura cai para
+Resultado: as métricas de enquadramento e cor ficaram dentro das tolerâncias declaradas. As médias diferem da fonte (até 2/255 por canal nos três casos SwiftShader; até 3/255 em `t4` na GPU). Médias globais e por quadrante não descartam escurecimento localizado. O controle sem captura cai para
 SSIM ≤ 0,17, então a métrica distingue o certo do errado. A diferença residual de SSIM é a natural de Gaussianas contra os pixels originais.
 `scripts/sharp-real-check.py` repete a conferência (só leitura, caminhos locais, tolerâncias declaradas no cabeçalho do script:
 SSIM ≥ 0,90, cor ≤ 4/255, controle ≥ 0,5 abaixo). **Limites:** é a pilha do preview/export (Chrome headless), não a WKWebView nativa; o SwiftShader é
@@ -176,8 +176,7 @@ determinístico, uma GPU real pode diferir; o corpus é de um único modelo (qua
 0,955055), e o controle `capture: ignore` de `t4` cai para 0,016. O tempo limite **não é do arquivo**: com o SwiftShader (o padrão do `tessel-render`
 e da janela) e a máquina com carga ~40, `render.frame` a 1280×720 respondeu em 33,5 s para `t3-chao` e **excedeu 60 s** para `t1-teatro`, `t2-estudio` e
 `t4-batalha`, e a miniatura de 240×136 falhou (`render_failed`, `timeout`) nos quatro: o custo é por gaussiana (1 179 648 em cada arquivo), não por pixel, de um
-rasterizador por CPU. Na GPU real um quadro leva 0,6–2 s. O prazo de 60 s do host não foi mudado. Consequência de produto, registrada em BL159: a janela, que
-usa o SwiftShader por padrão, não desenha nem exporta um SHARP real sem `TESSEL_GL=gpu` (o export falhou com `Frame 0: No frame within 120s`).
+rasterizador por CPU. Na GPU real um quadro leva 0,6–2 s. O prazo de 60 s do host não foi mudado. Consequência de produto, registrada em BL159: os jobs de miniatura e exportação pelo renderer Chrome/SwiftShader falharam nas condições medidas (o export falhou com `Frame 0: No frame within 120s`); `TESSEL_GL=gpu` contornou essas falhas. O preview nativo em WKWebView não foi validado para esses quadros e permanece não comprovado. O resultado de `render.frame` para `t3` em 33,5 s continua válido.
 
 **Filme de 60 s a partir dos quatro arquivos crus (2026-11-08).** Em uma cópia derivada (`/Users/wallyssonnunes/www/tessel-video-splat-derived-20261108`, fora do
 Git; a origem `~/www/tessel-video-splat` só foi lida) os quatro PLYs crus foram importados sem conversão (`asset.add … capture: auto`), a cena de cada take segura a
