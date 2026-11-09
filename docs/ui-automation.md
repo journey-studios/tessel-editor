@@ -107,6 +107,25 @@ isolar o socket de outra instância do editor. `scripts/headless-flow-proof.py` 
 `⌘⇧D` (`Ctrl+Shift+D` fora do macOS) e do botão do cabeçalho. Contrato e limites em
 [perf-meter.md](features/perf-meter.md); a prova na janela real é `scripts/perf-meter-proof.py`.
 
+## Histórico de desempenho (F049, BL145.2)
+
+`./scripts/ui get perf.history` lê o estado do histórico de 60 s (`recording`, `visible`, `frozen`,
+`selected_ms`, `has_data` e, havendo dados, `view`: janela, picos por métrica, eventos recentes, segmentos,
+contadores e contexto). `./scripts/ui set perf.history recording true|false`, `visible true|false`,
+`frozen true|false`, `selected_ms <ms>`, `export_to <caminho absoluto>` (inicia a escrita de um arquivo **novo** em
+segundo plano e responde `state: writing` com `export_id`; o fim é lido em `get perf.history` →
+`export`: `idle|writing|done|failed` com o erro tipado; um destino existente falha como
+`perf_history_export_exists`, um temporário alheio como `perf_history_export_temporary_busy` e uma
+segunda exportação durante a escrita é recusada com `perf_history_export_in_progress`) e `export_destination <caminho>` (preenche o campo
+"Destino do JSON" do painel, sem escrever), e `./scripts/ui invoke perf.history
+record_start|record_stop|show|hide|freeze|resume|clear|snapshot|clear_selection|export` (o botão Exportar JSON: grava no
+destino do campo; vazio é `perf_history_export_path_missing`) chamam o mesmo handler dos
+botões do painel e do cabeçalho. Gravar e mostrar são independentes: `show` abre um diálogo (a WebView do monitor
+fica escondida, `get monitor.viewport` diz `on_screen:false`) e `hide` o fecha sem parar a gravação. Tempos são
+milissegundos no relógio monotônico do histórico (`view.window` publica o intervalo). Contrato e limites em
+[perf-history.md](features/perf-history.md); a prova na janela real é `scripts/perf-history-proof.py`. O alvo é
+da janela: `tessel-headless` responde `desktop_required`.
+
 ## Headless access
 
 This page documents the **running window** adapter. For editing without any desktop process,

@@ -27,6 +27,7 @@ use std::collections::BTreeMap;
 use serde_json::{Value, json};
 
 use crate::assets::{MediaKind, Source};
+use crate::splat_framing;
 use crate::state::library::MediaItem;
 use crate::state::timeline::SequenceSettings;
 use crate::state::{CommandError, EditorState, ProjectSettings};
@@ -166,10 +167,10 @@ fn identity_of(state: &EditorState, item: &MediaItem, size: (u32, u32)) -> Optio
             .join(",")
     };
     // How the picture is framed: a scene draws itself; a splat is framed by its measured box
-    // from the default view. A capture's own view (BL144.2) will take the place of `default`.
+    // from the default view, or seen through its SHARP capture (BL144.2), which the identity names.
     let framing = match item.kind {
-        MediaKind::Splat => "fit:default",
-        _ => "own",
+        MediaKind::Splat => splat_framing::identity_token(asset.meta.capture.as_ref()),
+        _ => "own".to_string(),
     };
     Some(format!(
         "v{VERSION}|{}|{hash}|{}x{}|deps={dependencies}|framing={framing}",

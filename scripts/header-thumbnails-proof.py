@@ -56,7 +56,12 @@ explicit request resumes the drawing; after an export that stopped the drawing t
 Counting renderers is `crates/media/tests/renderer_exclusion.rs` (doubles that count themselves); here the real
 runtime is observed through the same operations a caller has.
 
-Not proven here: a physical pointer, a real GPU (SwiftShader), a real SHARP file (BL143, another PR), a
+BL144.2 (both surfaces, real runtime): the synthetic SHARP fixture (five coloured Gaussians over known pixels of a
+160 x 120 source image) is drawn through its capture camera with one turn: the five colours are over the pixels of
+the source picture scaled to the thumbnail's height and centred (upright); the same file imported with `capture:
+ignore` is another cache entry and does not match.
+
+Not proven here: a physical pointer, a real GPU (SwiftShader), a real SHARP model output (BL143.8 holds the real PLY), a
 black-monitor root cause (BL144.4: the earlier captures were of a sequence with no clip), a dependency going from
 missing to present (a scene whose splat is not in the library is refused by `media.import` with
 `missing_dependency`, so no operation reaches that state; `crates/media/tests/thumbnails.rs` covers it with the
@@ -154,6 +159,33 @@ def project_point(point, width, height):
             round(height / 2 - focal * dot(offset, up) / depth))
 
 
+# BL144.2: the SHARP fixture (`sharp.ply`, 160 x 120 source image, 50 degree vertical field of view) has five
+# Gaussians, each exactly over one pixel of its source image; the thumbnail must be that picture, upright.
+SHARP_ID = 'sharp'
+SHARP_IMAGE = (160, 120)
+SHARP_PIXELS = ((40, 30), (120, 30), (40, 90), (120, 90), (80, 60))
+SHARP_NAMES = ('red', 'green', 'blue', 'yellow', 'white')
+# Channels that must be lit (above 150) and dark (below 90) over each point; the background is (10, 13, 26).
+SHARP_LIT = ((1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 0), (1, 1, 1))
+
+
+def sharp_expected(width, height):
+    """Where each point is in a `width` x `height` thumbnail: the source picture scaled to the same height
+    (the lens is kept, the crop is not) and centred. Plain arithmetic, independent of the code under test."""
+    scale = height / SHARP_IMAGE[1]
+    return [(round(width / 2 + (u - SHARP_IMAGE[0] / 2) * scale), round(height / 2 + (v - SHARP_IMAGE[1] / 2) * scale))
+            for u, v in SHARP_PIXELS]
+
+
+def sharp_lit(pixel, wanted):
+    return all((pixel[i] > 150) if wanted[i] else (pixel[i] < 90) for i in range(3))
+
+
+def sharp_matches(rows, width, height):
+    """How many of the five points show their colour over the pixel of the source image they were made for."""
+    return [sharp_lit(rows[y][x], SHARP_LIT[i]) for i, (x, y) in enumerate(sharp_expected(width, height))]
+
+
 def far_from_background(pixel, by):
     return max(abs(pixel[i] - BACKGROUND[i]) for i in range(3)) > by
 
@@ -234,12 +266,16 @@ def is_final(info):
     return info.get('state') in ('succeeded', 'failed', 'cancelled')
 
 
-def await_in_flight(read_jobs, what, seconds=300, sleep=time.sleep, clock=time.time):
-    """The first thumbnail job seen in flight. A job that ended without ever being seen is a FAIL."""
+def await_in_flight(read_jobs, what, seconds=300, sleep=time.sleep, clock=time.time, ignore=()):
+    """The first thumbnail job seen in flight. A job that ended without ever being seen is a FAIL.
+
+    `ignore` holds the IDs of jobs that existed before the one being waited for (a session that has just
+    been replaced is asked for its own, new job: the old, final ones are not that job and the window needs a
+    tick to start it, so their ending is not a verdict)."""
     deadline = clock() + seconds
     seen = []
     while clock() < deadline:
-        jobs = [job for job in read_jobs() if job.get('kind') == 'thumbnail']
+        jobs = [job for job in read_jobs() if job.get('kind') == 'thumbnail' and job.get('id') not in ignore]
         seen = jobs
         for job in jobs:
             if in_flight(job):
@@ -453,11 +489,13 @@ def make_scenario(fixtures, variants):
             # The same document opened again is another session: the resumed job must stop, and the new session
             # (not paused) draws by itself.
             ok({'op': 'project.save', 'path': str(doc_b)})
+            before_reopen = {j['id'] for j in thumbnail_jobs() if j.get('kind') == 'thumbnail'}
             ok({'op': 'project.open', 'path': str(doc_b)})
             header_matches('Basalt', 'cut-b', 'after project.open of the same document B again')
             replaced = wait_for(lambda: job_ended(job['id']), 'the resumed job to end')
             require_cancelled_midway(check, 'B\'s resumed job, replaced by the same document opened again', replaced)
-            job = await_in_flight(thumbnail_jobs, 'the new session of B\'s own job')
+            job = await_in_flight(thumbnail_jobs, 'the new session of B\'s own job',
+                                  ignore=before_reopen)
             check('the new session of the same document draws by itself (the old pause belonged to the old session)',
                   in_flight(job), job)
             ok({'op': 'project.save', 'path': str(doc_b)})
@@ -728,6 +766,43 @@ def make_scenario(fixtures, variants):
             wait_for(lambda: all(a['thumbnail']['state'] == 'ready' for a in library().values()),
                      'the explicit request to resume the drawing', 600)
             check('the explicit request resumed the drawing after the export', True)
+
+        # ---- BL144.2: a SHARP splat is the source picture, upright; the same file read as a plain splat is not ----
+        def sharp_project(name, sequence, workspace, capture):
+            create(name, sequence, workspace)
+            ok({'op': 'media.import', 'paths': [str(fixtures / 'sharp.ply')], 'capture': capture})
+            if surface.name == 'native':
+                wait_for(lambda: len(ok({'op': 'status'})['assets']) == 1, 'the SHARP import')
+                wait_for(lambda: library()[SHARP_ID]['thumbnail']['state'] in ('ready', 'failed'),
+                         'the window\'s thumbnail of the SHARP file', 300)
+            else:
+                ok({'op': 'media.thumbnails'})
+            return library()[SHARP_ID]
+
+        seen = sharp_project('Shot', 'cut-s', scratch / 'ws-s', 'auto')
+        report = seen['thumbnail']
+        check('the SHARP thumbnail is ready', report['state'] == 'ready', report)
+        width, height, rows = read_png(report['path'])
+        check(f'the SHARP picture is {WIDTH}x{HEIGHT}', (width, height) == (WIDTH, HEIGHT), (width, height))
+        lit = sharp_matches(rows, width, height)
+        for name, where, ok_ in zip(SHARP_NAMES, sharp_expected(width, height), lit):
+            check(f'the {name} Gaussian is over its source pixel {where} in the thumbnail (upright, one turn)', ok_,
+                  rows[where[1]][where[0]])
+        if surface.name == 'native':
+            shot = capture(surface, check, scratch / 'bl1442-window.png', 'the window after the SHARP thumbnail')
+            if shot:
+                shots.append(shot)
+        ignored = sharp_project('Plain', 'cut-p', scratch / 'ws-p', 'ignore')['thumbnail']
+        if ignored['state'] == 'ready':
+            width_i, height_i, rows_i = read_png(ignored['path'])
+            hits = sum(sharp_matches(rows_i, width_i, height_i))
+            check(f'read without its capture the same file is not that picture ({hits} of 5 points match)',
+                  hits < 5, ignored)
+            check('and it is another cache entry than the captured one', ignored['path'] != report['path'],
+                  (ignored['path'], report['path']))
+        else:
+            check('read without its capture the same file draws no picture of the source (it failed by name)',
+                  ignored['state'] == 'failed' and bool(ignored.get('code')), ignored)
 
         return shots
     return scenario

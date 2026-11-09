@@ -129,6 +129,10 @@ o monitor sem runtime).
 
 - **Escondido: custo zero.** Nenhum elemento é adicionado à árvore, nenhum timer existe,
   nada é gravado e nenhuma leitura é calculada; cada feed volta num único teste de `bool`.
+  (Exceção explícita e opt-in: com o [histórico de 60 s](perf-history.md) **gravando**, o
+  medidor continua coletando para ele com o cartão escondido, só com uma sonda de pintura de
+  tamanho zero e sem timer; o cartão em si continua custando zero e o contrato acima vale para
+  o cartão.)
 - **Visível:** o texto é recalculado **no máximo a cada 250 ms (4 Hz)**, só a partir de
   quadros que já estavam sendo pintados, nunca por pedido do medidor. Não há temporizador
   contínuo. O único timer é de disparo único, armado depois de um paint, que acorda uma vez

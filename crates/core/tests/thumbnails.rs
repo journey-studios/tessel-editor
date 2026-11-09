@@ -6,7 +6,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use serde_json::{Value, json};
-use tessel_editor_core::fixtures::{StandardSet, proof_requests, write_standard_set};
+use tessel_editor_core::fixtures::{
+    SharpSpec, StandardSet, proof_requests, write_sharp_ply, write_standard_set,
+};
 use tessel_editor_core::splat::measure;
 use tessel_editor_core::thumbnails::{Failure, Thumbnail, WIDTH, size_for};
 use tessel_editor_core::{CommandError, EditorState, Id, headless};
@@ -608,4 +610,129 @@ fn a_splat_is_measured_the_same_from_splat_ply_and_spz() {
     let junk = dir.join("junk.splat");
     fs::write(&junk, [1u8, 2, 3]).unwrap();
     assert!(measure(&junk).unwrap_err().contains("Not a Gaussian splat"));
+}
+
+fn capture_of<'a>(
+    state: &'a mut EditorState,
+    id: &str,
+) -> &'a mut tessel_editor_core::sharp::Capture {
+    state
+        .library
+        .items
+        .iter_mut()
+        .find(|item| item.id == id)
+        .and_then(|item| item.asset.as_mut())
+        .and_then(|asset| asset.meta.capture.as_mut())
+        .unwrap_or_else(|| panic!("`{id}` has no capture"))
+}
+
+/// BL144.2: the capture of a SHARP splat is part of what its picture is drawn from.
+#[test]
+fn a_sharp_capture_is_part_of_the_picture_identity_and_a_change_invalidates_the_cache() {
+    let dir = temp("capture");
+    let set = write_standard_set(&dir).unwrap();
+    let mut state = project(&set);
+    let plain = state.thumbnail_identity("cloud").unwrap();
+    assert!(
+        plain.ends_with("|framing=fit:default"),
+        "a splat with no capture is framed as before: {plain}"
+    );
+
+    // The same SHARP file read with its capture and as a plain splat.
+    let file = dir.join("shot.ply");
+    write_sharp_ply(&file, &SharpSpec::default()).unwrap();
+    for (id, capture) in [("shot", "auto"), ("flat", "ignore")] {
+        ok(
+            &mut state,
+            json!({"op":"asset.add","kind":"splat","id":id,"name":id,"path":file,"capture":capture}),
+        );
+        set_hash(&mut state, id, Some("same-bytes"));
+    }
+    let seen = state.thumbnail_identity("shot").unwrap();
+    let ignored = state.thumbnail_identity("flat").unwrap();
+    assert!(
+        seen.contains("|framing=capture:cv1:160x120:"),
+        "the identity names the capture: {seen}"
+    );
+    assert!(ignored.ends_with("|framing=fit:default"), "{ignored}");
+    assert_ne!(seen, ignored, "same bytes, another picture");
+
+    // A thumbnail made for that capture is shown while the capture stands.
+    let stamp = state.thumbnail_stamp();
+    let made = picture(&state, "shot", "/tmp/shot.png");
+    state.set_thumbnail(&stamp, "shot", made.clone()).unwrap();
+    assert_eq!(state.thumbnail("shot"), Some(&made));
+    assert!(!ids(&state, false).contains(&"shot".to_string()));
+
+    // Another capture of the same file (a replaced or corrected one): the old picture is not
+    // shown, the asset is wanted again, a late result for the old capture is refused.
+    let before = state.thumbnail_identity("shot").unwrap();
+    capture_of(&mut state, "shot").fx += 1.0;
+    let after = state.thumbnail_identity("shot").unwrap();
+    assert_ne!(after, before);
+    assert!(state.thumbnail("shot").is_none());
+    assert_eq!(state.thumbnail_report("shot")["state"], "pending");
+    assert!(ids(&state, false).contains(&"shot".to_string()));
+    let stale = state
+        .set_thumbnail(&stamp, "shot", made.clone())
+        .unwrap_err();
+    assert_eq!(stale.code, "stale_result");
+    for change in [
+        |capture: &mut tessel_editor_core::sharp::Capture| capture.fy += 1.0,
+        |capture: &mut tessel_editor_core::sharp::Capture| capture.cx += 1.0,
+        |capture: &mut tessel_editor_core::sharp::Capture| capture.cy += 1.0,
+        |capture: &mut tessel_editor_core::sharp::Capture| capture.image = [320, 240],
+    ] {
+        let was = state.thumbnail_identity("shot").unwrap();
+        change(capture_of(&mut state, "shot"));
+        assert_ne!(state.thumbnail_identity("shot").unwrap(), was);
+    }
+
+    // Losing the capture entirely falls back to the common framing.
+    state
+        .library
+        .items
+        .iter_mut()
+        .find(|item| item.id == "shot")
+        .and_then(|item| item.asset.as_mut())
+        .unwrap()
+        .meta
+        .capture = None;
+    assert_eq!(state.thumbnail_identity("shot").unwrap(), ignored);
+    state.prune_thumbnails();
+    assert!(state.thumbnail("shot").is_none());
+}
+
+#[test]
+fn the_job_snapshot_keeps_the_capture_so_the_adapter_sees_what_the_identity_names() {
+    let dir = temp("capture-snapshot");
+    let set = write_standard_set(&dir).unwrap();
+    let mut state = project(&set);
+    let file = dir.join("shot.ply");
+    write_sharp_ply(&file, &SharpSpec::default()).unwrap();
+    ok(
+        &mut state,
+        json!({"op":"asset.add","kind":"splat","id":"shot","name":"shot","path":file}),
+    );
+    set_hash(&mut state, "shot", Some("sharp-bytes"));
+    let targets: Vec<_> = state
+        .thumbnail_targets(false)
+        .into_iter()
+        .filter(|target| target.asset == "shot")
+        .collect();
+    assert_eq!(targets.len(), 1);
+    let snapshot = state.thumbnail_snapshot(&targets).unwrap();
+    assert_eq!(
+        snapshot.thumbnail_identity("shot").as_deref(),
+        Some(targets[0].identity.as_str())
+    );
+    assert_eq!(
+        *capture_of(&mut state, "shot"),
+        *snapshot
+            .library
+            .item("shot")
+            .and_then(|item| item.asset.as_ref())
+            .and_then(|asset| asset.meta.capture.as_ref())
+            .expect("the snapshot carries the capture")
+    );
 }

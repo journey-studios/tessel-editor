@@ -31,7 +31,8 @@ use tessel_editor_core::backend::{BackendError, FrameDetail, FrameResult, Output
 use tessel_editor_core::bridge::{BridgeBackend, HelloOptions, PreviewSort, Transport};
 use tessel_editor_core::headless::{backend_error, frame_geometry, frame_report, plan_summary};
 use tessel_editor_core::ops::RenderFrame;
-use tessel_editor_core::perf::Meter;
+use tessel_editor_core::perf::{FrameContext, Meter};
+use tessel_editor_core::perf_history::{Context, EventKind, Image, SessionKind};
 use tessel_editor_core::plan::{PlanRequest, RenderPlan};
 use tessel_editor_core::preview::ProxyCoverage;
 use tessel_editor_core::session::{Preview, SessionEvent, Status, ViewportSession};
@@ -308,8 +309,18 @@ pub struct ViewportHost {
     ui_skipped: u64,
     /// The debug meter, when the workstation attached one. It records only while it is enabled.
     meter: Option<MeterLink>,
-    /// Sequence frame of the newest accepted picture (see [`ViewportHost::note_presented`]).
+    /// Sequence frame of the newest accepted picture.
     presented: Option<i64>,
+    /// The rate the monitor aims at: the sequence's for a sequence preview, the directed
+    /// scene's for a scene. `None` for a source preview or before the first request, so the
+    /// history never assumes one (and never 60: this is not the interface's target).
+    target_fps: Option<f64>,
+    /// How many times the session under the history's measurements changed (a scene, the project,
+    /// the page). A request is stamped with it when the host admits it, and its answer is recorded
+    /// only while the stamp is still the current one: an answer that comes back after the edge
+    /// belongs to the segment it was asked in, which is over (BL145.6). Counted whether or not a
+    /// recording runs, so a recording that starts later never mistakes an old request for its own.
+    history_epoch: u64,
 }
 
 impl ViewportHost {
@@ -373,6 +384,8 @@ impl ViewportHost {
             ui_skipped: 0,
             meter: None,
             presented: None,
+            target_fps: None,
+            history_epoch: 0,
         };
         host.set_inspect_previews(std::env::var(INSPECT_ENV).is_ok_and(|value| value == "1"));
         host
@@ -383,10 +396,12 @@ impl ViewportHost {
         self.meter = Some(MeterLink { meter, clock });
     }
 
-    /// One accepted picture (`frame.done` of the request in flight), with its sequence frame.
-    /// A hidden meter returns at once inside `monitor_presented`: nothing is kept. The frame is
-    /// remembered whatever the meter does (one `Option<i64>`, no sample): the meter needs to
-    /// know what the monitor shows at the instant it is switched on or playback starts.
+    /// Tests only: one accepted picture with its sequence frame and no request. A hidden meter
+    /// returns at once inside `monitor_presented`: nothing is kept. The frame is remembered
+    /// whatever the meter does (one `Option<i64>`, no sample): the meter needs to know what the
+    /// monitor shows at the instant it is switched on or playback starts. Real pictures arrive
+    /// through [`Self::note_image`].
+    #[cfg(test)]
     pub(super) fn note_presented(&mut self, frame: Option<i64>) {
         self.presented = frame;
         if let Some(link) = &self.meter {
@@ -394,6 +409,119 @@ impl ViewportHost {
                 .borrow_mut()
                 .monitor_presented(link.clock.elapsed(), frame);
         }
+    }
+
+    /// One accepted picture of the three.js runtime, with what the host knows about it: its
+    /// request (latency), `render_ms` (CPU) and the texture estimate go to the history.
+    pub(super) fn note_image(&mut self, frame: Option<i64>, result: &FrameResult) {
+        self.presented = frame;
+        if let Some(link) = &self.meter
+            && link.meter.borrow().enabled()
+        {
+            let context = FrameContext::of(result);
+            let image = Image {
+                request: Some(result.id),
+                frame,
+                render_ms: Some(result.render_ms),
+                texture_bytes: context.texture_bytes,
+            };
+            let at = link.clock.elapsed();
+            let mut meter = link.meter.borrow_mut();
+            meter.monitor_image(at, frame, &image);
+            meter.picture_context(
+                at,
+                Context {
+                    width: context.width,
+                    height: context.height,
+                    quality: context.quality,
+                    proxy_layers: context.proxy_layers,
+                    stale_sort_layers: context.stale_sort_layers,
+                    reduced_scene_layers: context.reduced_scene_layers,
+                    monitor_on_screen: Some(self.on_screen),
+                    sequence_fps: self.target_fps,
+                    ..Context::default()
+                },
+            );
+        }
+    }
+
+    /// The session the history is measuring now; a request admitted under another one is over.
+    pub(super) fn history_epoch(&self) -> u64 {
+        self.history_epoch
+    }
+
+    /// [`Self::note_image`] for a picture whose request was admitted under `epoch`. A picture of
+    /// a session that has since changed (the user moved to another scene while its frame was in
+    /// flight) is still what the canvas shows, so the monitor remembers it, but it is **not** a
+    /// frame, an interval, a latency, a texture reading or a frame format of the segment that is
+    /// open now: the history counts it as a stale answer and nothing else.
+    pub(super) fn note_image_of(&mut self, epoch: u64, frame: Option<i64>, result: &FrameResult) {
+        if epoch == self.history_epoch {
+            self.note_image(frame, result);
+            return;
+        }
+        self.presented = frame;
+        if let Some(link) = &self.meter {
+            link.meter
+                .borrow_mut()
+                .monitor_stale_image(link.clock.elapsed(), frame, result.id);
+        }
+    }
+
+    /// The answer to request `id` came back after its session ended: counted, never measured.
+    pub(super) fn note_stale(&self, id: u64) {
+        if let Some(link) = &self.meter {
+            link.meter.borrow_mut().response_stale(id);
+        }
+    }
+
+    /// The host admitted request `id` (history latency starts here).
+    pub(super) fn note_admitted(&self, id: u64) {
+        if let Some(link) = &self.meter {
+            link.meter
+                .borrow_mut()
+                .request_admitted(id, link.clock.elapsed());
+        }
+    }
+
+    /// Request `id` (when there is one) ended in failure `code`: the history stops waiting for
+    /// its picture and records the failure (a `context_lost` becomes the context event, with the
+    /// request it interrupted). Nothing is built unless the history records.
+    pub(super) fn note_failed(&self, id: Option<u64>, code: &str) {
+        if let Some(link) = &self.meter {
+            link.meter
+                .borrow_mut()
+                .request_failed(link.clock.elapsed(), id, code);
+        }
+    }
+
+    pub(super) fn note_session(&mut self, kind: SessionKind) {
+        self.history_epoch = self.history_epoch.wrapping_add(1);
+        if let Some(link) = &self.meter {
+            link.meter
+                .borrow_mut()
+                .session_changed(link.clock.elapsed(), kind);
+        }
+    }
+
+    /// A fact the history's event line should show (a resource load, a context restore). Nothing
+    /// is built unless the history records: the recorder refuses it first.
+    pub(super) fn note_event(&self, kind: EventKind, detail: Option<&str>) {
+        if let Some(link) = &self.meter {
+            link.meter
+                .borrow_mut()
+                .history_event(link.clock.elapsed(), kind, detail);
+        }
+    }
+
+    /// The monitor stops showing a directed scene for the sequence (an ordinary preview was
+    /// chosen): that is a scene change, one segment, and then the scene's state is dropped.
+    pub fn leave_directed(&mut self) {
+        if self.directed_scene().is_some() {
+            self.note_session(SessionKind::SceneChanged);
+            self.target_fps = None;
+        }
+        self.clear_directed();
     }
 
     /// The sequence frame of the newest picture the monitor accepted (`None`: a source preview,
@@ -474,6 +602,8 @@ impl ViewportHost {
         self.last_frame = None;
         // The reloaded page shows nothing until its first new picture.
         self.presented = None;
+        self.target_fps = None;
+        self.note_session(SessionKind::ViewportReloaded);
         true
     }
 
@@ -487,6 +617,8 @@ impl ViewportHost {
         self.last_frame = None;
         // Frame IDs may now mean something else: what the monitor showed is not known anymore.
         self.presented = None;
+        self.target_fps = None;
+        self.note_session(SessionKind::ProjectReplaced);
         self.dirty = true;
     }
 
@@ -623,11 +755,14 @@ impl ViewportHost {
     /// playhead moved (the session parks the newest intent), so a scrub keeps presenting.
     /// Anything that supersedes it answers the explicit waiter, if any, as cancelled.
     fn request_preview(&mut self, state: &EditorState, plan: RenderPlan, output: Output) {
+        // Only a sequence preview has a sequence frame, and so a rate the monitor aims at.
+        self.target_fps = plan.frame.is_some().then(|| plan.rate.as_f64());
         match self.session.request_preview(state, plan, output) {
             // Only an interactive frame is ever coalesced into, and explicit requests (the ones
             // with a waiter) are never interactive: nothing to answer here.
             Ok(Preview::Coalesced) => {}
-            Ok(Preview::Submitted(_)) => {
+            Ok(Preview::Submitted(id)) => {
+                self.note_admitted(id);
                 self.request_started = Some(Instant::now());
                 self.failure = None;
                 self.png_paths.clear();
@@ -649,6 +784,16 @@ impl ViewportHost {
     }
 
     fn report_failure(&mut self, error: BackendError) {
+        // A frame timeout and a request the core refused never come back as a session `Failed`
+        // event: this is where the history learns about them (the code is kept only when plain).
+        // The same failure repeated with no request admitted in between (a plan the core
+        // refuses is asked again on every state change) is one event, not one per sync: the
+        // recorder folds it, because only it knows whether the first one was recorded.
+        if let Some(link) = self.meter.as_ref() {
+            link.meter
+                .borrow_mut()
+                .request_failed(link.clock.elapsed(), None, &error.code);
+        }
         self.session.cancel();
         self.request_started = None;
         self.last_frame = None;
@@ -694,6 +839,7 @@ impl ViewportHost {
         Self::cancel_waiters(std::mem::take(&mut self.waiters));
         match self.session.request_frame(state, plan, output, probes) {
             Ok(id) => {
+                self.note_admitted(id);
                 self.request_started = Some(Instant::now());
                 self.failure = None;
                 if let Some(path) = png {
@@ -750,6 +896,9 @@ impl ViewportHost {
         // The next `sync` must re-evaluate against what is on the canvas now.
         self.last_key = None;
         self.output_size = Some((width, height));
+        // The picture of an explicit request is aimed at this plan's rate, not at whatever the
+        // previous preview left in the context.
+        self.target_fps = plan.frame.is_some().then(|| plan.rate.as_f64());
         self.request(
             state,
             plan,
@@ -849,6 +998,7 @@ impl ViewportHost {
         if self.session.needs_redraw {
             // The context came back without its picture (and without its textures).
             self.session.needs_redraw = false;
+            self.note_event(EventKind::ContextRestored, None);
             self.dirty = true;
         }
         if self.dirty && self.is_ready() {
@@ -862,7 +1012,8 @@ impl ViewportHost {
             return;
         }
         match self.session.dispatch_pending(state) {
-            Some(Ok(_)) => {
+            Some(Ok(id)) => {
+                self.note_admitted(id);
                 self.request_started = Some(Instant::now());
                 self.failure = None;
             }
@@ -901,7 +1052,8 @@ impl ViewportHost {
             return false;
         }
         match self.session.dispatch_refine(state, now) {
-            Some(Ok(_)) => {
+            Some(Ok(id)) => {
+                self.note_admitted(id);
                 self.request_started = Some(now);
                 self.failure = None;
                 true
@@ -917,7 +1069,12 @@ impl ViewportHost {
 
     fn on_event(&mut self, event: SessionEvent) {
         match event {
-            SessionEvent::Progress | SessionEvent::Stale(_) => {}
+            SessionEvent::Progress => {}
+            SessionEvent::Stale(id) => {
+                if let Some(link) = &self.meter {
+                    link.meter.borrow_mut().response_stale(id);
+                }
+            }
             SessionEvent::Frame(frame) => {
                 self.request_started = None;
                 self.failure = None;
@@ -932,10 +1089,16 @@ impl ViewportHost {
                     let waiter = self.waiters.remove(index);
                     let _ = waiter.reply.try_send(frame_report(&waiter.summary, &frame));
                 }
+                let presented = self.session.presented_frame();
+                self.note_image(presented, &frame);
                 self.last_frame = Some(frame);
-                self.note_presented(self.session.presented_frame());
             }
             SessionEvent::Failed(error) => {
+                if let Some(link) = &self.meter {
+                    link.meter
+                        .borrow_mut()
+                        .request_failed(link.clock.elapsed(), None, &error.code);
+                }
                 self.request_started = None;
                 self.png_paths.clear();
                 if error.code == "backend_unavailable"

@@ -4,7 +4,7 @@
 //! command executes, against the bundle, not by the parser.
 
 use crate::directed_scene::Vec3;
-use crate::scene_edit::EditOp;
+use crate::scene_edit::{EditOp, FxOp};
 use crate::time::Ratio;
 
 use super::gizmo::Point;
@@ -77,6 +77,29 @@ pub enum GestureCommand {
     Cancel {
         gesture: String,
     },
+    Status,
+}
+
+/// The gesture cycle over ONE effect clip (F016, BL082.6): the same `begin` / `update` / `commit`
+/// / `cancel` contract as [`GestureCommand`], with `fx` ops. An update is absolute (it restarts
+/// from the scene as it was at `begin`), a refused one keeps the last legal candidate, and only
+/// `commit` writes: ONE `Edit effects` entry, none when the candidate equals the base.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FxGestureCommand {
+    /// Opens a gesture over the clip `clip` of the effects layer of attached scene `scene`.
+    Begin {
+        scene: String,
+        clip: String,
+        label: Option<String>,
+    },
+    /// Replaces the candidate with `ops` applied to the scene as it was at `begin`. Only
+    /// `set_param`, `set_field` and `set_hidden` on the gesture's own clip are accepted.
+    Update { gesture: String, ops: Vec<FxOp> },
+    /// Commits the last legal candidate as one undo entry; a no-op creates none.
+    Commit { gesture: String },
+    /// Discards the candidate; always allowed, also on a gesture that went stale.
+    Cancel { gesture: String },
+    /// Reports the slot, with FX budget/warnings only for a live effect candidate.
     Status,
 }
 

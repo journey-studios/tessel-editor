@@ -113,6 +113,7 @@ pub fn execute_ext(
         "window",
         "toolbar.theme",
         crate::perf::TARGET,
+        crate::perf_history::TARGET,
     ]
     .iter()
     .any(|prefix| target.starts_with(prefix))
@@ -155,12 +156,14 @@ pub fn execute_ext(
     };
     match parsed {
         Parsed::Run(command) => state.execute(command),
-        Parsed::Layout(_) | Parsed::ToggleTheme | Parsed::PerfMeter(_) | Parsed::ReloadViewport => {
-            Err(CommandError::new(
-                "desktop_required",
-                "Dock layout, theme, performance meter and viewport page commands require the desktop adapter",
-            ))
-        }
+        Parsed::Layout(_)
+        | Parsed::ToggleTheme
+        | Parsed::PerfMeter(_)
+        | Parsed::PerfHistory(_)
+        | Parsed::ReloadViewport => Err(CommandError::new(
+            "desktop_required",
+            "Dock layout, theme, performance meter and viewport page commands require the desktop adapter",
+        )),
     }
 }
 

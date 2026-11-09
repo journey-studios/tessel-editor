@@ -19,14 +19,14 @@ use wry::http::Request;
 
 use super::viewport_host::{HostOptions, PAGE_URL, ViewportHost};
 
-fn scratch(tag: &str) -> PathBuf {
+pub(super) fn scratch(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("tessel-vh-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
 
-fn page(tag: &str) -> PathBuf {
+pub(super) fn page(tag: &str) -> PathBuf {
     let dist = scratch(tag).join("dist");
     std::fs::create_dir_all(&dist).unwrap();
     std::fs::write(dist.join("index.html"), "<html>").unwrap();
@@ -39,7 +39,7 @@ fn empty_state() -> EditorState {
 }
 
 /// Messages the host queued for the page, decoded back into JSON.
-fn sent(host: &mut ViewportHost) -> Vec<Value> {
+pub(super) fn sent(host: &mut ViewportHost) -> Vec<Value> {
     host.take_outgoing()
         .iter()
         .map(|script| {
@@ -52,25 +52,25 @@ fn sent(host: &mut ViewportHost) -> Vec<Value> {
         .collect()
 }
 
-fn kinds(messages: &[Value]) -> Vec<&str> {
+pub(super) fn kinds(messages: &[Value]) -> Vec<&str> {
     messages
         .iter()
         .map(|message| message["type"].as_str().unwrap())
         .collect()
 }
 
-fn from_page(host: &mut ViewportHost, state: &EditorState, message: Value) {
+pub(super) fn from_page(host: &mut ViewportHost, state: &EditorState, message: Value) {
     let mut message = message;
     message["v"] = json!(1);
     host.on_ipc(&message.to_string(), state);
 }
 
-fn ready_message() -> Value {
+pub(super) fn ready_message() -> Value {
     json!({"type":"ready","runtime":{"name":"tessel-three","version":"0.1.0","renderer":"Test GPU"},
         "capabilities":{"layers":["image","video","text","scene","waveform"],"formats":{}}})
 }
 
-fn frame_done(id: u64, revision: u64) -> Value {
+pub(super) fn frame_done(id: u64, revision: u64) -> Value {
     json!({"type":"frame.done","id":id,"revision":revision,"width":4,"height":2,"hash":"abcd",
         "mean":[1,2,3,255],"probes":[[9,8,7,255]],"png":null,
         "timings":{"render_ms":1.5,"total_ms":2.5}})
@@ -78,7 +78,7 @@ fn frame_done(id: u64, revision: u64) -> Value {
 
 /// A 100-frame sequence with one title clip over all of it, so the plan has a layer an edit can
 /// change and every playhead position has a distinct plan.
-fn titled_state(title: &str) -> EditorState {
+pub(super) fn titled_state(title: &str) -> EditorState {
     let mut state = empty_state();
     state
         .execute(Command::SetSequenceLength { frames: 100 })
@@ -107,7 +107,7 @@ fn titled_state(title: &str) -> EditorState {
     state
 }
 
-fn retitle(state: &mut EditorState, title: &str) {
+pub(super) fn retitle(state: &mut EditorState, title: &str) {
     state
         .execute(Command::SetClipText {
             clip: "t1".into(),

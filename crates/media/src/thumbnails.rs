@@ -16,6 +16,11 @@
 //! be framed, or a picture that came out as the background only, fails with a code and is never
 //! offered as a thumbnail.
 //!
+//! **A SHARP splat** (`asset.meta.capture`, BL144.2) is not re-framed: the stand-in scene holds it at
+//! its real position and scale, turned once by the capture orientation (`rotation` of the splat
+//! object), and the plan's camera is the capture's (`splat_framing::fit_capture`). The stand-in is a
+//! scene, whose plan layer carries no orientation of its own, so the half turn is applied once.
+//!
 //! **Cancellation.** The renderer's `render_frame` blocks and cannot be interrupted from here, so a
 //! cancelled job stops *between* frames (and before the renderer starts): it lasts at most
 //! [`FRAME_TIMEOUT`] plus the renderer's start after the request. The host keeps the next job
@@ -181,12 +186,13 @@ fn one(
             };
             let extent = measure(Path::new(&path))
                 .map_err(|message| JobError::new("splat_not_drawable", message))?;
-            let fit = splat_framing::fit(
-                &extent,
-                f64::from(size.0) / f64::from(size.1),
-                // Where a capture's own orientation will go (BL144.2).
-                None,
-            )
+            let aspect = f64::from(size.0) / f64::from(size.1);
+            // A SHARP capture (validated when the file was imported) is looked through: its own
+            // camera and axes. Without one the common framing applies, as for any splat.
+            let fit = match &asset.meta.capture {
+                Some(capture) => splat_framing::fit_capture(&extent, capture, aspect),
+                None => splat_framing::fit(&extent, aspect, None),
+            }
             .map_err(|undrawable| JobError::new(undrawable.code, undrawable.message))?;
             let dir = out.parent().unwrap_or(Path::new("."));
             stand_in = splat_stand_in(snapshot, &target.asset, &fit, dir)?;
@@ -244,6 +250,17 @@ fn one(
     })
 }
 
+/// The splat object of the stand-in scene. `rotation` is written only when the framing turns the
+/// cloud (a SHARP capture), so the scene of a splat without one is byte for byte what it was.
+fn splat_object(splat: &str, framing: &Framing) -> serde_json::Value {
+    let mut object = json!({ "type": "splat", "asset": splat, "position": framing.position,
+        "scale": framing.scale });
+    if framing.rotation != [0.0; 3] {
+        object["rotation"] = json!(framing.rotation);
+    }
+    object
+}
+
 /// A copy of the job's private project that also holds a scene with the splat `splat` alone,
 /// placed as `framing` says, in front of the same background the library scenes use. Never the
 /// open project: it is not even a copy of it. The scene file is written next to the picture being
@@ -257,8 +274,7 @@ fn splat_stand_in(
     let file = dir.join("splat.tessel-scene.json");
     let scene = json!({
         "format": "tessel-scene", "version": 1, "background": splat_framing::BACKGROUND_RGBA,
-        "objects": [{ "type": "splat", "asset": splat, "position": framing.position,
-            "scale": framing.scale }],
+        "objects": [splat_object(splat, framing)],
     });
     let bytes = serde_json::to_vec_pretty(&scene)
         .map_err(|error| JobError::new("render_failed", error.to_string()))?;
