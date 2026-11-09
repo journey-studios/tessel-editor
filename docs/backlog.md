@@ -1075,3 +1075,5 @@ BL145.5/.6 — revisão5820155331: portabilidade de testes, guardas dos drivers,
 Revisão5820155331: direcionados core perf_history81/81, Python20/20 normal/-O, sintaxe drivers/fmt/diffcheck passam. Não é aceite global nem prova Windows/nativa. Nova execução completa deve usar o head publicado após esta rodada.
 
 BL145.5/.6 — validação final do código `d348b8d` (= `8e80a83`): gates do workspace, specs, smoke e prova de janela executados em árvore limpa, sem herdar SHAs antigos; resultados, custo, buffer de 4 min e limites em [perf-history.md](features/perf-history.md). Correção mínima de driver: `--json` do smoke registra a superfície e os achados. Segue a validar: revisão independente e merge pelo coordenador; sem aprovação humana inferida.
+
+BL145.5 — revisão4508508775: nota F049 agora aponta os gates5258e8c e validação d348b8d já registrados, sem repetir por ausência de âncora. Pendências atuais de revisão e merge preservadas; correção somente documental.
