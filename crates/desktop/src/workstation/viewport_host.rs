@@ -46,7 +46,17 @@ use super::perf_meter::PerfClock;
 
 /// Scheme and host the page is served from. A custom scheme keeps the page same-origin with
 /// its assets and unreachable from any web page.
+#[cfg(not(windows))]
 pub const PAGE_URL: &str = "tessel://localhost/index.html";
+/// WebView2 has no custom schemes: `wry` serves the protocol from the reserved
+/// `http://<scheme>.localhost/` host. The host handler only looks at the path.
+#[cfg(windows)]
+pub const PAGE_URL: &str = "http://tessel.localhost/index.html";
+/// What every URL the viewport page may navigate to starts with.
+#[cfg(not(windows))]
+pub const ORIGIN: &str = "tessel://";
+#[cfg(windows)]
+pub const ORIGIN: &str = "http://tessel.localhost/";
 pub const SCHEME: &str = "tessel";
 
 /// The page has this long to load `runtime.js` and announce itself.

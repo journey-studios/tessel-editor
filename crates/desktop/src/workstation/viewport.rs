@@ -16,7 +16,7 @@ use gpui_webview::WebView;
 
 use super::controls::glyph;
 use super::tokens::Tokens;
-use super::viewport_host::{FrameWaiter, PAGE_URL, SCHEME, ViewportHost};
+use super::viewport_host::{FrameWaiter, ORIGIN, PAGE_URL, SCHEME, ViewportHost};
 use super::{Geometry, Workstation};
 use crate::state::layout::PanelKind;
 use tessel_editor_core::CommandError;
@@ -57,7 +57,7 @@ impl Workstation {
                 let _ = sender.try_send(request.body().clone());
             })
             // The page is ours and nothing else: no navigation away, no pop-ups, no downloads.
-            .with_navigation_handler(|url| url.starts_with(&format!("{SCHEME}://")))
+            .with_navigation_handler(|url| url.starts_with(ORIGIN))
             .with_new_window_req_handler(|_, _| wry::NewWindowResponse::Deny)
             .with_download_started_handler(|_, _| false)
             .with_background_color((0, 0, 0, 255))
