@@ -153,6 +153,38 @@ class ValidityTests(unittest.TestCase):
         self.assertFalse(ab.session_validity(cold)[0])
 
 
+class EditorExitTests(unittest.TestCase):
+    def test_an_editor_that_ended_by_itself_invalidates_the_session_and_its_log_is_redacted(self):
+        gone = session("sync", editor_exit={"alive": False, "returncode_before_stop": -11, "log_lines": []})
+        valid, reasons = ab.session_validity(gone)
+        self.assertFalse(valid)
+        self.assertTrue(any("-11" in reason for reason in reasons))
+        self.assertTrue(ab.session_validity(session("sync", editor_exit={"alive": True, "returncode_before_stop": None, "log_lines": []}))[0])
+
+    def test_the_log_tail_names_files_by_their_last_component_only(self):
+        with tempfile.TemporaryDirectory() as folder:
+            log = os.path.join(folder, "editor.log")
+            Path(log).write_text("fine\nthread panicked at /Users/someone/private/clip-a.ply: boom\n")
+
+            class Process:
+                def poll(self):
+                    return -6
+
+            class Lab:
+                pass
+
+            lab = Lab()
+            lab.process = Process()
+            lab.log_path = log
+            lab.log = open(log, "a")
+            seen = ab.editor_exit(lab)
+            lab.log.close()
+            self.assertEqual(seen["returncode_before_stop"], -6)
+            self.assertFalse(seen["alive"])
+            self.assertTrue(seen["log_lines"][0].endswith("…/clip-a.ply: boom") or "private" not in seen["log_lines"][0])
+            self.assertNotIn("/Users/someone", seen["log_lines"][0])
+
+
 class LoadClassTests(unittest.TestCase):
     def test_quiet_is_decided_by_thresholds_fixed_before_the_measurement(self):
         self.assertEqual(ab.quiet_class([0.5, 1.0, 2.0, 1.5]), "quiet")

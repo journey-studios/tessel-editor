@@ -38,6 +38,7 @@ import math
 import os
 import pathlib
 import platform
+import re
 import shutil
 import statistics
 import subprocess
@@ -265,6 +266,9 @@ def session_validity(session):
     asset_io = status.get("asset_io") or {}
     if session.get("error"):
         reasons.append(f"error: {session['error']}")
+    gone = session.get("editor_exit") or {}
+    if gone and not gone.get("alive", True):
+        reasons.append(f"the editor process ended by itself (return code {gone.get('returncode_before_stop')})")
     if asset_io.get("mode") != mode:
         reasons.append(f"the host reports mode {asset_io.get('mode')!r}, the arm asked for {mode!r}")
     pool = asset_io.get("pool") or {}
@@ -608,6 +612,21 @@ def play_once(lab, state, name, total_frames, fps, W):
     return {key: played.get(key) for key in ("ticks", "skipped_frames", "max_gap_frames")}
 
 
+def editor_exit(lab):
+    """Did the editor process end before the harness stopped it? Return code (negative: signal) and the log lines that
+    say why, with absolute paths reduced to their last component (the log can name private files)."""
+    code = lab.process.poll()
+    lines = []
+    try:
+        lab.log.flush()
+        for line in pathlib.Path(lab.log_path).read_text(errors="replace").splitlines():
+            if re.search(r"panic|fatal|abort|SIG|error|Error|crash", line):
+                lines.append(re.sub(r"(/[^/\s:\"']+)+/([^/\s:\"']+)", r"…/\2", line)[:240])
+    except OSError:
+        pass
+    return {"returncode_before_stop": code, "alive": code is None, "log_lines": lines[-12:]}
+
+
 def run_session(W, binary, document, project, mode, out_dir, number, order_index, stress):
     """One fresh editor in `mode`: opens a private copy, plays the project twice, returns the raw session record."""
     work = tempfile.mkdtemp(prefix="rl-", dir="/tmp")
@@ -663,6 +682,7 @@ def run_session(W, binary, document, project, mode, out_dir, number, order_index
                 collect(lab, state, 0)
             except Exception:
                 pass
+            record["editor_exit"] = editor_exit(lab)
             lab.stop()
         shutil.rmtree(work, ignore_errors=True)
     record["events"] = flatten_events(state["events"])
