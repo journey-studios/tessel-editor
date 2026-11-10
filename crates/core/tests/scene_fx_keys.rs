@@ -12,6 +12,8 @@
 
 use core::prelude::v1::test;
 use std::fs;
+use std::io::{BufRead as _, Write as _};
+use std::process::{Command as Process, Stdio};
 
 use serde_json::{Value, json};
 use tessel_editor_core::directed_scene::DirectedScene;
@@ -1089,4 +1091,96 @@ fn the_seed_of_the_inspector_is_automatic_until_written_and_the_template_runs() 
     );
     let vignette = inspect(&mut state, json!({"clip":"v","frame":2})).unwrap();
     assert_eq!(vignette["clips"][0]["animation"]["seed"], Value::Null);
+}
+
+// ---- the real process -------------------------------------------------------------------------------
+
+/// One `tessel-headless` process spoken to line by line (a gesture's ID is the process's own).
+struct Headless {
+    child: std::process::Child,
+    input: std::process::ChildStdin,
+    output: std::io::BufReader<std::process::ChildStdout>,
+}
+
+impl Headless {
+    fn start() -> Self {
+        let mut child = Process::new(env!("CARGO_BIN_EXE_tessel-headless"))
+            .arg("--empty")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let input = child.stdin.take().unwrap();
+        let output = std::io::BufReader::new(child.stdout.take().unwrap());
+        Self {
+            child,
+            input,
+            output,
+        }
+    }
+
+    fn say(&mut self, request: Value) -> Value {
+        writeln!(self.input, "{request}").unwrap();
+        let mut line = String::new();
+        self.output.read_line(&mut line).unwrap();
+        let answer: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(answer["ok"], true, "{request}: {answer}");
+        answer["result"].clone()
+    }
+
+    fn finish(self) -> Option<i32> {
+        let Self {
+            mut child, input, ..
+        } = self;
+        drop(input);
+        child.wait().unwrap().code()
+    }
+}
+
+#[test]
+fn a_keyed_grain_session_through_the_real_process_answers_like_the_library() {
+    let edit = json!({"op":"scene.fx.edit","scene":"street","ops":[
+        grain(), keyed("amount", 0, json!(0.0), "linear"), key("amount", 20, json!(1.0)),
+        {"op":"set_seed","clip":"g","seed":9}]});
+    let plan_at_20 = json!({"op":"scene.plan","scene":"street","frame":20});
+    let amount = |answer: &Value| {
+        answer["plan"]["fx"][0]["params"]["amount"]
+            .as_f64()
+            .unwrap()
+    };
+
+    let mut library = session();
+    ok(&mut library, edit.clone());
+    let library_plan = ok(&mut library, plan_at_20.clone());
+
+    let mut process = Headless::start();
+    process.say(json!({"op":"scene.attach","id":"street","bundle":bundle()}));
+    assert_eq!(process.say(edit)["changed"], true);
+    let inspected = process.say(json!({"op":"scene.fx.inspect","scene":"street","frame":20}));
+    assert_eq!(inspected["frame"], 20);
+    let animation = &inspected["clips"][0]["animation"];
+    assert!(animation["params"].as_array().unwrap().iter().any(|entry| {
+        entry["param"] == "amount" && entry["animated"] == true && entry["key_count"] == 2
+    }));
+    let plan = process.say(plan_at_20.clone());
+    assert_eq!(plan, library_plan, "the process plans like the library");
+    assert!((amount(&plan) - 0.5).abs() < 1e-12);
+    assert_eq!(
+        plan["plan"]["fx"][0]["seed"],
+        library_plan["plan"]["fx"][0]["seed"]
+    );
+
+    // An ordered gesture: the key moves from 20 to 30, the commit is one undo entry.
+    let began = process.say(json!({"op":"scene.fx.gesture.begin","scene":"street","clip":"g"}));
+    let gesture = began["gesture"].as_str().unwrap().to_string();
+    process.say(json!({"op":"scene.fx.gesture.update","gesture":gesture,
+        "ops":[{"op":"move_key","clip":"g","param":"amount","from":20,"to":30}]}));
+    process.say(json!({"op":"scene.fx.gesture.commit","gesture":gesture}));
+    assert!((amount(&process.say(plan_at_20.clone())) - 1.0 / 3.0).abs() < 1e-12);
+    process.say(json!({"op":"history.undo"}));
+    assert!(
+        (amount(&process.say(plan_at_20)) - 0.5).abs() < 1e-12,
+        "ONE undo restores the move the gesture committed"
+    );
+    assert_eq!(process.finish(), Some(0), "no request was refused");
 }
