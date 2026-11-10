@@ -1,5 +1,7 @@
 [workspace]
 members = ["crates/audio", "crates/core", "crates/desktop", "crates/media", "crates/render"]
+# `vendor/` holds patched third-party crates (see vendor/README.md): not linted or formatted here.
+exclude = ["vendor"]
 resolver = "3"
 
 [workspace.package]
@@ -27,3 +29,8 @@ debug = "line-tables-only"
 
 [profile.dev.package."*"]
 debug = false
+
+# The Windows renderer paints its composition tree above child windows, which hides the native
+# WebView2 monitor. One-line patch, see vendor/README.md.
+[patch.crates-io]
+gpui-pre-windows = { path = "vendor/gpui-pre-windows" }
