@@ -8,7 +8,7 @@ da janela (GPUI) consomem o mesmo dado; a UI não tem regra de domínio: lista o
 que o modelo manda e recusa o que o core recusa. Esta entrega também move a vinheta para o modelo comum e
 acrescenta o segundo look, o `fade` (escopo de saída), sem seção própria nem código especial na janela.
 
-Não é o catálogo inteiro: **2 dos 59** efeitos do piloto estão implementados (`vignette`, `fade`). Não há
+Não é o catálogo inteiro: **3 dos 59** efeitos do piloto estão implementados (`vignette`, `fade` e, desde P3, `filmGrain`). Não há
 placeholder habilitado para os outros 57 (ver [Oferta](#oferta-o-que-existe-e-o-que-não)). Sem chaves
 (`keys`, P3), sem escopo `shot`/`node` e sem transições (P4). O contrato de edição, gesto, plano e runtime é o
 de [F016](effects.md); este documento só acrescenta o que é novo.
@@ -137,7 +137,7 @@ números estão em [F016](effects.md#p2-inspector-neutro-e-segundo-look-fade) e 
 
 Não provado: ponteiro e teclado físicos (BL043), GPU real, áudio, **Windows** (a prova é macOS/SwiftShader),
 equivalência com o golden da origem (`ORIGIN_GOLDEN_NOT_COMPARABLE`) e saídas reais da origem
-(`ORIGIN_NOT_EXECUTED`). Paridade integral com a origem **não** é afirmada: 2 de 59 efeitos.
+(`ORIGIN_NOT_EXECUTED`). Paridade integral com a origem **não** é afirmada: 3 de 59 efeitos (o terceiro, `filmGrain`, entrou em P3).
 
 ## Revisão independente P2 e correções
 
@@ -152,3 +152,14 @@ Gates da correção executados pelo coordenador em macOS/SwiftShader: fmt/check/
 No código **5eb577b3fd01c7875c27a5c2a3fb2106b912e255**, a prova nativa final terminou: **153/153, exit0, zero falhas/skip**, sem cliques por coordenada. O JSON confirma árvore limpa em5eb577b e os hashes desktop32c72841…1947/runtime7dab67b7…fba3. A vinheta+fade coincide com a referência Python (pior0,6/255 na composição); export da vinheta teve pior7/255 e mudança discriminante69; arquivo/hashes/cobertura8/8 e cleanup foram verificados. Logs/JSON em /Users/wallyssonnunes/.cache/tessel-pr39-followup/logs/window-proof.*. Isto substitui a espera pelo lock descrita no registro anterior.
 
 Depois disso, um comentário residual apontou que reset:start_frame recusava corretamente, mas details.actions era vazio. O ajuste subsequente muda **apenas os detalhes da recusa** para as ações realmente anunciadas pelo nó. Regressão GPUI específica passa1/1 (inclui igualdade com a recusa genérica e estado/histórico intactos); fmt/check/clippy workspace e build foram reexecutados e passam. A suíte2060/0/12 e a prova153/153 permanecem ancoradas em5eb577b, sem atribuí-las a uma nova execução após o ajuste de diagnóstico. Logs residual-*.log no mesmo diretório. Windows/GPU real/ponteiro e teclado físicos/áudio ouvido/golden da origem continuam não provados.
+
+## P3: o bloco de animação (BL004/BL029/BL040)
+
+O modelo ganhou `scene_edit::fx_animation` (neutro, sem GPUI), lido por `scene.fx.inspect {frame|time}` e pintado pela
+janela: por parâmetro `base`, `sampled` (o valor do frame, do mesmo resolvedor do plano), `animated`, `keys` e as
+`operations` com `enabled`/`reason`/`template`; para a seed, `explicit`, `base`, `at_frame`. O `value` estático de P2
+mantém seu significado (é a base). Booleanos têm tipo próprio (`Switch` real do Kit; um número é `invalid_value`).
+**Não há auto-chave:** os sliders editam a base (o core avisa `FX_STATIC_UNDER_KEYS` quando há curva); chaves só por
+captura, ação ou op. Nós e ações da janela (`key:*`, `seed`, `remove_animation`) e o contrato completo estão em
+[F058](fx-keys.md#ui-e-cli-da-janela); o terceiro look em [F059](film-grain.md). Rótulos pt-br/en/es de `filmGrain` e
+de suas operações vêm do core (BL040 segue parcial: a política geral de i18n do editor continua aberta).
