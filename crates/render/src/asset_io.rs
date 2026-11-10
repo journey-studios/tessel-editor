@@ -310,19 +310,33 @@ fn run(index: usize, message: Message, view: &WorkerView) {
     } else {
         started.elapsed()
     };
+    // The body that was just read is memory the pool holds from now on, even when the session that asked is already over.
+    let account = |bytes: usize| {
+        if let Some(shared) = &shared {
+            let stats = &shared.stats;
+            let now = stats.bytes_held.fetch_add(bytes, Ordering::SeqCst) + bytes;
+            stats.max_bytes_held.fetch_max(now, Ordering::Relaxed);
+        }
+    };
+    let release = |bytes: usize| {
+        if let Some(shared) = &shared {
+            shared.stats.bytes_held.fetch_sub(bytes, Ordering::SeqCst);
+        }
+    };
+    let mut held = served.body.len();
+    account(held);
     // A pool that was dropped has no epoch to match: what is still queued is stale, answered without I/O.
     let stale = stale_before || epoch_now() != message.epoch;
     if stale && !stale_before {
         // Read, but the session that asked is over: the bytes are dropped here, not delivered.
         served = gone();
+        release(held);
+        held = served.body.len();
+        account(held);
     }
-    let held = served.body.len();
-    if let Some(shared) = &shared {
-        let stats = &shared.stats;
-        let now = stats.bytes_held.fetch_add(held, Ordering::SeqCst) + held;
-        stats.max_bytes_held.fetch_max(now, Ordering::Relaxed);
-        if stale {
-            stats.stale.fetch_add(1, Ordering::Relaxed);
+    if stale {
+        if let Some(shared) = &shared {
+            shared.stats.stale.fetch_add(1, Ordering::Relaxed);
         }
     }
     let outcome = Outcome {
@@ -334,9 +348,9 @@ fn run(index: usize, message: Message, view: &WorkerView) {
     };
     // The closure runs exactly once, even if it panics (the worker survives it).
     let _ = catch_unwind(AssertUnwindSafe(|| (message.done)(served, outcome)));
+    release(held);
     if let Some(shared) = &shared {
         let stats = &shared.stats;
-        stats.bytes_held.fetch_sub(held, Ordering::SeqCst);
         stats.in_flight.fetch_sub(1, Ordering::SeqCst);
         stats.completed.fetch_add(1, Ordering::Relaxed);
     }

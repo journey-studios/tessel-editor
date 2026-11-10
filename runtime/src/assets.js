@@ -38,8 +38,9 @@ const fetchChecked = async (url, label) => {
   return response;
 };
 
-const decodeImage = async (response, label) => {
-  const blob = await response.blob();
+const decodeImage = async (source, label) => {
+  // A Response (the body is read here) or an already-read Blob (the caller timed the read apart from the decode).
+  const blob = source instanceof Blob ? source : await source.blob();
   try {
     // No premultiply and no color conversion: pixels must reach the framebuffer untouched.
     return await createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
@@ -445,8 +446,9 @@ export class AssetStore {
     const label = `\`${id}\` (${source.path})`;
     const fetchStarted = performance.now();
     const response = await fetchChecked(this.assetUrl(source.path), label);
+    const blob = await response.blob();
     const decodeStarted = performance.now();
-    const bitmap = await decodeImage(response, label);
+    const bitmap = await decodeImage(blob, label);
     this.noteLoadTimings(id, { fetch_ms: decodeStarted - fetchStarted, decode_ms: performance.now() - decodeStarted });
     return {
       entry: { bitmap, width: bitmap.width, height: bitmap.height },

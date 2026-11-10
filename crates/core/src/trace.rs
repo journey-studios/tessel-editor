@@ -285,7 +285,7 @@ impl TraceHandle {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let oldest = log.ring.front().map_or(log.next + 1, |event| event.seq);
-        let lost = oldest.saturating_sub(since + 1);
+        let lost = oldest.saturating_sub(since.saturating_add(1));
         let items: Vec<Value> = log
             .ring
             .iter()
@@ -453,10 +453,12 @@ impl TraceHandle {
 
     pub fn reset(&self) {
         *self.lock() = Inner::default();
-        *self
-            .events
+        // The sequence keeps counting: a reader that holds a cursor must see a gap as `lost`, not silently miss new events.
+        self.events
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = EventLog::default();
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .ring
+            .clear();
     }
 
     /// Summary of every span (percentiles over the last samples) and the last `last` frames.
@@ -640,5 +642,25 @@ mod tests {
         assert!(span["p50"].as_f64().unwrap() > 300.0);
         trace.reset();
         assert_eq!(trace.snapshot(0)["spans"], json!({}));
+    }
+
+    #[test]
+    fn a_cursor_at_the_end_of_the_range_does_not_overflow_and_a_reset_keeps_counting() {
+        let trace = TraceHandle::default();
+        trace.set_enabled(true);
+        trace.event("tick", || json!({}));
+        let end = trace.events_since(u64::MAX, 10);
+        assert_eq!(end["events"], json!([]));
+        assert_eq!(end["lost"], 0);
+        let before = trace.events_since(0, 10)["next"].as_u64().unwrap();
+        trace.reset();
+        trace.event("tick", || json!({}));
+        let after = trace.events_since(before, 10);
+        assert_eq!(
+            after["events"].as_array().unwrap().len(),
+            1,
+            "a reader that kept its cursor sees the new event"
+        );
+        assert!(after["events"][0]["seq"].as_u64().unwrap() > before);
     }
 }

@@ -3,7 +3,7 @@
 
     python3 scripts/real-latency-ab.py preflight --project P.tessel.json
     python3 scripts/real-latency-ab.py run      --binary target/release/tessel-editor --project P.tessel.json --out DIR [--pairs 4]
-    python3 scripts/real-latency-ab.py analyze  --out DIR [--report-dir DIR2]
+    python3 scripts/real-latency-ab.py analyze  --out DIR --project P.tessel.json [--report-dir DIR2]
     python3 scripts/real-latency-ab.py pixels   --binary target/release/tessel-editor --out DIR
 
 The project path is an ARGUMENT: no personal path, no media and no asset name is in the repository, and the report written to
@@ -282,7 +282,7 @@ def session_validity(session):
     status = session.get("status") or {}
     asset_io = status.get("asset_io") or {}
     if session.get("error"):
-        reasons.append(f"error: {session['error']}")
+        reasons.append(f"error: {redact(session['error'])}")
     gone = session.get("editor_exit") or {}
     if gone and not gone.get("alive", True):
         reasons.append(f"the editor process ended by itself (return code {gone.get('returncode_before_stop')})")
@@ -387,7 +387,7 @@ def window_report(frames, project, segment):
         pre = [g[4] for g in gaps if cut - prefetch_frames <= g[1] < cut]
         at = [g[4] for g in gaps if cut <= g[1] <= cut + ENTRY_WINDOW]
         out.append({"cut": cut,
-                    "prefetch_window": stats(pre) | {"slow": sum(1 for v in pre if v > SLOW_DIAGNOSTIC_MS), "excess_ms": round(sum(max(0.0, v - 41.667) for v in pre), 1)},
+                    "prefetch_window": stats(pre) | {"slow": sum(1 for v in pre if v > SLOW_DIAGNOSTIC_MS), "excess_ms": round(sum(max(0.0, v - 1000.0 / project["fps"]) for v in pre), 1)},
                     "cut_window": stats(at) | {"slow": sum(1 for v in at if v > SLOW_DIAGNOSTIC_MS)}})
     return out
 
@@ -672,6 +672,11 @@ def play_once(lab, state, name, total_frames, fps, W):
     return {key: played.get(key) for key in ("ticks", "skipped_frames", "max_gap_frames")}
 
 
+def redact(text, limit=240):
+    """A failure text for a published report: absolute paths reduced to their last component, bounded."""
+    return re.sub(r"(/[^/\s:\"']+)+/([^/\s:\"']+)", r"…/\2", str(text))[:limit]
+
+
 def editor_exit(lab):
     """Did the editor process end before the harness stopped it? Return code (negative: signal) and the log lines that
     say why, with absolute paths reduced to their last component (the log can name private files)."""
@@ -827,7 +832,7 @@ def markdown(report):
                          f"{r['p95']}/{r['max']} | {t['p95']}/{t['max']} | {c['max']} | {(p['playback_report'] or {}).get('skipped_frames')} | {p['play_command_to_first_picture_ms']} |")
     lines += ["", f"## Slow gaps (> {SLOW_DIAGNOSTIC_MS} ms) by arm and load class (valid sessions only; descriptive counts)", "",
               f"| group | sessions | plays | pictures | gaps >{SLOW_DIAGNOSTIC_MS} | >100 | with UI-thread callback ≥{UI_STALL_MS:g} ms | overlapping a read | with page decode/fetch/warm ≥{PAGE_BUSY_MS:g} ms | picture transit ≥{TRANSIT_SLOW_MS:g} ms | neither UI stall nor page work | in a prefetch window | at a cut | at a video/still clip entry | elsewhere | worst gap per session ms |",
-              "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+              "|" + "---|" * 16]
     for name, g in sorted(report["arms"].items()):
         lines.append(f"| {name} | {g['sessions']} | {g['plays']} | {g['pictures']} | {g['gaps_gt_62_5']} | {g['gaps_gt_100']} | {g['with_ui_stall']} | "
                      f"{g['with_read_overlap']} | {g['with_page_work']} | {g['with_slow_transit']} | {g['with_neither_ui_stall_nor_page_work']} | {g['in_prefetch_window']} | {g['at_cut']} | {g['at_video_entry']} | {g['other']} | {g['worst_gap_ms_per_session']} |")

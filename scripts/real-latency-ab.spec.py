@@ -202,6 +202,33 @@ class EditorExitTests(unittest.TestCase):
             self.assertNotIn("/Users/someone", seen["log_lines"][0])
 
 
+class ReportTextTests(unittest.TestCase):
+    def test_a_published_failure_text_names_no_directory(self):
+        text = ab.redact("RuntimeError('exited: /Users/someone/private/dir/editor.log: boom')")
+        self.assertNotIn("/Users/someone", text)
+        self.assertIn("editor.log", text)
+        self.assertLessEqual(len(ab.redact("x" * 1000)), 240)
+        valid, reasons = ab.session_validity(session("sync", error="failed at /Users/someone/private/clip.ply"))
+        self.assertFalse(valid)
+        self.assertNotIn("/Users/someone", " ".join(reasons))
+
+    def test_every_generated_table_has_as_many_delimiter_cells_as_header_cells(self):
+        report = {"manifest": {"git": {"sha": "0" * 40, "dirty_files": 0}, "binary_sha256": "0" * 64, "runtime_sha256": "0" * 64,
+                               "document_sha256": "0" * 64, "sources_present": 1, "sources_total": 1},
+                  "project": PROJECT, "sessions": [], "all_valid": True, "n_comparable_pairs": 0, "pairs": {"comparable_quiet": []},
+                  "arms": {"sync/quiet": {"sessions": 1, "plays": 2, "pictures": 1200, "gaps_gt_62_5": 1, "gaps_gt_100": 0, "with_ui_stall": 1,
+                                          "with_read_overlap": 1, "with_page_work": 0, "with_slow_transit": 0,
+                                          "with_neither_ui_stall_nor_page_work": 0, "in_prefetch_window": 1, "at_cut": 0,
+                                          "at_video_entry": 0, "other": 0, "worst_gap_ms_per_session": [70.0]}}}
+        lines = ab.markdown(report).splitlines()
+        checked = 0
+        for header, delimiter in zip(lines, lines[1:]):
+            if delimiter.startswith("|---"):
+                self.assertEqual(header.count("|"), delimiter.count("|"), header)
+                checked += 1
+        self.assertGreaterEqual(checked, 3)
+
+
 class LoadClassTests(unittest.TestCase):
     def test_quiet_is_decided_by_thresholds_fixed_before_the_measurement(self):
         self.assertEqual(ab.quiet_class([0.5, 1.0, 2.0, 1.5]), "quiet")

@@ -197,6 +197,8 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       const timings = { load_ms: performance.now() - loadStarted, ...assets.takeLoadTimings(descriptor.id) };
       send({ type: 'asset.state', id: descriptor.id, state: 'ready', meta, timings, ...echo });
     } catch (error) {
+      // Timings noted by a load that then failed or was cancelled must not reach the next load of this id.
+      assets.takeLoadTimings(descriptor.id);
       send({ type: 'asset.state', id: descriptor.id, state: 'failed', error: toErrorJson(error, 'asset_unreadable'), ...echo });
     }
   };

@@ -187,7 +187,8 @@ fn percent_decode(raw: &str) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
-fn query_param(query: &str, key: &str) -> Option<String> {
+/// The percent-decoded value of `key` in a query string (`None` when absent or malformed).
+pub fn query_param(query: &str, key: &str) -> Option<String> {
     query
         .split('&')
         .filter_map(|pair| pair.split_once('='))

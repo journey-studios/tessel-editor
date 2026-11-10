@@ -76,6 +76,30 @@ fn the_mode_comes_from_a_named_value_and_a_typo_is_refused_loudly() {
 }
 
 #[test]
+fn a_request_and_the_load_message_of_the_same_file_share_one_label_and_no_path() {
+    let dist = page("io-label");
+    let dir = scratch("io-label-files");
+    let file = dir.join("my private clip.png");
+    std::fs::write(&file, b"0123").unwrap();
+    let access = Rc::new(RefCell::new(AssetAccess::default()));
+    register(&access, &file);
+    let trace = TraceHandle::default();
+    trace.set_enabled(true);
+    let sync = handle(AssetIoMode::Sync, &dist, &access, &trace, None);
+    assert_eq!(answer(&sync, &asset_request(&file, None)).status(), 200);
+    let wanted = super::viewport_host::trace_label('a', &format!("p={}", file.to_string_lossy()));
+    let events = trace.events_since(0, 100);
+    let callback = events["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|event| event["kind"] == "asset_cb")
+        .expect("the request left an event");
+    assert_eq!(callback["fields"]["asset"], wanted);
+    assert!(!events.to_string().contains("private clip"));
+}
+
+#[test]
 fn both_modes_answer_the_same_status_headers_and_bytes() {
     let dist = page("io-same");
     let dir = scratch("io-same-files");

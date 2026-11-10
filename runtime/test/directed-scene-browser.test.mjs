@@ -545,7 +545,9 @@ test('a load without identity gets the asset.state messages it always got (bridg
   try {
     runtime.messages.length = 0;
     const loaded = await runtime.load({ id: 'plain', kind: 'still', source: { type: 'file', path: paths.red }, meta: {} });
-    assert.deepEqual(Object.keys(loaded).sort(), ['id', 'meta', 'state', 'type', 'v']);
+    // `timings` (BL157.1) is the one additive field: the page's own load durations, which a v1 host may ignore.
+    assert.deepEqual(Object.keys(loaded).sort(), ['id', 'meta', 'state', 'timings', 'type', 'v']);
+    assert.deepEqual(Object.keys(loaded.timings).sort(), ['decode_ms', 'fetch_ms', 'load_ms']);
     const loading = runtime.messages.find((m) => m.type === 'asset.state' && m.id === 'plain' && m.state === 'loading');
     assert.deepEqual(Object.keys(loading).sort(), ['id', 'state', 'type', 'v']);
 

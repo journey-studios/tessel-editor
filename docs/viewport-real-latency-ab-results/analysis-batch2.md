@@ -42,7 +42,7 @@ A = sync, B = async, same build. Values are per session and play; deltas are B -
 ## Slow gaps (> 62.5 ms) by arm and load class (valid sessions only; descriptive counts)
 
 | group | sessions | plays | pictures | gaps >62.5 | >100 | with UI-thread callback ≥20 ms | overlapping a read | with page decode/fetch/warm ≥10 ms | picture transit ≥30 ms | neither UI stall nor page work | in a prefetch window | at a cut | at a video/still clip entry | elsewhere | worst gap per session ms |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | async/loaded | 1 | 2 | 1195 | 11 | 2 | 0 | 3 | 3 | 4 | 8 | 4 | 3 | 4 | 0 | [139.2] |
 | async/quiet | 3 | 6 | 3551 | 26 | 2 | 0 | 5 | 5 | 6 | 21 | 8 | 3 | 11 | 4 | [165.8, 66.4, 93.8] |
 | sync/quiet | 3 | 6 | 3556 | 22 | 1 | 7 | 7 | 8 | 4 | 14 | 9 | 1 | 10 | 2 | [116.5, 93.8, 84.7] |

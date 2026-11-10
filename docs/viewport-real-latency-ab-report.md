@@ -10,7 +10,7 @@ construído: [F058](features/viewport-asset-io.md); dados: [viewport-real-latenc
 | Pergunta | Resposta | Base |
 |---|---|---|
 | O callback do protocolo roda na thread da janela e lê o arquivo ali? | **Sim, medido** (em `sync`, 29 leituras por sessão na thread da UI; em `async`, 0) | evento `asset_cb` com `on_ui_thread` e nome da thread |
-| Essa leitura bloqueia a janela durante a pré-carga? | **Sim**: callback de 24,9–85,4 ms na UI (máximo por sessão) em todas as 6 sessões `sync` válidas (leituras de ~66 MB, 13–31 ms de leitura mais a cópia para o `NSData`) e tick atrasado em até 71,5 ms; em `async` o callback na UI é ≤ 0,12 ms e o atraso máximo do tick é ≤ 14,4 ms | tabelas §4 |
+| Essa leitura bloqueia a janela durante a pré-carga? | **Sim**: callback de 33,5–85,4 ms na UI (máximo por sessão) em todas as 6 sessões `sync` válidas (leituras de ~66 MB, 13–31 ms de leitura mais a cópia para o `NSData`) e tick atrasado em até 71,5 ms; em `async` o callback na UI é ≤ 0,12 ms e o atraso máximo do tick é ≤ 14,4 ms | tabelas §4 |
 | Tirar essa leitura da thread da UI reduz as pausas entre imagens? | **Não demonstrado: inconclusivo, com tendência de nenhum efeito na cauda.** Gaps > 62,5 ms em sessões silenciosas: `sync` 28 (5 sessões, 10 plays), `async` 27 (5 sessões, 10 plays); > 100 ms: 1 contra 2. Em 4 pares comparáveis o efeito troca de sinal | §4.3 |
 | A preparação (`plans_ahead`, `prefetch`, `sync`) é o custo? | **Refutado.** `plans_ahead` ≤ 0,07 ms, `prefetch` ≤ 4,3 ms (típico < 0,1 ms), `sync` ≤ 2,8 ms | §5 |
 | O que sobra nas pausas com `async`? | Pausas em que a UI não estava bloqueada, o tick estava no horário e não houve leitura: o quadro espera 56–120 ms **fora do trabalho do runtime** (trânsito host→página→host), sem span que o explique; mais a entrada de clipes de imagem (primeiro desenho de 12–18 ms) | §5 |
@@ -71,7 +71,7 @@ completos), mas também não a excluo. Os dois pares afetados ficam fora dos com
 
 | Modo | Sessões válidas (quietas/carregadas) | Callback máx. na UI (ms) | Atraso máx. do tick (ms) | RSS editor mediana/pico (MiB) | RSS helpers mediana/pico (MiB) |
 |---|---|---|---|---|---|
-| `sync` | 6 (5/1) | 24,9–85,4 | 15,1–71,5 | 164–258 / 204–261 | 507–1125 / 866–1695 |
+| `sync` | 6 (5/1) | 33,5–85,4 | 15,1–71,5 | 164–258 / 204–261 | 507–1125 / 866–1695 |
 | `async` | 8 (5/3) | 0,02–0,12 | 7,6–14,4 | 126–252 / 256–263 | 461–977 / 688–1475 |
 
 RSS é o residente de cada processo (editor; processos WebKit novos desde a linha de base), **não** soma de memória física nem
@@ -124,14 +124,14 @@ Cada gap > 62,5 ms foi cruzado com os spans que o sobrepõem (sessões válidas,
 | `async` carregado | 24 | 0 | 5 | 8 | 19 | 6 | 4 | 12 | 2 |
 
 - **Confirmado:** em `sync`, 10 dos 28 gaps silenciosos coincidem com um callback de 20–85 ms na UI, todos em janelas de pré-carga,
-  junto a tick atrasado de 14–71 ms. `async` zera esse subconjunto (0 em 51).
+  com tick atrasado nas sessões `sync` (máximo por sessão de 15,1–71,5 ms; ver tabela de memória e paradas). `async` zera esse subconjunto (0 em 51).
 - **Mas o total não cai**, porque o resto das pausas é de outra origem: no `async`, 22 de 27 não têm parada de UI nem trabalho da
   página sobreposto e o tick estava no horário (≤ 14 ms). Os maiores (166, 139, 136 ms; `video:370`, `cut:410`, `cut:410`) têm
   `runtime_total` de 1–24 ms e **trânsito** (envio→aceite menos o total do runtime) de 92–120 ms, sem leitura, sem decode/fetch/warm da
   página e sem parada de UI sobrepostos nos dois `cut:410`. O quadro esperou **fora** do trabalho do runtime e **nenhum span meu
   explica onde**: pode ser a thread da página ocupada com trabalho não medido (GC, ordenação do Spark), a entrega do `evaluate` ou o
   processamento do IPC pela UI, ou o escalonamento dos processos WebKit sob a carga externa. **Causa não atribuída.**
-- **Entradas de clipe de imagem** (quadros 18/196/282/326/370/512/520) concentram 11–12 gaps por grupo, nos dois modos, nos mesmos
+- **Entradas de clipe de imagem** (quadros 18/196/282/326/370/512/520) concentram 11–12 gaps por grupo nos três grupos com 5 sessões ou mais, e 5 no grupo de 1 sessão, nos dois modos, nos mesmos
   quadros, sem leitura sobreposta: o asset já está residente e o primeiro desenho custa 12–18 ms de `draw` (mediana por entrada, as duas
   rodadas). Isso explica 20–37 ms a mais no intervalo, não os 90–110 ms dos piores; **não** é I/O de protocolo.
 - `plans_ahead`, `prefetch` e `sync` do host: máximos 0,07 / 4,3 / 2,8 ms (medianas < 0,1 ms). **Refutados** como custo.

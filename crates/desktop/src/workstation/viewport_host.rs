@@ -44,7 +44,9 @@ use tessel_editor_render::SetupError;
 use tessel_editor_render::asset_io::{
     AssetPool, DEFAULT_QUEUE, DEFAULT_WORKERS, Outcome, ReadJob, Rejection,
 };
-use tessel_editor_render::host::{AssetAccess, Resolved, Served, read_file, resolve, write_png};
+use tessel_editor_render::host::{
+    AssetAccess, Resolved, Served, query_param, read_file, resolve, write_png,
+};
 use wry::http::{Request, Response};
 
 use super::perf_meter::PerfClock;
@@ -921,6 +923,7 @@ impl ViewportHost {
         let planned = trace.start();
         let plans = state.plans_ahead(frames);
         let plans_ahead_ms = planned.map(|at| at.elapsed().as_secs_f64() * 1000.0);
+        trace.span("plans_ahead", planned);
         let mut assets = Vec::new();
         for asset in plans.iter().flat_map(|plan| plan.requires.iter()) {
             if !assets.contains(asset) {
@@ -938,7 +941,6 @@ impl ViewportHost {
         // with nothing ahead: the cuts that left the window are forgotten, so a return to one warms it again.
         let warming = trace.start();
         let warmed = self.session.warm(&plans);
-        trace.span("plans_ahead", planned);
         trace.event("prefetch", || {
             json!({
                 "plans": plans.len(), "assets": assets.len(), "loads_started": started, "warms_started": warmed,
@@ -1549,7 +1551,9 @@ impl ProtocolHandle {
             mode: self.mode,
             label: if self.trace.enabled() {
                 if path == "/asset" {
-                    trace_label('a', query)
+                    // The same label the load message gets: of the decoded path, not of the encoded query.
+                    let location = query_param(query, "p").unwrap_or_default();
+                    trace_label('a', &format!("p={location}"))
                 } else {
                     path.to_owned()
                 }
