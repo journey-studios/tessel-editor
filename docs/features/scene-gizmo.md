@@ -564,3 +564,70 @@ em lotes e **sem** custo de composição da janela nativa. `core 38/38`, `1556/0
 **Status de G1 neste head:** rotação continua **a validar**. Um bloqueio de lock não é falha do produto nem prova dele. Nenhuma linha da
 matriz foi promovida. Ponteiro físico/WKWebView segue em BL015.2/BL043/BL044. A produção nova desta rodada é só documentação, então não exige
 revisão de código nova, mas os gates acima precisam rodar (sob o lock) em um head com estes mesmos fontes antes de qualquer promoção.
+
+### Rodada de gates do head `4b690bd` (PR #40): executados sob o lock de GPU
+
+Head remoto conferido por `gh pr view 40`: `4b690bd8642910d831e0d22dfd91a404259b0989` (árvore `898e7f86fe9a8b80374cad0b6e9fd5f15bcee673`), base da PR `3e48861`.
+A `origin/main` viva já está em `e18b0cf` (PR #39, FX/inspetor) e `mergeStateStatus` da PR #40 é **`DIRTY`/`CONFLICTING`**: integrar/rebasear é decisão do
+coordenador e **não** foi feita aqui (a rodada não toca FX nem o conteúdo da #39). Evidência em `/tmp/tessel-pr40-gates/r2` (fora do Git, 3,2 MiB; `manifest.jsonl` com
+comando, cwd, ambiente extra, head, árvore, sujo, UTC, saída, disco antes/depois e sha256 de cada log; `SHA256SUMS.txt`). Ambiente: `rustc 1.99.1` (pin), `node v22.23.3`,
+Python 3.14.3; Cargo só por `./scripts/cargo` → `mbx` com o **target padrão** (sem `CARGO_TARGET_DIR`, `--target-dir` nem `TESSEL_CARGO_LANE`); disco livre 58 GiB na entrada
+(reserva 16, piso 12; mínimo visto pela prova 41,9 GiB). O checkout T3 foi levado ao head da PR (`git checkout -B … origin/t3/scene-gizmo-rotation`, árvore limpa); nenhum outro
+worktree, nenhum processo alheio tocado, nenhum `mbx clean`/`gc` executado por mim.
+
+**Sequência do lock (sem polling nem contorno).** 16:34Z: tentativa bloqueada (rodada anterior). 17:17:15Z: nova tentativa não bloqueante **adquirida** depois da liberação
+confirmada pelo coordenador; o processo que a segurava (e o lote) desapareceu depois de ~3 min, no meio de `cargo check` (log `G04-check.KILLED-run1-holder-died.log`), sem
+registro de liberação e com o lock livre por `lsof` e sem fila alheia na hora. Isso não foi falha do produto. 17:23:18Z: **uma** nova tentativa não bloqueante (`driver.py`,
+que segura o lock e executa a fila no mesmo processo) foi **adquirida** e mantida até 18:29:58Z (liberada por arquivo `RELEASE`), sem outra tentativa. Um `lockrun.py` de outro
+agente ficou esperando o lock durante a janela; não foi tocado. O `mbx` aplicou sozinho a política de GC do wrapper (`MBX_GC_MAX_TOTAL_SIZE=8GiB`) durante `G06`
+(`removed 4 target directories (17.7 GiB logical …)`, log `G06-build-editor.log`): não foi comando meu, **não foi contornado**; fica registrado porque pode ter evictado cache
+de outros checkouts.
+
+| Gate | Head / árvore | Resultado |
+|---|---|---|
+| `git diff --check 3e48861 HEAD` | `4b690bd` | passou |
+| `cargo fmt --all -- --check` | `4b690bd` | passou |
+| `./scripts/runtime setup` | `4b690bd` | passou (`runtime/dist/runtime.js` sha256 `9fbaaa5f…`) |
+| `cargo check --workspace --locked` | `4b690bd` | passou (a 1ª tentativa foi morta com o holder; repetida) |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | `4b690bd` | **passou** (o `Box<RotationFrame>` nunca gateado agora foi compilado) |
+| builds `tessel-editor` e `tessel-editor-core --bin tessel-headless` | `4b690bd` | passaram; sha256 `732dd9b7…` e `46e7b742…` |
+| `cargo tree -p tessel-editor-core` | `4b690bd` | só `flate2`, `serde`, `serde_json`; sem `gpui`/`wry` |
+| `cargo test --workspace --no-fail-fast --locked`, `TESSEL_REQUIRE_RUNTIME=1` | `4b690bd` | **2075 passaram, 0 falharam, 12 `ignored`** (106 alvos), com Chrome real; core: 471 unit, `scene_gizmo` 42, `scene_gizmo_rotation` 45 |
+| `./scripts/runtime test` (suíte inteira, inclui `gizmo-overlay.test.mjs`) | `4b690bd` | **218/219**: falhou `video B2: a frame superseded while it seeks is cancelled…` (`frame.done` no lugar de `frame.failed`, `video.test.mjs:208`, teste de corrida do vídeo, sem relação com o overlay); `video.test.mjs` sozinho 7/7; suíte inteira repetida **219/219**. Trato como flaky sob carga (o lote correu com load average > 50), **não** como passe limpo da 1ª execução |
+| `scripts/scene-gizmo-proof.spec.py` (S8) | `4b690bd` | 34/34 |
+| **`scripts/scene-gizmo-rotation-proof.py`, headless + janela real** (binário próprio, HOME curto, só `op`/`get`/`invoke`) | `4b690bd` | **`ok: true`, `final_evidence: true`, `surfaces_agree_on_the_drag: true`, árvore limpa**: headless 48 checks, janela 54 checks (a janela vê o monitor seguir o candidato e voltar ao inicial no undo; anéis pintados nas cores dos eixos). Repetida com o headless reconstruído (sha256 `a90aff9c…`) e de novo no head final: sempre `ok`. Primeira execução da prova desde que foi escrita |
+| `cargo clippy -D warnings`, `fmt`, core `--lib`+`scene_gizmo_rotation`+`scene_gizmo` (472, 42, 46), `cargo tree` | `1b471d6` (testes novos, ver abaixo) | passaram |
+| `cargo check`, builds, `cargo test --workspace` (`TESSEL_REQUIRE_RUNTIME=1`), prova G1 | `1b471d6`, árvore `f26e90f5c42c6006967ffc068e47df54d6099b19`, limpa | check/builds/prova passaram; workspace **2076 passaram, 1 falhou, 12 `ignored`**: falhou `killing_the_process_while_its_discard_hashes_a_large_file_leaves_a_claim_recover_takes_back` (`crates/media/tests/job_discard_claims.rs`, espera de 30 s do hash de um arquivo grande, **mídia, fora do escopo da PR**, passou no `4b690bd`); o alvo repetido sozinho passou 13/13. Não é um passe limpo do workspace no head final; é o `2075/0` do `4b690bd` mais as 2 provas novas e uma flaky de carga declarada |
+
+**Mutações Rust discriminantes** (`mutate.py`, uma por vez, arquivo restaurado por texto e conferido por sha256 e `git status`; um mutante só vale como morto quando um teste nomeado **falha**, erro de
+compilação não conta). Resultado: **15 mortas na 1ª passada e 2 sobreviventes**, ambos lacunas de **teste**, não de produção:
+
+| Mutação | Resultado |
+|---|---|
+| sinal do giro; ordem de `R'`; espaço local vira mundo; `Pₙᵀ` sem transpor; sem módulo 360°; intervalo `(-180,180]` aberto; volta completa deixa de ser no-op; arrasto abaixo de −180° sem enrolar | mortas (testes da rotação: `a_node_with_its_own_negative_and_uneven_scale_…`, `local_and_world_turn_about_different_axes_…`, `zero_and_whole_turns_are_no_ops_…`, `angles_reduce_to_the_half_open_half_turn_…`, `a_negative_sweep_turns_the_other_way_…` etc.) |
+| `animated_rotation` permitida; `mirrored_parent` permitido; `non_uniform_parent_scale` permitido | mortas (`a_node_whose_rotation_is_animated_is_refused_…`, `a_mirroring_parent_is_refused_typed`, `a_parent_that_scales_unevenly_is_refused_typed_…`) |
+| `quat_unit` aceita zero | morta (`degenerate_authored_quaternions_cannot_be_normalised`) |
+| ferramenta muda sob arrasto vivo; carimbo sem `tool`/`space`; cancelamento não descarta o arrasto | mortas (`the_tool_cannot_change_under_an_open_drag_…`, `the_tool_and_the_space_are_part_of_the_overlay_identity`, `a_drag_is_dead_when_its_gesture_can_no_longer_apply_…`, `state::tree::tests::the_gizmo_node_exists_only_…`) |
+| **rasante** (`GRAZING` nunca recusa) | **SOBREVIVEU** (core 471/42/45 verdes; log `M-rust-grazing-ring-resolves-core.log` mantido): o único teste usava a câmera exatamente de lado, que `plane_hit` já recusa; a faixa `0 < \|cos\| < 0,05` não era coberta |
+| **`RotationFrame::of` sem normalizar/recusar o quaternion autorado** (`let unit = authored`) | **SOBREVIVEU** (log `M-rust-authored-not-normalised-core.log`): a normalização do resultado final e a normalização das colunas dos eixos mascaram o caso quase unitário (equivalente para quaternions finitos não nulos); só zero/NaN/∞ diferia, e nenhum teste alcançava `degenerate_rotation` |
+
+A 2ª fase de cada mutação (testes do desktop, só para sobreviventes do core) falhou por **erro do comando** (`--lib` não existe no pacote `tessel-editor`; log preservado) e não foi usada; os veredictos vêm do core. Correção, só de teste (commit `1b471d6`, produção idêntica): `a_ring_seen_almost_edge_on_is_refused_and_a_clearer_view_of_it_opens_a_drag` (câmera 0,3 acima: `degenerate_axis`; 1,0 acima:
+arrasto aberto; mesmo ponto) e o unitário `a_frame_refuses_what_cannot_be_turned_with_the_typed_reason` (zero, NaN, ∞, animado, matriz de mundo e local singulares, nas duas
+orientações). **Com os testes novos, as duas mutações foram mortas** (`rust-mutations-rerun-with-new-tests.json`). `not_movable` continua inalcançável: `NodeKind` só tem `Group`,
+`ImagePlane` e `Splat`, todos movíveis (a guarda é defensiva e fica sem teste). **Mutações JS 3/3** do `ebd1f08` valem para este head: de `ebd1f08` a `4b690bd` só mudam 3 arquivos de `docs/`.
+A recusa `degenerate_rotation` segue sem teste de integração pelo importador (só o unitário de `RotationFrame::of`).
+
+**Medição do overlay dos anéis (BL015.12), com limites.** Core: `tools/measure-core-overlay.py`, `scene.gizmo.state` por JSONL contra `tessel-headless` em build **debug**, relógio de parede incluindo
+Python e serialização, n=1500 por caso, 100 descartados, 3 execuções. A máquina estava compartilhada: a execução 2 tem p95 de dezenas de ms (ruído), a 1 e a 3 não. Mínimos estáveis: anéis visíveis
+885–1310 µs, setas 197–264 µs, oculto (animado ou pai não uniforme) 166–195 µs, sem seleção 115–143 µs. p50 da execução mais quieta (3): anéis mundo 1147 µs, local 1216 µs, setas 236 µs, oculto
+208/180 µs, sem seleção 177 µs. **Os anéis custam ~5× as setas e ~5–6× o oculto neste caso** (3×65 pontos de JSON e a projeção), em ~1 ms de debug; a dupla chamada de `rotation_frame` (R4) **não** foi
+isolada nem otimizada. Página: `tools/measure-page-rings.mjs` em Chrome headless SwiftShader (**não** a WKWebView), `performance.now` em lotes de 200 chamadas × 15, 2 lotes de aquecimento descartados, 2 execuções
+concordantes: `overlay.set` com anéis 10,5 µs/chamada (desenho gravado, sem leitura), oculto 1 µs, setas 3 µs; **forçando a rasterização** (`getImageData` 1×1 por chamada) anéis 211 µs, oculto 42 µs, setas 62–63 µs. As
+medições anteriores da página (`measure-page-rings.json` e `…-guarded-run*.json`) são **inválidas**: o payload de anéis do script não tinha `from`/`to` por handle e a página o recusava (media o caminho de recusa);
+a guarda acrescentada (pixels pintados, `inStep`, nenhum `overlay.error`) o revelou, o script foi corrigido e os arquivos antigos ficam só como registro do defeito. Não inclui composição da janela nativa nem GPU real.
+
+**Limites que permanecem.** Nenhum ponteiro físico, foco de teclado nem captura sobre a WKWebView (BL015.2, BL043, BL044). Sem `.spec.py` própria da prova G1; sem caso de pai rotacionado na prova semântica
+(só no core); cor conferida só nos anéis x e y na prova. Os binários da prova não são reproduzíveis byte a byte entre builds (hashes diferentes a cada compilação, cada relatório grava o do binário que usou).
+
+**Status de G1 neste head:** rotação continua **a validar**: todos os gates pedidos foram executados e passaram (com as duas flakies de carga declaradas e repetidas), os sobreviventes viraram testes mortos, mas falta a revisão
+independente do coordenador sobre este head e a prova com ponteiro físico. Nada além disso foi promovido.
