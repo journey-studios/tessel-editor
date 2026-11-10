@@ -35,6 +35,8 @@ struct Script {
     features: Vec<&'static str>,
     /// `frame.warm` calls in order: the assets each plan requires.
     warmed: Vec<Vec<Id>>,
+    /// `frame.warm` calls for textures only (BL157.3), in order: the assets each plan requires.
+    texture_warmed: Vec<Vec<Id>>,
 }
 
 #[derive(Clone)]
@@ -80,6 +82,13 @@ impl RenderBackend for Fake {
     }
     fn warm_scene(&mut self, plan: &RenderPlan) -> Result<(), BackendError> {
         self.0.borrow_mut().warmed.push(plan.requires.clone());
+        Ok(())
+    }
+    fn warm_textures(&mut self, plan: &RenderPlan) -> Result<(), BackendError> {
+        self.0
+            .borrow_mut()
+            .texture_warmed
+            .push(plan.requires.clone());
         Ok(())
     }
     fn submit(&mut self, request: &FrameRequest) -> Result<(), BackendError> {
@@ -2078,6 +2087,135 @@ fn a_cut_is_never_warmed_when_the_host_turned_the_warm_off() {
     // The same session, switched on, warms the same cut: nothing else differed.
     rig.session.set_warm(true);
     assert_eq!(rig.session.warm(&plans), 1);
+}
+
+/// A rig whose runtime announces `texture.preupload` and a still-image cut at `start` that requires `next`.
+fn rig_with_still_cut(start: i64) -> Rig {
+    let mut rig = rig_with_cut(start);
+    rig.script.borrow_mut().features = vec!["scene.warm", FEATURE_TEXTURE_PREUPLOAD];
+    rig.session.capabilities().unwrap();
+    rig
+}
+
+fn load_ahead(rig: &mut Rig) -> Vec<RenderPlan> {
+    let plans = rig.state.plans_ahead(60);
+    rig.session
+        .prefetch(&rig.state, &rig.state.assets_ahead(60));
+    rig.script.borrow_mut().events.push_back(ready("next"));
+    rig.session.pump(Duration::ZERO);
+    plans
+}
+
+#[test]
+fn the_texture_preupload_is_off_unless_the_host_turns_it_on_and_changes_nothing_else() {
+    let mut rig = rig_with_still_cut(60);
+    let plans = load_ahead(&mut rig);
+    assert_eq!(plans.len(), 1);
+    assert_eq!(
+        rig.session.warm(&plans),
+        0,
+        "the runtime announces it, the host did not ask"
+    );
+    assert!(rig.script.borrow().texture_warmed.is_empty());
+    assert_eq!(rig.session.preupload_report()["enabled"], false);
+    assert_eq!(rig.session.preupload_report()["supported"], true);
+
+    rig.session.set_preupload(true);
+    assert_eq!(rig.session.warm(&plans), 1);
+    assert_eq!(rig.script.borrow().texture_warmed.len(), 1);
+    assert!(
+        rig.script.borrow().warmed.is_empty(),
+        "an image has no splat sort: nothing for the scene warm"
+    );
+    assert_eq!(rig.session.preupload_report()["sent"], 1);
+    assert_eq!(rig.session.warm(&plans), 0, "once per cut");
+    // Nothing about it is a frame: no request, no status, no revision.
+    assert_eq!(rig.session.stats.requests, 0);
+    assert_eq!(rig.session.status().label(), "idle");
+    assert_eq!(rig.session.revision(), 0);
+
+    // Switched off again, it forgets what it asked and sends nothing more.
+    rig.session.set_preupload(false);
+    assert_eq!(rig.session.warm(&plans), 0);
+    assert_eq!(rig.script.borrow().texture_warmed.len(), 1);
+}
+
+#[test]
+fn a_cut_is_only_sent_for_textures_when_the_runtime_announced_it_and_every_asset_is_loaded() {
+    // A runtime that predates the feature (or whose hello did not ask) never hears of it.
+    let mut rig = rig_with_cut(60);
+    rig.script.borrow_mut().features = vec!["scene.warm"];
+    rig.session.capabilities().unwrap();
+    rig.session.set_preupload(true);
+    let plans = load_ahead(&mut rig);
+    assert_eq!(rig.session.warm(&plans), 0);
+    assert!(rig.script.borrow().texture_warmed.is_empty());
+    assert_eq!(rig.session.preupload_report()["supported"], false);
+
+    // Still loading: a pre-upload never makes the runtime wait for a file.
+    let mut rig = rig_with_still_cut(60);
+    rig.session.set_preupload(true);
+    let plans = rig.state.plans_ahead(60);
+    rig.session
+        .prefetch(&rig.state, &rig.state.assets_ahead(60));
+    assert_eq!(rig.session.warm(&plans), 0, "still loading");
+    rig.script.borrow_mut().events.push_back(ready("next"));
+    rig.session.pump(Duration::ZERO);
+    assert_eq!(rig.session.warm(&plans), 1);
+}
+
+#[test]
+fn a_scene_warm_turned_off_does_not_stop_the_texture_preupload_nor_the_other_way_round() {
+    // Scene cut: only splats, so the texture side has nothing to ask for.
+    let mut rig = rig_with_scene_cut(60);
+    rig.script.borrow_mut().features = vec!["scene.warm", FEATURE_TEXTURE_PREUPLOAD];
+    rig.session.capabilities().unwrap();
+    rig.session.set_preupload(true);
+    let plans = rig.state.plans_ahead(60);
+    let ahead = rig.state.assets_ahead(60);
+    rig.session.prefetch(&rig.state, &ahead);
+    for id in ["scn", "cloud"] {
+        rig.script.borrow_mut().events.push_back(ready(id));
+        rig.session.pump(Duration::ZERO);
+    }
+    assert_eq!(rig.session.warm(&plans), 1, "the splat warm, as before");
+    assert!(rig.script.borrow().texture_warmed.is_empty());
+
+    // Still cut with the scene warm off: the textures are still asked for, and only they.
+    let mut rig = rig_with_still_cut(60);
+    rig.session.set_warm(false);
+    rig.session.set_preupload(true);
+    let plans = load_ahead(&mut rig);
+    assert_eq!(rig.session.warm(&plans), 1);
+    assert!(rig.script.borrow().warmed.is_empty());
+    assert_eq!(rig.script.borrow().texture_warmed.len(), 1);
+}
+
+#[test]
+fn a_cut_is_sent_for_textures_again_after_it_was_passed_released_or_the_context_was_lost() {
+    let mut rig = rig_with_still_cut(60);
+    rig.session.set_preupload(true);
+    let plans = load_ahead(&mut rig);
+    assert_eq!(rig.session.warm(&plans), 1);
+
+    // The playhead passed the cut and came back before it.
+    assert_eq!(rig.session.warm(&[]), 0);
+    assert_eq!(rig.session.warm(&plans), 1, "a later pass asks again");
+
+    // Its asset was released: the texture went with it.
+    rig.session.release_except(&HashSet::new());
+    let plans = load_ahead(&mut rig);
+    assert_eq!(rig.session.warm(&plans), 1);
+
+    // A lost context took every texture.
+    rig.script
+        .borrow_mut()
+        .events
+        .push_back(BackendEvent::ContextLost);
+    rig.session.pump(Duration::ZERO);
+    let plans = load_ahead(&mut rig);
+    assert_eq!(rig.session.warm(&plans), 1);
+    assert_eq!(rig.script.borrow().texture_warmed.len(), 4);
 }
 
 fn cancelled_load(id: &str) -> BackendEvent {

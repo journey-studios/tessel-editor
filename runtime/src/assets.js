@@ -437,6 +437,30 @@ export class AssetStore {
     return entry.texture;
   }
 
+  /**
+   * BL157.3: makes the retained texture of the still `id` before a frame draws it, if (and only if) it is the entry that was
+   * loaded when the upload was asked for (`serial`), it has no texture yet and the texture fits the byte budget without
+   * freeing anything. `upload(texture)` sends it to the GPU. The recency clock is not touched: a texture nobody used yet is the
+   * first the budget gives back, never one of the textures the playhead is using. Returns `uploaded`, `resident`, `budget`,
+   * `stale` (another entry holds the id now) or `missing`; the frame that draws the still finds the texture and counts a reuse.
+   */
+  preuploadStill(id, serial, upload) {
+    const entry = this.entries.get(id);
+    if (!entry || entry.kind !== 'still' || !entry.bitmap) return 'missing';
+    if (entry.serial !== serial) return 'stale';
+    if (entry.texture) return 'resident';
+    if (this.textureBytes() + rgbaBytes(entry.width, entry.height) > this.limits.imageTextureBytes) return 'budget';
+    const texture = imageTexture(entry.bitmap);
+    try {
+      upload(texture);
+    } catch (error) {
+      texture.dispose();
+      throw error;
+    }
+    entry.texture = texture;
+    return 'uploaded';
+  }
+
   /** Frees every retained image texture (retention switched off); bitmaps stay. */
   dropTextures() {
     this.entries.forEach((entry) => this.disposeTextures(entry));

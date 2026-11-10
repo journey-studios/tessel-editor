@@ -107,6 +107,11 @@ pub const RESULT_CACHE_ENV: &str = "TESSEL_VIEWPORT_RESULT_CACHE";
 /// `TESSEL_VIEWPORT_WARM=0` stops the monitor from sending `frame.warm` (BL157), whatever the runtime announces: the
 /// same build with and without the warm is how its effect is measured. Anything else leaves it on.
 pub const WARM_ENV: &str = "TESSEL_VIEWPORT_WARM";
+/// `TESSEL_VIEWPORT_PREUPLOAD=1` (BL157.3, a DIAGNOSTIC experiment, off by default): the runtime uploads the textures of the still
+/// images of the cuts a moment ahead before the frame that draws them, between frames and inside its texture budget. The same build
+/// with and without it is how the effect is measured; it is not a product setting and not reachable from the interface. The report
+/// (`render.status` -> `session.preupload`) says whether it is on, whether the runtime announced it and how many cuts were sent.
+pub const PREUPLOAD_ENV: &str = "TESSEL_VIEWPORT_PREUPLOAD";
 /// `0`, `2` or `4` MSAA samples for scene targets. Unset keeps the runtime's 4 (OPT07 measured
 /// fewer samples as a real gain on large splat scenes but a visible edge-quality trade).
 pub const SCENE_SAMPLES_ENV: &str = "TESSEL_VIEWPORT_SCENE_SAMPLES";
@@ -188,6 +193,8 @@ pub struct HostOptions {
     pub retained_bytes: Option<u64>,
     /// `Some(false)` never sends `frame.warm`; `None` keeps the default (on, for a runtime that announces it).
     pub warm: Option<bool>,
+    /// See [`PREUPLOAD_ENV`].
+    pub preupload: bool,
     /// Who reads the page's files (BL157.1); `None` is [`AssetIoMode::Sync`].
     pub asset_io: Option<AssetIoMode>,
 }
@@ -241,6 +248,7 @@ impl HostOptions {
             warm: std::env::var(WARM_ENV)
                 .is_ok_and(|value| value == "0")
                 .then_some(false),
+            preupload: std::env::var(PREUPLOAD_ENV).is_ok_and(|value| value == "1"),
             asset_io: match asset_io_from_env(std::env::var(ASSET_IO_ENV).ok().as_deref()) {
                 Ok(mode) => mode,
                 Err(warning) => {
@@ -502,6 +510,7 @@ impl ViewportHost {
                 scene_samples: options.scene_samples,
                 preview_scene_samples: options.preview_scene_samples,
                 preview_sort: options.preview_sort,
+                preupload_textures: options.preupload,
             });
         let mut session = ViewportSession::new(backend)
             .with_trace(trace)
@@ -509,6 +518,7 @@ impl ViewportHost {
         session.set_retained_assets(RETAINED_ASSETS);
         session.set_retained_bytes(options.retained_bytes.unwrap_or(RETAINED_ASSET_BYTES));
         session.set_warm(options.warm != Some(false));
+        session.set_preupload(options.preupload);
         session.trace().set_enabled(options.trace);
         let (dist, phase) = match page {
             Ok(dist) => (Some(dist), Phase::Booting(Instant::now())),

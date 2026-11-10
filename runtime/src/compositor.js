@@ -335,6 +335,15 @@ export class Compositor {
     for (const { value } of this.targets.entries.values()) value.result = null;
   }
 
+  /**
+   * Sends a texture to the GPU now instead of on the frame that first draws it (BL157.3). It draws nothing and touches no
+   * render target or canvas pixel (three.js binds it on unit 0 and unbinds it). A lost context refuses it.
+   */
+  uploadTexture(texture) {
+    if (this.gl.isContextLost()) throw new RuntimeError('context_lost', 'The graphics context is lost');
+    this.renderer.initTexture(texture);
+  }
+
   /** Sizes of what is retained now, for the frame report and the tests. */
   retained() {
     return {

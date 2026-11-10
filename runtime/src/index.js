@@ -9,6 +9,7 @@ import { AssetStore } from './assets.js';
 import { Compositor, DEFAULT_PREVIEW_SORT, describePixels } from './compositor.js';
 import { DIRECTED_SCENE_CAPABILITIES } from './directed-scene.js';
 import { refreshAfterFrame } from './overlay.js';
+import { TexturePreupload, stillsToUpload } from './preupload.js';
 import { RetentionCounters } from './retention.js';
 import { SPLAT_FORMATS } from './splat-format.js';
 import { SPARK_VERSION } from './splat-stage.js';
@@ -56,6 +57,10 @@ const FEATURES = [
 // `wantsOverlay`), never by the headless worker (same bundle, no surface): a host sends `overlay.*`
 // messages only to a runtime that says it can draw them.
 const OVERLAY_FEATURE = 'overlay.gizmo';
+// BL157.3: announced only to a host whose `hello` asked for it (`preupload_textures: true`), so a default `ready` is the one it
+// always was. A `frame.warm` that says `textures: true` then uploads the textures of the loaded still images of its plan
+// before a frame draws them (preupload.js).
+const PREUPLOAD_FEATURE = 'texture.preupload';
 
 export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
   const send = (message) => post({ v: BRIDGE_VERSION, ...message });
@@ -65,9 +70,13 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
   // quick rollback), `telemetry.presented: true` asks for a `frame.presented` message per frame.
   // A host that never sends them gets retention on and no extra messages.
   // `result_cache: false` makes every splat scene frame sort and draw again (A/B and rollback).
-  const options = { retain: true, presented: false, timing: false, gpuFinish: false, resultCache: true };
+  const options = { retain: true, presented: false, timing: false, gpuFinish: false, resultCache: true, preupload: false };
   let compositor = null;
   let latestRender = 0;
+  // BL157.3: textures to upload before their clip starts (opt-in), and the frames waiting behind the one being drawn.
+  const preupload = new TexturePreupload();
+  let framesQueued = 0;
+  let preuploadPumping = false;
   const cancelled = new Set();
   let renderQueue = Promise.resolve();
   // Durations of the page's own background work (asset loads, warms), on the page's clock, handed to the host with the next
@@ -198,6 +207,7 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       contextLosses += 1;
       // Spark's textures and the splat meshes' GPU data die with the context; both rebuild lazily.
       compositor?.dropSplatStage();
+      preupload.clear();
       // Retained textures, materials, rigs and targets belong to the lost context too; dropping
       // them now (before the restore) keeps three.js from addressing the new context with them.
       compositor?.dropRetained();
@@ -217,6 +227,9 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
     if (typeof message.retain === 'boolean') options.retain = message.retain;
     options.presented = message.telemetry?.presented === true;
     options.timing = message.telemetry?.timing === true;
+    // BL157.3 (additive): every hello says it whole; absent is off, and turning it off forgets what was queued.
+    options.preupload = message.preupload_textures === true;
+    if (!options.preupload) preupload.clear();
     // DIAGNOSTIC arm (BL157.2): wait for the GPU after each draw and report it; never without `timing`.
     options.gpuFinish = options.timing && message.telemetry?.gpu_finish === true;
     if (options.timing) {
@@ -259,7 +272,7 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
         layers: LAYERS,
         formats: FORMATS,
         max_size: active.maxSize,
-        features: overlay ? [...FEATURES, OVERLAY_FEATURE] : FEATURES,
+        features: [...FEATURES, ...(overlay ? [OVERLAY_FEATURE] : []), ...(options.preupload ? [PREUPLOAD_FEATURE] : [])],
         native_video: NATIVE_VIDEO,
         // Additive: what a `directed_scene` layer needs and how its resources are identified.
         directed_scene: DIRECTED_SCENE_CAPABILITIES,
@@ -340,6 +353,7 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
 
   const renderFrame = async (request, arrival = null) => {
     const started = performance.now();
+    framesQueued -= 1;
     if (arrival) backlog.frames -= 1;
     const { id, revision, plan, output, probes = [] } = request;
     // Additive field of bridge v1: `preview` lets a frame sequence draw its attached proxy; absent
@@ -434,6 +448,30 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
     }
   };
 
+  /**
+   * One upload of the queue (BL157.3) as a task of the page's serial queue. A frame that is waiting goes first: the upload
+   * puts itself back behind it, and after an upload the next one is queued behind whatever arrived meanwhile. A lost
+   * context, a retention switch-off or a dispose drops the queue instead of touching a context that is not the one asked.
+   */
+  const pumpPreupload = () => {
+    if (preuploadPumping || preupload.pending.length === 0) return;
+    preuploadPumping = true;
+    renderQueue = renderQueue.then(() => {
+      preuploadPumping = false;
+      if (framesQueued > 0) {
+        pumpPreupload();
+        return;
+      }
+      if (disposed || contextLost || !options.preupload || !options.retain || !compositor || compositor.gl.isContextLost()) {
+        preupload.clear();
+        return;
+      }
+      const result = preupload.step(assets, (texture) => compositor.uploadTexture(texture));
+      if (result) noteSpan({ k: 'preupload', outcome: result.outcome, ms: result.ms });
+      pumpPreupload();
+    });
+  };
+
   const handlers = {
     hello,
     'asset.load': (message) => {
@@ -451,6 +489,7 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
     },
     'frame.render': (message) => {
       latestRender = message.id;
+      framesQueued += 1;
       // One GL context: frames run strictly one after another, newest wins.
       let arrival = null;
       if (options.timing) {
@@ -462,18 +501,26 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
     // Additive (negotiated by `scene.warm`): no picture, no answer. Behind the frames in the queue, like them.
     'frame.warm': (message) => {
       const queuedAt = performance.now();
-      backlog.warms += 1;
-      renderQueue = renderQueue.then(async () => {
-        backlog.warms -= 1;
-        if (disposed || contextLost) return;
-        try {
-          const warmStarted = performance.now();
-          const started = await ensureCompositor().warmScenes({ plan: message.plan, assets });
-          noteSpan({ k: 'warm', queued_ms: warmStarted - queuedAt, ms: performance.now() - warmStarted, started });
-        } catch {
-          // Best effort: a frame that needs the scene reports what is wrong with it.
-        }
-      });
+      // `scenes: false` (BL157.3): a warm of textures only; absent is the warm of splat scenes it always was.
+      if (message.scenes !== false) {
+        backlog.warms += 1;
+        renderQueue = renderQueue.then(async () => {
+          backlog.warms -= 1;
+          if (disposed || contextLost) return;
+          try {
+            const warmStarted = performance.now();
+            const started = await ensureCompositor().warmScenes({ plan: message.plan, assets });
+            noteSpan({ k: 'warm', queued_ms: warmStarted - queuedAt, ms: performance.now() - warmStarted, started });
+          } catch {
+            // Best effort: a frame that needs the scene reports what is wrong with it.
+          }
+        });
+      }
+      // Asked for here (the serial of each entry is the one loaded now: a replacement before the upload makes it stale).
+      if (message.textures === true && options.preupload && options.retain && !disposed && !contextLost) {
+        preupload.enqueue(stillsToUpload(message.plan, assets));
+        pumpPreupload();
+      }
     },
     'frame.cancel': (message) => {
       cancelled.add(message.id);
@@ -500,6 +547,7 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
     ),
     dispose: () => {
       disposed = true;
+      preupload.clear();
       stopBeat();
       stopGlProbe();
       assets.releaseAll();
@@ -570,6 +618,17 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       return { textures: info.memory.textures, geometries: info.memory.geometries, programs: info.programs?.length ?? 0 };
     },
     idle: () => renderQueue,
+    // Holds the page's serial queue until the returned function is called (tests): whatever is queued meanwhile waits.
+    holdQueue: () => {
+      let release;
+      const gate = new Promise((resolve) => {
+        release = resolve;
+      });
+      renderQueue = renderQueue.then(() => gate);
+      return release;
+    },
+    // The texture pre-upload queue and what it did (tests and measurements).
+    preupload: () => ({ enabled: options.preupload, ...preupload.report() }),
     // Lineages whose warm sort is still running (tests).
     warming: () => compositor?.warming.size ?? 0,
     // Every SparkRenderer alive, to inject a failure into one or count them (tests and measurements).

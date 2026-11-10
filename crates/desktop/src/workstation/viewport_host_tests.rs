@@ -1091,6 +1091,35 @@ fn the_handshake_asks_for_nothing_extra_unless_the_host_opted_in() {
     assert!(sent(&mut host)[0].get("telemetry").is_none());
 }
 
+#[test]
+fn the_texture_preupload_is_reported_and_the_hello_carries_it_only_when_asked() {
+    let state = empty_state();
+    let mut plain = ViewportHost::with_options(Ok(page("preupload-off")), HostOptions::default());
+    from_page(&mut plain, &state, json!({"type":"page.ready"}));
+    assert!(sent(&mut plain)[0].get("preupload_textures").is_none());
+    let off = plain.report()["session"]["preupload"].clone();
+    assert_eq!(off["enabled"], false);
+    assert_eq!(off["sent"], 0);
+
+    let options = HostOptions {
+        preupload: true,
+        ..HostOptions::default()
+    };
+    let mut host = ViewportHost::with_options(Ok(page("preupload-on")), options);
+    from_page(&mut host, &state, json!({"type":"page.ready"}));
+    assert_eq!(
+        sent(&mut host)[0],
+        json!({"v":1,"type":"hello","host":"tessel-editor","preupload_textures":true}),
+        "the flag is the only difference from the hello it always sent"
+    );
+    let on = host.report()["session"]["preupload"].clone();
+    assert_eq!(on["enabled"], true);
+    assert_eq!(
+        on["supported"], false,
+        "until the runtime announces `texture.preupload` in its `ready`"
+    );
+}
+
 fn frame_done_with_source(id: u64, revision: u64, source: Value) -> Value {
     let mut done = frame_done(id, revision);
     done["source"] = source;

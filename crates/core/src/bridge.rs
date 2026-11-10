@@ -57,6 +57,10 @@ pub struct HelloOptions {
     /// order of the last finished sort and sorts for the camera behind the frame, `"exact"` waits for
     /// the sort of the frame's own camera. `None` is the runtime's default (`latest`).
     pub preview_sort: Option<PreviewSort>,
+    /// DIAGNOSTIC (BL157.3), off by default: lets the runtime upload the textures of still images ahead of the frame that
+    /// draws them when a `frame.warm` with `textures: true` asks (`FEATURE_TEXTURE_PREUPLOAD`). Sent only when on, so a
+    /// default `hello` is byte for byte the one it always was.
+    pub preupload_textures: bool,
 }
 
 /// See [`HelloOptions::preview_sort`].
@@ -118,6 +122,9 @@ pub fn hello_with(host: &str, options: HelloOptions) -> Value {
     }
     if let Some(sort) = options.preview_sort {
         message["preview_sort"] = json!(sort.as_str());
+    }
+    if options.preupload_textures {
+        message["preupload_textures"] = json!(true);
     }
     message
 }
@@ -223,6 +230,12 @@ pub fn frame_render(request: &FrameRequest) -> Value {
 /// prepares. No picture and no answer.
 pub fn frame_warm(plan: &RenderPlan) -> Value {
     json!({ "v": BRIDGE_VERSION, "type": "frame.warm", "plan": plan.to_json() })
+}
+
+/// `texture.preupload` (additive, BL157.3): the same `frame.warm`, for the textures of the plan's still images only (`scenes: false`
+/// keeps the runtime from preparing its splat scenes, which a host that turned the scene warm off did not ask for).
+pub fn frame_warm_textures(plan: &RenderPlan) -> Value {
+    json!({ "v": BRIDGE_VERSION, "type": "frame.warm", "scenes": false, "textures": true, "plan": plan.to_json() })
 }
 
 pub fn frame_cancel(id: RequestId) -> Value {
@@ -483,6 +496,10 @@ impl<T: Transport> RenderBackend for BridgeBackend<T> {
         self.transport.send(&frame_warm(plan))
     }
 
+    fn warm_textures(&mut self, plan: &RenderPlan) -> Result<(), BackendError> {
+        self.transport.send(&frame_warm_textures(plan))
+    }
+
     fn submit(&mut self, request: &FrameRequest) -> Result<(), BackendError> {
         let started = Instant::now();
         let message = frame_render(request);
@@ -731,9 +748,11 @@ mod tests {
                 scene_samples: Some(2),
                 preview_scene_samples: Some(0),
                 preview_sort: Some(PreviewSort::Exact),
+                preupload_textures: true,
             },
         );
         assert_eq!(with["retain"], false);
+        assert_eq!(with["preupload_textures"], true);
         assert_eq!(with["preview_scene_samples"].as_u64(), Some(0));
         assert_eq!(with["preview_sort"], "exact");
         assert_eq!(with["telemetry"]["presented"], true);
@@ -769,6 +788,19 @@ mod tests {
         let plain = hello_with("tessel-editor", HelloOptions::default());
         assert!(plain.get("preview_scene_samples").is_none());
         assert!(plain.get("preview_sort").is_none());
+        // The texture pre-upload (BL157.3) is not in the message unless the host asks for it, and says only itself.
+        assert!(plain.get("preupload_textures").is_none());
+        let preupload = hello_with(
+            "tessel-editor",
+            HelloOptions {
+                preupload_textures: true,
+                ..HelloOptions::default()
+            },
+        );
+        assert_eq!(
+            preupload,
+            json!({"v":1,"type":"hello","host":"tessel-editor","preupload_textures":true})
+        );
     }
 
     #[test]
@@ -874,6 +906,19 @@ mod tests {
         backend.warm_scene(&plan).unwrap();
         assert_eq!(backend.transport_mut().0.len(), 1);
         assert_eq!(backend.transport_mut().0[0]["type"], "frame.warm");
+        // The warm of the splat scenes is the message it always was: nothing says `textures` or `scenes`.
+        assert!(message.get("textures").is_none() && message.get("scenes").is_none());
+
+        // BL157.3: the same message for the textures only; it does not ask for the splat warm.
+        let textures = frame_warm_textures(&plan);
+        assert_eq!(textures["type"], "frame.warm");
+        assert_eq!(textures["plan"], plan.to_json());
+        assert_eq!(
+            (textures["textures"].as_bool(), textures["scenes"].as_bool()),
+            (Some(true), Some(false))
+        );
+        backend.warm_textures(&plan).unwrap();
+        assert_eq!(backend.transport_mut().0[1], textures);
     }
 
     #[test]
