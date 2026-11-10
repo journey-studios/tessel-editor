@@ -410,7 +410,10 @@ impl Workstation {
                     return Err(unknown_action(
                         &clip_node_id(clip),
                         &format!("reset:{id}"),
-                        &[],
+                        &clip_actions(&found.clip, view.edit_frames)
+                            .iter()
+                            .filter_map(|action| action["action"].as_str().map(str::to_string))
+                            .collect::<Vec<_>>(),
                     ));
                 }
                 control.reset_op(&found.clip).into_iter().collect()

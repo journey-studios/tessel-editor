@@ -516,3 +516,5 @@ Código `1ad715901df6edb14503ea081ae407c18bd0e94d` validado: budget só para FX 
 ### P2 — revisão independente e correções do inspector
 
 BL082.21–.23: probe consulta a camada inteira mesmo com filtro de resposta; informa o valor quantizado julgado e o solicitado. JSONL recebe reset.op por campo (cor/ponto preservam irmãos, tempo usa set_field), equivalente à ação da janela. Oferta e predicado de reset vêm do core; o resumo do fade não promete keys ainda ausentes. Reforçada a conferência textual do corpus (BL082.25), sem mudar os casos/pixels nem os blockers P0. Os limites cruzados dos ranges continuam explícitos (BL082.24). Evidências atuais na atualização de [F057](fx-inspector.md); não herdar automaticamente os PASS de f8c4a7e para o código novo.
+
+Fechamento P2: código5eb577b validado com workspace2060/0/12 e janela153/153. Resíduo posterior altera somente details.actions da recusa resetsemdefault, validado por GPUI1/1, fmt/check/clippy/build; não reatribuir a suíte/prova anterior a uma nova execução. [Detalhes e limites](fx-inspector.md#fechamento-da-validação-da-correção-p2).

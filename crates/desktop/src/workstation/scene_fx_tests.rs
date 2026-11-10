@@ -2203,12 +2203,22 @@ fn field_reset_matches_the_inspector_jsonl_op_and_reset_without_default_is_unkno
     }
     let before = node(&view, cx, CLIP)["state"].clone();
     let depth = undo_depth(&view, cx);
+    let error = invoke(&view, cx, CLIP, "reset:start_frame").unwrap_err();
+    assert_eq!(error.code, "unknown_action");
+    let actions = error.details.unwrap()["actions"].clone();
+    let advertised = node(&view, cx, CLIP)["actions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|action| action["action"].clone())
+        .collect::<Vec<_>>();
     assert_eq!(
-        invoke(&view, cx, CLIP, "reset:start_frame")
-            .unwrap_err()
-            .code,
-        "unknown_action"
+        actions,
+        json!(advertised),
+        "unknown reset advertises the real actions"
     );
+    let fallback = invoke(&view, cx, CLIP, "no-such-action").unwrap_err();
+    assert_eq!(fallback.details.unwrap()["actions"], actions);
     assert_eq!(node(&view, cx, CLIP)["state"], before);
     assert_eq!(undo_depth(&view, cx), depth);
 }
