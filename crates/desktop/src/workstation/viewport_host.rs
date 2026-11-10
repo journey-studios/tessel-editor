@@ -1611,7 +1611,10 @@ impl ProtocolHandle {
         match resolved {
             Resolved::Answer(served) => respond(to_response(served)),
             Resolved::File { file, range } => match (&self.pool, self.mode) {
-                (Some(pool), AssetIoMode::Async) => {
+                // Only project assets go to the pool: the page's own bundle (`/`, `/index.html`, `/runtime.js`) is read
+                // here, as it always was, so replacing the project (which makes queued reads answer `410`) can never
+                // refuse the runtime its own code.
+                (Some(pool), AssetIoMode::Async) if path == "/asset" => {
                     outcome = self.submit(pool, &facts, ReadJob { file, range }, respond);
                 }
                 _ => {

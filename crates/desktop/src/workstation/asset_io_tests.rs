@@ -627,6 +627,41 @@ mod held_read {
     }
 
     #[test]
+    fn replacing_the_project_never_refuses_the_page_its_own_bundle() {
+        let mut host = ViewportHost::with_options(
+            Ok(page("io-bundle")),
+            HostOptions {
+                asset_io: Some(AssetIoMode::Async),
+                ..HostOptions::default()
+            },
+        );
+        let handle = host.protocol_handle();
+        host.reset_project();
+        for uri in [
+            "tessel://localhost/runtime.js",
+            "tessel://localhost/index.html",
+        ] {
+            let (tx, rx) = mpsc::channel();
+            handle.handle(
+                &Request::builder().uri(uri).body(Vec::new()).unwrap(),
+                Box::new(move |response| {
+                    let _ = tx.send(response.status().as_u16());
+                }),
+            );
+            assert_eq!(
+                rx.try_recv(),
+                Ok(200),
+                "{uri} is answered on the calling thread, after the change as before it"
+            );
+        }
+        assert_eq!(
+            host.report()["asset_io"]["pool"]["submitted"],
+            0,
+            "the bundle never went through the pool"
+        );
+    }
+
+    #[test]
     fn replacing_the_project_through_the_host_answers_reads_gone() {
         host_change_answers_reads_gone("io-host-reset", |host| host.reset_project());
     }
