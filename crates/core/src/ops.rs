@@ -21,7 +21,7 @@ use crate::scene_interaction::{
     CancelReason, FrameAt, FxGestureCommand, GestureCommand, GizmoCommand, Point, PointerCommand,
     SelectMode,
 };
-use crate::scene_project::{CameraAt, SceneCommand, SceneSource};
+use crate::scene_project::{CameraAt, FxProbe, SceneCommand, SceneSource};
 use crate::state::camera_edit::CameraKeysCommand;
 use crate::state::timeline::{SequenceSettings, TrackKind};
 use crate::state::{Command, CommandError, EditorState, ProjectSettings, Raw};
@@ -670,6 +670,20 @@ fn scene_command(op: &str, request: &Value) -> Result<SceneCommand, CommandError
             gesture: optional_string(request, "gesture")?,
         },
         "scene.fx.catalog" => SceneCommand::FxCatalog,
+        "scene.fx.inspect" => SceneCommand::FxInspect {
+            scene: scene()?,
+            clip: optional_string(request, "clip")?,
+            gesture: optional_string(request, "gesture")?,
+            locale: match optional_string(request, "locale")? {
+                None => crate::directed_scene::fx::Locale::default(),
+                Some(tag) => crate::directed_scene::fx::Locale::parse(&tag)
+                    .ok_or_else(|| invalid("`locale` is `pt-br`, `en` or `es`"))?,
+            },
+            probe: match request.get("probe") {
+                None | Some(Value::Null) => None,
+                Some(probe) => Some(fx_probe(probe)?),
+            },
+        },
         "scene.fx.frame" => SceneCommand::FxFrame {
             scene: scene()?,
             at: frame_at(request)?,
@@ -898,6 +912,22 @@ fn cancel_reason(request: &Value) -> Result<CancelReason, CommandError> {
             format!("`{raw}` is not a cancel reason"),
             json!({ "options": ["escape", "blur", "pointer_cancel", "hidden", "unavailable", "api"] }),
         )
+    })
+}
+
+/// The `probe` of `scene.fx.inspect`: `{ clip, field, value, quantize? }`. Shape only.
+fn fx_probe(raw: &Value) -> Result<FxProbe, CommandError> {
+    if !raw.is_object() {
+        return Err(invalid("`probe` must be { clip, field, value, quantize? }"));
+    }
+    Ok(FxProbe {
+        clip: string(raw, "clip")?.to_string(),
+        field: string(raw, "field")?.to_string(),
+        value: raw
+            .get("value")
+            .and_then(Value::as_f64)
+            .ok_or_else(|| invalid("`probe.value` must be a number"))?,
+        quantize: optional_bool(raw, "quantize")?.unwrap_or(false),
     })
 }
 

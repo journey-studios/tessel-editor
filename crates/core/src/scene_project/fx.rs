@@ -20,6 +20,7 @@ pub(super) fn fx_scope_json() -> Value {
         "catalog_version": FX_CATALOG_VERSION,
         "domain": "bundle.fx of the directed scene (render-bundle document key); one model, no copy in the sequence timeline",
         "scope": ["output"],
+        "inspector": "scene.fx.inspect: fields, ranges, defaults, labels (pt-br, en, es), applicability and the effects that can be added, from the catalog and the clip state",
         "evaluation": "deterministic per edit frame; envelope sampled at the middle of the frame",
         "pass_budget": {
             "max_passes": fx::FX_PASS_BUDGET,

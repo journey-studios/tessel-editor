@@ -1,11 +1,11 @@
-# F016 — Adicionar e processar efeitos (primeira fatia: vinheta, escopo de saída)
+# F016 — Adicionar e processar efeitos (vinheta e fade, escopo de saída)
 
 ## Status
 
 **Catálogo parcial; cobertura da vinheta por superfície na tabela P0+P1 abaixo.** Uma fatia completa de ponta a ponta: o efeito **vinheta** com escopo **saída** (a imagem
 final da cena dirigida), criado, editado e removido pela biblioteca, pelo JSONL sem janela e pela janela;
 avaliado por quadro no core; persistido; desfeito em uma entrada; desenhado pelo monitor e pelo export.
-Não é a migração do motor de efeitos: o catálogo tem **um** efeito e o piloto tem 59 shaders. O restante
+Não é a migração do motor de efeitos: o catálogo tem **dois** efeitos (vinheta e, desde P2, `fade`) e o piloto tem 59 shaders. O restante
 (catálogo, transições, edição de shots) continua pendente em BL028/BL036/BL082 e **não** há placeholder
 habilitado para ele.
 
@@ -105,6 +105,9 @@ ordena `intensity` na frente), não por causa do catálogo.
 | | `color` | cor `{r,g,b}` em luz linear | 0–1 | preto |
 | | `roundness` | número | 0–1 | 0,6 |
 | | `center` | ponto (`x` à direita, `y` **para baixo**) | 0–1 | (0,5; 0,5) |
+| `fade` | `color` | cor `{r,g,b}` em luz linear | 0–1 | preto |
+| | `amount` | número | 0–1 | 1 |
+| | `intensity` | número | 0–1 | 1 |
 
 As faixas, os tipos e a ordem são **testados automaticamente** contra o runtime: `runtime/test/fixtures/fx-catalog.json`
 é a projeção do catálogo Rust (`the_runtime_contract_fixture_is_the_catalog` compara e, com
@@ -390,12 +393,53 @@ abaixo marcados "head anterior" são os da entrega 32860ec e **não** foram repe
   (`flow.export_scene`) decodificados contra o modelo Python. A captura nativa
   (`--shot`, `screencapture -l`) é só observação: mostra as bordas do monitor escurecidas.
 
+## P2: inspector neutro e segundo look (`fade`)
+
+Branch `t3/fx-inspector-fade-p2` (BL004, BL014, BL029, BL040, BL082.1; plano em
+[pilot-parity-execution-plan.md](../migration/pilot-parity-execution-plan.md)). O contrato do inspector, do
+`scene.fx.inspect` e do `fade` está em [F057](fx-inspector.md); aqui ficam o que muda em F016 e as provas.
+
+- **Catálogo**: `CATALOG = [vignette, fade]`; cada efeito e parâmetro tem rótulos pt-br/en/es. O JSON de
+  `scene.fx.catalog` traz `label`/`summary` por idioma.
+- **Fade** (`look`, saída): `mix(origem, color, amount × intensity × weight)` em luz linear, `amount` 0 e
+  `intensity` 0 são a identidade exata (bytes iguais), determinístico. A janela e o JSONL o editam pelos mesmos
+  ops e gestos da vinheta; o orçamento de 8 passes conta os dois; a composição segue a ordem das trilhas e é
+  discriminante (fade→vinheta ≠ vinheta→fade nos pixels).
+- **Janela**: a seção "Efeitos" é pintada do modelo do core; nenhuma lista de campos, faixas, passos ou padrões
+  vive na UI. A vinheta foi migrada para ele preservando IDs semânticos (`intensity`, `center_x`…), gesto,
+  preview, orçamento, inserção por tempo, teclado, undo e quantização.
+- **Proveniência do fade**: `scripts/pilot-fade-corpus.py` (independente de `pilot-fx-corpus.py` e do
+  `reference.rs`) gera `docs/migration/fixtures/pilot-fx/fade-cases.json` e `fade-manifest.json` (10 casos:
+  janelas/envelope/ocultos/ordem e 7 de pixels, 2 deles identidade, 2 de composição em ordens opostas). Os
+  bloqueios `ORIGIN_GOLDEN_NOT_COMPARABLE` e `ORIGIN_NOT_EXECUTED` permanecem; a diferença documentada
+  `ZERO_WEIGHT_IS_BYTE_IDENTITY` está no manifesto. `verify --origin` conferiu os blobs.
+- **Recusas** (sem mudança de contrato): `amount`/`intensity` fora de 0–1 e cor fora de 0–1 são
+  `param_out_of_range` atômicos; efeito fora do catálogo continua `unknown_effect`.
+
+### Provas do P2 (macOS, SwiftShader, sem GPU real)
+
+| O quê | Onde |
+|---|---|
+| Lib: ciclo de vida, recusa atômica, plano, orçamento (9 passes com fade), gesto, persistência, pixels contra fórmula transcrita no teste, ordem, preview == commit, cancelar/undo = baseline | `crates/core/tests/scene_fx_fade.rs` (15) |
+| Inspector: cobertura dos IDs oferecidos em 3 idiomas, padrão/`at_default`, escopos, `probe`, candidato do gesto e recusa, `reset_ops` | `scene_fx_fade.rs`, `scene_edit::fx_inspector` (9 unidades) |
+| Processo `tessel-headless` real | `scene_fx_fade.rs::the_real_headless_process_…` |
+| Corpus do fade contra o core | `crates/core/tests/pilot_fade_corpus.rs` (4, com controle negativo) |
+| Referência de pixels | `directed_scene::fx::reference` (9 unidades, fade incluso) |
+| GPUI: nós, sliders reais, reset, botão, ordem | `workstation/scene_fx_tests.rs` (38 `scene_fx`) |
+| Runtime/Chrome: fade, identidade, ordem, retenção, ping-pong | `runtime/test/directed-scene-fade-browser.test.mjs` (4), `directed-scene-fx-browser.test.mjs`, `output-fx.test.mjs` |
+| Pixels no monitor/runtime: fade contra fórmula local, composição nas duas ordens, preview == commit | `crates/render/tests/scene_fx.rs` (5) |
+| Export decodificado: fade == fórmula do piloto sobre o baseline decodificado, fora do clipe == baseline, undo | `crates/render/tests/scene_fx_export.rs` (2) |
+| Janela real (só `op`/`get`/`set`/`invoke`) | `scripts/scene-fx-ui-proof.py` 153/153; `fx-history-smoke-proof.py` 42/42 |
+
+A prova da janela achou um defeito real no reset (um op por componente de cor/ponto, o último apagava os
+outros); corrigido em `reset_ops` e coberto por teste de unidade e de GPUI.
+
 ## Limites e gaps (todos em [backlog](../backlog.md) BL028/BL036/BL082)
 
 - Histórico: a correção R1 (BL082.7–BL082.15) ficou sem compilar por falta de disco; **foi compilada e testada no branch P0+P1** (gates no backlog BL082.17).
 - A medição de custo é SwiftShader (comparação antes/depois); a GPU nativa não foi medida.
 
-- Só `vignette`. Os outros efeitos do piloto (59 shaders) **não** foram portados; cada efeito novo é uma entrada no
+- Só `vignette` e `fade` (2 de 59). Os outros efeitos do piloto **não** foram portados; cada efeito novo é uma entrada no
   catálogo, um shader no runtime e um teste de pixel.
 - Só escopo `output`. `shot`/`node`, chaves (`keys`, animação de parâmetros) e `seed` (lido, sem uso) são recusados.
 - Sem transições: `transitions` é recusado se não vazio. **Contrato de extensão** (sem controle habilitado): uma
@@ -468,3 +512,9 @@ Código validado `f5f6d1deb6d69a7d925bf5d747a76ccf0a6b6a59`: mudar o painel de Y
 ## Resíduos da revisão após o merge da PR37
 
 Código `1ad715901df6edb14503ea081ae407c18bd0e94d` validado: budget só para FX live e cancelamento de Change inválido respeita id substituto. Core19/19, GPUI32/32, workspace1885/0/12 e janela116/116; fmt/check/clippy/build limpos. [Relatório e comentários tratados](../migration/pr37-review-followup-results.md). Os gates anteriores permanecem históricos; BL043 e gaps P0 mantidos.
+
+### P2 — revisão independente e correções do inspector
+
+BL082.21–.23: probe consulta a camada inteira mesmo com filtro de resposta; informa o valor quantizado julgado e o solicitado. JSONL recebe reset.op por campo (cor/ponto preservam irmãos, tempo usa set_field), equivalente à ação da janela. Oferta e predicado de reset vêm do core; o resumo do fade não promete keys ainda ausentes. Reforçada a conferência textual do corpus (BL082.25), sem mudar os casos/pixels nem os blockers P0. Os limites cruzados dos ranges continuam explícitos (BL082.24). Evidências atuais na atualização de [F057](fx-inspector.md); não herdar automaticamente os PASS de f8c4a7e para o código novo.
+
+Fechamento P2: código5eb577b validado com workspace2060/0/12 e janela153/153. Resíduo posterior altera somente details.actions da recusa resetsemdefault, validado por GPUI1/1, fmt/check/clippy/build; não reatribuir a suíte/prova anterior a uma nova execução. [Detalhes e limites](fx-inspector.md#fechamento-da-validação-da-correção-p2).

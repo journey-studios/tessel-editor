@@ -268,3 +268,100 @@ fn an_export_carries_the_vignette_and_matches_the_reference_over_the_decoded_bas
     let (_, restored) = session.export("base2.mp4", from, frames);
     assert_eq!(restored, base_hashes, "undo restores the baseline pictures");
 }
+
+fn lin(encoded: f64) -> f64 {
+    if encoded <= 0.04045 {
+        encoded / 12.92
+    } else {
+        ((encoded + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+fn enc(linear: f64) -> f64 {
+    let l = linear.clamp(0.0, 1.0);
+    if l <= 0.0031308 {
+        l * 12.92
+    } else {
+        1.055 * l.powf(1.0 / 2.4) - 0.055
+    }
+}
+
+#[test]
+fn an_export_carries_the_fade_and_matches_the_pilot_formula_over_the_decoded_baseline() {
+    let Some(mut session) = session("fade") else {
+        return;
+    };
+    // Same window as the vignette: 44..52 straddles the end of the clip (frames 0..48).
+    let (from, frames) = (44, 8);
+    let (base_mp4, base_hashes) = session.export("base.mp4", from, frames);
+
+    let edited = session.ok(json!({"op":"scene.fx.edit","scene":"street","ops":[
+        {"op":"add_clip","effect":"fade","start_frame":0,"duration_frames":48,"id":"f1",
+         "params":{"color":{"r":1.0,"g":1.0,"b":1.0},"amount":0.5}}]}));
+    assert_eq!(edited["changed"], true);
+    let (fx_mp4, fx_hashes) = session.export("fx.mp4", from, frames);
+    for index in 0..frames as usize {
+        let edit_frame = from + index as i64;
+        if edit_frame < 48 {
+            assert_ne!(
+                fx_hashes[index], base_hashes[index],
+                "frame {edit_frame} is inside the clip"
+            );
+        } else {
+            assert_eq!(
+                fx_hashes[index], base_hashes[index],
+                "frame {edit_frame} is outside the clip"
+            );
+        }
+        assert_eq!(
+            fx_hashes[index],
+            session.rendered_hash(edit_frame),
+            "export frame {index} is not what scene.render draws for edit frame {edit_frame}"
+        );
+    }
+
+    // Pixels through the codec: the pilot's fade written out here, over the decoded baseline.
+    let base = decode_frames(&base_mp4, WIDTH, HEIGHT);
+    let shaded = decode_frames(&fx_mp4, WIDTH, HEIGHT);
+    assert_eq!(
+        (base.len(), shaded.len()),
+        (frames as usize, frames as usize)
+    );
+    let (mut worst, mut strongest_change) = (0, 0);
+    for index in 0..frames as usize {
+        let edit_frame = from + index as i64;
+        let weight = if edit_frame < 48 { 0.5 } else { 0.0 };
+        for (x, y) in grid() {
+            let before = rgb(&base[index], x, y);
+            let after = rgb(&shaded[index], x, y);
+            for channel in 0..3 {
+                let source = lin(before[channel] as f64 / 255.0);
+                let expected = (enc(source + (1.0 - source) * weight) * 255.0).round() as i32;
+                let delta = (after[channel] - expected).abs();
+                worst = worst.max(delta);
+                assert!(
+                    delta <= CODEC_TOLERANCE,
+                    "edit frame {edit_frame} at ({x},{y}): export {after:?}, formula {expected} on channel {channel} (baseline {before:?})"
+                );
+                strongest_change = strongest_change.max((after[channel] - before[channel]).abs());
+            }
+        }
+    }
+    eprintln!(
+        "EVIDENCE fade export: worst delta to the formula {worst}, strongest change from the baseline {strongest_change}"
+    );
+    assert!(
+        strongest_change >= 25,
+        "the comparison must discriminate: at most {strongest_change}"
+    );
+
+    // Undo restores the baseline export; nothing became a timeline clip.
+    assert_eq!(
+        session.state.timeline.clips.len(),
+        0,
+        "never a timeline clip"
+    );
+    session.ok(json!({"op":"history.undo"}));
+    let (_, restored) = session.export("base2.mp4", from, frames);
+    assert_eq!(restored, base_hashes, "undo restores the baseline pictures");
+}

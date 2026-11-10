@@ -23,6 +23,10 @@ What it checks, in order:
   * a refused value (`intensity 2`) is the typed `param_out_of_range`, shown in `scene.panel` as the
     notice, and changes neither the document, the picture nor the history;
   * undo/redo (`op history.undo|redo`) step through the single entries (one `set` is one entry);
+  * `invoke scene.fx add:fade` adds the second look through the SAME inspector model: fields from the catalog,
+    pixels equal to an independent Python fade (white 0.5, amount 0 and intensity 0 are the baseline's
+    hash), a gesture previews what it commits, reset is one entry, and a vignette+fade stack equals the
+    Python composition in track order;
   * `project.save` + `project.open` bring the clip back with its values (persistence in the window);
   * `flow.export_scene` (dialog) writes an MP4 whose decoded frames match the Python vignette over
     the decoded baseline export, inside the clip, and are the baseline's outside it.
@@ -123,6 +127,17 @@ def vignette(rgb, x, y, width, height, amount, **params):
     for source, colour in zip(rgb, p["color"]):
         lin = srgb_to_linear(source / 255.0)
         out.append(255.0 * linear_to_srgb(lin + (colour - lin) * weight))
+    return out
+
+
+def fade(rgb, colour, weight):
+    """The pilot's fade, uniform on the frame: mix(source, colour, weight) in linear light."""
+    if weight <= 0:
+        return list(rgb)
+    out = []
+    for source, target in zip(rgb, colour):
+        lin = srgb_to_linear(source / 255.0)
+        out.append(255.0 * linear_to_srgb(lin + (target - lin) * weight))
     return out
 
 
@@ -691,6 +706,91 @@ def run(args, surfaces):
         check("a hidden clip draws the baseline", win.repaint(FRAME) == monitor_baseline)
         check("invoke toggle_hidden again", win.invoke("scene.fx.clip:fx-1", "toggle_hidden").get("ok"))
         check("shown again, the picture is back", win.repaint(FRAME) == moved["hash"])
+
+        # ---- the second look: a fade, listed by the same inspector model, drawn by the same monitor ----
+        # The vignette (fx-1) is hidden first so the fade is proved alone; it is shown again for the stack.
+        before_ids = set((win.node("scene.fx") or {}).get("children", []))
+        depth = win.undo_depth()
+        check("hide the vignette to prove the fade alone", win.set("scene.fx.clip:fx-1", "hidden", True).get("ok"))
+        added = win.invoke("scene.fx", "add:fade")
+        check("invoke scene.fx add:fade", added.get("ok") and added["data"].get("changed") is True, added)
+        new_ids = [c for c in (win.node("scene.fx") or {}).get("children", []) if c not in before_ids and c.startswith("scene.fx.clip:")]
+        check("one new clip node for the fade", len(new_ids) == 1, new_ids)
+        fade_node = new_ids[0] if new_ids else "scene.fx.clip:fx-fade"
+        fade_state = (win.node(fade_node) or {}).get("state", {})
+        check("the fade node is the common model: effect fade, defaults amount 1, black, intensity 1",
+              fade_state.get("effect") == "fade" and win.field(fade_node, "amount") == 1.0 and win.field(fade_node, "intensity") == 1.0
+              and fade_state.get("params", {}).get("color") == {"r": 0.0, "g": 0.0, "b": 0.0}, fade_state)
+        fields = [f["field"] for f in (win.node(fade_node) or {}).get("fields", [])]
+        check("the inspector lists the fade fields from the catalog, intensity first, timing last",
+              fields[:5] == ["intensity", "color_r", "color_g", "color_b", "amount"] and fields[5:9] == ["start_frame", "duration_frames", "fade_in_frames", "fade_out_frames"], fields)
+        reset_action = next((a for a in (win.node(fade_node) or {}).get("actions", []) if a["action"] == "reset"), {})
+        check("a fade at its defaults has a disabled reset with a reason", reset_action.get("enabled") is False and bool(reset_action.get("disabled_reason")), reset_action)
+        for name, value in (("color_r", 1.0), ("color_g", 1.0), ("color_b", 1.0), ("amount", 0.5)):
+            check(f"set {name} {value}", win.set(fade_node, name, value).get("ok"))
+        fade_hash = win.repaint(FRAME)
+        faded = win.render(FRAME, points)
+        want_fade = [fade(p[:3], (1.0, 1.0, 1.0), 0.5) for p in baseline_probes]
+        delta = worst(faded["probes"], want_fade)
+        check(f"fade to white at 0.5: every probe equals the Python fade of the baseline (worst {delta:.1f})", delta <= TOLERANCE, delta)
+        check("the fade really changed the picture", worst(faded["probes"], baseline_probes) >= 25)
+        check("the monitor's picture is the render's picture", fade_hash == faded["hash"], f"{fade_hash} vs {faded['hash']}")
+        check("set amount 0", win.set(fade_node, "amount", 0.0).get("ok"))
+        check("fade amount 0 is the baseline's very pixels", win.repaint(FRAME) == monitor_baseline)
+        check("set amount 0.5 again, intensity 0", win.set(fade_node, "amount", 0.5).get("ok") and win.set(fade_node, "intensity", 0.0).get("ok"))
+        check("fade intensity 0 is the baseline's very pixels", win.repaint(FRAME) == monitor_baseline)
+        check("set intensity 1", win.set(fade_node, "intensity", 1.0).get("ok"))
+
+        # preview == commit for the fade, by the core's gesture
+        ok, began = win.op({"op": "scene.fx.gesture.begin", "scene": "proof", "clip": fade_node.split(":", 1)[1]})
+        gesture = began.get("gesture") if ok else None
+        ok, body = win.op({"op": "scene.fx.gesture.update", "gesture": gesture,
+                           "ops": [{"op": "set_param", "clip": fade_node.split(":", 1)[1], "param": "amount", "value": 0.25}]})
+        check("fade gesture update", ok, body)
+        candidate_hash = win.repaint(FRAME)
+        check("the preview draws the candidate, not the document", candidate_hash not in (fade_hash, monitor_baseline))
+        ok, body = win.op({"op": "scene.fx.gesture.commit", "gesture": gesture})
+        check("fade gesture commit", ok, body)
+        committed_hash = win.repaint(FRAME)
+        committed = win.render(FRAME, points)
+        want_commit = [fade(p[:3], (1.0, 1.0, 1.0), 0.25) for p in baseline_probes]
+        check("fade: the committed picture is the picture the preview drew", committed_hash == candidate_hash == committed["hash"])
+        delta = worst(committed["probes"], want_commit)
+        check(f"fade: the committed gesture equals the Python fade (worst {delta:.1f})", delta <= TOLERANCE, delta)
+        ok, body = win.op({"op": "history.undo"})
+        check("fade: ONE undo restores the amount and the pixels", ok and win.field(fade_node, "amount") == 0.5 and win.repaint(FRAME) == fade_hash, body)
+        ok, body = win.op({"op": "history.redo"})
+        check("fade: redo restores the commit", ok and win.field(fade_node, "amount") == 0.25 and win.repaint(FRAME) == committed_hash, body)
+
+        # reset: one action, one entry, back to the defaults, drawn as such
+        before_reset = win.undo_depth()
+        check("invoke reset on the fade", win.invoke(fade_node, "reset").get("ok"))
+        check("reset is one undo entry", win.undo_depth() == before_reset + 1, (before_reset, win.undo_depth()))
+        check("reset brings amount 1 and black back", win.field(fade_node, "amount") == 1.0 and win.field(fade_node, "color_r") == 0.0)
+        black_probes = win.render(FRAME, points)["probes"]
+        want_black = [fade(p[:3], (0.0, 0.0, 0.0), 1.0) for p in baseline_probes]
+        check("a default fade is a full black frame", worst(black_probes, want_black) <= TOLERANCE)
+
+        # stack: the vignette shown again, drawn BEFORE the fade (track order), against the Python composition
+        check("show the vignette again", win.set("scene.fx.clip:fx-1", "hidden", False).get("ok"))
+        check("set the fade to white 0.5 for the stack", all(win.set(fade_node, n, v).get("ok") for n, v in (("color_r", 1.0), ("color_g", 1.0), ("color_b", 1.0), ("amount", 0.5))))
+        stacked = win.render(FRAME, points)
+        want_stack = [fade(vignette(p[:3], x, y, WIDTH, HEIGHT, 1.0, center=(1.0, 1.0)), (1.0, 1.0, 1.0), 0.5) for p, (x, y) in zip(baseline_probes, points)]
+        delta = worst(stacked["probes"], want_stack)
+        check(f"vignette then fade equals the Python composition in that order (worst {delta:.1f})", delta <= TOLERANCE * 2, delta)
+        check("the stacked monitor is the stacked render", win.repaint(FRAME) == stacked["hash"])
+        ok, plan = win.op({"op": "scene.plan", "scene": "proof", "frame": FRAME})
+        check("the plan lists the vignette first and the fade second", ok and [x["effect"] for x in plan["plan"].get("fx", [])] == ["vignette", "fade"], plan.get("plan", {}).get("fx") if ok else plan)
+
+        # the read-only inspector query through the window's executor (no fake headless claim)
+        ok, inspected = win.op({"op": "scene.fx.inspect", "scene": "proof", "locale": "en"})
+        labels = {c["clip"]: c["effect_label"] for c in inspected.get("clips", [])} if ok else {}
+        check("scene.fx.inspect answers in the window with the English labels", ok and labels.get(fade_node.split(":", 1)[1]) == "Fade", inspected if not ok else labels)
+
+        # clean up: the fade goes, the picture is the vignette's again
+        ok, body = win.op({"op": "scene.fx.edit", "scene": "proof", "ops": [{"op": "remove_clip", "clip": fade_node.split(":", 1)[1]}]})
+        check("remove the fade", ok, body)
+        check("without the fade the picture is the centred-vignette picture again", win.repaint(FRAME) == moved["hash"])
 
         # ---- persistence: save and reopen ----
         document = os.path.join(work, "saved", "fx.tessel.json")

@@ -1,12 +1,29 @@
 //! The reference of what a pass does to a picture, written independently of the runtime's GLSL.
 //!
-//! It is the specification the vignette's pixels are compared with (the proof compares frames the
-//! runtime drew against this function, not against another render). It follows the pilot's shader
-//! (`runtime/fx/shaders/vignette.ts`): the picture is decoded sRGB → linear light, mixed with the
-//! colour by `shade × amount` and encoded again; an effect at `amount <= 0` returns its input
-//! exactly (no decode/encode round trip, so zero intensity cannot move a pixel).
+//! It is the specification the pixels of the looks are compared with (the proof compares frames the
+//! runtime drew against this function, not against another render). It follows the pilot's shaders
+//! (`runtime/fx/shaders/vignette.ts`, `fade.ts`): the picture is decoded sRGB → linear light, mixed
+//! with the colour by `strength × amount` and encoded again, where `strength` is the vignette's
+//! `shade` or the fade's `amount` parameter. A pass whose total weight is 0 returns its input
+//! exactly (no decode/encode round trip, so zero intensity or zero fade amount cannot move a pixel).
 
 use super::{FxPass, FxValue};
+
+/// The effects this reference draws.
+fn knows(effect: &str) -> bool {
+    matches!(effect, "vignette" | "fade")
+}
+
+/// How much a pass mixes toward its colour at a point, before `amount`: the vignette's shade, the
+/// fade's `amount` parameter (the same everywhere). `None` for an effect this reference does not
+/// know or a pass without its parameters.
+pub fn pass_strength(pass: &FxPass, u: f64, v: f64, width: f64, height: f64) -> Option<f64> {
+    match pass.effect.as_str() {
+        "vignette" => vignette_shade(pass, u, v, width, height),
+        "fade" => pass.number("amount"),
+        _ => None,
+    }
+}
 
 /// `smoothstep(edge0, edge1, x)` as GLSL defines it.
 pub fn smoothstep(edge0: f64, edge1: f64, x: f64) -> f64 {
@@ -67,7 +84,7 @@ pub fn apply_pass_to_srgb(
     width: usize,
     height: usize,
 ) -> Option<[f64; 3]> {
-    if pass.effect != "vignette" {
+    if !knows(&pass.effect) {
         return None;
     }
     if pass.amount <= 0.0 {
@@ -75,11 +92,15 @@ pub fn apply_pass_to_srgb(
     }
     let u = (x as f64 + 0.5) / width as f64;
     let v = (y as f64 + 0.5) / height as f64;
-    let shade = vignette_shade(pass, u, v, width as f64, height as f64)?;
+    let strength = pass_strength(pass, u, v, width as f64, height as f64)?;
     let FxValue::Color { r, g, b } = pass.param("color")? else {
         return None;
     };
-    let weight = shade * pass.amount;
+    let weight = strength * pass.amount;
+    if weight <= 0.0 {
+        // The pilot's fade is "exactly the identity at 0": no round trip through linear light.
+        return Some(rgb);
+    }
     let mix = |source: f64, color: f64| {
         let linear = srgb_to_linear(source);
         linear_to_srgb(linear + (color - linear) * weight)
@@ -90,7 +111,7 @@ pub fn apply_pass_to_srgb(
 /// The pass over a whole RGBA8 picture (row 0 on top, alpha untouched). `false` when the effect
 /// is unknown or the buffer is not `width × height × 4` bytes; the buffer is then left alone.
 pub fn apply_pass_to_rgba8(pass: &FxPass, rgba: &mut [u8], width: usize, height: usize) -> bool {
-    if rgba.len() != width * height * 4 || pass.effect != "vignette" {
+    if rgba.len() != width * height * 4 || !knows(&pass.effect) {
         return false;
     }
     if pass.amount <= 0.0 {
@@ -207,5 +228,90 @@ mod tests {
         let mut rgba = vec![7_u8; 10];
         assert!(!apply_pass_to_rgba8(&pass, &mut rgba, 4, 4));
         assert_eq!(rgba, vec![7_u8; 10]);
+    }
+
+    fn fade(amount_param: f64, color: [f64; 3], weight: f64) -> FxPass {
+        use crate::directed_scene::fx::catalog::FADE;
+        let params = FADE
+            .params
+            .iter()
+            .map(|spec| {
+                let value = match spec.id {
+                    "amount" => FxValue::Number(amount_param),
+                    "color" => FxValue::Color {
+                        r: color[0],
+                        g: color[1],
+                        b: color[2],
+                    },
+                    _ => spec.kind.default_value(),
+                };
+                (spec.id.to_string(), value)
+            })
+            .collect();
+        FxPass {
+            track_id: "t".into(),
+            clip_id: "c".into(),
+            effect: "fade".into(),
+            frame_in_clip: 0,
+            weight: 1.0,
+            amount: weight,
+            params,
+        }
+    }
+
+    #[test]
+    fn a_fade_mixes_in_linear_light_by_amount_times_weight_the_same_everywhere() {
+        // Half way to white from 0.5 (encoded) is the mean of the LINEAR values, then encoded.
+        let pass = fade(1.0, [1.0, 1.0, 1.0], 0.5);
+        let expected = linear_to_srgb((srgb_to_linear(0.5) + 1.0) / 2.0);
+        for (x, y) in [(0, 0), (7, 3), (15, 8)] {
+            let out = apply_pass_to_srgb(&pass, [0.5, 0.5, 0.5], x, y, 16, 9).unwrap();
+            for channel in out {
+                assert!((channel - expected).abs() < 1e-12, "{out:?} vs {expected}");
+            }
+        }
+        // The amount parameter and the weight multiply: 0.5 × 0.5 equals 1 × 0.25.
+        let product = fade(0.5, [1.0, 0.0, 0.0], 0.5);
+        let direct = fade(1.0, [1.0, 0.0, 0.0], 0.25);
+        assert_eq!(
+            apply_pass_to_srgb(&product, [0.3, 0.6, 0.9], 4, 4, 9, 9),
+            apply_pass_to_srgb(&direct, [0.3, 0.6, 0.9], 4, 4, 9, 9)
+        );
+        // Full strength is the colour, and a colour is not a gradient: red stays 0..1 per channel.
+        let solid = fade(1.0, [1.0, 0.0, 0.0], 1.0);
+        let out = apply_pass_to_srgb(&solid, [0.3, 0.6, 0.9], 0, 0, 4, 4).unwrap();
+        for (channel, want) in out.iter().zip([1.0, 0.0, 0.0]) {
+            assert!((channel - want).abs() < 1e-12, "{out:?}");
+        }
+    }
+
+    #[test]
+    fn a_fade_of_zero_amount_or_zero_weight_is_the_exact_identity() {
+        let source = [0.123, 0.456, 0.789];
+        for pass in [
+            fade(0.0, [1.0, 1.0, 1.0], 1.0),
+            fade(1.0, [1.0, 1.0, 1.0], 0.0),
+        ] {
+            assert_eq!(
+                apply_pass_to_srgb(&pass, source, 2, 2, 8, 8).unwrap(),
+                source
+            );
+            let mut rgba = vec![201_u8; 8 * 8 * 4];
+            let before = rgba.clone();
+            assert!(apply_pass_to_rgba8(&pass, &mut rgba, 8, 8));
+            assert_eq!(rgba, before);
+        }
+    }
+
+    #[test]
+    fn the_strength_is_the_vignette_shade_or_the_fade_amount_and_nothing_else_is_known() {
+        let amount = fade(0.3, [0.0; 3], 1.0);
+        assert_eq!(pass_strength(&amount, 0.0, 0.0, 16.0, 9.0), Some(0.3));
+        assert_eq!(pass_strength(&amount, 0.9, 0.9, 16.0, 9.0), Some(0.3));
+        let mut unknown = fade(0.3, [0.0; 3], 1.0);
+        unknown.effect = "glitch".into();
+        assert_eq!(pass_strength(&unknown, 0.0, 0.0, 16.0, 9.0), None);
+        let mut rgba = vec![9_u8; 4 * 4 * 4];
+        assert!(!apply_pass_to_rgba8(&unknown, &mut rgba, 4, 4));
     }
 }

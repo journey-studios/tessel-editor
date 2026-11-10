@@ -224,6 +224,7 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
                 "scene.translate",
                 // F016 (docs/features/effects.md): the effects layer, additive.
                 "scene.fx.edit", "scene.fx.list", "scene.fx.catalog", "scene.fx.frame",
+                "scene.fx.inspect",
                 "scene.fx.gesture.begin", "scene.fx.gesture.update", "scene.fx.gesture.commit",
                 "scene.fx.gesture.cancel", "scene.fx.gesture.status",
             ],
@@ -300,7 +301,9 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
             Ok(answer)
         }
         SceneCommand::FxCatalog => Ok(super::fx::catalog_answer()),
-        SceneCommand::FxList { .. } | SceneCommand::FxFrame { .. } => Err(CommandError::new(
+        SceneCommand::FxList { .. }
+        | SceneCommand::FxFrame { .. }
+        | SceneCommand::FxInspect { .. } => Err(CommandError::new(
             "internal",
             "an fx read reached the path that has no gesture slot",
         )),

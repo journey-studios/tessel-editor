@@ -141,7 +141,7 @@ fn the_section_adds_a_vignette_as_one_undo_entry_and_the_nodes_describe_it(
     let (view, cx) = mounted(cx);
     let section = node(&view, cx, "scene.fx");
     assert_eq!(section["state"]["clip_count"], json!(0));
-    assert_eq!(section["state"]["effects"], json!(["vignette"]));
+    assert_eq!(section["state"]["effects"], json!(["vignette", "fade"]));
     assert_eq!(section["actions"][0]["action"], json!("add:vignette"));
     assert_eq!(section["actions"][0]["enabled"], json!(true));
     assert_eq!(undo_depth(&view, cx), 0);
@@ -1893,4 +1893,332 @@ fn another_change_after_invalidation_preserves_a_replacement_gesture(cx: &mut Te
             .map(|gesture| gesture.id().to_owned())),
         Some(id)
     );
+}
+
+// ---- P2: the neutral inspector model and the second look (fade) ----------------------------------------------
+
+fn field_of(node: &Value, field: &str) -> Value {
+    node["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|candidate| candidate["field"] == field)
+        .unwrap_or_else(|| panic!("no field `{field}` in {node}"))
+        .clone()
+}
+
+fn action_of(node: &Value, action: &str) -> Value {
+    node["actions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|candidate| candidate["action"] == action)
+        .unwrap_or_else(|| panic!("no action `{action}` in {node}"))
+        .clone()
+}
+
+fn fade_amount(view: &Entity<Workstation>, cx: &mut VisualTestContext, clip: &str) -> f64 {
+    view.read_with(cx, |view, _| {
+        let attached = view.state.scenes.get("street").unwrap();
+        let clip = attached
+            .scene
+            .bundle()
+            .fx
+            .tracks
+            .iter()
+            .flat_map(|track| &track.clips)
+            .find(|candidate| candidate.id == clip)
+            .unwrap();
+        match clip.param("amount").unwrap() {
+            FxValue::Number(value) => value,
+            other => panic!("amount is a number, got {other:?}"),
+        }
+    })
+}
+
+#[gpui_kit::test]
+fn the_fade_is_listed_by_the_same_model_as_the_vignette_with_no_section_of_its_own(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = mounted(cx);
+    let section = node(&view, cx, "scene.fx");
+    let actions: Vec<Value> = section["actions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|action| action["action"].clone())
+        .collect();
+    assert_eq!(actions, [json!("add:vignette"), json!("add:fade")]);
+    assert!(
+        section["actions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|action| action["enabled"] == json!(true))
+    );
+
+    let depth = undo_depth(&view, cx);
+    invoke(&view, cx, "scene.fx", "add:fade").unwrap();
+    assert_eq!(undo_depth(&view, cx), depth + 1);
+    let clip = node(&view, cx, CLIP);
+    assert_eq!(clip["state"]["effect"], json!("fade"));
+    let ids: Vec<String> = clip["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|field| field["field"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            "intensity",
+            "color_r",
+            "color_g",
+            "color_b",
+            "amount",
+            "start_frame",
+            "duration_frames",
+            "fade_in_frames",
+            "fade_out_frames",
+            "hidden"
+        ]
+    );
+    let amount = field_of(&clip, "amount");
+    assert_eq!(
+        (amount["min"].clone(), amount["max"].clone()),
+        (json!(0.0), json!(1.0))
+    );
+    assert_eq!(amount["default"], json!(1.0));
+    assert_eq!(amount["at_default"], json!(true));
+    assert_eq!(amount["label"], json!("Fade Quantidade"));
+    assert_eq!(
+        clip["state"]["params"]["color"],
+        json!({"r": 0.0, "g": 0.0, "b": 0.0})
+    );
+}
+
+#[gpui_kit::test]
+fn a_fade_edits_by_node_and_by_slider_and_a_reset_is_one_undo_entry(cx: &mut TestAppContext) {
+    let (view, cx) = mounted(cx);
+    invoke(&view, cx, "scene.fx", "add:fade").unwrap();
+
+    // Nothing away from the default yet: the reset is listed, disabled, with a reason.
+    let clip = node(&view, cx, CLIP);
+    let reset = action_of(&clip, "reset");
+    assert_eq!(reset["enabled"], json!(false));
+    assert!(reset["disabled_reason"].is_string());
+    let depth = undo_depth(&view, cx);
+    let noop = invoke(&view, cx, CLIP, "reset").unwrap();
+    assert_eq!(noop["changed"], json!(false));
+    assert_eq!(
+        undo_depth(&view, cx),
+        depth,
+        "a reset with nothing to restore is no entry"
+    );
+
+    // A node edit and a component edit.
+    set(&view, cx, CLIP, "amount", Raw::Number(0.4)).unwrap();
+    set(&view, cx, CLIP, "color_r", Raw::Number(1.0)).unwrap();
+    assert_eq!(fade_amount(&view, cx, "fx-1"), 0.4);
+    let clip = node(&view, cx, CLIP);
+    assert_eq!(
+        clip["state"]["params"]["color"],
+        json!({"r": 1.0, "g": 0.0, "b": 0.0})
+    );
+    assert_eq!(field_of(&clip, "amount")["at_default"], json!(false));
+    assert_eq!(action_of(&clip, "reset:amount")["enabled"], json!(true));
+    assert_eq!(undo_depth(&view, cx), depth + 2);
+
+    // The real slider: one drag, one entry, quantized to the catalog step.
+    let at = slider_point(&view, cx, "amount", 0.4);
+    cx.simulate_mouse_move(at, None, Default::default());
+    cx.simulate_mouse_down(at, MouseButton::Left, Default::default());
+    let moved = slider_point(&view, cx, "amount", 0.8);
+    cx.simulate_mouse_move(moved, MouseButton::Left, Default::default());
+    cx.simulate_mouse_move(moved, MouseButton::Left, Default::default());
+    assert_eq!(
+        fade_amount(&view, cx, "fx-1"),
+        0.4,
+        "the document waits for the release"
+    );
+    assert!(gesture_open(&view, cx));
+    cx.simulate_mouse_up(moved, MouseButton::Left, Default::default());
+    cx.run_until_parked();
+    let committed = fade_amount(&view, cx, "fx-1");
+    assert!((committed - 0.8).abs() < 0.08, "{committed}");
+    assert_eq!(
+        (committed * 100.0).round() / 100.0,
+        committed,
+        "on the 0.01 step"
+    );
+    assert_eq!(undo_depth(&view, cx), depth + 3);
+
+    // One field back, then the whole look back: each one entry, the timing untouched.
+    let timing_before = node(&view, cx, CLIP)["state"]["duration_frames"].clone();
+    invoke(&view, cx, CLIP, "reset:amount").unwrap();
+    assert_eq!(fade_amount(&view, cx, "fx-1"), 1.0);
+    assert_eq!(undo_depth(&view, cx), depth + 4);
+    invoke(&view, cx, CLIP, "reset").unwrap();
+    let clip = node(&view, cx, CLIP);
+    assert_eq!(
+        clip["state"]["params"]["color"],
+        json!({"r": 0.0, "g": 0.0, "b": 0.0})
+    );
+    assert_eq!(undo_depth(&view, cx), depth + 5);
+    assert_eq!(clip["state"]["duration_frames"], timing_before);
+
+    // Undo puts the colour back; redo restores the reset.
+    view.update(cx, |view, cx| view.execute(Command::Undo, Source::Cli, cx))
+        .unwrap();
+    assert_eq!(
+        node(&view, cx, CLIP)["state"]["params"]["color"],
+        json!({"r": 1.0, "g": 0.0, "b": 0.0})
+    );
+}
+
+#[gpui_kit::test]
+fn the_reset_button_runs_the_shared_handler_and_a_vignette_and_a_fade_compose_in_order(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = mounted(cx);
+    let add = center_of(&view, cx, "control:fx-add:fade");
+    cx.simulate_click(add, Default::default());
+    cx.run_until_parked();
+    let add = center_of(&view, cx, "control:fx-add:vignette");
+    cx.simulate_click(add, Default::default());
+    cx.run_until_parked();
+    assert_eq!(clips(&view, cx), 2);
+
+    // The plan order is the track order: the fade was added first, so it is drawn first.
+    let order = view.read_with(cx, |view, _| {
+        view.state
+            .scenes
+            .get("street")
+            .unwrap()
+            .scene
+            .bundle()
+            .fx
+            .resolve(10)
+            .iter()
+            .map(|pass| pass.effect.clone())
+            .collect::<Vec<_>>()
+    });
+    assert_eq!(order, ["fade".to_string(), "vignette".to_string()]);
+
+    set(&view, cx, CLIP, "amount", Raw::Number(0.5)).unwrap();
+    let depth = undo_depth(&view, cx);
+    let button = center_of(&view, cx, "control:fx-reset:fx-1");
+    cx.simulate_click(button, Default::default());
+    cx.run_until_parked();
+    assert_eq!(fade_amount(&view, cx, "fx-1"), 1.0);
+    assert_eq!(undo_depth(&view, cx), depth + 1);
+    assert_eq!(
+        intensity(&view, cx, "fx-2"),
+        0.7,
+        "the other clip is untouched"
+    );
+}
+
+#[gpui_kit::test]
+fn a_reset_puts_every_channel_of_a_colour_back_not_only_the_last_one(cx: &mut TestAppContext) {
+    let (view, cx) = mounted(cx);
+    invoke(&view, cx, "scene.fx", "add:fade").unwrap();
+    for channel in ["color_r", "color_g", "color_b"] {
+        set(&view, cx, CLIP, channel, Raw::Number(1.0)).unwrap();
+    }
+    set(&view, cx, CLIP, "amount", Raw::Number(0.5)).unwrap();
+    let depth = undo_depth(&view, cx);
+    invoke(&view, cx, CLIP, "reset").unwrap();
+    assert_eq!(
+        undo_depth(&view, cx),
+        depth + 1,
+        "one entry for the whole look"
+    );
+    let clip = node(&view, cx, CLIP);
+    assert_eq!(
+        clip["state"]["params"]["color"],
+        json!({"r": 0.0, "g": 0.0, "b": 0.0})
+    );
+    assert_eq!(fade_amount(&view, cx, "fx-1"), 1.0);
+
+    // The same for a point of a vignette: both axes come back with one reset.
+    invoke(&view, cx, "scene.fx", "add:vignette").unwrap();
+    let vignette = "scene.fx.clip:fx-2";
+    set(&view, cx, vignette, "center_x", Raw::Number(0.1)).unwrap();
+    set(&view, cx, vignette, "center_y", Raw::Number(0.9)).unwrap();
+    invoke(&view, cx, vignette, "reset").unwrap();
+    let clip = node(&view, cx, vignette);
+    assert_eq!(
+        clip["state"]["params"]["center"],
+        json!({"x": 0.5, "y": 0.5})
+    );
+}
+
+#[gpui_kit::test]
+fn field_reset_matches_the_inspector_jsonl_op_and_reset_without_default_is_unknown(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = mounted(cx);
+    invoke(&view, cx, "scene.fx", "add:fade").unwrap();
+    set(&view, cx, CLIP, "color_r", Raw::Number(0.2)).unwrap();
+    set(&view, cx, CLIP, "color_g", Raw::Number(0.7)).unwrap();
+    set(&view, cx, CLIP, "color_b", Raw::Number(0.8)).unwrap();
+    set(&view, cx, CLIP, "duration_frames", Raw::Number(40.0)).unwrap();
+    for field in ["color_g", "duration_frames"] {
+        let info = view
+            .update(cx, |view, _| {
+                tessel_editor_core::headless::execute(
+                    &mut view.state,
+                    &json!({"op":"scene.fx.inspect","scene":"street","clip":"fx-1"}),
+                )
+            })
+            .unwrap();
+        let described = info["clips"][0]["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["id"] == field)
+            .unwrap();
+        let op = described["reset"]["op"].clone();
+        assert!(op.is_object(), "{field}: {info}");
+        let depth = undo_depth(&view, cx);
+        invoke(&view, cx, CLIP, &format!("reset:{field}")).unwrap();
+        let gui = node(&view, cx, CLIP)["state"].clone();
+        assert_eq!(undo_depth(&view, cx), depth + 1);
+        view.update(cx, |view, cx| view.execute(Command::Undo, Source::Cli, cx))
+            .unwrap();
+        view.update(cx, |view, _| {
+            tessel_editor_core::headless::execute(
+                &mut view.state,
+                &json!({"op":"scene.fx.edit","scene":"street","ops":[op]}),
+            )
+        })
+        .unwrap();
+        assert_eq!(
+            node(&view, cx, CLIP)["state"],
+            gui,
+            "same reset via UI and JSONL: {field}"
+        );
+        assert_eq!(undo_depth(&view, cx), depth + 1);
+    }
+    let before = node(&view, cx, CLIP)["state"].clone();
+    let depth = undo_depth(&view, cx);
+    let error = invoke(&view, cx, CLIP, "reset:start_frame").unwrap_err();
+    assert_eq!(error.code, "unknown_action");
+    let actions = error.details.unwrap()["actions"].clone();
+    let advertised = node(&view, cx, CLIP)["actions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|action| action["action"].clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actions,
+        json!(advertised),
+        "unknown reset advertises the real actions"
+    );
+    let fallback = invoke(&view, cx, CLIP, "no-such-action").unwrap_err();
+    assert_eq!(fallback.details.unwrap()["actions"], actions);
+    assert_eq!(node(&view, cx, CLIP)["state"], before);
+    assert_eq!(undo_depth(&view, cx), depth);
 }

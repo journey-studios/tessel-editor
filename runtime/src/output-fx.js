@@ -8,9 +8,10 @@
 // refused (typed `unsupported`), never skipped: a picture without its effect is not the plan's.
 //
 // Color: like every target of this runtime, the pictures are raw sRGB-encoded bytes
-// (`NoColorSpace`, `ColorManagement` off). The vignette decodes to linear light, mixes with its
-// colour and encodes again, which is what the core's reference (`directed_scene::fx::reference`)
-// does; at `amount <= 0` the shader returns the sampled texel untouched.
+// (`NoColorSpace`, `ColorManagement` off). The vignette and the fade decode to linear light, mix
+// with their colour and encode again, which is what the core's reference
+// (`directed_scene::fx::reference`) does; when the total weight of a pass is 0 (`amount <= 0`, or
+// the fade's own `amount` parameter 0) the shader returns the sampled texel untouched.
 //
 // The checks are pure (no GL, no DOM) so they run under `node --test`.
 
@@ -28,6 +29,14 @@ export const OUTPUT_FX_EFFECTS = {
       color: { kind: 'color' },
       roundness: { kind: 'number', min: 0, max: 1 },
       center: { kind: 'point', min: 0, max: 1 },
+    },
+  },
+  // The pilot's `fade` look: the picture mixes toward `color` by `amount x intensity x weight`.
+  fade: {
+    params: {
+      color: { kind: 'color' },
+      amount: { kind: 'number', min: 0, max: 1 },
+      intensity: { kind: 'number', min: 0, max: 1 },
     },
   },
 };
@@ -112,6 +121,15 @@ void main() {
 
 // The sRGB curves are the IEC 61966-2-1 pair the core's reference uses, written out (not the
 // `pow(c, 2.2)` shortcut), so the two agree to the last bit of an 8-bit picture.
+const SRGB_CURVES = /* glsl */ `
+vec3 srgbToLinear(vec3 c) {
+  return mix(pow((c + 0.055) / 1.055, vec3(2.4)), c / 12.92, step(c, vec3(0.04045)));
+}
+vec3 linearToSrgb(vec3 c) {
+  c = clamp(c, 0.0, 1.0);
+  return mix(1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, c * 12.92, step(c, vec3(0.0031308)));
+}`;
+
 const VIGNETTE_FRAGMENT = /* glsl */ `
 precision highp float;
 uniform sampler2D tMap;
@@ -123,14 +141,7 @@ uniform float uAspect;
 uniform vec2 uCenter;
 uniform vec3 uColor;
 varying vec2 vUv;
-
-vec3 srgbToLinear(vec3 c) {
-  return mix(pow((c + 0.055) / 1.055, vec3(2.4)), c / 12.92, step(c, vec3(0.04045)));
-}
-vec3 linearToSrgb(vec3 c) {
-  c = clamp(c, 0.0, 1.0);
-  return mix(1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, c * 12.92, step(c, vec3(0.0031308)));
-}
+${SRGB_CURVES}
 
 void main() {
   vec4 source = texture2D(tMap, vUv);
@@ -147,45 +158,97 @@ void main() {
   gl_FragColor = vec4(linearToSrgb(mixed), source.a);
 }`;
 
-const FRAGMENTS = { vignette: VIGNETTE_FRAGMENT };
+// The fade (pilot `shaders/fade.ts`: `mix(source, uColor, uFade * uAmount)`): one number for the
+// whole picture. `uAmount` is the pass's `intensity x weight`, `uFade` the `amount` parameter;
+// exactly the identity when either is 0.
+const FADE_FRAGMENT = /* glsl */ `
+precision highp float;
+uniform sampler2D tMap;
+uniform float uAmount;
+uniform float uFade;
+uniform vec3 uColor;
+varying vec2 vUv;
+${SRGB_CURVES}
+
+void main() {
+  vec4 source = texture2D(tMap, vUv);
+  float weight = uFade * uAmount;
+  if (weight <= 0.0) {
+    gl_FragColor = source;
+    return;
+  }
+  vec3 mixed = mix(srgbToLinear(source.rgb), uColor, weight);
+  gl_FragColor = vec4(linearToSrgb(mixed), source.a);
+}`;
 
 /**
- * The material of an effect, built once and kept: the program is linked here, never again for the
- * next pass or frame. Its uniforms hold placeholders until `bindPass` writes a pass into them.
+ * How each effect of the catalog is drawn: its fragment shader, the uniforms it owns (the shared
+ * `tMap` and `uAmount` are added for all) and how a pass writes its resolved values into them.
+ * A name from a plan reaches this table only after `parseOutputFx` accepted it, and by own-property
+ * lookup (`drawOf`).
  */
-export const createFxMaterial = (effect) =>
-  new THREE.ShaderMaterial({
-    uniforms: {
-      tMap: { value: null },
-      uAmount: { value: 0 },
+const EFFECT_DRAWS = {
+  vignette: {
+    fragment: VIGNETTE_FRAGMENT,
+    uniforms: () => ({
       uRadius: { value: 0 },
       uSoftness: { value: 0 },
       uRoundness: { value: 0 },
       uAspect: { value: 1 },
       uCenter: { value: new THREE.Vector2() },
       uColor: { value: new THREE.Vector3() },
+    }),
+    bind: (uniforms, params, size) => {
+      uniforms.uRadius.value = params.radius;
+      uniforms.uSoftness.value = params.softness;
+      uniforms.uRoundness.value = params.roundness;
+      uniforms.uAspect.value = size.width / size.height;
+      // The plan states the centre with y DOWN (like the rest of the project); the texture's V is up.
+      uniforms.uCenter.value.set(params.center[0], 1 - params.center[1]);
+      uniforms.uColor.value.set(...params.color);
     },
+  },
+  fade: {
+    fragment: FADE_FRAGMENT,
+    uniforms: () => ({
+      uFade: { value: 0 },
+      uColor: { value: new THREE.Vector3() },
+    }),
+    bind: (uniforms, params) => {
+      uniforms.uFade.value = params.amount;
+      uniforms.uColor.value.set(...params.color);
+    },
+  },
+};
+
+const drawOf = (effect) => {
+  if (!own(EFFECT_DRAWS, effect)) throw new Error(`No draw is defined for the effect ${String(effect)}`);
+  return EFFECT_DRAWS[effect];
+};
+
+/**
+ * The material of an effect, built once and kept: the program is linked here, never again for the
+ * next pass or frame. Its uniforms hold placeholders until `bindPass` writes a pass into them.
+ */
+export const createFxMaterial = (effect) => {
+  const draw = drawOf(effect);
+  return new THREE.ShaderMaterial({
+    uniforms: { tMap: { value: null }, uAmount: { value: 0 }, ...draw.uniforms() },
     vertexShader: VERTEX,
-    fragmentShader: FRAGMENTS[effect],
+    fragmentShader: draw.fragment,
     depthTest: false,
     depthWrite: false,
     blending: THREE.NoBlending,
     toneMapped: false,
   });
+};
 
 /** Writes one pass over `texture` into the uniforms of its effect's material. `size` is the picture in pixels (the aspect of the ellipse). */
 export const bindPass = (material, pass, texture, size) => {
   const { uniforms } = material;
-  const { params } = pass;
   uniforms.tMap.value = texture;
   uniforms.uAmount.value = pass.amount;
-  uniforms.uRadius.value = params.radius;
-  uniforms.uSoftness.value = params.softness;
-  uniforms.uRoundness.value = params.roundness;
-  uniforms.uAspect.value = size.width / size.height;
-  // The plan states the centre with y DOWN (like the rest of the project); the texture's V is up.
-  uniforms.uCenter.value.set(params.center[0], 1 - params.center[1]);
-  uniforms.uColor.value.set(...params.color);
+  drawOf(pass.effect).bind(uniforms, pass.params, size);
 };
 
 /**

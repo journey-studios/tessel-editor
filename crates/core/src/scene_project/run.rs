@@ -199,6 +199,19 @@ impl EditorState {
             SceneCommand::FxFrame { scene, at, gesture } => {
                 self.fx_frame(&scene, &at, gesture.as_deref())
             }
+            SceneCommand::FxInspect {
+                scene,
+                clip,
+                gesture,
+                locale,
+                probe,
+            } => self.fx_inspect(
+                &scene,
+                clip.as_deref(),
+                gesture.as_deref(),
+                locale,
+                probe.as_ref(),
+            ),
             SceneCommand::FxGesture(gesture) => self.apply_fx_gesture(gesture),
             SceneCommand::Gesture(gesture) => self.apply_gesture(gesture),
             SceneCommand::Gizmo(gizmo) => self.apply_gizmo(gizmo),
