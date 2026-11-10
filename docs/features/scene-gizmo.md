@@ -855,8 +855,12 @@ Isso não altera o status de G1 (**a validar**): ponteiro físico, desempenho do
 
 ## Evidências de G1.2 (escala de um nó)
 
-Status: **a validar**. Cobertura escrita junto do código (testes executados no head de desenvolvimento; os gates e as provas
-do **head final** são registrados numa seção acrescentada depois, sem tocar o código):
+Status: **a validar** (revisão independente do coordenador, ponteiro físico e desempenho pendentes). Evidências pequenas
+em [`docs/migration/g12-scale/`](../migration/g12-scale/). Datas em UTC (2026-11-10), diretório
+`/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-3902d1d1`, ramo `t3/gizmo-node-scaling`, base `origin/main`
+`308f1a2`; cargo por `./scripts/cargo` (MBX, alvo padrão, `-j 3`), disco livre ≥ 25 GiB durante os gates.
+
+**Cobertura escrita junto do código**
 
 | Camada | Testes |
 |---|---|
@@ -864,9 +868,52 @@ do **head final** são registrados numa seção acrescentada depois, sem tocar o
 | Core (`tests/scene_gizmo_scale.rs`) | 47 testes de integração: ferramenta/espaço/carimbo, overlay contra oráculo e `disabled_handles`, fator/uniforme/undo-redo multiplicativos, eixo local com pais girados/desiguais/espelhados, eixo de mundo `G·W` e shear, sinal e limites, resultado degenerado, no-op e recusas atômicas, arrasto igual a `scene.scale` bit a bit, último candidato legal, cancelamento por todos os motivos, ferramenta imutável sob arrasto, arrasto velho após edição, liquidação de slider, animação e splat, comandos tipados iguais ao JSON, capacidades e sessão JSONL, seleções que não são nó |
 | Página (`runtime`) | 3 testes de `overlay.test.mjs` e 5 de Chrome em `gizmo-overlay.test.mjs` (caixas desenhadas, handles desabilitados, press/arrasto do uniforme, Escape/resize, volta às setas) |
 | Janela (GPUI) | 6 testes em `scene_gizmo_tests.rs` (escolha da ferramenta, arrasto uniforme, Escape, press velho de seta, botões do monitor, translação e rotação depois da escala) |
-| Prova de processo | `scripts/scene-gizmo-scale-proof.py` (headless em JSONL real e janela nativa por `scripts/ui`; compara o arrasto entre os dois; render e export com e sem seleção/ferramenta, por hash de pixels e digest do vídeo decodificado, com controle de export escalado) |
-| Mutações | 29 mutantes (25 Rust + 4 JS) mortos, um (prioridade da caixa uniforme) só depois de ganhar teste; arquivos restaurados com hash |
 
-Não provado: ponteiro físico na WKWebView (BL015.2/BL043/BL044); splat no corpus da prova de processo (só no core); custo
-de desempenho da escala (BL015.18); liquidação atômica de slider (herdada, BL015.19); e a flaky `video B2` do runtime
-(BL015.15/BL128) é pré-existente em `main`.
+**Gates do head de código `2193452c0beb84a0dacaa705ce8e26077e0ed11e`** (árvore limpa; logs em `/tmp/g12-final`, fora do Git;
+o `66805ce` anterior falhou no clippy, ver abaixo):
+
+| Comando | Resultado |
+|---|---|
+| `cargo fmt --all -- --check` | exit 0 |
+| `./scripts/cargo check --workspace --locked` | exit 0 |
+| `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings` | **1ª execução (`66805ce`): exit 101** (3× `neg_cmp_op_on_partial_ord` em `scaling.rs`, 1× `bool_assert_comparison` no teste); corrigido em `2193452` sem mudar comportamento (NaN continua recusado); 2ª execução: exit 0 |
+| `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked` | exit 0: **2185 passaram, 0 falharam, 12 ignorados** (base `main`: 2123/0/12) |
+| `./scripts/runtime test` | exit 0: **231/231** na primeira execução (sem repetição; a flaky `video B2`, BL015.15/BL128, não apareceu nesta execução e **nada foi relaxado**) |
+| `./scripts/cargo build -p tessel-editor --locked` / `-p tessel-editor-core --bin tessel-headless --locked` | exit 0 / exit 0 |
+| `cargo tree -p tessel-editor-core --locked` | exit 0, **sem** `gpui` nem `wry` |
+
+**Provas de processo** (sobre o head acima, binários do head: `tessel-editor` sha256
+`7127fb494017e330e38eb15cda22238de24d073f2c77fc08cf398b415dfbdfc5`, `tessel-headless`
+`323578b2be5a04da9ecfecd31d9480c75c9d52db3d2263c9a8461e7d573ab58d`; árvore limpa, sem `--allow-dirty`):
+
+| Prova | Headless | Janela nativa | `final_evidence` | Os dois processos concordam |
+|---|---|---|---|---|
+| `scene-gizmo-scale-proof.py` (G1.2) | 53 | 61 | true | true |
+| `scene-gizmo-rotation-proof.py` (regressão G1) | 48 | 54 | true | true |
+| `scene-gizmo-proof.py` (regressão S8, translação) | 56 | 84 | true | true |
+
+Relatórios em `docs/migration/g12-scale/`. A prova da escala, na janela, também compara por oráculo independente **render e
+export com o gizmo na tela e sem nada selecionado**: `scene.render` é bit a bit igual e o export de vídeo, decodificado
+pelo `ffmpeg`, dá os mesmos pixels (com um controle em que a escala de fato muda o export); o gizmo não vai para render nem
+export. A translação e a rotação (`scene.translate`, `scene.rotate`) seguem como eram (regressões acima e testes de core).
+
+**Mutações** (`docs/migration/g12-scale/mutate.py` e relatórios): 29 mutantes (25 em Rust, 4 no `overlay.js`: limites, fator
+zero, banda de no-op, tolerância de alinhamento, guardas de shear/determinante, splat, animação, uniforme só em x, eixos lidos
+por linhas, press na origem, prioridade da caixa, componente escolhido, candidato perdido, entre outros), um por vez, com os
+arquivos restaurados e o hash comparado (`restored: true`). Um sobrevivente, a prioridade da caixa uniforme (M15), virou um
+teste de unidade e foi morto na repetição (`mutation-report-M15-rerun.json`); os outros 28 foram mortos na primeira. As
+mutações rodaram **antes** do commit `2193452`, que só reescreveu três comparações com NaN (`!(a <= b)` → `a.is_nan() || a > b`)
+para o clippy: `mutate.py` ainda procura o texto antigo em M05, M13 e M14 e não os reaplicaria sem ajuste; elas **não foram
+repetidas** sobre o head final.
+
+**Desempenho** (BL015.18, separado e não bloqueante): uma tentativa sob o lock de GPU (`LOCK_NB`, o lock estava livre),
+`scripts/scene-gizmo-scale-measure.py`, `scene.gizmo.state` em `tessel-headless` de **debug** (inclui JSONL e pipe), 3 rodadas
+de n=1500 intercaladas, em máquina compartilhada **sob carga alta** (load average 19–40 ao fim): mínimo escala ≈ 287–290 µs
+contra oculto ≈ 136–143, setas ≈ 222–231 e rotação ≈ 956–960; p50 escala 610–747 µs contra oculto 327–432, setas 445–519 e
+rotação 1532–1793 (p95 1,5–1,8 ms para a escala). Ruído alto e sem WKWebView, página nem composição: **não** conclui que o custo
+é aceitável nem é um orçamento; o custo da rotação não prova o da escala e vice-versa. `scale_frame` roda em cada
+`overlay`/`hit_at`/`gesture_update` sem memoização própria (a memoização do overlay vale para o resto): otimizar fica pendente.
+
+**Não provado**: ponteiro físico na WKWebView (BL015.2/BL043/BL044); splat no corpus das provas de processo (só no core:
+`splat_non_uniform` e o uniforme em splat); custo da escala na página e na janela (BL015.18); liquidação atômica de slider
+(herdada, BL015.19); revisão independente (do coordenador).

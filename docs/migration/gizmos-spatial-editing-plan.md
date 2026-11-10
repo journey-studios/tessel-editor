@@ -204,8 +204,8 @@ Branch `t3/gizmo-node-scaling`, base `308f1a2c1b79ffba8305032288cc04a71ecef820`.
 ([seção "Escala de um nó"](../features/scene-gizmo.md#escala-de-um-nó-g12-bl0151)): ferramenta **Escalar**
 (eixos `x`, `y`, `z` e `uniform`), orientação local/mundo, `scene.scale` sem ponteiro, o mesmo `ScaleFrame::scale` para
 arrasto e comando. **Status: a validar** (implementação e testes funcionais no head; nova revisão independente, ponteiro
-físico na WKWebView e medição de desempenho **não** foram feitos). Decisões fechadas no contrato: escala em mundo só quando um
+físico na WKWebView **não** foram feitos; o desempenho foi medido uma vez com ruído alto, sem conclusão, BL015.18). Decisões fechadas no contrato: escala em mundo só quando um
 eixo do nó corre ao longo do eixo da cena (senão `world_axis_shear`, handle desabilitado); limites `[1e-3, 1e3]` por
 componente; nunca atravessa zero nem espelha; splat só uniforme; `localScale` animada é recusada (`animated_scale`) sem criar chave.
 Continuam fora: snapping, seleção múltipla, grupos, luzes, câmera espacial, edição de chaves, translação local, a flaky
-de vídeo B2 e o custo de desenho da escala (medição separada sob o lock de performance, pendente).
+de vídeo B2 e o custo de desenho da escala (uma medição ruidosa em BL015.18; sem página nem WKWebView).
