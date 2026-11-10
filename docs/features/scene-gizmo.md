@@ -1,8 +1,8 @@
-# F055 — Gizmo de translação e rotação no canvas (BL015, BL015.1, BL042)
+# F055 — Gizmo de translação, rotação e escala no canvas (BL015, BL015.1, BL042)
 
 ## Objetivo e limites
 
-Um gizmo inicial de seleção, **translação e rotação** para cenas dirigidas. Ele é **desenhado e acertado
+Um gizmo inicial de seleção, **translação, rotação e escala** para cenas dirigidas. Ele é **desenhado e acertado
 por um canvas 2D dentro da página da WebView** (`runtime/src/overlay.js`), nunca por elementos
 GPUI sobre a WKWebView (a view nativa pinta acima de qualquer elemento GPUI). O ponteiro vira
 intents que o **core valida e aplica**; a página não decide nada além de "onde, em coordenadas da
@@ -14,8 +14,9 @@ imagem, o usuário apertou".
 - O que é editado: a propriedade vetorial existente `…/node/<id>/position` (`localPosition` do
   documento) com a ferramenta `translate`, e a propriedade `…/node/<id>/rotation` (o quaternion
   `localRotation`) com a ferramenta `rotate` (BL015.1, [seção própria](#rotação-de-um-nó-g1-bl0151)).
-  Não há escala, snapping, múltiplas seleções nem grupos: com mais de um selecionado o overlay fica
-  oculto (`multiple_selection`).
+  A propriedade `…/node/<id>/scale` (`localScale`) é editada pela ferramenta `scale` (G1.2, BL015.1,
+  [seção própria](#escala-de-um-nó-g12-bl0151)). Não há snapping, múltiplas seleções nem grupos: com mais de um
+  selecionado o overlay fica oculto (`multiple_selection`).
 - Fora do escopo e **não declarado como entregue**: ponteiro físico nativo (BL043), popover/foco
   de teclado sobre a WebView (BL044), perfil de latência, atalhos de teclado do gizmo.
 
@@ -328,15 +329,95 @@ animada não pode ser editada como base sem criar um deslocamento invisível; es
 
 ### Limites desta fatia (continuam pendentes em BL015.1)
 
-Escala, snapping, múltipla seleção e pivôs de grupo, luzes, câmera espacial e FX; **translação em eixos locais**
-(a translação segue em coordenadas de mundo; o espaço só vale para a rotação); rotação de um nó cuja rotação é
+Snapping, múltipla seleção e pivôs de grupo, luzes, câmera espacial e FX (a escala entrou depois, em G1.2, abaixo);
+**translação em eixos locais** (a translação segue em coordenadas de mundo; o espaço só vale para a rotação e a escala); rotação de um nó cuja rotação é
 animada (edição de chave); pais com escala não uniforme (recusa tipada, não suporte); o mouse **físico** na WKWebView
 (BL015.2/BL043/BL044).
+
+## Escala de um nó (G1.2, BL015.1)
+
+Segunda fatia de G1 do [plano de gizmos](../migration/gizmos-spatial-editing-plan.md): **escala de UM nó** por
+eixo e uniforme, com orientação local ou de mundo, reutilizando o gesto de F055 (begin/update/commit/cancel).
+Fica dentro de F055 (nenhum ID novo). **Não entram** snapping, seleção múltipla, grupos, luzes, câmera, FX nem
+chaves automáticas.
+
+### Convenções (decididas antes do código, fixadas por testes)
+
+| Tema | Regra |
+|---|---|
+| Representação | O documento continua com `localScale` (propriedade `scale`, três números). Nenhuma representação nova. Posição, rotação e pai do nó nunca são tocados: a origem não se move e os filhos escalam junto. |
+| Fator | **Multiplicativo**, relativo ao valor no press: o componente novo é `antigo · f`. Um arrasto recalcula `f` a cada move a partir do press (razão de duas distâncias), então não depende do caminho nem acumula. Um comando numérico carrega o mesmo `f`. `f = 1` (dentro de `1e-12`) é **no-op**: o vetor autorado volta com os mesmos bits, nada é escrito e não há entrada de histórico. |
+| Handles | `x`, `y`, `z` escalam um componente; `uniform` (caixa a `0,09` altura de imagem acima e à direita da origem, a 45° **na imagem**, para nunca ir atrás da câmera) aplica o **mesmo** `f` aos três (uma escala desigual mantém as razões). `screen` não é um handle de escala. |
+| Eixos `local` | Colunas de `M = W·S⁻¹ = P·R` (cadeia de pais e rotação autorada, sem a escala própria), normalizadas: `W' = W·diag(d)`. **Sempre** representável, qualquer que seja o pai (girado, com escala desigual, espelhando). |
+| Eixos `world` | `W' = (I + (f−1)·a·aᵀ)·W` para o eixo `a` da cena. É um nó TRS de novo só quando `a` corre ao longo de um eixo do próprio nó (`T = M⁻¹·a·aᵀ·M` tem um `1` na diagonal e zeros fora, tolerância `1e-9`); então o fator cai naquele componente (um nó girado de um quarto de volta escreve em outro componente que a letra do handle). Qualquer outro caso seria um **shear** que o TRS não guarda: o handle é **desabilitado** (`world_axis_shear`), nunca aproximado. `uniform` é igual nos dois espaços (`W' = f·W`). |
+| Limites (do core; o documento só exige "finito") | fator finito e `> 0`; o componente mudado mantém o **sinal** (nenhum espelhamento é criado, um ponteiro que atravessa a origem é uma posição recusada, não uma inversão) e sua magnitude fica em `[1e-3, 1e3]`; um componente que o documento já tem fora da faixa só pode andar **em direção a ela**; o determinante da matriz de mundo resultante não pode cair abaixo de `1e-12` (a mesma guarda de `movable`). O limite é sobre o **resultado**, não sobre o fator. |
+| Spark (BL123) | Um splat é desenhado com uma escala uniforme. Num nó que é, ou tem abaixo de si, um splat, `x`, `y`, `z` são desabilitados (`splat_non_uniform`); `uniform` funciona e mantém a matriz de mundo uma similaridade. O plano continua recusando com `unsupported` um splat não uniforme que já exista no documento. |
+| Animação | Um canal de performance que escreve `localScale` do nó **substitui** o valor autorado: uma edição não apareceria. O nó é recusado (`animated_scale`) e **nenhuma chave é criada**. Pai animado, e nó com canal só de posição ou rotação, **podem** ser escalados: as matrizes do frame já os incluem. |
+| Press perto da origem | Se o press está a menos de 10% do comprimento do handle (2% de altura de imagem no `uniform`) da origem, a razão não é uma medida: o press é recusado (`refused: degenerate_axis`) antes de abrir gesto. |
+
+### Comandos (também ops JSON)
+
+| Op | Comando | Efeito |
+|---|---|---|
+| `scene.gizmo.tool` | `GizmoCommand::Tool` | agora aceita `scale` (`tools: ["translate","rotate","scale"]`). Continua estado de sessão, não uma edição. A orientação (`space`) vale para `rotate` e `scale`. |
+| `scene.scale` | `GizmoCommand::Scale` | o mesmo resultado **sem ponteiro**: `entity`, `frame`/`time`, `axis` (`x`\|`y`\|`z`\|`uniform`), `factor` finito, `space` opcional (padrão: o da sessão) → `edit_scene` com **um** `set scale`; uma entrada "Edit scene". Resposta: `axis`, `space`, `factor`, `scale` (o vetor gravado), `component` (`x`\|`y`\|`z`\|`all`), `changed`, `document_changed`. |
+| `scene.pointer.*` | `PointerCommand` | com `tool = scale`, `down` num handle abre o gesto "Scale", `move` faz `gesture_update` com **um** `set scale`, `up` confirma (uma entrada). Respostas trazem `tool`, `factor`, `axis`, `space` e `scale`. |
+| `set monitor.gizmo tool scale` | o mesmo `GizmoCommand::Tool` | o nó `monitor.gizmo` lista `scale` nas opções de `tool`. |
+
+`scene.capabilities` lista `scene.scale`. O arrasto e `scene.scale` passam **pelo mesmo** `ScaleFrame::scale`: o documento
+que um arrasto deixa é igual, bit a bit, ao de `scene.scale` com `factor`/`axis`/`space` que o arrasto reportou (teste nas
+duas orientações e nos quatro handles).
+
+### Overlay v1 (aditivo)
+
+Com `tool = scale`, cada eixo tem `kind: "scale_axis"` (da origem à ponta, `metrics.handle_length` de comprimento) e há um
+`scale_uniform`. Os handles que o core **não** oferece neste nó ficam fora de `handles` e em `disabled_handles`
+(`[{id, reason}]`), com o motivo tipado; a página não os desenha nem os acerta. `metrics.uniform_offset` e
+`metrics.scale_limits` `{min, max}` descrevem a geometria e os limites. Nó que não pode ser escalado (animado, escala
+zero, matriz degenerada): `visible:false` e `reason`. Um overlay sem `disabled_handles` é lido como sem desabilitados;
+`tool` desconhecido é lido como `translate`. A mensagem `overlay.drawn` passa a levar `disabled`.
+
+### Recusas tipadas (`not_scalable`, `details.reason`)
+
+Um comando recusado deixa documento, histórico e revisão como estavam, **exceto** pela liquidação de um slider aberto
+("Liquidação de slider aberto", abaixo). Um **arrasto** que cai numa posição recusada responde `applied:false` com o motivo,
+**mantém o último candidato legal** e um release ali confirma o que foi legal por último.
+
+| `reason` | Quando |
+|---|---|
+| `animated_scale` | um canal de performance escreve `localScale` do nó no frame de edição |
+| `world_axis_shear` | `world`: o eixo da cena não corre ao longo de um eixo do nó (shear). Também protege, por defesa, um eixo alinhado dentro de `1e-9` cujo fator seria tão grande que o resíduo passaria de `1e-6` |
+| `splat_non_uniform` | o nó é, ou tem abaixo, um splat e o handle é `x`, `y` ou `z` |
+| `factor_not_positive` | fator `≤ 0` (também o ponteiro que passou da origem) |
+| `below_minimum_scale`, `above_maximum_scale` | o componente resultante sairia de `[1e-3, 1e3]` (afastando-se da faixa, se já estava fora) |
+| `degenerate_result` | o determinante da matriz de mundo resultante cairia abaixo de `1e-12` |
+| `degenerate_transform` | a matriz local ou de mundo não é invertível, inclusive com uma escala autorada de componente zero (teste de integração) |
+| `degenerate_scale`, `not_movable` | guardas defensivas, não alcançáveis por um documento (um componente zero ou não finito já falha antes como `degenerate_transform`; todos os tipos de nó atuais são móveis); só o teste unitário de `ScaleFrame::of` as exercita |
+| `scale_not_authored` | guarda defensiva: a escala do plano não é a autorada (só um frame animado difere, e esse é recusado antes); não alcançável por um documento |
+| `not_a_scale_handle`, `factor_not_finite` | guardas defensivas de `ScaleFrame::scale`: a borda (`scene.scale`, o parser) recusa antes, com `invalid_value`, e o teste unitário as exercita direto |
+
+Outros erros: `invalid_value` (eixo `screen`/desconhecido, fator não finito, ferramenta desconhecida), `invalid_request`
+(`factor` ausente ou não numérico), `unknown_entity`, `gesture_active`, `gesture_invalidated`, `no_drag`.
+
+### Superfícies
+
+| Superfície | Como |
+|---|---|
+| Biblioteca | `GizmoCommand::Tool`/`Scale` e `PointerCommand` via `EditorState::execute`; regras em `scene_interaction::gizmo::scaling` (aritmética pura, sem GPUI) e `scene_project::gizmo` (glue) |
+| CLI headless | as ops acima em `./scripts/headless` (JSONL), sem janela |
+| Janela | botão **Escalar** (probe `control:monitor-gizmo-scale`) e os botões **Mundo**/**Local** (que valem para Girar e Escalar); caixas e hastes desenhadas no canvas da página; o adaptador só traduz `overlay.pointer` |
+
+### Limites desta fatia (continuam pendentes em BL015.1)
+
+Snapping, múltipla seleção, pivôs de grupo, luzes, câmera espacial e FX; escala de um nó cuja escala é animada (edição de
+chave); espelhamento por arrasto; translação em eixos locais; o mouse **físico** na WKWebView (BL015.2/BL043/BL044); o
+**custo de desenho e plano** da escala (medição separada sob o lock de performance, não feita nesta rodada; o custo da rotação
+não prova o da escala).
 
 ## UI e CLI da janela
 
 - **Canvas**: a página cria `<canvas id="overlay">` acima de `#viewport` (`pointer-events: none`
-  até `overlay.enable`). Desenha contorno do plano selecionado, setas dos eixos, handle central e
+  até `overlay.enable`). Desenha contorno do plano selecionado, setas dos eixos (ou anéis, ou hastes com caixa), handle central e
   destaca o handle ativo/sob o cursor (`cursor: grab`).
 - **Ponte v1, aditiva**: página→host `overlay.pointer` (`down|move|up|cancel`, `seq`,
   `point`, `additive`, `reason`), `overlay.layout`, `overlay.drawn` (ack opt-in com
@@ -510,10 +591,10 @@ valores atravessam o importador até `RotationFrame::of`. `degenerate_rotation` 
 uma guarda defensiva; `not_movable` não é alcançável pelos tipos atuais de nó.
 Nenhum desses ramos é anunciado como recusa exercitada por integração.
 
-### Liquidação de slider aberto por `scene.rotate`/`scene.translate` (regra existente, sem atomicidade)
+### Liquidação de slider aberto por `scene.rotate`/`scene.scale`/`scene.translate` (regra existente, sem atomicidade)
 
 `EditorState::execute` assenta (`settle_property_gesture`, como se o slider fosse solto) um gesto de slider do inspetor ainda
-aberto **antes** de aplicar qualquer comando que tenha `history_label`: `scene.rotate`, `scene.translate`, o release de um
+aberto **antes** de aplicar qualquer comando que tenha `history_label`: `scene.rotate`, `scene.scale`, `scene.translate`, o release de um
 arrasto vivo, `scene.edit`. A liquidação acontece antes de o comando ser validado, então um `scene.rotate` ou `scene.translate`
 que depois é **recusado** (`not_rotatable`, `not_translatable`, `invalid_value`, `unknown_entity`…) já liquidou o slider e essa
 entrada de histórico (se o slider tinha tocado o valor) **permanece**. O texto "um comando recusado deixa documento, histórico e
@@ -522,6 +603,8 @@ aberto. Não há promessa de atomicidade entre "liquidar o slider" e "aplicar o 
 `EditorState::execute`/`is_idle_gizmo_release`), não foi alterada por esta PR e foi lida no código; **nenhum teste executado nesta
 rodada a exercita para a rotação** (o `cargo test` ficou bloqueado, ver abaixo). `scene.gizmo.tool` não tem `history_label`
 (não liquida), e um release sem arrasto vivo é no-op e também não liquida.
+
+**`scene.scale` (G1.2)** herda a mesma regra, sem alteração: o teste `a_scale_is_one_edit_scene_entry_and_settles_an_open_slider_like_every_labelled_command` (`crates/core/tests/scene_gizmo_scale.rs`) a fixa para a escala (um slider aberto vira a sua própria entrada, mesmo quando a escala é recusada; a escala válida é mais uma entrada). Isso **não** satisfaz "não liquidar slider alheio em silêncio": é a limitação existente, documentada, que um release de arrasto e `scene.edit` também têm; mudá-la é uma decisão separada (BL015.1).
 
 ### Rodada de validação do head `ebd1f08` (PR #40): gates pesados BLOQUEADOS
 
@@ -769,3 +852,21 @@ exit, contagens e sha256 do log), `logs/` (20 logs de teste e 2 de build) e `run
 
 **Parecer para o coordenador.** Não houve falha exclusiva do head, então a condição F1 da revisão `5848722632` está **cumprida** e a flaky não bloqueia a integração da #40; ela segue pendente (BL015.15 + BL128) e a #40 não declara o runtime como passe único limpo.
 Isso não altera o status de G1 (**a validar**): ponteiro físico, desempenho do head integrado e a decisão de merge continuam com o coordenador. Nada foi mergeado nem aprovado.
+
+## Evidências de G1.2 (escala de um nó)
+
+Status: **a validar**. Cobertura escrita junto do código (testes executados no head de desenvolvimento; os gates e as provas
+do **head final** são registrados numa seção acrescentada depois, sem tocar o código):
+
+| Camada | Testes |
+|---|---|
+| Aritmética (`gizmo/scaling.rs`) | 9 testes de unidade: tabela de limites, recusas do `ScaleFrame`, tolerância de alinhamento (`5e-10` aceita, `2e-9` recusa) e quartos de volta, guarda de shear residual, fator, limite do determinante, regras do press, prioridade da caixa uniforme sobre a haste |
+| Core (`tests/scene_gizmo_scale.rs`) | 47 testes de integração: ferramenta/espaço/carimbo, overlay contra oráculo e `disabled_handles`, fator/uniforme/undo-redo multiplicativos, eixo local com pais girados/desiguais/espelhados, eixo de mundo `G·W` e shear, sinal e limites, resultado degenerado, no-op e recusas atômicas, arrasto igual a `scene.scale` bit a bit, último candidato legal, cancelamento por todos os motivos, ferramenta imutável sob arrasto, arrasto velho após edição, liquidação de slider, animação e splat, comandos tipados iguais ao JSON, capacidades e sessão JSONL, seleções que não são nó |
+| Página (`runtime`) | 3 testes de `overlay.test.mjs` e 5 de Chrome em `gizmo-overlay.test.mjs` (caixas desenhadas, handles desabilitados, press/arrasto do uniforme, Escape/resize, volta às setas) |
+| Janela (GPUI) | 6 testes em `scene_gizmo_tests.rs` (escolha da ferramenta, arrasto uniforme, Escape, press velho de seta, botões do monitor, translação e rotação depois da escala) |
+| Prova de processo | `scripts/scene-gizmo-scale-proof.py` (headless em JSONL real e janela nativa por `scripts/ui`; compara o arrasto entre os dois; render e export com e sem seleção/ferramenta, por hash de pixels e digest do vídeo decodificado, com controle de export escalado) |
+| Mutações | 29 mutantes (25 Rust + 4 JS) mortos, um (prioridade da caixa uniforme) só depois de ganhar teste; arquivos restaurados com hash |
+
+Não provado: ponteiro físico na WKWebView (BL015.2/BL043/BL044); splat no corpus da prova de processo (só no core); custo
+de desempenho da escala (BL015.18); liquidação atômica de slider (herdada, BL015.19); e a flaky `video B2` do runtime
+(BL015.15/BL128) é pré-existente em `main`.

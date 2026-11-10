@@ -1,15 +1,13 @@
 # Plano de gizmos e edição espacial
 
-> **Fatia G1 declarada (BL015.1).** Esta é uma cópia de consulta do plano, com o escopo e o texto
-> originais preservados abaixo. A branch `t3/scene-gizmo-rotation` entrega **somente** a primeira
-> fatia de G1: **rotação de um nó** (anéis por eixo, ferramenta selecionável, orientação
-> local/mundo, pivô na origem do nó e `scene.rotate` sem ponteiro), reutilizando o gesto de F055.
-> **Não** entram: escala, snapping, seleção múltipla, grupos, luzes, câmera nem FX (G2, G3 e
-> demais fases continuam propostas). Status, atribuição e evidências: [backlog](../backlog.md)
-> (BL015.1) e o contrato [F055](../features/scene-gizmo.md).
-
 Data: 2026-11-10. Projeto: `journey-studios/tessel-editor` (editor de vídeo Rust/GPUI).
-Base conferida: `origin/main` em `3e48861e9914ed2fd6c71e13c62c5673f068768f`.
+Base inicial: `3e48861`. Base da próxima entrega conferida em 2026-11-10: `origin/main` em `308f1a2c1b79ffba8305032288cc04a71ecef820` (PR #40 integrada).
+
+> **Nota histórica da fatia G1 (PR #40, preservada).** A cópia de consulta que acompanhou a PR #40
+> declarava: "A branch `t3/scene-gizmo-rotation` entrega **somente** a primeira fatia de G1: **rotação de
+> um nó** (anéis por eixo, ferramenta selecionável, orientação local/mundo, pivô na origem do nó e
+> `scene.rotate` sem ponteiro), reutilizando o gesto de F055. **Não** entram: escala, snapping, seleção
+> múltipla, grupos, luzes, câmera nem FX." A escala é a fatia G1.2 (última seção).
 
 ## Objetivo
 
@@ -21,7 +19,7 @@ Este documento complementa o [plano S1–S10](wave-s1-s10-plan.md), o
 [plano de paridade](pilot-parity-execution-plan.md) e o contrato F055
 (`docs/features/scene-gizmo.md` na main). Não substitui o contrato nem cria outra
 fila: status, atribuição e evidências ficam no [backlog único](../backlog.md).
-As fases abaixo são propostas, não tarefas iniciadas nem funcionalidades entregues.
+As fases organizam o escopo; a atualização ao final identifica o que foi entregue e o próximo recorte autorizado.
 
 ## Estado verificado
 
@@ -30,12 +28,13 @@ As fases abaixo são propostas, não tarefas iniciadas nem funcionalidades entre
 | Translação X/Y/Z e plano da tela | Entregue na PR #25, merge `caeeeae9`; um nó por vez, com regras no core |
 | Seleção e gesto de edição | Candidato, cancelamento, revisão obsoleta e um undo por arrasto implementados |
 | Lib, headless e janela por comandos semânticos | Provas históricas conferidas na entrega S8; não são nova execução nesta conferência |
-| Rotação, escala e orientação local/mundo | Pendentes, BL015.1 |
+| Rotação de um nó, local/mundo | Entregue na PR #40; auxiliares semânticos validados, prova física continua pendente |
+| Escala | Próxima implementação autorizada, BL015.1; contrato abaixo |
 | Snapping, seleção múltipla e pivôs de grupo | Pendentes, BL015.1 |
 | Ponteiro físico, foco, captura e resize na WKWebView | Sem aceite físico, BL015.2 / BL043 / BL044 |
 | Luzes editáveis, sombras e seus marcadores | Domínio ainda pendente, BL023; não é somente adicionar um desenho de gizmo |
 | Câmera | Já possui entrega de keyframes, F054; isso não prova frustum, alvo ou gizmo espacial completo |
-| FX | Catálogo atual contém vinheta; parâmetros de centro/raio são de imagem, não coordenadas 3D |
+| FX | Vinheta e fade/inspetor neutro integrados pela PR #39; P3 animado/film grain na PR #42, fora deste recorte |
 
 A S8 registrou workspace 1562/0/12, runtime 175/175 e provas headless 56/56 e
 janela semântica 84/84, em heads e manifestos descritos no contrato F055.
@@ -73,8 +72,8 @@ Os auxiliares do editor não entram no frame de exportação nem no documento co
 G0 acompanha as demais fases; sua parte física não deve ser declarada automática.
 G1 começa por rotação e depois escala. G2 pode definir o contrato de luz pontual em
 paralelo ao desenho de G1, mas não deve duplicar a matemática nem os gestos do gizmo.
-G4 depende de conciliar ownership com a entrega ativa de inspetor neutro/fade (P2 do
-plano de paridade); esse trabalho já atribuído não deve ser delegado novamente.
+G4 deve preservar o inspetor/fade P2 já integrado pela PR #39 e o trabalho ativo de
+FX animados/film grain (PR #42); não duplicar nem alterar esse domínio nesta entrega.
 G5 não bloqueia entregar uma luz editável individualmente. G6 não autoriza portar
 todos os domínios de uma só vez.
 
@@ -117,15 +116,96 @@ todos os domínios de uma só vez.
 
 Usar mbx com target padrão: nunca `CARGO_TARGET_DIR`, `--target-dir`, `build.target-dir`
 ou wrapper antigo que os defina. Conferir o wrapper antes de usá-lo. Respeitar reserva de
-16 GiB para iniciar lote pesado, piso de 12 GiB e lock compartilhado de GPU. Não criar
+16 GiB para iniciar lote pesado e piso de 12 GiB. Conforme autorização posterior do usuário,
+o lock compartilhado de GPU/build é obrigatório **somente para medições de performance**;
+implementação, builds e testes funcionais seguem sem essa trava. Não criar
 artefatos/cache/builds em `/tmp` acima de aproximadamente 500 MB nem limpar caches alheios.
 
-## Primeira entrega recomendada
+## Sequência de entregas
 
 **G1: rotação de um nó + orientação local/mundo**, mantendo a translação existente,
 seguida de escala em uma entrega delimitada. Próxima entrega de domínio: **luz pontual
 com posição e alcance editáveis**, sem habilitar spot/direcional antes de implementá-las.
 
-Antes de iniciar, conferir main, PRs e ownership ativos. A implementação solicitada deve
-usar Cursor Sonnet 5.5; a revisão independente é uma nova tarefa. Este plano não iniciou
-agentes, builds ou implementação e não altera a atribuição P2 já existente.
+Antes de iniciar cada entrega, conferir main, PRs e ownership ativos. A implementação
+usa Cursor Sonnet 5.5; a revisão independente é uma nova tarefa. O backlog registra
+a atribuição efetiva. A próxima entrega não assume ownership do domínio de FX.
+
+## Atualização G1 — 2026-11-10
+
+Rotação de um nó em local/mundo integrada pela [PR #40](https://github.com/journey-studios/tessel-editor/pull/40), merge `308f1a2c1b79ffba8305032288cc04a71ecef820`. Biblioteca, headless e UI semântica validadas conforme backlog e contrato; ponteiro físico e desempenho integrado permanecem pendentes. G1 ainda não está integralmente concluída: próxima fatia é escala de um nó. Snapping, múltiplos/grupos, translação local e luzes não foram implementados por esta PR.
+
+
+## Próxima entrega autorizada — G1.2: escala de um nó
+
+Autorização do usuário em 2026-11-10: seguir com o plano e encaminhar ao Cursor Sonnet 5.5.
+ID reutilizado: **BL015.1**; ampliar F055 sem reservar outra feature para a mesma ferramenta.
+
+### Escopo funcional
+
+- Ferramenta **Escalar** junto de Mover/Girar, três handles por eixo e um handle de
+  escala uniforme. Estado e comandos inspecionáveis nas três superfícies.
+- Preservar o formato existente `localScale`; a operação semântica (nome a fechar no
+  contrato, por exemplo `scene.scale`) e o arrasto usam a mesma função do core.
+- Pivô inicial: origem do próprio nó. Escala não deve deslocar sua posição nem criar
+  shear, trocar sua rotação ou alterar a transformação do pai silenciosamente.
+- Definir fatores multiplicativos relativos à base do press; fator 1 é no-op e a
+  escala uniforme aplica o mesmo fator aos três componentes. Não acumular deltas por move.
+- Escala por eixo local é obrigatória. Escala em mundo só é habilitada quando a
+  transformação desejada puder ser representada no TRS existente, sem aproximação;
+  combinação que produziria shear deve ter recusa tipada e motivo consultável.
+- Definir limites numéricos no core antes do código: valores finitos, fator positivo,
+  resultado não degenerado e limite máximo coerente com o documento. Não permitir
+  atravessar zero e espelhar pelo arrasto. Preservar escala negativa preexistente se
+  o domínio a aceitar; não anunciar criação de espelhamento nesta entrega.
+- Manter as restrições do Spark: escala não uniforme de splat não vira suportada por
+  existir um handle. Escala uniforme válida deve funcionar; recusas são visíveis.
+- Não escrever chaves automaticamente. Escala animada ou composição de pai que impeça
+  edição fiel exige recusa ou comportamento explícito no contrato, com teste.
+- Reusar candidato/commit/cancel, um undo por gesto, erro sem escrita e preservação do
+  último candidato válido. Não interferir em sliders de propriedade ou gestos de FX.
+- Playback, frame/revisão/seleção/epoch antigos, perda de captura, reload, diálogo e
+  troca de projeto mantêm as guardas já entregues em G1/S8.
+
+### Entregáveis e aceite
+
+1. API pública do core, JSONL sem janela, ferramenta/estado no desktop e desenho no
+   canvas da WebView. Cada controle tem comando, parser, nó e handler compartilhado.
+2. Testes com valores esperados independentes: uniformizar, eixo local com nó e pai
+   rotacionados, pai com escala, no-op, limites, candidato inválido, undo/redo/cancel,
+   gesto obsoleto e recusa de shear/Spark/animação pertinentes. Arrasto e comando
+   sem ponteiro deixam documento equivalente.
+3. Prova headless real e janela própria por comandos semânticos; Chrome cobre seleção,
+   handles, captura e resize. Referência de imagem verifica transformação e ausência
+   dos auxiliares no export. Não promover isso a prova física da WKWebView.
+4. Gates no head final: fmt/check/clippy/workspace com runtime exigido/builds/core tree
+   sem GPUI/Wry e testes JS pertinentes. Mutações discriminantes das regras novas,
+   uma por vez com restauração conferida. Preservar todos os runs falhos ou abortados.
+5. Custo de desenho/plano é uma validação separada, sob lock de performance. Não
+   bloquear implementação ou testes funcionais por lock ocupado; registrar a medição
+   pendente, sem usar resultados de rotação como prova do custo de escala.
+6. Contrato F055, matriz e BL015.1 atualizados com SHAs e evidências. PR própria desta
+   fatia e nova revisão independente; CodeRabbit NEUTRAL não é aceite.
+
+### Ownership e fronteiras
+
+Ownership: módulos de gizmo no core, overlay, adapter desktop do gizmo, parsers/nós
+mínimos, testes e F055. Preservar FX animados/film grain da PR #42 e diagnóstico I/O
+na PR #41; conferir heads atuais antes de editar arquivos compartilhados. O backlog
+sujo da raiz é do coordenador e não pode ser substituído pelo de outra branch.
+
+Fora desta PR: luzes, câmera espacial, snapping, seleção múltipla, grupos, edição de
+keys, translação em eixos locais e correção geral da flaky de vídeo B2. Após escala,
+a próxima entrega de domínio continua sendo luz pontual com posição e alcance.
+
+## Atualização G1.2 — escala de um nó (implementação, a validar)
+
+Branch `t3/gizmo-node-scaling`, base `308f1a2c1b79ffba8305032288cc04a71ecef820`. Implementada em F055
+([seção "Escala de um nó"](../features/scene-gizmo.md#escala-de-um-nó-g12-bl0151)): ferramenta **Escalar**
+(eixos `x`, `y`, `z` e `uniform`), orientação local/mundo, `scene.scale` sem ponteiro, o mesmo `ScaleFrame::scale` para
+arrasto e comando. **Status: a validar** (implementação e testes funcionais no head; nova revisão independente, ponteiro
+físico na WKWebView e medição de desempenho **não** foram feitos). Decisões fechadas no contrato: escala em mundo só quando um
+eixo do nó corre ao longo do eixo da cena (senão `world_axis_shear`, handle desabilitado); limites `[1e-3, 1e3]` por
+componente; nunca atravessa zero nem espelha; splat só uniforme; `localScale` animada é recusada (`animated_scale`) sem criar chave.
+Continuam fora: snapping, seleção múltipla, grupos, luzes, câmera espacial, edição de chaves, translação local, a flaky
+de vídeo B2 e o custo de desenho da escala (medição separada sob o lock de performance, pendente).

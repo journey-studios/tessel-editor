@@ -788,6 +788,19 @@ fn scene_command(op: &str, request: &Value) -> Result<SceneCommand, CommandError
                 .ok_or_else(|| invalid("Field `degrees` must be a number"))?,
             space: gizmo_space(request)?,
         }),
+        // BL015.1 (G1.2): the scale tool. `factor` and `axis` are the answer of a handle drag, so
+        // the same pair replays it; `space` defaults to the session's.
+        "scene.scale" => SceneCommand::Gizmo(GizmoCommand::Scale {
+            scene: scene()?,
+            entity: string(request, "entity")?.to_string(),
+            at: frame_at(request)?,
+            axis: scale_axis(request)?,
+            factor: request
+                .get("factor")
+                .and_then(Value::as_f64)
+                .ok_or_else(|| invalid("Field `factor` must be a number"))?,
+            space: gizmo_space(request)?,
+        }),
         "scene.gizmo.tool" => SceneCommand::Gizmo(GizmoCommand::Tool {
             tool: gizmo_tool(request)?,
             space: gizmo_space(request)?,
@@ -892,10 +905,23 @@ fn vector(request: &Value, key: &str) -> Result<Vec3, CommandError> {
 fn ring_axis(request: &Value) -> Result<Handle, CommandError> {
     let raw = string(request, "axis")?;
     match Handle::parse(raw) {
-        Some(handle) if handle != Handle::Screen => Ok(handle),
+        Some(handle @ (Handle::X | Handle::Y | Handle::Z)) => Ok(handle),
         _ => Err(CommandError::invalid_value(
             format!("`{raw}` is not a rotation axis"),
             json!({ "options": ["x", "y", "z"] }),
+        )
+        .target("axis")),
+    }
+}
+
+/// `x`, `y`, `z` or `uniform`: the handle a scale applies along. `screen` is the translation plane.
+fn scale_axis(request: &Value) -> Result<Handle, CommandError> {
+    let raw = string(request, "axis")?;
+    match Handle::parse(raw) {
+        Some(handle @ (Handle::X | Handle::Y | Handle::Z | Handle::Uniform)) => Ok(handle),
+        _ => Err(CommandError::invalid_value(
+            format!("`{raw}` is not a scale handle"),
+            json!({ "options": ["x", "y", "z", "uniform"] }),
         )
         .target("axis")),
     }

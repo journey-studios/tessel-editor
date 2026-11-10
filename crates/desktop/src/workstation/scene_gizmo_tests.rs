@@ -1292,3 +1292,221 @@ fn the_monitor_buttons_choose_the_tool_and_the_space_through_the_shared_handler(
         "choosing a tool is not an edit"
     );
 }
+
+// ---- BL015.1 (G1.2): the scale tool through the same seam -----------------------------------------
+
+fn figure_scale(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> [f64; 3] {
+    view.read_with(cx, |view, _| {
+        let document = view
+            .state
+            .scenes
+            .get("street")
+            .unwrap()
+            .scene
+            .document()
+            .clone();
+        let scale = &document["sceneDefinitions"][0]["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["id"] == "figure")
+            .unwrap()["localScale"];
+        ["x", "y", "z"].map(|axis| scale[axis].as_f64().unwrap())
+    })
+}
+
+/// The picture point `factor` times as far from `origin` as `from` is (what a pointer dragged
+/// away from the node does to the uniform handle).
+fn away_from(origin: &Value, from: &Value, factor: f64) -> Value {
+    let (ou, ov) = (origin["u"].as_f64().unwrap(), origin["v"].as_f64().unwrap());
+    let (fu, fv) = (from["u"].as_f64().unwrap(), from["v"].as_f64().unwrap());
+    json!({"u": ou + (fu - ou) * factor, "v": ov + (fv - ov) * factor})
+}
+
+#[gpui_kit::test]
+fn choosing_the_scale_tool_goes_through_the_shared_handler_and_redraws_the_page_once(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = mounted(cx);
+    let before = spent(&view, cx);
+    let depth = undo_depth(&view, cx);
+    let answer = choose_tool(&view, cx, GizmoTool::Scale, GizmoSpace::Local).unwrap();
+    assert_eq!(answer["changed"], true);
+    assert_eq!(answer["document_changed"], false);
+    let after = spent(&view, cx);
+    assert_eq!(after.0, before.0 + 1, "the new tool is planned once");
+    assert_eq!(after.3, before.3 + 1, "and the page is sent it once");
+    assert_eq!(undo_depth(&view, cx), depth, "a tool is not an edit");
+    let stamp = current_stamp(&view, cx);
+    assert_eq!(
+        (stamp["tool"].as_str(), stamp["space"].as_str()),
+        (Some("scale"), Some("local"))
+    );
+    let shown = overlay(&view, cx);
+    let kinds: Vec<&str> = shown["handles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|handle| handle["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        kinds,
+        ["scale_axis", "scale_axis", "scale_axis", "scale_uniform"]
+    );
+    choose_tool(&view, cx, GizmoTool::Scale, GizmoSpace::Local).unwrap();
+    sync(&view, cx);
+    assert_eq!(spent(&view, cx).0, after.0, "the same choice costs no plan");
+    assert_eq!(spent(&view, cx).3, after.3);
+}
+
+#[gpui_kit::test]
+fn a_uniform_drag_from_the_page_is_one_undo_entry_and_scales_the_node_by_the_swept_ratio(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = mounted(cx);
+    choose_tool(&view, cx, GizmoTool::Scale, GizmoSpace::World).unwrap();
+    let shown = overlay(&view, cx);
+    let box_at = tip_of(&shown, "uniform");
+    let to = away_from(&shown["origin"], &box_at, 2.0);
+    let before = (figure_scale(&view, cx), undo_depth(&view, cx));
+    pointer(&view, cx, json!({"phase":"down","point":box_at}));
+    assert!(dragging(&view, cx), "the press landed on the uniform box");
+    pointer(&view, cx, json!({"phase":"move","point":to}));
+    // A candidate: nothing of the document moved yet.
+    assert_eq!((figure_scale(&view, cx), undo_depth(&view, cx)), before);
+    pointer(&view, cx, json!({"phase":"up","point":to}));
+    assert!(!dragging(&view, cx));
+    let scaled = figure_scale(&view, cx);
+    for (axis, (new, old)) in scaled.iter().zip(before.0).enumerate() {
+        assert!(
+            (new / old - 2.0).abs() < 1e-9,
+            "axis {axis}: {new} vs {old}"
+        );
+    }
+    assert_eq!(
+        undo_depth(&view, cx),
+        before.1 + 1,
+        "one entry for the drag"
+    );
+    view.update(cx, |view, cx| view.execute(Command::Undo, Source::Cli, cx))
+        .unwrap();
+    assert_eq!(figure_scale(&view, cx), before.0);
+}
+
+#[gpui_kit::test]
+fn escape_ends_a_scale_drag_without_a_trace(cx: &mut TestAppContext) {
+    let (view, cx) = mounted(cx);
+    choose_tool(&view, cx, GizmoTool::Scale, GizmoSpace::World).unwrap();
+    let shown = overlay(&view, cx);
+    let box_at = tip_of(&shown, "uniform");
+    let before = (figure_scale(&view, cx), undo_depth(&view, cx));
+    pointer(&view, cx, json!({"phase":"down","point":box_at}));
+    pointer(
+        &view,
+        cx,
+        json!({"phase":"move","point":away_from(&shown["origin"], &box_at, 3.0)}),
+    );
+    assert!(dragging(&view, cx));
+    view.update(cx, |view, cx| {
+        view.cancel_gizmo_drag(CancelReason::Hidden, cx)
+    });
+    assert!(!dragging(&view, cx));
+    assert_eq!((figure_scale(&view, cx), undo_depth(&view, cx)), before);
+}
+
+#[gpui_kit::test]
+fn a_press_made_against_the_arrows_is_stale_once_the_tool_is_scale(cx: &mut TestAppContext) {
+    let (view, cx) = mounted(cx);
+    let tip = tip_of(&overlay(&view, cx), "x");
+    let arrows = current_stamp(&view, cx);
+    choose_tool(&view, cx, GizmoTool::Scale, GizmoSpace::World).unwrap();
+    let before = (figure_scale(&view, cx), undo_depth(&view, cx));
+    let counted = stale_count(&view, cx);
+    send(
+        &view,
+        cx,
+        json!({"phase":"down","point":tip,"stamp":arrows}),
+    );
+    assert!(
+        !dragging(&view, cx),
+        "the page had the arrows, the core the boxes"
+    );
+    assert_eq!(stale_count(&view, cx), counted + 1);
+    assert_eq!((figure_scale(&view, cx), undo_depth(&view, cx)), before);
+}
+
+#[gpui_kit::test]
+fn the_monitor_buttons_choose_the_scale_tool_and_share_the_space_buttons_with_rotate(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = mounted(cx);
+    let tool_state = |view: &Entity<Workstation>, cx: &mut VisualTestContext| {
+        view.read_with(cx, |view, _| {
+            (
+                view.state.scene_interaction.tool(),
+                view.state.scene_interaction.space(),
+            )
+        })
+    };
+    let center = |view: &Entity<Workstation>, cx: &mut VisualTestContext, id: &str| {
+        view.read_with(cx, |view, _| {
+            view.geometry
+                .get(&format!("control:{id}"))
+                .unwrap_or_else(|| panic!("no probe `{id}`"))
+                .center()
+        })
+    };
+    let depth = undo_depth(&view, cx);
+    assert!(view.read_with(cx, |view, _| {
+        view.geometry.get("control:monitor-gizmo-local").is_none()
+    }));
+    let scale = center(&view, cx, "monitor-gizmo-scale");
+    cx.simulate_click(scale, Default::default());
+    cx.run_until_parked();
+    assert_eq!(tool_state(&view, cx), (GizmoTool::Scale, GizmoSpace::World));
+    // The space buttons are there for scale too, and choose the space of the axis handles.
+    let local = center(&view, cx, "monitor-gizmo-local");
+    cx.simulate_click(local, Default::default());
+    cx.run_until_parked();
+    assert_eq!(tool_state(&view, cx), (GizmoTool::Scale, GizmoSpace::Local));
+    assert_eq!(overlay(&view, cx)["handles"][3]["kind"], "scale_uniform");
+    assert_eq!(overlay(&view, cx)["space"], "local");
+    let translate = center(&view, cx, "monitor-gizmo-translate");
+    cx.simulate_click(translate, Default::default());
+    cx.run_until_parked();
+    assert_eq!(
+        tool_state(&view, cx),
+        (GizmoTool::Translate, GizmoSpace::Local)
+    );
+    assert_eq!(
+        undo_depth(&view, cx),
+        depth,
+        "choosing a tool is not an edit"
+    );
+}
+
+#[gpui_kit::test]
+fn the_translation_and_rotation_drags_still_work_after_a_visit_to_the_scale_tool(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = mounted(cx);
+    choose_tool(&view, cx, GizmoTool::Scale, GizmoSpace::Local).unwrap();
+    choose_tool(&view, cx, GizmoTool::Translate, GizmoSpace::World).unwrap();
+    let before = (figure_x(&view, cx), undo_depth(&view, cx));
+    let tip = start_drag(&view, cx);
+    pointer(&view, cx, json!({"phase":"up","point":nudged(&tip, 0.05)}));
+    assert!(figure_x(&view, cx) > before.0);
+    assert_eq!(undo_depth(&view, cx), before.1 + 1);
+    assert_eq!(
+        figure_scale(&view, cx),
+        [1.0, 1.0, 1.0],
+        "a translation leaves the scale"
+    );
+    choose_tool(&view, cx, GizmoTool::Rotate, GizmoSpace::World).unwrap();
+    let shown = overlay(&view, cx);
+    let (from, to) = (ring_vertex(&shown, "z", 8), ring_vertex(&shown, "z", 16));
+    pointer(&view, cx, json!({"phase":"down","point":from}));
+    pointer(&view, cx, json!({"phase":"up","point":to}));
+    assert!(figure_rotation_z(&view, cx).abs() > 0.1);
+    assert_eq!(figure_scale(&view, cx), [1.0, 1.0, 1.0]);
+}

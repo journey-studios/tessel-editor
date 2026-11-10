@@ -46,8 +46,9 @@ pub use frame::frame_json;
 pub use gesture::{Gesture, GestureKind, GestureSlot, Invalidation, Refusal};
 pub use gizmo::{
     Anchor, CENTER_RADIUS, GizmoSpace, GizmoTool, HANDLE_LENGTH, HIT_RADIUS, Handle, Hidden,
-    Layout, OUTSIDE_LIMIT, Overlay, Point, RING_RADIUS, RING_SEGMENTS, RingAnchor, RotationFrame,
-    View, local_delta, movable, outline, pick_plane, quat_json, refusal, world_origin,
+    Layout, MAX_SCALE, MIN_SCALE, OUTSIDE_LIMIT, Overlay, Point, RING_RADIUS, RING_SEGMENTS,
+    RingAnchor, RotationFrame, ScaleAnchor, ScaleFrame, UNIFORM_OFFSET, View, local_delta, movable,
+    outline, pick_plane, quat_json, refusal, scale_refusal, world_origin,
 };
 pub use selection::{Dropped, MAX_SELECTION, SUMMARY_LIMIT, Selected, Selection};
 pub use tree::{MAX_TREE_DEPTH, tree_json};
@@ -64,7 +65,7 @@ pub struct SceneInteraction {
     /// What the handles of the selected node do (BL015.1). Session state like the selection: not
     /// in the document, not in an undo snapshot, reset by a new project.
     pub(crate) tool: GizmoTool,
-    /// The orientation of the rotate tool's axes.
+    /// The orientation of the rotate and scale tools' axes.
     pub(crate) space: GizmoSpace,
 }
 
@@ -100,6 +101,11 @@ pub(crate) enum DragAction {
         /// The node's axes, parent rotation and authored rotation at the press.
         frame: Box<RotationFrame>,
     },
+    Scale {
+        anchor: ScaleAnchor,
+        /// What each handle does and the authored `localScale`, at the press.
+        frame: Box<ScaleFrame>,
+    },
 }
 
 /// What an update of a drag accepted.
@@ -113,6 +119,10 @@ pub(crate) enum Applied {
         degrees: f64,
         rotation: crate::directed_scene::Quat,
     },
+    Scale {
+        factor: f64,
+        scale: crate::directed_scene::Vec3,
+    },
 }
 
 impl Drag {
@@ -124,6 +134,7 @@ impl Drag {
         match &self.action {
             DragAction::Translate { anchor, .. } => anchor.handle,
             DragAction::Rotate { ring, .. } => ring.handle,
+            DragAction::Scale { anchor, .. } => anchor.handle,
         }
     }
 
@@ -132,6 +143,7 @@ impl Drag {
         match &self.action {
             DragAction::Translate { .. } => GizmoTool::Translate,
             DragAction::Rotate { .. } => GizmoTool::Rotate,
+            DragAction::Scale { .. } => GizmoTool::Scale,
         }
     }
 
@@ -161,7 +173,7 @@ impl SceneInteraction {
         self.tool
     }
 
-    /// The orientation of the rotate tool's axes.
+    /// The orientation of the rotate and scale tools' axes.
     pub fn space(&self) -> GizmoSpace {
         self.space
     }

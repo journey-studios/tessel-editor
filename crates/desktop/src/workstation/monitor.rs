@@ -108,7 +108,7 @@ impl Workstation {
                 }
             });
 
-        // BL015.1: the gizmo's tool and the space of its rotation axes, a toolbar over the
+        // BL015.1: the gizmo's tool and the space of its rotation and scale axes, a toolbar over the
         // picture's header (a GPUI control: the rings themselves are drawn in the page). Only
         // with a scene attached; each press is the same `scene.gizmo.tool` a script sends.
         let gizmo_tools = self.scene_attached().then(|| {
@@ -161,13 +161,33 @@ impl Workstation {
                     tool == GizmoTool::Rotate,
                     Some(GizmoTool::Rotate),
                     None,
+                ))
+                .child(button(
+                    "monitor-gizmo-scale",
+                    "Escalar",
+                    "Alças de escala por eixo e uniforme do nó selecionado",
+                    tool == GizmoTool::Scale,
+                    Some(GizmoTool::Scale),
+                    None,
                 ));
-            if tool == GizmoTool::Rotate {
+            // The space buttons exist only while a tool that has axes of its own is chosen.
+            if matches!(tool, GizmoTool::Rotate | GizmoTool::Scale) {
+                let (world, local) = if tool == GizmoTool::Scale {
+                    (
+                        "Escalar ao longo dos eixos da cena",
+                        "Escalar ao longo dos eixos do próprio nó",
+                    )
+                } else {
+                    (
+                        "Girar em torno dos eixos da cena",
+                        "Girar em torno dos eixos do próprio nó",
+                    )
+                };
                 group = group
                     .child(button(
                         "monitor-gizmo-world",
                         "Mundo",
-                        "Girar em torno dos eixos da cena",
+                        world,
                         space == GizmoSpace::World,
                         None,
                         Some(GizmoSpace::World),
@@ -175,7 +195,7 @@ impl Workstation {
                     .child(button(
                         "monitor-gizmo-local",
                         "Local",
-                        "Girar em torno dos eixos do próprio nó",
+                        local,
                         space == GizmoSpace::Local,
                         None,
                         Some(GizmoSpace::Local),
