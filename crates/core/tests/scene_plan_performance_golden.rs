@@ -37,10 +37,16 @@ mod support;
 
 use support::{Digest, SHAPES, corpus_frames, corpus_scenes, outcome_text, spread_frames};
 
-const PROFILE: &str = if cfg!(debug_assertions) {
-    "debug"
-} else {
-    "release"
+/// Digest set: one per profile, and a separate pair on Windows. Its libm rounds some trig-derived
+/// floats differently in the last bit than the platform the first pair was pinned on (14 scenes,
+/// all inside the 1e-10 oracle tolerance, which the oracle suites still enforce on Windows). The
+/// Windows pair was generated at c13b72f and guards against regressions from there, not against
+/// the pre-BL064 planner.
+const PROFILE: &str = match (cfg!(windows), cfg!(debug_assertions)) {
+    (false, true) => "debug",
+    (false, false) => "release",
+    (true, true) => "windows-debug",
+    (true, false) => "windows-release",
 };
 
 const GOLDEN: &str = "tests/scene_plan_performance_golden/digests.json";
