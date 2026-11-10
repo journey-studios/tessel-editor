@@ -33,14 +33,15 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use serde_json::{Value, json};
 use tessel_editor_core::directed_scene::fx::PassBudget;
-use tessel_editor_core::directed_scene::fx::{
-    self, EffectSpec, FxClip, FxValue, ParamKind, ParamSpec,
+use tessel_editor_core::directed_scene::fx::{self, EffectSpec, FxClip, Locale};
+use tessel_editor_core::scene_edit::{
+    AddClip, FxOp, InspectorField, REASON_SINGLE_VALUE, has_reset, inspector_fields, offers,
+    reset_ops,
 };
-use tessel_editor_core::scene_edit::{AddClip, ClipField, FxOp};
 use tessel_editor_core::scene_interaction::{FxGestureCommand, Gesture, GestureCommand};
 use tessel_editor_core::scene_project::SceneCommand;
 
-use super::controls::{glyph, tool_button, value_after_key};
+use super::controls::{disabled_tool_button, glyph, tool_button, value_after_key};
 use super::scene_model::{PanelFit, format_number};
 use super::scene_panel::SliderRow;
 use super::tokens::Tokens;
@@ -124,249 +125,41 @@ fn gesture_is_gone(error: &CommandError) -> bool {
 }
 
 // ---- the model: what the section shows, with no GPUI ----
+//
+// The list of fields of a clip (ids, names, ranges, steps, defaults, the order) is the core's
+// inspector model (`scene_edit::InspectorField`): this file only paints it and turns what the
+// person does into the ops that model builds.
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Component {
-    Whole,
-    X,
-    Y,
-    R,
-    G,
-    B,
-}
+/// One slider of a clip, as the core's inspector describes it.
+pub type FxControl = InspectorField;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Target {
-    Param(&'static str, Component),
-    Field(ClipField),
-}
-
-/// One slider of a clip: a number of a parameter (or one component of a point or a colour) or a
-/// whole-frame field.
-#[derive(Debug, Clone, PartialEq)]
-pub struct FxControl {
-    pub id: String,
-    pub label: String,
-    pub min: f64,
-    pub max: f64,
-    pub step: f64,
-    pub value: f64,
-    pub integer: bool,
-    pub unit: &'static str,
-    target: Target,
-}
-
-/// The Portuguese label the section prints for a catalog parameter. The catalog keeps ids and
-/// English summaries; a parameter without an entry here prints its id, never nothing.
-fn param_label(id: &str) -> &str {
-    match id {
-        "intensity" => "Intensidade",
-        "radius" => "Raio",
-        "softness" => "Suavidade",
-        "roundness" => "Arredondamento",
-        "center" => "Centro",
-        "color" => "Cor",
-        other => other,
-    }
-}
+/// The language the window prints the catalog in. The editor's own is Portuguese; the model also
+/// answers in English and Spanish for any adapter that asks.
+const LOCALE: Locale = Locale::PtBr;
 
 fn effect_label(spec: &EffectSpec) -> &'static str {
-    spec.label_pt
+    spec.label.get(LOCALE)
 }
 
-fn control_of(
-    spec: &ParamSpec,
-    id: String,
-    label: String,
-    component: Component,
-    range: (f64, f64, f64),
-    value: f64,
-) -> FxControl {
-    FxControl {
-        id,
-        label,
-        min: range.0,
-        max: range.1,
-        step: range.2,
-        value,
-        integer: false,
-        unit: "",
-        target: Target::Param(spec.id, component),
-    }
-}
-
-/// The sliders of `clip`, parameters first, then its frames. `edit_frames` bounds the frame
-/// fields; the core still refuses what the layer rules refuse (overlap, envelope), with a typed
-/// code on screen, so these bounds only keep the thumb inside what can ever be valid.
+/// The sliders of `clip`: the core's fields, parameters first (strength ahead), then its frames.
+/// `edit_frames` bounds the frame fields; the core still refuses what the layer rules refuse
+/// (overlap, envelope), with a typed code on screen, so these bounds only keep the thumb inside
+/// what can ever be valid.
 pub fn controls_of(clip: &FxClip, edit_frames: i64) -> Vec<FxControl> {
-    let mut controls = Vec::new();
-    for (index, spec) in clip.effect.params.iter().enumerate() {
-        let Some(value) = clip.params.get(index).copied() else {
-            continue;
-        };
-        let label = param_label(spec.id);
-        match (spec.kind, value) {
-            (ParamKind::Number { min, max, step, .. }, FxValue::Number(number)) => {
-                controls.push(control_of(
-                    spec,
-                    spec.id.to_string(),
-                    label.to_string(),
-                    Component::Whole,
-                    (min, max, step),
-                    number,
-                ));
-            }
-            (ParamKind::Point { min, max, .. }, FxValue::Point { x, y }) => {
-                for (suffix, name, component, value) in
-                    [("x", "X", Component::X, x), ("y", "Y", Component::Y, y)]
-                {
-                    controls.push(control_of(
-                        spec,
-                        format!("{}_{suffix}", spec.id),
-                        format!("{label} {name}"),
-                        component,
-                        (min, max, 0.01),
-                        value,
-                    ));
-                }
-            }
-            (ParamKind::Color { .. }, FxValue::Color { r, g, b }) => {
-                for (suffix, name, component, value) in [
-                    ("r", "R", Component::R, r),
-                    ("g", "G", Component::G, g),
-                    ("b", "B", Component::B, b),
-                ] {
-                    controls.push(control_of(
-                        spec,
-                        format!("{}_{suffix}", spec.id),
-                        format!("{label} {name}"),
-                        component,
-                        (0.0, 1.0, 0.01),
-                        value,
-                    ));
-                }
-            }
-            _ => {}
-        }
-    }
-    // The strength of the effect first: it is the control people reach for.
-    controls.sort_by_key(|control| control.id != "intensity");
-    let frames = |field: ClipField, label: &str, min: i64, max: i64, value: i64| FxControl {
-        id: field.name().to_string(),
-        label: label.to_string(),
-        min: min as f64,
-        max: max.max(min) as f64,
-        step: 1.0,
-        value: value as f64,
-        integer: true,
-        unit: "q",
-        target: Target::Field(field),
-    };
-    controls.push(frames(
-        ClipField::StartFrame,
-        "Início",
-        0,
-        edit_frames - 1,
-        clip.start_frame,
-    ));
-    controls.push(frames(
-        ClipField::DurationFrames,
-        "Duração",
-        1,
-        edit_frames,
-        clip.duration_frames,
-    ));
-    controls.push(frames(
-        ClipField::FadeInFrames,
-        "Fade in",
-        0,
-        clip.duration_frames,
-        clip.fade_in_frames,
-    ));
-    controls.push(frames(
-        ClipField::FadeOutFrames,
-        "Fade out",
-        0,
-        clip.duration_frames,
-        clip.fade_out_frames,
-    ));
-    controls
+    inspector_fields(clip, edit_frames)
 }
 
-impl FxControl {
-    /// What a slider thumb at `raw` means for this control: the step's grid (anchored at the minimum),
-    /// inside the range, written in the decimals of the step. The Kit slider hands over an `f32`, so
-    /// `0.4` arrives as `0.4000000059604645`; the document must hold `0.4`, not that. The rule is the
-    /// core's (`fx::quantize_control`), so the pointer, the keyboard and a script agree. Only the
-    /// gesture quantizes: a value typed or sent through `set` is the author's own and is checked, not
-    /// rounded, by the core.
-    pub fn quantize(&self, raw: f64) -> f64 {
-        fx::quantize_control(raw, self.min, self.max, self.step, self.integer)
-    }
+/// What the slider prints beside the value: frames show `q`; ratios no unit.
+fn unit_text(control: &FxControl) -> &'static str {
+    if control.integer { "q" } else { "" }
+}
 
-    /// The value a key press means, from `from`: the Kit's keyboard stepping (arrows, shift for
-    /// ten steps, page keys, home/end) inside this control's range, on the same grid as the pointer.
-    /// `None` for keys the slider ignores.
-    pub fn after_key(&self, key: &str, shift: bool, from: f64) -> Option<f64> {
-        value_after_key(key, shift, from, self.min, self.max, self.step)
-            .map(|next| self.quantize(next))
-    }
-
-    /// The edit op that moves this control of `clip` to `value`. A component of a point or a
-    /// colour keeps its siblings as the document has them.
-    pub fn op(&self, clip: &FxClip, value: f64) -> Result<FxOp, CommandError> {
-        let finite = |value: f64| -> Result<f64, CommandError> {
-            value.is_finite().then_some(value).ok_or_else(|| {
-                CommandError::invalid_value("Expected a finite number", json!("number"))
-            })
-        };
-        let value = finite(value)?;
-        match self.target {
-            Target::Field(field) => {
-                if value.fract() != 0.0 {
-                    return Err(CommandError::invalid_value(
-                        "Expected a whole number of frames",
-                        json!("integer"),
-                    ));
-                }
-                Ok(FxOp::SetField {
-                    clip: clip.id.clone(),
-                    field,
-                    value: value as i64,
-                })
-            }
-            Target::Param(param, component) => {
-                let current = clip.param(param).ok_or_else(|| {
-                    CommandError::new("unknown_param", format!("`{param}` is not a parameter"))
-                })?;
-                let written = match (current, component) {
-                    (_, Component::Whole) => json!(value),
-                    (FxValue::Point { y, .. }, Component::X) => json!({ "x": value, "y": y }),
-                    (FxValue::Point { x, .. }, Component::Y) => json!({ "x": x, "y": value }),
-                    (FxValue::Color { g, b, .. }, Component::R) => {
-                        json!({ "r": value, "g": g, "b": b })
-                    }
-                    (FxValue::Color { r, b, .. }, Component::G) => {
-                        json!({ "r": r, "g": value, "b": b })
-                    }
-                    (FxValue::Color { r, g, .. }, Component::B) => {
-                        json!({ "r": r, "g": g, "b": value })
-                    }
-                    _ => {
-                        return Err(CommandError::new(
-                            "invalid_value",
-                            format!("`{}` has no such component", self.id),
-                        ));
-                    }
-                };
-                Ok(FxOp::SetParam {
-                    clip: clip.id.clone(),
-                    param: param.to_string(),
-                    value: written,
-                })
-            }
-        }
-    }
+/// The value a key press means, from `from`: the Kit's keyboard stepping (arrows, shift for ten
+/// steps, page keys, home/end) inside the field's range, on the same grid as the pointer.
+/// `None` for keys the slider ignores.
+fn control_after_key(control: &FxControl, key: &str, shift: bool, from: f64) -> Option<f64> {
+    value_after_key(key, shift, from, control.min, control.max, control.step)
+        .map(|next| control.quantize(next))
 }
 
 /// A clip of the layer with the track it lives on.
@@ -404,6 +197,48 @@ pub const CLIP_PREFIX: &str = "scene.fx.clip:";
 pub const BUDGET_ID: &str = "scene.fx.budget";
 pub const SECTION_ID: &str = "scene.fx";
 const ADD_PREFIX: &str = "add:";
+/// `reset:<field>` on a clip node restores one field to its default; `reset` the whole look.
+const RESET_PREFIX: &str = "reset:";
+
+/// The words of a typed reason an inspector field does not apply.
+fn reason_text(reason: &str) -> &'static str {
+    match reason {
+        REASON_SINGLE_VALUE => "A faixa tem um único valor nesta edição",
+        _ => "Não se aplica a este efeito",
+    }
+}
+
+/// The actions of a clip node: remove, hide, and the resets the inspector model says make sense
+/// (the whole look, then every field away from its default). A reset with nothing to restore is
+/// listed disabled with its reason, never as a callback that does nothing.
+fn clip_actions(clip: &FxClip, edit_frames: i64) -> Vec<Value> {
+    let controls = controls_of(clip, edit_frames);
+    let looks_changed = has_reset(&controls);
+    let mut actions = vec![
+        json!({ "action": "remove", "label": "Remover efeito" }),
+        json!({
+            "action": "toggle_hidden",
+            "label": if clip.hidden { "Mostrar efeito" } else { "Ocultar efeito" },
+        }),
+        json!({
+            "action": "reset", "label": "Redefinir parâmetros",
+            "enabled": looks_changed,
+            "disabled_reason": (!looks_changed).then_some(ALREADY_DEFAULT),
+        }),
+    ];
+    for control in controls.iter().filter(|control| control.default.is_some()) {
+        let away = !control.at_default();
+        actions.push(json!({
+            "action": format!("{RESET_PREFIX}{}", control.id),
+            "label": format!("Redefinir {}", control.label(LOCALE)),
+            "enabled": away,
+            "disabled_reason": (!away).then_some(ALREADY_DEFAULT),
+        }));
+    }
+    actions
+}
+
+const ALREADY_DEFAULT: &str = "Já está no padrão";
 
 /// The words of the warning, one string for the screen and the node. It says what happens (the
 /// frames are slower) and what does not (no pass is dropped, nothing is refused or hidden).
@@ -550,6 +385,50 @@ impl Workstation {
             clip: clip.to_string(),
         };
         self.fx_run(&view.scene, op, source, cx)
+    }
+
+    /// Restores the look of a clip (every parameter away from its default) or one field to its
+    /// default, as ONE `scene.fx.edit`: the ops are the core inspector's own. Nothing to restore
+    /// is the core's no-op (no history entry), not an error.
+    pub(super) fn fx_reset(
+        &mut self,
+        clip: &str,
+        field: Option<&str>,
+        source: Source,
+        cx: &mut Context<Self>,
+    ) -> Result<Value, CommandError> {
+        let view = self.fx_document_view().ok_or_else(no_scene)?;
+        let found = self.fx_known(&view, clip)?;
+        let controls = controls_of(&found.clip, view.edit_frames);
+        let ops: Vec<FxOp> = match field {
+            Some(id) => {
+                let control = controls
+                    .iter()
+                    .find(|control| control.id == id)
+                    .ok_or_else(|| unknown_control(clip, id))?;
+                if control.default.is_none() {
+                    return Err(unknown_action(
+                        &clip_node_id(clip),
+                        &format!("reset:{id}"),
+                        &clip_actions(&found.clip, view.edit_frames)
+                            .iter()
+                            .filter_map(|action| action["action"].as_str().map(str::to_string))
+                            .collect::<Vec<_>>(),
+                    ));
+                }
+                control.reset_op(&found.clip).into_iter().collect()
+            }
+            None => reset_ops(&controls, &found.clip),
+        };
+        self.scene_execute(
+            SceneCommand::FxEdit {
+                scene: view.scene.clone(),
+                ops,
+                dry_run: false,
+            },
+            source,
+            cx,
+        )
     }
 
     pub(super) fn fx_set_hidden(
@@ -863,7 +742,7 @@ impl Workstation {
         let Some(from) = self.fx_control_now(key) else {
             return false;
         };
-        let Some(next) = from.1.after_key(pressed, shift, from.0) else {
+        let Some(next) = control_after_key(&from.1, pressed, shift, from.0) else {
             return false;
         };
         if !held {
@@ -876,9 +755,9 @@ impl Workstation {
     /// The key-up that commits a keyboard gesture. Only step keys count: releasing Shift while an
     /// arrow is still held must not end the gesture.
     pub(super) fn fx_key_up(&mut self, key: &FxKey, released: &str, cx: &mut Context<Self>) {
-        let is_step = self
-            .fx_control_now(key)
-            .is_some_and(|(value, control)| control.after_key(released, false, value).is_some());
+        let is_step = self.fx_control_now(key).is_some_and(|(value, control)| {
+            control_after_key(&control, released, false, value).is_some()
+        });
         if is_step {
             self.fx_released(key, cx);
         }
@@ -914,9 +793,13 @@ impl Workstation {
                 .iter()
                 .map(|control| {
                     json!({
-                        "field": control.id, "label": format!("{} {}", effect_label(clip.effect), control.label),
+                        "field": control.id, "label": format!("{} {}", effect_label(clip.effect), control.label(LOCALE)),
                         "type": "number", "value": control.value, "min": control.min,
                         "max": control.max, "step": control.step, "integer": control.integer,
+                        "default": control.default, "at_default": control.at_default(),
+                        "group": control.group.name(),
+                        "enabled": control.applicable,
+                        "disabled_reason": control.reason.map(reason_text),
                     })
                 })
                 .collect();
@@ -935,10 +818,7 @@ impl Workstation {
                 "label": format!("{} {}", effect_label(clip.effect), clip.id),
                 "parent": SECTION_ID, "children": [], "enabled": true, "visible": true,
                 "fields": fields,
-                "actions": [
-                    { "action": "remove", "label": "Remover efeito" },
-                    { "action": "toggle_hidden", "label": if clip.hidden { "Mostrar efeito" } else { "Ocultar efeito" } },
-                ],
+                "actions": clip_actions(clip, view.edit_frames),
                 "state": {
                     "clip": clip.id, "track": entry.track_id, "track_label": entry.track_label,
                     "effect": clip.effect.id, "start_frame": clip.start_frame,
@@ -958,13 +838,15 @@ impl Workstation {
             .filter(|open| open.scene() == view.scene && open.fx_clip().is_some());
         let gesture_state =
             gesture.map(|open| open.to_json(&self.state.scenes, self.state.project.revision));
-        let actions: Vec<Value> = fx::catalog()
+        let actions: Vec<Value> = offers()
             .iter()
-            .map(|spec| {
+            .map(|offer| {
+                let spec = offer.effect;
                 json!({
                     "action": format!("{ADD_PREFIX}{}", spec.id),
-                    "label": format!("Adicionar {}", spec.label_pt.to_lowercase()),
-                    "enabled": true,
+                    "label": format!("Adicionar {}", spec.label.get(LOCALE).to_lowercase()),
+                    "enabled": offer.applicable,
+                    "disabled_reason": offer.reason,
                 })
             })
             .collect();
@@ -1022,10 +904,24 @@ impl Workstation {
                 Some(hidden) => self.fx_set_hidden(clip, !hidden, Source::Cli, cx),
                 None => Err(CommandError::unknown_element("effect clip", clip)),
             },
+            Some("reset") => self.fx_reset(clip, None, Source::Cli, cx),
+            Some(reset) if reset.starts_with(RESET_PREFIX) => {
+                self.fx_reset(clip, Some(&reset[RESET_PREFIX.len()..]), Source::Cli, cx)
+            }
             other => Err(unknown_action(
                 target,
                 other.unwrap_or(""),
-                &["remove".to_string(), "toggle_hidden".to_string()],
+                &self
+                    .fx_view()
+                    .and_then(|view| {
+                        view.clip(clip).map(|entry| {
+                            clip_actions(&entry.clip, view.edit_frames)
+                                .iter()
+                                .filter_map(|action| action["action"].as_str().map(str::to_string))
+                                .collect::<Vec<_>>()
+                        })
+                    })
+                    .unwrap_or_else(|| vec!["remove".to_string(), "toggle_hidden".to_string()]),
             )),
         })
     }
@@ -1078,19 +974,30 @@ impl Workstation {
             .text_color(t.text)
             .child(div().child("Efeitos"));
         let mut adds = h_flex().gap(px(2.));
-        for spec in fx::catalog() {
-            let label = format!("Adicionar {}", spec.label_pt.to_lowercase());
+        for offer in offers() {
+            let spec = offer.effect;
+            let label = format!("Adicionar {}", spec.label.get(LOCALE).to_lowercase());
             let id = SharedString::from(format!("fx-add:{}", spec.id));
             let workstation = cx.weak_entity();
             let effect = spec.id;
             let probe = self.geometry.probe(format!("control:fx-add:{effect}"));
-            adds = adds.child(div().relative().child(probe).child(
+            let button = if offer.applicable {
                 tool_button(id, IconName::Plus, &label).on_click(move |_, _, cx| {
                     let _ = workstation.update(cx, |this, cx| {
-                        let _ = this.fx_add(effect, Source::Gesture, cx);
+                        if let Err(error) = this.fx_add(effect, Source::Gesture, cx) {
+                            this.scene_report(error, cx);
+                        }
                     });
-                }),
-            ));
+                })
+            } else {
+                disabled_tool_button(
+                    id,
+                    IconName::Plus,
+                    &label,
+                    offer.reason.unwrap_or("Indisponível"),
+                )
+            };
+            adds = adds.child(div().relative().child(probe).child(button));
         }
         header = header.child(adds);
         let mut section = v_flex().w_full().child(header);
@@ -1127,7 +1034,7 @@ impl Workstation {
                     .pb(px(4.))
                     .text_size(px(10.))
                     .text_color(t.faint)
-                    .child("Nenhum efeito na cena. Adicione uma vinheta para escurecer as bordas."),
+                    .child("Nenhum efeito na cena. Adicione um efeito pelos botões acima (vinheta, fade)."),
             );
         }
         for entry in &view.clips {
@@ -1183,6 +1090,27 @@ impl Workstation {
                 .child(self.geometry.probe(format!("control:fx-remove:{id}")))
                 .child(button)
         };
+        let reset = {
+            let looks_changed = has_reset(&controls_of(clip, view.edit_frames));
+            let label = format!("Redefinir parâmetros de {}", clip.id);
+            let button_id = SharedString::from(format!("fx-reset:{id}"));
+            let button = if looks_changed {
+                let clip_id = id.clone();
+                let workstation = workstation.clone();
+                tool_button(button_id, IconName::RotateCcw, &label).on_click(move |_, _, cx| {
+                    let clip_id = clip_id.clone();
+                    let _ = workstation.update(cx, |this, cx| {
+                        let _ = this.fx_reset(&clip_id, None, Source::Gesture, cx);
+                    });
+                })
+            } else {
+                disabled_tool_button(button_id, IconName::RotateCcw, &label, ALREADY_DEFAULT)
+            };
+            div()
+                .relative()
+                .child(self.geometry.probe(format!("control:fx-reset:{id}")))
+                .child(button)
+        };
         let title = h_flex()
             .items_center()
             .gap(px(6.))
@@ -1204,9 +1132,15 @@ impl Workstation {
                     )),
             )
             .child(toggle)
+            .child(reset)
             .child(remove);
         let mut block = v_flex().w_full().child(title);
         for control in controls_of(clip, view.edit_frames) {
+            // A field whose range is one value has nothing to move: it stays out of the panel (the
+            // semantic node still lists it, disabled, with the reason).
+            if !control.applicable {
+                continue;
+            }
             let key = FxKey {
                 scene: view.scene.clone(),
                 clip: clip.id.clone(),
@@ -1215,6 +1149,7 @@ impl Workstation {
             // The candidate's value while a gesture is open (the view is the candidate's), else the
             // document's: never a buffer of the widget.
             let shown = control.value;
+            let control_label = control.label(LOCALE);
             let element = key.element_id();
             let slider = self.fx_slider(&key, &control, window, cx);
             let value = if control.integer {
@@ -1233,10 +1168,10 @@ impl Workstation {
                 stacked,
                 SliderRow {
                     element: &element,
-                    label: &control.label,
+                    label: &control_label,
                     modified: false,
                     value,
-                    unit: control.unit,
+                    unit: unit_text(&control),
                 },
                 slider,
             ));
@@ -1318,7 +1253,7 @@ impl Workstation {
             .child(
                 Slider::new(&state)
                     .horizontal()
-                    .accessibility_label(format!("{} {}", "Efeito", control.label)),
+                    .accessibility_label(format!("Efeito {}", control.label(LOCALE))),
             )
             .into_any_element()
     }

@@ -1,0 +1,706 @@
+{
+  "base_bundle": "docs/migration/fixtures/bundles/valid-minimal-continuous.bundle.json",
+  "cases": [
+    {
+      "frames": [
+        {
+          "frame": 9,
+          "passes": []
+        },
+        {
+          "frame": 10,
+          "passes": [
+            {
+              "amount": 1.0,
+              "clip": "c1",
+              "effect": "fade",
+              "fade_amount": 1.0,
+              "frame_in_clip": 0,
+              "track": "t1",
+              "weight": 1.0
+            }
+          ]
+        },
+        {
+          "frame": 25,
+          "passes": [
+            {
+              "amount": 1.0,
+              "clip": "c1",
+              "effect": "fade",
+              "fade_amount": 1.0,
+              "frame_in_clip": 15,
+              "track": "t1",
+              "weight": 1.0
+            }
+          ]
+        },
+        {
+          "frame": 39,
+          "passes": [
+            {
+              "amount": 1.0,
+              "clip": "c1",
+              "effect": "fade",
+              "fade_amount": 1.0,
+              "frame_in_clip": 29,
+              "track": "t1",
+              "weight": 1.0
+            }
+          ]
+        },
+        {
+          "frame": 40,
+          "passes": []
+        }
+      ],
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 30,
+                "effect": "fade",
+                "id": "c1",
+                "startFrame": 10
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "id": "fade-defaults-window",
+      "kind": "frames",
+      "origin_basis": "origin-formula: fade.ts defaults, fx-compositor amount = intensity x weight",
+      "title": "A default fade draws on [start, start+duration) and nowhere else; intensity 1 gives amount 1"
+    },
+    {
+      "frames": [
+        {
+          "frame": 0,
+          "passes": [
+            {
+              "amount": 0.1,
+              "clip": "c1",
+              "effect": "fade",
+              "fade_amount": 0.6,
+              "frame_in_clip": 0,
+              "track": "t1",
+              "weight": 0.125
+            }
+          ]
+        },
+        {
+          "frame": 1,
+          "passes": [
+            {
+              "amount": 0.30000000000000004,
+              "clip": "c1",
+              "effect": "fade",
+              "fade_amount": 0.6,
+              "frame_in_clip": 1,
+              "track": "t1",
+              "weight": 0.375
+            }
+          ]
+        },
+        {
+          "frame": 2,
+          "passes": [
+            {
+              "amount": 0.5,
+              "clip": "c1",
+              "effect": "fade",
+              "fade_amount": 0.6,
+              "frame_in_clip": 2,
+              "track": "t1",
+              "weight": 0.625
+            }
+          ]
+        },
+        {
+          "frame": 3,
+          "passes": [
+            {
+              "amount": 0.7000000000000001,
+              "clip": "c1",
+              "effect": "fade",
+              "fade_amount": 0.6,
+              "frame_in_clip": 3,
+              "track": "t1",
+              "weight": 0.875
+            }
+          ]
+        },
+        {
+          "frame": 4,
+          "passes": [
+            {
+              "amount": 0.8,
+              "clip": "c1",
+              "effect": "fade",
+              "fade_amount": 0.6,
+              "frame_in_clip": 4,
+              "track": "t1",
+              "weight": 1.0
+            }
+          ]
+        },
+        {
+          "frame": 10,
+          "passes": [
+            {
+              "amount": 0.8,
+              "clip": "c1",
+              "effect": "fade",
+              "fade_amount": 0.6,
+              "frame_in_clip": 10,
+              "track": "t1",
+              "weight": 1.0
+            }
+          ]
+        },
+        {
+          "frame": 15,
+          "passes": [
+            {
+              "amount": 0.8,
+              "clip": "c1",
+              "effect": "fade",
+              "fade_amount": 0.6,
+              "frame_in_clip": 15,
+              "track": "t1",
+              "weight": 1.0
+            }
+          ]
+        },
+        {
+          "frame": 16,
+          "passes": [
+            {
+              "amount": 0.7000000000000001,
+              "clip": "c1",
+              "effect": "fade",
+              "fade_amount": 0.6,
+              "frame_in_clip": 16,
+              "track": "t1",
+              "weight": 0.875
+            }
+          ]
+        },
+        {
+          "frame": 17,
+          "passes": [
+            {
+              "amount": 0.5,
+              "clip": "c1",
+              "effect": "fade",
+              "fade_amount": 0.6,
+              "frame_in_clip": 17,
+              "track": "t1",
+              "weight": 0.625
+            }
+          ]
+        },
+        {
+          "frame": 18,
+          "passes": [
+            {
+              "amount": 0.30000000000000004,
+              "clip": "c1",
+              "effect": "fade",
+              "fade_amount": 0.6,
+              "frame_in_clip": 18,
+              "track": "t1",
+              "weight": 0.375
+            }
+          ]
+        },
+        {
+          "frame": 19,
+          "passes": [
+            {
+              "amount": 0.1,
+              "clip": "c1",
+              "effect": "fade",
+              "fade_amount": 0.6,
+              "frame_in_clip": 19,
+              "track": "t1",
+              "weight": 0.125
+            }
+          ]
+        }
+      ],
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 20,
+                "effect": "fade",
+                "fadeInFrames": 4,
+                "fadeOutFrames": 4,
+                "id": "c1",
+                "params": {
+                  "amount": 0.6,
+                  "intensity": 0.8
+                },
+                "startFrame": 0
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "id": "fade-envelope-multiplies-with-the-amount-parameter",
+      "kind": "frames",
+      "origin_basis": "origin-formula: envelopeWeight at (frame + 0.5), amount = clamp01(intensity x weight); the fade shader multiplies by the amount param",
+      "title": "fadeIn/fadeOut shape the clip weight at mid-frame; the amount parameter is a separate factor"
+    },
+    {
+      "frames": [
+        {
+          "frame": 5,
+          "passes": [
+            {
+              "amount": 1.0,
+              "clip": "c1",
+              "effect": "fade",
+              "fade_amount": 1.0,
+              "frame_in_clip": 5,
+              "track": "t1",
+              "weight": 1.0
+            },
+            {
+              "amount": 0.7,
+              "clip": "c2",
+              "effect": "vignette",
+              "fade_amount": null,
+              "frame_in_clip": 5,
+              "track": "t2",
+              "weight": 1.0
+            }
+          ]
+        }
+      ],
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 30,
+                "effect": "fade",
+                "id": "c1",
+                "startFrame": 0
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          },
+          {
+            "clips": [
+              {
+                "durationFrames": 30,
+                "effect": "vignette",
+                "id": "c2",
+                "startFrame": 0
+              }
+            ],
+            "id": "t2",
+            "label": "FX t2"
+          },
+          {
+            "clips": [
+              {
+                "durationFrames": 30,
+                "effect": "fade",
+                "hidden": true,
+                "id": "c3",
+                "startFrame": 0
+              }
+            ],
+            "id": "t3",
+            "label": "FX t3"
+          }
+        ],
+        "transitions": []
+      },
+      "id": "fade-hidden-and-order",
+      "kind": "frames",
+      "origin_basis": "origin-formula: fx-frame-decks (track order, hidden clips)",
+      "title": "A hidden clip draws nothing; the passes come in track order, a fade before a vignette"
+    },
+    {
+      "expected_rgba_hex": "3c5ac8ff405ac7ff445ac6ff485ac5ff4c5ac3ff505ac2ff555ac1ff595abfff5d5abeff615abdff655abcff6a5abaff6e5ab9ff725ab8ff765ab6ff7a5ab5ff7f5ab4ff835ab3ff875ab1ff8b5ab0ff8f5aafff945aadff985aacff9c5aabffa05aaaffa45aa8ffa95aa7ffad5aa6ffb15aa4ffb55aa3ffb95aa2ffbe5aa0ff3c5fc8ff405fc7ff445fc6ff485fc5ff4c5fc3ff505fc2ff555fc1ff595fbfff5d5fbeff615fbdff655fbcff6a5fbaff6e5fb9ff725fb8ff765fb6ff7a5fb5ff7f5fb4ff835fb3ff875fb1ff8b5fb0ff8f5fafff945fadff985facff9c5fabffa05faaffa45fa8ffa95fa7ffad5fa6ffb15fa4ffb55fa3ffb95fa2ffbe5fa0ff3c65c8ff4065c7ff4465c6ff4865c5ff4c65c3ff5065c2ff5565c1ff5965bfff5d65beff6165bdff6565bcff6a65baff6e65b9ff7265b8ff7665b6ff7a65b5ff7f65b4ff8365b3ff8765b1ff8b65b0ff8f65afff9465adff9865acff9c65abffa065aaffa465a8ffa965a7ffad65a6ffb165a4ffb565a3ffb965a2ffbe65a0ff3c6bc8ff406bc7ff446bc6ff486bc5ff4c6bc3ff506bc2ff556bc1ff596bbfff5d6bbeff616bbdff656bbcff6a6bbaff6e6bb9ff726bb8ff766bb6ff7a6bb5ff7f6bb4ff836bb3ff876bb1ff8b6bb0ff8f6bafff946badff986bacff9c6babffa06baaffa46ba8ffa96ba7ffad6ba6ffb16ba4ffb56ba3ffb96ba2ffbe6ba0ff3c71c8ff4071c7ff4471c6ff4871c5ff4c71c3ff5071c2ff5571c1ff5971bfff5d71beff6171bdff6571bcff6a71baff6e71b9ff7271b8ff7671b6ff7a71b5ff7f71b4ff8371b3ff8771b1ff8b71b0ff8f71afff9471adff9871acff9c71abffa071aaffa471a8ffa971a7ffad71a6ffb171a4ffb571a3ffb971a2ffbe71a0ff3c77c8ff4077c7ff4477c6ff4877c5ff4c77c3ff5077c2ff5577c1ff5977bfff5d77beff6177bdff6577bcff6a77baff6e77b9ff7277b8ff7677b6ff7a77b5ff7f77b4ff8377b3ff8777b1ff8b77b0ff8f77afff9477adff9877acff9c77abffa077aaffa477a8ffa977a7ffad77a6ffb177a4ffb577a3ffb977a2ffbe77a0ff3c7dc8ff407dc7ff447dc6ff487dc5ff4c7dc3ff507dc2ff557dc1ff597dbfff5d7dbeff617dbdff657dbcff6a7dbaff6e7db9ff727db8ff767db6ff7a7db5ff7f7db4ff837db3ff877db1ff8b7db0ff8f7dafff947dadff987dacff9c7dabffa07daaffa47da8ffa97da7ffad7da6ffb17da4ffb57da3ffb97da2ffbe7da0ff3c83c8ff4083c7ff4483c6ff4883c5ff4c83c3ff5083c2ff5583c1ff5983bfff5d83beff6183bdff6583bcff6a83baff6e83b9ff7283b8ff7683b6ff7a83b5ff7f83b4ff8383b3ff8783b1ff8b83b0ff8f83afff9483adff9883acff9c83abffa083aaffa483a8ffa983a7ffad83a6ffb183a4ffb583a3ffb983a2ffbe83a0ff3c89c8ff4089c7ff4489c6ff4889c5ff4c89c3ff5089c2ff5589c1ff5989bfff5d89beff6189bdff6589bcff6a89baff6e89b9ff7289b8ff7689b6ff7a89b5ff7f89b4ff8389b3ff8789b1ff8b89b0ff8f89afff9489adff9889acff9c89abffa089aaffa489a8ffa989a7ffad89a6ffb189a4ffb589a3ffb989a2ffbe89a0ff3c8ec8ff408ec7ff448ec6ff488ec5ff4c8ec3ff508ec2ff558ec1ff598ebfff5d8ebeff618ebdff658ebcff6a8ebaff6e8eb9ff728eb8ff768eb6ff7a8eb5ff7f8eb4ff838eb3ff878eb1ff8b8eb0ff8f8eafff948eadff988eacff9c8eabffa08eaaffa48ea8ffa98ea7ffad8ea6ffb18ea4ffb58ea3ffb98ea2ffbe8ea0ff3c94c8ff4094c7ff4494c6ff4894c5ff4c94c3ff5094c2ff5594c1ff5994bfff5d94beff6194bdff6594bcff6a94baff6e94b9ff7294b8ff7694b6ff7a94b5ff7f94b4ff8394b3ff8794b1ff8b94b0ff8f94afff9494adff9894acff9c94abffa094aaffa494a8ffa994a7ffad94a6ffb194a4ffb594a3ffb994a2ffbe94a0ff3c9ac8ff409ac7ff449ac6ff489ac5ff4c9ac3ff509ac2ff559ac1ff599abfff5d9abeff619abdff659abcff6a9abaff6e9ab9ff729ab8ff769ab6ff7a9ab5ff7f9ab4ff839ab3ff879ab1ff8b9ab0ff8f9aafff949aadff989aacff9c9aabffa09aaaffa49aa8ffa99aa7ffad9aa6ffb19aa4ffb59aa3ffb99aa2ffbe9aa0ff3ca0c8ff40a0c7ff44a0c6ff48a0c5ff4ca0c3ff50a0c2ff55a0c1ff59a0bfff5da0beff61a0bdff65a0bcff6aa0baff6ea0b9ff72a0b8ff76a0b6ff7aa0b5ff7fa0b4ff83a0b3ff87a0b1ff8ba0b0ff8fa0afff94a0adff98a0acff9ca0abffa0a0aaffa4a0a8ffa9a0a7ffada0a6ffb1a0a4ffb5a0a3ffb9a0a2ffbea0a0ff3ca6c8ff40a6c7ff44a6c6ff48a6c5ff4ca6c3ff50a6c2ff55a6c1ff59a6bfff5da6beff61a6bdff65a6bcff6aa6baff6ea6b9ff72a6b8ff76a6b6ff7aa6b5ff7fa6b4ff83a6b3ff87a6b1ff8ba6b0ff8fa6afff94a6adff98a6acff9ca6abffa0a6aaffa4a6a8ffa9a6a7ffada6a6ffb1a6a4ffb5a6a3ffb9a6a2ffbea6a0ff3cacc8ff40acc7ff44acc6ff48acc5ff4cacc3ff50acc2ff55acc1ff59acbfff5dacbeff61acbdff65acbcff6aacbaff6eacb9ff72acb8ff76acb6ff7aacb5ff7facb4ff83acb3ff87acb1ff8bacb0ff8facafff94acadff98acacff9cacabffa0acaaffa4aca8ffa9aca7ffadaca6ffb1aca4ffb5aca3ffb9aca2ffbeaca0ff3cb2c8ff40b2c7ff44b2c6ff48b2c5ff4cb2c3ff50b2c2ff55b2c1ff59b2bfff5db2beff61b2bdff65b2bcff6ab2baff6eb2b9ff72b2b8ff76b2b6ff7ab2b5ff7fb2b4ff83b2b3ff87b2b1ff8bb2b0ff8fb2afff94b2adff98b2acff9cb2abffa0b2aaffa4b2a8ffa9b2a7ffadb2a6ffb1b2a4ffb5b2a3ffb9b2a2ffbeb2a0ff3cb8c8ff40b8c7ff44b8c6ff48b8c5ff4cb8c3ff50b8c2ff55b8c1ff59b8bfff5db8beff61b8bdff65b8bcff6ab8baff6eb8b9ff72b8b8ff76b8b6ff7ab8b5ff7fb8b4ff83b8b3ff87b8b1ff8bb8b0ff8fb8afff94b8adff98b8acff9cb8abffa0b8aaffa4b8a8ffa9b8a7ffadb8a6ffb1b8a4ffb5b8a3ffb9b8a2ffbeb8a0ff3cbec8ff40bec7ff44bec6ff48bec5ff4cbec3ff50bec2ff55bec1ff59bebfff5dbebeff61bebdff65bebcff6abebaff6ebeb9ff72beb8ff76beb6ff7abeb5ff7fbeb4ff83beb3ff87beb1ff8bbeb0ff8fbeafff94beadff98beacff9cbeabffa0beaaffa4bea8ffa9bea7ffadbea6ffb1bea4ffb5bea3ffb9bea2ffbebea0ff",
+      "frame": 10,
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 40,
+                "effect": "fade",
+                "id": "c1",
+                "params": {
+                  "amount": 0.0,
+                  "color": {
+                    "b": 1.0,
+                    "g": 1.0,
+                    "r": 1.0
+                  }
+                },
+                "startFrame": 0
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "height": 18,
+      "id": "fade-amount-zero-is-the-baseline",
+      "identity": true,
+      "input_rgba_hex": "3c5ac8ff405ac7ff445ac6ff485ac5ff4c5ac3ff505ac2ff555ac1ff595abfff5d5abeff615abdff655abcff6a5abaff6e5ab9ff725ab8ff765ab6ff7a5ab5ff7f5ab4ff835ab3ff875ab1ff8b5ab0ff8f5aafff945aadff985aacff9c5aabffa05aaaffa45aa8ffa95aa7ffad5aa6ffb15aa4ffb55aa3ffb95aa2ffbe5aa0ff3c5fc8ff405fc7ff445fc6ff485fc5ff4c5fc3ff505fc2ff555fc1ff595fbfff5d5fbeff615fbdff655fbcff6a5fbaff6e5fb9ff725fb8ff765fb6ff7a5fb5ff7f5fb4ff835fb3ff875fb1ff8b5fb0ff8f5fafff945fadff985facff9c5fabffa05faaffa45fa8ffa95fa7ffad5fa6ffb15fa4ffb55fa3ffb95fa2ffbe5fa0ff3c65c8ff4065c7ff4465c6ff4865c5ff4c65c3ff5065c2ff5565c1ff5965bfff5d65beff6165bdff6565bcff6a65baff6e65b9ff7265b8ff7665b6ff7a65b5ff7f65b4ff8365b3ff8765b1ff8b65b0ff8f65afff9465adff9865acff9c65abffa065aaffa465a8ffa965a7ffad65a6ffb165a4ffb565a3ffb965a2ffbe65a0ff3c6bc8ff406bc7ff446bc6ff486bc5ff4c6bc3ff506bc2ff556bc1ff596bbfff5d6bbeff616bbdff656bbcff6a6bbaff6e6bb9ff726bb8ff766bb6ff7a6bb5ff7f6bb4ff836bb3ff876bb1ff8b6bb0ff8f6bafff946badff986bacff9c6babffa06baaffa46ba8ffa96ba7ffad6ba6ffb16ba4ffb56ba3ffb96ba2ffbe6ba0ff3c71c8ff4071c7ff4471c6ff4871c5ff4c71c3ff5071c2ff5571c1ff5971bfff5d71beff6171bdff6571bcff6a71baff6e71b9ff7271b8ff7671b6ff7a71b5ff7f71b4ff8371b3ff8771b1ff8b71b0ff8f71afff9471adff9871acff9c71abffa071aaffa471a8ffa971a7ffad71a6ffb171a4ffb571a3ffb971a2ffbe71a0ff3c77c8ff4077c7ff4477c6ff4877c5ff4c77c3ff5077c2ff5577c1ff5977bfff5d77beff6177bdff6577bcff6a77baff6e77b9ff7277b8ff7677b6ff7a77b5ff7f77b4ff8377b3ff8777b1ff8b77b0ff8f77afff9477adff9877acff9c77abffa077aaffa477a8ffa977a7ffad77a6ffb177a4ffb577a3ffb977a2ffbe77a0ff3c7dc8ff407dc7ff447dc6ff487dc5ff4c7dc3ff507dc2ff557dc1ff597dbfff5d7dbeff617dbdff657dbcff6a7dbaff6e7db9ff727db8ff767db6ff7a7db5ff7f7db4ff837db3ff877db1ff8b7db0ff8f7dafff947dadff987dacff9c7dabffa07daaffa47da8ffa97da7ffad7da6ffb17da4ffb57da3ffb97da2ffbe7da0ff3c83c8ff4083c7ff4483c6ff4883c5ff4c83c3ff5083c2ff5583c1ff5983bfff5d83beff6183bdff6583bcff6a83baff6e83b9ff7283b8ff7683b6ff7a83b5ff7f83b4ff8383b3ff8783b1ff8b83b0ff8f83afff9483adff9883acff9c83abffa083aaffa483a8ffa983a7ffad83a6ffb183a4ffb583a3ffb983a2ffbe83a0ff3c89c8ff4089c7ff4489c6ff4889c5ff4c89c3ff5089c2ff5589c1ff5989bfff5d89beff6189bdff6589bcff6a89baff6e89b9ff7289b8ff7689b6ff7a89b5ff7f89b4ff8389b3ff8789b1ff8b89b0ff8f89afff9489adff9889acff9c89abffa089aaffa489a8ffa989a7ffad89a6ffb189a4ffb589a3ffb989a2ffbe89a0ff3c8ec8ff408ec7ff448ec6ff488ec5ff4c8ec3ff508ec2ff558ec1ff598ebfff5d8ebeff618ebdff658ebcff6a8ebaff6e8eb9ff728eb8ff768eb6ff7a8eb5ff7f8eb4ff838eb3ff878eb1ff8b8eb0ff8f8eafff948eadff988eacff9c8eabffa08eaaffa48ea8ffa98ea7ffad8ea6ffb18ea4ffb58ea3ffb98ea2ffbe8ea0ff3c94c8ff4094c7ff4494c6ff4894c5ff4c94c3ff5094c2ff5594c1ff5994bfff5d94beff6194bdff6594bcff6a94baff6e94b9ff7294b8ff7694b6ff7a94b5ff7f94b4ff8394b3ff8794b1ff8b94b0ff8f94afff9494adff9894acff9c94abffa094aaffa494a8ffa994a7ffad94a6ffb194a4ffb594a3ffb994a2ffbe94a0ff3c9ac8ff409ac7ff449ac6ff489ac5ff4c9ac3ff509ac2ff559ac1ff599abfff5d9abeff619abdff659abcff6a9abaff6e9ab9ff729ab8ff769ab6ff7a9ab5ff7f9ab4ff839ab3ff879ab1ff8b9ab0ff8f9aafff949aadff989aacff9c9aabffa09aaaffa49aa8ffa99aa7ffad9aa6ffb19aa4ffb59aa3ffb99aa2ffbe9aa0ff3ca0c8ff40a0c7ff44a0c6ff48a0c5ff4ca0c3ff50a0c2ff55a0c1ff59a0bfff5da0beff61a0bdff65a0bcff6aa0baff6ea0b9ff72a0b8ff76a0b6ff7aa0b5ff7fa0b4ff83a0b3ff87a0b1ff8ba0b0ff8fa0afff94a0adff98a0acff9ca0abffa0a0aaffa4a0a8ffa9a0a7ffada0a6ffb1a0a4ffb5a0a3ffb9a0a2ffbea0a0ff3ca6c8ff40a6c7ff44a6c6ff48a6c5ff4ca6c3ff50a6c2ff55a6c1ff59a6bfff5da6beff61a6bdff65a6bcff6aa6baff6ea6b9ff72a6b8ff76a6b6ff7aa6b5ff7fa6b4ff83a6b3ff87a6b1ff8ba6b0ff8fa6afff94a6adff98a6acff9ca6abffa0a6aaffa4a6a8ffa9a6a7ffada6a6ffb1a6a4ffb5a6a3ffb9a6a2ffbea6a0ff3cacc8ff40acc7ff44acc6ff48acc5ff4cacc3ff50acc2ff55acc1ff59acbfff5dacbeff61acbdff65acbcff6aacbaff6eacb9ff72acb8ff76acb6ff7aacb5ff7facb4ff83acb3ff87acb1ff8bacb0ff8facafff94acadff98acacff9cacabffa0acaaffa4aca8ffa9aca7ffadaca6ffb1aca4ffb5aca3ffb9aca2ffbeaca0ff3cb2c8ff40b2c7ff44b2c6ff48b2c5ff4cb2c3ff50b2c2ff55b2c1ff59b2bfff5db2beff61b2bdff65b2bcff6ab2baff6eb2b9ff72b2b8ff76b2b6ff7ab2b5ff7fb2b4ff83b2b3ff87b2b1ff8bb2b0ff8fb2afff94b2adff98b2acff9cb2abffa0b2aaffa4b2a8ffa9b2a7ffadb2a6ffb1b2a4ffb5b2a3ffb9b2a2ffbeb2a0ff3cb8c8ff40b8c7ff44b8c6ff48b8c5ff4cb8c3ff50b8c2ff55b8c1ff59b8bfff5db8beff61b8bdff65b8bcff6ab8baff6eb8b9ff72b8b8ff76b8b6ff7ab8b5ff7fb8b4ff83b8b3ff87b8b1ff8bb8b0ff8fb8afff94b8adff98b8acff9cb8abffa0b8aaffa4b8a8ffa9b8a7ffadb8a6ffb1b8a4ffb5b8a3ffb9b8a2ffbeb8a0ff3cbec8ff40bec7ff44bec6ff48bec5ff4cbec3ff50bec2ff55bec1ff59bebfff5dbebeff61bebdff65bebcff6abebaff6ebeb9ff72beb8ff76beb6ff7abeb5ff7fbeb4ff83beb3ff87beb1ff8bbeb0ff8fbeafff94beadff98beacff9cbeabffa0beaaffa4bea8ffa9bea7ffadbea6ffb1bea4ffb5bea3ffb9bea2ffbebea0ff",
+      "kind": "pixels",
+      "origin_basis": "origin-formula: mix(source, colour, 0 x uAmount) is the source",
+      "title": "amount 0 mixes nothing: the exact input picture",
+      "tolerance_per_channel": 1,
+      "width": 32
+    },
+    {
+      "expected_rgba_hex": "3c5ac8ff405ac7ff445ac6ff485ac5ff4c5ac3ff505ac2ff555ac1ff595abfff5d5abeff615abdff655abcff6a5abaff6e5ab9ff725ab8ff765ab6ff7a5ab5ff7f5ab4ff835ab3ff875ab1ff8b5ab0ff8f5aafff945aadff985aacff9c5aabffa05aaaffa45aa8ffa95aa7ffad5aa6ffb15aa4ffb55aa3ffb95aa2ffbe5aa0ff3c5fc8ff405fc7ff445fc6ff485fc5ff4c5fc3ff505fc2ff555fc1ff595fbfff5d5fbeff615fbdff655fbcff6a5fbaff6e5fb9ff725fb8ff765fb6ff7a5fb5ff7f5fb4ff835fb3ff875fb1ff8b5fb0ff8f5fafff945fadff985facff9c5fabffa05faaffa45fa8ffa95fa7ffad5fa6ffb15fa4ffb55fa3ffb95fa2ffbe5fa0ff3c65c8ff4065c7ff4465c6ff4865c5ff4c65c3ff5065c2ff5565c1ff5965bfff5d65beff6165bdff6565bcff6a65baff6e65b9ff7265b8ff7665b6ff7a65b5ff7f65b4ff8365b3ff8765b1ff8b65b0ff8f65afff9465adff9865acff9c65abffa065aaffa465a8ffa965a7ffad65a6ffb165a4ffb565a3ffb965a2ffbe65a0ff3c6bc8ff406bc7ff446bc6ff486bc5ff4c6bc3ff506bc2ff556bc1ff596bbfff5d6bbeff616bbdff656bbcff6a6bbaff6e6bb9ff726bb8ff766bb6ff7a6bb5ff7f6bb4ff836bb3ff876bb1ff8b6bb0ff8f6bafff946badff986bacff9c6babffa06baaffa46ba8ffa96ba7ffad6ba6ffb16ba4ffb56ba3ffb96ba2ffbe6ba0ff3c71c8ff4071c7ff4471c6ff4871c5ff4c71c3ff5071c2ff5571c1ff5971bfff5d71beff6171bdff6571bcff6a71baff6e71b9ff7271b8ff7671b6ff7a71b5ff7f71b4ff8371b3ff8771b1ff8b71b0ff8f71afff9471adff9871acff9c71abffa071aaffa471a8ffa971a7ffad71a6ffb171a4ffb571a3ffb971a2ffbe71a0ff3c77c8ff4077c7ff4477c6ff4877c5ff4c77c3ff5077c2ff5577c1ff5977bfff5d77beff6177bdff6577bcff6a77baff6e77b9ff7277b8ff7677b6ff7a77b5ff7f77b4ff8377b3ff8777b1ff8b77b0ff8f77afff9477adff9877acff9c77abffa077aaffa477a8ffa977a7ffad77a6ffb177a4ffb577a3ffb977a2ffbe77a0ff3c7dc8ff407dc7ff447dc6ff487dc5ff4c7dc3ff507dc2ff557dc1ff597dbfff5d7dbeff617dbdff657dbcff6a7dbaff6e7db9ff727db8ff767db6ff7a7db5ff7f7db4ff837db3ff877db1ff8b7db0ff8f7dafff947dadff987dacff9c7dabffa07daaffa47da8ffa97da7ffad7da6ffb17da4ffb57da3ffb97da2ffbe7da0ff3c83c8ff4083c7ff4483c6ff4883c5ff4c83c3ff5083c2ff5583c1ff5983bfff5d83beff6183bdff6583bcff6a83baff6e83b9ff7283b8ff7683b6ff7a83b5ff7f83b4ff8383b3ff8783b1ff8b83b0ff8f83afff9483adff9883acff9c83abffa083aaffa483a8ffa983a7ffad83a6ffb183a4ffb583a3ffb983a2ffbe83a0ff3c89c8ff4089c7ff4489c6ff4889c5ff4c89c3ff5089c2ff5589c1ff5989bfff5d89beff6189bdff6589bcff6a89baff6e89b9ff7289b8ff7689b6ff7a89b5ff7f89b4ff8389b3ff8789b1ff8b89b0ff8f89afff9489adff9889acff9c89abffa089aaffa489a8ffa989a7ffad89a6ffb189a4ffb589a3ffb989a2ffbe89a0ff3c8ec8ff408ec7ff448ec6ff488ec5ff4c8ec3ff508ec2ff558ec1ff598ebfff5d8ebeff618ebdff658ebcff6a8ebaff6e8eb9ff728eb8ff768eb6ff7a8eb5ff7f8eb4ff838eb3ff878eb1ff8b8eb0ff8f8eafff948eadff988eacff9c8eabffa08eaaffa48ea8ffa98ea7ffad8ea6ffb18ea4ffb58ea3ffb98ea2ffbe8ea0ff3c94c8ff4094c7ff4494c6ff4894c5ff4c94c3ff5094c2ff5594c1ff5994bfff5d94beff6194bdff6594bcff6a94baff6e94b9ff7294b8ff7694b6ff7a94b5ff7f94b4ff8394b3ff8794b1ff8b94b0ff8f94afff9494adff9894acff9c94abffa094aaffa494a8ffa994a7ffad94a6ffb194a4ffb594a3ffb994a2ffbe94a0ff3c9ac8ff409ac7ff449ac6ff489ac5ff4c9ac3ff509ac2ff559ac1ff599abfff5d9abeff619abdff659abcff6a9abaff6e9ab9ff729ab8ff769ab6ff7a9ab5ff7f9ab4ff839ab3ff879ab1ff8b9ab0ff8f9aafff949aadff989aacff9c9aabffa09aaaffa49aa8ffa99aa7ffad9aa6ffb19aa4ffb59aa3ffb99aa2ffbe9aa0ff3ca0c8ff40a0c7ff44a0c6ff48a0c5ff4ca0c3ff50a0c2ff55a0c1ff59a0bfff5da0beff61a0bdff65a0bcff6aa0baff6ea0b9ff72a0b8ff76a0b6ff7aa0b5ff7fa0b4ff83a0b3ff87a0b1ff8ba0b0ff8fa0afff94a0adff98a0acff9ca0abffa0a0aaffa4a0a8ffa9a0a7ffada0a6ffb1a0a4ffb5a0a3ffb9a0a2ffbea0a0ff3ca6c8ff40a6c7ff44a6c6ff48a6c5ff4ca6c3ff50a6c2ff55a6c1ff59a6bfff5da6beff61a6bdff65a6bcff6aa6baff6ea6b9ff72a6b8ff76a6b6ff7aa6b5ff7fa6b4ff83a6b3ff87a6b1ff8ba6b0ff8fa6afff94a6adff98a6acff9ca6abffa0a6aaffa4a6a8ffa9a6a7ffada6a6ffb1a6a4ffb5a6a3ffb9a6a2ffbea6a0ff3cacc8ff40acc7ff44acc6ff48acc5ff4cacc3ff50acc2ff55acc1ff59acbfff5dacbeff61acbdff65acbcff6aacbaff6eacb9ff72acb8ff76acb6ff7aacb5ff7facb4ff83acb3ff87acb1ff8bacb0ff8facafff94acadff98acacff9cacabffa0acaaffa4aca8ffa9aca7ffadaca6ffb1aca4ffb5aca3ffb9aca2ffbeaca0ff3cb2c8ff40b2c7ff44b2c6ff48b2c5ff4cb2c3ff50b2c2ff55b2c1ff59b2bfff5db2beff61b2bdff65b2bcff6ab2baff6eb2b9ff72b2b8ff76b2b6ff7ab2b5ff7fb2b4ff83b2b3ff87b2b1ff8bb2b0ff8fb2afff94b2adff98b2acff9cb2abffa0b2aaffa4b2a8ffa9b2a7ffadb2a6ffb1b2a4ffb5b2a3ffb9b2a2ffbeb2a0ff3cb8c8ff40b8c7ff44b8c6ff48b8c5ff4cb8c3ff50b8c2ff55b8c1ff59b8bfff5db8beff61b8bdff65b8bcff6ab8baff6eb8b9ff72b8b8ff76b8b6ff7ab8b5ff7fb8b4ff83b8b3ff87b8b1ff8bb8b0ff8fb8afff94b8adff98b8acff9cb8abffa0b8aaffa4b8a8ffa9b8a7ffadb8a6ffb1b8a4ffb5b8a3ffb9b8a2ffbeb8a0ff3cbec8ff40bec7ff44bec6ff48bec5ff4cbec3ff50bec2ff55bec1ff59bebfff5dbebeff61bebdff65bebcff6abebaff6ebeb9ff72beb8ff76beb6ff7abeb5ff7fbeb4ff83beb3ff87beb1ff8bbeb0ff8fbeafff94beadff98beacff9cbeabffa0beaaffa4bea8ffa9bea7ffadbea6ffb1bea4ffb5bea3ffb9bea2ffbebea0ff",
+      "frame": 10,
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 40,
+                "effect": "fade",
+                "id": "c1",
+                "params": {
+                  "color": {
+                    "b": 1.0,
+                    "g": 1.0,
+                    "r": 1.0
+                  },
+                  "intensity": 0.0
+                },
+                "startFrame": 0
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "height": 18,
+      "id": "fade-intensity-zero-is-the-baseline",
+      "identity": true,
+      "input_rgba_hex": "3c5ac8ff405ac7ff445ac6ff485ac5ff4c5ac3ff505ac2ff555ac1ff595abfff5d5abeff615abdff655abcff6a5abaff6e5ab9ff725ab8ff765ab6ff7a5ab5ff7f5ab4ff835ab3ff875ab1ff8b5ab0ff8f5aafff945aadff985aacff9c5aabffa05aaaffa45aa8ffa95aa7ffad5aa6ffb15aa4ffb55aa3ffb95aa2ffbe5aa0ff3c5fc8ff405fc7ff445fc6ff485fc5ff4c5fc3ff505fc2ff555fc1ff595fbfff5d5fbeff615fbdff655fbcff6a5fbaff6e5fb9ff725fb8ff765fb6ff7a5fb5ff7f5fb4ff835fb3ff875fb1ff8b5fb0ff8f5fafff945fadff985facff9c5fabffa05faaffa45fa8ffa95fa7ffad5fa6ffb15fa4ffb55fa3ffb95fa2ffbe5fa0ff3c65c8ff4065c7ff4465c6ff4865c5ff4c65c3ff5065c2ff5565c1ff5965bfff5d65beff6165bdff6565bcff6a65baff6e65b9ff7265b8ff7665b6ff7a65b5ff7f65b4ff8365b3ff8765b1ff8b65b0ff8f65afff9465adff9865acff9c65abffa065aaffa465a8ffa965a7ffad65a6ffb165a4ffb565a3ffb965a2ffbe65a0ff3c6bc8ff406bc7ff446bc6ff486bc5ff4c6bc3ff506bc2ff556bc1ff596bbfff5d6bbeff616bbdff656bbcff6a6bbaff6e6bb9ff726bb8ff766bb6ff7a6bb5ff7f6bb4ff836bb3ff876bb1ff8b6bb0ff8f6bafff946badff986bacff9c6babffa06baaffa46ba8ffa96ba7ffad6ba6ffb16ba4ffb56ba3ffb96ba2ffbe6ba0ff3c71c8ff4071c7ff4471c6ff4871c5ff4c71c3ff5071c2ff5571c1ff5971bfff5d71beff6171bdff6571bcff6a71baff6e71b9ff7271b8ff7671b6ff7a71b5ff7f71b4ff8371b3ff8771b1ff8b71b0ff8f71afff9471adff9871acff9c71abffa071aaffa471a8ffa971a7ffad71a6ffb171a4ffb571a3ffb971a2ffbe71a0ff3c77c8ff4077c7ff4477c6ff4877c5ff4c77c3ff5077c2ff5577c1ff5977bfff5d77beff6177bdff6577bcff6a77baff6e77b9ff7277b8ff7677b6ff7a77b5ff7f77b4ff8377b3ff8777b1ff8b77b0ff8f77afff9477adff9877acff9c77abffa077aaffa477a8ffa977a7ffad77a6ffb177a4ffb577a3ffb977a2ffbe77a0ff3c7dc8ff407dc7ff447dc6ff487dc5ff4c7dc3ff507dc2ff557dc1ff597dbfff5d7dbeff617dbdff657dbcff6a7dbaff6e7db9ff727db8ff767db6ff7a7db5ff7f7db4ff837db3ff877db1ff8b7db0ff8f7dafff947dadff987dacff9c7dabffa07daaffa47da8ffa97da7ffad7da6ffb17da4ffb57da3ffb97da2ffbe7da0ff3c83c8ff4083c7ff4483c6ff4883c5ff4c83c3ff5083c2ff5583c1ff5983bfff5d83beff6183bdff6583bcff6a83baff6e83b9ff7283b8ff7683b6ff7a83b5ff7f83b4ff8383b3ff8783b1ff8b83b0ff8f83afff9483adff9883acff9c83abffa083aaffa483a8ffa983a7ffad83a6ffb183a4ffb583a3ffb983a2ffbe83a0ff3c89c8ff4089c7ff4489c6ff4889c5ff4c89c3ff5089c2ff5589c1ff5989bfff5d89beff6189bdff6589bcff6a89baff6e89b9ff7289b8ff7689b6ff7a89b5ff7f89b4ff8389b3ff8789b1ff8b89b0ff8f89afff9489adff9889acff9c89abffa089aaffa489a8ffa989a7ffad89a6ffb189a4ffb589a3ffb989a2ffbe89a0ff3c8ec8ff408ec7ff448ec6ff488ec5ff4c8ec3ff508ec2ff558ec1ff598ebfff5d8ebeff618ebdff658ebcff6a8ebaff6e8eb9ff728eb8ff768eb6ff7a8eb5ff7f8eb4ff838eb3ff878eb1ff8b8eb0ff8f8eafff948eadff988eacff9c8eabffa08eaaffa48ea8ffa98ea7ffad8ea6ffb18ea4ffb58ea3ffb98ea2ffbe8ea0ff3c94c8ff4094c7ff4494c6ff4894c5ff4c94c3ff5094c2ff5594c1ff5994bfff5d94beff6194bdff6594bcff6a94baff6e94b9ff7294b8ff7694b6ff7a94b5ff7f94b4ff8394b3ff8794b1ff8b94b0ff8f94afff9494adff9894acff9c94abffa094aaffa494a8ffa994a7ffad94a6ffb194a4ffb594a3ffb994a2ffbe94a0ff3c9ac8ff409ac7ff449ac6ff489ac5ff4c9ac3ff509ac2ff559ac1ff599abfff5d9abeff619abdff659abcff6a9abaff6e9ab9ff729ab8ff769ab6ff7a9ab5ff7f9ab4ff839ab3ff879ab1ff8b9ab0ff8f9aafff949aadff989aacff9c9aabffa09aaaffa49aa8ffa99aa7ffad9aa6ffb19aa4ffb59aa3ffb99aa2ffbe9aa0ff3ca0c8ff40a0c7ff44a0c6ff48a0c5ff4ca0c3ff50a0c2ff55a0c1ff59a0bfff5da0beff61a0bdff65a0bcff6aa0baff6ea0b9ff72a0b8ff76a0b6ff7aa0b5ff7fa0b4ff83a0b3ff87a0b1ff8ba0b0ff8fa0afff94a0adff98a0acff9ca0abffa0a0aaffa4a0a8ffa9a0a7ffada0a6ffb1a0a4ffb5a0a3ffb9a0a2ffbea0a0ff3ca6c8ff40a6c7ff44a6c6ff48a6c5ff4ca6c3ff50a6c2ff55a6c1ff59a6bfff5da6beff61a6bdff65a6bcff6aa6baff6ea6b9ff72a6b8ff76a6b6ff7aa6b5ff7fa6b4ff83a6b3ff87a6b1ff8ba6b0ff8fa6afff94a6adff98a6acff9ca6abffa0a6aaffa4a6a8ffa9a6a7ffada6a6ffb1a6a4ffb5a6a3ffb9a6a2ffbea6a0ff3cacc8ff40acc7ff44acc6ff48acc5ff4cacc3ff50acc2ff55acc1ff59acbfff5dacbeff61acbdff65acbcff6aacbaff6eacb9ff72acb8ff76acb6ff7aacb5ff7facb4ff83acb3ff87acb1ff8bacb0ff8facafff94acadff98acacff9cacabffa0acaaffa4aca8ffa9aca7ffadaca6ffb1aca4ffb5aca3ffb9aca2ffbeaca0ff3cb2c8ff40b2c7ff44b2c6ff48b2c5ff4cb2c3ff50b2c2ff55b2c1ff59b2bfff5db2beff61b2bdff65b2bcff6ab2baff6eb2b9ff72b2b8ff76b2b6ff7ab2b5ff7fb2b4ff83b2b3ff87b2b1ff8bb2b0ff8fb2afff94b2adff98b2acff9cb2abffa0b2aaffa4b2a8ffa9b2a7ffadb2a6ffb1b2a4ffb5b2a3ffb9b2a2ffbeb2a0ff3cb8c8ff40b8c7ff44b8c6ff48b8c5ff4cb8c3ff50b8c2ff55b8c1ff59b8bfff5db8beff61b8bdff65b8bcff6ab8baff6eb8b9ff72b8b8ff76b8b6ff7ab8b5ff7fb8b4ff83b8b3ff87b8b1ff8bb8b0ff8fb8afff94b8adff98b8acff9cb8abffa0b8aaffa4b8a8ffa9b8a7ffadb8a6ffb1b8a4ffb5b8a3ffb9b8a2ffbeb8a0ff3cbec8ff40bec7ff44bec6ff48bec5ff4cbec3ff50bec2ff55bec1ff59bebfff5dbebeff61bebdff65bebcff6abebaff6ebeb9ff72beb8ff76beb6ff7abeb5ff7fbeb4ff83beb3ff87beb1ff8bbeb0ff8fbeafff94beadff98beacff9cbeabffa0beaaffa4bea8ffa9bea7ffadbea6ffb1bea4ffb5bea3ffb9bea2ffbebea0ff",
+      "kind": "pixels",
+      "origin_basis": "origin-formula: amount = clamp01(intensity x weight) = 0",
+      "title": "intensity 0 makes the pass amount 0: the exact input picture",
+      "tolerance_per_channel": 1,
+      "width": 32
+    },
+    {
+      "expected_rgba_hex": "bfc4e6ffc0c4e5ffc0c4e5ffc1c4e4ffc1c4e4ffc2c4e3ffc3c4e3ffc4c4e2ffc4c4e2ffc5c4e1ffc6c4e1ffc7c4e0ffc8c4e0ffc9c4dfffcac4deffcbc4deffccc4deffcdc4ddffcfc4ddffd0c4dcffd1c4dcffd3c4dbffd4c4dbffd5c4daffd6c4daffd8c4d9ffdac4d9ffdbc4d9ffddc4d8ffdec4d8ffe0c4d7ffe2c4d6ffbfc5e6ffc0c5e5ffc0c5e5ffc1c5e4ffc1c5e4ffc2c5e3ffc3c5e3ffc4c5e2ffc4c5e2ffc5c5e1ffc6c5e1ffc7c5e0ffc8c5e0ffc9c5dfffcac5deffcbc5deffccc5deffcdc5ddffcfc5ddffd0c5dcffd1c5dcffd3c5dbffd4c5dbffd5c5daffd6c5daffd8c5d9ffdac5d9ffdbc5d9ffddc5d8ffdec5d8ffe0c5d7ffe2c5d6ffbfc6e6ffc0c6e5ffc0c6e5ffc1c6e4ffc1c6e4ffc2c6e3ffc3c6e3ffc4c6e2ffc4c6e2ffc5c6e1ffc6c6e1ffc7c6e0ffc8c6e0ffc9c6dfffcac6deffcbc6deffccc6deffcdc6ddffcfc6ddffd0c6dcffd1c6dcffd3c6dbffd4c6dbffd5c6daffd6c6daffd8c6d9ffdac6d9ffdbc6d9ffddc6d8ffdec6d8ffe0c6d7ffe2c6d6ffbfc7e6ffc0c7e5ffc0c7e5ffc1c7e4ffc1c7e4ffc2c7e3ffc3c7e3ffc4c7e2ffc4c7e2ffc5c7e1ffc6c7e1ffc7c7e0ffc8c7e0ffc9c7dfffcac7deffcbc7deffccc7deffcdc7ddffcfc7ddffd0c7dcffd1c7dcffd3c7dbffd4c7dbffd5c7daffd6c7daffd8c7d9ffdac7d9ffdbc7d9ffddc7d8ffdec7d8ffe0c7d7ffe2c7d6ffbfc9e6ffc0c9e5ffc0c9e5ffc1c9e4ffc1c9e4ffc2c9e3ffc3c9e3ffc4c9e2ffc4c9e2ffc5c9e1ffc6c9e1ffc7c9e0ffc8c9e0ffc9c9dfffcac9deffcbc9deffccc9deffcdc9ddffcfc9ddffd0c9dcffd1c9dcffd3c9dbffd4c9dbffd5c9daffd6c9daffd8c9d9ffdac9d9ffdbc9d9ffddc9d8ffdec9d8ffe0c9d7ffe2c9d6ffbfcae6ffc0cae5ffc0cae5ffc1cae4ffc1cae4ffc2cae3ffc3cae3ffc4cae2ffc4cae2ffc5cae1ffc6cae1ffc7cae0ffc8cae0ffc9cadfffcacadeffcbcadeffcccadeffcdcaddffcfcaddffd0cadcffd1cadcffd3cadbffd4cadbffd5cadaffd6cadaffd8cad9ffdacad9ffdbcad9ffddcad8ffdecad8ffe0cad7ffe2cad6ffbfcce6ffc0cce5ffc0cce5ffc1cce4ffc1cce4ffc2cce3ffc3cce3ffc4cce2ffc4cce2ffc5cce1ffc6cce1ffc7cce0ffc8cce0ffc9ccdfffcaccdeffcbccdeffccccdeffcdccddffcfccddffd0ccdcffd1ccdcffd3ccdbffd4ccdbffd5ccdaffd6ccdaffd8ccd9ffdaccd9ffdbccd9ffddccd8ffdeccd8ffe0ccd7ffe2ccd6ffbfcde6ffc0cde5ffc0cde5ffc1cde4ffc1cde4ffc2cde3ffc3cde3ffc4cde2ffc4cde2ffc5cde1ffc6cde1ffc7cde0ffc8cde0ffc9cddfffcacddeffcbcddeffcccddeffcdcdddffcfcdddffd0cddcffd1cddcffd3cddbffd4cddbffd5cddaffd6cddaffd8cdd9ffdacdd9ffdbcdd9ffddcdd8ffdecdd8ffe0cdd7ffe2cdd6ffbfcfe6ffc0cfe5ffc0cfe5ffc1cfe4ffc1cfe4ffc2cfe3ffc3cfe3ffc4cfe2ffc4cfe2ffc5cfe1ffc6cfe1ffc7cfe0ffc8cfe0ffc9cfdfffcacfdeffcbcfdeffcccfdeffcdcfddffcfcfddffd0cfdcffd1cfdcffd3cfdbffd4cfdbffd5cfdaffd6cfdaffd8cfd9ffdacfd9ffdbcfd9ffddcfd8ffdecfd8ffe0cfd7ffe2cfd6ffbfd1e6ffc0d1e5ffc0d1e5ffc1d1e4ffc1d1e4ffc2d1e3ffc3d1e3ffc4d1e2ffc4d1e2ffc5d1e1ffc6d1e1ffc7d1e0ffc8d1e0ffc9d1dfffcad1deffcbd1deffccd1deffcdd1ddffcfd1ddffd0d1dcffd1d1dcffd3d1dbffd4d1dbffd5d1daffd6d1daffd8d1d9ffdad1d9ffdbd1d9ffddd1d8ffded1d8ffe0d1d7ffe2d1d6ffbfd3e6ffc0d3e5ffc0d3e5ffc1d3e4ffc1d3e4ffc2d3e3ffc3d3e3ffc4d3e2ffc4d3e2ffc5d3e1ffc6d3e1ffc7d3e0ffc8d3e0ffc9d3dfffcad3deffcbd3deffccd3deffcdd3ddffcfd3ddffd0d3dcffd1d3dcffd3d3dbffd4d3dbffd5d3daffd6d3daffd8d3d9ffdad3d9ffdbd3d9ffddd3d8ffded3d8ffe0d3d7ffe2d3d6ffbfd4e6ffc0d4e5ffc0d4e5ffc1d4e4ffc1d4e4ffc2d4e3ffc3d4e3ffc4d4e2ffc4d4e2ffc5d4e1ffc6d4e1ffc7d4e0ffc8d4e0ffc9d4dfffcad4deffcbd4deffccd4deffcdd4ddffcfd4ddffd0d4dcffd1d4dcffd3d4dbffd4d4dbffd5d4daffd6d4daffd8d4d9ffdad4d9ffdbd4d9ffddd4d8ffded4d8ffe0d4d7ffe2d4d6ffbfd6e6ffc0d6e5ffc0d6e5ffc1d6e4ffc1d6e4ffc2d6e3ffc3d6e3ffc4d6e2ffc4d6e2ffc5d6e1ffc6d6e1ffc7d6e0ffc8d6e0ffc9d6dfffcad6deffcbd6deffccd6deffcdd6ddffcfd6ddffd0d6dcffd1d6dcffd3d6dbffd4d6dbffd5d6daffd6d6daffd8d6d9ffdad6d9ffdbd6d9ffddd6d8ffded6d8ffe0d6d7ffe2d6d6ffbfd9e6ffc0d9e5ffc0d9e5ffc1d9e4ffc1d9e4ffc2d9e3ffc3d9e3ffc4d9e2ffc4d9e2ffc5d9e1ffc6d9e1ffc7d9e0ffc8d9e0ffc9d9dfffcad9deffcbd9deffccd9deffcdd9ddffcfd9ddffd0d9dcffd1d9dcffd3d9dbffd4d9dbffd5d9daffd6d9daffd8d9d9ffdad9d9ffdbd9d9ffddd9d8ffded9d8ffe0d9d7ffe2d9d6ffbfdbe6ffc0dbe5ffc0dbe5ffc1dbe4ffc1dbe4ffc2dbe3ffc3dbe3ffc4dbe2ffc4dbe2ffc5dbe1ffc6dbe1ffc7dbe0ffc8dbe0ffc9dbdfffcadbdeffcbdbdeffccdbdeffcddbddffcfdbddffd0dbdcffd1dbdcffd3dbdbffd4dbdbffd5dbdaffd6dbdaffd8dbd9ffdadbd9ffdbdbd9ffdddbd8ffdedbd8ffe0dbd7ffe2dbd6ffbfdde6ffc0dde5ffc0dde5ffc1dde4ffc1dde4ffc2dde3ffc3dde3ffc4dde2ffc4dde2ffc5dde1ffc6dde1ffc7dde0ffc8dde0ffc9dddfffcadddeffcbdddeffccdddeffcdddddffcfddddffd0dddcffd1dddcffd3dddbffd4dddbffd5dddaffd6dddaffd8ddd9ffdaddd9ffdbddd9ffddddd8ffdeddd8ffe0ddd7ffe2ddd6ffbfdfe6ffc0dfe5ffc0dfe5ffc1dfe4ffc1dfe4ffc2dfe3ffc3dfe3ffc4dfe2ffc4dfe2ffc5dfe1ffc6dfe1ffc7dfe0ffc8dfe0ffc9dfdfffcadfdeffcbdfdeffccdfdeffcddfddffcfdfddffd0dfdcffd1dfdcffd3dfdbffd4dfdbffd5dfdaffd6dfdaffd8dfd9ffdadfd9ffdbdfd9ffdddfd8ffdedfd8ffe0dfd7ffe2dfd6ffbfe2e6ffc0e2e5ffc0e2e5ffc1e2e4ffc1e2e4ffc2e2e3ffc3e2e3ffc4e2e2ffc4e2e2ffc5e2e1ffc6e2e1ffc7e2e0ffc8e2e0ffc9e2dfffcae2deffcbe2deffcce2deffcde2ddffcfe2ddffd0e2dcffd1e2dcffd3e2dbffd4e2dbffd5e2daffd6e2daffd8e2d9ffdae2d9ffdbe2d9ffdde2d8ffdee2d8ffe0e2d7ffe2e2d6ff",
+      "frame": 20,
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 30,
+                "effect": "fade",
+                "id": "c1",
+                "params": {
+                  "amount": 0.5,
+                  "color": {
+                    "b": 1.0,
+                    "g": 1.0,
+                    "r": 1.0
+                  }
+                },
+                "startFrame": 10
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "height": 18,
+      "id": "fade-half-way-to-white-in-linear-light",
+      "identity": false,
+      "input_rgba_hex": "3c5ac8ff405ac7ff445ac6ff485ac5ff4c5ac3ff505ac2ff555ac1ff595abfff5d5abeff615abdff655abcff6a5abaff6e5ab9ff725ab8ff765ab6ff7a5ab5ff7f5ab4ff835ab3ff875ab1ff8b5ab0ff8f5aafff945aadff985aacff9c5aabffa05aaaffa45aa8ffa95aa7ffad5aa6ffb15aa4ffb55aa3ffb95aa2ffbe5aa0ff3c5fc8ff405fc7ff445fc6ff485fc5ff4c5fc3ff505fc2ff555fc1ff595fbfff5d5fbeff615fbdff655fbcff6a5fbaff6e5fb9ff725fb8ff765fb6ff7a5fb5ff7f5fb4ff835fb3ff875fb1ff8b5fb0ff8f5fafff945fadff985facff9c5fabffa05faaffa45fa8ffa95fa7ffad5fa6ffb15fa4ffb55fa3ffb95fa2ffbe5fa0ff3c65c8ff4065c7ff4465c6ff4865c5ff4c65c3ff5065c2ff5565c1ff5965bfff5d65beff6165bdff6565bcff6a65baff6e65b9ff7265b8ff7665b6ff7a65b5ff7f65b4ff8365b3ff8765b1ff8b65b0ff8f65afff9465adff9865acff9c65abffa065aaffa465a8ffa965a7ffad65a6ffb165a4ffb565a3ffb965a2ffbe65a0ff3c6bc8ff406bc7ff446bc6ff486bc5ff4c6bc3ff506bc2ff556bc1ff596bbfff5d6bbeff616bbdff656bbcff6a6bbaff6e6bb9ff726bb8ff766bb6ff7a6bb5ff7f6bb4ff836bb3ff876bb1ff8b6bb0ff8f6bafff946badff986bacff9c6babffa06baaffa46ba8ffa96ba7ffad6ba6ffb16ba4ffb56ba3ffb96ba2ffbe6ba0ff3c71c8ff4071c7ff4471c6ff4871c5ff4c71c3ff5071c2ff5571c1ff5971bfff5d71beff6171bdff6571bcff6a71baff6e71b9ff7271b8ff7671b6ff7a71b5ff7f71b4ff8371b3ff8771b1ff8b71b0ff8f71afff9471adff9871acff9c71abffa071aaffa471a8ffa971a7ffad71a6ffb171a4ffb571a3ffb971a2ffbe71a0ff3c77c8ff4077c7ff4477c6ff4877c5ff4c77c3ff5077c2ff5577c1ff5977bfff5d77beff6177bdff6577bcff6a77baff6e77b9ff7277b8ff7677b6ff7a77b5ff7f77b4ff8377b3ff8777b1ff8b77b0ff8f77afff9477adff9877acff9c77abffa077aaffa477a8ffa977a7ffad77a6ffb177a4ffb577a3ffb977a2ffbe77a0ff3c7dc8ff407dc7ff447dc6ff487dc5ff4c7dc3ff507dc2ff557dc1ff597dbfff5d7dbeff617dbdff657dbcff6a7dbaff6e7db9ff727db8ff767db6ff7a7db5ff7f7db4ff837db3ff877db1ff8b7db0ff8f7dafff947dadff987dacff9c7dabffa07daaffa47da8ffa97da7ffad7da6ffb17da4ffb57da3ffb97da2ffbe7da0ff3c83c8ff4083c7ff4483c6ff4883c5ff4c83c3ff5083c2ff5583c1ff5983bfff5d83beff6183bdff6583bcff6a83baff6e83b9ff7283b8ff7683b6ff7a83b5ff7f83b4ff8383b3ff8783b1ff8b83b0ff8f83afff9483adff9883acff9c83abffa083aaffa483a8ffa983a7ffad83a6ffb183a4ffb583a3ffb983a2ffbe83a0ff3c89c8ff4089c7ff4489c6ff4889c5ff4c89c3ff5089c2ff5589c1ff5989bfff5d89beff6189bdff6589bcff6a89baff6e89b9ff7289b8ff7689b6ff7a89b5ff7f89b4ff8389b3ff8789b1ff8b89b0ff8f89afff9489adff9889acff9c89abffa089aaffa489a8ffa989a7ffad89a6ffb189a4ffb589a3ffb989a2ffbe89a0ff3c8ec8ff408ec7ff448ec6ff488ec5ff4c8ec3ff508ec2ff558ec1ff598ebfff5d8ebeff618ebdff658ebcff6a8ebaff6e8eb9ff728eb8ff768eb6ff7a8eb5ff7f8eb4ff838eb3ff878eb1ff8b8eb0ff8f8eafff948eadff988eacff9c8eabffa08eaaffa48ea8ffa98ea7ffad8ea6ffb18ea4ffb58ea3ffb98ea2ffbe8ea0ff3c94c8ff4094c7ff4494c6ff4894c5ff4c94c3ff5094c2ff5594c1ff5994bfff5d94beff6194bdff6594bcff6a94baff6e94b9ff7294b8ff7694b6ff7a94b5ff7f94b4ff8394b3ff8794b1ff8b94b0ff8f94afff9494adff9894acff9c94abffa094aaffa494a8ffa994a7ffad94a6ffb194a4ffb594a3ffb994a2ffbe94a0ff3c9ac8ff409ac7ff449ac6ff489ac5ff4c9ac3ff509ac2ff559ac1ff599abfff5d9abeff619abdff659abcff6a9abaff6e9ab9ff729ab8ff769ab6ff7a9ab5ff7f9ab4ff839ab3ff879ab1ff8b9ab0ff8f9aafff949aadff989aacff9c9aabffa09aaaffa49aa8ffa99aa7ffad9aa6ffb19aa4ffb59aa3ffb99aa2ffbe9aa0ff3ca0c8ff40a0c7ff44a0c6ff48a0c5ff4ca0c3ff50a0c2ff55a0c1ff59a0bfff5da0beff61a0bdff65a0bcff6aa0baff6ea0b9ff72a0b8ff76a0b6ff7aa0b5ff7fa0b4ff83a0b3ff87a0b1ff8ba0b0ff8fa0afff94a0adff98a0acff9ca0abffa0a0aaffa4a0a8ffa9a0a7ffada0a6ffb1a0a4ffb5a0a3ffb9a0a2ffbea0a0ff3ca6c8ff40a6c7ff44a6c6ff48a6c5ff4ca6c3ff50a6c2ff55a6c1ff59a6bfff5da6beff61a6bdff65a6bcff6aa6baff6ea6b9ff72a6b8ff76a6b6ff7aa6b5ff7fa6b4ff83a6b3ff87a6b1ff8ba6b0ff8fa6afff94a6adff98a6acff9ca6abffa0a6aaffa4a6a8ffa9a6a7ffada6a6ffb1a6a4ffb5a6a3ffb9a6a2ffbea6a0ff3cacc8ff40acc7ff44acc6ff48acc5ff4cacc3ff50acc2ff55acc1ff59acbfff5dacbeff61acbdff65acbcff6aacbaff6eacb9ff72acb8ff76acb6ff7aacb5ff7facb4ff83acb3ff87acb1ff8bacb0ff8facafff94acadff98acacff9cacabffa0acaaffa4aca8ffa9aca7ffadaca6ffb1aca4ffb5aca3ffb9aca2ffbeaca0ff3cb2c8ff40b2c7ff44b2c6ff48b2c5ff4cb2c3ff50b2c2ff55b2c1ff59b2bfff5db2beff61b2bdff65b2bcff6ab2baff6eb2b9ff72b2b8ff76b2b6ff7ab2b5ff7fb2b4ff83b2b3ff87b2b1ff8bb2b0ff8fb2afff94b2adff98b2acff9cb2abffa0b2aaffa4b2a8ffa9b2a7ffadb2a6ffb1b2a4ffb5b2a3ffb9b2a2ffbeb2a0ff3cb8c8ff40b8c7ff44b8c6ff48b8c5ff4cb8c3ff50b8c2ff55b8c1ff59b8bfff5db8beff61b8bdff65b8bcff6ab8baff6eb8b9ff72b8b8ff76b8b6ff7ab8b5ff7fb8b4ff83b8b3ff87b8b1ff8bb8b0ff8fb8afff94b8adff98b8acff9cb8abffa0b8aaffa4b8a8ffa9b8a7ffadb8a6ffb1b8a4ffb5b8a3ffb9b8a2ffbeb8a0ff3cbec8ff40bec7ff44bec6ff48bec5ff4cbec3ff50bec2ff55bec1ff59bebfff5dbebeff61bebdff65bebcff6abebaff6ebeb9ff72beb8ff76beb6ff7abeb5ff7fbeb4ff83beb3ff87beb1ff8bbeb0ff8fbeafff94beadff98beacff9cbeabffa0beaaffa4bea8ffa9bea7ffadbea6ffb1bea4ffb5bea3ffb9bea2ffbebea0ff",
+      "kind": "pixels",
+      "origin_basis": "origin-formula: shaders/fade.ts + chunks/color.ts",
+      "title": "amount 0.5 towards white: the mean of the linear values, then encoded",
+      "tolerance_per_channel": 1,
+      "width": 32
+    },
+    {
+      "expected_rgba_hex": "914eb0ff924eafff934eaeff954eadff964eabff974eabff994eaaff9a4ea8ff9c4ea7ff9e4ea6ff9f4ea5ffa14ea3ffa34ea3ffa54ea2ffa74ea0ffa94e9fffab4e9effad4e9dffb04e9bffb24e9bffb44e9affb74e98ffb94e97ffbb4e96ffbe4e95ffc04e93ffc34e93ffc64e92ffc84e90ffcb4e8fffce4e8effd14e8cff9153b0ff9253afff9353aeff9553adff9653abff9753abff9953aaff9a53a8ff9c53a7ff9e53a6ff9f53a5ffa153a3ffa353a3ffa553a2ffa753a0ffa9539fffab539effad539dffb0539bffb2539bffb4539affb75398ffb95397ffbb5396ffbe5395ffc05393ffc35393ffc65392ffc85390ffcb538fffce538effd1538cff9158b0ff9258afff9358aeff9558adff9658abff9758abff9958aaff9a58a8ff9c58a7ff9e58a6ff9f58a5ffa158a3ffa358a3ffa558a2ffa758a0ffa9589fffab589effad589dffb0589bffb2589bffb4589affb75898ffb95897ffbb5896ffbe5895ffc05893ffc35893ffc65892ffc85890ffcb588fffce588effd1588cff915db0ff925dafff935daeff955dadff965dabff975dabff995daaff9a5da8ff9c5da7ff9e5da6ff9f5da5ffa15da3ffa35da3ffa55da2ffa75da0ffa95d9fffab5d9effad5d9dffb05d9bffb25d9bffb45d9affb75d98ffb95d97ffbb5d96ffbe5d95ffc05d93ffc35d93ffc65d92ffc85d90ffcb5d8fffce5d8effd15d8cff9163b0ff9263afff9363aeff9563adff9663abff9763abff9963aaff9a63a8ff9c63a7ff9e63a6ff9f63a5ffa163a3ffa363a3ffa563a2ffa763a0ffa9639fffab639effad639dffb0639bffb2639bffb4639affb76398ffb96397ffbb6396ffbe6395ffc06393ffc36393ffc66392ffc86390ffcb638fffce638effd1638cff9168b0ff9268afff9368aeff9568adff9668abff9768abff9968aaff9a68a8ff9c68a7ff9e68a6ff9f68a5ffa168a3ffa368a3ffa568a2ffa768a0ffa9689fffab689effad689dffb0689bffb2689bffb4689affb76898ffb96897ffbb6896ffbe6895ffc06893ffc36893ffc66892ffc86890ffcb688fffce688effd1688cff916db0ff926dafff936daeff956dadff966dabff976dabff996daaff9a6da8ff9c6da7ff9e6da6ff9f6da5ffa16da3ffa36da3ffa56da2ffa76da0ffa96d9fffab6d9effad6d9dffb06d9bffb26d9bffb46d9affb76d98ffb96d97ffbb6d96ffbe6d95ffc06d93ffc36d93ffc66d92ffc86d90ffcb6d8fffce6d8effd16d8cff9173b0ff9273afff9373aeff9573adff9673abff9773abff9973aaff9a73a8ff9c73a7ff9e73a6ff9f73a5ffa173a3ffa373a3ffa573a2ffa773a0ffa9739fffab739effad739dffb0739bffb2739bffb4739affb77398ffb97397ffbb7396ffbe7395ffc07393ffc37393ffc67392ffc87390ffcb738fffce738effd1738cff9178b0ff9278afff9378aeff9578adff9678abff9778abff9978aaff9a78a8ff9c78a7ff9e78a6ff9f78a5ffa178a3ffa378a3ffa578a2ffa778a0ffa9789fffab789effad789dffb0789bffb2789bffb4789affb77898ffb97897ffbb7896ffbe7895ffc07893ffc37893ffc67892ffc87890ffcb788fffce788effd1788cff917cb0ff927cafff937caeff957cadff967cabff977cabff997caaff9a7ca8ff9c7ca7ff9e7ca6ff9f7ca5ffa17ca3ffa37ca3ffa57ca2ffa77ca0ffa97c9fffab7c9effad7c9dffb07c9bffb27c9bffb47c9affb77c98ffb97c97ffbb7c96ffbe7c95ffc07c93ffc37c93ffc67c92ffc87c90ffcb7c8fffce7c8effd17c8cff9182b0ff9282afff9382aeff9582adff9682abff9782abff9982aaff9a82a8ff9c82a7ff9e82a6ff9f82a5ffa182a3ffa382a3ffa582a2ffa782a0ffa9829fffab829effad829dffb0829bffb2829bffb4829affb78298ffb98297ffbb8296ffbe8295ffc08293ffc38293ffc68292ffc88290ffcb828fffce828effd1828cff9187b0ff9287afff9387aeff9587adff9687abff9787abff9987aaff9a87a8ff9c87a7ff9e87a6ff9f87a5ffa187a3ffa387a3ffa587a2ffa787a0ffa9879fffab879effad879dffb0879bffb2879bffb4879affb78798ffb98797ffbb8796ffbe8795ffc08793ffc38793ffc68792ffc88790ffcb878fffce878effd1878cff918cb0ff928cafff938caeff958cadff968cabff978cabff998caaff9a8ca8ff9c8ca7ff9e8ca6ff9f8ca5ffa18ca3ffa38ca3ffa58ca2ffa78ca0ffa98c9fffab8c9effad8c9dffb08c9bffb28c9bffb48c9affb78c98ffb98c97ffbb8c96ffbe8c95ffc08c93ffc38c93ffc68c92ffc88c90ffcb8c8fffce8c8effd18c8cff9192b0ff9292afff9392aeff9592adff9692abff9792abff9992aaff9a92a8ff9c92a7ff9e92a6ff9f92a5ffa192a3ffa392a3ffa592a2ffa792a0ffa9929fffab929effad929dffb0929bffb2929bffb4929affb79298ffb99297ffbb9296ffbe9295ffc09293ffc39293ffc69292ffc89290ffcb928fffce928effd1928cff9197b0ff9297afff9397aeff9597adff9697abff9797abff9997aaff9a97a8ff9c97a7ff9e97a6ff9f97a5ffa197a3ffa397a3ffa597a2ffa797a0ffa9979fffab979effad979dffb0979bffb2979bffb4979affb79798ffb99797ffbb9796ffbe9795ffc09793ffc39793ffc69792ffc89790ffcb978fffce978effd1978cff919cb0ff929cafff939caeff959cadff969cabff979cabff999caaff9a9ca8ff9c9ca7ff9e9ca6ff9f9ca5ffa19ca3ffa39ca3ffa59ca2ffa79ca0ffa99c9fffab9c9effad9c9dffb09c9bffb29c9bffb49c9affb79c98ffb99c97ffbb9c96ffbe9c95ffc09c93ffc39c93ffc69c92ffc89c90ffcb9c8fffce9c8effd19c8cff91a2b0ff92a2afff93a2aeff95a2adff96a2abff97a2abff99a2aaff9aa2a8ff9ca2a7ff9ea2a6ff9fa2a5ffa1a2a3ffa3a2a3ffa5a2a2ffa7a2a0ffa9a29fffaba29effada29dffb0a29bffb2a29bffb4a29affb7a298ffb9a297ffbba296ffbea295ffc0a293ffc3a293ffc6a292ffc8a290ffcba28fffcea28effd1a28cff91a7b0ff92a7afff93a7aeff95a7adff96a7abff97a7abff99a7aaff9aa7a8ff9ca7a7ff9ea7a6ff9fa7a5ffa1a7a3ffa3a7a3ffa5a7a2ffa7a7a0ffa9a79fffaba79effada79dffb0a79bffb2a79bffb4a79affb7a798ffb9a797ffbba796ffbea795ffc0a793ffc3a793ffc6a792ffc8a790ffcba78fffcea78effd1a78cff",
+      "frame": 10,
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 40,
+                "effect": "fade",
+                "id": "c1",
+                "params": {
+                  "color": {
+                    "b": 0.0,
+                    "g": 0.0,
+                    "r": 1.0
+                  },
+                  "intensity": 0.25
+                },
+                "startFrame": 0
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "height": 18,
+      "id": "fade-red-at-quarter-intensity",
+      "identity": false,
+      "input_rgba_hex": "3c5ac8ff405ac7ff445ac6ff485ac5ff4c5ac3ff505ac2ff555ac1ff595abfff5d5abeff615abdff655abcff6a5abaff6e5ab9ff725ab8ff765ab6ff7a5ab5ff7f5ab4ff835ab3ff875ab1ff8b5ab0ff8f5aafff945aadff985aacff9c5aabffa05aaaffa45aa8ffa95aa7ffad5aa6ffb15aa4ffb55aa3ffb95aa2ffbe5aa0ff3c5fc8ff405fc7ff445fc6ff485fc5ff4c5fc3ff505fc2ff555fc1ff595fbfff5d5fbeff615fbdff655fbcff6a5fbaff6e5fb9ff725fb8ff765fb6ff7a5fb5ff7f5fb4ff835fb3ff875fb1ff8b5fb0ff8f5fafff945fadff985facff9c5fabffa05faaffa45fa8ffa95fa7ffad5fa6ffb15fa4ffb55fa3ffb95fa2ffbe5fa0ff3c65c8ff4065c7ff4465c6ff4865c5ff4c65c3ff5065c2ff5565c1ff5965bfff5d65beff6165bdff6565bcff6a65baff6e65b9ff7265b8ff7665b6ff7a65b5ff7f65b4ff8365b3ff8765b1ff8b65b0ff8f65afff9465adff9865acff9c65abffa065aaffa465a8ffa965a7ffad65a6ffb165a4ffb565a3ffb965a2ffbe65a0ff3c6bc8ff406bc7ff446bc6ff486bc5ff4c6bc3ff506bc2ff556bc1ff596bbfff5d6bbeff616bbdff656bbcff6a6bbaff6e6bb9ff726bb8ff766bb6ff7a6bb5ff7f6bb4ff836bb3ff876bb1ff8b6bb0ff8f6bafff946badff986bacff9c6babffa06baaffa46ba8ffa96ba7ffad6ba6ffb16ba4ffb56ba3ffb96ba2ffbe6ba0ff3c71c8ff4071c7ff4471c6ff4871c5ff4c71c3ff5071c2ff5571c1ff5971bfff5d71beff6171bdff6571bcff6a71baff6e71b9ff7271b8ff7671b6ff7a71b5ff7f71b4ff8371b3ff8771b1ff8b71b0ff8f71afff9471adff9871acff9c71abffa071aaffa471a8ffa971a7ffad71a6ffb171a4ffb571a3ffb971a2ffbe71a0ff3c77c8ff4077c7ff4477c6ff4877c5ff4c77c3ff5077c2ff5577c1ff5977bfff5d77beff6177bdff6577bcff6a77baff6e77b9ff7277b8ff7677b6ff7a77b5ff7f77b4ff8377b3ff8777b1ff8b77b0ff8f77afff9477adff9877acff9c77abffa077aaffa477a8ffa977a7ffad77a6ffb177a4ffb577a3ffb977a2ffbe77a0ff3c7dc8ff407dc7ff447dc6ff487dc5ff4c7dc3ff507dc2ff557dc1ff597dbfff5d7dbeff617dbdff657dbcff6a7dbaff6e7db9ff727db8ff767db6ff7a7db5ff7f7db4ff837db3ff877db1ff8b7db0ff8f7dafff947dadff987dacff9c7dabffa07daaffa47da8ffa97da7ffad7da6ffb17da4ffb57da3ffb97da2ffbe7da0ff3c83c8ff4083c7ff4483c6ff4883c5ff4c83c3ff5083c2ff5583c1ff5983bfff5d83beff6183bdff6583bcff6a83baff6e83b9ff7283b8ff7683b6ff7a83b5ff7f83b4ff8383b3ff8783b1ff8b83b0ff8f83afff9483adff9883acff9c83abffa083aaffa483a8ffa983a7ffad83a6ffb183a4ffb583a3ffb983a2ffbe83a0ff3c89c8ff4089c7ff4489c6ff4889c5ff4c89c3ff5089c2ff5589c1ff5989bfff5d89beff6189bdff6589bcff6a89baff6e89b9ff7289b8ff7689b6ff7a89b5ff7f89b4ff8389b3ff8789b1ff8b89b0ff8f89afff9489adff9889acff9c89abffa089aaffa489a8ffa989a7ffad89a6ffb189a4ffb589a3ffb989a2ffbe89a0ff3c8ec8ff408ec7ff448ec6ff488ec5ff4c8ec3ff508ec2ff558ec1ff598ebfff5d8ebeff618ebdff658ebcff6a8ebaff6e8eb9ff728eb8ff768eb6ff7a8eb5ff7f8eb4ff838eb3ff878eb1ff8b8eb0ff8f8eafff948eadff988eacff9c8eabffa08eaaffa48ea8ffa98ea7ffad8ea6ffb18ea4ffb58ea3ffb98ea2ffbe8ea0ff3c94c8ff4094c7ff4494c6ff4894c5ff4c94c3ff5094c2ff5594c1ff5994bfff5d94beff6194bdff6594bcff6a94baff6e94b9ff7294b8ff7694b6ff7a94b5ff7f94b4ff8394b3ff8794b1ff8b94b0ff8f94afff9494adff9894acff9c94abffa094aaffa494a8ffa994a7ffad94a6ffb194a4ffb594a3ffb994a2ffbe94a0ff3c9ac8ff409ac7ff449ac6ff489ac5ff4c9ac3ff509ac2ff559ac1ff599abfff5d9abeff619abdff659abcff6a9abaff6e9ab9ff729ab8ff769ab6ff7a9ab5ff7f9ab4ff839ab3ff879ab1ff8b9ab0ff8f9aafff949aadff989aacff9c9aabffa09aaaffa49aa8ffa99aa7ffad9aa6ffb19aa4ffb59aa3ffb99aa2ffbe9aa0ff3ca0c8ff40a0c7ff44a0c6ff48a0c5ff4ca0c3ff50a0c2ff55a0c1ff59a0bfff5da0beff61a0bdff65a0bcff6aa0baff6ea0b9ff72a0b8ff76a0b6ff7aa0b5ff7fa0b4ff83a0b3ff87a0b1ff8ba0b0ff8fa0afff94a0adff98a0acff9ca0abffa0a0aaffa4a0a8ffa9a0a7ffada0a6ffb1a0a4ffb5a0a3ffb9a0a2ffbea0a0ff3ca6c8ff40a6c7ff44a6c6ff48a6c5ff4ca6c3ff50a6c2ff55a6c1ff59a6bfff5da6beff61a6bdff65a6bcff6aa6baff6ea6b9ff72a6b8ff76a6b6ff7aa6b5ff7fa6b4ff83a6b3ff87a6b1ff8ba6b0ff8fa6afff94a6adff98a6acff9ca6abffa0a6aaffa4a6a8ffa9a6a7ffada6a6ffb1a6a4ffb5a6a3ffb9a6a2ffbea6a0ff3cacc8ff40acc7ff44acc6ff48acc5ff4cacc3ff50acc2ff55acc1ff59acbfff5dacbeff61acbdff65acbcff6aacbaff6eacb9ff72acb8ff76acb6ff7aacb5ff7facb4ff83acb3ff87acb1ff8bacb0ff8facafff94acadff98acacff9cacabffa0acaaffa4aca8ffa9aca7ffadaca6ffb1aca4ffb5aca3ffb9aca2ffbeaca0ff3cb2c8ff40b2c7ff44b2c6ff48b2c5ff4cb2c3ff50b2c2ff55b2c1ff59b2bfff5db2beff61b2bdff65b2bcff6ab2baff6eb2b9ff72b2b8ff76b2b6ff7ab2b5ff7fb2b4ff83b2b3ff87b2b1ff8bb2b0ff8fb2afff94b2adff98b2acff9cb2abffa0b2aaffa4b2a8ffa9b2a7ffadb2a6ffb1b2a4ffb5b2a3ffb9b2a2ffbeb2a0ff3cb8c8ff40b8c7ff44b8c6ff48b8c5ff4cb8c3ff50b8c2ff55b8c1ff59b8bfff5db8beff61b8bdff65b8bcff6ab8baff6eb8b9ff72b8b8ff76b8b6ff7ab8b5ff7fb8b4ff83b8b3ff87b8b1ff8bb8b0ff8fb8afff94b8adff98b8acff9cb8abffa0b8aaffa4b8a8ffa9b8a7ffadb8a6ffb1b8a4ffb5b8a3ffb9b8a2ffbeb8a0ff3cbec8ff40bec7ff44bec6ff48bec5ff4cbec3ff50bec2ff55bec1ff59bebfff5dbebeff61bebdff65bebcff6abebaff6ebeb9ff72beb8ff76beb6ff7abeb5ff7fbeb4ff83beb3ff87beb1ff8bbeb0ff8fbeafff94beadff98beacff9cbeabffa0beaaffa4bea8ffa9bea7ffadbea6ffb1bea4ffb5bea3ffb9bea2ffbebea0ff",
+      "kind": "pixels",
+      "origin_basis": "origin-formula: pass amount 0.25, colour passed through unchanged",
+      "title": "intensity 0.25 towards red",
+      "tolerance_per_channel": 1,
+      "width": 32
+    },
+    {
+      "expected_rgba_hex": "ff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ff",
+      "frame": 10,
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 40,
+                "effect": "fade",
+                "id": "c1",
+                "params": {
+                  "color": {
+                    "b": 0.0,
+                    "g": 0.0,
+                    "r": 1.0
+                  }
+                },
+                "startFrame": 0
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "height": 18,
+      "id": "fade-fully-red-is-the-colour",
+      "identity": false,
+      "input_rgba_hex": "3c5ac8ff405ac7ff445ac6ff485ac5ff4c5ac3ff505ac2ff555ac1ff595abfff5d5abeff615abdff655abcff6a5abaff6e5ab9ff725ab8ff765ab6ff7a5ab5ff7f5ab4ff835ab3ff875ab1ff8b5ab0ff8f5aafff945aadff985aacff9c5aabffa05aaaffa45aa8ffa95aa7ffad5aa6ffb15aa4ffb55aa3ffb95aa2ffbe5aa0ff3c5fc8ff405fc7ff445fc6ff485fc5ff4c5fc3ff505fc2ff555fc1ff595fbfff5d5fbeff615fbdff655fbcff6a5fbaff6e5fb9ff725fb8ff765fb6ff7a5fb5ff7f5fb4ff835fb3ff875fb1ff8b5fb0ff8f5fafff945fadff985facff9c5fabffa05faaffa45fa8ffa95fa7ffad5fa6ffb15fa4ffb55fa3ffb95fa2ffbe5fa0ff3c65c8ff4065c7ff4465c6ff4865c5ff4c65c3ff5065c2ff5565c1ff5965bfff5d65beff6165bdff6565bcff6a65baff6e65b9ff7265b8ff7665b6ff7a65b5ff7f65b4ff8365b3ff8765b1ff8b65b0ff8f65afff9465adff9865acff9c65abffa065aaffa465a8ffa965a7ffad65a6ffb165a4ffb565a3ffb965a2ffbe65a0ff3c6bc8ff406bc7ff446bc6ff486bc5ff4c6bc3ff506bc2ff556bc1ff596bbfff5d6bbeff616bbdff656bbcff6a6bbaff6e6bb9ff726bb8ff766bb6ff7a6bb5ff7f6bb4ff836bb3ff876bb1ff8b6bb0ff8f6bafff946badff986bacff9c6babffa06baaffa46ba8ffa96ba7ffad6ba6ffb16ba4ffb56ba3ffb96ba2ffbe6ba0ff3c71c8ff4071c7ff4471c6ff4871c5ff4c71c3ff5071c2ff5571c1ff5971bfff5d71beff6171bdff6571bcff6a71baff6e71b9ff7271b8ff7671b6ff7a71b5ff7f71b4ff8371b3ff8771b1ff8b71b0ff8f71afff9471adff9871acff9c71abffa071aaffa471a8ffa971a7ffad71a6ffb171a4ffb571a3ffb971a2ffbe71a0ff3c77c8ff4077c7ff4477c6ff4877c5ff4c77c3ff5077c2ff5577c1ff5977bfff5d77beff6177bdff6577bcff6a77baff6e77b9ff7277b8ff7677b6ff7a77b5ff7f77b4ff8377b3ff8777b1ff8b77b0ff8f77afff9477adff9877acff9c77abffa077aaffa477a8ffa977a7ffad77a6ffb177a4ffb577a3ffb977a2ffbe77a0ff3c7dc8ff407dc7ff447dc6ff487dc5ff4c7dc3ff507dc2ff557dc1ff597dbfff5d7dbeff617dbdff657dbcff6a7dbaff6e7db9ff727db8ff767db6ff7a7db5ff7f7db4ff837db3ff877db1ff8b7db0ff8f7dafff947dadff987dacff9c7dabffa07daaffa47da8ffa97da7ffad7da6ffb17da4ffb57da3ffb97da2ffbe7da0ff3c83c8ff4083c7ff4483c6ff4883c5ff4c83c3ff5083c2ff5583c1ff5983bfff5d83beff6183bdff6583bcff6a83baff6e83b9ff7283b8ff7683b6ff7a83b5ff7f83b4ff8383b3ff8783b1ff8b83b0ff8f83afff9483adff9883acff9c83abffa083aaffa483a8ffa983a7ffad83a6ffb183a4ffb583a3ffb983a2ffbe83a0ff3c89c8ff4089c7ff4489c6ff4889c5ff4c89c3ff5089c2ff5589c1ff5989bfff5d89beff6189bdff6589bcff6a89baff6e89b9ff7289b8ff7689b6ff7a89b5ff7f89b4ff8389b3ff8789b1ff8b89b0ff8f89afff9489adff9889acff9c89abffa089aaffa489a8ffa989a7ffad89a6ffb189a4ffb589a3ffb989a2ffbe89a0ff3c8ec8ff408ec7ff448ec6ff488ec5ff4c8ec3ff508ec2ff558ec1ff598ebfff5d8ebeff618ebdff658ebcff6a8ebaff6e8eb9ff728eb8ff768eb6ff7a8eb5ff7f8eb4ff838eb3ff878eb1ff8b8eb0ff8f8eafff948eadff988eacff9c8eabffa08eaaffa48ea8ffa98ea7ffad8ea6ffb18ea4ffb58ea3ffb98ea2ffbe8ea0ff3c94c8ff4094c7ff4494c6ff4894c5ff4c94c3ff5094c2ff5594c1ff5994bfff5d94beff6194bdff6594bcff6a94baff6e94b9ff7294b8ff7694b6ff7a94b5ff7f94b4ff8394b3ff8794b1ff8b94b0ff8f94afff9494adff9894acff9c94abffa094aaffa494a8ffa994a7ffad94a6ffb194a4ffb594a3ffb994a2ffbe94a0ff3c9ac8ff409ac7ff449ac6ff489ac5ff4c9ac3ff509ac2ff559ac1ff599abfff5d9abeff619abdff659abcff6a9abaff6e9ab9ff729ab8ff769ab6ff7a9ab5ff7f9ab4ff839ab3ff879ab1ff8b9ab0ff8f9aafff949aadff989aacff9c9aabffa09aaaffa49aa8ffa99aa7ffad9aa6ffb19aa4ffb59aa3ffb99aa2ffbe9aa0ff3ca0c8ff40a0c7ff44a0c6ff48a0c5ff4ca0c3ff50a0c2ff55a0c1ff59a0bfff5da0beff61a0bdff65a0bcff6aa0baff6ea0b9ff72a0b8ff76a0b6ff7aa0b5ff7fa0b4ff83a0b3ff87a0b1ff8ba0b0ff8fa0afff94a0adff98a0acff9ca0abffa0a0aaffa4a0a8ffa9a0a7ffada0a6ffb1a0a4ffb5a0a3ffb9a0a2ffbea0a0ff3ca6c8ff40a6c7ff44a6c6ff48a6c5ff4ca6c3ff50a6c2ff55a6c1ff59a6bfff5da6beff61a6bdff65a6bcff6aa6baff6ea6b9ff72a6b8ff76a6b6ff7aa6b5ff7fa6b4ff83a6b3ff87a6b1ff8ba6b0ff8fa6afff94a6adff98a6acff9ca6abffa0a6aaffa4a6a8ffa9a6a7ffada6a6ffb1a6a4ffb5a6a3ffb9a6a2ffbea6a0ff3cacc8ff40acc7ff44acc6ff48acc5ff4cacc3ff50acc2ff55acc1ff59acbfff5dacbeff61acbdff65acbcff6aacbaff6eacb9ff72acb8ff76acb6ff7aacb5ff7facb4ff83acb3ff87acb1ff8bacb0ff8facafff94acadff98acacff9cacabffa0acaaffa4aca8ffa9aca7ffadaca6ffb1aca4ffb5aca3ffb9aca2ffbeaca0ff3cb2c8ff40b2c7ff44b2c6ff48b2c5ff4cb2c3ff50b2c2ff55b2c1ff59b2bfff5db2beff61b2bdff65b2bcff6ab2baff6eb2b9ff72b2b8ff76b2b6ff7ab2b5ff7fb2b4ff83b2b3ff87b2b1ff8bb2b0ff8fb2afff94b2adff98b2acff9cb2abffa0b2aaffa4b2a8ffa9b2a7ffadb2a6ffb1b2a4ffb5b2a3ffb9b2a2ffbeb2a0ff3cb8c8ff40b8c7ff44b8c6ff48b8c5ff4cb8c3ff50b8c2ff55b8c1ff59b8bfff5db8beff61b8bdff65b8bcff6ab8baff6eb8b9ff72b8b8ff76b8b6ff7ab8b5ff7fb8b4ff83b8b3ff87b8b1ff8bb8b0ff8fb8afff94b8adff98b8acff9cb8abffa0b8aaffa4b8a8ffa9b8a7ffadb8a6ffb1b8a4ffb5b8a3ffb9b8a2ffbeb8a0ff3cbec8ff40bec7ff44bec6ff48bec5ff4cbec3ff50bec2ff55bec1ff59bebfff5dbebeff61bebdff65bebcff6abebaff6ebeb9ff72beb8ff76beb6ff7abeb5ff7fbeb4ff83beb3ff87beb1ff8bbeb0ff8fbeafff94beadff98beacff9cbeabffa0beaaffa4bea8ffa9bea7ffadbea6ffb1bea4ffb5bea3ffb9bea2ffbebea0ff",
+      "kind": "pixels",
+      "origin_basis": "origin-formula: mix(source, colour, 1) is the colour",
+      "title": "intensity 1 and amount 1 towards red: every pixel is the colour",
+      "tolerance_per_channel": 1,
+      "width": 32
+    },
+    {
+      "expected_rgba_hex": "a8a9b7ffbabbcbffc8cadaffd3d4e5ffdadbecffdddeefffdedeefffdedeeeffdedeeeffdfdeeeffdfdeedffe0deedffe0deedffe1deedffe1deecffe2deecffe2deecffe3deecffe4deebffe4deebffe5deebffe6deeaffe6deeaffe7deeaffe8deeaffe9dee9ffeadee9ffe7dbe6ffe1d4dfffd7cad3ffc8bbc4ffb6a9b1ffb6b9c7ffc6c9d8ffd1d4e5ffdadcedffdddfefffdddfefffdedfefffdedfeeffdedfeeffdfdfeeffdfdfedffe0dfedffe0dfedffe1dfedffe1dfecffe2dfecffe2dfecffe3dfecffe4dfebffe4dfebffe5dfebffe6dfeaffe6dfeaffe7dfeaffe8dfeaffe9dfe9ffeadfe9ffeadfe9ffe8dce6ffe1d4ddffd5c9d1ffc5b9c0ffc1c4d3ffcfd2e2ffd8dbebffdddff0ffdddfefffdddfefffdedfefffdedfeeffdedfeeffdfdfeeffdfdfedffe0dfedffe0dfedffe1dfedffe1dfecffe2dfecffe2dfecffe3dfecffe4dfebffe4dfebffe5dfebffe6dfeaffe6dfeaffe7dfeaffe8dfeaffe9dfe9ffeadfe9ffeadfe9ffebdfe9ffe7dbe3ffdfd2daffd1c4ccffcacddcffd5d9e8ffdbdfefffdde0f0ffdde0efffdde0efffdee0efffdee0eeffdee0eeffdfe0eeffdfe0edffe0e0edffe0e0edffe1e0edffe1e0ecffe2e0ecffe2e0ecffe3e0ecffe4e0ebffe4e0ebffe5e0ebffe6e0eaffe6e0eaffe7e0eaffe8e0eaffe9e0e9ffeae0e9ffeae0e9ffebe0e9ffebdfe7ffe5d9e0ffdacdd5ffd0d4e3ffd9deecffdce1f0ffdde1f0ffdde1efffdde1efffdee1efffdee1eeffdee1eeffdfe1eeffdfe1edffe0e1edffe0e1edffe1e1edffe1e1ecffe2e1ecffe2e1ecffe3e1ecffe4e1ebffe4e1ebffe5e1ebffe6e1eaffe6e1eaffe7e1eaffe8e1eaffe9e1e9ffeae1e9ffeae1e9ffebe1e9ffece1e8ffe9dee4ffe1d4dbffd4d8e7ffdbe0efffdce1f0ffdde1f0ffdde1efffdde1efffdee1efffdee1eeffdee1eeffdfe1eeffdfe1edffe0e1edffe0e1edffe1e1edffe1e1ecffe2e1ecffe2e1ecffe3e1ecffe4e1ebffe4e1ebffe5e1ebffe6e1eaffe6e1eaffe7e1eaffe8e1eaffe9e1e9ffeae1e9ffeae1e9ffebe1e9ffece1e8ffece0e7ffe5d8dfffd6dceaffdce2f0ffdce2f0ffdde2f0ffdde2efffdde2efffdee2efffdee2eeffdee2eeffdfe2eeffdfe2edffe0e2edffe0e2edffe1e2edffe1e2ecffe2e2ecffe2e2ecffe3e2ecffe4e2ebffe4e2ebffe5e2ebffe6e2eaffe6e2eaffe7e2eaffe8e2eaffe9e2e9ffeae2e9ffeae2e9ffebe2e9ffece2e8ffede2e8ffe8dce2ffd8dfebffdce3f0ffdce3f0ffdde3f0ffdde3efffdde3efffdee3efffdee3eeffdee3eeffdfe3eeffdfe3edffe0e3edffe0e3edffe1e3edffe1e3ecffe2e3ecffe2e3ecffe3e3ecffe4e3ebffe4e3ebffe5e3ebffe6e3eaffe6e3eaffe7e3eaffe8e3eaffe9e3e9ffeae3e9ffeae3e9ffebe3e9ffece3e8ffede3e8ffe9dfe4ffd8e0ecffdce4f0ffdce4f0ffdde4f0ffdde4efffdde4efffdee4efffdee4eeffdee4eeffdfe4eeffdfe4edffe0e4edffe0e4edffe1e4edffe1e4ecffe2e4ecffe2e4ecffe3e4ecffe4e4ebffe4e4ebffe5e4ebffe6e4eaffe6e4eaffe7e4eaffe8e4eaffe9e4e9ffeae4e9ffeae4e9ffebe4e9ffece4e8ffede4e8ffeae0e4ffd8e1ecffdce5f0ffdce5f0ffdde5f0ffdde5efffdde5efffdee5efffdee5eeffdee5eeffdfe5eeffdfe5edffe0e5edffe0e5edffe1e5edffe1e5ecffe2e5ecffe2e5ecffe3e5ecffe4e5ebffe4e5ebffe5e5ebffe6e5eaffe6e5eaffe7e5eaffe8e5eaffe9e5e9ffeae5e9ffeae5e9ffebe5e9ffece5e8ffede5e8ffeae1e4ffd8e2ebffdce6f0ffdce6f0ffdde6f0ffdde6efffdde6efffdee6efffdee6eeffdee6eeffdfe6eeffdfe6edffe0e6edffe0e6edffe1e6edffe1e6ecffe2e6ecffe2e6ecffe3e6ecffe4e6ebffe4e6ebffe5e6ebffe6e6eaffe6e6eaffe7e6eaffe8e6eaffe9e6e9ffeae6e9ffeae6e9ffebe6e9ffece6e8ffede6e8ffe9e2e4ffd6e1eaffdce7f0ffdce7f0ffdde7f0ffdde7efffdde7efffdee7efffdee7eeffdee7eeffdfe7eeffdfe7edffe0e7edffe0e7edffe1e7edffe1e7ecffe2e7ecffe2e7ecffe3e7ecffe4e7ebffe4e7ebffe5e7ebffe6e7eaffe6e7eaffe7e7eaffe8e7eaffe9e7e9ffeae7e9ffeae7e9ffebe7e9ffece7e8ffede7e8ffe8e1e2ffd4dfe7ffdbe7efffdce8f0ffdde8f0ffdde8efffdde8efffdee8efffdee8eeffdee8eeffdfe8eeffdfe8edffe0e8edffe0e8edffe1e8edffe1e8ecffe2e8ecffe2e8ecffe3e8ecffe4e8ebffe4e8ebffe5e8ebffe6e8eaffe6e8eaffe7e8eaffe8e8eaffe9e8e9ffeae8e9ffeae8e9ffebe8e9ffece8e8ffece7e7ffe5dfdfffd0dce3ffd9e5ecffdce9f0ffdde9f0ffdde9efffdde9efffdee9efffdee9eeffdee9eeffdfe9eeffdfe9edffe0e9edffe0e9edffe1e9edffe1e9ecffe2e9ecffe2e9ecffe3e9ecffe4e9ebffe4e9ebffe5e9ebffe6e9eaffe6e9eaffe7e9eaffe8e9eaffe9e9e9ffeae9e9ffeae9e9ffebe9e9ffece9e8ffe9e5e4ffe1dcdbffcad6dcffd5e2e8ffdbe9efffddeaf0ffddeaefffddeaefffdeeaefffdeeaeeffdeeaeeffdfeaeeffdfeaedffe0eaedffe0eaedffe1eaedffe1eaecffe2eaecffe2eaecffe3eaecffe4eaebffe4eaebffe5eaebffe6eaeaffe6eaeaffe7eaeaffe8eaeaffe9eae9ffeaeae9ffeaeae9ffebeae9ffebe9e7ffe5e2e0ffdad6d5ffc1cfd3ffcfdde2ffd8e6ebffddebf0ffddebefffddebefffdeebefffdeebeeffdeebeeffdfebeeffdfebedffe0ebedffe0ebedffe1ebedffe1ebecffe2ebecffe2ebecffe3ebecffe4ebebffe4ebebffe5ebebffe6ebeaffe6ebeaffe7ebeaffe8ebeaffe9ebe9ffeaebe9ffeaebe9ffebebe9ffe7e6e3ffdfdddaffd1cfccffb6c4c7ffc6d5d8ffd1e2e5ffdaeaedffddedefffddedefffdeedefffdeedeeffdeedeeffdfedeeffdfededffe0ededffe0ededffe1ededffe1edecffe2edecffe2edecffe3edecffe4edebffe4edebffe5edebffe6edeaffe6edeaffe7edeaffe8edeaffe9ede9ffeaede9ffeaede9ffe8eae6ffe1e2ddffd5d5d1ffc5c4c0ffa8b6b7ffbac9cbffc8d8daffd3e4e5ffdaebecffddeeefffdeeeefffdeeeeeffdeeeeeffdfeeeeffdfeeedffe0eeedffe0eeedffe1eeedffe1eeecffe2eeecffe2eeecffe3eeecffe4eeebffe4eeebffe5eeebffe6eeeaffe6eeeaffe7eeeaffe8eeeaffe9eee9ffeaeee9ffe7ebe6ffe1e4dfffd7d8d3ffc8c9c4ffb6b6b1ff",
+      "frame": 10,
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 40,
+                "effect": "fade",
+                "id": "f",
+                "params": {
+                  "amount": 0.7,
+                  "color": {
+                    "b": 1.0,
+                    "g": 1.0,
+                    "r": 1.0
+                  }
+                },
+                "startFrame": 0
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          },
+          {
+            "clips": [
+              {
+                "durationFrames": 40,
+                "effect": "vignette",
+                "id": "v",
+                "params": {
+                  "intensity": 1.0
+                },
+                "startFrame": 0
+              }
+            ],
+            "id": "t2",
+            "label": "FX t2"
+          }
+        ],
+        "transitions": []
+      },
+      "height": 18,
+      "id": "fade-then-vignette",
+      "identity": false,
+      "input_rgba_hex": "3c5ac8ff405ac7ff445ac6ff485ac5ff4c5ac3ff505ac2ff555ac1ff595abfff5d5abeff615abdff655abcff6a5abaff6e5ab9ff725ab8ff765ab6ff7a5ab5ff7f5ab4ff835ab3ff875ab1ff8b5ab0ff8f5aafff945aadff985aacff9c5aabffa05aaaffa45aa8ffa95aa7ffad5aa6ffb15aa4ffb55aa3ffb95aa2ffbe5aa0ff3c5fc8ff405fc7ff445fc6ff485fc5ff4c5fc3ff505fc2ff555fc1ff595fbfff5d5fbeff615fbdff655fbcff6a5fbaff6e5fb9ff725fb8ff765fb6ff7a5fb5ff7f5fb4ff835fb3ff875fb1ff8b5fb0ff8f5fafff945fadff985facff9c5fabffa05faaffa45fa8ffa95fa7ffad5fa6ffb15fa4ffb55fa3ffb95fa2ffbe5fa0ff3c65c8ff4065c7ff4465c6ff4865c5ff4c65c3ff5065c2ff5565c1ff5965bfff5d65beff6165bdff6565bcff6a65baff6e65b9ff7265b8ff7665b6ff7a65b5ff7f65b4ff8365b3ff8765b1ff8b65b0ff8f65afff9465adff9865acff9c65abffa065aaffa465a8ffa965a7ffad65a6ffb165a4ffb565a3ffb965a2ffbe65a0ff3c6bc8ff406bc7ff446bc6ff486bc5ff4c6bc3ff506bc2ff556bc1ff596bbfff5d6bbeff616bbdff656bbcff6a6bbaff6e6bb9ff726bb8ff766bb6ff7a6bb5ff7f6bb4ff836bb3ff876bb1ff8b6bb0ff8f6bafff946badff986bacff9c6babffa06baaffa46ba8ffa96ba7ffad6ba6ffb16ba4ffb56ba3ffb96ba2ffbe6ba0ff3c71c8ff4071c7ff4471c6ff4871c5ff4c71c3ff5071c2ff5571c1ff5971bfff5d71beff6171bdff6571bcff6a71baff6e71b9ff7271b8ff7671b6ff7a71b5ff7f71b4ff8371b3ff8771b1ff8b71b0ff8f71afff9471adff9871acff9c71abffa071aaffa471a8ffa971a7ffad71a6ffb171a4ffb571a3ffb971a2ffbe71a0ff3c77c8ff4077c7ff4477c6ff4877c5ff4c77c3ff5077c2ff5577c1ff5977bfff5d77beff6177bdff6577bcff6a77baff6e77b9ff7277b8ff7677b6ff7a77b5ff7f77b4ff8377b3ff8777b1ff8b77b0ff8f77afff9477adff9877acff9c77abffa077aaffa477a8ffa977a7ffad77a6ffb177a4ffb577a3ffb977a2ffbe77a0ff3c7dc8ff407dc7ff447dc6ff487dc5ff4c7dc3ff507dc2ff557dc1ff597dbfff5d7dbeff617dbdff657dbcff6a7dbaff6e7db9ff727db8ff767db6ff7a7db5ff7f7db4ff837db3ff877db1ff8b7db0ff8f7dafff947dadff987dacff9c7dabffa07daaffa47da8ffa97da7ffad7da6ffb17da4ffb57da3ffb97da2ffbe7da0ff3c83c8ff4083c7ff4483c6ff4883c5ff4c83c3ff5083c2ff5583c1ff5983bfff5d83beff6183bdff6583bcff6a83baff6e83b9ff7283b8ff7683b6ff7a83b5ff7f83b4ff8383b3ff8783b1ff8b83b0ff8f83afff9483adff9883acff9c83abffa083aaffa483a8ffa983a7ffad83a6ffb183a4ffb583a3ffb983a2ffbe83a0ff3c89c8ff4089c7ff4489c6ff4889c5ff4c89c3ff5089c2ff5589c1ff5989bfff5d89beff6189bdff6589bcff6a89baff6e89b9ff7289b8ff7689b6ff7a89b5ff7f89b4ff8389b3ff8789b1ff8b89b0ff8f89afff9489adff9889acff9c89abffa089aaffa489a8ffa989a7ffad89a6ffb189a4ffb589a3ffb989a2ffbe89a0ff3c8ec8ff408ec7ff448ec6ff488ec5ff4c8ec3ff508ec2ff558ec1ff598ebfff5d8ebeff618ebdff658ebcff6a8ebaff6e8eb9ff728eb8ff768eb6ff7a8eb5ff7f8eb4ff838eb3ff878eb1ff8b8eb0ff8f8eafff948eadff988eacff9c8eabffa08eaaffa48ea8ffa98ea7ffad8ea6ffb18ea4ffb58ea3ffb98ea2ffbe8ea0ff3c94c8ff4094c7ff4494c6ff4894c5ff4c94c3ff5094c2ff5594c1ff5994bfff5d94beff6194bdff6594bcff6a94baff6e94b9ff7294b8ff7694b6ff7a94b5ff7f94b4ff8394b3ff8794b1ff8b94b0ff8f94afff9494adff9894acff9c94abffa094aaffa494a8ffa994a7ffad94a6ffb194a4ffb594a3ffb994a2ffbe94a0ff3c9ac8ff409ac7ff449ac6ff489ac5ff4c9ac3ff509ac2ff559ac1ff599abfff5d9abeff619abdff659abcff6a9abaff6e9ab9ff729ab8ff769ab6ff7a9ab5ff7f9ab4ff839ab3ff879ab1ff8b9ab0ff8f9aafff949aadff989aacff9c9aabffa09aaaffa49aa8ffa99aa7ffad9aa6ffb19aa4ffb59aa3ffb99aa2ffbe9aa0ff3ca0c8ff40a0c7ff44a0c6ff48a0c5ff4ca0c3ff50a0c2ff55a0c1ff59a0bfff5da0beff61a0bdff65a0bcff6aa0baff6ea0b9ff72a0b8ff76a0b6ff7aa0b5ff7fa0b4ff83a0b3ff87a0b1ff8ba0b0ff8fa0afff94a0adff98a0acff9ca0abffa0a0aaffa4a0a8ffa9a0a7ffada0a6ffb1a0a4ffb5a0a3ffb9a0a2ffbea0a0ff3ca6c8ff40a6c7ff44a6c6ff48a6c5ff4ca6c3ff50a6c2ff55a6c1ff59a6bfff5da6beff61a6bdff65a6bcff6aa6baff6ea6b9ff72a6b8ff76a6b6ff7aa6b5ff7fa6b4ff83a6b3ff87a6b1ff8ba6b0ff8fa6afff94a6adff98a6acff9ca6abffa0a6aaffa4a6a8ffa9a6a7ffada6a6ffb1a6a4ffb5a6a3ffb9a6a2ffbea6a0ff3cacc8ff40acc7ff44acc6ff48acc5ff4cacc3ff50acc2ff55acc1ff59acbfff5dacbeff61acbdff65acbcff6aacbaff6eacb9ff72acb8ff76acb6ff7aacb5ff7facb4ff83acb3ff87acb1ff8bacb0ff8facafff94acadff98acacff9cacabffa0acaaffa4aca8ffa9aca7ffadaca6ffb1aca4ffb5aca3ffb9aca2ffbeaca0ff3cb2c8ff40b2c7ff44b2c6ff48b2c5ff4cb2c3ff50b2c2ff55b2c1ff59b2bfff5db2beff61b2bdff65b2bcff6ab2baff6eb2b9ff72b2b8ff76b2b6ff7ab2b5ff7fb2b4ff83b2b3ff87b2b1ff8bb2b0ff8fb2afff94b2adff98b2acff9cb2abffa0b2aaffa4b2a8ffa9b2a7ffadb2a6ffb1b2a4ffb5b2a3ffb9b2a2ffbeb2a0ff3cb8c8ff40b8c7ff44b8c6ff48b8c5ff4cb8c3ff50b8c2ff55b8c1ff59b8bfff5db8beff61b8bdff65b8bcff6ab8baff6eb8b9ff72b8b8ff76b8b6ff7ab8b5ff7fb8b4ff83b8b3ff87b8b1ff8bb8b0ff8fb8afff94b8adff98b8acff9cb8abffa0b8aaffa4b8a8ffa9b8a7ffadb8a6ffb1b8a4ffb5b8a3ffb9b8a2ffbeb8a0ff3cbec8ff40bec7ff44bec6ff48bec5ff4cbec3ff50bec2ff55bec1ff59bebfff5dbebeff61bebdff65bebcff6abebaff6ebeb9ff72beb8ff76beb6ff7abeb5ff7fbeb4ff83beb3ff87beb1ff8bbeb0ff8fbeafff94beadff98beacff9cbeabffa0beaaffa4bea8ffa9bea7ffadbea6ffb1bea4ffb5bea3ffb9bea2ffbebea0ff",
+      "kind": "pixels",
+      "origin_basis": "origin-formula: passes are drawn in track order, each over the previous output",
+      "title": "a fade drawn before a vignette: the vignette darkens the lifted picture",
+      "tolerance_per_channel": 1,
+      "width": 32
+    },
+    {
+      "expected_rgba_hex": "dbdce6ffdbdde9ffdcddecffdcdeedffdddeeeffdddeefffdedeefffdedeeeffdedeeeffdfdeeeffdfdeedffe0deedffe0deedffe1deedffe1deecffe2deecffe2deecffe3deecffe4deebffe4deebffe5deebffe6deeaffe6deeaffe7deeaffe8deeaffe9dee9ffeadee9ffeadee9ffeadee7ffe9dde6ffe7dde4ffe5dce2ffdbdde9ffdcdeecffdcdeedffdcdeefffdddfefffdddfefffdedfefffdedfeeffdedfeeffdfdfeeffdfdfedffe0dfedffe0dfedffe1dfedffe1dfecffe2dfecffe2dfecffe3dfecffe4dfebffe4dfebffe5dfebffe6dfeaffe6dfeaffe7dfeaffe8dfeaffe9dfe9ffeadfe9ffeadfe9ffebdee8ffeadee7ffe9dee5ffe7dde3ffdbdeebffdcdeedffdcdfefffdddff0ffdddfefffdddfefffdedfefffdedfeeffdedfeeffdfdfeeffdfdfedffe0dfedffe0dfedffe1dfedffe1dfecffe2dfecffe2dfecffe3dfecffe4dfebffe4dfebffe5dfebffe6dfeaffe6dfeaffe7dfeaffe8dfeaffe9dfe9ffeadfe9ffeadfe9ffebdfe9ffebdfe8ffebdee6ffe9dee4ffdbdfecffdcdfeeffdce0f0ffdde0f0ffdde0efffdde0efffdee0efffdee0eeffdee0eeffdfe0eeffdfe0edffe0e0edffe0e0edffe1e0edffe1e0ecffe2e0ecffe2e0ecffe3e0ecffe4e0ebffe4e0ebffe5e0ebffe6e0eaffe6e0eaffe7e0eaffe8e0eaffe9e0e9ffeae0e9ffeae0e9ffebe0e9ffece0e8ffecdfe7ffebdfe5ffdbe0eeffdce0efffdce1f0ffdde1f0ffdde1efffdde1efffdee1efffdee1eeffdee1eeffdfe1eeffdfe1edffe0e1edffe0e1edffe1e1edffe1e1ecffe2e1ecffe2e1ecffe3e1ecffe4e1ebffe4e1ebffe5e1ebffe6e1eaffe6e1eaffe7e1eaffe8e1eaffe9e1e9ffeae1e9ffeae1e9ffebe1e9ffece1e8ffece0e8ffece0e6ffdce1eeffdce1f0ffdce1f0ffdde1f0ffdde1efffdde1efffdee1efffdee1eeffdee1eeffdfe1eeffdfe1edffe0e1edffe0e1edffe1e1edffe1e1ecffe2e1ecffe2e1ecffe3e1ecffe4e1ebffe4e1ebffe5e1ebffe6e1eaffe6e1eaffe7e1eaffe8e1eaffe9e1e9ffeae1e9ffeae1e9ffebe1e9ffece1e8ffede1e8ffece1e7ffdce2efffdce2f0ffdce2f0ffdde2f0ffdde2efffdde2efffdee2efffdee2eeffdee2eeffdfe2eeffdfe2edffe0e2edffe0e2edffe1e2edffe1e2ecffe2e2ecffe2e2ecffe3e2ecffe4e2ebffe4e2ebffe5e2ebffe6e2eaffe6e2eaffe7e2eaffe8e2eaffe9e2e9ffeae2e9ffeae2e9ffebe2e9ffece2e8ffede2e8ffede2e7ffdce3efffdce3f0ffdce3f0ffdde3f0ffdde3efffdde3efffdee3efffdee3eeffdee3eeffdfe3eeffdfe3edffe0e3edffe0e3edffe1e3edffe1e3ecffe2e3ecffe2e3ecffe3e3ecffe4e3ebffe4e3ebffe5e3ebffe6e3eaffe6e3eaffe7e3eaffe8e3eaffe9e3e9ffeae3e9ffeae3e9ffebe3e9ffece3e8ffede3e8ffede3e7ffdce4f0ffdce4f0ffdce4f0ffdde4f0ffdde4efffdde4efffdee4efffdee4eeffdee4eeffdfe4eeffdfe4edffe0e4edffe0e4edffe1e4edffe1e4ecffe2e4ecffe2e4ecffe3e4ecffe4e4ebffe4e4ebffe5e4ebffe6e4eaffe6e4eaffe7e4eaffe8e4eaffe9e4e9ffeae4e9ffeae4e9ffebe4e9ffece4e8ffede4e8ffede4e7ffdce4f0ffdce5f0ffdce5f0ffdde5f0ffdde5efffdde5efffdee5efffdee5eeffdee5eeffdfe5eeffdfe5edffe0e5edffe0e5edffe1e5edffe1e5ecffe2e5ecffe2e5ecffe3e5ecffe4e5ebffe4e5ebffe5e5ebffe6e5eaffe6e5eaffe7e5eaffe8e5eaffe9e5e9ffeae5e9ffeae5e9ffebe5e9ffece5e8ffede5e8ffede4e7ffdce5efffdce6f0ffdce6f0ffdde6f0ffdde6efffdde6efffdee6efffdee6eeffdee6eeffdfe6eeffdfe6edffe0e6edffe0e6edffe1e6edffe1e6ecffe2e6ecffe2e6ecffe3e6ecffe4e6ebffe4e6ebffe5e6ebffe6e6eaffe6e6eaffe7e6eaffe8e6eaffe9e6e9ffeae6e9ffeae6e9ffebe6e9ffece6e8ffede6e8ffede5e7ffdce6efffdce7f0ffdce7f0ffdde7f0ffdde7efffdde7efffdee7efffdee7eeffdee7eeffdfe7eeffdfe7edffe0e7edffe0e7edffe1e7edffe1e7ecffe2e7ecffe2e7ecffe3e7ecffe4e7ebffe4e7ebffe5e7ebffe6e7eaffe6e7eaffe7e7eaffe8e7eaffe9e7e9ffeae7e9ffeae7e9ffebe7e9ffece7e8ffede7e8ffede6e7ffdce7eeffdce8f0ffdce8f0ffdde8f0ffdde8efffdde8efffdee8efffdee8eeffdee8eeffdfe8eeffdfe8edffe0e8edffe0e8edffe1e8edffe1e8ecffe2e8ecffe2e8ecffe3e8ecffe4e8ebffe4e8ebffe5e8ebffe6e8eaffe6e8eaffe7e8eaffe8e8eaffe9e8e9ffeae8e9ffeae8e9ffebe8e9ffece8e8ffede8e8ffece7e7ffdbe7eeffdce8efffdce9f0ffdde9f0ffdde9efffdde9efffdee9efffdee9eeffdee9eeffdfe9eeffdfe9edffe0e9edffe0e9edffe1e9edffe1e9ecffe2e9ecffe2e9ecffe3e9ecffe4e9ebffe4e9ebffe5e9ebffe6e9eaffe6e9eaffe7e9eaffe8e9eaffe9e9e9ffeae9e9ffeae9e9ffebe9e9ffece9e8ffece8e8ffece7e6ffdbe7ecffdce9eeffdceaf0ffddeaf0ffddeaefffddeaefffdeeaefffdeeaeeffdeeaeeffdfeaeeffdfeaedffe0eaedffe0eaedffe1eaedffe1eaecffe2eaecffe2eaecffe3eaecffe4eaebffe4eaebffe5eaebffe6eaeaffe6eaeaffe7eaeaffe8eaeaffe9eae9ffeaeae9ffeaeae9ffebeae9ffeceae8ffece9e7ffebe7e5ffdbe7ebffdce9edffdcebefffddebf0ffddebefffddebefffdeebefffdeebeeffdeebeeffdfebeeffdfebedffe0ebedffe0ebedffe1ebedffe1ebecffe2ebecffe2ebecffe3ebecffe4ebebffe4ebebffe5ebebffe6ebeaffe6ebeaffe7ebeaffe8ebeaffe9ebe9ffeaebe9ffeaebe9ffebebe9ffebebe8ffebe9e6ffe9e7e4ffdbe6e9ffdce9ecffdcebedffdcecefffddedefffddedefffdeedefffdeedeeffdeedeeffdfedeeffdfededffe0ededffe0ededffe1ededffe1edecffe2edecffe2edecffe3edecffe4edebffe4edebffe5edebffe6edeaffe6edeaffe7edeaffe8edeaffe9ede9ffeaede9ffeaede9ffebece8ffeaebe7ffe9e9e5ffe7e6e3ffdbe5e6ffdbe8e9ffdceaecffdcecedffddedeeffddeeefffdeeeefffdeeeeeffdeeeeeffdfeeeeffdfeeedffe0eeedffe0eeedffe1eeedffe1eeecffe2eeecffe2eeecffe3eeecffe4eeebffe4eeebffe5eeebffe6eeeaffe6eeeaffe7eeeaffe8eeeaffe9eee9ffeaeee9ffeaede9ffeaece7ffe9eae6ffe7e8e4ffe5e5e2ff",
+      "frame": 10,
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 40,
+                "effect": "vignette",
+                "id": "v",
+                "params": {
+                  "intensity": 1.0
+                },
+                "startFrame": 0
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          },
+          {
+            "clips": [
+              {
+                "durationFrames": 40,
+                "effect": "fade",
+                "id": "f",
+                "params": {
+                  "amount": 0.7,
+                  "color": {
+                    "b": 1.0,
+                    "g": 1.0,
+                    "r": 1.0
+                  }
+                },
+                "startFrame": 0
+              }
+            ],
+            "id": "t2",
+            "label": "FX t2"
+          }
+        ],
+        "transitions": []
+      },
+      "height": 18,
+      "id": "vignette-then-fade",
+      "identity": false,
+      "input_rgba_hex": "3c5ac8ff405ac7ff445ac6ff485ac5ff4c5ac3ff505ac2ff555ac1ff595abfff5d5abeff615abdff655abcff6a5abaff6e5ab9ff725ab8ff765ab6ff7a5ab5ff7f5ab4ff835ab3ff875ab1ff8b5ab0ff8f5aafff945aadff985aacff9c5aabffa05aaaffa45aa8ffa95aa7ffad5aa6ffb15aa4ffb55aa3ffb95aa2ffbe5aa0ff3c5fc8ff405fc7ff445fc6ff485fc5ff4c5fc3ff505fc2ff555fc1ff595fbfff5d5fbeff615fbdff655fbcff6a5fbaff6e5fb9ff725fb8ff765fb6ff7a5fb5ff7f5fb4ff835fb3ff875fb1ff8b5fb0ff8f5fafff945fadff985facff9c5fabffa05faaffa45fa8ffa95fa7ffad5fa6ffb15fa4ffb55fa3ffb95fa2ffbe5fa0ff3c65c8ff4065c7ff4465c6ff4865c5ff4c65c3ff5065c2ff5565c1ff5965bfff5d65beff6165bdff6565bcff6a65baff6e65b9ff7265b8ff7665b6ff7a65b5ff7f65b4ff8365b3ff8765b1ff8b65b0ff8f65afff9465adff9865acff9c65abffa065aaffa465a8ffa965a7ffad65a6ffb165a4ffb565a3ffb965a2ffbe65a0ff3c6bc8ff406bc7ff446bc6ff486bc5ff4c6bc3ff506bc2ff556bc1ff596bbfff5d6bbeff616bbdff656bbcff6a6bbaff6e6bb9ff726bb8ff766bb6ff7a6bb5ff7f6bb4ff836bb3ff876bb1ff8b6bb0ff8f6bafff946badff986bacff9c6babffa06baaffa46ba8ffa96ba7ffad6ba6ffb16ba4ffb56ba3ffb96ba2ffbe6ba0ff3c71c8ff4071c7ff4471c6ff4871c5ff4c71c3ff5071c2ff5571c1ff5971bfff5d71beff6171bdff6571bcff6a71baff6e71b9ff7271b8ff7671b6ff7a71b5ff7f71b4ff8371b3ff8771b1ff8b71b0ff8f71afff9471adff9871acff9c71abffa071aaffa471a8ffa971a7ffad71a6ffb171a4ffb571a3ffb971a2ffbe71a0ff3c77c8ff4077c7ff4477c6ff4877c5ff4c77c3ff5077c2ff5577c1ff5977bfff5d77beff6177bdff6577bcff6a77baff6e77b9ff7277b8ff7677b6ff7a77b5ff7f77b4ff8377b3ff8777b1ff8b77b0ff8f77afff9477adff9877acff9c77abffa077aaffa477a8ffa977a7ffad77a6ffb177a4ffb577a3ffb977a2ffbe77a0ff3c7dc8ff407dc7ff447dc6ff487dc5ff4c7dc3ff507dc2ff557dc1ff597dbfff5d7dbeff617dbdff657dbcff6a7dbaff6e7db9ff727db8ff767db6ff7a7db5ff7f7db4ff837db3ff877db1ff8b7db0ff8f7dafff947dadff987dacff9c7dabffa07daaffa47da8ffa97da7ffad7da6ffb17da4ffb57da3ffb97da2ffbe7da0ff3c83c8ff4083c7ff4483c6ff4883c5ff4c83c3ff5083c2ff5583c1ff5983bfff5d83beff6183bdff6583bcff6a83baff6e83b9ff7283b8ff7683b6ff7a83b5ff7f83b4ff8383b3ff8783b1ff8b83b0ff8f83afff9483adff9883acff9c83abffa083aaffa483a8ffa983a7ffad83a6ffb183a4ffb583a3ffb983a2ffbe83a0ff3c89c8ff4089c7ff4489c6ff4889c5ff4c89c3ff5089c2ff5589c1ff5989bfff5d89beff6189bdff6589bcff6a89baff6e89b9ff7289b8ff7689b6ff7a89b5ff7f89b4ff8389b3ff8789b1ff8b89b0ff8f89afff9489adff9889acff9c89abffa089aaffa489a8ffa989a7ffad89a6ffb189a4ffb589a3ffb989a2ffbe89a0ff3c8ec8ff408ec7ff448ec6ff488ec5ff4c8ec3ff508ec2ff558ec1ff598ebfff5d8ebeff618ebdff658ebcff6a8ebaff6e8eb9ff728eb8ff768eb6ff7a8eb5ff7f8eb4ff838eb3ff878eb1ff8b8eb0ff8f8eafff948eadff988eacff9c8eabffa08eaaffa48ea8ffa98ea7ffad8ea6ffb18ea4ffb58ea3ffb98ea2ffbe8ea0ff3c94c8ff4094c7ff4494c6ff4894c5ff4c94c3ff5094c2ff5594c1ff5994bfff5d94beff6194bdff6594bcff6a94baff6e94b9ff7294b8ff7694b6ff7a94b5ff7f94b4ff8394b3ff8794b1ff8b94b0ff8f94afff9494adff9894acff9c94abffa094aaffa494a8ffa994a7ffad94a6ffb194a4ffb594a3ffb994a2ffbe94a0ff3c9ac8ff409ac7ff449ac6ff489ac5ff4c9ac3ff509ac2ff559ac1ff599abfff5d9abeff619abdff659abcff6a9abaff6e9ab9ff729ab8ff769ab6ff7a9ab5ff7f9ab4ff839ab3ff879ab1ff8b9ab0ff8f9aafff949aadff989aacff9c9aabffa09aaaffa49aa8ffa99aa7ffad9aa6ffb19aa4ffb59aa3ffb99aa2ffbe9aa0ff3ca0c8ff40a0c7ff44a0c6ff48a0c5ff4ca0c3ff50a0c2ff55a0c1ff59a0bfff5da0beff61a0bdff65a0bcff6aa0baff6ea0b9ff72a0b8ff76a0b6ff7aa0b5ff7fa0b4ff83a0b3ff87a0b1ff8ba0b0ff8fa0afff94a0adff98a0acff9ca0abffa0a0aaffa4a0a8ffa9a0a7ffada0a6ffb1a0a4ffb5a0a3ffb9a0a2ffbea0a0ff3ca6c8ff40a6c7ff44a6c6ff48a6c5ff4ca6c3ff50a6c2ff55a6c1ff59a6bfff5da6beff61a6bdff65a6bcff6aa6baff6ea6b9ff72a6b8ff76a6b6ff7aa6b5ff7fa6b4ff83a6b3ff87a6b1ff8ba6b0ff8fa6afff94a6adff98a6acff9ca6abffa0a6aaffa4a6a8ffa9a6a7ffada6a6ffb1a6a4ffb5a6a3ffb9a6a2ffbea6a0ff3cacc8ff40acc7ff44acc6ff48acc5ff4cacc3ff50acc2ff55acc1ff59acbfff5dacbeff61acbdff65acbcff6aacbaff6eacb9ff72acb8ff76acb6ff7aacb5ff7facb4ff83acb3ff87acb1ff8bacb0ff8facafff94acadff98acacff9cacabffa0acaaffa4aca8ffa9aca7ffadaca6ffb1aca4ffb5aca3ffb9aca2ffbeaca0ff3cb2c8ff40b2c7ff44b2c6ff48b2c5ff4cb2c3ff50b2c2ff55b2c1ff59b2bfff5db2beff61b2bdff65b2bcff6ab2baff6eb2b9ff72b2b8ff76b2b6ff7ab2b5ff7fb2b4ff83b2b3ff87b2b1ff8bb2b0ff8fb2afff94b2adff98b2acff9cb2abffa0b2aaffa4b2a8ffa9b2a7ffadb2a6ffb1b2a4ffb5b2a3ffb9b2a2ffbeb2a0ff3cb8c8ff40b8c7ff44b8c6ff48b8c5ff4cb8c3ff50b8c2ff55b8c1ff59b8bfff5db8beff61b8bdff65b8bcff6ab8baff6eb8b9ff72b8b8ff76b8b6ff7ab8b5ff7fb8b4ff83b8b3ff87b8b1ff8bb8b0ff8fb8afff94b8adff98b8acff9cb8abffa0b8aaffa4b8a8ffa9b8a7ffadb8a6ffb1b8a4ffb5b8a3ffb9b8a2ffbeb8a0ff3cbec8ff40bec7ff44bec6ff48bec5ff4cbec3ff50bec2ff55bec1ff59bebfff5dbebeff61bebdff65bebcff6abebaff6ebeb9ff72beb8ff76beb6ff7abeb5ff7fbeb4ff83beb3ff87beb1ff8bbeb0ff8fbeafff94beadff98beacff9cbeabffa0beaaffa4bea8ffa9bea7ffadbea6ffb1bea4ffb5bea3ffb9bea2ffbebea0ff",
+      "kind": "pixels",
+      "origin_basis": "origin-formula: passes are drawn in track order, each over the previous output",
+      "title": "the same two clips in the other track order give other pixels",
+      "tolerance_per_channel": 1,
+      "width": 32
+    }
+  ],
+  "edit_duration_frames": 96,
+  "note": "Generated by scripts/pilot-fade-corpus.py; edit nothing by hand (verify fails).",
+  "refusals": [
+    {
+      "basis": "origin catalog: amount is ratioParam 0..1 (fade.ts, param-defs.ts). The code is the Rust core's own",
+      "code": "param_out_of_range",
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 30,
+                "effect": "fade",
+                "id": "c1",
+                "startFrame": 10
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "id": "amount-above-range",
+      "op": {
+        "clip": "c1",
+        "op": "set_param",
+        "param": "amount",
+        "value": 1.5
+      }
+    },
+    {
+      "basis": "origin meta: intensity is 0..1 for every effect (fx-effect-meta.ts). The code is the Rust core's own",
+      "code": "param_out_of_range",
+      "fx": {
+        "catalogVersion": 1,
+        "tracks": [
+          {
+            "clips": [
+              {
+                "durationFrames": 30,
+                "effect": "fade",
+                "id": "c1",
+                "startFrame": 10
+              }
+            ],
+            "id": "t1",
+            "label": "FX t1"
+          }
+        ],
+        "transitions": []
+      },
+      "id": "intensity-above-range",
+      "op": {
+        "clip": "c1",
+        "op": "set_param",
+        "param": "intensity",
+        "value": 2.0
+      }
+    }
+  ],
+  "schema": 1
+}

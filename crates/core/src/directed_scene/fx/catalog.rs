@@ -10,10 +10,70 @@ use serde_json::{Value, json};
 
 use super::FxValue;
 
-/// A catalog parameter: its id (the key in the clip's `params`), kind, range and default.
+/// A language the editor can print the catalog in. `pt-br` is the editor's own; `en` and `es` are
+/// the other two languages of the pilot's catalog.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Locale {
+    #[default]
+    PtBr,
+    En,
+    Es,
+}
+
+impl Locale {
+    pub const ALL: [Self; 3] = [Self::PtBr, Self::En, Self::Es];
+
+    /// The tag used in JSON keys and requests.
+    pub fn tag(self) -> &'static str {
+        match self {
+            Self::PtBr => "pt-br",
+            Self::En => "en",
+            Self::Es => "es",
+        }
+    }
+
+    /// `pt-br`, `pt`, `en`, `es` in any case (also `pt_BR`); anything else is not a locale.
+    pub fn parse(tag: &str) -> Option<Self> {
+        match tag.trim().to_ascii_lowercase().replace('_', "-").as_str() {
+            "pt-br" | "pt" => Some(Self::PtBr),
+            "en" | "en-us" | "en-gb" => Some(Self::En),
+            "es" | "es-es" | "es-419" => Some(Self::Es),
+            _ => None,
+        }
+    }
+}
+
+/// One text in the three languages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Labels {
+    pub pt_br: &'static str,
+    pub en: &'static str,
+    pub es: &'static str,
+}
+
+impl Labels {
+    pub const fn new(pt_br: &'static str, en: &'static str, es: &'static str) -> Self {
+        Self { pt_br, en, es }
+    }
+
+    pub fn get(&self, locale: Locale) -> &'static str {
+        match locale {
+            Locale::PtBr => self.pt_br,
+            Locale::En => self.en,
+            Locale::Es => self.es,
+        }
+    }
+
+    pub fn to_json(&self) -> Value {
+        json!({ "pt-br": self.pt_br, "en": self.en, "es": self.es })
+    }
+}
+
+/// A catalog parameter: its id (the key in the clip's `params`), name, kind, range and default.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ParamSpec {
     pub id: &'static str,
+    pub label: Labels,
     pub kind: ParamKind,
 }
 
@@ -70,9 +130,8 @@ pub struct EffectSpec {
     pub id: &'static str,
     /// `look`: a pass over the picture (the pilot also has `transition`, not entered yet).
     pub family: &'static str,
-    pub label_en: &'static str,
-    pub label_pt: &'static str,
-    pub summary_en: &'static str,
+    pub label: Labels,
+    pub summary: Labels,
     /// A typical length in frames, the default of a clip added without one.
     pub typical_duration_frames: i64,
     pub params: &'static [ParamSpec],
@@ -90,8 +149,8 @@ impl EffectSpec {
         json!({
             "id": self.id,
             "family": self.family,
-            "label": { "en": self.label_en, "pt-br": self.label_pt },
-            "summary": self.summary_en,
+            "label": self.label.to_json(),
+            "summary": self.summary.to_json(),
             "typical_duration_frames": self.typical_duration_frames,
             "params": self.params.iter().map(param_json).collect::<Vec<_>>(),
         })
@@ -107,16 +166,16 @@ fn param_json(param: &ParamSpec) -> Value {
             step,
             unit,
         } => json!({
-            "id": param.id, "kind": "number", "min": min, "max": max,
-            "default": default, "step": step, "unit": unit,
+            "id": param.id, "label": param.label.to_json(), "kind": "number", "min": min,
+            "max": max, "default": default, "step": step, "unit": unit,
         }),
         ParamKind::Color { default } => json!({
-            "id": param.id, "kind": "color",
+            "id": param.id, "label": param.label.to_json(), "kind": "color",
             "default": { "r": default[0], "g": default[1], "b": default[2] },
         }),
         ParamKind::Point { min, max, default } => json!({
-            "id": param.id, "kind": "vec2", "min": min, "max": max,
-            "default": { "x": default[0], "y": default[1] },
+            "id": param.id, "label": param.label.to_json(), "kind": "vec2", "min": min,
+            "max": max, "default": { "x": default[0], "y": default[1] },
         }),
     }
 }
@@ -136,13 +195,17 @@ pub const VIGNETTE_CENTER: usize = 5;
 pub static VIGNETTE: EffectSpec = EffectSpec {
     id: "vignette",
     family: "look",
-    label_en: "Vignette",
-    label_pt: "Vinheta",
-    summary_en: "Darkens the edges of the frame with a soft elliptical falloff.",
+    label: Labels::new("Vinheta", "Vignette", "Viñeta"),
+    summary: Labels::new(
+        "Escurece as bordas do quadro com uma queda elíptica e suave.",
+        "Darkens the edges of the frame with a soft elliptical falloff.",
+        "Oscurece los bordes del cuadro con una caída elíptica y suave.",
+    ),
     typical_duration_frames: 96,
     params: &[
         ParamSpec {
             id: "radius",
+            label: Labels::new("Raio", "Radius", "Radio"),
             kind: ParamKind::Number {
                 min: 0.0,
                 max: 1.5,
@@ -153,6 +216,7 @@ pub static VIGNETTE: EffectSpec = EffectSpec {
         },
         ParamSpec {
             id: "softness",
+            label: Labels::new("Suavidade", "Softness", "Suavidad"),
             kind: ParamKind::Number {
                 min: 0.05,
                 max: 1.0,
@@ -163,6 +227,7 @@ pub static VIGNETTE: EffectSpec = EffectSpec {
         },
         ParamSpec {
             id: "intensity",
+            label: Labels::new("Intensidade", "Intensity", "Intensidad"),
             kind: ParamKind::Number {
                 min: 0.0,
                 max: 1.0,
@@ -173,12 +238,14 @@ pub static VIGNETTE: EffectSpec = EffectSpec {
         },
         ParamSpec {
             id: "color",
+            label: Labels::new("Cor", "Color", "Color"),
             kind: ParamKind::Color {
                 default: [0.0, 0.0, 0.0],
             },
         },
         ParamSpec {
             id: "roundness",
+            label: Labels::new("Arredondamento", "Roundness", "Redondez"),
             kind: ParamKind::Number {
                 min: 0.0,
                 max: 1.0,
@@ -189,6 +256,7 @@ pub static VIGNETTE: EffectSpec = EffectSpec {
         },
         ParamSpec {
             id: "center",
+            label: Labels::new("Centro", "Center", "Centro"),
             kind: ParamKind::Point {
                 min: 0.0,
                 max: 1.0,
@@ -198,7 +266,62 @@ pub static VIGNETTE: EffectSpec = EffectSpec {
     ],
 };
 
-static CATALOG: [&EffectSpec; 1] = [&VIGNETTE];
+/// Parameter order of the fade: `color`, `amount`, `intensity`, as in the pilot (`fade.ts` lists
+/// `color` and `amount`; the pilot's `defineFxEffect` appends the `intensity` every effect shares,
+/// default 1). Indices into `FADE.params`.
+pub const FADE_COLOR: usize = 0;
+pub const FADE_AMOUNT: usize = 1;
+pub const FADE_INTENSITY: usize = 2;
+
+/// `fade`: mixes the whole picture toward `color` by `amount × intensity × envelope`, in linear
+/// light (the pilot's `fade` shader: `mix(source, color, amount × uAmount)`, `uAmount` being the
+/// pass's `intensity × weight`). Exactly the identity when any of the three is 0. Without keys
+/// (P3) a clip's `amount` is one number; the clip's `fadeInFrames`/`fadeOutFrames` envelope is
+/// what opens from or closes to the colour.
+pub static FADE: EffectSpec = EffectSpec {
+    id: "fade",
+    family: "look",
+    label: Labels::new("Fade", "Fade", "Fundido"),
+    summary: Labels::new(
+        "Mistura a imagem com uma cor, com quantidade fixa e envelope de entrada e saída.",
+        "Mixes the picture with a colour, with a fixed amount and an entry and exit envelope.",
+        "Mezcla la imagen con un color, con cantidad fija y una envolvente de entrada y salida.",
+    ),
+    typical_duration_frames: 24,
+    params: &[
+        ParamSpec {
+            id: "color",
+            label: Labels::new("Cor", "Color", "Color"),
+            kind: ParamKind::Color {
+                default: [0.0, 0.0, 0.0],
+            },
+        },
+        ParamSpec {
+            id: "amount",
+            label: Labels::new("Quantidade", "Amount", "Cantidad"),
+            kind: ParamKind::Number {
+                min: 0.0,
+                max: 1.0,
+                default: 1.0,
+                step: 0.01,
+                unit: "ratio",
+            },
+        },
+        ParamSpec {
+            id: "intensity",
+            label: Labels::new("Intensidade", "Intensity", "Intensidad"),
+            kind: ParamKind::Number {
+                min: 0.0,
+                max: 1.0,
+                default: 1.0,
+                step: 0.01,
+                unit: "ratio",
+            },
+        },
+    ],
+};
+
+static CATALOG: [&EffectSpec; 2] = [&VIGNETTE, &FADE];
 
 /// Every effect of this build, in catalog order.
 pub fn catalog() -> &'static [&'static EffectSpec] {
