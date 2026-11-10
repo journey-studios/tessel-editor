@@ -13,7 +13,7 @@ use super::*;
 use core::prelude::v1::test;
 
 use tessel_editor_core::scene_interaction::{
-    CancelReason, GizmoCommand, Point, PointerCommand, SelectMode,
+    CancelReason, GizmoCommand, GizmoSpace, GizmoTool, Point, PointerCommand, SelectMode,
 };
 use tessel_editor_core::scene_project::{SceneCommand, SceneSource};
 
@@ -1040,4 +1040,255 @@ fn a_real_protocol_error_still_fails_the_render_session(cx: &mut TestAppContext)
     assert_eq!(after["phase"], "unavailable");
     assert_eq!(after["ready"], false);
     assert_eq!(after["supported"], false);
+}
+
+// ---- BL015.1: the rotate tool through the same seam ----------------------------------------------
+
+fn choose_tool(
+    view: &Entity<Workstation>,
+    cx: &mut VisualTestContext,
+    tool: GizmoTool,
+    space: GizmoSpace,
+) -> Result<Value, CommandError> {
+    run(
+        view,
+        cx,
+        SceneCommand::Gizmo(GizmoCommand::Tool {
+            tool: Some(tool),
+            space: Some(space),
+        }),
+    )
+}
+
+fn figure_rotation_z(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> f64 {
+    view.read_with(cx, |view, _| {
+        let document = view
+            .state
+            .scenes
+            .get("street")
+            .unwrap()
+            .scene
+            .document()
+            .clone();
+        document["sceneDefinitions"][0]["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|node| node["id"] == "figure")
+            .unwrap()["localRotation"]["z"]
+            .as_f64()
+            .unwrap()
+    })
+}
+
+/// The `index`-th vertex of a ring (the polygon is closed: 65 points for 64 segments).
+fn ring_vertex(overlay: &Value, handle: &str, index: usize) -> Value {
+    let ring = overlay["handles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|candidate| candidate["id"] == handle)
+        .unwrap();
+    assert_eq!(ring["kind"], "ring");
+    let vertex = ring["points"][index].clone();
+    assert!(
+        vertex.is_object(),
+        "vertex {index} of `{handle}` is on the picture"
+    );
+    vertex
+}
+
+#[gpui_kit::test]
+fn choosing_the_rotate_tool_goes_through_the_shared_handler_and_redraws_the_page_once(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = mounted(cx);
+    let before = spent(&view, cx);
+    let depth = undo_depth(&view, cx);
+    let answer = choose_tool(&view, cx, GizmoTool::Rotate, GizmoSpace::Local).unwrap();
+    assert_eq!(answer["changed"], true);
+    assert_eq!(answer["document_changed"], false);
+    let after = spent(&view, cx);
+    assert_eq!(after.0, before.0 + 1, "the new tool is planned once");
+    assert_eq!(after.3, before.3 + 1, "and the page is sent it once");
+    assert_eq!(undo_depth(&view, cx), depth, "a tool is not an edit");
+    let stamp = current_stamp(&view, cx);
+    assert_eq!(
+        (stamp["tool"].as_str(), stamp["space"].as_str()),
+        (Some("rotate"), Some("local"))
+    );
+    assert_eq!(overlay(&view, cx)["handles"][0]["kind"], "ring");
+    // The same choice again changes nothing and costs no plan.
+    choose_tool(&view, cx, GizmoTool::Rotate, GizmoSpace::Local).unwrap();
+    sync(&view, cx);
+    assert_eq!(spent(&view, cx).0, after.0);
+    assert_eq!(spent(&view, cx).3, after.3);
+}
+
+#[gpui_kit::test]
+fn a_ring_drag_from_the_page_is_one_undo_entry_and_turns_the_node(cx: &mut TestAppContext) {
+    let (view, cx) = mounted(cx);
+    choose_tool(&view, cx, GizmoTool::Rotate, GizmoSpace::World).unwrap();
+    let shown = overlay(&view, cx);
+    // Two vertices of the z ring, an eighth of a turn apart: a point on the ring's own plane, so
+    // the sweep from one to the other is exactly 360/8 = 45 degrees.
+    let (from, to) = (ring_vertex(&shown, "z", 8), ring_vertex(&shown, "z", 16));
+    let before = (figure_rotation_z(&view, cx), undo_depth(&view, cx));
+    pointer(&view, cx, json!({"phase":"down","point":from}));
+    assert!(dragging(&view, cx), "the press landed on the z ring");
+    pointer(&view, cx, json!({"phase":"move","point":to}));
+    // A candidate: nothing of the document moved yet.
+    assert_eq!(
+        (figure_rotation_z(&view, cx), undo_depth(&view, cx)),
+        before
+    );
+    pointer(&view, cx, json!({"phase":"up","point":to}));
+    assert!(!dragging(&view, cx));
+    let turned = figure_rotation_z(&view, cx);
+    assert!(
+        (turned.abs() - (22.5f64).to_radians().sin()).abs() < 1e-6,
+        "45 degrees about z: z = sin(22.5deg), got {turned}"
+    );
+    assert_eq!(
+        undo_depth(&view, cx),
+        before.1 + 1,
+        "one entry for the whole drag"
+    );
+    view.update(cx, |view, cx| view.execute(Command::Undo, Source::Cli, cx))
+        .unwrap();
+    assert_eq!(figure_rotation_z(&view, cx), before.0);
+}
+
+#[gpui_kit::test]
+fn a_press_made_against_the_arrows_is_stale_once_the_tool_is_rotate(cx: &mut TestAppContext) {
+    let (view, cx) = mounted(cx);
+    let tip = tip_of(&overlay(&view, cx), "x");
+    let arrows = current_stamp(&view, cx);
+    choose_tool(&view, cx, GizmoTool::Rotate, GizmoSpace::World).unwrap();
+    let before = (figure_rotation_z(&view, cx), undo_depth(&view, cx));
+    let counted = stale_count(&view, cx);
+    send(
+        &view,
+        cx,
+        json!({"phase":"down","point":tip,"stamp":arrows}),
+    );
+    assert!(
+        !dragging(&view, cx),
+        "the page had the arrows, the core has the rings"
+    );
+    assert_eq!(stale_count(&view, cx), counted + 1);
+    assert_eq!(
+        (figure_rotation_z(&view, cx), undo_depth(&view, cx)),
+        before
+    );
+    // And the other way: back to the arrows, a press that answers the rings is refused too.
+    let shown = overlay(&view, cx);
+    let rings = current_stamp(&view, cx);
+    choose_tool(&view, cx, GizmoTool::Translate, GizmoSpace::World).unwrap();
+    let counted = stale_count(&view, cx);
+    send(
+        &view,
+        cx,
+        json!({"phase":"down","point":ring_vertex(&shown, "z", 8),"stamp":rings}),
+    );
+    assert!(!dragging(&view, cx));
+    assert_eq!(stale_count(&view, cx), counted + 1);
+}
+
+#[gpui_kit::test]
+fn the_tool_cannot_change_under_a_ring_drag_and_the_drag_goes_on(cx: &mut TestAppContext) {
+    let (view, cx) = mounted(cx);
+    choose_tool(&view, cx, GizmoTool::Rotate, GizmoSpace::World).unwrap();
+    let shown = overlay(&view, cx);
+    pointer(
+        &view,
+        cx,
+        json!({"phase":"down","point":ring_vertex(&shown, "z", 8)}),
+    );
+    assert!(dragging(&view, cx));
+    let refused = choose_tool(&view, cx, GizmoTool::Translate, GizmoSpace::World).unwrap_err();
+    assert_eq!(refused.code, "gesture_active");
+    assert!(dragging(&view, cx), "the drag is untouched");
+    assert_eq!(
+        view.read_with(cx, |view, _| view.state.scene_interaction.tool()),
+        GizmoTool::Rotate
+    );
+    // Escape ends it like a translation drag, and the tool can then change.
+    view.update(cx, |view, cx| {
+        view.cancel_gizmo_drag(CancelReason::Hidden, cx)
+    });
+    assert!(!dragging(&view, cx));
+    choose_tool(&view, cx, GizmoTool::Translate, GizmoSpace::World).unwrap();
+}
+
+#[gpui_kit::test]
+fn the_translation_drag_still_works_after_a_visit_to_the_rotate_tool(cx: &mut TestAppContext) {
+    let (view, cx) = mounted(cx);
+    choose_tool(&view, cx, GizmoTool::Rotate, GizmoSpace::Local).unwrap();
+    choose_tool(&view, cx, GizmoTool::Translate, GizmoSpace::World).unwrap();
+    let before = (figure_x(&view, cx), undo_depth(&view, cx));
+    let tip = start_drag(&view, cx);
+    pointer(&view, cx, json!({"phase":"up","point":nudged(&tip, 0.05)}));
+    assert!(figure_x(&view, cx) > before.0);
+    assert_eq!(undo_depth(&view, cx), before.1 + 1);
+}
+
+#[gpui_kit::test]
+fn the_monitor_buttons_choose_the_tool_and_the_space_through_the_shared_handler(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = mounted(cx);
+    let tool_state = |view: &Entity<Workstation>, cx: &mut VisualTestContext| {
+        view.read_with(cx, |view, _| {
+            (
+                view.state.scene_interaction.tool(),
+                view.state.scene_interaction.space(),
+            )
+        })
+    };
+    let center = |view: &Entity<Workstation>, cx: &mut VisualTestContext, id: &str| {
+        view.read_with(cx, |view, _| {
+            view.geometry
+                .get(&format!("control:{id}"))
+                .unwrap_or_else(|| panic!("no probe `{id}`"))
+                .center()
+        })
+    };
+    let depth = undo_depth(&view, cx);
+    assert_eq!(
+        tool_state(&view, cx),
+        (GizmoTool::Translate, GizmoSpace::World)
+    );
+    // The space buttons exist only while the rotate tool is chosen.
+    assert!(view.read_with(cx, |view, _| {
+        view.geometry.get("control:monitor-gizmo-local").is_none()
+    }));
+    let rotate = center(&view, cx, "monitor-gizmo-rotate");
+    cx.simulate_click(rotate, Default::default());
+    cx.run_until_parked();
+    assert_eq!(
+        tool_state(&view, cx),
+        (GizmoTool::Rotate, GizmoSpace::World)
+    );
+    let local = center(&view, cx, "monitor-gizmo-local");
+    cx.simulate_click(local, Default::default());
+    cx.run_until_parked();
+    assert_eq!(
+        tool_state(&view, cx),
+        (GizmoTool::Rotate, GizmoSpace::Local)
+    );
+    assert_eq!(overlay(&view, cx)["handles"][0]["kind"], "ring");
+    let translate = center(&view, cx, "monitor-gizmo-translate");
+    cx.simulate_click(translate, Default::default());
+    cx.run_until_parked();
+    assert_eq!(
+        tool_state(&view, cx),
+        (GizmoTool::Translate, GizmoSpace::Local)
+    );
+    assert_eq!(overlay(&view, cx)["handles"][3]["kind"], "center");
+    assert_eq!(
+        undo_depth(&view, cx),
+        depth,
+        "choosing a tool is not an edit"
+    );
 }

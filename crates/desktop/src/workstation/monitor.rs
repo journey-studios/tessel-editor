@@ -7,6 +7,8 @@ use gpui_kit::component::button::{Button, ButtonVariants};
 use gpui_kit::component::{Disableable, Selectable, Sizable, h_flex};
 use gpui_kit::*;
 use tessel_editor_core::plan::PreviewIntent;
+use tessel_editor_core::scene_interaction::{GizmoCommand, GizmoSpace, GizmoTool};
+use tessel_editor_core::scene_project::SceneCommand;
 
 use super::Workstation;
 use super::controls::{click, tool_button};
@@ -106,6 +108,82 @@ impl Workstation {
                 }
             });
 
+        // BL015.1: the gizmo's tool and the space of its rotation axes, a toolbar over the
+        // picture's header (a GPUI control: the rings themselves are drawn in the page). Only
+        // with a scene attached; each press is the same `scene.gizmo.tool` a script sends.
+        let gizmo_tools = self.scene_attached().then(|| {
+            let (tool, space) = (
+                state.scene_interaction.tool(),
+                state.scene_interaction.space(),
+            );
+            let geometry = &self.geometry;
+            // Each button has a probe (`control:<id>`), the semantic address of its bounds.
+            let mut button = |id: &'static str,
+                              label: &'static str,
+                              tip: &'static str,
+                              selected: bool,
+                              tool: Option<GizmoTool>,
+                              space: Option<GizmoSpace>| {
+                div()
+                    .relative()
+                    .child(geometry.probe(format!("control:{id}")))
+                    .child(
+                        Button::new(id)
+                            .ghost()
+                            .xsmall()
+                            .label(label)
+                            .selected(selected)
+                            .tooltip(tip.to_string())
+                            .on_click(click(
+                                cx,
+                                Command::Scene(SceneCommand::Gizmo(GizmoCommand::Tool {
+                                    tool,
+                                    space,
+                                })),
+                            )),
+                    )
+            };
+            let mut group = h_flex()
+                .items_center()
+                .gap(px(2.))
+                .child(button(
+                    "monitor-gizmo-translate",
+                    "Mover",
+                    "Setas de translação do nó selecionado",
+                    tool == GizmoTool::Translate,
+                    Some(GizmoTool::Translate),
+                    None,
+                ))
+                .child(button(
+                    "monitor-gizmo-rotate",
+                    "Girar",
+                    "Anéis de rotação do nó selecionado",
+                    tool == GizmoTool::Rotate,
+                    Some(GizmoTool::Rotate),
+                    None,
+                ));
+            if tool == GizmoTool::Rotate {
+                group = group
+                    .child(button(
+                        "monitor-gizmo-world",
+                        "Mundo",
+                        "Girar em torno dos eixos da cena",
+                        space == GizmoSpace::World,
+                        None,
+                        Some(GizmoSpace::World),
+                    ))
+                    .child(button(
+                        "monitor-gizmo-local",
+                        "Local",
+                        "Girar em torno dos eixos do próprio nó",
+                        space == GizmoSpace::Local,
+                        None,
+                        Some(GizmoSpace::Local),
+                    ));
+            }
+            group
+        });
+
         let playing = self.playback.is_playing();
         let step = |delta: i64| seek(playhead + delta);
         let transport = h_flex()
@@ -173,6 +251,7 @@ impl Workstation {
                         h_flex()
                             .items_center()
                             .gap(px(8.))
+                            .children(gizmo_tools)
                             .child(preview_modes)
                             .children(scene_badge.map(|badge| {
                                 div()

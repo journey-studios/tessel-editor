@@ -31,6 +31,13 @@
 
 use serde_json::{Value, json};
 
+mod rotation;
+
+pub use rotation::{
+    GizmoSpace, GizmoTool, RING_RADIUS, RING_SEGMENTS, RingAnchor, RotationFrame, quat_json,
+    refusal,
+};
+
 use crate::directed_scene::{Mat4, NodeKind, Vec3};
 use crate::scene_plan::{PlanNode, ScenePlan};
 use crate::state::CommandError;
@@ -304,17 +311,22 @@ impl View {
 }
 
 /// One handle as drawn: where it starts and ends on the picture.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct HandleGeometry {
     pub handle: Handle,
     pub from: Point,
-    /// The tip of an axis; the centre again for `Screen`.
+    /// The tip of an axis; the centre again for `Screen`; for a ring, its first visible point.
     pub to: Point,
+    /// The polygon of a rotation ring (closed: the last point is the first), `None` where it is
+    /// behind the camera. Empty for the handles of the translate tool.
+    pub ring: Vec<Option<Point>>,
 }
 
 /// The gizmo of one node: its origin and its handles, on the picture.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Layout {
+    /// What the handles do: arrows and a centre (translate) or three rings (rotate).
+    pub tool: GizmoTool,
     pub world_origin: V3,
     pub origin: Point,
     pub handles: Vec<HandleGeometry>,
@@ -339,9 +351,11 @@ impl Layout {
                 handle,
                 from: origin,
                 to,
+                ring: Vec::new(),
             });
         }
         Some(Self {
+            tool: GizmoTool::Translate,
             world_origin,
             origin,
             handles,
@@ -351,6 +365,9 @@ impl Layout {
     /// The handle under `point`: the centre wins inside its radius, then the nearest axis within
     /// `HIT_RADIUS` (ties go to X, Y, Z in that order).
     pub fn hit(&self, view: &View, point: Point) -> Option<Handle> {
+        if self.tool == GizmoTool::Rotate {
+            return self.hit_ring(view, point);
+        }
         if view.distance(point, self.origin) <= CENTER_RADIUS {
             return Some(Handle::Screen);
         }
@@ -510,6 +527,8 @@ pub enum Hidden {
     NotANode,
     NotInFrame,
     NotMovable(&'static str),
+    /// The rotate tool is active and this node cannot be turned (`refusal::*`).
+    NotRotatable(&'static str),
     BehindCamera,
 }
 
@@ -520,7 +539,7 @@ impl Hidden {
             Self::MultipleSelection => "multiple_selection",
             Self::NotANode => "not_a_node",
             Self::NotInFrame => "not_in_frame",
-            Self::NotMovable(reason) => reason,
+            Self::NotMovable(reason) | Self::NotRotatable(reason) => reason,
             Self::BehindCamera => "behind_camera",
         }
     }
@@ -529,6 +548,9 @@ impl Hidden {
 /// What a runtime draws, in picture coordinates. Version 1; fields are only ever added.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Overlay {
+    /// The tool the handles belong to, and the space of the rotate tool's axes.
+    pub tool: GizmoTool,
+    pub space: GizmoSpace,
     pub entity: Option<String>,
     pub layout: Option<Layout>,
     pub hidden: Option<Hidden>,
@@ -549,15 +571,25 @@ impl Overlay {
             .iter()
             .flat_map(|layout| layout.handles.iter())
             .map(|geometry| {
-                json!({
+                let mut handle = json!({
                     "id": geometry.handle.as_str(),
-                    "kind": if geometry.handle == Handle::Screen { "center" } else { "axis" },
+                    "kind": match (self.tool, geometry.handle) {
+                        (GizmoTool::Rotate, _) => "ring",
+                        (_, Handle::Screen) => "center",
+                        _ => "axis",
+                    },
                     "from": geometry.from.to_json(), "to": geometry.to.to_json(),
-                })
+                });
+                if self.tool == GizmoTool::Rotate {
+                    handle["points"] = geometry.ring_json();
+                }
+                handle
             })
             .collect();
         json!({
             "version": 1,
+            "tool": self.tool.as_str(),
+            "space": self.space.as_str(),
             "visible": self.layout.is_some(),
             "reason": self.hidden.map(Hidden::as_str),
             "entity": self.entity,
@@ -574,7 +606,8 @@ impl Overlay {
             "stamp": self.stamp,
             "metrics": {
                 "handle_length": HANDLE_LENGTH, "hit_radius": HIT_RADIUS,
-                "center_radius": CENTER_RADIUS, "unit": "picture_height",
+                "center_radius": CENTER_RADIUS, "ring_radius": RING_RADIUS,
+                "unit": "picture_height",
             },
         })
     }

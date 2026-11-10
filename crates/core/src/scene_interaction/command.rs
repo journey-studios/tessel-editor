@@ -7,7 +7,7 @@ use crate::directed_scene::Vec3;
 use crate::scene_edit::{EditOp, FxOp};
 use crate::time::Ratio;
 
-use super::gizmo::Point;
+use super::gizmo::{GizmoSpace, GizmoTool, Handle, Point};
 
 /// The edit frame a frame evaluation asks about.
 #[derive(Debug, Clone, PartialEq)]
@@ -171,7 +171,7 @@ pub enum PointerCommand {
     Cancel { reason: CancelReason },
 }
 
-/// The gizmo vocabulary (`scene.gizmo.*`, `scene.pointer.*`, `scene.translate`).
+/// The gizmo vocabulary (`scene.gizmo.*`, `scene.pointer.*`, `scene.translate`, `scene.rotate`).
 #[derive(Debug, Clone, PartialEq)]
 pub enum GizmoCommand {
     /// The overlay of the scene at a frame: what a runtime draws for the current selection (the
@@ -195,5 +195,23 @@ pub enum GizmoCommand {
         entity: String,
         at: FrameAt,
         delta: Vec3,
+    },
+    /// The semantic rotation (BL015.1): turns one node by `degrees` about the `axis` ring (`x`,
+    /// `y`, `z`; never `screen`) in `space` (the session's when `None`), in one `scene.edit`. The
+    /// same result as the ring drag that reported that `degrees`, `axis` and `space`.
+    Rotate {
+        scene: String,
+        entity: String,
+        at: FrameAt,
+        axis: Handle,
+        degrees: f64,
+        space: Option<GizmoSpace>,
+    },
+    /// Reads or sets the tool (translate/rotate) and the space of the rotate axes. With neither
+    /// field it is a read. Presentation state, not an edit: no history, no revision. Refused
+    /// while a drag is open (a ring cannot turn into an arrow under the pointer).
+    Tool {
+        tool: Option<GizmoTool>,
+        space: Option<GizmoSpace>,
     },
 }

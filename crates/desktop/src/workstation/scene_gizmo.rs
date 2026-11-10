@@ -1,4 +1,4 @@
-//! Desktop adapter of the translation gizmo (F055, BL015/BL042).
+//! Desktop adapter of the translation and rotation gizmo (F055, BL015/BL042/BL015.1).
 //!
 //! The gizmo is drawn and hit on a canvas INSIDE the monitor's WebView (`runtime/src/overlay.js`),
 //! never as a GPUI element over it (a native WebView paints above every GPUI element). This file
@@ -257,6 +257,7 @@ impl Workstation {
             Err(_) => {
                 self.viewport.overlay_show(&json!({
                     "version": 1, "visible": false, "reason": "no_frame", "entity": null,
+                    "tool": stamp["tool"], "space": stamp["space"],
                     "origin": null, "handles": [], "outlines": [], "active": null, "aspect": 1.0,
                     "stamp": stamp,
                 }));

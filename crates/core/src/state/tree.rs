@@ -21,6 +21,7 @@ use super::{EditorState, WorkspaceTab};
 use crate::content::TextSpec;
 use crate::plan::PreviewIntent;
 use crate::preview::PreviewMode;
+use crate::scene_interaction::{GizmoSpace, GizmoTool};
 
 /// Window-dependent facts the pure state cannot know.
 pub struct TreeContext<'a> {
@@ -578,22 +579,30 @@ fn build_monitor(state: &EditorState, nodes: &mut Vec<Node>) {
             .parent("region:monitor")
             .action("invoke"),
     );
-    // F055: the translation gizmo is drawn and hit on a canvas inside the page, so it has no
-    // control of its own to click: this node shows what the core holds for it, and the semantic
-    // way to drive it is `scene.pointer.*` / `scene.translate` (`ui op`, `scripts/headless`).
+    // F055: the gizmo is drawn and hit on a canvas inside the page, so it has no control of its
+    // own to click: this node shows what the core holds for it, and the semantic way to drive a
+    // drag is `scene.pointer.*` / `scene.translate` / `scene.rotate` (`ui op`, `scripts/headless`).
+    // BL015.1: the tool (translate/rotate) and the space of the rotate axes are its two fields
+    // (`set monitor.gizmo tool rotate`), the same `scene.gizmo.tool` command a script sends.
     // Only with a scene attached, so the tree of a project without scenes is what it always was.
     if !state.scenes.is_empty() {
         let drag = state.scene_interaction.drag();
+        let tools = GizmoTool::ALL.map(GizmoTool::as_str);
+        let spaces = GizmoSpace::ALL.map(GizmoSpace::as_str);
         nodes.push(
-            Node::new("monitor.gizmo", "gizmo", "Translation gizmo (canvas)")
+            Node::new("monitor.gizmo", "gizmo", "Gizmo (canvas)")
                 .parent("region:monitor")
                 .state(
                     "selection",
                     state.scene_interaction.selection().entries().len() as u64,
                 )
+                .state("tool", state.scene_interaction.tool().as_str())
+                .state("space", state.scene_interaction.space().as_str())
                 .state("dragging", drag.is_some())
                 .state("handle", drag.map_or("", |drag| drag.handle().as_str()))
-                .state("gesture", drag.map_or("", |drag| drag.gesture())),
+                .state("gesture", drag.map_or("", |drag| drag.gesture()))
+                .field("tool", "choice", json!({ "options": tools }))
+                .field("space", "choice", json!({ "options": spaces })),
         );
     }
 }
@@ -1125,6 +1134,62 @@ mod tests {
         assert_eq!(after["state"]["dragging"], false);
         assert_eq!(after["state"]["handle"], "");
         assert!(state.summary()["scene_interaction"]["drag"].is_null());
+    }
+
+    #[test]
+    fn the_gizmo_node_exposes_the_tool_and_the_space_as_choices() {
+        use std::path::Path;
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../docs/migration/fixtures/bundles/valid-minimal-continuous.bundle.json");
+        let bundle: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let mut state = EditorState::demo();
+        let run = |state: &mut EditorState, request: Value| {
+            crate::headless::execute(state, &request).unwrap_or_else(|e| panic!("{request}: {e:?}"))
+        };
+        run(&mut state, json!({"op":"project.create","name":"Tree"}));
+        run(
+            &mut state,
+            json!({"op":"scene.attach","id":"street","bundle":bundle}),
+        );
+        let idle = node(&state, "monitor.gizmo");
+        assert_eq!(idle["state"]["tool"], "translate");
+        assert_eq!(idle["state"]["space"], "world");
+        let fields: Vec<(&str, Vec<&str>)> = idle["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|field| ["tool", "space"].contains(&field["field"].as_str().unwrap()))
+            .map(|field| {
+                (
+                    field["field"].as_str().unwrap(),
+                    field["options"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|option| option.as_str().unwrap())
+                        .collect(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            fields,
+            [
+                ("tool", vec!["translate", "rotate"]),
+                ("space", vec!["world", "local"])
+            ]
+        );
+        // The sentence a script or a toolbar control sends changes what the node reports.
+        run(
+            &mut state,
+            json!({"op":"set","target":"monitor.gizmo","field":"tool","value":"rotate"}),
+        );
+        run(
+            &mut state,
+            json!({"op":"set","target":"monitor.gizmo","field":"space","value":"local"}),
+        );
+        let rotating = node(&state, "monitor.gizmo");
+        assert_eq!(rotating["state"]["tool"], "rotate");
+        assert_eq!(rotating["state"]["space"], "local");
     }
 
     #[test]
