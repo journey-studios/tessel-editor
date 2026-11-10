@@ -220,6 +220,37 @@ def run(args, surfaces):
         check("ONE undo brings the animation back", ok, body)
         keyed_picture("undone", 1.0 - (1.0 - 0.25) ** 3)
 
+        # ---- the key editors and the base under keys, by the nodes the panel's inputs share ----
+        node = win.node(CLIP) or {}
+        listed = {f["field"]: f for f in node.get("fields", [])}
+        check("the node lists each key's frame and value and the shift of the curve",
+              all(n in listed for n in ("key_frame:amount:0", "key:amount:0", "key_frame:amount:20", "key:amount:20", "shift_keys:amount")),
+              sorted(listed))
+        base = listed.get("amount", {})
+        check("the base of an animated parameter is disabled, labelled and says what edits it",
+              base.get("enabled") is False and base.get("animated") is True and base.get("edit_with") == "keys"
+              and "(base)" in base.get("label", "") and base.get("disabled_reason"), base)
+        depth = win.undo_depth()
+        refused = win.set(CLIP, "amount", 0.3)
+        check("a write to the animated base is refused with base_under_keys",
+              not refused.get("ok") and refused.get("error", {}).get("code") == "base_under_keys" and win.undo_depth() == depth, refused)
+        for bad in ("abc", "", "NaN"):
+            refused = win.set(CLIP, "key:amount:20", bad)
+            check(f"a key value `{bad}` is invalid_value and writes nothing",
+                  not refused.get("ok") and refused.get("error", {}).get("code") == "invalid_value" and win.undo_depth() == depth, refused)
+        refused = win.set(CLIP, "key_frame:amount:20", 1.5)
+        check("a fractional key frame is refused and writes nothing", not refused.get("ok") and win.undo_depth() == depth, refused)
+        here = lambda: (win.node("scene.fx") or {}).get("state", {}).get("playhead_frame")  # noqa: E731
+        for to, want in (("first", 0), ("last", 20), ("previous", 0)):
+            went = win.invoke(CLIP, f"go:amount:{to}")
+            check(f"go:amount:{to} moves the monitor to clip frame {want} (edit frame {FRAME + want}) and writes nothing",
+                  went.get("ok") and here() == FRAME + want and win.undo_depth() == depth, (went, here()))
+        refused = win.invoke(CLIP, "go:amount:previous")
+        check("no key before the first: no_previous_key, the monitor stays",
+              not refused.get("ok") and refused.get("error", {}).get("code") == "no_previous_key" and here() == FRAME, refused)
+        lab.seek(FRAME + 5)
+        win.shown_hash(FRAME + 5)
+
         # ---- a gesture previews what it commits ----
         ok, began = win.op({"op": "scene.fx.gesture.begin", "scene": "proof", "clip": "fx-1"})
         gesture = began.get("gesture") if ok else None

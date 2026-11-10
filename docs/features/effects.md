@@ -534,3 +534,19 @@ P3 acrescenta a animação dos parâmetros (`keys`, easing da chave de chegada, 
 - Evidências, comandos e limites: [F058](fx-keys.md#evidências-e-status) e [F059](film-grain.md#evidências-e-status).
   Limites que permanecem: GPU nativa, Windows, ponteiro físico (BL043), execução do motor original
   (`ORIGIN_NOT_EXECUTED`, `ORIGIN_GOLDEN_NOT_COMPARABLE`), 56 efeitos, escopos `shot`/`node` e transições (P4), timeline (P6).
+
+### Correção P3 após a revisão da PR 42 (BL082.30–.34)
+
+- **UI completa das chaves (BL082.30):** quadro e valor tipados por chave, mover para qualquer quadro, deslocar/escalar
+  com parâmetros, navegar anterior/próxima/ir para a chave por `scene.fx.seek` (regra do core), seed arbitrária,
+  `base_revision` e editores com Enter/Blur de um único commit; base desabilitada sob chaves (`base_under_keys`) com
+  o valor amostrado à parte; `set_param` direto continua com `FX_STATIC_UNDER_KEYS`, sem autokey.
+- **Aritmética (BL082.31):** `scale_keys` com âncora `i64::MIN` ou `num = i64::MAX` é recusa tipada, e o arredondamento
+  é meio para cima exato nos dois lados da âncora.
+- **Custo (BL082.32):** 1024 ops por lote (`FX_LIMIT` antes de copiar), limites por op/clipe/camada antes de crescer,
+  edição no lugar e contadores determinísticos; o custo é por lote (revalidação do importador), medido em par.
+- **Intenção do gesto e proofs (BL082.33):** gesto liga verbo e alvo (`gesture_*_mismatch`) sem tocar candidato nem
+  revisão; `scene_frame_at_playhead`/captura/navegação provados com início de FX ≠ 0 e taxas NTSC; velocidade/offset
+  são N/A (não existem no clipe de cena deste caminho).
+- **No-op tipado (BL082.34):** `key_param` compara valores tipados (`1` e `1.0`, ordem de chaves, cor/ponto).
+Detalhes e evidências: [F058](fx-keys.md).

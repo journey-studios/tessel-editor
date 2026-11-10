@@ -320,3 +320,10 @@ real (G), gates e docs (H). Evidências por superfície, comandos e hashes no re
 **Limites que permanecem:** GPU nativa e Windows; execução do motor original (`ORIGIN_NOT_EXECUTED`,
 `ORIGIN_GOLDEN_NOT_COMPARABLE`); ponteiro físico (BL043); 56 efeitos; escopos `shot`/`node` e transições (P4); timeline (P6);
 preview em outra resolução tem outra grade de células do grão.
+
+**Correção após a revisão da PR 42 (BL082.30–.34):** a UI das chaves foi completada contra a seção 7 (quadro e valor
+tipados, mover, deslocar/escalar, navegação `scene.fx.seek` no core, seed arbitrária, `base_revision`, base desabilitada
+sob chaves); `scale_keys` ficou exato para `i64::MIN`/`i64::MAX`; o lote tem orçamento (1024 ops) e os limites de dados
+são conferidos antes de copiar; o gesto liga verbo e alvo; `key_param` compara tipos. Diferenças em relação ao plano:
+o easing por chave é um botão que percorre os três nomes (não um `Select`), e velocidade/offset do clipe de cena são N/A.
+Itens do coordenador (nits F4/F7/F9) não foram tocados. Estado e evidências por superfície em F058 e no backlog.

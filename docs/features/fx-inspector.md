@@ -163,3 +163,10 @@ mantém seu significado (é a base). Booleanos têm tipo próprio (`Switch` real
 captura, ação ou op. Nós e ações da janela (`key:*`, `seed`, `remove_animation`) e o contrato completo estão em
 [F058](fx-keys.md#ui-e-cli-da-janela); o terceiro look em [F059](film-grain.md). Rótulos pt-br/en/es de `filmGrain` e
 de suas operações vêm do core (BL040 segue parcial: a política geral de i18n do editor continua aberta).
+
+**Correção P3 (BL082.30/.31/.33):** o campo de um parâmetro animado é a **base** (`animated`, `base`,
+`edit_with: "keys"`, `enabled: false`, motivo `base_under_keys`, `sampled` à parte); o inspector devolve a chave
+anterior/seguinte ao quadro pedido e as operações `go_previous|go_next|go_first|go_last` (motivo `no_frame` sem quadro
+de edição, `no_previous_key`/`no_next_key`, `no_keys`), executadas por `scene.fx.seek`. Quadro e valor de cada chave,
+deslocar/escalar curvas e seed arbitrária têm editores tipados na seção "Efeitos" (Kit `Input`, `Switch`, botões de
+ícone) e campos/ações equivalentes no nó; contrato em [F058](fx-keys.md#ui-e-cli-da-janela).
