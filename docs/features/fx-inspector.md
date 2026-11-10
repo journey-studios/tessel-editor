@@ -59,7 +59,9 @@ Cada clipe traz `clip`, `track`, `effect`, `effect_label(s)`, `hidden`, `reset_o
 `reset {to, needed, op}`. `op` é a operação JSONL executável para aquele campo (inclusive duração/fades); é `null` quando o campo já está no padrão. Campos sem padrão têm `reset: null`.
 
 - `gesture` lê o **candidato** do gesto aberto (o valor legal mais recente) e traz `gesture {id, clip, refusal}`
-  com a última recusa tipada; um gesto fechado deixa de ser legível.
+  com a última recusa tipada; um gesto fechado deixa de ser legível. O ID precisa ser de um gesto de **efeito**: o de um gesto `properties` (arrasto de anel ou slider) é
+  recusado com `gesture_kind_mismatch`, sem escrever nada e sem encerrar aquele gesto (F2 da revisão da PR #40; teste
+  `an_effect_read_names_an_effect_gesture_and_refuses_the_id_of_a_ring_drag`).
 - `probe {clip, field, value, quantize?}` julga um valor **sem gravá-lo**: monta o op do campo e roda o
   `dry_run_fx` do core. `ok: true` traz `would_change` (gravar um padrão que o clipe omite **é** mudança do
   documento) e `changes`; `ok: false` traz o erro tipado (`param_out_of_range`, `invalid_value`,
