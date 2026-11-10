@@ -238,7 +238,7 @@ mod held_read {
     }
 
     enum Ui {
-        Request(Request<Vec<u8>>, mpsc::Sender<u16>),
+        Request(Box<Request<Vec<u8>>>, mpsc::Sender<u16>),
         Pulse(mpsc::Sender<()>),
         Stop,
     }
@@ -299,7 +299,7 @@ mod held_read {
             (mode == AssetIoMode::Async).then(|| AssetPool::new(DEFAULT_WORKERS, DEFAULT_QUEUE));
         let (ui, join) = window_thread(mode, dist, held.clone(), trace.clone(), pool.clone());
         let (answered, answers) = mpsc::channel();
-        ui.send(Ui::Request(asset_request(&held, None), answered))
+        ui.send(Ui::Request(Box::new(asset_request(&held, None)), answered))
             .unwrap();
         if let Some(pool) = &pool {
             // The read really started and is being held before the pulse is sent.
