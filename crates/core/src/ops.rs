@@ -18,8 +18,8 @@ use crate::plan::{PlanRequest, PlanTime, PreviewIntent};
 use crate::preview::PreviewMode;
 use crate::scene_edit::{PropertyRef, parse_batch};
 use crate::scene_interaction::{
-    CancelReason, FrameAt, FxGestureCommand, GestureCommand, GizmoCommand, Point, PointerCommand,
-    SelectMode,
+    CancelReason, FrameAt, FxGestureCommand, GestureCommand, GizmoCommand, GizmoSpace, GizmoTool,
+    Handle, Point, PointerCommand, SelectMode,
 };
 use crate::scene_project::{CameraAt, SceneCommand, SceneSource};
 use crate::state::camera_edit::CameraKeysCommand;
@@ -761,6 +761,23 @@ fn scene_command(op: &str, request: &Value) -> Result<SceneCommand, CommandError
             at: frame_at(request)?,
             delta: vector(request, "delta")?,
         }),
+        // BL015.1: the rotate tool. `degrees` and `axis` are the answer of a ring drag, so the
+        // same pair replays it; `space` defaults to the session's.
+        "scene.rotate" => SceneCommand::Gizmo(GizmoCommand::Rotate {
+            scene: scene()?,
+            entity: string(request, "entity")?.to_string(),
+            at: frame_at(request)?,
+            axis: ring_axis(request)?,
+            degrees: request
+                .get("degrees")
+                .and_then(Value::as_f64)
+                .ok_or_else(|| invalid("Field `degrees` must be a number"))?,
+            space: gizmo_space(request)?,
+        }),
+        "scene.gizmo.tool" => SceneCommand::Gizmo(GizmoCommand::Tool {
+            tool: gizmo_tool(request)?,
+            space: gizmo_space(request)?,
+        }),
         other => {
             return Err(CommandError::new(
                 "unknown_operation",
@@ -854,6 +871,45 @@ fn vector(request: &Value, key: &str) -> Result<Vec3, CommandError> {
         x: axis("x")?,
         y: axis("y")?,
         z: axis("z")?,
+    })
+}
+
+/// `x`, `y` or `z`: the ring a rotation turns about. The page and the core only name the axis.
+fn ring_axis(request: &Value) -> Result<Handle, CommandError> {
+    let raw = string(request, "axis")?;
+    match Handle::parse(raw) {
+        Some(handle) if handle != Handle::Screen => Ok(handle),
+        _ => Err(CommandError::invalid_value(
+            format!("`{raw}` is not a rotation axis"),
+            json!({ "options": ["x", "y", "z"] }),
+        )
+        .target("axis")),
+    }
+}
+
+fn gizmo_tool(request: &Value) -> Result<Option<GizmoTool>, CommandError> {
+    let Some(raw) = optional_string(request, "tool")? else {
+        return Ok(None);
+    };
+    GizmoTool::parse(&raw).map(Some).ok_or_else(|| {
+        CommandError::invalid_value(
+            format!("`{raw}` is not a gizmo tool"),
+            json!({ "options": GizmoTool::ALL.map(GizmoTool::as_str) }),
+        )
+        .target("tool")
+    })
+}
+
+fn gizmo_space(request: &Value) -> Result<Option<GizmoSpace>, CommandError> {
+    let Some(raw) = optional_string(request, "space")? else {
+        return Ok(None);
+    };
+    GizmoSpace::parse(&raw).map(Some).ok_or_else(|| {
+        CommandError::invalid_value(
+            format!("`{raw}` is not a gizmo space"),
+            json!({ "options": GizmoSpace::ALL.map(GizmoSpace::as_str) }),
+        )
+        .target("space")
     })
 }
 

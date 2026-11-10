@@ -1,4 +1,4 @@
-# F055 — Gizmo de translação no canvas (BL015, BL042)
+# F055 — Gizmo de translação e rotação no canvas (BL015, BL015.1, BL042)
 
 ## Objetivo e limites
 
@@ -12,8 +12,10 @@ imagem, o usuário apertou".
 - Seleção por ponteiro: apertar sobre um plano de imagem seleciona (`additive` alterna); apertar
   em área vazia da imagem limpa a seleção; apertar num handle mantém a seleção.
 - O que é editado: a propriedade vetorial existente `…/node/<id>/position` (`localPosition` do
-  documento). Não há rotação, escala, snapping, múltiplas seleções nem grupos nesta fatia: com
-  mais de um selecionado o overlay fica oculto (`multiple_selection`).
+  documento) com a ferramenta `translate`, e a propriedade `…/node/<id>/rotation` (o quaternion
+  `localRotation`) com a ferramenta `rotate` (BL015.1, [seção própria](#rotação-de-um-nó-g1-bl0151)).
+  Não há escala, snapping, múltiplas seleções nem grupos: com mais de um selecionado o overlay fica
+  oculto (`multiple_selection`).
 - Fora do escopo e **não declarado como entregue**: ponteiro físico nativo (BL043), popover/foco
   de teclado sobre a WebView (BL044), perfil de latência, atalhos de teclado do gizmo.
 
@@ -245,6 +247,90 @@ Mesmas ops no `./scripts/headless` (JSONL), sem janela:
 `scene.translate` produz o **mesmo documento** que um arrasto cujo `world_delta` seja o mesmo
 (teste de igualdade).
 
+## Rotação de um nó (G1, BL015.1)
+
+Primeira fatia de G1 do [plano de gizmos](../migration/gizmos-spatial-editing-plan.md): **rotação de UM
+nó**, com orientação local ou de mundo, reutilizando o gesto de F055 (begin/update/commit/cancel). Fica
+dentro de F055 (nenhum ID novo): é a mesma superfície de seleção, overlay e arrasto com uma segunda
+ferramenta. **Não entram** escala, snapping, seleção múltipla, grupos, luzes, câmera nem FX.
+
+### Convenções (decididas antes do código, fixadas por testes)
+
+| Tema | Regra |
+|---|---|
+| Representação | O documento continua com o quaternion unitário `localRotation` (propriedade `rotation`, `Mat4::compose` como no Three.js). Nenhuma representação nova, nenhum Euler gravado. |
+| Unidade e sinal | Graus na API; regra da mão direita: `+90°` em torno de `+Z` leva `+X` a `+Y`. |
+| Pivô | A origem do próprio nó (sua translação de mundo). Girar só altera `localRotation`: a origem não se move e os filhos giram junto. |
+| Eixos | `world`: `x`, `y`, `z` da cena. `local`: os eixos do nó no mundo, `O·eᵢ` com `O = Pₙ·R` (rotação do pai vezes a rotação autorada, **sem** a escala própria): são unitários e ortogonais qualquer que seja a escala do nó. |
+| Composição com o pai | `W = P·R·S`. Uma rotação de mundo `G` vira `W' = G·W`, isto é, `R' = Pₙᵀ·G·Pₙ·R`; num eixo local, `R' = R·Rot(eᵢ, θ)`. Só existe quando `P` é uma similaridade (rotação vezes **uma** escala); senão a recusa é tipada (abaixo). |
+| Ângulo de um arrasto | Ângulo entre o press e o ponteiro, ambos projetados no plano do anel, em `(-180°, 180°]`, recalculado **a partir do press** a cada move (não acumula). Uma volta completa é um comando numérico ou vários arrastos. |
+| Volta completa | O ângulo é reduzido módulo 360°; o que reduz a (quase) zero devolve o quaternion autorado sem mudança: **no-op, sem entrada de histórico**. |
+| Anéis | Raio `RING_RADIUS = 0.10` altura de imagem (como as setas, comprimento na tela e não no mundo), polígono de `RING_SEGMENTS = 64` segmentos (65 pontos, o último repete o primeiro; `null` onde o anel passa atrás da câmera). Um anel visto de **borda** (o raio do olho quase perpendicular ao eixo: |cos| entre o raio e o eixo abaixo de 0,05) não determina ângulo: o press é recusado (`refused: degenerate_axis`) antes de abrir gesto. |
+| Handle central | Não existe na ferramenta `rotate` (o centro é do `screen` da translação). |
+
+### Comandos (também ops JSON)
+
+| Op | Comando | Efeito |
+|---|---|---|
+| `scene.gizmo.tool` | `GizmoCommand::Tool` | lê e, com `tool`/`space`, define a ferramenta (`translate` padrão, `rotate`) e a orientação (`world` padrão, `local`). **Estado de sessão**, nunca uma edição: sem histórico, sem revisão. Recusada com `gesture_active` enquanto há arrasto vivo (pedir o que já está definido é leitura). Resposta: `tool`, `space`, `previous`, `tools`, `spaces`, `changed`, `document_changed:false`. |
+| `scene.rotate` | `GizmoCommand::Rotate` | o mesmo resultado **sem ponteiro**: `entity`, `frame`/`time`, `axis` (`x`\|`y`\|`z`), `degrees` finito, `space` opcional (padrão: o da sessão) → `edit_scene` com **um** `set rotation`; uma entrada "Edit scene". Resposta: `axis`, `space`, `degrees`, `rotation` (o quaternion gravado), `changed`. |
+| `scene.pointer.*` | `PointerCommand` | com `tool = rotate`, `down` num anel abre o gesto "Rotate", `move` faz `gesture_update` com **um** `set rotation`, `up` confirma (uma entrada de undo). Respostas trazem `tool`, `degrees`, `axis`, `space` e `rotation`. |
+| `set monitor.gizmo tool\|space <valor>` | `parse_set` → o mesmo `GizmoCommand::Tool` | o nó `monitor.gizmo` da árvore (`state.tool`, `state.space`, `fields tool/space` do tipo `choice`) |
+
+`scene.capabilities` passa a listar `scene.rotate` e `scene.gizmo.tool`. O arrasto e `scene.rotate` passam
+**pelo mesmo** `RotationFrame::rotate`: o documento que um arrasto deixa é igual, bit a bit, ao de `scene.rotate`
+com o `degrees`/`axis`/`space` que o arrasto reportou (teste de igualdade nas duas orientações).
+
+### Overlay v1 (aditivo)
+
+`tool` e `space` entram no overlay e no carimbo (`stamp.tool`, `stamp.space`): um press feito contra as setas nunca
+age sobre anéis (nem sobre os eixos do outro espaço), e a chave de memo do adaptador muda com a ferramenta. Com
+`tool = rotate`, cada handle tem `kind: "ring"` e `points` (65 pontos ou `null`); `metrics.ring_radius` dá o raio. Um
+overlay do primeiro corte (sem `tool`) é lido como `translate`/`world`. Nó que não pode girar: `visible:false` e
+`reason` com o motivo tipado (nunca um gizmo que depois recusa o press).
+
+### Recusas tipadas (`not_rotatable`, `details.reason`)
+
+Um comando recusado deixa documento, histórico e revisão como estavam.
+
+| `reason` | Quando |
+|---|---|
+| `animated_rotation` | um canal de performance escreve a rotação deste nó **no frame de edição** (também com valor zero). A rotação base não é a mostrada e uma edição seria deslocada pela animação; **nenhuma chave é criada em silêncio**. Pai animado, e nó com canal só de posição ou escala, **podem** girar: o `W' = G·W` vale no frame. |
+| `non_uniform_parent_scale` | a cadeia de pais escala ou cisalha de forma desigual: nenhuma rotação local gira o nó em torno de um eixo de mundo, e um nó TRS não guarda cisalhamento |
+| `mirrored_parent` | a cadeia de pais espelha (determinante negativo): o sentido da rotação inverteria |
+| `degenerate_transform` | a matriz local ou de mundo não é invertível (escala zero) |
+| `degenerate_rotation` | o quaternion autorado não é finito nem diferente de zero |
+| `not_movable` | o nó não tem posição editável (mesma regra da translação) |
+
+Outros erros: `invalid_value` (eixo `screen`/desconhecido, graus não finitos, ferramenta ou orientação desconhecida),
+`unknown_entity`, `gesture_active`, `gesture_invalidated`, `no_drag`. **Spark:** o plano já recusa, com
+`unsupported`, um splat cuja matriz de mundo não é uma similaridade (`PlanError::SplatTransform`); a rotação nunca
+contorna essa regra, e uma rotação aplicada a um splat com escala uniforme mantém a matriz uma similaridade (teste).
+A **escala própria** não uniforme ou negativa do nó é permitida (a rotação é aplicada depois da escala no `compose`)
+e não é tocada.
+
+### Animação e a rotação do documento
+
+A avaliação converte o quaternion em Euler XYZ, **soma** os canais de rotação e reconstrói. Por isso uma rotação
+animada não pode ser editada como base sem criar um deslocamento invisível; esta fatia a recusa explicitamente
+(`animated_rotation`) em vez de gravar chaves ou ignorar a animação. Girar um nó animado exigiria editar a chave
+(fora desta fatia, BL015.1).
+
+### Equivalências e superfícies
+
+| Superfície | Como |
+|---|---|
+| Biblioteca | `GizmoCommand::Tool` / `GizmoCommand::Rotate` e `PointerCommand` via `EditorState::execute`; regras em `scene_interaction::gizmo::rotation` (aritmética pura, sem GPUI) e `scene_project::gizmo` (glue) |
+| CLI headless | as ops acima em `./scripts/headless` (JSONL), sem janela |
+| Janela | botões **Mover**/**Girar** (e **Mundo**/**Local** com Girar) no cabeçalho do monitor, cada um um `Command` `scene.gizmo.tool` com probe `control:monitor-gizmo-*`; anéis desenhados no canvas da página; o adaptador só traduz `overlay.pointer` |
+
+### Limites desta fatia (continuam pendentes em BL015.1)
+
+Escala, snapping, múltipla seleção e pivôs de grupo, luzes, câmera espacial e FX; **translação em eixos locais**
+(a translação segue em coordenadas de mundo; o espaço só vale para a rotação); rotação de um nó cuja rotação é
+animada (edição de chave); pais com escala não uniforme (recusa tipada, não suporte); o mouse **físico** na WKWebView
+(BL015.2/BL043/BL044).
+
 ## UI e CLI da janela
 
 - **Canvas**: a página cria `<canvas id="overlay">` acima de `#viewport` (`pointer-events: none`
@@ -262,8 +348,9 @@ Mesmas ops no `./scripts/headless` (JSONL), sem janela:
   oculto cancelam também pelo lado da janela.
 - **Moves** são coalescidos por frame de animação na página; o release carrega a posição final.
 - **Árvore** (`ui tree`): `monitor.gizmo` (só com cena anexada; estado `selection`, `dragging`,
-  `handle`, `gesture`) e `monitor.viewport.state.overlay` (suportado, ligado, contadores, último
-  layout e último `drawn`). Não há botão para clicar: o equivalente semântico é
+  `handle`, `gesture`, e com BL015.1 `tool` e `space`, mais os campos `tool`/`space`) e
+  `monitor.viewport.state.overlay` (suportado, ligado, contadores, último layout e último `drawn`). O gizmo em si
+  não tem botão (é um canvas); a escolha da ferramenta tem (BL015.1) e o equivalente semântico do arrasto é
   `./scripts/ui op '{"op":"scene.pointer.down",…}'`. O resumo (`summary.scene_interaction.drag`)
   mostra o arrasto aberto.
 - **Ponteiro físico**: ops semânticas **não provam** um mouse real; a prova com o mouse físico na

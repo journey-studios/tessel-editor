@@ -1,4 +1,4 @@
-// The gizmo overlay of the directed-scene monitor (F055, BL015/BL042): drawn and hit on a 2D canvas
+// The gizmo overlay of the directed-scene monitor (F055, BL015/BL042/BL015.1): drawn and hit on a 2D canvas
 // that sits over the viewport canvas INSIDE the page, so it composes with the picture and can never
 // be an element of the host UI laid over a native WebView.
 //
@@ -96,7 +96,14 @@ export const parseOverlay = (raw) => {
   const metrics = isObject(raw.metrics) ? raw.metrics : {};
   const handles = (Array.isArray(raw.handles) ? raw.handles : []).map((handle, index) => {
     if (!isObject(handle) || typeof handle.id !== 'string') throw new Error(`handles[${index}] needs an id`);
-    return { id: handle.id, kind: handle.kind === 'center' ? 'center' : 'axis', from: point(handle.from, `handles[${index}].from`), to: point(handle.to, `handles[${index}].to`) };
+    const kind = handle.kind === 'center' || handle.kind === 'ring' ? handle.kind : 'axis';
+    const parsed = { id: handle.id, kind, from: point(handle.from, `handles[${index}].from`), to: point(handle.to, `handles[${index}].to`) };
+    if (kind === 'ring') {
+      // The polygon of a rotation ring: a point, or `null` where the ring is behind the camera.
+      if (!Array.isArray(handle.points) || handle.points.length < 3) throw new Error(`handles[${index}].points needs the polygon of the ring`);
+      parsed.points = handle.points.map((value, at) => (value === null ? null : point(value, `handles[${index}].points[${at}]`)));
+    }
+    return parsed;
   });
   const outlines = (Array.isArray(raw.outlines) ? raw.outlines : []).map((outline, index) => {
     const quad = Array.isArray(outline?.quad) ? outline.quad.map((p, i) => point(p, `outlines[${index}].quad[${i}]`)) : [];
@@ -104,6 +111,10 @@ export const parseOverlay = (raw) => {
     return { entity: String(outline.entity ?? ''), quad };
   });
   return {
+    // `translate` (arrows and a centre) or `rotate` (one ring per axis); an overlay of the first
+    // slice, which has no `tool`, is the translate one.
+    tool: raw.tool === 'rotate' ? 'rotate' : 'translate',
+    space: raw.space === 'local' ? 'local' : 'world',
     visible: raw.visible === true,
     entity: typeof raw.entity === 'string' ? raw.entity : null,
     origin: raw.origin ? point(raw.origin, 'origin') : null,
@@ -119,18 +130,35 @@ export const parseOverlay = (raw) => {
   };
 };
 
+/** Distance from `p` to the polyline `points` (picture heights); `null` entries break the line. */
+const distanceToRing = (p, points, aspect) => {
+  const toHeights = (point) => ({ x: point.u * aspect, y: point.v });
+  let best = Infinity;
+  for (let index = 1; index < points.length; index += 1) {
+    const a = points[index - 1];
+    const b = points[index];
+    if (a === null || b === null) continue;
+    best = Math.min(best, distanceToSegment(p, toHeights(a), toHeights(b)));
+  }
+  return best;
+};
+
 /**
  * The handle under `point` for the cursor and the highlight: the same rule the core applies
- * (centre first, then the nearest axis), in picture heights. The press itself is the core's.
+ * (translate: the centre first, then the nearest axis; rotate: the nearest ring, there is no
+ * centre handle), in picture heights. The press itself is the core's.
  */
 export const hoverHandle = (overlay, point) => {
   if (!overlay?.visible || !overlay.origin) return null;
   const toHeights = (p) => ({ x: p.u * overlay.aspect, y: p.v });
   const here = toHeights(point);
-  if (Math.hypot(here.x - overlay.origin.u * overlay.aspect, here.y - overlay.origin.v) <= overlay.centerRadius) return 'screen';
+  if (overlay.tool !== 'rotate' && Math.hypot(here.x - overlay.origin.u * overlay.aspect, here.y - overlay.origin.v) <= overlay.centerRadius) return 'screen';
   let best = null;
-  for (const handle of overlay.handles.filter((candidate) => candidate.kind === 'axis')) {
-    const distance = distanceToSegment(here, toHeights(handle.from), toHeights(handle.to));
+  for (const handle of overlay.handles.filter((candidate) => candidate.kind === 'axis' || candidate.kind === 'ring')) {
+    const distance =
+      handle.kind === 'ring'
+        ? distanceToRing(here, handle.points, overlay.aspect)
+        : distanceToSegment(here, toHeights(handle.from), toHeights(handle.to));
     if (distance <= overlay.handleRadius && (best === null || distance < best.distance)) best = { distance, id: handle.id };
   }
   return best?.id ?? null;
@@ -264,6 +292,35 @@ const drawArrow = (context, from, to, color, width) => {
   context.fill();
 };
 
+/** One ring: its polygon in the pane, shadowed, with the gaps (behind the camera) left open. */
+const drawRing = (context, rect, points, color, width) => {
+  const path = () => {
+    context.beginPath();
+    let open = false;
+    for (const point of points) {
+      if (point === null) {
+        open = false;
+        continue;
+      }
+      const at = toPane(rect, point);
+      if (open) context.lineTo(at.x, at.y);
+      else context.moveTo(at.x, at.y);
+      open = true;
+    }
+  };
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+  context.setLineDash([]);
+  context.strokeStyle = PALETTE.shadow;
+  context.lineWidth = width + 2;
+  path();
+  context.stroke();
+  context.strokeStyle = color;
+  context.lineWidth = width;
+  path();
+  context.stroke();
+};
+
 /** Draws `overlay` into `context` over `rect` (the picture, in CSS px). `hover` is a handle id. */
 export const drawOverlay = (context, rect, overlay, hover = null) => {
   if (!overlay || !rect) return;
@@ -300,6 +357,10 @@ export const drawOverlay = (context, rect, overlay, hover = null) => {
       context.beginPath();
       context.arc(from.x, from.y, overlay.centerRadius * heightPx, 0, Math.PI * 2);
       context.stroke();
+      continue;
+    }
+    if (handle.kind === 'ring') {
+      drawRing(context, rect, handle.points, color, width);
       continue;
     }
     drawArrow(context, from, toPane(rect, handle.to), color, width);
@@ -381,10 +442,13 @@ export const attachOverlay = ({ canvas, post, win = window, doc = document }) =>
     const probes =
       overlay?.visible && picture
         ? overlay.handles.map((handle) => {
+            // A ring is probed on one of its own vertices (the middle of a chord is not on the
+            // stroke); an arrow at the middle of its shaft; the centre at its centre.
+            const vertex = handle.kind === 'ring' ? handle.points[Math.floor(handle.points.length / 8)] ?? handle.points.find((value) => value !== null) : null;
             const middle =
               handle.kind === 'center'
                 ? handle.from
-                : { u: (handle.from.u + handle.to.u) / 2, v: (handle.from.v + handle.to.v) / 2 };
+                : vertex ?? { u: (handle.from.u + handle.to.u) / 2, v: (handle.from.v + handle.to.v) / 2 };
             const at = toPane(picture, middle);
             const pixel = context.getImageData(Math.round(at.x * ratio), Math.round(at.y * ratio), 1, 1).data;
             return { id: handle.id, rgba: [...pixel] };
@@ -396,6 +460,8 @@ export const attachOverlay = ({ canvas, post, win = window, doc = document }) =>
       stamp: overlay?.stamp ?? null,
       draws,
       visible: overlay?.visible === true,
+      tool: overlay?.tool ?? 'translate',
+      space: overlay?.space ?? 'world',
       entity: overlay?.entity ?? null,
       active: overlay?.active?.handle ?? null,
       outlines: overlay?.outlines.length ?? 0,
