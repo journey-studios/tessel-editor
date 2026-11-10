@@ -1462,6 +1462,42 @@ fn a_ring_seen_edge_on_does_not_open_a_drag() {
     );
 }
 
+#[test]
+fn a_ring_seen_almost_edge_on_is_refused_and_a_clearer_view_of_it_opens_a_drag() {
+    // The band between "exactly edge-on" (the plane is parallel to the ray: no hit at all) and a
+    // usable view: the eye ray is a few degrees off the plane of the Y ring, so the plane still
+    // gets hit, but a pixel of pointer would swing the angle wildly. `GRAZING` (|cos| < 0.05)
+    // refuses it. A camera 0.3 above the figure at distance 8 is at |cos| ≈ 0.037 (refused); one
+    // 1.0 above is at ≈ 0.124 (a drag). The press is on the vertex of the ring on the +X axis, a
+    // point only the Y and Z rings share (a tie goes to Y).
+    for (height, opens) in [(0.3, false), (1.0, true)] {
+        let mut state = street();
+        ok(
+            &mut state,
+            json!({"op":"scene.edit","scene":"street","ops":[
+                {"set": format!("{CAMERA_START}/position"), "value": {"x": 0, "y": height, "z": 8}},
+                {"set": format!("{CAMERA_START}/target"), "value": {"x": 0, "y": 0, "z": 0}}]}),
+        );
+        select(&mut state, FIGURE);
+        tool(&mut state, "rotate", "world");
+        let shown = overlay(&mut state);
+        let on_axis = handle(&shown, "y")["points"][0].clone();
+        assert!(on_axis.is_object(), "the ring has a point on the +X axis");
+        let before = observable(&state);
+        let pressed = press(&mut state, on_axis).unwrap();
+        if opens {
+            assert_eq!(pressed["dragging"], true, "height {height}: {pressed}");
+            assert_eq!(pressed["handle"], "y", "height {height}");
+            ok(&mut state, json!({"op":"scene.pointer.cancel"}));
+        } else {
+            assert_eq!(pressed["dragging"], false, "height {height}: {pressed}");
+            assert_eq!(pressed["refused"], "degenerate_axis", "height {height}");
+            assert!(state.scene_interaction.drag().is_none());
+            assert_eq!(observable(&state), before, "no gesture was opened");
+        }
+    }
+}
+
 // --- the tool during a drag, other gestures, the old tool ----------------------------------------
 
 #[test]

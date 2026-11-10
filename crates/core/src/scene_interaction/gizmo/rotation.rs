@@ -483,6 +483,85 @@ mod tests {
         }
     }
 
+    fn plan_node(local: Mat4, world: Mat4) -> PlanNode {
+        PlanNode {
+            id: "n".to_string(),
+            kind: crate::directed_scene::NodeKind::Group,
+            parent: None,
+            local_position: Vec3::ZERO,
+            local_rotation_deg: Vec3::ZERO,
+            local_scale: Vec3::ONE,
+            local_matrix: local,
+            world_matrix: world,
+            render_order: 0,
+            asset_id: None,
+            width_scene_units: None,
+            height_scene_units: None,
+        }
+    }
+
+    #[test]
+    fn a_frame_refuses_what_cannot_be_turned_with_the_typed_reason() {
+        let identity = || plan_node(Mat4::IDENTITY, Mat4::IDENTITY);
+        let unit = Quat::IDENTITY;
+        for space in GizmoSpace::ALL {
+            assert!(RotationFrame::of(&identity(), unit, space, false).is_ok());
+            // An authored quaternion that cannot be normalised (reachable only through a hand
+            // edited document; the importer is not asserted here).
+            for degenerate in [
+                Quat {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                    w: 0.0,
+                },
+                Quat {
+                    x: f64::NAN,
+                    y: 0.0,
+                    z: 0.0,
+                    w: 1.0,
+                },
+                Quat {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                    w: f64::INFINITY,
+                },
+            ] {
+                assert_eq!(
+                    RotationFrame::of(&identity(), degenerate, space, false).unwrap_err(),
+                    refusal::DEGENERATE_ROTATION,
+                    "{degenerate:?} in {space:?}"
+                );
+            }
+            // An animated rotation is refused before anything is read from the matrices.
+            assert_eq!(
+                RotationFrame::of(&identity(), unit, space, true).unwrap_err(),
+                refusal::ANIMATED_ROTATION
+            );
+            // A singular world matrix (a zero scale on the way) and a singular local one.
+            let flat = Mat4::compose(
+                Vec3::ZERO,
+                Quat::IDENTITY,
+                Vec3 {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 1.0,
+                },
+            );
+            assert_eq!(
+                RotationFrame::of(&plan_node(Mat4::IDENTITY, flat), unit, space, false)
+                    .unwrap_err(),
+                refusal::DEGENERATE_TRANSFORM
+            );
+            assert_eq!(
+                RotationFrame::of(&plan_node(flat, Mat4::IDENTITY), unit, space, false)
+                    .unwrap_err(),
+                refusal::DEGENERATE_TRANSFORM
+            );
+        }
+    }
+
     #[test]
     fn angles_reduce_to_the_half_open_half_turn_and_leave_small_ones_alone() {
         assert_eq!(reduce_degrees(30.123456789012345), 30.123456789012345);
