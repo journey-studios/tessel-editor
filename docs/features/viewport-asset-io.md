@@ -50,7 +50,9 @@ janela **não** é headless.
 - Desktop (`workstation/asset_io_tests.rs`): os dois modos respondem **o mesmo** status/cabeçalhos/bytes em 13 casos (arquivo
   inteiro, Range, sufixo, inválido, vazio, ausente, negado); controle negativo com leitura retida por FIFO: em `async` o pulso
   da janela segue responsivo antes de liberar a leitura, em `sync` o mesmo teste fica vermelho; fila cheia → `503` uma vez e contada;
-  troca de projeto com leituras na fila e em voo → `410`, sem dupla resposta.
+  troca de projeto com leituras na fila e em voo → `410`, sem dupla resposta. Só `/asset` passa pelo pool: o pacote da própria
+  página (`/`, `/index.html`, `/runtime.js`) é lido na thread chamadora também em `async`, para uma troca de projeto não recusar
+  a página com `410`/`503` (teste `replacing_the_project_never_refuses_the_page_its_own_bundle`, verificado por mutação).
 - Runtime: os spans da página (fetch/decode/warm) chegam por campos aditivos de `asset.state`/`frame.done`
   (`runtime/test/scene-warm.test.mjs`).
 - Pixels: `scripts/real-latency-ab.py pixels` (projeto **sintético**; sync × async × quente/frio com `render.frame` idêntico byte
