@@ -20,31 +20,31 @@
 //!
 //! Each action is listed with `enabled` and a `disabled_reason` computed from the same model.
 
-use gpui_kit::assets::IconName;
 use gpui_kit::component::switch::Switch;
-use gpui_kit::component::{h_flex, v_flex};
+use gpui_kit::component::{Disableable, h_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use serde_json::{Value, json};
 use tessel_editor_core::directed_scene::fx::{FX_EASINGS, FxClip, FxValue};
-use tessel_editor_core::scene_edit::{
-    ClipAnimation, FieldKind, FxOp, InspectorField, ParamAnimation,
-};
+use tessel_editor_core::scene_edit::{ClipAnimation, FieldKind, FxOp, InspectorField};
+use tessel_editor_core::scene_project::{KeySeek, SceneCommand};
 
-use super::controls::{disabled_tool_button, tool_button};
-use super::scene_fx::{ClipView, FxView, LOCALE, clip_node_id, controls_of};
+use super::scene_fx::{ClipView, FxControl, FxView, LOCALE, clip_node_id, controls_of};
 use super::tokens::Tokens;
 use super::{Source, Workstation};
 use crate::state::{CommandError, Raw};
 
 pub(super) const KEY_PREFIX: &str = "key:";
-const REMOVE_KEY: &str = "remove_key:";
-const EASING: &str = "easing:";
-const MOVE_KEY: &str = "move_key:";
-const SHIFT_KEYS: &str = "shift_keys:";
-const REMOVE_ANIMATION: &str = "remove_animation:";
+pub(super) const REMOVE_KEY: &str = "remove_key:";
+pub(super) const EASING: &str = "easing:";
+pub(super) const MOVE_KEY: &str = "move_key:";
+pub(super) const SHIFT_KEYS: &str = "shift_keys:";
+pub(super) const REMOVE_ANIMATION: &str = "remove_animation:";
+pub(super) const KEY_FRAME: &str = "key_frame:";
+pub(super) const SCALE_KEYS: &str = "scale_keys:";
+pub(super) const GO: &str = "go:";
 pub(super) const SEED_FIELD: &str = "seed";
-const SEED_AUTO: &str = "seed:auto";
+pub(super) const SEED_AUTO: &str = "seed:auto";
 
 /// The animation of `clip` at the frame the monitor shows.
 pub(super) fn animation_at(view: &FxView, clip: &FxClip) -> ClipAnimation {
@@ -52,7 +52,7 @@ pub(super) fn animation_at(view: &FxView, clip: &FxClip) -> ClipAnimation {
 }
 
 /// The words of a typed reason an animation operation does not apply.
-fn reason_text(reason: &str) -> &'static str {
+pub(super) fn reason_text(reason: &str) -> &'static str {
     match reason {
         "no_frame" => "O monitor não mostra um quadro desta cena",
         "frame_outside_clip" => "O quadro atual está fora do clipe",
@@ -61,6 +61,11 @@ fn reason_text(reason: &str) -> &'static str {
         "key_on_this_frame" => "Já existe uma chave neste quadro",
         "seed_is_automatic" => "A semente já é automática",
         "key_order" => "A chave não pode cruzar a vizinha nem sair do clipe",
+        "no_previous_key" => "Não há chave antes do quadro atual",
+        "no_next_key" => "Não há chave depois do quadro atual",
+        "base_under_keys" => {
+            "O parâmetro está animado: edite as chaves (o valor base fica por baixo)"
+        }
         _ => "Não se aplica agora",
     }
 }
@@ -95,8 +100,39 @@ pub(super) fn animation_actions(animation: &ClipAnimation) -> Vec<Value> {
             param.animated,
             Some("no_keys"),
         ));
+        for (to, label_to, reason, enabled) in [
+            (
+                "previous",
+                "anterior",
+                "no_previous_key",
+                param.previous.is_some(),
+            ),
+            ("next", "próxima", "no_next_key", param.next.is_some()),
+            ("first", "primeira", "no_keys", param.animated),
+            ("last", "última", "no_keys", param.animated),
+        ] {
+            let why = if !param.animated {
+                "no_keys"
+            } else if animation.edit_frame.is_none() && matches!(to, "previous" | "next") {
+                "no_frame"
+            } else {
+                reason
+            };
+            actions.push(action(
+                format!("{GO}{id}:{to}"),
+                format!("Ir para a chave {label_to} de {label}"),
+                enabled,
+                Some(why),
+            ));
+        }
         for key in &param.keys {
             let frame = key.frame;
+            actions.push(action(
+                format!("{GO}{id}:{frame}"),
+                format!("Ir para a chave de {label} em q{frame}"),
+                true,
+                None,
+            ));
             actions.push(action(
                 format!("{REMOVE_KEY}{id}:{frame}"),
                 format!("Remover chave de {label} em q{frame}"),
@@ -138,9 +174,11 @@ pub(super) fn animation_actions(animation: &ClipAnimation) -> Vec<Value> {
     actions
 }
 
-/// The fields the animation adds to a clip node: the seed of a noise effect.
-pub(super) fn animation_fields(animation: &ClipAnimation) -> Vec<Value> {
-    animation
+/// The fields the animation adds to a clip node: the seed of a noise effect, and for each
+/// parameter its key frames and values (`key_frame:<param>:<frame>` moves the key to the frame
+/// sent, `key:<control>:<frame>` sets the key's value for one component) and the shift of its keys.
+pub(super) fn animation_fields(animation: &ClipAnimation, controls: &[FxControl]) -> Vec<Value> {
+    let mut fields: Vec<Value> = animation
         .seed
         .iter()
         .map(|seed| {
@@ -152,17 +190,53 @@ pub(super) fn animation_fields(animation: &ClipAnimation) -> Vec<Value> {
                 "enabled": true,
             })
         })
-        .collect()
-}
-
-fn whole(raw: f64, what: &str) -> Result<i64, CommandError> {
-    if raw.fract() != 0.0 || !raw.is_finite() {
-        return Err(CommandError::invalid_value(
-            format!("{what} must be a whole number"),
-            json!("integer"),
-        ));
+        .collect();
+    let last_frame = animation.duration_frames - 1;
+    for param in &animation.params {
+        let id = param.spec.id;
+        let label = param.spec.label.get(LOCALE);
+        // Like the panel, the shift of a curve exists only where there is a curve.
+        if param.animated {
+            fields.push(json!({
+                "field": format!("{SHIFT_KEYS}{id}"),
+                "label": format!("Deslocar chaves de {label}"),
+                "type": "integer", "value": 0, "step": 1, "integer": true, "enabled": true,
+            }));
+        }
+        for key in &param.keys {
+            let frame = key.frame;
+            fields.push(json!({
+                "field": format!("{KEY_FRAME}{id}:{frame}"),
+                "label": format!("Quadro da chave de {label} em q{frame}"),
+                "type": "integer", "value": frame, "min": 0, "max": last_frame, "step": 1,
+                "integer": true, "enabled": true,
+            }));
+            for control in controls
+                .iter()
+                .filter(|control| control.param() == Some(id))
+            {
+                let Some(value) = control.read(key.value) else {
+                    continue;
+                };
+                let mut field = json!({
+                    "field": format!("{KEY_PREFIX}{}:{frame}", control.id),
+                    "label": format!("{} da chave em q{frame}", control.label(LOCALE)),
+                    "value": value, "enabled": true,
+                });
+                if control.kind == FieldKind::Boolean {
+                    field["type"] = json!("boolean");
+                    field["value"] = json!(value != 0.0);
+                } else {
+                    field["type"] = json!("number");
+                    field["min"] = json!(control.min);
+                    field["max"] = json!(control.max);
+                    field["step"] = json!(control.step);
+                }
+                fields.push(field);
+            }
+        }
     }
-    Ok(raw as i64)
+    fields
 }
 
 fn bad_action(action: &str) -> CommandError {
@@ -247,6 +321,17 @@ impl Workstation {
                     delta: frame_part(p[1])?,
                 }));
             }
+            if let Some(rest) = name.strip_prefix(SCALE_KEYS) {
+                let p = parts(rest, 4, name)?;
+                known(p[0])?;
+                return Ok(Some(FxOp::ScaleKeys {
+                    clip,
+                    param: Some(p[0].to_string()),
+                    anchor: frame_part(p[1])?,
+                    num: frame_part(p[2])?,
+                    den: frame_part(p[3])?,
+                }));
+            }
             if let Some(rest) = name.strip_prefix(REMOVE_ANIMATION) {
                 known(rest)?;
                 return Ok(Some(FxOp::ClearKeys {
@@ -302,10 +387,63 @@ impl Workstation {
         source: Source,
         cx: &mut Context<Self>,
     ) -> Option<Result<Value, CommandError>> {
+        self.fx_animation_invoke_guarded(clip, name, None, source, cx)
+    }
+
+    /// The same, built on the project revision the caller's view had (`base_revision`): a key
+    /// that moved, was undone or was edited from elsewhere since is refused with `stale_revision`,
+    /// nothing written. A seek is not an edit and has no revision to guard.
+    pub(super) fn fx_animation_invoke_guarded(
+        &mut self,
+        clip: &str,
+        name: &str,
+        base_revision: Option<u64>,
+        source: Source,
+        cx: &mut Context<Self>,
+    ) -> Option<Result<Value, CommandError>> {
         let view = self.fx_view()?;
         let entry = view.clip(clip)?.clone();
+        if let Some(rest) = name.strip_prefix(GO) {
+            return Some(self.fx_go(&view, &entry, rest, name, source, cx));
+        }
         let op = self.fx_animation_op(&view, &entry, name)?;
-        Some(op.and_then(|op| self.fx_run(&view.scene, op, source, cx)))
+        Some(op.and_then(|op| self.fx_run_guarded(&view.scene, op, base_revision, source, cx)))
+    }
+
+    /// `go:<param>:previous|next|first|last|<frame of the clip>`: the core's `scene.fx.seek`.
+    fn fx_go(
+        &mut self,
+        view: &FxView,
+        entry: &ClipView,
+        rest: &str,
+        name: &str,
+        source: Source,
+        cx: &mut Context<Self>,
+    ) -> Result<Value, CommandError> {
+        let p = parts(rest, 2, name)?;
+        entry.clip.effect.param(p[0]).ok_or_else(|| {
+            CommandError::new(
+                "unknown_param",
+                format!("`{}` is not a parameter of this effect", p[0]),
+            )
+        })?;
+        let to = match p[1] {
+            "previous" => KeySeek::Previous,
+            "next" => KeySeek::Next,
+            "first" => KeySeek::First,
+            "last" => KeySeek::Last,
+            frame => KeySeek::Frame(frame_part(frame)?),
+        };
+        self.scene_execute(
+            SceneCommand::FxSeek {
+                scene: view.scene.clone(),
+                clip: entry.clip.id.clone(),
+                param: p[0].to_string(),
+                to,
+            },
+            source,
+            cx,
+        )
     }
 
     /// `set` of the seed or of a key on a clip node. `None` when `field` is neither.
@@ -314,6 +452,21 @@ impl Workstation {
         clip: &str,
         field: &str,
         raw: &Raw,
+        cx: &mut Context<Self>,
+    ) -> Option<Result<Value, CommandError>> {
+        self.fx_animation_set_guarded(clip, field, raw, None, Source::Cli, cx)
+    }
+
+    /// `set` of an animation field, optionally built on a project revision (see
+    /// [`Self::fx_animation_invoke_guarded`]). The text of an editor reaches here as `Raw::Text`,
+    /// so a value that is not a number is a typed error, never a 0.
+    pub(super) fn fx_animation_set_guarded(
+        &mut self,
+        clip: &str,
+        field: &str,
+        raw: &Raw,
+        base_revision: Option<u64>,
+        source: Source,
         cx: &mut Context<Self>,
     ) -> Option<Result<Value, CommandError>> {
         let view = self.fx_document_view()?;
@@ -326,7 +479,12 @@ impl Workstation {
                         "This effect draws no noise, so it has no seed",
                     ));
                 }
-                let seed = whole(raw.number()?, "A seed")?;
+                let seed = raw.integer().map_err(|_| {
+                    CommandError::invalid_value(
+                        "A seed is a whole number from 0 to 4294967295",
+                        json!("uint32"),
+                    )
+                })?;
                 u32::try_from(seed).map_err(|_| {
                     CommandError::invalid_value(
                         "A seed is a whole number from 0 to 4294967295",
@@ -335,16 +493,57 @@ impl Workstation {
                 })
             })();
             return Some(op.and_then(|seed| {
-                self.fx_run(
+                self.fx_run_guarded(
                     &view.scene,
                     FxOp::SetSeed {
                         clip: clip.to_string(),
                         seed: Some(seed),
                     },
-                    Source::Cli,
+                    base_revision,
+                    source,
                     cx,
                 )
             }));
+        }
+        if let Some(rest) = field.strip_prefix(KEY_FRAME) {
+            let result = (|| {
+                let (param, from) = rest.split_once(':').ok_or_else(|| bad_action(field))?;
+                entry.clip.effect.param(param).ok_or_else(|| {
+                    CommandError::new(
+                        "unknown_param",
+                        format!("`{param}` is not a parameter of this effect"),
+                    )
+                })?;
+                Ok(FxOp::MoveKey {
+                    clip: clip.to_string(),
+                    param: param.to_string(),
+                    from: frame_part(from)?,
+                    to: raw.integer()?,
+                })
+            })();
+            return Some(
+                result
+                    .and_then(|op| self.fx_run_guarded(&view.scene, op, base_revision, source, cx)),
+            );
+        }
+        if let Some(param) = field.strip_prefix(SHIFT_KEYS) {
+            let result = (|| {
+                entry.clip.effect.param(param).ok_or_else(|| {
+                    CommandError::new(
+                        "unknown_param",
+                        format!("`{param}` is not a parameter of this effect"),
+                    )
+                })?;
+                Ok(FxOp::ShiftKeys {
+                    clip: clip.to_string(),
+                    param: Some(param.to_string()),
+                    delta: raw.integer()?,
+                })
+            })();
+            return Some(
+                result
+                    .and_then(|op| self.fx_run_guarded(&view.scene, op, base_revision, source, cx)),
+            );
         }
         let rest = field.strip_prefix(KEY_PREFIX)?;
         let result = (|| {
@@ -366,12 +565,82 @@ impl Workstation {
             };
             target.key_op(&entry.clip, frame, value)
         })();
-        Some(result.and_then(|op| self.fx_run(&view.scene, op, Source::Cli, cx)))
+        Some(result.and_then(|op| self.fx_run_guarded(&view.scene, op, base_revision, source, cx)))
+    }
+
+    /// A click on an animation button: the action of the clip node it stands for, built on the
+    /// project revision the panel was painted at.
+    pub(super) fn fx_animation_click(
+        &mut self,
+        clip: &str,
+        name: String,
+        revision: u64,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(Err(error)) =
+            self.fx_animation_invoke_guarded(clip, &name, Some(revision), Source::Gesture, cx)
+        {
+            self.scene_report(error, cx);
+        }
+    }
+
+    /// A switch of a boolean parameter: one `set_param`, one undo entry. While keys prevail over
+    /// the parameter the switch is the BASE and is disabled (the keys' switches edit the curve).
+    pub(super) fn fx_switch_row(
+        &mut self,
+        t: &Tokens,
+        clip: &FxClip,
+        control: &InspectorField,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let workstation = cx.weak_entity();
+        let clip_id = clip.id.clone();
+        let control_id = control.id.clone();
+        let label = if control.animated {
+            format!("{} (base)", control.label(LOCALE))
+        } else {
+            control.label(LOCALE).to_string()
+        };
+        let element = format!("fx:{}:{}", clip.id, control.id);
+        let toggle = Switch::new(SharedString::from(format!("fx-switch:{element}")))
+            .checked(control.value != 0.0)
+            .disabled(control.animated)
+            .accessibility_label(format!("Efeito {label}"))
+            .on_click(move |checked: &bool, _, cx: &mut App| {
+                let (clip_id, control_id, value) = (
+                    clip_id.clone(),
+                    control_id.clone(),
+                    f64::from(u8::from(*checked)),
+                );
+                let _ = workstation.update(cx, |this, cx| {
+                    if let Err(error) =
+                        this.fx_set_control(&clip_id, &control_id, value, Source::Gesture, cx)
+                    {
+                        this.scene_report(error, cx);
+                    }
+                });
+            });
+        h_flex()
+            .id(SharedString::from(format!("fx-switch-row:{element}")))
+            .relative()
+            .items_center()
+            .justify_between()
+            .px(px(10.))
+            .py(px(2.))
+            .text_size(px(11.))
+            .text_color(if control.animated { t.faint } else { t.text })
+            .child(div().child(label))
+            .child(
+                div()
+                    .relative()
+                    .child(self.geometry.probe(format!("control:{element}")))
+                    .child(toggle),
+            )
     }
 
     /// The `seed` stepper: one more or one less than the base shown (wrapping inside uint32 is
     /// refused, not wrapped), written as an explicit seed.
-    fn fx_seed_step(&mut self, clip: &str, delta: i64, cx: &mut Context<Self>) {
+    pub(super) fn fx_seed_step(&mut self, clip: &str, delta: i64, cx: &mut Context<Self>) {
         let Some(view) = self.fx_document_view() else {
             return;
         };
@@ -404,308 +673,9 @@ impl Workstation {
             self.scene_report(error, cx);
         }
     }
-
-    fn fx_animation_click(&mut self, clip: &str, name: String, cx: &mut Context<Self>) {
-        if let Some(Err(error)) = self.fx_animation_invoke(clip, &name, Source::Gesture, cx) {
-            self.scene_report(error, cx);
-        }
-    }
-
-    /// A switch of a boolean parameter: one `set_param`, one undo entry.
-    pub(super) fn fx_switch_row(
-        &mut self,
-        t: &Tokens,
-        clip: &FxClip,
-        control: &InspectorField,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let workstation = cx.weak_entity();
-        let clip_id = clip.id.clone();
-        let control_id = control.id.clone();
-        let label = control.label(LOCALE);
-        let element = format!("fx:{}:{}", clip.id, control.id);
-        let toggle = Switch::new(SharedString::from(format!("fx-switch:{element}")))
-            .checked(control.value != 0.0)
-            .accessibility_label(format!("Efeito {label}"))
-            .on_click(move |checked: &bool, _, cx: &mut App| {
-                let (clip_id, control_id, value) = (
-                    clip_id.clone(),
-                    control_id.clone(),
-                    f64::from(u8::from(*checked)),
-                );
-                let _ = workstation.update(cx, |this, cx| {
-                    if let Err(error) =
-                        this.fx_set_control(&clip_id, &control_id, value, Source::Gesture, cx)
-                    {
-                        this.scene_report(error, cx);
-                    }
-                });
-            });
-        h_flex()
-            .id(SharedString::from(format!("fx-switch-row:{element}")))
-            .relative()
-            .items_center()
-            .justify_between()
-            .px(px(10.))
-            .py(px(2.))
-            .text_size(px(11.))
-            .text_color(t.text)
-            .child(div().child(label))
-            .child(
-                div()
-                    .relative()
-                    .child(self.geometry.probe(format!("control:{element}")))
-                    .child(toggle),
-            )
-    }
-
-    /// The keys of every parameter and the seed, below the sliders of a clip.
-    pub(super) fn fx_animation_block(
-        &mut self,
-        t: &Tokens,
-        view: &FxView,
-        entry: &ClipView,
-        cx: &mut Context<Self>,
-    ) -> Div {
-        let clip = &entry.clip;
-        let animation = animation_at(view, clip);
-        let mut block = v_flex().w_full();
-        // The seed first: it is one line, and the keys below it can be many.
-        if let Some(seed) = &animation.seed {
-            block = block.child(self.fx_seed_row(t, clip, seed.base, seed.explicit.is_some(), cx));
-        }
-        for param in &animation.params {
-            block = block.child(self.fx_param_keys(t, clip, &animation, param, cx));
-        }
-        block
-    }
-
-    // WHY the long list: a button is built from its parts (what it is called, what it does, why it
-    // cannot) and a struct for one call site would only rename the arguments.
-    #[allow(clippy::too_many_arguments)]
-    fn fx_icon_button(
-        &mut self,
-        id: String,
-        icon: IconName,
-        label: String,
-        reason: Option<&str>,
-        clip: &str,
-        action: String,
-        cx: &mut Context<Self>,
-    ) -> Div {
-        let probe = self.geometry.probe(format!("control:{id}"));
-        let button_id = SharedString::from(id);
-        let button = match reason {
-            None => {
-                let workstation = cx.weak_entity();
-                let clip = clip.to_string();
-                tool_button(button_id, icon, &label).on_click(move |_, _, cx| {
-                    let (clip, action) = (clip.clone(), action.clone());
-                    let _ = workstation.update(cx, |this, cx| {
-                        this.fx_animation_click(&clip, action, cx);
-                    });
-                })
-            }
-            Some(reason) => disabled_tool_button(button_id, icon, &label, reason),
-        };
-        div().relative().child(probe).child(button)
-    }
-
-    fn fx_param_keys(
-        &mut self,
-        t: &Tokens,
-        clip: &FxClip,
-        animation: &ClipAnimation,
-        param: &ParamAnimation,
-        cx: &mut Context<Self>,
-    ) -> Div {
-        let id = param.spec.id;
-        let label = param.spec.label.get(LOCALE);
-        let capture_reason = match animation.frame_in_clip {
-            Some(_) => None,
-            None if animation.edit_frame.is_none() => Some(reason_text("no_frame")),
-            None => Some(reason_text("frame_outside_clip")),
-        };
-        let now = match (param.animated, param.sampled) {
-            (true, Some(value)) => format!(" · agora {}", value_text(value)),
-            (true, None) => " · animado".to_string(),
-            _ => String::new(),
-        };
-        let mut head = h_flex()
-            .items_center()
-            .justify_between()
-            .px(px(10.))
-            .pt(px(4.))
-            .text_size(px(10.))
-            .text_color(if param.animated { t.text } else { t.faint })
-            .child(
-                div()
-                    .flex_1()
-                    .min_w(px(0.))
-                    .truncate()
-                    .child(format!("{label} · {} chave(s){now}", param.keys.len())),
-            );
-        head = head.child(self.fx_icon_button(
-            format!("fx-key:{}:{id}", clip.id),
-            IconName::Plus,
-            format!("Criar chave de {label} no quadro atual"),
-            capture_reason,
-            &clip.id,
-            format!("{KEY_PREFIX}{id}"),
-            cx,
-        ));
-        head = head.child(self.fx_icon_button(
-            format!("fx-unkey:{}:{id}", clip.id),
-            IconName::Trash,
-            format!("Remover animação de {label}"),
-            (!param.animated).then(|| reason_text("no_keys")),
-            &clip.id,
-            format!("{REMOVE_ANIMATION}{id}"),
-            cx,
-        ));
-        let mut rows = v_flex().w_full().child(head);
-        for key in &param.keys {
-            let frame = key.frame;
-            let next_easing = {
-                let at = FX_EASINGS
-                    .iter()
-                    .position(|name| *name == key.easing.name())
-                    .unwrap_or(0);
-                FX_EASINGS[(at + 1) % FX_EASINGS.len()]
-            };
-            let can_move = |to: i64| {
-                to >= 0
-                    && to < animation.duration_frames
-                    && !param.keys.iter().any(|other| other.frame == to)
-            };
-            let mut row = h_flex()
-                .items_center()
-                .gap(px(2.))
-                .pl(px(18.))
-                .pr(px(10.))
-                .text_size(px(10.))
-                .text_color(t.text)
-                .child(
-                    div()
-                        .id(SharedString::from(format!(
-                            "fx-keylabel:{}:{id}:{frame}",
-                            clip.id
-                        )))
-                        .flex_1()
-                        .min_w(px(0.))
-                        .truncate()
-                        .child(format!(
-                            "q{frame} · {} · {}",
-                            value_text(key.value),
-                            key.easing.name()
-                        )),
-                );
-            for (delta, icon, word) in [
-                (-1_i64, IconName::ChevronLeft, "para trás"),
-                (1, IconName::ChevronRight, "para frente"),
-            ] {
-                let to = frame + delta;
-                row = row.child(self.fx_icon_button(
-                    format!("fx-keymove:{}:{id}:{frame}:{to}", clip.id),
-                    icon,
-                    format!("Mover chave de {label} {word} (q{frame} → q{to})"),
-                    (!can_move(to)).then(|| reason_text("key_order")),
-                    &clip.id,
-                    format!("{MOVE_KEY}{id}:{frame}:{to}"),
-                    cx,
-                ));
-            }
-            row = row.child(self.fx_icon_button(
-                format!("fx-keyease:{}:{id}:{frame}", clip.id),
-                IconName::Replace,
-                format!(
-                    "Curva da chave em q{frame}: {} (trocar para {next_easing})",
-                    key.easing.name()
-                ),
-                None,
-                &clip.id,
-                format!("{EASING}{id}:{frame}:{next_easing}"),
-                cx,
-            ));
-            row = row.child(self.fx_icon_button(
-                format!("fx-keyrm:{}:{id}:{frame}", clip.id),
-                IconName::Close,
-                format!("Remover chave de {label} em q{frame}"),
-                None,
-                &clip.id,
-                format!("{REMOVE_KEY}{id}:{frame}"),
-                cx,
-            ));
-            rows = rows.child(row);
-        }
-        rows
-    }
-
-    fn fx_seed_row(
-        &mut self,
-        t: &Tokens,
-        clip: &FxClip,
-        base: u32,
-        explicit: bool,
-        cx: &mut Context<Self>,
-    ) -> Div {
-        let id = clip.id.clone();
-        let mut row = h_flex()
-            .items_center()
-            .gap(px(2.))
-            .px(px(10.))
-            .pt(px(4.))
-            .text_size(px(10.))
-            .text_color(t.text)
-            .child(
-                div()
-                    .id(SharedString::from(format!("fx-seed:{id}")))
-                    .flex_1()
-                    .min_w(px(0.))
-                    .truncate()
-                    .child(format!(
-                        "Semente {base}{}",
-                        if explicit { "" } else { " (automática)" }
-                    )),
-            );
-        for (delta, icon, word) in [
-            (-1_i64, IconName::Minus, "Diminuir"),
-            (1, IconName::Plus, "Aumentar"),
-        ] {
-            let workstation = cx.weak_entity();
-            let clip_id = id.clone();
-            let label = format!("{word} a semente de {id}");
-            let button_id = SharedString::from(format!("fx-seed-step:{id}:{delta}"));
-            row = row.child(
-                div()
-                    .relative()
-                    .child(
-                        self.geometry
-                            .probe(format!("control:fx-seed-step:{id}:{delta}")),
-                    )
-                    .child(
-                        tool_button(button_id, icon, &label).on_click(move |_, _, cx| {
-                            let clip_id = clip_id.clone();
-                            let _ = workstation
-                                .update(cx, |this, cx| this.fx_seed_step(&clip_id, delta, cx));
-                        }),
-                    ),
-            );
-        }
-        row = row.child(self.fx_icon_button(
-            format!("fx-seed-auto:{id}"),
-            IconName::RotateCw,
-            format!("Semente automática de {id}"),
-            (!explicit).then(|| reason_text("seed_is_automatic")),
-            &id,
-            SEED_AUTO.to_string(),
-            cx,
-        ));
-        row
-    }
 }
 
-fn value_text(value: FxValue) -> String {
+pub(super) fn value_text(value: FxValue) -> String {
     match value {
         FxValue::Number(number) => super::scene_model::format_number(number),
         FxValue::Bool(on) => if on { "sim" } else { "não" }.to_string(),

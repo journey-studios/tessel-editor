@@ -14,6 +14,8 @@ use super::scene_fx_tests::{
 use super::*;
 // The Kit's test macro expands to `#[test]`; the glob import above would resolve it to the Kit macro again.
 use core::prelude::v1::test;
+use tessel_editor_core::scene_edit::FxOp;
+use tessel_editor_core::scene_project::SceneCommand;
 
 const GRAIN: &str = "scene.fx.clip:fx-1";
 
@@ -39,6 +41,13 @@ fn action(node: &Value, name: &str) -> Value {
         .find(|candidate| candidate["action"] == name)
         .unwrap_or_else(|| panic!("no action `{name}` on {}", node["id"]))
         .clone()
+}
+
+/// A window tall enough to hold the whole section: the inspector scrolls, and a click lands only
+/// on what is on screen (a person scrolls; the test makes room).
+pub(super) fn tall(cx: &mut VisualTestContext) {
+    cx.simulate_resize(size(px(1500.), px(3200.)));
+    cx.run_until_parked();
 }
 
 fn move_playhead_to_frame(view: &Entity<Workstation>, cx: &mut VisualTestContext, frame: i64) {
@@ -215,8 +224,48 @@ fn nothing_is_keyed_by_a_slider_and_a_capture_is_one_entry_at_the_frame_the_moni
     );
     assert_eq!(undo_depth(&view, cx), depth + 3);
 
-    // Moving a slider while keys prevail changes the base only; the curve stays and the core warns.
-    let answer = set(&view, cx, GRAIN, "amount", Raw::Number(0.4)).unwrap();
+    // While keys prevail the control is the BASE and is disabled with its reason: the node refuses
+    // a `set` with a typed code and writes nothing; the keys are what it edits.
+    let node_base = node(&view, cx, GRAIN)["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|field| field["field"] == "amount")
+        .unwrap()
+        .clone();
+    assert_eq!(node_base["enabled"], json!(false));
+    assert_eq!(node_base["animated"], json!(true));
+    assert_eq!(node_base["edit_with"], json!("keys"));
+    assert!(node_base["disabled_reason"].is_string());
+    assert!(node_base["label"].as_str().unwrap().contains("(base)"));
+    assert!(
+        node_base["sampled"].is_number(),
+        "the value shown now, apart from the base"
+    );
+    let before = undo_depth(&view, cx);
+    let refused = set(&view, cx, GRAIN, "amount", Raw::Number(0.4)).unwrap_err();
+    assert_eq!(refused.code, "base_under_keys");
+    assert_eq!(undo_depth(&view, cx), before, "nothing written");
+
+    // The library's own `scene.fx.edit` still writes the base under keys, keeps the curve, warns.
+    let answer = view
+        .update(cx, |view, cx| {
+            view.execute(
+                Command::Scene(SceneCommand::FxEdit {
+                    scene: "street".into(),
+                    ops: vec![FxOp::SetParam {
+                        clip: "fx-1".into(),
+                        param: "amount".into(),
+                        value: json!(0.4),
+                    }],
+                    dry_run: false,
+                    base_revision: None,
+                }),
+                Source::Cli,
+                cx,
+            )
+        })
+        .unwrap();
     assert_eq!(
         animation(&view, cx, "amount")["key_count"],
         json!(2),
@@ -353,6 +402,7 @@ fn keys_move_change_curve_and_go_away_each_as_one_entry_and_removing_the_animati
 #[gpui_kit::test]
 fn the_buttons_of_the_panel_run_the_same_handlers_when_clicked(cx: &mut TestAppContext) {
     let (view, cx) = mounted(cx);
+    tall(cx);
     add_grain(&view, cx);
     cx.run_until_parked();
     let depth = undo_depth(&view, cx);
