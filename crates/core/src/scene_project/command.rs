@@ -180,6 +180,11 @@ pub enum SceneCommand {
         scene: String,
         ops: Vec<FxOp>,
         dry_run: bool,
+        /// The project revision the caller's view was built on. With it, the edit is applied only
+        /// while the project is still at that revision (`stale_revision` otherwise, nothing
+        /// written), so an editor that was open on a key cannot write after the key moved, was
+        /// undone or was edited from elsewhere. Without it the edit applies to what is there now.
+        base_revision: Option<u64>,
     },
     /// F016: the effects layer of a scene (tracks, clips, every parameter resolved). With a
     /// `gesture`, the layer of that gesture's candidate (what a preview shows), not the document's.
@@ -195,6 +200,14 @@ pub enum SceneCommand {
         scene: String,
         at: FrameAt,
         gesture: Option<String>,
+    },
+    /// F058 (BL082.30): moves the monitor (the playhead) to a key of one parameter of an effect
+    /// clip. The core names the bundle frame and the sequence frame; it moves no document.
+    FxSeek {
+        scene: String,
+        clip: String,
+        param: String,
+        to: KeySeek,
     },
     /// F016 (BL082.6): the begin/update/commit/cancel cycle over one effect clip.
     FxGesture(FxGestureCommand),
@@ -213,6 +226,34 @@ pub enum SceneCommand {
         /// one the keys and the base values are listed and nothing is sampled.
         at: Option<FrameAt>,
     },
+}
+
+/// Which key `scene.fx.seek` goes to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeySeek {
+    /// The nearest key before the frame the monitor shows.
+    Previous,
+    /// The nearest key after it.
+    Next,
+    First,
+    Last,
+    /// The key at this frame **of the clip** (not of the edit).
+    Frame(i64),
+}
+
+impl KeySeek {
+    pub fn parse(value: &Value) -> Option<Self> {
+        match value {
+            Value::String(name) => match name.as_str() {
+                "previous" => Some(Self::Previous),
+                "next" => Some(Self::Next),
+                "first" => Some(Self::First),
+                "last" => Some(Self::Last),
+                _ => None,
+            },
+            other => other.as_i64().map(Self::Frame),
+        }
+    }
 }
 
 /// A value proposed for one field of one clip, to be judged without being applied.

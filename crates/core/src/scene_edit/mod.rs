@@ -39,6 +39,7 @@ mod error;
 mod fx;
 mod fx_animation;
 mod fx_inspector;
+mod fx_intent;
 mod fx_keys;
 mod op;
 mod reference;
@@ -59,8 +60,8 @@ pub use error::{
     UNKNOWN_SCENE,
 };
 pub use fx::{
-    AddClip, ClipField, FxChange, FxOp, FxOutcome, FxSummary, apply_fx, apply_fx_with, dry_run_fx,
-    parse_fx_batch,
+    AddClip, ClipField, FxChange, FxOp, FxOutcome, FxSummary, MAX_FX_BATCH_OPS, apply_fx,
+    apply_fx_measured, apply_fx_with, check_fx_batch_len, dry_run_fx, parse_fx_batch,
 };
 pub use fx_animation::{
     ClipAnimation, ParamAnimation, REASON_FRAME_OUTSIDE_CLIP, REASON_KEY_ON_FRAME,
@@ -68,9 +69,11 @@ pub use fx_animation::{
 };
 pub use fx_inspector::{
     ClipInspector, Component, DURATION_LABEL, FADE_IN_LABEL, FADE_OUT_LABEL, FieldGroup, FieldKind,
-    InspectorField, Offer, REASON_FAMILY_NOT_YET, REASON_SINGLE_VALUE, START_LABEL, Target,
-    has_reset, inspector_fields, layer_inspector, offers, reset_ops, scopes,
+    InspectorField, Offer, REASON_ANIMATED, REASON_FAMILY_NOT_YET, REASON_SINGLE_VALUE,
+    START_LABEL, Target, has_reset, inspector_fields, layer_inspector, offers, reset_ops, scopes,
 };
+pub use fx_intent::{FxIntent, GESTURE_INTENT_MISMATCH, GESTURE_TARGET_MISMATCH, IntentRefusal};
+pub use fx_keys::FxWork;
 pub use fx_keys::STATIC_UNDER_KEYS;
 pub use op::{EditOp, parse_batch};
 pub use reference::PropertyRef;

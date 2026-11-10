@@ -224,7 +224,7 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
                 "scene.translate",
                 // F016 (docs/features/effects.md): the effects layer, additive.
                 "scene.fx.edit", "scene.fx.list", "scene.fx.catalog", "scene.fx.frame",
-                "scene.fx.inspect",
+                "scene.fx.inspect", "scene.fx.seek",
                 "scene.fx.gesture.begin", "scene.fx.gesture.update", "scene.fx.gesture.commit",
                 "scene.fx.gesture.cancel", "scene.fx.gesture.status",
             ],
@@ -320,6 +320,7 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
         | SceneCommand::Gesture(_)
         | SceneCommand::Gizmo(_)
         | SceneCommand::FxGesture(_)
+        | SceneCommand::FxSeek { .. }
         | SceneCommand::FxEdit { .. } => Err(CommandError::new(
             "internal",
             "a scene command reached the read path that does not serve it",

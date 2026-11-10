@@ -32,7 +32,7 @@ use serde_json::{Value, json};
 
 use crate::directed_scene::DirectedScene;
 use crate::directed_scene::fx::{FX_CATALOG_VERSION, Locale};
-use crate::scene_edit::{self, FxOp};
+use crate::scene_edit::{self, FxIntent, FxOp, IntentRefusal};
 use crate::scene_interaction::{FrameAt, FxGestureCommand, GestureKind};
 use crate::state::{CommandError, EditorState};
 
@@ -53,6 +53,48 @@ fn with_gesture_details(error: CommandError, id: &str, candidate_kept: bool) -> 
         details: Some(Box::new(details)),
         ..error
     }
+}
+
+/// The typed refusal of a proposal that is not the gesture's intent.
+fn intent_refusal(id: &str, refusal: IntentRefusal) -> CommandError {
+    let (code, index, expected, found, what) = match refusal {
+        IntentRefusal::Verb {
+            index,
+            expected,
+            found,
+        } => (
+            scene_edit::GESTURE_INTENT_MISMATCH,
+            index,
+            expected,
+            found,
+            "another kind of edit",
+        ),
+        IntentRefusal::Target {
+            index,
+            expected,
+            found,
+        } => (
+            scene_edit::GESTURE_TARGET_MISMATCH,
+            index,
+            expected,
+            found,
+            "another target",
+        ),
+    };
+    CommandError::new(
+        code,
+        format!(
+            "Gesture `{id}` is a {}; operation {index} is {} ({what}). Commit or cancel it and \
+             begin another, or use `scene.fx.edit` for a deliberate mixed batch",
+            expected.describe(),
+            found.describe()
+        ),
+    )
+    .target(id)
+    .details(json!({
+        "gesture": id, "index": index,
+        "expected": expected.to_json(), "found": found.to_json(),
+    }))
 }
 
 impl EditorState {
@@ -161,11 +203,12 @@ impl EditorState {
         let clip = gesture.fx_clip().unwrap_or_default().to_string();
         let base = Arc::clone(gesture.base());
         let kept = gesture.has_candidate();
+        let bound = gesture.fx_intent().cloned();
 
         let attempt = self
-            .fx_gesture_candidate(id, &scene, &clip, &base, &ops)
+            .fx_gesture_candidate(id, &scene, &clip, &base, &ops, bound.as_ref())
             .map_err(|error| with_gesture_details(error, id, kept));
-        let (stored, summary) = match attempt {
+        let (stored, summary, intent) = match attempt {
             Ok(accepted) => accepted,
             Err(error) => {
                 if let Ok(gesture) = self.scene_interaction.gesture.find_mut(id) {
@@ -197,7 +240,7 @@ impl EditorState {
                 .unwrap_or_default(),
         );
         let gesture = self.scene_interaction.gesture.find_mut(id)?;
-        gesture.set_fx_candidate(ops, stored);
+        gesture.set_fx_candidate(ops, stored, intent);
         Ok(json!({
             "action": "scene.fx.gesture.update", "gesture": id, "scene": scene, "clip": clip,
             "updates": gesture.updates(),
@@ -218,13 +261,17 @@ impl EditorState {
         clip: &str,
         base: &Arc<DirectedScene>,
         ops: &[FxOp],
+        bound: Option<&FxIntent>,
     ) -> Result<
         (
             Option<(Arc<DirectedScene>, scene_edit::FxSummary)>,
             Option<scene_edit::FxSummary>,
+            Option<FxIntent>,
         ),
         CommandError,
     > {
+        // The budget first: a batch past it is refused before any op is looked at or run.
+        scene_edit::check_fx_batch_len(ops.len())?;
         for (index, op) in ops.iter().enumerate() {
             let target = match op.clip_id() {
                 Some(clip) if !matches!(op, FxOp::AddClip(_) | FxOp::RemoveClip { .. }) => clip,
@@ -251,9 +298,15 @@ impl EditorState {
                 .details(json!({ "gesture": id, "index": index, "clip": target })));
             }
         }
+        // One verb and one target for the whole gesture: a proposal of another kind (a value write
+        // in a key drag, a retime in a slider, another parameter's key) is refused before anything
+        // is computed, so the candidate, the last legal ops and the refusal on record are the
+        // ones of the proposal that was accepted last.
+        let intent =
+            FxIntent::of_batch(ops, bound).map_err(|refusal| intent_refusal(id, refusal))?;
         if ops.is_empty() {
             // The gesture back at its start: nothing to preview, nothing to commit.
-            return Ok((None, None));
+            return Ok((None, None, intent));
         }
         let outcome = scene_edit::apply_fx(base, ops)?;
         if outcome.summary.modified {
@@ -264,6 +317,7 @@ impl EditorState {
         Ok((
             Some((Arc::new(outcome.candidate), outcome.summary)),
             Some(summary),
+            intent,
         ))
     }
 

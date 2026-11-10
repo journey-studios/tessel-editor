@@ -25,6 +25,8 @@ pub const REASON_FRAME_OUTSIDE_CLIP: &str = "frame_outside_clip";
 pub const REASON_NO_KEYS: &str = "no_keys";
 pub const REASON_NEEDS_TWO_KEYS: &str = "needs_two_keys";
 pub const REASON_KEY_ON_FRAME: &str = "key_on_this_frame";
+pub const REASON_NO_PREVIOUS_KEY: &str = "no_previous_key";
+pub const REASON_NO_NEXT_KEY: &str = "no_next_key";
 
 /// One parameter of a clip, as animation sees it.
 #[derive(Debug, Clone, PartialEq)]
@@ -37,6 +39,10 @@ pub struct ParamAnimation {
     pub keys: Vec<FxKey>,
     /// The value at the asked frame of the clip (`None` without a frame, or outside the clip).
     pub sampled: Option<FxValue>,
+    /// The frame of the nearest key before / after the asked frame, in clip frames. The asked
+    /// frame may be outside the clip (before it, every key is "next"); `None` without a frame.
+    pub previous: Option<i64>,
+    pub next: Option<i64>,
 }
 
 /// The seed of a noise clip.
@@ -58,6 +64,9 @@ pub struct ClipAnimation {
     pub clip: String,
     /// The frame of the edit that was asked, if any.
     pub edit_frame: Option<i64>,
+    /// That frame in the clip's own numbering, whether or not the clip covers it (negative before
+    /// it, past the duration after it).
+    pub local_frame: Option<i64>,
     /// That frame as a frame of the clip, when the clip covers it.
     pub frame_in_clip: Option<i64>,
     pub duration_frames: i64,
@@ -68,9 +77,8 @@ pub struct ClipAnimation {
 impl ClipAnimation {
     /// The animation of `clip`, sampled at `edit_frame` of the scene's edit when given.
     pub fn of(clip: &FxClip, edit_frame: Option<i64>) -> Self {
-        let frame_in_clip = edit_frame
-            .map(|frame| frame - clip.start_frame)
-            .filter(|local| (0..clip.duration_frames).contains(local));
+        let local_frame = edit_frame.and_then(|frame| frame.checked_sub(clip.start_frame));
+        let frame_in_clip = local_frame.filter(|local| (0..clip.duration_frames).contains(local));
         let params = clip
             .effect
             .params
@@ -79,12 +87,22 @@ impl ClipAnimation {
             .filter_map(|(index, spec)| {
                 let base = clip.params.get(index).copied()?;
                 let keys = clip.curve(index).map(<[FxKey]>::to_vec).unwrap_or_default();
+                let previous = local_frame.and_then(|here| {
+                    keys.iter()
+                        .rev()
+                        .map(|key| key.frame)
+                        .find(|frame| *frame < here)
+                });
+                let next = local_frame
+                    .and_then(|here| keys.iter().map(|key| key.frame).find(|frame| *frame > here));
                 Some(ParamAnimation {
                     spec,
                     base,
                     animated: !keys.is_empty(),
                     keys,
                     sampled: frame_in_clip.and_then(|local| clip.value_at(index, local)),
+                    previous,
+                    next,
                 })
             })
             .collect();
@@ -100,6 +118,7 @@ impl ClipAnimation {
         Self {
             clip: clip.id.clone(),
             edit_frame,
+            local_frame,
             frame_in_clip,
             duration_frames: clip.duration_frames,
             params,
@@ -119,6 +138,7 @@ impl ClipAnimation {
     pub fn to_json(&self, locale: Locale) -> Value {
         json!({
             "edit_frame": self.edit_frame, "frame_in_clip": self.frame_in_clip,
+            "local_frame": self.local_frame,
             "active": self.frame_in_clip.is_some(),
             "animated": self.is_animated(),
             "params": self.params.iter().map(|param| param.to_json(self, locale)).collect::<Vec<_>>(),
@@ -180,6 +200,36 @@ impl ParamAnimation {
             Some(REASON_NO_KEYS),
             json!({ "op": "clear_keys", "clip": clip.clip, "param": id }),
         ));
+        // Where the monitor can go among the keys of this parameter (`scene.fx.seek`, which also
+        // needs the `scene`). The reasons are the codes the seek itself refuses with.
+        let seek =
+            |to: Value| json!({ "op": "scene.fx.seek", "clip": clip.clip, "param": id, "to": to });
+        let around = |frame: Option<i64>, reason: &'static str| {
+            let why = if !self.animated {
+                REASON_NO_KEYS
+            } else if clip.edit_frame.is_none() {
+                REASON_NO_FRAME
+            } else {
+                reason
+            };
+            (frame.is_some(), why)
+        };
+        for (name, (enabled, why), to) in [
+            (
+                "go_previous",
+                around(self.previous, REASON_NO_PREVIOUS_KEY),
+                json!("previous"),
+            ),
+            (
+                "go_next",
+                around(self.next, REASON_NO_NEXT_KEY),
+                json!("next"),
+            ),
+            ("go_first", (self.animated, REASON_NO_KEYS), json!("first")),
+            ("go_last", (self.animated, REASON_NO_KEYS), json!("last")),
+        ] {
+            operations.push(op(name, enabled, Some(why), seek(to)));
+        }
         let keys: Vec<Value> = self
             .keys
             .iter()
@@ -192,6 +242,7 @@ impl ParamAnimation {
                        json!({ "op": "move_key", "clip": clip.clip, "param": id, "from": key.frame, "to": key.frame })),
                     op("set_easing", true, None,
                        json!({ "op": "set_key_easing", "clip": clip.clip, "param": id, "frame": key.frame, "easing": key.easing.name() })),
+                    op("seek", true, None, seek(json!(key.frame))),
                 ]);
                 described["easings"] = json!(FX_EASINGS);
                 described
@@ -211,6 +262,7 @@ impl ParamAnimation {
             "sampled": self.sampled.map(|value| value.to_json()),
             "on_key": on_key,
             "key_count": self.keys.len(),
+            "previous_key": self.previous, "next_key": self.next,
             "keys": keys,
             "operations": operations,
         })
@@ -329,7 +381,12 @@ mod tests {
                 ("capture", true),
                 ("shift_keys", true),
                 ("scale_keys", true),
-                ("remove_animation", true)
+                ("remove_animation", true),
+                // The monitor sits between the two keys, so both neighbours exist.
+                ("go_previous", true),
+                ("go_next", true),
+                ("go_first", true),
+                ("go_last", true),
             ]
         );
         // A parameter that is not animated can only be captured.

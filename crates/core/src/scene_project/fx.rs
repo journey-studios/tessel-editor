@@ -138,6 +138,22 @@ pub(super) fn changes_json(summary: &FxSummary) -> Vec<Value> {
 }
 
 impl EditorState {
+    /// Refuses an edit built on a project revision that is not the current one.
+    pub(super) fn ensure_base_revision(&self, expected: Option<u64>) -> Result<(), CommandError> {
+        match expected {
+            Some(expected) if expected != self.project.revision => Err(CommandError::new(
+                "stale_revision",
+                format!(
+                    "The edit was built on project revision {expected}, which is now {}; \
+                     nothing was written. Read the document again",
+                    self.project.revision
+                ),
+            )
+            .details(json!({ "expected": expected, "revision": self.project.revision }))),
+            _ => Ok(()),
+        }
+    }
+
     pub(super) fn edit_fx(
         &mut self,
         id: &str,

@@ -21,7 +21,36 @@ use crate::time::Ratio;
 
 use super::batch::rejected;
 use super::error::{DOCUMENT_MISMATCH, EditError, INVALID_OP};
-use super::fx_keys;
+use super::fx_keys::{self, Batch, FxWork, clip_key_total};
+
+/// The most ops one `scene.fx.edit` batch (or one gesture update) may hold. WHY a budget: each op
+/// locates its clip and copies at most one curve, so the work of a batch is bounded only when its
+/// length is; past it the batch is refused whole, as `FX_LIMIT` at `ops`, before the document is
+/// copied or an op is parsed or run. A real edit (a drag, a retime, a form) is a handful of ops;
+/// split a bulk import into several batches, each one undo entry.
+pub const MAX_FX_BATCH_OPS: usize = 1024;
+
+/// Refuses a batch of `count` ops past [`MAX_FX_BATCH_OPS`] (the check every entry point makes
+/// first, before it copies, parses or runs anything).
+pub fn check_fx_batch_len(count: usize) -> Result<(), EditError> {
+    if count > MAX_FX_BATCH_OPS {
+        Err(batch_too_long(count))
+    } else {
+        Ok(())
+    }
+}
+
+/// The refusal of a batch that holds more ops than [`MAX_FX_BATCH_OPS`].
+fn batch_too_long(count: usize) -> EditError {
+    EditError::new(
+        fx::FX_LIMIT,
+        format!(
+            "a batch holds at most {MAX_FX_BATCH_OPS} fx ops, got {count}; split it into several \
+             batches (each one undo entry)"
+        ),
+    )
+    .with_path("ops")
+}
 
 /// A numeric field of a clip.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -412,6 +441,7 @@ pub fn parse_fx_batch(value: &Value) -> Result<Vec<FxOp>, EditError> {
             "a batch must be an array of fx ops",
         ));
     };
+    check_fx_batch_len(items.len())?;
     items
         .iter()
         .enumerate()
@@ -451,6 +481,8 @@ impl FxChange {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FxSummary {
     pub changes: Vec<FxChange>,
+    /// What the batch cost, counted (ops run, passes over the layer's keys, curve items copied).
+    pub work: FxWork,
     /// Whether the document ends different from where it began (a batch that undoes itself, or
     /// writes what is already there, is not).
     pub modified: bool,
@@ -499,6 +531,7 @@ pub(super) fn command_code(code: &str) -> Option<&'static str> {
         fx::UNKNOWN_KEYFRAME_EASING => "unknown_keyframe_easing",
         fx::UNKNOWN_KEYFRAME => "unknown_keyframe",
         fx::FX_TRANSITION_NOT_YET => "fx_transition_not_yet",
+        fx::FX_LIMIT => "fx_limit",
         _ => return None,
     })
 }
@@ -613,6 +646,30 @@ pub fn apply_fx_with(
     ops: &[FxOp],
     limits: &Limits,
 ) -> Result<FxOutcome, EditError> {
+    apply_fx_measured(scene, ops, limits).0
+}
+
+/// [`apply_fx_with`] and the work the batch did, also for a refused batch (so a test can prove a
+/// batch that cannot fit stopped at the op that overflowed instead of running to the end).
+pub fn apply_fx_measured(
+    scene: &DirectedScene,
+    ops: &[FxOp],
+    limits: &Limits,
+) -> (Result<FxOutcome, EditError>, FxWork) {
+    if let Err(error) = check_fx_batch_len(ops.len()) {
+        return (Err(error), FxWork::default());
+    }
+    let mut batch = Batch::default();
+    let outcome = run_batch(scene, ops, limits, &mut batch);
+    (outcome, batch.work)
+}
+
+fn run_batch(
+    scene: &DirectedScene,
+    ops: &[FxOp],
+    limits: &Limits,
+    batch: &mut Batch,
+) -> Result<FxOutcome, EditError> {
     let mut work = scene.document().clone();
     let edit_length = i64::try_from(scene.bundle().edit_duration_frames).unwrap_or(i64::MAX);
     let mut changes = Vec::with_capacity(ops.len());
@@ -621,8 +678,10 @@ pub fn apply_fx_with(
     for (index, op) in ops.iter().enumerate() {
         let fail = |error: EditError| error.at_op(index);
         let resolved = resolve_start(scene, op).map_err(fail)?;
+        batch.work.ops_run += 1;
         let change = run_op(
             &mut work,
+            batch,
             resolved.as_ref().unwrap_or(op),
             index,
             edit_length,
@@ -675,7 +734,11 @@ pub fn apply_fx_with(
     let candidate = if modified { candidate } else { scene.clone() };
     Ok(FxOutcome {
         candidate,
-        summary: FxSummary { changes, modified },
+        summary: FxSummary {
+            changes,
+            work: batch.work,
+            modified,
+        },
     })
 }
 
@@ -710,6 +773,7 @@ pub fn dry_run_fx(scene: &DirectedScene, ops: &[FxOp]) -> Result<FxSummary, Edit
 
 fn run_op(
     work: &mut Value,
+    batch: &mut Batch,
     op: &FxOp,
     index: usize,
     edit_length: i64,
@@ -721,6 +785,8 @@ fn run_op(
             let tracks = tracks_mut(work)?;
             let track_id = text_of(&tracks[track_slot], "id").to_string();
             let removed = remove_at(&mut tracks[track_slot], clip_slot);
+            // The keys of the clip leave the layer with it: their room is free again.
+            batch.shrank(clip_key_total(removed.as_ref().and_then(Value::as_object)));
             let track_empty = clips_of(&tracks[track_slot]).is_empty();
             if track_empty {
                 tracks.remove(track_slot);
@@ -747,6 +813,7 @@ fn run_op(
             easing,
         } => fx_keys::key_param(
             work,
+            batch,
             clip,
             param,
             *frame,
@@ -761,7 +828,7 @@ fn run_op(
             easing,
         } => fx_keys::set_key_easing(work, clip, param, *frame, easing, index),
         FxOp::RemoveKey { clip, param, frame } => {
-            fx_keys::remove_key(work, clip, param, *frame, index)
+            fx_keys::remove_key(work, batch, clip, param, *frame, index)
         }
         FxOp::MoveKey {
             clip,
@@ -770,7 +837,7 @@ fn run_op(
             to,
         } => fx_keys::move_key(work, clip, param, *from, *to, index),
         FxOp::ShiftKeys { clip, param, delta } => {
-            fx_keys::shift_keys(work, clip, param.as_deref(), *delta, index)
+            fx_keys::shift_keys(work, batch, clip, param.as_deref(), *delta, index)
         }
         FxOp::ScaleKeys {
             clip,
@@ -778,8 +845,18 @@ fn run_op(
             anchor,
             num,
             den,
-        } => fx_keys::scale_keys(work, clip, param.as_deref(), *anchor, *num, *den, index),
-        FxOp::ClearKeys { clip, param } => fx_keys::clear_keys(work, clip, param.as_deref(), index),
+        } => fx_keys::scale_keys(
+            work,
+            batch,
+            clip,
+            param.as_deref(),
+            *anchor,
+            (*num, *den),
+            index,
+        ),
+        FxOp::ClearKeys { clip, param } => {
+            fx_keys::clear_keys(work, batch, clip, param.as_deref(), index)
+        }
         FxOp::SetSeed { clip, seed } => fx_keys::set_seed(work, clip, *seed, index),
         FxOp::SetHidden { clip, hidden } => {
             let (track_slot, clip_slot) = clip_ref(work, clip)?;

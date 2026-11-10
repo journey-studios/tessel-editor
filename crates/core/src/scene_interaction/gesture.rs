@@ -30,7 +30,7 @@ use std::sync::{Arc, OnceLock};
 use serde_json::{Value, json};
 
 use crate::directed_scene::{DirectedScene, Entity};
-use crate::scene_edit::{EditOp, EditSummary, FxOp, FxSummary};
+use crate::scene_edit::{EditOp, EditSummary, FxIntent, FxOp, FxSummary};
 use crate::scene_project::SceneBook;
 use crate::state::CommandError;
 
@@ -115,6 +115,9 @@ pub struct Gesture {
     ops: Vec<EditOp>,
     /// Same, for a [`GestureKind::Fx`] gesture.
     fx_ops: Vec<FxOp>,
+    /// What the first accepted proposal of an fx gesture was for (verb and target); every later
+    /// one must be the same (`scene_edit::FxIntent`). Empty updates bind nothing.
+    fx_intent: Option<FxIntent>,
     candidate: Option<Candidate>,
     updates: u64,
     refusal: Option<Refusal>,
@@ -139,6 +142,7 @@ impl Gesture {
             revision,
             ops: Vec::new(),
             fx_ops: Vec::new(),
+            fx_intent: None,
             candidate: None,
             updates: 0,
             refusal: None,
@@ -174,6 +178,11 @@ impl Gesture {
 
     pub fn fx_ops(&self) -> &[FxOp] {
         &self.fx_ops
+    }
+
+    /// The verb and target the gesture is bound to, once an update was accepted.
+    pub fn fx_intent(&self) -> Option<&FxIntent> {
+        self.fx_intent.as_ref()
     }
 
     /// The newest proposal this gesture refused, if the latest update was refused.
@@ -254,7 +263,11 @@ impl Gesture {
         &mut self,
         ops: Vec<FxOp>,
         candidate: Option<(Arc<DirectedScene>, FxSummary)>,
+        intent: Option<FxIntent>,
     ) {
+        if self.fx_intent.is_none() {
+            self.fx_intent = intent;
+        }
         self.fx_ops = ops;
         self.candidate = candidate.map(|(scene, summary)| Candidate {
             scene,
@@ -303,6 +316,7 @@ impl Gesture {
             "id": self.id,
             "kind": self.kind.as_str(),
             "clip": self.fx_clip(),
+            "intent": self.fx_intent.as_ref().map(FxIntent::to_json),
             "scene": self.scene,
             "label": self.label,
             "state": if invalidation.is_some() { "invalidated" } else { "open" },
