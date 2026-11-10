@@ -37,7 +37,7 @@ use crate::scene_interaction::{FrameAt, FxGestureCommand, GestureKind};
 use crate::state::{CommandError, EditorState};
 
 use super::FxProbe;
-use super::fx::{changes_json, frame_answer, list_answer};
+use super::fx::{changes_json, edit_frame_of, frame_answer, list_answer};
 use super::interaction::ensure_kind;
 
 /// Error `details` with the gesture's own facts added, whatever the refusal already carried.
@@ -367,9 +367,11 @@ impl EditorState {
         gesture: Option<&str>,
         locale: Locale,
         probe: Option<&FxProbe>,
+        at: Option<&FrameAt>,
     ) -> Result<Value, CommandError> {
         let (shown, id) = self.fx_read_scene(scene, gesture)?;
         let bundle = shown.bundle();
+        let frame = at.map(|at| edit_frame_of(scene, &shown, at)).transpose()?;
         let edit_frames = i64::try_from(bundle.edit_duration_frames).unwrap_or(i64::MAX);
         let mut inspectors = scene_edit::layer_inspector(&bundle.fx, edit_frames);
         let probed = probe.map(|probe| probe_answer(&shown, &inspectors, probe));
@@ -385,6 +387,7 @@ impl EditorState {
             "catalog_version": FX_CATALOG_VERSION,
             "source": if id.is_some() { "gesture" } else { "document" },
             "edit_duration_frames": bundle.edit_duration_frames,
+            "frame": frame,
             "scopes": scene_edit::scopes().iter().map(|(kind, drawn, reason)| json!({
                 "kind": kind, "applicable": drawn, "reason": reason,
             })).collect::<Vec<_>>(),
@@ -394,6 +397,7 @@ impl EditorState {
                 let mut described = inspector.to_json(locale);
                 if let Some((_, clip)) = bundle.fx.clip(&inspector.clip) {
                     described["reset_ops"] = json!(inspector.reset_ops_json(clip));
+                    described["animation"] = scene_edit::ClipAnimation::of(clip, frame).to_json(locale);
                     for (field_json, field) in described["fields"].as_array_mut().unwrap().iter_mut().zip(&inspector.fields) {
                         if field.default.is_some() {
                             field_json["reset"]["op"] = json!(field.reset_op_json(clip));

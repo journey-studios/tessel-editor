@@ -652,6 +652,13 @@ fn scene_command(op: &str, request: &Value) -> Result<SceneCommand, CommandError
                 None | Some(Value::Null) => None,
                 Some(probe) => Some(fx_probe(probe)?),
             },
+            at: if request.get("frame").is_some_and(|raw| !raw.is_null())
+                || request.get("time").is_some_and(|raw| !raw.is_null())
+            {
+                Some(frame_at(request)?)
+            } else {
+                None
+            },
         },
         "scene.fx.frame" => SceneCommand::FxFrame {
             scene: scene()?,

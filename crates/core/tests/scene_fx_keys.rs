@@ -907,3 +907,186 @@ fn the_timeline_gives_the_plan_of_a_build_for_every_frame_of_a_keyed_grain() {
         );
     }
 }
+
+fn inspect(state: &mut EditorState, extra: Value) -> Result<Value, CommandError> {
+    let mut request = json!({"op":"scene.fx.inspect","scene":"street","clip":"g"});
+    for (name, value) in extra.as_object().unwrap() {
+        request[name] = value.clone();
+    }
+    headless::execute(state, &request)
+}
+
+fn animation_of<'a>(answer: &'a Value, param: &str) -> &'a Value {
+    answer["clips"][0]["animation"]["params"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["param"] == param)
+        .unwrap_or_else(|| panic!("no animation for {param}"))
+}
+
+#[test]
+fn the_inspector_says_base_sampled_keys_and_operations_without_changing_the_base() {
+    let mut state = session();
+    edit(
+        &mut state,
+        json!([
+            grain(),
+            keyed("amount", 0, json!(0.2), "linear"),
+            keyed("amount", 20, json!(1.0), "easeOutCubic"),
+            keyed("colored", 0, json!(false), "linear"),
+            keyed("colored", 10, json!(true), "linear"),
+        ]),
+    );
+    // Without a frame the keys and the base are listed and nothing is sampled.
+    let plain = inspect(&mut state, json!({})).unwrap();
+    assert_eq!(plain["frame"], Value::Null);
+    let amount = animation_of(&plain, "amount");
+    assert_eq!(amount["animated"], true);
+    assert_eq!(amount["sampled"], Value::Null);
+    assert_eq!(amount["key_count"], 2);
+    assert_eq!(amount["keys"][1]["easing"], "easeOutCubic");
+    let base = amount["base"].clone();
+    // The field of P2 still carries the base, and the capture is refused with a reason.
+    let field = plain["clips"][0]["fields"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|field| field["id"] == "amount")
+        .unwrap();
+    assert_eq!(field["value"], base);
+    assert_eq!(amount["operations"][0]["enabled"], false);
+    assert_eq!(amount["operations"][0]["reason"], "no_frame");
+
+    // At an edit frame the sampled value is the plan's: frame 10 + 20 is the key's exact value.
+    let at_key = inspect(&mut state, json!({"frame": 30})).unwrap();
+    let amount = animation_of(&at_key, "amount");
+    assert_eq!(amount["sampled"], 1.0);
+    assert_eq!(amount["base"], base, "the base does not change meaning");
+    assert_eq!(amount["on_key"], true);
+    let colored = animation_of(&at_key, "colored");
+    assert_eq!(colored["kind"], "boolean");
+    assert_eq!(
+        colored["sampled"], true,
+        "a boolean that has reached its key"
+    );
+    let before = inspect(&mut state, json!({"frame": 15})).unwrap();
+    assert_eq!(animation_of(&before, "colored")["sampled"], false);
+    assert_eq!(before["clips"][0]["animation"]["frame_in_clip"], 5);
+    // The sample is exactly what `scene.fx.frame` resolves for the same frame.
+    let resolved = param_at(&mut state, 25, "amount");
+    let inspected = inspect(&mut state, json!({"frame": 25})).unwrap();
+    assert_eq!(animation_of(&inspected, "amount")["sampled"], resolved);
+    // Outside the clip nothing is sampled and the animation is not active.
+    let outside = inspect(&mut state, json!({"frame": 3})).unwrap();
+    assert_eq!(outside["clips"][0]["animation"]["active"], false);
+    assert_eq!(animation_of(&outside, "amount")["sampled"], Value::Null);
+    assert_eq!(
+        animation_of(&outside, "amount")["operations"][0]["reason"],
+        "frame_outside_clip"
+    );
+    // A frame the edit does not hold is a typed refusal.
+    let error = inspect(&mut state, json!({"frame": 9999})).unwrap_err();
+    assert_eq!(error.code, "frame_out_of_range");
+    // The inspector is a read: nothing changed.
+    let still = footprint(&state);
+    inspect(&mut state, json!({"frame": 30})).unwrap();
+    assert_eq!(footprint(&state), still);
+}
+
+#[test]
+fn every_operation_the_inspector_lists_is_an_op_the_edit_runs() {
+    let mut state = session();
+    edit(
+        &mut state,
+        json!([
+            grain(),
+            keyed("amount", 0, json!(0.2), "linear"),
+            keyed("amount", 20, json!(1.0), "linear"),
+        ]),
+    );
+    let answer = inspect(&mut state, json!({"frame": 20})).unwrap();
+    let amount = animation_of(&answer, "amount");
+    // The capture template is the op a person sends at the playhead: frame 10 of the clip, no
+    // value, so the capture records what the curve shows (0.6).
+    let capture = amount["operations"][0]["template"].clone();
+    assert_eq!(capture["frame"], 10);
+    edit(&mut state, json!([capture]));
+    assert_eq!(frames_of(&state, "amount"), [0, 10, 20]);
+    let captured = keys_of(&state, "amount")[1]["value"].as_f64().unwrap();
+    assert!((captured - 0.6).abs() < 1e-12, "{captured}");
+    // The per-key templates run as they are (the move to the same frame is the core's no-op).
+    let answer = inspect(&mut state, json!({"frame": 20})).unwrap();
+    let key = &animation_of(&answer, "amount")["keys"][1];
+    for name in ["move", "set_easing"] {
+        let template = key["operations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|operation| operation["name"] == name)
+            .unwrap()["template"]
+            .clone();
+        let answer = edit(&mut state, json!([template.clone()]));
+        // A key whose easing nobody wrote shows `linear`; naming it writes it once, and naming
+        // it again is nothing to do.
+        assert_eq!(
+            answer["changed"],
+            name == "set_easing",
+            "{name} the first time"
+        );
+        let again = edit(&mut state, json!([template]));
+        assert_eq!(again["changed"], false, "{name} to what it already is");
+    }
+    let remove = key["operations"][0]["template"].clone();
+    edit(&mut state, json!([remove]));
+    assert_eq!(frames_of(&state, "amount"), [0, 20]);
+    let clear = animation_of(&answer, "amount")["operations"][3]["template"].clone();
+    edit(&mut state, json!([clear]));
+    assert!(keys_of(&state, "amount").is_empty());
+    let after = inspect(&mut state, json!({"frame": 20})).unwrap();
+    assert_eq!(animation_of(&after, "amount")["animated"], false);
+    assert_eq!(
+        animation_of(&after, "amount")["operations"][3]["enabled"],
+        false
+    );
+}
+
+#[test]
+fn the_seed_of_the_inspector_is_automatic_until_written_and_the_template_runs() {
+    let mut state = session();
+    edit(&mut state, json!([grain()]));
+    let auto = inspect(&mut state, json!({"frame": 12})).unwrap();
+    let seed = &auto["clips"][0]["animation"]["seed"];
+    assert_eq!(seed["from_id"], true);
+    assert_eq!(seed["explicit"], Value::Null);
+    assert_eq!(seed["reseed"], "per-frame");
+    let base = seed["base"].as_u64().unwrap();
+    let next = inspect(&mut state, json!({"frame": 13})).unwrap();
+    assert_ne!(
+        next["clips"][0]["animation"]["seed"]["at_frame"],
+        seed["at_frame"]
+    );
+    let write = seed["operations"][0]["template"].clone();
+    assert_eq!(
+        write["seed"], base,
+        "writing the shown seed keeps the picture"
+    );
+    edit(&mut state, json!([write]));
+    let written = inspect(&mut state, json!({"frame": 12})).unwrap();
+    assert_eq!(written["clips"][0]["animation"]["seed"]["explicit"], base);
+    assert_eq!(
+        written["clips"][0]["animation"]["seed"]["at_frame"], seed["at_frame"],
+        "the same base gives the same per-frame seed"
+    );
+    let auto_op = written["clips"][0]["animation"]["seed"]["operations"][1]["template"].clone();
+    edit(&mut state, json!([auto_op]));
+    let back = inspect(&mut state, json!({"frame": 12})).unwrap();
+    assert_eq!(back["clips"][0]["animation"]["seed"]["from_id"], true);
+    // A vignette has no seed to show.
+    edit(
+        &mut state,
+        json!([{"op":"add_clip","effect":"vignette","start_frame":0,"duration_frames":8,"id":"v"}]),
+    );
+    let vignette = inspect(&mut state, json!({"clip":"v","frame":2})).unwrap();
+    assert_eq!(vignette["clips"][0]["animation"]["seed"], Value::Null);
+}

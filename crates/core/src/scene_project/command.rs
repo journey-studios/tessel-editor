@@ -209,6 +209,9 @@ pub enum SceneCommand {
         gesture: Option<String>,
         locale: Locale,
         probe: Option<FxProbe>,
+        /// P3: the frame of the edit the animation is sampled at (`frame` or exact `time`); without
+        /// one the keys and the base values are listed and nothing is sampled.
+        at: Option<FrameAt>,
     },
 }
 

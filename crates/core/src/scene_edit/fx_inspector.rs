@@ -188,43 +188,91 @@ impl InspectorField {
                 let current = clip.param(param).ok_or_else(|| {
                     CommandError::new("unknown_param", format!("`{param}` is not a parameter"))
                 })?;
-                let written = match (current, component) {
-                    (FxValue::Bool(_), Component::Whole) => match value {
-                        0.0 => json!(false),
-                        1.0 => json!(true),
-                        _ => {
-                            return Err(CommandError::invalid_value(
-                                "Expected 0 or 1 for a switch",
-                                json!("boolean"),
-                            ));
-                        }
-                    },
-                    (_, Component::Whole) => json!(value),
-                    (FxValue::Point { y, .. }, Component::X) => json!({ "x": value, "y": y }),
-                    (FxValue::Point { x, .. }, Component::Y) => json!({ "x": x, "y": value }),
-                    (FxValue::Color { g, b, .. }, Component::R) => {
-                        json!({ "r": value, "g": g, "b": b })
-                    }
-                    (FxValue::Color { r, b, .. }, Component::G) => {
-                        json!({ "r": r, "g": value, "b": b })
-                    }
-                    (FxValue::Color { r, g, .. }, Component::B) => {
-                        json!({ "r": r, "g": g, "b": value })
-                    }
-                    _ => {
-                        return Err(CommandError::new(
-                            "invalid_value",
-                            format!("`{}` has no such component", self.id),
-                        ));
-                    }
-                };
                 Ok(FxOp::SetParam {
                     clip: clip.id.clone(),
                     param: param.to_string(),
-                    value: written,
+                    value: self.written(current, component, value)?,
                 })
             }
         }
+    }
+
+    /// The whole value of the parameter this field belongs to, with this field's part set to
+    /// `value` and the other parts as `current` has them: what a `set_param` or a `key_param`
+    /// carries. A switch takes 0 or 1 only.
+    fn written(
+        &self,
+        current: FxValue,
+        component: Component,
+        value: f64,
+    ) -> Result<Value, CommandError> {
+        Ok(match (current, component) {
+            (FxValue::Bool(_), Component::Whole) => match value {
+                0.0 => json!(false),
+                1.0 => json!(true),
+                _ => {
+                    return Err(CommandError::invalid_value(
+                        "Expected 0 or 1 for a switch",
+                        json!("boolean"),
+                    ));
+                }
+            },
+            (_, Component::Whole) => json!(value),
+            (FxValue::Point { y, .. }, Component::X) => json!({ "x": value, "y": y }),
+            (FxValue::Point { x, .. }, Component::Y) => json!({ "x": x, "y": value }),
+            (FxValue::Color { g, b, .. }, Component::R) => {
+                json!({ "r": value, "g": g, "b": b })
+            }
+            (FxValue::Color { r, b, .. }, Component::G) => {
+                json!({ "r": r, "g": value, "b": b })
+            }
+            (FxValue::Color { r, g, .. }, Component::B) => {
+                json!({ "r": r, "g": g, "b": value })
+            }
+            _ => {
+                return Err(CommandError::new(
+                    "invalid_value",
+                    format!("`{}` has no such component", self.id),
+                ));
+            }
+        })
+    }
+
+    /// The op that puts a key of this field's parameter on `frame_in_clip`, at `value` for this
+    /// field's part. The other parts of a point or a colour are what the parameter is at that
+    /// frame (its curve, or its base), so keying one channel never moves the others. A timing
+    /// field has no keys: refused with `not_applicable`.
+    pub fn key_op(
+        &self,
+        clip: &FxClip,
+        frame_in_clip: i64,
+        value: f64,
+    ) -> Result<FxOp, CommandError> {
+        if !value.is_finite() {
+            return Err(CommandError::invalid_value(
+                "Expected a finite number",
+                json!("number"),
+            ));
+        }
+        let Target::Param(param, component) = self.target else {
+            return Err(CommandError::new(
+                "not_applicable",
+                format!("`{}` is a timing field: only parameters have keys", self.id),
+            ));
+        };
+        let (index, _) = clip.effect.param(param).ok_or_else(|| {
+            CommandError::new("unknown_param", format!("`{param}` is not a parameter"))
+        })?;
+        let current = clip
+            .value_at(index, frame_in_clip)
+            .ok_or_else(|| CommandError::new("unknown_param", format!("`{param}` has no value")))?;
+        Ok(FxOp::KeyParam {
+            clip: clip.id.clone(),
+            param: param.to_string(),
+            frame: frame_in_clip,
+            value: Some(self.written(current, component, value)?),
+            easing: None,
+        })
     }
 
     /// The op that restores the default of this field, or `None` when it has no default or the

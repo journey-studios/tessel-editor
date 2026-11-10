@@ -75,11 +75,12 @@ pub(super) fn list_answer(id: &str, scene: &DirectedScene) -> Value {
     })
 }
 
-pub(super) fn frame_answer(
+/// The frame of the scene's own edit that `at` names, refused when the edit does not hold it.
+pub(super) fn edit_frame_of(
     id: &str,
     scene: &DirectedScene,
     at: &FrameAt,
-) -> Result<Value, CommandError> {
+) -> Result<i64, CommandError> {
     let frame = match at {
         FrameAt::Frame(frame) => *frame,
         FrameAt::Time(time) => scene.bundle().frame_at_time(*time)?,
@@ -92,6 +93,15 @@ pub(super) fn frame_answer(
         )
         .target(id));
     }
+    Ok(frame)
+}
+
+pub(super) fn frame_answer(
+    id: &str,
+    scene: &DirectedScene,
+    at: &FrameAt,
+) -> Result<Value, CommandError> {
+    let frame = edit_frame_of(id, scene, at)?;
     let passes: Vec<Value> = scene
         .bundle()
         .fx

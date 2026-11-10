@@ -37,6 +37,7 @@ mod camera_keys;
 mod catalog;
 mod error;
 mod fx;
+mod fx_animation;
 mod fx_inspector;
 mod fx_keys;
 mod op;
@@ -61,8 +62,12 @@ pub use fx::{
     AddClip, ClipField, FxChange, FxOp, FxOutcome, FxSummary, apply_fx, apply_fx_with, dry_run_fx,
     parse_fx_batch,
 };
+pub use fx_animation::{
+    ClipAnimation, ParamAnimation, REASON_FRAME_OUTSIDE_CLIP, REASON_KEY_ON_FRAME,
+    REASON_NEEDS_TWO_KEYS, REASON_NO_FRAME, REASON_NO_KEYS, SeedAnimation,
+};
 pub use fx_inspector::{
-    ClipInspector, Component, DURATION_LABEL, FADE_IN_LABEL, FADE_OUT_LABEL, FieldGroup,
+    ClipInspector, Component, DURATION_LABEL, FADE_IN_LABEL, FADE_OUT_LABEL, FieldGroup, FieldKind,
     InspectorField, Offer, REASON_FAMILY_NOT_YET, REASON_SINGLE_VALUE, START_LABEL, Target,
     has_reset, inspector_fields, layer_inspector, offers, reset_ops, scopes,
 };
