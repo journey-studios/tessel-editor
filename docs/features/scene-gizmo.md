@@ -631,3 +631,56 @@ a guarda acrescentada (pixels pintados, `inStep`, nenhum `overlay.error`) o reve
 
 **Status de G1 neste head:** rotação continua **a validar**: todos os gates pedidos foram executados e passaram (com as duas flakies de carga declaradas e repetidas), os sobreviventes viraram testes mortos, mas falta a revisão
 independente do coordenador sobre este head e a prova com ponteiro físico. Nada além disso foi promovido.
+
+### Integração da PR #40 com a `main` viva (merge `d54a3f3`, 2026-11-10)
+
+Origem conferida: `journey-studios/tessel-editor`. `git ls-remote origin` e `git fetch origin` deram `refs/heads/main` = `e18b0cf39f5b94c71640ad397f3f21bc9781666f`
+(PR #39, inspector neutro de FX e o look `fade`) e `refs/pull/40/head` = `23462bdd8aebbcceba733195b9bd105cd6143dc8`; `gh pr view 40`: draft, `DIRTY`, base `main`. O merge-base é `3e48861`.
+O checkout T3 (`t3/integrate-pr40-gizmo-g1`, `172c90f`, ancestral do head da PR) foi levado a `23462bd` com `git merge --ff-only`; depois `git merge --no-ff origin/main` e **um commit de
+merge** (`d54a3f3`, pais `23462bd` e `e18b0cf`, árvore `885fea733863deaa58bb686341b9087b4df6fc24`). Sem rebase, sem force, nenhum outro worktree ou checkout, raiz canônica não tocada,
+nenhuma linha de FX/inspector/`fade` alterada por esta entrega (código da #39 entra só pelo merge).
+
+**Conflitos (só dois, ambos de documentação) e como foram resolvidos por contrato:**
+
+| Arquivo | Conflito | Resolução |
+|---|---|---|
+| `docs/README.md` | no fim do índice, a nota "G1 (PR #40) … a validar" contra a linha do inspector neutro/smoke de P2 | **as duas** ficam: a linha do F057 como item de lista e a nota do G1 depois dela |
+| `docs/backlog.md` | no fim, o parágrafo da revisão G1 (nome do teste, resumos F055, `not_movable`) contra a seção "P2 / PR39" com `BL082.21`–`BL082.25` | **as duas** ficam, na ordem (G1, depois P2), sem editar nenhuma linha da P2 |
+
+Auto-merge sem conflito, conferido por leitura do delta contra o head da #40: `crates/core/src/ops.rs` (parser de `scene.fx.inspect`/`fx_probe` ao lado de `scene.rotate`/`scene.gizmo.tool`),
+`scene_project/command.rs` (`SceneCommand::FxInspect`/`FxProbe` ao lado de `GizmoCommand::Rotate`), `scene_project/query.rs` (`scene.capabilities` lista **as duas** famílias e o braço
+de leitura de FX recebe `FxInspect`), `docs/features/README.md` (F055 com G1 e F057 coexistem, cada um com seu ID). Os dois conjuntos de comandos são aditivos e usam o mesmo
+espaço único de gestos (`claim_gesture_slot`), o que o teste de interação abaixo (pendente) fixa.
+
+**Comparação de três vias** (base `3e48861`, nosso `23462bd`, deles `e18b0cf`, resultado `d54a3f3`; script em Python 3, só leitura, sobre `git show`): IDs `BL…` e `F…`
+do `docs/backlog.md` (nosso 335, deles 337, resultado 341; **0 ausentes**), de `docs/features/README.md` (146, 145, 148; **0 ausentes**) e de `docs/README.md` (13, 14, 14; **0 ausentes**); linhas
+acrescentadas ou alteradas por cada lado em relação à base e ausentes do resultado: **0** nos três arquivos. Nenhum ID, feature ou evidência desapareceu. Um arquivo versionado
+que um lado alterou e o outro não ficou idêntico ao do lado que o alterou (verificável com `git diff 23462bd d54a3f3 --stat` e `git diff e18b0cf d54a3f3 --stat`).
+
+**Gates no head integrado: NÃO executados (BLOQUEADOS), nada promovido.** Sequência do lock, sem sleep, polling, contorno nem kill: 18:35:51Z a **primeira** tentativa não bloqueante
+(`/tmp/tessel-pr40-int/driver.py`: `LOCK_EX|LOCK_NB` em `/tmp/tessel-scene-gpu.lock` e no lock de vídeo) **adquiriu**; o processo que a segurava, iniciado por `nohup` numa chamada de ferramenta,
+desapareceu com a sessão da ferramenta depois de ~10 min, durante a **compilação do core** (log `D01-newtest-core.KILLED-run1-holder-died.log`, sha256 `44d68e3b…558f`, sem `RELEASED`, sem
+produto envolvido: mesmo padrão registrado na rodada anterior). 18:45:43Z uma **segunda e última** tentativa não bloqueante (agora como tarefa de segundo plano gerenciada) saiu com
+`BLOCKED`: o lock é de `/tmp/tessel-bl157-1/lockrun.py` (`cargo test --workspace`, outro agente, pid 64533). Registro em `/tmp/tessel-pr40-int/lock.state`. Disco livre 48,5 GiB na entrada e 39,9 GiB
+depois do que outro processo ocupou (reserva 16, piso 12); `/tmp/tessel-pr40-int` tem 44 KiB. Cargo só por `./scripts/cargo` → `mbx` com o target padrão (sem `CARGO_TARGET_DIR`,
+`--target-dir`, `build.target-dir` nem `TESSEL_CARGO_LANE`); nenhum `mbx clean`/`gc`.
+
+| Gate | Head / árvore | Cwd | UTC | Saída | Resultado |
+|---|---|---|---|---|---|
+| `git diff --check 3e48861 HEAD` | `d54a3f3` / `885fea73…` limpa | checkout T3 | 18:46Z | 0 | passou |
+| `cargo fmt --all -- --check` (rustfmt direto, não compila) | `d54a3f3` limpa | checkout T3 | 18:46Z | 0 | passou |
+| `python3 scripts/scene-gizmo-proof.spec.py` (S8) / `scene-fx-ui-proof.spec.py` (P2) | `d54a3f3` limpa | checkout T3 | 18:46Z | 0 / 0 | 34/34 e 28/28 |
+| `cargo check`, `clippy -D warnings`, `cargo test --workspace` (`TESSEL_REQUIRE_RUNTIME=1`), builds, `cargo tree` do core, Chrome do runtime, prova G1 nas duas superfícies | `d54a3f3` | — | — | — | **BLOQUEADOS** (lock de GPU/build ocupado; **a compilação do merge continua não verificada**) |
+
+Os gates de `4b690bd` e `1b471d6` acima **não** valem para o merge: o código da #39 (FX, inspector, `fade`) entrou depois deles. O que vale para o código do G1 é o histórico preservado (nada dele foi
+alterado pelo merge nos arquivos do G1, ver `git diff --stat 23462bd d54a3f3 -- crates/core/src/scene_interaction runtime/src/overlay.js crates/core/tests/scene_gizmo_rotation.rs`).
+
+**Teste de interação G1 × FX (BL015.13) escrito, retirado da árvore e não executado.** O arquivo `crates/core/tests/scene_gizmo_fx.rs` (4 testes: um gesto de efeito aberto recusa o press num anel e a troca
+de ferramenta não o toca; um arrasto de anel aberto recusa um gesto de efeito e as leituras do FX o deixam vivo; uma rotação e uma edição de efeito são duas entradas de um histórico que não se tocam em
+undo/redo; uma edição de efeito sob um arrasto o mata e a soltura tardia não escreve) não pôde ser compilado sem o lock. Como a política do repositório é "sem prova, a validar" e um teste que talvez não compile
+quebraria `cargo test --workspace` da PR, **não foi commitado**; cópia em `/tmp/tessel-pr40-int/scene_gizmo_fx.rs.pending` (sha256 `e12d4679…c3f0`, fora do Git: não durável) para o coordenador
+recolocar e rodar quando o lock liberar. Os testes existentes que já cobrem o encontro por outro lado: `a_ring_press_while_another_gesture_is_open_is_refused_and_a_late_release_is_inert` e
+`the_tool_cannot_change_under_an_open_drag_and_the_drag_is_left_alone` (G1) e `one_gesture_at_a_time_and_the_two_kinds_do_not_cross` (F016).
+
+**Status de G1 neste head:** a PR #40 deixa de estar em conflito com a `main` (merge textual resolvido, três vias sem perda), mas a rotação continua **a validar**: não há compilação, clippy, suíte,
+runtime nem prova G1 no head integrado. O próximo passo é rodar a bateria completa do head integrado quando o lock estiver livre; nenhuma flaky anterior foi reinterpretada e nenhuma foi relaxada.

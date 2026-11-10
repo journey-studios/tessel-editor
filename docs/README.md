@@ -78,3 +78,4 @@ plano/relatório continuam como histórico; o contrato atual fica em `features/`
 
 G1 (PR #40): rotação local/mundo implementada, **a validar** no head final;
 os gates históricos de S8 acima não validam os anéis de rotação.
+A `main` com o inspector de FX (PR #39) foi integrada por merge (`d54a3f3`); os gates do head integrado seguem bloqueados pelo lock de GPU (BL015.14).
