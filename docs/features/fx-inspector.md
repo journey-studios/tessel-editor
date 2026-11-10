@@ -56,7 +56,7 @@ Resposta: `action`, `scene`, `locale`, `catalog_version`, `source` (`document` o
 Cada clipe traz `clip`, `track`, `effect`, `effect_label(s)`, `hidden`, `reset_ops[]` (os ops de
 `scene.fx.edit` que fazem o mesmo reset da janela) e `fields[]` com `id`, `group`, `label`/`labels`, `type`,
 `value`, `min`, `max`, `step`, `integer`, `unit`, `default`, `at_default`, `applicable`, `reason` e
-`reset {to, needed}`.
+`reset {to, needed, op}`. `op` é a operação JSONL executável para aquele campo (inclusive duração/fades); é `null` quando o campo já está no padrão. Campos sem padrão têm `reset: null`.
 
 - `gesture` lê o **candidato** do gesto aberto (o valor legal mais recente) e traz `gesture {id, clip, refusal}`
   com a última recusa tipada; um gesto fechado deixa de ser legível.
@@ -65,7 +65,10 @@ Cada clipe traz `clip`, `track`, `effect`, `effect_label(s)`, `hidden`, `reset_o
   documento) e `changes`; `ok: false` traz o erro tipado (`param_out_of_range`, `invalid_value`,
   `unknown_field`, `unknown_element`). Com `quantize: true`, o valor passa pela grade do campo.
 - Idioma desconhecido e clipe desconhecido são erros tipados; nada é escrito.
-- Reset por script: enviar `clips[].reset_ops` a `scene.fx.edit` (uma entrada de undo).
+- Reset por script: enviar `clips[].reset_ops` a `scene.fx.edit` (uma entrada de undo) para o visual inteiro, ou `[fields[].reset.op]` para um campo. O op de uma componente inclui os irmãos atuais; consulte novamente depois de outra edição. Não combine vários ops de componentes do mesmo parâmetro lidos da mesma base: para resetar o visual use o lote agregado, que funde componentes.
+- Quando a consulta usa `gesture`, os ops descrevem o candidato: para resetá-lo sem confirmar use `scene.fx.gesture.update` e depois commit/cancel. A ação semântica de reset da janela opera no documento; para reproduzi-la consulte sem `gesture`.
+- O filtro `clip` limita apenas os clipes descritos na resposta; `probe.clip` é consultado na camada completa, no mesmo documento ou candidato escolhido. O probe retorna `value` julgado após quantização e `requested_value` original, tanto no sucesso quanto na recusa. Não escreve estado.
+- As faixas são escalares: duração, fades, início e overlap também dependem de outros campos. Um reset ou probe pode ser recusado atomicamente pelo domínio por essas restrições; a faixa não promete que toda combinação é válida (BL082.24).
 
 `tessel-headless` (processo real) responde igual à biblioteca: `the_real_headless_process_inspects_and_edits_a_fade_like_the_library`.
 
@@ -126,12 +129,20 @@ números estão em [F016](effects.md#p2-inspector-neutro-e-segundo-look-fade) e 
 
 | Superfície | Estado | Evidência |
 |---|---|---|
-| Lib | V (macOS, SwiftShader) | `scene_edit::fx_inspector` (9 unidades), `reference.rs` (9), `scene_fx_fade.rs` (15), `pilot_fade_corpus.rs` (4), `scene_fx.rs` (catálogo) |
+| Lib | V (macOS, SwiftShader) | `scene_edit::fx_inspector` (9 unidades), `reference.rs` (9), `scene_fx_fade.rs` (17 após a revisão; 15 inicial), `pilot_fade_corpus.rs` (4), `scene_fx.rs` (catálogo) |
 | CLI headless (processo real) | V (macOS, SwiftShader) | `scene_fx_fade.rs::the_real_headless_process_inspects_and_edits_a_fade_like_the_library` |
-| UI GPUI (entrada injetada) | V (macOS, SwiftShader) | `scene_fx_tests.rs` (38 testes `scene_fx`, 4 novos) |
+| UI GPUI (entrada injetada) | V (macOS, SwiftShader) | `scene_fx_tests.rs` (39 testes `scene_fx` após a revisão; 38 inicial) |
 | Janela real, só comandos semânticos | V (macOS, SwiftShader) | `scripts/scene-fx-ui-proof.py` (153 checks no head de código) |
 | Pixels no runtime/monitor/export | V (macOS, SwiftShader) | `crates/render/tests/scene_fx.rs`, `scene_fx_export.rs`, `runtime/test/directed-scene-fade-browser.test.mjs` |
 
 Não provado: ponteiro e teclado físicos (BL043), GPU real, áudio, **Windows** (a prova é macOS/SwiftShader),
 equivalência com o golden da origem (`ORIGIN_GOLDEN_NOT_COMPARABLE`) e saídas reais da origem
 (`ORIGIN_NOT_EXECUTED`). Paridade integral com a origem **não** é afirmada: 2 de 59 efeitos.
+
+## Revisão independente P2 e correções
+
+A revisão independente de f8c4a7e corroborou reset multicomponente, leitura pura, gestos, fórmula, pixels (mutações sRGB e amount duplicado discriminantes), processo headless e janela153/153. As correções subsequentes acrescentam probe fora do filtro, valor quantizado na recusa e reset.op por campo/tempo; UI usa oferta e predicado de reset do core, e reset:start_frame (sem padrão) é unknown_action. Não são as mesmas evidências do head anterior: os gates da correção são registrados abaixo após execução.
+
+O teste de render que reaplica a mesma edição agora se descreve como determinismo; o ciclo real de gesto/commit/cancel/undo é provado pelo core e pela janela. O corpus mantém os mesmos pixels/expectativas, mas acrescenta o blob do catálogo da vinheta e verifica padrões, forma do shader, ordem/visibilidade e clamp do envelope contra o texto fixado. São verificações de transcrição/proveniência, sem executar a origem ou transformar o corpus em golden comparável.
+
+Gates da correção executados pelo coordenador em macOS/SwiftShader: fmt/check/clippy -Dwarnings/workspace/build e coretree sem gpui/wry passam; workspace **2060/0/12** (107suítes, TESSEL_REQUIRE_RUNTIME=1), corefade17/17 e GPUIFX39/39; specsPython28/28 normal/-O. Corpus offline e --origin verificam10casos/12fontes, cinco mutações de transcrição rejeitadas sem alterar os blobs reais nem os casos de pixels. Logs: /Users/wallyssonnunes/.cache/tessel-pr39-followup/logs. Runtime hash7dab67b7…fba3; desktop32c72841…1947. Prova nativa final ainda aguardando lock na publicação desta correção; 153/153 do headf8c4a7e continua histórico, não reatribuído ao novo binário.

@@ -512,3 +512,7 @@ Código validado `f5f6d1deb6d69a7d925bf5d747a76ccf0a6b6a59`: mudar o painel de Y
 ## Resíduos da revisão após o merge da PR37
 
 Código `1ad715901df6edb14503ea081ae407c18bd0e94d` validado: budget só para FX live e cancelamento de Change inválido respeita id substituto. Core19/19, GPUI32/32, workspace1885/0/12 e janela116/116; fmt/check/clippy/build limpos. [Relatório e comentários tratados](../migration/pr37-review-followup-results.md). Os gates anteriores permanecem históricos; BL043 e gaps P0 mantidos.
+
+### P2 — revisão independente e correções do inspector
+
+BL082.21–.23: probe consulta a camada inteira mesmo com filtro de resposta; informa o valor quantizado julgado e o solicitado. JSONL recebe reset.op por campo (cor/ponto preservam irmãos, tempo usa set_field), equivalente à ação da janela. Oferta e predicado de reset vêm do core; o resumo do fade não promete keys ainda ausentes. Reforçada a conferência textual do corpus (BL082.25), sem mudar os casos/pixels nem os blockers P0. Os limites cruzados dos ranges continuam explícitos (BL082.24). Evidências atuais na atualização de [F057](fx-inspector.md); não herdar automaticamente os PASS de f8c4a7e para o código novo.

@@ -77,6 +77,13 @@
       "sha256": "b29678d62782ce5b6715980b97c3264fe29f1c65faecc4994da411ae1587cdf6"
     },
     {
+      "bytes": 1883,
+      "git_blob": "95b137d2a386f6f75dc5bbdb1a89255ac6410684",
+      "path": "packages/scene-engine/src/fx/catalog/vignette.ts",
+      "role": "vignette defaults used by the stacking cases",
+      "sha256": "6bd55eb8c9c129e90ca0cd7a1e515090100cb5511dbabb12b401ca867a2255c8"
+    },
+    {
       "bytes": 1719,
       "git_blob": "65551d862b648bf6739f46d1812c97a5cc8765da",
       "path": "packages/scene-engine/src/runtime/fx/shaders/chunks/color.ts",

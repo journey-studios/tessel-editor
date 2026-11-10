@@ -209,6 +209,19 @@ impl InspectorField {
         self.op(clip, default).ok()
     }
 
+    /// A directly executable JSONL operation for this field, preserving the other components.
+    pub fn reset_op_json(&self, clip: &FxClip) -> Option<Value> {
+        self.reset_op(clip).and_then(|op| match op {
+            FxOp::SetParam { clip, param, value } => {
+                Some(json!({ "op": "set_param", "clip": clip, "param": param, "value": value }))
+            }
+            FxOp::SetField { clip, field, value } => Some(
+                json!({ "op": "set_field", "clip": clip, "field": field.name(), "value": value }),
+            ),
+            _ => None,
+        })
+    }
+
     pub fn to_json(&self, locale: Locale) -> Value {
         json!({
             "id": self.id, "group": self.group.name(),
@@ -282,9 +295,7 @@ impl ClipInspector {
 
     /// Whether any parameter is away from its default (what a "reset" would change).
     pub fn has_reset(&self) -> bool {
-        self.fields.iter().any(|field| {
-            field.group == FieldGroup::Param && field.default.is_some() && !field.at_default()
-        })
+        has_reset(&self.fields)
     }
 
     pub fn to_json(&self, locale: Locale) -> Value {
@@ -297,6 +308,13 @@ impl ClipInspector {
             "fields": self.fields.iter().map(|field| field.to_json(locale)).collect::<Vec<_>>(),
         })
     }
+}
+
+/// Whether the visual parameters have anything to reset; shared by every adapter.
+pub fn has_reset(fields: &[InspectorField]) -> bool {
+    fields.iter().any(|field| {
+        field.group == FieldGroup::Param && field.default.is_some() && !field.at_default()
+    })
 }
 
 /// The ops that restore every *parameter* among `fields` that is away from its default, as one

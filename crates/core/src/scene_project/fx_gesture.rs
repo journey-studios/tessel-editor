@@ -366,6 +366,7 @@ impl EditorState {
         let bundle = shown.bundle();
         let edit_frames = i64::try_from(bundle.edit_duration_frames).unwrap_or(i64::MAX);
         let mut inspectors = scene_edit::layer_inspector(&bundle.fx, edit_frames);
+        let probed = probe.map(|probe| probe_answer(&shown, &inspectors, probe));
         if let Some(wanted) = clip {
             inspectors.retain(|inspector| inspector.clip == wanted);
             if inspectors.is_empty() {
@@ -387,6 +388,11 @@ impl EditorState {
                 let mut described = inspector.to_json(locale);
                 if let Some((_, clip)) = bundle.fx.clip(&inspector.clip) {
                     described["reset_ops"] = json!(inspector.reset_ops_json(clip));
+                    for (field_json, field) in described["fields"].as_array_mut().unwrap().iter_mut().zip(&inspector.fields) {
+                        if field.default.is_some() {
+                            field_json["reset"]["op"] = json!(field.reset_op_json(clip));
+                        }
+                    }
                 }
                 described
             }).collect::<Vec<_>>(),
@@ -401,8 +407,8 @@ impl EditorState {
                 })),
             });
         }
-        if let Some(probe) = probe {
-            answer["probe"] = probe_answer(&shown, &inspectors, probe);
+        if let Some(probed) = probed {
+            answer["probe"] = probed;
         }
         Ok(answer)
     }
@@ -433,9 +439,9 @@ fn probe_answer(
     inspectors: &[scene_edit::ClipInspector],
     probe: &FxProbe,
 ) -> Value {
-    let refuse = |error: CommandError| {
+    let refuse = |error: CommandError, value: f64| {
         json!({
-            "clip": probe.clip, "field": probe.field, "value": probe.value, "ok": false,
+            "clip": probe.clip, "field": probe.field, "value": value, "requested_value": probe.value, "ok": false,
             "error": { "code": error.code, "message": error.message },
         })
     };
@@ -443,13 +449,19 @@ fn probe_answer(
         .iter()
         .find(|inspector| inspector.clip == probe.clip)
     else {
-        return refuse(CommandError::unknown_element("effect clip", &probe.clip));
+        return refuse(
+            CommandError::unknown_element("effect clip", &probe.clip),
+            probe.value,
+        );
     };
     let Some(field) = inspector.field(&probe.field) else {
-        return refuse(CommandError::new(
-            "unknown_field",
-            format!("`{}` has no field `{}`", probe.clip, probe.field),
-        ));
+        return refuse(
+            CommandError::new(
+                "unknown_field",
+                format!("`{}` has no field `{}`", probe.clip, probe.field),
+            ),
+            probe.value,
+        );
     };
     let value = if probe.quantize {
         field.quantize(probe.value)
@@ -457,17 +469,20 @@ fn probe_answer(
         probe.value
     };
     let Some((_, clip)) = scene.bundle().fx.clip(&probe.clip) else {
-        return refuse(CommandError::unknown_element("effect clip", &probe.clip));
+        return refuse(
+            CommandError::unknown_element("effect clip", &probe.clip),
+            probe.value,
+        );
     };
     let op = match field.op(clip, value) {
         Ok(op) => op,
-        Err(error) => return refuse(error),
+        Err(error) => return refuse(error, value),
     };
     match scene_edit::dry_run_fx(scene, std::slice::from_ref(&op)) {
         Ok(summary) => json!({
-            "clip": probe.clip, "field": probe.field, "value": value, "ok": true,
+            "clip": probe.clip, "field": probe.field, "value": value, "requested_value": probe.value, "ok": true,
             "would_change": summary.modified, "changes": changes_json(&summary),
         }),
-        Err(error) => refuse(CommandError::from(error)),
+        Err(error) => refuse(CommandError::from(error), value),
     }
 }

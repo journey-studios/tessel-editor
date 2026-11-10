@@ -63,7 +63,7 @@ pub use fx::{
 pub use fx_inspector::{
     ClipInspector, Component, DURATION_LABEL, FADE_IN_LABEL, FADE_OUT_LABEL, FieldGroup,
     InspectorField, Offer, REASON_FAMILY_NOT_YET, REASON_SINGLE_VALUE, START_LABEL, Target,
-    inspector_fields, layer_inspector, offers, reset_ops, scopes,
+    has_reset, inspector_fields, layer_inspector, offers, reset_ops, scopes,
 };
 pub use op::{EditOp, parse_batch};
 pub use reference::PropertyRef;

@@ -283,9 +283,9 @@ pub static FADE: EffectSpec = EffectSpec {
     family: "look",
     label: Labels::new("Fade", "Fade", "Fundido"),
     summary: Labels::new(
-        "Mistura o plano com uma cor (preto, branco, vermelho) numa quantidade que pode ser animada por chaves.",
-        "Mixes the shot with a colour (black, white, red) by an amount that can be keyed.",
-        "Mezcla el plano con un color (negro, blanco, rojo) en una cantidad que se puede animar con claves.",
+        "Mistura a imagem com uma cor, com quantidade fixa e envelope de entrada e saída.",
+        "Mixes the picture with a colour, with a fixed amount and an entry and exit envelope.",
+        "Mezcla la imagen con un color, con cantidad fija y una envolvente de entrada y salida.",
     ),
     typical_duration_frames: 24,
     params: &[

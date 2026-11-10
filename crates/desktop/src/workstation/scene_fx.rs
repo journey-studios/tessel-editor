@@ -35,7 +35,8 @@ use serde_json::{Value, json};
 use tessel_editor_core::directed_scene::fx::PassBudget;
 use tessel_editor_core::directed_scene::fx::{self, EffectSpec, FxClip, Locale};
 use tessel_editor_core::scene_edit::{
-    AddClip, FieldGroup, FxOp, InspectorField, REASON_SINGLE_VALUE, inspector_fields, reset_ops,
+    AddClip, FxOp, InspectorField, REASON_SINGLE_VALUE, has_reset, inspector_fields, offers,
+    reset_ops,
 };
 use tessel_editor_core::scene_interaction::{FxGestureCommand, Gesture, GestureCommand};
 use tessel_editor_core::scene_project::SceneCommand;
@@ -212,9 +213,7 @@ fn reason_text(reason: &str) -> &'static str {
 /// listed disabled with its reason, never as a callback that does nothing.
 fn clip_actions(clip: &FxClip, edit_frames: i64) -> Vec<Value> {
     let controls = controls_of(clip, edit_frames);
-    let looks_changed = controls.iter().any(|control| {
-        control.group == FieldGroup::Param && control.default.is_some() && !control.at_default()
-    });
+    let looks_changed = has_reset(&controls);
     let mut actions = vec![
         json!({ "action": "remove", "label": "Remover efeito" }),
         json!({
@@ -407,6 +406,13 @@ impl Workstation {
                     .iter()
                     .find(|control| control.id == id)
                     .ok_or_else(|| unknown_control(clip, id))?;
+                if control.default.is_none() {
+                    return Err(unknown_action(
+                        &clip_node_id(clip),
+                        &format!("reset:{id}"),
+                        &[],
+                    ));
+                }
                 control.reset_op(&found.clip).into_iter().collect()
             }
             None => reset_ops(&controls, &found.clip),
@@ -829,13 +835,15 @@ impl Workstation {
             .filter(|open| open.scene() == view.scene && open.fx_clip().is_some());
         let gesture_state =
             gesture.map(|open| open.to_json(&self.state.scenes, self.state.project.revision));
-        let actions: Vec<Value> = fx::catalog()
+        let actions: Vec<Value> = offers()
             .iter()
-            .map(|spec| {
+            .map(|offer| {
+                let spec = offer.effect;
                 json!({
                     "action": format!("{ADD_PREFIX}{}", spec.id),
                     "label": format!("Adicionar {}", spec.label.get(LOCALE).to_lowercase()),
-                    "enabled": true,
+                    "enabled": offer.applicable,
+                    "disabled_reason": offer.reason,
                 })
             })
             .collect();
@@ -963,19 +971,30 @@ impl Workstation {
             .text_color(t.text)
             .child(div().child("Efeitos"));
         let mut adds = h_flex().gap(px(2.));
-        for spec in fx::catalog() {
+        for offer in offers() {
+            let spec = offer.effect;
             let label = format!("Adicionar {}", spec.label.get(LOCALE).to_lowercase());
             let id = SharedString::from(format!("fx-add:{}", spec.id));
             let workstation = cx.weak_entity();
             let effect = spec.id;
             let probe = self.geometry.probe(format!("control:fx-add:{effect}"));
-            adds = adds.child(div().relative().child(probe).child(
+            let button = if offer.applicable {
                 tool_button(id, IconName::Plus, &label).on_click(move |_, _, cx| {
                     let _ = workstation.update(cx, |this, cx| {
-                        let _ = this.fx_add(effect, Source::Gesture, cx);
+                        if let Err(error) = this.fx_add(effect, Source::Gesture, cx) {
+                            this.scene_report(error, cx);
+                        }
                     });
-                }),
-            ));
+                })
+            } else {
+                disabled_tool_button(
+                    id,
+                    IconName::Plus,
+                    &label,
+                    offer.reason.unwrap_or("Indisponível"),
+                )
+            };
+            adds = adds.child(div().relative().child(probe).child(button));
         }
         header = header.child(adds);
         let mut section = v_flex().w_full().child(header);
@@ -1069,11 +1088,7 @@ impl Workstation {
                 .child(button)
         };
         let reset = {
-            let looks_changed = controls_of(clip, view.edit_frames).iter().any(|control| {
-                control.group == FieldGroup::Param
-                    && control.default.is_some()
-                    && !control.at_default()
-            });
+            let looks_changed = has_reset(&controls_of(clip, view.edit_frames));
             let label = format!("Redefinir parâmetros de {}", clip.id);
             let button_id = SharedString::from(format!("fx-reset:{id}"));
             let button = if looks_changed {

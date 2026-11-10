@@ -747,7 +747,10 @@ fn the_inspector_says_what_is_at_default_what_is_not_drawn_and_never_writes() {
     assert_eq!(amount["value"], 0.25);
     assert_eq!(amount["default"], 1.0);
     assert_eq!(amount["at_default"], false);
-    assert_eq!(amount["reset"], json!({"needed": true, "to": 1.0}));
+    assert_eq!(
+        amount["reset"],
+        json!({"needed": true, "to": 1.0, "op": {"op":"set_param","clip":"f1","param":"amount","value":1.0}})
+    );
     assert_eq!(footprint(&state), before, "inspecting writes nothing");
     // The ops a script sends to reset the look are in the answer; sending them resets it.
     assert_eq!(
@@ -967,4 +970,137 @@ fn a_fade_param_reads_back_as_the_typed_value() {
             b: 0.0
         })
     );
+}
+
+#[test]
+fn a_filtered_inspector_probes_the_complete_layer_and_reports_the_quantized_value() {
+    let mut state = session();
+    edit(
+        &mut state,
+        json!([
+            add_fade("f1", 0, 40, json!({})),
+            add_vignette("v1", 0, 40, json!({}))
+        ]),
+    );
+    edit(
+        &mut state,
+        json!([{"op":"set_field","clip":"v1","field":"fade_out_frames","value":10}]),
+    );
+    let before = footprint(&state);
+    let answer = inspect(
+        &mut state,
+        json!({"clip":"f1", "probe":{"clip":"v1","field":"intensity","value":0.4}}),
+    );
+    assert_eq!(answer["clip_count"], 1);
+    assert_eq!(answer["clips"][0]["clip"], "f1");
+    assert_eq!(answer["probe"]["ok"], true, "{answer}");
+    let answer = inspect(
+        &mut state,
+        json!({"clip":"f1", "probe":{"clip":"v1","field":"fade_in_frames","value":35.4,"quantize":true}}),
+    );
+    assert_eq!(answer["probe"]["ok"], false);
+    assert_eq!(answer["probe"]["value"], 35.0);
+    assert_eq!(answer["probe"]["requested_value"], 35.4);
+    assert_eq!(answer["probe"]["error"]["code"], "invalid_bundle");
+    assert_eq!(footprint(&state), before, "both probes are read-only");
+}
+
+#[test]
+fn field_reset_ops_are_executable_in_the_real_jsonl_process_including_components_and_time() {
+    let attach = json!({"op":"scene.attach","id":"street","bundle":bundle()});
+    let add = json!({"op":"scene.fx.edit","scene":"street","ops":[add_fade("f1",0,40,json!({"color":{"r":0.2,"g":0.7,"b":0.8}}))]});
+    for (field, expected_op) in [
+        (
+            "color_g",
+            json!({"op":"set_param","clip":"f1","param":"color","value":{"r":0.2,"g":0.0,"b":0.8}}),
+        ),
+        (
+            "duration_frames",
+            json!({"op":"set_field","clip":"f1","field":"duration_frames","value":24}),
+        ),
+    ] {
+        let mut state = session();
+        ok(&mut state, add.clone());
+        let before = footprint(&state);
+        let info = inspect(&mut state, json!({"clip":"f1"}));
+        let described = info["clips"][0]["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["id"] == field)
+            .unwrap();
+        let op = described["reset"]["op"].clone();
+        assert_eq!(op, expected_op);
+        assert_eq!(footprint(&state), before);
+        edit(&mut state, json!([op.clone()]));
+        assert_eq!(undo_depth(&state), before.1 + 1);
+        if field == "color_g" {
+            assert_eq!(
+                clip_of(&list(&mut state), "f1")["params"]["color"],
+                json!({"r":0.2,"g":0.0,"b":0.8})
+            );
+            assert_eq!(clip_of(&list(&mut state), "f1")["duration_frames"], 40);
+        }
+        let requests = [
+            attach.clone(),
+            add.clone(),
+            json!({"op":"scene.fx.inspect","scene":"street","clip":"f1"}),
+            json!({"op":"scene.fx.edit","scene":"street","ops":[op]}),
+            json!({"op":"scene.fx.inspect","scene":"street","clip":"f1"}),
+            json!({"op":"history.undo"}),
+            json!({"op":"scene.fx.inspect","scene":"street","clip":"f1"}),
+        ];
+        let input = requests
+            .iter()
+            .map(Value::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut library_state = EditorState::empty(&ProjectSettings::default()).unwrap();
+        let mut library = Vec::new();
+        headless::run_session(&mut library_state, None, input.as_bytes(), &mut library).unwrap();
+        let mut child = Process::new(env!("CARGO_BIN_EXE_tessel-headless"))
+            .arg("--empty")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
+        let output = child.wait_with_output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        let parse = |bytes: &[u8]| {
+            String::from_utf8_lossy(bytes)
+                .lines()
+                .map(|line| serde_json::from_str::<Value>(line).unwrap())
+                .collect::<Vec<_>>()
+        };
+        let results = parse(&output.stdout);
+        assert_eq!(results, parse(&library));
+        let value_of = |index: usize| {
+            results[index]["result"]["clips"][0]["fields"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|f| f["id"] == field)
+                .unwrap()["value"]
+                .clone()
+        };
+        assert_eq!(
+            value_of(4),
+            if field == "color_g" {
+                json!(0.0)
+            } else {
+                json!(24.0)
+            }
+        );
+        assert_eq!(value_of(6), value_of(2), "undo restores the field");
+    }
 }

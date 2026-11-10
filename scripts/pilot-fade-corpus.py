@@ -54,6 +54,7 @@ FADE = "packages/scene-engine/src/fx/catalog/fade.ts"
 SHADER = "packages/scene-engine/src/runtime/fx/shaders/fade.ts"
 META = "packages/scene-engine/src/fx/catalog/fx-effect-meta.ts"
 PARAMS = "packages/scene-engine/src/fx/catalog/param-defs.ts"
+VIGNETTE_CATALOG = "packages/scene-engine/src/fx/catalog/vignette.ts"
 VIGNETTE_SHADER = "packages/scene-engine/src/runtime/fx/shaders/vignette.ts"
 SOURCES = [
     (FADE, "catalog: params, defaults, label and summary"),
@@ -61,6 +62,7 @@ SOURCES = [
     (META, "intensity is appended last, default 1, range 0..1"),
     (PARAMS, "ratioParam: 0..1, step 0.01"),
     (VIGNETTE_SHADER, "the vignette the stacking cases compose with"),
+    (VIGNETTE_CATALOG, "vignette defaults used by the stacking cases"),
     ("packages/scene-engine/src/runtime/fx/shaders/chunks/color.ts", "sRGB <-> linear curves"),
     ("packages/scene-engine/src/fx/fx-clip-sample.ts", "envelopeWeight: fadeIn/fadeOut at mid-frame"),
     ("packages/scene-engine/src/fx/fx-frame-decks.ts", "order of tracks, hidden clips and tracks"),
@@ -112,12 +114,41 @@ def check_against(texts):
     ):
         if line not in sample:
             problems.append("envelope: line not found in the origin: %s" % line)
+    if "return Math.max(0, Math.min(1, weight))" not in sample:
+        problems.append("envelope: the 0..1 clamp is not in the origin text")
+    decks = texts.get("packages/scene-engine/src/fx/fx-frame-decks.ts", "")
+    for line in (
+        "for (const track of bundle.fx?.tracks ?? [])",
+        "track.hidden ||",
+        "const ordered = [...track.clips].sort((a, b) => a.startFrame - b.startFrame)",
+        "for (const clip of ordered)",
+        "if (!clip.hidden)",
+        "clips.push(clip)",
+    ):
+        if line not in decks:
+            problems.append("deck order or visibility: line not found: " + line)
     if "amount: clampUnit(intensity * pass.weight)," not in texts.get(
         "packages/scene-engine/src/runtime/fx/fx-compositor.ts", ""
     ):
         problems.append("compositor: amount = clampUnit(intensity * pass.weight) not in the origin text")
     if "gl_FragColor = vec4(mix(c, uColor, shade * uAmount), 1.0);" not in texts.get(VIGNETTE_SHADER, ""):
         problems.append("vignette shader: the mix line is not in the origin text")
+    vignette_shader = texts.get(VIGNETTE_SHADER, "")
+    for line in (
+        "float stretch = mix(1.0, uSize.x / uSize.y, uRoundness);",
+        "vec2 shape = vec2(stretch, 1.0);",
+        "float r = length((vUv - uCenter) * 2.0 * shape) / max(length(shape), 1.0);",
+        "float shade = smoothstep(uRadius, uRadius + uSoftness, r);",
+    ):
+        if line not in vignette_shader:
+            problems.append("vignette shader: shape line not found: " + line)
+    catalog = texts.get(VIGNETTE_CATALOG, "")
+    for param, default in VIGNETTE.items():
+        block = re.search(r'id:\s*"' + re.escape(param) + r'"[^}]*?default:\s*([0-9.]+)', catalog)
+        if block is None or float(block.group(1)) != default:
+            problems.append("vignette catalog: default mismatch: " + param)
+    if 'default: { x: 0.5, y: 0.5 }' not in catalog or 'default: { r: 0, g: 0, b: 0 }' not in catalog:
+        problems.append("vignette catalog: centre or colour default mismatch")
     return problems
 
 

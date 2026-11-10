@@ -452,7 +452,8 @@ fn a_fade_and_a_vignette_compose_in_track_order_and_the_candidate_is_the_commit(
         }
     }
 
-    // Preview == commit: the candidate of an edit draws the very picture the committed document does.
+    // Reapplying the same edit is deterministic. The actual gesture/commit cycle is covered by
+    // scene_fx_fade and the native window proof; this check does not simulate a gesture.
     let candidate_ops = [FxOp::from_json(&json!({
         "op": "set_param", "clip": "f1", "param": "amount", "value": 0.3,
     }))
@@ -461,7 +462,10 @@ fn a_fade_and_a_vignette_compose_in_track_order_and_the_candidate_is_the_commit(
     let (_, previewed) = draw(&mut renderer, &candidate, 12);
     let committed = apply_fx(&fade_first, &candidate_ops).unwrap().candidate;
     let (_, after_commit) = draw(&mut renderer, &committed, 12);
-    assert_eq!(previewed.hash, after_commit.hash, "preview == commit");
+    assert_eq!(
+        previewed.hash, after_commit.hash,
+        "repeated edit == repeated render"
+    );
     assert_ne!(previewed.hash, a.hash);
     // Cancel / undo: the scene before the edit is drawn again, byte for byte.
     let (_, undone) = draw(&mut renderer, &fade_first, 12);

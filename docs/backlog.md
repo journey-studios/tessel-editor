@@ -1112,3 +1112,15 @@ Procedência verificada somente por leitura em 2026-11-09 (nada foi copiado para
 - Medido pelo `validate_r2.py` (sobre o MP4, sem abrir o editor): sem janela de silêncio digital; trecho calado mais longo 0,5 s; queda de nível nas emendas 7,7 dB (23–25 s) e 5,6 dB (46–48 s) contra a vizinhança; 24 quadros nos extremos de câmera e 120 quadros de varredura (um a cada 12) sem faixa preta acima de 1 % (108 verificados em cada formato; os 12 de 1296 a 1440, do cartão final, são pulados por desenho).
 
 **Limites.** Isto não é aceite humano: ninguém **ouviu** o áudio nas emendas de 23–25 s e 46–48 s (a queda de nível é um número, não um veredito) nem assistiu aos 60 s completos; 108 quadros verificados entre 120 amostras não são o filme inteiro; a r2 não resolve a falta de áudio novo (BL160) nem o reenquadramento automático (BL161); não há prova de hardware próprio nem de WKWebView nativa para estes quadros além do export. Nenhuma lacuna de hardware, humana ou em andamento de outras PRs foi fechada.
+
+### P2 / PR39 — correções do coordenador após revisão independente
+
+Revisão em f8c4a7e corroborou domínio/resetmulticomponente/pixels e janela153/153; coordenador corrigiu os resíduos, sem nova delegação. Código da correção validado: fmt/check/clippy/workspace/build, core semgpui/wry, workspace2060/0/12 (107suítes, runtimeobrigatório), corefade17/17, GPUIFX39/39, specsPython28normal/-O e corpus12fontes. A prova nativa final ainda espera o lock de benchmark de outra frente; sem reutilizar153/153 antigo como prova nova. Sem merge.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL082.21 | P2/R1 M1,L6 | Probe filtrado/valor cru na recusa | Corrigido, core/processo e workspace passam | F057 | Coordenador | Probe consulta camada completa; value julgado + requested_value; leitura pura |
+| BL082.22 | P2/R1 M2 | Resetporcampo/tempo JSONL ausente | Corrigido, core17/GPUI39 e workspace passam | F057 | Coordenador | fields.reset.op executável, preserva irmãos, mesmo resultado UI e JSONL, undo único |
+| BL082.23 | P2/R1 L1–L4,L7 | Resíduos texto/oferta/reset/provas | Corrigido e gates locais passam; janela final aguardando lock | F057 | Coordenador | Labels semkeys, UI usa offers/hasreset, resetsemdefault unknown_action, prova de tempo antes/depois; render descrito como determinismo |
+| BL082.24 | P2/R1 L5 | Ranges escalares não incluem restrições cruzadas | Limite documentado; melhoria pendente | F057 | — | Decidir limitesefetivos preservando probe/recusa atômica |
+| BL082.25 | P2/R1 L8 | Conferência incompleta de transcrição da vinheta/ordem/envelope | Corrigido, verify offline/--origin e cinco mutações discriminantes | BL036/BL019 | Coordenador | Catálogovinheta pinado, defaults/forma/ordem/hidden/clamp conferidos; expectativas de pixels intactas; gaps P0 mantidos |

@@ -2054,6 +2054,7 @@ fn a_fade_edits_by_node_and_by_slider_and_a_reset_is_one_undo_entry(cx: &mut Tes
     assert_eq!(undo_depth(&view, cx), depth + 3);
 
     // One field back, then the whole look back: each one entry, the timing untouched.
+    let timing_before = node(&view, cx, CLIP)["state"]["duration_frames"].clone();
     invoke(&view, cx, CLIP, "reset:amount").unwrap();
     assert_eq!(fade_amount(&view, cx, "fx-1"), 1.0);
     assert_eq!(undo_depth(&view, cx), depth + 4);
@@ -2064,10 +2065,7 @@ fn a_fade_edits_by_node_and_by_slider_and_a_reset_is_one_undo_entry(cx: &mut Tes
         json!({"r": 0.0, "g": 0.0, "b": 0.0})
     );
     assert_eq!(undo_depth(&view, cx), depth + 5);
-    assert_eq!(
-        clip["state"]["duration_frames"],
-        node(&view, cx, CLIP)["state"]["duration_frames"]
-    );
+    assert_eq!(clip["state"]["duration_frames"], timing_before);
 
     // Undo puts the colour back; redo restores the reset.
     view.update(cx, |view, cx| view.execute(Command::Undo, Source::Cli, cx))
@@ -2154,4 +2152,63 @@ fn a_reset_puts_every_channel_of_a_colour_back_not_only_the_last_one(cx: &mut Te
         clip["state"]["params"]["center"],
         json!({"x": 0.5, "y": 0.5})
     );
+}
+
+#[gpui_kit::test]
+fn field_reset_matches_the_inspector_jsonl_op_and_reset_without_default_is_unknown(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = mounted(cx);
+    invoke(&view, cx, "scene.fx", "add:fade").unwrap();
+    set(&view, cx, CLIP, "color_r", Raw::Number(0.2)).unwrap();
+    set(&view, cx, CLIP, "color_g", Raw::Number(0.7)).unwrap();
+    set(&view, cx, CLIP, "color_b", Raw::Number(0.8)).unwrap();
+    set(&view, cx, CLIP, "duration_frames", Raw::Number(40.0)).unwrap();
+    for field in ["color_g", "duration_frames"] {
+        let info = view
+            .update(cx, |view, _| {
+                tessel_editor_core::headless::execute(
+                    &mut view.state,
+                    &json!({"op":"scene.fx.inspect","scene":"street","clip":"fx-1"}),
+                )
+            })
+            .unwrap();
+        let described = info["clips"][0]["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|f| f["id"] == field)
+            .unwrap();
+        let op = described["reset"]["op"].clone();
+        assert!(op.is_object(), "{field}: {info}");
+        let depth = undo_depth(&view, cx);
+        invoke(&view, cx, CLIP, &format!("reset:{field}")).unwrap();
+        let gui = node(&view, cx, CLIP)["state"].clone();
+        assert_eq!(undo_depth(&view, cx), depth + 1);
+        view.update(cx, |view, cx| view.execute(Command::Undo, Source::Cli, cx))
+            .unwrap();
+        view.update(cx, |view, _| {
+            tessel_editor_core::headless::execute(
+                &mut view.state,
+                &json!({"op":"scene.fx.edit","scene":"street","ops":[op]}),
+            )
+        })
+        .unwrap();
+        assert_eq!(
+            node(&view, cx, CLIP)["state"],
+            gui,
+            "same reset via UI and JSONL: {field}"
+        );
+        assert_eq!(undo_depth(&view, cx), depth + 1);
+    }
+    let before = node(&view, cx, CLIP)["state"].clone();
+    let depth = undo_depth(&view, cx);
+    assert_eq!(
+        invoke(&view, cx, CLIP, "reset:start_frame")
+            .unwrap_err()
+            .code,
+        "unknown_action"
+    );
+    assert_eq!(node(&view, cx, CLIP)["state"], before);
+    assert_eq!(undo_depth(&view, cx), depth);
 }
