@@ -35,13 +35,14 @@ use serde_json::{Value, json};
 use tessel_editor_core::directed_scene::fx::PassBudget;
 use tessel_editor_core::directed_scene::fx::{self, EffectSpec, FxClip, Locale};
 use tessel_editor_core::scene_edit::{
-    AddClip, FxOp, InspectorField, REASON_SINGLE_VALUE, has_reset, inspector_fields, offers,
-    reset_ops,
+    AddClip, ClipAnimation, FieldKind, FxOp, InspectorField, REASON_SINGLE_VALUE, has_reset,
+    inspector_fields, offers, reset_ops,
 };
 use tessel_editor_core::scene_interaction::{FxGestureCommand, Gesture, GestureCommand};
 use tessel_editor_core::scene_project::SceneCommand;
 
 use super::controls::{disabled_tool_button, glyph, tool_button, value_after_key};
+use super::scene_fx_keys::{animation_actions, animation_at, animation_fields};
 use super::scene_model::{PanelFit, format_number};
 use super::scene_panel::SliderRow;
 use super::tokens::Tokens;
@@ -135,7 +136,7 @@ pub type FxControl = InspectorField;
 
 /// The language the window prints the catalog in. The editor's own is Portuguese; the model also
 /// answers in English and Spanish for any adapter that asks.
-const LOCALE: Locale = Locale::PtBr;
+pub(super) const LOCALE: Locale = Locale::PtBr;
 
 fn effect_label(spec: &EffectSpec) -> &'static str {
     spec.label.get(LOCALE)
@@ -211,7 +212,7 @@ fn reason_text(reason: &str) -> &'static str {
 /// The actions of a clip node: remove, hide, and the resets the inspector model says make sense
 /// (the whole look, then every field away from its default). A reset with nothing to restore is
 /// listed disabled with its reason, never as a callback that does nothing.
-fn clip_actions(clip: &FxClip, edit_frames: i64) -> Vec<Value> {
+fn clip_actions(clip: &FxClip, edit_frames: i64, frame: Option<i64>) -> Vec<Value> {
     let controls = controls_of(clip, edit_frames);
     let looks_changed = has_reset(&controls);
     let mut actions = vec![
@@ -235,6 +236,7 @@ fn clip_actions(clip: &FxClip, edit_frames: i64) -> Vec<Value> {
             "disabled_reason": (!away).then_some(ALREADY_DEFAULT),
         }));
     }
+    actions.extend(animation_actions(&ClipAnimation::of(clip, frame)));
     actions
 }
 
@@ -295,7 +297,7 @@ impl Workstation {
     }
 
     /// The same, always from the document: what an update of a gesture derives from.
-    fn fx_document_view(&self) -> Option<FxView> {
+    pub(super) fn fx_document_view(&self) -> Option<FxView> {
         self.fx_view_with(false)
     }
 
@@ -332,7 +334,7 @@ impl Workstation {
 
     /// `scene.fx.edit` with one op, in the scene of `view`: one history entry, the core's typed
     /// refusal on screen.
-    fn fx_run(
+    pub(super) fn fx_run(
         &mut self,
         scene: &str,
         op: FxOp,
@@ -410,7 +412,7 @@ impl Workstation {
                     return Err(unknown_action(
                         &clip_node_id(clip),
                         &format!("reset:{id}"),
-                        &clip_actions(&found.clip, view.edit_frames)
+                        &clip_actions(&found.clip, view.edit_frames, view.frame_here)
                             .iter()
                             .filter_map(|action| action["action"].as_str().map(str::to_string))
                             .collect::<Vec<_>>(),
@@ -792,6 +794,17 @@ impl Workstation {
             let mut fields: Vec<Value> = controls_of(clip, view.edit_frames)
                 .iter()
                 .map(|control| {
+                    if control.kind == FieldKind::Boolean {
+                        // A switch: `true`/`false`, with no range or step to move.
+                        return json!({
+                            "field": control.id, "label": format!("{} {}", effect_label(clip.effect), control.label(LOCALE)),
+                            "type": "boolean", "value": control.value != 0.0,
+                            "default": control.default.map(|default| default != 0.0),
+                            "at_default": control.at_default(), "group": control.group.name(),
+                            "enabled": control.applicable,
+                            "disabled_reason": control.reason.map(reason_text),
+                        });
+                    }
                     json!({
                         "field": control.id, "label": format!("{} {}", effect_label(clip.effect), control.label(LOCALE)),
                         "type": "number", "value": control.value, "min": control.min,
@@ -803,6 +816,8 @@ impl Workstation {
                     })
                 })
                 .collect();
+            let animation = animation_at(&view, clip);
+            fields.extend(animation_fields(&animation));
             fields.push(json!({
                 "field": "hidden", "label": "Oculto", "type": "boolean", "value": clip.hidden,
             }));
@@ -818,7 +833,7 @@ impl Workstation {
                 "label": format!("{} {}", effect_label(clip.effect), clip.id),
                 "parent": SECTION_ID, "children": [], "enabled": true, "visible": true,
                 "fields": fields,
-                "actions": clip_actions(clip, view.edit_frames),
+                "actions": clip_actions(clip, view.edit_frames, view.frame_here),
                 "state": {
                     "clip": clip.id, "track": entry.track_id, "track_label": entry.track_label,
                     "effect": clip.effect.id, "start_frame": clip.start_frame,
@@ -826,6 +841,7 @@ impl Workstation {
                     "end_frame_exclusive": clip.end_frame_exclusive(),
                     "fade_in_frames": clip.fade_in_frames, "fade_out_frames": clip.fade_out_frames,
                     "hidden": clip.hidden, "params": params,
+                    "animation": animation.to_json(LOCALE),
                 },
             }));
         }
@@ -895,6 +911,12 @@ impl Workstation {
             return Some(result);
         }
         let clip = target.strip_prefix(CLIP_PREFIX)?;
+        // The keys and the seed (F058): their own names, judged by the same model the panel paints.
+        if let Some(name) = action
+            && let Some(result) = self.fx_animation_invoke(clip, name, Source::Cli, cx)
+        {
+            return Some(result);
+        }
         Some(match action {
             Some("remove") => self.fx_remove(clip, Source::Cli, cx),
             Some("toggle_hidden") => match self
@@ -915,7 +937,7 @@ impl Workstation {
                     .fx_view()
                     .and_then(|view| {
                         view.clip(clip).map(|entry| {
-                            clip_actions(&entry.clip, view.edit_frames)
+                            clip_actions(&entry.clip, view.edit_frames, view.frame_here)
                                 .iter()
                                 .filter_map(|action| action["action"].as_str().map(str::to_string))
                                 .collect::<Vec<_>>()
@@ -940,7 +962,24 @@ impl Workstation {
                 let hidden = raw.boolean().map_err(|error| error.target(target))?;
                 return self.fx_set_hidden(clip, hidden, Source::Cli, cx);
             }
-            let value = raw.number().map_err(|error| error.target(target))?;
+            if let Some(result) = self.fx_animation_set(clip, field, raw, cx) {
+                return result;
+            }
+            // A switch takes true or false, never a number.
+            let is_switch = self.fx_view().and_then(|view| {
+                let found = view.clip(clip)?;
+                controls_of(&found.clip, view.edit_frames)
+                    .into_iter()
+                    .find(|control| control.id == field)
+                    .map(|control| control.kind == FieldKind::Boolean)
+            });
+            let value = if is_switch == Some(true) {
+                f64::from(u8::from(
+                    raw.boolean().map_err(|error| error.target(target))?,
+                ))
+            } else {
+                raw.number().map_err(|error| error.target(target))?
+            };
             self.fx_set_control(clip, field, value, Source::Cli, cx)
         })();
         Some(result.map_err(|error| {
@@ -1141,6 +1180,10 @@ impl Workstation {
             if !control.applicable {
                 continue;
             }
+            if control.kind == FieldKind::Boolean {
+                block = block.child(self.fx_switch_row(t, clip, &control, cx));
+                continue;
+            }
             let key = FxKey {
                 scene: view.scene.clone(),
                 clip: clip.id.clone(),
@@ -1176,7 +1219,7 @@ impl Workstation {
                 slider,
             ));
         }
-        block
+        block.child(self.fx_animation_block(t, view, entry, cx))
     }
 
     fn fx_slider(

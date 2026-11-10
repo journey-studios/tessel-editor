@@ -21,6 +21,7 @@ mod perf_history_view;
 mod perf_meter;
 mod playback;
 mod scene_fx;
+mod scene_fx_keys;
 mod scene_gesture;
 mod scene_gizmo;
 mod scene_import;
@@ -845,6 +846,8 @@ mod input_tests;
 mod perf_history_tests;
 #[cfg(test)]
 mod perf_tests;
+#[cfg(test)]
+mod scene_fx_keys_tests;
 #[cfg(test)]
 mod scene_fx_tests;
 #[cfg(test)]

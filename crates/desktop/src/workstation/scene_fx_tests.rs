@@ -27,7 +27,7 @@ const BUNDLE: &str = include_str!(
 /// `scene.attach` is itself one undoable edit, so the fixture starts one entry deep.
 const ATTACH_ENTRIES: u64 = 1;
 
-fn mounted(cx: &mut TestAppContext) -> (Entity<Workstation>, &mut VisualTestContext) {
+pub(super) fn mounted(cx: &mut TestAppContext) -> (Entity<Workstation>, &mut VisualTestContext) {
     let (view, cx) = fixture(cx);
     view.update(cx, |view, cx| {
         view.execute(
@@ -48,13 +48,13 @@ fn mounted(cx: &mut TestAppContext) -> (Entity<Workstation>, &mut VisualTestCont
     (view, cx)
 }
 
-fn undo_depth(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> u64 {
+pub(super) fn undo_depth(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> u64 {
     view.read_with(cx, |view, _| {
         view.state.history.to_json()["undo_depth"].as_u64().unwrap() - ATTACH_ENTRIES
     })
 }
 
-fn invoke(
+pub(super) fn invoke(
     view: &Entity<Workstation>,
     cx: &mut VisualTestContext,
     target: &str,
@@ -67,7 +67,7 @@ fn invoke(
     result
 }
 
-fn set(
+pub(super) fn set(
     view: &Entity<Workstation>,
     cx: &mut VisualTestContext,
     target: &str,
@@ -81,12 +81,12 @@ fn set(
     result
 }
 
-fn node(view: &Entity<Workstation>, cx: &mut VisualTestContext, id: &str) -> Value {
+pub(super) fn node(view: &Entity<Workstation>, cx: &mut VisualTestContext, id: &str) -> Value {
     view.read_with(cx, |view, cx| view.tree_node(id, cx))
         .unwrap_or_else(|| panic!("no semantic node `{id}`"))
 }
 
-fn field_value(node: &Value, field: &str) -> Value {
+pub(super) fn field_value(node: &Value, field: &str) -> Value {
     node["fields"]
         .as_array()
         .unwrap()
@@ -96,7 +96,7 @@ fn field_value(node: &Value, field: &str) -> Value {
         .clone()
 }
 
-fn clips(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> usize {
+pub(super) fn clips(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> usize {
     view.read_with(cx, |view, _| {
         view.state
             .scenes
@@ -141,7 +141,10 @@ fn the_section_adds_a_vignette_as_one_undo_entry_and_the_nodes_describe_it(
     let (view, cx) = mounted(cx);
     let section = node(&view, cx, "scene.fx");
     assert_eq!(section["state"]["clip_count"], json!(0));
-    assert_eq!(section["state"]["effects"], json!(["vignette", "fade"]));
+    assert_eq!(
+        section["state"]["effects"],
+        json!(["vignette", "fade", "filmGrain"])
+    );
     assert_eq!(section["actions"][0]["action"], json!("add:vignette"));
     assert_eq!(section["actions"][0]["enabled"], json!(true));
     assert_eq!(undo_depth(&view, cx), 0);
@@ -402,7 +405,11 @@ fn escape_drops_a_drag_and_the_slider_goes_back_to_the_document(cx: &mut TestApp
     assert_eq!(undo_depth(&view, cx), depth);
 }
 
-fn center_of(view: &Entity<Workstation>, cx: &mut VisualTestContext, id: &str) -> Point<Pixels> {
+pub(super) fn center_of(
+    view: &Entity<Workstation>,
+    cx: &mut VisualTestContext,
+    id: &str,
+) -> Point<Pixels> {
     view.read_with(cx, |view, _| {
         view.geometry
             .get(id)
@@ -784,7 +791,11 @@ fn a_released_slider_stores_the_step_value_clamped_and_a_resting_thumb_writes_no
 
 // ---- BL082.6/.16: the gesture is the core's, the keyboard is shared, the warning is visible ----------------
 
-fn clip_state(view: &Entity<Workstation>, cx: &mut VisualTestContext, clip: &str) -> Value {
+pub(super) fn clip_state(
+    view: &Entity<Workstation>,
+    cx: &mut VisualTestContext,
+    clip: &str,
+) -> Value {
     node(view, cx, &format!("scene.fx.clip:{clip}"))["state"].clone()
 }
 
@@ -1948,7 +1959,14 @@ fn the_fade_is_listed_by_the_same_model_as_the_vignette_with_no_section_of_its_o
         .iter()
         .map(|action| action["action"].clone())
         .collect();
-    assert_eq!(actions, [json!("add:vignette"), json!("add:fade")]);
+    assert_eq!(
+        actions,
+        [
+            json!("add:vignette"),
+            json!("add:fade"),
+            json!("add:filmGrain")
+        ]
+    );
     assert!(
         section["actions"]
             .as_array()
