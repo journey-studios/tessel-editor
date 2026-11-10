@@ -188,6 +188,16 @@ código gravados em `/tmp/bl157-rec/final/` (fora do Git; sem pipe mascarando o 
 | Headless JSONL (`./scripts/headless`) | `render.trace` → `desktop_required` (sem tocar o estado), `status` ok; sai com 1 pelo erro pedido |
 | Janela real, binário release `ac023eba…` (HOME/socket próprios, só pedidos semânticos de `./scripts/ui`/`Lab`, sem coordenadas) | `real-latency-ab.py pixels`: PASS (imagem do `render.frame` idêntica byte a byte em quente/frio × cache quente/seek frio, controles negativos: cortes distintos não compartilham imagem e todo quadro foi lido); `loop4` (4 editores novos, `render.status.asset_io.mode == async` verificado por run) e `ab4` (16 runs válidos) |
 
+**Segunda rodada de correções de revisão** (`2b4b197`: o pacote da página não passa mais pelo pool em `async`; `665ec4d`: `redact` e
+`ab-report`). Gates refeitos no código final (logs em `/tmp/bl157-rec/final2/`, fora do Git): fmt 0, check 0, clippy `-D warnings` 0,
+`cargo tree` sem `gpui`/`wry`, build debug e release 0 (release `4add680ead4d37f9`, reconstruído depois de o mbx recolher o artefato:
+mesmo sha), `cargo test --workspace --locked` 0 (2084 passaram, 0 falharam), `./scripts/runtime test` 0 (225/225), specs
+`viewport-transit-probe` e `real-latency-ab` 0. **BLOCKED:** o `loop` do editor final (`4add680e…`) esperou 120 s pelos locks de GPU
+(`/tmp/tessel-scene-gpu.lock`, `/tmp/tessel-video-bl140-bl144-review-gpu.lock`) e não rodou; não foi repetido. As medições de §11 e
+`loop4`/`loop5`/`ab4` são do binário `ac023eba…`; a diferença para o final é só a leitura do pacote da página (uma vez por
+carga da página), **sem medição própria**. Os resultados regenerados em `bl157-2/` usam a regra de validade mais estrita (run
+sem imagens conta como inválido).
+
 ## 10. Reprodução (BL157.1)
 
 ```text
