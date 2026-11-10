@@ -38,6 +38,7 @@ mod catalog;
 mod error;
 mod fx;
 mod fx_inspector;
+mod fx_keys;
 mod op;
 mod reference;
 mod value;
@@ -65,6 +66,7 @@ pub use fx_inspector::{
     InspectorField, Offer, REASON_FAMILY_NOT_YET, REASON_SINGLE_VALUE, START_LABEL, Target,
     has_reset, inspector_fields, layer_inspector, offers, reset_ops, scopes,
 };
+pub use fx_keys::STATIC_UNDER_KEYS;
 pub use op::{EditOp, parse_batch};
 pub use reference::PropertyRef;
 pub use value::{PropertyValue, ValueKind};

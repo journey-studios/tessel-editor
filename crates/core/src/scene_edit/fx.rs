@@ -21,6 +21,7 @@ use crate::time::Ratio;
 
 use super::batch::rejected;
 use super::error::{DOCUMENT_MISMATCH, EditError, INVALID_OP};
+use super::fx_keys;
 
 /// A numeric field of a clip.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,9 +111,60 @@ pub enum FxOp {
         clip: String,
         hidden: bool,
     },
+    /// Puts a key of `param` on `frame` of the clip (or changes the one there). No `value`
+    /// captures what the parameter is at that frame; no `easing` keeps the key's own.
+    KeyParam {
+        clip: String,
+        param: String,
+        frame: i64,
+        value: Option<Value>,
+        easing: Option<String>,
+    },
+    /// The easing of the span that arrives at the key on `frame`.
+    SetKeyEasing {
+        clip: String,
+        param: String,
+        frame: i64,
+        easing: String,
+    },
+    RemoveKey {
+        clip: String,
+        param: String,
+        frame: i64,
+    },
+    MoveKey {
+        clip: String,
+        param: String,
+        from: i64,
+        to: i64,
+    },
+    /// Every key of `param` (or of the whole clip) `delta` frames later.
+    ShiftKeys {
+        clip: String,
+        param: Option<String>,
+        delta: i64,
+    },
+    /// The distance of every key from `anchor` times `num / den`.
+    ScaleKeys {
+        clip: String,
+        param: Option<String>,
+        anchor: i64,
+        num: i64,
+        den: i64,
+    },
+    /// The explicit removal of an animation; the base values stay.
+    ClearKeys {
+        clip: String,
+        param: Option<String>,
+    },
+    /// The base seed of a noise effect; `None` goes back to the one the clip's ID gives.
+    SetSeed {
+        clip: String,
+        seed: Option<u32>,
+    },
 }
 
-const SHAPES: &str = r#"{ "op": "add_clip", "effect": "vignette", "start_frame": 0 | "start_time": seconds, "duration_frames"?, "track"?, "id"?, "params"? }, { "op": "remove_clip", "clip" }, { "op": "set_param", "clip", "param", "value" }, { "op": "set_field", "clip", "field": "start_frame|duration_frames|fade_in_frames|fade_out_frames", "value" } or { "op": "set_hidden", "clip", "hidden" }"#;
+const SHAPES: &str = r#"{ "op": "add_clip", "effect": "vignette", "start_frame": 0 | "start_time": seconds, "duration_frames"?, "track"?, "id"?, "params"? }, { "op": "remove_clip", "clip" }, { "op": "set_param", "clip", "param", "value" }, { "op": "set_field", "clip", "field": "start_frame|duration_frames|fade_in_frames|fade_out_frames", "value" } { "op": "set_hidden", "clip", "hidden" }, { "op": "key_param", "clip", "param", "frame", "value"?, "easing"? }, { "op": "set_key_easing", "clip", "param", "frame", "easing" }, { "op": "remove_key", "clip", "param", "frame" }, { "op": "move_key", "clip", "param", "from", "to" }, { "op": "shift_keys", "clip", "param"?, "delta" }, { "op": "scale_keys", "clip", "param"?, "anchor", "num", "den" }, { "op": "clear_keys", "clip", "param"? } or { "op": "set_seed", "clip", "seed": uint32|null }"#;
 
 impl FxOp {
     /// The JSON shape of an op (the `ops` of `scene.fx.edit`).
@@ -241,6 +293,93 @@ impl FxOp {
                     hidden,
                 })
             }
+            "key_param" => {
+                only(&["op", "clip", "param", "frame", "value", "easing"])?;
+                Ok(Self::KeyParam {
+                    clip: text("clip")?,
+                    param: text("param")?,
+                    frame: integer("frame")?,
+                    value: map.get("value").filter(|value| !value.is_null()).cloned(),
+                    easing: optional_text("easing")?,
+                })
+            }
+            "set_key_easing" => {
+                only(&["op", "clip", "param", "frame", "easing"])?;
+                Ok(Self::SetKeyEasing {
+                    clip: text("clip")?,
+                    param: text("param")?,
+                    frame: integer("frame")?,
+                    easing: text("easing")?,
+                })
+            }
+            "remove_key" => {
+                only(&["op", "clip", "param", "frame"])?;
+                Ok(Self::RemoveKey {
+                    clip: text("clip")?,
+                    param: text("param")?,
+                    frame: integer("frame")?,
+                })
+            }
+            "move_key" => {
+                only(&["op", "clip", "param", "from", "to"])?;
+                Ok(Self::MoveKey {
+                    clip: text("clip")?,
+                    param: text("param")?,
+                    from: integer("from")?,
+                    to: integer("to")?,
+                })
+            }
+            "shift_keys" => {
+                only(&["op", "clip", "param", "delta"])?;
+                Ok(Self::ShiftKeys {
+                    clip: text("clip")?,
+                    param: optional_text("param")?,
+                    delta: integer("delta")?,
+                })
+            }
+            "scale_keys" => {
+                only(&["op", "clip", "param", "anchor", "num", "den"])?;
+                Ok(Self::ScaleKeys {
+                    clip: text("clip")?,
+                    param: optional_text("param")?,
+                    anchor: integer("anchor")?,
+                    num: integer("num")?,
+                    den: integer("den")?,
+                })
+            }
+            "clear_keys" => {
+                only(&["op", "clip", "param"])?;
+                Ok(Self::ClearKeys {
+                    clip: text("clip")?,
+                    param: optional_text("param")?,
+                })
+            }
+            "set_seed" => {
+                only(&["op", "clip", "seed"])?;
+                let seed = match map.get("seed") {
+                    Some(Value::Null) => None,
+                    Some(raw) => Some(
+                        raw.as_u64()
+                            .and_then(|seed| u32::try_from(seed).ok())
+                            .ok_or_else(|| {
+                                invalid(
+                                    "`seed` is a whole number from 0 to 4294967295, or null"
+                                        .to_string(),
+                                )
+                            })?,
+                    ),
+                    None => {
+                        return Err(invalid(
+                            "`seed` is required (a number, or null for the automatic one)"
+                                .to_string(),
+                        ));
+                    }
+                };
+                Ok(Self::SetSeed {
+                    clip: text("clip")?,
+                    seed,
+                })
+            }
             other => Err(invalid(format!("`{other}` is not an fx op"))),
         }
     }
@@ -252,7 +391,15 @@ impl FxOp {
             Self::RemoveClip { clip }
             | Self::SetParam { clip, .. }
             | Self::SetField { clip, .. }
-            | Self::SetHidden { clip, .. } => Some(clip),
+            | Self::SetHidden { clip, .. }
+            | Self::KeyParam { clip, .. }
+            | Self::SetKeyEasing { clip, .. }
+            | Self::RemoveKey { clip, .. }
+            | Self::MoveKey { clip, .. }
+            | Self::ShiftKeys { clip, .. }
+            | Self::ScaleKeys { clip, .. }
+            | Self::ClearKeys { clip, .. }
+            | Self::SetSeed { clip, .. } => Some(clip),
         }
     }
 }
@@ -286,6 +433,9 @@ pub struct FxChange {
     pub after: Option<Value>,
     /// The op wrote what was already there (or removed nothing): the document was left alone.
     pub noop: bool,
+    /// What the op did that its author may not have meant (`FX_STATIC_UNDER_KEYS`): the edit
+    /// still happened.
+    pub warnings: Vec<Value>,
 }
 
 impl FxChange {
@@ -293,6 +443,7 @@ impl FxChange {
         json!({
             "index": self.index, "action": self.action, "track": self.track, "clip": self.clip,
             "target": self.target, "before": self.before, "after": self.after, "noop": self.noop,
+            "warnings": self.warnings,
         })
     }
 }
@@ -306,6 +457,14 @@ pub struct FxSummary {
 }
 
 impl FxSummary {
+    /// The warnings of every op, in order.
+    pub fn warnings(&self) -> Vec<Value> {
+        self.changes
+            .iter()
+            .flat_map(|change| change.warnings.iter().cloned())
+            .collect()
+    }
+
     pub fn changed_count(&self) -> usize {
         self.changes.iter().filter(|change| !change.noop).count()
     }
@@ -335,17 +494,20 @@ pub(super) fn command_code(code: &str) -> Option<&'static str> {
         fx::ENVELOPE_TOO_LONG => "envelope_too_long",
         fx::CATALOG_TOO_NEW => "catalog_too_new",
         fx::FX_SCOPE_NOT_YET => "fx_scope_not_yet",
-        fx::FX_KEYS_NOT_YET => "fx_keys_not_yet",
+        fx::KEY_OUT_OF_CLIP => "key_out_of_clip",
+        fx::KEYFRAME_ORDER => "keyframe_order",
+        fx::UNKNOWN_KEYFRAME_EASING => "unknown_keyframe_easing",
+        fx::UNKNOWN_KEYFRAME => "unknown_keyframe",
         fx::FX_TRANSITION_NOT_YET => "fx_transition_not_yet",
         _ => return None,
     })
 }
 
-fn mismatch(what: impl Into<String>) -> EditError {
+pub(super) fn mismatch(what: impl Into<String>) -> EditError {
     EditError::new(DOCUMENT_MISMATCH, what)
 }
 
-fn tracks_mut(work: &mut Value) -> Result<&mut Vec<Value>, EditError> {
+pub(super) fn tracks_mut(work: &mut Value) -> Result<&mut Vec<Value>, EditError> {
     let root = work
         .as_object_mut()
         .ok_or_else(|| mismatch("the document is not an object"))?;
@@ -364,7 +526,7 @@ fn tracks(work: &Value) -> &[Value] {
         .map_or(&[], Vec::as_slice)
 }
 
-fn text_of<'a>(value: &'a Value, key: &str) -> &'a str {
+pub(super) fn text_of<'a>(value: &'a Value, key: &str) -> &'a str {
     value.get(key).and_then(Value::as_str).unwrap_or_default()
 }
 
@@ -429,7 +591,7 @@ fn overlaps(track: &Value, start: i64, duration: i64) -> bool {
     })
 }
 
-fn clip_ref(work: &Value, id: &str) -> Result<(usize, usize), EditError> {
+pub(super) fn clip_ref(work: &Value, id: &str) -> Result<(usize, usize), EditError> {
     find_clip(work, id)
         .ok_or_else(|| EditError::new(UNKNOWN_CLIP, format!("no fx clip `{id}`")).with_id(id))
 }
@@ -565,6 +727,7 @@ fn run_op(
             }
             Ok(FxChange {
                 index,
+                warnings: Vec::new(),
                 action: "remove_clip",
                 track: track_id,
                 clip: clip.clone(),
@@ -576,6 +739,48 @@ fn run_op(
         }
         FxOp::SetParam { clip, param, value } => set_param(work, clip, param, value, index),
         FxOp::SetField { clip, field, value } => set_field(work, clip, *field, *value, index),
+        FxOp::KeyParam {
+            clip,
+            param,
+            frame,
+            value,
+            easing,
+        } => fx_keys::key_param(
+            work,
+            clip,
+            param,
+            *frame,
+            value.as_ref(),
+            easing.as_deref(),
+            index,
+        ),
+        FxOp::SetKeyEasing {
+            clip,
+            param,
+            frame,
+            easing,
+        } => fx_keys::set_key_easing(work, clip, param, *frame, easing, index),
+        FxOp::RemoveKey { clip, param, frame } => {
+            fx_keys::remove_key(work, clip, param, *frame, index)
+        }
+        FxOp::MoveKey {
+            clip,
+            param,
+            from,
+            to,
+        } => fx_keys::move_key(work, clip, param, *from, *to, index),
+        FxOp::ShiftKeys { clip, param, delta } => {
+            fx_keys::shift_keys(work, clip, param.as_deref(), *delta, index)
+        }
+        FxOp::ScaleKeys {
+            clip,
+            param,
+            anchor,
+            num,
+            den,
+        } => fx_keys::scale_keys(work, clip, param.as_deref(), *anchor, *num, *den, index),
+        FxOp::ClearKeys { clip, param } => fx_keys::clear_keys(work, clip, param.as_deref(), index),
+        FxOp::SetSeed { clip, seed } => fx_keys::set_seed(work, clip, *seed, index),
         FxOp::SetHidden { clip, hidden } => {
             let (track_slot, clip_slot) = clip_ref(work, clip)?;
             let tracks = tracks_mut(work)?;
@@ -591,6 +796,7 @@ fn run_op(
             }
             Ok(FxChange {
                 index,
+                warnings: Vec::new(),
                 action: "set_hidden",
                 track: track_id,
                 clip: clip.clone(),
@@ -610,7 +816,10 @@ fn remove_at(track: &mut Value, clip_slot: usize) -> Option<Value> {
         .map(|clips| clips.remove(clip_slot))
 }
 
-fn clip_object(track: &mut Value, clip_slot: usize) -> Result<&mut Map<String, Value>, EditError> {
+pub(super) fn clip_object(
+    track: &mut Value,
+    clip_slot: usize,
+) -> Result<&mut Map<String, Value>, EditError> {
     track
         .get_mut("clips")
         .and_then(Value::as_array_mut)
@@ -739,6 +948,7 @@ fn add_clip(
     clips.push(written.clone());
     Ok(FxChange {
         index,
+        warnings: Vec::new(),
         action: "add_clip",
         track: track_id,
         clip: clip_id,
@@ -808,8 +1018,17 @@ fn set_param(
         };
         params.insert(param.to_string(), after.to_json());
     }
+    // A static write under an animation: the base changes, the curve stays, and the author is told.
+    let warnings = if noop {
+        Vec::new()
+    } else {
+        fx_keys::static_under_keys(target, clip, param)
+            .into_iter()
+            .collect()
+    };
     Ok(FxChange {
         index,
+        warnings,
         action: "set_param",
         track: track_id,
         clip: clip.to_string(),
@@ -859,6 +1078,7 @@ fn set_field(
     }
     Ok(FxChange {
         index,
+        warnings: Vec::new(),
         action: "set_field",
         track: track_id,
         clip: clip.to_string(),

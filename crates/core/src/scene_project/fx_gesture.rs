@@ -189,6 +189,13 @@ impl EditorState {
             .pass_budget(budget_scene.bundle().edit_duration_frames);
         let clips = budget_scene.bundle().fx.clip_count();
         drop(stored_scene);
+        let mut warnings = budget.warnings();
+        warnings.extend(
+            summary
+                .as_ref()
+                .map(scene_edit::FxSummary::warnings)
+                .unwrap_or_default(),
+        );
         let gesture = self.scene_interaction.gesture.find_mut(id)?;
         gesture.set_fx_candidate(ops, stored);
         Ok(json!({
@@ -196,7 +203,8 @@ impl EditorState {
             "updates": gesture.updates(),
             "would_change": modified, "changed_ops": changed_ops, "changes": changes,
             "clip_count": clips,
-            "budget": budget.to_json(), "warnings": budget.warnings(),
+            "budget": budget.to_json(),
+            "warnings": warnings,
             "changed": true, "document_changed": false,
         }))
     }
@@ -218,11 +226,9 @@ impl EditorState {
         CommandError,
     > {
         for (index, op) in ops.iter().enumerate() {
-            let target = match op {
-                FxOp::SetParam { clip, .. }
-                | FxOp::SetField { clip, .. }
-                | FxOp::SetHidden { clip, .. } => clip,
-                FxOp::AddClip(_) | FxOp::RemoveClip { .. } => {
+            let target = match op.clip_id() {
+                Some(clip) if !matches!(op, FxOp::AddClip(_) | FxOp::RemoveClip { .. }) => clip,
+                _ => {
                     return Err(CommandError::new(
                         "gesture_op_not_allowed",
                         format!(
@@ -241,7 +247,7 @@ impl EditorState {
                         "Gesture `{id}` was begun on clip `{clip}`; operation {index} edits `{target}`"
                     ),
                 )
-                .target(target.clone())
+                .target(target)
                 .details(json!({ "gesture": id, "index": index, "clip": target })));
             }
         }

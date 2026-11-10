@@ -112,8 +112,8 @@ fn the_catalog_lists_the_two_looks_this_slice_draws_and_what_it_refuses() {
         .collect();
     assert_eq!(
         ids,
-        ["vignette", "fade"],
-        "two looks are entered, no placeholder"
+        ["vignette", "fade", "filmGrain"],
+        "three looks are entered, no placeholder"
     );
     assert_eq!(effects[0]["id"], "vignette");
     let names: Vec<_> = effects[0]["params"]
@@ -441,7 +441,8 @@ fn a_bundle_that_asks_for_what_is_not_implemented_is_refused_at_import() {
     assert!(try_with(&|_| {}).is_empty(), "the base layer is valid");
     assert_eq!(
         try_with(&|d| d["fx"]["tracks"][0]["clips"][0]["keys"] = json!({"radius":[]})),
-        ["FX_KEYS_NOT_YET"]
+        ["INVALID_VALUE"],
+        "an empty curve is not a curve"
     );
     assert_eq!(
         try_with(
@@ -1322,6 +1323,7 @@ fn the_runtime_contract_fixture_is_the_catalog() {
                 // `parse_param` reads each channel in 0..=1 (a constant of the rule, not of the spec).
                 fx::ParamKind::Color { .. } => json!({"id": param.id, "kind": "color", "min": 0, "max": 1}),
                 fx::ParamKind::Point { min, max, .. } => json!({"id": param.id, "kind": "vec2", "min": min, "max": max}),
+                fx::ParamKind::Bool { .. } => json!({"id": param.id, "kind": "bool"}),
             }).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
     });

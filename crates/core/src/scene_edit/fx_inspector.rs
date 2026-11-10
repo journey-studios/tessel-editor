@@ -82,6 +82,23 @@ impl FieldGroup {
     }
 }
 
+/// What a field holds: a scalar the adapter edits with a slider or a text box, or a switch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FieldKind {
+    Number,
+    /// A boolean parameter (`colored`): the value is 0 or 1 here, the written value `false`/`true`.
+    Boolean,
+}
+
+impl FieldKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Number => "number",
+            Self::Boolean => "boolean",
+        }
+    }
+}
+
 /// Why a field does not apply to the clip as it stands (a code a person and a script can read).
 pub const REASON_SINGLE_VALUE: &str = "range_is_a_single_value";
 
@@ -92,6 +109,7 @@ pub struct InspectorField {
     /// The node field name: `intensity`, `center_x`, `color_r`, `fade_in_frames`...
     pub id: String,
     pub group: FieldGroup,
+    pub kind: FieldKind,
     /// The name without the component (`Centro`); the full text comes from [`Self::label`].
     pub base: Labels,
     component: Component,
@@ -171,6 +189,16 @@ impl InspectorField {
                     CommandError::new("unknown_param", format!("`{param}` is not a parameter"))
                 })?;
                 let written = match (current, component) {
+                    (FxValue::Bool(_), Component::Whole) => match value {
+                        0.0 => json!(false),
+                        1.0 => json!(true),
+                        _ => {
+                            return Err(CommandError::invalid_value(
+                                "Expected 0 or 1 for a switch",
+                                json!("boolean"),
+                            ));
+                        }
+                    },
                     (_, Component::Whole) => json!(value),
                     (FxValue::Point { y, .. }, Component::X) => json!({ "x": value, "y": y }),
                     (FxValue::Point { x, .. }, Component::Y) => json!({ "x": x, "y": value }),
@@ -223,13 +251,27 @@ impl InspectorField {
     }
 
     pub fn to_json(&self, locale: Locale) -> Value {
+        let labels = json!({
+            "pt-br": self.label(Locale::PtBr), "en": self.label(Locale::En),
+            "es": self.label(Locale::Es),
+        });
+        if self.kind == FieldKind::Boolean {
+            // A switch has no range or step to show: `true`/`false`, its default and the reset.
+            return json!({
+                "id": self.id, "group": self.group.name(),
+                "label": self.label(locale), "labels": labels,
+                "type": "boolean", "value": self.value != 0.0,
+                "default": self.default.map(|default| default != 0.0),
+                "at_default": self.at_default(),
+                "applicable": self.applicable, "reason": self.reason,
+                "reset": self.default.map(|default| json!({
+                    "to": default != 0.0, "needed": !self.at_default(),
+                })),
+            });
+        }
         json!({
             "id": self.id, "group": self.group.name(),
-            "label": self.label(locale),
-            "labels": {
-                "pt-br": self.label(Locale::PtBr), "en": self.label(Locale::En),
-                "es": self.label(Locale::Es),
-            },
+            "label": self.label(locale), "labels": labels,
             "type": "number", "value": self.value, "min": self.min, "max": self.max,
             "step": self.step, "default": self.default, "at_default": self.at_default(),
             "integer": self.integer, "unit": self.unit,
@@ -396,6 +438,7 @@ fn scalar(draft: Draft) -> InspectorField {
     InspectorField {
         id: draft.id,
         group: draft.group,
+        kind: FieldKind::Number,
         base: draft.base,
         component: draft.component,
         min,
@@ -481,6 +524,22 @@ fn fields_of(clip: &FxClip, edit_frames: i64) -> Vec<InspectorField> {
                         target: Target::Param(spec.id, component),
                     }));
                 }
+            }
+            (ParamKind::Bool { default }, FxValue::Bool(on)) => {
+                let mut field = scalar(Draft {
+                    id: spec.id.to_string(),
+                    group: FieldGroup::Param,
+                    base: spec.label,
+                    component: Component::Whole,
+                    range: (0.0, 1.0, 1.0),
+                    value: f64::from(u8::from(on)),
+                    default: Some(f64::from(u8::from(default))),
+                    target: Target::Param(spec.id, Component::Whole),
+                });
+                field.kind = FieldKind::Boolean;
+                field.integer = true;
+                field.unit = "";
+                fields.push(field);
             }
             _ => {}
         }
@@ -628,6 +687,7 @@ mod tests {
                 .iter()
                 .map(|param| param.kind.default_value())
                 .collect(),
+            keys: Vec::new(),
             fade_in_frames: 0,
             fade_out_frames: 0,
             seed: None,

@@ -28,8 +28,21 @@ pub(super) fn fx_scope_json() -> Value {
             "warning": fx::FX_PASS_BUDGET_WARNING,
             "meaning": "a frame with more passes is valid and drawn in full, only slower; list, edit and frame report it as a warning",
         },
+        "keys": {
+            "frames": "whole frames local to the clip, 0 to durationFrames - 1, strictly increasing",
+            "easings": fx::FX_EASINGS,
+            "easing_belongs_to": "the key the span arrives at; the first key's easing is unused",
+            "before_first_after_last": "hold the first / last value",
+            "on_a_key_frame": "the stored value exactly",
+            "booleans": "keep the previous value until the frame of the next key",
+            "limits": {
+                "per_curve": fx::MAX_FX_KEYS_PER_CURVE,
+                "per_clip": fx::MAX_FX_KEYS_PER_CLIP,
+                "per_layer": fx::MAX_FX_KEYS_PER_LAYER,
+            },
+        },
+        "seed": "uint32, explicit on the clip or the FNV-1a of its ID (never written by a read); noise effects reseed per frame as lowbias32(base xor frameInClip)",
         "refused": {
-            "keys": fx::FX_KEYS_NOT_YET,
             "scope shot|node": fx::FX_SCOPE_NOT_YET,
             "transitions": fx::FX_TRANSITION_NOT_YET,
         },
@@ -134,7 +147,8 @@ impl EditorState {
             .bundle()
             .fx
             .pass_budget(outcome.candidate.bundle().edit_duration_frames);
-        let warnings = budget.warnings();
+        let mut warnings = budget.warnings();
+        warnings.extend(summary.warnings());
         if dry_run {
             if summary.modified {
                 self.scenes.check_replacement_size(id, &outcome.candidate)?;
