@@ -385,6 +385,15 @@ impl EditorState {
             .details(json!({ "gesture": id, "scene": open.scene() })));
         }
         self.ensure_live(open)?;
+        // A gizmo drag or a slider gesture (`properties`) has a candidate too, but it is not an
+        // effect candidate: the read refuses it instead of answering as if it were one.
+        ensure_kind(
+            open,
+            &GestureKind::Fx {
+                clip: String::new(),
+            },
+            "the same query without `gesture`",
+        )?;
         Ok((Arc::clone(open.preview_scene()), Some(id.to_string())))
     }
 

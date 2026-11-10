@@ -18,7 +18,8 @@
 //!   `move_key:<param>:<from>:<to>`, `shift_keys:<param>:<delta>`, `remove_animation:<param>`,
 //!   `seed:auto`.
 //!
-//! Each action is listed with `enabled` and a `disabled_reason` computed from the same model.
+//! Listed actions carry `enabled` and `disabled_reason` from the model. Parameterized capture,
+//! shift and scale are also accepted by invoke without listing every possible argument.
 
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::{Disableable, h_flex};
@@ -353,14 +354,12 @@ impl Workstation {
                     None => animation_at(view, &entry.clip)
                         .frame_in_clip
                         .ok_or_else(|| {
-                            CommandError::new(
-                                "frame_outside_clip",
-                                reason_text(if view.frame_here.is_none() {
-                                    "no_frame"
-                                } else {
-                                    "frame_outside_clip"
-                                }),
-                            )
+                            let reason = if view.frame_here.is_none() {
+                                "no_frame"
+                            } else {
+                                "frame_outside_clip"
+                            };
+                            CommandError::new(reason, reason_text(reason))
                         })?,
                 };
                 if split.next().is_some() {
@@ -690,5 +689,32 @@ pub(super) fn value_text(value: FxValue) -> String {
             super::scene_model::format_number(x),
             super::scene_model::format_number(y)
         ),
+    }
+}
+
+#[cfg(test)]
+mod capture_tests {
+    use super::*;
+    use crate::workstation::scene_fx_tests::{invoke, mounted, undo_depth};
+    use core::prelude::v1::test;
+
+    #[gpui_kit::test]
+    fn capture_without_a_monitor_frame_reports_no_frame(cx: &mut TestAppContext) {
+        let (view, cx) = mounted(cx);
+        invoke(&view, cx, "scene.fx", "add:filmGrain").unwrap();
+        let depth = undo_depth(&view, cx);
+        // Exercise the adapter's absent-frame view directly: an out-of-edit playhead still
+        // has an honest (unclamped) bundle frame, so it is the other refusal, not this case.
+        let error = view.read_with(cx, |workstation, _| {
+            let mut state = workstation.fx_view().unwrap();
+            state.frame_here = None;
+            let entry = state.clip("fx-1").unwrap();
+            workstation
+                .fx_animation_op(&state, entry, "key:amount")
+                .unwrap()
+                .unwrap_err()
+        });
+        assert_eq!(error.code, "no_frame");
+        assert_eq!(undo_depth(&view, cx), depth);
     }
 }

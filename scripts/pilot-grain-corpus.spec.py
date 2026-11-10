@@ -19,7 +19,7 @@ grain = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(grain)
 
 PINNED = (grain.CORPUS / grain.CASES_NAME).read_bytes()
-MANIFEST = json.loads((grain.CORPUS / grain.MANIFEST_NAME).read_text())
+MANIFEST = json.loads((grain.CORPUS / grain.MANIFEST_NAME).read_text(encoding="utf-8"))
 
 
 def corpus_bytes():

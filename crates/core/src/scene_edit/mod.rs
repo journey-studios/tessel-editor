@@ -64,8 +64,8 @@ pub use fx::{
     apply_fx_measured, apply_fx_with, check_fx_batch_len, dry_run_fx, parse_fx_batch,
 };
 pub use fx_animation::{
-    ClipAnimation, ParamAnimation, REASON_FRAME_OUTSIDE_CLIP, REASON_KEY_ON_FRAME,
-    REASON_NEEDS_TWO_KEYS, REASON_NO_FRAME, REASON_NO_KEYS, SeedAnimation,
+    ClipAnimation, ParamAnimation, REASON_FRAME_OUTSIDE_CLIP, REASON_NEEDS_TWO_KEYS,
+    REASON_NO_FRAME, REASON_NO_KEYS, SeedAnimation,
 };
 pub use fx_inspector::{
     ClipInspector, Component, DURATION_LABEL, FADE_IN_LABEL, FADE_OUT_LABEL, FieldGroup, FieldKind,

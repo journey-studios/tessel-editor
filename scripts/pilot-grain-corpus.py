@@ -653,7 +653,7 @@ def verify(origin):
         print("missing corpus or manifest: run `generate`", file=sys.stderr)
         return 1
     corpus_bytes = cases_path.read_bytes()
-    manifest = json.loads(manifest_path.read_text())
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if sha256_of(corpus_bytes) != manifest["corpus"]["sha256"]:
         findings.append("grain-cases.json was edited: its sha256 is not the manifest's")
     if corpus_bytes != canonical(build_corpus()):

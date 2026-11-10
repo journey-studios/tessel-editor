@@ -161,20 +161,19 @@ A base de um parâmetro animado fica desabilitada ("(base)", motivo `base_under_
 separado. Todos os `Input` confirmam por Enter **ou** Blur, uma única vez; erro tipado aparece no painel, nunca grava 0.
 Nó `scene.fx.clip:<id>`, todos pelos handlers compartilhados (`SceneCommand::FxEdit`/`FxSeek`):
 
-- campos: `seed` (uint32; só efeitos com ruído, `not_applicable` em outros), `key:<param>:<frame>` (o valor dessa
-  chave; `key:<campo>:<frame>` por canal de cor/ponto), `key_frame:<param>:<frame>` (move a chave para o quadro dado),
+- campos: `seed` (uint32; só efeitos com ruído, `not_applicable` em outros), `key:<controle>:<frame>` (o valor dessa
+  chave; ID do controle, como `color_r` para `fade.color` e `center_x` para `vignette.center`), `key_frame:<param>:<frame>` (move a chave para o quadro dado),
   `shift_keys:<param>` (delta inteiro), campos booleanos `"type":"boolean"` (um número é `invalid_value`); o campo da
   **base** de um parâmetro animado vem `enabled:false`, `animated`, `base`, `edit_with:"keys"`, `sampled`;
-- ações: `key:<param>` (captura no frame do monitor; `frame_outside_clip` fora do clipe), `key:<param>:<frame>`,
+- ações: `key:<param>` (captura no frame do monitor; `no_frame` sem quadro da cena, `frame_outside_clip` fora do clipe), `key:<param>:<frame>`,
   `remove_key:<param>:<frame>`, `easing:<param>:<frame>:<nome>`, `move_key:<param>:<de>:<para>`,
   `shift_keys:<param>:<delta>`, `scale_keys:<param>:<âncora>:<num>:<den>`,
-  `go:<param>:<previous|next|first|last|quadro>`, `remove_animation:<param>`, `seed:auto`, cada uma com `enabled` e
-  `disabled_reason`; o `set` de qualquer campo e o JSONL aceitam `base_revision`;
+  `go:<param>:<previous|next|first|last|quadro>`, `remove_animation:<param>`, `seed:auto`. A lista anuncia captura no monitor, remoção, easing, movimentos ±1, navegação anterior/próxima/primeira/última e seed automática com `enabled` e `disabled_reason`; as formas parametrizadas de captura explícita, deslocamento e escala são aceitas por `invoke`, sem metadados de ação para cada argumento possível; o `set` de qualquer campo e o JSONL aceitam `base_revision`;
 - o estado do nó inclui `animation` (o JSON do core). Os sliders editam a **base**; nunca criam chave. JSONL:
   `scene.fx.seek`, `scene.fx.edit` (`base_revision`) e o resto, as mesmas respostas.
 
 Equivalentes: `./scripts/ui invoke scene.fx.clip:fx-1 key:amount`, `ui set scene.fx.clip:fx-1 seed 77`,
-`ui set scene.fx.clip:fx-1 key_frame:amount:10 14`, `ui invoke scene.fx.clip:fx-1 go:amount:next`,
+`ui set scene.fx.clip:fx-1 key_frame:amount:10 14`, `ui set scene.fx.clip:fx-1 key:color_r:10 0.5` (preserva os outros canais da chave), `ui invoke scene.fx.clip:fx-1 go:amount:next`,
 `ui invoke scene.fx.clip:fx-1 easing:amount:10:easeOutCubic`. Apresentação (foco, painel) é N/A fora do adapter.
 
 ## Divergências declaradas em relação ao piloto
@@ -204,3 +203,18 @@ Reservado ao coordenador (nits, fora desta rodada): F4 constantes `SHAPES` não 
 (nome/uso), F9 contagens/UTF-8/notas de documentação.
 
 Lacunas: sem timeline de chaves (P6); sem interpolação entre cenas; ponteiro físico não provado (BL043).
+
+### Integração e nits da revisão P3 (BL082.34)
+
+A captura sem quadro da cena recusa com `no_frame`; fora do clipe, com `frame_outside_clip`.
+A regressão GPUI distingue os dois casos e verifica histórico intacto. A descrição das formas de op
+e dos campos/ações foi alinhada ao parser. Manifesto e spec do corpus usam UTF-8 explícito;
+as specs passaram 24/24 tanto normal quanto `-O`, e `verify` offline passou.
+O merge de main preserva as alterações de gizmo e de backlog; os gates de integração e a
+rechecagem independente ainda são necessários. As provas nativas do implementador registram
+HEAD `93d1044` e 29 arquivos alterados antes dos commits; não comprovam por si o head limpo integrado.
+
+Integração P3 pelo coordenador: fmt e diff-check limpos; GPUI filtro `capture_` 8/8;
+check workspace locked e clippy workspace/all-targets locked com -D warnings passaram.
+Não foi repetida aqui a suíte workspace, o build desktop nem a prova nativa no head integrado;
+esses resultados permanecem pendentes da rechecagem independente.

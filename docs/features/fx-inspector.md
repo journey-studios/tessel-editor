@@ -9,8 +9,7 @@ que o modelo manda e recusa o que o core recusa. Esta entrega também move a vin
 acrescenta o segundo look, o `fade` (escopo de saída), sem seção própria nem código especial na janela.
 
 Não é o catálogo inteiro: **3 dos 59** efeitos do piloto estão implementados (`vignette`, `fade` e, desde P3, `filmGrain`). Não há
-placeholder habilitado para os outros 57 (ver [Oferta](#oferta-o-que-existe-e-o-que-não)). Sem chaves
-(`keys`, P3), sem escopo `shot`/`node` e sem transições (P4). O contrato de edição, gesto, plano e runtime é o
+placeholder habilitado para os outros 56 (ver [Oferta](#oferta-o-que-existe-e-o-que-não)). Chaves, easing e seed estão em [F058](fx-keys.md) desde P3; sem escopo `shot`/`node` e sem transições (P4). O contrato de edição, gesto, plano e runtime é o
 de [F016](effects.md); este documento só acrescenta o que é novo.
 
 ## Contrato do core / biblioteca
@@ -36,9 +35,9 @@ oferecidos pelo catálogo**: um efeito novo sem texto em algum idioma reprova.
 
 ### Oferta: o que existe e o que não
 
-`scene.fx.inspect.offers` lista só efeitos reais (`vignette`, `fade`, ambos `scope: output`,
+`scene.fx.inspect.offers` lista só efeitos reais (`vignette`, `fade`, `filmGrain`, todos `scope: output`,
 `applicable: true`). `scopes` diz `output` aplicável e `shot`/`node` não aplicáveis com o código
-`FX_SCOPE_NOT_YET`. Os 57 efeitos restantes **não aparecem**: nenhum controle habilitado, nenhum nome sem
+`FX_SCOPE_NOT_YET`. Os 56 efeitos restantes **não aparecem**: nenhum controle habilitado, nenhum nome sem
 implementação. `FX_TRANSITION_NOT_YET` continua sendo a recusa de `transitions`.
 
 ## CLI headless
@@ -59,7 +58,9 @@ Cada clipe traz `clip`, `track`, `effect`, `effect_label(s)`, `hidden`, `reset_o
 `reset {to, needed, op}`. `op` é a operação JSONL executável para aquele campo (inclusive duração/fades); é `null` quando o campo já está no padrão. Campos sem padrão têm `reset: null`.
 
 - `gesture` lê o **candidato** do gesto aberto (o valor legal mais recente) e traz `gesture {id, clip, refusal}`
-  com a última recusa tipada; um gesto fechado deixa de ser legível.
+  com a última recusa tipada; um gesto fechado deixa de ser legível. O ID precisa ser de um gesto de **efeito**: o de um gesto `properties` (arrasto de anel ou slider) é
+  recusado com `gesture_kind_mismatch`, sem escrever nada e sem encerrar aquele gesto (F2 da revisão da PR #40; teste
+  `an_effect_read_names_an_effect_gesture_and_refuses_the_id_of_a_ring_drag`).
 - `probe {clip, field, value, quantize?}` julga um valor **sem gravá-lo**: monta o op do campo e roda o
   `dry_run_fx` do core. `ok: true` traz `would_change` (gravar um padrão que o clipe omite **é** mudança do
   documento) e `changes`; `ok: false` traz o erro tipado (`param_out_of_range`, `invalid_value`,

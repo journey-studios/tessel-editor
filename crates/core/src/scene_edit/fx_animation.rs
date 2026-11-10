@@ -24,7 +24,6 @@ pub const REASON_NO_FRAME: &str = "no_frame";
 pub const REASON_FRAME_OUTSIDE_CLIP: &str = "frame_outside_clip";
 pub const REASON_NO_KEYS: &str = "no_keys";
 pub const REASON_NEEDS_TWO_KEYS: &str = "needs_two_keys";
-pub const REASON_KEY_ON_FRAME: &str = "key_on_this_frame";
 pub const REASON_NO_PREVIOUS_KEY: &str = "no_previous_key";
 pub const REASON_NO_NEXT_KEY: &str = "no_next_key";
 

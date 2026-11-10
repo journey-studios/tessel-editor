@@ -10,6 +10,8 @@ use crate::perf::{self, PerfMeterCommand};
 use crate::perf_history::{self, HistoryCommand};
 use crate::plan::PreviewIntent;
 use crate::preview::PreviewMode;
+use crate::scene_interaction::{GizmoCommand, GizmoSpace, GizmoTool};
+use crate::scene_project::SceneCommand;
 use crate::state::camera_edit::{CameraKeysCommand, KEY_FIELDS};
 use crate::state::inspector::{InspectorTab, PropertyKind, property_def};
 use crate::state::layout::{Destination, GroupRef, Layout, LayoutCommand, PanelKind, Region, Side};
@@ -91,6 +93,24 @@ pub fn parse_set(target: &str, field: &str, value: &Raw) -> Result<Parsed, Comma
         ("timeline.playhead", "frame") => Command::SetPlayhead {
             frame: value.clone(),
         },
+        // BL015.1: the gizmo's tool and rotate space are `monitor.gizmo` fields; setting one is the
+        // `scene.gizmo.tool` command (a read-only node would be a control that does nothing).
+        ("monitor.gizmo", "tool") => Command::Scene(SceneCommand::Gizmo(GizmoCommand::Tool {
+            tool: Some(choice(
+                value,
+                GizmoTool::parse,
+                &GizmoTool::ALL.map(GizmoTool::as_str),
+            )?),
+            space: None,
+        })),
+        ("monitor.gizmo", "space") => Command::Scene(SceneCommand::Gizmo(GizmoCommand::Tool {
+            tool: None,
+            space: Some(choice(
+                value,
+                GizmoSpace::parse,
+                &GizmoSpace::ALL.map(GizmoSpace::as_str),
+            )?),
+        })),
         ("dock", "layout") => {
             return Ok(Parsed::Layout(LayoutCommand::Load { json: value.text() }));
         }

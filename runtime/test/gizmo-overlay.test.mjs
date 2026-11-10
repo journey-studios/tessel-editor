@@ -484,3 +484,135 @@ test('the headless page (no overlay surface) has no overlay.gizmo, no canvas and
   const refused = await runtime.waitFor((m) => m.type === 'error', 'error');
   assert.equal(refused.error.code, 'unsupported');
 });
+
+// ---- BL015.1: the rotate tool's rings on the real canvas -----------------------------------------
+
+const ASPECT = 160 / 90;
+const ellipse = (rx, ry, gap = null) =>
+  Array.from({ length: 65 }, (_, index) => {
+    if (gap !== null && index >= gap[0] && index < gap[1]) return null;
+    const angle = (2 * Math.PI * (index % 64)) / 64;
+    return { u: 0.5 + (rx * Math.cos(angle)) / ASPECT, v: 0.5 + ry * Math.sin(angle) };
+  });
+const ringHandle = (id, points) => ({ id, kind: 'ring', from: { u: 0.5, v: 0.5 }, to: points.find((p) => p !== null), points });
+const ringOverlay = (extra = {}) => ({
+  tool: 'rotate',
+  space: 'world',
+  handles: [
+    ringHandle('x', ellipse(0.04, 0.1)),
+    ringHandle('y', ellipse(0.1, 0.04)),
+    ringHandle('z', ellipse(0.1, 0.1, [8, 16])),
+  ],
+  metrics: { handle_length: 0.14, hit_radius: 0.025, center_radius: 0.03, ring_radius: 0.1, unit: 'picture_height' },
+  ...extra,
+});
+
+test('the rings are drawn on the canvas, in the axis colours, and the centre stays empty', async (t) => {
+  const runtime = await open(t);
+  if (!runtime) return;
+  const drawn = await enable(runtime, ringOverlay());
+  assert.equal(drawn.tool, 'rotate');
+  assert.equal(drawn.space, 'world');
+  const [x, y, z] = drawn.probes;
+  assert.deepEqual([x.id, y.id, z.id], ['x', 'y', 'z']);
+  // The probe of a ring is one of its own vertices: a really painted pixel in the axis colour.
+  assert.ok(x.rgba[3] > 200 && x.rgba[0] > x.rgba[1] && x.rgba[0] > x.rgba[2], `x ring pixel ${x.rgba}`);
+  assert.ok(y.rgba[3] > 200 && y.rgba[1] > y.rgba[0] && y.rgba[1] > y.rgba[2], `y ring pixel ${y.rgba}`);
+  assert.ok(z.rgba[3] > 200 && z.rgba[2] > z.rgba[0] && z.rgba[2] > z.rgba[1], `z ring pixel ${z.rgba}`);
+  // No centre disc with this tool, and the gap of the z ring (behind the camera) is not stroked.
+  const rect = await picture(runtime);
+  const pixels = await runtime.page.evaluate(({ rect: r, aspect }) => {
+    const surface = document.getElementById('overlay');
+    const context = surface.getContext('2d');
+    const ratio = window.devicePixelRatio || 1;
+    const at = (u, v) => [...context.getImageData(Math.round((r.x + u * r.width) * ratio), Math.round((r.y + v * r.height) * ratio), 1, 1).data];
+    const angle = (2 * Math.PI * 12) / 64; // the middle of the z ring's gap, away from the x and y rings
+    return { centre: at(0.5, 0.5), gap: at(0.5 + (0.1 * Math.cos(angle)) / aspect, 0.5 + 0.1 * Math.sin(angle)) };
+  }, { rect, aspect: ASPECT });
+  assert.equal(pixels.centre[3], 0, `centre ${pixels.centre}`);
+  assert.equal(pixels.gap[3], 0, `gap ${pixels.gap}`);
+});
+
+test('a real press on a ring and a drag around it post picture coordinates; the centre is not a press target', async (t) => {
+  const runtime = await open(t);
+  if (!runtime) return;
+  await enable(runtime, ringOverlay());
+  const rect = await picture(runtime);
+  const ring = ellipse(0.1, 0.1, [8, 16]);
+  // Hover: a ring shows the grab cursor, the centre does not.
+  const hoverCursor = async (point) => {
+    const at = pane(rect, point);
+    await runtime.page.mouse.move(at.x, at.y);
+    await settle(runtime);
+    return runtime.page.evaluate(() => document.getElementById('overlay').style.cursor);
+  };
+  assert.equal(await hoverCursor(ring[24]), 'grab');
+  assert.equal(await hoverCursor({ u: 0.5, v: 0.5 }), 'default');
+  // Press on the ring, sweep a quarter of it, release.
+  const start = pane(rect, ring[24]);
+  await runtime.page.mouse.move(start.x, start.y);
+  await runtime.page.mouse.down();
+  for (const index of [26, 28, 30, 32, 34, 36, 38, 40]) {
+    const at = pane(rect, ring[index]);
+    await runtime.page.mouse.move(at.x, at.y);
+  }
+  const end = pane(rect, ring[40]);
+  await runtime.page.mouse.up();
+  await settle(runtime);
+  const messages = pointerMessages(runtime);
+  assert.equal(messages[0].phase, 'down');
+  assert.ok(Math.abs(messages[0].point.u - ring[24].u) < 1e-6 && Math.abs(messages[0].point.v - ring[24].v) < 1e-6, JSON.stringify(messages[0].point));
+  const up = messages.at(-1);
+  assert.equal(up.phase, 'up');
+  assert.ok(Math.abs(up.point.u - ring[40].u) < 1e-6 && Math.abs(up.point.v - ring[40].v) < 1e-6, JSON.stringify([up.point, end]));
+  assert.ok(messages.every((m) => m.stamp.session === STAMP.session && m.stamp.revision === STAMP.revision), 'every message echoes the stamp');
+  assert.equal(messages.filter((m) => m.phase === 'cancel').length, 0);
+});
+
+test('Escape and a lost focus cancel a ring drag like an arrow drag', async (t) => {
+  const runtime = await open(t);
+  if (!runtime) return;
+  await enable(runtime, ringOverlay());
+  const rect = await picture(runtime);
+  const ring = ellipse(0.1, 0.1, [8, 16]);
+  const start = pane(rect, ring[24]);
+  const next = pane(rect, ring[30]);
+  for (const [reason, end] of [
+    ['escape', () => runtime.page.keyboard.press('Escape')],
+    ['blur', () => runtime.page.evaluate(() => window.dispatchEvent(new Event('blur')))],
+  ]) {
+    runtime.messages.length = 0;
+    await runtime.page.mouse.move(start.x, start.y);
+    await runtime.page.mouse.down();
+    await runtime.page.mouse.move(next.x, next.y);
+    await settle(runtime);
+    await end();
+    await runtime.page.mouse.move(start.x, start.y);
+    await runtime.page.mouse.up();
+    await settle(runtime);
+    const phases = pointerMessages(runtime).map((m) => m.phase);
+    assert.deepEqual(phases.filter((p) => p !== 'move'), ['down', 'cancel'], reason);
+    assert.equal(pointerMessages(runtime).find((m) => m.phase === 'cancel').reason, reason);
+    assert.equal(phases.at(-1), 'cancel', `${reason}: nothing after the cancel`);
+  }
+});
+
+test('switching from the rings to the arrows replaces what is drawn and what is hit', async (t) => {
+  const runtime = await open(t);
+  if (!runtime) return;
+  await enable(runtime, ringOverlay());
+  const rect = await picture(runtime);
+  const ring = ellipse(0.1, 0.1, [8, 16]);
+  const at = pane(rect, ring[24]);
+  await runtime.page.mouse.move(at.x, at.y);
+  await settle(runtime);
+  assert.equal((await runtime.page.evaluate(() => window.TesselRuntime.debug.overlay.state().hover)), 'z');
+  // The arrows come back (the translate overlay of the first slice): that point hits nothing now.
+  await runtime.send({ type: 'overlay.set', overlay: overlayJson({ stamp: { ...STAMP, revision: 2 } }), ack: true });
+  const drawn = await runtime.waitFor((m) => m.type === 'overlay.drawn' && m.stamp?.revision === 2, 'overlay.drawn');
+  assert.equal(drawn.tool, 'translate');
+  await runtime.page.mouse.move(at.x + 1, at.y + 1);
+  await settle(runtime);
+  assert.equal((await runtime.page.evaluate(() => window.TesselRuntime.debug.overlay.state().hover)), null);
+  assert.deepEqual(drawn.probes.map((p) => p.id), ['x', 'y', 'screen']);
+});

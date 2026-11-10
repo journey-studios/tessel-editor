@@ -278,7 +278,7 @@ de cena (`scene_interaction::GestureSlot`); a janela só traduz entrada em coman
 
 | Código | Quando |
 |---|---|
-| `gesture_active` / `gesture_kind_mismatch` | já há um gesto aberto / outro tipo de gesto |
+| `gesture_active` / `gesture_kind_mismatch` | já há um gesto aberto / outro tipo de gesto (também em `scene.fx.list/inspect/frame` com o ID de um gesto `properties`) |
 | `gesture_target_mismatch` / `gesture_scene_mismatch` / `gesture_op_not_allowed` | op fora do clipe ou cena do gesto |
 | `gesture_invalidated` / `unknown_gesture` / `no_gesture` | base velha, outro projeto, outra sessão |
 | `param_out_of_range`, `invalid_op`, `unknown_element`, `invalid_bundle` | refusas do `apply_fx` no candidato |

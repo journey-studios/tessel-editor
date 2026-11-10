@@ -127,7 +127,7 @@ Nomes abaixo são a proposta para o parser FX; o executor pode ajustá-los para 
 | `move_key {clip,param,from_frame,to_frame}` | Mover a chave sem cruzar vizinhos nem colidir. API numérica recusa; gesto fornece limites e mantém último candidato legal |
 | `shift_keys {clip,param,delta_frames}` | Deslocar uma curva inteira com checked arithmetic e uma entrada de undo; preservar ordem/valores/easings |
 | `scale_keys {clip,param,pivot_frame,factor}` | Escala positiva em torno de pivô, regra de arredondamento inteira documentada; colisão/fora do clipe é recusa atômica, nunca deduplicação |
-| `set_seed {clip,value:uint32|null}` | Seed explícita ou voltar à derivação por ID; sem RNG. Mesma seed é no-op; null não congela uma seed derivada no documento |
+| `set_seed {clip,seed:uint32\|null}` | Seed explícita ou voltar à derivação por ID; sem RNG. Mesma seed é no-op; null não congela uma seed derivada no documento |
 
 ### Regras compartilhadas de edição
 

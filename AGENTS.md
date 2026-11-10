@@ -38,6 +38,11 @@ parser em `core::commands` + teste; frames reais exigem `./scripts/runtime setup
 - Testes Rust seguem a convenção nativa; o macro `#[gpui_kit::test]` dos testes GPUI sombreia
   `#[test]` com `use gpui_kit::*`: nos módulos de teste, importe `core::prelude::v1::test`.
 - Nunca inclua referências a assistentes em commits. Use a skill `commit` antes de commitar.
+- **Lock de GPU/build somente para desempenho** (regra do usuário, 2026-11-10; substitui instruções anteriores de scripts e docs):
+  `/tmp/tessel-scene-gpu.lock` (`with-gpu-lock.py`) só é exigido por validações de **desempenho** (latência, FPS, custo, benchmarks). Edição,
+  `cargo fmt/check/clippy/test/build`, o runtime Chrome funcional e as provas funcionais não esperam por ele nem o tomam. Não apague o lock nem mate
+  outro processo; não inicie medição concorrente. Se o Chrome precisar de isolamento funcional use instância, socket e `HOME` próprios. Um script que
+  mistura resultado funcional e de desempenho deve separá-los: sem o lock, o desempenho não é declarado aceito.
 
 ## UI
 
