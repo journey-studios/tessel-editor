@@ -1112,3 +1112,9 @@ Procedência verificada somente por leitura em 2026-11-09 (nada foi copiado para
 - Medido pelo `validate_r2.py` (sobre o MP4, sem abrir o editor): sem janela de silêncio digital; trecho calado mais longo 0,5 s; queda de nível nas emendas 7,7 dB (23–25 s) e 5,6 dB (46–48 s) contra a vizinhança; 24 quadros nos extremos de câmera e 120 quadros de varredura (um a cada 12) sem faixa preta acima de 1 % (108 verificados em cada formato; os 12 de 1296 a 1440, do cartão final, são pulados por desenho).
 
 **Limites.** Isto não é aceite humano: ninguém **ouviu** o áudio nas emendas de 23–25 s e 46–48 s (a queda de nível é um número, não um veredito) nem assistiu aos 60 s completos; 108 quadros verificados entre 120 amostras não são o filme inteiro; a r2 não resolve a falta de áudio novo (BL160) nem o reenquadramento automático (BL161); não há prova de hardware próprio nem de WKWebView nativa para estes quadros além do export. Nenhuma lacuna de hardware, humana ou em andamento de outras PRs foi fechada.
+
+
+PR #40 — revisão G1: nome do teste de normalização e resumos F055 corrigidos;
+normalização defensiva ganha teste para zero/NaN/infinito (a executar).
+`not_movable` não é alcançável com os tipos atuais; não é anunciado como testado.
+G1 continua a validar: gates finais, mutações, provas e perf ainda pendentes.

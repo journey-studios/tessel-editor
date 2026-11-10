@@ -458,6 +458,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn degenerate_authored_quaternions_cannot_be_normalised() {
+        for q in [
+            Quat {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+                w: 0.0,
+            },
+            Quat {
+                x: f64::NAN,
+                y: 0.0,
+                z: 0.0,
+                w: 1.0,
+            },
+            Quat {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+                w: f64::INFINITY,
+            },
+        ] {
+            assert!(quat_unit(q).is_none(), "{q:?}");
+        }
+    }
+
+    #[test]
     fn angles_reduce_to_the_half_open_half_turn_and_leave_small_ones_alone() {
         assert_eq!(reduce_degrees(30.123456789012345), 30.123456789012345);
         assert_eq!(reduce_degrees(-30.123456789012345), -30.123456789012345);

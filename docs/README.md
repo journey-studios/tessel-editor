@@ -21,7 +21,7 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 - [Fade de entrada e saída em clipe de áudio (BL142)](features/audio-fades.md): rampa linear de ganho relativa ao clipe, mix em blocos = mix inteiro, sobreposição encurtada.
 - [Recursos da cena dirigida](features/scene-resources.md): manifesto, preflight e materialização inicial; identidade por assetId, transporte parcial e pacote ainda protegido pelas guardas.
 - [Interação de cenas dirigidas](features/scene-interaction.md): seleção, árvore, avaliação e gestos via comandos; gate local da rodada passou; inspector parcial em F039-UI.
-- [Gizmo de translação no canvas](features/scene-gizmo.md) (F055, S8/BL015/BL042): overlay e arrasto no core, canvas dentro da WebView, `scene.translate` equivalente; implementado e a validar: workspace, clippy, Chrome e runtime executados no head de código `db02923`; build, prova nativa+headless com `final_evidence` e as mutações Rust executados depois, no head `fb268bb` (mesmas fontes de produção, um teste a mais; ver BL015.6), sem ponteiro físico.
+- [Gizmo de translação e rotação no canvas](features/scene-gizmo.md) (F055, S8/BL015/BL042): overlay e arrasto no core, canvas dentro da WebView, `scene.translate` equivalente; implementado e a validar: workspace, clippy, Chrome e runtime executados no head de código `db02923`; build, prova nativa+headless com `final_evidence` e as mutações Rust executados depois, no head `fb268bb` (mesmas fontes de produção, um teste a mais; ver BL015.6), sem ponteiro físico.
 - [Plano avaliado de cena dirigida](features/scene-plan.md): contrato core → runtime e recursos por assetId; gate local da rodada passou; consumido pelo renderer F041.
 - [Cenas no projeto e CLI](features/scene-project.md): attach, lotes, histórico, save/reopen
   e JSONL sem janela; inspector e render dirigido integrados; diálogo de anexar pendente.
@@ -74,3 +74,6 @@ plano/relatório continuam como histórico; o contrato atual fica em `features/`
 - [Auditoria de paridade do piloto (2026-11-08)](migration/pilot-parity-audit-2026-11-08.md): lacunas por capacidade, 59 efeitos, evidências e sequência vinculada ao backlog.
 
 - [Plano de execução da paridade do piloto](migration/pilot-parity-execution-plan.md): fases P0–P8 e briefing da primeira entrega Cursor Sonnet 5.5.
+
+G1 (PR #40): rotação local/mundo implementada, **a validar** no head final;
+os gates históricos de S8 acima não validam os anéis de rotação.

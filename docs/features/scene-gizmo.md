@@ -2,7 +2,7 @@
 
 ## Objetivo e limites
 
-Um gizmo inicial de seleção e **translação** para cenas dirigidas. Ele é **desenhado e acertado
+Um gizmo inicial de seleção, **translação e rotação** para cenas dirigidas. Ele é **desenhado e acertado
 por um canvas 2D dentro da página da WebView** (`runtime/src/overlay.js`), nunca por elementos
 GPUI sobre a WKWebView (a view nativa pinta acima de qualquer elemento GPUI). O ponteiro vira
 intents que o **core valida e aplica**; a página não decide nada além de "onde, em coordenadas da
@@ -300,7 +300,7 @@ Um comando recusado deixa documento, histórico e revisão como estavam.
 | `mirrored_parent` | a cadeia de pais espelha (determinante negativo): o sentido da rotação inverteria |
 | `degenerate_transform` | a matriz local ou de mundo não é invertível (escala zero) |
 | `degenerate_rotation` | o quaternion autorado não é finito nem diferente de zero |
-| `not_movable` | o nó não tem posição editável (mesma regra da translação) |
+| `not_movable` | guarda defensiva da regra de translação; todos os tipos de nó atuais (`Group`, `ImagePlane`, `Splat`) são móveis, portanto este ramo não é alcançável com o catálogo atual |
 
 Outros erros: `invalid_value` (eixo `screen`/desconhecido, graus não finitos, ferramenta ou orientação desconhecida),
 `unknown_entity`, `gesture_active`, `gesture_invalidated`, `no_drag`. **Spark:** o plano já recusa, com
@@ -498,3 +498,12 @@ e **consumida pelo adaptador da janela fora da sessão de render** (`viewport_ip
 `ViewportHost::on_ipc`): fica em `get monitor.viewport` → `state.overlay.error` (o último erro desde o último reload, com `request` quando veio de
 uma mensagem do host) e não vira `BackendClosed`/`backend_unavailable`, não apaga capacidades nem ativos. O `error` genérico continua
 fechando a sessão, como um erro de protocolo deve.
+
+### Ajustes após revisão G1 (PR #40)
+
+Rotação permanece **a validar** até gates do head final. O teste de quaternion quase
+unitário aceita e normaliza o valor; seu nome foi corrigido para refletir isso.
+O teste puro de normalização cobre zero, NaN e infinito, mas não comprova que esses
+valores atravessam o importador até `RotationFrame::of`. `degenerate_rotation` é
+uma guarda defensiva; `not_movable` não é alcançável pelos tipos atuais de nó.
+Nenhum desses ramos é anunciado como recusa exercitada por integração.

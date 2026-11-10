@@ -1061,7 +1061,7 @@ fn a_non_finite_angle_through_the_typed_api_is_refused_without_a_trace() {
 }
 
 #[test]
-fn a_rotation_that_is_not_a_unit_quaternion_in_the_document_is_refused_not_repaired() {
+fn a_near_unit_authored_quaternion_is_normalised_when_rotated() {
     // The importer keeps a quaternion near unit length; the gizmo composes with the normalised
     // one but a zero quaternion cannot be edited at all. A scene with a slightly long quaternion
     // still rotates and writes a unit one.
