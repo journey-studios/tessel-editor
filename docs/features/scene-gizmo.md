@@ -725,9 +725,47 @@ não foi tocado e nenhum processo da rodada ficou vivo. Os commits seguintes a `
    Nenhuma outra regra de FX mudou; o teste `an_effect_read_names_an_effect_gesture_and_refuses_the_id_of_a_ring_drag` falhou sem a correção e passa com ela.
 3. **Flaky de vídeo B2 repetida (BL015.15).** É o mesmo teste da rodada de `4b690bd` e falhou de novo na 1ª execução completa, com a máquina compartilhada em carga ~24. Não há passe limpo único do runtime neste head
    (222/223, depois 223/223 na repetição integral); nenhuma asserção nem tolerância foi relaxada, e o produto (`latestRender`) não é tocado pela PR. A hipótese de corrida do teste não está provada.
+   O controle `main` × head pedido pela revisão 5848722632 foi executado depois (seção abaixo): a falha **reproduziu em `main`**.
 
 **Não feito, de propósito.** Nenhuma medição de desempenho (a regra nova só impõe o lock a ela; as medições anteriores à fusão seguem históricas); ponteiro físico/WKWebView (BL015.2/BL043/BL044); escala, luz e FX
 novos; nova revisão independente (fica com o coordenador). As mutações Rust de G1 (BL015.10) continuam as do head `1b471d6`, não repetidas aqui.
 
 **Status de G1 neste head:** rotação segue **a validar**. Os gates funcionais do head integrado estão executados e passaram, exceto que o runtime/Chrome só tem passe completo na repetição (BL015.15). Faltam a
 revisão independente do coordenador, o ponteiro físico e a flaky de vídeo diagnosticada.
+
+### Controle do video B2 em main × head (BL015.15)
+
+Condição da revisão independente final `5848722632` (F1): rodar `runtime/test/video.test.mjs` em `main` e no head da PR, ~10× por lado, e só então decidir se a flaky `video B2` bloqueia. Rodada **funcional**: sem lock de GPU,
+sem build Rust, sem medição de desempenho. O head testado é `fc5d61b` (3 linhas de docs depois de `895b552`; o código gateado segue sendo `ebf77c2`).
+
+**Método.** Um snapshot só de `runtime/` por lado (`git archive e18b0cf runtime` e `git archive fc5d61b runtime`, em `/tmp`, sem `git worktree`, sem outro checkout e sem tocar a raiz); `node_modules` é um symlink de leitura
+para um `pnpm install` com o mesmo `pnpm-lock.yaml` (sha256 `cb7f671c4828…`; o lockfile e o `package.json` não diferem entre `main` e head), e `runtime/dist` foi **reconstruído em cada snapshot** (`node scripts/build.mjs`; `runtime.js` de
+`main` 4 256 653 B, sha256 `b8fcc7f8eeba4ec6…`; do head 4 258 991 B, `1ca558cdc75bb230…`). As 20 execuções foram sequenciais e **intercaladas** (main, head, main, head, …) para que a carga da máquina compartilhada pese igual nos dois lados;
+cada uma com Node e Chrome novos, `TMPDIR` próprio e fixtures ffmpeg refeitas. Todas ficaram retidas (nenhuma descartada nem repetida).
+
+- Comando: `cd <snapshot>/runtime && TMPDIR=<tmp> TESSEL_REQUIRE_RUNTIME=1 node --test --test-reporter=tap test/video.test.mjs`
+- Ambiente: Chrome 157.0.8103.40 (`/Applications/Google Chrome.app`, SwiftShader, `TESSEL_GL` e `TESSEL_CHROME` não definidos), Node v22.23.3, ffmpeg 7.1.1, sem lock, sem Cargo, sem `CARGO_TARGET_DIR`; disco livre de 30 GiB no início e 39,6 GiB no fim (piso 12, verificado antes de cada execução).
+- Diferença entre os lados (`git diff e18b0cf fc5d61b -- runtime`): só `src/overlay.js`, `test/gizmo-overlay.test.mjs` e `test/overlay.test.mjs`. `video.test.mjs`, `support.mjs`, `worker/`, `host/` e `scripts/` são idênticos.
+
+| Lado | Commit (árvore de `runtime/`) | Execuções | Passaram | Falharam | Subtestes ok/total | `video B2` (substituição) | load1 no início de cada execução |
+|---|---|---|---|---|---|---|---|
+| `main` | `e18b0cf` (`2a6be4f7…`) | 10 | 9 | **1** (execução 4) | 69/70 | 9 ok, 1 `not ok` | 19, 14, 13, **20,5**, 49, 39, 69, 30, 46, 31 |
+| head | `fc5d61b` (`ee1bbe80…`) | 10 | **10** | 0 | 70/70 | 10 ok | 17, 12, 24, 35, 37, 50, 54, 21, 51, 34 |
+
+A única falha, em `main` (execução 4, 2026-11-10T20:26:12Z–20:27:54Z, 102 s; as três primeiras de `main` levaram 43–50 s e as seguintes variaram de 49 s a 348 s com a máquina compartilhada em carga), é `video B2: a frame superseded while it seeks is cancelled and the next one is exact`, em `video.test.mjs:208`:
+`expected 'frame.failed'`, `actual 'frame.done'` (`ERR_ASSERTION`, 6,9 s no teste). É o mesmo teste, a mesma linha e a mesma mensagem das falhas de `4b690bd` e `ebf77c2`. Os outros 6 subtestes do arquivo passaram nessa execução.
+Evidência (fora do repositório, 132 KiB): `/tmp/tessel-pr40-video-ctl/` com `manifest.json` (sha256 `e099493a43a3ab65aa67fbaed8c8d9f41c1cd8e7f6851c2a9b438447fde65d78`), `runs.jsonl` (sha256 `a393f069b30acdfa…`, uma linha por execução com SHA, UTC, load1,
+exit, contagens e sha256 do log), `logs/` (20 logs de teste e 2 de build) e `run.sh`.
+
+**Leitura (observação e mecanismo; não é prova de causa).**
+
+- **A falha existe sem o código da PR.** `main` falhou 1/10 com a assinatura exata; portanto o mecanismo é pré-existente e a #40 não é condição necessária. Isso é coerente com BL128, que já registrou a mesma falha num head anterior sem relação (`586a671`, 1 em 3).
+- **0/10 no head não prova ausência de risco**: com a taxa observada em `main` (1/10, que é só uma observação, não uma taxa medida) 0/10 é um resultado comum. O que sustenta "não é a PR" é o diff, não a contagem: a PR só muda `overlay.js`, o teste de vídeo
+  abre a página sem `?overlay=gizmo` (`wantsOverlay()` é falso e `attachOverlay` nem roda), e o caminho de cancelamento (`latestRender`, `compositor.js`) e o teste não mudaram.
+- **Hipótese de BL015.15, revisada.** A alternativa "primeira execução depois de `runtime setup`/cache frio" perde força: a falha de `main` veio na 4ª execução, com Node, Chrome e fixtures novos em todas. A carga sozinha também não a determina (a execução com load1 de 69
+  passou); a que falhou levou 102 s, mais que o dobro das três primeiras de `main` (43–50 s), mas execuções posteriores (até 781 s no head) passaram, então a duração sozinha também não a explica. O que continua sendo a explicação mais simples é a corrida do teste (o primeiro `frame.render` pode terminar antes de o segundo chegar, pois há um `send` de ida e volta entre eles),
+  **ainda sem prova**.
+- **Sem alteração de teste, asserção, tolerância ou timeout** nesta rodada. O conserto (enviar as duas mensagens sem ida e volta, ou segurar o seek) e a mutação que desfaz o cancelamento ficam para PR própria (BL015.15/BL128).
+
+**Parecer para o coordenador.** Não houve falha exclusiva do head, então a condição F1 da revisão `5848722632` está **cumprida** e a flaky não bloqueia a integração da #40; ela segue pendente (BL015.15 + BL128) e a #40 não declara o runtime como passe único limpo.
+Isso não altera o status de G1 (**a validar**): ponteiro físico, desempenho do head integrado e a decisão de merge continuam com o coordenador. Nada foi mergeado nem aprovado.

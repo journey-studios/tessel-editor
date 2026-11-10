@@ -78,4 +78,4 @@ plano/relatório continuam como histórico; o contrato atual fica em `features/`
 
 G1 (PR #40): rotação local/mundo implementada, **a validar** no head final;
 os gates históricos de S8 acima não validam os anéis de rotação.
-A `main` com o inspector de FX (PR #39) foi integrada por merge (`d54a3f3`); os gates funcionais do head integrado foram executados em `ebf77c2` (BL015.14; o lock de GPU vale só para desempenho). Runtime/Chrome só passou completo na repetição (BL015.15).
+A `main` com o inspector de FX (PR #39) foi integrada por merge (`d54a3f3`); os gates funcionais do head integrado foram executados em `ebf77c2` (BL015.14; o lock de GPU vale só para desempenho). Runtime/Chrome só passou completo na repetição (BL015.15). O controle `video.test.mjs` `main` × head (10× por lado) reproduziu a falha em `main` (1/10; head 10/10): é pré-existente e segue em BL015.15/BL128, fora da #40.
