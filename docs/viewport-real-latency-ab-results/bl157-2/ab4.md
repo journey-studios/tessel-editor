@@ -1,7 +1,7 @@
 # Transit probe A/B (BL157.2): is the stall after a draw the GPU still working?
 
 - code `a01090b5d9a7` dirty files 1, binary sha256 `ac023ebadf863d1d`, runtime sha256 `1fed1ef93836d9f5`, document sha256 `e93363aecc4c0591`
-- asset I/O fixed at `async`, window [114, 210], arm A `trace + page timing (the probe's own cost in both arms)` / arm B `arm A + the page waits for the GPU after each draw (TESSEL_VIEWPORT_PROBE_GPU_FINISH=1)`, 8 pairs, order alternates (pair 0 A first, pair 1 B first, ...)
+- asset I/O fixed at `async`, window [114, 210] (start and target stop; polling can overshoot, and pictures past the end are included), arm A `trace + page timing (the probe's own cost in both arms)` / arm B `arm A + the page waits for the GPU after each draw (TESSEL_VIEWPORT_PROBE_GPU_FINISH=1)`, 8 pairs, order alternates (pair 0 A first, pair 1 B first, ...)
 - every run is a fresh editor: all are FIRST plays of a cold process; a repeated play in one process is not measured here
 
 | pair | order | arm | valid | class | pictures | gap p50 | gap p95 | gap max | slow gaps (from→to ms) | UI blocks | page stalls ≥40 (n/max ms) | gpu finish max ms (frames ≥20 ms) |

@@ -223,7 +223,7 @@ não foi medida), cargas externas registradas por run (`quiet`/`loaded`).
 | A parada está dentro de uma chamada WebGL medida | **Refutada** | nenhum `gl_call` ≥ 4 ms nesse intervalo (só `texSubImage2D` de 13–27 ms em outro lugar) |
 | Há leitura de asset em voo na hora | **Refutada** | sem `asset_io`/`asset_cb` entre os quadros |
 | A parada é GPU ainda trabalhando depois do draw | **Consistente, não provada** | `ab4` (8 pares, 16 runs válidos): a leitura de 1 pixel esperou ≥ 40 ms em 8/8 runs do braço B (máx. 41–119 ms), nos quadros dos 1ºs draws e nos do corte; onde A tem `187→188`, B tem `185→186`/`186→187` de 65–70 ms (41,7 + a espera): **o atraso se moveu para dentro do quadro**. A reproduziu um stall ≥ 40 ms em 6 de 8 runs |
-| `gl.finish()` espera a GPU no WebKit | **Refutada** | `ab1`: `gpu_finish_ms` 0 em todos os quadros (manipulação falhou, `INCONCLUSIVE`) |
+| `gl.finish()` espera a GPU no WebKit | **Inconclusiva** | `ab1`: `gpu_finish_ms` 0 em todos os quadros: a manipulação falhou (a chamada voltou sem esperar), o que não mostra que `finish()` nunca espera; o braço passou a usar uma leitura de 1 pixel |
 | Pré-upload da 1ª textura PNG tira os gaps `195→196` | **Não testada** | o dado aponta (`texSubImage2D` 13–27 ms na 1ª imagem de cada sequência) mas isso é correlação |
 
 ### 11.2 Números (lote final)
@@ -248,7 +248,7 @@ veredito mecânico `CONSISTENT` com A reproduzindo o stall em 3 de 6 runs.
 
 Sem medida de fóton/display; `gpu_finish_ms` é o tempo de uma leitura que não volta antes de a GPU terminar o que foi desenhado, no relógio da página. Máquina compartilhada (carga 14–33
 nos lotes). Não se declara causa única: a GPU pendente é **compatível**, e o braço **moveu** o atraso em vez de eliminá-lo. A alavanca implicada (custo de GPU do draw do corte: dois
-cenas splat) mexe em resolução, MSAA ou contagem de splats, que não foram variados e dependem de decisão de produto; um draw de aquecimento não ajudaria (custo de preenchimento, não de primeiro uso).
+cenas splat) mexe em resolução, MSAA ou contagem de splats, que não foram variados e dependem de decisão de produto. O efeito de um draw de aquecimento **não foi medido**, e nenhum teste daqui separa custo de preenchimento de custo de primeiro uso: não se conclui que ajudaria nem que não ajudaria.
 Próximos fatores, um por vez e dentro da proteção do quadro atual: pré-upload da 1ª textura PNG de cada sequência (`195→196`) e investigação das páginas que param.
 
 Reprodução: `python3 scripts/viewport-transit-probe.py loop --project <documento> --out <dir> --iterations 4` e `... ab --pairs 8`; `ab-report`/`analyze` regeneram as tabelas.

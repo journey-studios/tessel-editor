@@ -1,9 +1,9 @@
 # Transit probe (BL157.2)
 
-Late pictures decomposed on one clock at a time (see the script's docstring). Diagnostic thresholds only, not approved limits.
+Late pictures decomposed on one clock at a time (see the script's docstring). Diagnostic thresholds only, not approved limits. `valid` says the harness measured what it claims; a starved play or a UI block is a RED finding about the editor, not an invalid run.
 
 - code `59ff7843aede` dirty files 2, binary sha256 `ac023ebadf863d1d`, runtime sha256 `fcde5a3846b2c222`, document sha256 `e93363aecc4c0591`
-- asset I/O fixed at `async`, window frames [114, 210], 3 fresh editor(s)
+- asset I/O fixed at `async`, window frames [114, 210] (where the play starts and the frame it is stopped at; the stop is checked by polling, so pictures a little past the end are included and a gap ending there counts), 3 fresh editor(s)
 
 | iter | valid | class | gaps >62.5 | worst gap ms | pictures | starved | UI blocks ≥50 (n/max ms) | late transit ≥30 | page loop stalls (n/max ms) | ipc wait p95/max ms | eval p95/max ms |
 |---|---|---|---|---|---|---|---|---|---|---|---|

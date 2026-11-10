@@ -1,9 +1,9 @@
 # Transit probe (BL157.2)
 
-Late pictures decomposed on one clock at a time (see the script's docstring). Diagnostic thresholds only, not approved limits.
+Late pictures decomposed on one clock at a time (see the script's docstring). Diagnostic thresholds only, not approved limits. `valid` says the harness measured what it claims; a starved play or a UI block is a RED finding about the editor, not an invalid run.
 
 - code `b0cca09e069b` dirty files 13, binary sha256 `6f1e6b52656ae4c1`, runtime sha256 `d71ab4a4ffb404c4`, document sha256 `e93363aecc4c0591`
-- asset I/O fixed at `async`, window frames [114, 210], 6 fresh editor(s)
+- asset I/O fixed at `async`, window frames [114, 210] (where the play starts and the frame it is stopped at; the stop is checked by polling, so pictures a little past the end are included and a gap ending there counts), 6 fresh editor(s)
 
 | iter | valid | class | gaps >62.5 | worst gap ms | pictures | starved | UI blocks ≥50 (n/max ms) | late transit ≥30 | page loop stalls (n/max ms) | ipc wait p95/max ms | eval p95/max ms |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -31,7 +31,7 @@ Late pictures decomposed on one clock at a time (see the script's docstring). Di
 
 ## UI blocks: prefetch steps that held the window's thread
 
-| iter | began ms | total ms | prefetch ms | plans ahead ms | warm ms | loads | per load: asset bytes fs/send ms |
+| iter | began ms | total ms | prefetch ms | plans ahead ms | warm ms | loads | per load: kind bytes fs/send ms |
 |---|---|---|---|---|---|---|---|
 
 ## Counts by dominant part

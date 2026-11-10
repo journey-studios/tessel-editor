@@ -108,6 +108,6 @@ diferentes; não se somam): `loop1`–`loop4` e `ab1`–`ab4`; o final é `loop4
   (2 do braço A, 3 do B) o frame pipeline da página **parou de responder** (100 % dos quadros cancelados; a página ainda atendia
   assets). Não explicadas; os runs são inválidos e estão nas tabelas. `ab1`: `finish()` sozinho não esperou (manipulação falhou, veredito `INCONCLUSIVE`).
 - Mudança causal de produto: **nenhuma**. A alavanca implicada (custo de GPU do draw do corte) mexe em resolução/MSAA/contagem de splats, que esta
-  rodada não variou; o aquecimento por draw não ajudaria (o custo é de preenchimento, não de primeiro uso).
+  rodada não variou. O efeito de um draw de aquecimento **não foi medido** (nenhum teste separa custo de preenchimento de custo de primeiro uso).
 
 Headless: N/A (o worker Node não passa por WebView nem pelo traço do host).
