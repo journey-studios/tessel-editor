@@ -894,6 +894,25 @@ def cmd_pixels(args):
         print("BLOCKED: the GPU bench locks were not free")
         return 2
     original_env = W.env_for
+    original_retry = W.retry_while_preparing
+    refused = []
+
+    def recording_retry(call, *rest, **named):
+        answer = original_retry(call, *rest, **named)
+        # A frame request replaced by a newer one (the monitor's own refine) is a wait, not a verdict: the explicit
+        # render is idempotent, so it is asked again. Every refusal stays in the report (it is a race of the harness,
+        # seen in both modes, not a pixel result).
+        for _ in range(4):
+            if not (isinstance(answer, dict) and not answer.get("ok")):
+                break
+            refused.append({"mode": mode_box["mode"], "answer": str(answer)[:300]})
+            if ((answer.get("error") or {}).get("code")) != "cancelled":
+                break
+            time.sleep(1.0)
+            answer = original_retry(call, *rest, **named)
+        return answer
+
+    W.retry_while_preparing = recording_retry
     mode_box = {"mode": "sync"}
     W.env_for = lambda arm, inspect: {**original_env("warm", inspect), "TESSEL_VIEWPORT_ASSET_IO": mode_box["mode"], "TESSEL_GL": "gpu"}
     work = tempfile.mkdtemp(prefix="rlpx-", dir="/tmp")
@@ -914,6 +933,7 @@ def cmd_pixels(args):
                 number += 1
     finally:
         W.env_for = original_env
+        W.retry_while_preparing = original_retry
         for handle in locks:
             handle.close()
         shutil.rmtree(work, ignore_errors=True)
@@ -924,7 +944,10 @@ def cmd_pixels(args):
     out = pathlib.Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / "pixels.json").write_text(json.dumps({"frames": frames, "sessions": results,
+                                                  "refused_requests": refused,
                                                   "verdicts": [{"check": n, "ok": ok} for n, ok, _ in verdicts]}, indent=2))
+    for item in refused:
+        print("REFUSED", item["mode"], item["answer"])
     return 1 if failures or any(s.get("error") for s in results) else 0
 
 
