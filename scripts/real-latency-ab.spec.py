@@ -198,7 +198,7 @@ class EditorExitTests(unittest.TestCase):
             lab.log.close()
             self.assertEqual(seen["returncode_before_stop"], -6)
             self.assertFalse(seen["alive"])
-            self.assertTrue(seen["log_lines"][0].endswith("…/clip-a.ply: boom") or "private" not in seen["log_lines"][0])
+            self.assertNotIn("clip-a", seen["log_lines"][0])
             self.assertNotIn("/Users/someone", seen["log_lines"][0])
 
 
@@ -206,7 +206,13 @@ class ReportTextTests(unittest.TestCase):
     def test_a_published_failure_text_names_no_directory(self):
         text = ab.redact("RuntimeError('exited: /Users/someone/private/dir/editor.log: boom')")
         self.assertNotIn("/Users/someone", text)
-        self.assertIn("editor.log", text)
+        self.assertNotIn("editor.log", text, "not even the file name")
+        spaced = ab.redact("failed: /Users/John Smith/private dir/clip.ply: boom")
+        self.assertNotIn("John", spaced)
+        self.assertNotIn("Smith", spaced)
+        self.assertNotIn("clip", spaced)
+        self.assertIn("boom", spaced, "the reason survives")
+        self.assertNotIn(str(ab.pathlib.Path.home()), ab.redact(f"open {ab.pathlib.Path.home()}/a b/c.png failed"))
         self.assertLessEqual(len(ab.redact("x" * 1000)), 240)
         valid, reasons = ab.session_validity(session("sync", error="failed at /Users/someone/private/clip.ply"))
         self.assertFalse(valid)

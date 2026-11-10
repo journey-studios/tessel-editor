@@ -673,20 +673,27 @@ def play_once(lab, state, name, total_frames, fps, W):
 
 
 def redact(text, limit=240):
-    """A failure text for a published report: absolute paths reduced to their last component, bounded."""
-    return re.sub(r"(/[^/\s:\"']+)+/([^/\s:\"']+)", r"…/\2", str(text))[:limit]
+    """A failure text for a published report: no absolute path survives, not even its file name (a name can be private) and not
+    a directory with a space in it. The known roots (home, repository, temp folders) go first, whatever they contain; then any
+    other absolute path is replaced up to its last component, spaces in the directories included. Over-redacting is the safe side."""
+    text = str(text)
+    for root, token in sorted(((str(pathlib.Path.home()), "<home>"), (str(ROOT), "<repo>"), (tempfile.gettempdir(), "<tmp>"),
+                               ("/private/tmp", "<tmp>"), ("/tmp", "<tmp>")), key=lambda item: -len(item[0])):
+        if root and root != "/":
+            text = text.replace(root, token)
+    return re.sub(r"/(?:[^/:'\"\n]+/)+[^/\s:'\"]*", "<path>", text)[:limit]
 
 
 def editor_exit(lab):
     """Did the editor process end before the harness stopped it? Return code (negative: signal) and the log lines that
-    say why, with absolute paths reduced to their last component (the log can name private files)."""
+    say why, with absolute paths removed (the log can name private files)."""
     code = lab.process.poll()
     lines = []
     try:
         lab.log.flush()
         for line in pathlib.Path(lab.log_path).read_text(errors="replace").splitlines():
             if re.search(r"panic|fatal|abort|SIG|error|Error|crash", line):
-                lines.append(re.sub(r"(/[^/\s:\"']+)+/([^/\s:\"']+)", r"…/\2", line)[:240])
+                lines.append(redact(line))
     except OSError:
         pass
     return {"returncode_before_stop": code, "alive": code is None, "log_lines": lines[-12:]}

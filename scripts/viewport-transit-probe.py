@@ -4,7 +4,7 @@
     python3 scripts/viewport-transit-probe.py loop    --binary target/release/tessel-editor --project P.tessel.json --out DIR
                   [--io async|sync] [--iterations 3] [--from F] [--to T] [--report-dir DIR2]
     python3 scripts/viewport-transit-probe.py ab      --binary ... --project P.tessel.json --out DIR [--pairs 4] [--io async]
-    python3 scripts/viewport-transit-probe.py analyze --out DIR [--report-dir DIR2] [--project P.tessel.json]
+    python3 scripts/viewport-transit-probe.py analyze --out DIR [--report-dir DIR2]
 
 `loop` plays a WINDOW of the real project (default: from 3 s before the first cut to a second after it, where the
 instrumented runs found the long pauses) in a FRESH editor per iteration (fresh, because the pause follows the first load of a
@@ -221,11 +221,13 @@ def validity(record):
 
 def markdown(report):
     lines = ["# Transit probe (BL157.2)", "",
-             "Late pictures decomposed on one clock at a time (see the script's docstring). Diagnostic thresholds only, not approved limits.", ""]
+             "Late pictures decomposed on one clock at a time (see the script's docstring). Diagnostic thresholds only, not approved limits. "
+             "`valid` says the harness measured what it claims; a starved play or a UI block is a RED finding about the editor, not an invalid run.", ""]
     manifest = report["manifest"]
     lines += [f"- code `{manifest['git']['sha'][:12]}` dirty files {manifest['git']['dirty_files']}, binary sha256 `{manifest['binary_sha256'][:16]}`, "
               f"runtime sha256 `{manifest['runtime_sha256'][:16]}`, document sha256 `{manifest['document_sha256'][:16]}`",
-              f"- asset I/O fixed at `{manifest['io']}`, window frames {manifest['window']}, {len(report['iterations'])} fresh editor(s)", ""]
+              f"- asset I/O fixed at `{manifest['io']}`, window frames {manifest['window']} (where the play starts and the frame it is stopped at; the stop is checked by polling, "
+              f"so pictures a little past the end are included and a gap ending there counts), {len(report['iterations'])} fresh editor(s)", ""]
     lines += ["| iter | valid | class | gaps >62.5 | worst gap ms | pictures | starved | UI blocks ≥50 (n/max ms) | late transit ≥30 | page loop stalls (n/max ms) | ipc wait p95/max ms | eval p95/max ms |",
               "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for it in report["iterations"]:
@@ -423,7 +425,7 @@ def ab_markdown(report):
     m = report["manifest"]
     lines = ["# Transit probe A/B (BL157.2): is the stall after a draw the GPU still working?", "",
              f"- code `{m['git']['sha'][:12]}` dirty files {m['git']['dirty_files']}, binary sha256 `{m['binary_sha256'][:16]}`, runtime sha256 `{m['runtime_sha256'][:16]}`, document sha256 `{m['document_sha256'][:16]}`",
-             f"- asset I/O fixed at `{m['io']}`, window {m['window']}, arm A `{m['arm_a']}` / arm B `{m['arm_b']}`, {m['pairs']} pairs, order alternates (pair 0 A first, pair 1 B first, ...)",
+             f"- asset I/O fixed at `{m['io']}`, window {m['window']} (start and target stop; polling can overshoot, and pictures past the end are included), arm A `{m['arm_a']}` / arm B `{m['arm_b']}`, {m['pairs']} pairs, order alternates (pair 0 A first, pair 1 B first, ...)",
              "- every run is a fresh editor: all are FIRST plays of a cold process; a repeated play in one process is not measured here", "",
              "| pair | order | arm | valid | class | pictures | gap p50 | gap p95 | gap max | slow gaps (from→to ms) | UI blocks | page stalls ≥40 (n/max ms) | gpu finish max ms (frames ≥20 ms) |",
              "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
@@ -515,9 +517,22 @@ def cmd_ab(args):
 
 
 def cmd_ab_report(args):
-    """Rebuilds `ab.md`/`ab.json` from the saved runs with the current rules, so a verdict rule that changes is applied to every batch."""
+    """Rebuilds `ab.md`/`ab.json` with the CURRENT rules (validity, starved plays, verdict): from the raw `pair-*.json` runs when they
+    are there, otherwise from the saved summaries (then only the verdict is recomputed, and the report says so)."""
     out = pathlib.Path(args.out)
     report = json.loads((out / "ab.json").read_text())
+    raw = sorted(out.glob("pair-*-*.json"))
+    if raw:
+        runs = []
+        for path in raw:
+            record = json.loads(path.read_text())
+            _, pair, arm = path.stem.split("-")
+            runs.append({"pair": int(pair), "order": "AB" if int(pair) % 2 == 0 else "BA", "arm": arm, "summary": arm_summary(record)})
+        # Run order as executed: pair by pair, in that pair's order.
+        runs.sort(key=lambda r: (r["pair"], r["order"].index(r["arm"])))
+        report["runs"] = runs
+    else:
+        report["manifest"]["note"] = "raw runs not available: summaries as saved, verdict recomputed"
     report["verdict"] = ab_verdict(report["runs"])
     (out / "ab.json").write_text(json.dumps(report, indent=2))
     (out / "ab.md").write_text(ab_markdown(report))
@@ -562,6 +577,8 @@ def main():
     ana.add_argument("--out", required=True)
     ana.add_argument("--report-dir")
     args = parser.parse_args()
+    if args.command in ("loop", "ab") and (args.start is None) != (args.end is None):
+        parser.error("--from and --to go together: give both or neither (neither measures the default window around the first cut)")
     return {"loop": cmd_loop, "ab": cmd_ab, "ab-report": cmd_ab_report, "analyze": cmd_analyze}[args.command](args)
 
 
