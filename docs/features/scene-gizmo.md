@@ -565,7 +565,7 @@ do runtime (174/174) não foram repetidos: as fontes JS e o bundle são byte a b
 
 Status: **a validar**. Implementado e agora executado em quase todas as superfícies pedidas: core 38/38, host 52/52, janela GPUI 28/28, workspace 1556/0, clippy `-D warnings`, prova semântica
 headless 56/56 e da janela real 84/84, Chrome 15/15 e runtime 174/174, 15 mutações mortas. **Faltam** a prova com ponteiro físico, foco do teclado e captura do gizmo sobre a WKWebView
-(BL015.2, BL043/BL044) e o veredito do coordenador (revisão nova depois destes gates). Limitações: um nó por vez; sem escala nem snapping; a rotação tem anéis em coordenadas de mundo **ou** locais, mas a translação
+(BL015.2, BL043/BL044) e o veredito do coordenador (revisão nova depois destes gates). Limitações desta rodada histórica: um nó por vez; escala foi acrescentada em G1.2, abaixo; snapping segue pendente; a rotação tem anéis em coordenadas de mundo **ou** locais, mas a translação
 continua só em eixos de mundo; rotação animada e pais com escala não uniforme são recusados (tipado); aspecto da imagem vem da câmera da cena.
 
 Harmonização: **S4** (identidade de ativos) — o gizmo só endereça nós pelo `entity` do F039
@@ -917,3 +917,13 @@ rotação 1532–1793 (p95 1,5–1,8 ms para a escala). Ruído alto e sem WKWebV
 **Não provado**: ponteiro físico na WKWebView (BL015.2/BL043/BL044); splat no corpus das provas de processo (só no core:
 `splat_non_uniform` e o uniforme em splat); custo da escala na página e na janela (BL015.18); liquidação atômica de slider
 (herdada, BL015.19); revisão independente (do coordenador).
+
+
+### Correções de review da escala (a validar no head corrigido)
+
+Arrasto uniforme passa a recusar o semiplano oposto ao press, sem mudar a razão de
+distâncias no semiplano válido. Teste novo cobre origem, lado oposto e fator 2 válido.
+As âncoras M05/M13/M14 foram alinhadas ao código após clippy. O script de medição
+limpa temporários e solta o lock mesmo se a construção do Headless falhar; o spec
+usa falha injetada e flock falso, não executa uma medição. Nenhum gate Rust anterior
+é anunciado como validação dessa correção de produção.

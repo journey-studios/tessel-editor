@@ -63,10 +63,13 @@ def main(argv=None):
     except OSError:
         report['reason'] = 'lock_busy'
         return finish(3)
-    s8 = load('scene_gizmo_proof', 'scene-gizmo-proof.py')
-    work = tempfile.mkdtemp(prefix='te-g12-perf-', dir='/tmp')
-    surface = s8.Headless(args.headless, work)
+    s8 = None
+    work = None
+    surface = None
     try:
+        s8 = load('scene_gizmo_proof', 'scene-gizmo-proof.py')
+        work = tempfile.mkdtemp(prefix='te-g12-perf-', dir='/tmp')
+        surface = s8.Headless(args.headless, work)
         def ok(request):
             good, payload = surface.op(request)
             if not good:
@@ -97,7 +100,8 @@ def main(argv=None):
     finally:
         s8.stop_surface(surface) if hasattr(s8, 'stop_surface') else None
         import shutil
-        shutil.rmtree(work, ignore_errors=True)
+        if work is not None:
+            shutil.rmtree(work, ignore_errors=True)
         fcntl.flock(lock, fcntl.LOCK_UN)
     return finish(0)
 

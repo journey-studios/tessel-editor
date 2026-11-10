@@ -406,7 +406,11 @@ enum Start {
     /// Along a world axis through the origin: the parameter of the press on it.
     Axis { direction: V3, parameter: f64 },
     /// The `uniform` handle: the picture distance of the press from the projected origin.
-    Uniform { centre: Point, distance: f64 },
+    Uniform {
+        centre: Point,
+        press: Point,
+        distance: f64,
+    },
 }
 
 impl ScaleAnchor {
@@ -428,7 +432,11 @@ impl ScaleAnchor {
                 if distance.is_nan() || distance < MIN_UNIFORM_PRESS {
                     return None;
                 }
-                Start::Uniform { centre, distance }
+                Start::Uniform {
+                    centre,
+                    press: point,
+                    distance,
+                }
             }
             Handle::X | Handle::Y | Handle::Z => {
                 let direction = direction?;
@@ -462,7 +470,19 @@ impl ScaleAnchor {
                 direction,
                 parameter,
             } => axis_parameter(self.origin, direction, self.view.ray(point))? / parameter,
-            Start::Uniform { centre, distance } => self.view.distance(point, centre) / distance,
+            Start::Uniform {
+                centre,
+                press,
+                distance,
+            } => {
+                let dot = (point.u - centre.u) * (press.u - centre.u) * self.view.aspect.powi(2)
+                    + (point.v - centre.v) * (press.v - centre.v);
+                if dot <= 0.0 {
+                    0.0
+                } else {
+                    self.view.distance(point, centre) / distance
+                }
+            }
         };
         factor.is_finite().then_some(factor)
     }
@@ -758,6 +778,29 @@ mod tests {
             (anchor.factor(back).unwrap() + 1.0).abs() < 1e-9,
             "past the origin is negative"
         );
+    }
+
+    #[test]
+    fn uniform_scaling_refuses_the_opposite_side_without_changing_valid_ratios() {
+        let view = view();
+        let origin = [0.0; 3];
+        let centre = view.project(origin).unwrap();
+        let press = Point {
+            u: centre.u + 0.1 / view.aspect,
+            v: centre.v - 0.1,
+        };
+        let anchor = ScaleAnchor::begin(&view, origin, Handle::Uniform, None, press).unwrap();
+        let opposite = Point {
+            u: centre.u - 0.2 / view.aspect,
+            v: centre.v + 0.2,
+        };
+        assert_eq!(anchor.factor(opposite), Some(0.0));
+        assert_eq!(anchor.factor(centre), Some(0.0));
+        let double = Point {
+            u: centre.u + 0.2 / view.aspect,
+            v: centre.v - 0.2,
+        };
+        assert!((anchor.factor(double).unwrap() - 2.0).abs() < 1e-12);
     }
 
     #[test]

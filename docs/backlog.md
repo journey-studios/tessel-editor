@@ -1151,3 +1151,9 @@ fora do Git teve suas contagens de undo corrigidas para profundidade relativa em
 A duração até a detecção da morte do holder é só limite superior, sem instante nem causa
 confirmados. Não reutilizar o runner de fila ociosa: próximos gates exigem lote finito,
 processo gerenciado e aguardado, liberação do lock em finally, sem nohup/daemon/polling.
+
+
+PR #43 — três achados CodeRabbit corrigidos pelo coordenador: semiplano uniforme,
+âncoras atuais M05/M13/M14 e cleanup da medição quando o Headless não inicia.
+Spec Python de cleanup executado sem lock real; teste Rust novo ainda a compilar.
+Escala continua a validar até gates e revisão do head corrigido.
