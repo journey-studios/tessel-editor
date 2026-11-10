@@ -1059,12 +1059,36 @@ fn the_handshake_asks_for_nothing_extra_unless_the_host_opted_in() {
     let hello = &sent(&mut host)[0];
     assert_eq!(hello["retain"], false);
     assert_eq!(hello["telemetry"]["presented"], true);
+    assert_eq!(
+        hello["telemetry"]["timing"], true,
+        "the trace also asks the page to account for itself (BL157.2)"
+    );
+    assert!(
+        hello["telemetry"].get("gpu_finish").is_none(),
+        "the GPU wait is a separate diagnostic arm, never implied by the trace"
+    );
     assert_eq!(hello["preview_scene_samples"], 0);
     assert_eq!(hello["preview_sort"], "exact");
     assert!(
         hello.get("scene_samples").is_none(),
         "only what the host asked for"
     );
+
+    let arm = HostOptions {
+        trace: true,
+        gpu_finish: true,
+        ..HostOptions::default()
+    };
+    let mut host = ViewportHost::with_options(Ok(page("hello-finish")), arm);
+    from_page(&mut host, &state, json!({"type":"page.ready"}));
+    assert_eq!(sent(&mut host)[0]["telemetry"]["gpu_finish"], true);
+    let without_trace = HostOptions {
+        gpu_finish: true,
+        ..HostOptions::default()
+    };
+    let mut host = ViewportHost::with_options(Ok(page("hello-finish-alone")), without_trace);
+    from_page(&mut host, &state, json!({"type":"page.ready"}));
+    assert!(sent(&mut host)[0].get("telemetry").is_none());
 }
 
 fn frame_done_with_source(id: u64, revision: u64, source: Value) -> Value {

@@ -65,7 +65,7 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
   // quick rollback), `telemetry.presented: true` asks for a `frame.presented` message per frame.
   // A host that never sends them gets retention on and no extra messages.
   // `result_cache: false` makes every splat scene frame sort and draw again (A/B and rollback).
-  const options = { retain: true, presented: false, resultCache: true };
+  const options = { retain: true, presented: false, timing: false, gpuFinish: false, resultCache: true };
   let compositor = null;
   let latestRender = 0;
   const cancelled = new Set();
@@ -81,14 +81,95 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       runtimeSpans.shift();
       spansLost += 1;
     }
-    runtimeSpans.push(span);
+    // With `telemetry.timing` a span also says when it ended, as a duration back from the moment it is handed over
+    // (`ago_ms`), so the host can place it without a shared clock; the message that carries it may leave much later.
+    runtimeSpans.push(options.timing ? { ...span, at: performance.now() } : span);
   };
   const drainSpans = () => {
-    const spans = runtimeSpans.splice(0);
+    const now = performance.now();
+    const spans = runtimeSpans.splice(0).map(({ at, ...span }) =>
+      at === undefined ? span : { ...span, ago_ms: Math.max(0, now - at) });
     if (spansLost > 0) spans.push({ k: 'lost', n: spansLost });
     spansLost = 0;
     return spans;
   };
+
+  // BL157.2: what the page spends between receiving a frame request and answering it, and whether its own event loop was
+  // stalled. Only with `telemetry.timing`; every figure is a duration on this page's clock, never a stamp the host would
+  // subtract from its own. `ahead` is what shared the page's one serial queue when the request arrived.
+  const backlog = { frames: 0, warms: 0, loads: 0 };
+  const BEAT_MS = 4;
+  // A beat later than this is also kept as a span of its own, to be placed next to the host's events.
+  const STALL_MS = 16;
+  const beat = { timer: null, due: 0, n: 0, maxMs: 0, over: 0 };
+  const stopBeat = () => {
+    if (beat.timer !== null) clearTimeout(beat.timer);
+    beat.timer = null;
+  };
+  const startBeat = () => {
+    if (beat.timer !== null) return;
+    beat.due = performance.now() + BEAT_MS;
+    const tick = () => {
+      const now = performance.now();
+      const lag = Math.max(0, now - beat.due);
+      beat.n += 1;
+      if (lag > beat.maxMs) beat.maxMs = lag;
+      if (lag >= STALL_MS) {
+        beat.over += 1;
+        noteSpan({ k: 'loop_stall', ms: lag });
+      }
+      beat.due = now + BEAT_MS;
+      beat.timer = setTimeout(tick, BEAT_MS);
+    };
+    beat.timer = setTimeout(tick, BEAT_MS);
+  };
+  const drainBeat = () => {
+    const report = { n: beat.n, max_ms: beat.maxMs, over: beat.over, beat_ms: BEAT_MS };
+    beat.n = 0;
+    beat.maxMs = 0;
+    beat.over = 0;
+    return report;
+  };
+  // The WebGL calls that can make the page's thread wait for the GPU process (a readback, a fence, an upload, a link, a draw
+  // that has to flush). With `telemetry.timing` each is wrapped, and one that takes GL_SPAN_MS or more becomes a span
+  // `{ k: 'gl_call', name, ms }`: it says whether a stall of the event loop was inside a WebGL call (and which) or somewhere
+  // else. Wrapped on the prototype, restored when the timing goes off; bounded to one span per slow call.
+  const GL_SPAN_MS = 4;
+  const GL_CALLS = [
+    'readPixels', 'getBufferSubData', 'clientWaitSync', 'getSyncParameter', 'finish', 'flush', 'getError', 'getParameter',
+    'getProgramParameter', 'getShaderParameter', 'linkProgram', 'compileShader', 'useProgram', 'texImage2D', 'texSubImage2D',
+    'texImage3D', 'texSubImage3D', 'bufferData', 'bufferSubData', 'copyBufferSubData', 'blitFramebuffer', 'generateMipmap',
+    'drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced', 'deleteTexture', 'deleteBuffer',
+    'deleteFramebuffer', 'deleteProgram', 'deleteRenderbuffer', 'createTexture', 'createBuffer', 'invalidateFramebuffer',
+  ];
+  const glWrapped = [];
+  const stopGlProbe = () => {
+    glWrapped.splice(0).forEach(({ prototype, name, original }) => {
+      prototype[name] = original;
+    });
+  };
+  const startGlProbe = () => {
+    if (glWrapped.length > 0) return;
+    for (const prototype of [globalThis.WebGL2RenderingContext?.prototype, globalThis.WebGLRenderingContext?.prototype]) {
+      if (!prototype) continue;
+      for (const name of GL_CALLS) {
+        const original = Object.getOwnPropertyDescriptor(prototype, name)?.value;
+        if (typeof original !== 'function') continue;
+        prototype[name] = function (...args) {
+          const started = performance.now();
+          try {
+            return original.apply(this, args);
+          } finally {
+            const ms = performance.now() - started;
+            if (ms >= GL_SPAN_MS) noteSpan({ k: 'gl_call', name, ms });
+          }
+        };
+        glWrapped.push({ prototype, name, original });
+      }
+    }
+  };
+  const finishPixel = new Uint8Array(4);
+  let lastPostMs = null;
   let contextLost = false;
   // Counts context losses; a frame that sees it change between its start and its end was drawn
   // on (or partly on) a context that died, whatever the outcome of the calls looked like.
@@ -135,6 +216,16 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
   const applyOptions = (message) => {
     if (typeof message.retain === 'boolean') options.retain = message.retain;
     options.presented = message.telemetry?.presented === true;
+    options.timing = message.telemetry?.timing === true;
+    // DIAGNOSTIC arm (BL157.2): wait for the GPU after each draw and report it; never without `timing`.
+    options.gpuFinish = options.timing && message.telemetry?.gpu_finish === true;
+    if (options.timing) {
+      startBeat();
+      startGlProbe();
+    } else {
+      stopBeat();
+      stopGlProbe();
+    }
     if (typeof message.result_cache === 'boolean') options.resultCache = message.result_cache;
     compositor?.setResultCache(options.resultCache);
     options.sceneSamples = Number.isInteger(message.scene_samples) ? message.scene_samples : undefined;
@@ -190,6 +281,7 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       return;
     }
     send({ type: 'asset.state', id: descriptor.id, state: 'loading', ...echo });
+    backlog.loads += 1;
     try {
       const loadStarted = performance.now();
       const meta = await assets.load(descriptor);
@@ -200,6 +292,8 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       // Timings noted by a load that then failed or was cancelled must not reach the next load of this id.
       assets.takeLoadTimings(descriptor.id);
       send({ type: 'asset.state', id: descriptor.id, state: 'failed', error: toErrorJson(error, 'asset_unreadable'), ...echo });
+    } finally {
+      backlog.loads -= 1;
     }
   };
 
@@ -244,8 +338,9 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
     };
   };
 
-  const renderFrame = async (request) => {
+  const renderFrame = async (request, arrival = null) => {
     const started = performance.now();
+    if (arrival) backlog.frames -= 1;
     const { id, revision, plan, output, probes = [] } = request;
     // Additive field of bridge v1: `preview` lets a frame sequence draw its attached proxy; absent
     // (every host that predates it, and every explicit/export request) means the original.
@@ -273,6 +368,15 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       const drawStarted = performance.now();
       const pixels = await active.draw({ plan, width, height, assets, aborted, readback, timings, quality, sources });
       if (lostDuringFrame()) throw new RuntimeError('context_lost', 'The graphics context was lost while the frame was drawn');
+      if (options.gpuFinish) {
+        // `finish()` alone returned at once in WebKit (the context is remote: it only flushes), so a one-pixel readback,
+        // which cannot return before the GPU has run what was drawn, is the wait.
+        const finishStarted = performance.now();
+        const { gl } = active;
+        gl.finish();
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, finishPixel);
+        timings.gpu_finish_ms = performance.now() - finishStarted;
+      }
       const describeStarted = performance.now();
       // Not inspected: no hash/mean/probes (the host reads an empty hash as "not measured").
       const description = pixels
@@ -302,7 +406,21 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       if (spans.length > 0) message.runtime_spans = spans;
       // The host that owns the filesystem writes the file; the page only encodes it.
       if (output.png) message.png_data = canvas.toDataURL('image/png').split(',')[1];
+      if (arrival && options.timing) {
+        // Additive (`telemetry.timing`): the page's own account of this frame, durations on its clock. `queue_ms` is the
+        // wait in the page's serial queue before the frame started (which `total_ms` leaves out), `held_ms` all the time
+        // since the request arrived, up to the answer being handed to the transport.
+        message.page = {
+          queue_ms: started - arrival.at,
+          held_ms: performance.now() - arrival.at,
+          ahead: arrival.ahead,
+          post_prev_ms: lastPostMs,
+          loop: drainBeat(),
+        };
+      }
+      const postStarted = options.timing ? performance.now() : 0;
       send(message);
+      if (options.timing) lastPostMs = performance.now() - postStarted;
       if (options.presented) announcePresented(id, revision);
       // The canvas may have changed shape with this picture: an active overlay re-checks that it
       // still describes it (F055). After `frame.done` and `frame.presented`, so it never delays
@@ -334,12 +452,19 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
     'frame.render': (message) => {
       latestRender = message.id;
       // One GL context: frames run strictly one after another, newest wins.
-      renderQueue = renderQueue.then(() => renderFrame(message));
+      let arrival = null;
+      if (options.timing) {
+        arrival = { at: performance.now(), ahead: { ...backlog } };
+        backlog.frames += 1;
+      }
+      renderQueue = renderQueue.then(() => renderFrame(message, arrival));
     },
     // Additive (negotiated by `scene.warm`): no picture, no answer. Behind the frames in the queue, like them.
     'frame.warm': (message) => {
       const queuedAt = performance.now();
+      backlog.warms += 1;
       renderQueue = renderQueue.then(async () => {
+        backlog.warms -= 1;
         if (disposed || contextLost) return;
         try {
           const warmStarted = performance.now();
@@ -375,6 +500,8 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
     ),
     dispose: () => {
       disposed = true;
+      stopBeat();
+      stopGlProbe();
       assets.releaseAll();
       compositor?.dispose();
       compositor = null;

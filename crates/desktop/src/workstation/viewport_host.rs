@@ -95,6 +95,10 @@ pub const INSPECT_ENV: &str = "TESSEL_VIEWPORT_INSPECT";
 /// accept, script evaluation, asset serving) and to ask the runtime for `frame.presented`.
 /// Reported under `trace` in `render.status` and in the `monitor.viewport` node. Off by default.
 pub const TRACE_ENV: &str = "TESSEL_VIEWPORT_TRACE";
+
+/// `1` (with the trace on) makes the page wait for the GPU after each draw and report the wait: a DIAGNOSTIC arm of the BL157.2
+/// experiments, never a default (it moves a wait the browser would have made at presentation into the frame).
+pub const GPU_FINISH_ENV: &str = "TESSEL_VIEWPORT_PROBE_GPU_FINISH";
 /// Set to `0` to run the runtime's per-frame create/dispose path instead of GPU retention, to
 /// compare the two in the same build or to roll back without a new release.
 pub const RETAIN_ENV: &str = "TESSEL_VIEWPORT_RETAIN";
@@ -172,6 +176,8 @@ pub(super) fn asset_io_from_env(value: Option<&str>) -> Result<Option<AssetIoMod
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct HostOptions {
     pub trace: bool,
+    /// See [`GPU_FINISH_ENV`]; only has an effect with `trace`.
+    pub gpu_finish: bool,
     /// `Some(false)` disables the runtime's GPU retention; `None` keeps its default.
     pub retain: Option<bool>,
     pub result_cache: Option<bool>,
@@ -225,6 +231,7 @@ impl HostOptions {
     pub fn from_env() -> Self {
         Self {
             trace: std::env::var(TRACE_ENV).is_ok_and(|value| value == "1"),
+            gpu_finish: std::env::var(GPU_FINISH_ENV).is_ok_and(|value| value == "1"),
             retain: std::env::var(RETAIN_ENV)
                 .is_ok_and(|value| value == "0")
                 .then_some(false),
@@ -489,6 +496,8 @@ impl ViewportHost {
             .with_options(HelloOptions {
                 retain: options.retain,
                 presented: options.trace,
+                timing: options.trace,
+                gpu_finish: options.trace && options.gpu_finish,
                 result_cache: options.result_cache,
                 scene_samples: options.scene_samples,
                 preview_scene_samples: options.preview_scene_samples,
@@ -719,6 +728,14 @@ impl ViewportHost {
             self.asset_io.pool.clone(),
             self.asset_io.requests.clone(),
         )
+    }
+
+    /// Lets the page read `file`, as an `asset.load` of it would (tests that drive the protocol handle of a host).
+    #[cfg(test)]
+    pub(super) fn allow_file(&self, file: &std::path::Path) {
+        self.access
+            .borrow_mut()
+            .register(&json!({"source": {"type": "file", "path": file}}));
     }
 
     /// Scripts to run in the page, in order.
@@ -1119,14 +1136,24 @@ impl ViewportHost {
     }
 
     /// One message from the page.
+    #[cfg(test)]
     pub fn on_ipc(&mut self, raw: &str, state: &EditorState) {
+        self.on_ipc_waited(raw, state, None);
+    }
+
+    /// One message from the page that waited `waited` between the WebView handing it over and the window's task taking
+    /// it (BL157.2; `None` when nobody measured, trace off).
+    pub fn on_ipc_waited(&mut self, raw: &str, state: &EditorState, waited: Option<Duration>) {
         let trace = self.session.trace().clone();
         let started = trace.start();
-        self.handle_ipc(raw, state);
+        if let Some(waited) = waited {
+            trace.record("ipc_wait", waited);
+        }
+        self.handle_ipc(raw, state, waited);
         trace.span("ipc", started);
     }
 
-    fn handle_ipc(&mut self, raw: &str, state: &EditorState) {
+    fn handle_ipc(&mut self, raw: &str, state: &EditorState, waited: Option<Duration>) {
         let Ok(mut message) = serde_json::from_str::<Value>(raw) else {
             // A page that speaks something else is not our runtime.
             self.set_unavailable(BackendError::new(
@@ -1141,7 +1168,7 @@ impl ViewportHost {
         if matches!(self.phase, Phase::Booting(_)) && message["type"] != "page.ready" {
             return;
         }
-        self.trace_incoming(&message);
+        self.trace_incoming(&message, waited);
         match message["type"].as_str() {
             Some("page.ready") => {
                 if matches!(self.phase, Phase::Booting(_)) {
@@ -1164,7 +1191,7 @@ impl ViewportHost {
 
     /// Records what the page says about its own work, with the host's arrival stamp. The page's durations are on its
     /// own clock and stay durations: nothing here subtracts a page timestamp from a host one.
-    fn trace_incoming(&self, message: &Value) {
+    fn trace_incoming(&self, message: &Value, waited: Option<Duration>) {
         let trace = self.session.trace();
         if !trace.enabled() {
             return;
@@ -1178,6 +1205,19 @@ impl ViewportHost {
                 })
             }),
             Some("frame.done") => {
+                // BL157.2: the page's own account of this frame (durations on its clock) next to how long the message
+                // waited for the window's task. Only when the page was asked for it (`telemetry.timing`).
+                if message["page"].is_object() {
+                    trace.event("frame_page", || {
+                        json!({
+                            "id": message["id"],
+                            "page": message["page"],
+                            "runtime_total_ms": message["timings"]["total_ms"],
+                            "gpu_finish_ms": message["timings"]["gpu_finish_ms"],
+                            "ipc_wait_ms": waited.map(|waited| round3(waited.as_secs_f64() * 1000.0)),
+                        })
+                    });
+                }
                 if let Some(spans) = message["runtime_spans"].as_array() {
                     for span in spans {
                         trace.event("runtime_span", || {

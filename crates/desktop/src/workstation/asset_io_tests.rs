@@ -230,6 +230,63 @@ fn the_report_names_the_mode_in_effect_and_the_page_spans_reach_the_trace_withou
     assert_eq!(state_event["fields"]["timings"]["decode_ms"], 8.0);
 }
 
+#[test]
+fn the_page_account_of_a_frame_and_the_wait_of_its_message_reach_the_trace() {
+    use super::viewport_host::{HostOptions, ViewportHost};
+    use super::viewport_host_tests::{frame_done, from_page, ready_message, sent};
+    use tessel_editor_core::EditorState;
+
+    let state = EditorState::demo();
+    let options = HostOptions {
+        trace: true,
+        ..HostOptions::default()
+    };
+    let mut host = ViewportHost::with_options(Ok(page("io-page-account")), options);
+    from_page(&mut host, &state, json!({"type":"page.ready"}));
+    sent(&mut host);
+    from_page(&mut host, &state, ready_message());
+
+    // A frame that comes without the account (a page that was not asked, or an older one) leaves no such event.
+    from_page(&mut host, &state, frame_done(8, 1));
+    let mut done = frame_done(9, 1);
+    done["page"] = json!({
+        "queue_ms": 31.5, "held_ms": 33.0, "ahead": {"frames": 0, "warms": 1, "loads": 1},
+        "post_prev_ms": 0.2, "loop": {"n": 10, "max_ms": 28.0, "over": 1, "beat_ms": 4}
+    });
+    done["runtime_spans"] = json!([{"k":"loop_stall","ms":28.0,"ago_ms":12.0}]);
+    host.on_ipc_waited(
+        &done.to_string(),
+        &state,
+        Some(std::time::Duration::from_millis(7)),
+    );
+
+    let events = host.trace().events_since(0, 100);
+    let pages: Vec<&serde_json::Value> = events["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|event| event["kind"] == "frame_page")
+        .collect();
+    assert_eq!(pages.len(), 1, "only the frame that carried the account");
+    let fields = &pages[0]["fields"];
+    assert_eq!(fields["id"], 9);
+    assert_eq!(fields["page"]["queue_ms"], 31.5);
+    assert_eq!(fields["page"]["ahead"]["warms"], 1);
+    assert_eq!(fields["ipc_wait_ms"], 7.0);
+    let stall = events["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|event| event["kind"] == "runtime_span" && event["fields"]["k"] == "loop_stall")
+        .expect("the stall span is kept with the duration back from its hand-over");
+    assert_eq!(stall["fields"]["ago_ms"], 12.0);
+    let spans = host.trace().snapshot(1)["spans"].clone();
+    assert!(
+        spans["ipc_wait"]["max"].as_f64().unwrap() >= 7.0,
+        "the wait is also a span with percentiles: {spans}"
+    );
+}
+
 /// The controls that hold a read with a named pipe (Unix only).
 #[cfg(unix)]
 mod held_read {
@@ -239,6 +296,8 @@ mod held_read {
     use std::time::{Duration, Instant};
 
     use serde_json::Value;
+
+    use super::super::viewport_host::{HostOptions, ViewportHost};
 
     fn fifo(dir: &Path, name: &str) -> PathBuf {
         let path = dir.join(name);
@@ -524,5 +583,58 @@ mod held_read {
         answers.sort();
         assert_eq!(answers, vec![("running", 410), ("waiting", 410)]);
         assert_eq!(pool.stats().stale(), 2);
+    }
+
+    /// The pool's own `invalidate` is not what the editor calls: the host does, from `reset_project` and `begin_reload`.
+    /// Dropping those calls would leave every other test green, so each is exercised here with a read in flight and one
+    /// waiting behind it, through the protocol handle the host hands to the WebView.
+    fn host_change_answers_reads_gone(tag: &str, change: impl FnOnce(&mut ViewportHost)) {
+        let mut host = ViewportHost::with_options(
+            Ok(page(tag)),
+            HostOptions {
+                asset_io: Some(AssetIoMode::Async),
+                ..HostOptions::default()
+            },
+        );
+        let dir = scratch(&format!("{tag}-files"));
+        let held = fifo(&dir, "slow.bin");
+        host.allow_file(&held);
+        let handle = host.protocol_handle();
+        let (tx, rx) = mpsc::channel();
+        let send = |tag: &'static str| {
+            let tx = tx.clone();
+            handle.handle(
+                &asset_request(&held, None),
+                Box::new(move |response| {
+                    let _ = tx.send((tag, response.status().as_u16()));
+                }),
+            );
+        };
+        send("running");
+        let report = || host.report()["asset_io"]["pool"]["in_flight"].as_u64();
+        wait_until("a worker to hold the read", || report() == Some(1));
+        send("waiting");
+        change(&mut host);
+        let writer = release(&held);
+        let mut answers = vec![
+            rx.recv_timeout(Duration::from_secs(20)).unwrap(),
+            rx.recv_timeout(Duration::from_secs(20)).unwrap(),
+        ];
+        drop(writer);
+        answers.sort();
+        assert_eq!(answers, vec![("running", 410), ("waiting", 410)]);
+        assert_eq!(host.report()["asset_io"]["pool"]["stale"], 2);
+    }
+
+    #[test]
+    fn replacing_the_project_through_the_host_answers_reads_gone() {
+        host_change_answers_reads_gone("io-host-reset", |host| host.reset_project());
+    }
+
+    #[test]
+    fn reloading_the_page_through_the_host_answers_reads_gone() {
+        host_change_answers_reads_gone("io-host-reload", |host| {
+            assert!(host.begin_reload());
+        });
     }
 }

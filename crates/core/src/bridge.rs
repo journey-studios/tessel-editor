@@ -35,6 +35,14 @@ pub struct HelloOptions {
     /// Ask for a `frame.presented` message after each `frame.done`. Off by default: a host that
     /// does not know the message rejects it (see [`decode_event`]).
     pub presented: bool,
+    /// Ask the page to measure itself (BL157.2): how long each frame waited in the page's own queue, the lag of its event
+    /// loop and how long it spent handing the answer over, as durations on the page clock added to `frame.done`. Off by
+    /// default; the same cost on whichever arm of an experiment turns it on.
+    pub timing: bool,
+    /// DIAGNOSTIC arm (BL157.2), only with `timing`: the page calls `gl.finish()` after each draw and reports how long it
+    /// waited as `timings.gpu_finish_ms`. It changes the cost (the wait moves from the browser's presentation into the
+    /// frame), so it is never on in a product run; it exists to say whether a stall after a draw is the GPU still working.
+    pub gpu_finish: bool,
     /// `Some(false)` makes every splat scene frame sort and draw again (rollback of the result
     /// cache of still scenes). `None` leaves the runtime's default (on).
     pub result_cache: Option<bool>,
@@ -86,8 +94,18 @@ pub fn hello_with(host: &str, options: HelloOptions) -> Value {
     if let Some(retain) = options.retain {
         message["retain"] = json!(retain);
     }
-    if options.presented {
-        message["telemetry"] = json!({ "presented": true });
+    if options.presented || options.timing {
+        let mut telemetry = serde_json::Map::new();
+        if options.presented {
+            telemetry.insert("presented".to_owned(), json!(true));
+        }
+        if options.timing {
+            telemetry.insert("timing".to_owned(), json!(true));
+            if options.gpu_finish {
+                telemetry.insert("gpu_finish".to_owned(), json!(true));
+            }
+        }
+        message["telemetry"] = Value::Object(telemetry);
     }
     if let Some(result_cache) = options.result_cache {
         message["result_cache"] = json!(result_cache);
@@ -707,6 +725,8 @@ mod tests {
             HelloOptions {
                 retain: Some(false),
                 presented: true,
+                timing: true,
+                gpu_finish: true,
                 result_cache: Some(false),
                 scene_samples: Some(2),
                 preview_scene_samples: Some(0),
@@ -717,6 +737,26 @@ mod tests {
         assert_eq!(with["preview_scene_samples"].as_u64(), Some(0));
         assert_eq!(with["preview_sort"], "exact");
         assert_eq!(with["telemetry"]["presented"], true);
+        assert_eq!(with["telemetry"]["timing"], true);
+        assert_eq!(with["telemetry"]["gpu_finish"], true);
+        // The diagnostic arm is only ever asked for with the timing it reports through.
+        let finish_alone = hello_with(
+            "tessel-editor",
+            HelloOptions {
+                gpu_finish: true,
+                ..HelloOptions::default()
+            },
+        );
+        assert_eq!(finish_alone, hello("tessel-editor"));
+        // Each flag alone says only itself, and neither leaves the message as it always was.
+        let timing_only = hello_with(
+            "tessel-editor",
+            HelloOptions {
+                timing: true,
+                ..HelloOptions::default()
+            },
+        );
+        assert_eq!(timing_only["telemetry"], json!({"timing": true}));
         assert_eq!(
             (
                 with["result_cache"].as_bool(),

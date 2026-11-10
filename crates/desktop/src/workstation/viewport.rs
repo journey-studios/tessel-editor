@@ -30,6 +30,22 @@ pub enum ViewportContent {
     Placeholder { icon: IconName, text: String },
 }
 
+/// The bridge message type a queued script carries, for the trace only (no name of anything private is read).
+fn script_kind(script: &str) -> &'static str {
+    [
+        "frame.render",
+        "frame.warm",
+        "frame.cancel",
+        "asset.load",
+        "asset.release",
+        "asset.proxy",
+        "hello",
+    ]
+    .into_iter()
+    .find(|kind| script.contains(&format!("\"type\":\"{kind}\"")))
+    .unwrap_or("other")
+}
+
 const TICK: Duration = Duration::from_millis(500);
 /// Slightly past the session's settle time, so the first check usually finds it settled.
 const REFINE_WAIT: Duration = Duration::from_millis(220);
@@ -45,8 +61,11 @@ impl Workstation {
         if !viewport.has_page() {
             return None;
         }
-        let (sender, receiver) = async_channel::unbounded::<String>();
+        // The stamp is the moment the WebView handed the message over (`None` with the trace off): how long it then waits
+        // for the window's task is what the trace calls `ipc_wait` (BL157.2).
+        let (sender, receiver) = async_channel::unbounded::<(String, Option<Instant>)>();
         let handle = viewport.protocol_handle();
+        let ipc_trace = viewport.trace();
         let builder = wry::WebViewBuilder::new()
             // Asynchronous at the WebView, whichever way the handle reads: `sync` answers before it returns (what the
             // synchronous protocol did), `async` answers from a worker (BL157.1, `TESSEL_VIEWPORT_ASSET_IO`).
@@ -59,7 +78,7 @@ impl Workstation {
             .with_ipc_handler(move |request| {
                 // Unbounded: the page posts at most a few messages per frame, and dropping one
                 // would desynchronize the request/answer pairing.
-                let _ = sender.try_send(request.body().clone());
+                let _ = sender.try_send((request.body().clone(), ipc_trace.start()));
             })
             // The page is ours and nothing else: no navigation away, no pop-ups, no downloads.
             .with_navigation_handler(|url| url.starts_with(ORIGIN))
@@ -76,9 +95,9 @@ impl Workstation {
         };
         let entity = cx.new(|_| view);
         cx.spawn(async move |this, cx| {
-            while let Ok(raw) = receiver.recv().await {
+            while let Ok((raw, arrived)) = receiver.recv().await {
                 if this
-                    .update(cx, |this, cx| this.viewport_ipc(&raw, cx))
+                    .update(cx, |this, cx| this.viewport_ipc_arrived(&raw, arrived, cx))
                     .is_err()
                 {
                     break;
@@ -106,7 +125,21 @@ impl Workstation {
             for script in scripts {
                 // Handing the script to the WebView (it returns before the page runs it).
                 let started = trace.start();
-                let result = view.read(cx).evaluate_script(&script);
+                let result = match started {
+                    // With the trace on, the WebView also says when the page finished running the script (its completion
+                    // handler, back on this thread): send to done, on this clock, is what delivery to the page and the
+                    // page's own handling of the message cost together (BL157.2).
+                    Some(sent) => {
+                        let done = trace.clone();
+                        let kind = script_kind(&script);
+                        view.read(cx).evaluate_script_with_callback(&script, move |_| {
+                            done.event("eval_done", || {
+                                serde_json::json!({ "kind": kind, "ms": sent.elapsed().as_secs_f64() * 1000.0 })
+                            });
+                        })
+                    }
+                    None => view.read(cx).evaluate_script(&script),
+                };
                 trace.span("evaluate", started);
                 if let Err(error) = result {
                     self.viewport.on_script_error(&error.to_string());
@@ -172,7 +205,19 @@ impl Workstation {
         self.viewport_flush(cx);
     }
 
+    #[cfg(test)]
     pub(super) fn viewport_ipc(&mut self, raw: &str, cx: &mut Context<Self>) {
+        self.viewport_ipc_arrived(raw, None, cx);
+    }
+
+    /// [`viewport_ipc`](Self::viewport_ipc) for a message the WebView handed over at `arrived` (trace on).
+    fn viewport_ipc_arrived(
+        &mut self,
+        raw: &str,
+        arrived: Option<Instant>,
+        cx: &mut Context<Self>,
+    ) {
+        let waited = arrived.map(|at| at.elapsed());
         // F055: the overlay's own messages never reach the render session.
         if let Ok(message) = serde_json::from_str::<serde_json::Value>(raw)
             && self.overlay_ipc(&message, cx)
@@ -181,7 +226,7 @@ impl Workstation {
             return;
         }
         let before = self.viewport.ui_signature();
-        self.viewport.on_ipc(raw, &self.state);
+        self.viewport.on_ipc_waited(raw, &self.state, waited);
         // The page may have said it is gone (lost context, runtime error, reload).
         self.settle_gizmo_drag(cx);
         let restarted = serde_json::from_str::<serde_json::Value>(raw)

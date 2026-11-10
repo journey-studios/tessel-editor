@@ -519,6 +519,7 @@ impl<B: RenderBackend> ViewportSession<B> {
             if self.assets.contains_key(asset) {
                 continue;
             }
+            let probing = self.trace.start();
             let Some(item) = state.library.item(asset) else {
                 continue;
             };
@@ -533,13 +534,23 @@ impl<B: RenderBackend> ViewportSession<B> {
                 continue;
             }
             let bytes = files_bytes(&files);
+            let fs_ms = probing.map(|at| at.elapsed().as_secs_f64() * 1000.0);
             // The first prefetch always fits: the budget limits a burst, not a single big scene.
             let held: u64 = self.prefetched.values().sum();
             if held > 0 && held.saturating_add(bytes) > self.prefetch_budget {
                 self.stats.prefetch_skipped += 1;
                 continue;
             }
-            if self.backend.load_asset(&descriptor).is_err() {
+            let sending = self.trace.start();
+            let sent = self.backend.load_asset(&descriptor);
+            let send_ms = sending.map(|at| at.elapsed().as_secs_f64() * 1000.0);
+            // BL157.2: where a slow prefetch spent its time on the calling thread, per load: the file checks (stat) or
+            // the hand-over of the load to the backend. Only with the trace on; one event per load started, by kind and size
+            // (never the asset's name).
+            self.trace.event("prefetch_asset", || {
+                json!({ "kind": format!("{:?}", descriptor.kind).to_lowercase(), "bytes": bytes, "fs_ms": fs_ms, "send_ms": send_ms, "ok": sent.is_ok() })
+            });
+            if sent.is_err() {
                 continue;
             }
             self.assets.insert(*asset, Slot::Loading);

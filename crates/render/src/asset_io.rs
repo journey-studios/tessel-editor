@@ -311,6 +311,7 @@ fn run(index: usize, message: Message, view: &WorkerView) {
         started.elapsed()
     };
     // The body that was just read is memory the pool holds from now on, even when the session that asked is already over.
+    // The figure starts when the read returns: the buffer a worker is still filling (at most one per worker) is not in it.
     let account = |bytes: usize| {
         if let Some(shared) = &shared {
             let stats = &shared.stats;
@@ -334,10 +335,8 @@ fn run(index: usize, message: Message, view: &WorkerView) {
         held = served.body.len();
         account(held);
     }
-    if stale {
-        if let Some(shared) = &shared {
-            shared.stats.stale.fetch_add(1, Ordering::Relaxed);
-        }
+    if stale && let Some(shared) = &shared {
+        shared.stats.stale.fetch_add(1, Ordering::Relaxed);
     }
     let outcome = Outcome {
         worker: Some(index),

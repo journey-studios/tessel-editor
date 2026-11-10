@@ -1378,6 +1378,40 @@ fn prefetch_loads_ahead_without_a_frame_and_the_frame_that_needs_it_does_not_loa
 }
 
 #[test]
+fn a_traced_prefetch_says_where_each_load_spent_its_time_on_the_calling_thread() {
+    let mut quiet = rig_with_cut(60);
+    quiet.session.capabilities().unwrap();
+    assert_eq!(quiet.session.prefetch(&quiet.state, &[Id::lit("next")]), 1);
+    assert_eq!(
+        quiet.session.trace().events_since(0, 16)["events"]
+            .as_array()
+            .map(Vec::len),
+        Some(0),
+        "no trace, no event"
+    );
+
+    let mut traced = rig_with_cut(60);
+    traced.session.trace().set_enabled(true);
+    traced.session.capabilities().unwrap();
+    assert_eq!(
+        traced.session.prefetch(&traced.state, &[Id::lit("next")]),
+        1
+    );
+    let events = traced.session.trace().events_since(0, 16);
+    let load = events["events"]
+        .as_array()
+        .and_then(|items| items.iter().find(|e| e["kind"] == "prefetch_asset"))
+        .expect("a load started, an event says how long handing it over took");
+    assert!(
+        load["fields"].get("asset").is_none(),
+        "what is loaded is told by kind and size, never by name"
+    );
+    assert!(load["fields"]["kind"].is_string());
+    assert!(load["fields"]["fs_ms"].is_number() && load["fields"]["send_ms"].is_number());
+    assert_eq!(load["fields"]["ok"], true);
+}
+
+#[test]
 fn a_frame_waiting_on_a_prefetch_in_flight_does_not_start_a_second_load() {
     let mut rig = rig_with_cut(60);
     rig.session.capabilities().unwrap();
