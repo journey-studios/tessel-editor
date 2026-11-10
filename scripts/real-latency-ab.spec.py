@@ -214,6 +214,22 @@ class PairTests(unittest.TestCase):
         self.assertFalse(any(r["comparable"] for r in invalid))
 
 
+class ArmTests(unittest.TestCase):
+    def test_slow_gaps_are_counted_by_what_they_overlapped_and_invalid_sessions_are_left_out(self):
+        def gap(where, ui, reads):
+            return {"where": where, "context": {"ui_callback_ms": ui, "reads": reads}}
+
+        play = {"pictures": 600, "slow_gt_62_5": 3, "slow_gt_100": 1, "interval_ms": {"max": 110.0},
+                "slow_detail": [gap("prefetch:186", 30.0, 2), gap("other", 0, 0), gap("cut:186", 5.0, 1)]}
+        good = {"valid": True, "mode": "sync", "quiet_class": "quiet", "plays": {"first": play, "repeat": play}}
+        bad = {"valid": False, "mode": "sync", "quiet_class": "quiet", "plays": {"first": play}}
+        group = ab.arm_groups([good, bad])["sync/quiet"]
+        self.assertEqual((group["sessions"], group["plays"], group["gaps_gt_62_5"]), (1, 2, 6))
+        self.assertEqual((group["with_ui_stall"], group["with_read_overlap"]), (2, 4))
+        self.assertEqual((group["in_prefetch_window"], group["at_cut"], group["other"]), (2, 2, 2))
+        self.assertEqual(group["worst_gap_ms_per_session"], [110.0])
+
+
 class ChartTests(unittest.TestCase):
     def test_the_charts_are_well_formed_svg(self):
         gaps = [(i, i + 1, i * 40.0, (i + 1) * 40.0, 40.0 + (80 if i == 140 else 0)) for i in range(130, 160)]

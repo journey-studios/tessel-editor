@@ -413,6 +413,37 @@ def pair_rows(sessions_by_pair):
     return rows
 
 
+UI_STALL_MS = 20.0  # a UI-thread protocol callback this long overlapping a gap is reported as "with a UI-thread stall"
+
+
+def arm_groups(analyzed):
+    """Valid sessions pooled per (mode, load class): what the slow gaps (> 62.5 ms) overlapped. Counts only; frames of a run
+    are correlated, so these are descriptions, not samples of an effect size. Invalid sessions are not pooled (they stay listed)."""
+    groups = {}
+    for item in analyzed:
+        if not item["valid"]:
+            continue
+        group = groups.setdefault(f"{item['mode']}/{item['quiet_class']}", {
+            "sessions": 0, "plays": 0, "pictures": 0, "gaps_gt_62_5": 0, "gaps_gt_100": 0, "with_ui_stall": 0,
+            "in_prefetch_window": 0, "at_cut": 0, "other": 0, "with_read_overlap": 0, "worst_gap_ms_per_session": []})
+        group["sessions"] += 1
+        worst = 0.0
+        for play in item["plays"].values():
+            group["plays"] += 1
+            group["pictures"] += play["pictures"]
+            group["gaps_gt_62_5"] += play["slow_gt_62_5"]
+            group["gaps_gt_100"] += play["slow_gt_100"]
+            worst = max(worst, play["interval_ms"]["max"] or 0.0)
+            for gap in play["slow_detail"]:
+                context = gap["context"]
+                group["with_ui_stall"] += 1 if (context["ui_callback_ms"] or 0) >= UI_STALL_MS else 0
+                group["with_read_overlap"] += 1 if context["reads"] else 0
+                where = gap["where"]
+                group["in_prefetch_window" if where.startswith("prefetch") else "at_cut" if where.startswith("cut") else "other"] += 1
+        group["worst_gap_ms_per_session"].append(round(worst, 1))
+    return groups
+
+
 # ---------------------------------------------------------------------------------------------------- charts
 PALETTE = {"sync": "#c2410c", "async": "#0369a1", "grid": "#d4d4d8", "text": "#27272a", "cut": "#16a34a", "pre": "#fef3c7"}
 
@@ -734,7 +765,7 @@ def analyze(sessions, project, manifest):
                 "quiet_median_cores": QUIET_MEDIAN_CORES, "quiet_p95_cores": QUIET_P95_CORES, "pair_max_delta_cores": PAIR_MAX_DELTA_CORES,
                 "async_workers_queue": "2 workers, 16 queued jobs (fixed before measuring)"},
             "project": {k: v for k, v in project.items() if k != "sources"},
-            "sessions": analyzed, "pairs": groups,
+            "sessions": analyzed, "pairs": groups, "arms": arm_groups(analyzed),
             "all_valid": all(s["valid"] for s in analyzed),
             "n_comparable_pairs": len({r["pair"] for r in groups["comparable_quiet"]})}
 
@@ -765,6 +796,12 @@ def markdown(report):
             g, r, t, c = p["interval_ms"], p["request_to_accept_ms"], p["tick_late_ms"], p["ui_callback_ms"]
             lines.append(f"| {s['order_index']} | {s['mode']} | {name} | {p['pictures']} | {g['p50']}/{g['p95']}/{g['max']} | {p['slow_gt_62_5']} | {p['slow_gt_100']} | "
                          f"{r['p95']}/{r['max']} | {t['p95']}/{t['max']} | {c['max']} | {(p['playback_report'] or {}).get('skipped_frames')} | {p['play_command_to_first_picture_ms']} |")
+    lines += ["", f"## Slow gaps (> {SLOW_DIAGNOSTIC_MS} ms) by arm and load class (valid sessions only; descriptive counts)", "",
+              f"| group | sessions | plays | pictures | gaps >{SLOW_DIAGNOSTIC_MS} | >100 | with UI-thread callback ≥{UI_STALL_MS:g} ms | overlapping a read | in a prefetch window | at a cut | elsewhere | worst gap per session ms |",
+              "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    for name, g in sorted(report["arms"].items()):
+        lines.append(f"| {name} | {g['sessions']} | {g['plays']} | {g['pictures']} | {g['gaps_gt_62_5']} | {g['gaps_gt_100']} | {g['with_ui_stall']} | "
+                     f"{g['with_read_overlap']} | {g['in_prefetch_window']} | {g['at_cut']} | {g['other']} | {g['worst_gap_ms_per_session']} |")
     lines += ["", "## Paired differences (B - A)", ""]
     for group, rows in report["pairs"].items():
         lines += [f"### {group}", "", "| pair | play | >62.5 sync→async | >100 sync→async | max gap sync→async ms | p95 gap sync→async ms | Δ>62.5 | Δmax ms |", "|---|---|---|---|---|---|---|---|"]
