@@ -214,7 +214,8 @@ ponteiro por Δ move o nó por Δ.
 `no_drag` (move/up sem arrasto), `not_translatable` (`details.reason`: sem `position`, escala zero,
 não invertível), `gizmo_unavailable`, `invalid_value` (delta/ponto não finito), `gesture_active`
 (outro gesto aberto, p.ex. slider do inspetor), `gesture_invalidated`, `unknown_entity`,
-`unknown_element`. Um comando recusado deixa documento, histórico e revisão como estavam.
+`unknown_element`. Um comando recusado deixa documento, histórico e revisão como estavam, **exceto** pela liquidação de um
+gesto de slider aberto descrita em "Liquidação de slider aberto" (abaixo): ela acontece antes da recusa e não é desfeita.
 
 ### Fluxo Rust
 
@@ -291,7 +292,8 @@ overlay do primeiro corte (sem `tool`) é lido como `translate`/`world`. Nó que
 
 ### Recusas tipadas (`not_rotatable`, `details.reason`)
 
-Um comando recusado deixa documento, histórico e revisão como estavam.
+Um comando recusado deixa documento, histórico e revisão como estavam, **exceto** pela liquidação de um gesto de slider aberto
+("Liquidação de slider aberto", abaixo).
 
 | `reason` | Quando |
 |---|---|
@@ -482,8 +484,8 @@ do runtime (174/174) não foram repetidos: as fontes JS e o bundle são byte a b
 
 Status: **a validar**. Implementado e agora executado em quase todas as superfícies pedidas: core 38/38, host 52/52, janela GPUI 28/28, workspace 1556/0, clippy `-D warnings`, prova semântica
 headless 56/56 e da janela real 84/84, Chrome 15/15 e runtime 174/174, 15 mutações mortas. **Faltam** a prova com ponteiro físico, foco do teclado e captura do gizmo sobre a WKWebView
-(BL015.2, BL043/BL044) e o veredito do coordenador (revisão nova depois destes gates). Limitações: só translação; um nó por vez; sem snapping; handles só em coordenadas de mundo (não locais);
-aspecto da imagem vem da câmera da cena.
+(BL015.2, BL043/BL044) e o veredito do coordenador (revisão nova depois destes gates). Limitações: um nó por vez; sem escala nem snapping; a rotação tem anéis em coordenadas de mundo **ou** locais, mas a translação
+continua só em eixos de mundo; rotação animada e pais com escala não uniforme são recusados (tipado); aspecto da imagem vem da câmera da cena.
 
 Harmonização: **S4** (identidade de ativos) — o gizmo só endereça nós pelo `entity` do F039
 (`scene/<cena>/node/<id>`), sem tocar slots/assets; **S6** (propriedades) — usa a propriedade
@@ -507,3 +509,58 @@ O teste puro de normalização cobre zero, NaN e infinito, mas não comprova que
 valores atravessam o importador até `RotationFrame::of`. `degenerate_rotation` é
 uma guarda defensiva; `not_movable` não é alcançável pelos tipos atuais de nó.
 Nenhum desses ramos é anunciado como recusa exercitada por integração.
+
+### Liquidação de slider aberto por `scene.rotate`/`scene.translate` (regra existente, sem atomicidade)
+
+`EditorState::execute` assenta (`settle_property_gesture`, como se o slider fosse solto) um gesto de slider do inspetor ainda
+aberto **antes** de aplicar qualquer comando que tenha `history_label`: `scene.rotate`, `scene.translate`, o release de um
+arrasto vivo, `scene.edit`. A liquidação acontece antes de o comando ser validado, então um `scene.rotate` ou `scene.translate`
+que depois é **recusado** (`not_rotatable`, `not_translatable`, `invalid_value`, `unknown_entity`…) já liquidou o slider e essa
+entrada de histórico (se o slider tinha tocado o valor) **permanece**. O texto "um comando recusado deixa documento, histórico e
+revisão como estavam" vale, portanto, em relação ao estado **depois** dessa liquidação; ele só é literal quando nenhum slider está
+aberto. Não há promessa de atomicidade entre "liquidar o slider" e "aplicar o comando": a regra é anterior à G1 (S1 da PR #25,
+`EditorState::execute`/`is_idle_gizmo_release`), não foi alterada por esta PR e foi lida no código; **nenhum teste executado nesta
+rodada a exercita para a rotação** (o `cargo test` ficou bloqueado, ver abaixo). `scene.gizmo.tool` não tem `history_label`
+(não liquida), e um release sem arrasto vivo é no-op e também não liquida.
+
+### Rodada de validação do head `ebd1f08` (PR #40): gates pesados BLOQUEADOS
+
+Head remoto conferido por `gh pr view 40` e `git fetch`: `ebd1f08f471c84027df7a796a6dbdc56545624c9` (árvore
+`17450f4457992dcd8f75141133d33f6b034a0a96`), base `origin/main` `3e48861e9914ed2fd6c71e13c62c5673f068768f` (= merge-base), PR #39 ativa
+(`f8c4a7e`). Evidência em `/tmp/tessel-pr40-gates` (fora do Git; `SHA256SUMS.txt`, `manifest.jsonl` com comando, cwd, ambiente, head,
+árvore, UTC, saída, disco antes/depois e sha256 de cada log; **os logs de falha e a causa do bloqueio foram preservados**).
+Wrapper conferido: `scripts/cargo` → `scripts/mbx`, que só define `CARGO_TARGET_DIR` se `TESSEL_CARGO_LANE` estiver no ambiente (não estava);
+nenhum `CARGO_*`/`TESSEL_*` no ambiente e `.mbx.toml` sem `target-dir`.
+
+**Bloqueio.** Uma única tentativa **não bloqueante** do lock compartilhado de GPU/build (`fcntl.flock(LOCK_EX|LOCK_NB)` em
+`/tmp/tessel-scene-gpu.lock`, `tools/holder.py`) falhou em 2026-11-10T16:34:00Z: o lock estava com outro processo
+(`scripts/real-latency-ab.py`, pid 14486, e um `scene-fx-ui-proof.py` do `with-gpu-lock.py` já na fila, pid 18543). Sem nova tentativa,
+sem espera, sem contorno, nenhum processo alheio tocado. Disco livre na entrada 62 GiB (reserva 16, piso 12: ok).
+
+| Gate no head `ebd1f08` | Resultado |
+|---|---|
+| `git diff --check 3e48861 HEAD` | passou (exit 0) |
+| `cargo fmt --all -- --check` (via `./scripts/cargo`) | passou (exit 0) |
+| `node --test runtime/test/overlay.test.mjs` (puro) | **14/14**, 0 pulados |
+| `scripts/scene-gizmo-proof.spec.py` (S8, módulo carregado pela prova G1) | 34/34 |
+| `node --check runtime/test/gizmo-overlay.test.mjs`, `py_compile` da prova G1 | ok (só sintaxe, **não** executa o teste) |
+| **fail-closed da prova G1** (`tools/failclosed.py`, sem GPU/janela/build) | **16/16**: binário ausente, binário que sai, binário que diz ok sem provar, árvore suja sem `--allow-dirty` (recusada antes de qualquer superfície), `--surfaces` vazio/repetido/desconhecido; em todos o relatório fica `ok:false`, `final_evidence:false` e um `ok:true` velho é sobrescrito; `final_blockers` (subconjunto, `--allow-dirty`, árvore suja) e `missing_checks`; cada nome de `REQUIRED` é primeiro argumento literal de um `check(...)` por AST |
+| mutações JS 3/3 contra o teste puro | `js-ring-gap-not-skipped` e `js-rotate-has-a-centre-handle` mortas por `hover on the rings…`; `js-ring-polygon-too-short-accepted` morta por `a rotate overlay carries the tool, the space and the polygon…`; arquivo restaurado, sha256 e árvore iguais (`js-mutations.json`) |
+| leitura estática do D1 | `degenerate_authored_quaternions_cannot_be_normalised` cobre `quat_unit` com zero, `NaN` e `∞` (puro); o teste de integração quase unitário agora se chama `a_near_unit_authored_quaternion_is_normalised_when_rotated`. **Não compilado nem executado aqui** |
+
+**Não executado (BLOQUEADO, nenhum é PASS):** `cargo check --workspace --locked`, `clippy --workspace --all-targets --locked -- -D warnings`,
+`cargo test --workspace --locked` com `TESSEL_REQUIRE_RUNTIME=1`, os alvos de rotação (`scene_gizmo_rotation`, os 4 unitários de
+`rotation.rs`, `scene_gizmo_tests`), `cargo build -p tessel-editor` e `cargo build -p tessel-editor-core --bin tessel-headless`
+(o `tessel-headless` é um binário do pacote `tessel-editor-core`, não de `tessel-editor`; um `-p tessel-editor --bin tessel-headless` falharia),
+`cargo tree -p tessel-editor-core`, `./scripts/runtime setup` e os testes de Chrome (`gizmo-overlay.test.mjs`, suíte do runtime),
+`scripts/scene-gizmo-rotation-proof.py` nas duas superfícies (**nunca executado**), as mutações Rust discriminantes da rotação
+(sinal, ordem `R'`, espaço local, pai `Pₙᵀ`, redução módulo 360°, volta completa, rasante, `animated_rotation`, `mirrored_parent`,
+`non_uniform_parent_scale`, recusa da ferramenta sob arrasto, carimbo `tool`/`space`, `quat_unit` zero) e a medição do overlay dos anéis visível/oculto.
+`tools/measure-core-overlay.py` (custo de `scene.gizmo.state`, anéis vs oculto vs setas) e `tools/measure-page-rings.mjs`
+(`overlay.set` em Chrome real, anéis vs oculto vs setas, com e sem leitura do canvas) estão **escritos e nunca executados**; quando rodarem
+os limites a declarar são: build debug, round trip JSONL com sobrecarga de Python, Chrome SwiftShader (não a WKWebView da janela), relógio
+em lotes e **sem** custo de composição da janela nativa. `core 38/38`, `1556/0` e `2074/0` citados mais acima ou na PR **não** são gates deste head.
+
+**Status de G1 neste head:** rotação continua **a validar**. Um bloqueio de lock não é falha do produto nem prova dele. Nenhuma linha da
+matriz foi promovida. Ponteiro físico/WKWebView segue em BL015.2/BL043/BL044. A produção nova desta rodada é só documentação, então não exige
+revisão de código nova, mas os gates acima precisam rodar (sob o lock) em um head com estes mesmos fontes antes de qualquer promoção.
