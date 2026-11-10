@@ -45,8 +45,9 @@ pub use command::{
 pub use frame::frame_json;
 pub use gesture::{Gesture, GestureKind, GestureSlot, Invalidation, Refusal};
 pub use gizmo::{
-    Anchor, CENTER_RADIUS, HANDLE_LENGTH, HIT_RADIUS, Handle, Hidden, Layout, OUTSIDE_LIMIT,
-    Overlay, Point, View, local_delta, movable, outline, pick_plane, world_origin,
+    Anchor, CENTER_RADIUS, GizmoSpace, GizmoTool, HANDLE_LENGTH, HIT_RADIUS, Handle, Hidden,
+    Layout, OUTSIDE_LIMIT, Overlay, Point, RING_RADIUS, RING_SEGMENTS, RingAnchor, RotationFrame,
+    View, local_delta, movable, outline, pick_plane, quat_json, refusal, world_origin,
 };
 pub use selection::{Dropped, MAX_SELECTION, SUMMARY_LIMIT, Selected, Selection};
 pub use tree::{MAX_TREE_DEPTH, tree_json};
@@ -60,6 +61,11 @@ pub struct SceneInteraction {
     /// The pointer drag of the translation gizmo, if one is open. It always rides on `gesture`
     /// (same ID); it only adds what the pointer needs. See `scene_project/gizmo.rs`.
     pub(crate) drag: Option<Drag>,
+    /// What the handles of the selected node do (BL015.1). Session state like the selection: not
+    /// in the document, not in an undo snapshot, reset by a new project.
+    pub(crate) tool: GizmoTool,
+    /// The orientation of the rotate tool's axes.
+    pub(crate) space: GizmoSpace,
 }
 
 /// What a gizmo drag remembers from the press so that every later position is computed from the
@@ -73,13 +79,40 @@ pub struct Drag {
     pub(crate) entity: String,
     /// The edit frame the press was made at: the camera and the hierarchy of the whole drag.
     pub(crate) frame: i64,
-    pub(crate) anchor: Anchor,
     /// The node as evaluated at the press (its local/world matrices convert a world delta).
     pub(crate) node: crate::scene_plan::PlanNode,
-    /// The document's `localPosition` at the press: the base every update adds to.
-    pub(crate) base_position: crate::directed_scene::Vec3,
-    /// The last world delta and position an update accepted.
-    pub(crate) last: Option<(crate::directed_scene::Vec3, crate::directed_scene::Vec3)>,
+    /// What the press is bound to, by tool.
+    pub(crate) action: DragAction,
+    /// What the last accepted update computed.
+    pub(crate) last: Option<Applied>,
+}
+
+/// The part of a drag that depends on the tool.
+#[derive(Debug, Clone)]
+pub(crate) enum DragAction {
+    Translate {
+        anchor: Anchor,
+        /// The document's `localPosition` at the press: the base every update adds to.
+        base_position: crate::directed_scene::Vec3,
+    },
+    Rotate {
+        ring: RingAnchor,
+        /// The node's axes, parent rotation and authored rotation at the press.
+        frame: Box<RotationFrame>,
+    },
+}
+
+/// What an update of a drag accepted.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Applied {
+    Translate {
+        world_delta: crate::directed_scene::Vec3,
+        position: crate::directed_scene::Vec3,
+    },
+    Rotate {
+        degrees: f64,
+        rotation: crate::directed_scene::Quat,
+    },
 }
 
 impl Drag {
@@ -88,7 +121,18 @@ impl Drag {
     }
 
     pub fn handle(&self) -> Handle {
-        self.anchor.handle
+        match &self.action {
+            DragAction::Translate { anchor, .. } => anchor.handle,
+            DragAction::Rotate { ring, .. } => ring.handle,
+        }
+    }
+
+    /// The tool the drag was pressed with.
+    pub fn tool(&self) -> GizmoTool {
+        match &self.action {
+            DragAction::Translate { .. } => GizmoTool::Translate,
+            DragAction::Rotate { .. } => GizmoTool::Rotate,
+        }
     }
 
     /// The edit frame the drag was pressed at.
@@ -110,6 +154,16 @@ impl SceneInteraction {
     /// The gesture in progress, stale or not (`Gesture::invalidation` says which).
     pub fn gesture(&self) -> Option<&Gesture> {
         self.gesture.current()
+    }
+
+    /// The active tool of the gizmo.
+    pub fn tool(&self) -> GizmoTool {
+        self.tool
+    }
+
+    /// The orientation of the rotate tool's axes.
+    pub fn space(&self) -> GizmoSpace {
+        self.space
     }
 
     /// The gizmo drag in progress, if any.
@@ -146,6 +200,7 @@ impl SceneInteraction {
             "drag": self.drag().map(|drag| json!({
                 "gesture": drag.gesture(),
                 "handle": drag.handle().as_str(),
+                "tool": drag.tool().as_str(),
                 "scene": drag.scene,
                 "entity": drag.entity,
             })),

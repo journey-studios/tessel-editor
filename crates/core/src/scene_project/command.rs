@@ -240,6 +240,9 @@ impl SceneCommand {
             // moved nothing leaves no entry. Press, move, cancel and the reads never do.
             Self::Gizmo(GizmoCommand::Pointer(PointerCommand::Up { .. })) => Some("Edit scene"),
             Self::Gizmo(GizmoCommand::Translate { .. }) => Some("Edit scene"),
+            // BL015.1: `scene.rotate` is a `scene.edit` of the one `rotation` property; the tool
+            // selector is presentation state and never an entry.
+            Self::Gizmo(GizmoCommand::Rotate { .. }) => Some("Edit scene"),
             Self::FxEdit { dry_run: false, .. } => Some("Edit effects"),
             // The commit of an fx gesture IS a `scene.fx.edit` of the same ops (it runs through
             // `edit_fx`), so it shows the same entry; `changed: false` records nothing.

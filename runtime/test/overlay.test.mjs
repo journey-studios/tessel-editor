@@ -214,3 +214,93 @@ test('only the desktop WebView page has an overlay surface; the worker page does
   assert.equal(wantsOverlay(win({ __tesselPost: () => {}, location: { search: '?overlay=other' } })), false);
   assert.equal(wantsOverlay(win({ ipc: { postMessage: () => {} }, __tesselPost: () => {} })), false, 'the worker transport wins over a stray ipc');
 });
+
+// ---- BL015.1: the rotate tool's rings ----------------------------------------------------------
+
+const ASPECT = 16 / 9;
+
+/** A closed ellipse of 64 segments (65 points, first = last) around the centre, radii in picture heights. */
+const ellipse = (rx, ry, gap = null) =>
+  Array.from({ length: 65 }, (_, index) => {
+    if (gap !== null && index >= gap[0] && index < gap[1]) return null;
+    const angle = (2 * Math.PI * (index % 64)) / 64;
+    return { u: 0.5 + (rx * Math.cos(angle)) / ASPECT, v: 0.5 + ry * Math.sin(angle) };
+  });
+
+const ring = (id, points) => ({ id, kind: 'ring', from: { u: 0.5, v: 0.5 }, to: points.find((p) => p !== null) });
+
+const ringsJson = (extra = {}) =>
+  overlayJson({
+    tool: 'rotate',
+    space: 'local',
+    aspect: ASPECT,
+    handles: [
+      { ...ring('x', ellipse(0.04, 0.1)), points: ellipse(0.04, 0.1) },
+      { ...ring('y', ellipse(0.1, 0.04)), points: ellipse(0.1, 0.04) },
+      { ...ring('z', ellipse(0.1, 0.1, [8, 16])), points: ellipse(0.1, 0.1, [8, 16]) },
+    ],
+    metrics: { hit_radius: 0.025, center_radius: 0.03, ring_radius: 0.1, unit: 'picture_height' },
+    ...extra,
+  });
+
+test('a rotate overlay carries the tool, the space and the polygon of every ring, gaps included', () => {
+  const overlay = parseOverlay(ringsJson());
+  assert.equal(overlay.tool, 'rotate');
+  assert.equal(overlay.space, 'local');
+  assert.deepEqual(overlay.handles.map((h) => [h.id, h.kind, h.points.length]), [['x', 'ring', 65], ['y', 'ring', 65], ['z', 'ring', 65]]);
+  assert.equal(overlay.handles[2].points[8], null, 'behind the camera stays a gap, not a point at the origin');
+  // An overlay of the translate tool (and one of the first slice, which has no `tool`) is translate/world.
+  assert.deepEqual([parseOverlay(overlayJson()).tool, parseOverlay(overlayJson()).space], ['translate', 'world']);
+  // A ring without its polygon is never half drawn.
+  const broken = ringsJson();
+  delete broken.handles[0].points;
+  assert.throws(() => parseOverlay(broken), /points/);
+  const short = ringsJson();
+  short.handles[1].points = [{ u: 0.5, v: 0.5 }];
+  assert.throws(() => parseOverlay(short), /points/);
+  const bad = ringsJson();
+  bad.handles[2].points[3] = { u: 'a', v: 0 };
+  assert.throws(() => parseOverlay(bad), /points\[3\]/);
+});
+
+test('hover on the rings is the nearest polygon within the radius; the centre is no handle', () => {
+  const overlay = parseOverlay(ringsJson());
+  const on = (points, index) => points[index];
+  // A vertex of each ring is that ring (away from where two of them cross).
+  assert.equal(hoverHandle(overlay, on(overlay.handles[2].points, 24)), 'z');
+  assert.equal(hoverHandle(overlay, on(overlay.handles[2].points, 0)), 'y', 'where two rings cross the tie goes to the first axis, as in the core');
+  assert.equal(hoverHandle(overlay, on(overlay.handles[0].points, 16)), 'x');
+  assert.equal(hoverHandle(overlay, on(overlay.handles[1].points, 0)), 'y', 'the y ring is the wider ellipse; its far vertex is on it');
+  // Inside the radius off the line, and outside it.
+  const near = overlay.handles[2].points[24];
+  assert.equal(hoverHandle(overlay, { u: near.u, v: near.v + 0.01 }), 'z');
+  assert.equal(hoverHandle(overlay, { u: near.u, v: near.v + 0.06 }), null);
+  // The centre is not a handle of the rotate tool (translate's `screen`): nothing is under it.
+  assert.equal(hoverHandle(overlay, { u: 0.5, v: 0.5 }), null);
+  assert.equal(hoverHandle(parseOverlay(overlayJson()), { u: 0.5, v: 0.5 }), 'screen', 'translate is unchanged');
+  // The gap of a ring (behind the camera) is not hit, though the chord across it would be near.
+  const gapMiddle = (() => {
+    const a = overlay.handles[2].points[7];
+    const b = overlay.handles[2].points[16];
+    return { u: (a.u + b.u) / 2, v: (a.v + b.v) / 2 };
+  })();
+  assert.notEqual(hoverHandle(overlay, gapMiddle), 'z');
+  // Outside everything.
+  assert.equal(hoverHandle(overlay, { u: 0.95, v: 0.95 }), null);
+});
+
+test('drawing a ring strokes its polygon in the axis colour and opens one subpath per gap', () => {
+  const calls = [];
+  const context = new Proxy({}, { get: (_, name) => (...args) => calls.push([String(name), ...args]), set: (_, name, value) => { calls.push(['set', String(name), value]); return true; } });
+  const rect = { x: 0, y: 75, width: 800, height: 450 };
+  drawOverlay(context, rect, parseOverlay(ringsJson({ handles: [{ ...ring('z', ellipse(0.1, 0.1, [8, 16])), points: ellipse(0.1, 0.1, [8, 16]) }] })), null);
+  // Shadow pass and colour pass, two subpaths each (before and after the gap).
+  assert.equal(calls.filter(([name]) => name === 'moveTo').length, 4);
+  assert.equal(calls.filter(([name]) => name === 'stroke').length, 2);
+  assert.ok(calls.some(([name, key, value]) => name === 'set' && key === 'strokeStyle' && value === '#3e63dd'), 'z is blue');
+  assert.equal(calls.filter(([name]) => name === 'arc').length, 0, 'no centre disc with the rotate tool');
+  // An active ring is drawn in the active colour.
+  calls.length = 0;
+  drawOverlay(context, rect, parseOverlay(ringsJson({ active: { handle: 'z', gesture: 'g' } })), null);
+  assert.ok(calls.some(([name, key, value]) => name === 'set' && key === 'strokeStyle' && value === '#ffd60a'));
+});

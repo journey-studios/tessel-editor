@@ -222,6 +222,8 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
                 "scene.gizmo.state", "scene.gizmo.hit", "scene.pointer.down",
                 "scene.pointer.move", "scene.pointer.up", "scene.pointer.cancel",
                 "scene.translate",
+                // BL015.1 (same contract): the rotate tool, its semantic equivalent and the selector.
+                "scene.rotate", "scene.gizmo.tool",
                 // F016 (docs/features/effects.md): the effects layer, additive.
                 "scene.fx.edit", "scene.fx.list", "scene.fx.catalog", "scene.fx.frame",
                 "scene.fx.inspect",

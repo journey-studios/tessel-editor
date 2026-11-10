@@ -15,17 +15,27 @@
 //! `scene.translate` is the same last step without the pointer: a world delta, converted the same
 //! way, written by `edit_scene` (the path `scene.edit` and a commit share). The same delta gives
 //! the same document by either road; a test pins it.
+//!
+//! BL015.1 adds the **rotate tool** on the same rails: a ring drag is the same gesture (`begin`
+//! on press, one `set rotation` per move, `commit` on release), and `scene.rotate` is its
+//! pointer-free equivalent. The conventions and the arithmetic are
+//! `scene_interaction::gizmo::rotation`; here is only the glue.
+
+use std::sync::Arc;
 
 use serde_json::{Value, json};
 
-use crate::directed_scene::{DirectedScene, Entity, EntityKind, Vec3};
+use crate::directed_scene::{
+    ChannelProperty, DirectedScene, Entity, EntityKind, NodeAnimation, Quat, Vec3,
+};
 use crate::scene_edit::{EditOp, NodeProperty, PropertyRef, PropertyValue, read_property};
 use crate::scene_interaction::{
-    Anchor, CancelReason, Drag, FrameAt, GizmoCommand, Handle, Hidden, Layout, Overlay, Point,
-    PointerCommand, SelectMode, View, ensure_exists, entity_path, local_delta, movable, outline,
-    parse_entity, pick_plane, world_origin,
+    Anchor, Applied, CancelReason, Drag, DragAction, FrameAt, GizmoCommand, GizmoSpace, GizmoTool,
+    Handle, Hidden, Layout, Overlay, Point, PointerCommand, RingAnchor, RotationFrame, SelectMode,
+    View, ensure_exists, entity_path, local_delta, movable, outline, parse_entity, pick_plane,
+    quat_json, refusal, world_origin,
 };
-use crate::scene_plan::{PlanOptions, ScenePlan};
+use crate::scene_plan::{PlanNode, PlanOptions, ScenePlan};
 use crate::state::{CommandError, EditorState};
 
 /// The plan the gizmo works on. Partial on purpose: picking and handles need only the camera and
@@ -70,6 +80,66 @@ fn read_position(scene: &DirectedScene, property: &PropertyRef) -> Result<Vec3, 
     }
 }
 
+fn rotation_ref(plan: &ScenePlan, node: &str) -> PropertyRef {
+    PropertyRef::node(
+        &plan.source.scene_definition_id,
+        node,
+        NodeProperty::Rotation,
+    )
+}
+
+fn read_rotation(scene: &DirectedScene, property: &PropertyRef) -> Result<Quat, CommandError> {
+    match read_property(scene, property)? {
+        PropertyValue::Quaternion(rotation) => Ok(rotation),
+        _ => Err(CommandError::new(
+            "internal",
+            "`rotation` is not a quaternion in the catalog",
+        )),
+    }
+}
+
+/// Whether a performance channel writes `node`'s rotation at `frame`: then the base rotation the
+/// document holds is not what is shown (the channel adds its Euler offset on top of it) and the
+/// rotate tool refuses the node instead of editing something the animation would silently
+/// offset. The plan keeps only "animated or not", so the channels are asked again, and only when
+/// the frame is animated at all. When the frame cannot be evaluated the node is refused too.
+fn animates_rotation(scene: &DirectedScene, plan: &ScenePlan, frame: i64, node: &str) -> bool {
+    if matches!(plan.animation, NodeAnimation::Static) {
+        return false;
+    }
+    match scene.bundle().evaluate_frame(frame) {
+        Ok(evaluated) => evaluated
+            .nodes
+            .override_of(node, ChannelProperty::LocalRotation)
+            .is_some(),
+        Err(_) => true,
+    }
+}
+
+/// The frame of a rotation of `node` in the document the plan was built from: its axes, the
+/// rotation above it and the authored quaternion, or the reason it cannot be turned.
+fn rotation_frame(
+    document: &DirectedScene,
+    plan: &ScenePlan,
+    frame: i64,
+    node: &PlanNode,
+    space: GizmoSpace,
+) -> Result<RotationFrame, &'static str> {
+    let authored = read_rotation(document, &rotation_ref(plan, &node.id))
+        .map_err(|_| refusal::DEGENERATE_ROTATION)?;
+    let animated = animates_rotation(document, plan, frame, &node.id);
+    RotationFrame::of(node, authored, space, animated)
+}
+
+fn not_rotatable(entity: &str, reason: &str) -> CommandError {
+    CommandError::new(
+        "not_rotatable",
+        format!("`{entity}` cannot be rotated: {reason}"),
+    )
+    .target(entity)
+    .details(json!({ "reason": reason }))
+}
+
 fn hit_json(hit: &Hit) -> Value {
     match hit {
         Hit::Handle { handle, entity } => json!({
@@ -91,13 +161,34 @@ enum Hit {
 struct Scene3d {
     plan: ScenePlan,
     view: Result<View, CommandError>,
+    frame: i64,
 }
 
 impl Scene3d {
     fn new(scene: &DirectedScene, frame: i64) -> Result<Self, CommandError> {
         let plan = plan_of(scene, frame)?;
         let view = View::from_plan(&plan);
-        Ok(Self { plan, view })
+        Ok(Self { plan, view, frame })
+    }
+
+    /// The handles of `node` for the active tool, or `None` when the tool has none for it (the
+    /// rotate tool refuses the node: see [`rotation_frame`]). `document` is the scene the plan
+    /// was built from.
+    fn layout(
+        &self,
+        document: &DirectedScene,
+        view: &View,
+        node: &PlanNode,
+        tool: GizmoTool,
+        space: GizmoSpace,
+    ) -> Option<Layout> {
+        match tool {
+            GizmoTool::Translate => Layout::at(view, world_origin(node)),
+            GizmoTool::Rotate => {
+                let frame = rotation_frame(document, &self.plan, self.frame, node, space).ok()?;
+                Layout::rings_at(view, world_origin(node), &frame)
+            }
+        }
     }
 }
 
@@ -135,7 +226,46 @@ impl EditorState {
                 at,
                 delta,
             } => self.scene_translate(&scene, &entity, &at, delta),
+            GizmoCommand::Rotate {
+                scene,
+                entity,
+                at,
+                axis,
+                degrees,
+                space,
+            } => self.scene_rotate(&scene, &entity, &at, axis, degrees, space),
+            GizmoCommand::Tool { tool, space } => self.gizmo_tool(tool, space),
         }
+    }
+
+    /// `scene.gizmo.tool`: reads, and with a field sets, the tool and the space of the rotate
+    /// axes. Session state, never an edit. Refused while a drag is open: the handle under the
+    /// pointer would change meaning, and the drag's candidate belongs to the tool that began it.
+    fn gizmo_tool(
+        &mut self,
+        tool: Option<GizmoTool>,
+        space: Option<GizmoSpace>,
+    ) -> Result<Value, CommandError> {
+        let (was_tool, was_space) = (self.scene_interaction.tool, self.scene_interaction.space);
+        let (tool, space) = (tool.unwrap_or(was_tool), space.unwrap_or(was_space));
+        let changes = (tool, space) != (was_tool, was_space);
+        if changes && let Some(drag) = self.live_drag() {
+            return Err(CommandError::new(
+                "gesture_active",
+                "A gizmo drag is in progress; finish or cancel it before changing the tool",
+            )
+            .target(drag.gesture.clone())
+            .details(json!({ "gesture": drag.gesture, "tool": drag.tool().as_str() })));
+        }
+        self.scene_interaction.tool = tool;
+        self.scene_interaction.space = space;
+        Ok(json!({
+            "action": "scene.gizmo.tool", "tool": tool.as_str(), "space": space.as_str(),
+            "previous": { "tool": was_tool.as_str(), "space": was_space.as_str() },
+            "tools": GizmoTool::ALL.map(GizmoTool::as_str),
+            "spaces": GizmoSpace::ALL.map(GizmoSpace::as_str),
+            "changed": changes, "document_changed": false,
+        }))
     }
 
     /// The identity of what an overlay shows: scene, interaction session (a new project is a new
@@ -149,6 +279,10 @@ impl EditorState {
             "session": self.scene_interaction.gesture.session(),
             "revision": self.project.revision,
             "frame": frame,
+            // BL015.1: a press made against the rings must not act on arrows (or the other way
+            // round), nor on axes of the other space, so the tool is part of the identity.
+            "tool": self.scene_interaction.tool.as_str(),
+            "space": self.scene_interaction.space.as_str(),
         })
     }
 
@@ -265,7 +399,10 @@ impl EditorState {
             }
         }
 
+        let (tool, space) = (self.scene_interaction.tool, self.scene_interaction.space);
         let mut overlay = Overlay {
+            tool,
+            space,
             entity: None,
             layout: None,
             hidden: None,
@@ -311,10 +448,22 @@ impl EditorState {
         }
         match view {
             None => overlay.hidden = Some(Hidden::NotMovable("degenerate_camera")),
-            Some(view) => match Layout::at(view, world_origin(node)) {
-                Some(layout) => overlay.layout = Some(layout),
-                None => overlay.hidden = Some(Hidden::BehindCamera),
-            },
+            Some(view) => {
+                if tool == GizmoTool::Rotate
+                    && let Err(reason) =
+                        rotation_frame(&shown, &world.plan, world.frame, node, space)
+                {
+                    // The node cannot be turned (an animated rotation, a parent that scales
+                    // unevenly...): no rings, and the reason is in the overlay, never a silent
+                    // gizmo that would then refuse the press.
+                    overlay.hidden = Some(Hidden::NotRotatable(reason));
+                    return Ok(overlay);
+                }
+                match world.layout(&shown, view, node, tool, space) {
+                    Some(layout) => overlay.layout = Some(layout),
+                    None => overlay.hidden = Some(Hidden::BehindCamera),
+                }
+            }
         }
         Ok(overlay)
     }
@@ -329,6 +478,7 @@ impl EditorState {
     ) -> Result<(Hit, Option<(Layout, String)>), CommandError> {
         let view = world.view.as_ref().map_err(Clone::clone)?;
         let definition = world.plan.source.scene_definition_id.as_str();
+        let document = Arc::clone(&self.attached_scene(scene_id)?.scene);
         let selected: Vec<&Entity> = self
             .scene_interaction
             .selection
@@ -340,7 +490,13 @@ impl EditorState {
             && one.scope.as_deref() == Some(definition)
             && let Some(node) = world.plan.node(&one.id)
             && movable(node).is_ok()
-            && let Some(layout) = Layout::at(view, world_origin(node))
+            && let Some(layout) = world.layout(
+                &document,
+                view,
+                node,
+                self.scene_interaction.tool,
+                self.scene_interaction.space,
+            )
         {
             let entity = entity_path(one);
             if let Some(handle) = layout.hit(view, point) {
@@ -452,32 +608,70 @@ impl EditorState {
             .target(entity)
         })?;
         let origin = world_origin(node);
-        let Some(anchor) = Anchor::begin(view, origin, handle, point) else {
-            // The pointer looks along the axis: it says nothing about how far along it is. Refused
-            // before a gesture opens, so nothing is left to cancel.
-            answer["dragging"] = json!(false);
-            answer["refused"] = json!("degenerate_axis");
-            return Ok(());
+        let document = Arc::clone(&self.attached_scene(scene)?.scene);
+        let tool = self.scene_interaction.tool;
+        let action = match tool {
+            GizmoTool::Translate => {
+                let Some(anchor) = Anchor::begin(view, origin, handle, point) else {
+                    return Self::refused_press(answer);
+                };
+                let base_position = read_position(&document, &position_ref(&world.plan, &node.id))?;
+                DragAction::Translate {
+                    anchor,
+                    base_position,
+                }
+            }
+            GizmoTool::Rotate => {
+                let space = self.scene_interaction.space;
+                // The same refusals the overlay shows as `hidden`; checked here again because a
+                // press may come from a script that never read the overlay.
+                let frame = rotation_frame(&document, &world.plan, world.frame, node, space)
+                    .map_err(|reason| not_rotatable(entity, reason))?;
+                let axis = frame.axis(handle).ok_or_else(|| {
+                    CommandError::invalid_value(
+                        "The rotate tool has rings for `x`, `y` and `z` only",
+                        json!({ "options": ["x", "y", "z"] }),
+                    )
+                    .target("handle")
+                })?;
+                let Some(ring) = RingAnchor::begin(view, origin, axis, handle, point) else {
+                    return Self::refused_press(answer);
+                };
+                DragAction::Rotate {
+                    ring,
+                    frame: Box::new(frame),
+                }
+            }
         };
-        let document = &self.attached_scene(scene)?.scene;
-        let base_position = read_position(document, &position_ref(&world.plan, &node.id))?;
         let frame = i64::try_from(world.plan.frame.edit_frame).unwrap_or(i64::MAX);
-        let begun = self.gesture_begin(scene, &[entity.to_string()], Some("Move".to_string()))?;
+        let label = match tool {
+            GizmoTool::Translate => "Move",
+            GizmoTool::Rotate => "Rotate",
+        };
+        let begun = self.gesture_begin(scene, &[entity.to_string()], Some(label.to_string()))?;
         let gesture = begun["gesture"].as_str().unwrap_or_default().to_string();
         self.scene_interaction.drag = Some(Drag {
             gesture: gesture.clone(),
             scene: scene.to_string(),
             entity: entity.to_string(),
             frame,
-            anchor,
             node: node.clone(),
-            base_position,
+            action,
             last: None,
         });
         answer["gesture"] = json!(gesture);
         answer["dragging"] = json!(true);
         answer["handle"] = json!(handle.as_str());
+        answer["tool"] = json!(tool.as_str());
         answer["changed"] = json!(true);
+        Ok(())
+    }
+
+    /// A press that does not determine a position or an angle (the pointer looks along the axis,
+    /// or sees a ring edge-on): refused before a gesture opens, so nothing is left to cancel.
+    fn refused_press(answer: &mut Value) -> Result<(), CommandError> {
+        answer["dragging"] = json!(false);
+        answer["refused"] = json!("degenerate_axis");
         Ok(())
     }
 
@@ -503,7 +697,23 @@ impl EditorState {
 
     /// The update of one pointer position. Returns the answer fields of the position.
     fn drag_update(&mut self, drag: &Drag, point: Point) -> Result<Value, CommandError> {
-        let Some(world_delta) = drag.anchor.delta(point) else {
+        match &drag.action {
+            DragAction::Translate {
+                anchor,
+                base_position,
+            } => self.translate_update(drag, anchor, *base_position, point),
+            DragAction::Rotate { ring, frame } => self.rotate_update(drag, ring, frame, point),
+        }
+    }
+
+    fn translate_update(
+        &mut self,
+        drag: &Drag,
+        anchor: &Anchor,
+        base_position: Vec3,
+        point: Point,
+    ) -> Result<Value, CommandError> {
+        let Some(world_delta) = anchor.delta(point) else {
             // This pointer position does not resolve to a point on the axis or plane; the
             // candidate stays where the last good position put it.
             return Ok(json!({ "applied": false, "reason": "degenerate_pointer" }));
@@ -516,9 +726,9 @@ impl EditorState {
             .target(drag.entity.clone())
         })?;
         let position = Vec3 {
-            x: drag.base_position.x + local.x,
-            y: drag.base_position.y + local.y,
-            z: drag.base_position.z + local.z,
+            x: base_position.x + local.x,
+            y: base_position.y + local.y,
+            z: base_position.z + local.z,
         };
         if !finite(position) {
             return Err(CommandError::invalid_value(
@@ -533,10 +743,48 @@ impl EditorState {
             vec![EditOp::set(property, PropertyValue::Vec3(position))],
         )?;
         if let Some(open) = self.scene_interaction.drag.as_mut() {
-            open.last = Some((world_delta, position));
+            open.last = Some(Applied::Translate {
+                world_delta,
+                position,
+            });
         }
         Ok(json!({
             "applied": true, "world_delta": world_delta.to_json(), "position": position.to_json(),
+            "would_change": update["would_change"], "changes": update["changes"],
+        }))
+    }
+
+    /// One ring position: the angle since the press becomes the candidate rotation, computed by
+    /// the same [`RotationFrame::rotate`] `scene.rotate` uses, so the two roads give the same
+    /// quaternion bit for bit.
+    fn rotate_update(
+        &mut self,
+        drag: &Drag,
+        ring: &RingAnchor,
+        frame: &RotationFrame,
+        point: Point,
+    ) -> Result<Value, CommandError> {
+        let Some(degrees) = ring.degrees(point) else {
+            return Ok(json!({ "applied": false, "reason": "degenerate_pointer" }));
+        };
+        let rotation = frame.rotate(ring.handle, degrees).ok_or_else(|| {
+            CommandError::invalid_value(
+                "The dragged rotation is not a finite quaternion",
+                json!("finite numbers"),
+            )
+            .target(drag.entity.clone())
+        })?;
+        let property = PropertyRef::parse(&format!("{}/rotation", drag.entity))?;
+        let update = self.gesture_update(
+            &drag.gesture,
+            vec![EditOp::set(property, PropertyValue::Quaternion(rotation))],
+        )?;
+        if let Some(open) = self.scene_interaction.drag.as_mut() {
+            open.last = Some(Applied::Rotate { degrees, rotation });
+        }
+        Ok(json!({
+            "applied": true, "degrees": degrees, "axis": ring.handle.as_str(),
+            "space": frame.space().as_str(), "rotation": quat_json(rotation),
             "would_change": update["would_change"], "changes": update["changes"],
         }))
     }
@@ -556,6 +804,7 @@ impl EditorState {
         answer["gesture"] = json!(drag.gesture);
         answer["entity"] = json!(drag.entity);
         answer["handle"] = json!(drag.handle().as_str());
+        answer["tool"] = json!(drag.tool().as_str());
         answer["point"] = json!(point.to_json());
         answer["changed"] = json!(true);
         answer["document_changed"] = json!(false);
@@ -581,7 +830,7 @@ impl EditorState {
                 return Err(error);
             }
         }
-        let position = self
+        let applied = self
             .scene_interaction
             .drag
             .as_ref()
@@ -604,9 +853,24 @@ impl EditorState {
         answer["dragging"] = json!(false);
         answer["entity"] = json!(drag.entity);
         answer["handle"] = json!(drag.handle().as_str());
-        if let Some((world_delta, position)) = position {
-            answer["world_delta"] = world_delta.to_json();
-            answer["position"] = position.to_json();
+        answer["tool"] = json!(drag.tool().as_str());
+        match applied {
+            Some(Applied::Translate {
+                world_delta,
+                position,
+            }) => {
+                answer["world_delta"] = world_delta.to_json();
+                answer["position"] = position.to_json();
+            }
+            Some(Applied::Rotate { degrees, rotation }) => {
+                answer["degrees"] = json!(degrees);
+                answer["axis"] = json!(drag.handle().as_str());
+                answer["rotation"] = quat_json(rotation);
+                if let DragAction::Rotate { frame, .. } = &drag.action {
+                    answer["space"] = json!(frame.space().as_str());
+                }
+            }
+            None => {}
         }
         answer["overlay"] = self.gizmo_overlay(&drag.scene, drag.frame)?.to_json();
         Ok(answer)
@@ -629,6 +893,74 @@ impl EditorState {
             "changed": true, "document_changed": false,
         });
         answer["overlay"] = self.gizmo_overlay(&drag.scene, drag.frame)?.to_json();
+        Ok(answer)
+    }
+
+    /// `scene.rotate`: the ring drag without the pointer. One node, one axis, an angle in degrees,
+    /// written by `edit_scene` (the path `scene.edit` and a gesture commit share), so the same
+    /// angle gives the same document by either road and a turn of 0° or of whole turns writes
+    /// nothing (no history entry).
+    pub(super) fn scene_rotate(
+        &mut self,
+        scene: &str,
+        entity: &str,
+        at: &FrameAt,
+        axis: Handle,
+        degrees: f64,
+        space: Option<GizmoSpace>,
+    ) -> Result<Value, CommandError> {
+        let parsed = parse_entity(entity)?;
+        let entry = self.attached_scene(scene)?;
+        let document = Arc::clone(&entry.scene);
+        ensure_exists(document.bundle(), &parsed)?;
+        if parsed.kind != EntityKind::Node {
+            return Err(not_rotatable(entity, "only a node has a rotation"));
+        }
+        if axis == Handle::Screen {
+            return Err(CommandError::invalid_value(
+                "`axis` must be `x`, `y` or `z`: the screen handle is not a ring",
+                json!({ "options": ["x", "y", "z"] }),
+            )
+            .target("axis"));
+        }
+        if !degrees.is_finite() {
+            return Err(CommandError::invalid_value(
+                "`degrees` must be a finite number",
+                json!("number"),
+            )
+            .target("degrees"));
+        }
+        let space = space.unwrap_or(self.scene_interaction.space);
+        let frame = frame_of(&document, at)?;
+        let plan = plan_of(&document, frame)?;
+        let node = plan
+            .node(&parsed.id)
+            .filter(|_| parsed.scope.as_deref() == Some(plan.source.scene_definition_id.as_str()))
+            .ok_or_else(|| {
+                not_rotatable(
+                    entity,
+                    "the node is in another scene definition than the one shown at this frame",
+                )
+            })?;
+        let rotating = rotation_frame(&document, &plan, frame, node, space)
+            .map_err(|reason| not_rotatable(entity, reason))?;
+        let rotation = rotating
+            .rotate(axis, degrees)
+            .ok_or_else(|| not_rotatable(entity, "the result is not a finite rotation"))?;
+        let property = rotation_ref(&plan, &node.id);
+        let mut answer = self.edit_scene(
+            scene,
+            &[EditOp::set(property, PropertyValue::Quaternion(rotation))],
+            false,
+        )?;
+        answer["action"] = json!("scene.rotate");
+        answer["entity"] = json!(entity);
+        answer["frame"] = json!(frame);
+        answer["axis"] = json!(axis.as_str());
+        answer["space"] = json!(space.as_str());
+        answer["degrees"] = json!(degrees);
+        answer["rotation"] = quat_json(rotation);
+        answer["document_changed"] = answer["changed"].clone();
         Ok(answer)
     }
 
