@@ -35,7 +35,8 @@ Only `gpui-kit` is declared; GPUI comes through it (`gpui_kit::*`), so there is 
 single GPUI family in `Cargo.lock`. The default backend is `gpui-pre` with a persistent native WebView; `gpui-fast` is experimental
 (see the viewport reports). Linux has not been validated. On Windows the editor builds and opens with
 plain `cargo build -p tessel-editor --locked` (MSVC Build Tools, `pnpm install --frozen-lockfile && pnpm run build` in
-`runtime/`), but the `ui` automation CLI is disabled there (Unix socket only); see BL054 in
+`runtime/`). Use `--release` to judge speed: debug builds are several times slower. The `ui` CLI works over a
+native Windows AF_UNIX socket (`target\debug\tessel-editor.exe ui status`); see BL054 in
 [docs/backlog.md](docs/backlog.md).
 
 ## Validate

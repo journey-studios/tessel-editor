@@ -1177,8 +1177,13 @@ fn the_warning_follows_hide_remove_candidate_and_scene_switch(cx: &mut TestAppCo
 /// monitor asks for refuses a scene whose files were never approved (`scene_resources_not_loaded`),
 /// and a test window has no folder to resolve them from, so the approved map is installed directly
 /// with the paths and hashes the bundle declares. No file is read: nothing draws in a test window.
+/// An absolute folder on every platform (`/synthetic` has no drive on Windows, so the resource
+/// map refuses it). It does not need to exist: nothing is read.
+fn synthetic_base() -> std::path::PathBuf {
+    std::env::temp_dir().join("synthetic")
+}
+
 fn load_resources(view: &Entity<Workstation>, scene: &str, cx: &mut VisualTestContext) {
-    use std::path::PathBuf;
     use tessel_editor_core::scene_resources::{ResourceKey, ResourceKind};
     use tessel_editor_media::scene_resources::map::{ResolvedResource, ResolvedResourceMap};
 
@@ -1192,7 +1197,7 @@ fn load_resources(view: &Entity<Workstation>, scene: &str, cx: &mut VisualTestCo
             .map(|asset| ResolvedResource {
                 key: ResourceKey::asset(&asset.asset_id),
                 kind: ResourceKind::Image,
-                path: PathBuf::from("/synthetic").join(&asset.relative_path),
+                path: synthetic_base().join(&asset.relative_path),
                 content_hash: asset.content_hash.clone(),
                 revision_id: Some(asset.revision_id.clone()),
                 bytes: 1,
@@ -1206,7 +1211,7 @@ fn load_resources(view: &Entity<Workstation>, scene: &str, cx: &mut VisualTestCo
                 bundle_revision: bundle.revision_id.clone(),
                 project_id: view.state.project.id.clone(),
                 generation,
-                base: PathBuf::from("/synthetic"),
+                base: synthetic_base(),
                 entries,
                 skipped: Vec::new(),
                 complete: true,

@@ -512,3 +512,55 @@ fn an_explicit_discard_is_not_remembered_as_a_refusal() {
         (line, false)
     );
 }
+
+#[gpui_kit::test]
+fn an_idle_tick_does_not_repaint_the_window_but_a_changed_jobs_line_does(cx: &mut TestAppContext) {
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    let (view, cx) = fixture(cx);
+    let repaints = Rc::new(Cell::new(0usize));
+    let counter = repaints.clone();
+    cx.update(|_, cx| {
+        cx.observe(&view, move |_, _| counter.set(counter.get() + 1))
+            .detach();
+    });
+
+    // The tick runs every 250 ms: with nothing finished, nothing running and nothing to autosave
+    // it must not ask for a frame (it used to, so an idle window painted four times a second).
+    for _ in 0..4 {
+        view.update(cx, |view, cx| view.workflow_tick(cx));
+    }
+    cx.run_until_parked();
+    assert_eq!(repaints.get(), 0, "an idle tick repainted the window");
+
+    // A job appearing changes the status bar's jobs line: that one tick repaints, the next
+    // (same line) does not.
+    let (release, wait) = std::sync::mpsc::channel();
+    view.update(cx, |view, _| {
+        view.workflow.spawn_blocked_job("Hashing", wait);
+    });
+    view.update(cx, |view, cx| view.workflow_tick(cx));
+    cx.run_until_parked();
+    assert_eq!(
+        repaints.get(),
+        1,
+        "the jobs line changed and nothing repainted"
+    );
+    view.update(cx, |view, cx| view.workflow_tick(cx));
+    cx.run_until_parked();
+    assert_eq!(repaints.get(), 1, "an unchanged jobs line repainted again");
+
+    // The job ending is reported (an event) and repaints once more.
+    release.send(()).unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while repaints.get() < 2 {
+        view.update(cx, |view, cx| view.workflow_tick(cx));
+        cx.run_until_parked();
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the finished job never repainted"
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
+}

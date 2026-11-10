@@ -1,7 +1,5 @@
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::os::unix::fs::{FileTypeExt, PermissionsExt};
-use std::os::unix::net::{UnixListener, UnixStream};
 use std::time::Duration;
 
 use gpui_kit::*;
@@ -9,12 +7,54 @@ use serde_json::{Value, json};
 
 use super::commands::{Parsed, parse_invoke, parse_move, parse_set};
 use super::model;
+use super::{UnixListener, UnixStream};
 use crate::header;
 use crate::shell::EditorShell;
 use crate::state::layout::LayoutCommand;
 use crate::state::{Command, CommandError, Raw};
 use crate::theme::{apply as apply_scheme, scheme_name, toggle as toggle_scheme};
 use crate::workstation::{FrameWaiter, OpReply, Source, Workstation};
+
+/// Keeps the socket reachable by the current user only.
+#[cfg(unix)]
+mod restrict {
+    use std::fs::{self, Metadata};
+    use std::os::unix::fs::{FileTypeExt, PermissionsExt};
+    use std::path::Path;
+
+    pub fn directory(path: &Path) -> Result<(), String> {
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700)).map_err(|e| e.to_string())
+    }
+
+    pub fn socket(path: &Path) -> Result<(), String> {
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())
+    }
+
+    pub fn is_socket(metadata: &Metadata) -> bool {
+        metadata.file_type().is_socket()
+    }
+}
+
+/// On Windows the socket lives under `%LOCALAPPDATA%`, whose ACL already limits it to the user
+/// (and administrators); there are no mode bits to set. A Unix socket is a reparse point there,
+/// so "not a socket" is read as "not a plain file or directory".
+#[cfg(windows)]
+mod restrict {
+    use std::fs::Metadata;
+    use std::path::Path;
+
+    pub fn directory(_: &Path) -> Result<(), String> {
+        Ok(())
+    }
+
+    pub fn socket(_: &Path) -> Result<(), String> {
+        Ok(())
+    }
+
+    pub fn is_socket(metadata: &Metadata) -> bool {
+        !metadata.is_dir()
+    }
+}
 
 pub fn start(
     window: AnyWindowHandle,
@@ -24,9 +64,9 @@ pub fn start(
     let path = super::socket_path()?;
     let directory = path.parent().ok_or("Invalid socket path")?;
     fs::create_dir_all(directory).map_err(|e| e.to_string())?;
-    fs::set_permissions(directory, fs::Permissions::from_mode(0o700)).map_err(|e| e.to_string())?;
+    restrict::directory(directory)?;
     if let Ok(metadata) = fs::symlink_metadata(&path) {
-        if !metadata.file_type().is_socket() {
+        if !restrict::is_socket(&metadata) {
             return Err("Socket path is not a socket".into());
         }
         if UnixStream::connect(&path).is_ok() {
@@ -35,7 +75,7 @@ pub fn start(
         fs::remove_file(&path).map_err(|e| e.to_string())?;
     }
     let listener = UnixListener::bind(&path).map_err(|e| e.to_string())?;
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+    restrict::socket(&path)?;
     let (sender, receiver) = async_channel::bounded(8);
     std::thread::spawn(move || {
         for incoming in listener.incoming() {

@@ -201,7 +201,10 @@ was issued; OS animation may finish later.
 
 ## Local transport
 
-Unix socket `~/.cache/tessel-editor/ui.sock`, directory mode 700, socket 600. One instance
+Unix socket `~/.cache/tessel-editor/ui.sock`, directory mode 700, socket 600. On Windows the same
+protocol runs over a native AF_UNIX socket (`uds_windows`) at `%LOCALAPPDATA%\tessel-editor\ui.sock`;
+there are no mode bits, the per-user directory ACL is the restriction, and the CLI is
+`target\debug\tessel-editor.exe ui <command>` (`./scripts/ui` is a `sh` wrapper). One instance
 owns the endpoint; a stale socket is removed at startup and a live one is never replaced.
 No HTTP listener. Newline-delimited JSON, 64 KiB maximum, read/write timeouts:
 

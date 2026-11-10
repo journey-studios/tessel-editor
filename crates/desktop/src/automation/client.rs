@@ -1,8 +1,9 @@
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::UnixStream;
 use std::time::Duration;
 
 use serde_json::{Map, Value, json};
+
+use super::UnixStream;
 
 const HELP: &str = "tessel-editor ui <command>
 

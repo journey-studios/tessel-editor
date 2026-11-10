@@ -1,6 +1,3 @@
-// Without the Unix automation transport (see `automation`), its handlers have no caller.
-#![cfg_attr(not(unix), allow(dead_code))]
-
 mod automation;
 mod header;
 mod shell;

@@ -20,6 +20,10 @@ async-channel.workspace = true
 serde_json.workspace = true
 memory-stats = "1.2.0"
 
+# Windows has AF_UNIX sockets but `std` only exposes them on Unix: same API for the `ui` channel.
+[target.'cfg(windows)'.dependencies]
+uds_windows = "1.2.1"
+
 [lints]
 workspace = true
 

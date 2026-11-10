@@ -110,6 +110,9 @@ pub struct Workflow {
     history: Vec<Value>,
     last_autosave: Instant,
     autosaved_revision: Option<u64>,
+    /// The status bar's job text at the last tick: a tick repaints only when it changed (or
+    /// something else did), so an idle window does not repaint four times a second.
+    last_jobs_line: Option<String>,
     /// The last scene attach/load chain (F043, `scene_import.rs`); its jobs finish on the tick.
     pub(super) scene_import: Option<SceneImport>,
     /// Discard job -> the refusal that sent a result to it (`details.discard_job` of a failed
@@ -183,6 +186,7 @@ impl Workflow {
             history: Vec::new(),
             last_autosave: Instant::now(),
             autosaved_revision: None,
+            last_jobs_line: None,
             scene_import: None,
             refusals: HashMap::new(),
         }
@@ -295,6 +299,8 @@ impl Workstation {
 
     /// Applies finished jobs, reports them in the status bar and autosaves a dirty project.
     pub(super) fn workflow_tick(&mut self, cx: &mut Context<Self>) {
+        // Only what a tick can change on screen repaints the window: it runs every 250 ms.
+        let mut changed = false;
         // The dialog's verification waiting for a busy renderer asks again when it is due.
         if let Some(attempt) = self
             .workflow
@@ -303,9 +309,11 @@ impl Workstation {
             .and_then(|flow| flow.take_due_retry(Instant::now()))
         {
             self.flow_verify_attempt(attempt, cx);
+            changed = true;
         }
         let events = self.workflow.host.poll(&mut self.state);
         if !events.is_empty() {
+            changed = true;
             // A job that opened another project (restore) invalidates what the viewport loaded.
             let replaced = events
                 .iter()
@@ -341,8 +349,17 @@ impl Workstation {
             if run_project_op(&mut self.state, None, ProjectOp::Autosave).is_ok() {
                 self.workflow.autosaved_revision = Some(revision);
             }
+            changed = true;
         }
-        cx.notify();
+        // The status bar shows the running job and its progress.
+        let jobs_line = self.workflow.jobs_line();
+        if jobs_line != self.workflow.last_jobs_line {
+            self.workflow.last_jobs_line = jobs_line;
+            changed = true;
+        }
+        if changed {
+            cx.notify();
+        }
     }
 
     pub(super) fn spawn_workflow_tick(cx: &mut Context<Self>) {
