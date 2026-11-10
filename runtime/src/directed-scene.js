@@ -35,6 +35,7 @@ export const SCENE_CAPABILITIES = [
   'compositionPassOrder',
   'splats',
   'outputFx',
+  'fxNoise',
 ];
 
 /** Advertised in `ready.capabilities.directed_scene`, so a host can check before it sends. */

@@ -757,3 +757,153 @@ fn keys_and_the_seed_survive_save_and_reopen_and_sample_the_same() {
     );
     fs::remove_dir_all(&scratch).unwrap();
 }
+
+// ---- the plan ---------------------------------------------------------------------------------------
+
+fn plan_of(state: &mut EditorState, frame: i64) -> Value {
+    ok(
+        state,
+        json!({"op":"scene.plan","scene":"street","frame":frame}),
+    )["plan"]
+        .clone()
+}
+
+fn scene_of(state: &EditorState) -> DirectedScene {
+    DirectedScene::import_value(document(state)).unwrap()
+}
+
+#[test]
+fn the_plan_carries_the_sampled_parameters_and_the_seed_and_asks_for_the_noise_capability() {
+    let mut state = session();
+    edit(
+        &mut state,
+        json!([
+            grain(),
+            key("amount", 0, json!(0.1)),
+            keyed("amount", 20, json!(0.9), "easeOutCubic"),
+            key("colored", 8, json!(true)),
+            {"op":"add_clip","effect":"vignette","start_frame":60,"duration_frames":10,"id":"v"},
+        ]),
+    );
+    let plan = plan_of(&mut state, 20);
+    let pass = &plan["fx"][0];
+    assert_eq!(pass["effect"], "filmGrain");
+    assert_eq!(pass["frameInClip"], 10);
+    assert_eq!(pass["params"]["colored"], true);
+    let eased = 0.1 + (0.9 - 0.1) * (1.0 - 0.5_f64.powi(3));
+    assert!((pass["params"]["amount"].as_f64().unwrap() - eased).abs() < 1e-12);
+    assert!(pass["seed"].is_u64());
+    let requires = plan["requires"].as_array().unwrap();
+    assert_eq!(
+        requires[requires.len() - 2..],
+        [json!("outputFx"), json!("fxNoise")]
+    );
+    // The plan is the same pass the executor reports for the frame.
+    assert_eq!(
+        ok(
+            &mut state,
+            json!({"op":"scene.fx.frame","scene":"street","frame":20})
+        )["passes"][0],
+        *pass
+    );
+    // A look with no noise has no seed on the wire and does not ask for the capability, so the
+    // bytes of every plan that carried only vignettes and fades stay what they were.
+    let vignette = plan_of(&mut state, 65);
+    assert!(vignette["fx"][0].get("seed").is_none());
+    assert_eq!(
+        vignette["requires"].as_array().unwrap().last(),
+        Some(&json!("outputFx"))
+    );
+
+    let scene = scene_of(&state);
+    let built = tessel_editor_core::scene_plan::ScenePlan::build(&scene, 20).unwrap();
+    assert_eq!(
+        tessel_editor_core::scene_plan::ScenePlan::from_json(&built.to_json()).unwrap(),
+        built,
+        "the wire round-trips"
+    );
+    use tessel_editor_core::scene_plan::Capability;
+    // A P2 runtime (every capability but the noise) is refused by name, never drawn without grain.
+    let p2: Vec<Capability> = Capability::ALL
+        .into_iter()
+        .filter(|capability| *capability != Capability::FxNoise)
+        .collect();
+    assert_eq!(built.missing_capabilities(&p2), [Capability::FxNoise]);
+    assert!(built.require_capabilities(&p2).is_err());
+    let vignette_plan = tessel_editor_core::scene_plan::ScenePlan::build(&scene, 65).unwrap();
+    assert_eq!(
+        vignette_plan.require_capabilities(&p2),
+        Ok(()),
+        "P2 plans still run on a P2 runtime"
+    );
+}
+
+#[test]
+fn a_plan_that_breaks_the_seed_contract_is_refused_at_the_wire() {
+    use tessel_editor_core::scene_plan::ScenePlan;
+    let mut state = session();
+    edit(
+        &mut state,
+        json!([grain(), {"op":"add_clip","effect":"vignette","start_frame":60,"duration_frames":10,"id":"v"}]),
+    );
+    let grain_plan = plan_of(&mut state, 20);
+    let vignette_plan = plan_of(&mut state, 65);
+    assert!(ScenePlan::from_json(&grain_plan).is_ok());
+    assert!(ScenePlan::from_json(&vignette_plan).is_ok());
+    let refuse = |plan: &Value, why: &str| {
+        let error = ScenePlan::from_json(plan).unwrap_err();
+        assert!(
+            format!("{error:?}").contains("seed"),
+            "{why}: the refusal names the seed: {error:?}"
+        );
+    };
+    for bad in [
+        json!(-1),
+        json!(4_294_967_296_u64),
+        json!(1.5),
+        json!("7"),
+        json!(null),
+    ] {
+        let mut plan = grain_plan.clone();
+        plan["fx"][0]["seed"] = bad.clone();
+        refuse(&plan, &bad.to_string());
+    }
+    let mut plan = grain_plan.clone();
+    plan["fx"][0].as_object_mut().unwrap().remove("seed");
+    refuse(&plan, "a grain without its seed");
+    let mut plan = vignette_plan.clone();
+    plan["fx"][0]["seed"] = json!(5);
+    refuse(&plan, "a seed on a look that draws no noise");
+    let mut plan = grain_plan.clone();
+    plan["fx"][0]["seed"] = json!(4_294_967_295_u64);
+    assert!(
+        ScenePlan::from_json(&plan).is_ok(),
+        "the uint32 edge is a seed"
+    );
+    let mut plan = grain_plan;
+    plan["fx"][0]["params"]["colored"] = json!(1);
+    assert!(
+        ScenePlan::from_json(&plan).is_err(),
+        "a boolean is true or false on the wire"
+    );
+}
+
+#[test]
+fn the_timeline_gives_the_plan_of_a_build_for_every_frame_of_a_keyed_grain() {
+    use tessel_editor_core::scene_plan::{PlanTimeline, ScenePlan};
+    let mut state = session();
+    edit(
+        &mut state,
+        json!([grain(), key("amount", 3, json!(0.2)), keyed("amount", 33, json!(0.9), "easeInOutCubic"),
+               key("colored", 12, json!(true)), {"op":"set_seed","clip":"g","seed":99}]),
+    );
+    let scene = scene_of(&state);
+    let timeline = PlanTimeline::new(&scene);
+    for frame in (0..96).rev().chain(0..96).chain([57, 13, 13]) {
+        assert_eq!(
+            timeline.build(frame),
+            ScenePlan::build(&scene, frame),
+            "frame {frame}"
+        );
+    }
+}

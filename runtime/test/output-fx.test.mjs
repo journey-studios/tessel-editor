@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { SCENE_CAPABILITIES, parseDirectedLayer } from '../src/directed-scene.js';
-import { OUTPUT_FX_EFFECTS, OutputFxPipeline, parseOutputFx } from '../src/output-fx.js';
+import { MAX_FX_SEED, OUTPUT_FX_EFFECTS, OutputFxPipeline, grainCellPx, parseOutputFx } from '../src/output-fx.js';
 import { RuntimeError } from '../src/protocol.js';
 import { directedLayer, node, reference, resource, scenePlan } from './directed-scene-fixtures.mjs';
 
@@ -52,9 +52,11 @@ const refusal = (callback) => {
 
 const parse = (fx, requires) => parseDirectedLayer(directedLayer(plan(fx, requires), [reference('wall', 'slot-0')]));
 
-test('outputFx is a capability of this runtime and the catalog lists the vignette and the fade', () => {
+test('outputFx and fxNoise are capabilities of this runtime and the catalog lists the three looks', () => {
   assert.ok(SCENE_CAPABILITIES.includes('outputFx'));
-  assert.deepEqual(Object.keys(OUTPUT_FX_EFFECTS), ['vignette', 'fade']);
+  assert.ok(SCENE_CAPABILITIES.includes('fxNoise'));
+  assert.deepEqual(Object.keys(OUTPUT_FX_EFFECTS), ['vignette', 'fade', 'filmGrain']);
+  assert.deepEqual(Object.keys(OUTPUT_FX_EFFECTS.filmGrain.params), ['amount', 'size', 'luma', 'colored', 'intensity']);
   assert.deepEqual(Object.keys(OUTPUT_FX_EFFECTS.vignette.params), ['radius', 'softness', 'intensity', 'color', 'roundness', 'center']);
   assert.deepEqual(Object.keys(OUTPUT_FX_EFFECTS.fade.params), ['color', 'amount', 'intensity']);
 });
@@ -138,7 +140,7 @@ test('a name of the prototype chain is never an effect or a parameter (typed ref
 // What the core's catalog says (`directed_scene::fx::catalog`), as a fixture the Rust side compares
 // to its own catalog (crates/core/tests/scene_fx.rs): both ends of the contract are pinned by the
 // same file, so neither can change a range, a kind or the parameter order alone.
-const RUST_KINDS = { number: 'number', color: 'color', vec2: 'point' };
+const RUST_KINDS = { number: 'number', color: 'color', vec2: 'point', bool: 'bool' };
 
 test('the ranges, kinds and order of the runtime match the core catalog (pinned by a shared fixture)', () => {
   const contract = JSON.parse(readFileSync(new URL('./fixtures/fx-catalog.json', import.meta.url), 'utf8'));
@@ -151,6 +153,9 @@ test('the ranges, kinds and order of the runtime match the core catalog (pinned 
       assert.equal(mine.kind, RUST_KINDS[param.kind], `${effect.id}.${param.id} kind`);
       if (mine.kind === 'color') {
         assert.deepEqual([param.min, param.max], [0, 1], `${effect.id}.${param.id} channels`);
+        assert.equal(mine.min, undefined);
+      } else if (mine.kind === 'bool') {
+        assert.deepEqual([param.min, param.max], [undefined, undefined], `${effect.id}.${param.id} has no range`);
         assert.equal(mine.min, undefined);
       } else {
         assert.deepEqual([mine.min, mine.max], [param.min, param.max], `${effect.id}.${param.id} range`);
@@ -179,7 +184,7 @@ const fakeRenderer = ({ failOnRender } = {}) => {
         into: current?.name,
         from: uniforms.tMap.value?.name,
         amount: uniforms.uAmount.value,
-        radius: uniforms.uRadius.value,
+        radius: uniforms.uRadius?.value,
         material: material.uuid,
       });
       if (log.filter((entry) => !Array.isArray(entry)).length === failOnRender) throw new Error('boom');
@@ -256,4 +261,85 @@ test('a pass that fails restores the canvas target and drops the texture it held
   pipeline.dispose();
   assert.equal(pipeline.materials.size, 0);
   assert.throws(() => pipeline.draw(renderer, fakeTarget('src'), parsed(0.1), { targetOf: targetsOf().targetOf, size: sizeOf }), /disposed/);
+});
+
+
+// ---- the film grain (F059): what a pass must be, and the refusals that are typed -------------------
+
+const grain = (overrides = {}, params = {}) => ({
+  trackId: 'fx-track-1',
+  clipId: 'g1',
+  effect: 'filmGrain',
+  frameInClip: 3,
+  weight: 1,
+  amount: 1,
+  seed: 123456789,
+  params: { amount: 0.25, size: 1.4, luma: 0.7, colored: false, intensity: 1, ...params },
+  scope: { kind: 'output' },
+  ...overrides,
+});
+
+const NOISE = ['outputFx', 'fxNoise'];
+
+test('a grain pass keeps its seed as a uint32 and its boolean as a boolean', () => {
+  const [entry] = parseOutputFx([grain({ seed: MAX_FX_SEED }, { colored: true })], NOISE);
+  assert.equal(entry.seed, 4294967295);
+  assert.equal(entry.params.colored, true);
+  assert.equal(parseOutputFx([grain({ seed: 0 })], NOISE)[0].seed, 0);
+  assert.equal(Object.hasOwn(parseOutputFx([pass()], NOISE)[0], 'seed'), false, 'a look without noise carries no seed');
+});
+
+test('the seed is strict: a whole number from 0 to 2^32 - 1 and nothing else', () => {
+  for (const seed of [-1, 4294967296, 1.5, '7', null, undefined, NaN, Infinity, true, [], {}]) {
+    const error = refusal(() => parseOutputFx([grain({ seed })], NOISE));
+    assert.equal(error.code, 'invalid_plan', String(seed));
+    assert.equal(error.details.pointer, '/fx/0/seed', String(seed));
+  }
+  const noSeed = grain();
+  delete noSeed.seed;
+  assert.equal(refusal(() => parseOutputFx([noSeed], NOISE)).details.pointer, '/fx/0/seed');
+  const onLook = refusal(() => parseOutputFx([pass({ seed: 5 })], NOISE));
+  assert.equal(onLook.details.pointer, '/fx/0/seed', 'a look that draws no noise has no seed');
+});
+
+test('the boolean of the grain is true or false, never a number or a string', () => {
+  for (const colored of [1, 0, 'true', null, undefined, {}]) {
+    const error = refusal(() => parseOutputFx([grain({}, { colored })], NOISE));
+    assert.equal(error.details.pointer, '/fx/0/params/colored', String(colored));
+  }
+});
+
+test('a plan with grain that does not ask for fxNoise is refused before drawing', () => {
+  const error = refusal(() => parseOutputFx([grain()], ['outputFx']));
+  assert.equal(error.code, 'invalid_plan');
+  assert.equal(error.details.pointer, '/requires');
+  const layer = refusal(() => parse([grain()], ['camera', 'nodeTransforms', 'imagePlanes', 'opaqueAlpha', 'outputFx']));
+  assert.equal(layer.details.pointer, '/requires');
+  const drawn = parse([grain()], ['camera', 'nodeTransforms', 'imagePlanes', 'opaqueAlpha', 'outputFx', 'fxNoise']);
+  assert.equal(drawn.fx[0].seed, 123456789);
+});
+
+test('the cell is max(size x height / 720, 1) in double precision, applied once', () => {
+  assert.equal(grainCellPx(1, 720), 1);
+  assert.equal(grainCellPx(0.5, 720), 1, 'a cell is never smaller than a pixel');
+  assert.equal(grainCellPx(1.4, 720), 1.4);
+  assert.equal(grainCellPx(2, 1080), 3);
+  assert.equal(grainCellPx(4, 180), 1, 'the small picture is clamped, not scaled twice');
+  assert.equal(grainCellPx(1.4, 90), 1);
+});
+
+test('the grain material is retained like the others and its seed rides in a uniform', () => {
+  const pipeline = new OutputFxPipeline();
+  const renderer = fakeRenderer();
+  const draw = (seed) => {
+    const entries = parseOutputFx([grain({ seed })], NOISE);
+    return pipeline.draw(renderer, fakeTarget('src'), entries, { targetOf: targetsOf().targetOf, size: sizeOf, onMaterial: (created) => seen.push(created) });
+  };
+  const seen = [];
+  draw(1);
+  draw(2);
+  assert.deepEqual(seen, [true, false], 'linked once, however many frames and seeds');
+  assert.equal(pipeline.materials.get('filmGrain').uniforms.uSeed.value, 2);
+  assert.equal(pipeline.materials.get('filmGrain').uniforms.uCell.value, 1, '1.4 x 90 / 720 is clamped to a pixel');
+  pipeline.dispose();
 });
