@@ -657,7 +657,7 @@ do `docs/backlog.md` (nosso 335, deles 337, resultado 341; **0 ausentes**), de `
 acrescentadas ou alteradas por cada lado em relação à base e ausentes do resultado: **0** nos três arquivos. Nenhum ID, feature ou evidência desapareceu. Um arquivo versionado
 que um lado alterou e o outro não ficou idêntico ao do lado que o alterou (verificável com `git diff 23462bd d54a3f3 --stat` e `git diff e18b0cf d54a3f3 --stat`).
 
-**Gates no head integrado: NÃO executados (BLOQUEADOS), nada promovido.** Sequência do lock, sem sleep, polling, contorno nem kill: 18:35:51Z a **primeira** tentativa não bloqueante
+**Gates no head integrado — histórico desta rodada: NÃO executados (BLOQUEADOS), nada promovido (executados depois, sem lock, na seção seguinte).** Sequência do lock, sem sleep, polling, contorno nem kill: 18:35:51Z a **primeira** tentativa não bloqueante
 (`/tmp/tessel-pr40-int/driver.py`: `LOCK_EX|LOCK_NB` em `/tmp/tessel-scene-gpu.lock` e no lock de vídeo) **adquiriu**; o processo que a segurava, iniciado por `nohup` numa chamada de ferramenta,
 desapareceu com a sessão da ferramenta depois de ~10 min, durante a **compilação do core** (log `D01-newtest-core.KILLED-run1-holder-died.log`, sha256 `44d68e3b…558f`, sem `RELEASED`, sem
 produto envolvido: mesmo padrão registrado na rodada anterior). 18:45:43Z uma **segunda e última** tentativa não bloqueante (agora como tarefa de segundo plano gerenciada) saiu com
@@ -675,7 +675,7 @@ depois do que outro processo ocupou (reserva 16, piso 12); `/tmp/tessel-pr40-int
 Os gates de `4b690bd` e `1b471d6` acima **não** valem para o merge: o código da #39 (FX, inspector, `fade`) entrou depois deles. O que vale para o código do G1 é o histórico preservado (nada dele foi
 alterado pelo merge nos arquivos do G1, ver `git diff --stat 23462bd d54a3f3 -- crates/core/src/scene_interaction runtime/src/overlay.js crates/core/tests/scene_gizmo_rotation.rs`).
 
-**Teste de interação G1 × FX (BL015.13) escrito, retirado da árvore e não executado.** O arquivo `crates/core/tests/scene_gizmo_fx.rs` (4 testes: um gesto de efeito aberto recusa o press num anel e a troca
+**Teste de interação G1 × FX (BL015.13) — histórico desta rodada: escrito, retirado da árvore e não executado (compilado e executado depois, ver a seção seguinte).** O arquivo `crates/core/tests/scene_gizmo_fx.rs` (4 testes: um gesto de efeito aberto recusa o press num anel e a troca
 de ferramenta não o toca; um arrasto de anel aberto recusa um gesto de efeito e as leituras do FX o deixam vivo; uma rotação e uma edição de efeito são duas entradas de um histórico que não se tocam em
 undo/redo; uma edição de efeito sob um arrasto o mata e a soltura tardia não escreve) não pôde ser compilado sem o lock. Como a política do repositório é "sem prova, a validar" e um teste que talvez não compile
 quebraria `cargo test --workspace` da PR, **não foi commitado**; cópia em `/tmp/tessel-pr40-int/scene_gizmo_fx.rs.pending` (sha256 `e12d4679…c3f0`, fora do Git: não durável) para o coordenador
@@ -684,3 +684,50 @@ recolocar e rodar quando o lock liberar. Os testes existentes que já cobrem o e
 
 **Status de G1 neste head:** a PR #40 deixa de estar em conflito com a `main` (merge textual resolvido, três vias sem perda), mas a rotação continua **a validar**: não há compilação, clippy, suíte,
 runtime nem prova G1 no head integrado. O próximo passo é rodar a bateria completa do head integrado quando o lock estiver livre; nenhuma flaky anterior foi reinterpretada e nenhuma foi relaxada.
+
+### Gates funcionais do head integrado `ebf77c2` (sem lock de GPU)
+
+**Regra nova (2026-11-10, atribuída ao usuário):** o lock de GPU/build (`/tmp/tessel-scene-gpu.lock`, `with-gpu-lock.py`) existe **somente para validações de desempenho**.
+Edição, `cargo fmt/check/clippy/test/build`, o runtime Chrome funcional e as provas funcionais não esperam por ele nem o tomam; o lock de outro agente não foi apagado nem seu processo tocado,
+e nenhuma medição de desempenho foi iniciada. Um script que mistura resultado funcional e de desempenho separa os dois: sem lock, o desempenho não é declarado aceito (registro em `AGENTS.md`).
+
+Origem conferida: `journey-studios/tessel-editor`, PR #40 draft `CLEAN`, base `main` (`e18b0cf`), head recebido `3c26101`. O checkout T3 `t3/pr40-functional-gates` foi levado a `3c26101` (sem force,
+sem novo worktree, raiz canônica não tocada) e recebeu um commit de código, `ebf77c2` (árvore `4cce6028930182c09c6e7a9a65ecbfdea721aee1`). Cargo só por `./scripts/cargo` → `mbx` com o target padrão (sem
+`CARGO_TARGET_DIR`, `--target-dir`, `build.target-dir` nem `TESSEL_CARGO_LANE`; `CARGO_BUILD_JOBS=6` limita a CPU), `rustc 1.99.1`, `node v22.23.3`, Python 3.14.3, uma sequência finita de comandos
+gerenciados pela ferramenta (sem `nohup`, fila ou polling). Disco livre 43 GiB na entrada, **mínimo 31 GiB** (reserva 16, piso 12); evidência de 472 KiB em `/tmp/tessel-pr40-fn` (fora do Git, não durável).
+
+| Gate | Head / árvore | UTC (início) | Saída | Resultado |
+|---|---|---|---|---|
+| `cargo fmt --all -- --check`, `git diff --check 3c26101 HEAD` | `ebf77c2` limpa | 19:40Z | 0 / 0 | passou |
+| `cargo check --workspace --locked` | `ebf77c2` limpa | 19:40Z | 0 | passou (172 s) |
+| `cargo clippy --workspace --all-targets --locked -- -D warnings` | `ebf77c2` limpa | 19:43Z | 0 | passou |
+| `cargo build -p tessel-editor --locked`; `cargo build -p tessel-editor-core --bin tessel-headless --locked` | `ebf77c2` limpa | 19:44Z | 0 / 0 | passou |
+| `cargo tree -p tessel-editor-core --locked` | `ebf77c2` | 19:47Z | 0 | **0** ocorrências de `gpui`/`wry` |
+| `./scripts/runtime setup` | `ebf77c2` | 19:47Z | 0 | passou |
+| `./scripts/runtime test` (Chrome completo) — **1ª execução** | `ebf77c2` limpa | 19:47Z | **1** | **222/223**: falhou `video B2: a frame superseded while it seeks is cancelled and the next one is exact` (`frame.done` em vez de `frame.failed`) |
+| `cargo test --workspace --locked`, `TESSEL_REQUIRE_RUNTIME=1` | `ebf77c2` limpa | 19:51Z | 0 | **2123 passaram, 0 falharam, 12 `ignored`**, num único passe (681 s), com `scene_gizmo_fx` 5/5, `scene_gizmo_rotation` 46/46, `scene_gizmo` 42/42 |
+| `./scripts/runtime test` — **repetição integral** (não é um rerun isolado) | `ebf77c2` limpa | 20:02Z | 0 | **223/223** |
+| `python3 scripts/scene-gizmo-rotation-proof.py --editor target/debug/tessel-editor --headless target/debug/tessel-headless --out …` | `ebf77c2` limpa | 20:09Z | 0 | `ok:true`, `final_evidence:true`, `surfaces_agree_on_the_drag:true`, headless **48** + janela **54** checks; relatório grava `head` = `ebf77c2`, `tree_clean:true` |
+| `python3 scripts/scene-fx-ui-proof.py --binary target/debug/tessel-editor --json …` (P2, janela real, só requisições semânticas, sem coordenadas) | `ebf77c2` limpa | 20:09Z | 0 | **153/153**, inclusive a exportação MP4 comparada com o vinheta Python (8/8 quadros) |
+| `scene-gizmo-proof.spec.py` / `scene-fx-ui-proof.spec.py` / `proof-surface.spec.py` | `ebf77c2` limpa | 20:10Z | 0 / 0 / 0 | 34/34, 28/28, 29/29 |
+
+Binários usados pelas duas provas (os do HEAD, construídos pelos gates acima): `tessel-editor` sha256 `f9d28ce08fb2b83ac5797926b597a96276c678fcb752814f0e88e92fa5b885fd`,
+`tessel-headless` sha256 `f4f097736a3dce5a267a348eece741e59d610735280d9293df6da9e00448cc63`. As provas rodaram pela janela isolada do script (HOME curto próprio, socket próprio); o editor do usuário
+não foi tocado e nenhum processo da rodada ficou vivo. Os commits seguintes a `ebf77c2` só mudam documentação, `AGENTS.md` e o texto do docstring de um script (`git diff --stat ebf77c2 HEAD` o mostra): o código gateado é o mesmo.
+
+**O que esta rodada achou.**
+
+1. **Teste G1 × FX (BL015.13).** Dos 4 testes pendentes, o arquivo com valores absolutos de undo (`scene_gizmo_fx.rs.pending`) não foi usado; a versão com profundidade relativa ao histórico inicial compilou e passou.
+   O `baseline` sem uso do primeiro teste seria um aviso do clippy `-D warnings`: removido, e o clippy fechou limpo. Um quinto teste cobre o F2.
+2. **F2 da revisão 5847593300 — reproduzido e corrigido.** `scene.fx.list/inspect/frame` com `gesture` documentam checar cena **e tipo**, mas `fx_read_scene` só checava cena e vivacidade: o ID de um arrasto de anel
+   (gesto `properties`) respondia `source:"gesture"` com o candidato da rotação (observado na primeira execução do teste novo). A correção é o mesmo `ensure_kind` dos outros verbos do gesto de efeito
+   (`gesture_kind_mismatch`, `details.use` aponta a consulta sem `gesture`): a leitura continua sem escrever, o arrasto continua vivo e a consulta ao documento continua funcionando.
+   Nenhuma outra regra de FX mudou; o teste `an_effect_read_names_an_effect_gesture_and_refuses_the_id_of_a_ring_drag` falhou sem a correção e passa com ela.
+3. **Flaky de vídeo B2 repetida (BL015.15).** É o mesmo teste da rodada de `4b690bd` e falhou de novo na 1ª execução completa, com a máquina compartilhada em carga ~24. Não há passe limpo único do runtime neste head
+   (222/223, depois 223/223 na repetição integral); nenhuma asserção nem tolerância foi relaxada, e o produto (`latestRender`) não é tocado pela PR. A hipótese de corrida do teste não está provada.
+
+**Não feito, de propósito.** Nenhuma medição de desempenho (a regra nova só impõe o lock a ela; as medições anteriores à fusão seguem históricas); ponteiro físico/WKWebView (BL015.2/BL043/BL044); escala, luz e FX
+novos; nova revisão independente (fica com o coordenador). As mutações Rust de G1 (BL015.10) continuam as do head `1b471d6`, não repetidas aqui.
+
+**Status de G1 neste head:** rotação segue **a validar**. Os gates funcionais do head integrado estão executados e passaram, exceto que o runtime/Chrome só tem passe completo na repetição (BL015.15). Faltam a
+revisão independente do coordenador, o ponteiro físico e a flaky de vídeo diagnosticada.

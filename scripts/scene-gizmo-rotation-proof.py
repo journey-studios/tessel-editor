@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """F055 / BL015.1 (G1) — the rotate tool of the gizmo, proved on two separate surfaces with one scenario:
 
-    python3 scripts/directed-scene-proof/with-gpu-lock.py \
-        python3 scripts/scene-gizmo-rotation-proof.py [--editor target/debug/tessel-editor] \
+    python3 scripts/scene-gizmo-rotation-proof.py [--editor target/debug/tessel-editor] \
         [--headless target/debug/tessel-headless] [--out report.json] [--allow-dirty]
+
+Functional proof only (no timing is measured), so it does not take the GPU lock: that lock is reserved for
+performance validations (AGENTS.md).
 
 The surfaces and their mechanics are the ones of `scene-gizmo-proof.py` (S8), loaded from it, not copied:
 
