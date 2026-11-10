@@ -262,3 +262,30 @@ cenas splat) mexe em resolução, MSAA ou contagem de splats, que não foram var
 Próximos fatores, um por vez e dentro da proteção do quadro atual: pré-upload da 1ª textura PNG de cada sequência (`195→196`) e investigação das páginas que param.
 
 Reprodução: `python3 scripts/viewport-transit-probe.py loop --project <documento> --out <dir> --iterations 4` e `... ab --pairs 8`; `ab-report`/`analyze` regeneram as tabelas.
+
+
+## 12. Reprodução final pela coordenação (`7850ade`)
+
+Os locks estavam disponíveis nesta rodada. O teste pendente foi executado no código limpo
+`7850adea60eff1babe2ff72153a426bbd304a384`, com release SHA-256
+`4add680ead4d37f9623999b03c8cfde268f48c5a0bc9bb6519f81f6537db48f8`
+e runtime `fcde5a3846b2c222bf6c27927cb88cb510ee515949a29ac84d64afc2061f8d81`.
+
+- `viewport-transit-probe.py loop --iterations 2 --lock-wait 1`, projeto real,
+  I/O async, warm ligado, janela própria, frames 114–210: duas execuções válidas,
+  ambas carregadas, nenhuma UI block de 50 ms e nenhum play sem imagens.
+  **Exit 1 esperado do diagnóstico RED**, não um teste verde de latência.
+- Iteração 0: três gaps >62,5 ms, pior 140,598 ms; 188→189 teve 100,609 ms de delivery
+  com draw de 2 ms. Iteração 1: dois gaps, pior 101,713 ms (220→222).
+- Primeira imagem PNG em 195→196: gaps 67,275 e 63,463 ms, draw 28 e 16 ms.
+  É um custo localizado a testar; não explica sozinho o atraso de 140,598 ms.
+- `real-latency-ab.py pixels` repetido no mesmo binário/runtime final: exit 0,
+  hashes exatos iguais nas quatro sessões e monitor após pausa igual ao quadro explícito;
+  controles de quadros distintos e readback completos passaram. Corpus sintético,
+  não prova o pixel de todos os quadros do projeto real.
+
+[Decomposição por execução](viewport-real-latency-ab-results/bl157-2/coordinator-final-7850ade.md).
+Logs e dados brutos locais em `/tmp/pr41-coordination/`; nenhum asset privado no Git.
+Não foi necessário repetir build/workspace por estes novos documentos. O bloqueio dos locks
+registrado no §9 era daquela tentativa; a reprodução final acima agora foi executada.
+Nenhuma correção de latência foi implementada nesta rodada da coordenação. BL157 segue não aceito.
