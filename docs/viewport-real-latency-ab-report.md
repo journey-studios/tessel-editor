@@ -169,7 +169,26 @@ do corte.
 - Sem GPU medida, sem apresentação no fóton (o aceite é a imagem aceita pelo host), sem disco frio, sem ponteiro físico.
 - O headless (processo JSONL) não passa pelo protocolo: `render.trace` responde `desktop_required`.
 
-## 9. Reprodução
+## 9. Gates do head final
+
+Head de código `1454413` (árvore limpa; os commits depois de `f5ca12b` só mexem em scripts, docs e um `Box` num teste). Logs e códigos de
+saída em `/tmp/tessel-bl157-1/gates/` (fora do Git).
+
+| Gate | Resultado |
+|---|---|
+| `cargo fmt --all -- --check` | 0 |
+| `./scripts/cargo check --workspace --locked` | 0 |
+| `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 (a primeira rodada falhou em `large_enum_variant` num teste; corrigido com `Box` e repetido) |
+| `cargo tree -p tessel-editor-core` sem `gpui`/`wry` | 0 |
+| Build debug e release de `tessel-editor` | 0 e 0; sha256 do release `ad16ad3670f4…` = o binário medido no A/B |
+| 18 specs Python de `scripts/*.spec.py` (inclui `real-latency-ab`, 20 testes) | todos 0 |
+| Testes parciais: core 469 (mais os binários de integração), render `--lib` 11, desktop `workstation::` 371 | 0 falhas |
+| Headless JSONL (`./scripts/headless`) | `render.trace` → `desktop_required`; `status` ok; processo sai com 1 por causa do erro pedido |
+| Janela real (binário release, HOME próprio, `ui op`) | `render.status` reporta `asset_io` em `async` (2 workers, fila 16, 0 saturações), `sync` e valor inválido (`bogus` avisa e usa `sync`); `render.trace` devolve eventos, `lost` 0 |
+| **`TESSEL_REQUIRE_RUNTIME=1 cargo test --workspace --locked --no-fail-fast`** | **BLOCKED**: os dois locks de GPU ficaram com um `driver.py` de outra sessão por mais de uma hora; duas esperas de 900 s terminaram com código 97. Não rodei sem o lock para não perturbar a medição alheia |
+| **Testes do runtime/Chrome sem SKIP** | **BLOCKED** pelo mesmo lock (rodada anterior ao último commit: `scene-warm.test.mjs` passou com `TESSEL_REQUIRE_RUNTIME=1`; o código do runtime não mudou depois) |
+
+## 10. Reprodução
 
 ```text
 ./scripts/runtime setup && ./scripts/cargo build -p tessel-editor --locked --release
