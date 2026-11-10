@@ -31,10 +31,12 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 
 use crate::directed_scene::DirectedScene;
+use crate::directed_scene::fx::{FX_CATALOG_VERSION, Locale};
 use crate::scene_edit::{self, FxOp};
 use crate::scene_interaction::{FrameAt, FxGestureCommand, GestureKind};
 use crate::state::{CommandError, EditorState};
 
+use super::FxProbe;
 use super::fx::{changes_json, frame_answer, list_answer};
 use super::interaction::ensure_kind;
 
@@ -347,6 +349,64 @@ impl EditorState {
         Ok(answer)
     }
 
+    /// The inspector model of the layer (`scene.fx.inspect`): one entry per clip with its fields,
+    /// the effects that can be added and the scopes that are not drawn yet. From the document, or
+    /// from a live gesture's candidate (then with the gesture's newest refusal, so a client that
+    /// shows the last legal value can also show why the proposal was not taken). A read: nothing
+    /// is written, whatever the `probe` says.
+    pub(super) fn fx_inspect(
+        &self,
+        scene: &str,
+        clip: Option<&str>,
+        gesture: Option<&str>,
+        locale: Locale,
+        probe: Option<&FxProbe>,
+    ) -> Result<Value, CommandError> {
+        let (shown, id) = self.fx_read_scene(scene, gesture)?;
+        let bundle = shown.bundle();
+        let edit_frames = i64::try_from(bundle.edit_duration_frames).unwrap_or(i64::MAX);
+        let mut inspectors = scene_edit::layer_inspector(&bundle.fx, edit_frames);
+        if let Some(wanted) = clip {
+            inspectors.retain(|inspector| inspector.clip == wanted);
+            if inspectors.is_empty() {
+                return Err(CommandError::unknown_element("effect clip", wanted));
+            }
+        }
+        let budget = bundle.fx.pass_budget(bundle.edit_duration_frames);
+        let mut answer = json!({
+            "action": "scene.fx.inspect", "scene": scene, "locale": locale.tag(),
+            "catalog_version": FX_CATALOG_VERSION,
+            "source": if id.is_some() { "gesture" } else { "document" },
+            "edit_duration_frames": bundle.edit_duration_frames,
+            "scopes": scene_edit::scopes().iter().map(|(kind, drawn, reason)| json!({
+                "kind": kind, "applicable": drawn, "reason": reason,
+            })).collect::<Vec<_>>(),
+            "offers": scene_edit::offers().iter().map(|offer| offer.to_json(locale)).collect::<Vec<_>>(),
+            "clip_count": inspectors.len(),
+            "clips": inspectors.iter().map(|inspector| {
+                let mut described = inspector.to_json(locale);
+                if let Some((_, clip)) = bundle.fx.clip(&inspector.clip) {
+                    described["reset_ops"] = json!(inspector.reset_ops_json(clip));
+                }
+                described
+            }).collect::<Vec<_>>(),
+            "budget": budget.to_json(), "warnings": budget.warnings(),
+        });
+        if let Some(id) = id {
+            let open = self.scene_interaction.gesture.find(&id)?;
+            answer["gesture"] = json!({
+                "id": id, "clip": open.fx_clip(),
+                "refusal": open.refusal().map(|refusal| json!({
+                    "code": refusal.code, "message": refusal.message,
+                })),
+            });
+        }
+        if let Some(probe) = probe {
+            answer["probe"] = probe_answer(&shown, &inspectors, probe);
+        }
+        Ok(answer)
+    }
+
     /// Evaluates FX at a frame from the document or a validated candidate, without committing it.
     pub(super) fn fx_frame(
         &self,
@@ -361,5 +421,53 @@ impl EditorState {
             answer["gesture"] = json!(id);
         }
         Ok(answer)
+    }
+}
+
+/// Judges one proposed value of one field without applying it: the typed refusal of the inspector
+/// (a value that is not finite, not whole for a frame field, an unknown clip or field) or of the
+/// core's own dry run of the very op the field would send. `ok: true` carries the op and whether
+/// it would change the document; nothing is written either way.
+fn probe_answer(
+    scene: &DirectedScene,
+    inspectors: &[scene_edit::ClipInspector],
+    probe: &FxProbe,
+) -> Value {
+    let refuse = |error: CommandError| {
+        json!({
+            "clip": probe.clip, "field": probe.field, "value": probe.value, "ok": false,
+            "error": { "code": error.code, "message": error.message },
+        })
+    };
+    let Some(inspector) = inspectors
+        .iter()
+        .find(|inspector| inspector.clip == probe.clip)
+    else {
+        return refuse(CommandError::unknown_element("effect clip", &probe.clip));
+    };
+    let Some(field) = inspector.field(&probe.field) else {
+        return refuse(CommandError::new(
+            "unknown_field",
+            format!("`{}` has no field `{}`", probe.clip, probe.field),
+        ));
+    };
+    let value = if probe.quantize {
+        field.quantize(probe.value)
+    } else {
+        probe.value
+    };
+    let Some((_, clip)) = scene.bundle().fx.clip(&probe.clip) else {
+        return refuse(CommandError::unknown_element("effect clip", &probe.clip));
+    };
+    let op = match field.op(clip, value) {
+        Ok(op) => op,
+        Err(error) => return refuse(error),
+    };
+    match scene_edit::dry_run_fx(scene, std::slice::from_ref(&op)) {
+        Ok(summary) => json!({
+            "clip": probe.clip, "field": probe.field, "value": value, "ok": true,
+            "would_change": summary.modified, "changes": changes_json(&summary),
+        }),
+        Err(error) => refuse(CommandError::from(error)),
     }
 }

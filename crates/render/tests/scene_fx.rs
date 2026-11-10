@@ -265,3 +265,208 @@ fn a_fade_scales_the_effect_and_a_runtime_without_the_capability_is_refused() {
     assert_eq!(plan.missing_capabilities(&without), [Capability::OutputFx]);
     renderer.shutdown();
 }
+
+// ---- P2: the fade, against a formula written in this file (not the core's reference) ----------------------------------
+
+fn lin(encoded: f64) -> f64 {
+    if encoded <= 0.04045 {
+        encoded / 12.92
+    } else {
+        ((encoded + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+fn enc(linear: f64) -> f64 {
+    let l = linear.clamp(0.0, 1.0);
+    if l <= 0.0031308 {
+        l * 12.92
+    } else {
+        1.055 * l.powf(1.0 / 2.4) - 0.055
+    }
+}
+
+/// The pilot's fade: `mix(source, colour, amount x uAmount)` in linear light, uniform on the frame.
+fn fade_of(base: [u8; 4], colour: [f64; 3], weight: f64) -> [i32; 3] {
+    let mut out = [0; 3];
+    for channel in 0..3 {
+        let source = lin(f64::from(base[channel]) / 255.0);
+        out[channel] = (enc(source + (colour[channel] - source) * weight) * 255.0).round() as i32;
+    }
+    out
+}
+
+fn with_fade(base: &DirectedScene, id: &str, params: serde_json::Value) -> DirectedScene {
+    let ops = [FxOp::from_json(&json!({
+        "op": "add_clip", "effect": "fade", "start_frame": 0, "duration_frames": 48,
+        "id": id, "params": params,
+    }))
+    .unwrap()];
+    apply_fx(base, &ops).unwrap().candidate
+}
+
+fn assert_fade(
+    baseline: &FrameResult,
+    shaded: &FrameResult,
+    colour: [f64; 3],
+    weight: f64,
+    what: &str,
+) -> i32 {
+    let mut worst = 0;
+    for (base, read) in baseline.probes.iter().zip(&shaded.probes) {
+        let want = fade_of(*base, colour, weight);
+        for channel in 0..3 {
+            let delta = (i32::from(read[channel]) - want[channel]).abs();
+            worst = worst.max(delta);
+            assert!(
+                delta <= TOLERANCE,
+                "{what}: read {read:?}, the formula says {want:?} (baseline {base:?})"
+            );
+        }
+    }
+    worst
+}
+
+#[test]
+fn the_fade_matches_the_pilot_formula_and_zero_is_the_baseline() {
+    let Some(mut renderer) = renderer() else {
+        return;
+    };
+    let base = scene("bundle.json");
+    let (_, baseline) = draw(&mut renderer, &base, 12);
+
+    // amount 0 and intensity 0: the clip is in the plan, the pixels do not move.
+    for params in [json!({ "amount": 0.0 }), json!({ "intensity": 0.0 })] {
+        let zero = with_fade(&base, "f1", params.clone());
+        let (plan, zeroed) = draw(&mut renderer, &zero, 12);
+        assert_eq!(plan.fx.len(), 1, "{params}");
+        assert_eq!(zeroed.probes, baseline.probes, "{params} is the baseline");
+    }
+
+    // Positive: white at amount 0.5 and red at intensity 0.25, every probe against the formula.
+    let white = with_fade(
+        &base,
+        "f1",
+        json!({ "color": { "r": 1.0, "g": 1.0, "b": 1.0 }, "amount": 0.5 }),
+    );
+    let (plan, lifted) = draw(&mut renderer, &white, 12);
+    assert!(plan.requires.contains(&Capability::OutputFx));
+    let worst_white = assert_fade(&baseline, &lifted, [1.0, 1.0, 1.0], 0.5, "half white");
+    assert_ne!(lifted.probes, baseline.probes);
+    let red = with_fade(
+        &base,
+        "f1",
+        json!({ "color": { "r": 1.0, "g": 0.0, "b": 0.0 }, "intensity": 0.25 }),
+    );
+    let (_, tinted) = draw(&mut renderer, &red, 12);
+    let worst_red = assert_fade(&baseline, &tinted, [1.0, 0.0, 0.0], 0.25, "quarter red");
+    assert_ne!(tinted.probes, lifted.probes);
+    // A fade is uniform: the middle moves as much as the corner (a vignette would leave it alone).
+    let solid = with_fade(
+        &base,
+        "f1",
+        json!({ "color": { "r": 1.0, "g": 0.0, "b": 0.0 } }),
+    );
+    let (_, full) = draw(&mut renderer, &solid, 12);
+    assert!(
+        full.probes.iter().all(|probe| probe[..3] == [255, 0, 0]),
+        "full strength is the colour"
+    );
+    eprintln!("EVIDENCE fade: worst channel difference to the formula {worst_white} / {worst_red}");
+    renderer.shutdown();
+}
+
+#[test]
+fn a_fade_and_a_vignette_compose_in_track_order_and_the_candidate_is_the_commit() {
+    let Some(mut renderer) = renderer() else {
+        return;
+    };
+    let base = scene("bundle.json");
+    let (_, baseline) = draw(&mut renderer, &base, 12);
+    let fade = json!({ "color": { "r": 1.0, "g": 1.0, "b": 1.0 }, "amount": 0.7 });
+    let vignette = json!({ "intensity": 1.0 });
+
+    let fade_first = with_vignette(&with_fade(&base, "f1", fade.clone()), vignette.clone());
+    let vignette_first = with_fade(&with_vignette(&base, vignette), "f1", fade);
+    let (plan_a, a) = draw(&mut renderer, &fade_first, 12);
+    let (plan_b, b) = draw(&mut renderer, &vignette_first, 12);
+    let order = |plan: &ScenePlan| {
+        plan.fx
+            .iter()
+            .map(|pass| pass.effect.clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(order(&plan_a), ["fade", "vignette"]);
+    assert_eq!(order(&plan_b), ["vignette", "fade"]);
+    assert_ne!(a.probes, b.probes, "the order changes the pixels");
+    assert_ne!(a.hash, b.hash);
+
+    // Each order against its own expectation: the fade by the formula here, the vignette by the
+    // reference (proved against the pilot corpus elsewhere), applied in the plan's order.
+    let (width, height) = (plan_a.output.width as usize, plan_a.output.height as usize);
+    let points = grid(width as u32, height as u32);
+    for (plan, read, what) in [(&plan_a, &a, "fade first"), (&plan_b, &b, "vignette first")] {
+        for ((point, base), got) in points.iter().zip(&baseline.probes).zip(&read.probes) {
+            let mut want = [
+                f64::from(base[0]) / 255.0,
+                f64::from(base[1]) / 255.0,
+                f64::from(base[2]) / 255.0,
+            ];
+            for pass in &plan.fx {
+                want = if pass.effect == "fade" {
+                    let amount = pass.amount * 0.7;
+                    let mixed = fade_of(
+                        [
+                            (want[0] * 255.0).round() as u8,
+                            (want[1] * 255.0).round() as u8,
+                            (want[2] * 255.0).round() as u8,
+                            255,
+                        ],
+                        [1.0, 1.0, 1.0],
+                        amount,
+                    );
+                    [
+                        f64::from(mixed[0]) / 255.0,
+                        f64::from(mixed[1]) / 255.0,
+                        f64::from(mixed[2]) / 255.0,
+                    ]
+                } else {
+                    apply_pass_to_srgb(
+                        pass,
+                        want,
+                        point.0 as usize,
+                        point.1 as usize,
+                        width,
+                        height,
+                    )
+                    .unwrap()
+                };
+            }
+            for channel in 0..3 {
+                let expected = (want[channel] * 255.0).round() as i32;
+                let delta = (i32::from(got[channel]) - expected).abs();
+                assert!(
+                    delta <= TOLERANCE * 2,
+                    "{what}: probe {point:?} read {got:?}, expected {expected} on {channel}"
+                );
+            }
+        }
+    }
+
+    // Preview == commit: the candidate of an edit draws the very picture the committed document does.
+    let candidate_ops = [FxOp::from_json(&json!({
+        "op": "set_param", "clip": "f1", "param": "amount", "value": 0.3,
+    }))
+    .unwrap()];
+    let candidate = apply_fx(&fade_first, &candidate_ops).unwrap().candidate;
+    let (_, previewed) = draw(&mut renderer, &candidate, 12);
+    let committed = apply_fx(&fade_first, &candidate_ops).unwrap().candidate;
+    let (_, after_commit) = draw(&mut renderer, &committed, 12);
+    assert_eq!(previewed.hash, after_commit.hash, "preview == commit");
+    assert_ne!(previewed.hash, a.hash);
+    // Cancel / undo: the scene before the edit is drawn again, byte for byte.
+    let (_, undone) = draw(&mut renderer, &fade_first, 12);
+    assert_eq!(undone.hash, a.hash, "back to the picture before the edit");
+    let (_, plain) = draw(&mut renderer, &base, 12);
+    assert_eq!(plain.probes, baseline.probes);
+    renderer.shutdown();
+}

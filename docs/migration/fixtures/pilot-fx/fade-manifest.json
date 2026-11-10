@@ -1,0 +1,122 @@
+{
+  "blockers": [
+    {
+      "consequence": "Pixel equivalence with the origin is `origin-formula`, never golden equivalence. Visual parity stays partial.",
+      "detail": "The origin golden (catalog/__golden__/fade.png) needs its harness: a build of the engine and a browser, i.e. executing the origin. Forbidden in this delivery. No golden was invented and none is compared.",
+      "id": "ORIGIN_GOLDEN_NOT_COMPARABLE"
+    },
+    {
+      "consequence": "A future execution of the origin (in its own, authorised environment) may replace `origin-formula` by `origin-output` per case.",
+      "detail": "Expectations are transcribed formulas, not the origin's outputs. Mitigation: constants and formula lines are checked against the origin text at generation and by `verify --origin`.",
+      "id": "ORIGIN_NOT_EXECUTED"
+    }
+  ],
+  "corpus": {
+    "base_bundle": "docs/migration/fixtures/bundles/valid-minimal-continuous.bundle.json",
+    "file": "fade-cases.json",
+    "generator": "scripts/pilot-fade-corpus.py",
+    "regenerate": "scripts/pilot-fade-corpus.py generate --origin <path to the origin repo>",
+    "sha256": "92ead2ac20563ba79255d7e07ab2b57a1c731a32fc503e241f8fd1f2b460f1da"
+  },
+  "documented_differences": [
+    {
+      "detail": "The pilot pipeline is linear throughout and encodes at the end (with dither); the Rust reference and the runtime return the input bytes exactly when intensity x weight x amount is 0. The identity cases pin the exact bytes.",
+      "id": "ZERO_WEIGHT_IS_BYTE_IDENTITY"
+    }
+  ],
+  "expectation_kinds": {
+    "origin-formula": "read from the origin source and evaluated in float64 by the generator; the origin was not run",
+    "rust-contract": "a code or behaviour of the Rust core, flagged as such (not claimed of the origin)"
+  },
+  "origin": {
+    "access": "git show / cat-file of the blobs below",
+    "repository": "journeystudios/tesselapp (read only; never installed, built or executed)",
+    "snapshot": "d40ac3f7c0",
+    "snapshot_commit": "d40ac3f7c0be4feccc54103e7619bbe7301dc325"
+  },
+  "pixel_tolerance": {
+    "per_channel": 1,
+    "why": "the reference is float64 with the origin's curves; the Rust one may differ by the last rounding of pow"
+  },
+  "purpose": "Provenance of the pilot fade corpus (fade-cases.json): where each expectation comes from.",
+  "schema": 1,
+  "sources": [
+    {
+      "bytes": 1542,
+      "git_blob": "16916fc90b5011fbdadc16ff1968a4fdbcf15b90",
+      "path": "packages/scene-engine/src/fx/catalog/fade.ts",
+      "role": "catalog: params, defaults, label and summary",
+      "sha256": "c60e38d5082a1004bd1c45a2451359aba3951d5f06c50e6dd5f9a33a42f836f6"
+    },
+    {
+      "bytes": 835,
+      "git_blob": "6e682662340cb2990fc822e99cbe20955e131d5d",
+      "path": "packages/scene-engine/src/runtime/fx/shaders/fade.ts",
+      "role": "shader: mix(source, colour, amount x uAmount)",
+      "sha256": "e44f563be203f49cece8a7c14498e4bd5b5125b62f8c83a17cdc7ba59b0f608f"
+    },
+    {
+      "bytes": 14960,
+      "git_blob": "999c2c67a77832349bcbb0209c62ac19d9d12cfe",
+      "path": "packages/scene-engine/src/fx/catalog/fx-effect-meta.ts",
+      "role": "intensity is appended last, default 1, range 0..1",
+      "sha256": "3e5e7d9b63896a61df5009ddc117987227d39adedf9214efd5edd60fb1146a19"
+    },
+    {
+      "bytes": 3289,
+      "git_blob": "0be3f40a7c7ac91c0b8400c75214d779dd9404b7",
+      "path": "packages/scene-engine/src/fx/catalog/param-defs.ts",
+      "role": "ratioParam: 0..1, step 0.01",
+      "sha256": "b100d7293d8c404ca6bb64fc7085dae4e4337bca0592904cfd647ca516bb8614"
+    },
+    {
+      "bytes": 1470,
+      "git_blob": "040a21eb7f80a051ab622fe85c0acbd064251146",
+      "path": "packages/scene-engine/src/runtime/fx/shaders/vignette.ts",
+      "role": "the vignette the stacking cases compose with",
+      "sha256": "b29678d62782ce5b6715980b97c3264fe29f1c65faecc4994da411ae1587cdf6"
+    },
+    {
+      "bytes": 1719,
+      "git_blob": "65551d862b648bf6739f46d1812c97a5cc8765da",
+      "path": "packages/scene-engine/src/runtime/fx/shaders/chunks/color.ts",
+      "role": "sRGB <-> linear curves",
+      "sha256": "eeee8044ce867b59c9e188e4c7aa90c8153cb6bf83166f23116a5f41a7459948"
+    },
+    {
+      "bytes": 9401,
+      "git_blob": "bb4e4860bedf83900365db88907ae89175bba965",
+      "path": "packages/scene-engine/src/fx/fx-clip-sample.ts",
+      "role": "envelopeWeight: fadeIn/fadeOut at mid-frame",
+      "sha256": "9291c2e5df1806d793ce269fd1c207969ee5bb2a8af0d1b1b83e4ab44cdba691"
+    },
+    {
+      "bytes": 8796,
+      "git_blob": "3adf58c6510c13442f47a950e493ed196ab3a428",
+      "path": "packages/scene-engine/src/fx/fx-frame-decks.ts",
+      "role": "order of tracks, hidden clips and tracks",
+      "sha256": "dedc9994f62d500d123e4d6bb2ee31a3c15f0e93bebbdb2d1f29dc1e36db07a8"
+    },
+    {
+      "bytes": 12148,
+      "git_blob": "17ab35a3d6c8c4624e6abd56dc06bd7f30fab037",
+      "path": "packages/scene-engine/src/runtime/fx/fx-compositor.ts",
+      "role": "amount = clamp01(intensity * weight)",
+      "sha256": "ae9c446fbd02045b75723e75118e46bcb6b9b25815c216155575cba358753729"
+    },
+    {
+      "bytes": 35586,
+      "git_blob": "1632a42f0b5c7e94a8bd6098182119eabdb188f4",
+      "path": "packages/scene-engine/src/fx/catalog/__golden__/fade.png",
+      "role": "GOLDEN (blocked: not comparable)",
+      "sha256": "83458e43e588cb1854f8344ba69a3e2fd50d7cc7b9d1f27395abd5f4e6498eae"
+    },
+    {
+      "bytes": 6026,
+      "git_blob": "105838df3f0859eafc2627fe969901bfb3451086",
+      "path": "packages/scene-engine/scripts/fx-golden.mjs",
+      "role": "golden harness and tolerance (blocked: not run)",
+      "sha256": "8c7e1f352202e6fb16b3e1ea2b2a32241e2ba2612356189795123014ede541a4"
+    }
+  ]
+}

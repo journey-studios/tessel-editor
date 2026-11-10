@@ -7,38 +7,61 @@
         {
           "id": "radius",
           "kind": "number",
-          "min": 0.0,
-          "max": 1.5
+          "max": 1.5,
+          "min": 0.0
         },
         {
           "id": "softness",
           "kind": "number",
-          "min": 0.05,
-          "max": 1.0
+          "max": 1.0,
+          "min": 0.05
         },
         {
           "id": "intensity",
           "kind": "number",
-          "min": 0.0,
-          "max": 1.0
+          "max": 1.0,
+          "min": 0.0
         },
         {
           "id": "color",
           "kind": "color",
-          "min": 0,
-          "max": 1
+          "max": 1,
+          "min": 0
         },
         {
           "id": "roundness",
           "kind": "number",
-          "min": 0.0,
-          "max": 1.0
+          "max": 1.0,
+          "min": 0.0
         },
         {
           "id": "center",
           "kind": "vec2",
-          "min": 0.0,
-          "max": 1.0
+          "max": 1.0,
+          "min": 0.0
+        }
+      ]
+    },
+    {
+      "id": "fade",
+      "params": [
+        {
+          "id": "color",
+          "kind": "color",
+          "max": 1,
+          "min": 0
+        },
+        {
+          "id": "amount",
+          "kind": "number",
+          "max": 1.0,
+          "min": 0.0
+        },
+        {
+          "id": "intensity",
+          "kind": "number",
+          "max": 1.0,
+          "min": 0.0
         }
       ]
     }
