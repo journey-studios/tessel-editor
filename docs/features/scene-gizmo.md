@@ -720,7 +720,7 @@ não foi tocado e nenhum processo da rodada ficou vivo. Os commits seguintes a `
 1. **Teste G1 × FX (BL015.13).** Dos 4 testes pendentes, o arquivo com valores absolutos de undo (`scene_gizmo_fx.rs.pending`) não foi usado; a versão com profundidade relativa ao histórico inicial compilou e passou.
    O `baseline` sem uso do primeiro teste seria um aviso do clippy `-D warnings`: removido, e o clippy fechou limpo. Um quinto teste cobre o F2.
 2. **F2 da revisão 5847593300 — reproduzido e corrigido.** `scene.fx.list/inspect/frame` com `gesture` documentam checar cena **e tipo**, mas `fx_read_scene` só checava cena e vivacidade: o ID de um arrasto de anel
-   (gesto `properties`) respondia `source:"gesture"` com o candidato da rotação (observado na primeira execução do teste novo). A correção é o mesmo `ensure_kind` dos outros verbos do gesto de efeito
+   (gesto `properties`) aceitava o ID do gesto de rotação e respondia `source:"gesture"` após o press (o teste não atualiza o ângulo e não prova um candidato de rotação alterado). A correção é o mesmo `ensure_kind` dos outros verbos do gesto de efeito
    (`gesture_kind_mismatch`, `details.use` aponta a consulta sem `gesture`): a leitura continua sem escrever, o arrasto continua vivo e a consulta ao documento continua funcionando.
    Nenhuma outra regra de FX mudou; o teste `an_effect_read_names_an_effect_gesture_and_refuses_the_id_of_a_ring_drag` falhou sem a correção e passa com ela.
 3. **Flaky de vídeo B2 repetida (BL015.15).** É o mesmo teste da rodada de `4b690bd` e falhou de novo na 1ª execução completa, com a máquina compartilhada em carga ~24. Não há passe limpo único do runtime neste head
