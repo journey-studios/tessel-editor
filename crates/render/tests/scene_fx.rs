@@ -474,3 +474,144 @@ fn a_fade_and_a_vignette_compose_in_track_order_and_the_candidate_is_the_commit(
     assert_eq!(plain.probes, baseline.probes);
     renderer.shutdown();
 }
+
+// ---- P3: the film grain, keyed and reseeded per frame -----------------------------------------------------------------
+
+/// The corpus scene with a grain clip `g1` over frames 0..48 (`params` are the grain's own, `more`
+/// further ops of the same batch: keys, a seed).
+fn with_grain(
+    base: &DirectedScene,
+    params: serde_json::Value,
+    more: &[serde_json::Value],
+) -> DirectedScene {
+    let mut ops = vec![
+        FxOp::from_json(&json!({
+            "op": "add_clip", "effect": "filmGrain", "start_frame": 0, "duration_frames": 48,
+            "id": "g1", "params": params,
+        }))
+        .unwrap(),
+    ];
+    ops.extend(more.iter().map(|op| FxOp::from_json(op).unwrap()));
+    apply_fx(base, &ops).unwrap().candidate
+}
+
+#[test]
+fn the_grain_is_advertised_and_a_runtime_without_it_is_refused_by_negotiation() {
+    let Some(mut renderer) = renderer() else {
+        return;
+    };
+    let capabilities = renderer.ensure_ready().unwrap().clone();
+    let advertised = capabilities.raw["capabilities"]["directed_scene"]["capabilities"].to_string();
+    assert!(
+        advertised.contains(Capability::FxNoise.as_str()),
+        "{advertised}"
+    );
+    let base = scene("bundle.json");
+    let grained = with_grain(&base, json!({ "amount": 1.0 }), &[]);
+    let grain_plan = plan(&grained, 12);
+    assert!(grain_plan.requires.contains(&Capability::FxNoise));
+    assert!(grain_plan.requires.contains(&Capability::OutputFx));
+    assert!(
+        grain_plan.fx[0].seed.is_some(),
+        "the seed is resolved by the core"
+    );
+    // A P2 runtime (it knows `outputFx`, not `fxNoise`) is told by name before anything is sent.
+    let p2: Vec<Capability> = Capability::ALL
+        .into_iter()
+        .filter(|capability| *capability != Capability::FxNoise)
+        .collect();
+    assert_eq!(grain_plan.missing_capabilities(&p2), [Capability::FxNoise]);
+    // A scene without noise never asks for it: the vignette plan runs on that same P2 runtime.
+    let vignette_plan = plan(&with_vignette(&base, json!({ "intensity": 1.0 })), 12);
+    assert!(!vignette_plan.requires.contains(&Capability::FxNoise));
+    assert!(vignette_plan.fx[0].seed.is_none());
+    assert!(vignette_plan.missing_capabilities(&p2).is_empty());
+    renderer.shutdown();
+}
+
+#[test]
+fn the_grain_matches_the_reference_reseeds_every_frame_and_a_seek_draws_what_playback_drew() {
+    let Some(mut renderer) = renderer() else {
+        return;
+    };
+    let base = scene("bundle.json");
+    let (_, baseline) = draw(&mut renderer, &base, 12);
+    let grained = with_grain(&base, json!({ "amount": 1.0, "size": 1.0 }), &[]);
+
+    let (plan12, at_12) = draw(&mut renderer, &grained, 12);
+    assert_against_reference(&plan12, &baseline, &at_12, "grain at frame 12");
+    assert_ne!(at_12.probes, baseline.probes, "the grain moved the picture");
+
+    // A new seed on every frame of the clip: the plan says so and so does the picture.
+    let (plan13, at_13) = draw(&mut renderer, &grained, 13);
+    assert_ne!(plan12.fx[0].seed, plan13.fx[0].seed);
+    assert_ne!(
+        at_12.probes, at_13.probes,
+        "the next frame is another grain"
+    );
+    // The same frame again, and after jumping away and back (a seek), is the same picture.
+    let (_, again) = draw(&mut renderer, &grained, 12);
+    assert_eq!(again.probes, at_12.probes);
+    let _ = draw(&mut renderer, &grained, 40);
+    let (_, back) = draw(&mut renderer, &grained, 12);
+    assert_eq!(back.probes, at_12.probes, "a seek draws what playback drew");
+    assert_eq!(back.hash, at_12.hash);
+
+    // An explicit seed is another grain, and is drawn from the reference too.
+    let seeded = with_grain(
+        &base,
+        json!({ "amount": 1.0, "size": 1.0 }),
+        &[json!({ "op": "set_seed", "clip": "g1", "seed": 7 })],
+    );
+    let (seeded_plan, seeded_read) = draw(&mut renderer, &seeded, 12);
+    assert_ne!(seeded_plan.fx[0].seed, plan12.fx[0].seed);
+    assert_ne!(seeded_read.probes, at_12.probes);
+    assert_against_reference(&seeded_plan, &baseline, &seeded_read, "explicit seed");
+
+    // Amount 0 is the baseline byte for byte.
+    let zero = with_grain(&base, json!({ "amount": 0.0 }), &[]);
+    let (_, zeroed) = draw(&mut renderer, &zero, 12);
+    assert_eq!(zeroed.probes, baseline.probes);
+    assert_eq!(zeroed.hash, baseline.hash);
+    renderer.shutdown();
+}
+
+#[test]
+fn a_keyed_grain_draws_the_curve_the_core_sampled_at_each_frame() {
+    let Some(mut renderer) = renderer() else {
+        return;
+    };
+    let base = scene("bundle.json");
+    // The amount rises from 0 at frame 0 to 1 at frame 20 (clip frames are edit frames here).
+    let keyed = with_grain(
+        &base,
+        json!({ "amount": 0.5, "size": 1.0 }),
+        &[
+            json!({ "op": "key_param", "clip": "g1", "param": "amount", "frame": 0, "value": 0.0 }),
+            json!({ "op": "key_param", "clip": "g1", "param": "amount", "frame": 20, "value": 1.0 }),
+        ],
+    );
+    for frame in [0_i64, 5, 10, 20, 30] {
+        // The scene moves between frames, so each frame has its own baseline.
+        let (_, baseline) = draw(&mut renderer, &base, frame);
+        let (keyed_plan, read) = draw(&mut renderer, &keyed, frame);
+        let amount = keyed_plan.fx[0].number("amount").unwrap();
+        // The plan's sampled amount is the curve's (linear, held after the last key)...
+        let want = (frame as f64 / 20.0).min(1.0);
+        assert!(
+            (amount - want).abs() < 1e-12,
+            "frame {frame}: {amount} vs {want}"
+        );
+        // ...and the picture is the reference at that amount.
+        assert_against_reference(
+            &keyed_plan,
+            &baseline,
+            &read,
+            &format!("keyed grain at {frame}"),
+        );
+        if frame == 0 {
+            assert_eq!(read.probes, baseline.probes, "amount 0 on the first key");
+        }
+    }
+    renderer.shutdown();
+}

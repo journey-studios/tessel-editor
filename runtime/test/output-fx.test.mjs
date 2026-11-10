@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { SCENE_CAPABILITIES, parseDirectedLayer } from '../src/directed-scene.js';
-import { MAX_FX_SEED, OUTPUT_FX_EFFECTS, OutputFxPipeline, grainCellPx, parseOutputFx } from '../src/output-fx.js';
+import { MAX_FX_SEED, OUTPUT_FX_EFFECTS, OutputFxPipeline, createFxMaterial, grainCellPx, parseOutputFx } from '../src/output-fx.js';
 import { RuntimeError } from '../src/protocol.js';
 import { directedLayer, node, reference, resource, scenePlan } from './directed-scene-fixtures.mjs';
 
@@ -342,4 +342,12 @@ test('the grain material is retained like the others and its seed rides in a uni
   assert.equal(pipeline.materials.get('filmGrain').uniforms.uSeed.value, 2);
   assert.equal(pipeline.materials.get('filmGrain').uniforms.uCell.value, 1, '1.4 x 90 / 720 is clamped to a pixel');
   pipeline.dispose();
+});
+
+test('the grain writes the source alpha back, so the editor alpha survives the pass (declared divergence: the pilot writes 1)', () => {
+  const { fragmentShader } = createFxMaterial('filmGrain');
+  const writes = fragmentShader.match(/gl_FragColor = [^;]+;/g);
+  assert.ok(writes.length >= 2, 'the identity return and the grained result');
+  assert.ok(writes.every((write) => /source(\.a|;)|, source\.a\)/.test(write)), writes.join(' | '));
+  assert.ok(!/gl_FragColor = vec4\([^;]*, 1\.0\);/.test(fragmentShader), 'no write of an opaque alpha');
 });

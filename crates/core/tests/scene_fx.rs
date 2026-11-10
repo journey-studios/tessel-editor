@@ -101,7 +101,7 @@ fn scene_of(state: &EditorState) -> DirectedScene {
 // ---- the catalog and the baseline ---------------------------------------------------------
 
 #[test]
-fn the_catalog_lists_the_two_looks_this_slice_draws_and_what_it_refuses() {
+fn the_catalog_lists_the_three_looks_this_slice_draws_and_what_it_refuses() {
     let mut state = session();
     let catalog = ok(&mut state, json!({"op":"scene.fx.catalog"}));
     assert_eq!(catalog["catalog_version"], 1);
