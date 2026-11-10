@@ -320,13 +320,16 @@ fn the_grain_pixels_are_the_pilots_cell_hash_noise_and_bytes() {
     assert!(grained > 80, "{grained} probes carry a noise");
 }
 
+/// `(width, height, pass amount, [(x, y, pinned bits)])` of one pixel case.
+type CaseProbes = (usize, usize, f64, Vec<(usize, usize, [u64; 2])>);
+
 #[test]
 fn the_corpus_discriminates_the_mistakes_a_port_would_make() {
     // Each mistake is applied to the formula and must disagree with the pinned probes somewhere,
     // or the corpus would not notice it.
     let corpus = corpus();
     let cases = corpus["pixels"].as_array().unwrap();
-    let probes_of = |id: &str| -> (usize, usize, f64, Vec<(usize, usize, [u64; 2])>) {
+    let probes_of = |id: &str| -> CaseProbes {
         let case = cases.iter().find(|case| case["id"] == id).unwrap();
         (
             case["height"].as_u64().unwrap() as usize,
