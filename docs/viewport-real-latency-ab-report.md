@@ -172,7 +172,7 @@ do corte.
 ## 9. Gates
 
 Os gates do A/B de BL157.1 (binário `ad16ad36…`) foram do head `1454413`; dois deles ficaram **BLOCKED** por lock de GPU. Os gates abaixo são
-os do código final de BL157.2 (commit `a01090b` sobre `origin/main` integrado; árvore sem mudança de código depois, só docs), com saída e
+os do código final de BL157.2 (commit `a01090b` sobre `origin/main` integrado; depois dele só docs e a correção de revisão de `runtime/src/assets.js`, ver a linha do runtime), com saída e
 código gravados em `/tmp/bl157-rec/final/` (fora do Git; sem pipe mascarando o código).
 
 | Gate | Resultado |
@@ -183,7 +183,7 @@ código gravados em `/tmp/bl157-rec/final/` (fora do Git; sem pipe mascarando o 
 | `cargo tree -p tessel-editor-core` sem `gpui`/`wry` | 0, nenhuma ocorrência |
 | Build debug e release de `tessel-editor` | 0 e 0; sha256 do release `ac023ebadf863d1d` (reconstruído depois de o mbx recolher o artefato: mesmo sha) |
 | `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked --no-fail-fast` | 0; 2083 passaram, 0 falharam |
-| `./scripts/runtime setup` (do zero) e `./scripts/runtime test` (Chrome, sem SKIP) | 0 e 0; 223 testes, 223 passaram, 0 skipped; `runtime.js` sha256 `1fed1ef93836d9f5` |
+| `./scripts/runtime setup` (do zero) e `./scripts/runtime test` (Chrome, sem SKIP) | 0 e 0 no código medido (223/223, `runtime.js` `1fed1ef9…`). Depois da correção de revisão em `assets.js` (timings de carga cancelada/recusada, +2 testes): 225 testes, **uma execução teve 1 falha** (`video B2: a frame superseded while it seeks…`, corrida de tempo com carga 31 na máquina; 3 de 3 passaram isolado) e a **repetição passou 225/225, 0 skipped** (`runtime.js` `fcde5a38…`); `loop5` (3 editores novos) roda com esse runtime |
 | 16 specs Python `scripts/*.spec.py` (inclui `viewport-transit-probe`, 18 testes) | todos 0 |
 | Headless JSONL (`./scripts/headless`) | `render.trace` → `desktop_required` (sem tocar o estado), `status` ok; sai com 1 pelo erro pedido |
 | Janela real, binário release `ac023eba…` (HOME/socket próprios, só pedidos semânticos de `./scripts/ui`/`Lab`, sem coordenadas) | `real-latency-ab.py pixels`: PASS (imagem do `render.frame` idêntica byte a byte em quente/frio × cache quente/seek frio, controles negativos: cortes distintos não compartilham imagem e todo quadro foi lido); `loop4` (4 editores novos, `render.status.asset_io.mode == async` verificado por run) e `ab4` (16 runs válidos) |

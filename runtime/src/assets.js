@@ -187,6 +187,7 @@ export class AssetStore {
       loaded = await loader();
     } catch (error) {
       if (this.loading.get(id) === token) this.loading.delete(id);
+      this.loadTimings?.delete(id);
       throw error;
     }
     const { entry, meta, after } = loaded;
@@ -195,6 +196,7 @@ export class AssetStore {
       entry.mesh?.dispose();
       if (entry.video) closeVideo(entry.video);
       after?.close?.();
+      this.loadTimings?.delete(id);
       throw new RuntimeError('cancelled', `Asset \`${id}\` was released while loading`, { asset: id });
     }
     this.loading.delete(id);
@@ -203,6 +205,7 @@ export class AssetStore {
       if (refusal) {
         entry.bitmap?.close?.();
         entry.mesh?.dispose();
+        this.loadTimings?.delete(id);
         throw refusal;
       }
     }
@@ -303,6 +306,7 @@ export class AssetStore {
 
   release(id) {
     this.loading.delete(id);
+    this.loadTimings?.delete(id);
     const entry = this.entries.get(id);
     if (!entry) return;
     this.endSplatPool(entry);
