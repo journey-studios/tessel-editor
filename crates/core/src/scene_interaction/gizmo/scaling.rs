@@ -157,8 +157,8 @@ fn world_axis(m: &M3, inverse: &M3, h: usize) -> Result<AxisScale, &'static str>
             skew = skew.max(off.abs());
         }
     }
-    // `!(a <= b)` so that a NaN is refused too.
-    if !(skew <= ALIGNMENT_TOLERANCE) {
+    // A NaN skew is refused too.
+    if skew.is_nan() || skew > ALIGNMENT_TOLERANCE {
         return Err(why::WORLD_AXIS_SHEAR);
     }
     let mut direction = [0.0; 3];
@@ -425,7 +425,7 @@ impl ScaleAnchor {
             Handle::Uniform => {
                 let centre = view.project(origin)?;
                 let distance = view.distance(point, centre);
-                if !(distance >= MIN_UNIFORM_PRESS) {
+                if distance.is_nan() || distance < MIN_UNIFORM_PRESS {
                     return None;
                 }
                 Start::Uniform { centre, distance }
@@ -434,7 +434,7 @@ impl ScaleAnchor {
                 let direction = direction?;
                 let parameter = axis_parameter(origin, direction, view.ray(point))?;
                 let reference = HANDLE_LENGTH * 2.0 * view.tan_half_fov * view.depth(origin);
-                if !(parameter >= MIN_PRESS_FRACTION * reference) {
+                if parameter.is_nan() || parameter < MIN_PRESS_FRACTION * reference {
                     return None;
                 }
                 Start::Axis {

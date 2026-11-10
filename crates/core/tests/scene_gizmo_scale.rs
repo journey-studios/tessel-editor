@@ -1688,12 +1688,11 @@ fn translation_and_rotation_are_what_they_were_around_a_visit_to_the_scale_tool(
         [2.0, 1.0, 1.0],
         "a translation leaves the scale"
     );
-    assert_eq!(
+    assert!(
         node_field(&state, "figure", "localRotation")["z"]
             .as_f64()
             .unwrap()
             > 0.0,
-        true,
         "and the rotation"
     );
 }
