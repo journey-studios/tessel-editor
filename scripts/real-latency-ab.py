@@ -52,6 +52,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 SLOW_DIAGNOSTIC_MS = 62.5
 SLOWER_DIAGNOSTIC_MS = 100.0
 ENTRY_WINDOW = 6
+VIDEO_ENTRY_WINDOW = 2
 POLL_SECONDS = 2.0
 MIN_FREE_GIB_START = 16.0
 MIN_FREE_GIB_FLOOR = 12.0
@@ -117,6 +118,7 @@ def parse_project(document):
     fps = rate["num"] / rate["den"]
     clips = sequence.get("clips") or []
     cuts = sorted({c["start"] for c in clips if c.get("kind") == "scene" and c["start"] > 0})
+    video_starts = sorted({c["start"] for c in clips if c.get("kind") == "video" and c["start"] > 0})
     sources = []
     for entry in (document.get("library") or {}).get("assets", []):
         source = (entry.get("asset") or {}).get("source") or {}
@@ -125,7 +127,7 @@ def parse_project(document):
         elif source.get("type") == "frame_sequence" and source.get("pattern"):
             sources.append({"kind": entry.get("kind"), "pattern": source["pattern"]})
     return {
-        "length": sequence["length"], "fps": fps, "cuts": cuts,
+        "length": sequence["length"], "fps": fps, "cuts": cuts, "video_starts": video_starts,
         "clip_kinds": {kind: sum(1 for c in clips if c.get("kind") == kind) for kind in sorted({c.get("kind") for c in clips})},
         "sources": sources,
     }
@@ -203,11 +205,15 @@ def gaps_of(pictures):
             for a, b in zip(pictures, pictures[1:])]
 
 
-def locate(frame_after, cuts, prefetch_frames, entry_window=ENTRY_WINDOW):
-    """Where a gap that ends on `frame_after` sits: before a cut (inside the prefetch window), at a cut, or elsewhere."""
+def locate(frame_after, cuts, prefetch_frames, entry_window=ENTRY_WINDOW, video_starts=(), video_window=VIDEO_ENTRY_WINDOW):
+    """Where a gap that ends on `frame_after` sits: at a cut, at the first frames of a video/still clip, before a cut
+    (inside the prefetch window), or elsewhere. The cuts and clip starts come from the timeline."""
     for cut in cuts:
         if cut <= frame_after <= cut + entry_window:
             return f"cut:{cut}"
+    for start in video_starts:
+        if start <= frame_after <= start + video_window:
+            return f"video:{start}"
     for cut in cuts:
         if cut - prefetch_frames <= frame_after < cut:
             return f"prefetch:{cut}"
@@ -231,7 +237,18 @@ def gap_context(events, t0, t1):
              and overlap_ms(e["t_ms"] - e["fields"].get("read_ms", 0) - e["fields"].get("respond_ms", 0), e["t_ms"], t0, t1) > 0]
     prefetch = events_in(events, "prefetch", t0, t1)
     sync = events_in(events, "sync", t0, t1)
+    # The page's own work, anchored at the host arrival of its report (a page duration is never subtracted from a host
+    # stamp; the interval [arrival - duration, arrival] is the page work that had ended by then).
+    loads = [e for e in events if e["kind"] == "asset_state" and (e["fields"].get("timings") or {}).get("load_ms")]
+    decodes = [overlap_ms(e["t_ms"] - e["fields"]["timings"].get("decode_ms", 0), e["t_ms"], t0, t1) for e in loads]
+    fetches = [overlap_ms(e["t_ms"] - e["fields"]["timings"]["load_ms"], e["t_ms"] - e["fields"]["timings"].get("decode_ms", 0), t0, t1)
+               for e in loads]
+    warms = [overlap_ms(e["t_ms"] - e["fields"].get("ms", 0), e["t_ms"], t0, t1) for e in events if e["kind"] == "runtime_span"
+             and e["fields"].get("k") == "warm"]
     return {
+        "page_decode_ms": round(sum(decodes), 3),
+        "page_fetch_ms": round(sum(fetches), 3),
+        "page_warm_ms": round(sum(warms), 3),
         "ticks": len(ticks),
         "max_tick_late_ms": max((e["fields"]["late_ms"] for e in ticks), default=None),
         "max_tick_body_ms": max((e["fields"].get("body_ms") or 0 for e in ticks), default=None),
@@ -300,11 +317,13 @@ def summarize_play(frames, events, segment, project, fps_budget_ms):
     prefetch_frames = int(round(project["fps"] * 2))
     located = {}
     slow = []
-    for before, after, t0, t1, gap in gaps:
-        where = locate(after, project["cuts"], prefetch_frames)
+    for (before, after, t0, t1, gap), picture in zip(gaps, shots[1:]):
+        where = locate(after, project["cuts"], prefetch_frames, video_starts=project.get("video_starts", ()))
         located.setdefault(where, []).append(gap)
         if gap > SLOW_DIAGNOSTIC_MS:
-            slow.append({"from_frame": before, "to_frame": after, "gap_ms": gap, "where": where, "context": gap_context(events, t0, t1)})
+            slow.append({"from_frame": before, "to_frame": after, "gap_ms": gap, "where": where, "context": gap_context(events, t0, t1),
+                         "picture": {"submit_to_done_ms": picture["submit_to_done_ms"], "transit_ms": picture["transit_ms"],
+                                     "runtime_total_ms": picture["runtime_total_ms"]}})
     ticks = events_in(events, "tick", segment["clock_ms"] or 0, shots[-1]["done_ms"] if shots else 0)
     prefetches = events_in(events, "prefetch", segment["clock_ms"] or 0, shots[-1]["done_ms"] if shots else 0)
     syncs = events_in(events, "sync", segment["clock_ms"] or 0, shots[-1]["done_ms"] if shots else 0)
@@ -413,6 +432,8 @@ def pair_rows(sessions_by_pair):
     return rows
 
 
+PAGE_BUSY_MS = 10.0   # page decode/fetch/warm overlapping a gap by at least this long is reported as "with page work"
+TRANSIT_SLOW_MS = 30.0  # the picture after the gap spent this long outside the runtime frame (queue, page thread, return)
 UI_STALL_MS = 20.0  # a UI-thread protocol callback this long overlapping a gap is reported as "with a UI-thread stall"
 
 
@@ -425,7 +446,8 @@ def arm_groups(analyzed):
             continue
         group = groups.setdefault(f"{item['mode']}/{item['quiet_class']}", {
             "sessions": 0, "plays": 0, "pictures": 0, "gaps_gt_62_5": 0, "gaps_gt_100": 0, "with_ui_stall": 0,
-            "in_prefetch_window": 0, "at_cut": 0, "other": 0, "with_read_overlap": 0, "worst_gap_ms_per_session": []})
+            "in_prefetch_window": 0, "at_cut": 0, "at_video_entry": 0, "other": 0, "with_read_overlap": 0, "with_page_work": 0,
+            "with_slow_transit": 0, "with_neither_ui_stall_nor_page_work": 0, "worst_gap_ms_per_session": []})
         group["sessions"] += 1
         worst = 0.0
         for play in item["plays"].values():
@@ -438,8 +460,15 @@ def arm_groups(analyzed):
                 context = gap["context"]
                 group["with_ui_stall"] += 1 if (context["ui_callback_ms"] or 0) >= UI_STALL_MS else 0
                 group["with_read_overlap"] += 1 if context["reads"] else 0
+                page = (context.get("page_decode_ms") or 0) + (context.get("page_fetch_ms") or 0) + (context.get("page_warm_ms") or 0)
+                stall = (context["ui_callback_ms"] or 0) >= UI_STALL_MS
+                busy = page >= PAGE_BUSY_MS
+                group["with_page_work"] += 1 if busy else 0
+                group["with_slow_transit"] += 1 if ((gap.get("picture") or {}).get("transit_ms") or 0) >= TRANSIT_SLOW_MS else 0
+                group["with_neither_ui_stall_nor_page_work"] += 1 if not stall and not busy else 0
                 where = gap["where"]
-                group["in_prefetch_window" if where.startswith("prefetch") else "at_cut" if where.startswith("cut") else "other"] += 1
+                group["in_prefetch_window" if where.startswith("prefetch") else "at_cut" if where.startswith("cut")
+                      else "at_video_entry" if where.startswith("video") else "other"] += 1
         group["worst_gap_ms_per_session"].append(round(worst, 1))
     return groups
 
@@ -797,11 +826,11 @@ def markdown(report):
             lines.append(f"| {s['order_index']} | {s['mode']} | {name} | {p['pictures']} | {g['p50']}/{g['p95']}/{g['max']} | {p['slow_gt_62_5']} | {p['slow_gt_100']} | "
                          f"{r['p95']}/{r['max']} | {t['p95']}/{t['max']} | {c['max']} | {(p['playback_report'] or {}).get('skipped_frames')} | {p['play_command_to_first_picture_ms']} |")
     lines += ["", f"## Slow gaps (> {SLOW_DIAGNOSTIC_MS} ms) by arm and load class (valid sessions only; descriptive counts)", "",
-              f"| group | sessions | plays | pictures | gaps >{SLOW_DIAGNOSTIC_MS} | >100 | with UI-thread callback ≥{UI_STALL_MS:g} ms | overlapping a read | in a prefetch window | at a cut | elsewhere | worst gap per session ms |",
-              "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+              f"| group | sessions | plays | pictures | gaps >{SLOW_DIAGNOSTIC_MS} | >100 | with UI-thread callback ≥{UI_STALL_MS:g} ms | overlapping a read | with page decode/fetch/warm ≥{PAGE_BUSY_MS:g} ms | picture transit ≥{TRANSIT_SLOW_MS:g} ms | neither UI stall nor page work | in a prefetch window | at a cut | at a video/still clip entry | elsewhere | worst gap per session ms |",
+              "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for name, g in sorted(report["arms"].items()):
         lines.append(f"| {name} | {g['sessions']} | {g['plays']} | {g['pictures']} | {g['gaps_gt_62_5']} | {g['gaps_gt_100']} | {g['with_ui_stall']} | "
-                     f"{g['with_read_overlap']} | {g['in_prefetch_window']} | {g['at_cut']} | {g['other']} | {g['worst_gap_ms_per_session']} |")
+                     f"{g['with_read_overlap']} | {g['with_page_work']} | {g['with_slow_transit']} | {g['with_neither_ui_stall_nor_page_work']} | {g['in_prefetch_window']} | {g['at_cut']} | {g['at_video_entry']} | {g['other']} | {g['worst_gap_ms_per_session']} |")
     lines += ["", "## Paired differences (B - A)", ""]
     for group, rows in report["pairs"].items():
         lines += [f"### {group}", "", "| pair | play | >62.5 sync→async | >100 sync→async | max gap sync→async ms | p95 gap sync→async ms | Δ>62.5 | Δmax ms |", "|---|---|---|---|---|---|---|---|"]

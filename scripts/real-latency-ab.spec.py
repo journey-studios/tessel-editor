@@ -46,6 +46,7 @@ class ProjectTests(unittest.TestCase):
     def test_cuts_are_the_scene_clip_starts_after_zero_read_from_the_timeline(self):
         project = ab.parse_project(self.document())
         self.assertEqual(project["cuts"], [186, 268, 410])
+        self.assertEqual(project["video_starts"], [18])
         self.assertEqual(project["fps"], 24.0)
         self.assertEqual(project["clip_kinds"], {"scene": 4, "video": 1})
 
@@ -72,6 +73,9 @@ class GapTests(unittest.TestCase):
         self.assertEqual(ab.locate(192, PROJECT["cuts"], 48), "cut:186")
         self.assertEqual(ab.locate(200, PROJECT["cuts"], 48), "other")
         self.assertEqual(ab.locate(137, PROJECT["cuts"], 48), "other")
+        self.assertEqual(ab.locate(196, PROJECT["cuts"], 48, video_starts=[196]), "video:196")
+        self.assertEqual(ab.locate(370, PROJECT["cuts"], 48, video_starts=[370]), "video:370", "a clip entry inside a prefetch window is the clip entry")
+        self.assertEqual(ab.locate(199, PROJECT["cuts"], 48, video_starts=[196]), "other")
 
     def test_a_play_is_its_interactive_pictures_between_its_clock_and_the_next_play(self):
         events = [event("play_command", 100), event("play_clock_started", 150), event("play_command", 5000), event("play_clock_started", 5050)]
@@ -102,6 +106,19 @@ class GapTests(unittest.TestCase):
         self.assertEqual(context["read_bytes"], 1000)
         self.assertEqual(context["plans_ahead_ms_max"], 6.0)
         self.assertEqual(context["max_tick_late_ms"], 40.0, "the tick at 9000 ms is outside the gap")
+
+    def test_page_work_counts_only_the_part_that_overlaps_the_gap_and_never_mixes_clocks(self):
+        events = [
+            # the page reported at host 1500 ms that a load took 400 ms (fetch 100, decode 300): decode ran 1200..1500
+            event("asset_state", 1500, state="ready", timings={"load_ms": 400, "fetch_ms": 100, "decode_ms": 300, "bytes": 5}),
+            event("runtime_span", 1480, k="warm", queued_ms=0, ms=50, started=1),
+            event("runtime_span", 5000, k="warm", queued_ms=0, ms=50, started=1),
+        ]
+        context = ab.gap_context(events, 1400, 1450)
+        self.assertEqual(context["page_decode_ms"], 50.0)
+        self.assertEqual(context["page_fetch_ms"], 0.0)
+        self.assertEqual(context["page_warm_ms"], 20.0)
+        self.assertEqual(ab.gap_context(events, 1100, 1190)["page_fetch_ms"], 90.0)
 
     def test_a_play_summary_counts_slow_gaps_by_location_without_calling_them_causes(self):
         events = [event("play_command", 0), event("play_clock_started", 10)]
@@ -223,10 +240,14 @@ class ArmTests(unittest.TestCase):
                 "slow_detail": [gap("prefetch:186", 30.0, 2), gap("other", 0, 0), gap("cut:186", 5.0, 1)]}
         good = {"valid": True, "mode": "sync", "quiet_class": "quiet", "plays": {"first": play, "repeat": play}}
         bad = {"valid": False, "mode": "sync", "quiet_class": "quiet", "plays": {"first": play}}
+        play["slow_detail"][0]["context"]["page_decode_ms"] = 15.0
+        play["slow_detail"][0]["picture"] = {"transit_ms": 80.0}
         group = ab.arm_groups([good, bad])["sync/quiet"]
+        self.assertEqual((group["with_page_work"], group["with_slow_transit"]), (2, 2))
+        self.assertEqual(group["with_neither_ui_stall_nor_page_work"], 4)
         self.assertEqual((group["sessions"], group["plays"], group["gaps_gt_62_5"]), (1, 2, 6))
         self.assertEqual((group["with_ui_stall"], group["with_read_overlap"]), (2, 4))
-        self.assertEqual((group["in_prefetch_window"], group["at_cut"], group["other"]), (2, 2, 2))
+        self.assertEqual((group["in_prefetch_window"], group["at_cut"], group["at_video_entry"], group["other"]), (2, 2, 0, 2))
         self.assertEqual(group["worst_gap_ms_per_session"], [110.0])
 
 

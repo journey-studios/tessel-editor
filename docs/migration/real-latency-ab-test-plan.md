@@ -1,6 +1,8 @@
 # Experimento de latência real — BL157.1
 
-Estado: plano preparado em 2026-11-10; **experimento ainda não executado**.
+Estado: plano preparado em 2026-11-10; **experimento executado em 2026-11-10** (branch `t3/async-viewport-io-latency`,
+BL157.1). Resultado, hipóteses confirmadas/refutadas e limites: [relatório](../viewport-real-latency-ab-report.md);
+contrato do que foi construído: [F058](../features/viewport-asset-io.md).
 Registro de execução/status: [backlog BL157.1](../backlog.md).
 Base observada da investigação: `3e48861e9914ed2fd6c71e13c62c5673f068768f`.
 Antecedentes e traços: [investigação](../viewport-real-latency-investigation.md).
