@@ -1,0 +1,504 @@
+//! BL157.1: the protocol handler answers the same bytes either way, answers every request exactly once, and the
+//! asynchronous way leaves the window's thread free while a read is held (the synchronous way does not).
+//!
+//! The control that holds a read uses a named pipe: opening it for reading blocks until something opens it for writing,
+//! which gives the test a deterministic "the file is slow" with no sleep standing in for a disk.
+
+use std::cell::RefCell;
+use std::path::Path;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::AtomicU64;
+
+use serde_json::json;
+use tessel_editor_core::trace::TraceHandle;
+use tessel_editor_render::asset_io::{AssetPool, DEFAULT_QUEUE, DEFAULT_WORKERS};
+use tessel_editor_render::host::{AssetAccess, MAX_RANGE_BODY};
+use wry::http::Request;
+
+use super::viewport_host::{AssetIoMode, ProtocolHandle, asset_io_from_env};
+use super::viewport_host_tests::{answer, page, scratch};
+
+fn handle(
+    mode: AssetIoMode,
+    dist: &Path,
+    access: &Rc<RefCell<AssetAccess>>,
+    trace: &TraceHandle,
+    pool: Option<AssetPool>,
+) -> ProtocolHandle {
+    ProtocolHandle::new(
+        Some(dist.to_path_buf()),
+        access.clone(),
+        trace.clone(),
+        mode,
+        pool,
+        Arc::new(AtomicU64::new(0)),
+    )
+}
+
+fn asset_request(file: &Path, range: Option<&str>) -> Request<Vec<u8>> {
+    let encoded = file
+        .to_string_lossy()
+        .replace('/', "%2F")
+        .replace(' ', "%20");
+    let mut builder = Request::builder().uri(format!("tessel://localhost/asset?p={encoded}"));
+    if let Some(range) = range {
+        builder = builder.header("range", range);
+    }
+    builder.body(Vec::new()).unwrap()
+}
+
+fn register(access: &Rc<RefCell<AssetAccess>>, file: &Path) {
+    access
+        .borrow_mut()
+        .register(&json!({"source": {"type": "file", "path": file}}));
+}
+
+#[test]
+fn the_mode_comes_from_a_named_value_and_a_typo_is_refused_loudly() {
+    assert_eq!(asset_io_from_env(None), Ok(None));
+    assert_eq!(asset_io_from_env(Some("  ")), Ok(None));
+    assert_eq!(asset_io_from_env(Some("sync")), Ok(Some(AssetIoMode::Sync)));
+    assert_eq!(
+        asset_io_from_env(Some(" Async ")),
+        Ok(Some(AssetIoMode::Async))
+    );
+    let warning = asset_io_from_env(Some("asnyc")).unwrap_err();
+    assert!(
+        warning.contains("asnyc") && warning.contains("`sync`"),
+        "{warning}"
+    );
+    assert_eq!(
+        AssetIoMode::default(),
+        AssetIoMode::Sync,
+        "the default is the behaviour before the experiment"
+    );
+}
+
+#[test]
+fn both_modes_answer_the_same_status_headers_and_bytes() {
+    let dist = page("io-same");
+    let dir = scratch("io-same-files");
+    let body: Vec<u8> = (0..(MAX_RANGE_BODY + 777))
+        .map(|index| (index % 253) as u8)
+        .collect();
+    std::fs::write(dir.join("cloud.ply"), &body).unwrap();
+    std::fs::write(dir.join("small.png"), b"0123456789").unwrap();
+    std::fs::write(dir.join("empty.png"), b"").unwrap();
+    std::fs::write(dir.join("private.txt"), b"never").unwrap();
+    let access = Rc::new(RefCell::new(AssetAccess::default()));
+    for name in ["cloud.ply", "small.png", "empty.png", "missing.png"] {
+        register(&access, &dir.join(name));
+    }
+    let trace = TraceHandle::default();
+    let sync = handle(AssetIoMode::Sync, &dist, &access, &trace, None);
+    let pool = AssetPool::new(DEFAULT_WORKERS, DEFAULT_QUEUE);
+    let asynchronous = handle(AssetIoMode::Async, &dist, &access, &trace, Some(pool));
+    let requests: Vec<(&str, Option<&str>)> = vec![
+        ("cloud.ply", None),
+        ("cloud.ply", Some("bytes=0-99")),
+        ("cloud.ply", Some("bytes=100-")),
+        ("cloud.ply", Some("bytes=-64")),
+        ("cloud.ply", Some("bytes=-999999999")),
+        ("cloud.ply", Some("bytes=999999999-")),
+        ("cloud.ply", Some("bytes=9-3")),
+        ("small.png", None),
+        ("small.png", Some("bytes=0-0")),
+        ("empty.png", None),
+        ("empty.png", Some("bytes=0-9")),
+        ("missing.png", None),
+        ("private.txt", None),
+    ];
+    for (name, range) in requests {
+        let request = asset_request(&dir.join(name), range);
+        let (left, right) = (answer(&sync, &request), answer(&asynchronous, &request));
+        assert_eq!(left.status(), right.status(), "{name} {range:?}: status");
+        assert_eq!(left.headers(), right.headers(), "{name} {range:?}: headers");
+        assert_eq!(left.body(), right.body(), "{name} {range:?}: bytes");
+    }
+    // The statuses are the real ones, not two copies of the same failure.
+    let status = |name: &str, range: Option<&str>| {
+        answer(&asynchronous, &asset_request(&dir.join(name), range)).status()
+    };
+    assert_eq!(status("cloud.ply", None), 200);
+    assert_eq!(status("cloud.ply", Some("bytes=0-99")), 206);
+    assert_eq!(status("cloud.ply", Some("bytes=9-3")), 416);
+    assert_eq!(status("missing.png", None), 404);
+    assert_eq!(
+        status("private.txt", None),
+        403,
+        "authorization is unchanged: not registered, not served"
+    );
+    // The page itself is served the same way.
+    let index = Request::builder()
+        .uri("tessel://localhost/index.html")
+        .body(Vec::new())
+        .unwrap();
+    assert_eq!(
+        answer(&asynchronous, &index).body(),
+        answer(&sync, &index).body()
+    );
+}
+
+#[test]
+fn the_report_names_the_mode_in_effect_and_the_page_spans_reach_the_trace_without_names() {
+    use super::viewport_host::{HostOptions, ViewportHost};
+    use super::viewport_host_tests::{from_page, ready_message, sent};
+    use tessel_editor_core::EditorState;
+
+    let state = EditorState::demo();
+    let options = HostOptions {
+        trace: true,
+        asset_io: Some(AssetIoMode::Async),
+        ..HostOptions::default()
+    };
+    let mut host = ViewportHost::with_options(Ok(page("io-report")), options);
+    from_page(&mut host, &state, json!({"type":"page.ready"}));
+    sent(&mut host);
+    from_page(&mut host, &state, ready_message());
+    let report = host.report();
+    assert_eq!(report["asset_io"]["mode"], "async");
+    assert_eq!(report["asset_io"]["workers"], 2);
+    assert_eq!(report["asset_io"]["queue"], 16);
+    assert_eq!(report["asset_io"]["pool"]["saturated"], 0);
+    let default = ViewportHost::with_options(Ok(page("io-report-default")), HostOptions::default());
+    assert_eq!(
+        default.report()["asset_io"]["mode"],
+        "sync",
+        "the default is the synchronous path"
+    );
+    assert!(
+        default.report()["asset_io"]["pool"].is_null(),
+        "no workers for the default"
+    );
+
+    from_page(
+        &mut host,
+        &state,
+        json!({"type":"asset.state","id":"my-private-cloud","state":"ready","meta":{},
+            "timings":{"load_ms":12.5,"fetch_ms":4.0,"decode_ms":8.0}}),
+    );
+    let mut done = super::viewport_host_tests::frame_done(9, 1);
+    done["runtime_spans"] = json!([{"k":"warm","ms":3.0,"queued_ms":1.0,"started":1}]);
+    from_page(&mut host, &state, done);
+    let events = host.trace().events_since(0, 100);
+    let text = events.to_string();
+    assert!(
+        !text.contains("my-private-cloud"),
+        "an asset's name is not written to the trace: {text}"
+    );
+    let kinds: Vec<&str> = events["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|event| event["kind"].as_str().unwrap())
+        .collect();
+    assert!(
+        kinds.contains(&"asset_state") && kinds.contains(&"runtime_span"),
+        "{kinds:?}"
+    );
+    let state_event = events["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|event| event["kind"] == "asset_state")
+        .unwrap();
+    assert_eq!(state_event["fields"]["timings"]["decode_ms"], 8.0);
+}
+
+/// The controls that hold a read with a named pipe (Unix only).
+#[cfg(unix)]
+mod held_read {
+    use super::*;
+    use std::path::PathBuf;
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+
+    use serde_json::Value;
+
+    fn fifo(dir: &Path, name: &str) -> PathBuf {
+        let path = dir.join(name);
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg(&path)
+                .status()
+                .unwrap()
+                .success()
+        );
+        path
+    }
+
+    /// Lets every reader blocked in `open` proceed; the returned file keeps the pipe "written" until it is dropped.
+    fn release(path: &Path) -> std::fs::File {
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path)
+            .unwrap()
+    }
+
+    enum Ui {
+        Request(Request<Vec<u8>>, mpsc::Sender<u16>),
+        Pulse(mpsc::Sender<()>),
+        Stop,
+    }
+
+    /// A thread that plays the window's: it owns the (non-`Send`) handle, takes requests the way the WebView's callback does,
+    /// and answers a pulse whenever it is free. The handle is made on it, so it is the thread the trace calls the window's.
+    fn window_thread(
+        mode: AssetIoMode,
+        dist: PathBuf,
+        held: PathBuf,
+        trace: TraceHandle,
+        pool: Option<AssetPool>,
+    ) -> (mpsc::Sender<Ui>, std::thread::JoinHandle<()>) {
+        let (sender, receiver) = mpsc::channel::<Ui>();
+        let join = std::thread::Builder::new()
+            .name("window-sim".into())
+            .spawn(move || {
+                let access = Rc::new(RefCell::new(AssetAccess::default()));
+                register(&access, &held);
+                let handle = handle(mode, &dist, &access, &trace, pool);
+                while let Ok(message) = receiver.recv() {
+                    match message {
+                        Ui::Request(request, answered) => handle.handle(
+                            &request,
+                            Box::new(move |response| {
+                                let _ = answered.send(response.status().as_u16());
+                            }),
+                        ),
+                        Ui::Pulse(ack) => {
+                            let _ = ack.send(());
+                        }
+                        Ui::Stop => break,
+                    }
+                }
+            })
+            .unwrap();
+        (sender, join)
+    }
+
+    fn wait_until(what: &str, mut ready: impl FnMut() -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !ready() {
+            assert!(Instant::now() < deadline, "timed out waiting for {what}");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    /// The control of the experiment: a read is held (the file does not answer), a pulse is sent to the window's thread, and
+    /// the result says whether the pulse came back before the read was released. Proves the mechanism, not that a disk is
+    /// what delays the real project.
+    fn pulse_while_a_read_is_held(mode: AssetIoMode, tag: &str) -> (bool, TraceHandle) {
+        let dist = page(tag);
+        let dir = scratch(&format!("{tag}-files"));
+        let held = fifo(&dir, "slow.bin");
+        let trace = TraceHandle::default();
+        trace.set_enabled(true);
+        let pool =
+            (mode == AssetIoMode::Async).then(|| AssetPool::new(DEFAULT_WORKERS, DEFAULT_QUEUE));
+        let (ui, join) = window_thread(mode, dist, held.clone(), trace.clone(), pool.clone());
+        let (answered, answers) = mpsc::channel();
+        ui.send(Ui::Request(asset_request(&held, None), answered))
+            .unwrap();
+        if let Some(pool) = &pool {
+            // The read really started and is being held before the pulse is sent.
+            wait_until("the worker to hold the read", || {
+                pool.stats().in_flight() == 1
+            });
+        }
+        let (ack, pulses) = mpsc::channel();
+        ui.send(Ui::Pulse(ack)).unwrap();
+        // Asynchronous: the window answers at once, with the read still held. Synchronous: it cannot until the read ends, so
+        // the bounded wait below ends with nothing (it can only miss by the window being busy, which is the point).
+        let before_release = pulses
+            .recv_timeout(if mode == AssetIoMode::Async {
+                Duration::from_secs(20)
+            } else {
+                Duration::from_millis(300)
+            })
+            .is_ok();
+        if let Some(pool) = &pool {
+            assert_eq!(
+                pool.stats().completed(),
+                0,
+                "the read was still held when the pulse returned"
+            );
+        }
+        assert!(
+            answers.try_recv().is_err(),
+            "the held request is not answered before its file is"
+        );
+        let writer = release(&held);
+        assert_eq!(answers.recv_timeout(Duration::from_secs(20)).unwrap(), 200);
+        assert!(
+            answers.recv_timeout(Duration::from_millis(50)).is_err(),
+            "answered exactly once"
+        );
+        if !before_release {
+            // The pulse that waited behind the held read comes back once the window is free again.
+            assert!(pulses.recv_timeout(Duration::from_secs(20)).is_ok());
+        }
+        drop(writer);
+        ui.send(Ui::Stop).unwrap();
+        join.join().unwrap();
+        (before_release, trace)
+    }
+
+    fn events_of(trace: &TraceHandle, kind: &str) -> Vec<Value> {
+        trace.events_since(0, 1000)["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["kind"] == kind)
+            .map(|event| event["fields"].clone())
+            .collect()
+    }
+
+    #[test]
+    fn async_keeps_the_window_responsive_while_a_read_is_held() {
+        let (responsive, trace) =
+            pulse_while_a_read_is_held(AssetIoMode::Async, "io-async-control");
+        assert!(
+            responsive,
+            "the window answered its pulse before the file was read"
+        );
+        // The trace says where each part ran: the callback on the window's thread, the read on a worker.
+        let callbacks = events_of(&trace, "asset_cb");
+        assert_eq!(callbacks.len(), 1);
+        assert_eq!(callbacks[0]["on_ui_thread"], true);
+        assert_eq!(callbacks[0]["thread"], "window-sim");
+        assert_eq!(callbacks[0]["outcome"], "queued");
+        let reads = events_of(&trace, "asset_io");
+        assert_eq!(reads.len(), 1);
+        assert_eq!(reads[0]["on_ui_thread"], false);
+        assert!(
+            reads[0]["thread"]
+                .as_str()
+                .unwrap()
+                .starts_with("tessel-asset-io-")
+        );
+        assert_eq!(
+            reads[0]["req"], callbacks[0]["req"],
+            "one id correlates the two"
+        );
+        assert_eq!(reads[0]["stale"], false);
+    }
+
+    #[test]
+    fn sync_blocks_the_window_while_the_same_read_is_held() {
+        // The negative control: the same held read, the other mode. If this ever passed the pulse, the control would not be
+        // measuring what the experiment changes.
+        let (responsive, trace) = pulse_while_a_read_is_held(AssetIoMode::Sync, "io-sync-control");
+        assert!(
+            !responsive,
+            "the window cannot answer while it is the one reading"
+        );
+        let reads = events_of(&trace, "asset_io");
+        assert_eq!(reads.len(), 1);
+        assert_eq!(
+            reads[0]["on_ui_thread"], true,
+            "the read ran on the window's thread"
+        );
+        assert_eq!(reads[0]["mode"], "sync");
+    }
+
+    #[test]
+    fn a_full_queue_is_answered_503_once_counted_and_never_dropped() {
+        let dist = page("io-full");
+        let dir = scratch("io-full-files");
+        let held = fifo(&dir, "slow.bin");
+        let access = Rc::new(RefCell::new(AssetAccess::default()));
+        register(&access, &held);
+        let trace = TraceHandle::default();
+        trace.set_enabled(true);
+        let pool = AssetPool::new(1, 1);
+        let asynchronous = handle(
+            AssetIoMode::Async,
+            &dist,
+            &access,
+            &trace,
+            Some(pool.clone()),
+        );
+        let (tx, rx) = mpsc::channel();
+        let send = |tag: &'static str| {
+            let tx = tx.clone();
+            asynchronous.handle(
+                &asset_request(&held, None),
+                Box::new(move |response| {
+                    let _ = tx.send((tag, response.status().as_u16()));
+                }),
+            );
+        };
+        send("running");
+        wait_until("the worker to hold the read", || {
+            pool.stats().in_flight() == 1
+        });
+        send("queued");
+        // The third does not fit: answered at once, by the callback, with an explicit status.
+        send("refused");
+        assert_eq!(
+            rx.recv_timeout(Duration::from_secs(5)).unwrap(),
+            ("refused", 503)
+        );
+        assert_eq!(pool.stats().saturated(), 1);
+        let callbacks = events_of(&trace, "asset_cb");
+        assert_eq!(callbacks.last().unwrap()["outcome"], "saturated");
+        let writer = release(&held);
+        let mut rest = vec![
+            rx.recv_timeout(Duration::from_secs(20)).unwrap(),
+            rx.recv_timeout(Duration::from_secs(20)).unwrap(),
+        ];
+        drop(writer);
+        rest.sort();
+        assert_eq!(rest, vec![("queued", 200), ("running", 200)]);
+        assert!(
+            rx.recv_timeout(Duration::from_millis(50)).is_err(),
+            "every request answered once"
+        );
+    }
+
+    #[test]
+    fn a_project_change_answers_waiting_and_running_reads_gone() {
+        let dist = page("io-stale");
+        let dir = scratch("io-stale-files");
+        let held = fifo(&dir, "slow.bin");
+        let access = Rc::new(RefCell::new(AssetAccess::default()));
+        register(&access, &held);
+        let trace = TraceHandle::default();
+        let pool = AssetPool::new(1, 4);
+        let asynchronous = handle(
+            AssetIoMode::Async,
+            &dist,
+            &access,
+            &trace,
+            Some(pool.clone()),
+        );
+        let (tx, rx) = mpsc::channel();
+        let send = |tag: &'static str| {
+            let tx = tx.clone();
+            asynchronous.handle(
+                &asset_request(&held, None),
+                Box::new(move |response| {
+                    let _ = tx.send((tag, response.status().as_u16()));
+                }),
+            );
+        };
+        send("running");
+        wait_until("the worker to hold the read", || {
+            pool.stats().in_flight() == 1
+        });
+        send("waiting");
+        // What `reset_project` and a reload do: nothing the old session asked for may be applied to the new one.
+        pool.invalidate();
+        let writer = release(&held);
+        let mut answers = vec![
+            rx.recv_timeout(Duration::from_secs(20)).unwrap(),
+            rx.recv_timeout(Duration::from_secs(20)).unwrap(),
+        ];
+        drop(writer);
+        answers.sort();
+        assert_eq!(answers, vec![("running", 410), ("waiting", 410)]);
+        assert_eq!(pool.stats().stale(), 2);
+    }
+}

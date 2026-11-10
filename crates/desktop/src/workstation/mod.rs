@@ -832,6 +832,8 @@ impl Render for Workstation {
 }
 
 #[cfg(test)]
+mod asset_io_tests;
+#[cfg(test)]
 mod audio_fades_tests;
 #[cfg(test)]
 mod camera_keys_tests;

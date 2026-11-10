@@ -302,6 +302,9 @@ impl Workstation {
             ));
         }
         self.playback.preparing = Some(Preparing { from });
+        self.viewport
+            .trace()
+            .event("play_command", || json!({ "from": from }));
         let snapshot = self.state.clone();
         cx.spawn(async move |this, cx| {
             // The mix is offline and can take a moment on a long sequence: never on the UI thread.
@@ -358,12 +361,19 @@ impl Workstation {
             max_gap: 0,
         });
         self.perf_playback_started(from);
+        self.viewport
+            .trace()
+            .event("play_clock_started", || json!({ "from": from, "fps": fps }));
         let interval = Duration::from_secs_f64(1.0 / (fps * TICKS_PER_FRAME));
         cx.spawn(async move |this, cx| {
             loop {
+                // When the timer was set, to say how late the tick that answers it ran.
+                let armed = Instant::now();
                 cx.background_executor().timer(interval).await;
                 let keep_going = this
-                    .update(cx, |this, cx| this.playback_tick(cx))
+                    .update(cx, |this, cx| {
+                        this.playback_tick_traced(cx, armed, interval)
+                    })
                     .unwrap_or(false);
                 if !keep_going {
                     break;
@@ -382,6 +392,33 @@ impl Workstation {
             error: silent,
         });
         cx.notify();
+    }
+
+    /// [`playback_tick`](Self::playback_tick) plus its trace event: when the tick was due (the timer's arming plus its
+    /// interval), when it ran and how long its body took, all on the host clock.
+    fn playback_tick_traced(
+        &mut self,
+        cx: &mut Context<Self>,
+        armed: Instant,
+        interval: Duration,
+    ) -> bool {
+        let trace = self.viewport.trace();
+        let began = trace.start();
+        let before = self.playback.active.as_ref().map(|active| active.frame);
+        let keep_going = self.playback_tick(cx);
+        let after = self.playback.active.as_ref().map(|active| active.frame);
+        trace.event("tick", || {
+            let due = armed + interval;
+            let ran = began.unwrap_or_else(Instant::now);
+            json!({
+                "due_ms": trace.ms_at(due),
+                "ran_ms": trace.ms_at(ran),
+                "late_ms": ran.saturating_duration_since(due).as_secs_f64() * 1000.0,
+                "body_ms": began.map(|at| at.elapsed().as_secs_f64() * 1000.0),
+                "frame_before": before, "frame_after": after, "continues": keep_going,
+            })
+        });
+        keep_going
     }
 
     /// One clock tick: moves the playhead to the frame the clock says it is. Returns whether to

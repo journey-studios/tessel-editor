@@ -48,8 +48,13 @@ impl Workstation {
         let (sender, receiver) = async_channel::unbounded::<String>();
         let handle = viewport.protocol_handle();
         let builder = wry::WebViewBuilder::new()
-            .with_custom_protocol(SCHEME.to_string(), move |_, request| {
-                handle.respond(&request)
+            // Asynchronous at the WebView, whichever way the handle reads: `sync` answers before it returns (what the
+            // synchronous protocol did), `async` answers from a worker (BL157.1, `TESSEL_VIEWPORT_ASSET_IO`).
+            .with_asynchronous_custom_protocol(SCHEME.to_string(), move |_, request, responder| {
+                handle.handle(
+                    &request,
+                    Box::new(move |response| responder.respond(response)),
+                );
             })
             .with_ipc_handler(move |request| {
                 // Unbounded: the page posts at most a few messages per frame, and dropping one

@@ -247,6 +247,13 @@ impl<B: RenderBackend> ViewportSession<B> {
         &self.trace
     }
 
+    /// Uses `trace` as the recorder instead of a private one, so what the transport and the protocol handler record lands
+    /// in the same log as the session's spans.
+    pub fn with_trace(mut self, trace: TraceHandle) -> Self {
+        self.trace = trace;
+        self
+    }
+
     /// Directory with the bundled demonstration images (`coast.png`, `highlands.png`).
     pub fn with_demo_dir(mut self, dir: PathBuf) -> Self {
         self.demo_dir = Some(dir);

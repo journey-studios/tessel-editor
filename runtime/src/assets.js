@@ -143,6 +143,20 @@ export class AssetStore {
     return entry;
   }
 
+  /**
+   * Durations of the parts of a load, on this page's clock (BL157.1): the host only reads them, never subtracts them
+   * from one of its own stamps. Kept until `takeLoadTimings` reads them, at most one entry per asset id.
+   */
+  noteLoadTimings(id, timings) {
+    (this.loadTimings ??= new Map()).set(id, timings);
+  }
+
+  takeLoadTimings(id) {
+    const timings = this.loadTimings?.get(id);
+    this.loadTimings?.delete(id);
+    return timings ?? {};
+  }
+
   /** Loads (or reloads) an asset and returns the metadata the runtime measured. */
   async load(descriptor) {
     const { id, kind, source } = descriptor;
@@ -429,7 +443,11 @@ export class AssetStore {
 
   async loadStill({ id, source }) {
     const label = `\`${id}\` (${source.path})`;
-    const bitmap = await decodeImage(await fetchChecked(this.assetUrl(source.path), label), label);
+    const fetchStarted = performance.now();
+    const response = await fetchChecked(this.assetUrl(source.path), label);
+    const decodeStarted = performance.now();
+    const bitmap = await decodeImage(response, label);
+    this.noteLoadTimings(id, { fetch_ms: decodeStarted - fetchStarted, decode_ms: performance.now() - decodeStarted });
     return {
       entry: { bitmap, width: bitmap.width, height: bitmap.height },
       meta: { width: bitmap.width, height: bitmap.height },
@@ -450,9 +468,12 @@ export class AssetStore {
 
   async loadSplat({ id, source, meta }) {
     const label = `\`${id}\` (${source.path})`;
+    const fetchStarted = performance.now();
     const bytes = await this.fetchSplatBytes(source, label);
     const fileName = splatFileName(meta.format, source.path);
+    const decodeStarted = performance.now();
     const mesh = await loadSplatMesh(bytes, fileName, label);
+    this.noteLoadTimings(id, { fetch_ms: decodeStarted - fetchStarted, decode_ms: performance.now() - decodeStarted, bytes: bytes.byteLength });
     const count = mesh.packedSplats.numSplats;
     // The file is NOT kept (66 MB for a 1.18 M splat PLY, as much again as the decoded splats): the GPU
     // side is rebuilt after a lost context by fetching it again (see splatLease and dropGpu).

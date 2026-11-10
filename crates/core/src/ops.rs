@@ -73,6 +73,11 @@ pub enum ProjectOp {
     Presets,
 }
 
+/// Events one `render.trace` answers when it is not told how many.
+pub const TRACE_EVENTS_PAGE: usize = 4096;
+/// The most events one `render.trace` answer may carry.
+pub const TRACE_EVENTS_MAX: usize = 16_384;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Op {
     Run(Command),
@@ -85,6 +90,12 @@ pub enum Op {
     RenderAudio(RenderAudio),
     Capabilities,
     RenderStatus,
+    /// The correlation log of the host trace after cursor `since` (BL157.1): events with host-clock stamps, read without
+    /// asking for frames. Only a host with a trace has one.
+    RenderTrace {
+        since: u64,
+        limit: usize,
+    },
     Status,
     /// What the window header says about the open project (`project.header`).
     Header,
@@ -365,6 +376,26 @@ pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, Comm
         "project.header" => return Ok(Some(Op::Header)),
         "capabilities" => return Ok(Some(Op::Capabilities)),
         "render.status" => return Ok(Some(Op::RenderStatus)),
+        "render.trace" => {
+            let since = match request.get("since") {
+                None | Some(Value::Null) => 0,
+                Some(value) => value
+                    .as_u64()
+                    .ok_or_else(|| invalid("Field `since` must be a non-negative integer"))?,
+            };
+            let limit = match request.get("limit") {
+                None | Some(Value::Null) => TRACE_EVENTS_PAGE,
+                Some(value) => value
+                    .as_u64()
+                    .filter(|limit| (1..=TRACE_EVENTS_MAX as u64).contains(limit))
+                    .ok_or_else(|| {
+                        invalid(format!(
+                            "Field `limit` must be an integer in 1..={TRACE_EVENTS_MAX}"
+                        ))
+                    })? as usize,
+            };
+            return Ok(Some(Op::RenderTrace { since, limit }));
+        }
         "project.create" => return Ok(Some(Op::CreateProject(project_create(request)?))),
         "asset.add" => asset_add(request)?,
         "track.add" => Command::CreateTrack {
@@ -958,5 +989,36 @@ mod tests {
                 .code,
             "invalid_request"
         );
+    }
+
+    #[test]
+    fn render_trace_reads_a_cursor_and_a_bounded_page() {
+        let state = EditorState::demo();
+        assert_eq!(
+            parse_op(&state, &json!({"op":"render.trace"})).unwrap(),
+            Some(Op::RenderTrace {
+                since: 0,
+                limit: TRACE_EVENTS_PAGE
+            })
+        );
+        assert_eq!(
+            parse_op(&state, &json!({"op":"render.trace","since":41,"limit":10})).unwrap(),
+            Some(Op::RenderTrace {
+                since: 41,
+                limit: 10
+            })
+        );
+        for bad in [
+            json!({"op":"render.trace","since":-1}),
+            json!({"op":"render.trace","since":"1"}),
+            json!({"op":"render.trace","limit":0}),
+            json!({"op":"render.trace","limit":TRACE_EVENTS_MAX + 1}),
+        ] {
+            assert_eq!(
+                parse_op(&state, &bad).unwrap_err().code,
+                "invalid_request",
+                "{bad}"
+            );
+        }
     }
 }

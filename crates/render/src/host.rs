@@ -232,37 +232,57 @@ fn clamp_range(start: u64, end: u64, suffix: bool) -> (u64, u64) {
     }
 }
 
-/// Answers `GET <path>?<query>`: the page (`/`, `/runtime.js`) from `dist`, or a registered
-/// asset (`/asset?p=<absolute path>`), with byte ranges.
-pub fn serve(
+/// What a request resolves to before any file is touched: an answer that needs no read (the page's own refusals, an empty
+/// `204`), or a file to read with the `Range` the page sent. Authorization is decided here, on the caller's thread, from
+/// the allow-list as it is at this moment; the read that follows can then run elsewhere without sharing that list.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Resolved {
+    Answer(Served),
+    File {
+        file: PathBuf,
+        range: Option<String>,
+    },
+}
+
+/// Decides what `GET <path>?<query>` refers to: the page (`/`, `/runtime.js`) from `dist`, or a registered asset
+/// (`/asset?p=<absolute path>`). No file is opened.
+pub fn resolve(
     dist: &Path,
     access: &AssetAccess,
     path: &str,
     query: &str,
     range: Option<&str>,
-) -> Served {
+) -> Resolved {
     let file = match path {
         "/" | "/index.html" => dist.join("index.html"),
         "/runtime.js" => dist.join("runtime.js"),
-        "/favicon.ico" => return Served::text(204, ""),
+        "/favicon.ico" => return Resolved::Answer(Served::text(204, "")),
         "/asset" => {
             let Some(requested) = query_param(query, "p") else {
-                return Served::text(403, "not an asset of this project");
+                return Resolved::Answer(Served::text(403, "not an asset of this project"));
             };
             if !access.allows(&requested) {
-                return Served::text(403, "not an asset of this project");
+                return Resolved::Answer(Served::text(403, "not an asset of this project"));
             }
             absolute(&requested)
         }
-        _ => return Served::text(404, "not found"),
+        _ => return Resolved::Answer(Served::text(404, "not found")),
     };
-    let Ok(mut handle) = File::open(&file) else {
+    Resolved::File {
+        file,
+        range: range.map(str::to_owned),
+    }
+}
+
+/// Reads what a [`Resolved::File`] names: open, size, byte range, body. All the blocking I/O of serving is here.
+pub fn read_file(file: &Path, range: Option<&str>) -> Served {
+    let Ok(mut handle) = File::open(file) else {
         return Served::text(404, format!("missing {}", file.display()));
     };
     let Ok(size) = handle.metadata().map(|meta| meta.len()) else {
         return Served::text(404, format!("unreadable {}", file.display()));
     };
-    let kind = content_type(&file);
+    let kind = content_type(file);
     let ranged = range.and_then(|header| parse_range(header, size));
     let (start, end, status) = match ranged {
         Some(Ok((start, end))) => {
@@ -298,6 +318,20 @@ pub fn serve(
         content_type: kind,
         body,
         content_range: (status == 206).then(|| format!("bytes {start}-{end}/{size}")),
+    }
+}
+
+/// Answers `GET <path>?<query>`: [`resolve`] and, for a file, [`read_file`], on the calling thread.
+pub fn serve(
+    dist: &Path,
+    access: &AssetAccess,
+    path: &str,
+    query: &str,
+    range: Option<&str>,
+) -> Served {
+    match resolve(dist, access, path, query, range) {
+        Resolved::Answer(served) => served,
+        Resolved::File { file, range } => read_file(&file, range.as_deref()),
     }
 }
 

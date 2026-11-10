@@ -19,6 +19,23 @@ use wry::http::Request;
 
 use super::viewport_host::{HostOptions, PAGE_URL, ViewportHost};
 
+/// What the handle answers for `request`, whichever thread answers (a worker answers later in `async` mode).
+pub(super) fn answer(
+    handle: &super::viewport_host::ProtocolHandle,
+    request: &Request<Vec<u8>>,
+) -> wry::http::Response<std::borrow::Cow<'static, [u8]>> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    handle.handle(
+        request,
+        Box::new(move |response| {
+            let _ = sender.send(response);
+        }),
+    );
+    receiver
+        .recv_timeout(Duration::from_secs(20))
+        .expect("the request is answered exactly once")
+}
+
 pub(super) fn scratch(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("tessel-vh-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -670,12 +687,12 @@ fn assets_are_loaded_before_the_frame_and_only_those_are_served() {
             .uri(format!("tessel://localhost/asset?p={query}"))
             .body(Vec::new())
             .unwrap();
-        handle.respond(&request)
+        answer(&handle, &request)
     };
     assert_eq!(served(&encoded).status(), 200);
     assert_eq!(served("%2Fetc%2Fpasswd").status(), 403);
     let index = Request::builder().uri(PAGE_URL).body(Vec::new()).unwrap();
-    assert_eq!(handle.respond(&index).status(), 200);
+    assert_eq!(answer(&handle, &index).status(), 200);
 
     // Once every asset reports ready, the frame is submitted.
     for load in &loads {
@@ -715,7 +732,7 @@ fn replacing_the_project_forgets_loaded_assets_and_forbids_their_files() {
         .uri("tessel://localhost/asset?p=%2Fnot%2Fregistered.png")
         .body(Vec::new())
         .unwrap();
-    assert_eq!(handle.respond(&request).status(), 403);
+    assert_eq!(answer(&handle, &request).status(), 403);
 }
 
 #[test]

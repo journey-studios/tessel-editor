@@ -70,6 +70,25 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
   let latestRender = 0;
   const cancelled = new Set();
   let renderQueue = Promise.resolve();
+  // Durations of the page's own background work (asset loads, warms), on the page's clock, handed to the host with the next
+  // `frame.done` so the host can place them next to its own stamps without ever subtracting the two clocks (BL157.1).
+  // Bounded: a page nobody drains keeps the newest, and says how many it let go.
+  const SPAN_LIMIT = 256;
+  const runtimeSpans = [];
+  let spansLost = 0;
+  const noteSpan = (span) => {
+    if (runtimeSpans.length >= SPAN_LIMIT) {
+      runtimeSpans.shift();
+      spansLost += 1;
+    }
+    runtimeSpans.push(span);
+  };
+  const drainSpans = () => {
+    const spans = runtimeSpans.splice(0);
+    if (spansLost > 0) spans.push({ k: 'lost', n: spansLost });
+    spansLost = 0;
+    return spans;
+  };
   let contextLost = false;
   // Counts context losses; a frame that sees it change between its start and its end was drawn
   // on (or partly on) a context that died, whatever the outcome of the calls looked like.
@@ -172,8 +191,11 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
     }
     send({ type: 'asset.state', id: descriptor.id, state: 'loading', ...echo });
     try {
+      const loadStarted = performance.now();
       const meta = await assets.load(descriptor);
-      send({ type: 'asset.state', id: descriptor.id, state: 'ready', meta, ...echo });
+      // Additive: how long the load took on this page's clock and, where measured, its fetch and decode parts.
+      const timings = { load_ms: performance.now() - loadStarted, ...assets.takeLoadTimings(descriptor.id) };
+      send({ type: 'asset.state', id: descriptor.id, state: 'ready', meta, timings, ...echo });
     } catch (error) {
       send({ type: 'asset.state', id: descriptor.id, state: 'failed', error: toErrorJson(error, 'asset_unreadable'), ...echo });
     }
@@ -273,6 +295,9 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
         // proxy picture from an original one (and see a proxy that had to be dropped).
         source: { quality, ...sources },
       };
+      // Additive: the page's own background work since the last picture (see `noteSpan`); absent when there was none.
+      const spans = drainSpans();
+      if (spans.length > 0) message.runtime_spans = spans;
       // The host that owns the filesystem writes the file; the page only encodes it.
       if (output.png) message.png_data = canvas.toDataURL('image/png').split(',')[1];
       send(message);
@@ -311,10 +336,13 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
     },
     // Additive (negotiated by `scene.warm`): no picture, no answer. Behind the frames in the queue, like them.
     'frame.warm': (message) => {
+      const queuedAt = performance.now();
       renderQueue = renderQueue.then(async () => {
         if (disposed || contextLost) return;
         try {
-          await ensureCompositor().warmScenes({ plan: message.plan, assets });
+          const warmStarted = performance.now();
+          const started = await ensureCompositor().warmScenes({ plan: message.plan, assets });
+          noteSpan({ k: 'warm', queued_ms: warmStarted - queuedAt, ms: performance.now() - warmStarted, started });
         } catch {
           // Best effort: a frame that needs the scene reports what is wrong with it.
         }
