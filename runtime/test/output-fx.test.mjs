@@ -52,10 +52,11 @@ const refusal = (callback) => {
 
 const parse = (fx, requires) => parseDirectedLayer(directedLayer(plan(fx, requires), [reference('wall', 'slot-0')]));
 
-test('outputFx is a capability of this runtime and the catalog lists the vignette', () => {
+test('outputFx is a capability of this runtime and the catalog lists the vignette and the fade', () => {
   assert.ok(SCENE_CAPABILITIES.includes('outputFx'));
-  assert.deepEqual(Object.keys(OUTPUT_FX_EFFECTS), ['vignette']);
+  assert.deepEqual(Object.keys(OUTPUT_FX_EFFECTS), ['vignette', 'fade']);
   assert.deepEqual(Object.keys(OUTPUT_FX_EFFECTS.vignette.params), ['radius', 'softness', 'intensity', 'color', 'roundness', 'center']);
+  assert.deepEqual(Object.keys(OUTPUT_FX_EFFECTS.fade.params), ['color', 'amount', 'intensity']);
 });
 
 test('a plan without effects has no pass, and one with effects keeps them in the plan order', () => {

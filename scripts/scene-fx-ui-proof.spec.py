@@ -381,6 +381,35 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(report["failed"], ["something failed"])
 
 
+class FadeModelTests(unittest.TestCase):
+    """The Python fade the window proof compares the monitor with must itself be right and discriminate."""
+
+    def test_zero_weight_is_the_exact_input_and_full_weight_is_the_colour(self):
+        self.assertEqual(proof.fade([10, 120, 250], (1.0, 1.0, 1.0), 0), [10, 120, 250])
+        full = proof.fade([10, 120, 250], (1.0, 0.0, 0.0), 1.0)
+        self.assertAlmostEqual(full[0], 255.0, places=6)
+        self.assertAlmostEqual(full[1], 0.0, places=6)
+
+    def test_half_way_mixes_in_linear_light_not_in_encoded_values(self):
+        half = proof.fade([128, 128, 128], (1.0, 1.0, 1.0), 0.5)
+        linear = (proof.srgb_to_linear(128 / 255.0) + 1.0) / 2.0
+        self.assertAlmostEqual(half[0], 255.0 * proof.linear_to_srgb(linear), places=6)
+        self.assertGreater(half[0], (128 + 255) / 2, "linear-light mix is brighter than the encoded mean")
+
+    def test_the_comparison_is_blind_to_nothing(self):
+        base = [[100, 100, 100, 255]]
+        faded = [proof.fade(p[:3], (1.0, 1.0, 1.0), 0.5) for p in base]
+        self.assertGreater(proof.worst(faded, base), 25)
+        self.assertEqual(proof.worst(faded, faded), 0)
+
+    def test_the_order_of_a_fade_and_a_vignette_changes_the_pixels(self):
+        pixel = [150, 150, 150]
+        args = (0, 0, W, 1080, 1.0)
+        fade_last = proof.fade(proof.vignette(pixel, *args), (1.0, 1.0, 1.0), 0.7)
+        vignette_last = proof.vignette(proof.fade(pixel, (1.0, 1.0, 1.0), 0.7), *args)
+        self.assertGreater(abs(fade_last[0] - vignette_last[0]), 20)
+
+
 class DefaultsTests(unittest.TestCase):
     def test_the_limits_are_the_documented_ones(self):
         self.assertEqual(proof.EXPORT_TIMEOUT_S, 600)

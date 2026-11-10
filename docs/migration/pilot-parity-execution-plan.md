@@ -102,3 +102,18 @@ luz/clima/rig/narração, editor de mapas ou produção de vídeo. Presets vazio
 flashlightReveal, prefetch completo e split/slip de shots ausentes no piloto são
 decisões futuras, sem requisito falso de paridade. A autorização de P0/P1 não declara
 nenhuma fase entregue antes de implementação e evidência.
+
+## Estado de P2 (entrega do branch `t3/fx-inspector-fade-p2`)
+
+P2 foi implementado e provado em macOS/SwiftShader; o estado por superfície, os comandos e os limites estão em
+[F057](../features/fx-inspector.md) e [F016](../features/effects.md#p2-inspector-neutro-e-segundo-look-fade);
+o backlog é `docs/backlog.md` (BL004, BL014, BL029, BL040, BL082.1). Resumo do que a fase fechou e do que não:
+
+- Inspector neutro no core (`scene_edit::fx_inspector`), `scene.fx.inspect` (lib, JSONL sem janela, janela),
+  rótulos pt-br/en/es com teste sobre os IDs oferecidos, reset por campo e do visual.
+- Vinheta migrada para o modelo comum; `fade` (look, saída) no mesmo catálogo/modelo, com corpus de proveniência
+  próprio (`scripts/pilot-fade-corpus.py`). `pilot-parity-catalog.json`: `fade` passou de `pendente` para
+  `parcial` (sem golden da origem: `ORIGIN_GOLDEN_NOT_COMPARABLE`).
+- **Não é paridade integral**: 2 de 59 efeitos; 57 continuam pendentes e sem controle habilitado. Chaves/`amount`
+  animado (P3), escopo `shot` e transições (P4) seguem fora. Windows, ponteiro físico (BL043), GPU real e áudio
+  ouvido não foram provados.

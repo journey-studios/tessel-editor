@@ -101,12 +101,20 @@ fn scene_of(state: &EditorState) -> DirectedScene {
 // ---- the catalog and the baseline ---------------------------------------------------------
 
 #[test]
-fn the_catalog_lists_the_one_effect_this_slice_draws_and_what_it_refuses() {
+fn the_catalog_lists_the_two_looks_this_slice_draws_and_what_it_refuses() {
     let mut state = session();
     let catalog = ok(&mut state, json!({"op":"scene.fx.catalog"}));
     assert_eq!(catalog["catalog_version"], 1);
     let effects = catalog["effects"].as_array().unwrap();
-    assert_eq!(effects.len(), 1, "only the vignette is entered");
+    let ids: Vec<_> = effects
+        .iter()
+        .map(|effect| effect["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        ids,
+        ["vignette", "fade"],
+        "two looks are entered, no placeholder"
+    );
     assert_eq!(effects[0]["id"], "vignette");
     let names: Vec<_> = effects[0]["params"]
         .as_array()
@@ -139,6 +147,7 @@ fn the_catalog_lists_the_one_effect_this_slice_draws_and_what_it_refuses() {
         "scene.fx.list",
         "scene.fx.catalog",
         "scene.fx.frame",
+        "scene.fx.inspect",
     ] {
         assert!(commands.contains(&json!(command)), "{command}");
     }

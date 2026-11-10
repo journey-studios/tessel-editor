@@ -50,7 +50,7 @@ mod run;
 mod scope;
 mod store;
 
-pub use command::{AdmittedScene, CameraAt, SceneCommand, SceneSource};
+pub use command::{AdmittedScene, CameraAt, FxProbe, SceneCommand, SceneSource};
 pub use run::admit;
 pub use scope::{deferred_in_use, scope_json};
 pub use store::STORE_VERSION;

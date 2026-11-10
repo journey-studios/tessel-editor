@@ -8,6 +8,7 @@ use std::sync::Arc;
 use serde_json::Value;
 
 use crate::directed_scene::DirectedScene;
+use crate::directed_scene::fx::Locale;
 
 use crate::scene_edit::{EditOp, FxOp, PropertyRef};
 use crate::scene_interaction::{
@@ -197,6 +198,28 @@ pub enum SceneCommand {
     },
     /// F016 (BL082.6): the begin/update/commit/cancel cycle over one effect clip.
     FxGesture(FxGestureCommand),
+    /// F016 (P2): the inspector model of the effects layer (what a person can set on each clip,
+    /// with ranges, defaults, labels in a language, applicability) and the effects that can be
+    /// added. A read: it writes nothing. With a `gesture`, the model of that gesture's candidate
+    /// (plus the gesture's last refusal); with a `probe`, whether one proposed value would be
+    /// accepted, judged by a dry run of the very edit the field would send.
+    FxInspect {
+        scene: String,
+        clip: Option<String>,
+        gesture: Option<String>,
+        locale: Locale,
+        probe: Option<FxProbe>,
+    },
+}
+
+/// A value proposed for one field of one clip, to be judged without being applied.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FxProbe {
+    pub clip: String,
+    pub field: String,
+    pub value: f64,
+    /// Round to the field's grid first, as a pointer or a key would (a typed value is judged as is).
+    pub quantize: bool,
 }
 
 impl SceneCommand {

@@ -74,6 +74,7 @@ plano/relatório continuam como histórico; o contrato atual fica em `features/`
 - [Auditoria de paridade do piloto (2026-11-08)](migration/pilot-parity-audit-2026-11-08.md): lacunas por capacidade, 59 efeitos, evidências e sequência vinculada ao backlog.
 
 - [Plano de execução da paridade do piloto](migration/pilot-parity-execution-plan.md): fases P0–P8 e briefing da primeira entrega Cursor Sonnet 5.5.
+- [Inspector neutro de efeitos e o `fade` (F057)](features/fx-inspector.md) e o [smoke de integração antes/depois de P2](migration/p2-integration-smoke-2026-11-10.md).
 
 G1 (PR #40): rotação local/mundo implementada, **a validar** no head final;
 os gates históricos de S8 acima não validam os anéis de rotação.

@@ -11,7 +11,7 @@
 //! What is implemented, and nothing else is accepted (an unsupported value is a typed refusal
 //! at import and at edit, never a quietly ignored one):
 //!
-//! * the `vignette` look, scope `output`, on tracks of non-overlapping clips;
+//! * the `vignette` and `fade` looks, scope `output`, on tracks of non-overlapping clips;
 //! * IDs of tracks and clips by the pilot's rule (see [`id_problem`]);
 //! * fixed parameters (`params`; a missing one is the catalog default), `fadeInFrames` /
 //!   `fadeOutFrames` envelope, `hidden` on clips and tracks, `seed` kept as written;
@@ -29,16 +29,16 @@ mod reference;
 use serde_json::{Value, json};
 
 pub use catalog::{
-    EffectSpec, ParamKind, ParamSpec, VIGNETTE, VIGNETTE_CENTER, VIGNETTE_COLOR,
-    VIGNETTE_INTENSITY, VIGNETTE_RADIUS, VIGNETTE_ROUNDNESS, VIGNETTE_SOFTNESS, catalog,
-    catalog_json, effect,
+    EffectSpec, FADE, FADE_AMOUNT, FADE_COLOR, FADE_INTENSITY, Labels, Locale, ParamKind,
+    ParamSpec, VIGNETTE, VIGNETTE_CENTER, VIGNETTE_COLOR, VIGNETTE_INTENSITY, VIGNETTE_RADIUS,
+    VIGNETTE_ROUNDNESS, VIGNETTE_SOFTNESS, catalog, catalog_json, effect,
 };
 pub use control::quantize_control;
 pub(super) use read::read_fx;
 pub use read::{ParamProblem, parse_param};
 pub use reference::{
-    apply_pass_to_rgba8, apply_pass_to_srgb, linear_to_srgb, smoothstep, srgb_to_linear,
-    vignette_shade,
+    apply_pass_to_rgba8, apply_pass_to_srgb, linear_to_srgb, pass_strength, smoothstep,
+    srgb_to_linear, vignette_shade,
 };
 
 /// The catalog this build draws. It goes up whenever the *result* of an existing effect changes

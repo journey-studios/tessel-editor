@@ -37,6 +37,7 @@ mod camera_keys;
 mod catalog;
 mod error;
 mod fx;
+mod fx_inspector;
 mod op;
 mod reference;
 mod value;
@@ -58,6 +59,11 @@ pub use error::{
 pub use fx::{
     AddClip, ClipField, FxChange, FxOp, FxOutcome, FxSummary, apply_fx, apply_fx_with, dry_run_fx,
     parse_fx_batch,
+};
+pub use fx_inspector::{
+    ClipInspector, Component, DURATION_LABEL, FADE_IN_LABEL, FADE_OUT_LABEL, FieldGroup,
+    InspectorField, Offer, REASON_FAMILY_NOT_YET, REASON_SINGLE_VALUE, START_LABEL, Target,
+    has_reset, inspector_fields, layer_inspector, offers, reset_ops, scopes,
 };
 pub use op::{EditOp, parse_batch};
 pub use reference::PropertyRef;
