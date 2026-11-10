@@ -1,4 +1,4 @@
-# Latência real — experimento A/B do I/O de assets (BL157.1)
+# Latência real — experimento A/B do I/O de assets (BL157.1) e trânsito do quadro (BL157.2, §11)
 
 **A latência continua não aceita.** Nada aqui fecha o BL157 nem declara um limite aprovado: 62,5 ms e 100 ms são gatilhos
 diagnósticos e 41,7 ms (24 fps) é só a referência de orçamento. Plano: [real-latency-ab-test-plan.md](migration/real-latency-ab-test-plan.md);
@@ -149,7 +149,7 @@ Cada gap > 62,5 ms foi cruzado com os spans que o sobrepõem (sessões válidas,
 | H6b | Entrar num clipe de imagem custa o primeiro desenho | **Confirmada como custo de 12–18 ms por entrada**, insuficiente para os piores gaps |
 | H7 | O modo assíncrono é a correção da latência | **Não proposta como correção**; opt-in |
 
-## 7. Próximo componente (proposta; **não implementada**)
+## 7. Próximo componente (proposta de BL157.1; investigada em BL157.2, §11)
 
 BL157.2, um fator por vez, dentro do escopo protegido, **em ordem de evidência**: (1) **atribuir o trânsito**: instrumentar (só
 durações locais, nunca subtraindo relógios) o atraso do laço de eventos da página (batimento/`longtask`), a duração do tratamento do
@@ -169,26 +169,26 @@ do corte.
 - Sem GPU medida, sem apresentação no fóton (o aceite é a imagem aceita pelo host), sem disco frio, sem ponteiro físico.
 - O headless (processo JSONL) não passa pelo protocolo: `render.trace` responde `desktop_required`.
 
-## 9. Gates do head final
+## 9. Gates
 
-Head de código `1454413` (árvore limpa; os commits depois de `f5ca12b` só mexem em scripts, docs e um `Box` num teste). Logs e códigos de
-saída em `/tmp/tessel-bl157-1/gates/` (fora do Git).
+Os gates do A/B de BL157.1 (binário `ad16ad36…`) foram do head `1454413`; dois deles ficaram **BLOCKED** por lock de GPU. Os gates abaixo são
+os do código final de BL157.2 (commit `a01090b` sobre `origin/main` integrado; árvore sem mudança de código depois, só docs), com saída e
+código gravados em `/tmp/bl157-rec/final/` (fora do Git; sem pipe mascarando o código).
 
 | Gate | Resultado |
 |---|---|
 | `cargo fmt --all -- --check` | 0 |
 | `./scripts/cargo check --workspace --locked` | 0 |
-| `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 (a primeira rodada falhou em `large_enum_variant` num teste; corrigido com `Box` e repetido) |
-| `cargo tree -p tessel-editor-core` sem `gpui`/`wry` | 0 |
-| Build debug e release de `tessel-editor` | 0 e 0; sha256 do release `ad16ad3670f4…` = o binário medido no A/B |
-| 18 specs Python de `scripts/*.spec.py` (inclui `real-latency-ab`, 20 testes) | todos 0 |
-| Testes parciais: core 469 (mais os binários de integração), render `--lib` 11, desktop `workstation::` 371 | 0 falhas |
-| Headless JSONL (`./scripts/headless`) | `render.trace` → `desktop_required`; `status` ok; processo sai com 1 por causa do erro pedido |
-| Janela real (binário release, HOME próprio, `ui op`) | `render.status` reporta `asset_io` em `async` (2 workers, fila 16, 0 saturações), `sync` e valor inválido (`bogus` avisa e usa `sync`); `render.trace` devolve eventos, `lost` 0 |
-| **`TESSEL_REQUIRE_RUNTIME=1 cargo test --workspace --locked --no-fail-fast`** | **BLOCKED**: os dois locks de GPU ficaram com um `driver.py` de outra sessão por mais de uma hora; duas esperas de 900 s terminaram com código 97. Não rodei sem o lock para não perturbar a medição alheia |
-| **Testes do runtime/Chrome sem SKIP** | **BLOCKED** pelo mesmo lock (rodada anterior ao último commit: `scene-warm.test.mjs` passou com `TESSEL_REQUIRE_RUNTIME=1`; o código do runtime não mudou depois) |
+| `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 (o head recuperado `be56bfd` falhava em `collapsible_if` em `asset_io.rs`; corrigido com let-chain) |
+| `cargo tree -p tessel-editor-core` sem `gpui`/`wry` | 0, nenhuma ocorrência |
+| Build debug e release de `tessel-editor` | 0 e 0; sha256 do release `ac023ebadf863d1d` (reconstruído depois de o mbx recolher o artefato: mesmo sha) |
+| `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked --no-fail-fast` | 0; 2083 passaram, 0 falharam |
+| `./scripts/runtime setup` (do zero) e `./scripts/runtime test` (Chrome, sem SKIP) | 0 e 0; 223 testes, 223 passaram, 0 skipped; `runtime.js` sha256 `1fed1ef93836d9f5` |
+| 16 specs Python `scripts/*.spec.py` (inclui `viewport-transit-probe`, 18 testes) | todos 0 |
+| Headless JSONL (`./scripts/headless`) | `render.trace` → `desktop_required` (sem tocar o estado), `status` ok; sai com 1 pelo erro pedido |
+| Janela real, binário release `ac023eba…` (HOME/socket próprios, só pedidos semânticos de `./scripts/ui`/`Lab`, sem coordenadas) | `real-latency-ab.py pixels`: PASS (imagem do `render.frame` idêntica byte a byte em quente/frio × cache quente/seek frio, controles negativos: cortes distintos não compartilham imagem e todo quadro foi lido); `loop4` (4 editores novos, `render.status.asset_io.mode == async` verificado por run) e `ab4` (16 runs válidos) |
 
-## 10. Reprodução
+## 10. Reprodução (BL157.1)
 
 ```text
 ./scripts/runtime setup && ./scripts/cargo build -p tessel-editor --locked --release
@@ -201,3 +201,54 @@ python3 scripts/real-latency-ab.spec.py
 
 As sessões brutas (1,5 MB cada) ficam fora do Git; seus sha256 estão em
 [sessions.sha256](viewport-real-latency-ab-results/sessions.sha256) (rodada 1 `ab/`, rodada 2 `ab2/`).
+
+## 11. BL157.2: onde está o trânsito do quadro
+
+**Latência continua NÃO ACEITA; nenhuma mudança de produto foi feita; BL157 segue aberto.** Contrato dos probes: [F058](features/viewport-asset-io.md#bl1572--probes-do-trânsito-do-quadro-opt-in-o-mesmo-custo-nos-dois-braços).
+Dados por run em [viewport-real-latency-ab-results/bl157-2/](viewport-real-latency-ab-results/bl157-2/) (lotes separados, cada um com seu binário/runtime/documento
+em `manifest`; **não se somam**; o final é `loop4-final-analysis.md` e `ab4.md`, binário `ac023eba…`, runtime `1fed1ef9…`, código `a01090b`).
+Projeto real (23 assets, só o documento foi copiado), janela 114–210 (3 s antes do primeiro corte até 1 s depois), I/O `async` fixo, TRACE e page
+timing ligados nos dois braços, um editor novo por run (**todos são primeiras execuções de um processo frio**; a repetição no mesmo processo
+não foi medida), cargas externas registradas por run (`quiet`/`loaded`).
+
+### 11.1 Hipóteses
+
+| Hipótese | Resultado | Base |
+|---|---|---|
+| A fila do `evaluate` do host ou a preparação no host atrasam o envio | **Refutada** | `pre-send` ≤ 0,012 ms em todos os gaps lentos |
+| A mensagem espera a tarefa da janela depois de chegar ao WebView (`ipc_wait`) | **Refutada** | p95 ≤ 0,4 ms; máx. 5,7 ms |
+| O pedido espera na fila serial da página | **Refutada nos gaps do corte** | `queue_ms` 0 |
+| O runtime demora a desenhar o quadro do corte | **Refutada** nos cortes (1–6 ms), **confirmada** em `195→196` (24–31 ms) | `page_draw` |
+| O laço de eventos da página fica parado | **Confirmada** | `loop_stall` máximo de 124–174 ms nos 4 runs do `loop4`, `eval_done` ≈ trânsito, fim do stall logo antes de o script entrar |
+| A parada está dentro de uma chamada WebGL medida | **Refutada** | nenhum `gl_call` ≥ 4 ms nesse intervalo (só `texSubImage2D` de 13–27 ms em outro lugar) |
+| Há leitura de asset em voo na hora | **Refutada** | sem `asset_io`/`asset_cb` entre os quadros |
+| A parada é GPU ainda trabalhando depois do draw | **Consistente, não provada** | `ab4` (8 pares, 16 runs válidos): a leitura de 1 pixel esperou ≥ 40 ms em 8/8 runs do braço B (máx. 41–119 ms), nos quadros dos 1ºs draws e nos do corte; onde A tem `187→188`, B tem `185→186`/`186→187` de 65–70 ms (41,7 + a espera): **o atraso se moveu para dentro do quadro**. A reproduziu um stall ≥ 40 ms em 6 de 8 runs |
+| `gl.finish()` espera a GPU no WebKit | **Refutada** | `ab1`: `gpu_finish_ms` 0 em todos os quadros (manipulação falhou, `INCONCLUSIVE`) |
+| Pré-upload da 1ª textura PNG tira os gaps `195→196` | **Não testada** | o dado aponta (`texSubImage2D` 13–27 ms na 1ª imagem de cada sequência) mas isso é correlação |
+
+### 11.2 Números (lote final)
+
+`loop4` (4 editores novos, `loaded`): 14 gaps > 62,5 ms; dominantes: `delivery` (8 gaps de 68–185 ms com trânsito de 27–161 ms: `115→116`, `116→117`, `187→188`, `188→189` com
+63–161 ms, e dois em `139→140`/`140→141`, coincidentes com a entrada de uma carga, com 27 ms), `page_draw` 3, sem dominante 3. `ab4` (A: 8 runs, B: 8 runs, ordem alternada; A com 4 runs `quiet` e 4 `loaded`, B com 5 e 3; por run na tabela):
+gap máximo por run A 50,0–101,8 ms (mediana 65,4), B 64,7–131,7 (mediana 67,1, mas B carrega a espera que impôs); gaps > 62,5 ms por run A 0–4, B 1–3. Nenhum run inválido em `ab4`.
+Lotes anteriores (binários diferentes): `ab1` manipulação falhou; `ab2` 3 de 8 runs inválidos (página parou de responder) → `INCONCLUSIVE`; `ab3` 1 de 12 inválido,
+veredito mecânico `CONSISTENT` com A reproduzindo o stall em 3 de 6 runs.
+
+### 11.3 Falhas mantidas
+
+- Em 5 de 28 runs de `ab1`–`ab3` (2 do braço A, 3 do B) o pipeline de quadros da página **parou de responder** (≈ 100 % dos quadros cancelados pelo host, a página ainda atendia
+  assets). Não ocorreu em `loop2`–`loop4` nem `ab4`. Causa não determinada (suspeitas não testadas: janela oclusa/estrangulada pelo WebKit com a máquina carregada; um draw esperando uma
+  promessa que não resolve). Os runs ficam como inválidos nas tabelas.
+- Em `loop1`, um de 3 editores teve dois passos de prefetch de ~3 s na thread da janela (UI bloqueada, sem imagens). Os eventos por carga (`prefetch_asset`) só existem a partir do `loop2`;
+  não se repetiu nos 60 runs seguintes. Causa não determinada.
+- Veredito mecânico do `ab`: só `CONSISTENT`/`INCONCLUSIVE`; a regra antiga (`REFUTED` pela contagem de stalls) estava confundida (a espera do braço B também é um stall) e foi trocada
+  antes de ser usada como resultado; `ab-report` reaplica a regra vigente a cada lote.
+
+### 11.4 Limites e próximo passo
+
+Sem medida de fóton/display; `gpu_finish_ms` é o tempo de uma leitura que não volta antes de a GPU terminar o que foi desenhado, no relógio da página. Máquina compartilhada (carga 14–33
+nos lotes). Não se declara causa única: a GPU pendente é **compatível**, e o braço **moveu** o atraso em vez de eliminá-lo. A alavanca implicada (custo de GPU do draw do corte: dois
+cenas splat) mexe em resolução, MSAA ou contagem de splats, que não foram variados e dependem de decisão de produto; um draw de aquecimento não ajudaria (custo de preenchimento, não de primeiro uso).
+Próximos fatores, um por vez e dentro da proteção do quadro atual: pré-upload da 1ª textura PNG de cada sequência (`195→196`) e investigação das páginas que param.
+
+Reprodução: `python3 scripts/viewport-transit-probe.py loop --project <documento> --out <dir> --iterations 4` e `... ab --pairs 8`; `ab-report`/`analyze` regeneram as tabelas.

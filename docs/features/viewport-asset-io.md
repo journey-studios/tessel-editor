@@ -57,3 +57,57 @@ janela **não** é headless.
   a byte e o monitor mostrando a mesma imagem). O export não passa pelo protocolo (N/A).
 - A/B no projeto real: [relatório](../viewport-real-latency-ab-report.md). Limites: o modo `sync` inclui no callback o custo da cópia
   `NSData` do Wry; em `async` ela corre no worker.
+
+## BL157.2 — probes do trânsito do quadro (opt-in, o mesmo custo nos dois braços)
+
+Os A/B de BL157.1 deixaram pausas de 56–120 ms em que o runtime gastou 1–24 ms e nenhum span explicava o resto. Os probes abaixo
+separam, **cada um num único relógio**, de onde vem esse tempo. Ligam com `TESSEL_VIEWPORT_TRACE=1` (o mesmo gatilho do restante) e não
+pedem quadro nenhum para medir; sem o traço o `hello` e as respostas são byte a byte os de antes.
+
+| Probe | Onde | O que mede |
+|---|---|---|
+| `telemetry.timing` no `hello` | `core::bridge::HelloOptions::timing` (aditivo; sozinho ou com `presented`) | liga os probes da página |
+| `frame.done.page` | `runtime/src/index.js` | `queue_ms` (espera na fila serial da página **antes** de o quadro começar; `total_ms` não a conta), `held_ms` (do recebimento até a entrega ao transporte), `ahead` (quadros/aquecimentos/cargas à frente), `post_prev_ms` (custo de entregar a resposta anterior), `loop` (atraso do laço de eventos: batimento de 4 ms, máximo e contagem ≥ 16 ms desde a resposta anterior) |
+| span `loop_stall` e `ago_ms` | idem | atraso do laço ≥ 16 ms vira um span; com o timing, **todo** span da página (incluindo `warm`) diz há quantos ms terminou, em relação à entrega (a mensagem que o leva pode sair muito depois: antes, o span era posicionado pela chegada da mensagem seguinte) |
+| evento `eval_done` | `workstation/viewport.rs` | do envio do script ao *completion handler* do WebView (no host): entrega até a página + tratamento + volta do callback |
+| span/campo `ipc_wait` | idem + `frame_page` | espera entre o WebView entregar a mensagem (handler de IPC) e a tarefa da janela pegá-la |
+| evento `frame_page` | `viewport_host::trace_incoming` | a conta da página de cada `frame.done`, com `ipc_wait_ms` (e `gpu_finish_ms` no braço diagnóstico) |
+| span `gl_call` | `runtime/src/index.js` (protótipo do contexto WebGL, restaurado ao desligar) | chamada WebGL de 4 ms ou mais, com o **nome** da chamada (leitura, fence, upload, link, draw que força flush): diz se um atraso do laço estava dentro de uma chamada WebGL |
+| evento `prefetch_asset` | `core::session::prefetch` (só com o traço) | por carga iniciada: `fs_ms` (verificações de arquivo), `send_ms` (entrega ao backend), `bytes`, `kind`; nunca o nome do asset |
+| `telemetry.gpu_finish` (env `TESSEL_VIEWPORT_PROBE_GPU_FINISH=1`, só com o traço) | `HelloOptions::gpu_finish`, `index.js` | **braço diagnóstico, nunca padrão**: após cada draw a página lê 1 pixel (`finish()` sozinho voltou em 0 ms no WebKit, não esperou) e reporta `timings.gpu_finish_ms`; troca a espera do navegador na apresentação por uma espera dentro do quadro |
+
+`scripts/viewport-transit-probe.py` (`loop`/`ab`/`ab-report`/`analyze`; specs em `.spec.py`) decompõe cada imagem tardia em `host_pre_send`, `page_queue`,
+`page_draw`, `ipc_wait` e `delivery` (o que sobra; ida e volta juntas) e nomeia o dominante. O `loop` é **capaz de falhar**: sai com 1 se
+alguma iteração tem gap > 62,5 ms (limiar diagnóstico, não aceite), um bloqueio de UI (passo de prefetch ≥ 50 ms) ou um play faminto (quase
+nenhuma imagem). Um quadro do mesmo `shown_frame` que o anterior é a imagem de assentamento depois do stop e não conta como gap de
+reprodução. Nenhum relógio de página, host e Python é subtraído. `ab` alterna A (traço + timing) e B (A + `gpu_finish`) em editores novos,
+um por run, com o modo de I/O fixo; um run em que a página para de responder fica **inválido e listado**; o veredito é mecânico e só diz
+`CONSISTENT`/`INCONCLUSIVE` (a espera do braço B também é um stall de página, então as contagens de A e B não se comparam).
+
+### O que os probes mostraram (projeto real, janela 114–210, I/O `async`; **não é aceite de latência**)
+
+Dados e tabelas por run em [viewport-real-latency-ab-results/bl157-2/](../viewport-real-latency-ab-results/bl157-2/). Lotes separados (cargas externas
+diferentes; não se somam): `loop1`–`loop4` e `ab1`–`ab4`; o final é `loop4`/`ab4` (binário `ac023eba…`, runtime `1fed1ef9…`, código `a01090b`).
+
+- Descartado como causa dos gaps de 56–185 ms: fila do `evaluate` do host (`pre-send` ≤ 0,012 ms), espera da tarefa da janela pela
+  mensagem (`ipc_wait` p95 ≤ 0,4 ms; máx. 5,7 ms), fila serial da página (`queue_ms` 0 nos gaps), custo de desenho do runtime nos gaps
+  do corte (1–6 ms).
+- Onde está o tempo nos gaps do corte (`187→188`/`188→189`, e `115→116`/`116→117` no início do play): a **thread principal da página
+  parada** 60–160 ms, começando logo após um draw terminar e terminando antes de o próximo script entrar. O `eval_done` do host ≈ o trânsito inteiro;
+  o `loop_stall` da página (120 ms) cobre o intervalo. Nenhuma chamada WebGL da lista passou de 4 ms nesse intervalo, e não havia leitura
+  de asset em voo: o atraso está fora do JS do runtime e das chamadas WebGL medidas.
+- Os gaps `195→196` de 63–83 ms são `page_draw` de 24–31 ms (um `texSubImage2D` de 13–27 ms na primeira imagem de cada sequência PNG,
+  `gl_call`): aqui o dado **aponta** para pré-upload de textura, ainda não testado.
+- Braço `gpu_finish` (B, 8 pares em `ab4`, todos válidos): a leitura esperou ≥ 40 ms em 8 de 8 runs (máx. por run 41–119 ms), nos quadros dos primeiros draws
+  e nos de 185–187 (o corte); onde A tem o gap `187→188`, B tem `185→186`/`186→187` de ~65–70 ms (um quadro de 41,7 + a espera). Resultado
+  mecânico: `CONSISTENT with GPU work still pending after a draw` (ver [ab4](../viewport-real-latency-ab-results/bl157-2/ab4.md)). O atraso **se moveu para
+  dentro do quadro, não sumiu**: o dado é compatível com trabalho de GPU pendente depois do draw do corte (dois cenas splat), **não prova** que
+  seja todo o stall e não é latência de display/fóton. Em `ab4` A reproduziu um stall ≥ 40 ms em 6 de 8 runs; em `ab3`, em 3 de 6.
+- Falhas que não são latência e ficam registradas: em `loop1` um run teve dois passos de prefetch de ~3 s na thread da janela (sem
+  causa determinada: os probes por carga só entraram depois e o evento não se repetiu nos 60 runs seguintes); em `ab1`–`ab3`, 5 de 28 runs
+  (2 do braço A, 3 do B) o frame pipeline da página **parou de responder** (100 % dos quadros cancelados; a página ainda atendia
+  assets). Não explicadas; os runs são inválidos e estão nas tabelas. `ab1`: `finish()` sozinho não esperou (manipulação falhou, veredito `INCONCLUSIVE`).
+- Mudança causal de produto: **nenhuma**. A alavanca implicada (custo de GPU do draw do corte) mexe em resolução/MSAA/contagem de splats, que esta
+  rodada não variou; o aquecimento por draw não ajudaria (o custo é de preenchimento, não de primeiro uso).
+
+Headless: N/A (o worker Node não passa por WebView nem pelo traço do host).
