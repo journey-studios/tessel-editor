@@ -1,5 +1,6 @@
 """Pure-logic tests of the BL157.3 first-use A/B; no editor, GPU, runtime page or private media is started."""
 import importlib.util
+import json
 import unittest
 from pathlib import Path
 
@@ -8,6 +9,8 @@ ab = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ab)
 
 PROJECT = {"length": 600, "fps": 24.0, "cuts": [186, 268, 410], "video_starts": [18, 196, 282], "sources": []}
+# What the page can say about the two experiments: the one list the runtime suite, the host suite and this one all read.
+CONTRACT = json.loads((Path(__file__).resolve().parent.parent / "runtime/test/fixtures/activation-spans.json").read_text())["spans"]
 
 
 def frame(id, shown, done, total=10.0):
@@ -127,6 +130,85 @@ class AnalysisTests(unittest.TestCase):
         run = ab.analyze_run(record("control", 130), PROJECT, "preupload", (190, 200))
         slow = run["plays"]["first"]["slow_detail"]
         self.assertEqual([(g["to_frame"], g["gap_ms"], g["where"]) for g in slow], [(196, 130.0, "video:196")])
+
+
+class ActivationContractTests(unittest.TestCase):
+    """The harness judges an `on` arm by what the page says it did. The runtime suite makes the real page say every outcome of
+    `runtime/test/fixtures/activation-spans.json` and the host suite sends each to the trace; these check the last link."""
+
+    def test_the_harness_names_the_same_spans_and_the_same_worked_outcome_as_the_contract(self):
+        self.assertEqual({f["span"]: f["worked"] for f in ab.FACTORS.values()}, {k: v["worked"] for k, v in CONTRACT.items()})
+
+    def test_only_the_worked_outcome_is_evidence_that_the_manipulation_happened_whatever_else_the_page_reports(self):
+        for factor, factor_spec in ab.FACTORS.items():
+            contract = CONTRACT[factor_spec["span"]]
+            self.assertEqual(ab.factor_validity(record("on", 50, factor=factor, spans=(contract["worked"],)), factor), [], factor)
+            for outcome in contract["not_worked"]:
+                reasons = ab.factor_validity(record("on", 50, factor=factor, spans=(outcome,)), factor)
+                self.assertTrue(any("manipulation did not happen" in r for r in reasons), f"{factor}/{outcome} must not count as activation")
+            mixed = tuple(contract["not_worked"]) + (contract["worked"],)
+            self.assertEqual(ab.factor_validity(record("on", 50, factor=factor, spans=mixed), factor), [], "one worked span among the others is enough")
+
+    def test_any_outcome_of_the_contract_in_a_control_arm_is_a_contaminated_control(self):
+        for factor, factor_spec in ab.FACTORS.items():
+            contract = CONTRACT[factor_spec["span"]]
+            for outcome in [contract["worked"], *contract["not_worked"]]:
+                reasons = ab.factor_validity(record("control", 50, factor=factor, spans=(outcome,), sent=0), factor)
+                self.assertTrue(any("control arm shows" in r for r in reasons), f"{factor}/{outcome}")
+
+    def test_the_summary_adds_up_only_the_time_of_the_worked_outcome(self):
+        for factor, factor_spec in ab.FACTORS.items():
+            contract = CONTRACT[factor_spec["span"]]
+            outcomes = [contract["worked"], *contract["not_worked"]]
+            events = [event("runtime_span", 1000 + n, k=factor_spec["span"], outcome=outcome, ms=4.0) for n, outcome in enumerate(outcomes)]
+            summary = ab.span_summary(events, factor_spec["span"])
+            self.assertEqual(summary["spans"], len(outcomes))
+            self.assertEqual(summary["total_ms"], 4.0, f"{factor}: only the span that worked adds its time")
+            self.assertEqual(summary["outcomes"], {outcome: 1 for outcome in outcomes})
+
+
+def pixel_session(arm, order, *, spans=None, enabled=None, factor="warm_draw"):
+    """One session of the pixel proof: `spans` as `scene-warm-proof.span_counts` gives them, and the host's report of the factor's switch."""
+    report = ab.FACTORS[factor]["report"]
+    on = arm == "on"
+    return {"factor_arm": arm, "order": order, "spans": spans if spans is not None else {}, "factors": {report: {"enabled": on if enabled is None else enabled}}}
+
+
+class PixelActivationTests(unittest.TestCase):
+    """The pixel proof says the manipulation changes no pixel; it means nothing unless the manipulation HAPPENED in the arm that is on."""
+
+    GOOD = [pixel_session("control", "hot"), pixel_session("control", "cold"),
+            pixel_session("on", "hot", spans={"warm_draw": {"drawn": 4, "taken": 1}}), pixel_session("on", "cold")]
+
+    def verdicts(self, sessions, factor="warm_draw"):
+        return {name.split(": ", 1)[1]: ok for name, ok, _ in ab.activation_verdicts(sessions, factor)}
+
+    def test_a_proof_whose_on_arm_drew_and_whose_control_did_not_is_active(self):
+        self.assertTrue(all(self.verdicts(self.GOOD).values()), self.verdicts(self.GOOD))
+
+    def test_an_inert_on_arm_fails_the_proof_however_identical_the_pixels_are(self):
+        for spans in ({}, {"warm_draw": {"taken": 3, "gone": 1}}, {"warm": {"-": 2}}):
+            sessions = [s if s["factor_arm"] != "on" or s["order"] != "hot" else pixel_session("on", "hot", spans=spans) for s in self.GOOD]
+            verdicts = self.verdicts(sessions)
+            self.assertFalse(verdicts["the `on` session that played into the cut reports `warm_draw`/`drawn` from the page"], spans)
+
+    def test_a_control_arm_that_shows_the_factor_is_contaminated_not_a_proof(self):
+        sessions = self.GOOD[:1] + [pixel_session("control", "cold", spans={"warm_draw": {"drawn": 1}})] + self.GOOD[2:]
+        self.assertFalse(self.verdicts(sessions)["no control session reports a `warm_draw` span"])
+
+    def test_the_host_must_report_each_arms_switch_as_asked_and_a_missing_report_never_passes(self):
+        wrong = [pixel_session("on", "hot", spans={"warm_draw": {"drawn": 1}}, enabled=False)] + self.GOOD[:2]
+        self.assertFalse(self.verdicts(wrong)["the host reports `warm_draw.enabled` as each arm was asked"])
+        silent = [dict(s, factors={}) for s in self.GOOD]
+        self.assertFalse(self.verdicts(silent)["the host reports `warm_draw.enabled` as each arm was asked"])
+
+    def test_no_sessions_is_not_agreement(self):
+        self.assertFalse(any(self.verdicts([]).values()))
+
+    def test_the_verdict_reads_the_span_and_the_worked_outcome_of_the_factor_it_is_asked_about(self):
+        sessions = [pixel_session("on", "hot", spans={"preupload": {"uploaded": 3}}, factor="preupload"), pixel_session("control", "hot", factor="preupload")]
+        self.assertTrue(all(self.verdicts(sessions, "preupload").values()))
+        self.assertFalse(self.verdicts(sessions, "warm_draw")["the `on` session that played into the cut reports `warm_draw`/`drawn` from the page"])
 
 
 def pairs(controls, ons, excess=(0, 0)):

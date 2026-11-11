@@ -45,11 +45,14 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BUDGET_DELTA_MS = 10.0
 PRE_CUT_EXCESS_MS = 20.0
+# `span` is the page's `runtime_spans` kind for the factor and `worked` the ONE outcome that means the manipulation happened (every other outcome
+# says why it did not). The list of outcomes the page can report is `runtime/test/fixtures/activation-spans.json`: the runtime suite makes the real
+# page report each, the host suite sends each to the trace, and `first-use-ab.spec.py` checks these two fields against it.
 FACTORS = {
     "preupload": {"env": "TESSEL_VIEWPORT_PREUPLOAD", "other": "TESSEL_VIEWPORT_WARM_DRAW", "report": "preupload", "feature": "texture.preupload",
-                  "span": "preupload", "target": "the picture clip's entry"},
+                  "span": "preupload", "worked": "uploaded", "target": "the picture clip's entry"},
     "warm_draw": {"env": "TESSEL_VIEWPORT_WARM_DRAW", "other": "TESSEL_VIEWPORT_PREUPLOAD", "report": "warm_draw", "feature": "scene.warm_draw",
-                  "span": "warm_draw", "target": "the cut's entry"},
+                  "span": "warm_draw", "worked": "drawn", "target": "the cut's entry"},
 }
 ARMS = ("control", "on")
 # A play that shows fewer than this share of the project's frames, or waits this long between two pictures, is a HANG: reported in its own column
@@ -103,7 +106,7 @@ def factor_validity(record, factor):
             reasons.append(f"the runtime did not announce `{spec['feature']}`")
         if factor == "preupload" and not (report.get("sent") or 0) > 0:
             reasons.append("the host sent no pre-upload (nothing was manipulated)")
-        if not any(s["fields"].get("outcome") in ("uploaded", "drawn") for s in spans):
+        if not any(s["fields"].get("outcome") == spec["worked"] for s in spans):
             reasons.append(f"the page reports no `{spec['span']}` that worked (the manipulation did not happen)")
     elif spans:
         reasons.append(f"the control arm shows `{spec['span']}` spans")
@@ -115,7 +118,8 @@ def span_summary(events, kind):
     outcomes = {}
     for span in spans:
         outcomes[span.get("outcome")] = outcomes.get(span.get("outcome"), 0) + 1
-    worked = [s["ms"] for s in spans if s.get("outcome") in ("uploaded", "drawn")]
+    worked_outcome = next((spec["worked"] for spec in FACTORS.values() if spec["span"] == kind), None)
+    worked = [s["ms"] for s in spans if s.get("outcome") == worked_outcome]
     return {"spans": len(spans), "outcomes": outcomes, "ms": RL.stats(worked), "total_ms": round(sum(worked), 1)}
 
 
@@ -503,6 +507,24 @@ def cmd_analyze(args):
     return finish(out, records, project, manifest, manifest["factor"], args.report_dir)
 
 
+def activation_verdicts(sessions, factor):
+    """What makes the pixel proof mean something: the manipulation HAPPENED. The `on` session that played into the cut reports the factor's worked
+    outcome in the page's own spans, no control session reports a span of the factor, and the host reports each arm's switch as it was asked.
+    Missing data never passes (an empty list of sessions is not "all of them agree")."""
+    spec = FACTORS[factor]
+    on_hot = [s for s in sessions if s.get("factor_arm") == "on" and s.get("order") == "hot"]
+    worked = [((s.get("spans") or {}).get(spec["span"]) or {}).get(spec["worked"], 0) for s in on_hot]
+    control = [s for s in sessions if s.get("factor_arm") == "control"]
+    shown = [(s.get("spans") or {}).get(spec["span"]) for s in control]
+    switches = [((s.get("factors") or {}).get(spec["report"]) or {}).get("enabled") for s in sessions]
+    return [
+        (f"activation: the `on` session that played into the cut reports `{spec['span']}`/`{spec['worked']}` from the page",
+         bool(on_hot) and all(n > 0 for n in worked), worked),
+        (f"activation: no control session reports a `{spec['span']}` span", bool(control) and not any(shown), shown),
+        (f"activation: the host reports `{spec['report']}.enabled` as each arm was asked", bool(sessions) and switches == [s.get("factor_arm") == "on" for s in sessions], switches),
+    ]
+
+
 def cmd_pixels(args):
     """The explicit frames of the SYNTHETIC project (no private media) are byte-identical with the factor off and on, hot and cold, in the real window.
     Only `warm_draw` has something to draw there (the project has splat scenes and no stills): the picture clip's pixels are proven in the
@@ -558,7 +580,7 @@ def cmd_pixels(args):
         for handle in locks:
             handle.close()
         shutil.rmtree(work, ignore_errors=True)
-    verdicts = W.pixel_verdicts(results, frames)
+    verdicts = W.pixel_verdicts(results, frames) + activation_verdicts(results, args.factor)
     failures = [name for name, ok, _ in verdicts if not ok]
     for name, ok, detail in verdicts:
         print(("PASS " if ok else "FAIL ") + name + ("" if ok else f"  [{str(detail)[:200]}]"))

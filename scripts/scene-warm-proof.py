@@ -540,6 +540,7 @@ def pixel_session(binary, document, arm, order, frames, cut_frames, work):
     seek_proof = load_module("seek_scrub_proof", ROOT / "scripts" / "seek-scrub-proof.py")
     lab = Lab(binary, work, env_for(arm, True))
     result = {"arm": arm, "order": order, "hashes": {}, "monitor": {}}
+    spans, cursor = [], 0
     try:
         lab.wait_ready()
         open_project(lab, document, work)
@@ -568,11 +569,36 @@ def pixel_session(binary, document, arm, order, frames, cut_frames, work):
                                                               "height": size.get("height"), "probes": []}, 120))
             data = ((explicit.get("data") or {}).get("frame")) or {}
             result["hashes"][frame] = {"hash": data.get("hash"), "inspected": data.get("inspected"), "mean": data.get("mean")}
-        stats = (lab.report().get("session") or {}).get("stats") or {}
+            cursor = drain_spans(lab, cursor, spans)
+        session = lab.report().get("session") or {}
+        stats = session.get("stats") or {}
         result["warmed"] = stats.get("warmed")
+        # What the page says it did (so a proof can tell an experiment that ran from one that was inert) and what the host reports of its switches.
+        result["spans"] = span_counts(spans)
+        result["factors"] = {name: session.get(name) for name in ("preupload", "warm_draw")}
         return result
     finally:
         lab.stop()
+
+
+def drain_spans(lab, cursor, spans):
+    """Appends to `spans` the page's own account of its work (`runtime_span` events of the host's trace) gained since `cursor`; returns the
+    new cursor. A span reaches the host with a frame, so a session drains after every frame it asked for. A refused poll keeps the cursor."""
+    trace = lab.op({"op": "render.trace", "since": cursor, "limit": 16384})
+    data = (trace or {}).get("data") or {}
+    events = data.get("events") or []
+    spans.extend(e["fields"] for e in events if e.get("kind") == "runtime_span")
+    return data.get("next", cursor) if events else cursor
+
+
+def span_counts(spans):
+    """`{kind: {outcome: n}}` of the page's spans (a span without an outcome, like a scene warm, counts under `-`)."""
+    counts = {}
+    for span in spans:
+        by_outcome = counts.setdefault(span.get("k"), {})
+        outcome = span.get("outcome", "-")
+        by_outcome[outcome] = by_outcome.get(outcome, 0) + 1
+    return counts
 
 
 def pixel_verdicts(sessions, frames):
