@@ -593,8 +593,13 @@ def drag(window, timed, check, step, scene, variables, node, committed, hashes, 
     before = transform(window, scene, node)
     undo_before, redo_before = depths(window)
     ms, state, info = window.settle(scene, frame)
-    start_hash = picture_hash(state) if state else None
-    start_mark = mark(state) if state else -1
+    # The picture before the gesture is the base of every pixel comparison below. `settle` hands back the last state it
+    # saw when it times out (`ms is None`): that picture never converged and is not a base, so nothing is pressed.
+    if not check(f'{sid}: the picture before the gesture converged (it is the base of the pixel checks)',
+                 ms is not None, json.dumps(info)[:260]):
+        return
+    start_hash = picture_hash(state)
+    start_mark = mark(state)
     ok, listed = timed(sid, {'op': 'scene.gizmo.state', 'scene': scene, 'frame': frame}, phase=phase)
     if not check(f'{sid}: gizmo state', ok, listed):
         return
@@ -663,8 +668,11 @@ def drag(window, timed, check, step, scene, variables, node, committed, hashes, 
             ms, state, info = window.settle(scene, frame, after=None)
             check(f'{sid}: the monitor converged after the cancel', ms is not None, json.dumps(info))
         record['picture'] = info
+        # A timeout (`ms is None`) leaves the last state seen, which can still hold the base picture's hash: only a
+        # picture the monitor converged on after the cancel may be compared with the base.
         check(f'{sid}: after the cancel the picture is the base picture',
-              state is not None and picture_hash(state) == start_hash, (start_hash, picture_hash(state) if state else None))
+              ms is not None and state is not None and picture_hash(state) == start_hash,
+              (ms, start_hash, picture_hash(state) if state else None))
         check(f'{sid}: the cancel left the base document (transform equals the one before the press)',
               near(transform(window, scene, node), before))
         check(f'{sid}: the cancel added no undo entry and no redo entry',

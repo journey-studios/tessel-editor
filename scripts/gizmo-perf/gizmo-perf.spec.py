@@ -666,6 +666,93 @@ class Candidate(unittest.TestCase):
         self.assertEqual(native.history_offset(1, 0), 1)
 
 
+class ScriptedWindow(native.Window):
+    """A window for `native.drag` whose monitor answers from a script: each `settle` pops the next
+    `(ms, state, info)` (`ms=None` is a timeout, which still carries the last state seen, as the real one does)."""
+
+    def __init__(self, settles):
+        self.settles = list(settles)
+        self.log = []
+        self.native = FakeNative()
+
+    ANSWERS = {
+        'scene.get': {'value': 0},
+        'history.status': {'undo_depth': 0, 'redo_depth': 0},
+        'scene.gizmo.state': {'overlay': {'handles': [{'id': 'x', 'to': {'u': 0.0, 'v': 0.0}}]}},
+        'scene.pointer.down': {'dragging': True, 'hit': {'handle': 'x'}},
+        'scene.pointer.move': {'applied': True, 'document_changed': False, 'would_change': True, 'position': 1.0},
+    }
+
+    def op(self, request, timeout=90):
+        self.log.append(request['op'])
+        return True, self.ANSWERS.get(request['op'], {})
+
+    def settle(self, scene, frame, after=None, seconds=30):
+        return self.settles.pop(0)
+
+    def viewport(self):
+        return {'directed': {'shown': {'request_id': 9}}}
+
+    def trace(self):
+        return {}
+
+
+def seen(ms, request, picture_hash):
+    """One scripted `settle` result: the monitor showing picture `request` whose read-back hash is `picture_hash`."""
+    state = {'directed': {'scene': 'proof', 'shown': {'request_id': request, 'edit_frame': 24}},
+             'last_frame': {'request': request, 'hash': picture_hash}}
+    return ms, state, native.picture(state)
+
+
+class DragBase(unittest.TestCase):
+    """What the pixel checks of a gesture may be compared with: only a picture the monitor converged on."""
+
+    STEP = {'id': 'drag.translate.cancel', 'kind': 'drag', 'phase': 'hot', 'tool': 'translate', 'space': 'world',
+            'handle': 'x', 'delta': [0.03, 0.0], 'moves': 2, 'end': 'cancel'}
+    BASE_CHECK = 'drag.translate.cancel: the picture before the gesture converged (it is the base of the pixel checks)'
+    CANCEL_DREW = 'drag.translate.cancel: the cancel drew a NEW picture (the candidate had been drawn)'
+    CANCEL_IS_BASE = 'drag.translate.cancel: after the cancel the picture is the base picture'
+
+    def run_drag(self, settles):
+        window = ScriptedWindow(settles)
+        checks = {}
+
+        def check(label, condition, detail=''):
+            checks[label] = bool(condition)
+            return bool(condition)
+
+        def timed(sid, request, timeout=120, phase=None):
+            return window.op(request, timeout)
+
+        native.drag(window, timed, check, self.STEP, 'proof', {'frame': 24}, 'n', [], [],
+                    {'steps': {self.STEP['id']: {}}}, {})
+        return window, checks
+
+    def test_a_base_picture_that_never_converged_stops_the_gesture_before_the_press(self):
+        window, checks = self.run_drag([seen(None, 3, 'stale')])
+        self.assertEqual(checks, {self.BASE_CHECK: False})  # and nothing else was compared with that picture
+        self.assertNotIn('scene.pointer.down', window.log)
+        self.assertEqual(window.settles, [])
+
+    def test_a_cancel_that_never_converged_cannot_pass_on_the_stale_hash_of_the_base(self):
+        # the last state seen before the timeout still shows the base picture's hash: the old check read it as a pass
+        window, checks = self.run_drag([seen(5.0, 1, 'base'), seen(5.0, 2, 'candidate'), seen(None, 2, 'base')])
+        self.assertIn('scene.pointer.down', window.log)
+        self.assertFalse(checks[self.CANCEL_DREW])
+        self.assertFalse(checks[self.CANCEL_IS_BASE])
+
+    def test_a_cancel_that_converged_on_the_base_picture_passes_every_check(self):
+        window, checks = self.run_drag([seen(5.0, 1, 'base'), seen(5.0, 2, 'candidate'), seen(5.0, 3, 'base')])
+        self.assertEqual([label for label, ok in checks.items() if not ok], [])
+        self.assertTrue(checks[self.BASE_CHECK] and checks[self.CANCEL_IS_BASE])
+        self.assertIn('scene.pointer.cancel', window.log)
+
+    def test_a_cancel_that_converged_on_another_picture_than_the_base_fails(self):
+        window, checks = self.run_drag([seen(5.0, 1, 'base'), seen(5.0, 2, 'candidate'), seen(5.0, 3, 'candidate')])
+        self.assertTrue(checks[self.CANCEL_DREW])
+        self.assertFalse(checks[self.CANCEL_IS_BASE])
+
+
 class Provenance(unittest.TestCase):
     def setup(self, root):
         root = Path(root)
