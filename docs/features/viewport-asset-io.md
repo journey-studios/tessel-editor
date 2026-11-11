@@ -185,6 +185,12 @@ ciência (braços, regras, relatório). Regras comuns:
 - **Um juiz de validade** (`core_validity`): a sessão rodou até o fim, o editor seguiu vivo, o host rodou o modo pedido, a fila de leitura não saturou, nenhuma leitura entrou em pânico nem foi respondida como velha durante
   um play, nenhum evento de trace se perdeu, nenhum pedido de asset teve outro status que 200/206 e nenhum asset falhou ao carregar na página; o que é do experimento (o fator, o aquecimento, a conta da página) continua dele.
   `play` devolve `None` no prazo estourado, a janela exige o playhead no fim e o veredito do first-use só lê pares válidos nas duas pontas. Os números publicados antes dele **não** foram reanalisados (BL157.13).
+- **Sessão falha tem uma definição só** (`failed_session`): erro, `errors`, jogada que falhou, editor morto ou falta de play invalidam a sessão **também quando ela ficou presa** (`hung`); `playback-poll-ab.py` e `runtime-bundle-ab.py` a usam
+  e o relatório do bundle diz HUNG **e** FAILED juntos. `core_validity` publica os erros do registro como `{code, kind}`. `play` segue esperando enquanto o estado é `preparing` (sob o mesmo prazo) e trata a parada sem `ticks` como jogada
+  que nunca rodou; `window_validity` confere a conta da página de **cada** quadro dos segmentos de play.
+- **Recusas antes de medir**: `--pairs` e `--iterations` são inteiros ≥ 1 (`positive_int`; saída 2 antes de qualquer pré-requisito, trava ou pasta); `finish` nunca devolve 0 para um lote sem sessão; um `--out` que já guarda um lote do
+  experimento (`manifest.json` ou `session-*`) é recusado antes do gate, do disco e das travas, sem escrever nada. A cópia de trabalho do projeto grava os caminhos de mídia **relativos** como absolutos (relativos à pasta do documento, como
+  o editor os decodifica; `..` ou caminho vazio é recusado e conta como ausente), para que a sessão leia a mesma mídia que o documento aponta.
 - **Erros publicados são `{code, kind}`**: `kind` ∈ `timeout`, `ended_early`, `host_refused`, `exception`, `other`; `code` é o código de erro do host (`[a-z_]{1,32}`) ou um nome de classe `…Error`/`…Exception` de até 40 letras, tirados por
   padrão, nunca um pedaço do texto. A mensagem crua e o fim do log do editor ficam só no `session-*.json` local. O `code` é um padrão, não uma lista: um nome de arquivo que casasse `<Nome>Error` apareceria (BL157.17).
 - **Cada sessão começa sem `TESSEL_*` herdado** (`lab_environment()`): o ambiente do braço é o único; o braço A do `ab` do transit diz `TESSEL_VIEWPORT_PROBE_GPU_FINISH=0`.
@@ -194,12 +200,13 @@ ciência (braços, regras, relatório). Regras comuns:
 - **Nada sinaliza processo**: o vigia do `runtime-bundle-ab.py` só lê e amostra; helpers do WebKit que sobrevivem ao editor são relatados (pid, papel, arquivo da amostra) e o operador decide. A posse deles não é provável
   localmente (BL157.14).
 - **Gaps**: `gap_context` põe o span da página onde ele **rodou** (`[t_ms - ago_ms - ms, t_ms - ago_ms]`), não onde chegou; o `ahead` do transit conta o trabalho em andamento ou na fila até ele **terminar**, e valores de builds
-  anteriores (que contavam até o trabalho começar) não se comparam. Gráficos são opt-in (`--charts` em `real-latency-ab.py analyze`).
+  anteriores (que contavam até o trabalho começar) não se comparam; só o que `fetch_ms` cobre é chamado de fetch, o resto de uma carga é `page_load_other_ms` (carga de tipo desconhecido, ainda trabalho da página). Os vãos de entrega
+  não contam o refinamento do playhead parado (`delivered_gaps` reusa `play_pictures`). Gráficos são opt-in (`--charts` em `real-latency-ab.py analyze`).
 
-Testes: `ab-core.spec.py` (43), `ab-batch.spec.py` (30), `ab-pixels.spec.py` (8) e `playback-poll-rule.spec.py` (10); 681 testes nos 28 specs de `scripts/*.spec.py`. Nenhuma sessão real do editor foi executada para estas correções (só
+Testes: `ab-core.spec.py` (60), `ab-batch.spec.py` (36), `ab-pixels.spec.py` (11), `ab-usage.spec.py` (2: `--pairs` e `--iterations` de cada runner, pelo `main()` dele, sem tocar editor nem pasta) e `playback-poll-rule.spec.py` (10); 736 testes nos 29 specs de `scripts/*.spec.py`. Nenhuma sessão real do editor foi executada para estas correções (só
 registros sintéticos e um `Lab` falso): o `pixels` na janela real fica **a validar**.
 
-### Runner e regras pré-fixadas (`scripts/first-use-ab.py`, 32 testes puros em `first-use-ab.spec.py`)
+### Runner e regras pré-fixadas (`scripts/first-use-ab.py`, 37 testes puros em `first-use-ab.spec.py`)
 
 `narrow` (janela 114–210) e `full` (projeto real completo; `RL.run_session`) com `--factor preupload|warm_draw`; `pixels` (janela real, sintético,
 só `warm_draw`: o projeto sintético não tem imagens; os pixels do pré-upload são os testes de Chrome); `analyze` regenera o relato. Cada braço
@@ -247,8 +254,9 @@ no Git e os JSON brutos, com o projeto privado, ficam fora dele ([proveniência]
 - Os tempos de fetch/decode pertencem ao resultado de cada carga admitida (identidade do objeto de metadados, em `WeakMap`),
   não ao ID reutilizável do asset. Cargas antigas recusadas/canceladas não publicam tempos nem apagam os da substituta.
   O campo bridge `asset.state.timings` e os metadados não mudam. Teste puro do runtime exercita a corrida e leitura fora de ordem.
-- Nada publicado carrega texto de erro: `redact()` foi apagado na revisão thermo da PR #41 (a regex ainda vazava nomes com aspas, apóstrofo e dois-pontos).
-  O erro publicado é `{code, kind}` ([Núcleo comum dos runners](#núcleo-comum-dos-runners-scriptsab)); a mensagem crua e o fim do log do editor ficam só no `session-*.json` local.
+- O que os runners publicam hoje de um erro é só `{code, kind}` ([Núcleo comum dos runners](#núcleo-comum-dos-runners-scriptsab)); a mensagem crua e o fim do log do editor ficam só no `session-*.json` local.
+  `redact()` foi apagado na revisão thermo da PR #41 (a regex ainda vazava nomes com aspas, apóstrofo e dois-pontos). Duas linhas históricas de `docs/viewport-real-latency-ab-results/analysis-all-16-sessions.md`
+  (de antes da mudança) ainda mostram a classe e o errno (`ConnectionRefusedError(61, 'Connection refused')`); não há caminho nem nome nelas.
 - `ab-report` foi apagado: o único analisador de cada runner é `analyze`, e ele só lê o lote que o manifesto descreve (um arquivo por posição, todos com o `batch_id`
   do manifesto; faltante, extra, de outro lote ou lote sem `batch_id` é **recusado**, sem escrever nada). Os números publicados antes disso não foram reanalisados (BL157.13).
 - **Lacuna de correlação:** `asset_load_sent` grava `path` **só** para fonte com arquivo (o mesmo rótulo `p=<caminho>` de `asset_cb`/`asset_io`, provado por um teste que leva as mensagens `asset.load` reais pelo `ViewportHost`);
@@ -285,7 +293,7 @@ subseção). Nada aqui muda o produto: os dois fatores seguem opt-in e desligado
 | | `orchestrator-loads.test.mjs` | 4 | a carga pronta devolve o pedido que responde e os tempos da **própria** carga; carga ultrapassada por recarga é cancelada com o **seu** pedido, nas duas ordens de chegada; carga liberada em voo |
 | Contrato de ativação | `orchestrator-contract.test.mjs` + `runtime/test/fixtures/activation-spans.json` | 19 | para cada span do contrato (`preupload`: `uploaded`; `warm_draw`: `drawn`), cada desfecho é emitido pelo runtime como `{k, outcome, ms}` em `frame.done.runtime_spans`; varredura do código real: o que `drawWarmed` (em `warm-draw.js`), `runWarmDraw`, `preuploadStill` e `step` podem devolver é **exatamente** o vocabulário do contrato |
 | Host (Rust) | `crates/desktop/src/workstation/asset_io_tests.rs` | 1 | todo desfecho do contrato chega ao `render.trace` do host como `runtime_span` com `k`/`outcome`/`ms` intactos |
-| Harness (Python) | `first-use-ab.spec.py` (32), `scene-warm-proof.spec.py` (29) | 13 novos | só o braço que relata o desfecho que funcionou é "ativo"; controle contaminado, interruptor diferente do pedido ou ausência de relato **reprovam**; coleta de spans da prova de pixels |
+| Harness (Python) | `first-use-ab.spec.py` (37), `scene-warm-proof.spec.py` (29) | 13 novos | só o braço que relata o desfecho que funcionou é "ativo"; controle contaminado, interruptor diferente do pedido ou ausência de relato **reprovam**; coleta de spans da prova de pixels |
 | Chrome real (já existia) | `preupload-browser.test.mjs` (11), `warm-draw-browser.test.mjs` (10) | 21 | hashes exatos iguais, alvos/texturas/geometrias, liberação do alvo, perda de contexto real |
 
 ### Como a página é testada sem WebGL
@@ -383,7 +391,7 @@ constrói quando é o ponto de entrada (`realpathSync(process.argv[1])`), então
 |---|---|---|
 | Node puro | `runtime/test/spark-release-lock.test.mjs` | só a chamada do worker some e a de `readStream` fica; Spark com 0 ou 2 chamadas faz o build falhar; o Spark instalado tem exatamente 1; o padrão deixa o Spark intacto e `TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1` o remove (a checagem do `dist` exige `TESSEL_REQUIRE_RUNTIME=1`; sem ela, pulada) |
 | Mutação (script fora do repositório) | — | 6 de 6 mutantes mortos: patch que não faz nada; patch que também solta o leitor da thread principal; sem checagem de contagem; "pelo menos uma"; patch que apaga a linha seguinte; `dist` sem a correção |
-| Suíte do runtime com Chrome real | `TESSEL_REQUIRE_RUNTIME=1 pnpm test` | 336 de 336 com o bundle corrigido |
+| Suíte do runtime com Chrome real | `TESSEL_REQUIRE_RUNTIME=1 pnpm test` | passa inteira com o bundle padrão (sem o remendo) e com ele (`TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1`); a contagem do head final está nos gates do BL157 (a de 336 era a da rodada em que o remendo era o padrão do build) |
 | Laboratório (WKWebView real, sem editor) | `runtime/scripts/perf`, caso `real-load` | Intercalado: **4 de 193 runs presos sem a correção, 0 de 193 com ela** (p exato unilateral 0,0615). **Réplica pré-registrada (300 por braço): 0 e 0 → NÃO REPRODUZIDO.** Total intercalado: **4 de 493 contra 0 de 493** (p 0,062: sugestivo, não conclusivo). Mais 8 de 120 em lote sem pareamento e sob carga ≈ 35, fora da conta |
 | Janela real, mesma build | `scripts/runtime-bundle-ab.py` | 36 pares: **1 sessão presa sem a correção, 0 com ela → NÃO REPRODUZIDO** (p 0,5). A sessão presa tem a cadeia do deadlock em 2 amostras: o defeito existe no editor real, mas **a rodada não tem poder para julgar a correção** |
 
@@ -415,9 +423,10 @@ Resultados do laboratório (onde o primeiro crossfade paga, aquecer na abertura 
 `python3 scripts/runtime-bundle-ab.py` pergunta ao editor real, com a janela e o projeto reais, o que o laboratório respondeu sem eles. Mesmo binário nos dois braços; os braços diferem **só** no `runtime.js`
 que a página carrega: o `TESSEL_RUNTIME_DIR` de cada sessão é uma pasta temporária com o bundle do braço e o `index.html` do repositório. O resto é o controle de `first-use-ab.py` (I/O assíncrono, traço ligado, aquecimento de
 cena ligado, os dois fatores de primeiro uso explicitamente desligados). Cada sessão é um editor novo (HOME e socket próprios) que toca o projeto inteiro duas vezes (a primeira e uma repetição no mesmo processo),
-na ordem desligado/ligado, ligado/desligado… O bundle sem a correção é um argumento (`--unpatched-bundle`, construído dos mesmos fontes com o `build.mjs` anterior, fora do repositório); antes da primeira sessão cada bundle
+na ordem desligado/ligado, ligado/desligado… O bundle sem a correção é um argumento (`--unpatched-bundle`: o `runtime.js` de um `./scripts/runtime build` simples, já que o remendo é opt-in e o build simples o deixa de fora; guardado fora do repositório); antes da primeira sessão cada bundle
 é lido: o sem correção precisa ter a chamada do worker uma vez, o corrigido nenhuma. Depois, cada sessão é conferida contra o registro `asset_io` **do próprio host** do `runtime.js` que serviu:
-dentro de um braço todas receberam o mesmo número de bytes (o do arquivo do braço) e o bundle sem correção é exatamente 14 bytes maior; senão o run é `INVALID ARMS` e não diz nada sobre a correção.
+dentro de um braço todas receberam o mesmo número de bytes (o do arquivo do braço) e o bundle sem correção é exatamente 14 bytes maior; senão o run é `INVALID ARMS` e não diz nada sobre a correção. Uma sessão que rodou
+sem o registro `asset_io` de `/runtime.js` também é achado do braço (a sessão que falhou segue só "não verificada", porque pode ter morrido antes de carregar a página).
 
 Um vigia lê a tabela de quadros: com o editor tocando e nenhum quadro novo por 10 s, ele roda `/usr/bin/sample` no processo de WebContent novo (no máximo 2 por sessão) e guarda o arquivo. A amostra só é **deadlock** se tiver
 `ReadableStreamDefaultReader::releaseLock`, a marcação do coletor (`visitOutputConstraints` ou `isReachableFromOpaqueRoots`) e `lockSlow`. Só um helper cuja amostra foi deadlock e que sobreviveu à sessão é morto; os demais
@@ -438,7 +447,7 @@ O p exato unilateral (hipergeométrico) sai só como diagnóstico. A carga é re
 ≥ 16 GiB livres, os dois locks de GPU. Saídas em `--out`: `manifest.json`, `run-NN-braço.json`, `hang-*.txt` (amostras), `analysis.json`, `analysis.md`, `runs.sha256`; `--report-dir` publica as três últimas.
 O relatório traz também **como foram os plays de cada braço** (maior espera entre duas imagens por play, gaps lentos de 62,5 e 100 ms, em quantos plays cada local do projeto teve um gap lento): é o estado do editor na
 rodada, não uma comparação que este experimento decide (as sessões dividem uma máquina, não um relógio).
-`scripts/runtime-bundle-ab.spec.py` tem 59 testes puros (ordem dos braços, achados do bundle, regra de play preso, assinatura do deadlock com texto realista, hipergeométrico, veredito, linhas de sessão sintéticas, o vigia, a
+`scripts/runtime-bundle-ab.spec.py` tem 65 testes puros (ordem dos braços, achados do bundle, regra de play preso, assinatura do deadlock com texto realista, hipergeométrico, veredito, linhas de sessão sintéticas, o vigia, a
 pasta temporária, o bundle que o host serviu, os resumos dos gaps por play, o vigia que nunca sinaliza processo, a recusa do braço remendado que cita o build com `TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1`); mutação: 39 de 39 mutantes mortos na rodada original (script fora do repositório) e,
 na revisão thermo da PR #41, cada teste novo falha com a correção revertida.
 
@@ -466,16 +475,16 @@ Registrado, não filtrado: a sessão 11 deixou 2 helpers de GPU vivos depois do 
 - A causa da espera de GPU na primeira entrada de crossfade segue **sem atribuição**; `warm_draw` desloca o custo (do quadro de entrada para o ponto do aviso), então fica opt-in. Promover a padrão exige A/B nativo pareado em
   máquina quieta (`first-use-ab.py full --factor warm_draw --pairs N`) e uma decisão deliberada: não feito aqui.
 - Continuam pendentes: a prova de pixels nativa do `warm_draw` com o veredito de ativação (`first-use-ab.py pixels --factor warm_draw`) e a correlação dos fetches expandidos de `frame_sequence`.
-- Nada foi feito em Rust nesta rodada. Os gates Rust foram reexecutados no head final: fmt, check, `clippy -D warnings` e build com saída 0; `test --workspace` 2.239 passaram, 0 falharam, 13 ignorados;
-  runtime com Chrome real 336 de 336 (ver o relatório §16.6). Isso fecha a pendência de "gates Rust da árvore final" do §15.
+- Nada foi feito em Rust naquela rodada. **Histórico (antes da revisão thermo):** os gates Rust foram reexecutados no head de então (fmt, check, `clippy -D warnings` e build com saída 0; `test --workspace` 2.239 passaram, 0 falharam, 13 ignorados;
+  runtime com Chrome real 336 de 336, ver o relatório §16.6), o que fechou a pendência de "gates Rust da árvore final" do §15. Os gates do head atual estão em [BL157](../backlog.md) e no relatório §16.7.
 - A cadência do relógio de reprodução (BL157.6, abaixo): **leitor** entregue, **agendamento opt-in** (`TESSEL_PLAYBACK_POLL=deadline`) implementado com o padrão em `fixed`; o A/B nativo que decide o padrão **não foi rodado**.
 
 ### Reprodução de BL157.4
 
 ```sh
 cd runtime && pnpm test                                      # 364 testes; TESSEL_REQUIRE_RUNTIME=1 inclui o bundle e o Chrome real
-python3 scripts/runtime-bundle-ab.spec.py                    # 59 testes puros do runner nativo
-python3 scripts/playback-cadence.spec.py                     # 74 testes puros do leitor de cadência (BL157.6)
+python3 scripts/runtime-bundle-ab.spec.py                    # 65 testes puros do runner nativo
+python3 scripts/playback-cadence.spec.py                     # 79 testes puros do leitor de cadência (BL157.6)
 # laboratório (precisa de macOS com WKWebView; as nuvens são caminhos locais seus):
 node runtime/scripts/perf/run.mjs --engine webkit --suite real --cases real-entry --variants current,warmdraw --passes 30 --fresh \
   --pacing film --warmup 10 --size 1280x720 --quality preview --drain read1x1 --out <dir> \
@@ -516,7 +525,7 @@ que chega em média 1,4 ms atrasada: o intervalo real é 22,29 ms e um quadro de
 prevê (13,1% e 86,9%), nos dois braços, então a causa é o agendamento e não o bundle. É um micro-tranco regular (um quadro curto a cada ≈ 8) com a média certa (41,6 ms entregues em média); 28 quadros pulados no total.
 (Essas sessões são de um host sem o traço do relógio lido, então o atraso de observação delas não existe; o do `fixed` é o do modelo, **a confirmar no A/B**.)
 
-`scripts/playback-cadence.spec.py` tem 74 testes puros (janelas de play, consultas por troca de quadro, quadros pulados, entregas, as marcas de 30, 62,5 e 100 ms **e suas bordas**, o atraso de observação, o modelo com a fronteira de
+`scripts/playback-cadence.spec.py` tem 79 testes puros (janelas de play, consultas por troca de quadro, quadros pulados, entregas, as marcas de 30, 62,5 e 100 ms **e suas bordas**, o atraso de observação, o modelo com a fronteira de
 ponto flutuante, percentis, grupos, leitura de arquivo e pasta, cada campo de `each_play`, saída em Markdown e JSON, códigos de saída 0 e 2); mutação: 118 de 118 mutantes mortos, com o controle sem mutação passando
 (script fora do repositório; o primeiro desenho da mutação deixou 29 sobreviventes: bordas e campos sem teste e um trecho redundante, que foi removido; os testes foram acrescentados até não sobrar nenhum).
 
@@ -553,7 +562,8 @@ a regra vem antes dos números, no histórico. Resumo (os números são marcas d
 | SEM GANHO | no `deadline`: mais de 3% das imagens < 30 ms; atraso médio de observação acima de 4 ms ou menos de 5 ms abaixo do `fixed`; consultas por troca fora de 1,9–2,15; atraso menor em menos de 90% dos pares |
 | ADOTAR | nenhum dos anteriores: permite tornar `deadline` o padrão; **não é aceite do usuário nem de BL157** |
 
-Carga e ocupação da máquina são **registradas, nunca filtradas**; sessão nenhuma é descartada. O runner tem 86 testes puros (os braços, a regressão, o veredito, o relatório) e a regra fixada tem 10 em `playback-poll-rule.spec.py` (as constantes, as bordas e o bloqueio por regra não commitada);
+As razões são comparadas **cruas** com os limiares (751 de 25.000 imagens = 3,004% é SEM GANHO; só o texto arredonda) e um par contado sem atraso de observação num dos braços fica na base dos 90% como "atraso não menor"
+(a regra fala em pares contados; a `rule.txt` não mudou). Carga e ocupação da máquina são **registradas, nunca filtradas**; sessão nenhuma é descartada. O runner tem 93 testes puros (os braços, a regressão, o veredito, o relatório) e a regra fixada tem 10 em `playback-poll-rule.spec.py` (as constantes, as bordas e o bloqueio por regra não commitada);
 a ordem dos braços, o disco e as travas, a conferência do braço e `run`/`analyze` são testados uma vez só, no núcleo comum (`ab-batch.spec.py`). Na rodada original: mutação 150 de 150, com o controle passando (script fora do repositório; o primeiro desenho deixou 7 sobreviventes, 5 deles lacunas reais de teste, e 2 mutantes só "morriam" por erro de
 sintaxe: o script passou a rejeitar mutante que não compila, e uma sessão `hung` sem os dois plays deixou de contar como par, como a regra diz).
 
@@ -581,8 +591,8 @@ release, **não** foi usado. Isto mostra que o laço funciona na janela real; **
 Reprodução (sem janela, GPU nem dispositivo):
 
 ```sh
-python3 scripts/playback-cadence.spec.py                      # 74 testes puros do leitor
-python3 scripts/playback-poll-ab.spec.py                      # 86 testes puros do runner do A/B
+python3 scripts/playback-cadence.spec.py                      # 79 testes puros do leitor
+python3 scripts/playback-poll-ab.spec.py                      # 93 testes puros do runner do A/B
 python3 scripts/playback-poll-rule.spec.py                    # 10 testes puros da regra fixada
 ./scripts/cargo test -p tessel-editor --locked playback       # a conta pura (34) e o laço (10) de `playback.rs`
 python3 scripts/playback-cadence.py <dir> --group auto --markdown cadence.md   # lê o traço do host de cada sessão (só lê)

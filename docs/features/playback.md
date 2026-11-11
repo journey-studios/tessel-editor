@@ -31,7 +31,7 @@ comando do clique na régua) e o áudio sai do mesmo plano (`plan_audio`) que o 
   de 41,67 ms vale 1,87 consultas, então 13% das trocas de quadro são vistas ≈ 22 ms depois da anterior e 87% ≈ 44 ms depois. `deadline` espera até a próxima fronteira de quadro **mais 1 ms de folga**,
   descontado o tempo desde a leitura do relógio e nunca mais que meio quadro (continua a consultar ao menos 2 vezes por quadro); volta a esperar meio quadro quando não há leitura, o relógio não anda
   (pausa, nível igual, ou voltou por um `seek`) ou a taxa não é um número válido. A conta é a função pura `playback_poll::next_poll`
-  (`crates/desktop/src/workstation/playback_poll.rs`), testada sem janela nem dispositivo; o laço em `playback.rs` tem testes determinísticos (relógio e idade da leitura roteirizados).
+  (`crates/desktop/src/workstation/playback_poll.rs`), testada sem janela nem dispositivo; o laço em `playback.rs` tem testes determinísticos (a leitura do relógio roteirizada; a idade dela é a do relógio real, e os testes aceitam toda espera até a folga mínima de 1 ms).
   `playback.status.poll` diz o modo em uso; com `TESSEL_VIEWPORT_TRACE=1`, `play_clock_started` traz `poll` e cada `tick` traz `clock` (o que o relógio disse, em quadros fracionários) e `next_ms`
   (a espera armada). O padrão **só muda** por um A/B nativo pareado com regra fixada antes de medir ([F063 §BL157.6](viewport-asset-io.md#bl1576--a-cadência-do-relógio-de-reprodução-e-o-agendamento-da-consulta));
   o ganho esperado é de **regularidade das imagens**, não das pausas de 60–160 ms.
