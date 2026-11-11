@@ -1,7 +1,11 @@
 """Pure-logic tests of the BL157.1 real-project A/B harness; no editor, GPU, runtime page or private media is started."""
+import contextlib
 import importlib.util
+import io
+import sys
 from pathlib import Path
 import unittest
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location("real_latency_ab", Path(__file__).with_name("real-latency-ab.py"))
 ab = importlib.util.module_from_spec(spec)
@@ -67,6 +71,23 @@ class ArmTests(unittest.TestCase):
         self.assertEqual((group["with_ui_stall"], group["with_read_overlap"]), (2, 4))
         self.assertEqual((group["in_prefetch_window"], group["at_cut"], group["at_video_entry"], group["other"]), (2, 2, 0, 2))
         self.assertEqual(group["worst_gap_ms_per_session"], [110.0])
+
+
+class PixelsCommandTests(unittest.TestCase):
+    def parse(self, *argv):
+        seen = {}
+        with mock.patch.object(ab, "cmd_pixels", side_effect=lambda args: seen.update(vars(args)) or 0), \
+                mock.patch.object(sys, "argv", ["real-latency-ab.py", "pixels", *argv]), contextlib.redirect_stderr(io.StringIO()):
+            return ab.main(), seen
+
+    def test_the_pixel_proof_takes_neither_a_lock_wait_nor_a_lower_disk_floor(self):
+        code, seen = self.parse("--out", "o")
+        self.assertEqual(code, 0)
+        self.assertEqual(sorted(seen), ["binary", "command", "out"])
+        for flag in (("--min-free-gib", "0"), ("--lock-wait", "5")):
+            with self.assertRaises(SystemExit) as raised:
+                self.parse("--out", "o", *flag)
+            self.assertEqual(raised.exception.code, 2, flag)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 """Tests of what every A/B runner does around its own science (`scripts/ab/batch.py`): the prerequisites of a run, the manifest, the run loop,
 saving and analysing a batch. No editor, GPU, runtime page or private media is started; the lab (`scene-warm-proof.py`) is a fake."""
 import contextlib
+import fcntl
 import io
 import json
 import re
@@ -13,6 +14,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ab import batch as B  # noqa: E402
+from ab import warm_proof  # noqa: E402
 from ab.project import sha256_file  # noqa: E402
 
 PROJECT = {"length": 600, "fps": 24.0, "cuts": [186], "video_starts": [], "sources": [{"path": "/private/not-published.mov", "kind": "video"}]}
@@ -259,6 +261,27 @@ class AnalysisTests(Folder):
         self.assertEqual(json.loads((out / "analysis.json").read_text())["manifest"], saved)
         self.assertIn("report of 4 sessions", shown.getvalue())
         self.assertEqual(len((out / "runs.sha256").read_text().splitlines()), 4)
+
+
+class LockFileTests(unittest.TestCase):
+    def test_a_run_releases_its_locks_and_never_deletes_the_lock_files(self):
+        proof = warm_proof()
+        with tempfile.TemporaryDirectory() as folder:
+            paths = [str(Path(folder) / "a.lock"), str(Path(folder) / "b.lock")]
+            held = proof.acquire_locks(0, paths)
+            self.assertEqual([handle.name for handle in held], paths)
+            run = B.Run(Path(folder) / "bin", Path(folder) / "doc", PROJECT, held, 0.0)
+            with contextlib.redirect_stdout(io.StringIO()), mock.patch.object(B, "git_state", return_value={"sha": "c" * 40, "dirty_files": 0}), \
+                    mock.patch.object(B, "sha256_file", return_value="0" * 64):
+                manifest = B.manifest_of(run, ["first"], runtime_js=None)
+                B.run_arms(run, Path(folder) / "out", manifest, EXPERIMENT, lambda index, arm: {})
+            self.assertTrue(all(Path(path).exists() for path in paths), "a lock is a file other benchmarks wait on: it is released, never removed")
+            again = proof.acquire_locks(0, paths)
+            self.assertEqual(len(again), 2, "closed handles leave the locks free")
+            for handle in again:
+                fcntl.flock(handle, fcntl.LOCK_UN)
+                handle.close()
+            self.assertEqual(manifest["locks"], paths)
 
 
 if __name__ == "__main__":

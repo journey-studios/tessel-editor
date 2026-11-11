@@ -1,8 +1,12 @@
 """Pure-logic tests of the BL157.3 first-use A/B; no editor, GPU, runtime page or private media is started."""
+import contextlib
 import importlib.util
+import io
 import json
+import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location("first_use_ab", Path(__file__).with_name("first-use-ab.py"))
 ab = importlib.util.module_from_spec(spec)
@@ -253,6 +257,23 @@ class VerdictTests(unittest.TestCase):
         self.assertTrue(ab.pair_rows(runs, "preupload", 196)[0]["comparable"])
         runs[1]["quiet_class"] = "loaded"
         self.assertFalse(ab.pair_rows(runs, "preupload", 196)[0]["comparable"])
+
+
+class PixelsCommandTests(unittest.TestCase):
+    def parse(self, *argv):
+        seen = {}
+        with mock.patch.object(ab, "cmd_pixels", side_effect=lambda args: seen.update(vars(args)) or 0), \
+                mock.patch.object(sys, "argv", ["first-use-ab.py", "pixels", "--factor", "warm_draw", *argv]), contextlib.redirect_stderr(io.StringIO()):
+            return ab.main(), seen
+
+    def test_the_pixel_proof_takes_neither_a_lock_wait_nor_a_lower_disk_floor(self):
+        code, seen = self.parse("--out", "o")
+        self.assertEqual(code, 0)
+        self.assertEqual(sorted(seen), ["binary", "command", "factor", "out"])
+        for flag in (("--min-free-gib", "0"), ("--lock-wait", "5")):
+            with self.assertRaises(SystemExit) as raised:
+                self.parse("--out", "o", *flag)
+            self.assertEqual(raised.exception.code, 2, flag)
 
 
 if __name__ == "__main__":
