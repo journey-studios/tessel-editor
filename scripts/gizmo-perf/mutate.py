@@ -195,8 +195,9 @@ def main(argv=None):
                             'stdout_sha256': harness.sha256(out / f'{name}.time.stdout.txt')}
                 manifest['machine_after'] = harness.machine()
     finally:
-        if args.phase != 'prepare':
-            shutil.rmtree(exes_dir, ignore_errors=True)  # discardable, 20 MB each
+        blocked = any(r.get('time', {}).get('status') == 'BLOCKED' for r in manifest['mutants'].values())
+        if args.phase != 'prepare' and not blocked:
+            shutil.rmtree(exes_dir, ignore_errors=True)  # discardable, 20 MB each; kept when BLOCKED (nothing ran)
     if args.phase == 'prepare':
         manifest['status'] = 'PREPARED'
         harness.write(manifest_path, manifest)
