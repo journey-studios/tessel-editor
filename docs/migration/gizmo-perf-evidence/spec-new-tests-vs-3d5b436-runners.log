@@ -1,0 +1,425 @@
+# Negative control of the round-10 additions to the spec (BL015.21 / BL015.23 / PR #44, round 10, review 5861824134).
+# The spec of this round (scripts/gizmo-perf/gizmo-perf.spec.py) run against the runners of 3d5b436 (3d5b43627644860fccab5bf7128cd809fb98d7ad, the PR head the round started from):
+# `git archive` of that commit (the WHOLE tree, 34 MB: the first attempt archived only scripts/gizmo-perf, the fixtures and measure-12bc8da and left THREE tests of the
+# baseline failing for want of crates/ and the rest of the tree, so the whole tree was used, as in round 8) into a temp directory OUTSIDE the worktree, the new spec copied over its
+# old one, `git init` and ONE commit of it (the spec runs git against a real repository). Nothing was linked from the worktree, nothing was written in it, no checkout or
+# worktree was created (`target/` does not exist there: no editor binary, no build is possible).
+# How it ran: PYTHONDONTWRITEBYTECODE=1 python3 collect.py scripts/gizmo-perf/gizmo-perf.spec.py OUT.json (cwd: that temp directory). collect.py (appendix at the end of this file) loads the spec
+# file and runs its tests with a unittest.TestResult that records the outcome of every test, so that the per-test lists below are not parsed from text; it is the same suite as
+# `python3 scripts/gizmo-perf/gizmo-perf.spec.py`, which the delivery report runs on the final tree.
+# Python 3.14.3; git version 2.50.1 (Apple Git-155); worktree HEAD when it ran: 3d5b43627644860fccab5bf7128cd809fb98d7ad (3d5b436, the parent of the code commit), with the round-10 changes not yet committed.
+# The files under test, by git blob id (the code commit holds these same blobs; 3d5b436 in parentheses):
+#   scripts/gizmo-perf/gizmo-perf.spec.py     42478532c5a137c48be9ab9f041fc362b0c8d0b4 (55bd4e6a9e3f56001c57c883d7115d755b4e16f0)
+#   scripts/gizmo-perf/native.py              8d1f949ecb7b713e246b64f788eca99192c0d41e (224c065896e9135c576f7d2d37ac8ccdb0844c38)
+# harness.py, ab.py, run.py, mutate.py, audit.py, budgets.py and corpus.py are those of 3d5b436, byte for byte (checked with `diff -rq` between the two trees: only native.py differs).
+# MACHINE LOAD (load averages 1/5/15 min): 31.52 23.66 23.31 at 15:53 (before the controls); 22.87 24.13 23.90 when the three whole-spec runs had finished (16:03); the wrong-fix runs followed. An unrelated heavy load stays on the machine.
+# NOTHING WAS MEASURED: no time run, no A/B, no time mutant, no native window, no build, no performance lock, no benchmark, no real timing of anything.
+# This is a test of the runners' bookkeeping on fakes under a VIRTUAL clock (a 60 s wait is read off the clock, not waited for), and on the pictures and hashes of the first real run's report
+# (12bc8da, immutable evidence, read only). It says what the runners DO with those values; it does not say what the product does.
+# The control, on the same layout:
+#   old spec + OLD runners : Ran 254 tests in 62.4s -> OK  (the layout works)
+#   new spec + OLD runners : Ran 285 tests in 62.1s -> FAILED (failures=30, errors=9; 26 tests with a failing assertion)
+#   new spec + new runners : Ran 285 tests in 63.1s -> OK
+# 31 tests are new in this round (ids that the spec of 3d5b436 does not have); 0 earlier id(s) were removed; the other 254 are the earlier ones.
+# Per test: 26 of the 31 new tests fail on the old runners, 5 pass on both sides on purpose (listed after the list below), and 0 EARLIER tests fail on the old runners (no test was rewritten this round).
+# The counts of unittest are per failing assertion (a failing subTest counts once each).
+# Where the behaviour can be seen through `run_corpus` or `native.drag` the new test fails on its own assertion on the old runners; the tests that read `Undoable.committed_hash` (a field that did not exist)
+# or `native.JOB_SECONDS` can fail there by not finding it. What proves that the tests also tell a right behaviour from a wrong one is the third part: deliberately WRONG versions of the fixes, each caught by at least one test.
+# Labels: F2 = a final `job.get` answer that arrives after the 60 s deadline was accepted and `job.commit` was sent after it; (26a) = a redo was never compared with the commit's picture (hash recorded, never compared);
+# (26b) = the two history stacks moved only when an undo drew a picture; sweep (c)/(a) = `settle_commit` refuses a late read (a branch the sweep found pinned by no test).
+
+FAIL  HistoryStacks.test_a_history_request_that_was_not_answered_ok_moves_nothing   (26b)
+      FAIL: AssertionError: Lists differ: [(False, None), (True, 'a0')] != []
+FAIL  HistoryStacks.test_a_redo_after_an_undo_without_a_picture_is_compared_with_the_commit_of_the_gesture_that_undo_took_off   (26b)
+      FAIL: AssertionError: Lists differ: [(True, None), (True, 'b1')] != []
+FAIL  HistoryStacks.test_a_redo_that_drew_no_picture_still_puts_the_gesture_back_on_the_undo_stack   (26b)
+      FAIL: AssertionError: Lists differ: [(True, 'b0'), (True, None), (True, 'b0')] != []
+FAIL  HistoryStacks.test_an_undo_without_a_picture_moves_the_stacks_so_the_next_undo_is_judged_against_the_gesture_before_it   (26b)
+      FAIL: AssertionError: Lists differ: [(True, None), (True, 'a0')] != []
+FAIL  HistoryStacks.test_the_vacuous_record_of_a_redo_names_the_gesture_the_stacks_say_was_redone   (26b)
+      FAIL: AssertionError: Lists differ: [(True, None), (True, 'z0')] != []
+FAIL  HistoryStacks.test_two_undos_and_two_redos_walk_the_gestures_in_order   (26b)
+      FAIL: AssertionError: Lists differ: [(True, 'b0'), (True, 'a0'), (True, 'a1'), (True, 'b1')] != []
+FAIL  LateJobAnswer.test_a_final_answer_that_arrives_after_the_deadline_is_too_late_and_no_job_commit_is_sent   F2
+      FAIL: AssertionError: 0 != 1 : ('resolve: the job finished', ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'resolve: scene.resources.resolve answered
+FAIL  LateJobAnswer.test_a_late_answer_that_is_not_final_is_refused_with_the_same_detail   F2
+      FAIL: AssertionError: 'too late to count' not found in ''
+FAIL  LateJobAnswer.test_an_answer_that_arrives_exactly_at_the_deadline_is_in_time_and_one_just_after_it_is_not   F2
+      FAIL: AssertionError: 0 != 1 : ('resolve: the job finished', ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'resolve: scene.resources.resolve answered
+FAIL  LateJobAnswer.test_every_final_state_that_arrives_late_is_refused_and_none_of_them_is_read   F2   [3 failing assertions]
+      FAIL: [[succeeded]] AssertionError: 0 != 1 : ('resolve: the job finished', ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'resolve: scene.resources.resolve answered
+FAIL  LateJobAnswer.test_the_deadline_belongs_to_the_whole_wait_not_to_a_single_poll   F2
+      FAIL: AssertionError: 0 != 1 : ('resolve: the job finished', ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'resolve: scene.resources.resolve answered
+FAIL  RecordedRedo.test_a_recorded_redo_that_had_shown_the_base_picture_or_any_other_fails_with_both_hashes   (26a)   [6 failing assertions]
+      FAIL: [[small] (shows='8d4c865fafc56fcc')] AssertionError: Lists differ: [] != ['history.redo.translate: the redo showed the exact picture the commit left']
+FAIL  RecordedRedo.test_a_recorded_undo_that_drew_no_picture_still_moves_the_stacks_so_the_redo_is_checked   (26b)   [3 failing assertions]
+      FAIL: [[small]] AssertionError: Lists differ: [] != [True]
+FAIL  RecordedRedo.test_the_recorded_dense_scale_that_changed_nothing_records_the_redo_comparison_as_vacuous   (26a)
+      ERROR: KeyError: 'vacuous_checks'
+FAIL  RecordedRedo.test_the_recorded_order_replayed_with_the_recorded_hashes_passes_and_the_redo_is_really_compared   (26a)   [3 failing assertions]
+      FAIL: [[small]] AssertionError: Lists differ: [] != [True]
+FAIL  RedoPicture.test_a_gesture_that_changed_nothing_records_the_redo_comparison_as_vacuous_and_still_asks_it   (26a)
+      ERROR: KeyError: 'vacuous_checks'
+FAIL  RedoPicture.test_a_redo_of_a_gesture_without_a_legitimate_release_is_not_compared_and_the_record_says_why   (26a)
+      ERROR: KeyError: 'unasked_checks'
+FAIL  RedoPicture.test_a_redo_that_showed_any_other_picture_fails_too   (26a)
+      FAIL: AssertionError: Lists differ: [] != ['history.redo.translate: the redo showed the exact picture the commit left']
+FAIL  RedoPicture.test_a_redo_that_showed_the_base_picture_fails_with_both_hashes_although_it_drew_a_newer_picture   (26a)
+      FAIL: AssertionError: Lists differ: [] != ['history.redo.translate: the redo showed the exact picture the commit left']
+FAIL  RedoPicture.test_a_redo_that_shows_the_picture_the_commit_left_passes_and_every_history_step_is_judged   (26a)
+      FAIL: AssertionError: Lists differ: [] != [True]
+FAIL  RedoPicture.test_a_redrawn_commit_is_judged_the_same_way   (26a)
+      FAIL: AssertionError: Lists differ: [] != [True]
+FAIL  RedoPicture.test_an_undo_that_drew_no_picture_still_moves_the_stacks_so_the_redo_is_still_compared   (26b)
+      FAIL: AssertionError: Lists differ: [] != [True]
+FAIL  UndoableCommit.test_a_dedupe_keeps_the_hash_of_the_candidates_picture_the_monitor_kept   (26a)
+      ERROR: AttributeError: 'Undoable' object has no attribute 'committed_hash'
+FAIL  UndoableCommit.test_a_gesture_that_changed_nothing_keeps_the_base_hash_as_the_commit_hash_and_is_marked_unchanged   (26a)
+      ERROR: AttributeError: 'Undoable' object has no attribute 'committed_hash'
+FAIL  UndoableCommit.test_a_redraw_keeps_the_hash_of_the_picture_the_release_left_not_the_candidates   (26a)
+      ERROR: AttributeError: 'Undoable' object has no attribute 'committed_hash'
+FAIL  UndoableCommit.test_a_release_without_a_legitimate_outcome_keeps_no_commit_hash_and_counts_as_changed   (26a)   [3 failing assertions]
+      ERROR: [[hang]] AttributeError: 'Undoable' object has no attribute 'committed_hash'
+
+# Tests that pass on BOTH sides by design (what must stay true after the fix, a control against over-strictness, or a pin of behaviour that already existed):
+#   LateCommitReply.test_a_redraw_that_a_slow_read_saw_after_the_deadline_is_too_late_and_not_redrawn -- the late-reply branch of `settle_commit` already existed in 3d5b436: the test PINS it (a mutant without it, S3 below, survived every earlier test)
+#   LateCommitReply.test_the_same_redraw_seen_by_a_read_in_time_is_redrawn -- over-strictness control: the same redraw seen by a read in time is still `redrawn`
+#   LateJobAnswer.test_an_answer_that_arrives_in_time_behaves_exactly_as_before -- what must stay true after F2: an in-time answer keeps the same checks, details and the one `job.commit` (a fix that refused every answer would fail it)
+#   RecordedRedo.test_the_report_holds_what_the_comparison_is_built_from -- a statement about the immutable report of the first real run (undo -> base hash, redo -> the commit's hash, in all three corpora): it reads no runner
+#   RedoPicture.test_a_redo_that_drew_no_picture_fails_only_its_own_check_and_is_not_compared_with_a_stale_picture -- the old runner never compared a redo, so a redo that drew nothing already failed only its own check: it guards the `ms is not None` condition of the new comparison (W12 below)
+
+# EARLIER tests that fail on the old runners: none (no earlier test was rewritten in this round).
+
+# HistoryStacks: 6 of 6 new tests fail on the old runners
+# LateCommitReply: 0 of 2 new tests fail on the old runners
+# LateJobAnswer: 5 of 6 new tests fail on the old runners
+# RecordedRedo: 4 of 5 new tests fail on the old runners
+# RedoPicture: 7 of 8 new tests fail on the old runners
+# UndoableCommit: 4 of 4 new tests fail on the old runners
+
+# Real two-process demonstration: none in this round (no lock, no process and no window is involved; every run above is on fakes).
+
+# Additional controls: deliberately WRONG versions of the fixes. Each is the NEW runners with ONE exact text replaced in a scratch copy of the whole tree
+# (the replacement had to match exactly once), run with the classes that test the fixes: UndoableCommit, RedoPicture, RecordedRedo, HistoryStacks, LateJobAnswer, BoundedPolls, GestureInTheCorpus, Release, PixelExpectations, RecordedFirstRun, LateAcknowledgement, NativeSession, NativeFlow, LateCommitReply.
+# Without any replacement the same classes pass (the whole spec: Ran 285 tests -> OK, above). A control is useful when at least one test fails.
+# --- W1: native.py: F2: a late answer is refused only in the log: the failed check is kept, but the answer is still used and job.commit is sent
+#     replaced (first differing line): `return check(f'{step}: the job finished', False,`
+#     by:                              `check(f'{step}: the job finished', False,`
+#     classes: UndoableCommit, RedoPicture, RecordedRedo, HistoryStacks, LateJobAnswer, BoundedPolls, GestureInTheCorpus, Release, PixelExpectations, RecordedFirstRun, LateAcknowledgement, NativeSession, NativeFlow, LateCommitReply
+#     # 92 tests: 87 pass, 5 fail or error (FAILED (failures=7, errors=0))
+#     FAIL  LateJobAnswer.test_a_final_answer_that_arrives_after_the_deadline_is_too_late_and_no_job_commit_is_sent
+#           FAIL: AssertionError: 2 != 1 : ('resolve: the job finished', ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'resolve: scene.resources.resolve answered
+#     FAIL  LateJobAnswer.test_a_late_answer_that_is_not_final_is_refused_with_the_same_detail
+#           FAIL: AssertionError: 2 != 1 : ('resolve: the job finished', ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'resolve: scene.resources.resolve answered
+#     FAIL  LateJobAnswer.test_an_answer_that_arrives_exactly_at_the_deadline_is_in_time_and_one_just_after_it_is_not
+#           FAIL: AssertionError: 2 != 1 : ('resolve: the job finished', ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'resolve: scene.resources.resolve answered
+#     FAIL  LateJobAnswer.test_every_final_state_that_arrives_late_is_refused_and_none_of_them_is_read [3 assertions]
+#           FAIL: [[succeeded]] AssertionError: 2 != 1 : ('resolve: the job finished', ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'resolve: scene.resources.resolve answer
+#     FAIL  LateJobAnswer.test_the_deadline_belongs_to_the_whole_wait_not_to_a_single_poll
+#           FAIL: AssertionError: 2 != 1 : ('resolve: the job finished', ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'resolve: scene.resources.resolve answered
+# --- W2: native.py: F2: a late answer is accepted when it is a terminal `succeeded` (only the other late answers are refused)
+#     replaced (first differing line): `if answered > deadline:  # too late to count: the state it carries is not read, a final one included`
+#     by:                              `if answered > deadline and not (ok and status['state'] == 'succeeded'):`
+#     classes: UndoableCommit, RedoPicture, RecordedRedo, HistoryStacks, LateJobAnswer, BoundedPolls, GestureInTheCorpus, Release, PixelExpectations, RecordedFirstRun, LateAcknowledgement, NativeSession, NativeFlow, LateCommitReply
+#     # 92 tests: 88 pass, 4 fail or error (FAILED (failures=4, errors=0))
+#     FAIL  LateJobAnswer.test_a_final_answer_that_arrives_after_the_deadline_is_too_late_and_no_job_commit_is_sent
+#           FAIL: AssertionError: 0 != 1 : ('resolve: the job finished', ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'resolve: scene.resources.resolve answered
+#     FAIL  LateJobAnswer.test_an_answer_that_arrives_exactly_at_the_deadline_is_in_time_and_one_just_after_it_is_not
+#           FAIL: AssertionError: 0 != 1 : ('resolve: the job finished', ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'resolve: scene.resources.resolve answered
+#     FAIL  LateJobAnswer.test_every_final_state_that_arrives_late_is_refused_and_none_of_them_is_read
+#           FAIL: [[succeeded]] AssertionError: 0 != 1 : ('resolve: the job finished', ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'resolve: scene.resources.resolve answer
+#     FAIL  LateJobAnswer.test_the_deadline_belongs_to_the_whole_wait_not_to_a_single_poll
+#           FAIL: AssertionError: 0 != 1 : ('resolve: the job finished', ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'resolve: scene.resources.resolve answered
+# --- W3: native.py: F2: the deadline is compared BEFORE the call (the time the poll began) instead of after the answer
+#     replaced (first differing line): `ok, status = window.op({'op': 'job.get', 'job': data['job']},`
+#     by:                              `polled = time.time()`
+#     classes: UndoableCommit, RedoPicture, RecordedRedo, HistoryStacks, LateJobAnswer, BoundedPolls, GestureInTheCorpus, Release, PixelExpectations, RecordedFirstRun, LateAcknowledgement, NativeSession, NativeFlow, LateCommitReply
+#     # 92 tests: 87 pass, 5 fail or error (FAILED (failures=7, errors=0))
+#     FAIL  LateJobAnswer.test_a_final_answer_that_arrives_after_the_deadline_is_too_late_and_no_job_commit_is_sent
+#           FAIL: AssertionError: 0 != 1 : ('resolve: the job finished', ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'resolve: scene.resources.resolve answered
+#     FAIL  LateJobAnswer.test_a_late_answer_that_is_not_final_is_refused_with_the_same_detail
+#           FAIL: AssertionError: 'too late to count' not found in ''
+#     FAIL  LateJobAnswer.test_an_answer_that_arrives_exactly_at_the_deadline_is_in_time_and_one_just_after_it_is_not
+#           FAIL: AssertionError: 0 != 1 : ('resolve: the job finished', ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'resolve: scene.resources.resolve answered
+#     FAIL  LateJobAnswer.test_every_final_state_that_arrives_late_is_refused_and_none_of_them_is_read [3 assertions]
+#           FAIL: [[succeeded]] AssertionError: 0 != 1 : ('resolve: the job finished', ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'resolve: scene.resources.resolve answer
+#     FAIL  LateJobAnswer.test_the_deadline_belongs_to_the_whole_wait_not_to_a_single_poll
+#           FAIL: AssertionError: 0 != 1 : ('resolve: the job finished', ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'resolve: scene.resources.resolve answered
+# --- W4: native.py: F2: an answer exactly at the deadline is late (`>=` instead of `>`)
+#     replaced (first differing line): `if answered > deadline:  # too late to count: the state it carries is not read, a final one included`
+#     by:                              `if answered >= deadline:  # too late to count: the state it carries is not read, a final one included`
+#     classes: UndoableCommit, RedoPicture, RecordedRedo, HistoryStacks, LateJobAnswer, BoundedPolls, GestureInTheCorpus, Release, PixelExpectations, RecordedFirstRun, LateAcknowledgement, NativeSession, NativeFlow, LateCommitReply
+#     # 92 tests: 91 pass, 1 fail or error (FAILED (failures=1, errors=0))
+#     FAIL  LateJobAnswer.test_an_answer_that_arrives_exactly_at_the_deadline_is_in_time_and_one_just_after_it_is_not
+#           FAIL: AssertionError: 0 != 1 : ('resolve: the job was applied', ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'resolve: scene.resources.resolve answe
+# --- W5: native.py: F2: only a late FINAL answer is refused (a late non-final one keeps the old empty detail)
+#     replaced (first differing line): `if answered > deadline:  # too late to count: the state it carries is not read, a final one included`
+#     by:                              `if answered > deadline and ok and status['state'] in ('succeeded', 'failed', 'cancelled'):`
+#     classes: UndoableCommit, RedoPicture, RecordedRedo, HistoryStacks, LateJobAnswer, BoundedPolls, GestureInTheCorpus, Release, PixelExpectations, RecordedFirstRun, LateAcknowledgement, NativeSession, NativeFlow, LateCommitReply
+#     # 92 tests: 91 pass, 1 fail or error (FAILED (failures=1, errors=0))
+#     FAIL  LateJobAnswer.test_a_late_answer_that_is_not_final_is_refused_with_the_same_detail
+#           FAIL: AssertionError: 'too late to count' not found in ''
+# --- W6: native.py: F2: the 60 s are judged per poll (the time one `job.get` took) instead of for the whole wait
+#     replaced (first differing line): `ok, status = window.op({'op': 'job.get', 'job': data['job']},`
+#     by:                              `polled = time.time()`
+#     classes: UndoableCommit, RedoPicture, RecordedRedo, HistoryStacks, LateJobAnswer, BoundedPolls, GestureInTheCorpus, Release, PixelExpectations, RecordedFirstRun, LateAcknowledgement, NativeSession, NativeFlow, LateCommitReply
+#     # 92 tests: 91 pass, 1 fail or error (FAILED (failures=1, errors=0))
+#     FAIL  LateJobAnswer.test_the_deadline_belongs_to_the_whole_wait_not_to_a_single_poll
+#           FAIL: AssertionError: 0 != 1 : ('resolve: the job finished', ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'resolve: scene.resources.resolve answered
+# --- W7: native.py: F3a: the redo is compared with the BASE hash instead of the commit's
+#     replaced (first differing line): `check(label, shows == gesture.committed_hash, (shows, gesture.committed_hash))`
+#     by:                              `check(label, shows == gesture.base_hash, (shows, gesture.base_hash))`
+#     classes: UndoableCommit, RedoPicture, RecordedRedo, HistoryStacks, LateJobAnswer, BoundedPolls, GestureInTheCorpus, Release, PixelExpectations, RecordedFirstRun, LateAcknowledgement, NativeSession, NativeFlow, LateCommitReply
+#     # 92 tests: 82 pass, 10 fail or error (FAILED (failures=19, errors=0))
+#     FAIL  HistoryStacks.test_a_redo_after_an_undo_without_a_picture_is_compared_with_the_commit_of_the_gesture_that_undo_took_off
+#           FAIL: AssertionError: Lists differ: ['his[44 chars]ture', 'history.redo.1: the redo showed the ex[24 chars]eft'] != ['his[44 chars]ture']
+#     FAIL  HistoryStacks.test_two_undos_and_two_redos_walk_the_gestures_in_order
+#           FAIL: AssertionError: Lists differ: ['history.redo.1: the redo showed the exac[91 chars]eft'] != []
+#     FAIL  RecordedRedo.test_a_recorded_redo_that_had_shown_the_base_picture_or_any_other_fails_with_both_hashes [6 assertions]
+#           FAIL: [[small] (shows='8d4c865fafc56fcc')] AssertionError: Lists differ: [] != ['history.redo.translate: the redo showed the exact picture the commit left']
+#     FAIL  RecordedRedo.test_a_recorded_undo_that_drew_no_picture_still_moves_the_stacks_so_the_redo_is_checked [3 assertions]
+#           FAIL: [[small]] AssertionError: Lists differ: ['his[52 chars]ture', 'history.redo.translate: the redo showe[32 chars]eft'] != ['his[52 chars]ture']
+#     FAIL  RecordedRedo.test_the_recorded_order_replayed_with_the_recorded_hashes_passes_and_the_redo_is_really_compared [3 assertions]
+#           FAIL: [[small]] AssertionError: Lists differ: ['history.redo.translate: the redo showed the exact picture the commit left'] != []
+#     FAIL  RedoPicture.test_a_redo_that_showed_any_other_picture_fails_too
+#           FAIL: AssertionError: "('other', 'base')" != "('other', 'candidate')"
+#     FAIL  RedoPicture.test_a_redo_that_showed_the_base_picture_fails_with_both_hashes_although_it_drew_a_newer_picture
+#           FAIL: AssertionError: Lists differ: [] != ['history.redo.translate: the redo showed the exact picture the commit left']
+#     FAIL  RedoPicture.test_a_redo_that_shows_the_picture_the_commit_left_passes_and_every_history_step_is_judged
+#           FAIL: AssertionError: Lists differ: ['history.redo.translate: the redo showed the exact picture the commit left'] != []
+#     FAIL  RedoPicture.test_a_redrawn_commit_is_judged_the_same_way
+#           FAIL: AssertionError: Lists differ: ['history.redo.translate: the redo showed the exact picture the commit left'] != []
+#     FAIL  RedoPicture.test_an_undo_that_drew_no_picture_still_moves_the_stacks_so_the_redo_is_still_compared
+#           FAIL: AssertionError: Lists differ: ['his[52 chars]ture', 'history.redo.translate: the redo showe[32 chars]eft'] != ['his[52 chars]ture']
+# --- W8: native.py: F3a: the vacuous case is never marked: every redo comparison is recorded as a real one
+#     replaced (first differing line): `elif gesture.changed:`
+#     by:                              `elif True:`
+#     classes: UndoableCommit, RedoPicture, RecordedRedo, HistoryStacks, LateJobAnswer, BoundedPolls, GestureInTheCorpus, Release, PixelExpectations, RecordedFirstRun, LateAcknowledgement, NativeSession, NativeFlow, LateCommitReply
+#     # 92 tests: 89 pass, 3 fail or error (FAILED (failures=0, errors=3))
+#     FAIL  HistoryStacks.test_the_vacuous_record_of_a_redo_names_the_gesture_the_stacks_say_was_redone
+#           ERROR: KeyError: 'vacuous_checks'
+#     FAIL  RecordedRedo.test_the_recorded_dense_scale_that_changed_nothing_records_the_redo_comparison_as_vacuous
+#           ERROR: KeyError: 'vacuous_checks'
+#     FAIL  RedoPicture.test_a_gesture_that_changed_nothing_records_the_redo_comparison_as_vacuous_and_still_asks_it
+#           ERROR: KeyError: 'vacuous_checks'
+# --- W9: native.py: F3b: the stacks advance on an undo only when a picture converged (the old behaviour)
+#     replaced (first differing line): `if request['op'] == 'history.undo' and committed and undoable:`
+#     by:                              `if request['op'] == 'history.undo' and committed and undoable and ms is not None:`
+#     classes: UndoableCommit, RedoPicture, RecordedRedo, HistoryStacks, LateJobAnswer, BoundedPolls, GestureInTheCorpus, Release, PixelExpectations, RecordedFirstRun, LateAcknowledgement, NativeSession, NativeFlow, LateCommitReply
+#     # 92 tests: 87 pass, 5 fail or error (FAILED (failures=5, errors=2))
+#     FAIL  HistoryStacks.test_a_redo_after_an_undo_without_a_picture_is_compared_with_the_commit_of_the_gesture_that_undo_took_off
+#           ERROR: IndexError: list index out of range
+#     FAIL  HistoryStacks.test_an_undo_without_a_picture_moves_the_stacks_so_the_next_undo_is_judged_against_the_gesture_before_it
+#           FAIL: AssertionError: Lists differ: ['his[44 chars]ture', 'history.undo.2: the undo restored the [32 chars]ure'] != ['his[44 chars]ture']
+#     FAIL  HistoryStacks.test_the_vacuous_record_of_a_redo_names_the_gesture_the_stacks_say_was_redone
+#           ERROR: KeyError: 'vacuous_checks'
+#     FAIL  RecordedRedo.test_a_recorded_undo_that_drew_no_picture_still_moves_the_stacks_so_the_redo_is_checked [3 assertions]
+#           FAIL: [[small]] AssertionError: Lists differ: [] != [True]
+#     FAIL  RedoPicture.test_an_undo_that_drew_no_picture_still_moves_the_stacks_so_the_redo_is_still_compared
+#           FAIL: AssertionError: Lists differ: [] != [True]
+# --- W10: native.py: F3a: the redo is never compared (the comparison stays on the undo only)
+#     replaced (first differing line): `if ms is not None:`
+#     by:                              `if False:`
+#     classes: UndoableCommit, RedoPicture, RecordedRedo, HistoryStacks, LateJobAnswer, BoundedPolls, GestureInTheCorpus, Release, PixelExpectations, RecordedFirstRun, LateAcknowledgement, NativeSession, NativeFlow, LateCommitReply
+#     # 92 tests: 78 pass, 14 fail or error (FAILED (failures=17, errors=6))
+#     FAIL  HistoryStacks.test_a_redo_after_an_undo_without_a_picture_is_compared_with_the_commit_of_the_gesture_that_undo_took_off
+#           ERROR: IndexError: list index out of range
+#     FAIL  HistoryStacks.test_the_vacuous_record_of_a_redo_names_the_gesture_the_stacks_say_was_redone
+#           ERROR: KeyError: 'vacuous_checks'
+#     FAIL  HistoryStacks.test_two_undos_and_two_redos_walk_the_gestures_in_order
+#           ERROR: IndexError: list index out of range
+#     FAIL  RecordedRedo.test_a_recorded_redo_that_had_shown_the_base_picture_or_any_other_fails_with_both_hashes [6 assertions]
+#           FAIL: [[small] (shows='8d4c865fafc56fcc')] AssertionError: Lists differ: [] != ['history.redo.translate: the redo showed the exact picture the commit left']
+#     FAIL  RecordedRedo.test_a_recorded_undo_that_drew_no_picture_still_moves_the_stacks_so_the_redo_is_checked [3 assertions]
+#           FAIL: [[small]] AssertionError: Lists differ: [] != [True]
+#     FAIL  RecordedRedo.test_the_recorded_dense_scale_that_changed_nothing_records_the_redo_comparison_as_vacuous
+#           ERROR: KeyError: 'vacuous_checks'
+#     FAIL  RecordedRedo.test_the_recorded_order_replayed_with_the_recorded_hashes_passes_and_the_redo_is_really_compared [3 assertions]
+#           FAIL: [[small]] AssertionError: Lists differ: [] != [True]
+#     FAIL  RedoPicture.test_a_gesture_that_changed_nothing_records_the_redo_comparison_as_vacuous_and_still_asks_it
+#           ERROR: KeyError: 'vacuous_checks'
+#     FAIL  RedoPicture.test_a_redo_of_a_gesture_without_a_legitimate_release_is_not_compared_and_the_record_says_why
+#           ERROR: KeyError: 'unasked_checks'
+#     FAIL  RedoPicture.test_a_redo_that_showed_any_other_picture_fails_too
+#           FAIL: AssertionError: Lists differ: [] != ['history.redo.translate: the redo showed the exact picture the commit left']
+#     ... and 4 more failing test(s)
+# --- W11: native.py: F3a: a comparison is invented when the commit left no legitimate picture (compared with None)
+#     replaced (first differing line): `if gesture.committed_hash is None:`
+#     by:                              `if False:`
+#     classes: UndoableCommit, RedoPicture, RecordedRedo, HistoryStacks, LateJobAnswer, BoundedPolls, GestureInTheCorpus, Release, PixelExpectations, RecordedFirstRun, LateAcknowledgement, NativeSession, NativeFlow, LateCommitReply
+#     # 92 tests: 91 pass, 1 fail or error (FAILED (failures=1, errors=0))
+#     FAIL  RedoPicture.test_a_redo_of_a_gesture_without_a_legitimate_release_is_not_compared_and_the_record_says_why
+#           FAIL: AssertionError: Lists differ: [{'check': 'history.redo.translate: the re[87 chars]e)"}] != []
+# --- W12: native.py: F3a: the redo is compared even when no picture converged (against the last state seen)
+#     replaced (first differing line): `if ms is not None:`
+#     by:                              `if True:`
+#     classes: UndoableCommit, RedoPicture, RecordedRedo, HistoryStacks, LateJobAnswer, BoundedPolls, GestureInTheCorpus, Release, PixelExpectations, RecordedFirstRun, LateAcknowledgement, NativeSession, NativeFlow, LateCommitReply
+#     # 92 tests: 90 pass, 2 fail or error (FAILED (failures=2, errors=0))
+#     FAIL  HistoryStacks.test_a_redo_that_drew_no_picture_still_puts_the_gesture_back_on_the_undo_stack
+#           FAIL: AssertionError: Lists differ: ['his[44 chars]ture', 'history.redo.1: the redo showed the ex[24 chars]eft'] != ['his[44 chars]ture']
+#     FAIL  RedoPicture.test_a_redo_that_drew_no_picture_fails_only_its_own_check_and_is_not_compared_with_a_stale_picture
+#           FAIL: AssertionError: Lists differ: ['his[52 chars]ture', 'history.redo.translate: the redo showe[32 chars]eft'] != ['his[52 chars]ture']
+# --- W13: native.py: F3b: a redo does not put the gesture back on the undo stack
+#     replaced (first differing line): `undoable.append(gesture)`
+#     by:                              ``
+#     classes: UndoableCommit, RedoPicture, RecordedRedo, HistoryStacks, LateJobAnswer, BoundedPolls, GestureInTheCorpus, Release, PixelExpectations, RecordedFirstRun, LateAcknowledgement, NativeSession, NativeFlow, LateCommitReply
+#     # 92 tests: 87 pass, 5 fail or error (FAILED (failures=7, errors=0))
+#     FAIL  HistoryStacks.test_a_redo_that_drew_no_picture_still_puts_the_gesture_back_on_the_undo_stack
+#           FAIL: AssertionError: Lists differ: ['his[44 chars]ture', 'history.undo.2: the undo restored the [32 chars]ure'] != ['his[44 chars]ture']
+#     FAIL  RecordedRedo.test_the_recorded_order_replayed_with_the_recorded_hashes_passes_and_the_redo_is_really_compared [3 assertions]
+#           FAIL: [[small]] AssertionError: Lists differ: [] != [True]
+#     FAIL  RedoPicture.test_a_redo_that_drew_no_picture_fails_only_its_own_check_and_is_not_compared_with_a_stale_picture
+#           FAIL: AssertionError: Lists differ: [] != [True]
+#     FAIL  RedoPicture.test_a_redo_that_shows_the_picture_the_commit_left_passes_and_every_history_step_is_judged
+#           FAIL: AssertionError: Lists differ: [] != [True]
+#     FAIL  RedoPicture.test_an_undo_that_drew_no_picture_still_moves_the_stacks_so_the_redo_is_still_compared
+#           FAIL: AssertionError: Lists differ: [] != [True]
+# --- W14: native.py: F3a: the reason of a redo that could not be compared is not recorded (`unasked_checks`)
+#     replaced (first differing line): `record.setdefault('unasked_checks', []).append(`
+#     by:                              `[].append(`
+#     classes: UndoableCommit, RedoPicture, RecordedRedo, HistoryStacks, LateJobAnswer, BoundedPolls, GestureInTheCorpus, Release, PixelExpectations, RecordedFirstRun, LateAcknowledgement, NativeSession, NativeFlow, LateCommitReply
+#     # 92 tests: 91 pass, 1 fail or error (FAILED (failures=0, errors=1))
+#     FAIL  RedoPicture.test_a_redo_of_a_gesture_without_a_legitimate_release_is_not_compared_and_the_record_says_why
+#           ERROR: KeyError: 'unasked_checks'
+# --- W15: native.py: F3a: the commit's hash is never kept in `Undoable` (always None)
+#     replaced (first differing line): `undoable.append(Undoable(start_hash, pixels['committed_changed'] is not False, sid, pixels['committed_hash']))`
+#     by:                              `undoable.append(Undoable(start_hash, pixels['committed_changed'] is not False, sid, None))`
+#     classes: UndoableCommit, RedoPicture, RecordedRedo, HistoryStacks, LateJobAnswer, BoundedPolls, GestureInTheCorpus, Release, PixelExpectations, RecordedFirstRun, LateAcknowledgement, NativeSession, NativeFlow, LateCommitReply
+#     # 92 tests: 79 pass, 13 fail or error (FAILED (failures=20, errors=2))
+#     FAIL  RecordedRedo.test_a_recorded_redo_that_had_shown_the_base_picture_or_any_other_fails_with_both_hashes [6 assertions]
+#           FAIL: [[small] (shows='8d4c865fafc56fcc')] AssertionError: Lists differ: [] != ['history.redo.translate: the redo showed the exact picture the commit left']
+#     FAIL  RecordedRedo.test_a_recorded_undo_that_drew_no_picture_still_moves_the_stacks_so_the_redo_is_checked [3 assertions]
+#           FAIL: [[small]] AssertionError: Lists differ: [] != [True]
+#     FAIL  RecordedRedo.test_the_recorded_dense_scale_that_changed_nothing_records_the_redo_comparison_as_vacuous
+#           ERROR: KeyError: 'vacuous_checks'
+#     FAIL  RecordedRedo.test_the_recorded_order_replayed_with_the_recorded_hashes_passes_and_the_redo_is_really_compared [3 assertions]
+#           FAIL: [[small]] AssertionError: Lists differ: [] != [True]
+#     FAIL  RedoPicture.test_a_gesture_that_changed_nothing_records_the_redo_comparison_as_vacuous_and_still_asks_it
+#           ERROR: KeyError: 'vacuous_checks'
+#     FAIL  RedoPicture.test_a_redo_that_showed_any_other_picture_fails_too
+#           FAIL: AssertionError: Lists differ: [] != ['history.redo.translate: the redo showed the exact picture the commit left']
+#     FAIL  RedoPicture.test_a_redo_that_showed_the_base_picture_fails_with_both_hashes_although_it_drew_a_newer_picture
+#           FAIL: AssertionError: Lists differ: [] != ['history.redo.translate: the redo showed the exact picture the commit left']
+#     FAIL  RedoPicture.test_a_redo_that_shows_the_picture_the_commit_left_passes_and_every_history_step_is_judged
+#           FAIL: AssertionError: Lists differ: [] != [True]
+#     FAIL  RedoPicture.test_a_redrawn_commit_is_judged_the_same_way
+#           FAIL: AssertionError: Lists differ: [] != [True]
+#     FAIL  RedoPicture.test_an_undo_that_drew_no_picture_still_moves_the_stacks_so_the_redo_is_still_compared
+#           FAIL: AssertionError: Lists differ: [] != [True]
+#     ... and 3 more failing test(s)
+# --- S1: native.py: sweep (a): `overlay_ack` accepts a matching acknowledgement that arrived after its budget
+#     replaced (first differing line): `if now > deadline and not problems:`
+#     by:                              `if False:`
+#     classes: UndoableCommit, RedoPicture, RecordedRedo, HistoryStacks, LateJobAnswer, BoundedPolls, GestureInTheCorpus, Release, PixelExpectations, RecordedFirstRun, LateAcknowledgement, NativeSession, NativeFlow, LateCommitReply
+#     # 92 tests: 91 pass, 1 fail or error (FAILED (failures=1, errors=0))
+#     FAIL  BoundedPolls.test_a_matching_acknowledgement_that_arrives_after_the_budget_is_a_timeout_not_an_acknowledgement
+#           FAIL: AssertionError: 0 != 1
+# --- S2: native.py: sweep (a): `Window.settle` accepts a picture that converged after its deadline
+#     replaced (first differing line): `if time.perf_counter() > deadline:`
+#     by:                              `if False:`
+#     classes: UndoableCommit, RedoPicture, RecordedRedo, HistoryStacks, LateJobAnswer, BoundedPolls, GestureInTheCorpus, Release, PixelExpectations, RecordedFirstRun, LateAcknowledgement, NativeSession, NativeFlow, LateCommitReply
+#     # 92 tests: 91 pass, 1 fail or error (FAILED (failures=1, errors=0))
+#     FAIL  NativeSession.test_a_reply_that_arrives_after_the_deadline_is_a_timeout_that_keeps_what_it_showed
+#           FAIL: AssertionError: 509.7799999639392 is not None
+# --- S3: native.py: sweep (a): `Window.settle_commit` accepts an answer that arrived after its deadline
+#     replaced (first differing line): `if now > deadline:`
+#     by:                              `if False:`
+#     classes: UndoableCommit, RedoPicture, RecordedRedo, HistoryStacks, LateJobAnswer, BoundedPolls, GestureInTheCorpus, Release, PixelExpectations, RecordedFirstRun, LateAcknowledgement, NativeSession, NativeFlow, LateCommitReply
+#     # 92 tests: 91 pass, 1 fail or error (FAILED (failures=1, errors=0))
+#     FAIL  LateCommitReply.test_a_redraw_that_a_slow_read_saw_after_the_deadline_is_too_late_and_not_redrawn
+#           FAIL: AssertionError: 'redrawn' is not None
+# --- S4: native.py: sweep (a): `page_hidden_by_dialog` accepts `hidden` seen after its budget
+#     replaced (first differing line): `if time.monotonic() > deadline:`
+#     by:                              `if False:`
+#     classes: UndoableCommit, RedoPicture, RecordedRedo, HistoryStacks, LateJobAnswer, BoundedPolls, GestureInTheCorpus, Release, PixelExpectations, RecordedFirstRun, LateAcknowledgement, NativeSession, NativeFlow, LateCommitReply
+#     # 92 tests: 91 pass, 1 fail or error (FAILED (failures=1, errors=0))
+#     FAIL  BoundedPolls.test_a_dialog_wait_whose_monitor_never_answers_or_answers_late_is_a_problem_not_a_pass
+#           FAIL: AssertionError: True is not false
+
+# 19 of 19 wrong versions are caught by at least one test (W1 to W15 are the wrong fixes of F2, (26a) and (26b); S1 to S4 are the sweep: a mutant that removes the refusal of a late answer from a site that already
+# had one, each caught by the test named in the feature doc). Every wrong fix is caught by at least one test.
+
+# Table sweep (F1, MD056: a literal pipe inside a code span splits a GFM table row): the coordinator's script (md_table_cells.py: it reads `git show REV:path`, counts the UNESCAPED pipes of every table row against
+# its header and tells a row that is ours from one byte-identical in BASE), over the 7 `.md` files the PR changes against its base cbe9e1b. REV here is a THROWAWAY commit made with `git stash create` from the
+# working tree BEFORE the two commits (no stash was left behind): its docs are those of the docs commit except for a placeholder that held the code commit's SHA and was filled in afterwards, which cannot
+# change a cell count. The delivery report runs the same script on the real HEAD after the docs commit. The first invocation passed the 7 paths as ONE argument (the shell did not split them) and the script
+# only answered "not in REV": it was run again with 7 separate arguments, and this is the second run:
+#   python3 md_table_cells.py <REV> cbe9e1b393861febf073633fbbaa0da9857780b6 <the 7 files of `git diff --name-only cbe9e1b393861febf073633fbbaa0da9857780b6..<REV> -- '*.md'>
+#   docs/backlog.md: mismatched rows 3 (ours 0, pre-existing in cbe9e1b 3)
+#      line 73: header 7 cells, row 8 cells [PRE-EXISTING]: | BL016.4 | F042A/jobs | Nomear estaticamente os códigos de job `resource_change
+#      line 293: header 7 cells, row 11 cells [PRE-EXISTING]: | BL082.6 | F016/UI | Prévia ao vivo no arrasto, teclado nos sliders da seção Ef
+#      line 627: header 7 cells, row 8 cells [PRE-EXISTING]: | BL015.15 | G1/flaky | `video B2: a frame superseded while it seeks is cancelle
+#   docs/features/README.md: mismatched rows 0 (ours 0, pre-existing in cbe9e1b 0)
+#   docs/features/scene-gizmo-performance.md: mismatched rows 0 (ours 0, pre-existing in cbe9e1b 0)
+#   docs/migration/gizmo-perf-evidence/README.md: mismatched rows 0 (ours 0, pre-existing in cbe9e1b 0)
+#   docs/migration/gizmo-perf-evidence/measure-12bc8da/README.md: mismatched rows 0 (ours 0, pre-existing in cbe9e1b 0)
+#   docs/migration/gizmos-spatial-editing-plan.md: mismatched rows 0 (ours 0, pre-existing in cbe9e1b 0)
+#   scripts/gizmo-perf/README.md: mismatched rows 0 (ours 0, pre-existing in cbe9e1b 0)
+#   OURS TOTAL: 0
+
+# ----------------------------------------------------------------------------------------------------------------------------
+# Appendix: collect.py, the collector that produced the per-test lists above (not part of the repository; run from the temp tree).
+#   #!/usr/bin/env python3
+#   """usage: collect.py SPEC OUT.json [Class ...]
+#   Runs the tests of SPEC (all of them, or only the named classes) and writes the outcome of every test as JSON:
+#   {'ran': n, 'seconds': s, 'tests': {'Class.test': [[kind, message], ...]}} (an empty list: the test passed)."""
+#   import importlib.util
+#   import json
+#   import sys
+#   import time
+#   import unittest
+#   from pathlib import Path
+#
+#   spec_path, out, classes = Path(sys.argv[1]).resolve(), sys.argv[2], sys.argv[3:]
+#   sys.path.insert(0, str(spec_path.parent))
+#   spec = importlib.util.spec_from_file_location('gp_spec', spec_path)
+#   module = importlib.util.module_from_spec(spec)
+#   spec.loader.exec_module(module)
+#
+#
+#   def one_line(err):
+#       kind = err[0].__name__
+#       text = str(err[1]).strip().splitlines()
+#       return f'{kind}: {text[0] if text else ""}'[:230]
+#
+#
+#   class Collect(unittest.TestResult):
+#       def __init__(self):
+#           super().__init__()
+#           self.tests = {}
+#
+#       def key(self, test):
+#           return test.id().split('gp_spec.', 1)[-1]
+#
+#       def startTest(self, test):
+#           super().startTest(test)
+#           self.tests.setdefault(self.key(test), [])
+#
+#       def addFailure(self, test, err):
+#           super().addFailure(test, err)
+#           self.tests[self.key(test)].append(['FAIL', one_line(err)])
+#
+#       def addError(self, test, err):
+#           super().addError(test, err)
+#           self.tests[self.key(test)].append(['ERROR', one_line(err)])
+#
+#       def addSubTest(self, test, subtest, err):
+#           super().addSubTest(test, subtest, err)
+#           if err is not None:
+#               kind = 'FAIL' if issubclass(err[0], test.failureException) else 'ERROR'
+#               self.tests[self.key(test)].append([kind, f'[{subtest._subDescription()}] {one_line(err)}'])
+#
+#
+#   loader = unittest.TestLoader()
+#   if classes:
+#       suite = unittest.TestSuite(loader.loadTestsFromName(name, module) for name in classes)
+#   else:
+#       suite = loader.loadTestsFromModule(module)
+#   result = Collect()
+#   started = time.time()
+#   suite.run(result)
+#   Path(out).write_text(json.dumps({'ran': result.testsRun, 'seconds': round(time.time() - started, 3), 'failures': len(result.failures),
+#                                    'errors': len(result.errors), 'tests': result.tests}, indent=1))
+#   bad = sum(1 for items in result.tests.values() if items)
+#   print(f'Ran {result.testsRun} tests in {time.time() - started:.3f}s: {len(result.failures)} failures, '
+#         f'{len(result.errors)} errors, {bad} tests with a failing assertion')

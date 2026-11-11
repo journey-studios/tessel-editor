@@ -2849,13 +2849,16 @@ def ack_window(first, then, stale_polls):
     return Window
 
 
-def run_one_corpus(window_class, steps, author=False, ack_seconds=0.3):
+def run_one_corpus(window_class, steps, author=False, ack_seconds=0.3, clock=None):
     """`native.run_corpus` over `steps` with `window_class` for the editor. The saved project of the opening is a fake
-    path unless `author` asks for the real authoring process (which then runs on `window_class` too)."""
+    path unless `author` asks for the real authoring process (which then runs on `window_class` too). `clock`: a
+    `VirtualClock` for `native.time` (a wait of 60 s is then read off the clock, not waited for)."""
     FakeWindow.log, FakeWindow.stale_shows, FakeWindow.instances = [], set(), []
     journey = dict(NativeFlow.JOURNEY, steps=steps)
     with contextlib.ExitStack() as stack, tempfile.TemporaryDirectory() as out:
         stack.enter_context(bounded())
+        if clock is not None:
+            stack.enter_context(patch.object(native, 'time', clock))
         stack.enter_context(patch.object(native, 'Window', window_class))
         stack.enter_context(patch.object(native, 'ACK_SECONDS', ack_seconds, create=True))
         if not author:
@@ -3053,14 +3056,18 @@ class HostWindow(native.Window):
       hang     asks for a picture that never completes
     The page acknowledges the committed state `ack_delay` after the reply (`ack` match), never (never) or with the previous
     revision's overlay (stale); until then it holds the acknowledgement of the revision before. A cancel asks for
-    `cancel_picture`; `monitor.show_scene`, `seek` and `history.undo` each ask for the next request (the base's pixels,
-    `undo_hash` for the undo). `read_cost`: every `viewport` read takes that long (the monitor is slow to answer)."""
+    `cancel_picture`; `monitor.show_scene`, `seek`, `history.undo` and `history.redo` each ask for the next request (the
+    base's pixels; `undo_hash` for the undo; `redo_hash` for the redo, the picture the commit left when not given;
+    `undo_draws` / `redo_draws`: False, or the booleans of the undos / redos in order (then True), say that the history
+    request is answered ok and the host draws nothing).
+    `read_cost`: every `viewport` read takes that long (the monitor is slow to answer)."""
 
     REVISION = 9  # the project revision before the release; the release leaves REVISION + 1
 
     def __init__(self, clock, step, base, candidate, release='dedupe', release_picture=None, cancel_picture=None,
                  ack='match', ack_delay=0.02, draw_lag=0.05, release_lag=0.04, late=0.1, draws_candidate=True,
-                 overlay_visible=True, adds_undo_entry=True, undo_hash=None, scene='proof', read_cost=0.0):
+                 overlay_visible=True, adds_undo_entry=True, undo_hash=None, scene='proof', read_cost=0.0,
+                 redo_hash=None, undo_draws=True, redo_draws=True):
         self.clock, self.step, self.scene = clock, step, scene
         self.read_cost = read_cost  # seconds of the clock one `viewport` read takes (a slow monitor); the state is then read
         self.base, self.candidate = base, candidate
@@ -3068,7 +3075,10 @@ class HostWindow(native.Window):
         self.ack, self.ack_delay, self.late = ack, ack_delay, late
         self.draw_lag, self.release_lag = draw_lag, release_lag
         self.draws_candidate, self.overlay_visible, self.adds_undo_entry = draws_candidate, overlay_visible, adds_undo_entry
-        self.undo_hash = undo_hash
+        self.undo_hash, self.redo_hash = undo_hash, redo_hash
+        self.undo_draws = undo_draws if isinstance(undo_draws, bool) else list(undo_draws)
+        self.redo_draws = redo_draws if isinstance(redo_draws, bool) else list(redo_draws)
+        self.commit_hash = None  # the hash of the picture the commit left: what a redo shows again
         self.shown = base  # (request id, hash) of the picture on the monitor
         self.inflight = None  # {'picture', 'at'}: a picture the host asked for and when it completes
         self.pending = None  # a request the host will only make later
@@ -3087,6 +3097,13 @@ class HostWindow(native.Window):
     def ask(self, picture, delay):
         self.inflight = {'picture': picture, 'at': self.clock.now + delay}
 
+    def draws(self, kind):
+        """Whether this history request draws a picture (`undo_draws` / `redo_draws`: a bool, or one boolean per request)."""
+        flags = self.undo_draws if kind == 'history.undo' else self.redo_draws
+        if isinstance(flags, bool):
+            return flags
+        return flags.pop(0) if flags else True
+
     def advance(self):
         now = self.clock.now
         if self.pending and now >= self.pending['at']:
@@ -3099,6 +3116,7 @@ class HostWindow(native.Window):
 
     def release_reply(self):
         self.committed = True
+        self.commit_hash = self.release_picture[1] if self.release in ('redraw', 'late') else self.shown[1]
         overlay = release_overlay(self.step, self.REVISION + 1)
         if self.release == 'redraw':
             self.ask(self.release_picture, self.release_lag)
@@ -3142,11 +3160,19 @@ class HostWindow(native.Window):
             return True, {}
         if kind == 'project.open':
             return True, {'action': 'project.open', 'project': 'x'}
-        if kind in ('monitor.show_scene', 'seek', 'history.undo'):
+        if kind in ('monitor.show_scene', 'seek', 'history.undo', 'history.redo'):
             if kind == 'history.undo':
                 self.committed, self.undone = False, True
-            self.ask((max(self.shown[0], self.inflight['picture'][0] if self.inflight else 0) + 1,
-                      self.undo_hash if kind == 'history.undo' and self.undo_hash else self.base[1]), self.draw_lag)
+            elif kind == 'history.redo':
+                self.committed, self.undone = True, False
+            if kind in ('history.undo', 'history.redo') and not self.draws(kind):
+                return True, {}  # the document moved and the answer was ok, but the host asked for no picture
+            shows = self.base[1]
+            if kind == 'history.undo' and self.undo_hash:
+                shows = self.undo_hash
+            elif kind == 'history.redo':
+                shows = self.redo_hash or self.commit_hash
+            self.ask((max(self.shown[0], self.inflight['picture'][0] if self.inflight else 0) + 1, shows), self.draw_lag)
             return True, {}
         if kind == 'render.status':
             return True, {'report': {}}
@@ -4201,6 +4227,502 @@ class LateAcknowledgement(GestureCase):
         self.assertEqual(settled['observed']['ack_problems'], [])  # the last read DID match: it came too late to count
         self.assertEqual(settled['observed']['reads'], 3)
         self.assertEqual(self.unread, [])  # the verdict came at the third read, the one that saw it match again
+
+
+# --- round 10 (PR #44): CodeRabbit review 5861824134 ----------------------------------------------------------------------
+# F2: `commit_job` (the job wait of `run_corpus`) judges its deadline again AFTER an answer, like every other bounded wait.
+# F3 (BL015.23 (26)): a redo is compared with the picture its commit left, and the two history stacks follow the document,
+# not the pictures. Everything runs on fakes under a virtual clock: no benchmark, no window, no build, and NOTHING WAS
+# MEASURED. The replay of recorded hashes reads the first real run's report (12bc8da, immutable evidence), like
+# `RecordedFirstRun` does.
+
+OPEN_STEPS = [
+    {'id': 'open.project', 'phase': 'cold', 'op': {'op': 'project.create', 'name': 'x'}},
+    {'id': 'open.attach', 'phase': 'cold', 'op': {'op': 'scene.attach', 'id': '$scene', 'path': '$bundle'}},
+    {'id': 'open.show', 'phase': 'cold', 'op': {'op': 'monitor.show_scene', 'scene': '$scene'}},
+    {'id': 'open.seek', 'phase': 'cold', 'op': {'op': 'seek', 'frame': '$frame'}},
+    {'id': 'open.first_frame', 'phase': 'cold', 'wait': 'presented', 'frame': '$frame'}]
+HISTORY_STEPS = ('history.undo.translate', 'history.redo.translate', 'history.undo.translate.again')
+WRONG_HASH = 'ffffffffffffffff'  # a pixel hash no picture of these tests has
+
+
+def recorded_history():
+    """`{corpus: {step id: pixel hash}}` of the three history steps that follow the translate gesture in the first real window
+    run (12bc8da: immutable evidence): the hash the monitor showed after the undo, the redo and the undo again."""
+    report = json.load(gzip.open(RECORDED_RUN))
+    return {result['corpus']: {sid: result['steps'][sid]['picture']['hash'] for sid in HISTORY_STEPS}
+            for result in report['results']}
+
+
+class UndoableCommit(GestureCase):
+    """What `native.drag` keeps of a commit for the history steps that follow it (BL015.23 (26a)): the hash of the picture the
+    commit left, which a redo has to show again. It is None when the release had no legitimate outcome: there is then no
+    picture of the commit to compare a redo with, and none is invented."""
+
+    def kept(self, step=None, **model):
+        self.run_gesture(step, **model)
+        self.assertEqual(len(self.undoable), 1, self.undoable)
+        return self.undoable[0]
+
+    def test_a_dedupe_keeps_the_hash_of_the_candidates_picture_the_monitor_kept(self):
+        entry = self.kept(release='dedupe')
+        self.assertEqual((entry.base_hash, entry.committed_hash, entry.changed), ('base', 'candidate', True))
+
+    def test_a_redraw_keeps_the_hash_of_the_picture_the_release_left_not_the_candidates(self):
+        entry = self.kept(release='redraw', release_picture=(14, 'other'))  # the redraw disagrees with the candidate (a failed check)
+        self.assertEqual((entry.committed_hash, entry.changed), ('other', True))
+
+    def test_a_gesture_that_changed_nothing_keeps_the_base_hash_as_the_commit_hash_and_is_marked_unchanged(self):
+        entry = self.kept(GestureCase.SCALE, candidate=(13, 'base'))
+        self.assertEqual((entry.base_hash, entry.committed_hash, entry.changed), ('base', 'base', False))
+
+    def test_a_release_without_a_legitimate_outcome_keeps_no_commit_hash_and_counts_as_changed(self):
+        for model in ({'release': 'hang', 'release_picture': (14, 'candidate')},
+                      {'release': 'older', 'release_picture': (12, 'candidate')},
+                      {'release': 'rewrite', 'release_picture': (0, 'other')}):
+            with self.subTest(model['release']):
+                entry = self.kept(**model)
+                self.assertIsNone(entry.committed_hash)
+                self.assertTrue(entry.changed)  # unknown is not "unchanged": the undo is still asked for real
+
+
+class HistoryCase(GestureCase):
+    """`native.run_corpus` over one gesture and the history steps that follow it, in the order of the real journey (the
+    gesture, its undo, its redo, the undo again), with `HostWindow` as the monitor under a virtual clock."""
+
+    DRAGGED = {'transform': [5, 5, 5], 'undo': 1, 'redo': 0}  # what `HostWindow` holds while the gesture is committed
+    UNDONE = {'transform': [0, 0, 0], 'undo': 0, 'redo': 1}
+    UNDO_RESTORED = 'the undo restored the exact picture of before the gesture'
+    REDO_SHOWED = 'the redo showed the exact picture the commit left'
+    UNDO_NEW = 'the history.undo drew a NEW picture'
+    REDO_NEW = 'the history.redo drew a NEW picture'
+
+    @staticmethod
+    def ids(tag):
+        return {'undo': f'history.undo.{tag}', 'redo': f'history.redo.{tag}', 'again': f'history.undo.{tag}.again'}
+
+    def run_history(self, corpus='small', step=None, tag='translate', **model):
+        step = step or self.STEP
+        ids = self.ids(tag)
+        steps = [*OPEN_STEPS, step,
+                 {'id': ids['undo'], 'phase': 'hot', 'op': {'op': 'history.undo'}},
+                 {'id': ids['redo'], 'phase': 'hot', 'op': {'op': 'history.redo'}},
+                 {'id': ids['again'], 'phase': 'hot', 'op': {'op': 'history.undo'}}]
+        golden = {step['id']: self.DRAGGED, ids['undo']: self.UNDONE, ids['redo']: self.DRAGGED, ids['again']: self.UNDONE}
+        journey = dict(NativeFlow.JOURNEY, corpora={corpus: NativeFlow.JOURNEY['corpora']['small']}, steps=steps)
+        clock = VirtualClock()
+        model = {'base': (10, 'base'), 'candidate': (13, 'candidate'), 'release': 'dedupe', **model}
+        with contextlib.ExitStack() as stack, tempfile.TemporaryDirectory() as out:
+            stack.enter_context(bounded(20))
+            stack.enter_context(patch.object(native, 'time', clock))
+            stack.enter_context(patch.object(native, 'Window', lambda binary, home: HostWindow(clock, step, **model)))
+            stack.enter_context(patch.object(native, 'author_saved_project', return_value=(
+                Path('/tmp/saved.tessel.json'), {'path': '/tmp/saved.tessel.json'})))
+            return native.run_corpus('bin', journey, {corpus: golden}, corpus, out, {})
+
+    @staticmethod
+    def find(result, sid, fragment):
+        """The checks of step `sid` whose label has `fragment`."""
+        return [c for c in result['checks'] if c['check'].startswith(f'{sid}: ') and fragment in c['check']]
+
+    def verdicts(self, result, sid, fragment):
+        return [c['ok'] for c in self.find(result, sid, fragment)]
+
+
+class RedoPicture(HistoryCase):
+    """The redo of a committed gesture must show the exact picture its commit left, not just a newer one (BL015.23 (26a)): the
+    check is real, shows both hashes, is recorded as vacuous where it cannot tell anything, and is never invented."""
+
+    def test_a_redo_that_shows_the_picture_the_commit_left_passes_and_every_history_step_is_judged(self):
+        result = self.run_history()
+        ids = self.ids('translate')
+        self.assertEqual(failed_checks(result), [])
+        redo = self.find(result, ids['redo'], self.REDO_SHOWED)
+        self.assertEqual([c['ok'] for c in redo], [True])
+        self.assertEqual(redo[0]['detail'], str(('candidate', 'candidate')))  # both hashes, the redo's and the commit's
+        self.assertEqual(self.verdicts(result, ids['undo'], self.UNDO_RESTORED), [True])
+        self.assertEqual(self.verdicts(result, ids['again'], self.UNDO_RESTORED), [True])  # undo, redo, undo: all three judged
+        for sid in ids.values():  # a gesture that changed pixels leaves nothing vacuous or unasked
+            self.assertNotIn('vacuous_checks', result['steps'][sid])
+            self.assertNotIn('unasked_checks', result['steps'][sid])
+
+    def test_a_redo_that_showed_the_base_picture_fails_with_both_hashes_although_it_drew_a_newer_picture(self):
+        result = self.run_history(redo_hash='base')  # the redo drew a NEWER picture, but the base one
+        ids = self.ids('translate')
+        self.assertEqual(failed_checks(result), [f'{ids["redo"]}: {self.REDO_SHOWED}'])
+        self.assertEqual(self.verdicts(result, ids['redo'], self.REDO_NEW), [True])  # what the runner asked before: it passes
+        self.assertEqual(self.find(result, ids['redo'], self.REDO_SHOWED)[0]['detail'], str(('base', 'candidate')))
+
+    def test_a_redo_that_showed_any_other_picture_fails_too(self):
+        result = self.run_history(redo_hash='other')
+        ids = self.ids('translate')
+        self.assertEqual(failed_checks(result), [f'{ids["redo"]}: {self.REDO_SHOWED}'])
+        self.assertEqual(self.find(result, ids['redo'], self.REDO_SHOWED)[0]['detail'], str(('other', 'candidate')))
+
+    def test_a_redrawn_commit_is_judged_the_same_way(self):
+        ids = self.ids('translate')
+        result = self.run_history(release='redraw', release_picture=self.REDRAWN)
+        self.assertEqual(failed_checks(result), [])
+        self.assertEqual(self.verdicts(result, ids['redo'], self.REDO_SHOWED), [True])
+        result = self.run_history(release='redraw', release_picture=self.REDRAWN, redo_hash='base')
+        self.assertEqual(failed_checks(result), [f'{ids["redo"]}: {self.REDO_SHOWED}'])
+
+    def test_a_gesture_that_changed_nothing_records_the_redo_comparison_as_vacuous_and_still_asks_it(self):
+        ids = self.ids('scale.uniform')
+        scale = dict(corpus='dense', step=GestureCase.SCALE, tag='scale.uniform', candidate=(13, 'base'))
+        result = self.run_history(**scale)
+        self.assertEqual(failed_checks(result), [])
+        vacuous = result['steps'][ids['redo']]['vacuous_checks']
+        self.assertEqual([item['check'] for item in vacuous], [f'{ids["redo"]}: {self.REDO_SHOWED}'])
+        self.assertIn('left the picture as it was', vacuous[0]['because'])
+        detail = self.find(result, ids['redo'], self.REDO_SHOWED)[0]['detail']
+        self.assertTrue(detail.startswith('vacuous ('), detail)
+        self.assertIn(str(('base', 'base')), detail)
+        wrong = self.run_history(**scale, redo_hash='other')  # still asked: vacuous or not, another picture fails
+        self.assertEqual(failed_checks(wrong), [f'{ids["redo"]}: {self.REDO_SHOWED}'])
+
+    def test_a_redo_of_a_gesture_without_a_legitimate_release_is_not_compared_and_the_record_says_why(self):
+        ids = self.ids('translate')
+        result = self.run_history(release='hang', release_picture=(14, 'candidate'))
+        self.assertEqual(self.find(result, ids['redo'], self.REDO_SHOWED), [])  # no comparison is invented
+        unasked = result['steps'][ids['redo']]['unasked_checks']
+        self.assertEqual([item['check'] for item in unasked], [f'{ids["redo"]}: {self.REDO_SHOWED}'])
+        self.assertIn('no legitimate picture', unasked[0]['because'])
+        self.assertEqual(self.verdicts(result, ids['redo'], self.REDO_NEW), [True])  # "drew a NEW picture" stands
+        self.assertEqual(self.verdicts(result, ids['undo'], self.UNDO_RESTORED), [True])  # the undo is still compared with the base
+
+    def test_a_redo_that_drew_no_picture_fails_only_its_own_check_and_is_not_compared_with_a_stale_picture(self):
+        ids = self.ids('translate')
+        result = self.run_history(redo_draws=False)  # the monitor keeps the base picture the undo left
+        self.assertEqual(failed_checks(result), [f'{ids["redo"]}: {self.REDO_NEW}'])
+        self.assertEqual(self.find(result, ids['redo'], self.REDO_SHOWED), [])
+        self.assertEqual(self.verdicts(result, ids['again'], self.UNDO_RESTORED), [True])  # the redo still moved the stacks
+
+    def test_an_undo_that_drew_no_picture_still_moves_the_stacks_so_the_redo_is_still_compared(self):
+        ids = self.ids('translate')
+        result = self.run_history(undo_draws=[False])  # only the first undo draws nothing
+        self.assertEqual(failed_checks(result), [f'{ids["undo"]}: {self.UNDO_NEW}'])  # only the undo's own failure
+        self.assertEqual(self.find(result, ids['undo'], self.UNDO_RESTORED), [])  # nothing to compare: no picture
+        self.assertEqual(self.verdicts(result, ids['redo'], self.REDO_SHOWED), [True])  # the gesture is on the redo stack
+        self.assertEqual(self.verdicts(result, ids['again'], self.UNDO_RESTORED), [True])
+        wrong = self.run_history(undo_draws=[False], redo_hash='other')
+        self.assertEqual(failed_checks(wrong), [f'{ids["undo"]}: {self.UNDO_NEW}', f'{ids["redo"]}: {self.REDO_SHOWED}'])
+
+
+class RecordedRedo(HistoryCase):
+    """The first real window run (12bc8da, immutable evidence) holds, in all three corpora, the three history steps that follow
+    the translate gesture (undo, redo, undo again) with the hash the monitor showed after each. They are replayed through
+    `run_corpus` in that order, on a monitor that shows exactly those hashes (the gesture's base, candidate and commit hashes
+    are the report's too). NOT the report's: the request ids and the timing (the model's), and the page's acknowledgement
+    after the release (the report never kept it: assumed to match). The replay proves the rule against recorded values, not
+    that the product behaves: nothing here ran a window."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.gestures = {g.corpus: g for g in recorded_gestures() if g.step['id'] == 'drag.translate.x'}
+        cls.history = recorded_history()
+
+    def replay(self, corpus, **model):
+        g, shown = self.gestures[corpus], self.history[corpus]
+        return self.run_history(corpus=corpus, step=g.step, **{
+            'base': (10, g.base[1]), 'candidate': (13, g.candidate[1]), 'undo_hash': shown['history.undo.translate'],
+            'redo_hash': shown['history.redo.translate'], **model})
+
+    def test_the_report_holds_what_the_comparison_is_built_from(self):
+        self.assertEqual(sorted(self.gestures), ['deep', 'dense', 'small'])
+        for corpus, g in self.gestures.items():
+            with self.subTest(corpus):
+                undo, redo, again = (self.history[corpus][sid] for sid in HISTORY_STEPS)
+                self.assertEqual((undo, again), (g.base[1], g.base[1]))  # both undos restored the base picture
+                self.assertEqual(redo, g.picture[1])  # the redo showed the picture the gesture's release had left
+                self.assertNotEqual(redo, g.base[1])  # a translate changes pixels: the comparison tells something
+
+    def test_the_recorded_order_replayed_with_the_recorded_hashes_passes_and_the_redo_is_really_compared(self):
+        ids = self.ids('translate')
+        for corpus in self.gestures:
+            with self.subTest(corpus):
+                result = self.replay(corpus)
+                self.assertEqual(failed_checks(result), [])
+                redo = self.find(result, ids['redo'], self.REDO_SHOWED)
+                shown = self.history[corpus]['history.redo.translate']
+                self.assertEqual([c['ok'] for c in redo], [True])
+                self.assertEqual(redo[0]['detail'], str((shown, shown)))
+                self.assertNotIn('vacuous_checks', result['steps'][ids['redo']])
+                self.assertEqual(self.verdicts(result, ids['undo'], self.UNDO_RESTORED), [True])
+                self.assertEqual(self.verdicts(result, ids['again'], self.UNDO_RESTORED), [True])
+
+    def test_a_recorded_redo_that_had_shown_the_base_picture_or_any_other_fails_with_both_hashes(self):
+        ids = self.ids('translate')
+        for corpus, g in self.gestures.items():
+            for wrong in (g.base[1], WRONG_HASH):
+                with self.subTest(corpus, shows=wrong):
+                    result = self.replay(corpus, redo_hash=wrong)
+                    self.assertEqual(failed_checks(result), [f'{ids["redo"]}: {self.REDO_SHOWED}'])
+                    detail = self.find(result, ids['redo'], self.REDO_SHOWED)[0]['detail']
+                    self.assertEqual(detail, str((wrong, self.history[corpus]['history.redo.translate'])))
+                    self.assertEqual(self.verdicts(result, ids['redo'], self.REDO_NEW), [True])  # it did draw a newer picture
+
+    def test_the_recorded_dense_scale_that_changed_nothing_records_the_redo_comparison_as_vacuous(self):
+        g = next(g for g in recorded_gestures() if (g.corpus, g.step['id']) == ('dense', 'drag.scale.local.uniform'))
+        self.assertEqual(g.candidate[1], g.base[1])  # the observation behind H17: the scale pictures are the base picture
+        ids = self.ids('scale.uniform')
+        scale = dict(corpus='dense', step=g.step, tag='scale.uniform', base=(10, g.base[1]), candidate=(13, g.candidate[1]))
+        result = self.run_history(**scale)
+        self.assertEqual(failed_checks(result), [])
+        vacuous = result['steps'][ids['redo']]['vacuous_checks']
+        self.assertEqual([item['check'] for item in vacuous], [f'{ids["redo"]}: {self.REDO_SHOWED}'])
+        detail = self.find(result, ids['redo'], self.REDO_SHOWED)[0]['detail']
+        self.assertTrue(detail.startswith('vacuous ('), detail)
+        self.assertIn(str((g.base[1], g.base[1])), detail)
+        wrong = self.run_history(**scale, redo_hash=WRONG_HASH)
+        self.assertEqual(failed_checks(wrong), [f'{ids["redo"]}: {self.REDO_SHOWED}'])
+
+    def test_a_recorded_undo_that_drew_no_picture_still_moves_the_stacks_so_the_redo_is_checked(self):
+        ids = self.ids('translate')
+        for corpus in self.gestures:
+            with self.subTest(corpus):
+                result = self.replay(corpus, undo_draws=[False])
+                self.assertEqual(failed_checks(result), [f'{ids["undo"]}: {self.UNDO_NEW}'])
+                self.assertEqual(self.verdicts(result, ids['redo'], self.REDO_SHOWED), [True])
+                wrong = self.replay(corpus, undo_draws=[False], redo_hash=WRONG_HASH)
+                self.assertEqual(failed_checks(wrong), [f'{ids["undo"]}: {self.UNDO_NEW}',
+                                                        f'{ids["redo"]}: {self.REDO_SHOWED}'])
+
+
+class ScriptedHistory(FakeWindow):
+    """A `FakeWindow` whose `history.undo` / `history.redo` are scripted: each pops one `(ok, hash)` of `script`. The request is
+    answered `ok`; when `ok` and `hash` is not None the monitor then shows a NEW picture with that hash (None: the host drew
+    nothing)."""
+
+    script = []
+    picture = None
+
+    def op(self, request, timeout=90):
+        if request['op'] in ('history.undo', 'history.redo'):
+            FakeWindow.log.append(request['op'])
+            ok, shows = ScriptedHistory.script.pop(0)
+            if ok and shows is not None:
+                self.request += 1
+                self.picture = shows
+            return ok, {} if ok else {'code': 'nothing_to_undo'}
+        return super().op(request, timeout)
+
+    def state(self):
+        state = super().state()
+        if self.picture is not None and 'last_frame' in state:
+            state['last_frame']['hash'] = self.picture
+        return state
+
+
+class HistoryStacks(unittest.TestCase):
+    """BL015.23 (26b): the two stacks of `run_corpus` follow the DOCUMENT, not the pictures. `drag` is replaced by a stand-in
+    that commits the gestures of a table, so the history steps are judged against known `Undoable`s: `A` and `B` changed
+    pixels (base `a0`/`b0`, commit `a1`/`b1`), `Z` changed nothing (`z0` both). The window answers each history request as a
+    script says: with the picture it shows afterwards, or with none."""
+
+    GESTURES = {'drag.a': ('a0', 'a1', True), 'drag.b': ('b0', 'b1', True), 'drag.z': ('z0', 'z0', False)}
+    UNDO_RESTORED = 'the undo restored the exact picture of before the gesture'
+    REDO_SHOWED = 'the redo showed the exact picture the commit left'
+
+    def run_steps(self, gestures, history, script):
+        """`run_corpus` over the open steps, one stand-in gesture per id of `gestures` and one history step per id of `history`
+        (`history.undo.N` / `history.redo.N`), the window answering the history requests as `script` says."""
+        def drag(window, timed, check, step, scene, variables, node, committed, undoable, result, shown):
+            base, commit, changed = self.GESTURES[step['id']]
+            committed.append(('before', 'after'))
+            undoable.append(native.Undoable(base, changed, step['id'], commit))
+
+        steps = [*OPEN_STEPS, *({'id': sid, 'kind': 'drag', 'phase': 'hot'} for sid in gestures),
+                 *({'id': sid, 'phase': 'hot', 'op': {'op': 'history.redo' if sid.startswith('history.redo') else 'history.undo'}}
+                   for sid in history)]
+        ScriptedHistory.script = list(script)
+        clock = VirtualClock()
+        FakeWindow.log, FakeWindow.stale_shows, FakeWindow.instances = [], set(), []
+        with contextlib.ExitStack() as stack, tempfile.TemporaryDirectory() as out:
+            stack.enter_context(bounded(20))
+            stack.enter_context(patch.object(native, 'time', clock))
+            stack.enter_context(patch.object(native, 'Window', ScriptedHistory))
+            stack.enter_context(patch.object(native, 'drag', drag))
+            stack.enter_context(patch.object(native, 'author_saved_project', return_value=(
+                Path('/tmp/saved.tessel.json'), {'path': '/tmp/saved.tessel.json'})))
+            result = native.run_corpus('bin', dict(NativeFlow.JOURNEY, steps=steps), {'small': {}}, 'small', out, {})
+        self.assertEqual(ScriptedHistory.script, [])  # every scripted answer was used: the scenario is what the script says
+        return result
+
+    @staticmethod
+    def found(result, sid, fragment):
+        return [c for c in result['checks'] if c['check'] == f'{sid}: {fragment}']
+
+    def test_an_undo_without_a_picture_moves_the_stacks_so_the_next_undo_is_judged_against_the_gesture_before_it(self):
+        # `B` was undone by the first undo (no picture), so the second undo takes `A` off: it must be compared with `a0`.
+        # Compared with `B` (the stacks unmoved) it would fail against `b0` and blame the second undo for the first one's.
+        result = self.run_steps(['drag.a', 'drag.b'], ['history.undo.1', 'history.undo.2'], [(True, None), (True, 'a0')])
+        self.assertEqual(failed_checks(result), ['history.undo.1: the history.undo drew a NEW picture'])
+        second = self.found(result, 'history.undo.2', self.UNDO_RESTORED)
+        self.assertEqual([c['ok'] for c in second], [True])
+        self.assertEqual(second[0]['detail'], str(('a0', 'a0')))
+
+    def test_a_redo_after_an_undo_without_a_picture_is_compared_with_the_commit_of_the_gesture_that_undo_took_off(self):
+        result = self.run_steps(['drag.a', 'drag.b'], ['history.undo.1', 'history.redo.1'], [(True, None), (True, 'b1')])
+        self.assertEqual(failed_checks(result), ['history.undo.1: the history.undo drew a NEW picture'])
+        self.assertEqual(self.found(result, 'history.redo.1', self.REDO_SHOWED)[0]['detail'], str(('b1', 'b1')))
+        wrong = self.run_steps(['drag.a', 'drag.b'], ['history.undo.1', 'history.redo.1'], [(True, None), (True, 'a1')])
+        self.assertEqual(failed_checks(wrong), ['history.undo.1: the history.undo drew a NEW picture',
+                                                f'history.redo.1: {self.REDO_SHOWED}'])  # `a1` is the other gesture's commit
+        self.assertEqual(self.found(wrong, 'history.redo.1', self.REDO_SHOWED)[0]['detail'], str(('a1', 'b1')))
+
+    def test_the_vacuous_record_of_a_redo_names_the_gesture_the_stacks_say_was_redone(self):
+        # `Z` left the picture as it was: its redo is recorded as vacuous, and by `Z`'s name, after an undo that drew nothing
+        result = self.run_steps(['drag.a', 'drag.z'], ['history.undo.1', 'history.redo.1'], [(True, None), (True, 'z0')])
+        self.assertEqual(failed_checks(result), ['history.undo.1: the history.undo drew a NEW picture'])
+        vacuous = result['steps']['history.redo.1']['vacuous_checks']
+        self.assertEqual([item['check'] for item in vacuous], [f'history.redo.1: {self.REDO_SHOWED}'])
+        self.assertIn('drag.z left the picture as it was', vacuous[0]['because'])
+
+    def test_two_undos_and_two_redos_walk_the_gestures_in_order(self):
+        script = [(True, 'b0'), (True, 'a0'), (True, 'a1'), (True, 'b1')]
+        result = self.run_steps(['drag.a', 'drag.b'], ['history.undo.1', 'history.undo.2', 'history.redo.1', 'history.redo.2'],
+                                script)
+        self.assertEqual(failed_checks(result), [])
+        for sid, detail in (('history.undo.1', ('b0', 'b0')), ('history.undo.2', ('a0', 'a0'))):
+            self.assertEqual(self.found(result, sid, self.UNDO_RESTORED)[0]['detail'], str(detail))
+        for sid, detail in (('history.redo.1', ('a1', 'a1')), ('history.redo.2', ('b1', 'b1'))):
+            self.assertEqual(self.found(result, sid, self.REDO_SHOWED)[0]['detail'], str(detail))
+
+    def test_a_redo_that_drew_no_picture_still_puts_the_gesture_back_on_the_undo_stack(self):
+        result = self.run_steps(['drag.a', 'drag.b'], ['history.undo.1', 'history.redo.1', 'history.undo.2'],
+                                [(True, 'b0'), (True, None), (True, 'b0')])
+        self.assertEqual(failed_checks(result), ['history.redo.1: the history.redo drew a NEW picture'])
+        self.assertEqual([c['ok'] for c in self.found(result, 'history.undo.2', self.UNDO_RESTORED)], [True])  # `B` again
+
+    def test_a_history_request_that_was_not_answered_ok_moves_nothing(self):
+        result = self.run_steps(['drag.a'], ['history.undo.1', 'history.undo.2'], [(False, None), (True, 'a0')])
+        self.assertEqual(failed_checks(result), ['history.undo.1: history.undo answered'])
+        self.assertEqual(self.found(result, 'history.undo.1', self.UNDO_RESTORED), [])
+        self.assertEqual([c['ok'] for c in self.found(result, 'history.undo.2', self.UNDO_RESTORED)], [True])  # `A` still there
+
+
+class LateCommitReply(GestureCase):
+    """The sweep of F2: `settle_commit` judges its deadline AGAIN after a read. A read that ends after `seconds` and shows a
+    legitimate picture (here the release's redraw, which an in-time read calls `redrawn`) came too late to count: the outcome
+    is None. The sweep found that no test pinned that branch (a mutant that removed it survived every earlier test)."""
+
+    def settle_late(self, read_cost):
+        clock = VirtualClock()
+        window = HostWindow(clock, self.STEP, base=self.BASE, candidate=self.CANDIDATE, release='redraw',
+                            release_picture=self.REDRAWN)
+        window.shown = self.CANDIDATE
+        ok, up = window.op({'op': 'scene.pointer.up'})  # the release, at T: the host redraws 40 ms later
+        info = native.picture(window.viewport())
+        window.read_cost = read_cost  # from now on every read takes that long, whatever timeout it was given
+        with patch.object(native, 'time', clock), bounded(10):
+            tool = {'tool': self.STEP['tool'], 'space': self.STEP['space']}
+            return window.settle_commit('proof', 24, info, up['overlay'], tool, seconds=30)
+
+    def test_a_redraw_that_a_slow_read_saw_after_the_deadline_is_too_late_and_not_redrawn(self):
+        settled = self.settle_late(read_cost=31.0)  # the first read ends at T + 31: past the 30 s, and it shows the redraw
+        self.assertIsNone(settled['outcome'])
+        self.assertIn('after the deadline', settled['problem'])
+        self.assertIn('too late to count', settled['problem'])
+
+    def test_the_same_redraw_seen_by_a_read_in_time_is_redrawn(self):
+        settled = self.settle_late(read_cost=0.5)
+        self.assertEqual(settled['outcome'], 'redrawn')
+        self.assertIsNone(settled['problem'])
+
+
+class LateJobAnswer(unittest.TestCase):
+    """F2 of review 5861824134: `commit_job`, the wait of `run_corpus` for a queued job (60 s), judges its deadline AGAIN after
+    each answer. The timeout of a socket bounds one call, not how late it answers, so a state that arrives after the deadline
+    is too late to count, a final one included, and `job.commit` is never sent after it. Virtual clock: nothing waits."""
+
+    STEPS = [OPEN_PROJECT, {'id': 'resolve', 'phase': 'hot', 'op': {'op': 'scene.resources.resolve', 'scene': '$scene'}}]
+    FINISHED, SUCCEEDED, APPLIED = 'resolve: the job finished', 'resolve: the job succeeded', 'resolve: the job was applied'
+
+    def run_job(self, answers):
+        """`run_corpus` with a job whose `job.get` answers `answers` one by one (the last one for ever): each is `(seconds,
+        state)`, the answer taking that many seconds of the virtual clock to arrive whatever timeout the runner gave it."""
+        clock = VirtualClock()
+
+        class Window(SavingWindow):
+            script, commits = list(answers), []
+
+            def op(self, request, timeout=90):
+                if request['op'] == 'scene.resources.resolve':
+                    return True, {'state': 'queued', 'job': 'j1'}
+                if request['op'] == 'job.get':
+                    seconds, state = Window.script.pop(0) if len(Window.script) > 1 else Window.script[0]
+                    clock.sleep(seconds)
+                    return True, {'state': state}
+                if request['op'] == 'job.commit':
+                    Window.commits.append(request['job'])
+                    return True, {}
+                return super().op(request, timeout)
+
+        result = run_one_corpus(Window, self.STEPS, clock=clock)
+        self.commits = Window.commits
+        return result
+
+    def only(self, result, label):
+        found = [c for c in result['checks'] if c['check'] == label]
+        self.assertEqual(len(found), 1, (label, [c['check'] for c in result['checks']]))
+        return found[0]
+
+    def labels(self, result):
+        return [c['check'] for c in result['checks']]
+
+    def test_a_final_answer_that_arrives_after_the_deadline_is_too_late_and_no_job_commit_is_sent(self):
+        result = self.run_job([(61.0, 'succeeded')])
+        finished = self.only(result, self.FINISHED)
+        self.assertFalse(finished['ok'])
+        self.assertIn('after the 60 s deadline', finished['detail'])
+        self.assertIn('too late to count', finished['detail'])
+        self.assertIn('no `job.commit` was sent', finished['detail'])
+        self.assertEqual(self.commits, [])  # the commit after the deadline is what this forbids
+        self.assertNotIn(self.APPLIED, self.labels(result))
+
+    def test_every_final_state_that_arrives_late_is_refused_and_none_of_them_is_read(self):
+        for state in ('succeeded', 'failed', 'cancelled'):
+            with self.subTest(state):
+                result = self.run_job([(61.0, state)])
+                self.assertFalse(self.only(result, self.FINISHED)['ok'])
+                self.assertNotIn(self.SUCCEEDED, self.labels(result))  # a late `failed` is not read either
+                self.assertNotIn(self.APPLIED, self.labels(result))
+                self.assertEqual(self.commits, [])
+
+    def test_a_late_answer_that_is_not_final_is_refused_with_the_same_detail(self):
+        result = self.run_job([(61.0, 'running')])
+        finished = self.only(result, self.FINISHED)
+        self.assertFalse(finished['ok'])
+        self.assertIn('too late to count', finished['detail'])  # the detail used to be empty
+        self.assertEqual(self.commits, [])
+
+    def test_the_deadline_belongs_to_the_whole_wait_not_to_a_single_poll(self):
+        # the first answer comes 31 s in (in time, not final); the second takes 30 s more: it arrives at 61 s
+        result = self.run_job([(31.0, 'running'), (30.0, 'succeeded')])
+        self.assertFalse(self.only(result, self.FINISHED)['ok'])
+        self.assertIn('too late to count', self.only(result, self.FINISHED)['detail'])
+        self.assertEqual(self.commits, [])
+        self.assertNotIn(self.APPLIED, self.labels(result))
+
+    def test_an_answer_that_arrives_in_time_behaves_exactly_as_before(self):
+        result = self.run_job([(0.5, 'running'), (0.5, 'running'), (0.5, 'succeeded')])
+        self.assertEqual(failed_checks(result), [])
+        self.assertTrue(self.only(result, self.APPLIED)['ok'])
+        self.assertEqual(self.commits, ['j1'])
+        self.assertNotIn(self.FINISHED, self.labels(result))  # no check by that name unless the wait failed
+        result = self.run_job([(0.5, 'failed')])  # a final state that is not `succeeded` is still its own failed check
+        self.assertEqual(failed_checks(result), [self.SUCCEEDED])
+        self.assertEqual(self.only(result, self.SUCCEEDED)['detail'], str({'state': 'failed'}))
+        self.assertEqual(self.commits, [])
+
+    def test_an_answer_that_arrives_exactly_at_the_deadline_is_in_time_and_one_just_after_it_is_not(self):
+        result = self.run_job([(60.0, 'succeeded')])  # the poll starts at T, the answer arrives at T + 60: the deadline itself
+        self.assertTrue(self.only(result, self.APPLIED)['ok'])
+        self.assertEqual(self.commits, ['j1'])
+        result = self.run_job([(60.01, 'succeeded')])
+        self.assertFalse(self.only(result, self.FINISHED)['ok'])
+        self.assertEqual(self.commits, [])
 
 
 if __name__ == '__main__':

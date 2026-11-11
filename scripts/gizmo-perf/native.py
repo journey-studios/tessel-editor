@@ -26,9 +26,9 @@ in flight, the directed scene is the requested one, the picture it shows (`direc
 it read back (`last_frame.request`), it is for the requested edit frame, and its request id is STRICTLY newer than the
 one observed right before the command. A reply on the socket, the page's `frame.done`, a cached value or the previous
 scene's picture can therefore never satisfy a wait. The checks are on the picture's pixel hash (read back by the runtime):
-a commit changes it (where the pixel expectation below says it must), an undo must restore the exact earlier hash, a
-switch must show the new scene. The one exception to "strictly newer" is the release of a gesture whose candidate was
-drawn (next paragraph).
+a commit changes it (where the pixel expectation below says it must), an undo must restore the exact earlier hash, a redo
+must show the exact hash the commit left (not just a newer picture), a switch must show the new scene. The one exception
+to "strictly newer" is the release of a gesture whose candidate was drawn (next paragraph).
 
 A RELEASE. The host draws nothing for a release whose plan equals the candidate's (`ViewportHost::render_scene` answers a
 non-explicit request with an equal key with no picture: BL015.23 item 16), so with the candidate DRAWN there are exactly
@@ -44,8 +44,10 @@ PIXEL EXPECTATIONS. What a gesture has to do to the picture is declared per corp
 `dense`, whose node is 0.1 scene units wide and whose scaled picture was byte-identical to the base in the first real run
 (`may_stay_equal`: the hashes and whether anything changed are recorded, equality is not a failure). A check that holds
 whatever the product did because the pictures involved are the base picture (the cancel returning to a base that the
-candidate already was, an undo restoring a picture the commit never changed) is still asked and is recorded as
-`vacuous_checks` in the step, never as proof.
+candidate already was, an undo restoring a picture the commit never changed, a redo showing it again) is still asked and
+is recorded as `vacuous_checks` in the step, never as proof. A check that cannot be asked at all (a redo of a gesture whose
+release left no legitimate picture: there is nothing of the commit to compare with) is recorded as `unasked_checks`, with
+the reason, and is never invented.
 
 CANCEL. Before the release the candidate is proven different from the base (the move reply's own candidate value and
 `would_change`) and must have been DRAWN (a picture newer than the press, within 2 s: a candidate that differs from the
@@ -196,6 +198,7 @@ QUERY_FLOOR_SECONDS = 0.05  # what a poll is given when NO time is left for it (
 ACK_SECONDS = 5  # how long a step waits for the page to acknowledge ITS overlay (the wait was always 5 s)
 COMMIT_SECONDS = 30  # how long a release may take to leave a legitimate picture on the monitor (the wait was always 30 s)
 COMMIT_QUIET_SECONDS = 0.25  # the candidate's own picture must stay the only one this long before a release is "deduped"
+JOB_SECONDS = 60  # how long a queued job may take to reach a final state before its step fails (the wait was always 60 s)
 
 MUST_CHANGE = 'must_change'
 MAY_STAY_EQUAL = 'may_stay_equal'
@@ -255,9 +258,11 @@ def commit_kind(candidate, info):
     return 'candidate' if info.get('hash') is not None and info.get('hash') == candidate.get('hash') else 'other'
 
 
-# One committed gesture, as the undo that follows has to know it: the picture hash before it, whether the commit changed
-# any pixel (an undo can only be proven to restore pixels a gesture changed), and the step.
-Undoable = collections.namedtuple('Undoable', 'base_hash changed step')
+# One committed gesture, as the undo and the redo that follow have to know it: the picture hash before it, whether the
+# commit changed any pixel (an undo can only be proven to restore pixels a gesture changed), the step, and the hash of the
+# picture the commit left (what a redo has to show again; None when the release had no legitimate outcome, so there is no
+# picture of the commit to compare a redo with).
+Undoable = collections.namedtuple('Undoable', 'base_hash changed step committed_hash')
 
 
 def ack_expectation(request, overlay, tool=None):
@@ -820,10 +825,16 @@ def run_corpus(binary, journey, golden, name, out, notes):
             return ok, data
 
         def commit_job(step, data):
+            """Waits `JOB_SECONDS` for a queued job to reach a final state and then applies it. Bounded like `Window.settle`:
+            each `job.get` is given the time that is left, and the deadline is judged again AFTER the answer. The timeout of
+            a socket bounds each blocking call, not how late the answer arrives (and `QUERY_FLOOR_SECONDS` lets a poll begun
+            at the deadline run past it), so an answer that comes back after the deadline is too late to count whatever it
+            says, a final state included: it fails `the job finished` and `job.commit` is never sent after the deadline."""
             if not isinstance(data, dict) or data.get('state') != 'queued':
                 return True
-            deadline = time.time() + 60
-            status, finished, timed_out = None, False, False
+            started = time.time()
+            deadline = started + JOB_SECONDS
+            status, finished, timed_out, late = None, False, False, None
             while time.time() < deadline:
                 try:
                     # Each poll gets the time that is left, not the 90 s default: a `job.get` that never answers would
@@ -833,10 +844,18 @@ def run_corpus(binary, journey, golden, name, out, notes):
                 except (socket.timeout, TimeoutError):
                     timed_out = True
                     break
+                answered = time.time()
+                if answered > deadline:  # too late to count: the state it carries is not read, a final one included
+                    late = answered - started
+                    break
                 if ok and status['state'] in ('succeeded', 'failed', 'cancelled'):
                     finished = True
                     break
                 time.sleep(0.03)
+            if late is not None:
+                return check(f'{step}: the job finished', False,
+                             f'a `job.get` answer arrived {late:.1f} s after the wait began, after the {JOB_SECONDS:g} s '
+                             'deadline: too late to count (its state was not used and no `job.commit` was sent)')
             if not finished:
                 return check(f'{step}: the job finished', False,
                              'a `job.get` did not answer in the time that was left' if timed_out else '')
@@ -954,9 +973,14 @@ def run_corpus(binary, journey, golden, name, out, notes):
                     record['client_ms_to_converged_picture'] = ms
                     record['picture'] = info
                     check(f'{sid}: the {request["op"]} drew a NEW picture', ms is not None, json.dumps(info))
-                    if request['op'] == 'history.undo' and committed:
-                        if before_hash is not None and undoable and ms is not None:
-                            gesture = undoable[-1]
+                    # The two stacks follow the DOCUMENT: the request answered ok, so the gesture on top of the stack it
+                    # moves is the one it took off (or put back on) the history, whether or not a picture converged (that
+                    # already fails the check above, and the next history step must still be judged against the right
+                    # gesture). Only the pixel comparisons below need a picture.
+                    if request['op'] == 'history.undo' and committed and undoable:
+                        gesture = undoable.pop()
+                        redoable.append(gesture)
+                        if before_hash is not None and ms is not None:
                             label = f'{sid}: the undo restored the exact picture of before the gesture'
                             restored = picture_hash(state) == gesture.base_hash
                             if gesture.changed:
@@ -968,9 +992,28 @@ def run_corpus(binary, journey, golden, name, out, notes):
                                 record.setdefault('vacuous_checks', []).append({'check': label, 'because': because})
                                 check(label, restored, f'vacuous ({because}); '
                                                        f'{(picture_hash(state), gesture.base_hash)}')
-                            redoable.append(undoable.pop())
                     elif request['op'] == 'history.redo' and redoable:
-                        undoable.append(redoable.pop())
+                        gesture = redoable.pop()
+                        undoable.append(gesture)
+                        if ms is not None:
+                            # The redo has to show the picture the commit left, not just a newer one (the check above).
+                            label = f'{sid}: the redo showed the exact picture the commit left'
+                            shows = picture_hash(state)
+                            if gesture.committed_hash is None:
+                                # The release had no legitimate outcome (its own checks failed): there is no picture of the
+                                # commit to compare with, and none is invented; the step's record says so.
+                                record.setdefault('unasked_checks', []).append({'check': label, 'because': (
+                                    f'{gesture.step} left no legitimate picture (its release had no commit_picture), so '
+                                    'there is no picture of the commit to compare the redo with')})
+                            elif gesture.changed:
+                                check(label, shows == gesture.committed_hash, (shows, gesture.committed_hash))
+                            else:
+                                # the commit left the picture as it was: the redo showing it proves nothing about pixels
+                                because = (f'{gesture.step} left the picture as it was, so the base picture is what the '
+                                           'monitor showed before the redo too')
+                                record.setdefault('vacuous_checks', []).append({'check': label, 'because': because})
+                                check(label, shows == gesture.committed_hash,
+                                      f'vacuous ({because}); {(shows, gesture.committed_hash)}')
             if sid == 'open.attach' or sid == 'switch.attach':
                 result['attached'] = True
             if result.get('attached') and not step.get('ui') and step.get('wait') is None and sid != 'open.project':
@@ -1017,9 +1060,10 @@ def run_corpus(binary, journey, golden, name, out, notes):
 def drag(window, timed, check, step, scene, variables, node, committed, undoable, result, shown):
     """One gesture of the journey: press, moves, then a release or a cancel, judged on the document (the transform, the
     history), on the monitor's pictures and on what the declared pixel expectation (`PIXEL_EXPECTATIONS`) allows. A commit
-    appends an `Undoable` to `undoable`, for the undo that follows. The step's record keeps what was observed: the
-    hashes (`pixels`), how the release left the monitor (`commit_picture`: `redrawn` or `deduped`) and the checks that
-    prove nothing for this step (`vacuous_checks`)."""
+    appends an `Undoable` to `undoable`, for the undo and the redo that follow: the base picture's hash, whether the commit
+    changed a pixel, the step and the hash of the picture the commit left (`pixels['committed_hash']`: None when the release
+    had no legitimate outcome). The step's record keeps what was observed: the hashes (`pixels`), how the release left the
+    monitor (`commit_picture`: `redrawn` or `deduped`) and the checks that prove nothing for this step (`vacuous_checks`)."""
     sid = step['id']
     phase = step.get('phase')
     frame = variables['frame']
@@ -1145,7 +1189,7 @@ def drag(window, timed, check, step, scene, variables, node, committed, undoable
                   after_hash is not None and after_hash != start_hash, (start_hash, after_hash))
         check(f'{sid}: one undo entry per gesture', depths(window)[0] == undo_before + 1)
         committed.append((before, transform(window, scene, node)))
-        undoable.append(Undoable(start_hash, pixels['committed_changed'] is not False, sid))
+        undoable.append(Undoable(start_hash, pixels['committed_changed'] is not False, sid, pixels['committed_hash']))
     else:
         ok, cancel = timed(sid, {'op': 'scene.pointer.cancel', 'reason': 'api'}, phase=phase)
         check(f'{sid}: the cancel answered', ok, cancel)
