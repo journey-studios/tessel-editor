@@ -82,7 +82,7 @@ def prerequisites(args, experiment, needed=(RUNTIME_JS,), gate=None):
     if why:
         print(f"BLOCKED: {why}")
         return None
-    project = parse_project(json.loads(document.read_text()))
+    project = parse_project(json.loads(document.read_text()), base=document.resolve().parent)
     if [s for s in check_sources(project["sources"]) if not s["present"]]:
         print("BLOCKED: project source(s) missing")
         return None
@@ -182,5 +182,5 @@ def analyze(experiments, args):
         document = pathlib.Path(args.project)
         if sha256_file(document) != manifest["document_sha256"]:
             raise SystemExit("refused: --project is not the document these sessions played (its sha256 is not the manifest's)")
-        project = parse_project(json.loads(document.read_text()))
+        project = parse_project(json.loads(document.read_text()), base=document.resolve().parent)
     return finish(experiment, out, load_batch(out, experiment, manifest), project, manifest, args.report_dir, getattr(args, "charts", False))

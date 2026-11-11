@@ -114,6 +114,13 @@ class PrerequisiteTests(Folder):
         self.assertIsInstance(run.lock_wait_s, float)
         self.assertEqual(shown, "")
 
+    def test_the_sources_are_read_relative_to_the_folder_of_the_document_not_the_working_directory(self):
+        seen = []
+        with mock.patch.object(B, "parse_project", side_effect=lambda document, base=None: seen.append(base) or PROJECT):
+            run, _ = self.prerequisites(Warm())
+        self.assertIsNotNone(run)
+        self.assertEqual(seen, [self.document.resolve().parent])
+
     def test_a_missing_binary_or_needed_file_is_blocked_by_name(self):
         self.binary.unlink()
         run, shown = self.prerequisites(Warm())
@@ -387,9 +394,9 @@ class AnalyzeFolderTests(Folder):
     def test_the_document_the_sessions_played_is_the_one_analysed_with(self):
         self.ran()
         parsed = []
-        with mock.patch.object(B, "parse_project", side_effect=lambda document: parsed.append(document) or PROJECT):
+        with mock.patch.object(B, "parse_project", side_effect=lambda document, base=None: parsed.append((document, base)) or PROJECT):
             self.assertEqual(self.analyze(), 0)
-        self.assertEqual(parsed, [{}])
+        self.assertEqual(parsed, [({}, self.document.resolve().parent)], "read where the document is: its relative media paths are under that folder")
         self.assertTrue(json.loads((Path(self.args.out) / "analysis.json").read_text())["project"])
 
     def test_another_document_is_refused_before_anything_is_read_or_written(self):

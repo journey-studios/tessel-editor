@@ -2,8 +2,11 @@
 import contextlib
 import importlib.util
 import io
+import json
 import sys
+import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -30,6 +33,23 @@ class ReportTextTests(unittest.TestCase):
                 self.assertEqual(header.count("|"), delimiter.count("|"), header)
                 checked += 1
         self.assertGreaterEqual(checked, 3)
+
+
+class PreflightTests(unittest.TestCase):
+    def test_media_stored_relative_to_the_document_is_found_from_any_working_directory(self):
+        with tempfile.TemporaryDirectory() as folder:
+            (Path(folder) / "managed-media").mkdir()
+            (Path(folder) / "managed-media" / "clip-0.ply").write_bytes(b"x" * 10)
+            document = Path(folder) / "project.tessel.json"
+            sources = [{"type": "file", "path": "managed-media/clip-0.ply"}, {"type": "file", "path": "managed-media/missing.ply"}]
+            document.write_text(json.dumps({"sequences": [{"id": "main", "length": 10, "rate": {"num": 24, "den": 1}, "clips": []}],
+                                            "library": {"assets": [{"kind": "splat", "asset": {"source": source}} for source in sources]}}))
+            shown = io.StringIO()
+            with contextlib.redirect_stdout(shown):
+                code = ab.cmd_preflight(SimpleNamespace(project=str(document)))
+            summary_ = json.loads(shown.getvalue())
+            self.assertEqual((summary_["sources_total"], summary_["sources_present"], code), (2, 1, 2), "the one that is there is found; the missing one is the only reason for 2")
+            self.assertEqual([entry["present"] for entry in summary_["sources"]], [True, False])
 
 
 def summary(mode, **kw):

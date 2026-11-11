@@ -197,7 +197,7 @@ def markdown(report):
 def cmd_preflight(args):
     document = pathlib.Path(args.project)
     data = json.loads(document.read_text())
-    project = parse_project(data)
+    project = parse_project(data, base=document.resolve().parent)
     checked = check_sources(project["sources"])
     summary = {"document_sha256": sha256_file(document), "length": project["length"], "fps": project["fps"], "cuts": project["cuts"],
                "clip_kinds": project["clip_kinds"], "sources_total": len(checked), "sources_present": sum(1 for c in checked if c["present"]),

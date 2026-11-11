@@ -92,6 +92,69 @@ class ProjectTests(unittest.TestCase):
             self.assertEqual(len(checked[0]["head_tail_sha256"]), 64)
 
 
+class RelativeSourceTests(unittest.TestCase):
+    """The document stores the media inside its own folder relative to it (`encode_path`); the editor reads them there (`decode_path`), never from the cwd."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.folder = self.root / "project-folder"
+        (self.folder / "managed-media" / "frames").mkdir(parents=True)
+        (self.folder / "managed-media" / "clip-0.ply").write_bytes(b"x" * 10)
+        for number in (1, 2):
+            (self.folder / "managed-media" / "frames" / f"frame_{number:04d}.png").write_bytes(b"png")
+        (self.root / "outside.ply").write_bytes(b"y")
+        self.absolute_media = self.root / "elsewhere.ply"
+        self.absolute_media.write_bytes(b"z")
+
+    def document(self, *extra):
+        sources = [("splat", {"type": "file", "path": "managed-media/clip-0.ply"}),
+                   ("video", {"type": "frame_sequence", "pattern": "managed-media/frames/frame_%04d.png"}),
+                   ("splat", {"type": "file", "path": str(self.absolute_media)}), *extra]
+        return {"active_sequence": "main", "sequences": [{"id": "main", "length": 10, "rate": {"num": 24, "den": 1}, "clips": []}],
+                "library": {"assets": [{"kind": kind, "asset": {"source": source}} for kind, source in sources]}}
+
+    def test_relative_paths_and_patterns_are_looked_up_under_the_documents_folder_not_the_working_directory(self):
+        checked = PR.check_sources(PR.parse_project(self.document(), base=self.folder)["sources"])
+        self.assertEqual([(c["kind"], c["present"]) for c in checked], [("splat", True), ("video", True), ("splat", True)])
+        self.assertEqual((checked[0]["size"], checked[1]["frames"]), (10, 2))
+        self.assertNotIn("managed-media", json.dumps(checked), "still labels, never names")
+
+    def test_a_relative_path_without_a_document_folder_or_leaving_it_is_missing_as_the_editor_refuses_it(self):
+        here = os.getcwd()
+        os.chdir(self.folder)  # the working directory IS the document's folder: only the rule can keep a path from being found there by luck
+        self.addCleanup(os.chdir, here)
+        leaving = ("splat", {"type": "file", "path": "../outside.ply"})
+        checked = PR.check_sources(PR.parse_project(self.document(leaving), base=self.folder)["sources"])
+        self.assertEqual([c["present"] for c in checked], [True, True, True, False], "the file is there, the editor will not read it")
+        unknown = PR.check_sources(PR.parse_project(self.document())["sources"])
+        self.assertEqual([c["present"] for c in unknown], [False, False, True], "relative with no folder to be relative to: not found by luck in the cwd")
+
+    def test_the_copy_the_editor_opens_still_reaches_the_original_media(self):
+        document = self.folder / "project.tessel.json"
+        document.write_text(json.dumps(self.document()))
+        copy = Path(PR.new_workspace_copy(document, str(self.root / "work" / "copy")))
+        self.assertNotEqual(copy.parent, self.folder)
+        saved = json.loads(copy.read_text())
+        self.assertEqual([c["present"] for c in PR.check_sources(PR.parse_project(saved, base=copy.parent)["sources"])], [True, True, True],
+                         "read from the copy's own folder, every source is where it was")
+        sources = [entry["asset"]["source"] for entry in saved["library"]["assets"]]
+        self.assertEqual(sources[0]["path"], str(self.folder / "managed-media" / "clip-0.ply"))
+        self.assertEqual(sources[1]["pattern"], str(self.folder / "managed-media" / "frames" / "frame_%04d.png"))
+        self.assertEqual(sources[2]["path"], str(self.absolute_media))
+
+    def test_a_document_with_no_relative_path_is_copied_byte_for_byte_and_a_refused_one_is_left_to_be_refused(self):
+        plain = self.folder / "plain.tessel.json"
+        plain.write_text(json.dumps({**self.document(), "library": {"assets": [{"kind": "splat", "asset": {"source": {"type": "file", "path": str(self.absolute_media)}}}]}}, indent=1))
+        copied = Path(PR.new_workspace_copy(plain, str(self.root / "w1")))
+        self.assertEqual(copied.read_bytes(), plain.read_bytes())
+        refused = self.folder / "refused.tessel.json"
+        refused.write_text(json.dumps(self.document(("splat", {"type": "file", "path": "../outside.ply"}))))
+        saved = json.loads(Path(PR.new_workspace_copy(refused, str(self.root / "w2"))).read_text())
+        self.assertEqual(saved["library"]["assets"][3]["asset"]["source"]["path"], "../outside.ply")
+
+
 class HeadTailHashTests(unittest.TestCase):
     CHUNK = 8
 

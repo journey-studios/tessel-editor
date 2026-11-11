@@ -3,7 +3,9 @@
 Nothing here carries a name or a path of the project: sources are published as labels, kinds, sizes and a head/tail hash."""
 import glob
 import hashlib
+import json
 import os
+import pathlib
 import re
 import shutil
 import subprocess
@@ -20,8 +22,35 @@ def label_of(text):
     return f"{value & 0xFFFFFFFF:08x}"
 
 
-def parse_project(document):
-    """What the experiment needs from a project document, without a name or a path: sequence, cuts, source locations."""
+def absolute(base, stored):
+    """A stored source path the way the editor reads it (`decode_path`, crates/core/src/document.rs): an absolute one as it is, a relative one under the folder of
+    the document (never the working directory). None for a relative one that leaves that folder or is empty: the editor refuses it."""
+    if os.path.isabs(stored):
+        return stored
+    if base is None or not stored or ".." in pathlib.PurePath(stored).parts:
+        return None
+    return os.path.join(base, stored)
+
+
+def library_sources(document):
+    """(entry, source, key) of every file or frame-sequence source of the library, `key` being where its location is (`path` / `pattern`): the one place that
+    knows where a document keeps them."""
+    for entry in (document.get("library") or {}).get("assets", []):
+        source = (entry.get("asset") or {}).get("source") or {}
+        key = {"file": "path", "frame_sequence": "pattern"}.get(source.get("type"))
+        if key and source.get(key):
+            yield entry, source, key
+
+
+def source_of(entry, source, key, base):
+    """The `{kind, path|pattern}` of one source; `outside` marks a relative location the editor refuses."""
+    resolved = absolute(base, source[key])
+    return {"kind": entry.get("kind"), key: source[key] if resolved is None else resolved, **({"outside": True} if resolved is None else {})}
+
+
+def parse_project(document, base=None):
+    """What the experiment needs from a project document, without a name or a path: sequence, cuts, source locations. `base` is the folder of the document:
+    the relative paths of its managed media (stored relative to it) resolve there, as the editor does."""
     sequences = document.get("sequences") or []
     active = document.get("active_sequence")
     sequence = next((s for s in sequences if s.get("id") == active), sequences[0] if sequences else None)
@@ -32,13 +61,7 @@ def parse_project(document):
     clips = sequence.get("clips") or []
     cuts = sorted({c["start"] for c in clips if c.get("kind") == "scene" and c["start"] > 0})
     video_starts = sorted({c["start"] for c in clips if c.get("kind") == "video" and c["start"] > 0})
-    sources = []
-    for entry in (document.get("library") or {}).get("assets", []):
-        source = (entry.get("asset") or {}).get("source") or {}
-        if source.get("type") == "file" and source.get("path"):
-            sources.append({"kind": entry.get("kind"), "path": source["path"]})
-        elif source.get("type") == "frame_sequence" and source.get("pattern"):
-            sources.append({"kind": entry.get("kind"), "pattern": source["pattern"]})
+    sources = [source_of(entry, source, key, base) for entry, source, key in library_sources(document)]
     return {
         "length": sequence["length"], "fps": fps, "cuts": cuts, "video_starts": video_starts,
         "clip_kinds": {kind: sum(1 for c in clips if c.get("kind") == kind) for kind in sorted({c.get("kind") for c in clips})},
@@ -64,13 +87,13 @@ def check_sources(sources):
     out = []
     for source in sources:
         if "path" in source:
-            exists = os.path.isfile(source["path"])
+            exists = not source.get("outside") and os.path.isfile(source["path"])
             entry = {"label": label_of(source["path"]), "kind": source["kind"], "present": exists}
             if exists:
                 entry["size"], entry["head_tail_sha256"] = head_tail_hash(source["path"])
         else:
             pattern = re.sub(r"%0?\d*d", "*", source["pattern"])
-            found = glob.glob(pattern)
+            found = [] if source.get("outside") else glob.glob(pattern)
             entry = {"label": label_of(source["pattern"]), "kind": source["kind"], "present": bool(found), "frames": len(found)}
         out.append(entry)
     return out
@@ -94,8 +117,19 @@ def sha256_file(path):
 
 
 def new_workspace_copy(document, work):
-    """Copies only the document into a private folder (assets are absolute paths, read in place)."""
+    """Copies the document into a private folder. Assets are read in place: the paths a document stores relative to its own folder are written into the copy
+    as absolute ones (the copy lives elsewhere); a document that stores none is copied byte for byte."""
     os.makedirs(work, exist_ok=True)
     copy = os.path.join(work, "project.tessel.json")
-    shutil.copyfile(document, copy)
+    base = os.path.dirname(os.path.abspath(document))
+    data = json.loads(pathlib.Path(document).read_text())
+    changed = False
+    for _, source, key in library_sources(data):
+        resolved = absolute(base, source[key])
+        if not os.path.isabs(source[key]) and resolved is not None:  # one the editor refuses stays as it is: the copy is refused the same way
+            source[key], changed = resolved, True
+    if changed:
+        pathlib.Path(copy).write_text(json.dumps(data))
+    else:
+        shutil.copyfile(document, copy)
     return copy
