@@ -32,6 +32,7 @@ use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use serde_json::{Value, json};
+use tessel_editor_core::directed_scene::Shot;
 use tessel_editor_core::directed_scene::fx::PassBudget;
 use tessel_editor_core::directed_scene::fx::{self, EffectSpec, FxClip, FxScope, Locale};
 use tessel_editor_core::scene_edit::{
@@ -43,6 +44,7 @@ use tessel_editor_core::scene_project::SceneCommand;
 
 use super::controls::{disabled_tool_button, glyph, tool_button, value_after_key};
 use super::scene_fx_keys::{animation_actions, animation_at, animation_fields};
+use super::scene_fx_scope::{decorate_clip_node, decorate_section_node, drawn_scopes, scope_title};
 use super::scene_model::{PanelFit, format_number};
 use super::scene_panel::SliderRow;
 use super::tokens::Tokens;
@@ -98,6 +100,8 @@ pub struct FxUi {
     tracked: Option<(FxKey, Phase)>,
     /// The typed editors of the key controls (F058): the Kit inputs and what they were built on.
     pub(super) editors: super::scene_fx_editors::Editors,
+    /// The scope selector of each clip (F062).
+    pub(super) scopes: super::scene_fx_scope::ScopePicks,
 }
 
 impl FxUi {
@@ -106,6 +110,7 @@ impl FxUi {
         self.sliders.clear();
         self.tracked = None;
         self.editors.clear();
+        self.scopes.clear();
     }
 
     fn is_tracked(&self, key: &FxKey) -> bool {
@@ -188,6 +193,8 @@ pub struct FxView {
     /// The frame of the scene's own edit that the monitor shows now (the core converts the NLE
     /// playhead; `None` when the playhead is outside the edit). Where an insertion lands.
     pub frame_here: Option<i64>,
+    /// The shots of the edit, in document order: the scope options of every clip (F062).
+    pub shots: Vec<Shot>,
 }
 
 impl FxView {
@@ -335,6 +342,7 @@ impl Workstation {
             clips,
             gesture: open.map(|gesture| gesture.id().to_owned()),
             budget: bundle.fx.pass_budget(bundle.edit_duration_frames),
+            shots: bundle.shots.clone(),
         })
     }
 
@@ -902,6 +910,10 @@ impl Workstation {
                     "animation": animation.to_json(LOCALE),
                 },
             }));
+            // The scope field, its `set_scope:<scope>` actions and its state (F062).
+            if let Some(node) = nodes.last_mut() {
+                decorate_clip_node(node, &view, entry);
+            }
         }
         children.push(json!(BUDGET_ID));
         nodes.push(budget_node(&view));
@@ -932,7 +944,7 @@ impl Workstation {
                 "fields": [], "actions": actions,
                 "state": {
                     "scene": view.scene, "catalog_version": fx::FX_CATALOG_VERSION,
-                    "clip_count": view.clips.len(), "scope": ["output"],
+                    "clip_count": view.clips.len(), "scope": drawn_scopes(),
                     "effects": fx::catalog().iter().map(|spec| spec.id).collect::<Vec<_>>(),
                     "edit_duration_frames": view.edit_frames,
                     "playhead_frame": view.frame_here,
@@ -942,6 +954,8 @@ impl Workstation {
                 },
             }),
         );
+        // The shots and the actions that add on the shot the monitor shows (F062).
+        decorate_section_node(&mut nodes[0], &view);
         nodes
     }
 
@@ -952,6 +966,10 @@ impl Workstation {
         action: Option<&str>,
         cx: &mut Context<Self>,
     ) -> Option<Result<Value, CommandError>> {
+        // The scope (F062): `set_scope:<scope>` on a clip, `add_in_shot:<effect>` on the section.
+        if let Some(result) = self.fx_scope_invoke(target, action, cx) {
+            return Some(result);
+        }
         if target == SECTION_ID {
             let result = match action {
                 Some(add) if add.starts_with(ADD_PREFIX) => {
@@ -1021,6 +1039,10 @@ impl Workstation {
                 return self.fx_set_hidden(clip, hidden, Source::Cli, cx);
             }
             if let Some(result) = self.fx_animation_set(clip, field, raw, cx) {
+                return result;
+            }
+            // The scope is a choice: it takes the text of a scope (F062).
+            if let Some(result) = self.fx_scope_set(target, field, raw, cx) {
                 return result;
             }
             // A switch takes true or false, never a number.
@@ -1098,6 +1120,8 @@ impl Workstation {
         }
         header = header.child(adds);
         let mut section = v_flex().w_full().child(header);
+        // The same effects on the shot the monitor shows (F062).
+        section = section.child(self.fx_scope_add_row(t, &view, cx));
         if view.budget.over() {
             section = section.child(
                 h_flex()
@@ -1135,6 +1159,7 @@ impl Workstation {
             );
         }
         self.fx_editors_prune(&view);
+        self.fx_scopes_prune(&view);
         for entry in &view.clips {
             let block = self.fx_clip_block(t, fit, &view, entry, window, cx);
             section = section.child(block);
@@ -1223,9 +1248,10 @@ impl Workstation {
                     .min_w(px(0.))
                     .truncate()
                     .child(format!(
-                        "{} · {} ({})",
+                        "{} · {} · {} ({})",
                         effect_label(clip.effect),
                         clip.id,
+                        scope_title(&clip.scope),
                         entry.track_label
                     )),
             )
@@ -1233,6 +1259,7 @@ impl Workstation {
             .child(reset)
             .child(remove);
         let mut block = v_flex().w_full().child(title);
+        block = block.child(self.fx_scope_row(t, view, entry, window, cx));
         for control in controls_of(clip, view.edit_frames) {
             // A field whose range is one value has nothing to move: it stays out of the panel (the
             // semantic node still lists it, disabled, with the reason).
