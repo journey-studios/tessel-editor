@@ -38,7 +38,9 @@ múltipla e grupos; ponteiro físico na WKWebView; desempenho integrado; Windows
 
 Geometria pura: `directed_scene::fx::{VignetteShape, VignetteParams, VignetteHandle, HandleValue, hit_handle,
 on_picture, vignette_params_at}` (`handles.rs`). Visão por clipe e quadro: `scene_interaction::{FxTarget,
-FxHandlesView, FxOverlay}`; cola com o projeto: `scene_project/fx_handles.rs`.
+FxHandlesView, FxOverlay}`; cola com o projeto: `scene_project/fx_handles.rs`. «Este clipe tem alças?» tem **uma** resposta,
+`FxClip::has_handles` (`handles.rs`): `FxHandlesView::of` (`fx_has_no_handles`), a poda do alvo (`fx_clip_has_handles`, só
+`pub(crate)`), a ação `handles` e o botão do inspetor a consultam; nenhum adaptador compara o id do efeito.
 
 Duas operações novas (`SceneCommand::FxSelect` / `FxHandles`, `crates/core/src/ops.rs`):
 
@@ -72,10 +74,18 @@ Regras:
   `EntityKind::FxClip` caberia e apagaria os ramos de exclusão mútua; a escolha desta entrega foi **não** tocar `address.rs`,
   `tree.rs` e os parsers de `scene.select` para uma alça de uma só família de efeito, mantendo a exclusão mútua nos poucos
   pontos onde ela muda (`scene.select`, `scene.fx.select`, o press). O desenho como entidade é a pendência **BL082.60**.
-  Enquanto isso a invariante «o alvo existe no projeto e é uma vinheta» é imposta **onde o estado muda**, não por
+  Enquanto isso a invariante «o alvo existe no projeto e o clipe tem alças» (`FxClip::has_handles`) é imposta **onde o estado muda**, não por
   leituras: `EditorState::apply` (todo comando, também depois de um erro) e `restore` (`undo()`/`redo()` e reversão de
   transação) chamam `prune_fx_target`; uma leitura (`tree`, `summary`, `scene.gizmo.state`, `scene.selection`) nunca poda e
   nunca publica um clipe que não existe.
+- **Uma só resposta para «tem alças?».** O predicado é `FxClip::has_handles`; o teste de unidade
+  `the_target_predicate_says_yes_exactly_when_the_view_is_built` fixa que a poda (`fx_clip_has_handles`) diz sim exatamente
+  quando `FxHandlesView::of` monta a visão, para vinheta, `fade`, `filmGrain` e clipe inexistente. Uma condição nova (o
+  escopo `shot` da PR #48, BL082.64) entra no predicado, não ao lado de um dos quatro usos.
+- **API da biblioteca.** Esta entrega mudou a superfície pública de `scene_interaction::Drag` contra a `main`:
+  `Drag::handle()` devolve `Option<Handle>` (um arrasto de vinheta não tem `Handle` do gizmo; o nome do handle é
+  `Drag::handle_id()`) e `Drag::tool() -> GizmoTool` deixou de existir (no lugar, `Drag::tool_id()` devolve o nome, `"fx"`
+  para a vinheta); nenhum consumidor do workspace usava as versões antigas.
 - **A consulta é o clique.** `scene.gizmo.hit` num ponto responde o mesmo `hit` que o `scene.pointer.down` no mesmo ponto:
   `{kind:"fx_handle", clip, handle, param}`, e `refused:"animated_param"` quando o handle está apagado. Uma consulta não
   escreve nada, não exige câmera e mantém o alvo.

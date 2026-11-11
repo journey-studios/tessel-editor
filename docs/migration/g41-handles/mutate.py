@@ -35,7 +35,7 @@ MUTANTS = [
     ('M17 moving the target keeps the drag', GLUE, 'let cancelled = if moved { self.cancel_live_drag() } else { None };', 'let cancelled: Option<String> = None;'),
     ('M18 selecting an entity keeps the drag of the clip', GLUE, 'let cancelled = self.cancel_live_drag();', 'let cancelled: Option<String> = None;'),
     ('M19 the drag writes another parameter', GLUE, 'clip: clip.clone(),\n            param: handle.param().to_string(),', 'clip: clip.clone(),\n            param: "intensity".to_string(),'),
-    ('M20 a gone clip keeps the target', GLUE, '.is_some_and(|entry| fx_clip_is_vignette(&entry.scene, &target.clip));', '.is_some_and(|_| true);'),
+    ('M20 a gone clip keeps the target', GLUE, '.is_some_and(|entry| fx_clip_has_handles(&entry.scene, &target.clip));', '.is_some_and(|_| true);'),
     ('M21 the release is a scene edit in the history', STATE, '            "Edit effects"\n        } else {', '            "Edit scene"\n        } else {'),
     ('M22 the stamp does not name the clip', STAMP, 'stamp["fx_clip"] = json!(target.clip);', 'let _ = &target.clip;'),
     ('M23 a command leaves a target the project no longer holds', STATE, '        let outcome = self.apply_command(command);\n        self.prune_fx_target();\n        outcome', '        let outcome = self.apply_command(command);\n        outcome'),

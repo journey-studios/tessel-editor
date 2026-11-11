@@ -25,7 +25,7 @@ use crate::directed_scene::fx::VignetteHandle;
 use crate::scene_edit::{self, FxOp};
 use crate::scene_interaction::{
     Applied, Drag, DragAction, FrameAt, FxHandlesView, FxOverlay, FxTarget, GizmoCommand, Hidden,
-    Overlay, Point, PointerCommand, SelectMode, fx_clip_is_vignette,
+    Overlay, Point, PointerCommand, SelectMode, fx_clip_has_handles,
 };
 use crate::state::{Command, CommandError, EditorState};
 
@@ -194,7 +194,7 @@ impl EditorState {
         let held = self
             .scenes
             .get(&target.scene)
-            .is_some_and(|entry| fx_clip_is_vignette(&entry.scene, &target.clip));
+            .is_some_and(|entry| fx_clip_has_handles(&entry.scene, &target.clip));
         if held {
             return None;
         }

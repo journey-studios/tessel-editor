@@ -236,6 +236,19 @@ pub fn hit(
     best.map(|(_, handle)| handle)
 }
 
+impl super::FxClip {
+    /// Whether the monitor offers handles on this clip (today: only the vignette has a spatial
+    /// parameter). The one answer every layer asks: [`FxHandlesView::of`] refuses a clip without
+    /// them (`fx_has_no_handles`), the target the session holds is dropped when its clip stops
+    /// having them, and the inspector greys the action and the button. A new condition (a scope
+    /// the handles cannot draw) goes here, never next to one of those callers.
+    ///
+    /// [`FxHandlesView::of`]: crate::scene_interaction::FxHandlesView::of
+    pub fn has_handles(&self) -> bool {
+        self.effect.id == VIGNETTE.id
+    }
+}
+
 /// The parameters of a vignette as the clip holds them at one frame of the clip (keys applied):
 /// `None` when the clip is not a vignette or a value has an unexpected type.
 pub fn params_at(clip: &super::FxClip, frame_in_clip: i64) -> Option<VignetteParams> {

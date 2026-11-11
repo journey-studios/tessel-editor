@@ -45,9 +45,8 @@ pub use command::{
     SelectMode,
 };
 pub use frame::frame_json;
-pub use fx_handles::{
-    FxHandlesView, FxOverlay, FxTarget, fx_clip_is_vignette, reason as fx_handle_reason,
-};
+pub(crate) use fx_handles::fx_clip_has_handles;
+pub use fx_handles::{FxHandlesView, FxOverlay, FxTarget, reason as fx_handle_reason};
 pub use gesture::{Gesture, GestureKind, GestureSlot, Invalidation, Refusal};
 pub use gizmo::{
     Anchor, CENTER_RADIUS, GizmoSpace, GizmoTool, HANDLE_LENGTH, HIT_RADIUS, Handle, Hidden,

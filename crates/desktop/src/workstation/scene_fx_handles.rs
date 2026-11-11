@@ -7,7 +7,7 @@ use gpui_kit::component::Selectable;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use serde_json::{Value, json};
-use tessel_editor_core::directed_scene::fx::{self, FxClip};
+use tessel_editor_core::directed_scene::fx::FxClip;
 use tessel_editor_core::scene_project::SceneCommand;
 
 use super::controls::{disabled_tool_button, tool_button};
@@ -23,7 +23,7 @@ const NO_HANDLES: &str = "Só a vinheta tem alças no monitor";
 /// the action disabled with its reason, never as a callback that does nothing. The label is
 /// static: whether they are on is `state.handles`, and the button already says it.
 pub(super) fn handles_action(clip: &FxClip) -> Value {
-    let has_handles = clip.effect.id == fx::VIGNETTE.id;
+    let has_handles = clip.has_handles();
     json!({
         "action": HANDLES_ACTION, "label": "Alças no monitor",
         "enabled": has_handles, "disabled_reason": (!has_handles).then_some(NO_HANDLES),
@@ -73,7 +73,7 @@ impl Workstation {
         let id = clip.id.clone();
         let on = self.fx_handles_on(&view.scene, &id);
         let button_id = SharedString::from(format!("fx-handles:{id}"));
-        let button = if clip.effect.id == fx::VIGNETTE.id {
+        let button = if clip.has_handles() {
             let label = if on {
                 format!("Ocultar alças de {id} no monitor")
             } else {

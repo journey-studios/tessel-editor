@@ -47,14 +47,16 @@ impl FxTarget {
     }
 }
 
-/// Whether `clip` is a vignette of `scene`: the one question a held [`FxTarget`] has to keep
-/// answering after every change of the project. Cheap on purpose (no frame, no geometry).
-pub fn fx_clip_is_vignette(scene: &DirectedScene, clip: &str) -> bool {
+/// Whether `scene` holds the clip `clip` and it [has handles](crate::directed_scene::fx::FxClip::has_handles):
+/// the one question a held [`FxTarget`] has to keep answering after every change of the project,
+/// and exactly the clips [`FxHandlesView::of`] does not refuse. Cheap on purpose (no frame, no
+/// geometry).
+pub(crate) fn fx_clip_has_handles(scene: &DirectedScene, clip: &str) -> bool {
     scene
         .bundle()
         .fx
         .clip(clip)
-        .is_some_and(|(_, found)| found.effect.id == crate::directed_scene::fx::VIGNETTE.id)
+        .is_some_and(|(_, found)| found.has_handles())
 }
 
 /// One vignette clip as the monitor shows it at one edit frame.
@@ -88,7 +90,7 @@ impl FxHandlesView {
         let Some((_, found)) = bundle.fx.clip(clip) else {
             return Err(CommandError::unknown_element("effect clip", clip));
         };
-        if found.effect.id != crate::directed_scene::fx::VIGNETTE.id {
+        if !found.has_handles() {
             return Err(CommandError::new(
                 "fx_has_no_handles",
                 format!(
@@ -246,5 +248,60 @@ pub struct FxOverlay {
 impl FxOverlay {
     pub fn to_json(&self) -> Value {
         self.view.to_json(self.active)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::headless;
+    use crate::state::{EditorState, ProjectSettings};
+    use core::prelude::v1::test;
+    use serde_json::{Value, json};
+
+    fn run(state: &mut EditorState, request: Value) {
+        headless::execute(state, &request).unwrap_or_else(|error| panic!("{request}: {error:?}"));
+    }
+
+    /// "Does this clip have handles?" is asked by the target the session holds (after every
+    /// change of the project) and by the view every read and every press builds. Both go through
+    /// `FxClip::has_handles`; this fixes that they cannot drift: the predicate says yes exactly
+    /// when the view is built, and the two refusals the view has stay the ones it names.
+    #[test]
+    fn the_target_predicate_says_yes_exactly_when_the_view_is_built() {
+        let mut state = EditorState::empty(&ProjectSettings::default()).unwrap();
+        let bundle: Value = serde_json::from_str(include_str!(
+            "../../../../docs/migration/fixtures/bundles/valid-minimal-continuous.bundle.json"
+        ))
+        .unwrap();
+        run(
+            &mut state,
+            json!({"op":"scene.attach","id":"street","bundle":bundle}),
+        );
+        run(
+            &mut state,
+            json!({"op":"scene.fx.edit","scene":"street","ops":[
+                {"op":"add_clip","effect":"vignette","start_frame":10,"duration_frames":30,"id":"v1"},
+                {"op":"add_clip","effect":"fade","start_frame":0,"duration_frames":10,"id":"f1"},
+                {"op":"add_clip","effect":"filmGrain","start_frame":0,"duration_frames":10,"id":"g1"}]}),
+        );
+        let scene = &state.scenes.get("street").unwrap().scene;
+        // `(clip, whether it has handles, the error the view names when it has none)`.
+        let cases = [
+            ("v1", true, None),
+            ("f1", false, Some("fx_has_no_handles")),
+            ("g1", false, Some("fx_has_no_handles")),
+            ("ghost", false, Some("unknown_element")),
+        ];
+        for (clip, has_handles, refusal) in cases {
+            let view = FxHandlesView::of(scene, clip, 0);
+            assert_eq!(
+                fx_clip_has_handles(scene, clip),
+                view.is_ok(),
+                "`{clip}`: the predicate and the view agree"
+            );
+            assert_eq!(view.is_ok(), has_handles, "`{clip}`");
+            assert_eq!(view.err().map(|error| error.code), refusal, "`{clip}`");
+        }
     }
 }
