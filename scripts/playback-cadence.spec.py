@@ -41,8 +41,8 @@ def clocked(t, before, after, clock, next_ms=None, late=1.3):
     return event
 
 
-def picture(done):
-    return {"id": int(done), "done_ms": done, "interactive": True}
+def picture(done, interactive=True):
+    return {"id": int(done), "shown_frame": int(done), "done_ms": done, "interactive": interactive}
 
 
 def polled_play(start, seconds=10.0, poll=POLL_MS, fps=24.0, offset=0.0):
@@ -143,6 +143,22 @@ class DeliveredTests(unittest.TestCase):
 
     def test_one_picture_has_no_gap(self):
         self.assertEqual(pc.delivered_gaps([picture(100.0)], (0.0, 500.0)), [])
+
+    def test_the_refine_of_the_stopped_playhead_is_not_a_playback_gap(self):
+        # the play ran 100..180; the monitor finished the paused playhead's refine at 700 (not interactive), before the next clock started at 5000
+        frames = [picture(100.0), picture(140.0), picture(180.0), picture(700.0, interactive=False)]
+        self.assertEqual(pc.delivered_gaps(frames, (100.0, 5000.0)), [40.0, 40.0])
+
+    def test_a_play_whose_pictures_are_all_refines_keeps_them_as_the_shared_selection_does(self):
+        frames = [picture(100.0, interactive=False), picture(150.0, interactive=False)]
+        self.assertEqual(pc.delivered_gaps(frames, (100.0, 5000.0)), [50.0])
+
+    def test_the_refine_does_not_reach_the_numbers_a_play_is_summarised_by(self):
+        frames = [picture(1100.0), picture(1140.0), picture(1180.0), picture(4000.0, interactive=False)]
+        found = pc.each_play([("a", record("x", [clock_started(1000.0), tick(1022.0, 0, 0)], frames))])[0]
+        self.assertEqual((found["delivered"], found["over_62_5_ms"], found["over_100_ms"], found["max_delivered_ms"]), (2, 0, 0, 40.0))
+        pooled = pc.summarize([("a", record("x", [clock_started(1000.0), tick(1022.0, 0, 0)], frames))])
+        self.assertEqual((pooled["delivered_ms"]["n"], pooled["delivered_share_over_62_5_ms"], pooled["delivered_ms"]["max"]), (2, 0.0, 40.0))
 
     def test_a_picture_without_a_time_is_skipped(self):
         self.assertEqual(pc.delivered_gaps([{"id": 1}, picture(10.0), picture(30.0)], (0.0, 500.0)), [20.0])

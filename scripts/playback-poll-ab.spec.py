@@ -76,7 +76,7 @@ def trace_play(start, poll, picture_gaps, fps=24.0, ticks=21):
     done, frames = start + 10.0, []
     for gap in [0.0] + list(picture_gaps):
         done += gap
-        frames.append({"id": len(frames), "done_ms": done, "interactive": True})
+        frames.append({"id": len(frames), "shown_frame": len(frames), "done_ms": done, "interactive": True})
     return events, frames
 
 

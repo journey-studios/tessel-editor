@@ -32,6 +32,7 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from ab.play import play_pictures  # noqa: E402
 from ab.stats import stats as nearest_rank_stats  # noqa: E402  (the one nearest-rank statistics of the harness; `ab` imports only the standard library)
 
 # n / mean / p50 / p95 / p99 / max, nearest-rank percentiles (no interpolation invents a value): `ab.stats.stats` with its `detail` columns.
@@ -130,9 +131,11 @@ def change_lags(ticks, fps):
 
 
 def delivered_gaps(frames, window):
-    """Milliseconds between consecutive pictures the monitor finished inside a play."""
+    """Milliseconds between consecutive pictures the clock of one play produced, by the harness's own selection (`ab.play.play_pictures`): accepted pictures
+    after the clock started and before the next play, the interactive ones when there are any. The refine of the paused playhead, which the monitor finishes
+    after the play ended and before the next clock starts, is not one of them: it is not playback cadence."""
     start, end = window
-    done = sorted(frame["done_ms"] for frame in frames if frame.get("done_ms") is not None and start <= frame["done_ms"] < end)
+    done = [picture["done_ms"] for picture in play_pictures(frames, {"clock_ms": start, "end_ms": end})]
     return [after - before for before, after in zip(done, done[1:])]
 
 
