@@ -40,10 +40,9 @@ use tessel_editor_core::trace::TraceHandle;
 use tessel_editor_render::SetupError;
 use tessel_editor_render::host::{AssetAccess, write_png};
 
+use super::env_mode;
 use super::perf_meter::PerfClock;
-use super::viewport_protocol::{
-    ASSET_IO_ENV, AssetIo, AssetIoMode, ProtocolHandle, asset_io_from_env, round3, trace_label,
-};
+use super::viewport_protocol::{AssetIo, AssetIoMode, ProtocolHandle, round3, trace_label};
 
 /// Scheme and host the page is served from. A custom scheme keeps the page same-origin with
 /// its assets and unreachable from any web page.
@@ -150,8 +149,8 @@ pub struct HostOptions {
     /// See [`PREUPLOAD_ENV`].
     pub preupload: bool,
     pub warm_draw: bool,
-    /// Who reads the page's files (BL157.1); `None` is [`AssetIoMode::Sync`].
-    pub asset_io: Option<AssetIoMode>,
+    /// Who reads the page's files (BL157.1).
+    pub asset_io: AssetIoMode,
 }
 
 /// A MSAA sample count the runtime accepts, from an environment value.
@@ -205,13 +204,7 @@ impl HostOptions {
                 .then_some(false),
             preupload: std::env::var(PREUPLOAD_ENV).is_ok_and(|value| value == "1"),
             warm_draw: std::env::var(WARM_DRAW_ENV).is_ok_and(|value| value == "1"),
-            asset_io: match asset_io_from_env(std::env::var(ASSET_IO_ENV).ok().as_deref()) {
-                Ok(mode) => mode,
-                Err(warning) => {
-                    eprintln!("tessel-editor: {warning}");
-                    None
-                }
-            },
+            asset_io: env_mode::from_env(),
             scene_samples: samples_from_env(SCENE_SAMPLES_ENV),
             retained_bytes: retained_bytes_from_env(std::env::var(RETAIN_MIB_ENV).ok().as_deref()),
             preview_scene_samples: samples_from_env(PREVIEW_SCENE_SAMPLES_ENV),
@@ -443,7 +436,7 @@ impl ViewportHost {
             outbox,
             inbox,
             access,
-            asset_io: AssetIo::new(options.asset_io.unwrap_or_default()),
+            asset_io: AssetIo::new(options.asset_io),
             phase,
             last_key: None,
             dirty: true,

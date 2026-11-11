@@ -13,6 +13,8 @@
 
 use std::time::Duration;
 
+use super::env_mode::EnvMode;
+
 /// `TESSEL_PLAYBACK_POLL=fixed|deadline` (BL157.6): how the playback clock is polled. Read once when the window is created; the
 /// same build answers both ways. `playback.status` reports the mode in effect (`poll`) and the host trace names it in
 /// `play_clock_started`. A value that is neither name is a typo: it is warned about on stderr and the default is used.
@@ -39,35 +41,10 @@ pub enum PollMode {
     Deadline,
 }
 
-impl PollMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            PollMode::Fixed => "fixed",
-            PollMode::Deadline => "deadline",
-        }
-    }
-
-    pub fn parse(text: &str) -> Option<Self> {
-        match text.trim().to_ascii_lowercase().as_str() {
-            "fixed" => Some(PollMode::Fixed),
-            "deadline" => Some(PollMode::Deadline),
-            _ => None,
-        }
-    }
-}
-
-/// The mode an environment value asks for: `Ok(None)` when it is unset or empty, `Err(warning)` for a value that is neither name
-/// (the default is used).
-pub fn poll_mode_from_env(value: Option<&str>) -> Result<Option<PollMode>, String> {
-    match value.map(str::trim) {
-        None | Some("") => Ok(None),
-        Some(text) => PollMode::parse(text).map(Some).ok_or_else(|| {
-            format!(
-                "{POLL_ENV}={text:?} is not `fixed` or `deadline`: using `{}`",
-                PollMode::default().as_str()
-            )
-        }),
-    }
+impl EnvMode for PollMode {
+    const VAR: &'static str = POLL_ENV;
+    const NAMES: &'static [(&'static str, Self)] =
+        &[("fixed", Self::Fixed), ("deadline", Self::Deadline)];
 }
 
 /// What the last poll read from the clock.

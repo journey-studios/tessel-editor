@@ -28,7 +28,8 @@ use tessel_editor_core::audio::{AudioBackend, OfflineMixer};
 use tessel_editor_core::state::Command;
 use tessel_editor_core::{CommandError, EditorState, Raw};
 
-use super::playback_poll::{self, POLL_ENV, PollMode, Reading, poll_mode_from_env};
+use super::env_mode::{self, EnvMode};
+use super::playback_poll::{self, PollMode, Reading};
 use super::{Activity, Source as Origin, Workstation};
 
 /// The mix is held in memory while it plays (384 KB per second); longer sequences are refused
@@ -292,18 +293,11 @@ impl Playback {
 }
 
 impl PlaybackState {
-    /// The state of a new window: the poll schedule named by [`POLL_ENV`] (a typo is warned about on stderr), the default when
+    /// The state of a new window: the poll schedule named by [`playback_poll::POLL_ENV`] (a typo is warned about on stderr), the default when
     /// unset. Read once: the mode does not change while the window lives.
     pub fn from_env() -> Self {
-        let poll = match poll_mode_from_env(std::env::var(POLL_ENV).ok().as_deref()) {
-            Ok(mode) => mode.unwrap_or_default(),
-            Err(warning) => {
-                eprintln!("tessel-editor: {warning}");
-                PollMode::default()
-            }
-        };
         Self {
-            poll,
+            poll: env_mode::from_env(),
             ..Self::default()
         }
     }
@@ -364,7 +358,7 @@ impl PlaybackState {
             "from": active.from, "frame": active.frame, "fps": active.fps,
             "clock": active.clock_name(),
             // How the clock is polled (`TESSEL_PLAYBACK_POLL`): `fixed` (half a frame after each answer) or `deadline`.
-            "poll": self.poll.as_str(),
+            "poll": self.poll.name(),
             "elapsed_ms": elapsed.as_secs_f64() * 1000.0,
             // Frame the clock says we are at, minus the one the playhead shows: 0 or 1 when
             // keeping up.
@@ -461,7 +455,7 @@ impl Workstation {
         let poll = self.playback.poll;
         self.viewport.trace().event(
             "play_clock_started",
-            || json!({ "from": from, "fps": fps, "poll": poll.as_str() }),
+            || json!({ "from": from, "fps": fps, "poll": poll.name() }),
         );
         // The first wait is the fixed one (the device may still be opening); every tick says how long the next one waits.
         let mut delay = playback_poll::interval(fps);

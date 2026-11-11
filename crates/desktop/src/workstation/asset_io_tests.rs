@@ -17,7 +17,7 @@ use tessel_editor_render::host::{AssetAccess, MAX_RANGE_BODY};
 use wry::http::Request;
 
 use super::viewport_host_tests::{answer, page, scratch};
-use super::viewport_protocol::{AssetIoMode, ProtocolHandle, asset_io_from_env};
+use super::viewport_protocol::{AssetIoMode, ProtocolHandle};
 
 fn handle(
     reader: Reader,
@@ -50,27 +50,6 @@ fn register(access: &Rc<RefCell<AssetAccess>>, file: &Path) {
     access
         .borrow_mut()
         .register(&json!({"source": {"type": "file", "path": file}}));
-}
-
-#[test]
-fn the_mode_comes_from_a_named_value_and_a_typo_is_refused_loudly() {
-    assert_eq!(asset_io_from_env(None), Ok(None));
-    assert_eq!(asset_io_from_env(Some("  ")), Ok(None));
-    assert_eq!(asset_io_from_env(Some("sync")), Ok(Some(AssetIoMode::Sync)));
-    assert_eq!(
-        asset_io_from_env(Some(" Async ")),
-        Ok(Some(AssetIoMode::Async))
-    );
-    let warning = asset_io_from_env(Some("asnyc")).unwrap_err();
-    assert!(
-        warning.contains("asnyc") && warning.contains("`sync`"),
-        "{warning}"
-    );
-    assert_eq!(
-        AssetIoMode::default(),
-        AssetIoMode::Sync,
-        "the default is the behaviour before the experiment"
-    );
 }
 
 #[test]
@@ -233,7 +212,7 @@ fn the_report_names_the_mode_in_effect_and_the_page_spans_reach_the_trace_withou
     let state = EditorState::demo();
     let options = HostOptions {
         trace: true,
-        asset_io: Some(AssetIoMode::Async),
+        asset_io: AssetIoMode::Async,
         ..HostOptions::default()
     };
     let mut host = ViewportHost::with_options(Ok(page("io-report")), options);
@@ -713,7 +692,7 @@ mod held_read {
         let mut host = ViewportHost::with_options(
             Ok(page(tag)),
             HostOptions {
-                asset_io: Some(AssetIoMode::Async),
+                asset_io: AssetIoMode::Async,
                 ..HostOptions::default()
             },
         );
@@ -752,7 +731,7 @@ mod held_read {
         let mut host = ViewportHost::with_options(
             Ok(page("io-bundle")),
             HostOptions {
-                asset_io: Some(AssetIoMode::Async),
+                asset_io: AssetIoMode::Async,
                 ..HostOptions::default()
             },
         );

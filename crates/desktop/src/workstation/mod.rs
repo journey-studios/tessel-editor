@@ -10,6 +10,7 @@
 mod controls;
 mod dock;
 mod drag;
+mod env_mode;
 mod flows;
 mod geometry;
 mod inspector_panel;
@@ -847,6 +848,8 @@ mod audio_fades_tests;
 mod camera_keys_tests;
 #[cfg(test)]
 mod dock_tests;
+#[cfg(test)]
+mod env_mode_tests;
 #[cfg(test)]
 mod identity_tests;
 #[cfg(test)]

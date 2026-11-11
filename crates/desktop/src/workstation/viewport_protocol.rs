@@ -20,6 +20,8 @@ use tessel_editor_render::asset_io::{
 use tessel_editor_render::host::{AssetAccess, Resolved, Served, query_param, resolve};
 use wry::http::{Request, Response};
 
+use super::env_mode::EnvMode;
+
 /// `sync` (the default) or `async`: whether the protocol handler of the WebView reads the project's files on the thread that
 /// received the request or hands the read to the bounded worker pool of `tessel_editor_render::asset_io` (BL157.1). A
 /// diagnostic of one experiment, read once when the host is created: the same build answers both ways, so the two can be
@@ -37,6 +39,11 @@ pub enum AssetIoMode {
     Async,
 }
 
+impl EnvMode for AssetIoMode {
+    const VAR: &'static str = ASSET_IO_ENV;
+    const NAMES: &'static [(&'static str, Self)] = &[("sync", Self::Sync), ("async", Self::Async)];
+}
+
 impl AssetIoMode {
     /// The reader this mode selects; the pool of `async` is created here, once, and nothing is spawned for `sync`.
     pub(super) fn reader(self) -> Reader {
@@ -44,25 +51,6 @@ impl AssetIoMode {
             AssetIoMode::Sync => Reader::Inline,
             AssetIoMode::Async => Reader::Pooled(AssetPool::new(DEFAULT_WORKERS, DEFAULT_QUEUE)),
         }
-    }
-
-    pub fn parse(text: &str) -> Option<Self> {
-        match text.trim().to_ascii_lowercase().as_str() {
-            "sync" => Some(AssetIoMode::Sync),
-            "async" => Some(AssetIoMode::Async),
-            _ => None,
-        }
-    }
-}
-
-/// The mode an environment value asks for: `Ok(None)` when unset or empty, `Err(warning)` for a value that is neither
-/// name (the default is used).
-pub(super) fn asset_io_from_env(value: Option<&str>) -> Result<Option<AssetIoMode>, String> {
-    match value.map(str::trim) {
-        None | Some("") => Ok(None),
-        Some(text) => AssetIoMode::parse(text).map(Some).ok_or_else(|| {
-            format!("{ASSET_IO_ENV}={text:?} is not `sync` or `async`: using `sync`")
-        }),
     }
 }
 
