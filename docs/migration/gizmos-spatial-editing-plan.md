@@ -252,8 +252,9 @@ Reutilizar BL015.7/BL015.12/BL015.18 e relacionar os gates finais da escala aind
   todas as amostras; revisão independente nova. Não prometer garantia universal com
   uma máquina. Otimizar somente gargalos medidos, com regressão funcional protegida.
 
-**Entrega (F055, [scene-gizmo-performance.md](../features/scene-gizmo-performance.md), BL015.21):** a suíte foi
-implementada em `crates/core/tests/{gizmo_perf_support,scene_gizmo_perf_structure,scene_gizmo_perf_budget}`,
-`crates/desktop/src/workstation/scene_gizmo_perf_tests.rs` e `scripts/gizmo-perf/` (ver o README da pasta). O que já
-está provado e o que continua pendente (janela/WKWebView física, compositor, BL015.2/43/44) fica no documento da feature
-e em `docs/backlog.md`.
+**Entrega (F055, [scene-gizmo-performance.md](../features/scene-gizmo-performance.md), BL015.21):** a PR-A entrega a
+suíte **estrutural**: `crates/core/tests/{gizmo_perf_support,scene_gizmo_perf_structure,scene_gizmo_perf_threads}`,
+`crates/desktop/src/workstation/scene_gizmo_perf_tests.rs`, `scripts/gizmo-perf/corpus.py` e o fixture
+(`docs/migration/fixtures/gizmo-perf/`). A pilha de tempo (`run.py`, A/B, mutantes, janela nativa, orçamentos) está na
+PR-B, em rascunho (BL015.23), e **não** foi validada. O que já está provado e o que continua pendente (janela/WKWebView
+física, compositor, BL015.2/43/44) fica no documento da feature e em `docs/backlog.md`.
