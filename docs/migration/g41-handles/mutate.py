@@ -82,7 +82,9 @@ def main():
         try:
             file.write_text(original.replace(old, new))
             if path.endswith('.js'):
-                code, out = run(['node', '--test', 'test/fx-handles-overlay.test.mjs'], ROOT / 'runtime')
+                # The browser tests run the BUILT page (`runtime/dist`): the mutant has to be built into it.
+                code, out = run(['sh', '-c', 'pnpm run build >/dev/null && node --test test/fx-handles-overlay.test.mjs'],
+                                ROOT / 'runtime')
             else:
                 code, out = run(['./scripts/cargo', 'test', '-p', 'tessel-editor-core', '--locked', '--no-fail-fast',
                                  '--lib', '--test', 'scene_fx_handles'], ROOT)
@@ -102,6 +104,8 @@ def main():
             result = 'EXECUTION-ERROR'
         report.append({'mutant': name, 'result': result, 'failed': failed[:6], 'seconds': round(time.time() - started)})
         print(name, result, failed[:3], flush=True)
+    if any(path.endswith('.js') for path in ALL_PATHS) and not only or any(n.startswith('J') for n in only):
+        run(['sh', '-c', 'pnpm run build >/dev/null'], ROOT / 'runtime')  # `dist` back to the restored source
     hashes_after = {path: digest(path) for path in ALL_PATHS}
     out = {'restored': hashes_before == hashes_after, 'hashes': hashes_after, 'mutants': report}
     EVIDENCE.mkdir(parents=True, exist_ok=True)

@@ -149,7 +149,8 @@ test('hover follows the core: the nearest offered handle, the outer one on a tie
     disabled_handles: [{ id: 'radius', reason: 'animated_param', at: { u: 0.5, v: 0.5 } }],
   })));
   assert.equal(hoverHandle(dimmed, { u: 0.5, v: 0.5 }), null, 'a handle with keys does not light up');
-  const hidden = parseOverlay(overlayJson(fxBlock({ visible: false, reason: 'clip_not_in_frame', handles: [] })));
+  // Whatever the core listed, a block that is not visible offers nothing to the pointer.
+  const hidden = parseOverlay(overlayJson(fxBlock({ visible: false, reason: 'clip_not_in_frame' })));
   assert.equal(hoverHandle(hidden, { u: 0.5, v: 0.5 }), null);
 });
 
@@ -204,6 +205,11 @@ test('the page paints the handles and the ellipses and the pixels say so', async
   assert.deepEqual(far, [0, 0, 0, 0]);
   // Nothing of the node gizmo: no outline, no arrow.
   assert.equal(drawn.outlines, 0);
+  assert.equal(drawn.fx.active, null, 'no handle is active at rest');
+  // The overlay of a drag in progress names the active handle, and the page says it drew it.
+  await runtime.send({ type: 'overlay.set', overlay: overlayJson(fxBlock({ active: 'radius' })), ack: true });
+  const dragging = await runtime.waitFor((m) => m.type === 'overlay.drawn' && m.fx?.active === 'radius', 'the active handle drawn');
+  assert.equal(dragging.target, 'fx');
 });
 
 test('a press on a handle, a drag and the release post picture coordinates under the clip stamp', async (t) => {
