@@ -16,8 +16,8 @@ use tessel_editor_render::asset_io::{AssetPool, DEFAULT_QUEUE, DEFAULT_WORKERS};
 use tessel_editor_render::host::{AssetAccess, MAX_RANGE_BODY};
 use wry::http::Request;
 
-use super::viewport_host::{AssetIoMode, ProtocolHandle, asset_io_from_env};
 use super::viewport_host_tests::{answer, page, scratch};
+use super::viewport_protocol::{AssetIoMode, ProtocolHandle, asset_io_from_env};
 
 fn handle(
     mode: AssetIoMode,
@@ -87,7 +87,8 @@ fn a_request_and_the_load_message_of_the_same_file_share_one_label_and_no_path()
     trace.set_enabled(true);
     let sync = handle(AssetIoMode::Sync, &dist, &access, &trace, None);
     assert_eq!(answer(&sync, &asset_request(&file, None)).status(), 200);
-    let wanted = super::viewport_host::trace_label('a', &format!("p={}", file.to_string_lossy()));
+    let wanted =
+        super::viewport_protocol::trace_label('a', &format!("p={}", file.to_string_lossy()));
     let events = trace.events_since(0, 100);
     let callback = events["events"]
         .as_array()

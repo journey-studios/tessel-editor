@@ -37,6 +37,7 @@ mod timeline_panel;
 mod tokens;
 mod viewport;
 mod viewport_host;
+mod viewport_protocol;
 mod waveform;
 mod workflow;
 
