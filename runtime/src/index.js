@@ -13,6 +13,7 @@ import { TexturePreupload, stillsToUpload } from './preupload.js';
 import { RetentionCounters } from './retention.js';
 import { SPLAT_FORMATS } from './splat-format.js';
 import { SPARK_VERSION } from './splat-stage.js';
+import { WarmDraws, drawWarmed } from './warm-draw.js';
 import {
   BRIDGE_VERSION,
   LAYERS,
@@ -62,21 +63,23 @@ const OVERLAY_FEATURE = 'overlay.gizmo';
 // before a frame draws them (preupload.js).
 const PREUPLOAD_FEATURE = 'texture.preupload';
 // BL157.3 (second, separate experiment): announced only to a host whose `hello` asked for it (`warm_draw: true`). A warm of
-// splat scenes then also draws each scene it sorted once into a scratch target (`Compositor.warmDraw`).
+// splat scenes then also draws each scene it sorted once into a scratch target (warm-draw.js).
 const WARM_DRAW_FEATURE = 'scene.warm_draw';
 // A warm draw older than this is dropped unrun: the cut it was for has come or gone.
 const WARM_DRAW_MAX_AGE_MS = 3000;
 
-// `createCompositor` is the seam of the Node unit tests (`test/orchestrator-fixtures.mjs`): a page never passes it, and the
-// default is the one compositor there has always been. WebGL cannot run in plain Node, so a test that wants to prove what THIS
-// file decides (the serial queue, a frame going first, what a lost context or a dispose drops, which span the host hears) hands
-// in a compositor that records instead of drawing; what the real compositor does stays in the Chrome tests.
+// `createCompositor` and `warmDraw` are the seams of the Node unit tests (`test/orchestrator-fixtures.mjs`): a page never passes
+// them, and the defaults are the one compositor there has always been and the one warm draw (warm-draw.js). WebGL cannot run in
+// plain Node, so a test that wants to prove what THIS file decides (the serial queue, a frame going first, what a lost context
+// or a dispose drops, which span the host hears) hands in a compositor and a draw that record instead of drawing; what the real
+// ones do stays in the Chrome tests.
 export const createRuntime = ({
   post,
   assetUrl,
   canvas,
   overlay = null,
   createCompositor = (target, compositorOptions) => new Compositor(target, compositorOptions),
+  warmDraw = drawWarmed,
 }) => {
   const send = (message) => post({ v: BRIDGE_VERSION, ...message });
   const counters = new RetentionCounters();
@@ -92,6 +95,7 @@ export const createRuntime = ({
   const preupload = new TexturePreupload();
   let framesQueued = 0;
   let preuploadPumping = false;
+  const warmDraws = new WarmDraws();
   const warmDrawStats = { requested: 0, drawn: 0, skipped: 0, expired: 0, draw_ms: 0, max_draw_ms: 0, outcomes: {} };
   const cancelled = new Set();
   let renderQueue = Promise.resolve();
@@ -209,7 +213,6 @@ export const createRuntime = ({
       if (options.sceneSamples !== undefined) compositor.setSceneSamples(options.sceneSamples);
       if (options.previewSceneSamples !== undefined) compositor.setPreviewSceneSamples(options.previewSceneSamples);
       if (options.previewSort !== undefined) compositor.setPreviewSort(options.previewSort);
-      compositor.setWarmDraw(options.warmDraw);
     } catch (error) {
       throw error instanceof RuntimeError
         ? error
@@ -225,6 +228,7 @@ export const createRuntime = ({
       // Spark's textures and the splat meshes' GPU data die with the context; both rebuild lazily.
       compositor?.dropSplatStage();
       preupload.clear();
+      warmDraws.clear();
       // Retained textures, materials, rigs and targets belong to the lost context too; dropping
       // them now (before the restore) keeps three.js from addressing the new context with them.
       compositor?.dropRetained();
@@ -248,7 +252,7 @@ export const createRuntime = ({
     options.preupload = message.preupload_textures === true;
     if (!options.preupload) preupload.clear();
     options.warmDraw = message.warm_draw === true;
-    compositor?.setWarmDraw(options.warmDraw);
+    warmDraws.setEnabled(options.warmDraw);
     // DIAGNOSTIC arm (BL157.2): wait for the GPU after each draw and report it; never without `timing`.
     options.gpuFinish = options.timing && message.telemetry?.gpu_finish === true;
     if (options.timing) {
@@ -483,7 +487,9 @@ export const createRuntime = ({
         preupload.clear();
         return;
       }
-      const result = preupload.step(assets, (texture) => compositor.uploadTexture(texture));
+      // `initTexture` only uploads: nothing is drawn and no render target or canvas pixel is touched (three.js binds the texture on
+      // unit 0 and unbinds it). The context was asked just above, in the same task.
+      const result = preupload.step(assets, (texture) => compositor.renderer.initTexture(texture));
       if (result) noteSpan({ k: 'preupload', outcome: result.outcome, ms: result.ms });
       pumpPreupload();
     });
@@ -495,7 +501,7 @@ export const createRuntime = ({
    * draw into a no-op). A dispose, a lost context or the switch off drops them.
    */
   const scheduleWarmDraws = () => {
-    for (const item of compositor?.takeWarmDraws() ?? []) {
+    for (const item of warmDraws.take()) {
       warmDrawStats.requested += 1;
       const run = () => {
         renderQueue = renderQueue.then(async () => {
@@ -525,7 +531,7 @@ export const createRuntime = ({
       return note('expired');
     }
     const began = performance.now();
-    const outcome = await compositor.warmDraw(item, assets);
+    const outcome = await warmDraw(compositor, item, assets);
     const ms = performance.now() - began;
     if (outcome === 'drawn') {
       warmDrawStats.drawn += 1;
@@ -574,7 +580,7 @@ export const createRuntime = ({
           if (disposed || contextLost) return;
           try {
             const warmStarted = performance.now();
-            const started = await ensureCompositor().warmScenes({ plan: message.plan, assets });
+            const started = await ensureCompositor().warmScenes({ plan: message.plan, assets, onWarmed: (item) => warmDraws.record(item) });
             noteSpan({ k: 'warm', queued_ms: warmStarted - queuedAt, ms: performance.now() - warmStarted, started });
             scheduleWarmDraws();
           } catch {
@@ -614,6 +620,7 @@ export const createRuntime = ({
     dispose: () => {
       disposed = true;
       preupload.clear();
+      warmDraws.clear();
       stopBeat();
       stopGlProbe();
       assets.releaseAll();
@@ -697,6 +704,9 @@ export const createRuntime = ({
     preupload: () => ({ enabled: options.preupload, ...preupload.report() }),
     // What the scene warm draw did (tests and measurements).
     warmDraw: () => ({ enabled: options.warmDraw, ...warmDrawStats, outcomes: { ...warmDrawStats.outcomes } }),
+    // The warms recorded for a draw and the draw itself, so a test can keep an item and ask for the same draw again.
+    warmDraws,
+    drawWarmed: (item) => warmDraw(compositor, item, assets),
     // Lineages whose warm sort is still running (tests).
     warming: () => compositor?.warming.size ?? 0,
     // Every SparkRenderer alive, to inject a failure into one or count them (tests and measurements).

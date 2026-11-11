@@ -41,8 +41,6 @@ THREE.ColorManagement.enabled = false;
 const WARM_WAIT_MS = 1000;
 /** How often that wait looks at a cancel; the sort itself wakes the wait the moment it ends. */
 const WARM_POLL_MS = 25;
-/** Width of the scratch target of a warm draw (BL157.3): the draw is for what the GPU sets up, not for the pixels. */
-const WARM_DRAW_WIDTH = 16;
 
 const BLENDING = {
   normal: { blending: THREE.NormalBlending },
@@ -229,10 +227,6 @@ export class Compositor {
     // lineage -> mesh owners of a warmed stage no frame has drawn yet: its spare meshes are not lent to anyone else,
     // or the order the warm sorted would belong to meshes another scene took.
     this.warmOwned = new Map();
-    // BL157.3 (opt-in experiment, `hello.warm_draw`): the warms whose sort a draw into a scratch target may follow, and the
-    // switch for it. Off, nothing is recorded and `warmScenes` is the function it always was.
-    this.warmDrawEnabled = false;
-    this.warmDraws = [];
     // Mesh owners of the lineages the last frame drew: what is on screen, which a warm must not take a mesh from.
     this.drawnOwners = [];
     // One Spark sort lineage per scene layer in flight (BL130, see `planLineages`).
@@ -339,15 +333,6 @@ export class Compositor {
   setResultCache(enabled) {
     this.resultCache = enabled;
     for (const { value } of this.targets.entries.values()) value.result = null;
-  }
-
-  /**
-   * Sends a texture to the GPU now instead of on the frame that first draws it (BL157.3). It draws nothing and touches no
-   * render target or canvas pixel (three.js binds it on unit 0 and unbinds it). A lost context refuses it.
-   */
-  uploadTexture(texture) {
-    if (this.gl.isContextLost()) throw new RuntimeError('context_lost', 'The graphics context is lost');
-    this.renderer.initTexture(texture);
   }
 
   /** Sizes of what is retained now, for the frame report and the tests. */
@@ -671,10 +656,9 @@ export class Compositor {
    *
    * Best effort and never an error. It makes only what fits the stage budget (an idle stage of what is on screen is
    * never freed for it), skips what already has a stage, and waits for nothing: the leases and the stage are kept until
-   * the sort ends and a frame that needs the lineage meanwhile waits for it (`prepareLayer`). Returns how many stages
-   * were started.
+   * the sort ends and a frame that needs the lineage meanwhile waits for it (`prepareLayer`). Returns how many stages were started.
    */
-  async warmScenes({ plan, assets }) {
+  async warmScenes({ plan, assets, onWarmed }) {
     if (!this.retain || this.gl.isContextLost()) return 0;
     const width = plan.canvas?.width ?? 16;
     const height = plan.canvas?.height ?? 9;
@@ -718,7 +702,7 @@ export class Compositor {
           scene.objects.flatMap((object, index) => (object.type === 'splat' ? [`${lineage}#${index}`] : [])),
         );
         this.counters.add('stage_warmed');
-        if (this.warmDrawEnabled) this.warmDraws.push({ layer, scene, lineage, stage, sorted, width, height, at: performance.now() });
+        onWarmed?.({ layer, scene, lineage, stage, sorted, width, height }); // what the opt-in warm draw follows the sort with (warm-draw.js)
         started += 1;
       } catch (error) {
         rig?.dispose();
@@ -730,67 +714,6 @@ export class Compositor {
       }
     }
     return started;
-  }
-
-  setWarmDraw(enabled) {
-    this.warmDrawEnabled = enabled === true;
-    if (!this.warmDrawEnabled) this.warmDraws = [];
-  }
-
-  /** The warms started since the last call that a warm draw may follow (`warmDraw`); each is handed out once. */
-  takeWarmDraws() {
-    const taken = this.warmDraws;
-    this.warmDraws = [];
-    return taken;
-  }
-
-  /**
-   * EXPERIMENT (BL157.3, `hello.warm_draw`, off by default): draws the scene a warm just sorted ONCE into a scratch render
-   * target, so what a first draw of a scene makes the GPU do (its splat data, its program variant) is paid while the frames
-   * before the cut play and not by the frame at the cut. It is the draw of a frame without the wait for a sort: the stage
-   * already holds the order the warm made.
-   *
-   * What keeps it from being a change of the picture: the target is its own (16 px wide, no samples, never one of the
-   * retained targets, freed in every case), nothing it draws is kept, the canvas and the retained targets and results are
-   * not touched, and the stage, the meshes and the sort lineage are the warm's own, which the frame at the cut takes over as
-   * before. What keeps it from costing a frame: the caller runs it as a task of the page's serial queue behind any waiting
-   * frame, and it does nothing for a lineage whose stage was replaced, taken over by a frame, or lost with the context.
-   * Resolves the outcome: `drawn`, or why it was not (`gone`, `taken`, `no_order`, `lost`, `failed`).
-   */
-  async warmDraw(item, assets) {
-    const { lineage, layer, scene, stage, width, height } = item;
-    if (!this.retain || this.gl.isContextLost()) return 'lost';
-    if (stage.failed || this.stages.entries.get(lineage)?.value !== stage) return 'gone';
-    // A frame that drew the lineage took it over (`planLineages`); a warm that never owned it has nothing to draw.
-    if (!this.warmOwned.has(lineage) || this.warming.has(lineage)) return 'taken';
-    if (!stage.holdsOrderFor()) return 'no_order';
-    let rig = null;
-    let target = null;
-    let attached = false;
-    try {
-      assets.reserveSplatOwners([...this.drawnOwners, ...this.warmedOwners()]);
-      rig = await SceneRig.build(scene, assets, lineage);
-      if (this.gl.isContextLost() || this.stages.entries.get(lineage)?.value !== stage || !this.warmOwned.has(lineage)) return 'taken';
-      const high = Math.max(1, Math.round((WARM_DRAW_WIDTH * height) / width));
-      const camera = SceneRig.camera(layer.camera, WARM_DRAW_WIDTH, high);
-      rig.pose(layer.scene_time?.seconds ?? 0);
-      stage.attach(rig.scene);
-      attached = true;
-      target = new THREE.WebGLRenderTarget(WARM_DRAW_WIDTH, high, { samples: 0, depthBuffer: true, colorSpace: THREE.NoColorSpace });
-      rig.render(this.renderer, target, camera);
-      return 'drawn';
-    } catch {
-      return this.gl.isContextLost() ? 'lost' : 'failed';
-    } finally {
-      try {
-        if (attached) stage.detach(rig.scene);
-        rig?.dispose();
-        target?.dispose();
-      } catch {
-        // The context is gone with what it held.
-      }
-      assets.reserveSplatOwners([]);
-    }
   }
 
   /**
@@ -836,7 +759,6 @@ export class Compositor {
     this.splats = null;
     this.warming.clear();
     this.warmOwned.clear();
-    this.warmDraws = [];
     try {
       this.stages.clear();
     } catch {
