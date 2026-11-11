@@ -1160,8 +1160,10 @@ fn a_load_of_the_scene_that_was_left_ends_in_no_segment_that_never_saw_it_start(
         "the premise: they are loaded again"
     );
     // The user moves on before the page answered; then the page answers the old loads. (A frame
-    // other than 24: two scenes of one bundle plan the same picture at the same frame, and the
-    // host would take a repeated request for the same scene.)
+    // other than 24 is this test's own choice now: until BL015.22 was fixed, two scenes of one
+    // bundle planned the same picture at the same frame and the host took the request for a
+    // repeat of the scene on screen. The scene id is part of the dedupe key, and the test below
+    // `a_scene_of_the_same_bundle_at_the_same_frame_is_another_scene...` covers that case.)
     host.render_scene(&mut state, &resources, &scene_frame("second", 12), false)
         .unwrap();
     let render = render_after_loads(&mut host, &state, &old_loads);
@@ -1261,4 +1263,75 @@ fn a_directed_frame_that_fails_with_another_code_leaves_no_retry_behind() {
         !host.retry_due(Instant::now() + Duration::from_secs(60)),
         "the retry of the timeout is gone with it, and another code is not retried"
     );
+}
+
+// ---- two scenes of one bundle file are two scenes (BL015.22)
+
+/// `proof` and `second` are attached from ONE bundle file, so at the same frame they plan the same picture from the
+/// same resources with the same options, which is everything the monitor's dedupe used to compare. It took the request
+/// for `second` for a repeat of `proof`'s: nothing was drawn, no segment opened, and `directed_scene()` (what the gizmo
+/// routes the overlay and the pointer by) stayed on `proof` while `monitor.show_scene` answered ok. The scene id is part
+/// of the key now; a repeat of ONE scene is still only a repeat, and each switch is one scene change.
+#[test]
+fn a_scene_of_the_same_bundle_at_the_same_frame_is_another_scene_and_a_repeat_of_one_scene_is_not()
+{
+    let (mut host, mut state, resources) = two_scene_host("same-bundle-switch");
+    let (meter, clock) = recording(&mut host);
+    let changes = || events_of(&meter, &clock, &[EventKind::SceneChanged]).len();
+    let segment = || meter.borrow().recorder().segment();
+    let on_screen = |host: &ViewportHost| host.directed_scene().map(str::to_owned);
+
+    // The first scene is entered (one scene change, from "no scene") and its frame is drawn and answered.
+    host.render_scene(&mut state, &resources, &scene_frame("proof", 0), false)
+        .unwrap();
+    let loads = sent(&mut host);
+    let first = render_after_loads(&mut host, &state, &loads);
+    complete(&mut host, &state, &first);
+    assert_eq!(on_screen(&host).as_deref(), Some("proof"));
+    assert_eq!(changes(), 1);
+    let entered = segment();
+
+    // The monitor's own re-sync of the same scene and frame is a repeat: nothing goes out again, the history sees
+    // no scene change and the scene stays.
+    host.render_scene(&mut state, &resources, &scene_frame("proof", 0), false)
+        .unwrap();
+    assert!(
+        sent(&mut host).is_empty(),
+        "a repeat of the scene on screen is not drawn again"
+    );
+    assert_eq!(
+        (on_screen(&host).as_deref(), changes(), segment()),
+        (Some("proof"), 1, entered)
+    );
+
+    // The other scene of the same file at the very same frame is a scene change: the monitor follows the request,
+    // the history opens one segment, and the page is asked for a picture of the scene that was asked for.
+    host.render_scene(&mut state, &resources, &scene_frame("second", 0), false)
+        .unwrap();
+    assert_eq!(
+        on_screen(&host).as_deref(),
+        Some("second"),
+        "the monitor must follow a scene whose plan, resources and options equal the shown one's"
+    );
+    assert_eq!((changes(), segment()), (2, entered + 1));
+    let messages = sent(&mut host);
+    let second = render_after_loads(&mut host, &state, &messages);
+    complete(&mut host, &state, &second);
+
+    // A repeat of that scene is a repeat again; going back is one more change, not none.
+    host.render_scene(&mut state, &resources, &scene_frame("second", 0), false)
+        .unwrap();
+    assert!(sent(&mut host).is_empty());
+    assert_eq!(
+        (on_screen(&host).as_deref(), changes(), segment()),
+        (Some("second"), 2, entered + 1)
+    );
+    host.render_scene(&mut state, &resources, &scene_frame("proof", 0), false)
+        .unwrap();
+    assert_eq!(on_screen(&host).as_deref(), Some("proof"));
+    assert_eq!((changes(), segment()), (3, entered + 2));
+    // ... and the page is asked for its picture (`render_after_loads` fails when no `frame.render` ever goes out).
+    let messages = sent(&mut host);
+    let back = render_after_loads(&mut host, &state, &messages);
+    complete(&mut host, &state, &back);
 }

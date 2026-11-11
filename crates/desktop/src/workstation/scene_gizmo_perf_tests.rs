@@ -53,6 +53,20 @@ impl HostSurface<'_> {
         self.view.update(self.cx, |view, cx| view.workflow_tick(cx));
         self.cx.run_until_parked();
     }
+
+    /// A request that must succeed; its answer.
+    fn ok(&mut self, request: Value) -> Value {
+        let reply = self.call(&request);
+        assert!(reply.ok, "{request}: {}", reply.value);
+        reply.value
+    }
+
+    /// The scene the monitor holds as its directed scene: what the gizmo routes the overlay and the pointer by.
+    fn directed_scene(&mut self) -> Option<String> {
+        self.view.read_with(self.cx, |view, _| {
+            view.viewport.directed_scene().map(str::to_owned)
+        })
+    }
 }
 
 impl Surface for HostSurface<'_> {
@@ -194,11 +208,13 @@ fn an_idle_window_plans_nothing_per_tick_and_the_overlay_stays_memoised(cx: &mut
     }
 }
 
-/// BL015.22 (a hypothesis, not a proven defect): two attached scenes of ONE bundle file share a `bundleId`.
+/// BL015.22: two attached scenes of ONE bundle file share a `bundleId`, a plan, a resource map and options.
 /// The journey's `same.*` steps attach `proof-c` from the file `proof-b` came from and show it; the host must
-/// then report `proof-c` as the directed scene. The real window once seemed to stay on the first scene; the
-/// retained report did not reproduce it, and this is the deterministic host-side check that settles which
-/// layer would be at fault before anything is changed.
+/// then report `proof-c` as the directed scene. This was a product defect, not a hypothesis: the monitor's
+/// dedupe key had no scene id, so `monitor.show_scene proof-c` answered ok while the directed scene stayed
+/// `proof-b` (fixed in `ViewportHost::render_scene`: the scene id is part of the key now). This is the
+/// journey-level check; `monitor_show_scene_follows_the_request_between_scenes_of_one_bundle_and_of_another`
+/// below is the step-by-step regression test of the sequence that reproduced it.
 #[gpui_kit::test]
 fn showing_a_scene_that_shares_its_bundle_with_the_shown_one_shows_it(cx: &mut TestAppContext) {
     let (view, cx) = fixture(cx);
@@ -225,6 +241,80 @@ fn showing_a_scene_that_shares_its_bundle_with_the_shown_one_shows_it(cx: &mut T
         Some("proof-c"),
         "`monitor.show_scene` answered ok for a scene of an already shown bundle but the monitor kept another scene"
     );
+}
+
+/// BL015.22, the sequence that reproduced it (`docs/migration/gizmo-perf-evidence/bl01522-same-bundle-repro.rs.txt`,
+/// steps E1-E5), now a regression test through `Workstation::run_op`: `monitor.show_scene` leaves the monitor on the
+/// scene it was asked for, whichever scenes were shown before and whether or not they come from one bundle file.
+/// `proof-b` and `proof-c` are INTACT scenes attached from the same file (same plan, resource map and options at the
+/// same playhead); `proof` comes from another bundle. The old rule matched by content, so it failed in both directions
+/// (E2: `proof-c` after `proof-b`; E5: `proof-b` after `proof-c`) and worked only after a scene of another bundle (E4);
+/// a repeat of one scene (E6) must keep the scene.
+#[gpui_kit::test]
+fn monitor_show_scene_follows_the_request_between_scenes_of_one_bundle_and_of_another(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = fixture(cx);
+    view.update(cx, |view, _| view.viewport.pretend_overlay_supported(true));
+    let journey = Journey::load();
+    let corpus = journey.corpus("small");
+    let root = support::repo_root();
+    let abs = |relative: &str| {
+        root.join(relative)
+            .canonicalize()
+            .unwrap()
+            .display()
+            .to_string()
+    };
+    let (shared, other) = (abs(&corpus.bundle_b), abs(&corpus.bundle));
+    let base = abs(journey.value["base"].as_str().unwrap());
+    let mut surface = HostSurface { view, cx };
+
+    fn attach_and_show(
+        surface: &mut HostSurface,
+        scene: &str,
+        bundle: &str,
+        base: &str,
+    ) -> Option<String> {
+        surface.ok(json!({"op": "scene.attach", "id": scene, "path": bundle}));
+        surface.ok(json!({"op": "scene.resources.resolve", "scene": scene, "base": base}));
+        surface.ok(json!({"op": "monitor.show_scene", "scene": scene}));
+        surface.directed_scene()
+    }
+    fn show(surface: &mut HostSurface, scene: &str) -> Option<String> {
+        surface.ok(json!({"op": "monitor.show_scene", "scene": scene}));
+        surface.directed_scene()
+    }
+
+    surface.ok(json!({"op": "project.create", "name": "bl01522"}));
+    let e1 = attach_and_show(&mut surface, "proof-b", &shared, &base);
+    assert_eq!(e1.as_deref(), Some("proof-b"), "E1: the first scene");
+    let e2 = attach_and_show(&mut surface, "proof-c", &shared, &base);
+    assert_eq!(
+        e2.as_deref(),
+        Some("proof-c"),
+        "E2: a second scene of the same file; the monitor kept the first"
+    );
+    let e3 = attach_and_show(&mut surface, "proof", &other, &base);
+    assert_eq!(
+        e3.as_deref(),
+        Some("proof"),
+        "E3: a scene of another bundle"
+    );
+    let e4 = show(&mut surface, "proof-c");
+    assert_eq!(
+        e4.as_deref(),
+        Some("proof-c"),
+        "E4: back to the second scene"
+    );
+    let e5 = show(&mut surface, "proof-b");
+    assert_eq!(
+        e5.as_deref(),
+        Some("proof-b"),
+        "E5: back to the first one; the rule is symmetric"
+    );
+    let e6 = show(&mut surface, "proof-b");
+    assert_eq!(e6.as_deref(), Some("proof-b"), "E6: a repeat of one scene");
 }
 
 #[gpui_kit::test]

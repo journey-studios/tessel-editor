@@ -1,0 +1,58 @@
+# BL015.22 negative control: the new host tests run with the OLD dedupe key (`format!("{}|{:?}|{:?}", plan.to_json(), map, options)`, no scene id) put back into scene_monitor_host.rs. Expected: the three tests about same-bundle scenes FAIL, the others pass.
+# command: python3 /Users/wallyssonnunes/.cache/tessel-editor/cargo-serial.py test -p tessel-editor --locked -- scene_gizmo_perf scratch_bl01522 a_scene_of_the_same_bundle --nocapture
+# cwd: /Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-55b7366d
+# HEAD: 9a72e03189fd6ebd7a5697039ba78d6df3aed337 (tree NOT clean: the working tree carries the uncommitted change under test)
+# dirty paths: M crates/desktop/src/workstation/scene_gizmo_perf_tests.rs; M crates/desktop/src/workstation/scene_lifecycle_tests.rs
+# before: free 20.79 GiB, load [16.45, 19.34, 19.18], 2026-11-11T05:22:03Z
+# after: free 20.36 GiB, load [26.15, 22.49, 20.48], 2026-11-11T05:24:16Z
+# exit: 101, seconds: 133.4, timed out: False
+# (cargo/mbx progress lines removed; everything else is the output as it came)
+
+   Compiling tessel-editor v0.1.0 (/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-55b7366d/crates/desktop)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 30.93s
+     Running unittests src/main.rs (target/debug/deps/tessel_editor-6ae54b6071498909)
+
+running 8 tests
+
+thread 'workstation::viewport_host::directed::scene_lifecycle_tests::a_scene_of_the_same_bundle_at_the_same_frame_is_another_scene_and_a_repeat_of_one_scene_is_not' (91144051) panicked at crates/desktop/src/workstation/scene_lifecycle_tests.rs:1310:5:
+assertion `left == right` failed: the monitor must follow a scene whose plan, resources and options equal the shown one's
+  left: Some("proof")
+ right: Some("second")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test workstation::viewport_host::directed::scene_lifecycle_tests::a_scene_of_the_same_bundle_at_the_same_frame_is_another_scene_and_a_repeat_of_one_scene_is_not ... FAILED
+SCRATCH k0 (proof, intact)        vs kd (proof-d, intact): plan/map/options equal = (true, true, true)
+SCRATCH k1 (proof, edited)        vs kd (proof-d, intact): plan/map/options equal = (false, true, true)
+SCRATCH k2 (proof, edit undone)   vs kd (proof-d, intact): plan/map/options equal = (true, true, true)
+SCRATCH k2 vs k0 (same scene, before the edit and after the undo): (true, true, true)
+test workstation::scene_gizmo_perf_tests::scratch_bl01522_native_story ... ok
+
+thread 'workstation::scene_gizmo_perf_tests::monitor_show_scene_follows_the_request_between_scenes_of_one_bundle_and_of_another' (91144046) panicked at crates/desktop/src/workstation/scene_gizmo_perf_tests.rs:291:5:
+assertion `left == right` failed: E2: a second scene of the same file; the monitor kept the first
+  left: Some("proof-b")
+ right: Some("proof-c")
+test workstation::scene_gizmo_perf_tests::monitor_show_scene_follows_the_request_between_scenes_of_one_bundle_and_of_another ... FAILED
+SCRATCH2 after the journey up to state.hidden the directed scene is Some("proof"); after attaching proof-b from the SAME file and monitor.show_scene proof-b it is Some("proof")
+test workstation::scene_gizmo_perf_tests::scratch_bl01522_old_journey_story ... ok
+
+thread 'workstation::scene_gizmo_perf_tests::showing_a_scene_that_shares_its_bundle_with_the_shown_one_shows_it' (91144049) panicked at crates/desktop/src/workstation/scene_gizmo_perf_tests.rs:237:5:
+assertion `left == right` failed: `monitor.show_scene` answered ok for a scene of an already shown bundle but the monitor kept another scene
+  left: Some("proof-b")
+ right: Some("proof-c")
+test workstation::scene_gizmo_perf_tests::showing_a_scene_that_shares_its_bundle_with_the_shown_one_shows_it ... FAILED
+test workstation::scene_gizmo_perf_tests::an_idle_window_plans_nothing_per_tick_and_the_overlay_stays_memoised has been running for over 60 seconds
+test workstation::scene_gizmo_perf_tests::every_host_request_plans_the_scene_at_most_as_often_as_its_contract_says has been running for over 60 seconds
+test workstation::scene_gizmo_perf_tests::the_host_runs_the_shared_journey_to_the_same_transforms_and_history_as_the_core has been running for over 60 seconds
+test workstation::scene_gizmo_perf_tests::every_host_request_plans_the_scene_at_most_as_often_as_its_contract_says ... ok
+test workstation::scene_gizmo_perf_tests::the_host_runs_the_shared_journey_to_the_same_transforms_and_history_as_the_core ... ok
+test workstation::scene_gizmo_perf_tests::an_idle_window_plans_nothing_per_tick_and_the_overlay_stays_memoised ... ok
+
+failures:
+
+failures:
+    workstation::scene_gizmo_perf_tests::monitor_show_scene_follows_the_request_between_scenes_of_one_bundle_and_of_another
+    workstation::scene_gizmo_perf_tests::showing_a_scene_that_shares_its_bundle_with_the_shown_one_shows_it
+    workstation::viewport_host::directed::scene_lifecycle_tests::a_scene_of_the_same_bundle_at_the_same_frame_is_another_scene_and_a_repeat_of_one_scene_is_not
+
+test result: FAILED. 5 passed; 3 failed; 0 ignored; 0 measured; 412 filtered out; finished in 100.96s
+
+error: test failed, to rerun pass `-p tessel-editor --bin tessel-editor`

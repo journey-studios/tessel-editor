@@ -1,0 +1,136 @@
+// BL015.22 / M1 — scratch experiments (NOT part of the suite; kept as evidence, `.rs.txt` so it is never compiled).
+//
+// They lived at the end of `crates/desktop/src/workstation/scene_gizmo_perf_tests.rs` while the BL015.22 fix was written,
+// were run on the dirty tree as `cargo test -p tessel-editor --locked -- scene_gizmo_perf scratch_bl01522
+// a_scene_of_the_same_bundle --nocapture` with the OLD dedupe key (`bl01522-host-tests-vs-old-key.log`) and with the
+// fixed one (`bl01522-host-scratch-with-fix.log`), and were removed before the commit.
+//
+// Question they answer: the review of a97a0a7 said the retained native report did not show the defect "because the
+// first scene had been edited, so its key did not match". Two experiments on the host:
+//   * `scratch_bl01522_native_story`: do the plan, resource map and options (the three parts of the old key besides the
+//     scene) of a scene differ between the pristine scene, the scene edited by a drag and the scene after the undo?
+//     Result: edited != pristine, but the undone scene equals the pristine one (true, true, true) and equals `proof-d`,
+//     the scene attached from the same bundle: an edit-and-undo does not make the keys differ.
+//   * `scratch_bl01522_old_journey_story`: run the journey up to `state.hidden`, then attach `proof-b` from the SAME file
+//     as `proof` and `monitor.show_scene proof-b`. Old key: the directed scene stays `proof`. Fixed key: `proof-b`.
+// The explanation of the review is therefore not what this host reproduces; why the retained native report (journey of
+// 037eda5, where `switch.attach` used the same file as the first scene) does show the monitor going to `proof-b` is not
+// explained by these experiments (see `docs/features/scene-gizmo-performance.md`, BL015.22).
+//
+// (Compiles only inside `scene_gizmo_perf_tests.rs`: it uses that file's `fixture`, `HostSurface`, `Journey`, `support`.)
+
+// SCRATCH-BEGIN (BL015.22 / M1: never committed; removed before the commit)
+fn scratch_key_parts(
+    view: &Entity<Workstation>,
+    cx: &mut VisualTestContext,
+    scene: &str,
+) -> (String, String, String) {
+    let frame = view
+        .read_with(cx, |view, _| view.state.scene_frame_at_playhead(scene))
+        .unwrap();
+    view.update(cx, |view, _| {
+        let session = view.workflow.scene_resources();
+        let request = json!({ "scene": scene, "frame": frame, "width": 960, "height": 540 });
+        let (plan, map, options) =
+            tessel_editor_render::scene_operation::prepare(&mut view.state, &request, &session)
+                .unwrap();
+        (
+            plan.to_json().to_string(),
+            format!("{map:?}"),
+            format!("{options:?}"),
+        )
+    })
+}
+
+#[gpui_kit::test]
+fn scratch_bl01522_native_story(cx: &mut TestAppContext) {
+    let (view, cx) = fixture(cx);
+    view.update(cx, |view, _| view.viewport.pretend_overlay_supported(true));
+    let journey = Journey::load();
+    let corpus = journey.corpus("small");
+    let root = support::repo_root();
+    let abs = |relative: &str| {
+        root.join(relative)
+            .canonicalize()
+            .unwrap()
+            .display()
+            .to_string()
+    };
+    let (small, base) = (abs(&corpus.bundle), abs(journey.value["base"].as_str().unwrap()));
+    let node = corpus.node.clone();
+    let mut surface = HostSurface {
+        view: view.clone(),
+        cx,
+    };
+    surface.ok(json!({"op": "project.create", "name": "scratch"}));
+    surface.ok(json!({"op": "scene.attach", "id": "proof", "path": small}));
+    surface.ok(json!({"op": "scene.resources.resolve", "scene": "proof", "base": base}));
+    surface.ok(json!({"op": "monitor.show_scene", "scene": "proof"}));
+    let cx = surface.cx;
+    let k0 = scratch_key_parts(&view, cx, "proof");
+    let mut surface = HostSurface { view: view.clone(), cx };
+    surface.ok(json!({"op": "scene.select", "scene": "proof", "entities": [node]}));
+    surface.ok(json!({"op": "scene.translate", "scene": "proof", "entity": node, "frame": 24,
+        "delta": {"x": 1.0, "y": 0.0, "z": 0.0}}));
+    let cx = surface.cx;
+    let k1 = scratch_key_parts(&view, cx, "proof");
+    let mut surface = HostSurface { view: view.clone(), cx };
+    surface.ok(json!({"op": "history.undo"}));
+    let cx = surface.cx;
+    let k2 = scratch_key_parts(&view, cx, "proof");
+    let mut surface = HostSurface { view: view.clone(), cx };
+    // The scene is attached again from the SAME file, intact (the retained native journey's `proof-b`).
+    surface.ok(json!({"op": "scene.attach", "id": "proof-d", "path": small}));
+    surface.ok(json!({"op": "scene.resources.resolve", "scene": "proof-d", "base": base}));
+    let cx = surface.cx;
+    let kd = scratch_key_parts(&view, cx, "proof-d");
+    let eq = |a: &(String, String, String), b: &(String, String, String)| {
+        (a.0 == b.0, a.1 == b.1, a.2 == b.2)
+    };
+    eprintln!("SCRATCH k0 (proof, intact)        vs kd (proof-d, intact): plan/map/options equal = {:?}", eq(&k0, &kd));
+    eprintln!("SCRATCH k1 (proof, edited)        vs kd (proof-d, intact): plan/map/options equal = {:?}", eq(&k1, &kd));
+    eprintln!("SCRATCH k2 (proof, edit undone)   vs kd (proof-d, intact): plan/map/options equal = {:?}", eq(&k2, &kd));
+    eprintln!("SCRATCH k2 vs k0 (same scene, before the edit and after the undo): {:?}", eq(&k2, &k0));
+    if k2.0 != kd.0 {
+        let (a, b) = (&k2.0, &kd.0);
+        let at = a.bytes().zip(b.bytes()).position(|(x, y)| x != y).unwrap_or(a.len().min(b.len()));
+        eprintln!("SCRATCH first difference at byte {at}: ...{}... vs ...{}...", &a[at.saturating_sub(60)..(at + 80).min(a.len())], &b[at.saturating_sub(60)..(at + 80).min(b.len())]);
+    }
+}
+
+#[gpui_kit::test]
+fn scratch_bl01522_old_journey_story(cx: &mut TestAppContext) {
+    // The retained native run (journey of 037eda5): the whole journey up to `state.hidden`, then a second scene attached
+    // from the SAME file as the first, then `monitor.show_scene` of it. What does the host do after that history?
+    let (view, cx) = fixture(cx);
+    view.update(cx, |view, _| view.viewport.pretend_overlay_supported(true));
+    let mut journey = Journey::load();
+    let corpus = journey.corpus("small");
+    let cut = journey.value["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|step| step["id"] == "switch.attach")
+        .unwrap();
+    journey.value["steps"].as_array_mut().unwrap().truncate(cut);
+    let root = support::repo_root();
+    let abs = |relative: &str| {
+        root.join(relative)
+            .canonicalize()
+            .unwrap()
+            .display()
+            .to_string()
+    };
+    let (same_file, base) = (abs(&corpus.bundle), abs(journey.value["base"].as_str().unwrap()));
+    let mut surface = HostSurface { view, cx };
+    let _ = support::run(&mut surface, &journey, &corpus);
+    let before = surface.directed_scene();
+    surface.ok(json!({"op": "scene.attach", "id": "proof-b", "path": same_file}));
+    surface.ok(json!({"op": "scene.resources.resolve", "scene": "proof-b", "base": base}));
+    surface.ok(json!({"op": "monitor.show_scene", "scene": "proof-b"}));
+    eprintln!(
+        "SCRATCH2 after the journey up to state.hidden the directed scene is {before:?}; after attaching proof-b from the SAME file and monitor.show_scene proof-b it is {:?}",
+        surface.directed_scene()
+    );
+}
+// SCRATCH-END

@@ -11,8 +11,9 @@
 //!   trace's (so a faster handler that edits the wrong thing fails here), and the commit, cancel,
 //!   undo and redo equalities the driver asserts on every run hold;
 //! - the plans: each request lays the scene out at most the contracted number of times, the same
-//!   on a 5-node scene and on a 617-node one (a per-node cost is the BL015.12 risk), a long drag
-//!   costs one layout per move, undo/redo/tool/select cost none;
+//!   on a 6-node scene and on a 618-node one (the manifest's counts, the root node included; a
+//!   per-node cost is the BL015.12 risk), a long drag costs one layout per move,
+//!   undo/redo/tool/select cost none;
 //! - the memo key the host gates its replanning on is free to read (no layout), stable while
 //!   nothing changed and different after every change that moves the picture or the handles.
 //!
