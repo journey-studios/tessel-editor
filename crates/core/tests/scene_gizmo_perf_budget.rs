@@ -431,18 +431,22 @@ fn measure_corpus(journey: &Journey, name: &str) -> Value {
 
 const MAX_BLOCK_SPREAD: f64 = 1.5;
 
-fn within(report: &Value, budgets: &Value, failures: &mut Vec<String>) {
+/// Judges one corpus against the budgets, appending what is over to `failures`. A corpus whose plan reference
+/// disagreed with itself is NOT judged: it returns the `INCONCLUSIVE:` note instead (the caller reports a real
+/// failure of another corpus first, so an inconclusive corpus never masks a failure).
+fn within(report: &Value, budgets: &Value, failures: &mut Vec<String>) -> Option<String> {
     let corpus = report["corpus"].as_str().unwrap();
     let unstable = report["reference"]["unstable_fraction"].as_f64().unwrap();
     let allowed = budgets["reference"]["max_unstable_blocks"]
         .as_f64()
         .unwrap();
-    assert!(
-        unstable <= allowed,
-        "INCONCLUSIVE: {:.0}% of the plan reference blocks of {corpus} disagreed with themselves by more than {MAX_BLOCK_SPREAD}x (limit {:.0}%); the machine was not steady enough to judge",
-        unstable * 100.0,
-        allowed * 100.0
-    );
+    if unstable > allowed {
+        return Some(format!(
+            "INCONCLUSIVE: {:.0}% of the plan reference blocks of {corpus} disagreed with themselves by more than {MAX_BLOCK_SPREAD}x (limit {:.0}%); the machine was not steady enough to judge",
+            unstable * 100.0,
+            allowed * 100.0
+        ));
+    }
     for phase in ["cold", "hot"] {
         for (kind, summary) in report[phase].as_object().unwrap() {
             let Some(limit) = budgets["ratios"][corpus].get(kind) else {
@@ -473,6 +477,7 @@ fn within(report: &Value, budgets: &Value, failures: &mut Vec<String>) {
             }
         }
     }
+    None
 }
 
 fn write_report(corpora: &[Value]) {
@@ -512,10 +517,18 @@ fn the_gizmo_handlers_stay_within_their_budget_cold_and_hot_on_every_corpus() {
     }
     let budgets = json_file(BUDGETS);
     let mut failures = Vec::new();
-    for report in &reports {
-        within(report, &budgets, &mut failures);
-    }
-    assert!(failures.is_empty(), "over budget:\n{}", failures.join("\n"));
+    let inconclusive: Vec<String> = reports
+        .iter()
+        .filter_map(|report| within(report, &budgets, &mut failures))
+        .collect();
+    // A real failure is reported first and never hidden by an inconclusive corpus.
+    assert!(
+        failures.is_empty(),
+        "over budget:\n{}\n{}",
+        failures.join("\n"),
+        inconclusive.join("\n")
+    );
+    assert!(inconclusive.is_empty(), "{}", inconclusive.join("\n"));
 }
 
 fn summary_line(report: &Value) -> String {
@@ -545,7 +558,9 @@ fn controlled(inject: u8) -> Vec<String> {
     let report = measure_corpus(&journey, "dense");
     INJECT.store(0, Ordering::Relaxed);
     let mut failures = Vec::new();
-    within(&report, &json_file(BUDGETS), &mut failures);
+    if let Some(note) = within(&report, &json_file(BUDGETS), &mut failures) {
+        panic!("{note}");
+    }
     failures
 }
 

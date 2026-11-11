@@ -2,7 +2,8 @@
 
 Complementa [F055](scene-gizmo.md). Pedido: "garantir que não perdemos performance e que validamos o mesmo
 cenário de abrir o app visualmente; o que for possível por teste unitário". Nada aqui muda o produto: o único
-código de produção tocado são três linhas de contagem (`scene_plan::probe`, ver abaixo).
+código de produção tocado é o contador de layouts (`scene_plan::probe` + a chamada em `ScenePlan::build_with`, ver
+abaixo). O custo desse contador **não é assumido nulo**: só o A/B o mede (e ele ainda não foi medido).
 
 ## Objetivo e limites
 
@@ -13,12 +14,18 @@ compartilhado** (`corpus.manifest.json`, com sha256 do gerador, da jornada e de 
 
 | Caso | O que é | Por quê |
 |---|---|---|
-| `small` | o corpus da prova de cena (5 nós, animados) | abertura típica |
-| `dense` | + 12 bancos × 50 planos girados (617 nós) | custo que cresce com o número de nós |
-| `deep` | cadeia de 24 pais girados + 12 anisotrópicos | pais transformados (matemática da direção local/escala) |
+| `small` | o corpus da prova de cena (6 nós no manifesto, animados) | abertura típica |
+| `dense` | + 12 bancos × 50 planos girados (618 nós no manifesto) | custo que cresce com o número de nós |
+| `deep` | cadeia de 24 pais girados + 12 anisotrópicos (44 nós no manifesto) | pais transformados (matemática da direção local/escala) |
 
-Gaps declarados: **não há caso com splat** (o gerador não cria splat; o pedido o inclui "onde suportado"); sem GPU real
-nem ponteiro físico (BL015.2/BL043/BL044 seguem pendentes); sem alegar "custo 0".
+Contagens são as de `corpus.manifest.json` (a raiz entra; versões anteriores deste texto diziam 5 e 617). Gaps declarados: **não há caso com splat** (o gerador não cria splat; o pedido o inclui
+"onde suportado"; BL015.23); sem GPU real nem ponteiro físico (BL015.2/BL043/BL044 seguem pendentes); sem alegar
+"custo 0".
+
+A jornada é **uma só** (`journey.json` v1, sha256 no manifesto do corpus): o core, o host GPUI e a janela nativa a
+carregam do mesmo arquivo e a janela nativa recusa um corpus cujo manifesto não bate com o que está no disco. Abrir e o
+primeiro quadro são fases `cold` separadas das fases `hot`; o core **não tem quadro** (só a janela e o host
+apresentam), então "primeiro quadro" nunca foi uma medida do core frio — o texto anterior que dizia isso estava errado.
 
 ## Contrato do core / biblioteca
 
@@ -27,22 +34,35 @@ mesmo undo), `presentation` (precisa de uma janela que apresente) ou `presentati
 
 | Superfície | Onde | O que prova | O que **não** prova |
 |---|---|---|---|
-| Core (lib) | `crates/core/tests/gizmo_perf_support` + `scene_gizmo_perf_structure.rs` (7 testes, **sempre** rodam, determinísticos) e `scene_gizmo_perf_budget.rs` (`#[ignore]`, opt-in controlado) | transformada/undo/redo idênticos ao golden (`journey.expected.json`), cancelar não muda nada, desfazer restaura o valor exato; **planos por requisição** (`scene_plan::probe::layouts_built`), independência do tamanho da cena, 60 moves = 60 plans, chave da memória do overlay; tempo em release | janela, GPU, página |
-| Host GPUI | `crates/desktop/src/workstation/scene_gizmo_perf_tests.rs` (3 testes) | a MESMA jornada por `Workstation::run_op` (mesmo golden), incluindo `monitor.show_scene` e resize; layouts por requisição **no host** (orçamento = o medido); janela parada (100 ticks do timer = 0 layouts; 20 syncs = no máximo 1 layout e 0 pedidos do overlay, só `memo_hits`) | WebView, GPU, compositor, ponteiro físico; o diálogo (precisa do `Root` do Kit: é da janela nativa) |
+| Core (lib) | `crates/core/tests/gizmo_perf_support` + `scene_gizmo_perf_structure.rs` (7 testes, **sempre** rodam, determinísticos), `scene_gizmo_perf_threads.rs` (1 teste, novo, **não compilado** nesta entrega: nenhum layout escapa da thread lida) e `scene_gizmo_perf_budget.rs` (`#[ignore]`, opt-in controlado) | transformada/undo/redo idênticos ao golden (`journey.expected.json`), cancelar não muda nada, desfazer restaura o valor exato; **planos por requisição** (`scene_plan::probe::layouts_built`), independência do tamanho da cena, 60 moves = 60 plans, chave da memória do overlay; tempo em release | janela, GPU, página |
+| Host GPUI | `crates/desktop/src/workstation/scene_gizmo_perf_tests.rs` (4 testes; o 4º é novo e **não foi compilado** nesta entrega) | a MESMA jornada por `Workstation::run_op` (mesmo golden), incluindo `monitor.show_scene` e resize; layouts por requisição **no host** (orçamento = o medido); janela parada (100 ticks do timer = 0 layouts; **no máximo 1 layout por sync** do mesmo estado — o do próprio monitor —, ou seja ≤ 20 para 20 syncs, que é o que o teste afirma (`<= SYNCS`); 0 pedidos do overlay, só `memo_hits`). O texto anterior ("20 syncs = no máximo 1 layout") não era o que o teste verificava; o contrato é o do teste (uma cota agregada de 1 por sync, não uma checagem sync a sync: um sync com 2 layouts compensado por outro com 0 passaria). Também a cena de **mesmo bundle** (`same.*`, BL015.22) | WebView, GPU, compositor, ponteiro físico; o diálogo (precisa do `Root` do Kit: é da janela nativa) |
 | Janela nativa | `scripts/gizmo-perf/native.py` (processo próprio, `HOME`/socket próprios, WKWebView, só requisições semânticas) | a mesma jornada contra o mesmo golden, **pixels** (a imagem do monitor muda após um commit, volta ao hash exato após o undo, não muda após cancelar), o overlay desenhado e confirmado pela página (sondas de cor), tempos do cliente e os do próprio runtime | compositor (ver abaixo) |
 
 `scene_plan::probe` (core, sem `unsafe`: o workspace proíbe `unsafe_code`, logo não há contador de alocações nem de
-CPU; limite declarado) conta cada `ScenePlan::build_with` e `PlanTimeline::build_with` da thread. É o **detector
+CPU; limite declarado) conta cada `ScenePlan::build_with` (o layout completo da cena), **por thread** (a suíte
+estrutural lê a sua, exata num `cargo test` paralelo) e **por processo** (um `fetch_add` relaxado). É o **detector
 estrutural**: um plano a mais por handler ou por tick falha o teste sem relógio.
+- O ponto cego do contador por thread (um handler que planejasse em outra thread leria 0 e passaria) é coberto por
+  `scene_gizmo_perf_threads.rs`: num binário de um único teste, a jornada gasta os mesmos layouts por requisição lida por
+  thread e por processo, e um controle negativo roda a jornada noutra thread e exige que o contador da thread não mude e o
+  do processo cresça. **Não compilado nesta entrega.**
+- `PlanTimeline::build_with` **deixou de ser contado**: o contador (`timeline_plans_built`) não tinha consumidor
+  (código morto no caminho quente). O caminho da linha do tempo fica **sem detector estrutural** (BL015.23).
+- O custo do próprio contador **não é assumido desprezível**. O A/B constrói a baseline *sem* a chamada
+  (`ab.py` só dá à baseline o arquivo `probe.rs` e a linha `pub mod probe;`) e a candidata com ela: a diferença de
+  tempo inclui o contador. Sem A/B medido, isso está **pendente**, não "zero".
 
 **Tempo.** A medição de tempo é a razão entre a requisição e o `ScenePlan::build_with` da própria cena, medido em blocos
 de 5 antes de cada janela de amostras; isso cancela a velocidade e a carga da máquina. Orçamentos por caso e tipo em
-`budgets.json` (regra e margens em `scripts/gizmo-perf/budgets.py`, fixadas **antes** de julgar o candidato; o arquivo
-guarda o sha256 dos relatórios de calibração). Métricas: mediana, p95, p99, máximo, amostras perdidas, erros, ticks
+`budgets.json` (regra e margens em `scripts/gizmo-perf/budgets.py`; o arquivo guarda o sha256 dos relatórios de
+calibração). Os orçamentos **não** foram pré-registrados: veja "Histórico dos orçamentos". Métricas: mediana, p95, p99, máximo, amostras perdidas, erros, ticks
 longos (> 16,6 ms); **nenhuma amostra é descartada** e frio/quente ficam separados (frio = 60 editores novos por tipo,
 primeiro quadro incluído). `INCONCLUSIVE` quando mais de 25% dos blocos de referência discordam de si mesmos em > 1,5×;
-`BLOCKED` quando o lock `/tmp/tessel-scene-gpu.lock` está ocupado (uma tentativa, sem espera), a carga passa de
-0,5 por CPU, há limite térmico ou o disco está abaixo do piso. As duas "injeções" (um plano a mais; 1 ms) são **controles
+`BLOCKED` quando o lock `/tmp/tessel-scene-gpu.lock` está ocupado (uma tentativa, sem espera), a carga (1 **e** 5
+min) passa de 0,5 por CPU, o disco está abaixo do piso ou há limite térmico. Em Apple silicon o `pmset` não informa
+`CPU_Speed_Limit`: o relatório diz `thermal_state.verified = false` ("sem limite reportado; estrangulamento não
+excluído"), nunca "silencioso". As guardas são lidas **de novo depois** da corrida: uma guarda ruim depois torna a
+corrida `INVALID_GUARD_AFTER_RUN` (não é PASS). As duas "injeções" (um plano a mais; 1 ms) são **controles
 negativos** do próprio detector, nunca prova de desempenho.
 
 ## CLI headless
@@ -74,37 +94,104 @@ medido**. Uma resposta de socket ou o `frame.done` da página nunca contam como 
 Preenchido com os números da entrega em [Evidência](#evidência-desta-entrega). Regra de leitura: **implementado** (código
 e testes que rodam) ≠ **validado** (números/provas com identidade); o que é autorrelato fica marcado como tal.
 
-### Achados (não são regressões provadas)
+### Histórico dos orçamentos (o que foi e o que não foi pré-registrado)
 
-- `pointer.move`/`up` custam ~6–8× um plano no release (denso ≈ 4 ms) contando um único layout: o resto é do gesto
-  (candidato, planos de escala/rotação). Sem A/B mostrando regressão contra a `main`, **não** foi otimizado.
-- `monitor.show_scene` entre duas cenas **com o mesmo `bundleId`** (duas cenas anexadas do mesmo arquivo) responde `ok`
-  mas o monitor continua em `directed.scene` da primeira (nenhum quadro novo é pedido); com bundles diferentes troca.
-  Observado uma vez na janela real (build release do head); a causa não foi investigada e nada foi alterado. A jornada usa bundles diferentes na troca; o caso fica em BL015.22.
+Os orçamentos de `budgets.json` vêm de calibrações sobre **esta mesma árvore** (nenhuma base anterior), em três
+esquemas sucessivos (referência única → INCONCLUSIVE porque derivava 2×; blocos de referência, 25 execuções frias;
+blocos, 60 execuções frias: `calib1..3`, `calibB1..3`, `calibC1..3`). A primeira corrida julgada com o esquema final
+(`try1`) ficou INCONCLUSIVE e a segunda (`try2`) **FALHOU** (`dense/cold.state` p95 2,61× > 1,45; `cold.attach` p95 7,21 >
+7,1). Só **depois** disso as margens frias foram ampliadas (1,25/2,0 em `budgets.py`) e as execuções frias passaram a 60: o
+limite p95 de `dense/cold.state` foi de **1,45 para 5,6**. Logo: **as margens frias foram escolhidas depois de ver um FAIL; não são
+"pré-registradas" nem "fixadas antes de julgar"**; o `PASS` do `5cded7e` é o de uma regra já ajustada, e uma calibração
+sobre a mesma árvore **não prova ausência de regressão** (ela só descreve o que a árvore faz).
 
-## Evidência desta entrega
+**Critério registrado ANTES do próximo julgamento** (qualquer mudança é um commit novo e vale para a corrida seguinte):
+
+1. Os orçamentos existentes ficam como estão; **nenhuma margem muda para fazer algo passar**. O que passa a valer como
+   prova de regressão é o **A/B contra a baseline independente** (`cbe9e1b` com o código de produção intacto) e o
+   contrato estrutural, não a calibração.
+2. Métricas por tipo de requisição: p50, p95, p99, máximo, amostras perdidas e ticks longos. p50 e p95 julgam (A/B: > 10%
+   e > 25% sobre a baseline, com maioria dos pares de rodadas); p99 e máximo são **registrados, não julgam** (um soluço do
+   agendador numa máquina compartilhada decidiria o veredito); amostra perdida ou tick longo que a baseline não teve
+   reprova.
+3. Ruído: baseline que varia > 15% entre rodadas, ou > 25% dos blocos de referência discordando de si em > 1,5×, torna o
+   tipo/corpus INCONCLUSIVE. Nada de melhor-de-N, nenhuma amostra descartada.
+4. Um tipo só tem orçamento de tempo "adequado" se uma injeção de 1 ms **realmente medida** o reprova; um relógio falso
+   não prova o produto.
+
+**Auditoria da folga** (`scripts/gizmo-perf/audit.py`, saída em
+[`budget-audit-final1-5cded7e.json`](../migration/gizmo-perf-evidence/budget-audit-final1-5cded7e.json), sobre o relatório
+retido do `5cded7e`): em **22 de 60** tipos (todos os `move.*`/`up.*` de `dense`/`deep`/`small`, `cold.attach` e alguns de
+`small`) **um plano extra passa em tempo**; em 17/60 a folga do p95 é ≥ 2×, em 6/60 ≥ 3×, e em 1 tipo (`dense/cold.attach`)
+um atraso de 1 ms passa (convertido com o tempo de plano medido). Isto é uma propriedade do orçamento, não um defeito
+corrigido: **o tempo sozinho não detecta um plano extra nesses 22 tipos**. É o detector estrutural (plano por requisição,
+exato) que cobre isso, ortogonal ao tempo; os dois têm controles negativos (um plano a mais falha o estrutural; 1 ms falha o
+tempo onde o orçamento é estreito). Onde a folga é larga, o tempo é só um teto grosso.
+
+## Achados e pendências (não são regressões provadas)
+
+- `pointer.move`/`up`: 6–8 planos observados no release (denso ≈ 4 ms) **contando um único layout por requisição** (o
+  teste estrutural prova 1 layout por move): o resto é do gesto (candidato, planos de escala/rotação). Não há trabalho
+  duplicado demonstrado e **nenhuma otimização foi feita**; sem A/B mostrando regressão contra a `main`, nada a corrigir.
+  Desempenho: pendente.
+- BL015.22 — `monitor.show_scene` entre duas cenas do **mesmo `bundleId`**: a hipótese **não foi reproduzida**. O único
+  relatório retido da janela mostrava o monitor ainda na primeira cena, mas foi de uma única corrida de uma revisão
+  anterior do runner e **não é um defeito provado** (pode ser da corrida, do que o runner esperava ou do monitor).
+  A jornada agora **inclui** o caso (`same.attach`/`same.resources`/`same.show`: `proof-c` do mesmo arquivo de `proof-b`,
+  com `expect.shown_scene = proof-c`), no host (teste novo, não compilado) e na janela (a verificação exige um quadro
+  NOVO do `proof-c`, não a resposta `ok`). Não se evitou o caso para ficar verde; resultado nativo: pendente.
+- A janela nativa não observa `presented` (compositor): o runner marca `presented: not_observable` e exige quadro novo
+  correlacionado por request/cena/frame/revisão/hash; isso **não** é prova física de pintura. Faltam também o caso com
+  splat e a cobertura estrutural de `PlanTimeline` (BL015.23), e orçamentos por passo do host e da janela.
+
+## O que a revisão 5853504495 mudou nesta entrega
+
+Itens da review da PR #44 (head `ef62bda`), todos implementados **mas nenhum validado por execução pesada** (veja
+"Estado desta entrega"):
+
+1. **A/B era A/A.** `ab.py` copiava `scene_plan` do candidato sobre a baseline (apagava a diferença do caminho quente). Agora
+   a baseline é a `cbe9e1b` fixada, com **só** uma lista de permissões (testes, fixtures, `probe.rs` novo e uma linha
+   `pub mod probe;`); registra manifestos da árvore de produção (ids de blob do git) antes/depois do overlay e do
+   candidato, **recusa** contaminação (`REFUSED_CONTAMINATION`) e declara A/A quando nenhum arquivo de produção difere.
+   Um candidato com trabalho extra em `scene_plan` continua DIFERENTE da baseline (teste do runner com repositórios git
+   temporários). O contador que escapava para outra thread ganhou o detector do item "probe" acima; o contador morto
+   do `PlanTimeline` foi removido.
+2. **Mutantes.** `MORTO` só pelo teste nomeado **e** a mensagem de orçamento esperada; Cargo 127, binário ausente, 0
+   testes, timeout, disco, lock ou erro de compilação são `BLOCKED_OR_INFRA` (exit 3), nunca um kill; timeout finito, guarda
+   relida depois da corrida, SIGTERM restaura o checkout, âncora não única para antes de tocar o arquivo, hashes
+   (commitado/mutado/restaurado) e logs guardados.
+3. **Runner.** Todo filho tem timeout finito e grupo de processo encerrado (SIGTERM→SIGKILL); relatório fail-closed;
+   `run.py --phase build|measure` separa o build da medição (sem poll/sleep de resfriamento); a medição não constrói
+   sozinha.
+4. **Nativo.** `native.py --phase build|run` sobe o **binário do HEAD** (proveniência: HEAD, sha256 do binário,
+   `runtime/dist`, manifesto do corpus), cria e salva um projeto e o abre pelo `project.open` real; cada mostra/seek/undo
+   exige o quadro **novo** (nada de ack de IPC, cache ou `frame.done` velho); o cancelar prova um candidato **diferente**
+   da base ANTES e base/undo/documento corretos DEPOIS. Casos `small`/`dense`/`deep` com as mesmas expectativas.
+5. **Orçamentos:** histórico e critério acima; auditoria de folga e regras de métrica registradas.
+6. **Docs:** esta página, o README da evidência, o backlog.
+
+## Estado desta entrega e evidência
 
 Arquivos e identidade de cada execução: [gizmo-perf-evidence/README.md](../migration/gizmo-perf-evidence/README.md).
-Resumo honesto (head final `9cc2335` + commits só de documentação):
+Regra de leitura: **implementado** (código e testes que rodam) ≠ **validado** (números/provas com identidade).
 
 | Item | Estado |
 |---|---|
-| Estrutural do core (7), host GPUI (3), spec dos runners (15), `fmt`, `clippy -D warnings`, `cargo tree` do core sem gpui/wry | **executados no head final**, passam |
-| Mutantes `extra_plan_per_handler` (estrutural), `memo_off` e `replan_per_tick` (host) | **mortos** (`9186e2a`); `delay_1ms_per_handler` passa no estrutural (esperado: o contador não vê atraso) |
-| Tempo no core (release, lock, guardas) | **PASS no `5cded7e`** (árvore limpa, todas as amostras guardadas); **não repetido no head final**: tentativa única BLOCKED por disco (8,39 GiB < 12). Um PASS de outro head não vale para este |
-| Mutantes de tempo (plano extra, 1 ms) | **não provados**: BLOCKED por carga (5,68 e 8,95 > 5,5). A prova de que o detector de tempo mata custo extra existe só nos controles negativos internos do teste (que não contam como desempenho) |
-| A/B `cbe9e1b` × candidato | build executado, medição BLOCKED (carga 82): **sem comparação**; nada de "sem regressão" é afirmado |
-| Janela nativa | corrida funcional sem lock no corpus `small` (160 verificações, 0 falhas) com uma revisão anterior do runner; **a medição (lock + guardas) e `dense`/`deep` não rodaram** (BLOCKED por disco) |
-| Workspace inteiro com `TESSEL_REQUIRE_RUNTIME=1` | no `5cded7e`: 2294/1/16, a falha era um defeito deste teste (corrigido); **não repetido** depois (disco) |
-| Provas de processo e gates funcionais de `0ee2d14` | **pendentes** (não executados nesta entrega) |
-
-Histórico que precisa ficar à vista: os orçamentos vêm de calibrações sobre **esta** árvore (não de uma base anterior), a
-primeira tentativa julgada falhou (`try2`) e as margens frias foram ampliadas **depois** disso, antes de qualquer execução
-aceita; tudo está guardado. O candidato difere da `main` só pelo contador de planos (3 linhas) e por testes, então o A/B
-só diz alguma coisa útil como instrumento reutilizável para PRs que mexam no caminho quente.
+| Spec dos runners Python (`gizmo-perf.spec.py`, 70 testes: harness, veredito do runner/mutantes, baseline com repositórios temporários, A/B, nativo com janela falsa, proveniência, auditoria) | **executado e passa** neste head de trabalho (sem Cargo, sem janela, sem benchmark) |
+| Rust novo (`scene_gizmo_perf_threads.rs`, teste do host de mesmo bundle, `within()` que não mascara FAIL, contador por processo) | **NÃO compilado nem executado**: BLOCKED (disco 15,09 GiB < reserva de 16 e carga 15,9 em 11 CPUs com `rustc` de outro processo). Só `rustfmt --check` e leitura |
+| Estrutural do core (7), host GPUI (3 antigos), `fmt`, `clippy`, `cargo tree` do core | passaram **no `9cc2335`** (um head anterior); **`cargo tree -p tessel-editor-core` não foi rodado de novo depois** e não há log final guardado: a afirmação "sem gpui/wry no head final" **não está provada** para este head |
+| Mutantes `extra_plan_per_handler` (estrutural), `memo_off` e `replan_per_tick` (host) | mortos em `9186e2a`; o `.tgz` retido mistura manifestos de `9186e2a` e `b898a6e`. **Reexecutar** com o runner novo (verdicts por teste nomeado + mensagem) |
+| Tempo no core (release, lock, guardas) | **PASS no `5cded7e`** (árvore limpa), regra de margem fria já ajustada depois de um FAIL (ver histórico); **não repetido** neste head. Um PASS de outro head não vale para este |
+| Mutantes de tempo (plano extra, 1 ms) | **não provados** (BLOCKED por carga em `9186e2a`; não repetidos) |
+| A/B `cbe9e1b` × candidato | o runner novo **não foi executado** (BLOCKED: disco/carga); o A/B retido (`037eda5`) é o **antigo, que era A/A**: **sem comparação**; nada de "sem regressão" é afirmado |
+| Janela nativa | só a corrida funcional antiga (`small`, 160 verificações, runner anterior, revisão anterior); o runner novo (`project.open` real, quadro novo, cancelar, `dense`/`deep`) **não rodou** |
+| Workspace inteiro com `TESSEL_REQUIRE_RUNTIME=1` | no `5cded7e`: 2294/1/16 (**1 falha**, defeito de ordem das chaves JSON do teste `the_journey_leaves_the_transform…`, corrigido depois e verificado só com `-p tessel-editor-core`): **não é um PASS final**; não repetido |
+| Provas de processo e gates funcionais de `0ee2d14` | **pendentes** |
 
 ### O que falta para validar (BL015.21)
 
-1. Repetir `run.py` no head final com disco ≥ 12 GiB e carga ≤ 0,5 por CPU; 2. `ab.py --phase build` e `--phase measure`
-na mesma condição; 3. `mutate.py --phase time`; 4. `native.py` (medição) nos três casos; 5. o workspace inteiro e as provas de
-`0ee2d14`; 6. um caso com splat; 7. orçamentos nativos só depois de um A/B com um binário nativo da `main`.
+Com disco ≥ 16 GiB e carga ≤ 0,5 por CPU (uma máquina que não esteja compilando outra coisa): 1. compilar e rodar os
+testes novos do core/host, `fmt`/`clippy`/`cargo tree` e o workspace com `TESSEL_REQUIRE_RUNTIME=1`; 2. `run.py --phase
+build` e `--phase measure`; 3. `ab.py --phase build` e `--phase measure` (primeiro A/B de verdade); 4. `mutate.py --phase
+prepare` e `--phase time`; 5. `native.py --phase build` e `--phase run` nos três casos; 6. um caso com splat (BL015.23);
+7. orçamentos nativos só depois de um A/B com um binário nativo da `main`; 8. as provas de `0ee2d14`.

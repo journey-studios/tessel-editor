@@ -4,6 +4,11 @@ resource guards, the environment record and the manifest writer.
 The lock is the repository's performance lock (`/tmp/tessel-scene-gpu.lock`, AGENTS.md). It is taken ONCE,
 without waiting (`LOCK_NB`): if somebody holds it the runner records BLOCKED and stops. No loop, no sleep, no new
 wait, no kill, no bypass. Builds and functional tests never take it.
+
+Every child process runs through `run_bounded`: a FINITE timeout, its own process group, and on expiry the whole
+group is terminated (then killed) and the partial output is kept. A runner that holds the lock therefore cannot be
+held forever by a hung test. `install_termination_handlers` turns SIGTERM/SIGINT into `SystemExit`, so the `finally`
+blocks and `with` statements (lock release, restoring a mutated checkout) run when a runner is asked to stop.
 """
 import fcntl
 import hashlib
@@ -11,7 +16,9 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -32,9 +39,95 @@ def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def run(command, cwd=ROOT, env=None, timeout=None):
-    done = subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout)
-    return done
+BUILD_TIMEOUT_S = 3600      # a release build through the cargo wrapper
+TEST_TIMEOUT_S = 1800       # a functional `cargo test` (build included)
+MEASURE_TIMEOUT_S = 900     # one controlled run of the benchmark executable
+ARTIFACT_LIMIT_MB = 500     # nothing a runner leaves in /tmp may exceed this
+
+
+class Done:
+    """What a bounded child did. `timed_out` is explicit: a timeout is never mistaken for a test result."""
+
+    def __init__(self, command, returncode, stdout, stderr, timed_out=False, seconds=0.0, error=None):
+        self.command = command
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+        self.timed_out = timed_out
+        self.seconds = seconds
+        self.error = error
+
+    @property
+    def text(self):
+        return (self.stdout or '') + (self.stderr or '')
+
+    def record(self):
+        return {'exit': self.returncode, 'timed_out': self.timed_out, 'seconds': round(self.seconds, 2),
+                'error': self.error}
+
+
+def run_bounded(command, cwd=ROOT, env=None, timeout=BUILD_TIMEOUT_S, grace=10):
+    """Runs `command` in its own process group with a finite `timeout` (seconds); never raises for the child.
+
+    A command that cannot start (`FileNotFoundError`, permission) is `returncode=127` with `error` set. On timeout
+    the group gets SIGTERM, `grace` seconds, then SIGKILL; whatever it printed is kept and `timed_out` is True.
+    """
+    started = time.monotonic()
+    try:
+        process = subprocess.Popen(command, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   text=True, start_new_session=True)
+    except OSError as error:
+        return Done(command, 127, '', '', error=f'cannot start {command[0]}: {error}')
+    timed_out = False
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        _kill_group(process, grace)
+        stdout, stderr = process.communicate()
+    except BaseException:
+        # SIGTERM/Ctrl-C of the runner itself: never leave the child group behind.
+        _kill_group(process, grace)
+        raise
+    return Done(command, process.returncode, stdout or '', stderr or '', timed_out, time.monotonic() - started)
+
+
+def _kill_group(process, grace):
+    for sig, wait in ((signal.SIGTERM, grace), (signal.SIGKILL, grace)):
+        try:
+            os.killpg(process.pid, sig)
+        except (OSError, ProcessLookupError):
+            return
+        try:
+            process.wait(wait)
+            return
+        except subprocess.TimeoutExpired:
+            continue
+
+
+def run(command, cwd=ROOT, env=None, timeout=BUILD_TIMEOUT_S):
+    return run_bounded(command, cwd=cwd, env=env, timeout=timeout)
+
+
+def install_termination_handlers():
+    """SIGTERM/SIGINT become `SystemExit(143/130)`: `finally` and `with` blocks (lock, restore) run."""
+    def stop(signum, _frame):
+        raise SystemExit(128 + signum)
+    previous = {sig: signal.signal(sig, stop) for sig in (signal.SIGTERM, signal.SIGINT)}
+    return previous
+
+
+def tree_mb(path):
+    path = Path(path)
+    if path.is_file():
+        return path.stat().st_size / 2 ** 20
+    return sum(f.stat().st_size for f in path.rglob('*') if f.is_file()) / 2 ** 20
+
+
+def artifact_reason(*paths):
+    """`None` when everything the runner keeps under /tmp stays below the limit, else why not."""
+    total = sum(tree_mb(p) for p in paths if Path(p).exists())
+    return None if total <= ARTIFACT_LIMIT_MB else f'artifacts take {total:.0f} MB (limit {ARTIFACT_LIMIT_MB})'
 
 
 def out(command, cwd=ROOT):
@@ -49,9 +142,38 @@ def free_gib(path='/'):
     return round(shutil.disk_usage(path).free / 2 ** 30, 2)
 
 
+def thermal_state(text):
+    """What `pmset -g therm` can and cannot say. `verified` is True only when it reported numeric limits.
+
+    On Apple silicon (the M3 Pro here) `pmset` prints only "No ... warning level has been recorded": that is NOT
+    a statement that the CPU ran at full speed, so it is reported as `no_limit_reported` with `verified: False`
+    and every manifest carries the limitation. Only a numeric limit below 100 blocks a measurement.
+    """
+    if text.startswith('unavailable'):
+        return {'status': 'unavailable', 'verified': False, 'limits': {}, 'detail': text[:120]}
+    limits = {name: int(value) for name, value in
+              re.findall(r'(CPU_Speed_Limit|CPU_Scheduler_Limit)\s*=\s*(\d+)', text)}
+    if any(value < 100 for value in limits.values()):
+        return {'status': 'throttled', 'verified': True, 'limits': limits}
+    if limits:
+        return {'status': 'limits_reported_at_100', 'verified': True, 'limits': limits}
+    return {'status': 'no_limit_reported', 'verified': False, 'limits': {},
+            'detail': 'pmset reports no CPU_Speed_Limit on this hardware: throttling is not excluded'}
+
+
+def claims(state):
+    """Limitations of a machine state every manifest must carry (so a quiet-looking record is not read as proof)."""
+    out = []
+    if not state.get('thermal_state', {}).get('verified'):
+        out.append('thermal throttling was NOT verified: ' + state.get('thermal_state', {}).get(
+            'detail', 'pmset gave no numeric limit'))
+    return out
+
+
 def machine():
     """Hardware, load and thermal state, at this instant. Anything that cannot be read says so."""
     cpus = os.cpu_count() or 1
+    therm = out(['pmset', '-g', 'therm'])
     return {
         'utc': utc(),
         'platform': platform.platform(),
@@ -60,7 +182,8 @@ def machine():
         'cpus': cpus,
         'memory_bytes': out(['sysctl', '-n', 'hw.memsize']),
         'loadavg': os.getloadavg(),
-        'thermal': out(['pmset', '-g', 'therm']),
+        'thermal': therm,
+        'thermal_state': thermal_state(therm),
         'power': out(['pmset', '-g', 'batt']).splitlines()[:2],
         'free_gib': free_gib(),
         'top_cpu_processes': out(['ps', '-Ao', 'pid,pcpu,comm', '-r']).splitlines()[:8],
@@ -68,20 +191,32 @@ def machine():
 
 
 def guards(max_load_per_cpu=0.5):
-    """`None` when the machine may be measured, else why not (recorded as BLOCKED, never waited out)."""
+    """`None` when the machine may be measured, else why not (recorded as BLOCKED, never waited out).
+
+    The 1-minute AND the 5-minute load average must be under the limit (the 5-minute one covers the window of a
+    measurement that just ran or is about to run); the 15-minute one is recorded only (it still remembers a build).
+    """
     state = machine()
     cpus = state['cpus']
-    if state['loadavg'][0] > max_load_per_cpu * cpus:
-        return state, f"load average {state['loadavg'][0]:.2f} over {max_load_per_cpu * cpus:.1f} ({cpus} cpus)"
-    limit = None
-    for line in state['thermal'].splitlines():
-        if 'CPU_Speed_Limit' in line:
-            limit = int(line.split('=')[-1])
-    if limit is not None and limit < 100:
-        return state, f'thermal: CPU_Speed_Limit {limit}'
+    limit = max_load_per_cpu * cpus
+    for label, value in zip(('1 min', '5 min'), state['loadavg'][:2]):
+        if value > limit:
+            return state, f"load average ({label}) {value:.2f} over {limit:.1f} ({cpus} cpus)"
+    thermal = state.get('thermal_state') or thermal_state(state.get('thermal', ''))
+    if thermal['status'] == 'throttled':
+        return state, f"thermal: {thermal['limits']}"
     if state['free_gib'] < FLOOR_FREE_GIB:
         return state, f"only {state['free_gib']} GiB free (floor {FLOOR_FREE_GIB})"
     return state, None
+
+
+def judge_after(manifest):
+    """The guards re-read AFTER a measurement. Records `machine_after`/`guard_after`; returns the reason it is not
+    clean (the numbers are kept, but the run cannot be a PASS), or `None`."""
+    state, reason = guards()
+    manifest['machine_after'] = state
+    manifest['guard_after'] = reason or 'clean'
+    return reason
 
 
 class Lock:

@@ -1,7 +1,7 @@
 {
   "journey": "gizmo-open-edit",
   "version": 1,
-  "about": "One script for the three surfaces of the gizmo performance suite: the core through the library (crates/core/tests/scene_gizmo_perf_*.rs), the GPUI host in a test window (crates/desktop scene_gizmo_perf_tests.rs) and the real window through `ui op` (scripts/gizmo-perf/native.py). Placeholders: $scene, $scene_b, $bundle, $base, $node, $other, $frame come from `corpora`. `class`: `document` = the same request on every surface, with the same expected result; `presentation` = needs a window (host and/or native only), never claimed by a core run; `presentation_only` = a window capability with no core equivalent (N/A in the library, by contract). `surfaces` lists where a step runs (default: all). A drag is pointer down at the handle, `moves` pointer moves and a release (`up`) or a cancel; the drag geometry is read from the overlay the surface itself returns (`to` of an axis handle, a point of a ring polygon), never computed by the driver.",
+  "about": "One script for the three surfaces of the gizmo performance suite: the core through the library (crates/core/tests/scene_gizmo_perf_*.rs), the GPUI host in a test window (crates/desktop scene_gizmo_perf_tests.rs) and the real window through `ui op` (scripts/gizmo-perf/native.py). `same.*` (BL015.22): a THIRD scene (`proof-c`) attached from the SAME bundle file as `proof-b` (same `bundleId`) and shown, so the case where two attached scenes share a bundle is exercised and its `shown_scene` is checked, not avoided. Placeholders: $scene, $scene_b, $bundle, $base, $node, $other, $frame come from `corpora`. `class`: `document` = the same request on every surface, with the same expected result; `presentation` = needs a window (host and/or native only), never claimed by a core run; `presentation_only` = a window capability with no core equivalent (N/A in the library, by contract). `surfaces` lists where a step runs (default: all). A drag is pointer down at the handle, `moves` pointer moves and a release (`up`) or a cancel; the drag geometry is read from the overlay the surface itself returns (`to` of an axis handle, a point of a ring polygon), never computed by the driver.",
   "frame": 24,
   "scene": "proof",
   "scene_b": "proof-b",
@@ -73,6 +73,10 @@
     {"id": "switch.show", "phase": "switch", "class": "presentation", "surfaces": ["host", "native"], "op": {"op": "monitor.show_scene", "scene": "$scene_b"}},
     {"id": "switch.select", "phase": "switch", "class": "document", "op": {"op": "scene.select", "scene": "$scene_b", "entities": ["$node_b"]}},
     {"id": "switch.state", "phase": "switch", "class": "document", "op": {"op": "scene.gizmo.state", "scene": "$scene_b", "frame": "$frame"}, "expect": {"handles": ["x", "y", "z", "screen"]}},
+
+    {"id": "same.attach", "phase": "same_bundle", "class": "presentation", "surfaces": ["host", "native"], "op": {"op": "scene.attach", "id": "proof-c", "path": "$bundle_b"}},
+    {"id": "same.resources", "phase": "same_bundle", "class": "presentation", "surfaces": ["host", "native"], "op": {"op": "scene.resources.resolve", "scene": "proof-c", "base": "$base"}},
+    {"id": "same.show", "phase": "same_bundle", "class": "presentation", "surfaces": ["host", "native"], "op": {"op": "monitor.show_scene", "scene": "proof-c"}, "expect": {"shown_scene": "proof-c"}},
 
     {"id": "present.resize.small", "phase": "present", "class": "presentation_only", "surfaces": ["host", "native"], "ui": ["set", "window", "size", "960x640"]},
     {"id": "present.resize.large", "phase": "present", "class": "presentation_only", "surfaces": ["host", "native"], "ui": ["set", "window", "size", "1440x900"]},

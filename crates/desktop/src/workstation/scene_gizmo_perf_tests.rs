@@ -194,6 +194,39 @@ fn an_idle_window_plans_nothing_per_tick_and_the_overlay_stays_memoised(cx: &mut
     }
 }
 
+/// BL015.22 (a hypothesis, not a proven defect): two attached scenes of ONE bundle file share a `bundleId`.
+/// The journey's `same.*` steps attach `proof-c` from the file `proof-b` came from and show it; the host must
+/// then report `proof-c` as the directed scene. The real window once seemed to stay on the first scene; the
+/// retained report did not reproduce it, and this is the deterministic host-side check that settles which
+/// layer would be at fault before anything is changed.
+#[gpui_kit::test]
+fn showing_a_scene_that_shares_its_bundle_with_the_shown_one_shows_it(cx: &mut TestAppContext) {
+    let (view, cx) = fixture(cx);
+    view.update(cx, |view, _| view.viewport.pretend_overlay_supported(true));
+    let journey = Journey::load();
+    {
+        let mut surface = HostSurface {
+            view: view.clone(),
+            cx,
+        };
+        let run = support::run(&mut surface, &journey, &journey.corpus("small"));
+        assert!(
+            run.steps
+                .iter()
+                .any(|step| step.id == "same.show" && step.skipped.is_none()),
+            "the same-bundle steps must run on the host"
+        );
+    }
+    let shown = view.read_with(cx, |view, _| {
+        view.viewport.directed_scene().map(str::to_owned)
+    });
+    assert_eq!(
+        shown.as_deref(),
+        Some("proof-c"),
+        "`monitor.show_scene` answered ok for a scene of an already shown bundle but the monitor kept another scene"
+    );
+}
+
 #[gpui_kit::test]
 fn the_host_runs_the_shared_journey_to_the_same_transforms_and_history_as_the_core(
     cx: &mut TestAppContext,
