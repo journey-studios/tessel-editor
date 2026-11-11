@@ -677,7 +677,7 @@ def run_phase(args, out):
             for index, side in enumerate(order):
                 path = out / f'round{index:02d}-{side}.json'
                 done = run_once(exes[side], path)
-                (out / f'round{index:02d}-{side}.stdout.txt').write_text(done.stdout)
+                harness.write_text(out / f'round{index:02d}-{side}.stdout.txt', done.stdout)
                 runs.append({'side': side, 'kept': True, 'index': index, **done.record(), 'report': path.name,
                              'report_sha256': harness.sha256(path) if path.exists() else None,
                              'load_after': os.getloadavg(), 'thermal': harness.machine()['thermal'][:300]})

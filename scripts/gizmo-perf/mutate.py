@@ -336,8 +336,8 @@ def run_time(exe, report, out, name):
     env = harness.child_env(set_here)
     done = harness.run_bounded([str(exe), '--ignored', '--test-threads=1', '--nocapture', TIME_TEST], cwd=ROOT,
                                env=env, timeout=harness.MEASURE_TIMEOUT_S)
-    (out / f'{name}.time.stdout.txt').write_text(done.stdout)
-    (out / f'{name}.time.stderr.txt').write_text(done.stderr[-20000:])
+    harness.write_text(out / f'{name}.time.stdout.txt', done.stdout)  # redacted (`harness.redact`)
+    harness.write_text(out / f'{name}.time.stderr.txt', done.stderr[-20000:])
     scratch = {}
     after = harness.judge_after(scratch)
     outcome, detail = classify(done, EXPECT[(name, 'time')], guard_after=after)

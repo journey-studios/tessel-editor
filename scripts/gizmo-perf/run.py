@@ -293,8 +293,8 @@ def run_phase(args, out):
         manifest['run'] = {'command': command, 'env': set_here, 'env_dropped': harness.dropped_env()}
         done = harness.run_bounded(command, cwd=ROOT, env=env, timeout=harness.MEASURE_TIMEOUT_S)
         after_reason = harness.judge_after(manifest)
-    (out / 'stdout.txt').write_text(done.stdout)
-    (out / 'stderr.txt').write_text(done.stderr)
+    harness.write_text(out / 'stdout.txt', done.stdout)  # redacted: a test names paths of its own (`harness.redact`)
+    harness.write_text(out / 'stderr.txt', done.stderr)
     manifest['run'].update(done.record())
     manifest['run']['stdout_sha256'] = harness.sha256(out / 'stdout.txt')
     manifest['tests_expected'] = EXPECTED_TESTS

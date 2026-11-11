@@ -482,7 +482,7 @@ def build_phase(args, manifest, manifest_path, out):
         return harness.die(1, manifest, manifest_path)
     record = {'head': manifest['identity']['head'], 'tree': manifest['identity']['tree'],
               'dirty': bool(manifest['identity']['dirty']),
-              'binary': str(copy), 'binary_sha256': harness.sha256(copy),
+              'binary': 'exes/tessel-editor', 'binary_sha256': harness.sha256(copy),
               'runtime_sha256': harness.sha256(ROOT / 'runtime/dist/runtime.js'),
               'runtime_source_tree': runtime_tree,
               'corpus_manifest_sha256': harness.sha256(FIXTURES / 'corpus.manifest.json'),
@@ -1263,7 +1263,8 @@ def run_phase(args, out):
         return harness.die(1, manifest, manifest_path)
     record_path = Path(args.build_record) if args.build_record else out / 'build.json'
     record = json.loads(record_path.read_text()) if record_path.exists() else None
-    binary = args.binary or (record or {}).get('binary') or str(ROOT / 'target/release/tessel-editor')
+    recorded = (record or {}).get('binary')  # relative to the directory of `build.json`: an absolute path is redacted on write
+    binary = args.binary or str(record_path.parent / recorded if recorded else ROOT / 'target/release/tessel-editor')
     manifest['binary'] = binary
     if not Path(binary).exists() or not (ROOT / 'runtime/dist/runtime.js').exists():
         manifest.update(status='PREREQUISITE_MISSING',

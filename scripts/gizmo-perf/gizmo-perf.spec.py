@@ -771,7 +771,7 @@ class MeasurePhase(unittest.TestCase):
             self.assertEqual(json.loads((kept[0] / 'manifest.json').read_text())['status'], 'INVALID_GUARD_AFTER_RUN')
             self.assertTrue((kept[0] / 'verdicts.json').is_file())
             self.assertTrue(sorted(kept[0].glob('round*.json')))
-            self.assertEqual(second['previous_attempt_archived_at'], str(kept[0]))
+            self.assertEqual(second['previous_attempt_archived_at'], harness.redact(str(kept[0])))
             self.assertTrue(sorted(Path(out).glob('round*.json')))  # and the new attempt's own reports are in --out
             # a third attempt, refused for its own reasons (the second was judged: its inputs are gone), keeps the second
             code, third = self.measure(out)
@@ -1528,7 +1528,7 @@ class BuildPhase(unittest.TestCase):
         with tempfile.TemporaryDirectory() as out:
             code, manifest, _ = self.build(out, run=MagicMock(return_value=gone))
             self.assertEqual((code, manifest['status']), (1, 'INFRA_EXECUTABLE_MISSING'))
-            self.assertEqual(manifest['missing'], '/nowhere/pruned/tessel-editor')
+            self.assertEqual(manifest['missing'], '<abs>/tessel-editor')  # the record is redacted (`harness.redact`)
             self.assertFalse((Path(out) / 'build.json').exists())  # no record of a binary that was never copied
 
     def test_the_build_record_keeps_whether_the_tree_was_dirty(self):
@@ -2542,7 +2542,7 @@ class ChildEnvironment(unittest.TestCase):
         self.absent('TESSEL_GIZMO_PERF_CALIBRATE', seen['env'])
         self.absent('TESSEL_GIZMO_PERF_BLESS', seen['env'])
         self.assertEqual(seen['env']['TESSEL_GIZMO_PERF_OUT'], str(out / 'report.json'))  # not the caller's
-        self.assertEqual(manifest['run']['env'], {'TESSEL_GIZMO_PERF_OUT': str(out / 'report.json')})
+        self.assertEqual(manifest['run']['env'], {'TESSEL_GIZMO_PERF_OUT': harness.redact(str(out / 'report.json'))})
         self.assertEqual((code, manifest['status']), (0, 'PASS'))
 
     def test_the_run_record_lists_only_the_tests_whose_own_line_says_ok(self):

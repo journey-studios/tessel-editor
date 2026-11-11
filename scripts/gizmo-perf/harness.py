@@ -34,6 +34,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -166,7 +167,7 @@ def artifact_reason(*paths):
 
 
 def out(command, cwd=ROOT):
-    """The text a TELEMETRY command prints (`pmset`, `sysctl`, `ps`, the toolchain versions): a missing answer is only
+    """The text a TELEMETRY command prints (`pmset`, `sysctl`, the toolchain versions): a missing answer is only
     recorded text. It ignores the exit code ON PURPOSE and must stay that way; an answer that decides something (the
     identity of the checkout, whether a file is HEAD's) goes through `git_strict`, which says whether it answered."""
     try:
@@ -249,7 +250,10 @@ def claims(state):
 
 
 def machine():
-    """Hardware, load and thermal state, at this instant. Anything that cannot be read says so."""
+    """Hardware, load and thermal state, at this instant. Anything that cannot be read says so.
+
+    Nothing here names a process, a user or a path: the manifests that carry this record are published (R1). Counts,
+    load, memory, free disk, the thermal state and the OS version are what a reader needs to judge a measurement."""
     cpus = os.cpu_count() or 1
     therm = out(['pmset', '-g', 'therm'])
     return {
@@ -264,7 +268,6 @@ def machine():
         'thermal_state': thermal_state(therm),
         'power': out(['pmset', '-g', 'batt']).splitlines()[:2],
         'free_gib': free_gib(),
-        'top_cpu_processes': out(['ps', '-Ao', 'pid,pcpu,comm', '-r']).splitlines()[:8],
     }
 
 
@@ -508,19 +511,92 @@ def toolchain():
     return {'rustc': out(['rustc', '--version']), 'cargo': out(['cargo', '--version'])}
 
 
+# --- what a runner may write down (R1: the repository is public) -------------------------------------------------------------
+#
+# A path of this machine, the user's name inside it and the list of busy processes must not reach a file a runner leaves in
+# `--out`. ONE function removes them, applied at the ONE place each runner writes through (`write`, `write_text`, and what
+# `die` prints): the runners keep recording `cwd`, `argv`, the build command and the tail of the compiler's output because a
+# reader wants to see them, and they keep their absolute paths in memory because a child needs them. The record is the
+# redacted copy. A field a later phase READS BACK as a path is never left to this function: it is written relative to `--out`
+# (`run.py`'s `exe`, `native.py`'s `binary`), so redaction cannot change what a reader finds.
+
+_SEGMENT = r"[\w.@+~%=#$-]+"
+# `/dir/dir with spaces/name`: a segment may hold single spaces only when a `/` follows it (so prose after a path is not eaten).
+# At least one character after the first `/` (a lone ` / ` is a division, not a path); never preceded by a path character
+# (`and/or`, `1/4`, `./x`, `<checkout>/x` are not absolute paths, which is also what makes the redaction idempotent).
+ABSOLUTE_PATH = re.compile(rf"(?<![\w./~<>-])/(?:{_SEGMENT}(?: {_SEGMENT})*/)*{_SEGMENT}")
+_BOUNDARY = r"(?![\w.@+~%=#$-])"
+
+
+def _known_prefixes(root, environ):
+    """`{absolute prefix: token}` for what is named, not hidden: this checkout, the home directory, the temporary ones."""
+    prefixes = {}
+
+    def add(path, token):
+        path = str(path).rstrip('/')
+        if path.startswith('/') and len(path) > 1:
+            prefixes.setdefault(path, token)
+
+    for path in (root, os.path.realpath(root)):
+        add(path, '<checkout>')
+    home = os.path.expanduser('~')
+    if home != '~':
+        for path in (home, os.path.realpath(home)):
+            add(path, '~')
+    for path in (environ.get('TMPDIR'), tempfile.gettempdir(), '/tmp', '/private/tmp'):
+        if path:
+            add(path, '<tmp>')
+            add(os.path.realpath(path), '<tmp>')
+    return prefixes
+
+
+def redact(value, root=ROOT, environ=None):
+    """A copy of `value` (a str, or lists, tuples and dicts of them; anything else as it is) with no absolute path in it.
+
+    The checkout becomes `<checkout>`, the home directory `~`, the temporary directories (`TMPDIR`, `/tmp`, the system's)
+    `<tmp>`; the longest prefix wins, so a checkout under the home directory stays `<checkout>`. Any OTHER absolute path
+    becomes `<abs>/<last name>` (the base name is kept: it says which file, and says nothing about the machine). It works
+    on the text of every string, dict keys included, so a path inside `argv`, inside the tail of a compiler's output or
+    inside a nested JSON string is covered; a path cut in the middle by a `[:300]` is an absolute path all the same."""
+    prefixes = _known_prefixes(root, os.environ if environ is None else environ)
+    known = re.compile(r"(?<![\w./~<>-])(" + '|'.join(re.escape(p) for p in sorted(prefixes, key=len, reverse=True)) +
+                       r")" + _BOUNDARY)
+
+    def text(string):
+        string = known.sub(lambda match: prefixes[match.group(1)], string)
+        return ABSOLUTE_PATH.sub(lambda match: '<abs>/' + match.group(0).rsplit('/', 1)[-1], string)
+
+    def walk(item):
+        if isinstance(item, str):
+            return text(item)
+        if isinstance(item, dict):
+            return {(text(key) if isinstance(key, str) else key): walk(inner) for key, inner in item.items()}
+        if isinstance(item, (list, tuple)):
+            return [walk(inner) for inner in item]
+        return item
+
+    return walk(value)
+
+
 def write(path, payload):
+    """`payload` as JSON in `path`, REDACTED (`redact`)."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, 'w') as handle:
-        json.dump(payload, handle, indent=1, sort_keys=True)
+        json.dump(redact(payload), handle, indent=1, sort_keys=True)
         handle.write('\n')
         handle.flush()
         os.fsync(handle.fileno())
     return path
 
 
+def write_text(path, text):
+    """`text` in `path`, REDACTED: for the output of a child (a test's stdout and stderr), which names paths of its own."""
+    Path(path).write_text(redact(text))
+
+
 def die(code, report, path):
     if path:
         write(path, report)
-    print(json.dumps({k: report[k] for k in ('status', 'reason') if k in report}))
+    print(json.dumps(redact({k: report[k] for k in ('status', 'reason') if k in report})))
     return code
