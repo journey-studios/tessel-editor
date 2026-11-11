@@ -288,6 +288,34 @@ fn the_asset_io_event_has_the_same_keys_whichever_way_the_file_is_read() {
     assert_eq!(pooled_event["mode"], "async");
 }
 
+/// A pool that cannot take a job (here, one that never got a worker) is answered on the thread of the callback, like a full
+/// queue, and the `asset_io` event of that answer says so: the refusal does not run on a worker, whatever refused it.
+#[test]
+fn a_closed_pool_is_answered_503_on_the_callbacks_thread_and_its_event_says_so() {
+    let dist = page("io-closed");
+    let dir = scratch("io-closed-files");
+    let file = dir.join("clip.png");
+    std::fs::write(&file, b"0123456789").unwrap();
+    let access = Rc::new(RefCell::new(AssetAccess::default()));
+    register(&access, &file);
+    let trace = TraceHandle::default();
+    trace.set_enabled(true);
+    let handle = handle(Reader::Pooled(AssetPool::closed()), &dist, &access, &trace);
+    assert_eq!(answer(&handle, &asset_request(&file, None)).status(), 503);
+
+    // Both events are this thread's own, written before `handle` returned: no worker to wait for.
+    let callbacks = events_of(&trace, "asset_cb");
+    assert_eq!(callbacks.len(), 1, "{callbacks:?}");
+    assert_eq!(callbacks[0]["outcome"], "closed");
+    assert_eq!(callbacks[0]["on_ui_thread"], true);
+    let reads = events_of(&trace, "asset_io");
+    assert_eq!(reads.len(), 1, "{reads:?}");
+    assert_eq!(reads[0]["status"], 503);
+    assert_eq!(reads[0]["on_ui_thread"], true);
+    assert_eq!(reads[0]["worker"], Value::Null);
+    assert_eq!(reads[0]["req"], callbacks[0]["req"]);
+}
+
 #[test]
 fn the_report_names_the_mode_in_effect_and_the_page_spans_reach_the_trace_without_names() {
     use super::viewport_host::{HostOptions, ViewportHost};
