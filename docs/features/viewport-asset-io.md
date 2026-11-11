@@ -40,7 +40,14 @@ Todos desligados por padrão (o comportamento é o de antes sem eles). As variá
 - `Op::RenderTrace { since, limit }` (`render.trace`): `limit` 1–16 384 (padrão 4 096); inválido → `invalid_request`;
   traço desligado → `trace_disabled`.
 - `render::host::resolve` (autorização e decisão do arquivo, sem I/O) e `render::host::read_file` (todo o I/O bloqueante);
-  `serve` = `resolve` + `read_file`, com a mesma resposta de antes.
+  `serve` = `resolve` + `read_file`, com a mesma resposta de antes. `resolve` devolve `Resolved::{Answer, Bundle, Asset}`: o `Bundle` (a página) é sempre lido na thread chamadora e só o `Asset` vai ao leitor do modo.
+- `render::asset_io::Reader::{Inline, Pooled}` e `Dispatch` são **o único ponto em que o modo escolhe quem lê**: `Reader::read` chama `done` exatamente uma vez (`Inline` na thread chamadora; `Pooled` no worker, ou ele mesmo com o `503`
+  quando a fila está cheia). O host não ramifica por modo.
+- Eventos de trace: o `asset_io` tem **o mesmo conjunto de chaves nos dois modos** (um só construtor, escrito depois da resposta): em `sync` também grava `respond_ms`, `queue_wait_ms: 0`, `depth_at_submit: 0`, `stale: false` e
+  `worker: null`; o `503` de fila cheia dado na thread do callback grava `on_ui_thread: true` (a thread em que a closure rodou). As durações saem em ms arredondadas a 3 casas (`trace::{ms, round3, ms_since}`; `ms_since(None)` é
+  `None`, nunca zero) e `TraceHandle::event` carimba `t_ms` com o lock do log tomado, então `seq` e `t_ms` têm a mesma ordem entre threads. O rótulo FNV-1a (`trace_label`) não mudou (teste com valores fixos).
+- Os modos de diagnóstico (`TESSEL_VIEWPORT_ASSET_IO`, `TESSEL_PLAYBACK_POLL`) são lidos por **um** ajudante (`workstation/env_mode.rs`, trait `EnvMode`): vazio ou ausente → padrão; caixa e espaços são ignorados; um erro de digitação
+  avisa num formato só (``VAR="x" is not `a` or `b`: using `padrão` ``) e fica no padrão.
 - `render::asset_io::AssetPool`: workers fixos (2) e fila `sync_channel` de 16 com `try_send`. Fila cheia **devolve o job** e o
   host responde `503` explicitamente (a execução fica inválida; nunca é descarte silencioso nem ganho). `invalidate()` (troca de
   projeto/sessão/recarga) faz jobs na fila responderem `410` sem I/O e descarta o corpo de leitura em voo. Cada fechamento roda
@@ -69,6 +76,11 @@ janela **não** é headless.
   troca de projeto com leituras na fila e em voo → `410`, sem dupla resposta. Só `/asset` passa pelo pool: o pacote da própria
   página (`/`, `/index.html`, `/runtime.js`) é lido na thread chamadora também em `async`, para uma troca de projeto não recusar
   a página com `410`/`503` (teste `replacing_the_project_never_refuses_the_page_its_own_bundle`, verificado por mutação).
+- Revisão thermo da PR #41 (Rust): `bridge.rs` 1088 → 561 linhas (os testes foram para `bridge/tests.rs`); o handler `tessel://` saiu de `viewport_host.rs` (1775 → 1433) para `viewport_protocol.rs`; o `bytes_held` do pool foi apagado
+  (o limite é estrutural: cada worker segura no máximo o corpo do job que lê, e `max_in_flight` prova que nunca há mais leituras do que workers). Testes novos: o `Reader` (resposta única na thread chamadora; recusa do pool com o `503` próprio),
+  a paridade de chaves do `asset_io` entre os modos, `on_ui_thread == true` no `503` dado na thread do callback, a ordem de `t_ms` entre quatro threads (o código antigo reprova em 3 de 3 execuções), o rótulo de `asset_load_sent`
+  igual ao de `asset_cb` pelo `ViewportHost` real, `env_mode_tests` e o tick que devolve a espera. Mutantes: 4 no despacho do leitor, 3 no rótulo, 4 no tick, todos reprovados. **Não provado:** o modo `async` e o conteúdo do trace numa janela real
+  (a janela rodou só o padrão `sync`, sem variável de diagnóstico, e reproduziu 6 s sem *underruns*), nem desempenho: os refactors não foram medidos contra a base.
 - Runtime: os spans da página (fetch/decode/warm) chegam por campos aditivos de `asset.state`/`frame.done`
   (`runtime/test/scene-warm.test.mjs`).
 - Pixels: `scripts/real-latency-ab.py pixels` (projeto **sintético**; sync × async × quente/frio com `render.frame` idêntico byte
@@ -84,7 +96,7 @@ pedem quadro nenhum para medir; sem o traço o `hello` e as respostas são byte 
 
 | Probe | Onde | O que mede |
 |---|---|---|
-| `telemetry.timing` no `hello` | `core::bridge::HelloOptions::timing` (aditivo; sozinho ou com `presented`) | liga os probes da página |
+| `telemetry.timing` no `hello` | `core::bridge::HelloOptions::timing: Option<PageTiming>` (aditivo; sozinho ou com `presented`; `PageTiming { gpu_finish }` não deixa construir "`gpu_finish` sem timing") | liga os probes da página |
 | `frame.done.page` | `runtime/src/index.js` | `queue_ms` (espera na fila serial da página **antes** de o quadro começar; `total_ms` não a conta), `held_ms` (do recebimento até a entrega ao transporte), `ahead` (quadros/aquecimentos/cargas à frente), `post_prev_ms` (custo de entregar a resposta anterior), `loop` (atraso do laço de eventos: batimento de 4 ms, máximo e contagem ≥ 16 ms desde a resposta anterior) |
 | span `loop_stall` e `ago_ms` | idem | atraso do laço ≥ 16 ms vira um span; com o timing, **todo** span da página (incluindo `warm`) diz há quantos ms terminou, em relação à entrega (a mensagem que o leva pode sair muito depois: antes, o span era posicionado pela chegada da mensagem seguinte) |
 | evento `eval_done` | `workstation/viewport.rs` | do envio do script ao *completion handler* do WebView (no host): entrega até a página + tratamento + volta do callback |
@@ -92,7 +104,7 @@ pedem quadro nenhum para medir; sem o traço o `hello` e as respostas são byte 
 | evento `frame_page` | `viewport_host::trace_incoming` | a conta da página de cada `frame.done`, com `ipc_wait_ms` (e `gpu_finish_ms` no braço diagnóstico) |
 | span `gl_call` | `runtime/src/index.js` (protótipo do contexto WebGL, restaurado ao desligar) | chamada WebGL de 4 ms ou mais, com o **nome** da chamada (leitura, fence, upload, link, draw que força flush): diz se um atraso do laço estava dentro de uma chamada WebGL |
 | evento `prefetch_asset` | `core::session::prefetch` (só com o traço) | por carga iniciada: `fs_ms` (verificações de arquivo), `send_ms` (entrega ao backend), `bytes`, `kind`; nunca o nome do asset |
-| `telemetry.gpu_finish` (env `TESSEL_VIEWPORT_PROBE_GPU_FINISH=1`, só com o traço) | `HelloOptions::gpu_finish`, `index.js` | **braço diagnóstico, nunca padrão**: após cada draw a página lê 1 pixel (`finish()` sozinho voltou em 0 ms no WebKit, não esperou) e reporta `timings.gpu_finish_ms`; troca a espera do navegador na apresentação por uma espera dentro do quadro |
+| `telemetry.gpu_finish` (env `TESSEL_VIEWPORT_PROBE_GPU_FINISH=1`, só com o traço) | `PageTiming::gpu_finish` (a regra "só com o traço" está uma vez, em `ViewportHost::with_options`), `index.js` | **braço diagnóstico, nunca padrão**: após cada draw a página lê 1 pixel (`finish()` sozinho voltou em 0 ms no WebKit, não esperou) e reporta `timings.gpu_finish_ms`; troca a espera do navegador na apresentação por uma espera dentro do quadro |
 
 `scripts/viewport-transit-probe.py` (`loop`/`ab`/`analyze`; o `analyze` lê `loop` e `ab` pelo `kind` do manifesto; specs em `.spec.py`) decompõe cada imagem tardia em `host_pre_send`, `page_queue`,
 `page_draw`, `ipc_wait` e `delivery` (o que sobra; ida e volta juntas) e nomeia o dominante. O `loop` é **capaz de falhar**: sai com 1 se
@@ -140,7 +152,7 @@ byte a byte os de antes (testes `core::bridge` e `viewport_host_tests`). Nada mu
 | Fator | Interruptor / `hello` | Recurso anunciado | Relato em `render.status` | O que faz |
 |---|---|---|---|---|
 | A pré-upload | `TESSEL_VIEWPORT_PREUPLOAD=1` / `preupload_textures` | `texture.preupload` | `session.preupload {enabled, supported, sent}` | `frame.warm {scenes:false, textures:true}`: o host pede a subida de uma imagem **já carregada** de um corte futuro; o runtime a sobe com `renderer.initTexture`, um por passo, atrás de quadros em espera |
-| B warm draw | `TESSEL_VIEWPORT_WARM_DRAW=1` / `warm_draw` | `scene.warm_draw` | `session.warm_draw {enabled, supported}` | depois do sort do aquecimento de uma linhagem, um draw numa `WebGLRenderTarget` de 16 px (sem MSAA, só profundidade), descartada sempre |
+| B warm draw | `TESSEL_VIEWPORT_WARM_DRAW=1` / `warm_draw` | `scene.warm_draw` | `session.warm_draw {enabled, supported}` (só o `render.status` **da janela** o traz: o host guarda o interruptor e o relato o compõe; a sessão headless do core não o escreve mais, ele era sempre `enabled:false`) | depois do sort do aquecimento de uma linhagem, um draw numa `WebGLRenderTarget` de 16 px (sem MSAA, só profundidade), descartada sempre |
 
 Regras (código em `runtime/src/preupload.js`, `runtime/src/warm-draw.js`, `assets.js` `preuploadStill` e `index.js`, que chama `renderer.initTexture` direto; o compositor só chama o gancho `onWarmed` ao fim do aquecimento de uma linhagem):
 
@@ -239,7 +251,8 @@ no Git e os JSON brutos, com o projeto privado, ficam fora dele ([proveniência]
   O erro publicado é `{code, kind}` ([Núcleo comum dos runners](#núcleo-comum-dos-runners-scriptsab)); a mensagem crua e o fim do log do editor ficam só no `session-*.json` local.
 - `ab-report` foi apagado: o único analisador de cada runner é `analyze`, e ele só lê o lote que o manifesto descreve (um arquivo por posição, todos com o `batch_id`
   do manifesto; faltante, extra, de outro lote ou lote sem `batch_id` é **recusado**, sem escrever nada). Os números publicados antes disso não foram reanalisados (BL157.13).
-- **Lacuna de correlação:** para `frame_sequence`, `asset_load_sent.path` é o hash do padrão e `asset_cb`/`asset_io` usam o caminho do quadro concreto;
+- **Lacuna de correlação:** `asset_load_sent` grava `path` **só** para fonte com arquivo (o mesmo rótulo `p=<caminho>` de `asset_cb`/`asset_io`, provado por um teste que leva as mensagens `asset.load` reais pelo `ViewportHost`);
+  para `frame_sequence` grava `pattern` (o hash do padrão) e fonte sem arquivo não grava rótulo. `asset_cb`/`asset_io` usam o caminho do quadro concreto, então um `pattern` nunca casa com um pedido:
   esses rótulos não são uma chave de junção. As sete entradas PNG medidas em BL157.3 são imagens paradas (`still`), não sequências.
   Nenhum resultado sobre sequências é afirmado. Ligar cada fetch expandido à carga de sequência continua pendente em BL157.3.
 - O A/B de `5adf5b9` tem **zero pares comparáveis** por fator. Os números locais são observações sob carga, não estimativa causal confiável
@@ -516,7 +529,7 @@ taxa não é um número positivo e finito. Valor inválido da variável avisa e 
 (`playback_poll_tests.rs` reproduz primeiro as medidas nativas do `fixed`): `fixed` 13% das imagens a menos de 30 ms da anterior, atraso médio de observação 11,15 ms, 1,87 consultas por troca de quadro; `deadline` 0%, 2,46 ms, 2,00.
 **O modelo não é a medida**: assume um relógio perfeito e um timer com atraso constante.
 
-`playback.rs`: o laço lê o relógio, calcula a espera (`PlaybackState::next_delay`, com a idade da leitura medida no próprio laço) e arma o timer com ela; a primeira espera é a do `fixed` (o dispositivo pode ainda estar abrindo).
+`playback.rs`: o tick lê o relógio e devolve a espera já calculada (`playback_tick` → `Tick::Continue { next, clock }` ou `Tick::Stop`, com a idade da leitura medida no próprio tick e o evento `tick` escrito pelo mesmo caminho); o laço só arma o timer com ela; a primeira espera é a do `fixed` (o dispositivo pode ainda estar abrindo).
 `playback.status.poll` relata o modo e, com o traço ligado, `play_clock_started.poll` e, em cada `tick`, `clock` (em quadros fracionários) e `next_ms`. Nada mais muda: a regra do relógio, o `SetPlayhead` e o áudio são os mesmos.
 
 Testes: `playback_poll_tests.rs` 34 testes puros (a conta, os limites, o relógio que não anda, as taxas inválidas, o modo da variável, o modelo de 24 fps e a decisão `advancing`); mutação 40 de 41 (o sobrevivente é **equivalente**:
