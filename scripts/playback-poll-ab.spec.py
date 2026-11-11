@@ -301,8 +301,8 @@ class SummaryTests(unittest.TestCase):
         found = ab.arm_summary(self.rows())
         self.assertEqual((found["sessions"], found["counted"], found["hung"], found["failed"], found["plays"]), (4, 2, 1, 1, 4))
         self.assertEqual((found["delivered"], found["under_30_ms"], found["slow_gt_62_5"], found["slow_gt_100"]), (3000, 330, 26, 7))
-        self.assertEqual(found["under_30_share"], 0.11)
-        self.assertEqual(found["slow_share"], round(26 / 3000, 5))
+        self.assertEqual(found["under_30_share"], 330 / 3000)
+        self.assertEqual(found["slow_share"], 26 / 3000, "the rule compares raw ratios: rounding is only for showing them")
         self.assertEqual(found["skipped_per_play"], 1.25)
 
     def test_the_lag_and_the_polls_are_weighted_by_what_they_were_measured_over(self):
@@ -348,10 +348,12 @@ class PairTests(unittest.TestCase):
         rows = list(reversed(scenario(pairs=3, lags=[(11.0, 2.0), (12.0, 3.0), (13.0, 4.0)])))
         self.assertEqual([pair for pair, _, _ in ab.pair_lags(rows)], [0, 1, 2])
 
-    def test_a_pair_without_a_traced_lag_on_either_side_is_not_a_pair_of_lags(self):
-        rows = scenario(pairs=2)
-        rows[1]["plays"] = {name: play(lag_n=0) for name in ab.PLAYS}
-        self.assertEqual([pair for pair, _, _ in ab.pair_lags(rows)], [1])
+    def test_a_counted_pair_without_a_traced_lag_stays_a_pair_of_the_rule_with_no_lag_on_that_side(self):
+        rows = scenario(pairs=3)
+        rows[1]["plays"] = {name: play(lag_n=0) for name in ab.PLAYS}  # the deadline session of pair 0 traced no lag
+        for found in rows[4:]:  # neither session of pair 2 did
+            found["plays"] = {name: play(lag_n=0) for name in ab.PLAYS}
+        self.assertEqual(ab.pair_lags(rows), [(0, 11.0, None), (1, 11.0, 2.5), (2, None, None)])
 
     def test_a_pair_with_one_session_only_is_not_a_pair(self):
         self.assertEqual(ab.pair_lags([row("fixed", 0)]), [])
@@ -468,6 +470,15 @@ class ShortfallTests(unittest.TestCase):
             self.assertEqual(len(found), 1, (count, needed))
             self.assertIn("counted pairs", found[0])
 
+    def test_a_counted_pair_with_no_lag_on_a_side_is_in_the_base_and_was_not_lower(self):
+        base = {"change_lag_mean_ms": 11.0}
+        measured = [(index, 11.0, 2.5) for index in range(10)]
+        self.assertEqual(self.short(fixed=base, pairs=measured), [], "ten pairs, ten lower")
+        found = self.short(fixed=base, pairs=measured + [(10, None, None), (11, 11.0, None)])
+        self.assertEqual(len(found), 1, "twelve counted pairs need eleven lower, ten are")
+        self.assertIn("lower in 10 of 12 counted pairs", found[0])
+        self.assertEqual(self.short(fixed=base, pairs=[(index, 11.0, 2.5) for index in range(11)] + [(11, None, None)]), [], "eleven of twelve is enough")
+
     def test_a_tie_in_a_pair_is_not_lower(self):
         pairs = [(index, 11.0, 2.5) for index in range(9)] + [(9, 5.0, 5.0)]
         self.assertEqual(len(self.short(fixed={"change_lag_mean_ms": 11.0}, pairs=pairs)), 0)
@@ -509,12 +520,59 @@ class VerdictTests(unittest.TestCase):
         self.assertIn("needs 10", said)
         self.assertNotIn(" of ", ab.verdict(rows).split("the rule")[0])
 
+    def test_the_reviewers_case_ten_improvements_in_twelve_counted_pairs_is_no_gain_not_adopt(self):
+        rows = scenario(pairs=12)
+        for found in rows:
+            if found["pair"] >= 10:  # the last two pairs are counted, and neither session traced a change lag
+                found["plays"] = {name: play(lag_n=0) for name in ab.PLAYS}
+        said = ab.verdict(rows, 12)
+        self.assertTrue(said.startswith("NO GAIN:"), said)
+        self.assertIn("lower in 10 of 12 counted pairs", said)
+        rows = scenario(pairs=12)
+        for found in rows:
+            if found["pair"] == 11:
+                found["plays"] = {name: play(lag_n=0) for name in ab.PLAYS}
+        self.assertTrue(ab.verdict(rows, 12).startswith("ADOPT:"), "eleven of twelve is what the rule asks")
+
+    def test_counted_pairs_without_a_lag_still_count_toward_the_ten_the_rule_needs(self):
+        rows = scenario(pairs=10)
+        for found in rows:
+            if found["pair"] >= 7:
+                found["plays"] = {name: play(lag_n=0) for name in ab.PLAYS}
+        said = ab.verdict(rows, 10)
+        self.assertFalse(said.startswith("INCONCLUSIVE"), said)
+        self.assertTrue(said.startswith("NO GAIN:"), said)
+
     def test_ten_counted_pairs_are_enough(self):
         rows = scenario()
         for found in rows:
             if found["arm"] == ab.DEADLINE and found["pair"] < 2:
                 found["counted"] = False
         self.assertTrue(ab.verdict(rows, 12).startswith("ADOPT:"))
+
+    def test_the_rule_reads_the_raw_share_of_short_pictures_751_of_25000_is_over_three_percent(self):
+        rows = scenario(pairs=10, deadline={"delivered": 1250, "under": 37})  # 20 plays, 25000 gaps, 740 short: 2.96%
+        self.assertTrue(ab.verdict(rows, 10).startswith("ADOPT:"))
+        rows[1]["plays"]["first"]["under_30_ms"] = 48  # 751 short in 25000: 3.004%, which rounds to 0.03
+        summary = ab.arm_summary([row for row in rows if row["arm"] == ab.DEADLINE])
+        self.assertEqual((summary["under_30_ms"], summary["delivered"]), (751, 25000))
+        self.assertEqual((summary["under_30_share"] > 0.03, round(summary["under_30_share"], 4)), (True, 0.03))
+        said = ab.verdict(rows, 10)
+        self.assertTrue(said.startswith("NO GAIN:"), said)
+        self.assertIn("pictures < 30 ms after the previous one: 0.03 (more than 3%)", said, "shown rounded, judged raw")
+
+    def test_the_report_keeps_the_raw_shares_and_the_text_shows_them_rounded(self):
+        rows = scenario(pairs=10, deadline={"delivered": 1250, "under": 37})
+        rows[1]["plays"]["first"]["under_30_ms"] = 48
+        for found in rows:  # one counted pair whose sessions traced no lag
+            if found["pair"] == 9:
+                found["plays"] = {name: play(lag_n=0, delivered=1250, under=37) for name in ab.PLAYS}
+        report = make_report(rows)
+        self.assertEqual(report["arms"]["deadline"]["under_30_share"], 751 / 25000, "the JSON keeps the ratio the rule judged")
+        text = ab.markdown(report)
+        self.assertIn("| 751 | 0.03 |", text)
+        self.assertIn("| 9 | not traced | not traced |", text)
+        self.assertEqual((ab.shown(751 / 25000), ab.shown(26 / 3000, 5), ab.shown(None)), (0.03, 0.00867, None))
 
     def test_the_fixed_arm_has_to_show_the_pattern_under_repair(self):
         said = ab.verdict(scenario(fixed={"under": 31}), 12)  # 7.75% of the pictures
