@@ -9,3 +9,7 @@
 # Local Python tooling
 __pycache__/
 *.py[cod]
+
+# Local projects: private, authorial or heavy content (see projects/README.md)
+/projects/*
+!/projects/README.md
