@@ -6,13 +6,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { FX_PRIORITY, drawOverlay, hoverHandle, parseOverlay, toPane } from '../src/overlay.js';
+import { drawOverlay, hoverHandle, parseOverlay, toPane } from '../src/overlay.js';
 import { openRuntime, skipUnavailable } from './support.mjs';
 
 const ASPECT = 160 / 90;
 const STAMP = { scene: 'a', session: 'session-1', revision: 1, frame: 20, fx_clip: 'v1' };
 
-/** The core's `fx` block for a vignette at (0.3, 0.5): radius at 0.5, softness at 0.7. */
+/** The core's `fx` block for a vignette at (0.3, 0.5): radius at 0.5, softness at 0.7. The core lists the handles in priority order (the outer ones first). */
 const fxBlock = (extra = {}) => ({
   clip: 'v1',
   effect: 'vignette',
@@ -22,9 +22,9 @@ const fxBlock = (extra = {}) => ({
   visible: true,
   reason: null,
   handles: [
-    { id: 'center', param: 'center', kind: 'center', at: { u: 0.3, v: 0.5 } },
-    { id: 'radius', param: 'radius', kind: 'edge', at: { u: 0.5, v: 0.5 } },
     { id: 'softness', param: 'softness', kind: 'edge', at: { u: 0.7, v: 0.5 } },
+    { id: 'radius', param: 'radius', kind: 'edge', at: { u: 0.5, v: 0.5 } },
+    { id: 'center', param: 'center', kind: 'center', at: { u: 0.3, v: 0.5 } },
   ],
   disabled_handles: [],
   ellipses: [
@@ -76,8 +76,8 @@ const RECT = { x: 0, y: 0, width: 800, height: 450 };
 test('the fx block is checked whole and an overlay without it is what it was', () => {
   const parsed = parseOverlay(overlayJson());
   assert.equal(parsed.fx.clip, 'v1');
-  assert.deepEqual(parsed.fx.handles.map((h) => h.id), ['center', 'radius', 'softness']);
-  assert.equal(parsed.fx.handles[0].kind, 'center');
+  assert.deepEqual(parsed.fx.handles.map((h) => h.id), ['softness', 'radius', 'center']);
+  assert.equal(parsed.fx.handles[2].kind, 'center');
   assert.equal(parsed.fx.ellipses.length, 2);
   assert.equal(parsed.fx.hitRadius, 0.025);
   assert.equal(parseOverlay(overlayJson(undefined, { fx: undefined })).fx, null, 'no fx block, no fx');
@@ -86,6 +86,7 @@ test('the fx block is checked whole and an overlay without it is what it was', (
   assert.throws(() => parseOverlay(overlayJson(fxBlock({ handles: [{ at: { u: 0, v: 0 } }] }))), /needs an id/);
   assert.throws(() => parseOverlay(overlayJson(fxBlock({ ellipses: [{ id: 'radius', center: { u: 0, v: 0 }, rx: -1, ry: 1 }] }))), /non-negative/);
   assert.throws(() => parseOverlay(overlayJson('nope')), /fx must be an object/);
+  assert.throws(() => parseOverlay(overlayJson(fxBlock({ metrics: { unit: 'picture_height' } }))), /fx.metrics.hit_radius/);
 });
 
 test('a handle off the picture is listed, not drawn, and one with keys is drawn dimmed', () => {
@@ -128,7 +129,7 @@ test('the two ellipses are drawn inside the picture, the second dashed, and no n
   assert.deepEqual(quiet.calls, []);
 });
 
-test('hover follows the core: the nearest offered handle, the outer one on a tie, nothing for a dimmed one', () => {
+test('hover follows the core: the nearest offered handle, the first listed on a tie, nothing for a dimmed one', () => {
   const parsed = parseOverlay(overlayJson());
   assert.equal(hoverHandle(parsed, { u: 0.5, v: 0.5 }), 'radius');
   assert.equal(hoverHandle(parsed, { u: 0.7 + 0.01 / ASPECT, v: 0.5 }), 'softness');
@@ -137,13 +138,14 @@ test('hover follows the core: the nearest offered handle, the outer one on a tie
   assert.equal(hoverHandle(parsed, { u: 0.5, v: 0.5 + 0.03 }), null, 'past the hit radius (picture heights)');
   const stacked = parseOverlay(overlayJson(fxBlock({
     handles: [
-      { id: 'center', param: 'center', kind: 'center', at: { u: 0.3, v: 0.5 } },
-      { id: 'radius', param: 'radius', kind: 'edge', at: { u: 0.3, v: 0.5 } },
       { id: 'softness', param: 'softness', kind: 'edge', at: { u: 0.3, v: 0.5 } },
+      { id: 'radius', param: 'radius', kind: 'edge', at: { u: 0.3, v: 0.5 } },
+      { id: 'center', param: 'center', kind: 'center', at: { u: 0.3, v: 0.5 } },
     ],
   })));
-  assert.equal(hoverHandle(stacked, { u: 0.3, v: 0.5 }), 'softness', 'a tie goes to the outer handle');
-  assert.deepEqual(FX_PRIORITY, ['softness', 'radius', 'center']);
+  assert.equal(hoverHandle(stacked, { u: 0.3, v: 0.5 }), 'softness', 'a tie goes to the first handle the core listed');
+  const reversed = parseOverlay(overlayJson(fxBlock({ handles: [...stacked.fx.handles].reverse().map(({ id, kind, at }) => ({ id, param: id, kind, at })) })));
+  assert.equal(hoverHandle(reversed, { u: 0.3, v: 0.5 }), 'center', 'the page has no order of its own: the list is the rule');
   const dimmed = parseOverlay(overlayJson(fxBlock({
     handles: [],
     disabled_handles: [{ id: 'radius', reason: 'animated_param', at: { u: 0.5, v: 0.5 } }],
@@ -185,9 +187,9 @@ test('the page paints the handles and the ellipses and the pixels say so', async
   const drawn = await enable(runtime);
   assert.equal(drawn.target, 'fx');
   assert.equal(drawn.fx.clip, 'v1');
-  assert.deepEqual(drawn.fx.handles, ['center', 'radius', 'softness']);
+  assert.deepEqual(drawn.fx.handles, ['softness', 'radius', 'center']);
   assert.equal(drawn.fx.ellipses, 2);
-  assert.deepEqual(drawn.probes.map((probe) => probe.id), ['center', 'radius', 'softness']);
+  assert.deepEqual(drawn.probes.map((probe) => probe.id), ['softness', 'radius', 'center']);
   for (const probe of drawn.probes) {
     assert.ok(probe.rgba[3] > 200, `${probe.id} is really painted: ${probe.rgba}`);
   }

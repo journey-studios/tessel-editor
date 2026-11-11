@@ -44,9 +44,6 @@ export const PALETTE = {
   fxDisabled: 'rgba(245, 245, 245, 0.45)',
 };
 
-/** Who wins when a pointer is as near to two vignette handles: the outer ones first (the core's rule). */
-export const FX_PRIORITY = ['softness', 'radius', 'center'];
-
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 const finite = (value) => typeof value === 'number' && Number.isFinite(value);
 
@@ -133,6 +130,7 @@ export const parseOverlay = (raw) => {
   const parseFx = (value) => {
     if (!isObject(value)) throw new Error('fx must be an object');
     const fxMetrics = isObject(value.metrics) ? value.metrics : {};
+    if (!finite(fxMetrics.hit_radius) || fxMetrics.hit_radius <= 0) throw new Error('fx.metrics.hit_radius must be a positive number');
     return {
       clip: String(value.clip ?? ''),
       visible: value.visible === true,
@@ -153,7 +151,7 @@ export const parseOverlay = (raw) => {
         return { id: ellipse.id, center: point(ellipse.center, `fx.ellipses[${index}].center`), rx: ellipse.rx, ry: ellipse.ry };
       }),
       active: typeof value.active === 'string' ? value.active : null,
-      hitRadius: finite(fxMetrics.hit_radius) ? fxMetrics.hit_radius : 0.025,
+      hitRadius: fxMetrics.hit_radius,
     };
   };
   const fx = raw.fx === undefined || raw.fx === null ? null : parseFx(raw.fx);
@@ -201,9 +199,10 @@ const distanceToRing = (p, points, aspect) => {
 };
 
 /**
- * The vignette handle under `point`, by the core's rule (picture heights, the nearest within the
- * hit radius, a tie to the outer one). Only the handles the core offers; a dimmed or off-picture
- * one is not under the pointer. Presentation: the press is the core's.
+ * The vignette handle under `point`: the nearest within the hit radius (picture heights), a tie to
+ * the first of the list: the core lists the handles in priority order (the outer ones first), so
+ * the page holds no rule of its own. Only the handles the core offers; a dimmed or off-picture one
+ * is not under the pointer. Presentation: the press is the core's.
  */
 const hoverFx = (overlay, point) => {
   const { fx } = overlay;
@@ -213,10 +212,7 @@ const hoverFx = (overlay, point) => {
   for (const handle of fx.handles) {
     const distance = Math.hypot(here.x - handle.at.u * overlay.aspect, here.y - handle.at.v);
     if (distance > fx.hitRadius) continue;
-    const rank = FX_PRIORITY.indexOf(handle.id);
-    if (best === null || distance < best.distance - 1e-12 || (Math.abs(distance - best.distance) <= 1e-12 && rank < best.rank)) {
-      best = { distance, rank, id: handle.id };
-    }
+    if (best === null || distance < best.distance - 1e-12) best = { distance, id: handle.id };
   }
   return best?.id ?? null;
 };

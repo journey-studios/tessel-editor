@@ -307,12 +307,12 @@ fn the_picture_darkens_from_the_radius_handle_to_the_softness_handle() {
         at_centre > 0.97,
         "the centre is not touched: {at_centre} of the baseline is left"
     );
-    if let Some(at_radius) = left(base[radius], shaded[radius]) {
-        assert!(
-            at_radius > 0.95,
-            "the falloff starts at the radius handle: {at_radius} left"
-        );
-    }
+    let at_radius =
+        left(base[radius], shaded[radius]).expect("a bright baseline at the radius handle");
+    assert!(
+        at_radius > 0.95,
+        "the falloff starts at the radius handle: {at_radius} left"
+    );
     let mut seen = 0;
     let mut last: Option<f64> = None;
     for (slot, x) in reading.profile.iter().enumerate() {
@@ -336,12 +336,12 @@ fn the_picture_darkens_from_the_radius_handle_to_the_softness_handle() {
         }
     }
     assert!(seen >= 5, "enough of the profile is readable: {seen}");
-    if let Some(at_softness) = left(base[softness], shaded[softness]) {
-        assert!(
-            at_softness < 0.08,
-            "the falloff ends at the softness handle: {at_softness} left"
-        );
-    }
+    let at_softness =
+        left(base[softness], shaded[softness]).expect("a bright baseline at the softness handle");
+    assert!(
+        at_softness < 0.08,
+        "the falloff ends at the softness handle: {at_softness} left"
+    );
     assert!(
         reading.radius.0 < reading.softness.0 && reading.centre.0 < reading.radius.0,
         "{reading_size:?}: centre, radius and softness handles in order",
@@ -355,13 +355,11 @@ fn the_picture_darkens_from_the_radius_handle_to_the_softness_handle() {
     let moved_scene = session.state.scenes.get("street").unwrap().scene.clone();
     let (_, moved) = take(&mut renderer, &moved_scene, points.clone());
     assert_ne!(moved, shaded, "a moved handle moves the pixels");
-    let moved_at_old_radius = left(base[radius], moved[radius]);
-    if let (Some(before), Some(after)) = (left(base[radius], shaded[radius]), moved_at_old_radius) {
-        assert!(
-            after >= before,
-            "the old radius point is less shaded once the radius grew"
-        );
-    }
+    let after = left(base[radius], moved[radius]).expect("a bright baseline at the old radius");
+    assert!(
+        after >= at_radius,
+        "the old radius point is less shaded once the radius grew"
+    );
     eprintln!(
         "EVIDENCE handles {size:?}: centre {:?}, radius {:?}, softness {:?}; profile samples {seen}",
         reading.centre, reading.radius, reading.softness
