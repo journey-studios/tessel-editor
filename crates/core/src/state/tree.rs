@@ -598,6 +598,23 @@ fn build_monitor(state: &EditorState, nodes: &mut Vec<Node>) {
                 )
                 .state("tool", state.scene_interaction.tool().as_str())
                 .state("space", state.scene_interaction.space().as_str())
+                // F061: what the handles belong to, `node` (the gizmo) or `fx` (the 2D handles of a
+                // vignette clip, `scene.fx.select`): one target at a time.
+                .state(
+                    "target",
+                    if state.scene_interaction.fx_target().is_some() {
+                        "fx"
+                    } else {
+                        "node"
+                    },
+                )
+                .state(
+                    "fx_clip",
+                    state
+                        .scene_interaction
+                        .fx_target()
+                        .map_or("", |target| target.clip.as_str()),
+                )
                 .state("dragging", drag.is_some())
                 .state("handle", drag.map_or("", |drag| drag.handle_id()))
                 .state("gesture", drag.map_or("", |drag| drag.gesture()))

@@ -191,7 +191,15 @@ impl FxHandlesView {
                 "at": at_json(*at),
             })).collect::<Vec<_>>(),
             "disabled_handles": self.disabled.iter()
-                .map(|(handle, reason)| json!({ "id": handle.as_str(), "reason": reason }))
+                .map(|(handle, reason)| {
+                    // Where it would be, so a runtime can draw a greyed handle for `animated_param`
+                    // (it never draws one for `handle_off_picture`).
+                    let mut entry = json!({ "id": handle.as_str(), "reason": reason });
+                    if let Some(at) = self.point_of(*handle) {
+                        entry["at"] = at_json(at);
+                    }
+                    entry
+                })
                 .collect::<Vec<_>>(),
             "ellipses": [],
             "active": active.map(VignetteHandle::as_str),
