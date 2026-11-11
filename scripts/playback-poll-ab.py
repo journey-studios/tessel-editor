@@ -62,7 +62,7 @@ from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, prereq
 from ab.play import hung_play  # noqa: E402
 from ab.project import sha256_file  # noqa: E402
 from ab.session import CONTROL_ENV, PLAYS, run_session, session_env, whole_project_twice  # noqa: E402
-from ab.validity import analyze_session, redact  # noqa: E402
+from ab.validity import analyze_session, error_label, published_error  # noqa: E402
 
 FIXED, DEADLINE = "fixed", "deadline"
 ARMS = (FIXED, DEADLINE)
@@ -135,7 +135,7 @@ def session_row(record, project):
     return {"arm": record.get("arm"), "pair": record.get("pair"), "order_index": record.get("order_index"), "valid": analysis["valid"],
             "invalid_reasons": analysis["invalid_reasons"], "arm_findings": findings, "plays": plays, "hung": hung, "failed": failed,
             "counted": analysis["valid"] and complete and not failed and not findings,
-            "error": redact(record["error"]) if record.get("error") else None,
+            "error": published_error(record["error"]) if record.get("error") else None,
             "quiet_class": analysis["quiet_class"], "external_median_cores": analysis["external_median_cores"],
             "external_p95_cores": analysis["external_p95_cores"], "loadavg_start": analysis["loadavg_start"],
             "loadavg_peak_1m": analysis["loadavg_peak_1m"]}
@@ -287,7 +287,7 @@ def markdown(report):
         def cell(name):
             play = r["plays"].get(name)
             return "missing" if play is None else f"{play['over_62_5_ms']} / {play['max_gap_ms']} / {play['change_lag_ms']['mean']}{' HUNG' if play['hung'] else ''}"
-        note = "; ".join(r["invalid_reasons"] + r["arm_findings"] + ([f"FAILED: {r['error']}"] if r["failed"] else [])) or "-"
+        note = "; ".join(r["invalid_reasons"] + r["arm_findings"] + ([f"FAILED: {error_label(r['error']) if r['error'] else 'incomplete'}"] if r["failed"] else [])) or "-"
         lines.append(f"| {r['order_index']} | {r['pair']} | {r['arm']} | {r['quiet_class']} | {r['external_median_cores']}/{r['external_p95_cores']} | "
                      f"{r['loadavg_start']} / {r['loadavg_peak_1m']} | {cell('first')} | {cell('repeat')} | {'yes' if r['counted'] else 'NO'} | {note} |")
     lines += ["", f"Verdict (mechanical, pre-fixed rules): {report['verdict']}", ""]

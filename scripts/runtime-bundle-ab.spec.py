@@ -1,6 +1,7 @@
 """Pure-logic tests of the BL157.4 runtime bundle A/B; no editor, GPU, runtime page, WebKit process or private media is started."""
 import importlib.util
 import inspect
+import json
 import os
 import tempfile
 import unittest
@@ -208,6 +209,19 @@ class SessionRowTests(unittest.TestCase):
         result = ab.session_row(broken, PROJECT)
         self.assertEqual((result["hung"], result["failed"]), (False, True))
         self.assertEqual(result["plays"], {})
+
+    def test_the_error_of_a_failed_session_is_published_as_a_code_and_a_kind_without_its_path(self):
+        broken = record(ab.PATCHED, error="RuntimeError('could not open /Users/someone/private/clip.ply')")
+        broken["events"], broken["frames"] = [], []
+        manifest = {"git": {"sha": "0" * 40, "dirty_files": 0}, "binary_sha256": "b", "document_sha256": "d", "stress_cpu": 0, "order": [],
+                    "bundle_sha256": {"unpatched": "u", "patched": "p"}}
+        report = ab.build_report([broken], PROJECT, manifest)
+        text = ab.markdown(report)
+        self.assertEqual(report["rows"][0]["error"], {"code": "RuntimeError", "kind": "exception"})
+        self.assertIn("FAILED: exception:RuntimeError", text)
+        for private in ("/Users", "someone", "private", "clip.ply"):
+            self.assertNotIn(private, json.dumps(report))
+            self.assertNotIn(private, text)
 
     def test_the_samples_of_a_session_are_carried_with_their_signature(self):
         session = record(ab.UNPATCHED, first=pictures(1, 1000.0, 20))

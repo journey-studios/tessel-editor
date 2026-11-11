@@ -55,7 +55,7 @@ from ab.play import hung_play  # noqa: E402
 from ab.project import sha256_file  # noqa: E402
 from ab.session import CONTROL_ENV, PLAYS, collect as poll_trace, process_table, run_session, session_env, webkit_pids, whole_project_twice  # noqa: E402
 from ab.stats import stats  # noqa: E402
-from ab.validity import analyze_session, redact  # noqa: E402
+from ab.validity import analyze_session, error_label, published_error  # noqa: E402
 
 UNPATCHED, PATCHED = "unpatched", "patched"
 ARMS = (UNPATCHED, PATCHED)
@@ -180,7 +180,7 @@ def session_row(record, project):
             "invalid_reasons": analysis["invalid_reasons"], "plays": plays, "hung": hung,
             "served_runtime_bytes": served_runtime_bytes(record.get("events")),
             "failed": not hung and (bool(record.get("error")) or any(name not in plays for name in PLAYS)),
-            "error": redact(record["error"]) if record.get("error") else None,
+            "error": published_error(record["error"]) if record.get("error") else None,
             "quiet_class": analysis["quiet_class"], "external_median_cores": analysis["external_median_cores"],
             "external_p95_cores": analysis["external_p95_cores"], "loadavg_start": analysis["loadavg_start"],
             "loadavg_peak_1m": analysis["loadavg_peak_1m"], "samples": samples, "leftover_helpers": record.get("leftover_helpers") or []}
@@ -233,7 +233,7 @@ def markdown(report):
         samples = ", ".join(f"{'DEADLOCK' if s['signature']['deadlock'] else 'other'} at {s['at_s']} s ({s['role']} {s['pid']}: {s['file']})" for s in r["samples"]) or "-"
         lines.append(f"| {r['order_index']} | {r['pair']} | {r['arm']} | {r.get('served_runtime_bytes') or '?'} | {r['quiet_class']} | "
                      f"{r['external_median_cores']}/{r['external_p95_cores']} | "
-                     f"{r['loadavg_start']} / {r['loadavg_peak_1m']} | {cell('first')} | {cell('repeat')} | {'HUNG' if r['hung'] else ('FAILED: ' + str(r['error'])) if r['failed'] else 'no'} | "
+                     f"{r['loadavg_start']} / {r['loadavg_peak_1m']} | {cell('first')} | {cell('repeat')} | {'HUNG' if r['hung'] else ('FAILED: ' + (error_label(r['error']) if r['error'] else 'incomplete')) if r['failed'] else 'no'} | "
                      f"{'yes' if r['valid'] else 'NO: ' + '; '.join(r['invalid_reasons'])} | {samples} |")
     lines += ["", f"Exact one-sided chance of so few hung sessions in the patched arm if both arms were alike (diagnostic only): {report['chance_of_so_few']}", "",
               f"Verdict (mechanical, pre-fixed rules): {report['verdict']}", ""]

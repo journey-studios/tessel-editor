@@ -18,7 +18,6 @@ import time
 from ab import ROOT
 from ab.project import new_workspace_copy
 from ab.stats import merge_by_key
-from ab.validity import redact
 
 POLL_SECONDS = 2.0
 MIN_FREE_GIB_START = 16.0
@@ -116,15 +115,15 @@ def flatten_events(raw):
 
 
 def editor_exit(lab):
-    """Did the editor process end before the harness stopped it? Return code (negative: signal) and the log lines that
-    say why, with absolute paths removed (the log can name private files)."""
+    """Did the editor process end before the harness stopped it? Return code (negative: signal) and the log lines that say why. The lines are raw and
+    stay in the session's own local record: an analysis never reads them (it publishes the return code only)."""
     code = lab.process.poll()
     lines = []
     try:
         lab.log.flush()
         for line in pathlib.Path(lab.log_path).read_text(errors="replace").splitlines():
             if re.search(r"panic|fatal|abort|SIG|error|Error|crash", line):
-                lines.append(redact(line))
+                lines.append(line)
     except OSError:
         pass
     return {"returncode_before_stop": code, "alive": code is None, "log_lines": lines[-12:]}

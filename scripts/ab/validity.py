@@ -8,13 +8,33 @@ from ab.stats import memory_summary, percentile, quiet_class
 ACCEPTABLE_STATUS = {200, 206}
 
 
-def redact(text, limit=240):
-    """Remove absolute paths, including private filenames with spaces, before publishing a diagnostic.
-    Over-redact trailing words up to a quote, colon or newline rather than expose an uncertain path boundary."""
+# What a report may say of a failure: `{"code", "kind"}`, nothing of the message. `kind` is one of ERROR_KINDS; `code` is a host answer's error code
+# (`[a-z_]{1,32}`) or an exception's class name (`<Name>Error|Exception`, at most 40 letters), and a text that offers neither is `other`. The message itself (it can carry a path, a
+# file name, a client's name) stays in the session's own raw record, which is local and never copied into a report.
+ERROR_KINDS = ("timeout", "ended_early", "host_refused", "exception", "other")
+_HOST_CODE = re.compile(r"'code': '([a-z_]{1,32})'")
+_EXCEPTION = re.compile(r"\b([A-Z][A-Za-z]{0,38}(?:Error|Exception))\(")
+
+
+def published_error(text):
+    """The `{"code", "kind"}` of a failure's raw text. Only a token that fits a fixed pattern is ever taken from it, never a piece of the text."""
     text = str(text)
-    # Include a single component and spaces in the file name. Do not replace known roots first:
-    # that would turn /home/user/customer.json into <home>/customer.json and expose the file name.
-    return re.sub(r"/[^:'\"\n]+", "<path>", text)[:limit]
+    if "did not end within" in text:
+        return {"code": "play_did_not_end", "kind": "timeout"}
+    if "before its end" in text:
+        return {"code": "window_stopped", "kind": "ended_early"}
+    host = _HOST_CODE.search(text)
+    if host:
+        return {"code": host.group(1), "kind": "host_refused"}
+    exception = _EXCEPTION.search(text)
+    if exception:
+        return {"code": exception.group(1), "kind": "exception"}
+    return {"code": "other", "kind": "other"}
+
+
+def error_label(error):
+    """A published error as one short word for a table or a reason."""
+    return f"{error['kind']}:{error['code']}"
 
 
 def failed_assets(events):
@@ -30,7 +50,7 @@ def core_validity(record, mode, unfinished):
     status = record.get("status") or {}
     asset_io = status.get("asset_io") or {}
     if record.get("error"):
-        reasons.append(f"error: {redact(record['error'])}")
+        reasons.append(f"error: {error_label(published_error(record['error']))}")
     gone = record.get("editor_exit") or {}
     if gone and not gone.get("alive", True):
         reasons.append(f"the editor process ended by itself (return code {gone.get('returncode_before_stop')})")

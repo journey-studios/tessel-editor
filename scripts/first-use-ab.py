@@ -46,7 +46,7 @@ from ab.play import ENTRY_WINDOW, VIDEO_ENTRY_WINDOW, hung_play, play_pictures, 
 from ab.session import one_window, run_session, session_env, whole_project_twice  # noqa: E402
 from ab.stats import PAIR_MAX_DELTA_CORES, memory_summary, percentile, quiet_class, stats  # noqa: E402
 from ab.transit import decompose_play  # noqa: E402
-from ab.validity import redact, session_validity, window_validity  # noqa: E402
+from ab.validity import published_error, session_validity, window_validity  # noqa: E402
 
 BUDGET_DELTA_MS = 10.0
 PRE_CUT_EXCESS_MS = 20.0
@@ -200,7 +200,7 @@ def analyze_run(record, project, factor, window=None):
         "asset_io": (record.get("status") or {}).get("asset_io"),
         "warmed": ((record.get("status") or {}).get("stats") or {}).get("warmed"),
         "plays": plays,
-        "errors": [redact(e) for e in record.get("errors", [])],
+        "errors": [published_error(e) for e in record.get("errors", [])],
     }
 
 

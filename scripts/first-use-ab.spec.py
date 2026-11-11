@@ -99,6 +99,15 @@ def cut_record(gap_at, stop_gap=300.0):
 
 
 class AnalysisTests(unittest.TestCase):
+    def test_the_errors_of_a_session_are_published_as_codes_and_kinds_never_as_their_text(self):
+        failing = record("on", 40)
+        failing["errors"] = ["play(first): RuntimeError('could not open /Users/someone/private/clip.ply')",
+                             "playback.start(first): {'ok': False, 'error': {'code': 'media_preparing', 'message': 'wait /Users/someone/private/clip.ply'}}"]
+        run = ab.analyze_run(failing, PROJECT, "preupload", (190, 200))
+        self.assertEqual(run["errors"], [{"code": "RuntimeError", "kind": "exception"}, {"code": "media_preparing", "kind": "host_refused"}])
+        for private in ("/Users", "someone", "private", "clip.ply"):
+            self.assertNotIn(private, json.dumps(run))
+
     def test_the_entry_gap_at_a_picture_clip_is_read_from_the_picture_that_first_shows_it(self):
         run = ab.analyze_run(record("control", 90), PROJECT, "preupload", (190, 200))
         play = run["plays"]["first"]

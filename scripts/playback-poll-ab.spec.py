@@ -238,13 +238,18 @@ class SessionRowTests(unittest.TestCase):
         # The same session without the hang is a failure: that is what the hang is excused from.
         self.assertTrue(self.row_of(record("deadline", plays=1), analysis(repeat=None))["failed"])
 
-    def test_a_session_with_an_error_failed_and_its_message_has_no_path(self):
-        found = self.row_of(record("fixed", error="could not open /Users/someone/private name.tessel.json: refused"))
+    def test_a_session_with_an_error_failed_and_its_report_names_a_code_and_a_kind_only(self):
+        found = self.row_of(record("fixed", error="RuntimeError('could not open /Users/someone/private name.tessel.json: refused')"))
         self.assertTrue(found["failed"])
         self.assertFalse(found["counted"])
-        self.assertNotIn("someone", found["error"])
-        self.assertNotIn("private name", found["error"])
-        self.assertIn("refused", found["error"])
+        self.assertEqual(found["error"], {"code": "RuntimeError", "kind": "exception"})
+        rows = scenario(pairs=12)
+        rows[0] = found
+        text = ab.markdown(make_report(rows))
+        self.assertIn("FAILED: exception:RuntimeError", text)
+        for private in ("/Users", "someone", "private name", "refused"):
+            self.assertNotIn(private, text)
+            self.assertNotIn(private, json.dumps(found))
 
     def test_a_session_that_played_once_failed(self):
         found = self.row_of(record("deadline", plays=1), analysis(repeat=None))
@@ -616,12 +621,12 @@ class MarkdownTests(unittest.TestCase):
     def test_every_session_has_a_row_with_its_note(self):
         rows = scenario(pairs=2)
         rows[0]["counted"], rows[0]["invalid_reasons"] = False, ["the scene warm did not run"]
-        rows[1]["counted"], rows[1]["failed"], rows[1]["error"] = False, True, "refused"
+        rows[1]["counted"], rows[1]["failed"], rows[1]["error"] = False, True, {"code": "media_preparing", "kind": "host_refused"}
         rows[2]["plays"]["first"]["hung"] = True
         rows[3]["plays"].pop("repeat")
         text, _ = self.text(rows)
         self.assertIn("the scene warm did not run", text)
-        self.assertIn("FAILED: refused", text)
+        self.assertIn("FAILED: host_refused:media_preparing", text)
         self.assertIn("HUNG", text)
         self.assertIn("missing", text)
         self.assertEqual(len([line for line in text.splitlines() if re.match(r"\| \d+ \| \d+ \| (fixed|deadline) \|", line)]), 4)

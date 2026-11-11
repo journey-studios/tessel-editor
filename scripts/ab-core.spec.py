@@ -177,42 +177,54 @@ class ValidityTests(unittest.TestCase):
         self.assertFalse(V.session_validity(cold)[0])
 
 
-class RedactionTests(unittest.TestCase):
-    def test_redaction_includes_the_final_component_with_spaces_or_directly_under_a_known_root(self):
-        for path in ('/Users/Alice/secret clip.ply', str(pathlib.Path.home()) + '/customer.json',
-                     tempfile.gettempdir() + '/secret clip.ply', '/customer.json'):
-            with self.subTest(path=path):
-                result = V.redact('failed: ' + path + ': boom')
-                self.assertNotIn('secret', result)
-                self.assertNotIn('clip.ply', result)
-                self.assertNotIn('customer.json', result)
-                self.assertIn('boom', result)
+PATH_TEXTS = (
+    "RuntimeError('could not open /Users/John Smith/private dir/clip.ply: refused')",
+    "play(first) did not end within 100 s: /Users/someone/private/clip.ply",
+    "playback.start(first): {'ok': False, 'error': {'code': 'media_preparing', 'message': 'waiting for /Users/someone/private/clip.ply'}}",
+    "/Users/someone/private/clip.ply failed: boom",
+    "the window stopped at frame 12, before its end (200), reading /Users/someone/private/clip.ply",
+)
 
-    def test_a_published_failure_text_names_no_directory(self):
-        text = V.redact("RuntimeError('exited: /Users/someone/private/dir/editor.log: boom')")
-        self.assertNotIn("/Users/someone", text)
-        self.assertNotIn("editor.log", text, "not even the file name")
-        spaced = V.redact("failed: /Users/John Smith/private dir/clip.ply: boom")
-        self.assertNotIn("John", spaced)
-        self.assertNotIn("Smith", spaced)
-        self.assertNotIn("clip", spaced)
-        self.assertIn("boom", spaced, "the reason survives")
-        self.assertNotIn(str(pathlib.Path.home()), V.redact(f"open {pathlib.Path.home()}/a b/c.png failed"))
-        self.assertLessEqual(len(V.redact("x" * 1000)), 240)
-        valid, reasons = V.session_validity(session("sync", error="failed at /Users/someone/private/clip.ply"))
-        self.assertFalse(valid)
-        self.assertNotIn("/Users/someone", " ".join(reasons))
+
+class PublishedErrorTests(unittest.TestCase):
+    def test_a_failure_is_published_as_a_code_and_a_kind_and_nothing_of_its_message(self):
+        self.assertEqual(V.published_error("RuntimeError('boom at /Users/someone/clip.ply')"), {"code": "RuntimeError", "kind": "exception"})
+        self.assertEqual(V.published_error("playback.start(first): {'ok': False, 'error': {'code': 'media_preparing', 'message': 'x'}}"),
+                         {"code": "media_preparing", "kind": "host_refused"})
+        self.assertEqual(V.published_error("play(first) did not end within 100 s"), {"code": "play_did_not_end", "kind": "timeout"})
+        self.assertEqual(V.published_error("the window stopped at frame 12, before its end (200)"), {"code": "window_stopped", "kind": "ended_early"})
+        self.assertEqual(V.published_error("the second play never started"), {"code": "other", "kind": "other"})
+        self.assertEqual(V.published_error("x" * 1000), {"code": "other", "kind": "other"})
+
+    def test_what_is_published_is_closed_whatever_the_text_carries(self):
+        for text in PATH_TEXTS + ("", "{'code': 'A very /private/ name'}", "('/Users/x/y'", "Not an exception /Users/x"):
+            with self.subTest(text=text):
+                error = V.published_error(text)
+                self.assertEqual(sorted(error), ["code", "kind"])
+                self.assertIn(error["kind"], V.ERROR_KINDS)
+                self.assertRegex(error["code"], r"^[A-Za-z_]{1,40}$")
+                self.assertNotIn("/", V.error_label(error))
+                self.assertNotIn(" ", V.error_label(error))
+
+    def test_the_report_of_a_session_that_met_an_error_carrying_a_path_has_no_slash_and_no_part_of_the_path(self):
+        for text in PATH_TEXTS:
+            with self.subTest(text=text):
+                valid, reasons = V.session_validity(session("sync", error=text))
+                self.assertFalse(valid)
+                published = json.dumps(reasons)
+                for private in ("/", "Users", "someone", "John", "Smith", "private", "clip"):
+                    self.assertNotIn(private, published)
 
 
 class EditorExitTests(unittest.TestCase):
-    def test_an_editor_that_ended_by_itself_invalidates_the_session_and_its_log_is_redacted(self):
+    def test_an_editor_that_ended_by_itself_invalidates_the_session(self):
         gone = session("sync", editor_exit={"alive": False, "returncode_before_stop": -11, "log_lines": []})
         valid, reasons = V.session_validity(gone)
         self.assertFalse(valid)
         self.assertTrue(any("-11" in reason for reason in reasons))
         self.assertTrue(V.session_validity(session("sync", editor_exit={"alive": True, "returncode_before_stop": None, "log_lines": []}))[0])
 
-    def test_the_log_tail_names_files_by_their_last_component_only(self):
+    def test_the_log_tail_stays_raw_in_the_local_record_and_no_analysis_publishes_it(self):
         with tempfile.TemporaryDirectory() as folder:
             log = os.path.join(folder, "editor.log")
             Path(log).write_text("fine\nthread panicked at /Users/someone/private/clip-a.ply: boom\n")
@@ -232,8 +244,12 @@ class EditorExitTests(unittest.TestCase):
             lab.log.close()
             self.assertEqual(seen["returncode_before_stop"], -6)
             self.assertFalse(seen["alive"])
-            self.assertNotIn("clip-a", seen["log_lines"][0])
-            self.assertNotIn("/Users/someone", seen["log_lines"][0])
+            self.assertIn("clip-a.ply: boom", seen["log_lines"][-1], "what the local record keeps is the line itself, to be read by the person who ran it")
+        record = session("sync", editor_exit=seen, events=[], frames=[], host={"loadavg_start": [1, 1, 1]})
+        analysis = json.dumps(V.analyze_session(record, PROJECT))
+        for private in ("clip-a", "Users", "someone", "panicked"):
+            self.assertNotIn(private, analysis)
+        self.assertIn("-6", analysis, "the return code is what the analysis says")
 
 
 class LoadClassTests(unittest.TestCase):
