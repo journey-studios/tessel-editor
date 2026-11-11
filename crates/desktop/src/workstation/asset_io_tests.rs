@@ -9,8 +9,9 @@ use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
+use std::time::{Duration, Instant};
 
-use serde_json::json;
+use serde_json::{Value, json};
 use tessel_editor_core::trace::TraceHandle;
 use tessel_editor_render::asset_io::{AssetPool, DEFAULT_QUEUE, DEFAULT_WORKERS, Reader};
 use tessel_editor_render::host::{AssetAccess, MAX_RANGE_BODY};
@@ -50,6 +51,40 @@ fn register(access: &Rc<RefCell<AssetAccess>>, file: &Path) {
     access
         .borrow_mut()
         .register(&json!({"source": {"type": "file", "path": file}}));
+}
+
+/// The fields of the events of `kind` the trace holds now.
+fn events_of(trace: &TraceHandle, kind: &str) -> Vec<Value> {
+    trace.events_since(0, 1000)["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|event| event["kind"] == kind)
+        .map(|event| event["fields"].clone())
+        .collect()
+}
+
+/// The fields of the events of `kind`, once the trace holds at least `count` of them: for an event a worker records.
+///
+/// A worker answers first and records `asset_io` after, so whoever has the answer (even whoever joined the window's thread) is
+/// not ordered after that record, and a read right then finds none whenever the worker was descheduled between the two. Only
+/// the pool's `completed` counter comes after it. The wait is bounded, and a miss fails with what the trace did hold. An event
+/// that the reading thread recorded itself (an inline read, a refusal answered inside `handle`) is there when `handle`
+/// returns: `events_of` is enough for those.
+fn events_after(trace: &TraceHandle, kind: &str, count: usize) -> Vec<Value> {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let events = events_of(trace, kind);
+        if events.len() >= count {
+            return events;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for {count} `{kind}` event(s); the trace holds {}",
+            trace.events_since(0, 1000)["events"]
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
 }
 
 #[test]
@@ -219,37 +254,19 @@ fn the_asset_io_event_has_the_same_keys_whichever_way_the_file_is_read() {
     let access = Rc::new(RefCell::new(AssetAccess::default()));
     register(&access, &file);
     let pool = AssetPool::new(DEFAULT_WORKERS, DEFAULT_QUEUE);
-    let keys = |reader: Reader, wait_for_worker: bool| {
+    let keys = |reader: Reader| {
         let trace = TraceHandle::default();
         trace.set_enabled(true);
-        let handle = handle(reader.clone(), &dist, &access, &trace);
+        let handle = handle(reader, &dist, &access, &trace);
         assert_eq!(answer(&handle, &asset_request(&file, None)).status(), 200);
-        if wait_for_worker {
-            // The worker records the event after it answered; `completed` counts after that.
-            let pool = reader.pool().unwrap();
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
-            while pool.stats().completed() < 1 {
-                assert!(
-                    std::time::Instant::now() < deadline,
-                    "the worker never finished"
-                );
-                std::thread::sleep(std::time::Duration::from_millis(1));
-            }
-        }
-        let events = trace.events_since(0, 100);
-        let read = events["events"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|event| event["kind"] == "asset_io")
-            .expect("the read left an event")["fields"]
-            .clone();
+        // A pooled read records its event on the worker after it answered; an inline one before `answer` returned.
+        let read = events_after(&trace, "asset_io", 1).remove(0);
         let mut names: Vec<String> = read.as_object().unwrap().keys().cloned().collect();
         names.sort();
         (names, read)
     };
-    let (inline, inline_event) = keys(Reader::Inline, false);
-    let (pooled, pooled_event) = keys(Reader::Pooled(pool), true);
+    let (inline, inline_event) = keys(Reader::Inline);
+    let (pooled, pooled_event) = keys(Reader::Pooled(pool));
     assert_eq!(inline, pooled, "one event shape, one builder");
     for key in [
         "respond_ms",
@@ -466,9 +483,6 @@ mod held_read {
     use super::*;
     use std::path::PathBuf;
     use std::sync::mpsc;
-    use std::time::{Duration, Instant};
-
-    use serde_json::Value;
 
     use super::super::viewport_host::{HostOptions, ViewportHost};
 
@@ -600,16 +614,6 @@ mod held_read {
         (before_release, trace)
     }
 
-    fn events_of(trace: &TraceHandle, kind: &str) -> Vec<Value> {
-        trace.events_since(0, 1000)["events"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter(|event| event["kind"] == kind)
-            .map(|event| event["fields"].clone())
-            .collect()
-    }
-
     #[test]
     fn async_keeps_the_window_responsive_while_a_read_is_held() {
         let (responsive, trace) =
@@ -618,13 +622,14 @@ mod held_read {
             responsive,
             "the window answered its pulse before the file was read"
         );
-        // The trace says where each part ran: the callback on the window's thread, the read on a worker.
+        // The trace says where each part ran: the callback on the window's thread, the read on a worker. The callback's event
+        // is the window thread's own (it was joined); the read's is the worker's, recorded after its answer.
         let callbacks = events_of(&trace, "asset_cb");
         assert_eq!(callbacks.len(), 1);
         assert_eq!(callbacks[0]["on_ui_thread"], true);
         assert_eq!(callbacks[0]["thread"], "window-sim");
         assert_eq!(callbacks[0]["outcome"], "queued");
-        let reads = events_of(&trace, "asset_io");
+        let reads = events_after(&trace, "asset_io", 1);
         assert_eq!(reads.len(), 1);
         assert_eq!(reads[0]["on_ui_thread"], false);
         assert!(
@@ -649,6 +654,7 @@ mod held_read {
             !responsive,
             "the window cannot answer while it is the one reading"
         );
+        // The window's own thread recorded it, and that thread was joined before this: no worker to wait for.
         let reads = events_of(&trace, "asset_io");
         assert_eq!(reads.len(), 1);
         assert_eq!(
@@ -694,7 +700,8 @@ mod held_read {
         let callbacks = events_of(&trace, "asset_cb");
         assert_eq!(callbacks.last().unwrap()["outcome"], "saturated");
         // The refusal is answered on the thread of the callback, and its `asset_io` event says so (it ran there, not on a
-        // worker): the same event that carries the thread name carries the matching flag.
+        // worker): the same event that carries the thread name carries the matching flag. `handle` wrote it before it
+        // returned, on this very thread, and the two held reads have not answered: no worker to wait for.
         let reads = events_of(&trace, "asset_io");
         let refused: Vec<&Value> = reads.iter().filter(|read| read["status"] == 503).collect();
         assert_eq!(refused.len(), 1, "{reads:?}");
