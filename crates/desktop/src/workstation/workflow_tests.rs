@@ -363,7 +363,9 @@ fn tick_playback(
 ) -> Value {
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
     loop {
-        view.update(cx, |view, cx| view.playback_tick(cx));
+        view.update(cx, |view, cx| {
+            view.playback_tick(cx, std::time::Instant::now(), Duration::ZERO)
+        });
         let report = view.read_with(cx, |view, _| view.playback.report());
         if done(&report) || std::time::Instant::now() > deadline {
             return report;

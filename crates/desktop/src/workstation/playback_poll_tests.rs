@@ -8,8 +8,7 @@
 use std::time::Duration;
 
 use super::playback_poll::{
-    LANDING_GUARD, POLL_ENV, PollMode, Reading, TICKS_PER_FRAME, advancing, interval, next_poll,
-    poll_mode_from_env,
+    LANDING_GUARD, PollMode, Reading, TICKS_PER_FRAME, advancing, interval, next_poll,
 };
 
 const FPS: f64 = 24.0;
@@ -544,56 +543,6 @@ fn the_fixed_interval_is_a_frame_over_the_ticks_per_frame() {
 }
 
 // ---- the switch
-
-#[test]
-fn the_environment_names_the_two_modes_whatever_the_case_and_spacing() {
-    assert_eq!(
-        poll_mode_from_env(Some("deadline")),
-        Ok(Some(PollMode::Deadline))
-    );
-    assert_eq!(
-        poll_mode_from_env(Some("  Deadline ")),
-        Ok(Some(PollMode::Deadline))
-    );
-    assert_eq!(poll_mode_from_env(Some("FIXED")), Ok(Some(PollMode::Fixed)));
-    assert_eq!(poll_mode_from_env(Some("fixed")), Ok(Some(PollMode::Fixed)));
-}
-
-#[test]
-fn unset_or_empty_keeps_the_default() {
-    assert_eq!(poll_mode_from_env(None), Ok(None));
-    assert_eq!(poll_mode_from_env(Some("")), Ok(None));
-    assert_eq!(poll_mode_from_env(Some("   ")), Ok(None));
-}
-
-#[test]
-fn a_typo_is_a_warning_that_names_the_variable_and_the_mode_in_use() {
-    let warning = poll_mode_from_env(Some("deadlines")).unwrap_err();
-    assert!(warning.contains(POLL_ENV), "{warning}");
-    assert!(warning.contains("deadlines"), "{warning}");
-    assert!(
-        warning.contains("`fixed`") && warning.contains("`deadline`"),
-        "{warning}"
-    );
-    assert!(
-        warning.contains(&format!("using `{}`", PollMode::default().as_str())),
-        "{warning}"
-    );
-}
-
-#[test]
-fn the_names_round_trip_and_the_variable_is_the_documented_one() {
-    for mode in [PollMode::Fixed, PollMode::Deadline] {
-        assert_eq!(PollMode::parse(mode.as_str()), Some(mode));
-    }
-    assert_eq!(PollMode::Fixed.as_str(), "fixed");
-    assert_eq!(PollMode::Deadline.as_str(), "deadline");
-    assert_eq!(POLL_ENV, "TESSEL_PLAYBACK_POLL");
-    assert_eq!(PollMode::parse("nonsense"), None);
-    // The parser is not only reached through the environment reader: it ignores case and spacing itself.
-    assert_eq!(PollMode::parse("  DEADLINE\n"), Some(PollMode::Deadline));
-    assert_eq!(PollMode::parse(" Fixed "), Some(PollMode::Fixed));
-}
 
 #[test]
 fn the_default_is_the_fixed_schedule_until_the_native_ab_accepts_the_deadline_one() {

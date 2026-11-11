@@ -42,8 +42,8 @@ pub use catalog::{
 };
 pub use control::quantize_control;
 pub use hash::{
-    Reseed, base_seed, colored_triangular, fnv1a32, hash_pixel, lowbias32, seed_for, triangular,
-    unit_float,
+    Reseed, base_seed, colored_triangular, fnv1a32, fnv1a64, hash_pixel, lowbias32, seed_for,
+    triangular, unit_float,
 };
 pub use keys::{
     FX_EASINGS, FxEasing, FxKey, MAX_FX_KEYS_PER_CLIP, MAX_FX_KEYS_PER_CURVE,

@@ -25,14 +25,14 @@ use std::time::{Duration, Instant};
 use crate::assets::{MediaKind, ProxyFrames};
 use crate::backend::{
     AssetDescriptor, AssetStatus, BackendError, BackendEvent, Capabilities,
-    FEATURE_SCENE_WARM_DRAW, FEATURE_TEXTURE_PREUPLOAD, FrameRequest, FrameResult, Output,
-    ProxyState, RenderBackend, RequestId,
+    FEATURE_TEXTURE_PREUPLOAD, FrameRequest, FrameResult, Output, ProxyState, RenderBackend,
+    RequestId,
 };
 use crate::id::Id;
 use crate::plan::{PlanRequest, PlanTime, PreviewIntent, RenderPlan};
 use crate::preview::{PreviewPolicy, Quality};
 use crate::state::EditorState;
-use crate::trace::TraceHandle;
+use crate::trace::{TraceHandle, ms_since};
 
 #[derive(Debug, Clone, PartialEq)]
 enum Slot {
@@ -181,8 +181,6 @@ pub struct ViewportSession<B: RenderBackend> {
     preuploaded: HashSet<Vec<Id>>,
     /// Whether a runtime that announces `texture.preupload` is sent the cuts' stills (off unless the host turns it on).
     preupload_enabled: bool,
-    /// Whether the host's `hello` asked for the warm draw (BL157.3): reported only, the runtime does the work.
-    warm_draw_enabled: bool,
     /// Whether a runtime that announces `scene.warm` is sent warms (on unless the host turns it off).
     warm_enabled: bool,
     /// Bytes of source files of every asset loaded or loading, and the request that last needed it.
@@ -232,7 +230,6 @@ impl<B: RenderBackend> ViewportSession<B> {
             warmed: HashSet::new(),
             preuploaded: HashSet::new(),
             preupload_enabled: false,
-            warm_draw_enabled: false,
             warm_enabled: true,
             asset_bytes: HashMap::new(),
             last_used: HashMap::new(),
@@ -546,7 +543,7 @@ impl<B: RenderBackend> ViewportSession<B> {
                 continue;
             }
             let bytes = files_bytes(&files);
-            let fs_ms = probing.map(|at| at.elapsed().as_secs_f64() * 1000.0);
+            let fs_ms = ms_since(probing);
             // The first prefetch always fits: the budget limits a burst, not a single big scene.
             let held: u64 = self.prefetched.values().sum();
             if held > 0 && held.saturating_add(bytes) > self.prefetch_budget {
@@ -555,12 +552,12 @@ impl<B: RenderBackend> ViewportSession<B> {
             }
             let sending = self.trace.start();
             let sent = self.backend.load_asset(&descriptor);
-            let send_ms = sending.map(|at| at.elapsed().as_secs_f64() * 1000.0);
+            let send_ms = ms_since(sending);
             // BL157.2: where a slow prefetch spent its time on the calling thread, per load: the file checks (stat) or
             // the hand-over of the load to the backend. Only with the trace on; one event per load started, by kind and size
             // (never the asset's name).
             self.trace.event("prefetch_asset", || {
-                json!({ "kind": format!("{:?}", descriptor.kind).to_lowercase(), "bytes": bytes, "fs_ms": fs_ms, "send_ms": send_ms, "ok": sent.is_ok() })
+                json!({ "kind": descriptor.kind.label(), "bytes": bytes, "fs_ms": fs_ms, "send_ms": send_ms, "ok": sent.is_ok() })
             });
             if sent.is_err() {
                 continue;
@@ -654,12 +651,6 @@ impl<B: RenderBackend> ViewportSession<B> {
         if !enabled {
             self.preuploaded.clear();
         }
-    }
-
-    /// Records that the host's `hello` asked for the warm draw (BL157.3, a separate experiment): the runtime does it at the end of
-    /// each `frame.warm`, so nothing is sent differently; this only makes the arm visible in `render.status`.
-    pub fn set_warm_draw(&mut self, enabled: bool) {
-        self.warm_draw_enabled = enabled;
     }
 
     /// What the pre-upload asked and whether the runtime can do it, for `render.status`.
@@ -1228,7 +1219,6 @@ impl<B: RenderBackend> ViewportSession<B> {
                 "prefetched": self.stats.prefetched, "prefetch_skipped": self.stats.prefetch_skipped, "evicted": self.stats.evicted, "warmed": self.stats.warmed, "reloaded": self.stats.reloaded,
             },
             "preupload": self.preupload_report(),
-            "warm_draw": json!({"enabled": self.warm_draw_enabled, "supported": self.announces(FEATURE_SCENE_WARM_DRAW)}),
             "preview_policy": self.policy.to_json(), "refine_pending": self.refine.is_some(),
             "proxy_error": self.proxy_error.as_ref().map(|(id, error)| json!({ "asset": id, "error": error.to_json() })),
             "proxies": self.proxies.keys().collect::<Vec<_>>(),

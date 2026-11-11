@@ -5,12 +5,12 @@
 //!
 //! The silent clock these tests read is a function of the real time, and the real time between two ticks of a test is whatever
 //! the window's redraw and the executor spent (tens of milliseconds were measured): a test that depends on where inside a frame
-//! the clock stands scripts what it reads (`script_wall_clock`) or holds it paused (a held clock does not move). The age of a
-//! reading is real time too: a test that needs one makes the reading older (`age_reading`) instead of sleeping.
+//! the clock stands scripts what it reads (`script_wall_clock`) or holds it paused (a held clock does not move). What the age of
+//! a reading does to the wait is the pure rule's (`playback_poll_tests.rs`): nothing here waits for real time to pass.
 use std::time::{Duration, Instant};
 
 use super::input_tests::fixture;
-use super::playback::script_wall_clock;
+use super::playback::{Tick, script_wall_clock};
 use super::playback_poll::{self, LANDING_GUARD, PollMode};
 use super::*;
 // The Kit's test macro expands to `#[test]`; the glob import above would resolve it to the Kit macro again.
@@ -23,9 +23,14 @@ fn ms(duration: Duration) -> f64 {
 
 /// A silent playback (no audio device in a test) from frame 0, polled the way `poll` says, with the host trace on.
 fn start(view: &Entity<Workstation>, cx: &mut VisualTestContext, poll: PollMode) {
+    start_with(view, cx, PlaybackState::new(poll));
+}
+
+/// The same, from a playback state built by the caller.
+fn start_with(view: &Entity<Workstation>, cx: &mut VisualTestContext, playback: PlaybackState) {
     view.update(cx, |view, cx| {
         view.viewport.trace().set_enabled(true);
-        view.playback.poll = poll;
+        view.playback = playback;
         view.playback.preparing = Some(super::playback::Preparing { from: 0 });
         view.playback_begin(
             0,
@@ -66,7 +71,10 @@ fn advance(cx: &mut VisualTestContext, by: Duration) {
 /// One tick of the loop run by hand (the timer is not involved), returning the wait it armed.
 fn tick(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> Option<Duration> {
     view.update(cx, |view, cx| {
-        view.playback_tick_traced(cx, Instant::now(), Duration::ZERO)
+        match view.playback_tick(cx, Instant::now(), Duration::ZERO) {
+            Tick::Continue { next, .. } => Some(next),
+            Tick::Stop => None,
+        }
     })
 }
 
@@ -110,10 +118,13 @@ fn the_status_and_the_trace_name_the_poll_mode_in_effect(cx: &mut TestAppContext
     }
 }
 
-#[test]
-fn a_state_nobody_configured_polls_with_the_previous_schedule() {
+#[gpui_kit::test]
+fn a_state_nobody_configured_polls_with_the_previous_schedule(cx: &mut TestAppContext) {
     // What a window without `TESSEL_PLAYBACK_POLL` starts with, until the native A/B accepts the other schedule.
-    assert_eq!(PlaybackState::default().poll, PollMode::Fixed);
+    let (view, cx) = fixture(cx);
+    start_with(&view, cx, PlaybackState::default());
+    let status = view.read_with(cx, |view, _| view.playback.report());
+    assert_eq!(status["poll"], "fixed", "{status}");
 }
 
 #[gpui_kit::test]
@@ -146,6 +157,12 @@ fn the_deadline_schedule_arms_the_wait_for_the_next_frame_boundary(cx: &mut Test
         wait >= LANDING_GUARD && ms(wait) <= landing + 0.001,
         "{wait:?} is not the landing {landing} ms"
     );
+    // What the tick did after reading the clock (moving the playhead, asking the monitor for the frame) is taken out of the wait:
+    // the boundary did not wait for it, so the wait is strictly shorter than the bare landing.
+    assert!(
+        ms(wait) < landing - 0.001,
+        "{wait:?} does not account for the tick's own work, the landing is {landing} ms"
+    );
     let ticks = events_of(&view, cx, "tick");
     let traced = ticks.last().expect("a traced tick");
     assert_eq!(traced["clock"], 10.7, "{traced}");
@@ -156,53 +173,24 @@ fn the_deadline_schedule_arms_the_wait_for_the_next_frame_boundary(cx: &mut Test
 }
 
 #[gpui_kit::test]
-fn the_work_the_tick_has_done_since_the_reading_is_not_waited_for_again(cx: &mut TestAppContext) {
-    let (view, cx) = fixture(cx);
-    start(&view, cx, PollMode::Deadline);
-    let _script = script_wall_clock(&[10.6, 10.7]);
-    // One `update`: the window redraws between two of them, and what that takes is real time that ages a reading too.
-    let (fresh, later, much_later) = view.update(cx, |view, cx| {
-        let _ = view.playback_tick_traced(cx, Instant::now(), Duration::ZERO);
-        let fresh = view
-            .playback_tick_traced(cx, Instant::now(), Duration::ZERO)
-            .expect("a continuing tick");
-        // Ten milliseconds pass after the reading: the boundary is that much closer to the moment the next wait would be armed.
-        view.playback.age_reading(Duration::from_millis(10));
-        let later = view.playback.next_delay().expect("a running playback");
-        // A reading older than the distance to its boundary: the boundary is behind it, only the guard is left.
-        view.playback.age_reading(Duration::from_millis(100));
-        let much_later = view.playback.next_delay().expect("a running playback");
-        (fresh, later, much_later)
-    });
-    let shortened = ms(fresh) - ms(later);
-    assert!(
-        (shortened - 10.0).abs() < 2.0,
-        "fresh {fresh:?}, ten milliseconds later {later:?}: {shortened} ms shorter"
-    );
-    assert_eq!(much_later, LANDING_GUARD);
-}
-
-#[gpui_kit::test]
 fn a_paused_clock_is_asked_at_the_fixed_interval_in_either_mode(cx: &mut TestAppContext) {
     let (view, cx) = fixture(cx);
     start(&view, cx, PollMode::Deadline);
     let rate = fps(&view, cx);
     let cap = playback_poll::interval(rate);
-    // A reading far from where the clock will be held: the first reading after the pause moves forward by a lot.
-    view.update(cx, |view, _| view.playback.place_wall_clock(2.0));
+    // A reading far from where the clock will be read next: the first reading after the pause moves forward by a lot.
+    let first = script_wall_clock(&[2.0]);
     assert!(tick(&view, cx).is_some());
+    drop(first);
     view.update(cx, |view, cx| view.playback_pause(cx).unwrap());
 
-    // Held seven tenths into a frame (a held clock does not move, so nothing here depends on how long anything took): the
-    // boundary is never reached, so it is not waited for, though the reading is ahead of the one before it.
-    view.update(cx, |view, _| view.playback.place_wall_clock(10.7));
+    // Seven tenths into a frame, paused: the boundary is never reached, so it is not waited for, though the reading is ahead of
+    // the one before it.
+    let held = script_wall_clock(&[10.7]);
     assert_eq!(tick(&view, cx), Some(cap));
-    assert_eq!(
-        view.read_with(cx, |view, _| view.playback.next_delay()),
-        Some(cap)
-    );
+    drop(held);
 
-    // Resuming moves the clock again, from where it was held: the first reading that moves is waited for.
+    // Resuming moves the clock again: the first reading that moves is waited for.
     view.update(cx, |view, cx| view.playback_resume(cx).unwrap());
     let _script = script_wall_clock(&[10.8]);
     let wait = tick(&view, cx).expect("the tick continues");
@@ -297,8 +285,9 @@ fn stopping_ends_the_loop_with_no_wait(cx: &mut TestAppContext) {
     advance(cx, cap);
     view.update(cx, |view, cx| view.playback_stop(cx));
     assert_eq!(
-        view.read_with(cx, |view, _| view.playback.next_delay()),
-        None
+        tick(&view, cx),
+        None,
+        "a tick with nothing playing waits for nothing"
     );
 
     // The timer that was already armed fires once, finds nothing playing and ends the loop: no wait, and no more ticks.

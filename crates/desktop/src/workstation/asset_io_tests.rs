@@ -12,26 +12,24 @@ use std::sync::atomic::AtomicU64;
 
 use serde_json::json;
 use tessel_editor_core::trace::TraceHandle;
-use tessel_editor_render::asset_io::{AssetPool, DEFAULT_QUEUE, DEFAULT_WORKERS};
+use tessel_editor_render::asset_io::{AssetPool, DEFAULT_QUEUE, DEFAULT_WORKERS, Reader};
 use tessel_editor_render::host::{AssetAccess, MAX_RANGE_BODY};
 use wry::http::Request;
 
-use super::viewport_host::{AssetIoMode, ProtocolHandle, asset_io_from_env};
 use super::viewport_host_tests::{answer, page, scratch};
+use super::viewport_protocol::{AssetIoMode, ProtocolHandle};
 
 fn handle(
-    mode: AssetIoMode,
+    reader: Reader,
     dist: &Path,
     access: &Rc<RefCell<AssetAccess>>,
     trace: &TraceHandle,
-    pool: Option<AssetPool>,
 ) -> ProtocolHandle {
     ProtocolHandle::new(
         Some(dist.to_path_buf()),
         access.clone(),
         trace.clone(),
-        mode,
-        pool,
+        reader,
         Arc::new(AtomicU64::new(0)),
     )
 }
@@ -55,48 +53,96 @@ fn register(access: &Rc<RefCell<AssetAccess>>, file: &Path) {
 }
 
 #[test]
-fn the_mode_comes_from_a_named_value_and_a_typo_is_refused_loudly() {
-    assert_eq!(asset_io_from_env(None), Ok(None));
-    assert_eq!(asset_io_from_env(Some("  ")), Ok(None));
-    assert_eq!(asset_io_from_env(Some("sync")), Ok(Some(AssetIoMode::Sync)));
+fn a_request_and_the_load_message_of_the_same_file_share_one_label_and_no_path() {
+    use super::viewport_host::{HostOptions, ViewportHost};
+    use super::viewport_host_tests::{from_page, ready_message, sent};
+    use tessel_editor_core::EditorState;
+
+    // The load comes from the host as it does in the app: the demo's files are named by real `asset.load` messages, and the
+    // label of each is whatever `WebTransport::send` wrote, not something this test computes.
+    let state = EditorState::demo();
+    let options = HostOptions {
+        trace: true,
+        ..HostOptions::default()
+    };
+    let mut host = ViewportHost::with_options(Ok(page("io-label")), options);
+    from_page(&mut host, &state, json!({"type":"page.ready"}));
+    sent(&mut host);
+    from_page(&mut host, &state, ready_message());
+    let loads: Vec<_> = sent(&mut host)
+        .into_iter()
+        .filter(|message| message["type"] == "asset.load")
+        .collect();
+    let at = loads
+        .iter()
+        .position(|load| load["asset"]["source"]["path"].is_string())
+        .expect("the demo loads a file");
+    let file = loads[at]["asset"]["source"]["path"].as_str().unwrap();
+    let request = Request::builder()
+        .uri(format!(
+            "tessel://localhost/asset?p={}",
+            file.replace('/', "%2F").replace(' ', "%20")
+        ))
+        .body(Vec::new())
+        .unwrap();
+    assert_eq!(answer(&host.protocol_handle(), &request).status(), 200);
+
+    let events = host.trace().events_since(0, 1_000);
+    let of_kind = |kind: &str| -> Vec<serde_json::Value> {
+        events["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["kind"] == kind)
+            .map(|event| event["fields"].clone())
+            .collect()
+    };
+    let (load_events, callbacks) = (of_kind("asset_load_sent"), of_kind("asset_cb"));
+    assert_eq!(load_events.len(), loads.len(), "one event per load message");
+    assert_eq!(callbacks.len(), 1);
     assert_eq!(
-        asset_io_from_env(Some(" Async ")),
-        Ok(Some(AssetIoMode::Async))
+        load_events[at]["path"], callbacks[0]["asset"],
+        "the load and the request of the same file name it the same way"
     );
-    let warning = asset_io_from_env(Some("asnyc")).unwrap_err();
     assert!(
-        warning.contains("asnyc") && warning.contains("`sync`"),
-        "{warning}"
-    );
-    assert_eq!(
-        AssetIoMode::default(),
-        AssetIoMode::Sync,
-        "the default is the behaviour before the experiment"
+        !events.to_string().contains(file),
+        "the path itself is never written"
     );
 }
 
 #[test]
-fn a_request_and_the_load_message_of_the_same_file_share_one_label_and_no_path() {
-    let dist = page("io-label");
-    let dir = scratch("io-label-files");
-    let file = dir.join("my private clip.png");
-    std::fs::write(&file, b"0123").unwrap();
-    let access = Rc::new(RefCell::new(AssetAccess::default()));
-    register(&access, &file);
-    let trace = TraceHandle::default();
-    trace.set_enabled(true);
-    let sync = handle(AssetIoMode::Sync, &dist, &access, &trace, None);
-    assert_eq!(answer(&sync, &asset_request(&file, None)).status(), 200);
-    let wanted = super::viewport_host::trace_label('a', &format!("p={}", file.to_string_lossy()));
-    let events = trace.events_since(0, 100);
-    let callback = events["events"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|event| event["kind"] == "asset_cb")
-        .expect("the request left an event");
-    assert_eq!(callback["fields"]["asset"], wanted);
-    assert!(!events.to_string().contains("private clip"));
+fn a_load_is_labelled_by_the_path_of_its_file_the_pattern_of_its_sequence_or_nothing() {
+    use super::viewport_protocol::load_fields;
+
+    let file = load_fields(&json!({"type":"asset.load","asset":{
+        "id":"a1","kind":"still","source":{"type":"file","path":"/p/one.png"}}}));
+    let sequence = load_fields(&json!({"type":"asset.load","asset":{
+        "id":"a2","kind":"video","source":{"type":"frame_sequence","pattern":"/p/f_%04d.png"}}}));
+    let generated = load_fields(&json!({"type":"asset.load","asset":{
+        "id":"a3","kind":"text","source":{"type":"text"}}}));
+    assert_eq!(file["kind"], "still");
+    assert!(file["path"].is_string() && file.get("pattern").is_none());
+    assert!(sequence["pattern"].is_string() && sequence.get("path").is_none());
+    assert!(generated.get("path").is_none() && generated.get("pattern").is_none());
+    for fields in [&file, &sequence, &generated] {
+        let text = fields.to_string();
+        assert!(
+            !text.contains("one.png") && !text.contains("f_%04d"),
+            "{text}"
+        );
+    }
+    assert_ne!(
+        file["asset"], sequence["asset"],
+        "assets are told apart by their id"
+    );
+}
+
+#[test]
+fn a_label_is_the_value_it_has_always_been_so_recorded_traces_keep_their_correlation() {
+    use super::viewport_protocol::trace_label;
+    assert_eq!(trace_label('a', "p=/x/clip.mp4"), "a44a5eced");
+    assert_eq!(trace_label('k', "k"), "k8601fd8a");
+    assert_eq!(trace_label('k', ""), "k84222325");
 }
 
 #[test]
@@ -115,9 +161,9 @@ fn both_modes_answer_the_same_status_headers_and_bytes() {
         register(&access, &dir.join(name));
     }
     let trace = TraceHandle::default();
-    let sync = handle(AssetIoMode::Sync, &dist, &access, &trace, None);
+    let sync = handle(Reader::Inline, &dist, &access, &trace);
     let pool = AssetPool::new(DEFAULT_WORKERS, DEFAULT_QUEUE);
-    let asynchronous = handle(AssetIoMode::Async, &dist, &access, &trace, Some(pool));
+    let asynchronous = handle(Reader::Pooled(pool), &dist, &access, &trace);
     let requests: Vec<(&str, Option<&str>)> = vec![
         ("cloud.ply", None),
         ("cloud.ply", Some("bytes=0-99")),
@@ -165,6 +211,67 @@ fn both_modes_answer_the_same_status_headers_and_bytes() {
 }
 
 #[test]
+fn the_asset_io_event_has_the_same_keys_whichever_way_the_file_is_read() {
+    let dist = page("io-keys");
+    let dir = scratch("io-keys-files");
+    let file = dir.join("clip.png");
+    std::fs::write(&file, b"0123456789").unwrap();
+    let access = Rc::new(RefCell::new(AssetAccess::default()));
+    register(&access, &file);
+    let pool = AssetPool::new(DEFAULT_WORKERS, DEFAULT_QUEUE);
+    let keys = |reader: Reader, wait_for_worker: bool| {
+        let trace = TraceHandle::default();
+        trace.set_enabled(true);
+        let handle = handle(reader.clone(), &dist, &access, &trace);
+        assert_eq!(answer(&handle, &asset_request(&file, None)).status(), 200);
+        if wait_for_worker {
+            // The worker records the event after it answered; `completed` counts after that.
+            let pool = reader.pool().unwrap();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+            while pool.stats().completed() < 1 {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "the worker never finished"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+        }
+        let events = trace.events_since(0, 100);
+        let read = events["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|event| event["kind"] == "asset_io")
+            .expect("the read left an event")["fields"]
+            .clone();
+        let mut names: Vec<String> = read.as_object().unwrap().keys().cloned().collect();
+        names.sort();
+        (names, read)
+    };
+    let (inline, inline_event) = keys(Reader::Inline, false);
+    let (pooled, pooled_event) = keys(Reader::Pooled(pool), true);
+    assert_eq!(inline, pooled, "one event shape, one builder");
+    for key in [
+        "respond_ms",
+        "queue_wait_ms",
+        "depth_at_submit",
+        "stale",
+        "worker",
+    ] {
+        assert!(inline.iter().any(|name| name == key), "{key} in {inline:?}");
+    }
+    for event in [&inline_event, &pooled_event] {
+        assert!(event["respond_ms"].is_number(), "{event}");
+    }
+    assert_eq!(inline_event["mode"], "sync");
+    assert_eq!(inline_event["worker"], serde_json::Value::Null);
+    assert_eq!(inline_event["queue_wait_ms"], 0.0);
+    assert_eq!(inline_event["depth_at_submit"], 0);
+    assert_eq!(inline_event["stale"], false);
+    assert_eq!(pooled_event["mode"], "async");
+}
+
+#[test]
 fn the_report_names_the_mode_in_effect_and_the_page_spans_reach_the_trace_without_names() {
     use super::viewport_host::{HostOptions, ViewportHost};
     use super::viewport_host_tests::{from_page, ready_message, sent};
@@ -173,7 +280,7 @@ fn the_report_names_the_mode_in_effect_and_the_page_spans_reach_the_trace_withou
     let state = EditorState::demo();
     let options = HostOptions {
         trace: true,
-        asset_io: Some(AssetIoMode::Async),
+        asset_io: AssetIoMode::Async,
         ..HostOptions::default()
     };
     let mut host = ViewportHost::with_options(Ok(page("io-report")), options);
@@ -395,11 +502,10 @@ mod held_read {
     /// A thread that plays the window's: it owns the (non-`Send`) handle, takes requests the way the WebView's callback does,
     /// and answers a pulse whenever it is free. The handle is made on it, so it is the thread the trace calls the window's.
     fn window_thread(
-        mode: AssetIoMode,
+        reader: Reader,
         dist: PathBuf,
         held: PathBuf,
         trace: TraceHandle,
-        pool: Option<AssetPool>,
     ) -> (mpsc::Sender<Ui>, std::thread::JoinHandle<()>) {
         let (sender, receiver) = mpsc::channel::<Ui>();
         let join = std::thread::Builder::new()
@@ -407,7 +513,7 @@ mod held_read {
             .spawn(move || {
                 let access = Rc::new(RefCell::new(AssetAccess::default()));
                 register(&access, &held);
-                let handle = handle(mode, &dist, &access, &trace, pool);
+                let handle = handle(reader, &dist, &access, &trace);
                 while let Ok(message) = receiver.recv() {
                     match message {
                         Ui::Request(request, answered) => handle.handle(
@@ -444,9 +550,9 @@ mod held_read {
         let held = fifo(&dir, "slow.bin");
         let trace = TraceHandle::default();
         trace.set_enabled(true);
-        let pool =
-            (mode == AssetIoMode::Async).then(|| AssetPool::new(DEFAULT_WORKERS, DEFAULT_QUEUE));
-        let (ui, join) = window_thread(mode, dist, held.clone(), trace.clone(), pool.clone());
+        let reader = mode.reader();
+        let pool = reader.pool().cloned();
+        let (ui, join) = window_thread(reader, dist, held.clone(), trace.clone());
         let (answered, answers) = mpsc::channel();
         ui.send(Ui::Request(Box::new(asset_request(&held, None)), answered))
             .unwrap();
@@ -562,13 +668,7 @@ mod held_read {
         let trace = TraceHandle::default();
         trace.set_enabled(true);
         let pool = AssetPool::new(1, 1);
-        let asynchronous = handle(
-            AssetIoMode::Async,
-            &dist,
-            &access,
-            &trace,
-            Some(pool.clone()),
-        );
+        let asynchronous = handle(Reader::Pooled(pool.clone()), &dist, &access, &trace);
         let (tx, rx) = mpsc::channel();
         let send = |tag: &'static str| {
             let tx = tx.clone();
@@ -593,6 +693,14 @@ mod held_read {
         assert_eq!(pool.stats().saturated(), 1);
         let callbacks = events_of(&trace, "asset_cb");
         assert_eq!(callbacks.last().unwrap()["outcome"], "saturated");
+        // The refusal is answered on the thread of the callback, and its `asset_io` event says so (it ran there, not on a
+        // worker): the same event that carries the thread name carries the matching flag.
+        let reads = events_of(&trace, "asset_io");
+        let refused: Vec<&Value> = reads.iter().filter(|read| read["status"] == 503).collect();
+        assert_eq!(refused.len(), 1, "{reads:?}");
+        assert_eq!(refused[0]["on_ui_thread"], true);
+        assert_eq!(refused[0]["worker"], Value::Null);
+        assert_eq!(refused[0]["req"], callbacks.last().unwrap()["req"]);
         let writer = release(&held);
         let mut rest = vec![
             rx.recv_timeout(Duration::from_secs(20)).unwrap(),
@@ -616,13 +724,7 @@ mod held_read {
         register(&access, &held);
         let trace = TraceHandle::default();
         let pool = AssetPool::new(1, 4);
-        let asynchronous = handle(
-            AssetIoMode::Async,
-            &dist,
-            &access,
-            &trace,
-            Some(pool.clone()),
-        );
+        let asynchronous = handle(Reader::Pooled(pool.clone()), &dist, &access, &trace);
         let (tx, rx) = mpsc::channel();
         let send = |tag: &'static str| {
             let tx = tx.clone();
@@ -658,7 +760,7 @@ mod held_read {
         let mut host = ViewportHost::with_options(
             Ok(page(tag)),
             HostOptions {
-                asset_io: Some(AssetIoMode::Async),
+                asset_io: AssetIoMode::Async,
                 ..HostOptions::default()
             },
         );
@@ -697,7 +799,7 @@ mod held_read {
         let mut host = ViewportHost::with_options(
             Ok(page("io-bundle")),
             HostOptions {
-                asset_io: Some(AssetIoMode::Async),
+                asset_io: AssetIoMode::Async,
                 ..HostOptions::default()
             },
         );

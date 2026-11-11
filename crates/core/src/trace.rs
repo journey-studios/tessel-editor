@@ -90,30 +90,39 @@ impl FrameTrace {
     pub fn to_json(&self) -> Value {
         json!({
             "id": self.id, "revision": self.revision, "interactive": self.interactive,
-            "prepare_ms": round(self.prepare_ms), "serialize_ms": round(self.serialize_ms),
-            "dispatch_ms": round(self.dispatch_ms),
-            "submit_to_done_ms": round(self.submit_to_done_ms),
-            "transit_ms": round(self.transit_ms),
-            "runtime_total_ms": round(self.runtime_total_ms),
-            "runtime_render_ms": round(self.runtime_render_ms),
-            "accept_ms": round(self.accept_ms),
-            "submitted_ms": round(self.submitted_ms), "done_ms": round(self.done_ms),
+            "prepare_ms": round3(self.prepare_ms), "serialize_ms": round3(self.serialize_ms),
+            "dispatch_ms": round3(self.dispatch_ms),
+            "submit_to_done_ms": round3(self.submit_to_done_ms),
+            "transit_ms": round3(self.transit_ms),
+            "runtime_total_ms": round3(self.runtime_total_ms),
+            "runtime_render_ms": round3(self.runtime_render_ms),
+            "accept_ms": round3(self.accept_ms),
+            "submitted_ms": round3(self.submitted_ms), "done_ms": round3(self.done_ms),
             "shown_frame": self.shown_frame,
-            "presented_after_done_ms": self.presented_after_done_ms.map(round),
-            "submit_to_presented_ms": self.submit_to_presented_ms.map(round),
-            "runtime_prepare_ms": round(self.runtime_prepare_ms),
-            "runtime_draw_ms": round(self.runtime_draw_ms),
-            "runtime_flush_ms": round(self.runtime_flush_ms),
+            "presented_after_done_ms": self.presented_after_done_ms.map(round3),
+            "submit_to_presented_ms": self.submit_to_presented_ms.map(round3),
+            "runtime_prepare_ms": round3(self.runtime_prepare_ms),
+            "runtime_draw_ms": round3(self.runtime_draw_ms),
+            "runtime_flush_ms": round3(self.runtime_flush_ms),
         })
     }
 }
 
-fn round(value: f64) -> f64 {
+/// `value` rounded to 3 decimals (a microsecond, when it is milliseconds): the precision every number of a trace is
+/// written with.
+pub fn round3(value: f64) -> f64 {
     (value * 1000.0).round() / 1000.0
 }
 
-fn ms(duration: Duration) -> f64 {
+/// `duration` in milliseconds.
+pub fn ms(duration: Duration) -> f64 {
     duration.as_secs_f64() * 1000.0
+}
+
+/// Milliseconds since a span began, rounded as the trace writes them; `None` when the span was never started (tracing
+/// off, see [`TraceHandle::start`]).
+pub fn ms_since(started: Option<Instant>) -> Option<f64> {
+    started.map(|at| round3(ms(at.elapsed())))
 }
 
 #[derive(Debug, Default)]
@@ -151,8 +160,8 @@ impl Series {
         };
         json!({
             "n": self.count, "window": sorted.len(),
-            "mean": round(window_mean), "p50": round(at(0.5)), "p95": round(at(0.95)),
-            "p99": round(at(0.99)), "max": round(self.max),
+            "mean": round3(window_mean), "p50": round3(at(0.5)), "p95": round3(at(0.95)),
+            "p99": round3(at(0.99)), "max": round3(self.max),
         })
     }
 }
@@ -258,11 +267,13 @@ impl TraceHandle {
             return;
         }
         let event_fields = fields();
-        let t_ms = self.now_ms();
         let mut log = self
             .events
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // Stamped with the lock held: writers on several threads (the window's and the I/O workers') then get a growing
+        // `seq` and a non-decreasing `t_ms` together, and readers may order by either.
+        let t_ms = self.now_ms();
         log.next += 1;
         let seq = log.next;
         if log.ring.len() == EVENT_WINDOW {
@@ -292,7 +303,7 @@ impl TraceHandle {
             .filter(|event| event.seq > since)
             .take(limit)
             .map(|event| {
-                json!({ "seq": event.seq, "t_ms": round(event.t_ms), "kind": event.kind,
+                json!({ "seq": event.seq, "t_ms": round3(event.t_ms), "kind": event.kind,
                     "fields": event.fields })
             })
             .collect();
@@ -302,7 +313,7 @@ impl TraceHandle {
             .unwrap_or(since.max(oldest.saturating_sub(1)));
         json!({
             "enabled": self.enabled(),
-            "now_ms": round(self.now_ms()),
+            "now_ms": round3(self.now_ms()),
             "next": next,
             "lost": lost,
             "window": EVENT_WINDOW,
@@ -473,7 +484,7 @@ impl TraceHandle {
         json!({
             "enabled": self.enabled(),
             // The trace's own clock now, to place a window of interest on the `*_ms` stamps.
-            "now_ms": round(ms(self.epoch.elapsed())),
+            "now_ms": round3(ms(self.epoch.elapsed())),
             "frames_total": inner.frames_total,
             "dropped": inner.dropped,
             "window": { "samples": SAMPLE_WINDOW, "frames": FRAME_WINDOW },
@@ -662,5 +673,49 @@ mod tests {
             "a reader that kept its cursor sees the new event"
         );
         assert!(after["events"][0]["seq"].as_u64().unwrap() > before);
+    }
+
+    #[test]
+    fn events_from_several_threads_are_in_time_order_as_well_as_in_sequence() {
+        const WRITERS: usize = 4;
+        const EACH: usize = 1_000;
+        let trace = TraceHandle::default();
+        trace.set_enabled(true);
+        let go = std::sync::Barrier::new(WRITERS);
+        std::thread::scope(|scope| {
+            for writer in 0..WRITERS {
+                let (trace, go) = (&trace, &go);
+                scope.spawn(move || {
+                    go.wait();
+                    for n in 0..EACH {
+                        trace.event("race", || json!({ "writer": writer, "n": n }));
+                    }
+                });
+            }
+        });
+        // The raw stamps, not the microsecond-rounded ones a reader gets: a smaller step would hide an inversion.
+        let log = trace.events.lock().unwrap();
+        assert_eq!(log.ring.len(), WRITERS * EACH);
+        for pair in log.ring.iter().collect::<Vec<_>>().windows(2) {
+            assert_eq!(pair[1].seq, pair[0].seq + 1);
+            assert!(
+                pair[1].t_ms >= pair[0].t_ms,
+                "event {} is stamped {} ms, before event {} at {} ms",
+                pair[1].seq,
+                pair[1].t_ms,
+                pair[0].seq,
+                pair[0].t_ms
+            );
+        }
+    }
+
+    #[test]
+    fn a_span_never_started_has_no_duration_and_a_started_one_is_written_to_the_microsecond() {
+        assert_eq!(ms_since(None), None);
+        let measured = ms_since(Some(Instant::now())).expect("a started span has a duration");
+        assert!(measured >= 0.0);
+        assert_eq!(measured, round3(measured));
+        assert_eq!(round3(1.234_567), 1.235);
+        assert_eq!(ms(Duration::from_micros(1500)), 1.5);
     }
 }

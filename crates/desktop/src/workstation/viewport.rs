@@ -21,6 +21,7 @@ use super::{Geometry, Workstation};
 use crate::state::layout::PanelKind;
 use tessel_editor_core::CommandError;
 use tessel_editor_core::ops::RenderFrame;
+use tessel_editor_core::trace::{ms, round3};
 
 /// What the viewport pane shows.
 pub enum ViewportContent {
@@ -134,7 +135,7 @@ impl Workstation {
                         let kind = script_kind(&script);
                         view.read(cx).evaluate_script_with_callback(&script, move |_| {
                             done.event("eval_done", || {
-                                serde_json::json!({ "kind": kind, "ms": sent.elapsed().as_secs_f64() * 1000.0 })
+                                serde_json::json!({ "kind": kind, "ms": round3(ms(sent.elapsed())) })
                             });
                         })
                     }

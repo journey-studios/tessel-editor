@@ -17,20 +17,19 @@ mod directed;
 mod overlay_host;
 use overlay_host::OverlayHost;
 
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use async_channel::{Receiver, Sender};
 use serde_json::{Value, json};
 use tessel_editor_core::CommandError;
-use tessel_editor_core::backend::{BackendError, FrameDetail, FrameResult, Output};
-use tessel_editor_core::bridge::{BridgeBackend, HelloOptions, PreviewSort, Transport};
+use tessel_editor_core::backend::{
+    BackendError, FEATURE_SCENE_WARM_DRAW, FrameDetail, FrameResult, Output,
+};
+use tessel_editor_core::bridge::{BridgeBackend, HelloOptions, PageTiming, PreviewSort, Transport};
 use tessel_editor_core::headless::{backend_error, frame_geometry, frame_report, plan_summary};
 use tessel_editor_core::ops::RenderFrame;
 use tessel_editor_core::perf::{FrameContext, Meter};
@@ -39,17 +38,13 @@ use tessel_editor_core::plan::{PlanRequest, RenderPlan};
 use tessel_editor_core::preview::ProxyCoverage;
 use tessel_editor_core::session::{Preview, SessionEvent, Status, ViewportSession};
 use tessel_editor_core::state::EditorState;
-use tessel_editor_core::trace::TraceHandle;
+use tessel_editor_core::trace::{TraceHandle, ms, ms_since, round3};
 use tessel_editor_render::SetupError;
-use tessel_editor_render::asset_io::{
-    AssetPool, DEFAULT_QUEUE, DEFAULT_WORKERS, Outcome, ReadJob, Rejection,
-};
-use tessel_editor_render::host::{
-    AssetAccess, Resolved, Served, query_param, read_file, resolve, write_png,
-};
-use wry::http::{Request, Response};
+use tessel_editor_render::host::{AssetAccess, write_png};
 
+use super::env_mode;
 use super::perf_meter::PerfClock;
+use super::viewport_protocol::{AssetIo, AssetIoMode, ProtocolHandle, load_fields, trace_label};
 
 /// Scheme and host the page is served from. A custom scheme keeps the page same-origin with
 /// its assets and unreachable from any web page.
@@ -119,12 +114,6 @@ pub const WARM_DRAW_ENV: &str = "TESSEL_VIEWPORT_WARM_DRAW";
 /// `0`, `2` or `4` MSAA samples for scene targets. Unset keeps the runtime's 4 (OPT07 measured
 /// fewer samples as a real gain on large splat scenes but a visible edge-quality trade).
 pub const SCENE_SAMPLES_ENV: &str = "TESSEL_VIEWPORT_SCENE_SAMPLES";
-/// `sync` (the default) or `async`: whether the protocol handler of the WebView reads the project's files on the thread that
-/// received the request or hands the read to the bounded worker pool of `tessel_editor_render::asset_io` (BL157.1). A
-/// diagnostic of one experiment, read once when the host is created: the same build answers both ways, so the two can be
-/// measured against each other. Not a product setting and not reachable from the interface. A value that is neither
-/// name is a typo: it is warned about on stderr and the default is used (the report names the mode in effect).
-pub const ASSET_IO_ENV: &str = "TESSEL_VIEWPORT_ASSET_IO";
 /// How far ahead of the playhead playback loads the assets of clips that are about to start.
 pub const PREFETCH_SECONDS: i64 = 2;
 /// `0`, `2` or `4` MSAA samples of scene layers in the monitor's interactive frames (playback and
@@ -142,44 +131,6 @@ pub const PREVIEW_SCENE_SAMPLES_ENV: &str = "TESSEL_VIEWPORT_PREVIEW_SCENE_SAMPL
 /// they are, and the monitor policy `monitor.preview.quality = original` is what draws an interactive
 /// frame at the original quality. Explicit frames and export never read it: they wait for their own sort.
 pub const PREVIEW_SORT_ENV: &str = "TESSEL_VIEWPORT_PREVIEW_SORT";
-
-/// Who reads the files the page asks for (see [`ASSET_IO_ENV`]).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum AssetIoMode {
-    /// On the thread that received the request (the behaviour before BL157.1).
-    #[default]
-    Sync,
-    /// On a bounded pool of workers; the callback returns without waiting for the read.
-    Async,
-}
-
-impl AssetIoMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            AssetIoMode::Sync => "sync",
-            AssetIoMode::Async => "async",
-        }
-    }
-
-    pub fn parse(text: &str) -> Option<Self> {
-        match text.trim().to_ascii_lowercase().as_str() {
-            "sync" => Some(AssetIoMode::Sync),
-            "async" => Some(AssetIoMode::Async),
-            _ => None,
-        }
-    }
-}
-
-/// The mode an environment value asks for: `Ok(None)` when unset or empty, `Err(warning)` for a value that is neither
-/// name (the default is used).
-pub(super) fn asset_io_from_env(value: Option<&str>) -> Result<Option<AssetIoMode>, String> {
-    match value.map(str::trim) {
-        None | Some("") => Ok(None),
-        Some(text) => AssetIoMode::parse(text).map(Some).ok_or_else(|| {
-            format!("{ASSET_IO_ENV}={text:?} is not `sync` or `async`: using `sync`")
-        }),
-    }
-}
 
 /// Opt-ins read once when the host is created.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -200,8 +151,8 @@ pub struct HostOptions {
     /// See [`PREUPLOAD_ENV`].
     pub preupload: bool,
     pub warm_draw: bool,
-    /// Who reads the page's files (BL157.1); `None` is [`AssetIoMode::Sync`].
-    pub asset_io: Option<AssetIoMode>,
+    /// Who reads the page's files (BL157.1).
+    pub asset_io: AssetIoMode,
 }
 
 /// A MSAA sample count the runtime accepts, from an environment value.
@@ -255,13 +206,7 @@ impl HostOptions {
                 .then_some(false),
             preupload: std::env::var(PREUPLOAD_ENV).is_ok_and(|value| value == "1"),
             warm_draw: std::env::var(WARM_DRAW_ENV).is_ok_and(|value| value == "1"),
-            asset_io: match asset_io_from_env(std::env::var(ASSET_IO_ENV).ok().as_deref()) {
-                Ok(mode) => mode,
-                Err(warning) => {
-                    eprintln!("tessel-editor: {warning}");
-                    None
-                }
-            },
+            asset_io: env_mode::from_env(),
             scene_samples: samples_from_env(SCENE_SAMPLES_ENV),
             retained_bytes: retained_bytes_from_env(std::env::var(RETAIN_MIB_ENV).ok().as_deref()),
             preview_scene_samples: samples_from_env(PREVIEW_SCENE_SAMPLES_ENV),
@@ -301,18 +246,6 @@ pub struct WebTransport {
     trace: TraceHandle,
 }
 
-/// A short, stable, non-reversible label for something private (an asset's path or name) so a trace can correlate the
-/// protocol request and a file-based `asset.load` without writing the name down. A frame-sequence
-/// pattern label does not identify an expanded frame request (F063/BL157.3). FNV-1a, 32 bits shown.
-pub fn trace_label(prefix: char, text: &str) -> String {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in text.bytes() {
-        hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(0x0100_0000_01b3);
-    }
-    format!("{prefix}{:08x}", hash as u32)
-}
-
 /// What the monitor's header adds when the picture is not the final quality: a proxy copy of a
 /// video, a scene drawn with fewer MSAA samples, and/or splats painted in the order of an earlier
 /// camera (the refine replaces all of them once the playhead stops). Empty for a final-quality picture.
@@ -347,18 +280,7 @@ impl Transport for WebTransport {
         if message["type"] == "asset.load" {
             // The page may only fetch what a load message named.
             self.access.borrow_mut().register(&message["asset"]);
-            self.trace.event("asset_load_sent", || {
-                let source = &message["asset"]["source"];
-                let location = source["path"]
-                    .as_str()
-                    .or_else(|| source["pattern"].as_str())
-                    .unwrap_or_default();
-                json!({
-                    "asset": trace_label('k', message["asset"]["id"].as_str().unwrap_or_default()),
-                    "kind": message["asset"]["kind"],
-                    "path": trace_label('a', &format!("p={}", location)),
-                })
-            });
+            self.trace.event("asset_load_sent", || load_fields(message));
         }
         if message["type"] == "frame.warm" {
             self.trace.event(
@@ -411,6 +333,8 @@ pub struct ViewportHost {
     access: Rc<RefCell<AssetAccess>>,
     /// Who reads the page's files, and the pool that does when it is not the receiving thread (BL157.1).
     asset_io: AssetIo,
+    /// Whether the `hello` asked for the warm draw (BL157.3): the runtime does the work, this only makes the arm visible.
+    warm_draw: bool,
     phase: Phase,
     /// The last plan asked for, so a command that changes nothing the picture shows (selection,
     /// zoom, dock edits) does not render again.
@@ -453,43 +377,6 @@ pub struct ViewportHost {
     history_epoch: u64,
 }
 
-/// The protocol handler's way of reading, fixed when the host is created.
-struct AssetIo {
-    mode: AssetIoMode,
-    /// Present only for [`AssetIoMode::Async`]; nothing is spawned for the default.
-    pool: Option<AssetPool>,
-    /// Requests the handler received, whichever way it answered them.
-    requests: Arc<AtomicU64>,
-}
-
-impl AssetIo {
-    fn new(mode: AssetIoMode) -> Self {
-        Self {
-            mode,
-            pool: (mode == AssetIoMode::Async)
-                .then(|| AssetPool::new(DEFAULT_WORKERS, DEFAULT_QUEUE)),
-            requests: Arc::default(),
-        }
-    }
-
-    /// A project or page change: reads of the old session answer `410` instead of being applied.
-    fn invalidate(&self) {
-        if let Some(pool) = &self.pool {
-            pool.invalidate();
-        }
-    }
-
-    fn report(&self) -> Value {
-        json!({
-            "mode": self.mode.as_str(),
-            "workers": self.pool.as_ref().map(AssetPool::workers),
-            "queue": self.pool.as_ref().map(AssetPool::queue_capacity),
-            "requests": self.requests.load(Ordering::Relaxed),
-            "pool": self.pool.as_ref().map(|pool| pool.stats().to_json()),
-        })
-    }
-}
-
 impl ViewportHost {
     pub fn new(page: Result<PathBuf, SetupError>) -> Self {
         Self::with_options(page, HostOptions::from_env())
@@ -511,8 +398,9 @@ impl ViewportHost {
             .with_options(HelloOptions {
                 retain: options.retain,
                 presented: options.trace,
-                timing: options.trace,
-                gpu_finish: options.trace && options.gpu_finish,
+                timing: options.trace.then_some(PageTiming {
+                    gpu_finish: options.gpu_finish,
+                }),
                 result_cache: options.result_cache,
                 scene_samples: options.scene_samples,
                 preview_scene_samples: options.preview_scene_samples,
@@ -527,7 +415,6 @@ impl ViewportHost {
         session.set_retained_bytes(options.retained_bytes.unwrap_or(RETAINED_ASSET_BYTES));
         session.set_warm(options.warm != Some(false));
         session.set_preupload(options.preupload);
-        session.set_warm_draw(options.warm_draw);
         session.trace().set_enabled(options.trace);
         let (dist, phase) = match page {
             Ok(dist) => (Some(dist), Phase::Booting(Instant::now())),
@@ -542,7 +429,8 @@ impl ViewportHost {
             outbox,
             inbox,
             access,
-            asset_io: AssetIo::new(options.asset_io.unwrap_or_default()),
+            asset_io: AssetIo::new(options.asset_io),
+            warm_draw: options.warm_draw,
             phase,
             last_key: None,
             dirty: true,
@@ -743,8 +631,7 @@ impl ViewportHost {
             self.dist.clone(),
             self.access.clone(),
             self.trace(),
-            self.asset_io.mode,
-            self.asset_io.pool.clone(),
+            self.asset_io.reader.clone(),
             self.asset_io.requests.clone(),
         )
     }
@@ -781,7 +668,7 @@ impl ViewportHost {
         self.overlay_forget();
         self.session.reset_project();
         self.access.borrow_mut().clear();
-        self.asset_io.invalidate();
+        self.asset_io.reader.invalidate();
         self.inbox.borrow_mut().clear();
         self.outbox.borrow_mut().clear();
         self.png_paths.clear();
@@ -803,7 +690,7 @@ impl ViewportHost {
         self.fail_waiters(&BackendError::new("cancelled", "The project was replaced"));
         self.session.reset_project();
         self.access.borrow_mut().clear();
-        self.asset_io.invalidate();
+        self.asset_io.reader.invalidate();
         self.last_key = None;
         self.last_frame = None;
         // Frame IDs may now mean something else: what the monitor showed is not known anymore.
@@ -886,7 +773,7 @@ impl ViewportHost {
         self.proxy_coverage = state.preview_policy.coverage(state);
         let planned = trace.start();
         let plan = state.plan(&PlanRequest::of(state));
-        let plan_ms = planned.map(|started| started.elapsed().as_secs_f64() * 1000.0);
+        let plan_ms = ms_since(planned);
         if let Some(started) = planned {
             trace.note_plan(started.elapsed());
         }
@@ -919,7 +806,7 @@ impl ViewportHost {
             trace.span("sync_unchanged", sync_started);
             trace.event("sync", || {
                 json!({ "outcome": "unchanged", "frame": plan.frame, "plan_ms": plan_ms,
-                    "total_ms": sync_started.map(|at| at.elapsed().as_secs_f64() * 1000.0) })
+                    "total_ms": ms_since(sync_started) })
             });
             return;
         }
@@ -936,7 +823,7 @@ impl ViewportHost {
         trace.span("sync", sync_started);
         trace.event("sync", || {
             json!({ "outcome": "requested", "frame": frame, "plan_ms": plan_ms,
-                "total_ms": sync_started.map(|at| at.elapsed().as_secs_f64() * 1000.0) })
+                "total_ms": ms_since(sync_started) })
         });
     }
 
@@ -958,7 +845,7 @@ impl ViewportHost {
         let entered = trace.start();
         let planned = trace.start();
         let plans = state.plans_ahead(frames);
-        let plans_ahead_ms = planned.map(|at| at.elapsed().as_secs_f64() * 1000.0);
+        let plans_ahead_ms = ms_since(planned);
         trace.span("plans_ahead", planned);
         let mut assets = Vec::new();
         for asset in plans.iter().flat_map(|plan| plan.requires.iter()) {
@@ -972,7 +859,7 @@ impl ViewportHost {
         } else {
             self.session.prefetch(state, &assets)
         };
-        let prefetch_ms = loading.map(|at| at.elapsed().as_secs_f64() * 1000.0);
+        let prefetch_ms = ms_since(loading);
         // What was loaded on an earlier tick gets its splat scenes' first sort now, not at the cut (BL157). Also
         // with nothing ahead: the cuts that left the window are forgotten, so a return to one warms it again.
         let warming = trace.start();
@@ -981,8 +868,8 @@ impl ViewportHost {
             json!({
                 "plans": plans.len(), "assets": assets.len(), "loads_started": started, "warms_started": warmed,
                 "plans_ahead_ms": plans_ahead_ms, "prefetch_ms": prefetch_ms,
-                "warm_ms": warming.map(|at| at.elapsed().as_secs_f64() * 1000.0),
-                "total_ms": entered.map(|at| at.elapsed().as_secs_f64() * 1000.0),
+                "warm_ms": ms_since(warming),
+                "total_ms": ms_since(entered),
             })
         });
         started + warmed
@@ -1233,7 +1120,7 @@ impl ViewportHost {
                             "page": message["page"],
                             "runtime_total_ms": message["timings"]["total_ms"],
                             "gpu_finish_ms": message["timings"]["gpu_finish_ms"],
-                            "ipc_wait_ms": waited.map(|waited| round3(waited.as_secs_f64() * 1000.0)),
+                            "ipc_wait_ms": waited.map(|waited| round3(ms(waited))),
                         })
                     });
                 }
@@ -1519,6 +1406,10 @@ impl ViewportHost {
             .map(BackendError::to_json);
         let mut summary = self.session.summary();
         summary["error"] = error.unwrap_or(Value::Null);
+        summary["warm_draw"] = json!({
+            "enabled": self.warm_draw,
+            "supported": self.session.known_capabilities().is_some_and(|caps| caps.supports(FEATURE_SCENE_WARM_DRAW)),
+        });
         if self.session.trace().enabled() {
             summary["trace"] = self.session.trace().snapshot(frames);
         }
@@ -1539,237 +1430,4 @@ impl ViewportHost {
             "last_frame": self.last_frame.as_ref().map(FrameResult::to_json),
         })
     }
-}
-
-/// How a request is answered: the WebView's responder, or anything that takes the response once.
-pub type Respond = Box<dyn FnOnce(Response<Cow<'static, [u8]>>) + Send>;
-
-/// Serves `tessel://localhost/...` for the WebView.
-pub struct ProtocolHandle {
-    dist: Option<PathBuf>,
-    access: Rc<RefCell<AssetAccess>>,
-    trace: TraceHandle,
-    mode: AssetIoMode,
-    pool: Option<AssetPool>,
-    requests: Arc<AtomicU64>,
-    /// The thread the handle was made on: the window's. A request received anywhere else is traced as such.
-    ui_thread: std::thread::ThreadId,
-}
-
-/// The facts of one request that the trace carries from the callback to the completion.
-struct RequestFacts {
-    id: u64,
-    mode: AssetIoMode,
-    label: String,
-    range: Option<String>,
-    /// Host clock when the callback began.
-    received_ms: f64,
-}
-
-impl ProtocolHandle {
-    pub(crate) fn new(
-        dist: Option<PathBuf>,
-        access: Rc<RefCell<AssetAccess>>,
-        trace: TraceHandle,
-        mode: AssetIoMode,
-        pool: Option<AssetPool>,
-        requests: Arc<AtomicU64>,
-    ) -> Self {
-        // `Async` without a pool cannot read anywhere else: it answers on this thread instead of failing.
-        let mode = if pool.is_some() {
-            mode
-        } else {
-            AssetIoMode::Sync
-        };
-        Self {
-            dist,
-            access,
-            trace,
-            mode,
-            pool,
-            requests,
-            ui_thread: std::thread::current().id(),
-        }
-    }
-
-    /// Answers the request through `respond`: in `sync` mode before it returns; in `async` mode `respond` is called later
-    /// by a worker, and this returns as soon as the request is authorized and queued. Every request is answered exactly
-    /// once: a full queue is answered here with `503` (and counted), never dropped.
-    pub fn handle(&self, request: &Request<Vec<u8>>, respond: Respond) {
-        let entered = self.trace.start();
-        let id = self.requests.fetch_add(1, Ordering::Relaxed) + 1;
-        let uri = request.uri();
-        let (path, query) = (uri.path(), uri.query().unwrap_or_default());
-        let range = request
-            .headers()
-            .get("range")
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_owned);
-        let facts = RequestFacts {
-            id,
-            mode: self.mode,
-            label: if self.trace.enabled() {
-                if path == "/asset" {
-                    // A file load gets this decoded-path label too; a sequence load names a pattern, not this concrete frame.
-                    let location = query_param(query, "p").unwrap_or_default();
-                    trace_label('a', &format!("p={location}"))
-                } else {
-                    path.to_owned()
-                }
-            } else {
-                String::new()
-            },
-            range: range.clone(),
-            received_ms: self.trace.now_ms(),
-        };
-        let resolved = match &self.dist {
-            Some(dist) => resolve(dist, &self.access.borrow(), path, query, range.as_deref()),
-            None => Resolved::Answer(not_built()),
-        };
-        let mut outcome = "answered";
-        match resolved {
-            Resolved::Answer(served) => respond(to_response(served)),
-            Resolved::File { file, range } => match (&self.pool, self.mode) {
-                // Only project assets go to the pool: the page's own bundle (`/`, `/index.html`, `/runtime.js`) is read
-                // here, as it always was, so replacing the project (which makes queued reads answer `410`) can never
-                // refuse the runtime its own code.
-                (Some(pool), AssetIoMode::Async) if path == "/asset" => {
-                    outcome = self.submit(pool, &facts, ReadJob { file, range }, respond);
-                }
-                _ => {
-                    let started = Instant::now();
-                    let served = read_file(&file, range.as_deref());
-                    let read = started.elapsed();
-                    self.note_io(&facts, &served, read, None);
-                    respond(to_response(served));
-                }
-            },
-        }
-        self.trace.span("serve", entered);
-        self.trace.event("asset_cb", || {
-            let thread = std::thread::current();
-            json!({
-                "req": facts.id, "mode": facts.mode.as_str(), "asset": facts.label,
-                "range": facts.range, "outcome": outcome,
-                "on_ui_thread": thread.id() == self.ui_thread,
-                "thread": thread.name().unwrap_or("unnamed"),
-                "recv_ms": round3(facts.received_ms),
-                "callback_ms": round3(self.trace.now_ms() - facts.received_ms),
-            })
-        });
-    }
-
-    /// Hands the read to the pool. Returns what happened to the request, for the trace.
-    fn submit(
-        &self,
-        pool: &AssetPool,
-        facts: &RequestFacts,
-        job: ReadJob,
-        respond: Respond,
-    ) -> &'static str {
-        let trace = self.trace.clone();
-        let id = facts.id;
-        let label = facts.label.clone();
-        let range = facts.range.clone();
-        let received_ms = facts.received_ms;
-        let done = Box::new(move |served: Served, outcome: Outcome| {
-            let status = served.status;
-            let bytes = served.body.len();
-            let responding = Instant::now();
-            respond(to_response(served));
-            let respond_ms = responding.elapsed().as_secs_f64() * 1000.0;
-            trace.event("asset_io", || {
-                json!({
-                    "req": id, "mode": "async", "asset": label, "range": range,
-                    "status": status, "bytes": bytes,
-                    "worker": outcome.worker,
-                    "thread": std::thread::current().name().unwrap_or("unnamed"),
-                    "on_ui_thread": false,
-                    "recv_ms": round3(received_ms),
-                    "queue_wait_ms": round3(outcome.queue_wait.as_secs_f64() * 1000.0),
-                    "read_ms": round3(outcome.read.as_secs_f64() * 1000.0),
-                    "respond_ms": round3(respond_ms),
-                    "depth_at_submit": outcome.depth_at_submit,
-                    "stale": outcome.stale,
-                })
-            });
-        });
-        match pool.submit(job, done) {
-            Ok(()) => "queued",
-            Err((rejection, done)) => {
-                // Explicit and countable, never silent: the run that sees it is invalid, not fast.
-                let (status, text, outcome) = match rejection {
-                    Rejection::Saturated => (503, "the asset read queue is full", "saturated"),
-                    Rejection::Closed => (503, "the asset read pool is closed", "closed"),
-                };
-                done(
-                    Served {
-                        status,
-                        content_type: "text/plain; charset=utf-8",
-                        body: text.as_bytes().to_vec(),
-                        content_range: None,
-                    },
-                    Outcome {
-                        worker: None,
-                        queue_wait: Duration::ZERO,
-                        read: Duration::ZERO,
-                        stale: false,
-                        depth_at_submit: pool.stats().queued(),
-                    },
-                );
-                outcome
-            }
-        }
-    }
-
-    /// The `asset_io` event of a read that ran on the calling thread.
-    fn note_io(
-        &self,
-        facts: &RequestFacts,
-        served: &Served,
-        read: Duration,
-        worker: Option<usize>,
-    ) {
-        self.trace.event("asset_io", || {
-            let thread = std::thread::current();
-            json!({
-                "req": facts.id, "mode": facts.mode.as_str(), "asset": facts.label,
-                "range": facts.range, "status": served.status, "bytes": served.body.len(),
-                "worker": worker, "thread": thread.name().unwrap_or("unnamed"),
-                "on_ui_thread": thread.id() == self.ui_thread,
-                "recv_ms": round3(facts.received_ms),
-                "queue_wait_ms": 0.0,
-                "read_ms": round3(read.as_secs_f64() * 1000.0),
-                "depth_at_submit": 0, "stale": false,
-            })
-        });
-    }
-}
-
-fn round3(value: f64) -> f64 {
-    (value * 1000.0).round() / 1000.0
-}
-
-fn not_built() -> Served {
-    Served {
-        status: 404,
-        content_type: "text/plain; charset=utf-8",
-        body: b"the runtime bundle is not built".to_vec(),
-        content_range: None,
-    }
-}
-
-/// The HTTP response of what was served: the same status, type and range headers whichever thread built it.
-pub fn to_response(served: Served) -> Response<Cow<'static, [u8]>> {
-    let mut response = Response::builder()
-        .status(served.status)
-        .header("Content-Type", served.content_type)
-        .header("Accept-Ranges", "bytes")
-        .header("Cache-Control", "no-store");
-    if let Some(range) = &served.content_range {
-        response = response.header("Content-Range", range);
-    }
-    response
-        .body(Cow::Owned(served.body))
-        .unwrap_or_else(|_| Response::new(Cow::Borrowed(&[][..])))
 }

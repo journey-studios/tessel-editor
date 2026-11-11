@@ -21,7 +21,7 @@ use super::viewport_host::{HostOptions, PAGE_URL, ViewportHost};
 
 /// What the handle answers for `request`, whichever thread answers (a worker answers later in `async` mode).
 pub(super) fn answer(
-    handle: &super::viewport_host::ProtocolHandle,
+    handle: &super::viewport_protocol::ProtocolHandle,
     request: &Request<Vec<u8>>,
 ) -> wry::http::Response<std::borrow::Cow<'static, [u8]>> {
     let (sender, receiver) = std::sync::mpsc::channel();
