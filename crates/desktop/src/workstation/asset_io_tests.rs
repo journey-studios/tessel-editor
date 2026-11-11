@@ -287,6 +287,72 @@ fn the_page_account_of_a_frame_and_the_wait_of_its_message_reach_the_trace() {
     );
 }
 
+/// BL157.3: an `on` arm of the two first-use experiments is judged by what the PAGE says it did (`preupload` / `warm_draw` spans), and
+/// the host is the only road those take to the trace the A/B harness reads. `runtime/test/fixtures/activation-spans.json` is the one
+/// list of what the page can say: the runtime suite makes the real page say every item, `scripts/first-use-ab.spec.py` has the harness
+/// judge an arm by it, and here every item must come out of the host as a `runtime_span` with `k`, `outcome` and `ms` untouched, in
+/// order. Otherwise a working arm could be judged "never happened" (or the reverse) by a trace that lost its evidence on the way.
+#[test]
+fn every_outcome_the_page_can_report_for_the_two_experiments_reaches_the_trace_intact() {
+    use super::viewport_host::{HostOptions, ViewportHost};
+    use super::viewport_host_tests::{frame_done, from_page, ready_message, sent};
+    use tessel_editor_core::EditorState;
+
+    let contract: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../runtime/test/fixtures/activation-spans.json"
+    )))
+    .unwrap();
+    // What the page sends with one frame: every outcome of both experiments, each with a duration of its own.
+    let mut said: Vec<serde_json::Value> = Vec::new();
+    for (k, spec) in contract["spans"].as_object().unwrap() {
+        let mut outcomes = vec![spec["worked"].clone()];
+        outcomes.extend(spec["not_worked"].as_array().unwrap().iter().cloned());
+        for (n, outcome) in outcomes.into_iter().enumerate() {
+            said.push(json!({"k": k, "outcome": outcome, "ms": 1.5 + n as f64}));
+        }
+    }
+    assert!(
+        said.len() >= 14,
+        "both experiments list their outcomes: {said:?}"
+    );
+
+    let state = EditorState::demo();
+    let options = HostOptions {
+        trace: true,
+        ..HostOptions::default()
+    };
+    let mut host = ViewportHost::with_options(Ok(page("io-activation-spans")), options);
+    from_page(&mut host, &state, json!({"type":"page.ready"}));
+    sent(&mut host);
+    from_page(&mut host, &state, ready_message());
+    let mut done = frame_done(9, 1);
+    done["runtime_spans"] = json!(said);
+    from_page(&mut host, &state, done);
+
+    let events = host.trace().events_since(0, 500);
+    let heard: Vec<&serde_json::Value> = events["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|event| event["kind"] == "runtime_span")
+        .map(|event| &event["fields"])
+        .collect();
+    assert_eq!(
+        heard.len(),
+        said.len(),
+        "one trace event per span the page sent"
+    );
+    for (heard, said) in heard.iter().zip(&said) {
+        for key in ["k", "outcome", "ms"] {
+            assert_eq!(
+                heard[key], said[key],
+                "`{key}` of {said} came out as {heard}"
+            );
+        }
+    }
+}
+
 /// The controls that hold a read with a named pipe (Unix only).
 #[cfg(unix)]
 mod held_read {
