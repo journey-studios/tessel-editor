@@ -9,7 +9,7 @@ que o modelo manda e recusa o que o core recusa. Esta entrega também move a vin
 acrescenta o segundo look, o `fade` (escopo de saída), sem seção própria nem código especial na janela.
 
 Não é o catálogo inteiro: **3 dos 59** efeitos do piloto estão implementados (`vignette`, `fade` e, desde P3, `filmGrain`). Não há
-placeholder habilitado para os outros 56 (ver [Oferta](#oferta-o-que-existe-e-o-que-não)). Chaves, easing e seed estão em [F058](fx-keys.md) desde P3; sem escopo `shot`/`node` e sem transições (P4). O contrato de edição, gesto, plano e runtime é o
+placeholder habilitado para os outros 56 (ver [Oferta](#oferta-o-que-existe-e-o-que-não)). Chaves, easing e seed estão em [F058](fx-keys.md) desde P3; o escopo `shot` e a escolha dele, em [F062](fx-shot-scope.md) desde P4a; sem escopo `node` e sem transições (P4b). O contrato de edição, gesto, plano e runtime é o
 de [F016](effects.md); este documento só acrescenta o que é novo.
 
 ## Contrato do core / biblioteca
@@ -24,7 +24,8 @@ Módulo `tessel_editor_core::scene_edit` (`fx_inspector.rs`), sem GPUI:
 | `InspectorField::reset_op` | O op que devolve o campo ao padrão; `None` se já está nele ou se não tem padrão |
 | `ClipInspector::of` / `layer_inspector` | Os campos de um clipe / de toda a camada: `intensity` primeiro, depois os demais parâmetros na ordem do catálogo, depois o tempo (início, duração, fade in, fade out) |
 | `reset_ops(campos, clipe)` / `ClipInspector::reset_ops` | O reset do **visual**: um op por parâmetro fora do padrão. Os componentes de um ponto/cor (`color_r/_g/_b`, `center_x/_y`) viram **um** `set_param` com todos os padrões (um op por componente seria montado a partir do clipe como está e o último apagaria os outros; foi um defeito real, achado pela prova da janela e coberto por teste). O tempo nunca entra no reset |
-| `offers()` / `scopes()` | O que o catálogo oferece e o que cada escopo diz (`output` aplicável; `shot`/`node` com motivo `FX_SCOPE_NOT_YET`) |
+| `offers()` / `scopes()` | O que o catálogo oferece e o que cada escopo diz (`output` e, desde F062, `shot` aplicáveis; `node` com motivo `FX_SCOPE_NOT_YET`) |
+| `inspector_choices(clip, shots)` / `InspectorChoice` | A **primeira escolha** do modelo (F062): o escopo do clipe (`id: "scope"`, `type: "choice"`) com as opções `output` e uma `shot:<id>` por plano da edição, cada uma com `applicable`/`reason` (o código que a edição recusaria: `FX_SCOPE_MISMATCH`/`UNKNOWN_SHOT`), o `intent` e os quadros do plano, e o `op` que a escolhe. `InspectorChoice::op(clip, texto)` monta o `set_scope` |
 
 Rótulos: `Labels { pt_br, en, es }` e `Locale` (`pt-br`, `en`, `es`; `pt` é aceito como pt-br) em
 `directed_scene::fx::catalog`. Cada efeito traz `label` e `summary`, cada parâmetro um `label`, e o
@@ -36,8 +37,8 @@ oferecidos pelo catálogo**: um efeito novo sem texto em algum idioma reprova.
 ### Oferta: o que existe e o que não
 
 `scene.fx.inspect.offers` lista só efeitos reais (`vignette`, `fade`, `filmGrain`, todos `scope: output`,
-`applicable: true`). `scopes` diz `output` aplicável e `shot`/`node` não aplicáveis com o código
-`FX_SCOPE_NOT_YET`. Os 56 efeitos restantes **não aparecem**: nenhum controle habilitado, nenhum nome sem
+`applicable: true`). `scopes` diz `output` e `shot` aplicáveis (F062) e `node` não aplicável com o código
+`FX_SCOPE_NOT_YET`; `shots` lista os planos da edição e `shot` o do quadro consultado, e cada clipe traz `choices` (o escopo). Os 56 efeitos restantes **não aparecem**: nenhum controle habilitado, nenhum nome sem
 implementação. `FX_TRANSITION_NOT_YET` continua sendo a recusa de `transitions`.
 
 ## CLI headless
@@ -114,7 +115,7 @@ Diferenças em relação ao piloto, declaradas:
   **não tem dithering** (limite herdado de F016). Quando `intensity × weight × amount` é 0, o Rust e o runtime
   devolvem os bytes de entrada **exatamente** (sem ida e volta por luz linear): é a intenção do comentário do
   piloto ("exactly the identity at 0"). O corpus fixa os bytes (`ZERO_WEIGHT_IS_BYTE_IDENTITY` no manifesto).
-- Sem chaves (`amount` não é animável ainda), sem escopo `shot`.
+- Sem chaves (`amount` não é animável ainda), sem escopo `shot` (histórico do P2: as chaves vieram em P3 ([F058](fx-keys.md)) e o escopo `shot` em P4a ([F062](fx-shot-scope.md))).
 
 Plano e runtime: o `ScenePlan.fx` carrega o passe `fade` na ordem das trilhas, o validador recalcula o
 `amount`, e `runtime/src/output-fx.js` desenha só os valores resolvidos pelo core (um material retido por efeito,

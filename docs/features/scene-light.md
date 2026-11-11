@@ -49,7 +49,7 @@ a fatia suporta (ambiente 1 e até 4 luzes válidas) é avaliado e desenhado. O 
 
 `PLAN_VERSION` segue 1; o campo `lights` é aditivo (ausente sem luzes: os bytes dos planos anteriores não mudam).
 `Capability::PointLights` (`"pointLights"`) é exigida **somente** com ao menos uma luz visível, negociada como
-`outputFx`/`fxNoise`: um runtime sem ela é recusado antes de enviar qualquer ativo ou quadro (`unsupported` /
+`outputFx`/`fxNoise` (e, desde F062, `fxShotScope`, que fez `Capability::ALL` chegar a 13): um runtime sem ela é recusado antes de enviar qualquer ativo ou quadro (`unsupported` /
 `scene_plan_capabilities`, `missing` com `pointLights`), e o runtime recusa `invalid_plan` (`/requires`) um plano com luz
 visível sem a capacidade. Nenhuma reconstrução do plano por quadro além da que já existe.
 
