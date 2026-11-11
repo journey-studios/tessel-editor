@@ -161,6 +161,20 @@ class GapTests(unittest.TestCase):
         self.assertEqual(context["page_warm_ms"], 20.0)
         self.assertEqual(P.gap_context(events, 1100, 1190)["page_fetch_ms"], 90.0)
 
+    def test_a_span_the_page_reported_late_lies_where_it_ran_not_where_its_report_arrived(self):
+        # The page's warm ran for 50 ms and ended 200 ms before the report reached the host at 1300: it ran 1050..1100, not 1250..1300.
+        events = [event("runtime_span", 1300, k="warm", queued_ms=0, ms=50, started=1, ago_ms=200.0)]
+        self.assertEqual(P.span_interval(events[0]), (1050.0, 1100.0))
+        self.assertEqual(P.gap_context(events, 1000, 1120)["page_warm_ms"], 50.0, "the gap it was inside")
+        self.assertEqual(P.gap_context(events, 1250, 1320)["page_warm_ms"], 0.0, "the gap its report arrived in")
+        self.assertEqual(P.gap_context(events, 1080, 1090)["page_warm_ms"], 10.0)
+
+    def test_a_span_without_an_age_is_placed_at_its_arrival(self):
+        events = [event("runtime_span", 1300, k="warm", queued_ms=0, ms=50, started=1)]
+        self.assertEqual(P.span_interval(events[0]), (1250.0, 1300.0))
+        self.assertEqual(P.gap_context(events, 1250, 1320)["page_warm_ms"], 50.0)
+        self.assertEqual(P.gap_context(events, 1000, 1120)["page_warm_ms"], 0.0)
+
     def test_a_play_summary_counts_slow_gaps_by_location_without_calling_them_causes(self):
         events = [event("play_command", 0), event("play_clock_started", 10)]
         frames, done = [], 10

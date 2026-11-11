@@ -67,6 +67,14 @@ def overlap_ms(a0, a1, b0, b1):
     return max(0.0, min(a1, b1) - max(a0, b0))
 
 
+def span_interval(event):
+    """Where a span the page reported lay on the host clock: it lasted `ms` and had ended `ago_ms` before the host got the report (the message that
+    carries it can leave the page long after), so it is [arrival - ago - ms, arrival - ago]. A span without `ago_ms` (timing off) is placed at its arrival."""
+    fields = event["fields"]
+    end = event["t_ms"] - (fields.get("ago_ms") or 0)
+    return end - (fields.get("ms") or 0), end
+
+
 def events_in(events, kind, t0, t1):
     return [e for e in events if e["kind"] == kind and t0 <= e["t_ms"] <= t1]
 
@@ -86,8 +94,7 @@ def gap_context(events, t0, t1):
     decodes = [overlap_ms(e["t_ms"] - e["fields"]["timings"].get("decode_ms", 0), e["t_ms"], t0, t1) for e in loads]
     fetches = [overlap_ms(e["t_ms"] - e["fields"]["timings"]["load_ms"], e["t_ms"] - e["fields"]["timings"].get("decode_ms", 0), t0, t1)
                for e in loads]
-    warms = [overlap_ms(e["t_ms"] - e["fields"].get("ms", 0), e["t_ms"], t0, t1) for e in events if e["kind"] == "runtime_span"
-             and e["fields"].get("k") == "warm"]
+    warms = [overlap_ms(*span_interval(e), t0, t1) for e in events if e["kind"] == "runtime_span" and e["fields"].get("k") == "warm"]
     return {
         "page_decode_ms": round(sum(decodes), 3),
         "page_fetch_ms": round(sum(fetches), 3),
