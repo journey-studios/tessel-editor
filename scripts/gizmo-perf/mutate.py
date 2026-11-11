@@ -28,7 +28,9 @@ performance lock, taken once for all of them and never waited for (BLOCKED, exit
 The mutated source is restored in a `finally` (also on SIGTERM/SIGINT, which become `SystemExit`) and the file hash is
 compared with `git`'s after every mutant; a mismatch aborts loudly. The restore, with the three hashes (committed,
 mutated, restored), is logged in the manifest. The `time` phase refuses to run for another HEAD/tree than the
-`prepare` that built the executables and writes ONE merged manifest (`manifest.final.json`).
+`prepare` that built the executables and writes ONE merged manifest (`manifest.final.json`): its refusals too, never
+over `prepare`'s `manifest.json`. It also refuses a `prepare` that is not finished and any mutant `prepare` did not run
+(it is never silently dropped), and a verdict over no mutant at all is never a pass.
 
 Exit 0 only when every mutant was detected by every detector that must detect it and passed every one that must not;
 1 when a mutant is not as expected; 3 when anything was BLOCKED or infrastructure failed (never a pass).
@@ -154,8 +156,15 @@ class Mutated:
         text = self.original.decode()
         if text.count(self.mutant['old']) != 1:
             raise AnchorNotUnique(f"the anchor of the mutant is not unique in {self.mutant['file']}")
-        self.path.write_text(text.replace(self.mutant['old'], self.mutant['new']))
-        self.log.update(committed_blob=committed_hash(self.mutant['file']), mutated_blob=file_hash(self.mutant['file']))
+        try:
+            self.path.write_text(text.replace(self.mutant['old'], self.mutant['new']))
+            self.log.update(committed_blob=committed_hash(self.mutant['file']),
+                            mutated_blob=file_hash(self.mutant['file']))
+        except BaseException:
+            # `__exit__` does not run when `__enter__` raises: whatever was written is put back here, before anything
+            # propagates (git unreadable, a full disk, SIGTERM between the write and the return).
+            self.path.write_bytes(self.original)
+            raise
         return self
 
     def __exit__(self, *exc):
@@ -250,6 +259,9 @@ def overall(manifest):
         if record.get('restore') and not record['restore'].get('restored', True):
             return 'NOT_RESTORED', 1
     flat = [v for per in verdicts.values() for v in per.values()]
+    if not flat:
+        # `all([])` is True: with no verdict at all "every detector answered as expected" would be vacuously true.
+        return 'NO_DETECTOR_EVALUATED', 1
     if any(not v['answer'] for v in flat):
         return 'BLOCKED_OR_INFRA', harness.BLOCKED_EXIT
     if all(v['as_expected'] for v in flat):
@@ -292,11 +304,14 @@ def main(argv=None):
     manifest = {'suite': 'gizmo-perf-mutants', 'phase': args.phase, 'utc_start': harness.utc(), 'command': sys.argv,
                 'identity': harness.git_identity(), 'toolchain': harness.toolchain(), 'mutants': {},
                 'status': 'ABORTED'}
+    # `manifest.json` is the `prepare` phase's (what `time` reads); the `time` phase writes only `manifest.final.json`, so a
+    # refusal of a later `time` run can never replace a finished `prepare` with a manifest that has no mutants.
+    refusal_path = out / ('manifest.json' if args.phase == 'prepare' else 'manifest.final.json')
     for name in names:
         path = MUTANTS[name]['file']
         if file_hash(path) != committed_hash(path):
             manifest.update(status='REFUSED', reason=f'{path} is not at HEAD: mutants start from a committed tree')
-            return harness.die(1, manifest, out / 'manifest.json')
+            return harness.die(1, manifest, refusal_path)
     exes_dir = out / 'exes'
     exes_dir.mkdir(exist_ok=True)
     if args.phase == 'prepare':
@@ -343,6 +358,16 @@ def main(argv=None):
         manifest.update(status='REFUSED', reason='`prepare` ran for another HEAD/tree: its executables are not these')
         return harness.die(1, manifest, out / 'manifest.final.json')
     manifest['prepare_identity'] = previous['identity']
+    if previous.get('status') != 'PREPARED':
+        manifest.update(status='REFUSED', reason=f"the manifest in --out is not a finished `prepare` "
+                                                 f"(status {previous.get('status')!r})")
+        return harness.die(1, manifest, out / 'manifest.final.json')
+    absent = [name for name in names if name not in previous['mutants']]
+    if absent:
+        # Filtering `previous` by `names` would leave no mutant at all and every detector "as expected" by default.
+        manifest.update(status='REFUSED', reason=f'`prepare` did not run {absent}: nothing was evaluated for them '
+                                                 '(run `--phase prepare` for those mutants first)')
+        return harness.die(1, manifest, out / 'manifest.final.json')
     manifest['mutants'] = {name: record for name, record in previous['mutants'].items() if name in names}
     state, reason = harness.guards()
     manifest['machine_before'] = state

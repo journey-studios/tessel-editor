@@ -5,9 +5,11 @@
     python3 scripts/gizmo-perf/native.py --phase run   [--out DIR] [--corpora small dense deep] [--functional-only]
 
 PROVENANCE. `build` builds the HEAD release editor through the repository's cargo wrapper (default target, finite
-timeout, clean tree only) and writes `build.json`: HEAD, tree, the editor's sha256, the runtime page's sha256 and
-source tree id, the corpus manifest and journey hashes. `run` refuses (`PROVENANCE_REFUSED`, exit 1) unless the editor it
-is about to start IS that binary (sha256), the tree is HEAD's and clean, `runtime/dist` is the recorded one and newer than
+timeout, clean tree only) and writes `build.json`: HEAD, tree, whether the tree was dirty (`--allow-dirty`), the editor's
+sha256, the runtime page's sha256 and source tree id (a build that cannot read it is refused), the corpus manifest and
+journey hashes. `run` refuses (`PROVENANCE_REFUSED`, exit 1) unless the editor it is about to start IS that binary
+(sha256), the tree is HEAD's and clean, the build was clean too (a record that says dirty, or does not say it was clean,
+is refused: stashing the changes does not turn that binary into HEAD's), `runtime/dist` is the recorded one and newer than
 the runtime sources, and every file the corpus manifest hashes is what it says. A number from another head, another build
 or another corpus cannot come out of this runner.
 
@@ -27,8 +29,9 @@ scene's picture can therefore never satisfy a wait. The checks are on the pictur
 a commit must change it, an undo must restore the exact earlier hash, a switch must show the new scene.
 
 CANCEL. Before the release the candidate is proven different from the base (the move reply's own candidate value and
-`would_change`, and, when the host drew it, a new picture whose hash differs); after the cancel the stored transform,
-the undo/redo depths and the picture hash are the base's, with a new picture when a candidate had been drawn.
+`would_change`) and must have been DRAWN (a picture newer than the press, within 2 s: a candidate that differs from the
+base and never got a picture fails its check, it is not just recorded) with a hash that differs from the base picture's;
+after the cancel the stored transform, the undo/redo depths and the picture hash are the base's, with a new picture.
 
 WHAT IT MEASURES (all raw samples are kept, nothing is trimmed): `client_ms` per request (socket round trip: core + host +
 IPC, NOT the host alone); the editor's own report of each picture (`render_ms`, `total_ms`, ... and the hash); the host's
@@ -168,7 +171,14 @@ def history_offset(want_undo, got_undo):
 
 
 def runtime_source_tree():
-    return harness.out(['git', 'rev-parse', 'HEAD:runtime'])
+    """The tree id of `HEAD:runtime`, or `None` when git cannot say. `git rev-parse` prints what it was given even
+    when it fails (and `harness.out` turns a failure into a text), so stdout alone is not an answer: a non-zero exit, a
+    timeout, a command that cannot start or an empty output is `None`, never a value two records could agree on."""
+    done = harness.run_bounded(['git', 'rev-parse', 'HEAD:runtime'], timeout=30)
+    tree = done.stdout.strip()
+    if done.timed_out or done.error or done.returncode != 0 or not tree:
+        return None
+    return tree
 
 
 def runtime_stale_reason(root=ROOT):
@@ -201,6 +211,10 @@ def verify_provenance(record, binary, identity, allow_dirty=False, root=ROOT, fi
         return 'no build record: run `--phase build` for this HEAD first'
     if identity['dirty'] and not allow_dirty:
         return 'the working tree is dirty: the binary cannot belong to HEAD'
+    # The tree can read clean again after a `--phase build --allow-dirty` (the changes stashed): the record keeps what the
+    # BUILD saw, and one that says `dirty` or does not say it was clean is not the build of HEAD.
+    if record.get('dirty', True) and not allow_dirty:
+        return 'the binary was built from a dirty tree (or its build record does not say it was clean): it cannot belong to HEAD'
     if record['head'] != identity['head'] or record['tree'] != identity['tree']:
         return f"the binary was built for {record['head'][:9]}, HEAD is {identity['head'][:9]}"
     if harness.sha256(binary) != record['binary_sha256']:
@@ -208,7 +222,10 @@ def verify_provenance(record, binary, identity, allow_dirty=False, root=ROOT, fi
     dist = root / 'runtime/dist/runtime.js'
     if not dist.exists() or harness.sha256(dist) != record['runtime_sha256']:
         return 'runtime/dist/runtime.js is not the one recorded at build time'
-    if record.get('runtime_source_tree') != runtime_source_tree():
+    runtime_tree = runtime_source_tree()
+    if runtime_tree is None:
+        return 'git cannot tell the tree id of HEAD:runtime: the runtime sources cannot be compared with the recorded ones'
+    if record.get('runtime_source_tree') != runtime_tree:
         return 'the runtime sources differ from the ones the build recorded'
     stale = runtime_stale_reason(root)
     if stale:
@@ -223,6 +240,9 @@ def build_phase(args, manifest, manifest_path, out):
         manifest.update(status='REFUSED', reason='the working tree is dirty: the binary would not belong to HEAD')
         return harness.die(1, manifest, manifest_path)
     reason = runtime_stale_reason() or verify_corpus()
+    runtime_tree = runtime_source_tree()
+    if not reason and runtime_tree is None:
+        reason = 'git cannot tell the tree id of HEAD:runtime: the build would record no runtime source tree'
     if reason:
         manifest.update(status='PREREQUISITE_MISSING', reason=reason)
         return harness.die(1, manifest, manifest_path)
@@ -250,9 +270,10 @@ def build_phase(args, manifest, manifest_path, out):
         manifest.update(status='REFUSED', reason=too_big)
         return harness.die(1, manifest, manifest_path)
     record = {'head': manifest['identity']['head'], 'tree': manifest['identity']['tree'],
+              'dirty': bool(manifest['identity']['dirty']),
               'binary': str(copy), 'binary_sha256': harness.sha256(copy),
               'runtime_sha256': harness.sha256(ROOT / 'runtime/dist/runtime.js'),
-              'runtime_source_tree': runtime_source_tree(),
+              'runtime_source_tree': runtime_tree,
               'corpus_manifest_sha256': harness.sha256(FIXTURES / 'corpus.manifest.json'),
               'journey_sha256': harness.sha256(FIXTURES / 'journey.json'), 'built_utc': harness.utc(),
               'toolchain': manifest['toolchain']}
@@ -638,6 +659,12 @@ def drag(window, timed, check, step, scene, variables, node, committed, hashes, 
     ms_c, state_c, info_c = window.settle(scene, frame, after=start_mark, seconds=2)
     candidate_drawn = ms_c is not None
     record['candidate_picture_drawn'] = candidate_drawn
+    if candidate_real:
+        # A candidate that differs from the base has to be on the monitor while the gesture is open. Recorded only, a host
+        # that never drew candidates would turn every "the cancel restored the base picture" below into the base compared
+        # with itself, and the cancel branch would have nothing left to prove.
+        check(f'{sid}: the candidate was drawn while the gesture was open (a picture newer than the press, within 2 s)',
+              candidate_drawn, json.dumps(info_c)[:260])
     if candidate_drawn:
         check(f'{sid}: the drawn candidate picture differs from the base picture',
               picture_hash(state_c) != start_hash, (start_hash, picture_hash(state_c)))
@@ -701,6 +728,11 @@ def main(argv=None):
                 'status': 'ABORTED', 'command': sys.argv}
     if args.phase == 'build':
         return build_phase(args, manifest, manifest_path, out)
+    if not args.corpora:
+        # `--corpora` with no value would run nothing and report "no check failed": zero checks are never a success.
+        manifest.update(status='REFUSED', reason='no corpus was asked for (`--corpora` is empty): a run of zero checks '
+                                                 'proves nothing')
+        return harness.die(1, manifest, manifest_path)
     record_path = Path(args.build_record) if args.build_record else out / 'build.json'
     record = json.loads(record_path.read_text()) if record_path.exists() else None
     binary = args.binary or (record or {}).get('binary') or str(ROOT / 'target/release/tessel-editor')
@@ -712,7 +744,8 @@ def main(argv=None):
     manifest['binary_sha256'] = harness.sha256(binary)
     manifest['runtime_sha256'] = harness.sha256(ROOT / 'runtime/dist/runtime.js')
     manifest['build_record'] = record
-    manifest['dirty_run'] = bool(manifest['identity']['dirty'])
+    # A run is dirty when the tree is, or when the binary came from a dirty build (or from a record that does not say).
+    manifest['dirty_run'] = bool(manifest['identity']['dirty']) or bool(record is not None and record.get('dirty', True))
     refusal = verify_provenance(record, binary, manifest['identity'], args.allow_dirty)
     if refusal:
         manifest.update(status='PROVENANCE_REFUSED', reason=refusal)

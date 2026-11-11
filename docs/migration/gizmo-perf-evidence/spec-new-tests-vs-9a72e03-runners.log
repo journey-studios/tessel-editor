@@ -1,0 +1,71 @@
+# Negative control of the round-2 spec (BL015.21 / PR #44, round 2 of corrections).
+# The spec of this round (scripts/gizmo-perf/gizmo-perf.spec.py) run against the runners of 9a72e03 (the PR head
+# the round started from): `git archive 9a72e03 scripts/gizmo-perf` into a temp directory, the new spec copied over
+# its old one, the rest of `scripts/`, `crates`, `docs`, `runtime` and `Cargo.*` linked from this worktree (no checkout).
+# The control on the same layout with the runners of this round:
+#   new spec + new runners : Ran 107 tests in 27.539s -> OK
+#   new spec + OLD runners : Ran 107 tests in 85.211s -> FAILED (failures=22, errors=6)
+# 28 tests fail or error on the old runners. 31 tests are new in this round; the 3 that pass on both sides do so
+# by design: `RunVerdict.test_controls_that_are_inconclusive_too_keep_the_run_inconclusive` (the old rule was right for
+# that case; the test guards against over-correcting), `RuntimeTree.test_the_tree_id_git_prints_is_the_answer` (the
+# happy path) and `Baseline.test_with_no_production_change_the_two_sides_are_the_same_product` (the A/A test that now
+# tests what it says: it passes on both). The renamed `Baseline.test_a_candidate_with_no_instrumented_test_...` is the
+# old test under its true name and passes on both.
+# ERROR rows fail because the old runner lacks the thing the test asks for (a key, a function): still not a pass.
+
+FAIL  Baseline.test_a_difference_in_the_measured_crate_is_still_judged_beside_one_outside_it
+      AssertionError: Lists differ: ['crates/core/src/scene_plan/build.rs', 'crates/desktop/src/main.rs'] != ['crates/core/src/scene_plan/build.rs']
+FAIL  Baseline.test_a_difference_only_outside_the_measured_executable_is_listed_apart_and_is_never_a_no_regression
+      AssertionError: {'crates/desktop/src/main.rs': {'baseline'[60 chars]7c'}} != {}
+ERROR Baseline.test_the_measured_executable_is_built_from_the_core_crate_and_the_workspace_build_inputs
+      AttributeError: module 'ab' has no attribute 'is_measured'
+FAIL  BuildPhase.test_a_build_that_could_not_record_the_runtime_tree_is_refused_before_building
+      AssertionError: Tuples differ: (1, 'BUILD_FAILED') != (1, 'PREREQUISITE_MISSING')
+ERROR BuildPhase.test_the_build_record_keeps_whether_the_tree_was_dirty
+      KeyError: 'dirty'
+ERROR DragBase.test_a_candidate_that_differs_but_was_never_drawn_fails_a_check_of_its_own
+      KeyError: 'drag.translate.cancel: the candidate was drawn while the gesture was open (a picture newer than the press, within 2 s)'
+ERROR DragBase.test_a_candidate_that_was_drawn_passes_that_check
+      KeyError: 'drag.translate.cancel: the candidate was drawn while the gesture was open (a picture newer than the press, within 2 s)'
+FAIL  Harness.test_a_descendant_in_its_own_session_cannot_hold_the_read_and_the_partial_output_is_kept
+      AssertionError: 30.03603679203661 not less than 10
+FAIL  Harness.test_a_descendant_that_ignores_sigterm_cannot_hold_the_run_after_its_leader_has_gone
+      AssertionError: 30.015213042031974 not less than 10
+FAIL  MainRun.test_a_run_of_a_binary_from_a_dirty_build_is_never_a_pass_for_head
+      AssertionError: Tuples differ: (0, 'FUNCTIONAL_ONLY_NOT_A_MEASUREMENT') != (1, 'DIRTY_RUN_NOT_FOR_HEAD')
+FAIL  MainRun.test_a_run_of_no_corpus_is_refused_and_never_says_that_no_check_failed
+      AssertionError: Tuples differ: (1, 'PREREQUISITE_MISSING') != (1, 'REFUSED')
+FAIL  MeasurePhase.test_executables_built_from_a_dirty_tree_are_not_judged_as_head_once_the_tree_reads_clean
+      AssertionError: Tuples differ: (0, 'NO_REGRESSION_IN_SCENARIO') != (1, 'REFUSED')
+FAIL  MeasurePhase.test_the_executables_of_an_invalid_run_are_kept_for_a_retry_and_those_of_a_judged_run_are_not
+      AssertionError: False is not true
+FAIL  Mutants.test_a_mutant_is_put_back_when_entering_it_fails_because_the_with_statement_never_exits
+      AssertionError: 'fn a() { loop {} }\n' != 'fn a() {}\n'
+ERROR Provenance.test_a_record_of_a_dirty_build_or_one_that_does_not_say_is_not_the_build_of_head
+      TypeError: argument of type 'NoneType' is not a container or iterable
+FAIL  Provenance.test_a_runtime_tree_that_git_cannot_name_is_refused_and_never_equal_to_a_record_without_one
+      AssertionError: 'git cannot tell' not found in ''
+FAIL  RunRecord.test_a_binary_built_from_a_dirty_tree_is_not_measured_as_head_once_the_tree_reads_clean
+      AssertionError: 'dirty' not found in 'the executable is missing or changed since the build phase' : dirty
+ERROR RunRecord.test_the_build_record_says_whether_the_tree_was_dirty
+      KeyError: 'dirty'
+FAIL  RunVerdict.test_a_failed_test_without_a_message_beside_an_inconclusive_note_is_a_fail
+      AssertionError: Tuples differ: ('INCONCLUSIVE', 4) != ('FAIL', 1)
+FAIL  RunVerdict.test_an_inconclusive_main_test_does_not_hide_a_control_that_failed_for_its_own_reason
+      AssertionError: Tuples differ: ('INCONCLUSIVE', 4) != ('FAIL', 1)
+FAIL  RuntimeTree.test_a_git_that_cannot_start_has_no_answer
+      AssertionError: "unavailable: [Errno 2] No such file or directory: 'git'" is not None
+FAIL  RuntimeTree.test_a_git_that_fails_has_no_answer_even_when_it_printed_something
+      AssertionError: 'HEAD:runtime' is not None
+FAIL  RuntimeTree.test_a_git_that_prints_nothing_or_blank_has_no_answer
+      AssertionError: '' is not None
+FAIL  RuntimeTree.test_a_git_that_timed_out_has_no_answer
+      AssertionError: '' is not None
+FAIL  TimePhase.test_a_manifest_that_is_not_a_finished_prepare_is_refused
+      AssertionError: Tuples differ: (0, 'ALL_AS_EXPECTED') != (1, 'REFUSED')
+FAIL  TimePhase.test_a_mutant_that_prepare_did_not_run_is_refused_and_never_filtered_away
+      AssertionError: Tuples differ: (0, 'ALL_AS_EXPECTED') != (1, 'REFUSED')
+FAIL  TimePhase.test_a_refusal_of_the_time_phase_never_replaces_the_finished_prepare
+      AssertionError: Tuples differ: (1, None) != (1, 'REFUSED')
+FAIL  TimePhase.test_a_verdict_over_no_mutant_and_no_detector_is_never_a_pass
+      AssertionError: 'ALL_AS_EXPECTED' == 'ALL_AS_EXPECTED'

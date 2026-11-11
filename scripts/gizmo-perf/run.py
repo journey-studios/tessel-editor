@@ -10,16 +10,19 @@ cooldown, no sleep and no polling between them: run `measure` when the machine i
 
 `build`: refuses a dirty tree (numbers would not belong to HEAD), builds `scene_gizmo_perf_budget` in RELEASE through the
 repository's cargo wrapper under a finite timeout (no lock: a build is not a measurement), copies the executable out and
-records HEAD, tree and the executable's sha256 in `build.json`.
+records HEAD, tree, whether the tree was dirty (`--allow-dirty`) and the executable's sha256 in `build.json`.
 
-`measure`: refuses a dirty tree and an executable that is not the one `build` recorded for this HEAD/tree (or takes
-`--exe`, the baseline of an A/B). It removes any report of an earlier run in `--out`, checks the machine
+`measure`: refuses a dirty tree and an executable that is not the one `build` recorded for this HEAD/tree, or that
+`build` built from a dirty tree (its record says `dirty`, or does not say it was clean); or it takes `--exe`, the
+baseline of an A/B. It removes any report of an earlier run in `--out`, checks the machine
 (`harness.guards`: load 1/5 min, thermal, free disk) and takes the performance lock ONCE, without waiting. A busy lock or a
 failed guard is a recorded BLOCKED (exit 3), never a pass and never a retry. The executable runs with
 `--ignored --test-threads=1` under a finite timeout (its group is terminated on expiry): the runner fails unless exactly
 the expected tests ran and passed. The guards are read AGAIN after the run; a dirty reading makes the run INVALID (exit 3):
 the numbers are kept but are not a PASS. A real failure is never masked by an INCONCLUSIVE note: a budget failure or a
-failed test is FAIL (exit 1) whatever else the output says.
+failed test is FAIL (exit 1) whatever else the output says. INCONCLUSIVE (exit 4) is only for a run in which EVERY failed
+test (the main one and, as it can happen to them too, the two negative controls) failed by the note of an unsteady plan
+reference; a control that did not detect the injected work beside such a note is a FAIL.
 
 `report.json` (every raw sample of every request kind, cold and hot, with the plan reference of each corpus) and
 `manifest.json` (SHA, tree, corpus hashes, binary hash, toolchain, hardware, load before/after, thermal state and its
@@ -32,6 +35,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import sys
 
@@ -63,6 +67,33 @@ def build():
     return command, done, exe
 
 
+PANIC_MESSAGE = re.compile(r'panicked at [^\n]*:\n([^\n]*)')
+
+
+def failed_tests(stdout):
+    """The tests the run reports as failed: libtest's final `failures:` list. (The markers `test NAME ... FAILED` can be
+    cut by a test's own output under `--nocapture`; the list cannot.)"""
+    if 'failures:' not in stdout:
+        return []
+    names = []
+    for line in stdout.rsplit('failures:', 1)[1].splitlines():
+        if line.startswith('test result:'):
+            break
+        if re.fullmatch(r'    \S+', line):
+            names.append(line.strip())
+    return names
+
+
+def only_unsteady(done):
+    """True only when EVERY failed test failed by the `INCONCLUSIVE:` note of an unsteady plan reference and by nothing
+    else: each failed test needs a panic message of its own and no message may be anything but that note. A failure the
+    note does not explain (a negative control that did not detect the injected work, a test that died without a message)
+    is a real failure, whatever else the output says; the controls can be inconclusive too, and then it is still one."""
+    failed = failed_tests(done.stdout)
+    messages = PANIC_MESSAGE.findall(done.stderr)
+    return bool(failed) and len(messages) >= len(failed) and all(m.startswith('INCONCLUSIVE:') for m in messages)
+
+
 def verdict(done, calibrate, report_exists, after_reason):
     """`(status, reason, exit)` of one controlled run. Order matters: a real failure is never masked."""
     text = done.text
@@ -73,7 +104,10 @@ def verdict(done, calibrate, report_exists, after_reason):
     if 'over budget:' in text:
         return 'FAIL', 'a budget was exceeded (see stdout.txt)', 1
     if 'INCONCLUSIVE:' in text and done.returncode != 0:
-        return 'INCONCLUSIVE', 'the plan reference moved during the measurement', harness.INCONCLUSIVE_EXIT
+        if only_unsteady(done):
+            return 'INCONCLUSIVE', 'the plan reference moved during the measurement', harness.INCONCLUSIVE_EXIT
+        return 'FAIL', ('a test failed for a reason the unsteady plan reference does not explain, beside an INCONCLUSIVE '
+                        'note (see stdout.txt and stderr.txt)'), 1
     if not (done.returncode == 0 and all_ok and ran == EXPECTED_TESTS and report_exists):
         return 'FAIL', 'tests failed, did not run, or wrote no report', 1
     if after_reason:
@@ -117,7 +151,10 @@ def main(argv=None):
         shutil.copy(exe, exes / 'candidate.exe')
         manifest['binary_sha256'] = harness.sha256(exes / 'candidate.exe')
         manifest.update(status='BUILT', reason='no measurement was taken', exit=0)
+        # `dirty` is part of the record: a binary built with `--allow-dirty` from local changes must not become "the
+        # build of HEAD" once the changes are stashed and the tree reads clean again.
         harness.write(out / 'build.json', {'head': manifest['identity']['head'], 'tree': manifest['identity']['tree'],
+                                           'dirty': manifest['dirty_run'],
                                            'binary_sha256': manifest['binary_sha256'], 'exe': 'exes/candidate.exe'})
         harness.write(manifest_path, manifest)
         print(json.dumps({k: manifest[k] for k in ('status', 'binary_sha256')}))
@@ -136,6 +173,13 @@ def main(argv=None):
         if built['head'] != manifest['identity']['head'] or built['tree'] != manifest['identity']['tree']:
             manifest.update(status='REFUSED', reason='the executable was built from another HEAD/tree')
             return harness.die(1, manifest, manifest_path)
+        # A record that says `dirty`, or does not say it was clean (an older `build.json`), is not the build of HEAD.
+        if built.get('dirty', True):
+            if not args.allow_dirty:
+                manifest.update(status='REFUSED', reason='the executable was built from a dirty tree (or `build.json` '
+                                                         'does not say it was not): it cannot be measured as HEAD')
+                return harness.die(1, manifest, manifest_path)
+            manifest['dirty_run'] = True
         if not Path(exe).exists() or harness.sha256(exe) != built['binary_sha256']:
             manifest.update(status='REFUSED', reason='the executable is missing or changed since the build phase')
             return harness.die(1, manifest, manifest_path)

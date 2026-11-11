@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Spec of the gizmo performance runners, without a benchmark, a window or the real lock (F055 / BL015.21)."""
+import contextlib
 import fcntl
+import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -12,7 +15,7 @@ import tempfile
 import time
 import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -64,6 +67,48 @@ def done(text='', code=0, stderr='', timed_out=False, error=None):
     return harness.Done(['x'], code, text, stderr, timed_out, 1.0, error)
 
 
+def run_main(module, argv):
+    """A runner's `main` as the command line would call it: its stdout is kept off the test output and the SIGTERM/SIGINT
+    handlers it installs are put back."""
+    saved = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGINT)}
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            return module.main(argv)
+    finally:
+        for sig, handler in saved.items():
+            signal.signal(sig, handler)
+
+
+def stub_git(directory, body):
+    """A `git` that is the only command on PATH: what a runner sees when git answers badly or is not there."""
+    path = Path(directory) / 'git'
+    path.write_text('#!/bin/sh\n' + body + '\n')
+    path.chmod(0o755)
+
+
+MAIN_TEST, PLAN_CONTROL, DELAY_CONTROL = runner.EXPECTED_TESTS
+UNSTEADY = ('INCONCLUSIVE: 30% of the plan reference blocks of dense disagreed with themselves by more than 1.5x '
+            '(limit 25%); the machine was not steady enough to judge')
+NOT_CAUGHT = ('an extra plan per call was not caught for state.translate: [\n'
+              '    "dense/down.translate: p50 is 2.00x the plan (budget 3)",\n]')
+
+
+def libtest(failed, passed=()):
+    """What the budget executable prints under `--ignored --test-threads=1 --nocapture`, in libtest's own layout (as in
+    the retained runs): the markers and the final `failures:` list on stdout, the panic of each failed test on stderr.
+    `failed` maps a failed test to its panic message, or to `None` for a test that died without one."""
+    stdout = ['', f'running {len(failed) + len(passed)} tests']
+    stdout += [f'test {name} ... ok' for name in passed]
+    stdout += [f'test {name} ... FAILED' for name in failed]
+    stdout += ['', 'failures:', '', 'failures:'] + [f'    {name}' for name in failed] + ['']
+    stdout.append(f'test result: FAILED. {len(passed)} passed; {len(failed)} failed; 0 ignored; 0 measured')
+    stderr = ''.join(
+        f"\nthread '{name}' (4242) panicked at crates/core/tests/scene_gizmo_perf_budget.rs:313:5:\n{message}\n"
+        "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"
+        for name, message in failed.items() if message is not None)
+    return done('\n'.join(stdout) + '\n', 101, stderr)
+
+
 class Harness(unittest.TestCase):
     def test_a_child_that_hangs_is_ended_with_its_group_and_marked_timed_out(self):
         started = time.monotonic()
@@ -71,6 +116,36 @@ class Harness(unittest.TestCase):
         self.assertTrue(result.timed_out)
         self.assertNotEqual(result.returncode, 0)
         self.assertLess(time.monotonic() - started, 10)
+
+    def test_a_descendant_that_ignores_sigterm_cannot_hold_the_run_after_its_leader_has_gone(self):
+        # The leader obeys SIGTERM; a descendant ignores it and keeps the output pipes open. The group kill used to stop
+        # at the leader and `communicate()` then waited for the descendant (here 30 s) with the lock still held.
+        script = "sh -c \"trap '' TERM; sleep 30\" & echo up; sleep 30"
+        started = time.monotonic()
+        result = harness.run_bounded(['sh', '-c', script], timeout=1, grace=1)
+        elapsed = time.monotonic() - started
+        self.assertTrue(result.timed_out)
+        self.assertIn('up', result.stdout)  # what it printed before the timeout is kept
+        self.assertLess(elapsed, 10)
+
+    def test_a_descendant_in_its_own_session_cannot_hold_the_read_and_the_partial_output_is_kept(self):
+        # `start_new_session` takes the descendant out of the group: no group kill reaches it and it keeps the pipes.
+        code = ("import subprocess, time\n"
+                "child = subprocess.Popen(['sleep', '30'], start_new_session=True)\n"
+                "print('partial output', child.pid, flush=True)\n"
+                "time.sleep(30)\n")
+        started = time.monotonic()
+        result = harness.run_bounded([sys.executable, '-c', code], timeout=1, grace=1)
+        elapsed = time.monotonic() - started
+        try:
+            self.assertTrue(result.timed_out)
+            self.assertIn('partial output', result.stdout)
+            self.assertLess(elapsed, 10)
+        finally:
+            for word in result.stdout.split():  # the escaped `sleep` is this test's own child: it does not outlive it
+                if word.isdigit():
+                    with contextlib.suppress(OSError):
+                        os.kill(int(word), signal.SIGKILL)
 
     def test_a_command_that_cannot_start_is_exit_127_with_its_error_never_an_exception(self):
         result = harness.run_bounded(['/definitely/not/a/binary'], timeout=5)
@@ -124,8 +199,30 @@ class RunVerdict(unittest.TestCase):
         self.assertEqual(self.verdict(done(text, code=101))[0], 'FAIL')
 
     def test_inconclusive_alone_is_not_a_pass_and_not_a_fail(self):
-        status, _, code = self.verdict(done('INCONCLUSIVE: the reference moved', code=101))
+        status, _, code = self.verdict(libtest({MAIN_TEST: UNSTEADY}, passed=[PLAN_CONTROL, DELAY_CONTROL]))
         self.assertEqual((status, code), ('INCONCLUSIVE', harness.INCONCLUSIVE_EXIT))
+
+    def test_an_inconclusive_main_test_does_not_hide_a_control_that_failed_for_its_own_reason(self):
+        # the main test is unsteady, and the extra-plan control did NOT detect the injected work: that is a real failure
+        status, why, code = self.verdict(libtest({MAIN_TEST: UNSTEADY, PLAN_CONTROL: NOT_CAUGHT}, passed=[DELAY_CONTROL]))
+        self.assertEqual((status, code), ('FAIL', 1))
+        self.assertIn('INCONCLUSIVE', why)  # the reason says the note was there and did not explain it
+        status, _, code = self.verdict(libtest({MAIN_TEST: UNSTEADY, DELAY_CONTROL: NOT_CAUGHT}, passed=[PLAN_CONTROL]))
+        self.assertEqual((status, code), ('FAIL', 1))
+
+    def test_controls_that_are_inconclusive_too_keep_the_run_inconclusive(self):
+        both = libtest({MAIN_TEST: UNSTEADY, PLAN_CONTROL: UNSTEADY}, passed=[DELAY_CONTROL])
+        self.assertEqual(self.verdict(both)[::2], ('INCONCLUSIVE', harness.INCONCLUSIVE_EXIT))
+        controls_only = libtest({PLAN_CONTROL: UNSTEADY, DELAY_CONTROL: UNSTEADY}, passed=[MAIN_TEST])
+        self.assertEqual(self.verdict(controls_only)[::2], ('INCONCLUSIVE', harness.INCONCLUSIVE_EXIT))
+        every_test = libtest({MAIN_TEST: UNSTEADY, PLAN_CONTROL: UNSTEADY, DELAY_CONTROL: UNSTEADY})
+        self.assertEqual(self.verdict(every_test)[::2], ('INCONCLUSIVE', harness.INCONCLUSIVE_EXIT))
+
+    def test_a_failed_test_without_a_message_beside_an_inconclusive_note_is_a_fail(self):
+        # a test that died without a panic message of its own (aborted, killed) is not explained by the note
+        status, _, code = self.verdict(libtest({MAIN_TEST: UNSTEADY, DELAY_CONTROL: None}, passed=[PLAN_CONTROL]))
+        self.assertEqual((status, code), ('FAIL', 1))
+        self.assertEqual(runner.failed_tests(libtest({MAIN_TEST: UNSTEADY}).stdout), [MAIN_TEST])
 
     def test_a_dirty_guard_after_the_run_is_invalid_never_a_pass(self):
         status, _, code = self.verdict(self.passing(), after='load average (1 min) 9 over 5.5')
@@ -135,6 +232,53 @@ class RunVerdict(unittest.TestCase):
         self.assertEqual(self.verdict(done('', code=-15, timed_out=True))[0], 'FAIL')
         self.assertEqual(self.verdict(self.passing(), report=False)[0], 'FAIL')
         self.assertEqual(self.verdict(done('test result: ok. 1 passed; 0 failed; 0 ignored'))[0], 'FAIL')
+
+
+class RunRecord(unittest.TestCase):
+    """`build.json` says whether the executable came from a dirty tree; `measure` believes only a record that says it
+    did not (the tree reads clean again once the changes are stashed, but the binary does not become HEAD's)."""
+
+    CLEAN = {'head': 'h' * 40, 'tree': 't' * 40, 'branch': 'b', 'dirty': ''}
+    RECORD = {'head': 'h' * 40, 'tree': 't' * 40, 'binary_sha256': 'x', 'exe': 'exes/candidate.exe'}
+
+    def build(self, out, identity, *flags):
+        exe = Path(out) / 'built.exe'
+        exe.write_text('binary')
+        with patch.object(runner.harness, 'git_identity', return_value=identity), \
+                patch.object(runner.harness, 'toolchain', return_value={}), \
+                patch.object(runner, 'build', return_value=(['cargo'], done(), str(exe))):
+            return run_main(runner, ['--phase', 'build', '--out', out, *flags])
+
+    def measure(self, out, record, *flags):
+        (Path(out) / 'build.json').write_text(json.dumps(record))
+        with patch.object(runner.harness, 'git_identity', return_value=self.CLEAN), \
+                patch.object(runner.harness, 'toolchain', return_value={}):
+            code = run_main(runner, ['--phase', 'measure', '--out', out, *flags])
+        return code, json.loads((Path(out) / 'manifest.json').read_text())
+
+    def test_the_build_record_says_whether_the_tree_was_dirty(self):
+        with tempfile.TemporaryDirectory() as out:
+            self.assertEqual(self.build(out, self.CLEAN), 0)
+            self.assertIs(json.loads((Path(out) / 'build.json').read_text())['dirty'], False)
+        with tempfile.TemporaryDirectory() as out:
+            dirty = {**self.CLEAN, 'dirty': ' M crates/core/src/x.rs'}
+            self.assertEqual(self.build(out, dirty, '--allow-dirty'), 0)
+            self.assertIs(json.loads((Path(out) / 'build.json').read_text())['dirty'], True)
+
+    def test_a_binary_built_from_a_dirty_tree_is_not_measured_as_head_once_the_tree_reads_clean(self):
+        for label, record in (('dirty', {**self.RECORD, 'dirty': True}), ('not recorded', self.RECORD)):
+            with tempfile.TemporaryDirectory() as out:
+                code, manifest = self.measure(out, record)
+                self.assertEqual((code, manifest['status']), (1, 'REFUSED'), label)
+                self.assertIn('dirty', manifest['reason'], label)
+        with tempfile.TemporaryDirectory() as out:  # `--allow-dirty` goes on, and the run is marked dirty for good
+            code, manifest = self.measure(out, {**self.RECORD, 'dirty': True}, '--allow-dirty')
+            self.assertTrue(manifest['dirty_run'])
+            self.assertIn('missing', manifest['reason'])  # refused later, for the executable that is not there
+        with tempfile.TemporaryDirectory() as out:  # a record that says it was clean gets as far as the executable
+            code, manifest = self.measure(out, {**self.RECORD, 'dirty': False})
+            self.assertIn('missing', manifest['reason'])
+            self.assertFalse(manifest['dirty_run'])
 
 
 class Judge(unittest.TestCase):
@@ -323,23 +467,179 @@ class Baseline(unittest.TestCase):
                     ab.make_baseline(base, work, root=Path(repo))
             self.assertIn(self.BUILD, str(caught.exception))
 
-    def test_with_no_production_change_the_two_sides_are_the_same_product(self):
+    def test_a_candidate_with_no_instrumented_test_cannot_be_overlaid_onto_a_baseline(self):
+        # This test used to be named `..._the_two_sides_are_the_same_product` and did not show that: it passed through the
+        # `CalledProcessError` of the `git archive` of the instrumented test files, which its candidate commit lacks.
         def candidate(root):
             write(root, 'crates/core/tests/other.rs', '// test only\n')
         with tempfile.TemporaryDirectory() as repo, tempfile.TemporaryDirectory() as work:
             base = self.repo(repo, candidate)
-            # no probe in the candidate: nothing to overlay but the tests
-            with patch.object(ab, 'PROBE_FILE', 'crates/core/src/scene_plan/missing_probe.rs'):
-                with self.assertRaises(Exception):
-                    ab.make_baseline(base, work, root=Path(repo))
+            with self.assertRaises(subprocess.CalledProcessError):
+                ab.make_baseline(base, work, root=Path(repo))
             self.assertTrue(ab.is_prod('crates/core/src/x.rs'))
             self.assertFalse(ab.is_prod('crates/core/tests/x.rs'))
             self.assertFalse(ab.is_prod('docs/x.md'))
             self.assertTrue(ab.is_prod('Cargo.lock'))
 
+    def test_with_no_production_change_the_two_sides_are_the_same_product(self):
+        # The pinned ref already carries the counter module and the instrumented test (as `main` will once this suite is
+        # merged) and the candidate changes a test file only: nothing is overlaid, no product file differs, and the
+        # verdict is an A/A (exit 4), never a "no regression".
+        with tempfile.TemporaryDirectory() as repo, tempfile.TemporaryDirectory() as work:
+            git(repo, 'init', '-q')
+            write(repo, 'Cargo.toml', '[workspace]\n')
+            write(repo, self.MOD, 'pub mod build;\npub mod probe;\n')
+            write(repo, self.BUILD, 'pub fn build() { work(); }\n')
+            self.instrument(repo)
+            git(repo, 'add', '-A')
+            git(repo, 'commit', '-q', '-m', 'base')
+            write(repo, 'crates/core/tests/other.rs', '// test only\n')
+            git(repo, 'add', '-A')
+            git(repo, 'commit', '-q', '-m', 'candidate')
+            record = ab.make_baseline(git(repo, 'rev-parse', 'HEAD~1').strip(), work, root=Path(repo))
+            self.assertEqual(record['product_files_that_differ'], {})
+            self.assertEqual(record['overlay_changed'], [])
+            self.assertEqual(record['prod_tree_after_overlay'], record['prod_tree_candidate'])
+            verdicts = {'k': {'status': 'NO_REGRESSION_IN_SCENARIO'}}
+            status, _, code = ab.overall(verdicts, record['product_files_that_differ'])
+            self.assertEqual((status, code), ('A_A_NO_PRODUCT_DIFFERENCE', harness.INCONCLUSIVE_EXIT))
+
+    def test_the_measured_executable_is_built_from_the_core_crate_and_the_workspace_build_inputs(self):
+        for path in ('crates/core/src/scene_plan/build.rs', 'crates/core/Cargo.toml', 'crates/core/build.rs', 'Cargo.toml',
+                     'Cargo.lock', 'rust-toolchain.toml', '.cargo/config.toml', 'vendor/x/src/lib.rs'):
+            self.assertTrue(ab.is_measured(path), path)
+        for path in ('crates/desktop/src/main.rs', 'crates/render/src/lib.rs', 'crates/media/src/lib.rs',
+                     'crates/core/tests/x.rs', 'docs/x.md', 'scripts/gizmo-perf/ab.py'):
+            self.assertFalse(ab.is_measured(path), path)
+
+    def test_a_difference_only_outside_the_measured_executable_is_listed_apart_and_is_never_a_no_regression(self):
+        # `crates/desktop/src` is product, but the A/B builds and runs `-p tessel-editor-core --test scene_gizmo_perf_budget`:
+        # its number cannot see that file, so a candidate that differs only there must not come out as "no regression".
+        def candidate(root):
+            self.instrument(root)
+            write(root, self.MOD, 'pub mod build;\npub mod probe;\n')
+            write(root, 'crates/desktop/src/main.rs', 'fn main() { /* only the desktop changed */ }\n')
+        with tempfile.TemporaryDirectory() as repo, tempfile.TemporaryDirectory() as work:
+            record = ab.make_baseline(self.repo(repo, candidate), work, root=Path(repo))
+            self.assertEqual(record['product_files_that_differ'], {})
+            self.assertEqual(record['product_files_outside_the_measurement'], ['crates/desktop/src/main.rs'])
+            verdicts = {'k': {'status': 'NO_REGRESSION_IN_SCENARIO'}}
+            status, reason, code = ab.overall(verdicts, record['product_files_that_differ'],
+                                              record['product_files_outside_the_measurement'])
+            self.assertEqual((status, code), ('DIFFERENCE_OUTSIDE_THE_MEASUREMENT', harness.INCONCLUSIVE_EXIT))
+            self.assertIn('crates/desktop/src/main.rs', reason)
+
+    def test_a_difference_in_the_measured_crate_is_still_judged_beside_one_outside_it(self):
+        def candidate(root):
+            self.instrument(root)
+            write(root, self.MOD, 'pub mod build;\npub mod probe;\n')
+            write(root, self.BUILD, 'pub fn build() { work(); work(); }\n')
+            write(root, 'crates/desktop/src/main.rs', 'fn main() {}\n')
+        with tempfile.TemporaryDirectory() as repo, tempfile.TemporaryDirectory() as work:
+            record = ab.make_baseline(self.repo(repo, candidate), work, root=Path(repo))
+            self.assertEqual(sorted(record['product_files_that_differ']), [self.BUILD])
+            self.assertEqual(record['product_files_outside_the_measurement'], ['crates/desktop/src/main.rs'])
+            verdicts = {'k': {'status': 'NO_REGRESSION_IN_SCENARIO'}}
+            self.assertEqual(ab.overall(verdicts, record['product_files_that_differ'],
+                                        record['product_files_outside_the_measurement'])[0], 'NO_REGRESSION_IN_SCENARIO')
+
     def test_the_pinned_baseline_is_a_full_commit_id(self):
         self.assertEqual(len(ab.BASELINE), 40)
         self.assertTrue(ab.BASELINE.startswith('cbe9e1b'))
+
+
+class FakeLock:
+    held = True
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class MeasurePhase(unittest.TestCase):
+    """`ab.py --phase measure` end to end on fakes: the machine, the lock and the benchmark executables are scripted, the
+    refusals, the clean-up of what the build phase left and the verdict are the real ones."""
+
+    CLEAN = {'head': 'h' * 40, 'tree': 't' * 40, 'branch': 'b', 'dirty': ''}
+    REPORT = {'suite': 'gizmo-perf-core', 'corpora': [{'corpus': 'small', 'reference': {'unstable_fraction': 0.0}, 'cold': {},
+              'hot': {'move.translate': {'samples_ns': [10, 11, 12, 13], 'p50_ns': 11, 'ratio_p50': 1.0, 'long_ticks': 0,
+                                         'n': 4}}}]}
+
+    def build_dir(self, out, candidate=None):
+        """What a finished `--phase build` leaves in --out: its manifest, both executables and the baseline source."""
+        out = Path(out)
+        (out / 'exes').mkdir()
+        (out / 'baseline-src').mkdir()
+        (out / 'baseline-src' / 'journey.json').write_text('{}')
+        hashes = {}
+        for side in ('baseline', 'candidate'):
+            (out / 'exes' / f'{side}.exe').write_bytes(side.encode())
+            hashes[side] = hashlib.sha256(side.encode()).hexdigest()
+        (out / 'manifest.build.json').write_text(json.dumps({
+            'candidate': candidate or self.CLEAN, 'baseline_commit': ab.BASELINE, 'candidate_build': {},
+            'baseline_build': {}, 'executables_sha256': hashes,
+            'prod_trees': {'product_files_that_differ': {'crates/core/src/x.rs': {}},
+                           'product_files_outside_the_measurement': []}}))
+
+    def measure(self, out, after_reason=None, *flags):
+        def run_once(exe, path):
+            Path(path).write_text(json.dumps(self.REPORT))
+            return ab.harness.Done(['x'], 0, 'test result: ok. 1 passed; 0 failed; 0 ignored', '', False, 1.0, None)
+
+        def judge_after(manifest):
+            manifest['guard_after'] = after_reason or 'clean'
+            return after_reason
+
+        fakes = [patch.object(ab.harness, 'git_identity', return_value=self.CLEAN),
+                 patch.object(ab.harness, 'toolchain', return_value={}),
+                 patch.object(ab.harness, 'out', return_value=ab.BASELINE),
+                 patch.object(ab.harness, 'guards', return_value=({}, None)),
+                 patch.object(ab.harness, 'machine', return_value={'thermal': ''}),
+                 patch.object(ab.harness, 'judge_after', side_effect=judge_after),
+                 patch.object(ab.harness, 'Lock', FakeLock),
+                 patch.object(ab, 'run_once', side_effect=run_once)]
+        with contextlib.ExitStack() as stack:
+            for fake in fakes:
+                stack.enter_context(fake)
+            code = run_main(ab, ['--phase', 'measure', '--out', str(out), '--rounds', '2', *flags])
+        return code, json.loads((Path(out) / 'manifest.json').read_text())
+
+    def test_the_executables_of_an_invalid_run_are_kept_for_a_retry_and_those_of_a_judged_run_are_not(self):
+        with tempfile.TemporaryDirectory() as out:
+            self.build_dir(out)
+            code, manifest = self.measure(out, after_reason='load average (1 min) 9 over 5.5')
+            self.assertEqual((code, manifest['status']), (harness.BLOCKED_EXIT, 'INVALID_GUARD_AFTER_RUN'))
+            # the comment of the run says "a BLOCKED one keeps both for a retry": an INVALID one is not judged either
+            self.assertTrue((Path(out) / 'exes' / 'baseline.exe').exists())
+            self.assertTrue((Path(out) / 'baseline-src').is_dir())
+        with tempfile.TemporaryDirectory() as out:
+            self.build_dir(out)
+            code, manifest = self.measure(out)
+            self.assertEqual((code, manifest['status']), (0, 'NO_REGRESSION_IN_SCENARIO'))
+            self.assertFalse((Path(out) / 'exes').exists())
+            self.assertFalse((Path(out) / 'baseline-src').exists())
+
+    def test_executables_built_from_a_dirty_tree_are_not_judged_as_head_once_the_tree_reads_clean(self):
+        dirty = {**self.CLEAN, 'dirty': ' M crates/core/src/scene_plan/build.rs'}
+        with tempfile.TemporaryDirectory() as out:
+            self.build_dir(out, candidate=dirty)
+            code, manifest = self.measure(out)
+            self.assertEqual((code, manifest['status']), (1, 'REFUSED'))
+            self.assertIn('dirty', manifest['reason'])
+            self.assertTrue((Path(out) / 'exes' / 'candidate.exe').exists())  # refused before anything ran
+        with tempfile.TemporaryDirectory() as out:  # `--allow-dirty` measures them and records that they were dirty
+            self.build_dir(out, candidate=dirty)
+            code, manifest = self.measure(out, None, '--allow-dirty')
+            self.assertTrue(manifest['dirty_run'])
+        with tempfile.TemporaryDirectory() as out:  # a manifest that does not say whether the build was clean
+            self.build_dir(out)
+            built = json.loads((Path(out) / 'manifest.build.json').read_text())
+            del built['candidate']['dirty']
+            (Path(out) / 'manifest.build.json').write_text(json.dumps(built))
+            code, manifest = self.measure(out)
+            self.assertEqual((code, manifest['status']), (1, 'REFUSED'))
 
 
 def run_text(failed=(), ok=(), results='FAILED. 0 passed; 1 failed', extra=''):
@@ -772,6 +1072,20 @@ class DragBase(unittest.TestCase):
         self.assertTrue(checks[self.CANCEL_DREW])
         self.assertFalse(checks[self.CANCEL_IS_BASE])
 
+    CANDIDATE_DRAWN = ('drag.translate.cancel: the candidate was drawn while the gesture was open '
+                       '(a picture newer than the press, within 2 s)')
+
+    def test_a_candidate_that_differs_but_was_never_drawn_fails_a_check_of_its_own(self):
+        # nothing newer than the press showed up: the cancel below would compare the base picture with itself
+        window, checks = self.run_drag([seen(5.0, 1, 'base'), seen(None, 1, 'base'), seen(5.0, 1, 'base')])
+        self.assertIn('scene.pointer.move', window.log)
+        self.assertFalse(checks[self.CANDIDATE_DRAWN])
+        self.assertNotIn(self.CANCEL_DREW, checks)  # the check that needs a drawn candidate was not even asked
+
+    def test_a_candidate_that_was_drawn_passes_that_check(self):
+        window, checks = self.run_drag([seen(5.0, 1, 'base'), seen(5.0, 2, 'candidate'), seen(5.0, 3, 'base')])
+        self.assertTrue(checks[self.CANDIDATE_DRAWN])
+
 
 class Provenance(unittest.TestCase):
     def setup(self, root):
@@ -785,7 +1099,7 @@ class Provenance(unittest.TestCase):
         (fixtures / 'corpus.manifest.json').write_text(json.dumps(manifest))
         binary = root / 'editor'
         binary.write_text('binary')
-        record = {'head': 'a' * 40, 'tree': 'b' * 40, 'binary_sha256': harness.sha256(binary),
+        record = {'head': 'a' * 40, 'tree': 'b' * 40, 'dirty': False, 'binary_sha256': harness.sha256(binary),
                   'runtime_sha256': harness.sha256(root / 'runtime/dist/runtime.js'), 'runtime_source_tree': 'rt',
                   'corpus_manifest_sha256': harness.sha256(fixtures / 'corpus.manifest.json')}
         identity = {'head': 'a' * 40, 'tree': 'b' * 40, 'dirty': ''}
@@ -825,6 +1139,141 @@ class Provenance(unittest.TestCase):
                 self.assertIn('runtime sources', native.verify_provenance(record, binary, identity, root=root,
                                                                            fixtures=fixtures))
 
+    def test_a_record_of_a_dirty_build_or_one_that_does_not_say_is_not_the_build_of_head(self):
+        # the tree reads clean (the changes were stashed after `--phase build --allow-dirty`), the build did not
+        with tempfile.TemporaryDirectory() as tmp:
+            root, fixtures, binary, record, identity = self.setup(tmp)
+            silent = {key: value for key, value in record.items() if key != 'dirty'}
+            self.assertIn('dirty', self.verify(root, fixtures, binary, {**record, 'dirty': True}, identity))
+            self.assertIn('dirty', self.verify(root, fixtures, binary, silent, identity))
+            self.assertIsNone(self.verify(root, fixtures, binary, record, identity))
+            for allowed in ({**record, 'dirty': True}, silent):  # `--allow-dirty`: accepted (and the run is marked dirty)
+                self.assertIsNone(self.verify(root, fixtures, binary, allowed, identity, allow_dirty=True))
+
+    def test_a_runtime_tree_that_git_cannot_name_is_refused_and_never_equal_to_a_record_without_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, fixtures, binary, record, identity = self.setup(tmp)
+            with patch.object(native, 'runtime_source_tree', return_value=None):
+                reason = native.verify_provenance({**record, 'runtime_source_tree': None}, binary, identity, root=root,
+                                                  fixtures=fixtures)
+            self.assertIn('git cannot tell', reason or '')
+
+
+class RuntimeTree(unittest.TestCase):
+    """`runtime_source_tree` asks the `git` that is first on PATH; here that is a stub script."""
+
+    def tree(self, body):
+        with tempfile.TemporaryDirectory() as stubs:
+            stub_git(stubs, body)
+            with patch.dict(os.environ, {'PATH': f"{stubs}{os.pathsep}{os.environ['PATH']}"}):
+                return native.runtime_source_tree()
+
+    def test_the_tree_id_git_prints_is_the_answer(self):
+        self.assertEqual(self.tree('echo 0123abcd'), '0123abcd')
+
+    def test_a_git_that_fails_has_no_answer_even_when_it_printed_something(self):
+        # `git rev-parse` echoes what it was given when it fails, and `harness.out` turns any failure into a text
+        self.assertIsNone(self.tree('echo HEAD:runtime; echo "fatal: bad revision" >&2; exit 128'))
+
+    def test_a_git_that_prints_nothing_or_blank_has_no_answer(self):
+        self.assertIsNone(self.tree('exit 0'))
+        self.assertIsNone(self.tree('echo "   "; exit 0'))
+
+    def test_a_git_that_cannot_start_has_no_answer(self):
+        with tempfile.TemporaryDirectory() as empty, patch.dict(os.environ, {'PATH': empty}):
+            self.assertIsNone(native.runtime_source_tree())
+
+    def test_a_git_that_timed_out_has_no_answer(self):
+        late = harness.Done(['git'], -9, 'deadbeef\n', '', timed_out=True)
+        with patch.object(native.harness, 'run_bounded', return_value=late):
+            self.assertIsNone(native.runtime_source_tree())
+
+
+class BuildPhase(unittest.TestCase):
+    """`native.py --phase build`: what it refuses before any cargo, and the record it writes."""
+
+    IDENTITY = {'head': 'a' * 40, 'tree': 'b' * 40, 'branch': 'main', 'dirty': ''}
+
+    def build(self, out, *flags, tree='rt', identity=None, run=None):
+        run = run if run is not None else MagicMock(return_value=harness.Done(['cargo'], 1, '', ''))
+        with patch.object(native.harness, 'git_identity', return_value=identity or self.IDENTITY), \
+                patch.object(native.harness, 'toolchain', return_value={}), \
+                patch.object(native.harness, 'run_bounded', run), \
+                patch.object(native.harness, 'sha256', return_value='sha'), \
+                patch.object(native, 'runtime_stale_reason', return_value=None), \
+                patch.object(native, 'verify_corpus', return_value=None), \
+                patch.object(native, 'runtime_source_tree', return_value=tree):
+            code = run_main(native, ['--phase', 'build', '--out', str(out), *flags])
+        return code, json.loads((Path(out) / 'manifest.build.json').read_text()), run
+
+    def test_a_build_that_could_not_record_the_runtime_tree_is_refused_before_building(self):
+        with tempfile.TemporaryDirectory() as out:
+            code, manifest, run = self.build(out, tree=None)
+            self.assertEqual((code, manifest['status']), (1, 'PREREQUISITE_MISSING'))
+            self.assertIn('git cannot tell', manifest['reason'])
+            run.assert_not_called()
+
+    def test_the_build_record_keeps_whether_the_tree_was_dirty(self):
+        with tempfile.TemporaryDirectory() as src:
+            exe = Path(src) / 'tessel-editor'
+            exe.write_text('binary')
+            line = json.dumps({'executable': str(exe), 'target': {'name': 'tessel-editor', 'kind': ['bin']}})
+            built = harness.Done(['cargo'], 0, line + '\n', '')
+            for flags, identity, dirty in (((), self.IDENTITY, False),
+                                           (('--allow-dirty',), {**self.IDENTITY, 'dirty': ' M crates/core/src/x.rs'}, True)):
+                with tempfile.TemporaryDirectory() as out:
+                    code, manifest, _ = self.build(out, *flags, identity=identity, run=MagicMock(return_value=built))
+                    self.assertEqual((code, manifest['status']), (0, 'BUILT'))
+                    record = json.loads((Path(out) / 'build.json').read_text())
+                    self.assertIs(record['dirty'], dirty)
+                    self.assertEqual(record['runtime_source_tree'], 'rt')
+
+
+class MainRun(unittest.TestCase):
+    """`native.py --phase run` on fakes: the window is not opened, the corpus run is scripted."""
+
+    IDENTITY = {'head': 'a' * 40, 'tree': 'b' * 40, 'branch': 'main', 'dirty': ''}
+
+    def run_with(self, record, *flags):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / 'runtime/dist').mkdir(parents=True)
+            (tmp / 'runtime/dist/runtime.js').write_text('runtime')
+            binary = tmp / 'editor'
+            binary.write_text('binary')
+            record_path = tmp / 'build.json'
+            record_path.write_text(json.dumps(record))
+
+            def corpus(*_):
+                return {'corpus': 'small', 'checks': [{'check': 'a check', 'ok': True}], 'pictures': [], 'samples': []}
+
+            state = {'free_gib': 100, 'loadavg': (0.0, 0.0, 0.0)}
+            with patch.object(native, 'ROOT', tmp), patch.object(native, 'verify_provenance', return_value=None), \
+                    patch.object(native, 'run_corpus', side_effect=corpus), \
+                    patch.object(native.harness, 'git_identity', return_value=self.IDENTITY), \
+                    patch.object(native.harness, 'toolchain', return_value={}), \
+                    patch.object(native.harness, 'guards', return_value=(state, None)), \
+                    patch.object(native.harness, 'claims', return_value=[]), \
+                    patch.object(native.harness, 'machine', return_value={}):
+                code = run_main(native, ['--phase', 'run', '--out', str(tmp / 'out'), '--binary', str(binary),
+                                         '--build-record', str(record_path), '--functional-only', *flags])
+            return code, json.loads((tmp / 'out' / 'manifest.json').read_text())
+
+    def test_a_run_of_no_corpus_is_refused_and_never_says_that_no_check_failed(self):
+        with tempfile.TemporaryDirectory() as out:
+            code = run_main(native, ['--corpora', '--out', out])
+            manifest = json.loads((Path(out) / 'manifest.json').read_text())
+            self.assertEqual((code, manifest['status']), (1, 'REFUSED'))
+            self.assertIn('--corpora', manifest['reason'])
+
+    def test_a_run_of_a_binary_from_a_dirty_build_is_never_a_pass_for_head(self):
+        for label, record in (('dirty', {'dirty': True}), ('not said', {})):
+            code, manifest = self.run_with(record)
+            self.assertEqual((code, manifest['status']), (1, 'DIRTY_RUN_NOT_FOR_HEAD'), label)
+            self.assertTrue(manifest['dirty_run'], label)
+        code, manifest = self.run_with({'dirty': False})  # the control: the same run with a clean build is a functional pass
+        self.assertEqual((code, manifest['status']), (0, 'FUNCTIONAL_ONLY_NOT_A_MEASUREMENT'))
+
 
 class Mutants(unittest.TestCase):
     def test_every_anchor_is_unique_in_the_tree_so_a_mutant_cannot_silently_not_apply(self):
@@ -848,6 +1297,82 @@ class Mutants(unittest.TestCase):
                         self.assertIn('loop', path.read_text())
                         raise RuntimeError('the detector crashed')
             self.assertEqual(path.read_text(), 'fn a() {}\n')
+
+    def test_a_mutant_is_put_back_when_entering_it_fails_because_the_with_statement_never_exits(self):
+        # `__exit__` does not run when `__enter__` raises: the mutant was already written when git could not name its blobs
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / 'f.rs'
+            path.write_text('fn a() {}\n')
+            mutant = {'file': str(path), 'old': 'fn a() {}', 'new': 'fn a() { loop {} }'}
+            with patch.object(mutate, 'ROOT', Path('/')), patch.object(mutate, 'file_hash', return_value='x'), \
+                    patch.object(mutate, 'committed_hash', side_effect=RuntimeError('git is unavailable')):
+                with self.assertRaises(RuntimeError):
+                    with mutate.Mutated(mutant):
+                        self.fail('the body of the with statement must not run')
+            self.assertEqual(path.read_text(), 'fn a() {}\n')
+
+
+class TimePhase(unittest.TestCase):
+    """The `time` phase reads the manifest a finished `prepare` left in --out. Nothing it refuses may replace that
+    manifest, and nothing it cannot evaluate may come out as "every detector answered as expected"."""
+
+    IDENTITY = {'head': 'h' * 40, 'tree': 't' * 40, 'branch': 'b', 'dirty': ''}
+
+    def prepared(self, out, status='PREPARED', names=('memo_off',)):
+        manifest = {'suite': 'gizmo-perf-mutants', 'phase': 'prepare', 'status': status, 'identity': self.IDENTITY,
+                    'mutants': {name: {'file': mutate.MUTANTS[name]['file'], 'must': mutate.MUTANTS[name]['detectors'],
+                                       'host': {'outcome': 'KILLED'}} for name in names}}
+        (Path(out) / 'manifest.json').write_text(json.dumps(manifest))
+        return manifest
+
+    def time_phase(self, out, *only, edited=False):
+        """`main --phase time` (files at HEAD, or not: `edited`; a machine nobody asks anything). Returns the exit code
+        and `manifest.final.json`, `{}` when it was not written."""
+        state = {'loadavg': (0.0, 0.0, 0.0)}
+        with patch.object(mutate.harness, 'git_identity', return_value=self.IDENTITY), \
+                patch.object(mutate.harness, 'toolchain', return_value={}), \
+                patch.object(mutate.harness, 'machine', return_value=state), \
+                patch.object(mutate.harness, 'guards', return_value=(state, None)), \
+                patch.object(mutate.harness, 'claims', return_value=[]), \
+                patch.object(mutate, 'file_hash', return_value='edited' if edited else 'blob'), \
+                patch.object(mutate, 'committed_hash', return_value='blob'):
+            code = run_main(mutate, ['--phase', 'time', '--out', str(out), *(['--only', *only] if only else [])])
+        final = Path(out) / 'manifest.final.json'
+        return code, json.loads(final.read_text()) if final.exists() else {}
+
+    def test_a_refusal_of_the_time_phase_never_replaces_the_finished_prepare(self):
+        with tempfile.TemporaryDirectory() as out:
+            prepared = self.prepared(out)
+            code, refusal = self.time_phase(out, 'memo_off', edited=True)  # the file is not at HEAD
+            self.assertEqual((code, refusal.get('status')), (1, 'REFUSED'))
+            self.assertEqual(json.loads((Path(out) / 'manifest.json').read_text()), prepared)  # still the prepare's
+            # the file is put back and `time` runs again: it judges what `prepare` ran, it is not a pass with no mutant
+            code, final = self.time_phase(out, 'memo_off')
+            self.assertEqual((code, final.get('status')), (0, 'ALL_AS_EXPECTED'))
+            self.assertEqual(sorted(final.get('mutants', {})), ['memo_off'])
+
+    def test_a_mutant_that_prepare_did_not_run_is_refused_and_never_filtered_away(self):
+        with tempfile.TemporaryDirectory() as out:
+            self.prepared(out)  # only `memo_off`
+            code, refusal = self.time_phase(out, 'replan_per_tick')  # filtered by name this left no mutant at all
+            self.assertEqual((code, refusal.get('status')), (1, 'REFUSED'))
+            self.assertIn('replan_per_tick', refusal.get('reason', ''))
+            code, refusal = self.time_phase(out, 'memo_off', 'replan_per_tick')  # one of two is not "judge the other"
+            self.assertEqual((code, refusal.get('status')), (1, 'REFUSED'))
+            self.assertIn('replan_per_tick', refusal.get('reason', ''))
+
+    def test_a_manifest_that_is_not_a_finished_prepare_is_refused(self):
+        with tempfile.TemporaryDirectory() as out:
+            self.prepared(out, status='REFUSED', names=())  # what a refused `prepare` leaves: no mutants, same identity
+            code, refusal = self.time_phase(out, 'memo_off')
+            self.assertEqual((code, refusal.get('status')), (1, 'REFUSED'))
+            self.assertIn('not a finished', refusal.get('reason', ''))
+
+    def test_a_verdict_over_no_mutant_and_no_detector_is_never_a_pass(self):
+        for manifest in ({'mutants': {}}, {'mutants': {'memo_off': {'must': {}}}}):
+            status, code = mutate.overall(manifest)
+            self.assertNotEqual(status, 'ALL_AS_EXPECTED')
+            self.assertNotEqual(code, 0)
 
 
 class Native(unittest.TestCase):

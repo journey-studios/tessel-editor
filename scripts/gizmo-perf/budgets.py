@@ -15,7 +15,8 @@ A run is INCONCLUSIVE (not a pass, not a failure) when more than 25% of its plan
 builds taken right before each window of requests) disagree with themselves by more than 1.5x: a steady machine
 can be judged, a moving one cannot. Long ticks: a sample over a 60 Hz frame
 (16.6 ms) is counted per corpus and request kind; none was observed in the calibrations, so the limit is 0
-for `small` and `deep` and 0 for `dense` (a 617-node scene must still fit a frame on a quiet machine).
+for `small` and `deep` and 0 for `dense` (a 618-node scene, as the corpus manifest counts it, must still fit a
+frame on a quiet machine).
 """
 import hashlib
 import json

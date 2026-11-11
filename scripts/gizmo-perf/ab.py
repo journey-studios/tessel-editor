@@ -18,7 +18,10 @@ is the pinned ref's, byte for byte. The runner records the production tree diges
 overlay and of the candidate (git blob ids), refuses (`REFUSED_CONTAMINATION`) when the overlay changed anything outside
 the allowlist or when the archive is not the ref's tree, and lists every production file that differs between the two
 sides. A candidate that adds work in `scene_plan/build.rs` therefore stays DIFFERENT from the baseline; when no
-production file differs at all the run is an A/A and says so (exit 4), never a "no regression".
+production file differs at all the run is an A/A and says so (exit 4), never a "no regression". "Differs" is judged over
+what the MEASURED executable is built from (`is_measured`: the core crate and the workspace build inputs); a candidate
+that differs only in other crates (the desktop's) is `DIFFERENCE_OUTSIDE_THE_MEASUREMENT` (exit 4, files listed apart):
+this A/B cannot see those files, so it never turns them into a "no regression".
 
 How. One short `git archive` of the baseline into a temp directory, built SEQUENTIALLY through the repository's cargo
 wrapper with its DEFAULT target (no `CARGO_TARGET_DIR`, no lane); both test executables are copied out, the temp
@@ -105,6 +108,17 @@ def is_prod(path):
     return len(parts) >= 3 and parts[0] == 'crates' and (parts[2] == 'src' or parts[2] in ('build.rs', 'Cargo.toml'))
 
 
+def is_measured(path):
+    """A product file the MEASURED executable is built from: the A/B runs only `cargo test -p tessel-editor-core --test
+    scene_gizmo_perf_budget`, so that is the core crate (it depends on no other workspace crate) and what decides how
+    anything is built (workspace manifest, lockfile, toolchain pin, cargo config, vendored crates). A difference in
+    `crates/desktop/src` is the product's, but the number this A/B produces cannot see it."""
+    parts = path.split('/')
+    if path in ('Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml') or parts[0] in ('.cargo', 'vendor'):
+        return True
+    return len(parts) >= 3 and parts[:2] == ['crates', 'core'] and (parts[2] == 'src' or parts[2] in ('build.rs', 'Cargo.toml'))
+
+
 def blob_id(data):
     return hashlib.sha1(b'blob %d\0' % len(data) + data).hexdigest()
 
@@ -179,12 +193,14 @@ def make_baseline(ref, workdir, root=ROOT, candidate='HEAD'):
     if contaminated:
         raise Refused(f'the overlay changed production files outside the allowlist: {contaminated}')
     candidate_prod = git_prod_manifest(candidate, root)
-    differs = {p: {'baseline': after.get(p), 'candidate': candidate_prod.get(p)}
-               for p in changed_paths(after, candidate_prod)}
+    # `differs` is what the measured executable can see; the rest is listed, never judged (see `is_measured`).
+    paths = changed_paths(after, candidate_prod)
+    differs = {p: {'baseline': after.get(p), 'candidate': candidate_prod.get(p)} for p in paths if is_measured(p)}
     return {'src': src, 'prod_tree_before_overlay': digest(before), 'prod_tree_after_overlay': digest(after),
             'prod_tree_candidate': digest(candidate_prod), 'pinned_ref_tree': digest(pinned),
             'overlay_changed': changed_paths(before, after), 'allowlist': ALLOWED_OVERLAY,
-            'contaminated': contaminated, 'product_files_that_differ': differs}
+            'contaminated': contaminated, 'product_files_that_differ': differs,
+            'product_files_outside_the_measurement': [p for p in paths if not is_measured(p)]}
 
 
 # --- build / run -----------------------------------------------------------------------------------------------
@@ -329,11 +345,16 @@ def judge(base, cand, unstable=None):
     return verdicts
 
 
-def overall(verdicts, differs):
-    """(status, reason, exit code) of a set of per-kind verdicts."""
+def overall(verdicts, differs, outside=()):
+    """(status, reason, exit code) of a set of per-kind verdicts. `differs` are the product files the measured
+    executable is built from that differ between the sides; `outside` the product files that differ but are not in it."""
     statuses = {v['status'] for v in verdicts.values()}
     if 'REGRESSED' in statuses:
         return 'REGRESSED', [k for k, v in verdicts.items() if v['status'] == 'REGRESSED'], 1
+    if not differs and outside:
+        return 'DIFFERENCE_OUTSIDE_THE_MEASUREMENT', (
+            f'only files the measured executable is not built from differ ({sorted(outside)[:5]}): the two measured '
+            'builds are the same product, and this A/B cannot say anything about those files'), harness.INCONCLUSIVE_EXIT
     if not differs:
         return 'A_A_NO_PRODUCT_DIFFERENCE', 'no production file differs: the two builds are the same product', \
             harness.INCONCLUSIVE_EXIT
@@ -419,7 +440,8 @@ def main(argv=None):
             harness.write(out / 'manifest.build.json', manifest)
             print(json.dumps({'status': 'BUILT', 'executables_sha256': manifest['executables_sha256'],
                               'prod_trees': {k: v for k, v in record.items() if k.startswith('prod_tree')},
-                              'product_files_that_differ': sorted(record['product_files_that_differ'])}))
+                              'product_files_that_differ': sorted(record['product_files_that_differ']),
+                              'product_files_outside_the_measurement': record['product_files_outside_the_measurement']}))
             return 0
         build_manifest_path = out / 'manifest.build.json'
         if not build_manifest_path.exists():
@@ -432,6 +454,14 @@ def main(argv=None):
                 built['candidate']['tree'] != manifest['candidate']['tree']:
             manifest.update(status='REFUSED', reason='the executables were built from another HEAD/tree')
             return harness.die(1, manifest, manifest_path)
+        # The candidate executable of a `--phase build --allow-dirty` holds local changes; once they are stashed the
+        # tree reads clean again, but that executable is still not HEAD's. An empty string is the only clean record.
+        built_dirty = built['candidate'].get('dirty', 'not recorded') != ''
+        if built_dirty and not args.allow_dirty:
+            manifest.update(status='REFUSED', reason='the executables were built from a dirty tree (or their manifest '
+                                                     'does not say it was clean): they cannot be judged as HEAD')
+            return harness.die(1, manifest, manifest_path)
+        manifest['dirty_run'] = manifest['dirty_run'] or built_dirty
         if built['baseline_commit'] != manifest['baseline_commit']:
             manifest.update(status='REFUSED', reason='the executables were built against another baseline')
             return harness.die(1, manifest, manifest_path)
@@ -481,8 +511,6 @@ def main(argv=None):
                     return harness.die(1, manifest, manifest_path)
                 reports[side].append(json.loads(path.read_text()))
             after_reason = harness.judge_after(manifest)
-        shutil.rmtree(exes_dir, ignore_errors=True)
-        shutil.rmtree(kept_src, ignore_errors=True)  # a judged run is over; a BLOCKED one keeps both for a retry
         unstable = {**unstable_corpora(reports['baseline']), **unstable_corpora(reports['candidate'])}
         verdicts = judge(pooled(reports['baseline']), pooled(reports['candidate']), unstable)
         harness.write(out / 'verdicts.json', verdicts)
@@ -494,7 +522,12 @@ def main(argv=None):
                             note='the numbers are kept in verdicts.json as observations; nothing is judged')
             manifest['utc_end'] = harness.utc()
             return harness.die(harness.BLOCKED_EXIT, manifest, manifest_path)
-        status, reason, code = overall(verdicts, manifest['prod_trees']['product_files_that_differ'])
+        # Only a judged run is over: the executables and the baseline source go now. A BLOCKED or INVALID one (the return
+        # above) keeps both, so the same build can be measured again when the machine is quiet.
+        shutil.rmtree(exes_dir, ignore_errors=True)
+        shutil.rmtree(kept_src, ignore_errors=True)
+        status, reason, code = overall(verdicts, manifest['prod_trees']['product_files_that_differ'],
+                                       manifest['prod_trees'].get('product_files_outside_the_measurement', []))
         manifest.update(status=status, reason=reason)
         manifest['utc_end'] = harness.utc()
         manifest['exit'] = code

@@ -70,7 +70,9 @@ def run_bounded(command, cwd=ROOT, env=None, timeout=BUILD_TIMEOUT_S, grace=10):
     """Runs `command` in its own process group with a finite `timeout` (seconds); never raises for the child.
 
     A command that cannot start (`FileNotFoundError`, permission) is `returncode=127` with `error` set. On timeout
-    the group gets SIGTERM, `grace` seconds, then SIGKILL; whatever it printed is kept and `timed_out` is True.
+    the group gets SIGTERM, `grace` seconds, then SIGKILL (always: see `_kill_group`); the output is then read for at
+    most `grace` more seconds, whatever was printed is kept and `timed_out` is True. The call therefore returns within
+    `timeout + 3 * grace` seconds whatever the child and its descendants do, and so does the lock a runner holds.
     """
     started = time.monotonic()
     try:
@@ -84,25 +86,43 @@ def run_bounded(command, cwd=ROOT, env=None, timeout=BUILD_TIMEOUT_S, grace=10):
     except subprocess.TimeoutExpired:
         timed_out = True
         _kill_group(process, grace)
-        stdout, stderr = process.communicate()
+        stdout, stderr = _drain(process, grace)
     except BaseException:
         # SIGTERM/Ctrl-C of the runner itself: never leave the child group behind.
         _kill_group(process, grace)
         raise
-    return Done(command, process.returncode, stdout or '', stderr or '', timed_out, time.monotonic() - started)
+    returncode = process.returncode if process.returncode is not None else -signal.SIGKILL
+    return Done(command, returncode, stdout or '', stderr or '', timed_out, time.monotonic() - started)
 
 
 def _kill_group(process, grace):
-    for sig, wait in ((signal.SIGTERM, grace), (signal.SIGKILL, grace)):
+    """SIGTERM to the whole group, up to `grace` seconds for its leader, then SIGKILL to the group REGARDLESS. The
+    leader exiting does not mean the group is gone: a descendant that ignores SIGTERM keeps the output pipes open (so
+    the read below would never end) and the performance lock held. The group id outlives its leader as long as one
+    member lives; with none left `killpg` finds nothing."""
+    for sig in (signal.SIGTERM, signal.SIGKILL):
         try:
             os.killpg(process.pid, sig)
         except (OSError, ProcessLookupError):
-            return
+            pass
         try:
-            process.wait(wait)
-            return
+            process.wait(grace)
         except subprocess.TimeoutExpired:
-            continue
+            pass
+
+
+def _drain(process, grace):
+    """The output of a child whose group was just ended, read for at most `grace` seconds. The pipes close when the
+    group's members die; a descendant that left the group (its own session) can still hold them, so the read is
+    bounded too: what was read so far is kept, the pipes are closed here and the caller already marked the run timed out."""
+    try:
+        return process.communicate(timeout=grace)
+    except subprocess.TimeoutExpired as expired:
+        for pipe in (process.stdout, process.stderr):
+            if pipe is not None:
+                pipe.close()
+        return tuple(part.decode(errors='replace') if isinstance(part, bytes) else (part or '')
+                     for part in (expired.stdout, expired.stderr))
 
 
 def run(command, cwd=ROOT, env=None, timeout=BUILD_TIMEOUT_S):
