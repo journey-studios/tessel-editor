@@ -443,10 +443,12 @@ class FakeLab:
 
     def __init__(self, statuses, report=None):
         self.statuses, self.report, self.stopped = list(statuses), report or {"ticks": 10, "skipped_frames": 0, "max_gap_frames": 1}, 0
+        self.polled = []
 
     def op(self, request):
         if request["op"] == "playback.status":
-            return {"ok": True, "data": self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0]}
+            self.polled.append(self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0])
+            return {"ok": True, "data": self.polled[-1]}
         if request["op"] == "playback.stop":
             self.stopped += 1
             return {"ok": True, "data": {"report": self.report}}
@@ -479,6 +481,29 @@ class PlayTests(unittest.TestCase):
         self.assertEqual(counters, {"ticks": 10, "skipped_frames": 0, "max_gap_frames": 1})
         self.assertEqual(state["errors"], [])
 
+    def test_a_play_that_is_still_preparing_has_not_ended_whatever_the_experiment_calls_an_end(self):
+        # `playback.start` answers at once and the status says `preparing` (only where it starts) until the audio mix is built.
+        lab = FakeLab([{"state": "preparing", "from": 0}, {"state": "preparing", "from": 0}, {"state": "playing"}, {"state": "stopped"}])
+        counters, state = self.play(lab, lambda status: status.get("state") != "playing")
+        self.assertIsNotNone(counters)
+        self.assertEqual([status["state"] for status in lab.polled], ["preparing", "preparing", "playing", "stopped"])
+        self.assertEqual(state["errors"], [])
+
+    def test_a_play_that_never_leaves_preparing_runs_out_of_time_instead_of_ending(self):
+        lab = FakeLab([{"state": "preparing", "from": 0}])
+        counters, state = self.play(lab, lambda status: status.get("state") != "playing")
+        self.assertIsNone(counters)
+        self.assertIn("did not end within", state["errors"][0])
+
+    def test_a_play_whose_report_has_no_tick_never_ran_even_when_the_status_says_it_ended(self):
+        # `playback.stop` while the mix is still being built answers the `preparing` status, which counts nothing.
+        lab = FakeLab([{"state": "stopped"}], report={"state": "preparing", "from": 0})
+        counters, state = self.play(lab, lambda status: status.get("state") != "playing")
+        self.assertIsNone(counters)
+        self.assertIn("no clock tick", state["errors"][0])
+        lab = FakeLab([{"state": "stopped"}], report={"state": "stopped", "last": {"ticks": 4, "skipped_frames": 0, "max_gap_frames": 1}})
+        self.assertEqual(self.play(lab, lambda status: status.get("state") != "playing")[0]["ticks"], 4, "a play the host ended by itself reports in `last`")
+
     def test_a_play_that_runs_out_of_time_is_not_a_play_it_is_none_with_the_reason(self):
         lab = FakeLab([{"state": "playing"}])
         counters, state = self.play(lab, lambda status: False)
@@ -502,6 +527,18 @@ class PlayTests(unittest.TestCase):
         record = {}
         self.assertTrue(S.whole_project_twice(FakeWarm, {"length": 48, "fps": 24.0})(lab, clean_state(), lambda *a: True, record))
         self.assertEqual(sorted(record["played"]), ["first", "repeat"])
+
+    def test_the_whole_project_twice_does_not_take_the_preparing_of_a_play_for_its_end(self):
+        lab = FakeLab([{"state": "preparing", "from": 0}] * 3 + [{"state": "playing"}, {"state": "stopped"}])
+        record = {}
+        self.assertTrue(S.whole_project_twice(FakeWarm, {"length": 48, "fps": 24.0})(lab, clean_state(), lambda *a: True, record))
+        self.assertEqual([status["state"] for status in lab.polled], ["preparing"] * 3 + ["playing", "stopped", "stopped"], "the first play ended at its own stop")
+
+    def test_a_window_that_is_preparing_when_first_asked_still_runs_to_its_end(self):
+        lab = FakeLab([{"state": "preparing", "from": 100}, {"state": "playing", "frame": 150}, {"state": "playing", "frame": 200}])
+        state, record = clean_state(), {}
+        self.assertTrue(S.one_window(FakeWarm, {"fps": 24.0}, (100, 200))(lab, state, lambda *a: True, record))
+        self.assertEqual((record["window_last_frame"], state["errors"]), (200, []))
 
     def test_a_window_that_stopped_before_its_end_did_not_run_to_its_end(self):
         lab = FakeLab([{"state": "playing", "frame": 120}, {"state": "stopped", "frame": 150}])
