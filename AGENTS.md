@@ -9,6 +9,10 @@ Escopo autorizado: reprodução visual da UI do editor Tessel existente em GPUI 
 Não portar o motor antigo inteiro nem integrações de serviço. Não copiar assets ou dados privados. Não modificar o repositório de origem como parte
 desta preparação.
 
+Projetos de conteúdo (autorais, privados ou com mídia pesada) ficam em `projects/<nome>/`, que o Git ignora
+(`projects/README.md`). O repositório é público: nunca use `git add -f` nesse caminho nem copie esse conteúdo para
+`docs/`, `crates/` ou commits.
+
 A fundação da viewport (projeto/IDs/assets, plano racional, bridge v1, runtime Three.js local,
 frame headless e WebView persistente no monitor) está entregue; ver `docs/features/viewport.md`
 e `docs/viewport-foundation-report.md`. O escopo foi ampliado depois (aprovação do usuário) para
