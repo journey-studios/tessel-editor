@@ -633,6 +633,18 @@ fn scene_command(op: &str, request: &Value) -> Result<SceneCommand, CommandError
                     .ok_or_else(|| invalid("Expected array field `ops`"))?,
             )?,
             dry_run: optional_bool(request, "dry_run")?.unwrap_or(false),
+            base_revision: optional_u64(request, "base_revision")?,
+        },
+        "scene.fx.seek" => SceneCommand::FxSeek {
+            scene: scene()?,
+            clip: string(request, "clip")?.to_string(),
+            param: string(request, "param")?.to_string(),
+            to: request
+                .get("to")
+                .and_then(crate::scene_project::KeySeek::parse)
+                .ok_or_else(|| {
+                    invalid("`to` is `previous`, `next`, `first`, `last` or a frame of the clip")
+                })?,
         },
         "scene.fx.list" => SceneCommand::FxList {
             scene: scene()?,
@@ -651,6 +663,13 @@ fn scene_command(op: &str, request: &Value) -> Result<SceneCommand, CommandError
             probe: match request.get("probe") {
                 None | Some(Value::Null) => None,
                 Some(probe) => Some(fx_probe(probe)?),
+            },
+            at: if request.get("frame").is_some_and(|raw| !raw.is_null())
+                || request.get("time").is_some_and(|raw| !raw.is_null())
+            {
+                Some(frame_at(request)?)
+            } else {
+                None
             },
         },
         "scene.fx.frame" => SceneCommand::FxFrame {
@@ -819,6 +838,16 @@ fn optional_bool(request: &Value, key: &str) -> Result<Option<bool>, CommandErro
         None | Some(Value::Null) => Ok(None),
         Some(Value::Bool(flag)) => Ok(Some(*flag)),
         Some(_) => Err(invalid(format!("Field `{key}` must be true or false"))),
+    }
+}
+
+fn optional_u64(request: &Value, key: &str) -> Result<Option<u64>, CommandError> {
+    match request.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(raw) => raw
+            .as_u64()
+            .map(Some)
+            .ok_or_else(|| invalid(format!("Field `{key}` must be a non-negative integer"))),
     }
 }
 

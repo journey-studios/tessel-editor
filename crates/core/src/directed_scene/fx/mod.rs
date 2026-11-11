@@ -11,34 +11,49 @@
 //! What is implemented, and nothing else is accepted (an unsupported value is a typed refusal
 //! at import and at edit, never a quietly ignored one):
 //!
-//! * the `vignette` and `fade` looks, scope `output`, on tracks of non-overlapping clips;
+//! * the `vignette`, `fade` and `filmGrain` looks, scope `output`, on tracks of non-overlapping
+//!   clips;
 //! * IDs of tracks and clips by the pilot's rule (see [`id_problem`]);
 //! * fixed parameters (`params`; a missing one is the catalog default), `fadeInFrames` /
-//!   `fadeOutFrames` envelope, `hidden` on clips and tracks, `seed` kept as written;
-//! * **refused for now**: `keys` (`FX_KEYS_NOT_YET`), scope `shot`/`node` (`FX_SCOPE_NOT_YET`)
-//!   and any `transitions` entry (`FX_TRANSITION_NOT_YET`).
+//!   `fadeOutFrames` envelope, `hidden` on clips and tracks;
+//! * **parameter keys** (`keys`, P3: whole frames local to the clip, strictly increasing, the
+//!   easing of the arrival key; see [`keys`]) and the `seed` of the noise effects, explicit or
+//!   derived from the clip ID (see [`hash`]);
+//! * **refused for now**: scope `shot`/`node` (`FX_SCOPE_NOT_YET`) and any `transitions` entry
+//!   (`FX_TRANSITION_NOT_YET`).
 //!
 //! Evaluation is a pure function of the document and an integer edit frame
 //! ([`Fx::resolve`]); the plan (`scene_plan`) carries the result to a runtime, which only draws.
 
 mod catalog;
 mod control;
+mod hash;
+mod keys;
 mod read;
 mod reference;
 
 use serde_json::{Value, json};
 
 pub use catalog::{
-    EffectSpec, FADE, FADE_AMOUNT, FADE_COLOR, FADE_INTENSITY, Labels, Locale, ParamKind,
-    ParamSpec, VIGNETTE, VIGNETTE_CENTER, VIGNETTE_COLOR, VIGNETTE_INTENSITY, VIGNETTE_RADIUS,
-    VIGNETTE_ROUNDNESS, VIGNETTE_SOFTNESS, catalog, catalog_json, effect,
+    EffectSpec, FADE, FADE_AMOUNT, FADE_COLOR, FADE_INTENSITY, FILM_GRAIN, FILM_GRAIN_AMOUNT,
+    FILM_GRAIN_COLORED, FILM_GRAIN_INTENSITY, FILM_GRAIN_LUMA, FILM_GRAIN_SIZE, Labels, Locale,
+    ParamKind, ParamSpec, VIGNETTE, VIGNETTE_CENTER, VIGNETTE_COLOR, VIGNETTE_INTENSITY,
+    VIGNETTE_RADIUS, VIGNETTE_ROUNDNESS, VIGNETTE_SOFTNESS, catalog, catalog_json, effect,
 };
 pub use control::quantize_control;
+pub use hash::{
+    Reseed, base_seed, colored_triangular, fnv1a32, hash_pixel, lowbias32, seed_for, triangular,
+    unit_float,
+};
+pub use keys::{
+    FX_EASINGS, FxEasing, FxKey, MAX_FX_KEYS_PER_CLIP, MAX_FX_KEYS_PER_CURVE,
+    MAX_FX_KEYS_PER_LAYER, ParamKeys, first_out_of_order, resolve_keys,
+};
 pub(super) use read::read_fx;
 pub use read::{ParamProblem, parse_param};
 pub use reference::{
-    apply_pass_to_rgba8, apply_pass_to_srgb, linear_to_srgb, pass_strength, smoothstep,
-    srgb_to_linear, vignette_shade,
+    GRAIN_REFERENCE_HEIGHT, apply_pass_to_rgba8, apply_pass_to_srgb, grain_cell_px,
+    grain_encoded_delta, linear_to_srgb, pass_strength, smoothstep, srgb_to_linear, vignette_shade,
 };
 
 /// The catalog this build draws. It goes up whenever the *result* of an existing effect changes
@@ -71,7 +86,14 @@ pub const ENVELOPE_TOO_LONG: &str = "ENVELOPE_TOO_LONG";
 pub const CATALOG_TOO_NEW: &str = "CATALOG_TOO_NEW";
 /// Scope `node` in the pilot (`NODE_SCOPE_NOT_YET`); here also `shot`, which is a later slice.
 pub const FX_SCOPE_NOT_YET: &str = "FX_SCOPE_NOT_YET";
-pub const FX_KEYS_NOT_YET: &str = "FX_KEYS_NOT_YET";
+/// A key outside its clip (`0..durationFrames`), the pilot's `KEY_OUT_OF_CLIP`.
+pub const KEY_OUT_OF_CLIP: &str = "KEY_OUT_OF_CLIP";
+/// Key frames that are not whole, not from 0 or not strictly increasing (`KEYFRAME_ORDER`).
+pub const KEYFRAME_ORDER: &str = "KEYFRAME_ORDER";
+/// An easing the engine cannot draw (`UNKNOWN_KEYFRAME_EASING`).
+pub const UNKNOWN_KEYFRAME_EASING: &str = "UNKNOWN_KEYFRAME_EASING";
+/// An edit named a key frame (or a keyed parameter) the clip does not have (`UNKNOWN_KEYFRAME`).
+pub const UNKNOWN_KEYFRAME: &str = "UNKNOWN_KEYFRAME";
 pub const FX_TRANSITION_NOT_YET: &str = "FX_TRANSITION_NOT_YET";
 /// A limit of the layer (tracks in a bundle, clips on a track). Reported as an importer issue
 /// with this code; the command code of the rejected edit stays `invalid_bundle`.
@@ -91,6 +113,7 @@ pub const FX_PASS_BUDGET: usize = 8;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FxValue {
     Number(f64),
+    Bool(bool),
     Color { r: f64, g: f64, b: f64 },
     Point { x: f64, y: f64 },
 }
@@ -99,6 +122,7 @@ impl FxValue {
     pub fn to_json(self) -> Value {
         match self {
             Self::Number(value) => json!(value),
+            Self::Bool(value) => json!(value),
             Self::Color { r, g, b } => json!({ "r": r, "g": g, "b": b }),
             Self::Point { x, y } => json!({ "x": x, "y": y }),
         }
@@ -107,6 +131,13 @@ impl FxValue {
     pub fn as_number(self) -> Option<f64> {
         match self {
             Self::Number(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    pub fn as_bool(self) -> Option<bool> {
+        match self {
+            Self::Bool(value) => Some(value),
             _ => None,
         }
     }
@@ -121,7 +152,13 @@ pub struct FxClip {
     pub effect: &'static EffectSpec,
     pub start_frame: i64,
     pub duration_frames: i64,
+    /// The static (base) value of each parameter, in catalog order. With keys on a parameter
+    /// the curve prevails (see [`FxClip::value_at`]); the base shows through only where the
+    /// parameter has no keys.
     pub params: Vec<FxValue>,
+    /// The curves of the keyed parameters, ordered by catalog index; a parameter without keys
+    /// has no entry.
+    pub keys: Vec<ParamKeys>,
     pub fade_in_frames: i64,
     pub fade_out_frames: i64,
     pub seed: Option<u32>,
@@ -137,6 +174,48 @@ impl FxClip {
     pub fn param(&self, id: &str) -> Option<FxValue> {
         let (index, _) = self.effect.param(id)?;
         self.params.get(index).copied()
+    }
+
+    /// The curve of a parameter by catalog index, if it has keys.
+    pub fn curve(&self, param: usize) -> Option<&[FxKey]> {
+        self.keys
+            .iter()
+            .find(|curve| curve.param == param)
+            .map(|curve| curve.keys.as_slice())
+    }
+
+    /// The curve of a parameter by id.
+    pub fn curve_of(&self, id: &str) -> Option<&[FxKey]> {
+        self.curve(self.effect.param(id)?.0)
+    }
+
+    /// The value of the parameter at `index` at a frame **of the clip**: its keys when it has
+    /// any (the first value holds before the first key, the last after the last, a key's own
+    /// frame answers its stored value), else the static value (the catalog default when the
+    /// document leaves it out).
+    pub fn value_at(&self, index: usize, frame_in_clip: i64) -> Option<FxValue> {
+        match self.curve(index) {
+            Some(keys) => resolve_keys(keys, frame_in_clip),
+            None => self.params.get(index).copied(),
+        }
+    }
+
+    /// Every parameter at a frame of the clip, in catalog order.
+    pub fn sampled(&self, frame_in_clip: i64) -> Vec<FxValue> {
+        (0..self.params.len())
+            .filter_map(|index| self.value_at(index, frame_in_clip))
+            .collect()
+    }
+
+    /// The seed of this clip's noise at a frame of the clip, or `None` for an effect that draws
+    /// none. Explicit when the document gives one, else derived from the ID; the document is
+    /// never written to by asking.
+    pub fn seed_at(&self, frame_in_clip: i64) -> Option<u32> {
+        seed_for(
+            self.effect.reseed,
+            base_seed(self.seed, &self.id),
+            frame_in_clip,
+        )
     }
 
     /// The fade-in/fade-out envelope at a frame of the clip, sampled at the middle of the frame,
@@ -184,8 +263,10 @@ pub struct FxPass {
     /// The envelope at this frame, 0..1.
     pub weight: f64,
     pub amount: f64,
-    /// Every parameter of the effect, in catalog order.
+    /// Every parameter of the effect at this frame (keys applied), in catalog order.
     pub params: Vec<(String, FxValue)>,
+    /// The seed of the noise at this frame; only effects that draw noise carry one.
+    pub seed: Option<u32>,
 }
 
 impl FxPass {
@@ -200,12 +281,16 @@ impl FxPass {
         self.param(id).and_then(FxValue::as_number)
     }
 
+    pub fn boolean(&self, id: &str) -> Option<bool> {
+        self.param(id).and_then(FxValue::as_bool)
+    }
+
     pub fn to_json(&self) -> Value {
         let mut params = serde_json::Map::new();
         for (name, value) in &self.params {
             params.insert(name.clone(), value.to_json());
         }
-        json!({
+        let mut wire = json!({
             "trackId": self.track_id,
             "clipId": self.clip_id,
             "effect": self.effect,
@@ -214,7 +299,13 @@ impl FxPass {
             "amount": self.amount,
             "params": Value::Object(params),
             "scope": { "kind": "output" },
-        })
+        });
+        // Written only for an effect that draws noise, so the bytes of the passes of the looks
+        // without it (and the digests of their plans) do not change.
+        if let Some(seed) = self.seed {
+            wire["seed"] = json!(seed);
+        }
+        wire
     }
 
     /// What `amount` must be for these parameters and weight; the plan's validation compares it.
@@ -353,9 +444,10 @@ impl Fx {
                         .effect
                         .params
                         .iter()
-                        .zip(&clip.params)
-                        .map(|(spec, value)| (spec.id.to_string(), *value))
+                        .zip(clip.sampled(frame_in_clip))
+                        .map(|(spec, value)| (spec.id.to_string(), value))
                         .collect(),
+                    seed: clip.seed_at(frame_in_clip),
                 };
                 pass.amount = pass.expected_amount();
                 passes.push(pass);
@@ -382,14 +474,29 @@ pub fn clip_json(clip: &FxClip) -> Value {
     for (spec, value) in clip.effect.params.iter().zip(&clip.params) {
         params.insert(spec.id.to_string(), value.to_json());
     }
+    let mut keys = serde_json::Map::new();
+    for curve in &clip.keys {
+        let Some(spec) = clip.effect.params.get(curve.param) else {
+            continue;
+        };
+        keys.insert(
+            spec.id.to_string(),
+            Value::Array(curve.keys.iter().map(key_json).collect()),
+        );
+    }
     json!({
         "id": clip.id, "effect": clip.effect.id,
         "start_frame": clip.start_frame, "duration_frames": clip.duration_frames,
         "end_frame_exclusive": clip.end_frame_exclusive(),
         "fade_in_frames": clip.fade_in_frames, "fade_out_frames": clip.fade_out_frames,
         "hidden": clip.hidden, "seed": clip.seed, "scope": "output",
-        "params": Value::Object(params),
+        "params": Value::Object(params), "keys": Value::Object(keys),
     })
+}
+
+/// One key as the queries report it: its frame (local to the clip), typed value and easing.
+pub fn key_json(key: &FxKey) -> Value {
+    json!({ "frame": key.frame, "value": key.value.to_json(), "easing": key.easing.name() })
 }
 
 /// A syntactically fine ID for a track or clip, the pilot's rule (`fx-schema.ts`):

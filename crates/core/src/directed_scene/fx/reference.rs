@@ -6,18 +6,31 @@
 //! with the colour by `strength × amount` and encoded again, where `strength` is the vignette's
 //! `shade` or the fade's `amount` parameter. A pass whose total weight is 0 returns its input
 //! exactly (no decode/encode round trip, so zero intensity or zero fade amount cannot move a pixel).
+//!
+//! `filmGrain` (P3) is different in kind: it adds noise from the integer hash of `(seed, cell)` to
+//! the **encoded** picture (see [`apply_grain_to_srgb`]) and mixes the result back in linear light.
 
-use super::{FxPass, FxValue};
+use super::{FxPass, FxValue, colored_triangular, hash_pixel, triangular};
+
+/// The height at which a grain `size` is declared in pixels (the pilot's `REFERENCE_HEIGHT`).
+pub const GRAIN_REFERENCE_HEIGHT: f64 = 720.0;
 
 /// The effects this reference draws.
 fn knows(effect: &str) -> bool {
-    matches!(effect, "vignette" | "fade")
+    matches!(effect, "vignette" | "fade" | "filmGrain")
+}
+
+/// The side of one grain cell, in pixels of a picture `height` pixels tall:
+/// `max(size × height / 720, 1)`, applied **once** (the pilot's `pxScale`).
+pub fn grain_cell_px(size: f64, height: usize) -> f64 {
+    (size * (height as f64 / GRAIN_REFERENCE_HEIGHT)).max(1.0)
 }
 
 /// How much a pass mixes toward its colour at a point, before `amount`: the vignette's shade, the
 /// fade's `amount` parameter (the same everywhere). `None` for an effect this reference does not
 /// know or a pass without its parameters.
 pub fn pass_strength(pass: &FxPass, u: f64, v: f64, width: f64, height: f64) -> Option<f64> {
+    // The film grain has no scalar strength: it adds noise, it does not mix toward a colour.
     match pass.effect.as_str() {
         "vignette" => vignette_shade(pass, u, v, width, height),
         "fade" => pass.number("amount"),
@@ -73,6 +86,64 @@ pub fn vignette_shade(pass: &FxPass, u: f64, v: f64, width: f64, height: f64) ->
     Some(smoothstep(radius, radius + softness, distance))
 }
 
+/// The noise one pixel receives from a grain pass, before it is weighed: the triangular draw(s)
+/// of the cell the pixel is in. `(x, y)` count from the **top-left**; the shader's
+/// `gl_FragCoord` counts from the **bottom-left**, so the row is converted explicitly
+/// (`glY = height − 1 − y`, the pixel's centre at `glY + 0.5`) and the cell is
+/// `floor(coord / max(cellPx, 1))` in single precision as the GPU computes it.
+pub fn grain_encoded_delta(pass: &FxPass, x: usize, y: usize, height: usize) -> Option<[f32; 3]> {
+    let seed = pass.seed?;
+    let cell = grain_cell_px(pass.number("size")?, height) as f32;
+    let gl_y = height.checked_sub(1)?.checked_sub(y)?;
+    let cell_x = ((x as f32 + 0.5) / cell).floor() as u32;
+    let cell_y = ((gl_y as f32 + 0.5) / cell).floor() as u32;
+    let hash = hash_pixel(seed, cell_x, cell_y);
+    Some(if pass.boolean("colored")? {
+        colored_triangular(hash)
+    } else {
+        [triangular(hash); 3]
+    })
+}
+
+/// One pixel of a grain pass (the pilot's `filmGrain` shader, in the editor's encoded textures):
+/// the grain is added to the sRGB-**encoded** pixel, weighed by `amount × 0.25 × response` where
+/// `response = mix(1, 1 − smoothstep(0.05, 0.95, luma), luma_param)` (`luma` is Rec.709 on the
+/// encoded colour), clamped, decoded to linear light and mixed with the source by the pass's
+/// `amount` (= `intensity × weight`, **once**); the result is encoded again. Exactly the identity
+/// when `amount × pass.amount <= 0`.
+pub fn apply_grain_to_srgb(
+    pass: &FxPass,
+    rgb: [f64; 3],
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+) -> Option<[f64; 3]> {
+    let _ = width;
+    let grain = pass.number("amount")?;
+    let luma_weight = pass.number("luma")?;
+    if grain * pass.amount <= 0.0 {
+        return Some(rgb);
+    }
+    let noise = grain_encoded_delta(pass, x, y, height)?;
+    let encoded = [
+        rgb[0].clamp(0.0, 1.0),
+        rgb[1].clamp(0.0, 1.0),
+        rgb[2].clamp(0.0, 1.0),
+    ];
+    let luma = 0.2126 * encoded[0] + 0.7152 * encoded[1] + 0.0722 * encoded[2];
+    let response = 1.0 + ((1.0 - smoothstep(0.05, 0.95, luma)) - 1.0) * luma_weight;
+    let mut out = [0.0; 3];
+    for channel in 0..3 {
+        let grained = (encoded[channel] + f64::from(noise[channel]) * (grain * 0.25 * response))
+            .clamp(0.0, 1.0);
+        let linear = srgb_to_linear(encoded[channel]);
+        let mixed = linear + (srgb_to_linear(grained) - linear) * pass.amount;
+        out[channel] = linear_to_srgb(mixed);
+    }
+    Some(out)
+}
+
 /// One pass over one pixel: `rgb` is sRGB-encoded 0..1, `(x, y)` the pixel's column and row from
 /// the top-left of a `width` × `height` picture (the pixel's centre is sampled). Returns the
 /// encoded result, or `None` for an effect this reference does not know.
@@ -89,6 +160,9 @@ pub fn apply_pass_to_srgb(
     }
     if pass.amount <= 0.0 {
         return Some(rgb);
+    }
+    if pass.effect == "filmGrain" {
+        return apply_grain_to_srgb(pass, rgb, x, y, width, height);
     }
     let u = (x as f64 + 0.5) / width as f64;
     let v = (y as f64 + 0.5) / height as f64;
@@ -167,6 +241,7 @@ mod tests {
             weight: 1.0,
             amount,
             params,
+            seed: None,
         }
     }
 
@@ -256,6 +331,7 @@ mod tests {
             weight: 1.0,
             amount: weight,
             params,
+            seed: None,
         }
     }
 

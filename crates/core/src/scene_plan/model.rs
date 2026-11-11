@@ -42,10 +42,14 @@ pub enum Capability {
     /// the listed order after the layers and splats. A runtime that does not list it refuses the
     /// plan (`unsupported` + `missing`), never draws the picture without its effects.
     OutputFx,
+    /// Noise effects (`FxPass::seed`, F059): passes that carry a seed and draw grain from the
+    /// integer hash of `(seed, cell)`. A runtime that does not list it refuses the plan with
+    /// `unsupported` + `missing`, never draws the picture without its noise.
+    FxNoise,
 }
 
 impl Capability {
-    pub const ALL: [Capability; 10] = [
+    pub const ALL: [Capability; 11] = [
         Self::Camera,
         Self::NodeTransforms,
         Self::Sockets,
@@ -56,6 +60,7 @@ impl Capability {
         Self::CompositionPassOrder,
         Self::Splats,
         Self::OutputFx,
+        Self::FxNoise,
     ];
 
     /// The spelling used on the wire.
@@ -71,6 +76,7 @@ impl Capability {
             Self::CompositionPassOrder => "compositionPassOrder",
             Self::Splats => "splats",
             Self::OutputFx => "outputFx",
+            Self::FxNoise => "fxNoise",
         }
     }
 

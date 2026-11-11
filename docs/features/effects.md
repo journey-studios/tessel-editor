@@ -1,11 +1,11 @@
-# F016 — Adicionar e processar efeitos (vinheta e fade, escopo de saída)
+# F016 — Adicionar e processar efeitos (vinheta, fade e filmGrain, escopo de saída)
 
 ## Status
 
 **Catálogo parcial; cobertura da vinheta por superfície na tabela P0+P1 abaixo.** Uma fatia completa de ponta a ponta: o efeito **vinheta** com escopo **saída** (a imagem
 final da cena dirigida), criado, editado e removido pela biblioteca, pelo JSONL sem janela e pela janela;
 avaliado por quadro no core; persistido; desfeito em uma entrada; desenhado pelo monitor e pelo export.
-Não é a migração do motor de efeitos: o catálogo tem **dois** efeitos (vinheta e, desde P2, `fade`) e o piloto tem 59 shaders. O restante
+Não é a migração do motor de efeitos: o catálogo tem **três** efeitos (vinheta, `fade` desde P2 e `filmGrain` desde P3) e o piloto tem 59 shaders. O restante
 (catálogo, transições, edição de shots) continua pendente em BL028/BL036/BL082 e **não** há placeholder
 habilitado para ele.
 
@@ -74,7 +74,7 @@ especificação a reabrir, não algo que se afirme portado.
   padrão). Fades de 0, `hidden: false` e `scope` de saída são grafia canônica (omitidos); uma camada sem
   clipes sai do documento, então adicionar e remover devolve o documento byte a byte.
 - Sem `fx` (ou vazia) o plano **não tem a chave `fx`** e os bytes do plano de antes não mudam (golden).
-- Recusado com código tipado, nunca ignorado: `keys` (`FX_KEYS_NOT_YET`), escopo `shot`/`node`
+- Recusado com código tipado, nunca ignorado: escopo `shot`/`node`
   (`FX_SCOPE_NOT_YET`), qualquer entrada em `transitions` (`FX_TRANSITION_NOT_YET`), `catalogVersion > 1`
   (`CATALOG_TOO_NEW`), efeito fora do catálogo (`UNKNOWN_EFFECT`), parâmetro desconhecido, de outro tipo ou
   fora da faixa, sobreposição de clipes na mesma trilha (`FX_CLIP_OVERLAP`), clipe vazio ou fora da edição,
@@ -201,7 +201,7 @@ recusa com `invalid_bundle`/`ENVELOPE_TOO_LONG` e não altera nenhum valor que o
 são explícitos: encurtar os fades no mesmo lote ou antes. Códigos de erro do comando (`command_code`):
 `unknown_effect`, `unknown_param`, `param_type`, `param_out_of_range`, `unknown_fx_track`, `unknown_fx_clip`,
 `reserved_id`, `duplicate_id`, `fx_clip_overlap`, `fx_clip_empty`, `fx_clip_out_of_range`, `envelope_too_long`,
-`catalog_too_new`, `fx_scope_not_yet`, `fx_keys_not_yet`, `fx_transition_not_yet`; um candidato recusado pelo
+`catalog_too_new`, `fx_scope_not_yet`, `fx_transition_not_yet`; um candidato recusado pelo
 importador mantém `invalid_bundle` com os issues em `details.issues[]` (os limites chegam como `FX_LIMIT`).
 
 ### Janela
@@ -439,9 +439,9 @@ outros); corrigido em `reset_ops` e coberto por teste de unidade e de GPUI.
 - Histórico: a correção R1 (BL082.7–BL082.15) ficou sem compilar por falta de disco; **foi compilada e testada no branch P0+P1** (gates no backlog BL082.17).
 - A medição de custo é SwiftShader (comparação antes/depois); a GPU nativa não foi medida.
 
-- Só `vignette` e `fade` (2 de 59). Os outros efeitos do piloto **não** foram portados; cada efeito novo é uma entrada no
+- Só `vignette`, `fade` e `filmGrain` (3 de 59). Os outros efeitos do piloto **não** foram portados; cada efeito novo é uma entrada no
   catálogo, um shader no runtime e um teste de pixel.
-- Só escopo `output`. `shot`/`node`, chaves (`keys`, animação de parâmetros) e `seed` (lido, sem uso) são recusados.
+- Só escopo `output`. `shot`/`node` são recusados. Chaves e `seed` valem desde P3 ([F058](fx-keys.md)).
 - Sem transições: `transitions` é recusado se não vazio. **Contrato de extensão** (sem controle habilitado): uma
   `crossDissolve` será `transitions[]` com `{id, type, fromShot, toShot, durationFrames}` resolvida no plano com
   **dois** quadros de origem (precisa que o plano e o runtime desenhem dois shots no mesmo quadro: capacidade nova
@@ -518,3 +518,35 @@ Código `1ad715901df6edb14503ea081ae407c18bd0e94d` validado: budget só para FX 
 BL082.21–.23: probe consulta a camada inteira mesmo com filtro de resposta; informa o valor quantizado julgado e o solicitado. JSONL recebe reset.op por campo (cor/ponto preservam irmãos, tempo usa set_field), equivalente à ação da janela. Oferta e predicado de reset vêm do core; o resumo do fade não promete keys ainda ausentes. Reforçada a conferência textual do corpus (BL082.25), sem mudar os casos/pixels nem os blockers P0. Os limites cruzados dos ranges continuam explícitos (BL082.24). Evidências atuais na atualização de [F057](fx-inspector.md); não herdar automaticamente os PASS de f8c4a7e para o código novo.
 
 Fechamento P2: código5eb577b validado com workspace2060/0/12 e janela153/153. Resíduo posterior altera somente details.actions da recusa resetsemdefault, validado por GPUI1/1, fmt/check/clippy/build; não reatribuir a suíte/prova anterior a uma nova execução. [Detalhes e limites](fx-inspector.md#fechamento-da-validação-da-correção-p2).
+
+## P3: chaves, easing, seed e o terceiro look (`filmGrain`)
+
+P3 acrescenta a animação dos parâmetros (`keys`, easing da chave de chegada, hold, booleano, seed `uint32`) e o
+`filmGrain`. Contratos: [F058](fx-keys.md) (formato, amostragem, operações, gesto, inspector, divergências) e
+[F059](film-grain.md) (catálogo, hash inteiro, pixels, `Capability::FxNoise`).
+
+- O documento ganha `keys` (frames locais ao clipe) e `seed`; sem eles os bytes e os planos de vinheta/fade não mudam.
+  `FX_KEYS_NOT_YET` foi removido; `FX_SCOPE_NOT_YET` e `FX_TRANSITION_NOT_YET` continuam.
+- O plano carrega os valores **já amostrados** e, nos efeitos de ruído, a `seed` do quadro. `Capability::FxNoise`
+  (`"fxNoise"`, 11ª capacidade do runtime) só é pedida por passes com seed; um runtime P2 é recusado na negociação.
+- `scene.fx.inspect` aceita `frame`/`time` e devolve por clipe o bloco `animation`; `scene.fx.edit` ganhou as ops de
+  chave e `set_seed`; o gesto `scene.fx.gesture.*` também move/desloca/escala chaves (último candidato legal, um undo).
+- Evidências, comandos e limites: [F058](fx-keys.md#evidências-e-status) e [F059](film-grain.md#evidências-e-status).
+  Limites que permanecem: GPU nativa, Windows, ponteiro físico (BL043), execução do motor original
+  (`ORIGIN_NOT_EXECUTED`, `ORIGIN_GOLDEN_NOT_COMPARABLE`), 56 efeitos, escopos `shot`/`node` e transições (P4), timeline (P6).
+
+### Correção P3 após a revisão da PR 42 (BL082.30–.34)
+
+- **UI completa das chaves (BL082.30):** quadro e valor tipados por chave, mover para qualquer quadro, deslocar/escalar
+  com parâmetros, navegar anterior/próxima/ir para a chave por `scene.fx.seek` (regra do core), seed arbitrária,
+  `base_revision` e editores com Enter/Blur de um único commit; base desabilitada sob chaves (`base_under_keys`) com
+  o valor amostrado à parte; `set_param` direto continua com `FX_STATIC_UNDER_KEYS`, sem autokey.
+- **Aritmética (BL082.31):** `scale_keys` com âncora `i64::MIN` ou `num = i64::MAX` é recusa tipada, e o arredondamento
+  é meio para cima exato nos dois lados da âncora.
+- **Custo (BL082.32):** 1024 ops por lote (`FX_LIMIT` antes de copiar), limites por op/clipe/camada antes de crescer,
+  edição no lugar e contadores determinísticos; o custo é por lote (revalidação do importador), medido em par.
+- **Intenção do gesto e proofs (BL082.33):** gesto liga verbo e alvo (`gesture_*_mismatch`) sem tocar candidato nem
+  revisão; `scene_frame_at_playhead`/captura/navegação provados com início de FX ≠ 0 e taxas NTSC; velocidade/offset
+  são N/A (não existem no clipe de cena deste caminho).
+- **No-op tipado (BL082.34):** `key_param` compara valores tipados (`1` e `1.0`, ordem de chaves, cor/ponto).
+Detalhes e evidências: [F058](fx-keys.md).

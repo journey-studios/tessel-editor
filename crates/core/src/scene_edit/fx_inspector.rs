@@ -82,8 +82,31 @@ impl FieldGroup {
     }
 }
 
+/// What a field holds: a scalar the adapter edits with a slider or a text box, or a switch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FieldKind {
+    Number,
+    /// A boolean parameter (`colored`): the value is 0 or 1 here, the written value `false`/`true`.
+    Boolean,
+}
+
+impl FieldKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Number => "number",
+            Self::Boolean => "boolean",
+        }
+    }
+}
+
 /// Why a field does not apply to the clip as it stands (a code a person and a script can read).
 pub const REASON_SINGLE_VALUE: &str = "range_is_a_single_value";
+
+/// Why the BASE value of a parameter is not edited from its control: keys prevail over it, so a
+/// slider on the base would move something the picture does not show. The keys are the way to
+/// edit an animated parameter from the window; the library's `set_param` still writes the base
+/// (and answers with `FX_STATIC_UNDER_KEYS`).
+pub const REASON_ANIMATED: &str = "base_under_keys";
 
 /// One setting of a clip: a number of a parameter (or one component of a point or a colour) or a
 /// whole-frame field. Every field is a scalar the adapter can show with a slider or a text box.
@@ -92,6 +115,7 @@ pub struct InspectorField {
     /// The node field name: `intensity`, `center_x`, `color_r`, `fade_in_frames`...
     pub id: String,
     pub group: FieldGroup,
+    pub kind: FieldKind,
     /// The name without the component (`Centro`); the full text comes from [`Self::label`].
     pub base: Labels,
     component: Component,
@@ -109,6 +133,10 @@ pub struct InspectorField {
     pub applicable: bool,
     /// Why it does not apply (`REASON_*`), only when `applicable` is false.
     pub reason: Option<&'static str>,
+    /// Keys prevail over this parameter's base (`value` is the BASE, what shows where the curve
+    /// does not reach). A control built from this field edits the keys, not `value`; see
+    /// [`REASON_ANIMATED`]. Always false for a timing field.
+    pub animated: bool,
     target: Target,
 }
 
@@ -124,6 +152,32 @@ impl InspectorField {
 
     pub fn target(&self) -> Target {
         self.target
+    }
+
+    /// The scalar this field holds of a whole parameter value (the `x` of a point, the `g` of a
+    /// colour, a switch as 0 or 1): what a key or a sampled value shows in this field's control.
+    /// `None` for a value of another kind, and for a timing field.
+    pub fn read(&self, value: FxValue) -> Option<f64> {
+        match (value, self.component) {
+            (FxValue::Number(number), Component::Whole) => Some(number),
+            (FxValue::Bool(on), Component::Whole) => Some(f64::from(u8::from(on))),
+            (FxValue::Point { x, .. }, Component::X) => Some(x),
+            (FxValue::Point { y, .. }, Component::Y) => Some(y),
+            (FxValue::Color { r, .. }, Component::R) => Some(r),
+            (FxValue::Color { g, .. }, Component::G) => Some(g),
+            (FxValue::Color { b, .. }, Component::B) => Some(b),
+            _ => None,
+        }
+    }
+
+    /// The scalar of `value` in this field's control, for the key of this field's parameter at a
+    /// frame: the same as [`Self::read`] with the parameter named, so a caller can pick the right
+    /// field of a parameter that has several (`center_x`, `center_y`).
+    pub fn param(&self) -> Option<&'static str> {
+        match self.target {
+            Target::Param(param, _) => Some(param),
+            Target::Field(_) => None,
+        }
     }
 
     /// Whether the field holds its default. A field without a default is never "at default".
@@ -170,33 +224,91 @@ impl InspectorField {
                 let current = clip.param(param).ok_or_else(|| {
                     CommandError::new("unknown_param", format!("`{param}` is not a parameter"))
                 })?;
-                let written = match (current, component) {
-                    (_, Component::Whole) => json!(value),
-                    (FxValue::Point { y, .. }, Component::X) => json!({ "x": value, "y": y }),
-                    (FxValue::Point { x, .. }, Component::Y) => json!({ "x": x, "y": value }),
-                    (FxValue::Color { g, b, .. }, Component::R) => {
-                        json!({ "r": value, "g": g, "b": b })
-                    }
-                    (FxValue::Color { r, b, .. }, Component::G) => {
-                        json!({ "r": r, "g": value, "b": b })
-                    }
-                    (FxValue::Color { r, g, .. }, Component::B) => {
-                        json!({ "r": r, "g": g, "b": value })
-                    }
-                    _ => {
-                        return Err(CommandError::new(
-                            "invalid_value",
-                            format!("`{}` has no such component", self.id),
-                        ));
-                    }
-                };
                 Ok(FxOp::SetParam {
                     clip: clip.id.clone(),
                     param: param.to_string(),
-                    value: written,
+                    value: self.written(current, component, value)?,
                 })
             }
         }
+    }
+
+    /// The whole value of the parameter this field belongs to, with this field's part set to
+    /// `value` and the other parts as `current` has them: what a `set_param` or a `key_param`
+    /// carries. A switch takes 0 or 1 only.
+    fn written(
+        &self,
+        current: FxValue,
+        component: Component,
+        value: f64,
+    ) -> Result<Value, CommandError> {
+        Ok(match (current, component) {
+            (FxValue::Bool(_), Component::Whole) => match value {
+                0.0 => json!(false),
+                1.0 => json!(true),
+                _ => {
+                    return Err(CommandError::invalid_value(
+                        "Expected 0 or 1 for a switch",
+                        json!("boolean"),
+                    ));
+                }
+            },
+            (_, Component::Whole) => json!(value),
+            (FxValue::Point { y, .. }, Component::X) => json!({ "x": value, "y": y }),
+            (FxValue::Point { x, .. }, Component::Y) => json!({ "x": x, "y": value }),
+            (FxValue::Color { g, b, .. }, Component::R) => {
+                json!({ "r": value, "g": g, "b": b })
+            }
+            (FxValue::Color { r, b, .. }, Component::G) => {
+                json!({ "r": r, "g": value, "b": b })
+            }
+            (FxValue::Color { r, g, .. }, Component::B) => {
+                json!({ "r": r, "g": g, "b": value })
+            }
+            _ => {
+                return Err(CommandError::new(
+                    "invalid_value",
+                    format!("`{}` has no such component", self.id),
+                ));
+            }
+        })
+    }
+
+    /// The op that puts a key of this field's parameter on `frame_in_clip`, at `value` for this
+    /// field's part. The other parts of a point or a colour are what the parameter is at that
+    /// frame (its curve, or its base), so keying one channel never moves the others. A timing
+    /// field has no keys: refused with `not_applicable`.
+    pub fn key_op(
+        &self,
+        clip: &FxClip,
+        frame_in_clip: i64,
+        value: f64,
+    ) -> Result<FxOp, CommandError> {
+        if !value.is_finite() {
+            return Err(CommandError::invalid_value(
+                "Expected a finite number",
+                json!("number"),
+            ));
+        }
+        let Target::Param(param, component) = self.target else {
+            return Err(CommandError::new(
+                "not_applicable",
+                format!("`{}` is a timing field: only parameters have keys", self.id),
+            ));
+        };
+        let (index, _) = clip.effect.param(param).ok_or_else(|| {
+            CommandError::new("unknown_param", format!("`{param}` is not a parameter"))
+        })?;
+        let current = clip
+            .value_at(index, frame_in_clip)
+            .ok_or_else(|| CommandError::new("unknown_param", format!("`{param}` has no value")))?;
+        Ok(FxOp::KeyParam {
+            clip: clip.id.clone(),
+            param: param.to_string(),
+            frame: frame_in_clip,
+            value: Some(self.written(current, component, value)?),
+            easing: None,
+        })
     }
 
     /// The op that restores the default of this field, or `None` when it has no default or the
@@ -223,18 +335,47 @@ impl InspectorField {
     }
 
     pub fn to_json(&self, locale: Locale) -> Value {
+        let labels = json!({
+            "pt-br": self.label(Locale::PtBr), "en": self.label(Locale::En),
+            "es": self.label(Locale::Es),
+        });
+        if self.kind == FieldKind::Boolean {
+            // A switch has no range or step to show: `true`/`false`, its default and the reset.
+            return json!({
+                "id": self.id, "group": self.group.name(),
+                "label": self.label(locale), "labels": labels,
+                "type": "boolean", "value": self.value != 0.0,
+                "default": self.default.map(|default| default != 0.0),
+                "at_default": self.at_default(),
+                "applicable": self.applicable, "reason": self.reason,
+                "animated": self.animated,
+                "base_edit": self.base_edit_json(),
+                "reset": self.default.map(|default| json!({
+                    "to": default != 0.0, "needed": !self.at_default(),
+                })),
+            });
+        }
         json!({
             "id": self.id, "group": self.group.name(),
-            "label": self.label(locale),
-            "labels": {
-                "pt-br": self.label(Locale::PtBr), "en": self.label(Locale::En),
-                "es": self.label(Locale::Es),
-            },
+            "label": self.label(locale), "labels": labels,
             "type": "number", "value": self.value, "min": self.min, "max": self.max,
             "step": self.step, "default": self.default, "at_default": self.at_default(),
             "integer": self.integer, "unit": self.unit,
             "applicable": self.applicable, "reason": self.reason,
+            "animated": self.animated,
+            "base_edit": self.base_edit_json(),
             "reset": self.default.map(|default| json!({ "to": default, "needed": !self.at_default() })),
+        })
+    }
+
+    /// Whether the control of this field edits the base: not while keys prevail over it. The
+    /// reset of the base stays (it is an explicit write of the base, and keeps the curve).
+    fn base_edit_json(&self) -> Value {
+        let enabled = self.applicable && !self.animated;
+        json!({
+            "enabled": enabled,
+            "reason": if self.animated { Some(REASON_ANIMATED) } else { self.reason },
+            "edit_with": self.animated.then_some("keys"),
         })
     }
 }
@@ -396,6 +537,7 @@ fn scalar(draft: Draft) -> InspectorField {
     InspectorField {
         id: draft.id,
         group: draft.group,
+        kind: FieldKind::Number,
         base: draft.base,
         component: draft.component,
         min,
@@ -407,6 +549,7 @@ fn scalar(draft: Draft) -> InspectorField {
         unit: "ratio",
         applicable,
         reason: (!applicable).then_some(REASON_SINGLE_VALUE),
+        animated: false,
         target: draft.target,
     }
 }
@@ -482,7 +625,28 @@ fn fields_of(clip: &FxClip, edit_frames: i64) -> Vec<InspectorField> {
                     }));
                 }
             }
+            (ParamKind::Bool { default }, FxValue::Bool(on)) => {
+                let mut field = scalar(Draft {
+                    id: spec.id.to_string(),
+                    group: FieldGroup::Param,
+                    base: spec.label,
+                    component: Component::Whole,
+                    range: (0.0, 1.0, 1.0),
+                    value: f64::from(u8::from(on)),
+                    default: Some(f64::from(u8::from(default))),
+                    target: Target::Param(spec.id, Component::Whole),
+                });
+                field.kind = FieldKind::Boolean;
+                field.integer = true;
+                field.unit = "";
+                fields.push(field);
+            }
             _ => {}
+        }
+    }
+    for field in &mut fields {
+        if let Target::Param(param, _) = field.target {
+            field.animated = clip.curve_of(param).is_some_and(|keys| !keys.is_empty());
         }
     }
     // The strength of the effect first: it is the control people reach for.
@@ -628,6 +792,7 @@ mod tests {
                 .iter()
                 .map(|param| param.kind.default_value())
                 .collect(),
+            keys: Vec::new(),
             fade_in_frames: 0,
             fade_out_frames: 0,
             seed: None,
