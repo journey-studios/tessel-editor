@@ -1,0 +1,20 @@
+BL157.4 lab replication of the releaseLock patch. Fixed BEFORE the run (written Wed Nov 11 2026 03:3x -03, native bundle A/B still running).
+
+Why: the interleaved lab A/B so far is 4 of 193 stuck runs without the patch and 0 of 193 with it (exact one-sided p 0.0615: suggestive, not conclusive).
+The native A/B is likely to be underpowered by design (the real editor decodes the two small clouds once per session; the lab rate is ~2% per run).
+
+Command (the same as the `loadfix` batch; only --passes and --out change):
+  node runtime/scripts/perf/run.mjs --engine webkit --suite real --cases real-load --variants prev,current \
+    --baseline-bundle <unpatched runtime.js> --passes 300 --fresh --warmup 1 --size 1280x720 --quality preview --workerlog \
+    --load-timeout 10000 --assets <lab assets> --real-cloud-a ... --real-cloud-b ... --real-ring ... --real-sparks ... --out <dir>
+  (`prev` = the unpatched bundle, `current` = runtime/dist/runtime.js with the patch; the order flips every pass; one fresh page per run)
+
+Unit: a run is STUCK when at least one of its asset loads has not answered after --load-timeout (load-report.py "hung runs"). Runs are never dropped.
+
+Rule (same words as scripts/runtime-bundle-ab.py, runs instead of sessions):
+  NOT REPRODUCED  the unpatched arm has fewer than 3 stuck runs: this replication says nothing about the patch
+  CONFIRMED       the unpatched arm has at least 3 stuck runs and the patched arm none
+  REDUCED         the patched arm has some, fewer than the unpatched arm
+  NO EFFECT       the patched arm has as many stuck runs as the unpatched arm, or more
+The exact one-sided hypergeometric p is a diagnostic. Pooled interleaved totals (earlier 193 + 193 and this batch) are reported next to it, never instead of it.
+Expected unpatched stuck runs at the earlier 2.1% rate: about 6 of 300 (P of at least 3 is about 0.94).

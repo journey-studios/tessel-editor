@@ -402,3 +402,214 @@ ativação" vale para a **prova sintética de pixels**. Nas sessões ligadas do 
 **O que isto não muda:** a leitura do A/B (§13: benefício local na entrada da imagem com o pré-upload, nenhum benefício demonstrado no warm draw,
 pausas grandes que persistem, `HANG` sem causa). Os testes unitários dizem que as decisões do runtime estão corretas, seguras e observáveis; não
 dizem que reduzem a latência.
+
+## 16. BL157.4: deadlock do WebKit no decodificador, laboratório de WebKit real e prova nativa (PR #41, após `4c16656`)
+
+Pedido: seguir da validação para a **otimização**. A regra do repositório não muda: atribuir antes de otimizar, um fator por vez, nenhuma redução
+de qualidade sem decisão de produto, opt-in primeiro, padrão só depois de A/B controlado; implementação sem prova segue **a validar**.
+Duas perguntas estavam abertas (§13–§15): **(a)** por que a página deixa de responder em alguns runs (5 de 28 em `ab1`–`ab3`; o `HANG` de 11,1 s do §13)
+e **(b)** o que paga a pausa na primeira entrada de crossfade. Uma sessão nativa leva ~70 s e roda sob carga externa que não controlamos; para ter dezenas
+de runs por pergunta, esta rodada montou um laboratório de WebKit real, sem o editor (§16.1), e leva à janela só o que ele estabelece.
+
+| Pergunta | Resultado | Estado |
+|---|---|---|
+| (a) página que para | **Mecanismo encontrado:** deadlock do WebKit em `ReadableStreamDefaultReader.releaseLock()` no decodificador do Spark (§16.4), com a mesma cadeia de pilha em 2 páginas do laboratório e em 1 da janela real. A chamada é removida **no build** | Correção aplicada por padrão (só muda o `runtime.js`). **O efeito dela na taxa de páginas presas NÃO está demonstrado:** laboratório intercalado 4 de 493 runs presos sem a correção, 0 de 493 com ela (p 0,062, sugestivo); a réplica pré-registrada (0 de 300 contra 0 de 300) e a janela real (1 de 36 contra 0 de 36) deram **NÃO REPRODUZIDO** (§16.4, §16.5) |
+| (b) primeiro crossfade | O custo é **espera da GPU** (77–130 ms em `readPixels`; CPU do quadro 1–5 ms), paga no **primeiro crossfade do processo**; **sem causa atribuída** (§16.2). O `warm_draw` tira o custo da entrada e o **desloca** para o ponto do aviso; aquecer na abertura não resolve e o hitch reaparece 1–2 quadros depois da entrada (§16.3) | **Nada promovido.** `warm_draw` segue opt-in e desligado; BL157 segue aberto |
+
+**A latência continua NÃO ACEITA.** Nenhum número desta seção é latência de display; o laboratório não é o editor; nada foi medido em máquina quieta.
+
+### 16.1 O laboratório
+
+`node runtime/scripts/perf/run.mjs --engine webkit …` carrega o `runtime.js` **de verdade** num `WKWebView` mínimo (`wk-host.swift`), sem o editor, sem Rust e
+sem projeto de usuário na árvore: as nuvens do projeto real entram só por argumentos de linha de comando locais (`--real-cloud-a/-b/-c/-d`, `--real-ring`,
+`--real-sparks`), viram links numa pasta temporária (nunca cópias) e **não são versionadas**; os relatórios citam só contagens, tamanhos e tempos. Cada run:
+
+- numa **página nova** (`--fresh`), porque o primeiro crossfade de um processo é justamente o que se mede;
+- com as variantes **intercaladas** (A, B, A, B…), para que a carga da máquina caia igual nas duas; a carga (`loadavg`) vai em cada linha e **nunca filtra**;
+- 1280×720, qualidade `preview` (a do monitor com o playhead andando), 24 fps com ritmo de filme (`--pacing film`) e um `readPixels` 1×1 ao fim de cada quadro
+  (`--drain read1x1`): o "quadro completo" inclui a espera da GPU;
+- gravado em JSONL por run; **run com erro ou travado nunca é descartado**: o host desiste de fora (`--run-timeout`), porque uma página com a thread principal
+  congelada não consegue se dar timeout, e a carga de assets tem limite próprio (`--load-timeout`).
+
+Leitura das tabelas: **entrada** = quadro em que o crossfade começa (40; o aviso `frame.warm` sai 30 quadros antes, no 10); **hitch** = quadro completo > 62,5 ms
+(1,5 quadro a 24 fps); medianas de quadro completo em ms. O laboratório orienta hipóteses; ele **não** substitui a janela: outro processo de GPU, sem Wry, sem host
+Rust, sem prefetch real e com tempos que mudam com a máquina.
+
+### 16.2 Onde o primeiro crossfade paga
+
+| Rodada (runs por variante) | Carga (load1, mediana) | Quadro de entrada, mediana: `nowarm` / `current` / `warmdraw` | Runs com hitch: `current` → `warmdraw` |
+|---|---|---|---|
+| `cold` (6) | 9,6 | 66,5 / 44,5 / 27,5 | — |
+| `prime` (12) | 10,5 / 10,7 | — / 40,0 (p90 149) / 27,5 (p90 37) | 5 de 12 → 0 de 12 |
+| `ab30` (29 e 28, intercalados) | 20,4 / 20,8 | — / 94,0 (p90 152) / 32,5 (p90 103) | 21 de 29 → 13 de 28 |
+
+- **O custo é espera da GPU, não CPU da página.** Em todo quadro lento a diferença está no `drain` (a espera do `readPixels`: 77–130 ms), enquanto `prepare`, `render` e
+  `wall` (a página) ficam em 1–5 ms; nenhuma chamada WebGL da página passou de 4 ms (`--glcalls`). Coerente com o que `gpu_finish` indicou na janela (BL157.2: consistente com GPU
+  pendente, não prova).
+- **É o primeiro crossfade do processo.** Quatro cenas em sequência (`real-chain`, 4 runs, carga ≈ 36): o 1º crossfade custa 86,5 ms (46–166) e o 2º e o 3º, com nuvens que o
+  processo nunca desenhou, 30,0 e 29,0 (máximos 36 e 29); com `warmdraw`, 30,0 / 27,0 / 27,5. Um **corte** para nuvem nova (`real-chain-cut`, 6 runs, carga ≈ 9) custa 16,0 /
+  27,0 / 25,0 mesmo na primeira vez. As duas cadeias rodaram em cargas diferentes: a diferença entre corte e crossfade é um indício, não uma medida pareada.
+- **O `warm_draw` não elimina o custo: muda onde ele cai.** Dos 13 runs de `ab30` com hitch, 9 o têm **antes** da entrada, nos quadros 10–14 (o aviso sai no 10); o quadro mais
+  lento por run cai de 102 para 45,5 ms (mediana). A 10 de carga (`prime`) o ponto do aviso não teve hitch (0 de 12); a 20 teve em 9 de 28: o deslocamento depende da carga.
+  Coerente com §13 (nenhum benefício demonstrado na janela).
+- **Causas descartadas no laboratório**, uma por vez: compilação/link de programa na entrada, chave de PSO por função de blend esquecida (`--psokeys`), alocação do alvo da
+  segunda camada, qualquer chamada WebGL da página ≥ 4 ms, CPU total do processo de GPU. **A causa continua sem atribuição.**
+
+### 16.3 Aquecer na abertura não resolve
+
+Se o custo é pago uma vez por processo, pagá-lo ocioso na abertura deveria bastar. Três variantes, 12 runs cada, intercaladas com `current` e `warmdraw` (carga ≈ 10–11):
+`primeopen` (cenas aquecidas **e desenhadas** ao abrir, 1,5 s ocioso, e depois o aviso normal), `primeonly` (só o da abertura) e `primescene` (cenas aquecidas, sem draw).
+
+| Variante | Quadro de entrada, mediana (p90) | Runs com hitch | Onde caem os hitches (quadro: 40 = entrada) |
+|---|---|---|---|
+| `current` | 40,0 (149) | 5 de 12 | 5 no quadro 40 |
+| `primeonly` | 28,0 (55) | 6 de 12 | 40: 1, 41: 3, 42: 2 |
+| `primeopen` | 27,0 (78) | 6 de 12 | 40: 2, 41: 1, 42: 4 |
+| `primescene` | 26,5 (30) | 3 de 12 | 42: 3 |
+| `warmdraw` | 27,5 (37) | **0 de 12** | — |
+
+O quadro de entrada melhora (40 → 27 ms), mas **o hitch não some: 13 dos 16 hitches das três variantes caem 1–2 quadros depois da entrada**, com o mesmo perfil (`drain` de 80–130 ms,
+CPU 1–5 ms). `warmdraw` tem 0 de 12 e `primeopen` 6 de 12 (p exato unilateral ≈ 0,007; `current` contra `warmdraw`, 5 de 12 contra 0, ≈ 0,019): **aquecer mais cedo, além do aviso normal, piora
+em relação a aquecer só no aviso.** Hipóteses **não testadas**:
+a ordenação aquecida na abertura envelhece em ~3 s e é refeita logo depois da entrada; o trabalho de GPU adiado vai para o primeiro quadro em que a segunda camada tem opacidade > 0;
+o estado de energia da GPU. Nada disso foi implementado: o host já avisa só 2 s antes (`PREFETCH_SECONDS`) e nenhum aviso na abertura é proposto.
+
+### 16.4 A página que para: um deadlock do WebKit no decodificador do Spark
+
+**Sintoma.** Em alguns runs do laboratório um asset fica em `loading` para sempre: o decodificador (um worker, `jsContent` inline no `spark.module.js`) nunca responde. Foi isso que o
+`real-load` expôs ao carregar os quatro assets do projeto real e esperar. Só decodificações **pequenas** ficaram presas: nos 12 runs presos do laboratório, 9 eram o arquivo de
+2.912.361 B e 3 o de 78.760 B; nunca uma nuvem grande. Dois `sample` de páginas paradas do laboratório mostram a mesma cadeia, na **mesma thread** do worker (a janela real deu
+uma terceira página, com a mesma cadeia e outro gatilho da coleta: §16.5):
+
+```
+ReadableStreamDefaultReader::releaseLock → (builtin) globalFuncMakeTypeError → ErrorInstance::create
+  → LocalAllocator::allocateSlowCase → Heap::collectInMutatorThread → … MarkingConstraintSolver
+  → JSReadableStreamDefaultReaderOwner::isReachableFromOpaqueRoots   (ou JSReadableStreamDefaultReader::visitOutputConstraints)
+  → WTF::LockAlgorithm::lockSlow      (espera, sem fim, um lock que a mesma thread já segura)
+```
+
+Leitura da pilha: `releaseLock()` roda um builtin que aloca (cria um `TypeError`); a alocação dispara uma coleta **na própria thread**; a marcação visita o mesmo leitor e fica esperando, em
+`lockSlow`, um lock que essa thread parece já segurar (a espera está aninhada na chamada), então não termina. Em uma das amostras a thread principal estava em
+`JITWorklist::suspendAllThreads` → `lockSlow`: com uma parada geral pendente, **a página inteira congela**. É um defeito do WebKit exposto pela chamada do Spark (o runtime não a faz). O WebKit
+não foi alterado nem recompilado para confirmar o mecanismo. O que está estabelecido é a **cadeia** (a mesma em 3 páginas paradas, em 2 ambientes); o **efeito da correção** na taxa de páginas
+presas era o que os A/B deveriam mostrar, e **eles não o mostraram** (tabela abaixo e §16.5).
+
+**Correção.** `runtime/scripts/build.mjs` troca, na hora do build (plugin `onLoad` do esbuild), a única `reader.releaseLock();` do worker por `void 0;` (o bundle encolhe 14 bytes) e **recusa o build**
+se o Spark não tiver exatamente uma dessas chamadas. O leitor deixa de ser solto, mas o worker não lê o fluxo de novo e o decode de um arquivo termina do mesmo jeito. O `releaseLock` da thread principal (`readStream`)
+só roda com `stream`, que o runtime nunca passa (ele passa `fileBytes`); não foi tocado.
+
+| Prova | Resultado | Limite |
+|---|---|---|
+| Pilhas de 3 páginas paradas (a cadeia acima) | cadeia completa, na mesma thread: 2 páginas do laboratório (uma com a thread principal em `suspendAllThreads`) e 1 da janela real (§16.5; duas amostras da mesma sessão, a 13,7 s e a 24,5 s) | mostram o mecanismo, não o efeito da correção |
+| Laboratório, 120 runs sem a correção (não intercalado) | 8 de 120 runs presos (6,7%) | carga muito maior que a dos outros lotes (load1 mediana 35 contra 5–10); sem braço de controle; fica fora de qualquer teste abaixo |
+| Laboratório, 3 lotes **intercalados** (28 + 45 + 120 = 193 runs por braço) | **4 de 193 sem a correção, 0 de 193 com ela** (2,1% → 0); p exato unilateral **0,0615** | quatro eventos: sugestivo, não conclusivo; motivou a réplica abaixo |
+| **Réplica pré-registrada** do laboratório: 300 runs por braço, intercalados, mesma linha de comando do maior lote intercalado (120 por braço); regra e contagem fixadas antes de medir | **0 de 300 sem a correção, 0 de 300 com ela → NÃO REPRODUZIDO** (menos de 3 runs presos sem a correção: a réplica não diz nada sobre a correção) | a 2,1% esperavam-se ≈ 6 presos; 0 em 300 teria chance de ≈ 0,2% nessa taxa, mas ela vem de 4 eventos (IC 95% de 0,6% a 5,2%; a 0,6%, 0 em 300 acontece em ≈ 18% das vezes). A carga (load1 mediana 9,7) ficou na faixa dos lotes intercalados anteriores (5,4–10,1), então a diferença de taxa **não se explica por essa medida de carga** |
+| **Total intercalado do laboratório** (193 + 300 = 493 runs por braço) | **4 de 493 sem a correção, 0 de 493 com ela**; p exato unilateral **0,062** | a réplica não acrescentou presos a nenhum braço; continua sugestivo, não conclusivo |
+| Janela real, 36 pares de sessões (§16.5) | **1 de 36 sem a correção, 0 de 36 com ela → NÃO REPRODUZIDO** (p exato 0,5) | sem poder: a 1 em 36, 36 sessões por braço dão 3 ou mais presas em ≈ 8% das vezes |
+| Testes (`runtime/test/spark-release-lock.test.mjs`, 5) | remove só a chamada do worker e deixa a de `readStream`; Spark com 0 ou 2 chamadas faz o build falhar; o Spark instalado tem exatamente 1; o `dist` construído não a tem (exige `TESSEL_REQUIRE_RUNTIME=1`) | não prova que a janela deixa de parar |
+| Mutação (`/tmp`, fora do repositório) | 6 de 6 mutantes mortos | — |
+| Suíte do runtime, Chrome real | 336 de 336 com o bundle corrigido | Chrome não é WKWebView |
+
+**O que isto não afirma.** O `HANG` de 11,1 s do §13 **recuperou** e um decode preso nunca se recupera: não é atribuído a este defeito. As 5 de 28 páginas paradas de `ab1`–`ab3` (≈ 100% dos quadros
+cancelados com a página ainda atendendo pedidos) são **compatíveis** com um asset que nunca termina de carregar; aquelas sessões não guardaram pilhas, então isso não prova nada.
+
+### 16.5 Prova nativa: o editor real, a mesma build, dois `runtime.js`
+
+`scripts/runtime-bundle-ab.py run` (contrato e regras, fixadas antes de medir, em [F060](features/viewport-asset-io.md#bl1574--o-deadlock-do-webkit-no-decodificador-o-laboratório-e-a-prova-nativa)):
+o **mesmo binário** do editor (`4e334135…`) e o mesmo projeto real (25 s, 600 quadros; `0b456aec…`), um editor novo por sessão que toca o projeto duas vezes, 36 pares alternados
+(72 sessões, 80 min; a ordem dentro do par inverte a cada par), com 6 processos de CPU ocupados ao lado de cada sessão para dar carga igual aos dois braços. Os braços diferem **só** no
+`runtime.js` (`TESSEL_RUNTIME_DIR` aponta para uma pasta temporária por braço): sem a correção (`c7d27bd2…`, 4.281.059 B) e com ela (`78a0c8f4…`, 4.281.045 B: o `dist` atual, que
+`pnpm build` reproduz byte a byte). O host registrou o que serviu a cada página: **72 de 72 sessões receberam o tamanho do bundle do seu braço**.
+
+| Braço | Sessões | Presas | Falhas | Inválidas | Amostras com a assinatura do deadlock |
+|---|---|---|---|---|---|
+| sem a correção | 36 | **1** | 0 | 1 (a mesma) | 2 |
+| com a correção | 36 | **0** | 0 | 0 | 0 |
+
+**Veredito mecânico (regra fixada antes): NÃO REPRODUZIDO.** O braço sem a correção teve 1 sessão presa, menos que as 3 exigidas: a rodada **não diz nada sobre o efeito da correção**
+(p exato unilateral 0,5, só diagnóstico). Dados, hashes e o resumo gerado: [`bundle-ab/`](viewport-real-latency-ab-results/bundle-ab/).
+
+**A sessão presa (24, sem a correção).** Um asset (`splat`, o arquivo de 78.760 B) foi buscado a 1,37 s e **nunca saiu de `loading`**. O editor seguiu vivo: o relógio de reprodução do host
+correu (1.133 e 1.132 ticks nos dois plays, 0 quadros pulados) e o host pediu 1.202 quadros, mas a página aceitou só 3 em 57 s (1.199 pedidos cancelados). O vigia (`/usr/bin/sample` no processo da
+página depois de 10 s sem imagem) coletou duas amostras, a 13,7 s e a 24,5 s, **as duas com a assinatura completa do deadlock**: a thread do worker dentro de `releaseLock`, a coleta de
+lixo disparada nela mesma e a espera em `lockSlow`. A thread principal da página estava ociosa no laço de eventos (nada em `suspendAllThreads`): desta vez só o decode parou, a página não
+congelou. A cadeia é a do laboratório, com outro gatilho da coleta (`Structure::materializePropertyTable`, num `get_by_id` do builtin, no lugar de `makeTypeError`):
+
+```
+ReadableStreamDefaultReader::releaseLock → InternalReadableStreamDefaultReader::releaseLock
+  → invokeReadableStreamDefaultReaderFunction → JSC::call → (builtin) get_by_id_direct
+  → Structure::materializePropertyTable → Heap::decrementDeferralDepthAndGCIfNeededSlow → Heap::collectInMutatorThread
+  → … MarkingConstraintSolver → JSReadableStreamDefaultReader::visitOutputConstraints
+  → WTF::LockAlgorithm::lockSlow      (espera, sem fim, um lock que a mesma thread já segura)
+```
+
+A cadeia completa, só com nomes de símbolos, está em `bundle-ab/deadlock-chain.txt`; as duas amostras dão a mesma. **O que isto mostra:** o defeito acontece **no editor real**, com a mesma cadeia, e não é
+um artefato do laboratório. **O que não mostra:** que a correção o evita; 1 sessão presa em 36 não dá poder para isso (a 1 em 36, 36 sessões por braço dão 3 ou mais presas em ≈ 8% das vezes).
+
+**Como foram os plays** (o estado do editor sob carga; **não é o que este experimento decide**: as sessões dividem uma máquina, não um relógio):
+
+| Braço | Plays | Maior espera por play: p50 / p95 / máx (ms) | Esperas > 62,5 ms | > 100 ms | Plays com espera > 100 ms |
+|---|---|---|---|---|---|
+| sem a correção | 72 (70 medidos¹) | 68,7 / 116,8 / 334,8 | 356 | 22 | 9 |
+| com a correção | 72 | 69,6 / 104,4 / 600,4 | 386 | 14 | 6 |
+
+¹ Os 2 plays da sessão presa não têm imagens para medir; contam como presos, não como espera.
+
+- **Todas as 72 sessões rodaram carregadas** (processos externos ocupando em mediana 8,7 núcleos por sessão, de 7,0 a 9,8; `load1` de pico: mediana 18,4, de 9,2 a 112,9). A carga subiu a 50–113 nas
+  sessões 20 e 32–40, por outros processos da máquina. **Os três maiores atrasos** (601 ms com a correção, 335 ms sem, 201 ms com) caíram nessas sessões (pico de `load1` de 94–113); fora das 10 sessões
+  com pico acima de 50, o maior atraso de um play é 159 ms sem a correção e 100 ms com ela.
+- **Os pontos de espera são os mesmos nos dois braços**: o início de cada vídeo (`video:N`), o quadro do aviso de pré-carga (`prefetch:N`) e, em menos plays, os cortes (`cut:N`); cada braço tem os mesmos
+  14 locais com esperas > 62,5 ms. Nada nesta tabela distingue os braços.
+- **Anomalias registradas, não filtradas.** A sessão 11 (sem a correção) deixou 2 processos de GPU vivos depois do editor: o runner os relata e **nunca os mata**; já tinham saído quando a rodada foi
+  analisada. Por isso `analyze` sai com código 1 (`all_ran: false`) embora a sessão não tenha parado nem falhado. A sessão 24 está marcada inválida (o aquecimento da cena nunca rodou, porque a página parou antes) e **conta como presa**.
+- **O runner foi estendido enquanto a rodada corria.** Quem mediu foi a revisão `6b1cab41…`; depois entraram a conferência do bundle servido e o resumo das esperas por play, que são só código de **análise**
+  (regras, ordem, braços e coleta não mudaram), e a análise foi refeita dos registros salvos (SHA-256 em `bundle-ab/runs.sha256`). A revisão commitada é a final. O `manifest.json` registra o commit do código como
+  `b153f257b14a` (o commit da correção, reescrito depois só na mensagem, com a mesma árvore: hoje `e4e5aa2`) com 9 arquivos sujos (diff por SHA-256 no manifesto): os scripts, os testes e as docs desta
+  entrega, ainda não commitados na época.
+- **Limites:** uma máquina, um projeto, um WebKit (21624.5.1.11.3); os 72 registros brutos (143 MB) não são versionados (`runs.sha256` os lista); o runner não conferiu o tamanho servido contra o dos arquivos dos braços (essa conferência não existia quando a rodada
+  começou), então a comparação foi feita depois, à mão: os tamanhos servidos (4.281.059 B e 4.281.045 B) são os dos dois arquivos.
+
+### 16.6 Limites e o que fica aberto
+
+- **Latência NÃO ACEITA; BL157 segue aberto.** O que cai aqui é uma classe de falha (página que não termina), não a pausa de 60–160 ms do corte e do primeiro crossfade.
+- **A remoção do `releaseLock` está ligada por padrão e sem chave, e o efeito dela não está demonstrado** (§16.4, §16.5). O que a sustenta é o mecanismo (a mesma cadeia em 3 páginas paradas de 2 ambientes)
+  e o custo praticamente nulo (a chamada removida roda depois do último pedaço, quando o fluxo já acabou, e o decode termina do mesmo jeito). **Decisão em aberto:** mantê-la assim ou revertê-la até haver uma
+  prova com poder; BL157.4 fica **Parcial**, não validado.
+- **Como obter uma prova com poder, se o custo valer.** A taxa vista na janela (1 de 36 sessões, 2,8%) pede ≈ 190 sessões por braço (≈ 7 h) para ter 90% de chance de 3 ou mais presas sem a correção; a taxa do laboratório
+  somada (4 de 493 runs, 0,8%) pede ≈ 655 por braço (≈ 24 h). Uma alternativa mais barata, **não iniciada**: um reprodutor sintético no laboratório (um worker que lê um fluxo até o fim e chama `releaseLock()`
+  enquanto outro código aloca em laço, para forçar a coleta no momento certo), com a mesma regra fixada antes.
+- A causa da espera de GPU na primeira entrada segue **sem atribuição**; o `warm_draw` segue **opt-in** (desloca o custo, não o elimina) e promovê-lo a padrão exige A/B nativo pareado em máquina quieta
+  (`scripts/first-use-ab.py full --factor warm_draw --pairs N`, que existe; não foi repetido nesta entrega) e uma decisão deliberada.
+- A prova de **pixels** nativa do `warm_draw` com o veredito de ativação (`first-use-ab.py pixels --factor warm_draw`) e a correlação dos fetches de `frame_sequence` continuam pendentes (F060).
+- As três hipóteses de §16.3 **não foram testadas**; testá-las precisa de instrumentação do processo de GPU (captura de quadro Metal), que o laboratório não tem.
+- A cadência do relógio de reprodução (§16.7, BL157.6) é um achado lateral: **medida e explicada, nada alterado**.
+- **Gates do head final desta entrega.** Nada de Rust mudou nesta rodada; o único Rust novo desde `b53775e` é o teste do host do §15, e os gates abaixo rodaram nele (fecham a pendência do §15):
+  `cargo fmt --all -- --check` 0; `./scripts/cargo check --workspace --locked` 0; `clippy --workspace --all-targets --locked -- -D warnings` 0; `test --workspace --locked` 0 (114 resultados:
+  **2.239 passaram, 0 falharam, 13 ignorados**); `build -p tessel-editor --locked` 0; `cargo tree -p tessel-editor-core` sem `gpui` nem `wry`; `TESSEL_REQUIRE_RUNTIME=1 pnpm test` em `runtime/`
+  **336 de 336** (bundle real e Chrome real); `pnpm build` reproduz o bundle byte a byte (`78a0c8f4…`); os 21 specs Python de `scripts/` passam (inclui os 51 e os 38 novos); mutação dos dois scripts novos:
+  39 de 39 mortos cada. **`pnpm tsc`: N/A** — o repositório não tem TypeScript nem `tsc`.
+
+### 16.7 BL157.6: a cadência do relógio de reprodução (achado lateral; nada foi alterado)
+
+Ao ler as esperas das 72 sessões do §16.5 apareceu um padrão que não é pausa: a mediana do intervalo entre imagens entregues ao monitor é **44,0 ms**, não 41,7 ms (24 fps), e 13% das entregas chegam
+com menos de 30 ms de intervalo. `scripts/playback-cadence.py` (só lê; BL157.6) lê o traço do host (`tick` e `play_clock_started`) dos registros salvos e explica o padrão. Não é aceite de nada:
+descreve a cadência, não uma pausa.
+
+| Grupo | Sessões | Plays | Trocas de quadro | Consultas do relógio por troca de quadro | Intervalo da consulta (ms), média / p95 / p99 | Imagens entregues (ms), p50 / p95 / máx | Entregas < 30 ms | Esperas > 62,5 ms | Quadros pulados |
+|---|---|---|---|---|---|---|---|---|---|
+| todas | 72 | 144 | 86.098 | 1 consulta: 13,1%; 2: 86,9% | 22,29 / 23,07 / 28,51 | 44,0 / 52,4 / 600,4 | 13,0% | 0,88% | 28 |
+| sem a correção | 36 | 72 | 43.058 | 1: 13,0%; 2: 87,0% | 22,28 / 23,07 / 28,24 | 44,0 / 52,1 / 334,8 | 12,95% | 0,85% | 12 |
+| com a correção | 36 | 72 | 43.040 | 1: 13,1%; 2: 86,9% | 22,30 / 23,07 / 28,79 | 44,0 / 52,7 / 600,4 | 13,0% | 0,9% | 16 |
+
+**Mecanismo (lido do traço e reproduzido por um modelo de uma linha).** `playback.rs` consulta o relógio `TICKS_PER_FRAME` = 2 vezes por quadro (a cada `1/(fps·2)` = 20,83 ms) e rearma o timer
+**depois** de cada consulta (`armed = Instant::now(); timer(interval).await; tick`); o timer chega em média 1,4 ms atrasado, então o intervalo real é 22,29 ms. Um quadro de 41,67 ms equivale a
+1,869 consultas: 87% das trocas de quadro são vistas só na 2ª consulta (≈ 44 ms depois da anterior) e 13% na 1ª (≈ 22 ms). O modelo (`41,667 / 22,294`) prevê 13,1% e 86,9%, **o que o traço mostra**, e é igual nos dois braços
+(logo, não é do bundle). O efeito é um **micro-tranco regular**: a cada ≈ 8 quadros, um sai a ≈ 22 ms em vez de ≈ 42 ms; a média continua certa (41,6 ms entregues em média, contra 41,67 de referência).
+O traço do host tem 28 quadros pulados em 86.098 trocas (consultas em que o relógio avançou mais de um quadro).
+
+**Proposta (não implementada; BL157.6 aberto).** Armar a próxima consulta para o instante em que o relógio cruza a próxima fronteira de quadro (menos uma folga para o atraso do timer, ≈ 1,4 ms, com limites
+inferior e superior), no lugar de um intervalo fixo depois da consulta anterior: as imagens passariam a sair a ≈ 41,7 ms cada. Custos e riscos, a medir antes de qualquer padrão:
+(1) muda `crates/desktop/src/workstation/playback.rs` (Rust), com a conta do próximo instante numa função pura testada; (2) hoje a segunda consulta absorve um quadro que atrasa: a folga precisa ser
+medida; (3) a defasagem áudio-imagem depende dessa cadência e muda em até meia consulta (≈ 11 ms); (4) o ganho é de **suavidade**: **não** reduz as pausas de 60–160 ms, que são o que não foi aceito.
+**Aceite proposto, a fixar antes de medir:** entregas < 30 ms em ≤ 5% (hoje 13%), sem aumento de quadros pulados nem de esperas > 62,5 ms contra o controle, em A/B pareado e opt-in primeiro.
+Resultados gerados: [`bundle-ab/cadence-all.md`](viewport-real-latency-ab-results/bundle-ab/cadence-all.md) e [`cadence-by-arm.md`](viewport-real-latency-ab-results/bundle-ab/cadence-by-arm.md).
