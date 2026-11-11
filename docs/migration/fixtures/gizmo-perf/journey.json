@@ -1,0 +1,76 @@
+{
+  "journey": "gizmo-open-edit",
+  "version": 1,
+  "about": "One script for the three surfaces of the gizmo performance suite: the core through the library (crates/core/tests/scene_gizmo_perf_*.rs), the GPUI host in a test window (crates/desktop scene_gizmo_perf_tests.rs) and the real window through `ui op` (scripts/gizmo-perf/native.py). Placeholders: $scene, $scene_b, $bundle, $base, $node, $other, $frame come from `corpora`. `class`: `document` = the same request on every surface, with the same expected result; `presentation` = needs a window (host and/or native only), never claimed by a core run; `presentation_only` = a window capability with no core equivalent (N/A in the library, by contract). `surfaces` lists where a step runs (default: all). A drag is pointer down at the handle, `moves` pointer moves and a release (`up`) or a cancel; the drag geometry is read from the overlay the surface itself returns (`to` of an axis handle, a point of a ring polygon), never computed by the driver.",
+  "frame": 24,
+  "scene": "proof",
+  "scene_b": "proof-b",
+  "base": "scripts/directed-scene-proof/corpus",
+  "corpora": {
+    "small": {
+      "bundle": "scripts/directed-scene-proof/corpus/bundle.json",
+      "node": "scene/scene-a/node/mid",
+      "other": "scene/scene-a/node/hero",
+      "other_rotate": "refused:animated_rotation"
+    },
+    "dense": {
+      "bundle": "docs/migration/fixtures/gizmo-perf/dense.bundle.json",
+      "node": "scene/scene-a/node/bank-5-plane-17",
+      "other": "scene/scene-a/node/hero",
+      "other_rotate": "refused:animated_rotation"
+    },
+    "deep": {
+      "bundle": "docs/migration/fixtures/gizmo-perf/deep.bundle.json",
+      "node": "scene/scene-a/node/leaf-rot",
+      "other": "scene/scene-a/node/leaf-aniso",
+      "other_rotate": "refused:non_uniform_parent_scale"
+    }
+  },
+  "steps": [
+    {"id": "open.project", "phase": "cold", "class": "document", "op": {"op": "project.create", "name": "gizmo-perf"}},
+    {"id": "open.attach", "phase": "cold", "class": "document", "op": {"op": "scene.attach", "id": "$scene", "path": "$bundle"}},
+    {"id": "open.resources", "phase": "cold", "class": "presentation", "surfaces": ["host", "native"], "op": {"op": "scene.resources.resolve", "scene": "$scene", "base": "$base"}},
+    {"id": "open.show", "phase": "cold", "class": "presentation", "surfaces": ["host", "native"], "op": {"op": "monitor.show_scene", "scene": "$scene"}},
+    {"id": "open.seek", "phase": "cold", "class": "document", "op": {"op": "seek", "frame": "$frame"}},
+    {"id": "open.first_frame", "phase": "cold", "class": "presentation", "surfaces": ["native"], "wait": "presented", "frame": "$frame"},
+    {"id": "open.first_overlay", "phase": "cold", "class": "document", "op": {"op": "scene.gizmo.state", "scene": "$scene", "frame": "$frame"}, "expect": {"hidden": "no_selection"}},
+
+    {"id": "select.node", "phase": "hot", "class": "document", "op": {"op": "scene.select", "scene": "$scene", "entities": ["$node"]}},
+    {"id": "state.translate", "phase": "hot", "class": "document", "tool": {"tool": "translate", "space": "world"}, "op": {"op": "scene.gizmo.state", "scene": "$scene", "frame": "$frame"}, "expect": {"handles": ["x", "y", "z", "screen"]}},
+    {"id": "drag.translate.x", "phase": "hot", "class": "document", "kind": "drag", "tool": "translate", "space": "world", "handle": "x", "delta": [0.03, 0.0], "moves": 4, "end": "up"},
+    {"id": "history.undo.translate", "phase": "hot", "class": "document", "op": {"op": "history.undo"}},
+    {"id": "history.redo.translate", "phase": "hot", "class": "document", "op": {"op": "history.redo"}},
+    {"id": "history.undo.translate.again", "phase": "hot", "class": "document", "op": {"op": "history.undo"}},
+
+    {"id": "state.rotate.local", "phase": "hot", "class": "document", "tool": {"tool": "rotate", "space": "local"}, "op": {"op": "scene.gizmo.state", "scene": "$scene", "frame": "$frame"}, "expect": {"handles": ["x", "y", "z"]}},
+    {"id": "drag.rotate.local.y", "phase": "hot", "class": "document", "kind": "drag", "tool": "rotate", "space": "local", "handle": "y", "moves": 4, "end": "up"},
+    {"id": "history.undo.rotate.local", "phase": "hot", "class": "document", "op": {"op": "history.undo"}},
+    {"id": "drag.rotate.world.z", "phase": "hot", "class": "document", "kind": "drag", "tool": "rotate", "space": "world", "handle": "z", "moves": 4, "end": "up"},
+    {"id": "history.undo.rotate.world", "phase": "hot", "class": "document", "op": {"op": "history.undo"}},
+
+    {"id": "state.scale.local", "phase": "hot", "class": "document", "tool": {"tool": "scale", "space": "local"}, "op": {"op": "scene.gizmo.state", "scene": "$scene", "frame": "$frame"}, "expect": {"handles": ["x", "y", "z", "uniform"]}},
+    {"id": "drag.scale.local.uniform", "phase": "hot", "class": "document", "kind": "drag", "tool": "scale", "space": "local", "handle": "uniform", "delta": [0.02, -0.02], "moves": 4, "end": "up"},
+    {"id": "history.undo.scale.uniform", "phase": "hot", "class": "document", "op": {"op": "history.undo"}},
+    {"id": "drag.scale.local.x", "phase": "hot", "class": "document", "kind": "drag", "tool": "scale", "space": "local", "handle": "x", "delta": [0.02, 0.0], "moves": 4, "end": "up"},
+    {"id": "history.undo.scale.x", "phase": "hot", "class": "document", "op": {"op": "history.undo"}},
+
+    {"id": "drag.translate.cancel", "phase": "hot", "class": "document", "kind": "drag", "tool": "translate", "space": "world", "handle": "y", "delta": [0.0, -0.03], "moves": 3, "end": "cancel"},
+    {"id": "drag.scale.cancel", "phase": "hot", "class": "document", "kind": "drag", "tool": "scale", "space": "local", "handle": "uniform", "delta": [0.02, -0.02], "moves": 3, "end": "cancel"},
+
+    {"id": "select.other", "phase": "hot", "class": "document", "op": {"op": "scene.select", "scene": "$scene", "entities": ["$other"]}},
+    {"id": "state.other.rotate", "phase": "hot", "class": "document", "tool": {"tool": "rotate", "space": "local"}, "op": {"op": "scene.gizmo.state", "scene": "$scene", "frame": "$frame"}, "expect": {"hidden_from": "other_rotate"}},
+    {"id": "select.none", "phase": "hot", "class": "document", "op": {"op": "scene.select", "scene": "$scene", "entities": []}},
+    {"id": "state.hidden", "phase": "hot", "class": "document", "tool": {"tool": "translate", "space": "world"}, "op": {"op": "scene.gizmo.state", "scene": "$scene", "frame": "$frame"}, "expect": {"hidden": "no_selection"}},
+
+    {"id": "switch.attach", "phase": "switch", "class": "document", "op": {"op": "scene.attach", "id": "$scene_b", "path": "$bundle"}},
+    {"id": "switch.resources", "phase": "switch", "class": "presentation", "surfaces": ["host", "native"], "op": {"op": "scene.resources.resolve", "scene": "$scene_b", "base": "$base"}},
+    {"id": "switch.show", "phase": "switch", "class": "presentation", "surfaces": ["host", "native"], "op": {"op": "monitor.show_scene", "scene": "$scene_b"}},
+    {"id": "switch.select", "phase": "switch", "class": "document", "op": {"op": "scene.select", "scene": "$scene_b", "entities": ["$node"]}},
+    {"id": "switch.state", "phase": "switch", "class": "document", "op": {"op": "scene.gizmo.state", "scene": "$scene_b", "frame": "$frame"}, "expect": {"handles": ["x", "y", "z", "screen"]}},
+
+    {"id": "present.resize.small", "phase": "present", "class": "presentation_only", "surfaces": ["host", "native"], "ui": ["set", "window", "size", "960x640"]},
+    {"id": "present.resize.large", "phase": "present", "class": "presentation_only", "surfaces": ["host", "native"], "ui": ["set", "window", "size", "1440x900"]},
+    {"id": "present.dialog.open", "phase": "present", "class": "presentation_only", "surfaces": ["native"], "ui": ["invoke", "flow.jobs"]},
+    {"id": "present.dialog.close", "phase": "present", "class": "presentation_only", "surfaces": ["native"], "ui": ["invoke", "dialog.cancel"]}
+  ]
+}

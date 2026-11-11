@@ -144,6 +144,7 @@ impl<'a> PlanTimeline<'a> {
         edit_frame: i64,
         options: PlanOptions,
     ) -> Result<ScenePlan, PlanError> {
+        super::probe::note_timeline_plan();
         let frame = self.scene.bundle().evaluate_frame_with(
             edit_frame,
             |instance| self.node_timeline(instance),

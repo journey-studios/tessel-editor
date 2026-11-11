@@ -209,3 +209,51 @@ eixo do nó corre ao longo do eixo da cena (senão `world_axis_shear`, handle de
 componente; nunca atravessa zero nem espelha; splat só uniforme; `localScale` animada é recusada (`animated_scale`) sem criar chave.
 Continuam fora: snapping, seleção múltipla, grupos, luzes, câmera espacial, edição de chaves, translação local, a flaky
 de vídeo B2 e o custo de desenho da escala (uma medição ruidosa em BL015.18; sem página nem WKWebView).
+
+## Atualização — escala integrada (2026-11-11)
+
+Escala de um nó integrada pela [PR #43](https://github.com/journey-studios/tessel-editor/pull/43), merge `cbe9e1b393861febf073633fbbaa0da9857780b6`, por autorização explícita do usuário. Revisão sem achado de código acionável, threads resolvidas. Os gates completos das últimas correções continuam pendentes por disco; não confundir merge com validação integral. Benchmark de escala e prova física continuam pendentes. Próximo domínio planejado: luz pontual com gizmos de posição e alcance.
+
+## Suíte de regressão de performance autorizada — 2026-11-11
+
+O usuário pediu testes unitários de performance e validação do mesmo cenário de abrir
+visualmente o app. Próxima tarefa: implementar a suíte, não apenas registrar pendências.
+Reutilizar BL015.7/BL015.12/BL015.18 e relacionar os gates finais da escala ainda pendentes.
+
+- Um corpus sintético compartilhado e uma sequência única: abrir projeto, anexar/carregar
+  cena, aguardar quadro apresentado, selecionar, alternar ferramentas/espaços, mover/girar/
+  escalar, atualizar candidato, confirmar/cancelar, undo/redo, trocar cena, resize/diálogo.
+- Executar a mesma sequência pela lib real, pelo host GPUI real em teste e pela janela
+  própria/WKWebView. Registrar quais etapas são equivalentes e quais exigem apresentação
+  nativa. Mocks e resposta IPC não provam pintura; não declarar ponteiro físico observado.
+- Testes unitários de custo estrutural por operação e de orçamento temporal no core,
+  preservando ausência de I/O/render pesado síncrono no tick, memoização e isolamento do
+  overlay. Testes de tempo controlados em release, com aquecimento, amostras completas e
+  assertivas de orçamento; não tornar o CI funcional aleatoriamente sensível à carga.
+- Cenários pequeno/denso, frio/quente, sem seleção/auxiliar oculto, translação/rotação/
+  escala, pai transformado e splat onde suportado. Os testes devem executar os handlers
+  reais; medir abertura fria separada de interação quente, sem esconder o primeiro frame.
+- Baseline atual main `cbe9e1b` e candidato comparados com mesmo corpus/build/backend,
+  ordem alternada e condições registradas. Isso detecta regressão desta entrega; para
+  atribuir custo histórico dos gizmos comparar também origem anterior quando possível.
+- Declarar métricas, orçamentos e regras de aceitação antes da medição do candidato,
+  reutilizando limites já contratados. Mediana/p95/p99/máximo, amostras perdidas, ticks
+  longos e erros preservados; nenhuma conclusão por melhor execução ou média isolada.
+- Medição real de desenho/presentação e entrada até quadro apresentado na janela, além
+  do benchmark headless/IPC. Scripts devem distinguir fase do core, host, runtime e
+  compositor; evento semântico apresentado não vira prova física de latência ponta a ponta.
+- Medições temporais precisam do lock de performance; implementação, compilação e testes
+  funcionais não. Reserva 16 GiB/piso 12 mantida. Se sem recursos, entregar implementação
+  revisável e registrar performance não validada, sem afirmar ausência de regressão.
+- Mutantes que removem memoização/replanejam por tick/adicionam trabalho ao handler devem
+  reprovar testes pertinentes; separar detector estrutural de detector de tempo. Nenhuma
+  duração artificial pode substituir a execução do cenário real como prova de performance.
+- Evidências por SHA/binário/corpus/build/hardware/backend/comando/cwd/env/UTC/exit e
+  todas as amostras; revisão independente nova. Não prometer garantia universal com
+  uma máquina. Otimizar somente gargalos medidos, com regressão funcional protegida.
+
+**Entrega (F055, [scene-gizmo-performance.md](../features/scene-gizmo-performance.md), BL015.21):** a suíte foi
+implementada em `crates/core/tests/{gizmo_perf_support,scene_gizmo_perf_structure,scene_gizmo_perf_budget}`,
+`crates/desktop/src/workstation/scene_gizmo_perf_tests.rs` e `scripts/gizmo-perf/` (ver o README da pasta). O que já
+está provado e o que continua pendente (janela/WKWebView física, compositor, BL015.2/43/44) fica no documento da feature
+e em `docs/backlog.md`.
