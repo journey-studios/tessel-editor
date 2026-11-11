@@ -26,7 +26,6 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
-import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import harness  # noqa: E402
@@ -124,6 +123,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', default='/tmp/gizmo-perf-mutants')
     parser.add_argument('--only', nargs='*')
+    parser.add_argument('--phase', choices=['all', 'prepare', 'time'], default='all',
+                        help='`prepare`: structural/host detectors and the release builds of the time mutants '
+                             '(the builds leave the machine loaded, which the guard refuses); `time`: only the lock '
+                             'and the controlled runs, from the executables `prepare` left in --out/exes')
     args = parser.parse_args(argv)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -136,12 +139,18 @@ def main(argv=None):
         if file_hash(path) != committed_hash(path):
             manifest.update(status='REFUSED', reason=f'{path} is not at HEAD: mutants start from a committed tree')
             return harness.die(1, manifest, manifest_path)
-    work = Path(tempfile.mkdtemp(prefix='gizmo-perf-mut-'))
+    exes_dir = out / 'exes'
+    exes_dir.mkdir(exist_ok=True)
+    manifest_path = out / ('manifest.json' if args.phase != 'time' else 'manifest.time.json')
+    previous = out / 'manifest.json'
+    if args.phase == 'time':
+        manifest['mutants'] = {name: record for name, record in json.loads(previous.read_text())['mutants'].items()
+                               if name in names}
     time_exes = {}
     try:
         # Everything that is not a measurement first: structural and host detectors, and the release builds
         # of the time mutants (executables copied out; the source is restored right after each build).
-        for name in names:
+        for name in names if args.phase != 'time' else []:
             mutant = MUTANTS[name]
             record = manifest['mutants'][name] = {'file': mutant['file'], 'old': mutant['old'], 'new': mutant['new'],
                                                  'must': mutant['detectors']}
@@ -154,9 +163,11 @@ def main(argv=None):
                     command, done, exe = runner.build()
                     record['time_build'] = {'exit': done.returncode, 'executable_sha256': harness.sha256(exe) if exe else None}
                     if exe and done.returncode == 0:
-                        time_exes[name] = work / f'{name}.exe'
-                        shutil.copy(exe, time_exes[name])
+                        shutil.copy(exe, exes_dir / f'{name}.exe')
         # The time runs, under the lock, once.
+        if args.phase != 'prepare':
+            time_exes = {name: exes_dir / f'{name}.exe' for name in names
+                         if 'time' in MUTANTS[name]['detectors'] and (exes_dir / f'{name}.exe').exists()}
         if time_exes:
             state, reason = harness.guards()
             manifest['machine_before'] = state
@@ -184,7 +195,13 @@ def main(argv=None):
                             'stdout_sha256': harness.sha256(out / f'{name}.time.stdout.txt')}
                 manifest['machine_after'] = harness.machine()
     finally:
-        shutil.rmtree(work, ignore_errors=True)
+        if args.phase != 'prepare':
+            shutil.rmtree(exes_dir, ignore_errors=True)  # discardable, 20 MB each
+    if args.phase == 'prepare':
+        manifest['status'] = 'PREPARED'
+        harness.write(manifest_path, manifest)
+        print(json.dumps({'status': 'PREPARED', 'structural_and_host': {n: {d: r[d]['detected'] for d in ('structural', 'host') if d in r} for n, r in manifest['mutants'].items()}}))
+        return 0
     ok = True
     for name, record in manifest['mutants'].items():
         verdict = {}
