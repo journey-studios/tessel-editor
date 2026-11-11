@@ -52,7 +52,7 @@ A jornada roda pelos **mesmos handlers**; cada passo é `document` (equivalente:
 |---|---|---|---|
 | Core (lib) | `crates/core/tests/gizmo_perf_support` e `crates/core/tests/scene_gizmo_perf_{structure,threads}.rs` | transformada, undo e redo idênticos ao golden (`journey.expected.json`); planos por requisição; independência do tamanho da cena | janela, GPU, página, tempo |
 | Host GPUI | `crates/desktop/src/workstation/scene_gizmo_perf_tests.rs` (5 testes) | a mesma jornada por `Workstation::run_op`, layouts por requisição no host, janela parada, cena de mesmo bundle | WebView, GPU, compositor, ponteiro físico; o diálogo (precisa do `Root` do Kit) |
-| Janela nativa | **N/A nesta entrega** (PR-B) | — | — |
+| Janela nativa | `scripts/gizmo-perf/native.py` (pilha de tempo, [contrato de tempo](scene-gizmo-performance-timing.md)) | a mesma jornada numa janela real, só como observação funcional: **a única corrida completa deu `FAIL`** | desempenho, baseline, compositor, ponteiro físico |
 
 ## Contrato do core / biblioteca
 
@@ -168,15 +168,14 @@ as duas primeiras linhas.
 
 ## Tempo e janela nativa
 
-**N/A nesta entrega: ver a PR-B.** A medição de tempo (runners em Python, orçamentos, comparação com baseline,
-mutantes de tempo e a janela nativa com WKWebView) fica na PR-B, em rascunho, empilhada sobre esta, e seu contrato é
-`docs/features/scene-gizmo-performance-timing.md` (arquivo que a PR-B traz; ele não existe nesta árvore). Motivo: essa
+**A medição de tempo tem contrato próprio:** [scene-gizmo-performance-timing.md](scene-gizmo-performance-timing.md) (runners
+em Python, orçamentos, comparação com baseline, mutantes de tempo e a janela nativa com WKWebView). Motivo da separação: essa
 pilha **nunca produziu um PASS válido nem uma comparação medida**. Os quatro runners rodaram pela primeira vez em
 `12bc8da`, sob carga de base no limite da guarda de carga: o runner de tempo do core deu `FAIL` (uma execução), o A/B
 deu `INVALID_GUARD_AFTER_RUN` nas duas tentativas (nada julgado), o runner de mutantes terminou `UNEXPECTED` e a janela
 nativa deu `FAIL` funcional (uma execução; 20 de 639 verificações, todas em `drag.*`). **Nada disso valida
 desempenho.** Os logs dessa execução **saíram do git**
-por conter dados da máquina de desenvolvimento; reexecutar é um comando da PR-B, em máquina silenciosa.
+por conter dados da máquina de desenvolvimento; reexecutar é um comando do contrato de tempo, em máquina silenciosa.
 
 ## Estado desta entrega
 

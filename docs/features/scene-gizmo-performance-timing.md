@@ -191,7 +191,9 @@ Os runners continuam gravando `cwd`, `argv`, o comando do build e o fim da saíd
 caminho absoluto por `<abs>/<nome-base>`. Um campo que uma fase **relê** como caminho não é deixado à redação: é gravado relativo a
 `--out` (`exe` do `run.py`, `binary` do `native.py`). `harness.spec.py` testa o `machine()`, o `redact` e, com dublês, o que
 `run.py`, `ab.py`, `mutate.py`, `native.py` e `audit.py` gravam; um teste estático reprova um `write_text(` de arquivo fora do `harness`.
-**Limite:** só se tira o que tem forma de caminho absoluto; um nome de usuário solto, fora de um caminho, não é reconhecido.
+**Limite:** só se tira o que tem forma de caminho absoluto; um nome de usuário solto, fora de um caminho, não é reconhecido, nem
+`file:///caminho`. O que um runner **imprime** (`stdout`) e as capturas PNG da janela não passam por aqui: não cole a saída
+num arquivo versionado e não versione captura (BL015.37).
 
 ## Limitações conhecidas
 
@@ -199,13 +201,14 @@ caminho absoluto por `<abs>/<nome-base>`. Um campo que uma fase **relê** como c
 |---|---|
 | BL015.23 | lacunas gerais: sem caso com splat; sem baseline × candidato do host, do renderer e da janela (o A/B não os vê); `PlanTimeline` sem detector estrutural; o contador mede chamadas de layout, não o custo de cada uma, e um planejador mais lento passa nos orçamentos permanentes (a razão cai) e pode passar no A/B; nenhum detector de trabalho dentro do laço de nós |
 | BL015.24 | `gizmo-perf.spec.py` (4 730 linhas, o nome com hífen obriga a carregar os runners por `importlib`) e `native.py` (1 362, que mistura proveniência do runtime, helpers puros de pixel e reconhecimento, o cliente da janela e a orquestração) passam de 1000 linhas; a divisão por módulo não foi feita (os novos `harness.spec.py` e `ab.spec.py` já seguem o padrão por módulo) |
-| BL015.25 | esta página é a versão enxuta do contrato de tempo; o resto do enxugamento de docs (a linha F055 do índice de features e as linhas BL015.21/BL015.23 do backlog, que são uma célula de dezenas de KB) segue lá |
+| BL015.25 | esta página (229 linhas) e o README dos scripts (27) são a versão enxuta do contrato de tempo; falta o ponteiro para esta página na linha F055 do índice de features |
 | BL015.26 | o percentil tem duas semânticas: `ab.py` usa o índice por piso (`ordered[int(q·n)]`), `native.py` e o teste Rust o posto mais próximo (para n = 100 e q = 0,95: índices 95 e 94), então o p95 do veredito do A/B não é o p95 do `report.json` das mesmas amostras; e a decisão "guarda depois da corrida ruim ⇒ `INVALID_GUARD_AFTER_RUN`" e o corpo de `run_phase` estão escritos quatro vezes (um por runner) |
 | BL015.27 | o lock de `harness.Lock` é um `flock` não bloqueante e `with-gpu-lock.py` (a convenção do repositório, usada por ~12 scripts) segura o mesmo lock de forma bloqueante: um runner chamado dentro do wrapper recebe `BLOCKED` contra o próprio pai. **Não envolva os runners no wrapper**; um `--gpu-lock-held` não existe |
 | BL015.28 | `long_ticks_max: 0` julga tempo **absoluto**: uma só amostra quente > 16,6 ms reprova o teste de orçamento (falso `FAIL` possível em máquina lenta ou ocupada; a única corrida real foi com carga 5,88), em tensão com "p99/máximo não julgam"; e a tolerância de 1,10× da mediana é menor que o espalhamento de 15% que ainda chama a baseline de estável (só a maioria de pares segura o falso positivo) |
 | BL015.29 | a `BASELINE` fixa (`cbe9e1b…`) envelhece a cada merge na `main`: contra a `main` de agora o A/B exige `--baseline <SHA> --allow-other-baseline` nas duas fases e essa rota **não tem teste**; um head que contém a `main` atual é recusado com a baseline fixa (ver "`ab.py`"). O ensaio de merge local passou a spec (285) e `corpus.py --check`, mas não rodou nenhum A/B |
 | BL015.33 | `mutate.py` edita o produto no checkout (restauração por `finally`; `kill -9` deixa o produto mutado) |
 | BL015.34 | os orçamentos nascem do máximo de três calibrações com margens frias ampliadas depois de um `FAIL` e apontam rótulos que não estão no repositório; os testes `#[ignore]` podem ser chamados por `cargo test --release -- --ignored` fora do `run.py`, sem lock nem guardas |
+| BL015.37 | resíduos da redação (R1) e do veredito (R2): o `stdout` dos runners (`print(json.dumps({status, reason}))` e `GIZMO_PERF_SUMMARY`) não passa pelo redator e um `reason` pode nomear um caminho; as capturas PNG da janela não são varridas nem redigíveis; o redator não reconhece `file:///caminho` nem um nome de usuário solto; em `ab.py`, uma rodada sem amostras de um tipo dá `pct` `None` e `judge` compara `None` com número |
 
 Há ainda um mutante **equivalente** conhecido em `native.py` (`settle_commit`): zerar `acked_at` junto com `first_at` quando o
 quadro deixa de convergir é defensivo e nenhuma sequência de leituras o distingue de `first_at = None` sozinho, então nenhum teste o

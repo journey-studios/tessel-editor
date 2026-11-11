@@ -255,6 +255,6 @@ Reutilizar BL015.7/BL015.12/BL015.18 e relacionar os gates finais da escala aind
 **Entrega (F055, [scene-gizmo-performance.md](../features/scene-gizmo-performance.md), BL015.21):** a PR-A entrega a
 suíte **estrutural**: `crates/core/tests/gizmo_perf_support/`, `crates/core/tests/scene_gizmo_perf_structure.rs`,
 `crates/core/tests/scene_gizmo_perf_threads.rs`, `crates/desktop/src/workstation/scene_gizmo_perf_tests.rs`,
-`scripts/gizmo-perf/corpus.py` (e `hygiene.spec.py`) e o fixture (`docs/migration/fixtures/gizmo-perf/`). A pilha de tempo (`run.py`, A/B, mutantes, janela nativa, orçamentos) está na
-PR-B, em rascunho (BL015.23), e **não** foi validada. O que já está provado e o que continua pendente (janela/WKWebView
+`scripts/gizmo-perf/corpus.py` (e `hygiene.spec.py`) e o fixture (`docs/migration/fixtures/gizmo-perf/`). A pilha de tempo (`run.py`, A/B, mutantes, janela nativa, orçamentos) tem contrato em
+[scene-gizmo-performance-timing.md](../features/scene-gizmo-performance-timing.md) (BL015.23) e **não** foi validada. O que já está provado e o que continua pendente (janela/WKWebView
 física, compositor, BL015.2/43/44) fica no documento da feature e em `docs/backlog.md`.
