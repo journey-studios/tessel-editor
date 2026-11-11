@@ -267,11 +267,13 @@ impl TraceHandle {
             return;
         }
         let event_fields = fields();
-        let t_ms = self.now_ms();
         let mut log = self
             .events
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // Stamped with the lock held: writers on several threads (the window's and the I/O workers') then get a growing
+        // `seq` and a non-decreasing `t_ms` together, and readers may order by either.
+        let t_ms = self.now_ms();
         log.next += 1;
         let seq = log.next;
         if log.ring.len() == EVENT_WINDOW {
@@ -671,6 +673,40 @@ mod tests {
             "a reader that kept its cursor sees the new event"
         );
         assert!(after["events"][0]["seq"].as_u64().unwrap() > before);
+    }
+
+    #[test]
+    fn events_from_several_threads_are_in_time_order_as_well_as_in_sequence() {
+        const WRITERS: usize = 4;
+        const EACH: usize = 1_000;
+        let trace = TraceHandle::default();
+        trace.set_enabled(true);
+        let go = std::sync::Barrier::new(WRITERS);
+        std::thread::scope(|scope| {
+            for writer in 0..WRITERS {
+                let (trace, go) = (&trace, &go);
+                scope.spawn(move || {
+                    go.wait();
+                    for n in 0..EACH {
+                        trace.event("race", || json!({ "writer": writer, "n": n }));
+                    }
+                });
+            }
+        });
+        // The raw stamps, not the microsecond-rounded ones a reader gets: a smaller step would hide an inversion.
+        let log = trace.events.lock().unwrap();
+        assert_eq!(log.ring.len(), WRITERS * EACH);
+        for pair in log.ring.iter().collect::<Vec<_>>().windows(2) {
+            assert_eq!(pair[1].seq, pair[0].seq + 1);
+            assert!(
+                pair[1].t_ms >= pair[0].t_ms,
+                "event {} is stamped {} ms, before event {} at {} ms",
+                pair[1].seq,
+                pair[1].t_ms,
+                pair[0].seq,
+                pair[0].t_ms
+            );
+        }
     }
 
     #[test]

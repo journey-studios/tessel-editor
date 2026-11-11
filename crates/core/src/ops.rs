@@ -75,8 +75,8 @@ pub enum ProjectOp {
 
 /// Events one `render.trace` answers when it is not told how many.
 pub const TRACE_EVENTS_PAGE: usize = 4096;
-/// The most events one `render.trace` answer may carry.
-pub const TRACE_EVENTS_MAX: usize = 16_384;
+/// The most events one `render.trace` answer may carry: all the log keeps.
+pub const TRACE_EVENTS_MAX: usize = crate::trace::EVENT_WINDOW;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Op {
