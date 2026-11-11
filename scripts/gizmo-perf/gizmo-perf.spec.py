@@ -756,6 +756,26 @@ class MeasurePhase(unittest.TestCase):
             code, manifest = self.measure(out)
             self.assertEqual((code, manifest['status']), (1, 'REFUSED'))
 
+    def test_a_dirty_run_is_never_filed_as_no_regression_for_head(self):
+        dirty = {**self.CLEAN, 'dirty': ' M crates/core/src/scene_plan/build.rs'}
+        with tempfile.TemporaryDirectory() as out:  # built from local changes, the tree reads clean when measured
+            self.build_dir(out, candidate=dirty)
+            code, manifest = self.measure(out, None, '--allow-dirty')
+            self.assertEqual((code, manifest['status']), (1, 'DIRTY_RUN_NOT_FOR_HEAD'))
+            self.assertTrue(manifest['dirty_run'])
+            self.assertIn('dirty', manifest['reason'])
+            self.assertTrue(json.loads((Path(out) / 'verdicts.json').read_text()))  # the numbers stay as observations
+        with tempfile.TemporaryDirectory() as out:  # built clean, the tree has local changes when measured
+            self.build_dir(out)
+            with patch.object(self, 'CLEAN', dirty):
+                code, manifest = self.measure(out, None, '--allow-dirty')
+            self.assertEqual((code, manifest['status']), (1, 'DIRTY_RUN_NOT_FOR_HEAD'))
+        with tempfile.TemporaryDirectory() as out:  # the control: the same run from a clean build is the verdict
+            self.build_dir(out)
+            code, manifest = self.measure(out, None, '--allow-dirty')
+            self.assertEqual((code, manifest['status']), (0, 'NO_REGRESSION_IN_SCENARIO'))
+            self.assertFalse(manifest['dirty_run'])
+
     def test_a_second_attempt_keeps_the_first_one_in_attempts(self):
         # (F16) the first real A/B lost the numbers of its INVALID first attempt to its own retry
         with tempfile.TemporaryDirectory() as out:
@@ -957,6 +977,13 @@ class Verdicts(unittest.TestCase):
         self.assertEqual(self.classify(done(text, 101)), 'INCONCLUSIVE')
         killed = run_text([TIME], extra=f'over budget:\n{BUDGET_LINES}')
         self.assertEqual(self.classify(done(killed, 101), guard_after='load average 9'), 'INVALID_GUARD_AFTER_RUN')
+
+    def test_a_pass_under_a_failed_guard_is_no_more_an_answer_than_a_kill_is(self):
+        passed = run_text(ok=[TIME], results='ok. 1 passed; 0 failed')
+        self.assertEqual(self.classify(done(passed, 0)), 'SURVIVED')  # the control: the same pass, the guard clean
+        outcome = self.classify(done(passed, 0), guard_after='load average 9')
+        self.assertEqual(outcome, 'INVALID_GUARD_AFTER_RUN')
+        self.assertIn(outcome, mutate.NOT_AN_ANSWER)  # so `time` keeps the executables of that run for a retry
 
     def test_a_structural_detector_that_must_not_see_a_delay_has_to_run_its_tests_and_pass(self):
         names = mutate.MUST_PASS[('delay_1ms_per_handler', 'structural')]
@@ -2503,7 +2530,7 @@ class ChildEnvironment(unittest.TestCase):
             raise RuntimeError('the body failed')
         self.assertEqual(self.changed(os.environ, before), [])
 
-    def measure(self, stdout, *flags, after=None, code=0, env=None):
+    def measure(self, stdout, *flags, after=None, code=0, env=None, dirty=False):
         """`run.py --phase measure` end to end: the executable is a file, the benchmark a function that notes the
         environment it was started with and writes the report it was asked for."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -2511,7 +2538,7 @@ class ChildEnvironment(unittest.TestCase):
             (out / 'exes').mkdir(parents=True)
             (out / 'exes' / 'candidate.exe').write_bytes(b'binary')
             (out / 'build.json').write_text(json.dumps({
-                'head': 'h' * 40, 'tree': 't' * 40, 'dirty': False,
+                'head': 'h' * 40, 'tree': 't' * 40, 'dirty': dirty,
                 'binary_sha256': hashlib.sha256(b'binary').hexdigest(), 'exe': 'exes/candidate.exe'}))
             seen = {}
 
@@ -2544,6 +2571,14 @@ class ChildEnvironment(unittest.TestCase):
         self.assertEqual(seen['env']['TESSEL_GIZMO_PERF_OUT'], str(out / 'report.json'))  # not the caller's
         self.assertEqual(manifest['run']['env'], {'TESSEL_GIZMO_PERF_OUT': harness.redact(str(out / 'report.json'))})
         self.assertEqual((code, manifest['status']), (0, 'PASS'))
+
+    def test_a_dirty_run_that_would_pass_is_not_a_pass_for_head_and_does_not_exit_ok(self):
+        code, manifest, seen, out = self.measure(self.PASSING, '--allow-dirty', dirty=True)
+        self.assertEqual((code, manifest['status']), (1, 'DIRTY_RUN_NOT_A_PASS_FOR_HEAD'))
+        self.assertTrue(manifest['dirty_run'])
+        code, manifest, seen, out = self.measure(self.PASSING)  # the control: the clean twin of that run is a PASS
+        self.assertEqual((code, manifest['status']), (0, 'PASS'))
+        self.assertFalse(manifest['dirty_run'])
 
     def test_the_run_record_lists_only_the_tests_whose_own_line_says_ok(self):
         failing = libtest({MAIN_TEST: NOT_CAUGHT}, passed=[PLAN_CONTROL, DELAY_CONTROL])

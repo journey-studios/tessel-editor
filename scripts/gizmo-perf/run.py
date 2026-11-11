@@ -306,7 +306,9 @@ def run_phase(args, out):
     if report_path.exists():
         manifest['report_sha256'] = harness.sha256(report_path)
     if manifest['dirty_run'] and status == 'PASS':
-        status, why = 'DIRTY_RUN_NOT_A_PASS_FOR_HEAD', 'the tree was dirty (--allow-dirty)'
+        # Not a success either: exit 0 would read as a pass to whatever checks only the exit code (`native.py` and
+        # `ab.py` exit 1 for the same reason).
+        status, why, code = 'DIRTY_RUN_NOT_A_PASS_FOR_HEAD', 'the tree was dirty (--allow-dirty)', 1
     manifest.update(status=status, reason=why)
     manifest['utc_end'] = harness.utc()
     manifest['exit'] = code

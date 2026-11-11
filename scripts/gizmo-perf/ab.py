@@ -54,7 +54,8 @@ new commit, recorded, and applies to the next run):
     INVALID (exit 3): the numbers are kept but nothing is judged;
   * "no regression" is only ever claimed for this scenario/config/hardware/backend, not for the native window.
 Exit 0 = no kind regressed and none inconclusive, 1 = a kind regressed or a refusal, 3 = BLOCKED/INVALID,
-4 = INCONCLUSIVE (or A/A).
+4 = INCONCLUSIVE (or A/A). A run of a dirty tree (`--allow-dirty`, in either phase) that would be "no regression" is
+`DIRTY_RUN_NOT_FOR_HEAD` (exit 1): local changes decided what was measured, so nothing is claimed for HEAD.
 
 Ownership (nothing waits; a taken lock is one REFUSED line, exit 1, nothing written): `--out/harness.OUT_LOCK`
 (`.gizmo-perf.lock`, shared by every runner, so a `run.py`, `native.py` or `mutate.py` on the same `--out` is refused too)
@@ -704,6 +705,11 @@ def run_phase(args, out):
         shutil.rmtree(kept_src, ignore_errors=True)
         status, reason, code = overall(verdicts, manifest['prod_trees']['product_files_that_differ'],
                                        manifest['prod_trees'].get('product_files_outside_the_measurement', []))
+        if manifest['dirty_run'] and status == 'NO_REGRESSION_IN_SCENARIO':
+            # Local changes decided what was built or measured (`--allow-dirty`): the executables are not HEAD's, so
+            # "no regression" would be filed under a commit it says nothing about. `native.py` does the same.
+            status, code = 'DIRTY_RUN_NOT_FOR_HEAD', 1
+            reason = 'the tree was dirty (--allow-dirty): the numbers are observations, not a verdict about HEAD'
         manifest.update(status=status, reason=reason)
         manifest['utc_end'] = harness.utc()
         manifest['exit'] = code

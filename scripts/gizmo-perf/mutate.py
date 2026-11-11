@@ -269,6 +269,10 @@ def classify(done, expect=None, must_pass=(), guard_after=None):
         missing = [name for name in must_pass if not any(name in ok for ok in oks)]
         if missing:
             return 'ZERO_TESTS', f'the named tests did not run and pass: {missing}'
+        if guard_after is not None:
+            # A pass read on a machine the guard refused after the run says nothing, exactly as a kill does (below):
+            # it is not an answer, so the executables are kept for a retry instead of an `UNEXPECTED` verdict.
+            return 'INVALID_GUARD_AFTER_RUN', guard_after
         return 'SURVIVED', 'the named tests ran and passed'
     if 'INCONCLUSIVE:' in text:
         return 'INCONCLUSIVE', 'the plan reference moved: neither killed nor survived'
