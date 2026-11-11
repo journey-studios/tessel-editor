@@ -27,6 +27,7 @@ use std::collections::BTreeMap;
 use serde_json::{Value, json};
 
 use crate::assets::{MediaKind, Source};
+use crate::directed_scene::fx::fnv1a64;
 use crate::splat_framing;
 use crate::state::library::MediaItem;
 use crate::state::timeline::SequenceSettings;
@@ -180,13 +181,6 @@ fn identity_of(state: &EditorState, item: &MediaItem, size: (u32, u32)) -> Optio
     ))
 }
 
-/// 64-bit FNV-1a, to derive short stable names. Not a security boundary.
-fn fnv64(bytes: &[u8]) -> u64 {
-    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
-        (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
-    })
-}
-
 /// Why a result was refused.
 fn stale(message: impl Into<String>, id: &str) -> CommandError {
     CommandError::new("stale_result", message).target(id)
@@ -300,7 +294,7 @@ impl EditorState {
     /// is drawn: short and stable (`thumb-` and 16 hex digits of the splat's ID, whatever the
     /// length of that ID), and never the ID of an asset this project has.
     pub fn thumbnail_stand_in_id(&self, splat: &str) -> String {
-        let base = format!("thumb-{:016x}", fnv64(splat.as_bytes()));
+        let base = format!("thumb-{:016x}", fnv1a64(splat.as_bytes()));
         let mut id = base.clone();
         let mut attempt = 2;
         while self.library.item(&id).is_some() {

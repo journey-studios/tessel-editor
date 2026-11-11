@@ -36,13 +36,13 @@ use tessel_editor_core::plan::{PlanRequest, RenderPlan};
 use tessel_editor_core::preview::ProxyCoverage;
 use tessel_editor_core::session::{Preview, SessionEvent, Status, ViewportSession};
 use tessel_editor_core::state::EditorState;
-use tessel_editor_core::trace::TraceHandle;
+use tessel_editor_core::trace::{TraceHandle, ms, ms_since, round3};
 use tessel_editor_render::SetupError;
 use tessel_editor_render::host::{AssetAccess, write_png};
 
 use super::env_mode;
 use super::perf_meter::PerfClock;
-use super::viewport_protocol::{AssetIo, AssetIoMode, ProtocolHandle, round3, trace_label};
+use super::viewport_protocol::{AssetIo, AssetIoMode, ProtocolHandle, trace_label};
 
 /// Scheme and host the page is served from. A custom scheme keeps the page same-origin with
 /// its assets and unreachable from any web page.
@@ -779,7 +779,7 @@ impl ViewportHost {
         self.proxy_coverage = state.preview_policy.coverage(state);
         let planned = trace.start();
         let plan = state.plan(&PlanRequest::of(state));
-        let plan_ms = planned.map(|started| started.elapsed().as_secs_f64() * 1000.0);
+        let plan_ms = ms_since(planned);
         if let Some(started) = planned {
             trace.note_plan(started.elapsed());
         }
@@ -812,7 +812,7 @@ impl ViewportHost {
             trace.span("sync_unchanged", sync_started);
             trace.event("sync", || {
                 json!({ "outcome": "unchanged", "frame": plan.frame, "plan_ms": plan_ms,
-                    "total_ms": sync_started.map(|at| at.elapsed().as_secs_f64() * 1000.0) })
+                    "total_ms": ms_since(sync_started) })
             });
             return;
         }
@@ -829,7 +829,7 @@ impl ViewportHost {
         trace.span("sync", sync_started);
         trace.event("sync", || {
             json!({ "outcome": "requested", "frame": frame, "plan_ms": plan_ms,
-                "total_ms": sync_started.map(|at| at.elapsed().as_secs_f64() * 1000.0) })
+                "total_ms": ms_since(sync_started) })
         });
     }
 
@@ -851,7 +851,7 @@ impl ViewportHost {
         let entered = trace.start();
         let planned = trace.start();
         let plans = state.plans_ahead(frames);
-        let plans_ahead_ms = planned.map(|at| at.elapsed().as_secs_f64() * 1000.0);
+        let plans_ahead_ms = ms_since(planned);
         trace.span("plans_ahead", planned);
         let mut assets = Vec::new();
         for asset in plans.iter().flat_map(|plan| plan.requires.iter()) {
@@ -865,7 +865,7 @@ impl ViewportHost {
         } else {
             self.session.prefetch(state, &assets)
         };
-        let prefetch_ms = loading.map(|at| at.elapsed().as_secs_f64() * 1000.0);
+        let prefetch_ms = ms_since(loading);
         // What was loaded on an earlier tick gets its splat scenes' first sort now, not at the cut (BL157). Also
         // with nothing ahead: the cuts that left the window are forgotten, so a return to one warms it again.
         let warming = trace.start();
@@ -874,8 +874,8 @@ impl ViewportHost {
             json!({
                 "plans": plans.len(), "assets": assets.len(), "loads_started": started, "warms_started": warmed,
                 "plans_ahead_ms": plans_ahead_ms, "prefetch_ms": prefetch_ms,
-                "warm_ms": warming.map(|at| at.elapsed().as_secs_f64() * 1000.0),
-                "total_ms": entered.map(|at| at.elapsed().as_secs_f64() * 1000.0),
+                "warm_ms": ms_since(warming),
+                "total_ms": ms_since(entered),
             })
         });
         started + warmed
@@ -1126,7 +1126,7 @@ impl ViewportHost {
                             "page": message["page"],
                             "runtime_total_ms": message["timings"]["total_ms"],
                             "gpu_finish_ms": message["timings"]["gpu_finish_ms"],
-                            "ipc_wait_ms": waited.map(|waited| round3(waited.as_secs_f64() * 1000.0)),
+                            "ipc_wait_ms": waited.map(|waited| round3(ms(waited))),
                         })
                     });
                 }

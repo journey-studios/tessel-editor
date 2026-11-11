@@ -78,6 +78,14 @@ fn a_request_and_the_load_message_of_the_same_file_share_one_label_and_no_path()
 }
 
 #[test]
+fn a_label_is_the_value_it_has_always_been_so_recorded_traces_keep_their_correlation() {
+    use super::viewport_protocol::trace_label;
+    assert_eq!(trace_label('a', "p=/x/clip.mp4"), "a44a5eced");
+    assert_eq!(trace_label('k', "k"), "k8601fd8a");
+    assert_eq!(trace_label('k', ""), "k84222325");
+}
+
+#[test]
 fn both_modes_answer_the_same_status_headers_and_bytes() {
     let dist = page("io-same");
     let dir = scratch("io-same-files");

@@ -13,7 +13,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use serde_json::{Value, json};
-use tessel_editor_core::trace::TraceHandle;
+use tessel_editor_core::directed_scene::fx::fnv1a64;
+use tessel_editor_core::trace::{TraceHandle, ms, round3};
 use tessel_editor_render::asset_io::{
     AssetPool, DEFAULT_QUEUE, DEFAULT_WORKERS, Dispatch, Done, Outcome, Reader,
 };
@@ -58,12 +59,7 @@ impl AssetIoMode {
 /// protocol request and a file-based `asset.load` without writing the name down. A frame-sequence
 /// pattern label does not identify an expanded frame request (F063/BL157.3). FNV-1a, 32 bits shown.
 pub fn trace_label(prefix: char, text: &str) -> String {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in text.bytes() {
-        hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(0x0100_0000_01b3);
-    }
-    format!("{prefix}{:08x}", hash as u32)
+    format!("{prefix}{:08x}", fnv1a64(text.as_bytes()) as u32)
 }
 
 /// The protocol handler's way of reading, fixed when the host is created.
@@ -204,7 +200,7 @@ impl ProtocolHandle {
             let (status, bytes) = (served.status, served.body.len());
             let responding = Instant::now();
             respond(to_response(served));
-            let respond_ms = responding.elapsed().as_secs_f64() * 1000.0;
+            let respond_ms = ms(responding.elapsed());
             trace.event("asset_io", || {
                 let thread = std::thread::current();
                 json!({
@@ -214,8 +210,8 @@ impl ProtocolHandle {
                     "thread": thread.name().unwrap_or("unnamed"),
                     "on_ui_thread": thread.id() == ui_thread,
                     "recv_ms": round3(facts.received_ms),
-                    "queue_wait_ms": round3(outcome.queue_wait.as_secs_f64() * 1000.0),
-                    "read_ms": round3(outcome.read.as_secs_f64() * 1000.0),
+                    "queue_wait_ms": round3(ms(outcome.queue_wait)),
+                    "read_ms": round3(ms(outcome.read)),
                     "respond_ms": round3(respond_ms),
                     "depth_at_submit": outcome.depth_at_submit,
                     "stale": outcome.stale,
@@ -223,10 +219,6 @@ impl ProtocolHandle {
             });
         })
     }
-}
-
-pub(super) fn round3(value: f64) -> f64 {
-    (value * 1000.0).round() / 1000.0
 }
 
 fn not_built() -> Served {
