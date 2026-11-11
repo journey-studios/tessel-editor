@@ -430,6 +430,8 @@ def ab_markdown(report):
              "- every run is a fresh editor: all are FIRST plays of a cold process; a repeated play in one process is not measured here", "",
              "| pair | order | arm | valid | class | pictures | gap p50 | gap p95 | gap max | slow gaps (from→to ms) | UI blocks | page stalls ≥40 (n/max ms) | gpu finish max ms (frames ≥20 ms) |",
              "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    if m.get("raw_rebuild"):
+        lines[3:3] = [f"- Raw rebuild: {m['raw_rebuild']}"]
     for run in report["runs"]:
         s = run["summary"]
         g = s["gap_ms"] or {}
@@ -518,22 +520,22 @@ def cmd_ab(args):
 
 
 def cmd_ab_report(args):
-    """Rebuilds `ab.md`/`ab.json` with the CURRENT rules (validity, starved plays, verdict): from the raw `pair-*.json` runs when they
-    are there, otherwise from the saved summaries (then only the verdict is recomputed, and the report says so)."""
+    """Recompute current rules only from a complete raw archive of the saved batch.
+    Ignore leftovers from other batches; if any expected raw run is missing, preserve all summaries and label that limit."""
     out = pathlib.Path(args.out)
     report = json.loads((out / "ab.json").read_text())
-    raw = sorted(out.glob("pair-*-*.json"))
-    if raw:
+    # The saved batch defines the runs. Globbing can import leftovers from an older, larger batch.
+    expected = [(run, out / f"pair-{run['pair']}-{run['arm']}.json") for run in report["runs"]]
+    missing = [path.name for _, path in expected if not path.is_file()]
+    if expected and not missing:
         runs = []
-        for path in raw:
+        for saved, path in expected:
             record = json.loads(path.read_text())
-            _, pair, arm = path.stem.split("-")
-            runs.append({"pair": int(pair), "order": "AB" if int(pair) % 2 == 0 else "BA", "arm": arm, "summary": arm_summary(record)})
-        # Run order as executed: pair by pair, in that pair's order.
-        runs.sort(key=lambda r: (r["pair"], r["order"].index(r["arm"])))
+            runs.append({**saved, "summary": arm_summary(record)})
         report["runs"] = runs
+        report["manifest"]["raw_rebuild"] = "complete saved batch; current summary rules"
     else:
-        report["manifest"]["note"] = "raw runs not available: summaries as saved, verdict recomputed"
+        report["manifest"]["raw_rebuild"] = "raw archive incomplete: summaries as saved, verdict recomputed"
     report["verdict"] = ab_verdict(report["runs"])
     (out / "ab.json").write_text(json.dumps(report, indent=2))
     (out / "ab.md").write_text(ab_markdown(report))

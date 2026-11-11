@@ -203,6 +203,16 @@ class EditorExitTests(unittest.TestCase):
 
 
 class ReportTextTests(unittest.TestCase):
+    def test_redaction_includes_the_final_component_with_spaces_or_directly_under_a_known_root(self):
+        for path in ('/Users/Alice/secret clip.ply', str(ab.pathlib.Path.home()) + '/customer.json',
+                     ab.tempfile.gettempdir() + '/secret clip.ply', '/customer.json'):
+            with self.subTest(path=path):
+                result = ab.redact('failed: ' + path + ': boom')
+                self.assertNotIn('secret', result)
+                self.assertNotIn('clip.ply', result)
+                self.assertNotIn('customer.json', result)
+                self.assertIn('boom', result)
+
     def test_a_published_failure_text_names_no_directory(self):
         text = ab.redact("RuntimeError('exited: /Users/someone/private/dir/editor.log: boom')")
         self.assertNotIn("/Users/someone", text)

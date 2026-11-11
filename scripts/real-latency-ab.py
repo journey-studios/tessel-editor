@@ -674,15 +674,12 @@ def play_once(lab, state, name, total_frames, fps, W):
 
 
 def redact(text, limit=240):
-    """A failure text for a published report: no absolute path survives, not even its file name (a name can be private) and not
-    a directory with a space in it. The known roots (home, repository, temp folders) go first, whatever they contain; then any
-    other absolute path is replaced up to its last component, spaces in the directories included. Over-redacting is the safe side."""
+    """Remove absolute paths, including private filenames with spaces, before publishing a diagnostic.
+    Over-redact trailing words up to a quote, colon or newline rather than expose an uncertain path boundary."""
     text = str(text)
-    for root, token in sorted(((str(pathlib.Path.home()), "<home>"), (str(ROOT), "<repo>"), (tempfile.gettempdir(), "<tmp>"),
-                               ("/private/tmp", "<tmp>"), ("/tmp", "<tmp>")), key=lambda item: -len(item[0])):
-        if root and root != "/":
-            text = text.replace(root, token)
-    return re.sub(r"/(?:[^/:'\"\n]+/)+[^/\s:'\"]*", "<path>", text)[:limit]
+    # Include a single component and spaces in the file name. Do not replace known roots first:
+    # that would turn /home/user/customer.json into <home>/customer.json and expose the file name.
+    return re.sub(r"/[^:'\"\n]+", "<path>", text)[:limit]
 
 
 def editor_exit(lab):

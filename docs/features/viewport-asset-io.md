@@ -1,4 +1,6 @@
-# F058 — Diagnóstico de I/O de assets do viewport (BL157.1)
+# F060 — Diagnóstico de I/O de assets do viewport (BL157.1)
+
+ID atual **F060** após integração com `main`: F058/F059 pertencem às chaves de FX e ao grão. Referências antigas a F058 nesta PR eram do diagnóstico.
 
 ## Objetivo e limites
 
@@ -99,7 +101,7 @@ diferentes; não se somam): `loop1`–`loop4` e `ab1`–`ab4`; o final é `loop4
   o `loop_stall` da página (120 ms) cobre o intervalo. Nenhuma chamada WebGL da lista passou de 4 ms nesse intervalo, e não havia leitura
   de asset em voo: o atraso está fora do JS do runtime e das chamadas WebGL medidas.
 - Os gaps `195→196` de 63–83 ms são `page_draw` de 24–31 ms (um `texSubImage2D` de 13–27 ms na primeira imagem de cada sequência PNG,
-  `gl_call`): aqui o dado **aponta** para pré-upload de textura, ainda não testado.
+  `gl_call`): naquele snapshot o dado apontava para pré-upload ainda não testado; o experimento posterior é BL157.3, sem aceite da cauda.
 - Braço `gpu_finish` (B, 8 pares em `ab4`, todos válidos): a leitura esperou ≥ 40 ms em 8 de 8 runs (máx. por run 41–119 ms), nos quadros dos primeiros draws
   e nos de 185–187 (o corte); onde A tem o gap `187→188`, B tem `185→186`/`186→187` de ~65–70 ms (um quadro de 41,7 + a espera). Resultado
   mecânico: `CONSISTENT with GPU work still pending after a draw` (ver [ab4](../viewport-real-latency-ab-results/bl157-2/ab4.md)). O atraso **se moveu para
@@ -188,3 +190,21 @@ privado, ficam fora do Git). 4 pares × 2 sessões por fator; **todas as 16 sess
 - **Limites:** "imagem aceita" não é latência de display; os relógios JS e Rust não são subtraídos; o `start_ms` antigo inclui o ocioso antes do Play;
   carga externa não controlada (a coordenação não deu máquina quieta); só 4 pares por fator; GPU pendente consistente, não provada.
   **Latência NÃO ACEITA; BL157 segue aberto** (as pausas grandes, 100–180 ms no corte e `prefetch:268`, ficam).
+
+## Residuais da coordenação após `5adf5b9`
+
+- Os tempos de fetch/decode pertencem ao resultado de cada carga admitida (identidade do objeto de metadados, em `WeakMap`),
+  não ao ID reutilizável do asset. Cargas antigas recusadas/canceladas não publicam tempos nem apagam os da substituta.
+  O campo bridge `asset.state.timings` e os metadados não mudam. Teste puro do runtime exercita a corrida e leitura fora de ordem.
+- `redact()` remove também nomes finais com espaços e arquivos diretamente sob a home/temp. Relatórios publicados nunca devem conter esses nomes.
+- `ab-report` só reconstrói os runs do lote salvo em `ab.json` quando **todos** os brutos esperados existem. Arquivo de outro lote é ignorado;
+  arquivo ausente preserva todos os resumos, recalcula apenas o veredito e registra a limitação.
+- **Lacuna de correlação:** para `frame_sequence`, `asset_load_sent.path` é o hash do padrão e `asset_cb`/`asset_io` usam o caminho do quadro concreto;
+  esses rótulos não são uma chave de junção. As sete entradas PNG medidas em BL157.3 são imagens paradas (`still`), não sequências.
+  Nenhum resultado sobre sequências é afirmado. Ligar cada fetch expandido à carga de sequência continua pendente em BL157.3.
+- O A/B de `5adf5b9` tem **zero pares comparáveis** por fator. Os números locais são observações sob carga, não estimativa causal confiável
+  da melhora total. O warm draw não demonstrou benefício; a amostra não refuta seu efeito em condições controladas.
+- A prova nativa `pixels-warm-draw.txt` não registrou `drawn`: comprova compatibilidade da execução, não que a manipulação aconteceu na janela.
+  O pré-upload não foi exercitado pelo fixture nativo sem imagens. Chrome funcional cobre os fatores; falta janela com ativação confirmada.
+- Integração de `main` e correções desta seção têm somente testes puros atuais. Gates Rust/Chrome/janela/release e A/B **não** são herdados de `5adf5b9`.
+  O disco observado de 14 GiB está abaixo da reserva de 16 GiB. O caminho do experimento não vira padrão e a latência permanece **não aceita**.

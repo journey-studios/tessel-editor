@@ -302,7 +302,8 @@ pub struct WebTransport {
 }
 
 /// A short, stable, non-reversible label for something private (an asset's path or name) so a trace can correlate the
-/// protocol request, the `asset.load` and the runtime's own spans without writing the name down. FNV-1a, 32 bits shown.
+/// protocol request and a file-based `asset.load` without writing the name down. A frame-sequence
+/// pattern label does not identify an expanded frame request (F060/BL157.3). FNV-1a, 32 bits shown.
 pub fn trace_label(prefix: char, text: &str) -> String {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
     for byte in text.bytes() {
@@ -1609,7 +1610,7 @@ impl ProtocolHandle {
             mode: self.mode,
             label: if self.trace.enabled() {
                 if path == "/asset" {
-                    // The same label the load message gets: of the decoded path, not of the encoded query.
+                    // A file load gets this decoded-path label too; a sequence load names a pattern, not this concrete frame.
                     let location = query_param(query, "p").unwrap_or_default();
                     trace_label('a', &format!("p={location}"))
                 } else {

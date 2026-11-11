@@ -3,7 +3,7 @@
 **A latência continua não aceita.** Nada aqui fecha o BL157 nem declara um limite aprovado: 62,5 ms e 100 ms são gatilhos
 diagnósticos e 41,7 ms (24 fps) é só a referência de orçamento. Plano: [real-latency-ab-test-plan.md](migration/real-latency-ab-test-plan.md);
 investigação anterior: [viewport-real-latency-investigation.md](viewport-real-latency-investigation.md); contrato do que foi
-construído: [F058](features/viewport-asset-io.md); dados: [viewport-real-latency-ab-results/](viewport-real-latency-ab-results/).
+construído: [F060](features/viewport-asset-io.md); dados: [viewport-real-latency-ab-results/](viewport-real-latency-ab-results/).
 
 ## 1. Resultado em uma página
 
@@ -214,7 +214,7 @@ As sessões brutas (1,5 MB cada) ficam fora do Git; seus sha256 estão em
 
 ## 11. BL157.2: onde está o trânsito do quadro
 
-**Latência continua NÃO ACEITA; nenhuma mudança de produto foi feita; BL157 segue aberto.** Contrato dos probes: [F058](features/viewport-asset-io.md#bl1572--probes-do-trânsito-do-quadro-opt-in-o-mesmo-custo-nos-dois-braços).
+**Latência continua NÃO ACEITA; nenhuma mudança de produto foi feita; BL157 segue aberto.** Contrato dos probes: [F060](features/viewport-asset-io.md#bl1572--probes-do-trânsito-do-quadro-opt-in-o-mesmo-custo-nos-dois-braços).
 Dados por run em [viewport-real-latency-ab-results/bl157-2/](viewport-real-latency-ab-results/bl157-2/) (lotes separados, cada um com seu binário/runtime/documento
 em `manifest`; **não se somam**; o final é `loop4-final-analysis.md` e `ab4.md`, binário `ac023eba…`, runtime `1fed1ef9…`, código `a01090b`).
 Projeto real (23 assets, só o documento foi copiado), janela 114–210 (3 s antes do primeiro corte até 1 s depois), I/O `async` fixo, TRACE e page
@@ -294,12 +294,12 @@ Nenhuma correção de latência foi implementada nesta rodada da coordenação. 
 
 Dois fatores de custo de primeiro uso, **opt-in, desligados por padrão**, medidos separadamente no mesmo binário (`4e334135…`, runtime `f721cd65…`,
 documento `e93363ae…`), com `async` e warm do sort ligados nos dois braços, `gpu_finish=false`, `TESSEL_GL=gpu`. Contrato, regras, provas de Chrome e
-mutação: [F058 §BL157.3](features/viewport-asset-io.md). Runner `scripts/first-use-ab.py` (+ spec, 19 testes) sobre `real-latency-ab.py` e
+mutação: [F060 §BL157.3](features/viewport-asset-io.md). Runner `scripts/first-use-ab.py` (+ spec, 19 testes) sobre `real-latency-ab.py` e
 `viewport-transit-probe.py`. Dados: [first-use/](viewport-real-latency-ab-results/first-use/) (`analysis.md`, `manifest.json`, `runs.sha256` de cada
 conjunto; JSON brutos fora do Git por conterem o projeto privado).
 
 Execução: janela estreita 114–210 (1 par por fator, 2 sessões) e projeto real completo (4 pares alternados controle/ligado, 8 sessões por fator),
-**todas as 20 sessões válidas e mantidas** (nenhuma descartada). Classes: nas 16 sessões completas, 14 "carregadas" e 2 "quietas" (carga média de outras
+**20 sessões com coleta válida, todas mantidas**, incluindo um `HANG` de reprodução (validade da coleta não significa reprodução saudável). Classes: nas 16 sessões completas, 14 "carregadas" e 2 "quietas" (carga média de outras
 tarefas 9–57); **0 de 4 pares comparáveis por fator**. Nenhuma tolerância foi relaxada.
 
 | | A pré-upload | B warm draw |
@@ -316,12 +316,12 @@ tarefas 9–57); **0 de 4 pares comparáveis por fator**. Nenhuma tolerância fo
 
 **Leitura:**
 
-1. **A** reduz de modo claro o custo **local** da primeira imagem (o `texSubImage2D` de 13–27 ms sai do corte da imagem e vai para um passo de
+1. **A** mostrou uma entrada de imagem menor nesta amostra; o trabalho **local** da primeira imagem é antecipado (o `texSubImage2D` de 13–27 ms sai do corte da imagem e vai para um passo de
    pré-upload de ≤ 48 ms atrás dos quadros em espera). **Não resolve as pausas grandes** (entradas de corte iguais; `prefetch:268` 63–79 ms nos dois
    braços) e portanto **não fecha BL157**. Não há deslocamento demonstrado para antes do corte, mas o excesso de um par cresceu e a carga externa
    impede afirmar que não houve.
 2. **B** não sustentou a hipótese de custo de primeiro uso do draw: não reduziu a entrada do corte e o braço ligado teve mais pausas. Com carga
-   desigual isso não demonstra piora; demonstra ausência de benefício. Rejeitado como candidato.
+   desigual isso não demonstra piora nem ausência de efeito; não houve benefício demonstrado. Não há evidência para promovê-lo a padrão.
 3. O `HANG` do B é mantido e **sem causa determinada** (laço da página com `loop_stall` de 4,7 s e `clientWaitSync` de 349 ms em carga 56); a mesma
    classe de parada ocorreu sem o fator em `ab1`–`ab3` (5 de 28 runs).
 4. Memória: sem diferença atribuível; picos de até 1569 MiB no A ligado (um run), nenhuma promessa.
@@ -343,12 +343,39 @@ scripts e docs):
 | Specs Python (`first-use-ab`, `real-latency-ab`, `viewport-transit-probe`, `scene-warm-proof`) | 0 (19, 22, 18 e a do `scene-warm-proof`) |
 | `cargo tree -p tessel-editor-core` | sem `gpui`/`wry` |
 | Headless JSONL | N/A para os dois fatores (`render.trace` e o relato da janela exigem o desktop; a regra do fator é testada no core, `bridge`/`session`) |
-| Janela real, binário `4e334135…`, só pedidos semânticos, sem coordenadas | `first-use-ab.py pixels --factor warm_draw`: PASS (ver F058); pré-upload: N/A na janela (o projeto sintético não tem imagens), provado em Chrome real |
+| Janela real, binário `4e334135…`, só pedidos semânticos, sem coordenadas | `first-use-ab.py pixels --factor warm_draw`: PASS (ver F060); pré-upload: N/A na janela (o projeto sintético não tem imagens), provado em Chrome real |
 | Locks de GPU | uma tentativa de 15 s nas execuções de desempenho e de pixels: adquiridos; nenhum lock removido, nenhuma espera repetida |
 
 A primeira tentativa de pixels foi **BLOCKED** pelo piso de disco do runner (15,3 GiB < 16); depois, com a prova escrevendo < 1 GiB, o piso inicial
 foi passado explicitamente (`--min-free-gib 13`, acima do piso duro de 12 GiB) e o resultado acima é dessa execução.
 
-Hipóteses: **confirmada (local):** a primeira imagem PNG paga `texSubImage2D`; subi-la antes tira o custo da entrada. **Refutada (neste teste):** um
-draw de aquecimento reduz o intervalo do corte. **Em aberto:** a parada de 60–160 ms da página depois do draw do corte (GPU pendente é consistente, não
+Hipóteses: **componente local observado:** a primeira imagem PNG paga `texSubImage2D`; o pré-upload desloca essa chamada antes da entrada.
+O A/B sob carga não estabelece uma redução causal da latência total. **Sem benefício demonstrado nesta amostra:** o draw de aquecimento;
+zero pares comparáveis não permitem refutar seu efeito sob condições controladas. **Em aberto:** a parada de 60–160 ms da página depois do draw do corte (GPU pendente é consistente, não
 provado); as páginas que param sob carga.
+
+## 14. Integração e resíduos de revisão após `5adf5b9`
+
+A coordenação integrou a `main` por merge (`08cdfd4`), preservando FX/chaves/grão e resolvendo o conflito da matriz.
+O diagnóstico passou de F058 para **F060**, pois F058/F059 já pertencem às features de FX na `main`.
+Os gates de §13.1 continuam históricos de `5adf5b9`: não validam a árvore integrada nem as correções seguintes.
+
+Reproduções puras antes dos fixes: dois testes de carga concorrente falharam (a carga antiga apagava os tempos da nova);
+a redação falhou para quatro caminhos com nomes privados; a reconstrução falhou tanto com brutos parciais como com restos de outro lote.
+As correções associam tempos ao resultado admitido, removem caminhos completos e respeitam estritamente o conjunto de runs salvo.
+`loop1-analysis.md` é marcado histórico, porque faltam seus JSONs brutos e as regras antigas incluíam assentamento e play sem imagens.
+
+A correlação dos caminhos de sequências continua uma lacuna explícita (padrão não é caminho expandido); não é usada para concluir o teste de imagens paradas.
+O `HANG` de 11,1 s está retido como falha observada de reprodução, mesmo com os requisitos de coleta satisfeitos.
+Zero pares comparáveis impedem atribuir causalmente a diferença agregada. O resultado de pixels nativos sem evento `drawn`
+comprova compatibilidade da execução e não ativação do warm draw.
+
+Próximo diagnóstico de BL157.3: em uma execução com recursos e carga comparáveis, confirmar a manipulação na janela e manter o loop vermelho
+para a pausa de corte; separar a espera de GPU, o trabalho de prefetch e a página que deixa de responder, uma variável por vez.
+Sem redução de qualidade ou promoção dos switches a padrão. A latência continua **NÃO ACEITA**.
+
+Verificação atual das correções (árvore com integração `08cdfd4`): `cargo fmt --all -- --check`, `node --check` dos dois módulos,
+15 testes Node puros (telemetria e corpus básico), specs Python `real-latency-ab` 23, `viewport-transit-probe` 21,
+`first-use-ab` 19 e `scene-warm-proof` 24, nos modos normal e `-O`, e `py_compile` passaram.
+Logs locais em `/tmp/pr41-coordination-review/checks/`. Builds/check/clippy/workspace/Chrome/janela/A/B da árvore integrada
+não foram iniciados: 14 GiB livres, abaixo da reserva de 16 GiB. Nada foi limpo nem houve redução do piso para rodá-los.

@@ -144,17 +144,11 @@ export class AssetStore {
     return entry;
   }
 
-  /**
-   * Durations of the parts of a load, on this page's clock (BL157.1): the host only reads them, never subtracts them
-   * from one of its own stamps. Kept until `takeLoadTimings` reads them, at most one entry per asset id.
-   */
-  noteLoadTimings(id, timings) {
-    (this.loadTimings ??= new Map()).set(id, timings);
-  }
-
-  takeLoadTimings(id) {
-    const timings = this.loadTimings?.get(id);
-    this.loadTimings?.delete(id);
+  /** Takes the successful load's page-clock timings once, by its metadata object, never by a reusable asset id.
+   * Unread results are weakly held; a cancelled/failed older load cannot replace or delete a newer load's timings. */
+  takeLoadTimings(meta) {
+    const timings = this.loadTimings?.get(meta);
+    this.loadTimings?.delete(meta);
     return timings ?? {};
   }
 
@@ -187,7 +181,6 @@ export class AssetStore {
       loaded = await loader();
     } catch (error) {
       if (this.loading.get(id) === token) this.loading.delete(id);
-      this.loadTimings?.delete(id);
       throw error;
     }
     const { entry, meta, after } = loaded;
@@ -196,7 +189,6 @@ export class AssetStore {
       entry.mesh?.dispose();
       if (entry.video) closeVideo(entry.video);
       after?.close?.();
-      this.loadTimings?.delete(id);
       throw new RuntimeError('cancelled', `Asset \`${id}\` was released while loading`, { asset: id });
     }
     this.loading.delete(id);
@@ -205,7 +197,6 @@ export class AssetStore {
       if (refusal) {
         entry.bitmap?.close?.();
         entry.mesh?.dispose();
-        this.loadTimings?.delete(id);
         throw refusal;
       }
     }
@@ -215,7 +206,9 @@ export class AssetStore {
       // The probe frame is kept as frame 0; its texture is made when a frame first draws it.
       entry.frames.set(0, { bitmap: after, texture: null, lastUsed: 0 });
     }
-    return meta;
+    const result = { ...meta };
+    if (loaded.timings) (this.loadTimings ??= new WeakMap()).set(result, loaded.timings);
+    return result;
   }
 
   /** Entries loaded for a directed scene (`descriptor.scene`), other than the one under `exceptId`. */
@@ -306,7 +299,6 @@ export class AssetStore {
 
   release(id) {
     this.loading.delete(id);
-    this.loadTimings?.delete(id);
     const entry = this.entries.get(id);
     if (!entry) return;
     this.endSplatPool(entry);
@@ -477,8 +469,8 @@ export class AssetStore {
     const blob = await response.blob();
     const decodeStarted = performance.now();
     const bitmap = await decodeImage(blob, label);
-    this.noteLoadTimings(id, { fetch_ms: decodeStarted - fetchStarted, decode_ms: performance.now() - decodeStarted });
     return {
+      timings: { fetch_ms: decodeStarted - fetchStarted, decode_ms: performance.now() - decodeStarted },
       entry: { bitmap, width: bitmap.width, height: bitmap.height },
       meta: { width: bitmap.width, height: bitmap.height },
     };
@@ -503,11 +495,11 @@ export class AssetStore {
     const fileName = splatFileName(meta.format, source.path);
     const decodeStarted = performance.now();
     const mesh = await loadSplatMesh(bytes, fileName, label);
-    this.noteLoadTimings(id, { fetch_ms: decodeStarted - fetchStarted, decode_ms: performance.now() - decodeStarted, bytes: bytes.byteLength });
     const count = mesh.packedSplats.numSplats;
     // The file is NOT kept (66 MB for a 1.18 M splat PLY, as much again as the decoded splats): the GPU
     // side is rebuilt after a lost context by fetching it again (see splatLease and dropGpu).
     return {
+      timings: { fetch_ms: decodeStarted - fetchStarted, decode_ms: performance.now() - decodeStarted, bytes: bytes.byteLength },
       entry: { source, fileName, label, mesh, pool: splatPool(mesh), count },
       meta: { splat_count: count, format: fileName.split('.').pop() },
     };

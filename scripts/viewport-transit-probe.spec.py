@@ -2,6 +2,9 @@
 import importlib.util
 import json
 import unittest
+import tempfile
+from types import SimpleNamespace
+from unittest.mock import patch
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location("viewport_transit_probe", Path(__file__).with_name("viewport-transit-probe.py"))
@@ -26,6 +29,39 @@ def page_event(id, queue=0.0, held=None, loop_max=0.0, ahead=None, ipc_wait=0.2)
 
 def evaluation(sent, ms):
     return {"sent_ms": sent, "done_ms": sent + ms, "eval_ms": ms, "used": False}
+
+
+class BatchRebuildTests(unittest.TestCase):
+    def test_the_markdown_exposes_a_partial_archive_warning(self):
+        manifest = {'git': {'sha': 'a' * 40, 'dirty_files': 0}, 'binary_sha256': 'b' * 64,
+                    'runtime_sha256': 'c' * 64, 'document_sha256': 'd' * 64, 'io': 'async',
+                    'window': [1, 2], 'arm_a': 'control', 'arm_b': 'probe', 'pairs': 0,
+                    'raw_rebuild': 'raw archive incomplete: summaries as saved'}
+        text = probe.ab_markdown({'manifest': manifest, 'runs': [], 'verdict': 'inconclusive'})
+        self.assertIn('raw archive incomplete: summaries as saved', text)
+
+    def rebuild(self, raw_names):
+        saved = [{'pair': 0, 'arm': arm, 'order': 'AB', 'summary': {'saved': arm}} for arm in ('A', 'B')]
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            (out / 'ab.json').write_text(json.dumps({'manifest': {}, 'runs': saved, 'verdict': 'old'}))
+            for name in raw_names:
+                (out / name).write_text(json.dumps({'name': name}))
+            with patch.object(probe, 'arm_summary', side_effect=lambda record: {'raw': record['name']}), \
+                    patch.object(probe, 'ab_verdict', return_value='recomputed'), \
+                    patch.object(probe, 'ab_markdown', return_value='report'):
+                probe.cmd_ab_report(SimpleNamespace(out=str(out)))
+            return saved, json.loads((out / 'ab.json').read_text())
+
+    def test_partial_raw_archive_preserves_every_saved_run(self):
+        saved, report = self.rebuild(['pair-0-A.json'])
+        self.assertEqual(report['runs'], saved)
+        self.assertIn('incomplete', report['manifest']['raw_rebuild'])
+
+    def test_old_files_from_another_batch_never_enter_the_saved_batch(self):
+        _, report = self.rebuild(['pair-0-A.json', 'pair-0-B.json', 'pair-9-A.json'])
+        self.assertEqual([(r['pair'], r['arm']) for r in report['runs']], [(0, 'A'), (0, 'B')])
+        self.assertEqual([r['summary']['raw'] for r in report['runs']], ['pair-0-A.json', 'pair-0-B.json'])
 
 
 class DecompositionTests(unittest.TestCase):

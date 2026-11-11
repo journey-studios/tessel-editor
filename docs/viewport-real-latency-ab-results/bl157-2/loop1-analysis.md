@@ -1,3 +1,9 @@
+> **Histórico: gerado por versão anterior do analisador.** Os JSONs brutos de `loop1` não estão disponíveis para regeneração.
+> Os gaps com `shown_frame` repetido (`216→216`, `210→210`) são assentamento depois do stop e hoje são excluídos;
+> `starved=YES` hoje invalida uma execução. O rótulo `asset bytes` e a coluna `per load` também são antigos.
+> As contagens e o `valid=yes` abaixo não satisfazem as regras atuais e não fundamentam aceite.
+> Consulte `loop3`/`loop4` e o relatório por SHA para os resultados seguintes. Os dados históricos são preservados sem reconstrução inventada.
+
 # Transit probe (BL157.2)
 
 Late pictures decomposed on one clock at a time (see the script's docstring). Diagnostic thresholds only, not approved limits. `valid` says the harness measured what it claims; a starved play or a UI block is a RED finding about the editor, not an invalid run.
