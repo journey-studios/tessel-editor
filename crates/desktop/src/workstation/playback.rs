@@ -26,7 +26,7 @@ use tessel_editor_audio::engine::Shared;
 use tessel_editor_audio::{AudioError, DeviceInfo, Output, Source, Status};
 use tessel_editor_core::audio::{AudioBackend, OfflineMixer};
 use tessel_editor_core::state::Command;
-use tessel_editor_core::trace::{ms, ms_since};
+use tessel_editor_core::trace::{ms, ms_since, round3};
 use tessel_editor_core::{CommandError, EditorState, Raw};
 
 use super::env_mode::{self, EnvMode};
@@ -483,11 +483,11 @@ impl Workstation {
             json!({
                 "due_ms": trace.ms_at(due),
                 "ran_ms": trace.ms_at(ran),
-                "late_ms": ms(ran.saturating_duration_since(due)),
+                "late_ms": round3(ms(ran.saturating_duration_since(due))),
                 "body_ms": ms_since(began),
                 "frame_before": before, "frame_after": after, "continues": next.is_some(),
                 // What the clock said (fractional frames) and how long the loop will wait for the next tick.
-                "clock": clock, "next_ms": next.map(ms),
+                "clock": clock, "next_ms": next.map(|next| round3(ms(next))),
             })
         });
         tick

@@ -16,6 +16,7 @@ use super::*;
 // The Kit's test macro expands to `#[test]`; the glob import above would resolve it to the Kit macro again.
 use core::prelude::v1::test;
 use serde_json::{Value, json};
+use tessel_editor_core::trace::round3;
 
 fn ms(duration: Duration) -> f64 {
     duration.as_secs_f64() * 1000.0
@@ -83,13 +84,17 @@ fn next_ms(tick: &Value) -> f64 {
     tick["next_ms"].as_f64().expect("a tick that continues")
 }
 
-/// The tick after `ticks` ticks comes `wait` milliseconds after the previous one's deadline, not before and not after. The
-/// executor's clock is exactly on that deadline (it lands on each one it fires): it goes to a margin short of the wait (no tick),
-/// then to the new deadline itself (the tick), and stops there, so the wait that tick armed is still ahead of the clock.
+/// What three decimals of a millisecond can put between the wait a tick armed and the wait its event reports.
+const TRACE_RESOLUTION: Duration = Duration::from_micros(1);
+
+/// The tick after `ticks` ticks comes `wait` milliseconds (as its predecessor's event says them, to three decimals) after the
+/// previous one's deadline, not before and not after. The executor's clock is on that deadline (it lands on each one it
+/// fires, and stops at most a [`TRACE_RESOLUTION`] past the last): it goes to a margin short of the wait (no tick), then past the
+/// new deadline by that resolution (the tick), and stops there, so the wait that tick armed is still ahead of the clock.
 ///
 /// The margin is a millisecond, or half the wait when the wait is under two: the least a wait can be is [`LANDING_GUARD`] (a
 /// reading that aged on the real clock has nothing else left of its distance), and a millisecond short of that is before the
-/// tick that armed it. Going past the deadline instead of stopping on it would also run the next tick whenever that wait is the
+/// tick that armed it. Going a millisecond past the deadline instead would also run the next tick whenever that wait is the
 /// least.
 fn expect_next_tick_after(
     view: &Entity<Workstation>,
@@ -101,7 +106,7 @@ fn expect_next_tick_after(
     let margin = Duration::from_millis(1).min(wait / 2);
     advance(cx, wait - margin);
     assert_eq!(events_of(view, cx, "tick").len(), ticks, "a tick early");
-    advance(cx, margin);
+    advance(cx, margin + TRACE_RESOLUTION);
     assert_eq!(events_of(view, cx, "tick").len(), ticks + 1, "no tick");
 }
 
@@ -286,6 +291,40 @@ fn a_reading_already_at_its_boundary_is_waited_for_the_least_a_wait_can_be(
     assert_eq!(ticks[2]["clock"], 10.999_999_999, "{}", ticks[2]);
     assert_eq!(next_ms(&ticks[2]), ms(LANDING_GUARD), "{}", ticks[2]);
     expect_next_tick_after(&view, cx, next_ms(&ticks[2]), 3);
+}
+
+#[gpui_kit::test]
+fn the_tick_event_writes_its_durations_to_three_decimals(cx: &mut TestAppContext) {
+    // The trace writes the durations of an event in milliseconds to three decimals (`body_ms` of this very event, `read_ms`,
+    // `queue_wait_ms` of `asset_io`): so do the lateness of a tick and the wait it arms, whatever the length of time that was.
+    let (view, cx) = fixture(cx);
+    start(&view, cx, PollMode::Fixed);
+    let cap = ms(playback_poll::interval(fps(&view, cx)));
+    assert_ne!(
+        cap,
+        round3(cap),
+        "a half frame of 24 fps has no three decimals"
+    );
+    // The timer was armed 7.654321 ms before the tick ran (plus what the call takes): a lateness no three decimals can hold.
+    let armed = Instant::now() - Duration::from_nanos(7_654_321);
+    let _ = view.update(cx, |view, cx| view.playback_tick(cx, armed, Duration::ZERO));
+
+    let ticks = events_of(&view, cx, "tick");
+    let traced = ticks.last().expect("a traced tick");
+    let late = traced["late_ms"]
+        .as_f64()
+        .expect("a tick says how late it ran");
+    assert!(late >= 7.654, "{traced}");
+    assert_eq!(
+        late,
+        round3(late),
+        "late_ms has more than three decimals: {traced}"
+    );
+    assert_eq!(
+        traced["next_ms"],
+        round3(cap),
+        "next_ms is not the wait to three decimals: {traced}"
+    );
 }
 
 #[gpui_kit::test]
