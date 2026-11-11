@@ -1,0 +1,125 @@
+{
+  "runs": [
+    {
+      "started": "2026-11-11T14:45:33+00:00",
+      "head": "a6d627b",
+      "dirty_before": [],
+      "selected": [
+        "J01",
+        "J02",
+        "J03",
+        "J04",
+        "J05",
+        "J06"
+      ],
+      "baselines": {
+        "js": {
+          "exit": 0,
+          "seconds": 0,
+          "failed": [],
+          "tail": ""
+        }
+      },
+      "stopped": null,
+      "note": "",
+      "restored": true,
+      "hashes_before": {
+        "runtime/src/directed-scene.js": "47ef1ca3c97172c04c608d6be40088f652b6d40df45859c0d07aa0bc5940c5a7",
+        "runtime/src/output-fx.js": "6910ee19bda017846d1b0d93d8b2d1ed206a8e371df71a9ab40f3a63af7c0a0e"
+      },
+      "hashes_after": {
+        "runtime/src/directed-scene.js": "47ef1ca3c97172c04c608d6be40088f652b6d40df45859c0d07aa0bc5940c5a7",
+        "runtime/src/output-fx.js": "6910ee19bda017846d1b0d93d8b2d1ed206a8e371df71a9ab40f3a63af7c0a0e"
+      },
+      "finished": true
+    }
+  ],
+  "mutants": {
+    "J01": {
+      "what": "a pass of a shot is accepted by a plan that does not require fxShotScope",
+      "file": "runtime/src/output-fx.js",
+      "kind": "js",
+      "result": "KILLED",
+      "run": 0,
+      "head": "a6d627b",
+      "failed": [
+        "without the capability a pass of a shot is refused by name, never drawn as if it were the output"
+      ],
+      "seconds": 0,
+      "original_sha256": "6910ee19bda017846d1b0d93d8b2d1ed206a8e371df71a9ab40f3a63af7c0a0e"
+    },
+    "J02": {
+      "what": "a pass of another shot than the frame's is accepted",
+      "file": "runtime/src/output-fx.js",
+      "kind": "js",
+      "result": "KILLED",
+      "run": 0,
+      "head": "a6d627b",
+      "failed": [
+        "a pass of another shot than the frame's is unsupported, typed, and says which shot is which"
+      ],
+      "seconds": 0,
+      "original_sha256": "6910ee19bda017846d1b0d93d8b2d1ed206a8e371df71a9ab40f3a63af7c0a0e"
+    },
+    "J03": {
+      "what": "the passes of the shot are accepted after the passes of the output",
+      "file": "runtime/src/output-fx.js",
+      "kind": "js",
+      "result": "KILLED",
+      "run": 0,
+      "head": "a6d627b",
+      "failed": [
+        "the stages are listed in order: the passes of the shot, then the passes of the output"
+      ],
+      "seconds": 0,
+      "original_sha256": "6910ee19bda017846d1b0d93d8b2d1ed206a8e371df71a9ab40f3a63af7c0a0e"
+    },
+    "J04": {
+      "what": "the output is drawn before the deck",
+      "file": "runtime/src/output-fx.js",
+      "kind": "js",
+      "result": "KILLED",
+      "run": 0,
+      "head": "a6d627b",
+      "failed": [
+        "the deck and the output are two loops of their own, the seam between them is where a transition will go",
+        "the deck is drawn before the output and the ping-pong goes on across the stages"
+      ],
+      "seconds": 0,
+      "original_sha256": "6910ee19bda017846d1b0d93d8b2d1ed206a8e371df71a9ab40f3a63af7c0a0e"
+    },
+    "J05": {
+      "what": "the runtime does not advertise fxShotScope",
+      "file": "runtime/src/directed-scene.js",
+      "kind": "js",
+      "result": "KILLED",
+      "run": 0,
+      "head": "a6d627b",
+      "failed": [
+        "a capability the runtime does not have is named; the ones it has are the core list",
+        "a pass of a shot is accepted with the capability, in the frame of that shot, and is a deck pass",
+        "fxShotScope is the 13th capability of this runtime, spelled as the core spells it"
+      ],
+      "seconds": 0,
+      "original_sha256": "47ef1ca3c97172c04c608d6be40088f652b6d40df45859c0d07aa0bc5940c5a7"
+    },
+    "J06": {
+      "what": "the deck stage draws nothing",
+      "file": "runtime/src/output-fx.js",
+      "kind": "js",
+      "result": "KILLED",
+      "run": 0,
+      "head": "a6d627b",
+      "failed": [
+        "one deck pass and one output pass need no more than the two targets and the one material of the effect",
+        "the deck and the output are two loops of their own, the seam between them is where a transition will go",
+        "the deck is drawn before the output and the ping-pong goes on across the stages"
+      ],
+      "seconds": 0,
+      "original_sha256": "6910ee19bda017846d1b0d93d8b2d1ed206a8e371df71a9ab40f3a63af7c0a0e"
+    }
+  },
+  "summary": {
+    "KILLED": 6
+  }
+}
