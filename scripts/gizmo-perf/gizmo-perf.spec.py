@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Spec of the gizmo performance runners, without a benchmark, a window or the real lock (F055 / BL015.21)."""
+import atexit
 import contextlib
 import fcntl
 import hashlib
@@ -8,7 +9,9 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -30,6 +33,14 @@ def load(name):
 
 harness, ab, mutate, native, audit = (load(n) for n in ('harness', 'ab', 'mutate', 'native', 'audit'))
 runner = load('run')
+
+# The per-CHECKOUT build lock of the runners lives under /tmp, one file per checkout. A spec run must neither wait for a
+# real build of this checkout nor hold its lock, so every copy of `harness` (the spec's own and the one the runners share
+# through `sys.modules`) keeps it in a directory of this run. A runner without that lock simply ignores the attribute.
+CHECKOUT_LOCKS = tempfile.mkdtemp(prefix='gizmo-perf-spec-checkout-locks-')
+atexit.register(shutil.rmtree, CHECKOUT_LOCKS, ignore_errors=True)
+for module in (harness, native.harness):
+    module.CHECKOUT_LOCK_DIR = CHECKOUT_LOCKS
 
 
 def slot(samples, medians=None, long_ticks=0):
@@ -232,6 +243,40 @@ class RunVerdict(unittest.TestCase):
         self.assertEqual(self.verdict(done('', code=-15, timed_out=True))[0], 'FAIL')
         self.assertEqual(self.verdict(self.passing(), report=False)[0], 'FAIL')
         self.assertEqual(self.verdict(done('test result: ok. 1 passed; 0 failed; 0 ignored'))[0], 'FAIL')
+
+    def test_a_test_whose_own_result_line_says_failed_does_not_count_as_passed(self):
+        # (F17) a failed test prints its marker too: the first real measurement listed three passed tests for a run
+        # whose own summary said "2 passed; 1 failed", and a marker alone was enough for the verdict to count a test
+        contradictory = done('test result: ok. 3 passed; 0 failed; 0 ignored\n' + f'test {MAIN_TEST} ... FAILED\n' +
+                             ''.join(f'test {name} ... ok\n' for name in (PLAN_CONTROL, DELAY_CONTROL)))
+        self.assertEqual(self.verdict(contradictory)[0], 'FAIL')
+        failing = libtest({MAIN_TEST: NOT_CAUGHT}, passed=[PLAN_CONTROL, DELAY_CONTROL])
+        self.assertEqual(runner.tests_passed(failing.stdout), [PLAN_CONTROL, DELAY_CONTROL])
+        self.assertEqual(runner.tests_passed(self.passing().stdout), runner.EXPECTED_TESTS)
+
+    def test_the_layout_nocapture_really_prints_still_counts_its_tests_as_passed(self):
+        # the marker, the test's own summary lines, then a line that is only the verdict (as in the retained stdout.txt)
+        text = 'test result: ok. 3 passed; 0 failed; 0 ignored\n' + ''.join(
+            f'test {name} ... GIZMO_PERF_SUMMARY {{"corpus": "small"}}\nGIZMO_PERF_SUMMARY more\nok\n'
+            for name in runner.EXPECTED_TESTS)
+        self.assertEqual(self.verdict(done(text))[0], 'PASS')
+
+    def test_a_fail_carries_the_guard_that_failed_after_the_run_and_stays_a_fail(self):
+        # (F18) the first real measurement was a FAIL read with a load average of 5.88 after it: the reason did not say so
+        guard = 'load average (1 min) 5.88 over 5.5 (11 cpus)'
+        steady = [PLAN_CONTROL, DELAY_CONTROL]
+        for label, finished in (('budget', done('over budget:\ndense/move.translate: p95 is 9x the plan (budget 6)', 101)),
+                                ('a test failed', libtest({MAIN_TEST: NOT_CAUGHT}, passed=steady)),
+                                ('timeout', done('', code=-15, timed_out=True)),
+                                ('unsteady beside a real failure', libtest({MAIN_TEST: UNSTEADY, PLAN_CONTROL: NOT_CAUGHT},
+                                                                           passed=[DELAY_CONTROL]))):
+            status, why, code = self.verdict(finished, after=guard)
+            self.assertEqual((status, code), ('FAIL', 1), label)  # the guard never changes a real failure
+            self.assertIn(guard, why, label)
+        status, why, code = self.verdict(libtest({MAIN_TEST: UNSTEADY}, passed=steady), after=guard)
+        self.assertEqual((status, code), ('INCONCLUSIVE', harness.INCONCLUSIVE_EXIT))
+        self.assertIn(guard, why)
+        self.assertNotIn('machine guard', self.verdict(done('over budget:\nx', 101))[1])  # and no guard, no sentence
 
 
 class RunRecord(unittest.TestCase):
@@ -595,6 +640,7 @@ class MeasurePhase(unittest.TestCase):
         fakes = [patch.object(ab.harness, 'git_identity', return_value=self.CLEAN),
                  patch.object(ab.harness, 'toolchain', return_value={}),
                  patch.object(ab.harness, 'out', return_value=ab.BASELINE),
+                 patch.object(ab.harness, 'git_strict', create=True, return_value=(True, ab.BASELINE)),
                  patch.object(ab.harness, 'guards', return_value=({}, None)),
                  patch.object(ab.harness, 'machine', return_value={'thermal': ''}),
                  patch.object(ab.harness, 'judge_after', side_effect=judge_after),
@@ -640,6 +686,152 @@ class MeasurePhase(unittest.TestCase):
             (Path(out) / 'manifest.build.json').write_text(json.dumps(built))
             code, manifest = self.measure(out)
             self.assertEqual((code, manifest['status']), (1, 'REFUSED'))
+
+    def test_a_second_attempt_keeps_the_first_one_in_attempts(self):
+        # (F16) the first real A/B lost the numbers of its INVALID first attempt to its own retry
+        with tempfile.TemporaryDirectory() as out:
+            self.build_dir(out)
+            code, first = self.measure(out, after_reason='load average (1 min) 9 over 5.5')
+            self.assertEqual(first['status'], 'INVALID_GUARD_AFTER_RUN')
+            code, second = self.measure(out)
+            self.assertEqual(second['status'], 'NO_REGRESSION_IN_SCENARIO')
+            attempts = Path(out) / 'attempts'
+            kept = sorted(attempts.iterdir()) if attempts.is_dir() else []
+            self.assertEqual(len(kept), 1, [p.name for p in kept])
+            self.assertTrue(kept[0].name.endswith('-INVALID_GUARD_AFTER_RUN'), kept[0].name)
+            self.assertEqual(json.loads((kept[0] / 'manifest.json').read_text())['status'], 'INVALID_GUARD_AFTER_RUN')
+            self.assertTrue((kept[0] / 'verdicts.json').is_file())
+            self.assertTrue(sorted(kept[0].glob('round*.json')))
+            self.assertEqual(second['previous_attempt_archived_at'], str(kept[0]))
+            self.assertTrue(sorted(Path(out).glob('round*.json')))  # and the new attempt's own reports are in --out
+            # a third attempt, refused for its own reasons (the second was judged: its inputs are gone), keeps the second
+            code, third = self.measure(out)
+            self.assertEqual((code, third['status']), (1, 'REFUSED'))
+            names = sorted(p.name for p in attempts.iterdir())
+            self.assertEqual(len(names), 2, names)
+            self.assertTrue(any(name.endswith('-NO_REGRESSION_IN_SCENARIO') for name in names), names)
+
+    def test_a_run_whose_reports_hold_no_sample_is_inconclusive_never_a_pass(self):
+        with tempfile.TemporaryDirectory() as out:
+            self.build_dir(out)
+            self.REPORT = {'suite': 'gizmo-perf-core', 'corpora': [
+                {'corpus': 'small', 'reference': {'unstable_fraction': 0.0}, 'cold': {}, 'hot': {}}]}
+            code, manifest = self.measure(out)
+            self.assertEqual((code, manifest['status']), (harness.INCONCLUSIVE_EXIT, 'INCONCLUSIVE'))
+
+
+class AbBuild(unittest.TestCase):
+    """`ab.py --phase build` on fakes: each release build is a function that writes the bytes of an executable where
+    cargo would have, and the baseline source is a directory. The order of things, the refusals and the record are the
+    real ones."""
+
+    CLEAN = {'head': 'h' * 40, 'tree': 't' * 40, 'branch': 'b', 'dirty': ''}
+
+    def run_build(self, root, candidate='candidate', baseline='baseline', candidate_exit=0, baseline_exit=0,
+                  same_file=False, candidate_gone=False, baseline_gone=False, prune_candidate_in_baseline_build=False,
+                  env=None, plant=None):
+        """Returns `(exit code, manifest, out, calls)`; `calls` lists, for each build, which side it was and which
+        executables were already in `--out/exes` when it started."""
+        root = Path(root)
+        out = root / 'out'
+        if plant:
+            plant(out)
+        target = {'candidate': root / 'target-candidate',
+                  'baseline': root / ('target-candidate' if same_file else 'target-baseline')}
+        calls = []
+
+        def make_baseline(ref, directory):
+            src = Path(directory) / 'baseline-src'
+            src.mkdir(parents=True, exist_ok=True)
+            (src / 'journey.json').write_text('{}')
+            return {'src': src, 'prod_tree_before_overlay': 'x', 'prod_tree_after_overlay': 'x',
+                    'prod_tree_candidate': 'x', 'pinned_ref_tree': 'x', 'overlay_changed': [], 'allowlist': [],
+                    'contaminated': [], 'product_files_that_differ': {'crates/core/src/x.rs': {}},
+                    'product_files_outside_the_measurement': []}
+
+        def build(cwd):
+            side = 'candidate' if Path(cwd) == ab.ROOT else 'baseline'
+            exes = out / 'exes'
+            calls.append((side, sorted(p.name for p in exes.iterdir()) if exes.is_dir() else []))
+            if side == 'candidate':
+                if not candidate_gone:
+                    target['candidate'].write_bytes(candidate.encode())
+                return ['cargo'], done('', candidate_exit), str(target['candidate'])
+            if prune_candidate_in_baseline_build:
+                target['candidate'].unlink(missing_ok=True)  # the cache GC of the cargo wrapper, mid-build
+            if not baseline_gone:
+                target['baseline'].write_bytes(baseline.encode())
+            return ['cargo'], done('', baseline_exit), str(target['baseline'])
+
+        fakes = [patch.object(ab.harness, 'git_identity', return_value=self.CLEAN),
+                 patch.object(ab.harness, 'toolchain', return_value={}),
+                 patch.object(ab.harness, 'out', return_value=ab.BASELINE),
+                 patch.object(ab.harness, 'git_strict', create=True, return_value=(True, ab.BASELINE)),
+                 patch.object(ab, 'make_baseline', side_effect=make_baseline), patch.object(ab, 'build', side_effect=build)]
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(bounded())
+            for fake in fakes:
+                stack.enter_context(fake)
+            stack.enter_context(patch.dict(os.environ, env or {}))
+            for name in ('CARGO_TARGET_DIR', 'TESSEL_CARGO_LANE'):
+                if name not in (env or {}):
+                    os.environ.pop(name, None)  # this spec must not depend on how it was started
+            code = run_main(ab, ['--phase', 'build', '--out', str(out)])
+        built = out / 'manifest.build.json'
+        return code, json.loads((built if built.exists() else out / 'manifest.json').read_text()), out, calls
+
+    def test_the_candidate_executable_is_copied_before_the_baseline_build_starts(self):
+        # (F2) the first real A/B: the cache GC pruned the candidate's managed target while the baseline was building
+        with tempfile.TemporaryDirectory() as root:
+            code, manifest, out, calls = self.run_build(root, prune_candidate_in_baseline_build=True)
+            self.assertEqual((code, manifest['status']), (0, 'BUILT'))
+            self.assertEqual(calls, [('candidate', []), ('baseline', ['candidate.exe'])])
+            self.assertEqual((out / 'exes' / 'candidate.exe').read_bytes(), b'candidate')
+            self.assertEqual((out / 'exes' / 'baseline.exe').read_bytes(), b'baseline')
+
+    def test_an_executable_the_build_named_but_that_is_gone_is_a_recorded_refusal_with_its_path(self):
+        for label, gone, name in (('candidate', {'candidate_gone': True}, 'target-candidate'),
+                                  ('baseline', {'baseline_gone': True}, 'target-baseline')):
+            with self.subTest(label), tempfile.TemporaryDirectory() as root:
+                code, manifest, out, calls = self.run_build(root, **gone)
+                self.assertEqual((code, manifest['status']), (1, 'INFRA_EXECUTABLE_MISSING'))
+                self.assertTrue(manifest['missing'].endswith(name), manifest['missing'])
+                self.assertIn(name, manifest['reason'])
+                self.assertFalse((out / 'manifest.build.json').exists())
+                self.assertFalse((out / 'baseline-src').exists())  # nothing measurable came out of it
+
+    def test_one_artifact_measured_as_both_sides_is_refused(self):
+        for label, kwargs in (('the same file', {'same_file': True}),
+                              ('the same bytes', {'candidate': 'same', 'baseline': 'same'})):
+            with self.subTest(label), tempfile.TemporaryDirectory() as root:
+                code, manifest, out, calls = self.run_build(root, **kwargs)
+                self.assertEqual((code, manifest['status']), (1, 'AB_EXECUTABLES_COLLIDE'), label)
+                self.assertFalse((out / 'manifest.build.json').exists())
+        with tempfile.TemporaryDirectory() as root:  # the control: two artifacts are built and recorded
+            code, manifest, out, calls = self.run_build(root)
+            self.assertEqual((code, manifest['status']), (0, 'BUILT'))
+            self.assertEqual(len(set(manifest['executables_sha256'].values())), 2)
+
+    def test_a_target_directory_in_the_environment_refuses_the_build_phase_before_any_build(self):
+        for name in ('CARGO_TARGET_DIR', 'TESSEL_CARGO_LANE'):
+            with self.subTest(name), tempfile.TemporaryDirectory() as root:
+                code, manifest, out, calls = self.run_build(root, env={name: '/somewhere'})
+                self.assertEqual((code, manifest['status']), (1, 'REFUSED'))
+                self.assertEqual(manifest['env_set'], [name])
+                self.assertEqual(calls, [])
+
+    def test_a_build_that_fails_leaves_no_product_of_an_earlier_one(self):
+        def earlier(out):
+            (out / 'exes').mkdir(parents=True)
+            (out / 'exes' / 'baseline.exe').write_bytes(b'an earlier baseline')
+            (out / 'exes' / 'candidate.exe').write_bytes(b'an earlier candidate')
+            (out / 'manifest.build.json').write_text('{"an": "earlier build"}')
+
+        with tempfile.TemporaryDirectory() as root:
+            code, manifest, out, calls = self.run_build(root, candidate_exit=1, plant=earlier)
+            self.assertEqual((code, manifest['status']), (1, 'BUILD_FAILED'))
+            self.assertFalse((out / 'manifest.build.json').exists())  # `--phase measure` could believe the pair
+            self.assertEqual(sorted(p.name for p in (out / 'exes').iterdir()), [])
 
 
 def run_text(failed=(), ok=(), results='FAILED. 0 passed; 1 failed', extra=''):
@@ -712,6 +904,30 @@ class Verdicts(unittest.TestCase):
         self.assertEqual(self.classify(done(text, 101), 'replan_per_tick', 'host'), 'KILLED')
         wrong = run_text([name], extra='thread panicked: fixture missing')
         self.assertEqual(self.classify(done(wrong, 101), 'replan_per_tick', 'host'), 'UNEXPECTED_FAILURE')
+
+    HOST_TEST = 'workstation::scene_gizmo_perf_tests::an_idle_window_plans_nothing_per_tick_and_the_overlay_stays_memoised'
+
+    def test_memo_off_is_killed_by_each_of_the_three_assertions_a_memo_that_never_hits_breaks(self):
+        # (F15) with the memo off the FIRST assertion to fail is the layout count of the repeated syncs (the first real
+        # run, M1 of `measure-12bc8da`): the runner did not accept it, so the mutant that was detected was not "killed"
+        for message in ('small: a sync of an unchanged state laid the scene out more than once (4 layouts for 4 syncs)',
+                        'small: the overlay was asked for again after a memo hit',
+                        'small: every sync of an unchanged state is a memo hit (0 of 4)'):
+            text = run_text([self.HOST_TEST], extra=message)
+            self.assertEqual(self.classify(done(text, 101), 'memo_off', 'host'), 'KILLED', message)
+
+    def test_memo_off_stays_strict_about_what_else_may_have_failed_the_host_test(self):
+        for noise in ('thread panicked: fixture missing', 'the journey ran to the end (3 of 4 steps)',
+                      'a sync of the unchanged state laid out'):
+            text = run_text([self.HOST_TEST], extra=noise)
+            self.assertEqual(self.classify(done(text, 101), 'memo_off', 'host'), 'UNEXPECTED_FAILURE', noise)
+        compile_error = done('error[E0425]: cannot find value\ncould not compile', 101)
+        self.assertEqual(self.classify(compile_error, 'memo_off', 'host'), 'COMPILE_ERROR')
+        self.assertEqual(self.classify(done('', -15, timed_out=True), 'memo_off', 'host'), 'INFRA_TIMEOUT')
+        # and the accepted lines are the ones the Rust test really prints
+        source = (harness.ROOT / 'crates/desktop/src/workstation/scene_gizmo_perf_tests.rs').read_text()
+        for pattern in mutate.EXPECT[('memo_off', 'host')]['messages']:
+            self.assertIn(pattern, source)
 
     def test_failed_names_reads_the_final_list_even_when_output_is_not_captured(self):
         text = f'test {TIME} ... GIZMO_PERF_SUMMARY x\nfailures:\n    {TIME}\n\ntest result: FAILED. 0 passed; 1 failed'
@@ -1106,7 +1322,11 @@ class Provenance(unittest.TestCase):
         return root, fixtures, binary, record, identity
 
     def verify(self, root, fixtures, binary, record, identity, **kw):
-        with patch.object(native, 'runtime_source_tree', return_value='rt'):
+        # `runtime_stale_reason` asks the git of `root`, a temporary directory here and not a repository: the strict
+        # reader refuses that (a git that cannot answer is not "no source is newer"), so this helper stubs it. Its own
+        # behaviour is covered by `RuntimeStale`.
+        with patch.object(native, 'runtime_source_tree', return_value='rt'), \
+                patch.object(native, 'runtime_stale_reason', return_value=None):
             return native.verify_provenance(record, binary, identity, root=root, fixtures=fixtures, **kw)
 
     def test_the_recorded_build_of_this_head_is_accepted_and_anything_else_is_refused(self):
@@ -1131,6 +1351,15 @@ class Provenance(unittest.TestCase):
             (root / 'runtime/dist/runtime.js').write_text('runtime')
             (fixtures / 'journey.json').write_text('{"changed": true}')
             self.assertIn('corpus manifest', self.verify(root, fixtures, binary, record, identity))
+
+    def test_two_identities_git_could_not_name_are_not_the_same_head(self):
+        # a failing git used to give head '', tree '' and a clean tree, in the record and in the checkout alike: equal
+        with tempfile.TemporaryDirectory() as tmp:
+            root, fixtures, binary, record, identity = self.setup(tmp)
+            nameless = {'head': '', 'tree': '', 'dirty': ''}
+            built = {**record, 'head': '', 'tree': ''}
+            self.assertIsNotNone(self.verify(root, fixtures, binary, built, nameless))
+            self.assertIsNotNone(self.verify(root, fixtures, binary, built, nameless, allow_dirty=True))
 
     def test_other_runtime_sources_are_refused(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1213,6 +1442,26 @@ class BuildPhase(unittest.TestCase):
             self.assertIn('git cannot tell', manifest['reason'])
             run.assert_not_called()
 
+    def test_the_build_gets_no_target_directory_and_no_perf_switch_from_the_caller(self):
+        run = MagicMock(return_value=harness.Done(['cargo'], 1, '', ''))
+        inherited = {'TESSEL_GIZMO_PERF_CALIBRATE': '1', 'TESSEL_GIZMO_PERF_BLESS': '1', 'CARGO_TARGET_DIR': '/t',
+                     'TESSEL_CARGO_LANE': 'lane'}
+        with tempfile.TemporaryDirectory() as out, patch.dict(os.environ, inherited):
+            self.build(out, run=run)
+            env = run.call_args.kwargs.get('env')
+            env = dict(os.environ) if env is None else env  # `None` is "inherit everything", the caller's included
+            leaked = sorted(name for name in inherited if name in env)
+        self.assertEqual(leaked, [])  # names only: `env` itself is never printed
+
+    def test_a_build_whose_executable_is_gone_is_a_recorded_refusal_not_a_traceback(self):
+        gone = harness.Done(['cargo'], 0, json.dumps({'executable': '/nowhere/pruned/tessel-editor',
+                                                      'target': {'name': 'tessel-editor', 'kind': ['bin']}}) + '\n', '')
+        with tempfile.TemporaryDirectory() as out:
+            code, manifest, _ = self.build(out, run=MagicMock(return_value=gone))
+            self.assertEqual((code, manifest['status']), (1, 'INFRA_EXECUTABLE_MISSING'))
+            self.assertEqual(manifest['missing'], '/nowhere/pruned/tessel-editor')
+            self.assertFalse((Path(out) / 'build.json').exists())  # no record of a binary that was never copied
+
     def test_the_build_record_keeps_whether_the_tree_was_dirty(self):
         with tempfile.TemporaryDirectory() as src:
             exe = Path(src) / 'tessel-editor'
@@ -1273,6 +1522,40 @@ class MainRun(unittest.TestCase):
             self.assertTrue(manifest['dirty_run'], label)
         code, manifest = self.run_with({'dirty': False})  # the control: the same run with a clean build is a functional pass
         self.assertEqual((code, manifest['status']), (0, 'FUNCTIONAL_ONLY_NOT_A_MEASUREMENT'))
+
+
+    def test_a_failing_run_carries_the_guard_that_failed_after_it_and_stays_a_fail(self):
+        # (F18) the same sentence for the native window: the status stays FAIL, the reason also holds the guard text
+        guard = 'load average (1 min) 5.88 over 5.5 (11 cpus)'
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / 'runtime/dist').mkdir(parents=True)
+            (tmp / 'runtime/dist/runtime.js').write_text('runtime')
+            binary = tmp / 'editor'
+            binary.write_text('binary')
+            record_path = tmp / 'build.json'
+            record_path.write_text(json.dumps({'dirty': False}))
+            quiet = {'free_gib': 100, 'loadavg': (0.0, 0.0, 0.0)}
+
+            def corpus(*_):
+                return {'corpus': 'small', 'checks': [{'check': 'a check that failed', 'ok': False}], 'pictures': [],
+                        'samples': []}
+
+            with patch.object(native, 'ROOT', tmp), patch.object(native, 'verify_provenance', return_value=None), \
+                    patch.object(native, 'run_corpus', side_effect=corpus), \
+                    patch.object(native.harness, 'git_identity', return_value=self.IDENTITY), \
+                    patch.object(native.harness, 'toolchain', return_value={}), \
+                    patch.object(native.harness, 'guards', return_value=(quiet, None)), \
+                    patch.object(native.harness, 'claims', return_value=[]), \
+                    patch.object(native.harness, 'machine', return_value={}), \
+                    patch.object(native.harness, 'Lock', FakeLock), \
+                    patch.object(native.harness, 'judge_after', side_effect=lambda manifest: guard):
+                code = run_main(native, ['--phase', 'run', '--out', str(tmp / 'out'), '--binary', str(binary),
+                                         '--build-record', str(record_path)])
+            manifest = json.loads((tmp / 'out' / 'manifest.json').read_text())
+            self.assertEqual((code, manifest['status']), (1, 'FAIL'))
+            self.assertIn('a check that failed', manifest['reason'])
+            self.assertIn(guard, manifest['reason'])
 
 
 class Mutants(unittest.TestCase):
@@ -1390,13 +1673,19 @@ class MutantExecutables(unittest.TestCase):
     B = {'head': 'b' * 40, 'tree': '2' * 40, 'branch': 'b', 'dirty': ''}
     LOADED = 'load average (1 min) 9.00 over 5.5 (11 cpus)'
 
-    def phase(self, root, phase, identity=None, built=None, build_exit=0, blocked=None, edited=False):
+    def phase(self, root, phase, identity=None, built=None, build_exit=0, blocked=None, edited=False,
+              time_outcome='KILLED', only=(), extra=None, git_down=False, vanish=False):
         """`main --phase prepare|time --out ROOT/out` for the one mutant, at HEAD `identity`. `built`: the bytes of the
         executable its release build names, `None` for a build that named none (and failed); `build_exit` is that
         build's exit; `blocked` the reason the machine guard refuses a measurement; `edited`: the mutated file is not
         at HEAD. Returns the exit code and the manifest the phase wrote (`manifest.json` of `prepare`,
-        `manifest.final.json` of `time`; `{}` if none). What the runner printed is left in `self.printed` and the number
-        of times it asked for the performance lock in `self.performance_locks`."""
+        `manifest.final.json` of `time`; `{}` if none). What the runner printed is left in `self.printed`, the number
+        of times it asked for the performance lock in `self.performance_locks` and of release builds in `self.builds`.
+
+        `time_outcome`: what the faked controlled run answers; `only`: the `--only` names; `extra`: more mutants for the
+        runner to know (name -> mutant); `git_down`: git is NOT faked, the only `git` on PATH is one that fails (the
+        identity and the file hashes are then the runner's own reading of a git that cannot answer); `vanish`: the
+        executable the release build names is gone when the runner reads it (a pruned managed target)."""
         root = Path(root)
         out = root / 'out'
         source = root / 'f.rs'
@@ -1405,35 +1694,46 @@ class MutantExecutables(unittest.TestCase):
         self.measured = []
         self.printed = io.StringIO()
         self.performance_locks = 0
+        self.builds = 0
 
         def release_build():
+            self.builds += 1
             if built is None:
                 return ['cargo', 'test', '--release'], done('error[E0425]: cannot find value', 101), None
             target = root / 'target-exe'
             target.write_bytes(built)
+            if vanish:
+                target.unlink()
             return ['cargo', 'test', '--release'], done('', build_exit), str(target)
 
         def controlled_run(exe, report, directory, name):
             self.measured.append((name, Path(exe).read_bytes()))
-            return {'outcome': 'KILLED', 'status': 'KILLED', 'detail': 'faked: nothing was executed'}
+            return {'outcome': time_outcome, 'status': time_outcome, 'detail': 'faked: nothing was executed'}
 
         def performance_lock():
             self.performance_locks += 1
             return FakeLock()
 
         mutants = {self.NAME: {'file': str(source), 'old': 'fn a() {}', 'new': 'fn a() { loop {} }',
-                               'detectors': {'time': True}}}
+                               'detectors': {'time': True}}, **(extra or {})}
         fakes = [patch.object(mutate, 'MUTANTS', mutants), patch.object(mutate, 'ROOT', Path('/')),
-                 patch.object(mutate, 'file_hash', return_value='edited' if edited else 'blob'),
-                 patch.object(mutate, 'committed_hash', return_value='blob'),
                  patch.object(mutate, 'run_time', side_effect=controlled_run),
                  patch.object(mutate.runner, 'build', side_effect=release_build),
-                 patch.object(mutate.harness, 'git_identity', return_value=identity or self.A),
                  patch.object(mutate.harness, 'toolchain', return_value={}),
                  patch.object(mutate.harness, 'machine', return_value=state),
                  patch.object(mutate.harness, 'guards', return_value=(state, blocked)),
                  patch.object(mutate.harness, 'claims', return_value=[]),
                  patch.object(mutate.harness, 'Lock', side_effect=performance_lock)]
+        if git_down:
+            stubs = root / 'git-is-down'
+            stubs.mkdir(exist_ok=True)
+            stub_git(stubs, 'echo "fatal: not a git repository (or any of the parent directories): .git" >&2; exit 128')
+            fakes.append(patch.dict(os.environ, {'PATH': f"{stubs}{os.pathsep}{os.environ['PATH']}"}))
+        else:
+            fakes += [patch.object(mutate, 'file_hash', return_value='edited' if edited else 'blob'),
+                      patch.object(mutate, 'committed_hash', return_value='blob'),
+                      patch.object(mutate.harness, 'git_identity', return_value=identity or self.A)]
+
         def waited(signum, frame):
             raise AssertionError('the run waited instead of finishing or refusing: it must never wait for a lock')
 
@@ -1445,17 +1745,20 @@ class MutantExecutables(unittest.TestCase):
             stack.callback(signal.signal, signal.SIGALRM, signal.signal(signal.SIGALRM, waited))
             stack.callback(signal.alarm, 0)
             signal.alarm(20)
-            code = run_main(mutate, ['--phase', phase, '--out', str(out)], self.printed)
+            code = run_main(mutate, ['--phase', phase, '--out', str(out), *(['--only', *only] if only else [])],
+                            self.printed)
         written = out / ('manifest.json' if phase == 'prepare' else 'manifest.final.json')
         return code, json.loads(written.read_text()) if written.exists() else {}
 
-    def finished_prepare(self, out, recorded, identity=None):
+    def finished_prepare(self, out, recorded, identity=None, extra=None):
         """What a finished `prepare` left in --out/manifest.json for the mutant: its build recorded `recorded` as the
-        hash of the executable (`None`: the build named none). The executable itself is the caller's."""
+        hash of the executable (`None`: the build named none). The executable itself is the caller's. `extra`: the
+        records of more mutants `prepare` ran (name -> record)."""
         manifest = {'suite': 'gizmo-perf-mutants', 'phase': 'prepare', 'status': 'PREPARED',
                     'identity': identity or self.A,
                     'mutants': {self.NAME: {'file': 'f.rs', 'must': {'time': True},
-                                            'time_build': {'exit': 0, 'executable_sha256': recorded}}}}
+                                            'time_build': {'exit': 0, 'executable_sha256': recorded}},
+                                **(extra or {})}}
         (Path(out) / 'manifest.json').write_text(json.dumps(manifest))
 
     def leave(self, out, content):
@@ -1632,6 +1935,131 @@ class MutantExecutables(unittest.TestCase):
                 self.assertEqual((code, written.get('status')), (1, 'REFUSED'))
                 self.assertIn('not at HEAD', written['reason'])
 
+    # --- round 6: a clean tree for both phases, an identity git named, the executables that stay ----------------------
+
+    def test_a_prepare_on_a_dirty_tree_is_refused_before_it_mutates_or_builds_anything(self):
+        # (F7) the mutants are built from the whole checkout: a dirty tree elsewhere is built into the executables
+        dirty = {**self.A, 'dirty': ' M scripts/gizmo-perf/run.py'}
+        with tempfile.TemporaryDirectory() as root:
+            code, written = self.phase(root, 'prepare', identity=dirty, built=b'product of a dirty tree')
+            self.assertEqual((code, written.get('status')), (1, 'REFUSED'))
+            self.assertIn('dirty', written['reason'])
+            self.assertEqual(self.builds, 0)
+            self.assertEqual((Path(root) / 'f.rs').read_text(), 'fn a() {}\n')  # the mutant was never written
+            self.assertFalse((Path(root) / 'out' / 'exes').exists())  # and nothing was created or emptied
+            # the control: the same prepare on a clean tree builds
+            code, written = self.phase(root, 'prepare', identity=self.A, built=b'product')
+            self.assertEqual((code, written['status'], self.builds), (0, 'PREPARED', 1))
+
+    def test_a_time_run_refuses_a_prepare_that_ran_on_a_dirty_tree_or_does_not_say_it_did_not(self):
+        built = b'what prepare built'
+        no_field = {key: value for key, value in self.A.items() if key != 'dirty'}
+        for label, identity in (('dirty', {**self.A, 'dirty': ' M crates/core/src/x.rs'}), ('not recorded', no_field)):
+            with self.subTest(label), tempfile.TemporaryDirectory() as root:
+                out = Path(root) / 'out'
+                out.mkdir()
+                exe = self.leave(out, built)
+                self.finished_prepare(out, hashlib.sha256(built).hexdigest(), identity=identity)
+                code, final = self.phase(root, 'time', self.A)  # the tree reads clean now: that does not clean the build
+                self.assertEqual((code, final.get('status')), (1, 'REFUSED'))
+                self.assertIn('dirty', final['reason'])
+                self.assertEqual(self.measured, [])
+                self.assertTrue(exe.exists())  # refused before anything was measured or removed
+
+    def test_a_time_run_does_not_match_a_prepare_and_a_checkout_that_both_have_no_head(self):
+        nameless = {'head': '', 'tree': '', 'branch': 'b', 'dirty': ''}  # what a failing git used to be read as
+        built = b'what prepare built'
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / 'out'
+            out.mkdir()
+            self.leave(out, built)
+            self.finished_prepare(out, hashlib.sha256(built).hexdigest(), identity=nameless)
+            code, final = self.phase(root, 'time', nameless)
+            self.assertEqual((code, final.get('status')), (1, 'REFUSED'))
+            self.assertEqual(self.measured, [])
+
+    def test_a_git_that_cannot_answer_refuses_both_phases_and_changes_nothing(self):
+        # (F1) with git down the file hashes were '' == '' ("at HEAD") and the identity was an empty, clean one
+        built = b'what prepare built'
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / 'out'
+            code, written = self.phase(root, 'prepare', built=b'product', git_down=True)
+            self.assertEqual((code, written.get('status')), (1, 'REFUSED'))
+            self.assertIn('could not name', written['reason'])
+            self.assertEqual(self.builds, 0)
+            self.assertEqual((Path(root) / 'f.rs').read_text(), 'fn a() {}\n')
+            self.leave(out, built)
+            self.finished_prepare(out, hashlib.sha256(built).hexdigest())
+            code, final = self.phase(root, 'time', git_down=True)
+            self.assertEqual((code, final.get('status')), (1, 'REFUSED'))
+            self.assertIn('could not name', final['reason'])
+            self.assertEqual(self.measured, [])
+
+    def test_the_executables_stay_whenever_an_evaluated_timed_mutant_gave_no_answer(self):
+        # (F8) only BLOCKED and MISSING_EXECUTABLE kept them: a guard that failed after the run, a timeout or an
+        # inconclusive plan reference deleted the very executables a retry needs
+        built = b'what prepare built'
+        for outcome in ('INVALID_GUARD_AFTER_RUN', 'INFRA_TIMEOUT', 'INFRA_ERROR', 'INCONCLUSIVE', 'COMPILE_ERROR',
+                        'NO_TEST_RESULT', 'ZERO_TESTS', 'BLOCKED', 'MISSING_EXECUTABLE'):
+            with self.subTest(outcome=outcome), tempfile.TemporaryDirectory() as root:
+                out = Path(root) / 'out'
+                out.mkdir()
+                exe = self.leave(out, built)
+                self.finished_prepare(out, hashlib.sha256(built).hexdigest())
+                code, final = self.phase(root, 'time', self.A, time_outcome=outcome)
+                self.assertEqual(final['mutants'][self.NAME]['time']['outcome'], outcome)
+                self.assertTrue(exe.exists(), outcome)
+        with tempfile.TemporaryDirectory() as root:  # the control: an answer is what makes them discardable
+            out = Path(root) / 'out'
+            out.mkdir()
+            exe = self.leave(out, built)
+            self.finished_prepare(out, hashlib.sha256(built).hexdigest())
+            code, final = self.phase(root, 'time', self.A, time_outcome='KILLED')
+            self.assertEqual((code, final['status']), (0, 'ALL_AS_EXPECTED'))
+            self.assertFalse(exe.exists())
+
+    def test_an_only_that_evaluates_no_timed_mutant_deletes_no_executable(self):
+        # (F9) `--only` of a host-only mutant ran no time detector and still emptied exes/ of the mutants it left out
+        built = b'what prepare built'
+        host_only = {'file': 'host.rs', 'old': 'a', 'new': 'b', 'detectors': {'host': True}}
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / 'out'
+            out.mkdir()
+            exe = self.leave(out, built)
+            self.finished_prepare(out, hashlib.sha256(built).hexdigest(), extra={
+                'host_only': {'file': 'host.rs', 'must': {'host': True}, 'host': {'outcome': 'KILLED'}}})
+            code, final = self.phase(root, 'time', self.A, only=('host_only',), extra={'host_only': host_only})
+            self.assertEqual((code, final['status']), (0, 'ALL_AS_EXPECTED'))
+            self.assertEqual(self.measured, [])  # no timed mutant was evaluated...
+            self.assertTrue(exe.exists())  # ...so the executable of the one that was left out is still there
+
+    def test_a_run_removes_only_the_executables_of_the_mutants_it_evaluated_and_got_an_answer_for(self):
+        built, other = b'what prepare built', b'what prepare built for the other mutant'
+        another = {'file': 'g.rs', 'old': 'a', 'new': 'b', 'detectors': {'time': True}}
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / 'out'
+            out.mkdir()
+            exe = self.leave(out, built)
+            (out / 'exes' / 'other_timed.exe').write_bytes(other)
+            self.finished_prepare(out, hashlib.sha256(built).hexdigest(), extra={
+                'other_timed': {'file': 'g.rs', 'must': {'time': True},
+                                'time_build': {'exit': 0, 'executable_sha256': hashlib.sha256(other).hexdigest()}}})
+            code, final = self.phase(root, 'time', self.A, only=(self.NAME,), extra={'other_timed': another})
+            self.assertEqual(self.measured, [(self.NAME, built)])
+            self.assertFalse(exe.exists())  # its own answer came: this one goes
+            self.assertEqual(sorted(p.name for p in (out / 'exes').iterdir()), ['other_timed.exe'])  # the other stays
+
+    def test_a_build_whose_executable_is_gone_is_recorded_and_prepare_still_finishes(self):
+        with tempfile.TemporaryDirectory() as root:
+            code, prepared = self.phase(root, 'prepare', self.A, built=b'product', vanish=True)
+            build = prepared['mutants'][self.NAME]['time_build']
+            self.assertEqual((code, prepared['status']), (0, 'PREPARED'))
+            self.assertIsNone(build['executable_sha256'])
+            self.assertIn('target-exe', build['copy_error'])  # which path, what the OS said
+            self.assertEqual(sorted(p.name for p in (Path(root) / 'out' / 'exes').iterdir()), [])
+            code, final = self.phase(root, 'time', self.A)  # and `time` then says so for that mutant
+            self.assertEqual(final['mutants'][self.NAME]['time']['outcome'], 'MISSING_EXECUTABLE')
+
 
 class Native(unittest.TestCase):
     def test_placeholders_and_tolerance(self):
@@ -1656,9 +2084,796 @@ class Native(unittest.TestCase):
 
     def test_a_missing_binary_is_a_recorded_prerequisite_not_a_pass(self):
         with tempfile.TemporaryDirectory() as root:
-            code = native.main(['--binary', str(Path(root) / 'nope'), '--out', root])
+            code = run_main(native, ['--binary', str(Path(root) / 'nope'), '--out', root])
             self.assertEqual(code, 1)
             self.assertEqual(json.loads((Path(root) / 'manifest.json').read_text())['status'], 'PREREQUISITE_MISSING')
+
+
+# --- round 6 (PR #44, review 5856147194 and the first real measurement) -------------------------------------------------
+# Every test below states a behaviour the runners of `d294bdc` did not have, except four controls that must pass on both
+# sides (listed in `spec-new-tests-vs-d294bdc-runners.log`: what must stay true after the fix). They run on fakes: no
+# benchmark, no window, no performance lock. What fails on a runner that lacks the behaviour fails on its own assertion
+# where the behaviour can be observed through the runner's `main`; a few tests of new helpers (`harness.dropped_env`,
+# `guarded`, ...) can only fail there by not finding them.
+
+
+@contextlib.contextmanager
+def bounded(seconds=20):
+    """Whatever is still running after `seconds` inside this block is a run that WAITS: it fails instead of hanging."""
+    def waited(signum, frame):
+        raise AssertionError(f'still running after {seconds}s: a run that must refuse or finish is waiting')
+
+    previous = signal.signal(signal.SIGALRM, waited)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
+
+
+@contextlib.contextmanager
+def git_is_down(directory):
+    """The only `git` on PATH is one that fails the way git does outside a repository (or with a broken install)."""
+    stubs = Path(directory) / 'git-is-down'
+    stubs.mkdir(exist_ok=True)
+    stub_git(stubs, 'echo "fatal: not a git repository (or any of the parent directories): .git" >&2; exit 128')
+    with patch.dict(os.environ, {'PATH': f"{stubs}{os.pathsep}{os.environ['PATH']}"}):
+        yield
+
+
+@contextlib.contextmanager
+def held(path):
+    """`path` locked the way another process would lock it: through its own `open()` of the file (an `flock` conflicts
+    across open file descriptions, also inside one process). Leaving the block releases it."""
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    with open(path, 'a') as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        yield
+
+
+def tree_of(directory):
+    """Every file and directory under `directory`, with the bytes of the files (`None` for a directory): what a run that
+    was refused must leave exactly as it found it."""
+    return {p.relative_to(directory).as_posix(): p.read_bytes() if p.is_file() else None
+            for p in sorted(Path(directory).rglob('*'))}
+
+
+def checkout_lock():
+    """Path of the per-checkout build lock of the runners."""
+    make = getattr(native.harness, 'checkout_lock_path', None)
+    if make is None:
+        raise AssertionError('the runners take no per-checkout lock (`harness.checkout_lock_path` does not exist)')
+    return make()
+
+
+class UnavailableGit(unittest.TestCase):
+    """git cannot answer (no repository, a broken install, a timeout). That is not "head empty, tree empty, clean": it is
+    an unknown, and every runner refuses before it builds, mutates or measures. `--allow-dirty` is for a dirty tree, not
+    for a tree nobody could name (F1)."""
+
+    def refused(self, code, manifest):
+        self.assertEqual(code, 1)
+        self.assertEqual(manifest.get('status'), 'REFUSED', manifest.get('reason'))
+        self.assertIn('could not name', manifest.get('reason', ''))
+
+    def test_a_git_that_cannot_answer_is_an_unavailable_identity_never_a_clean_empty_one(self):
+        with tempfile.TemporaryDirectory() as root, git_is_down(root):
+            identity = native.harness.git_identity()
+        self.assertIs(identity.get('unavailable'), True)
+        self.assertNotEqual(identity['dirty'], '')  # a failed `status` is never a clean tree
+        self.assertTrue(identity['head'].startswith('unavailable'), identity)
+        self.assertTrue(identity['tree'].startswith('unavailable'), identity)
+
+    def test_an_identity_git_did_name_is_not_marked_unavailable(self):
+        with tempfile.TemporaryDirectory() as root:
+            git(root, 'init', '-q')
+            Path(root, 'a').write_text('a')
+            git(root, 'add', 'a')
+            git(root, 'commit', '-q', '-m', 'a')
+            identity = native.harness.git_identity(Path(root))
+        self.assertIs(identity.get('unavailable'), False)
+        self.assertEqual((len(identity['head']), len(identity['tree'])), (40, 40))
+
+    def test_two_identities_that_failed_are_never_the_same_head(self):
+        with tempfile.TemporaryDirectory() as root, git_is_down(root):
+            first, second = native.harness.git_identity(), native.harness.git_identity()
+        self.assertFalse(native.harness.same_head(first, second))
+        self.assertFalse(native.harness.same_head({'head': '', 'tree': ''}, {'head': '', 'tree': ''}))
+        real = {'head': 'a' * 40, 'tree': 'b' * 40}
+        self.assertTrue(native.harness.same_head(real, dict(real)))  # the control: two real, equal answers
+        self.assertFalse(native.harness.same_head(real, {**real, 'tree': 'c' * 40}))
+
+    def test_run_py_refuses_to_build_and_to_measure_even_with_allow_dirty(self):
+        with tempfile.TemporaryDirectory() as root, git_is_down(root):
+            exe = Path(root) / 'built.exe'
+            exe.write_text('binary')
+            build = MagicMock(return_value=(['cargo'], done(), str(exe)))
+            out = Path(root) / 'out-build'
+            with patch.object(runner, 'build', build):
+                code = run_main(runner, ['--phase', 'build', '--out', str(out), '--allow-dirty'])
+            self.refused(code, json.loads((out / 'manifest.build.json').read_text()))
+            build.assert_not_called()
+            # a build record whose head and tree are empty strings is what a failing git used to write: it must not match
+            out = Path(root) / 'out-measure'
+            out.mkdir()
+            (out / 'build.json').write_text(json.dumps({'head': '', 'tree': '', 'dirty': False, 'binary_sha256': 'x',
+                                                        'exe': 'exes/candidate.exe'}))
+            code = run_main(runner, ['--phase', 'measure', '--out', str(out), '--allow-dirty'])
+            self.refused(code, json.loads((out / 'manifest.json').read_text()))
+
+    def test_ab_py_refuses_both_phases_even_with_allow_dirty_and_another_baseline(self):
+        for phase in ('build', 'measure'):
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory() as root, git_is_down(root):
+                out = Path(root) / 'out'
+                make, build = MagicMock(), MagicMock()
+                with patch.object(ab, 'make_baseline', make), patch.object(ab, 'build', build):
+                    code = run_main(ab, ['--phase', phase, '--out', str(out), '--allow-dirty', '--allow-other-baseline'])
+                self.refused(code, json.loads((out / 'manifest.json').read_text()))
+                make.assert_not_called()
+                build.assert_not_called()
+
+    def test_ab_py_does_not_take_what_a_failing_git_printed_as_the_baseline_commit(self):
+        # the candidate is named (patched); only the baseline is asked of a git that fails: an empty `rev-parse` output used
+        # to be recorded as "the baseline commit" and, with `--allow-other-baseline`, accepted
+        clean = {'head': 'h' * 40, 'tree': 't' * 40, 'branch': 'b', 'dirty': ''}
+        with tempfile.TemporaryDirectory() as root, git_is_down(root):
+            out = Path(root) / 'out'
+            make = MagicMock()
+            with patch.object(ab.harness, 'git_identity', return_value=clean), \
+                    patch.object(ab.harness, 'toolchain', return_value={}), patch.object(ab, 'make_baseline', make):
+                code = run_main(ab, ['--phase', 'build', '--out', str(out), '--allow-other-baseline'])
+            manifest = json.loads((out / 'manifest.json').read_text())
+            self.assertEqual((code, manifest['status']), (1, 'REFUSED'))
+            self.assertIn('names no commit', manifest['reason'])
+            make.assert_not_called()
+
+    def test_native_py_refuses_both_phases_even_with_allow_dirty(self):
+        for phase in ('build', 'run'):
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory() as root, git_is_down(root):
+                out = Path(root) / 'out'
+                code = run_main(native, ['--phase', phase, '--out', str(out), '--allow-dirty'])
+                path = out / ('manifest.build.json' if phase == 'build' else 'manifest.json')
+                self.refused(code, json.loads(path.read_text()))
+
+    def test_a_file_git_cannot_compare_with_head_is_never_called_restored(self):
+        # `'' == ''` (two failed reads) used to be "the file is at HEAD" and "the mutant was restored"
+        with tempfile.TemporaryDirectory() as root, git_is_down(root):
+            path = Path(root) / 'f.rs'
+            path.write_text('fn a() {}\n')
+            mutant = {'file': str(path), 'old': 'fn a() {}', 'new': 'fn a() { loop {} }'}
+            with patch.object(mutate, 'ROOT', Path('/')):
+                with self.assertRaises(SystemExit):
+                    with mutate.Mutated(mutant):
+                        pass
+            self.assertEqual(path.read_text(), 'fn a() {}\n')  # the file is put back all the same
+
+    def test_git_strict_says_whether_git_answered(self):
+        with tempfile.TemporaryDirectory() as root:
+            ok, text = native.harness.git_strict(['rev-parse', 'HEAD'], Path(root))  # not a repository
+            self.assertFalse(ok)
+            self.assertIn('git rev-parse HEAD', text)
+            git(root, 'init', '-q')
+            ok, text = native.harness.git_strict(['status', '--porcelain'], Path(root))
+            self.assertEqual((ok, text), (True, ''))  # an empty answer is a valid one for `status`
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ, {'PATH': root}):
+            ok, text = native.harness.git_strict(['status'], Path(root))  # no git at all
+            self.assertFalse(ok)
+            self.assertIn('cannot run git', text)
+
+
+class RuntimeStale(unittest.TestCase):
+    """`runtime_stale_reason` asks git which runtime sources exist: a git that cannot say is not "no source is newer"."""
+
+    def reason(self, body, source_newer=False):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'runtime/dist').mkdir(parents=True)
+            (root / 'runtime/src').mkdir(parents=True)
+            (root / 'runtime/dist/runtime.js').write_text('built')
+            (root / 'runtime/src/a.ts').write_text('source')
+            now = time.time()
+            os.utime(root / 'runtime/dist/runtime.js', (now - 100, now - 100))
+            os.utime(root / 'runtime/src/a.ts', (now, now) if source_newer else (now - 200, now - 200))
+            stubs = root / 'bin'
+            stubs.mkdir()
+            stub_git(stubs, body)
+            with patch.dict(os.environ, {'PATH': f"{stubs}{os.pathsep}{os.environ['PATH']}"}):
+                return native.runtime_stale_reason(root)
+
+    def test_a_git_that_cannot_list_the_sources_is_a_reason_not_a_fresh_runtime(self):
+        self.assertIn('git', self.reason('echo "fatal: not a git repository" >&2; exit 128') or '')
+
+    def test_a_listing_with_no_source_that_exists_is_a_reason_too(self):
+        self.assertIsNotNone(self.reason('exit 0'))
+
+    def test_a_runtime_newer_than_its_sources_is_fresh_and_an_older_one_is_stale(self):
+        self.assertIsNone(self.reason('echo runtime/src/a.ts'))  # the control: this half holds on every runner
+        self.assertIn('older', self.reason('echo runtime/src/a.ts', source_newer=True))
+
+
+class RoundsAndSamples(unittest.TestCase):
+    """No round, no sample: "every kind was judged" is vacuously true of zero kinds, and must never be a pass (F3)."""
+
+    def test_zero_or_negative_rounds_is_an_argument_error_that_writes_nothing(self):
+        for rounds in ('0', '-1'):
+            with self.subTest(rounds=rounds), tempfile.TemporaryDirectory() as root:
+                out = Path(root) / 'out'
+                errors = io.StringIO()
+                with contextlib.redirect_stderr(errors), self.assertRaises(SystemExit) as stopped:
+                    run_main(ab, ['--phase', 'measure', '--out', str(out), '--rounds', rounds])
+                self.assertEqual(stopped.exception.code, 2)
+                self.assertIn('--rounds', errors.getvalue())
+                self.assertFalse(out.exists())
+
+    def test_a_side_without_samples_is_inconclusive_never_a_pass(self):
+        key = ('dense', 'move.translate')
+        full = slot([100 + i for i in range(40)], [120] * 4)
+        empty = {'samples': [], 'medians': [], 'ratios': [], 'long_ticks': 0, 'n': []}
+        for base, cand in ((empty, empty), (full, empty), (empty, full)):
+            verdict = ab.judge({key: base}, {key: cand})['dense/move.translate']
+            self.assertEqual(verdict['status'], 'INCONCLUSIVE')
+            self.assertIn('no sample', ' '.join(verdict['reasons']))
+        self.assertEqual(ab.judge({key: full}, {key: full})['dense/move.translate']['status'], 'NO_REGRESSION_IN_SCENARIO')
+
+    def test_a_verdict_over_no_kind_is_never_a_pass(self):
+        status, _, code = ab.overall({}, {'crates/core/src/x.rs': {}})
+        self.assertNotEqual(status, 'NO_REGRESSION_IN_SCENARIO')
+        self.assertEqual((status, code), ('INCONCLUSIVE', harness.INCONCLUSIVE_EXIT))
+        self.assertEqual(ab.overall({}, {})[2], harness.INCONCLUSIVE_EXIT)
+        self.assertEqual(ab.overall({'k': {'status': 'REGRESSED'}}, {'f': {}})[0], 'REGRESSED')  # a regression still wins
+
+
+class ChildEnvironment(unittest.TestCase):
+    """A child that measures or builds gets the runner's own environment minus every inherited `TESSEL_GIZMO_PERF_*`
+    (builds also lose `CARGO_TARGET_DIR` and `TESSEL_CARGO_LANE`) plus exactly what the runner sets (F14)."""
+
+    INHERITED = {'TESSEL_GIZMO_PERF_CALIBRATE': '1', 'TESSEL_GIZMO_PERF_BLESS': '1',
+                 'TESSEL_GIZMO_PERF_OUT': '/somewhere/else.json'}
+    PASSING = ('test result: ok. 3 passed; 0 failed; 0 ignored\n' +
+               ''.join(f'test {name} ... ok\n' for name in runner.EXPECTED_TESTS))
+
+    def absent(self, name, env, label=''):
+        # The message never carries `env`: it is the whole environment of the process, and a log must not hold that.
+        self.assertFalse(name in env, f'{name} reached the child {label}'.strip())
+
+    @staticmethod
+    def changed(first, second):
+        """The names whose value differs between two environments (names only: never the values)."""
+        return sorted(name for name in set(first) | set(second) if first.get(name) != second.get(name))
+
+    def test_helpers_drop_what_a_measuring_child_must_not_inherit_and_keep_the_rest(self):
+        environ = {**self.INHERITED, 'CARGO_TARGET_DIR': '/t', 'TESSEL_CARGO_LANE': 'l', 'HOME': '/h', 'PATH': '/bin'}
+        h = native.harness
+        self.assertEqual(h.dropped_env(environ=environ), sorted(self.INHERITED))
+        self.assertEqual(h.dropped_env(build=True, environ=environ), sorted([*self.INHERITED, 'CARGO_TARGET_DIR',
+                                                                              'TESSEL_CARGO_LANE']))
+        self.assertEqual(h.child_env({'TESSEL_GIZMO_PERF_OUT': '/r.json'}, environ=environ),
+                         {'CARGO_TARGET_DIR': '/t', 'TESSEL_CARGO_LANE': 'l', 'HOME': '/h', 'PATH': '/bin',
+                          'TESSEL_GIZMO_PERF_OUT': '/r.json'})
+        self.assertEqual(h.child_env(build=True, environ=environ), {'HOME': '/h', 'PATH': '/bin'})
+
+    def test_scoped_environ_holds_exactly_the_given_environment_and_restores_the_caller_s(self):
+        before = dict(os.environ)
+        with native.harness.scoped_environ({'ONLY': 'this'}):
+            self.assertEqual(sorted(os.environ), ['ONLY'])
+            self.assertEqual(os.environ['ONLY'], 'this')
+        self.assertEqual(self.changed(os.environ, before), [])
+        with self.assertRaises(RuntimeError), native.harness.scoped_environ({'ONLY': 'this'}):
+            raise RuntimeError('the body failed')
+        self.assertEqual(self.changed(os.environ, before), [])
+
+    def measure(self, stdout, *flags, after=None, code=0, env=None):
+        """`run.py --phase measure` end to end: the executable is a file, the benchmark a function that notes the
+        environment it was started with and writes the report it was asked for."""
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / 'out'
+            (out / 'exes').mkdir(parents=True)
+            (out / 'exes' / 'candidate.exe').write_bytes(b'binary')
+            (out / 'build.json').write_text(json.dumps({
+                'head': 'h' * 40, 'tree': 't' * 40, 'dirty': False,
+                'binary_sha256': hashlib.sha256(b'binary').hexdigest(), 'exe': 'exes/candidate.exe'}))
+            seen = {}
+
+            def benchmark(command, cwd=None, env=None, timeout=None):
+                seen.update(command=command, env=env)
+                Path(env['TESSEL_GIZMO_PERF_OUT']).write_text('{}')
+                return done(stdout, code)
+
+            def judge_after(manifest):
+                manifest['guard_after'] = after or 'clean'
+                return after
+
+            quiet = ({'free_gib': 100, 'loadavg': (0.0, 0.0, 0.0)}, None)
+            clean = {'head': 'h' * 40, 'tree': 't' * 40, 'branch': 'b', 'dirty': ''}
+            with patch.object(runner.harness, 'git_identity', return_value=clean), \
+                    patch.object(runner.harness, 'toolchain', return_value={}), \
+                    patch.object(runner.harness, 'guards', return_value=quiet), \
+                    patch.object(runner.harness, 'claims', return_value=[]), \
+                    patch.object(runner.harness, 'Lock', FakeLock), \
+                    patch.object(runner.harness, 'judge_after', side_effect=judge_after), \
+                    patch.object(runner.harness, 'run_bounded', side_effect=benchmark), \
+                    patch.dict(os.environ, env if env is not None else {}):
+                result = run_main(runner, ['--phase', 'measure', '--out', str(out), *flags])
+            return result, json.loads((out / 'manifest.json').read_text()), seen, out
+
+    def test_an_exported_calibrate_never_reaches_a_measured_run_nor_its_record(self):
+        code, manifest, seen, out = self.measure(self.PASSING, env=self.INHERITED)
+        self.absent('TESSEL_GIZMO_PERF_CALIBRATE', seen['env'])
+        self.absent('TESSEL_GIZMO_PERF_BLESS', seen['env'])
+        self.assertEqual(seen['env']['TESSEL_GIZMO_PERF_OUT'], str(out / 'report.json'))  # not the caller's
+        self.assertEqual(manifest['run']['env'], {'TESSEL_GIZMO_PERF_OUT': str(out / 'report.json')})
+        self.assertEqual((code, manifest['status']), (0, 'PASS'))
+
+    def test_the_run_record_lists_only_the_tests_whose_own_line_says_ok(self):
+        failing = libtest({MAIN_TEST: NOT_CAUGHT}, passed=[PLAN_CONTROL, DELAY_CONTROL])
+        code, manifest, seen, out = self.measure(failing.stdout, code=101)
+        self.assertEqual((code, manifest['status']), (1, 'FAIL'))
+        self.assertEqual(manifest['tests_passed'], [PLAN_CONTROL, DELAY_CONTROL])
+        self.assertEqual(manifest['tests_failed'], [MAIN_TEST])
+
+    def test_calibrate_is_in_the_child_only_when_the_runner_was_asked_for_it(self):
+        code, manifest, seen, out = self.measure(self.PASSING, '--calibrate', env=self.INHERITED)
+        self.assertEqual(seen['env']['TESSEL_GIZMO_PERF_CALIBRATE'], '1')
+        self.assertEqual(manifest['run']['env']['TESSEL_GIZMO_PERF_CALIBRATE'], '1')
+        self.absent('TESSEL_GIZMO_PERF_BLESS', seen['env'])
+        self.assertEqual((code, manifest['status']), (0, 'CALIBRATION_ONLY'))
+
+    def child_env_of(self, module, call, inherited):
+        seen = {}
+
+        def fake(command, cwd=None, env=None, timeout=None):
+            seen['env'] = dict(os.environ) if env is None else env  # `None` is "inherit everything"
+            return done('', 1)
+
+        with patch.object(module.harness, 'run_bounded', side_effect=fake), patch.dict(os.environ, inherited):
+            call()
+        return seen['env']
+
+    def test_the_builds_of_every_runner_get_no_target_directory_and_no_perf_switch(self):
+        inherited = {**self.INHERITED, 'CARGO_TARGET_DIR': '/t', 'TESSEL_CARGO_LANE': 'lane'}
+        for label, module, call in (('run.py', runner, runner.build), ('ab.py', ab, lambda: ab.build(HERE))):
+            with self.subTest(label):
+                env = self.child_env_of(module, call, inherited)
+                for name in inherited:
+                    self.absent(name, env, f'of {label}')
+
+    def test_the_ab_child_gets_calibrate_explicitly_the_report_path_it_chose_and_nothing_else_inherited(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            report = Path(tmp) / 'report.json'
+            env = self.child_env_of(ab, lambda: ab.run_once('exe', report), self.INHERITED)
+        self.absent('TESSEL_GIZMO_PERF_BLESS', env)
+        self.assertEqual(env['TESSEL_GIZMO_PERF_CALIBRATE'], '1')  # the A/B takes its numbers in the calibration mode
+        self.assertEqual(env['TESSEL_GIZMO_PERF_OUT'], str(report))
+
+    def test_the_mutant_runs_get_no_inherited_perf_switch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            report = Path(tmp) / 'report.json'
+
+            def judge_after(scratch):
+                scratch.update(guard_after='clean', machine_after={'loadavg': (0.0, 0.0, 0.0)})
+
+            with patch.object(mutate.harness, 'judge_after', side_effect=judge_after):
+                env = self.child_env_of(
+                    mutate, lambda: mutate.run_time(Path(tmp) / 'x.exe', report, Path(tmp), 'delay_1ms_per_handler'),
+                    self.INHERITED)
+            self.absent('TESSEL_GIZMO_PERF_CALIBRATE', env)  # a calibrating child asserts no budget: never killed
+            self.absent('TESSEL_GIZMO_PERF_BLESS', env)
+            self.assertEqual(env['TESSEL_GIZMO_PERF_OUT'], str(report))
+        # the structural/host detector would rewrite its golden file and pass under an inherited BLESS
+        env = self.child_env_of(mutate, lambda: mutate.detect(['cargo', 'test']), self.INHERITED)
+        self.absent('TESSEL_GIZMO_PERF_BLESS', env)
+
+    def test_the_native_editor_gets_no_inherited_perf_switch_and_os_environ_is_left_as_it_was(self):
+        seen = {}
+
+        class Process:
+            socket = 'socket'
+
+            def __init__(self, binary, home):
+                seen.update(os.environ)
+
+        with patch.dict(os.environ, self.INHERITED), patch.object(native.proof_surface, 'Native', Process):
+            before = dict(os.environ)
+            native.Window('binary', '/tmp/home')
+            after = dict(os.environ)
+        self.absent('TESSEL_GIZMO_PERF_BLESS', seen)
+        self.absent('TESSEL_GIZMO_PERF_CALIBRATE', seen)
+        self.assertEqual(seen.get('TESSEL_VIEWPORT_OVERLAY_ACK'), '1')  # what the runner means to set is there
+        self.assertEqual(self.changed(after, before), [])  # and nothing it set stays in the process
+
+
+class Guarded(unittest.TestCase):
+    """`harness.guarded`: what every runner owns before it reads or writes anything."""
+
+    def test_it_yields_none_when_free_keeps_the_lock_file_and_releases_the_lock_at_the_end(self):
+        guarded = native.harness.guarded
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / 'out'
+            with bounded(), guarded(out, '.x.lock', 'x.py', 'everything') as refusal:
+                self.assertIsNone(refusal)
+                with open(out / '.x.lock', 'a') as another:  # a second open() of the file is somebody else
+                    with self.assertRaises(BlockingIOError):
+                        fcntl.flock(another, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with held(out / '.x.lock'):  # released: it can be taken again
+                pass
+            self.assertTrue((out / '.x.lock').is_file())  # a lock file is never removed (two inodes, two owners)
+
+    def test_it_refuses_a_directory_that_is_owned_and_says_which_lock(self):
+        guarded = native.harness.guarded
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / 'out'
+            with held(out / '.x.lock'), bounded(), guarded(out, '.x.lock', 'x.py', 'everything') as refusal:
+                self.assertEqual(refusal['status'], 'REFUSED')
+                self.assertIn(str(out / '.x.lock'), refusal['reason'])
+                self.assertIn('not waited for', refusal['reason'])
+
+    def test_the_checkout_lock_is_one_file_per_checkout_outside_the_repository(self):
+        harness_module = native.harness
+        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
+            path = harness_module.checkout_lock_path(first)
+            self.assertEqual(path, harness_module.checkout_lock_path(Path(first)))
+            self.assertNotEqual(path, harness_module.checkout_lock_path(second))
+            self.assertEqual(path.parent, Path(harness_module.CHECKOUT_LOCK_DIR))
+            self.assertFalse(str(path).startswith(str(harness_module.ROOT)))
+
+    def test_a_held_checkout_lock_refuses_a_build_before_the_directory_exists(self):
+        guarded = native.harness.guarded
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / 'out'
+            with held(checkout_lock()), bounded():
+                with guarded(out, '.x.lock', 'x.py', 'everything', builds=True) as refusal:
+                    self.assertEqual(refusal['status'], 'REFUSED')
+                    self.assertIn('checkout lock', refusal['reason'])
+                self.assertFalse(out.exists())
+                with guarded(out, '.x.lock', 'x.py', 'everything') as refusal:  # a phase that builds nothing is not held
+                    self.assertIsNone(refusal)
+
+
+class OwnedDirectories(unittest.TestCase):
+    """One run per `--out` for every runner and phase (F4, F5), and one build per CHECKOUT (F6): a run that finds what it
+    must own already owned refuses (one REFUSED line, exit 1), never waits, and changes nothing, not even to write its own
+    refusal."""
+
+    def planted(self, root):
+        out = Path(root) / 'out'
+        out.mkdir()
+        for name in ('manifest.json', 'report.json', 'round00-baseline.json', 'verdicts.json', 'stdout.txt'):
+            (out / name).write_text('written by the run that owns this directory')
+        (out / 'exes').mkdir()
+        (out / 'exes' / 'candidate.exe').write_bytes(b'what the owner is measuring')
+        return out
+
+    def last_line(self, printed):
+        return json.loads(printed.getvalue().strip().splitlines()[-1])
+
+    def test_ab_run_and_native_refuse_an_owned_out_and_change_nothing(self):
+        cases = (('ab.py', ab, ['--phase', 'measure'], '.ab.lock'),
+                 ('run.py', runner, ['--phase', 'measure'], '.run.lock'),
+                 ('native.py', native, ['--phase', 'run'], '.native.lock'))
+        for label, module, argv, lock in cases:
+            with self.subTest(label), tempfile.TemporaryDirectory() as root:
+                out = self.planted(root)
+                printed = io.StringIO()
+                with held(out / lock), bounded():
+                    before = tree_of(out)
+                    code = run_main(module, [*argv, '--out', str(out)], printed)
+                    self.assertEqual(code, 1)
+                    self.assertEqual(tree_of(out), before)  # nothing created, changed or removed
+                refusal = self.last_line(printed)
+                self.assertEqual(refusal['status'], 'REFUSED')
+                self.assertIn(lock, refusal['reason'])
+                # the control: with the owner gone the same call is not refused for the directory
+                free = io.StringIO()
+                with bounded():
+                    run_main(module, [*argv, '--out', str(out)], free)
+                self.assertNotIn(lock, free.getvalue())
+
+    BUILD_CASES = ('run.py build', 'ab.py build', 'native.py build', 'mutate.py prepare')
+
+    def build_case(self, label, stack):
+        """`(module, argv, lock name, build)`: the runner of `label` with whatever would really build (or edit the tree)
+        replaced by a mock that fails the test, so that a runner that does not refuse cannot start a cargo build."""
+        build = MagicMock(side_effect=AssertionError('a build started although the run did not own what it builds'))
+        if label == 'run.py build':
+            stack.enter_context(patch.object(runner, 'build', build))
+            return runner, ['--phase', 'build'], '.run.lock', build
+        if label == 'ab.py build':
+            stack.enter_context(patch.object(ab, 'build', build))
+            stack.enter_context(patch.object(ab, 'make_baseline', build))
+            return ab, ['--phase', 'build'], '.ab.lock', build
+        if label == 'native.py build':
+            stack.enter_context(patch.object(native.harness, 'run_bounded', build))
+            return native, ['--phase', 'build'], '.native.lock', build
+        stack.enter_context(patch.object(mutate.runner, 'build', build))
+        # no mutant: whatever runs here (the runners before the locks did) can touch no source file
+        stack.enter_context(patch.object(mutate, 'MUTANTS', {}))
+        return mutate, ['--phase', 'prepare'], '.mutate.lock', build
+
+    def test_the_build_phases_refuse_while_the_checkout_is_being_built_and_create_nothing(self):
+        for label in self.BUILD_CASES:
+            with self.subTest(label), tempfile.TemporaryDirectory() as root, contextlib.ExitStack() as stack:
+                out = Path(root) / 'out'
+                module, argv, lock, build = self.build_case(label, stack)
+                printed = io.StringIO()
+                with held(checkout_lock()), bounded():
+                    code = run_main(module, [*argv, '--out', str(out)], printed)
+                self.assertEqual(code, 1)
+                self.assertFalse(out.exists())  # not even the directory
+                refusal = self.last_line(printed)
+                self.assertEqual(refusal['status'], 'REFUSED')
+                self.assertIn('checkout lock', refusal['reason'])
+                build.assert_not_called()
+
+    def test_a_build_phase_refuses_an_owned_out_too_and_builds_nothing(self):
+        for label in self.BUILD_CASES:
+            with self.subTest(label), tempfile.TemporaryDirectory() as root, contextlib.ExitStack() as stack:
+                out = self.planted(root)
+                module, argv, lock, build = self.build_case(label, stack)
+                printed = io.StringIO()
+                with held(out / lock), bounded():
+                    before = tree_of(out)
+                    code = run_main(module, [*argv, '--out', str(out)], printed)
+                    self.assertEqual(code, 1)
+                    self.assertEqual(tree_of(out), before)
+                refusal = self.last_line(printed)
+                self.assertEqual(refusal['status'], 'REFUSED')
+                self.assertIn(lock, refusal['reason'])
+                build.assert_not_called()
+
+    def test_the_checkout_lock_is_asked_for_first_and_neither_lock_waits(self):
+        with tempfile.TemporaryDirectory() as root:
+            out = self.planted(root)
+            printed = io.StringIO()
+            with held(checkout_lock()), held(out / '.ab.lock'), bounded():
+                before = tree_of(out)
+                code = run_main(ab, ['--phase', 'build', '--out', str(out)], printed)
+                self.assertEqual(code, 1)
+                self.assertEqual(tree_of(out), before)
+            reason = self.last_line(printed)['reason']
+            self.assertIn('checkout lock', reason)
+            self.assertNotIn('.ab.lock', reason)
+
+    def test_a_measure_phase_builds_nothing_and_does_not_need_the_checkout_lock(self):
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / 'out'
+            printed = io.StringIO()
+            with held(checkout_lock()), bounded():
+                code = run_main(runner, ['--phase', 'measure', '--out', str(out)], printed)
+            self.assertNotIn('checkout lock', printed.getvalue())  # it refuses for its own reasons, or measures
+
+    def test_a_real_second_process_is_refused_with_one_line_and_exit_1(self):
+        with tempfile.TemporaryDirectory() as root:
+            out = self.planted(root)
+            with held(out / '.ab.lock'):
+                before = tree_of(out)
+                finished = subprocess.run([sys.executable, str(HERE / 'ab.py'), '--phase', 'measure', '--out', str(out)],
+                                          capture_output=True, text=True, timeout=60, cwd=str(HERE))
+                after = tree_of(out)
+            self.assertEqual(finished.returncode, 1, finished.stderr[-300:])
+            lines = finished.stdout.strip().splitlines()
+            self.assertEqual(len(lines), 1, lines)
+            refusal = json.loads(lines[0])
+            self.assertEqual(refusal['status'], 'REFUSED')
+            self.assertIn('.ab.lock', refusal['reason'])
+            self.assertEqual(after, before)
+
+
+# --- the native window: the overlay acknowledgement, the trace, the wait and the authoring process (F10..F13) --------
+
+
+def stamp(**changes):
+    return {'scene': 'proof', 'tool': 'scale', 'space': 'local', 'revision': 9, 'frame': 24, 'selection': ['n'], **changes}
+
+
+STATE_ANSWER = {'visible': True, 'tool': 'scale', 'space': 'local', 'entity': 'n', 'stamp': stamp()}
+THIS_ACK = {'visible': True, 'tool': 'scale', 'space': 'local', 'entity': 'n', 'stamp': stamp()}
+PREVIOUS_ACK = {'visible': True, 'tool': 'rotate', 'space': 'world', 'entity': 'n',
+                'stamp': stamp(tool='rotate', space='world', revision=8)}
+OPEN_PROJECT = {'id': 'open.project', 'phase': 'cold', 'op': {'op': 'project.create', 'name': 'x'}}
+ACK_STEPS = [OPEN_PROJECT, {'id': 'state.scale.local', 'phase': 'hot', 'tool': {'tool': 'scale', 'space': 'local'},
+                            'op': {'op': 'scene.gizmo.state', 'scene': '$scene', 'frame': '$frame'}}]
+
+
+class SavingWindow(FakeWindow):
+    """A `FakeWindow` that also writes the document `project.save` was asked for: the authoring process of `run_corpus`
+    then runs its real code."""
+
+    def op(self, request, timeout=90):
+        if request['op'] == 'project.save':
+            FakeWindow.log.append('project.save')
+            Path(request['path']).write_text('{}')
+            return True, {'saved': request['path']}
+        return super().op(request, timeout)
+
+
+def ack_window(first, then, stale_polls):
+    """A window whose page acknowledges `first` for the `stale_polls` reads that follow a `scene.gizmo.state` and `then`
+    after them: the host keeps the last acknowledgement it matched until a newer one arrives."""
+
+    class Window(SavingWindow):
+        reads = None
+
+        def op(self, request, timeout=90):
+            if request['op'] == 'scene.gizmo.state':
+                FakeWindow.log.append('scene.gizmo.state')
+                Window.reads = 0
+                return True, json.loads(json.dumps({'overlay': STATE_ANSWER}))
+            return super().op(request, timeout)
+
+        def state(self):
+            state = super().state()
+            if Window.reads is not None:
+                state['overlay'] = {'supported': True, 'drawn': then if Window.reads >= stale_polls else first}
+                Window.reads += 1
+            return state
+
+    return Window
+
+
+def run_one_corpus(window_class, steps, author=False, ack_seconds=0.3):
+    """`native.run_corpus` over `steps` with `window_class` for the editor. The saved project of the opening is a fake
+    path unless `author` asks for the real authoring process (which then runs on `window_class` too)."""
+    FakeWindow.log, FakeWindow.stale_shows, FakeWindow.instances = [], set(), []
+    journey = dict(NativeFlow.JOURNEY, steps=steps)
+    with contextlib.ExitStack() as stack, tempfile.TemporaryDirectory() as out:
+        stack.enter_context(bounded())
+        stack.enter_context(patch.object(native, 'Window', window_class))
+        stack.enter_context(patch.object(native, 'ACK_SECONDS', ack_seconds, create=True))
+        if not author:
+            stack.enter_context(patch.object(native, 'author_saved_project', return_value=(
+                Path('/tmp/saved.tessel.json'), {'path': '/tmp/saved.tessel.json'})))
+        return native.run_corpus('bin', journey, {'small': {}}, 'small', out, {})
+
+
+def failed_checks(result):
+    return [check['check'] for check in result['checks'] if not check['ok']]
+
+
+class OverlayAcknowledgement(unittest.TestCase):
+    """The acknowledgement kept for a step must BELONG to the step (F13): the host holds the last one it matched until a
+    newer one arrives, so the first one read after a step is often the previous step's."""
+
+    def ack_check(self, result):
+        found = [c for c in result['checks'] if c['check'].startswith('state.scale.local:') and 'acknowledged' in c['check']]
+        self.assertEqual(len(found), 1, [c['check'] for c in result['checks']])
+        return found[0]
+
+    def test_the_acknowledgement_that_arrives_after_the_previous_one_is_the_one_recorded(self):
+        # (a long wait: it ends at the first matching reading; the failing cases below keep the short one)
+        result = run_one_corpus(ack_window(PREVIOUS_ACK, THIS_ACK, stale_polls=3), ACK_STEPS, ack_seconds=5)
+        check = self.ack_check(result)
+        self.assertTrue(check['ok'], check['detail'])
+        self.assertEqual(result['overlay_drawn'][0]['drawn']['stamp']['revision'], 9)
+        self.assertEqual(failed_checks(result), [])
+
+    def test_a_previous_steps_acknowledgement_that_is_never_replaced_fails_and_shows_both_sides(self):
+        # the first real measurement recorded the rotate/world overlay of revision 8 under `state.scale.local`
+        result = run_one_corpus(ack_window(PREVIOUS_ACK, PREVIOUS_ACK, stale_polls=0), ACK_STEPS)
+        check = self.ack_check(result)
+        self.assertFalse(check['ok'])
+        self.assertIn("tool: expected 'scale', got 'rotate'", check['detail'])
+        self.assertIn("space: expected 'local', got 'world'", check['detail'])
+        entry = result['overlay_drawn'][0]
+        self.assertEqual(entry['drawn']['tool'], 'rotate')  # the last one seen, kept as evidence
+        self.assertEqual(entry['expected']['tool'], 'scale')
+
+    def test_a_step_the_page_never_acknowledged_fails(self):
+        result = run_one_corpus(ack_window(None, None, stale_polls=0), ACK_STEPS)
+        check = self.ack_check(result)
+        self.assertFalse(check['ok'])
+        self.assertIn('no acknowledgement', check['detail'])
+
+    def test_an_acknowledgement_of_another_selection_scene_revision_or_frame_fails(self):
+        for key, changes in (('stamp.selection', {'selection': ['other']}), ('stamp.scene', {'scene': 'proof-b'}),
+                             ('stamp.revision', {'revision': 8}), ('stamp.frame', {'frame': 12})):
+            with self.subTest(key):
+                ack = {**THIS_ACK, 'stamp': stamp(**changes)}
+                check = self.ack_check(run_one_corpus(ack_window(ack, ack, stale_polls=0), ACK_STEPS))
+                self.assertFalse(check['ok'])
+                self.assertIn(key, check['detail'])
+
+    def test_ack_mismatch_is_empty_only_for_the_acknowledgement_of_the_step(self):
+        expected = native.ack_expectation({'scene': 'proof', 'frame': 24}, STATE_ANSWER, {'tool': 'scale', 'space': 'local'})
+        self.assertEqual(native.ack_mismatch(expected, THIS_ACK), [])
+        self.assertTrue(native.ack_mismatch(expected, PREVIOUS_ACK))
+        self.assertIn('no acknowledgement', native.ack_mismatch(expected, None)[0])
+        self.assertIn('no acknowledgement', native.ack_mismatch(expected, 'drawn')[0])
+
+
+class SlowMonitor(native.Window):
+    """`settle` over a monitor that answers slowly or never: only `viewport` is scripted. A query is given `timeout`
+    seconds like a socket with that timeout; the sleep is cut at `cap` so a runner that passes none cannot hold the spec."""
+
+    CONVERGED = {'phase': 'ready', 'headline': '',
+                 'directed': {'scene': 'proof', 'active': None, 'queued': None, 'suspended': False,
+                              'shown': {'request_id': 6, 'edit_frame': 24}},
+                 'last_frame': {'request': 6, 'revision': 6, 'hash': 'h6'}}
+
+    def __init__(self, delay, honours_timeout=True, cap=2.0):
+        self.delay, self.honours_timeout, self.cap = delay, honours_timeout, cap
+        self.asked, self.deadline, self.native = [], None, FakeNative()
+
+    def viewport(self, timeout=90):
+        self.asked.append(timeout)
+        if self.honours_timeout and self.delay > timeout:
+            time.sleep(min(timeout, self.cap))
+            raise TimeoutError('timed out')
+        time.sleep(min(self.delay, self.cap))
+        return json.loads(json.dumps(self.CONVERGED))
+
+
+class NativeSession(unittest.TestCase):
+    def test_a_render_status_that_failed_is_no_trace_and_fails_the_session_checks(self):
+        # (F10) the error text of a dead query used to be read as the report: no session error in it, a "clean" session
+        class DeadTrace(SavingWindow):
+            def op(self, request, timeout=90):
+                if request['op'] == 'render.status':
+                    return False, {'code': 'unavailable', 'message': 'render.status is not available'}
+                return super().op(request, timeout)
+
+        window = DeadTrace('bin', 'home')
+        self.assertEqual(window.trace(), {})
+        self.assertFalse(window.last_trace_ok)
+        self.assertTrue(any('render.status failed' in failure for failure in window.trace_failures))
+        result = run_one_corpus(DeadTrace, [OPEN_PROJECT])
+        checks = {c['check']: c['ok'] for c in result['checks']}
+        self.assertFalse(checks['every `render.status` query answered ok (a failed one is no session trace)'])
+        self.assertFalse(checks['the session reported no error'])
+        self.assertTrue(result['trace_failures'])
+        self.assertEqual(failed_checks(run_one_corpus(SavingWindow, [OPEN_PROJECT])), [])  # the control: it answers
+
+    def test_a_monitor_that_never_answers_cannot_hold_a_wait_past_its_seconds(self):
+        # (F11) every query is given the time that is LEFT: a monitor that never answers held a 2 s wait for 90 s
+        window = SlowMonitor(delay=60)
+        started = time.perf_counter()
+        with bounded():
+            ms, state, info = window.settle('proof', 24, after=-1, seconds=0.6)
+        self.assertIsNone(ms)
+        self.assertLess(time.perf_counter() - started, 3)
+        self.assertTrue(window.asked and all(timeout <= 0.7 for timeout in window.asked), window.asked)
+
+    def test_a_reply_that_arrives_after_the_deadline_is_a_timeout_that_keeps_what_it_showed(self):
+        window = SlowMonitor(delay=0.5, honours_timeout=False)
+        with bounded():
+            ms, state, info = window.settle('proof', 24, after=5, seconds=0.2)
+        self.assertIsNone(ms)  # it converged too late to count
+        self.assertEqual(info['request'], 6)
+        self.assertEqual(state['directed']['shown']['request_id'], 6)
+
+    def test_a_monitor_that_converges_in_time_gives_its_milliseconds(self):
+        window = SlowMonitor(delay=0.05)
+        with bounded():
+            ms, state, info = window.settle('proof', 24, after=5, seconds=5)
+        self.assertIsNotNone(ms)
+        self.assertEqual(info['request'], 6)
+
+    def test_what_stopping_the_authoring_process_reported_fails_the_cleanup_check(self):
+        # (F12) an editor that ignored the terminate and had to be killed used to be thrown away with its process
+        class StopsBadly(SavingWindow):
+            def stop(self):
+                return ['the editor ignored SIGTERM and was killed'] if FakeWindow.instances.index(self) == 0 else []
+
+        result = run_one_corpus(StopsBadly, [OPEN_PROJECT], author=True)
+        self.assertEqual(result['cleanup_errors'], ['authoring process: the editor ignored SIGTERM and was killed'])
+        checks = {c['check']: c['ok'] for c in result['checks']}
+        self.assertFalse(checks['the editor process ended without cleanup problems'])
+        self.assertEqual(failed_checks(run_one_corpus(SavingWindow, [OPEN_PROJECT], author=True)), [])  # the control
+
+    def test_a_dialog_that_left_the_native_page_on_screen_fails_its_own_check(self):
+        steps = [OPEN_PROJECT, {'id': 'present.dialog.open', 'phase': 'present', 'ui': ['invoke', 'flow.open']}]
+        label = 'present.dialog.open: the dialog hid the native page'
+
+        def window(on_screen):
+            class Dialog(SavingWindow):
+                def state(self):
+                    return {**super().state(), 'on_screen': on_screen}
+
+            return Dialog
+
+        self.assertEqual({c['check']: c['ok'] for c in run_one_corpus(window(False), steps)['checks']}[label], True)
+        shown = {c['check']: c['ok'] for c in run_one_corpus(window(True), steps)['checks']}
+        self.assertFalse(shown[label])
 
 
 if __name__ == '__main__':

@@ -44,16 +44,33 @@ assertion; no physical pointer or keyboard (BL015.2/BL043/BL044 stay pending); n
 
 The performance lock is taken ONCE, without waiting, for the whole run; busy or a failed guard (load 1/5 min, thermal,
 disk below the heavy-start reserve) is BLOCKED (exit 3); the guards are read again after the run and a dirty reading
-makes it INVALID (exit 3). Every wait and the whole corpus are finite. Exit 0 only when every functional check passed;
-1 on a failure or a refusal; 3 BLOCKED/INVALID.
+makes it INVALID (exit 3), and a run that FAILED anyway keeps the status FAIL and carries that guard text in its reason.
+Every wait and the whole corpus are finite. Exit 0 only when every functional check passed; 1 on a failure or a refusal;
+3 BLOCKED/INVALID.
+
+OWNERSHIP. `--out/.native.lock` is held by whichever phase runs over that directory, and `build` also holds the lock of the
+CHECKOUT (`harness.checkout_lock_path`, one file under /tmp per checkout) before it reads or writes anything: no other
+run may build from the checkout, or put a mutant in its tree, meanwhile. Neither lock waits: a taken one is ONE `REFUSED`
+line (exit 1) and nothing is written, the refusal's own manifest included.
+
+GIT. A checkout git cannot name (no head, no tree, a failing or slow git) is REFUSED before anything is built or started,
+`--allow-dirty` included: it is not a dirty tree (`harness.git_identity` is strict for decisions; `harness.out` stays
+tolerant for the telemetry of a report). A runtime whose sources git cannot list is not "fresh" either.
+
+THE ENVIRONMENT. The editor (and the build) never inherits a `TESSEL_GIZMO_PERF_*` switch from the caller, and the build
+no `CARGO_TARGET_DIR`/`TESSEL_CARGO_LANE` (`harness.child_env`); `os.environ` itself is left as it was.
+
+THE ACKNOWLEDGEMENT. The overlay acknowledgement kept for a step must be THAT step's: the page keeps the last one it
+matched until a newer arrives, so each overlay step polls (`ACK_SECONDS`) until the acknowledged tool, space, selection,
+scene, revision and frame are the ones of the step's own request and answer. A stale or missing acknowledgement is a
+failing check that shows both sides, never a recorded value. A step whose overlay is hidden has none to wait for and is
+not checked (BL015.23, item 23). A `render.status` that did not answer ok is no trace: it fails its own checks.
 """
 import argparse
 import json
-import os
 from pathlib import Path
 import shutil
 import socket
-import subprocess
 import sys
 import tempfile
 import time
@@ -68,6 +85,7 @@ ROOT = harness.ROOT
 FIXTURES = ROOT / 'docs/migration/fixtures/gizmo-perf'
 TOLERANCE = 1e-9
 CORPUS_TIMEOUT_S = 1200
+OUT_LOCK = '.native.lock'  # in --out: held by whichever phase owns that directory
 LIMITS = [
     "the compositor / GPU scan-out is not observable; directed-scene pictures carry no presented-frame stamp (the session trace's frames_total is 0): `presented` is NOT OBSERVABLE here, so core->host->runtime is measured, the last hop is not",
     "a socket reply and the page's frame.done are not proof of painting; the picture hash is the runtime read-back and a picture only counts when its request id is newer than the one before the command",
@@ -149,6 +167,57 @@ def new_picture(state, scene, frame, after):
     return done, info
 
 
+ACK_SECONDS = 5  # how long a step waits for the page to acknowledge ITS overlay (the wait was always 5 s)
+
+
+def ack_expectation(request, overlay, tool=None):
+    """What the page's acknowledgement (`monitor.viewport` -> `overlay.drawn`) must say to be the acknowledgement of THIS
+    step's overlay. It is built from the step's own request (the scene, the tool and space it set) and from the core's
+    own answer to it (`overlay`: tool, space, selected entity, stamp), never from an earlier acknowledgement: the host
+    keeps the last acknowledgement it matched until a newer one arrives, so reading it at once returns the PREVIOUS step's
+    (the first real measurement recorded the rotate/world overlay of revision 8 under `state.scale.local`)."""
+    stamp = overlay.get('stamp') if isinstance(overlay.get('stamp'), dict) else {}
+    tool_name = (tool or {}).get('tool') or overlay.get('tool')
+    space = (tool or {}).get('space') or overlay.get('space')
+    return {'visible': overlay.get('visible'), 'tool': tool_name, 'space': space, 'entity': overlay.get('entity'),
+            'stamp.scene': request.get('scene'), 'stamp.tool': tool_name, 'stamp.space': space,
+            'stamp.revision': stamp.get('revision'), 'stamp.frame': stamp.get('frame', request.get('frame'))}
+
+
+def ack_mismatch(expected, ack):
+    """What differs between the page's acknowledgement `ack` and `expected` (`ack_expectation`): `[]` means `ack` IS the
+    acknowledgement of this step. No acknowledgement at all (`overlay.drawn` null, or not an object) is a mismatch of its
+    own, never a pass: a step whose overlay the page never confirmed has nothing to show for it."""
+    if not isinstance(ack, dict):
+        return [f'no acknowledgement (overlay.drawn is {ack!r})']
+    stamp = ack.get('stamp') if isinstance(ack.get('stamp'), dict) else {}
+    seen = {'visible': ack.get('visible'), 'tool': ack.get('tool'), 'space': ack.get('space'),
+            'entity': ack.get('entity'), 'stamp.scene': stamp.get('scene'), 'stamp.tool': stamp.get('tool'),
+            'stamp.space': stamp.get('space'), 'stamp.revision': stamp.get('revision'), 'stamp.frame': stamp.get('frame')}
+    problems = [f'{key}: expected {want!r}, got {seen[key]!r}' for key, want in expected.items()
+                if want is not None and seen[key] != want]
+    entity = expected.get('entity')
+    selection = stamp.get('selection')
+    if entity is not None and not (isinstance(selection, list) and entity in selection):
+        problems.append(f'stamp.selection: expected it to hold {entity!r}, got {selection!r}')
+    return problems
+
+
+def overlay_ack(window, request, overlay, tool=None, seconds=None):
+    """`(ack, problems, expected)`: polls the page's acknowledgement until it belongs to this step (`ack_mismatch` is
+    empty) or `seconds` (`ACK_SECONDS`) pass. On expiry `ack` is the LAST one seen (or None) and `problems` says what
+    differs from `expected`, so a stale acknowledgement is a failing check that shows both sides, not a recorded value."""
+    seconds = ACK_SECONDS if seconds is None else seconds
+    expected = ack_expectation(request, overlay, tool)
+    deadline = time.monotonic() + seconds
+    while True:
+        ack = (window.viewport().get('overlay') or {}).get('drawn')
+        problems = ack_mismatch(expected, ack)
+        if not problems or time.monotonic() >= deadline:
+            return ack, problems, expected
+        time.sleep(0.02)
+
+
 def candidate_differs(reply, base):
     """Is the candidate a drag reply reports different from the stored transform `base` (`[position, rotation,
     scale]`)? Uses the reply's own candidate value and `would_change`, never the picture."""
@@ -182,13 +251,19 @@ def runtime_source_tree():
 
 
 def runtime_stale_reason(root=ROOT):
+    """`None` when `runtime/dist` is newer than every tracked runtime source, else why not. A git that cannot list the
+    sources is NOT "no source is newer": the empty list a failing git prints used to read as a runtime that is not stale."""
     dist = root / 'runtime/dist/runtime.js'
     if not dist.exists():
         return 'runtime/dist/runtime.js is missing: run `./scripts/runtime setup`'
-    tracked = subprocess.run(['git', 'ls-files', 'runtime/src', 'runtime/host', 'runtime/worker', 'runtime/package.json',
-                              'runtime/pnpm-lock.yaml'], cwd=root, stdout=subprocess.PIPE, text=True).stdout.split()
-    newest = max((root / p).stat().st_mtime for p in tracked if (root / p).exists()) if tracked else 0
-    if newest > dist.stat().st_mtime:
+    ok, listing = harness.git_strict(['ls-files', 'runtime/src', 'runtime/host', 'runtime/worker', 'runtime/package.json',
+                                      'runtime/pnpm-lock.yaml'], root)
+    if not ok:
+        return f'git cannot list the runtime sources, so their age cannot be compared with runtime/dist: {listing}'
+    times = [(root / p).stat().st_mtime for p in listing.split() if (root / p).exists()]
+    if not times:
+        return 'git lists no runtime source that exists in the tree: the age of runtime/dist cannot be compared with anything'
+    if max(times) > dist.stat().st_mtime:
         return 'runtime/dist is older than a runtime source file: run `./scripts/runtime build`'
     return None
 
@@ -207,6 +282,11 @@ def verify_corpus(manifest=None, fixtures=FIXTURES, root=ROOT):
 
 def verify_provenance(record, binary, identity, allow_dirty=False, root=ROOT, fixtures=FIXTURES):
     """`None` when `binary` is the build `record` describes for the current HEAD, else why not."""
+    # An identity git could not name matches nothing: refused here as well as in `main`, so no caller can reach the
+    # comparison below with two empty answers that would read as "the same head".
+    problem = harness.identity_problem(identity)
+    if problem:
+        return problem
     if record is None:
         return 'no build record: run `--phase build` for this HEAD first'
     if identity['dirty'] and not allow_dirty:
@@ -215,8 +295,8 @@ def verify_provenance(record, binary, identity, allow_dirty=False, root=ROOT, fi
     # BUILD saw, and one that says `dirty` or does not say it was clean is not the build of HEAD.
     if record.get('dirty', True) and not allow_dirty:
         return 'the binary was built from a dirty tree (or its build record does not say it was clean): it cannot belong to HEAD'
-    if record['head'] != identity['head'] or record['tree'] != identity['tree']:
-        return f"the binary was built for {record['head'][:9]}, HEAD is {identity['head'][:9]}"
+    if not harness.same_head(record, identity):
+        return f"the binary was built for {str(record.get('head'))[:9]}, HEAD is {identity['head'][:9]}"
     if harness.sha256(binary) != record['binary_sha256']:
         return 'the editor binary is not the one the build phase recorded (sha256 differs)'
     dist = root / 'runtime/dist/runtime.js'
@@ -236,6 +316,10 @@ def verify_provenance(record, binary, identity, allow_dirty=False, root=ROOT, fi
 
 
 def build_phase(args, manifest, manifest_path, out):
+    problem = harness.identity_problem(manifest['identity'])
+    if problem:  # a checkout git cannot name: no binary is built for it, `--allow-dirty` or not
+        manifest.update(status='REFUSED', reason=problem)
+        return harness.die(1, manifest, manifest_path)
     if manifest['identity']['dirty'] and not args.allow_dirty:
         manifest.update(status='REFUSED', reason='the working tree is dirty: the binary would not belong to HEAD')
         return harness.die(1, manifest, manifest_path)
@@ -247,7 +331,8 @@ def build_phase(args, manifest, manifest_path, out):
         manifest.update(status='PREREQUISITE_MISSING', reason=reason)
         return harness.die(1, manifest, manifest_path)
     command = ['./scripts/cargo', 'build', '--release', '--locked', '-p', 'tessel-editor', '--message-format=json']
-    done = harness.run_bounded(command, timeout=harness.BUILD_TIMEOUT_S)
+    # No target directory of the caller's and no `TESSEL_GIZMO_PERF_*` reach the build (`harness.child_env`).
+    done = harness.run_bounded(command, env=harness.child_env(build=True), timeout=harness.BUILD_TIMEOUT_S)
     exe = None
     for line in done.stdout.splitlines():
         try:
@@ -257,14 +342,20 @@ def build_phase(args, manifest, manifest_path, out):
         target = message.get('target') or {}
         if message.get('executable') and target.get('name') == 'tessel-editor' and 'bin' in target.get('kind', []):
             exe = message['executable']
-    manifest['build'] = {'command': command, **done.record(), 'executable': exe, 'stderr_tail': done.stderr[-1500:]}
+    manifest['build'] = {'command': command, **done.record(), 'executable': exe, 'stderr_tail': done.stderr[-1500:],
+                         'env_dropped': harness.dropped_env(build=True)}
     if done.returncode != 0 or not exe:
         manifest.update(status='BUILD_FAILED', reason='the release build failed or timed out')
         return harness.die(1, manifest, manifest_path)
     exes = out / 'exes'
     exes.mkdir(exist_ok=True)
     copy = exes / 'tessel-editor'
-    shutil.copy(exe, copy)
+    try:
+        shutil.copy(exe, copy)
+    except OSError as error:  # the path cargo printed can be gone (a managed target was pruned): recorded, not a traceback
+        manifest.update(status='INFRA_EXECUTABLE_MISSING', missing=str(exe),
+                        reason=f'the executable the build named cannot be copied out ({exe}): {error}')
+        return harness.die(1, manifest, manifest_path)
     too_big = harness.artifact_reason(exes)
     if too_big:
         manifest.update(status='REFUSED', reason=too_big)
@@ -290,14 +381,22 @@ def build_phase(args, manifest, manifest_path, out):
 class Window:
     """One editor process, driven through its socket the way `./scripts/ui` does, with a fast client."""
 
+    trace_failures = None  # `render.status` queries that did not answer ok (a list once `trace` has failed once)
+    last_trace_ok = True
+
     def __init__(self, binary, home):
-        os.environ.update({'TESSEL_VIEWPORT_TRACE': '1', 'TESSEL_VIEWPORT_INSPECT': '1',
-                           'TESSEL_VIEWPORT_OVERLAY_ACK': '1', 'TESSEL_RUNTIME_DIR': str(ROOT / 'runtime')})
+        # The editor gets the caller's environment WITHOUT every `TESSEL_GIZMO_PERF_*`, plus exactly the switches this
+        # runner needs; `proof_surface.Native` copies `os.environ` when it is built (and can take no environment of its
+        # own), so the environment is set for that call only and `os.environ` is what it was afterwards.
+        env = harness.child_env({'TESSEL_VIEWPORT_TRACE': '1', 'TESSEL_VIEWPORT_INSPECT': '1',
+                                 'TESSEL_VIEWPORT_OVERLAY_ACK': '1', 'TESSEL_RUNTIME_DIR': str(ROOT / 'runtime')})
         self.launched = time.perf_counter()
-        self.native = proof_surface.Native(binary, home)
+        with harness.scoped_environ(env):
+            self.native = proof_surface.Native(binary, home)
         self.socket = self.native.socket
         self.frames = {}
         self.deadline = None
+        self.trace_failures = []
 
     def check_deadline(self):
         if self.deadline is not None and time.monotonic() > self.deadline:
@@ -325,14 +424,18 @@ class Window:
         answer = self.send({'command': 'op', 'request': request}, timeout)
         return answer['ok'], (answer.get('data') if answer['ok'] else answer.get('error'))
 
-    def viewport(self):
-        return self.send({'command': 'get', 'target': 'monitor.viewport'})['data']['state']
+    def viewport(self, timeout=90):
+        return self.send({'command': 'get', 'target': 'monitor.viewport'}, timeout)['data']['state']
 
     def trace(self):
         """Polls what the editor itself reports: the picture the runtime last drew and read back (`last_frame`: its
         own render/total/prepare/draw/flush milliseconds and the pixel hash, one entry per request, never trimmed)
         and the session trace (host spans plan/evaluate/ipc/serve with their percentiles; `frames_total` counts only
-        the pictures the session stamps, which directed-scene pictures are not)."""
+        the pictures the session stamps, which directed-scene pictures are not).
+
+        A `render.status` that did not answer ok is NOT a report: `{}` comes back, `last_trace_ok` is False and the
+        failure is kept in `trace_failures`, which the corpus turns into a failing check. The error text of a failed
+        query used to be read as the report, with no session error in it, so a dead query looked like a clean session."""
         state = self.viewport()
         last = state.get('last_frame') or {}
         if last.get('request') is not None:
@@ -340,6 +443,12 @@ class Window:
                 'request', 'revision', 'hash', 'inspected', 'render_ms', 'total_ms', 'prepare_ms', 'draw_ms',
                 'flush_ms', 'width', 'height')}
         ok, data = self.op({'op': 'render.status'})
+        self.last_trace_ok = bool(ok)
+        if not ok:
+            if self.trace_failures is None:
+                self.trace_failures = []
+            self.trace_failures.append(f'render.status failed: {str(data)[:200]}')
+            return {}
         return (data or {}).get('report', data) or {}
 
     def mark(self):
@@ -347,18 +456,30 @@ class Window:
 
     def settle(self, scene, frame, after=None, seconds=30):
         """`(ms, state, info)`: seconds (client clock) until the monitor showed the NEW picture of `scene` at `frame`
-        (strictly newer than request `after`) with nothing in flight; `ms` is None on timeout."""
+        (strictly newer than request `after`) with nothing in flight; `ms` is None on timeout.
+
+        `seconds` binds EVERY query, not only the start of one: each `get` waits at most the time that is left (a monitor
+        that never answers used to hold a 2 s wait for 90 s), and a reply that arrives after the deadline is a late one:
+        the picture it shows converged too late to count, so it is a timeout (`ms` None) with that state and info kept
+        for the record."""
         started = time.perf_counter()
         deadline = started + seconds
         state, info = None, None
-        while time.perf_counter() < deadline:
+        while True:
+            left = deadline - time.perf_counter()
+            if left <= 0:
+                return None, state, info
             self.check_deadline()
-            state = self.viewport()
+            try:
+                state = self.viewport(timeout=max(left, 0.05))
+            except (socket.timeout, TimeoutError):  # the monitor did not answer in the time that was left
+                return None, state, info
             done, info = new_picture(state, scene, frame, after)
+            if time.perf_counter() > deadline:
+                return None, state, info
             if done:
                 return (time.perf_counter() - started) * 1000, state, info
             time.sleep(0.01)
-        return None, state, info
 
     def stop(self):
         return self.native.stop()
@@ -384,9 +505,14 @@ def picture_hash(state):
     return (state.get('last_frame') or {}).get('hash')
 
 
-def author_saved_project(binary, variables, corpus_name, scratch):
+def author_saved_project(binary, variables, corpus_name, scratch, cleanup_errors=None):
     """A throwaway process of the SAME binary writes the corpus project (create, attach, save) and exits. Returns
-    `(path, record)`; the record is kept in the report (hash and size of the saved document)."""
+    `(path, record)`; the record is kept in the report (hash and size of the saved document).
+
+    What stopping that process reported (an editor that ignored the terminate and had to be killed, a log that would not
+    close) is appended to `cleanup_errors`, the corpus result's own list, so the check "the editor process ended without
+    cleanup problems" fails for the authoring process too; it used to be thrown away. The temporary HOME is removed
+    whatever happened, and a failing stop never replaces the authoring error that is already on its way up."""
     home = tempfile.mkdtemp(prefix='gp-author-', dir='/tmp')
     window = None
     try:
@@ -404,7 +530,12 @@ def author_saved_project(binary, variables, corpus_name, scratch):
         return path, {'path': str(path), 'sha256': harness.sha256(path), 'bytes': path.stat().st_size}
     finally:
         if window is not None:
-            window.stop()
+            try:
+                problems = list(window.stop() or [])
+            except Exception as error:  # noqa: BLE001 - kept as a problem; it must not replace an authoring error
+                problems = [f'stopping the process raised {type(error).__name__}: {error}']
+            if cleanup_errors is not None:
+                cleanup_errors.extend(f'authoring process: {problem}' for problem in problems)
         shutil.rmtree(home, ignore_errors=True)
 
 
@@ -425,7 +556,7 @@ def run_corpus(binary, journey, golden, name, out, notes):
         return bool(condition)
 
     try:
-        project, authored = author_saved_project(binary, variables, name, scratch)
+        project, authored = author_saved_project(binary, variables, name, scratch, result['cleanup_errors'])
         result['authored_project'] = authored
         window = Window(binary, home)
         window.deadline = time.monotonic() + CORPUS_TIMEOUT_S
@@ -507,8 +638,19 @@ def run_corpus(binary, journey, golden, name, out, notes):
                     check(f'{sid}: the monitor converged after the resize', ms is not None, json.dumps(info))
                 if sid == 'present.dialog.open':
                     time.sleep(0.3)
-                    record['page_hidden_by_dialog'] = (window.viewport().get('on_screen') is False
-                                                       or window.viewport().get('hidden'))
+                    # The native page paints above every GPUI element, so an open dialog must hide it (AGENTS.md,
+                    # `Workflow::has_dialog`). Recorded AND judged: a page that stayed on screen is a failed check
+                    # (it was recorded and never read before).
+                    deadline = time.monotonic() + 3
+                    while True:
+                        monitor = window.viewport()
+                        hidden = monitor.get('on_screen') is False or bool(monitor.get('hidden'))
+                        if hidden or time.monotonic() >= deadline:
+                            break
+                        time.sleep(0.05)
+                    record['page_hidden_by_dialog'] = hidden
+                    check(f'{sid}: the dialog hid the native page', hidden, json.dumps(
+                        {key: monitor.get(key) for key in ('on_screen', 'hidden')}))
             elif step.get('wait') == 'presented':
                 ms, state, info = window.settle(shown['scene'], journey['frame'], after=marks.get('seek'))
                 record['client_ms_to_first_picture'] = ms
@@ -551,13 +693,17 @@ def run_corpus(binary, journey, golden, name, out, notes):
                         shown['scene'] = target
                 if request['op'] == 'scene.gizmo.state' and ok:
                     overlay = data['overlay']
-                    drawn = None
                     if overlay.get('visible'):
-                        deadline = time.time() + 5
-                        while time.time() < deadline and not drawn:
-                            drawn = (window.viewport().get('overlay') or {}).get('drawn')
-                            time.sleep(0.02)
-                        result['overlay_drawn'].append({'step': sid, 'drawn': drawn})
+                        # The acknowledgement kept in the report must BE this step's: the host holds the last one it
+                        # matched until a newer arrives, so the first one read is often the previous step's. Polled for
+                        # `ACK_SECONDS` until its tool, space, selection, scene, revision and frame are the ones of this
+                        # step's own request and answer; otherwise the check below fails and shows both sides.
+                        wanted_tool = step.get('tool') if isinstance(step.get('tool'), dict) else None
+                        drawn, mismatch, expected = overlay_ack(window, request, overlay, wanted_tool)
+                        result['overlay_drawn'].append({'step': sid, 'drawn': drawn, 'expected': expected,
+                                                        'mismatch': mismatch})
+                        check(f'{sid}: the page acknowledged THIS step\'s overlay (tool, space, selection, scene, '
+                              'revision, frame)', not mismatch, '; '.join(mismatch))
                 if request['op'] in ('history.undo', 'history.redo') and ok:
                     ms, state, info = window.settle(shown['scene'], journey['frame'], after=before_mark)
                     record['client_ms_to_converged_picture'] = ms
@@ -590,7 +736,15 @@ def run_corpus(binary, journey, golden, name, out, notes):
                            'dropped': trace.get('dropped'), 'spans_ms': trace.get('spans')}
         result['overlay_report'] = (window.viewport().get('overlay') or {})
         result['session_error'] = ((report.get('session') or {}).get('error'))
-        check('the session reported no error', not result['session_error'], result['session_error'])
+        # A `render.status` that failed is no report: it fails here, once per corpus, with what the editor said, and the
+        # session is never called error-free on the strength of a query that did not answer.
+        result['trace_failures'] = list(window.trace_failures or [])
+        check('every `render.status` query answered ok (a failed one is no session trace)',
+              not result['trace_failures'], '; '.join(result['trace_failures'][:3]))
+        check('the session reported no error', window.last_trace_ok and not result['session_error'],
+              result['session_error'] if window.last_trace_ok else 'the last `render.status` query failed: no report')
+        check('the overlay host reported no error', not result['overlay_report'].get('error'),
+              result['overlay_report'].get('error'))
     except BaseException as error:  # noqa: BLE001 - any cause is a recorded failed check; the cleanup below still runs
         check('the journey ran to the end', False, f'{type(error).__name__}: {error}')
         if isinstance(error, (KeyboardInterrupt, SystemExit)):
@@ -721,13 +875,30 @@ def main(argv=None):
                              'guard; the timings of such a run are not a measurement and the status says so')
     args = parser.parse_args(argv)
     out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
+    # Ownership first, before anything in the checkout or in `--out` is read, written or removed (a refusal's own
+    # manifest included), and kept until this returns: a build owns the CHECKOUT too (nothing else may build from it
+    # or put a mutant in its tree meanwhile), every phase owns `--out/.native.lock`. Neither lock waits: a taken one is
+    # ONE `REFUSED` line, exit 1, and nothing written.
+    owns = 'manifest.json, manifest.build.json, build.json, report.json and exes/'
+    with harness.guarded(out, OUT_LOCK, 'native.py', owns, builds=args.phase == 'build') as refusal:
+        if refusal:
+            return harness.die(1, refusal, None)
+        return run_phase(args, out)
+
+
+def run_phase(args, out):
+    """The phase `args.phase` over `out`, which the caller owns (`out/.native.lock` is held). Returns the exit code."""
     manifest_path = out / ('manifest.build.json' if args.phase == 'build' else 'manifest.json')
     manifest = {'suite': 'gizmo-perf-native', 'phase': args.phase, 'utc_start': harness.utc(), 'cwd': str(ROOT),
                 'limits': list(LIMITS), 'identity': harness.git_identity(), 'toolchain': harness.toolchain(),
                 'status': 'ABORTED', 'command': sys.argv}
     if args.phase == 'build':
         return build_phase(args, manifest, manifest_path, out)
+    problem = harness.identity_problem(manifest['identity'])
+    if problem:  # a checkout git cannot name is refused before anything else, `--allow-dirty` included
+        manifest.update(status='REFUSED', reason=problem)
+        return harness.die(1, manifest, manifest_path)
+    manifest['env_dropped'] = harness.dropped_env()  # what the editor and the builds below never inherited
     if not args.corpora:
         # `--corpora` with no value would run nothing and report "no check failed": zero checks are never a success.
         manifest.update(status='REFUSED', reason='no corpus was asked for (`--corpora` is empty): a run of zero checks '
@@ -818,6 +989,10 @@ def main(argv=None):
     manifest['status'] = status
     manifest['reason'] = manifest.get('reason') if status == 'INVALID_GUARD_AFTER_RUN' else '; '.join(
         f'{c}: {k}' for c, k in failed[:6])
+    if status == 'FAIL' and after_reason:
+        # The status stays FAIL (a real failure is never masked by the guard), but the reason also carries the guard
+        # text: it is the condition the failing checks were taken in.
+        manifest['reason'] += f'; the machine guard ALSO failed after the run: {after_reason}'
     manifest['utc_end'] = harness.utc()
     manifest['exit'] = code
     harness.write(manifest_path, manifest)

@@ -9,6 +9,15 @@ Every child process runs through `run_bounded`: a FINITE timeout, its own proces
 group is terminated (then killed) and the partial output is kept. A runner that holds the lock therefore cannot be
 held forever by a hung test. `install_termination_handlers` turns SIGTERM/SIGINT into `SystemExit`, so the `finally`
 blocks and `with` statements (lock release, restoring a mutated checkout) run when a runner is asked to stop.
+
+Three more rules live here so that every runner has them (BL015.23 items 23 and following, review 5856147194):
+  * a git answer that DECIDES something is `git_strict`/`git_identity` (success is explicit; a failing git is an
+    `unavailable` identity every runner refuses, `--allow-dirty` included). `out` stays tolerant, on purpose, for telemetry
+    (`pmset`, `sysctl`, the toolchain): there a missing answer is only recorded text;
+  * a child that measures or builds gets `child_env`: no inherited `TESSEL_GIZMO_PERF_*` (and no `CARGO_TARGET_DIR` or
+    `TESSEL_CARGO_LANE` for a build), exactly what the runner sets, and what was dropped is recorded;
+  * `guarded` is the ownership of a run: the lock of the CHECKOUT for a phase that builds from it or edits it, then the
+    lock of `--out`. Neither waits; a refusal writes nothing.
 """
 import contextlib
 import fcntl
@@ -76,6 +85,8 @@ def run_bounded(command, cwd=ROOT, env=None, timeout=BUILD_TIMEOUT_S, grace=10):
     `timeout + 3 * grace` seconds whatever the child and its descendants do, and so does the lock a runner holds.
     """
     started = time.monotonic()
+    if env is None:
+        env = child_env()  # never a bare inheritance: no `TESSEL_GIZMO_PERF_*` of the caller reaches a child
     try:
         process = subprocess.Popen(command, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    text=True, start_new_session=True)
@@ -152,11 +163,32 @@ def artifact_reason(*paths):
 
 
 def out(command, cwd=ROOT):
+    """The text a TELEMETRY command prints (`pmset`, `sysctl`, `ps`, the toolchain versions): a missing answer is only
+    recorded text. It ignores the exit code ON PURPOSE and must stay that way; an answer that decides something (the
+    identity of the checkout, whether a file is HEAD's) goes through `git_strict`, which says whether it answered."""
     try:
         done = subprocess.run(command, cwd=cwd, capture_output=True, text=True, timeout=30)
         return done.stdout.strip()
     except (OSError, subprocess.TimeoutExpired) as error:
         return f'unavailable: {error}'
+
+
+def git_strict(args, cwd=ROOT, timeout=30):
+    """`(ok, text)` of `git ARGS`: `ok` is True only for a command that started, finished in time and exited 0, and then
+    `text` is its stripped stdout (an empty one is a valid answer for `status`). Otherwise `ok` is False and `text` says
+    why (the exit code and git's own words, a timeout, a command that cannot start): never an empty string that a caller
+    could compare with another empty string. `out` above cannot tell the two apart, which is why a failing git used to
+    read as `head ''`, `tree ''` and a CLEAN tree."""
+    shown = 'git ' + ' '.join(args)
+    try:
+        done = subprocess.run(['git', *args], cwd=cwd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return False, f'{shown}: no answer within {timeout}s'
+    except OSError as error:
+        return False, f'{shown}: cannot run git: {error}'
+    if done.returncode != 0:
+        return False, f'{shown}: exit {done.returncode}: {(done.stderr or done.stdout).strip()[:200]}'
+    return True, done.stdout.strip()
 
 
 def free_gib(path='/'):
@@ -284,13 +316,144 @@ def exclusive(path):
             yield True
 
 
+IDENTITY_QUERIES = {
+    'head': ['rev-parse', 'HEAD'],
+    'tree': ['rev-parse', 'HEAD^{tree}'],
+    'branch': ['rev-parse', '--abbrev-ref', 'HEAD'],
+    'dirty': ['status', '--porcelain', '--', 'crates', 'Cargo.toml', 'Cargo.lock', 'scripts',
+              'docs/migration/fixtures/gizmo-perf'],
+}
+
+
 def git_identity(root=ROOT):
-    return {
-        'head': out(['git', 'rev-parse', 'HEAD'], root),
-        'tree': out(['git', 'rev-parse', 'HEAD^{tree}'], root),
-        'branch': out(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], root),
-        'dirty': out(['git', 'status', '--porcelain', '--', 'crates', 'Cargo.toml', 'Cargo.lock', 'scripts', 'docs/migration/fixtures/gizmo-perf'], root),
-    }
+    """HEAD, tree, branch and the dirtiness of `root`, each from a STRICT git call (`git_strict`).
+
+    When git answers every question, the dict is `head`, `tree`, `branch`, `dirty` (empty = clean) and
+    `unavailable: False`. When ANY question fails, `unavailable` is True, `failed` maps the field to the failure text,
+    and each failed field holds `unavailable: <failure text>`: a failed `dirty` query is a non-empty text, so it can never
+    read as a clean tree, and two failed identities are not equal unless they failed the same way (callers compare
+    through `same_head`, which refuses a failed one anyway). Every runner refuses an unavailable identity before it does
+    anything (`identity_problem`), `--allow-dirty` included: it is not a dirty tree, it is a tree nobody could name."""
+    identity, failed = {}, {}
+    for field, args in IDENTITY_QUERIES.items():
+        ok, text = git_strict(args, root)
+        if ok and field in ('head', 'tree') and not text:
+            ok, text = False, 'git ' + ' '.join(args) + ': printed nothing'
+        if ok:
+            identity[field] = text
+        else:
+            failed[field] = text
+            identity[field] = f'unavailable: {text}'
+    identity['unavailable'] = bool(failed)
+    if failed:
+        identity['failed'] = failed
+    return identity
+
+
+def identity_problem(identity):
+    """`None` when `identity` is a real answer of git, else the sentence of the REFUSED record. A dict that does not
+    carry the flag (a record read from disk, a hand-made one) is judged by its `head` and `tree`: empty, not a string, or a
+    failure text is no answer either."""
+    if identity.get('unavailable'):
+        detail = '; '.join(f'{field}: {why}' for field, why in (identity.get('failed') or {}).items()) or 'no detail'
+        return (f'git could not name this checkout ({detail}): no number could be filed under a HEAD, so nothing runs '
+                '(`--allow-dirty` does not change that: it is not a dirty tree, it is a tree nobody could name)')
+    for field in ('head', 'tree'):
+        value = identity.get(field)
+        if not isinstance(value, str) or not value or value.startswith('unavailable'):
+            return f'the identity has no usable {field} ({value!r}): it names no commit'
+    return None
+
+
+def same_head(first, second):
+    """True only when BOTH identities are real answers (`identity_problem`) and name the same commit AND tree. Two
+    failed answers (both `''`, or both the same failure text) are NOT 'the same HEAD': comparing them with `==` is how an
+    unavailable identity used to match another one."""
+    return (identity_problem(first) is None and identity_problem(second) is None
+            and first['head'] == second['head'] and first['tree'] == second['tree'])
+
+
+PERF_ENV_PREFIX = 'TESSEL_GIZMO_PERF_'     # the budget executable's own switches (OUT, CALIBRATE, BLESS)
+BUILD_ENV = ('CARGO_TARGET_DIR', 'TESSEL_CARGO_LANE')   # where a build puts its artifact: a runner's choice, not the caller's
+
+
+def dropped_env(build=False, environ=None):
+    """The names (sorted) of the inherited variables `child_env` takes out of a child's environment."""
+    environ = os.environ if environ is None else environ
+    return sorted(name for name in environ if name.startswith(PERF_ENV_PREFIX) or (build and name in BUILD_ENV))
+
+
+def child_env(extra=None, build=False, environ=None):
+    """The environment of a child that MEASURES or BUILDS: the runner's own WITHOUT every inherited `TESSEL_GIZMO_PERF_*`
+    variable (and, for `build=True`, without `CARGO_TARGET_DIR` and `TESSEL_CARGO_LANE`), plus exactly `extra`, what the
+    runner means to set. An exported `TESSEL_GIZMO_PERF_CALIBRATE=1` used to turn a measured run into a calibration
+    (no budget asserted) while `verdict` believed it had judged; an exported `TESSEL_GIZMO_PERF_BLESS=1` makes the
+    structural test rewrite its golden file and pass without asserting; a target directory in the environment makes two
+    builds share one artifact. The runner records `extra` as the child's `env` and `dropped_env` beside it, so what was
+    taken away is on the record too."""
+    environ = os.environ if environ is None else environ
+    dropped = set(dropped_env(build, environ))
+    env = {name: value for name, value in environ.items() if name not in dropped}
+    env.update(extra or {})
+    return env
+
+
+@contextlib.contextmanager
+def scoped_environ(env):
+    """`os.environ` holds exactly `env` inside the block and what it held before outside it. For code that copies
+    `os.environ` when it builds a child (`proof_surface.Native`) and cannot take an environment as an argument."""
+    saved = dict(os.environ)
+    os.environ.clear()
+    os.environ.update(env)
+    try:
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+
+
+CHECKOUT_LOCK_DIR = '/tmp'
+
+
+def checkout_lock_path(root=ROOT):
+    """The lock of one CHECKOUT: a file under /tmp (never inside the repository, whose tree must stay clean) named by a
+    hash of the checkout's resolved path, so two worktrees never wait on each other and one checkout always agrees."""
+    key = hashlib.sha256(str(Path(root).resolve()).encode()).hexdigest()[:16]
+    return Path(CHECKOUT_LOCK_DIR) / f'tessel-gizmo-perf-checkout-{key}.lock'
+
+
+@contextlib.contextmanager
+def guarded(out, lock_name, who, owns, builds=False, root=ROOT):
+    """What a runner must own before it reads or writes anything. Yields `None` once it owns it and the REFUSED record
+    (print it, exit 1) when it does not: nothing here waits, and a refusal writes nothing but the lock file itself.
+
+    1. `builds=True` (a phase that BUILDS from the checkout, or edits it: `mutate.py prepare`): the lock of the CHECKOUT
+       (`checkout_lock_path`), taken before `out` exists. A build that runs while another run has a mutant in the tree
+       builds the mutant, and two `prepare` runs with different `--out` would each put a mutant in the same files.
+    2. `out/lock_name`: one run per `--out`, for every phase. Two runs on one directory rebuild or delete what the other is
+       measuring, and a stale report would stand in for a new one.
+
+    Both are `flock`s released when the block ends (also on SIGTERM/SIGINT, which are `SystemExit`) or the process dies;
+    the files stay (see `exclusive`). The checkout lock is taken first, then the one of `out`, in every runner, and neither
+    waits, so no run can wait on another."""
+    out = Path(out)
+    with contextlib.ExitStack() as stack:
+        if builds:
+            path = checkout_lock_path(root)
+            if not stack.enter_context(exclusive(path)):
+                yield {'status': 'REFUSED', 'reason': (
+                    f'another run holds the checkout lock {path}: it builds from, or edits, this checkout ({root}), and a '
+                    'build started now would build whatever that run has in the tree; nothing was read or written '
+                    '(not waited for)')}
+                return
+        out.mkdir(parents=True, exist_ok=True)
+        path = out / lock_name
+        if not stack.enter_context(exclusive(path)):
+            yield {'status': 'REFUSED', 'reason': (
+                f'another `{who}` run holds {path}: it owns {owns} of this --out, so nothing here was read or '
+                'written (not waited for)')}
+            return
+        yield None
 
 
 def toolchain():

@@ -26,9 +26,14 @@ outside it gets the verdict of the core part only: the files outside stay in `pr
 never enter the verdict, so a `NO_REGRESSION_IN_SCENARIO` says nothing about them.
 
 How. One short `git archive` of the baseline into a temp directory, built SEQUENTIALLY through the repository's cargo
-wrapper with its DEFAULT target (no `CARGO_TARGET_DIR`, no lane); both test executables are copied out, the temp
-directory is deleted. The performance lock is taken ONCE, without waiting; a busy lock or a failed machine guard is a
-recorded BLOCKED (exit 3). Every child has a finite timeout. Rounds alternate the order (A B | B A | A B | B A ...),
+wrapper with its DEFAULT target. A build phase REFUSES to start when `CARGO_TARGET_DIR` or `TESSEL_CARGO_LANE` is set (both
+builds would share one artifact path), and it copies the candidate executable out RIGHT AFTER its own build, before the
+baseline build starts (the cache GC pruned the candidate's managed target during the baseline build of the first real
+A/B); after both builds it refuses (`AB_EXECUTABLES_COLLIDE`) when the two are the same file or have the same sha256, and
+any OSError on a copy or on a build output is a recorded `INFRA_EXECUTABLE_MISSING` naming the path, never a traceback. The
+temp directory is deleted. The performance lock is taken ONCE, without waiting; a busy lock or a failed machine guard is a
+recorded BLOCKED (exit 3). Every child has a finite timeout. `--rounds` must be at least 1 (argument error, exit 2); a
+comparison with no sample is INCONCLUSIVE, never a pass. Rounds alternate the order (A B | B A | A B | B A ...),
 each side runs a declared warmup run first that is NOT kept (and said so in the report), and every kept run's raw
 samples are pooled per (corpus, request kind): nothing is trimmed, no tail dropped, no best-of.
 
@@ -48,21 +53,32 @@ new commit, recorded, and applies to the next run):
   * "no regression" is only ever claimed for this scenario/config/hardware/backend, not for the native window.
 Exit 0 = no kind regressed and none inconclusive, 1 = a kind regressed or a refusal, 3 = BLOCKED/INVALID,
 4 = INCONCLUSIVE (or A/A).
+
+Ownership (nothing waits; a taken lock is one REFUSED line, exit 1, nothing written): `--out/.ab.lock` makes one run per
+`--out` in both phases, and a build also takes the lock of the CHECKOUT (`harness.checkout_lock_path`). A checkout git
+cannot name (`harness.git_identity` unavailable) and a baseline that names no commit are REFUSED, `--allow-dirty` included.
+Every child gets `harness.child_env`: no inherited `TESSEL_GIZMO_PERF_*`; the runner sets the report path and
+`CALIBRATE=1` itself (`run_env`) and records what it dropped. Before a measure phase writes anything, what an earlier
+attempt left in `--out` (manifest, kept reports, verdicts) is moved to `--out/attempts/<utc>-<status>/`
+(`archive_previous_attempt`) and its path is recorded in the manifest: a BLOCKED or INVALID attempt is never overwritten.
 """
 import argparse
 import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import statistics
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import harness  # noqa: E402
 
 ROOT = harness.ROOT
+OUT_LOCK = '.ab.lock'  # in --out: held by whichever phase owns that directory
 BASELINE = 'cbe9e1b393861febf073633fbbaa0da9857780b6'
 TEST = 'scene_gizmo_perf_budget'
 ONE_TEST = 'the_gizmo_handlers_stay_within_their_budget_cold_and_hot_on_every_corpus'
@@ -223,17 +239,35 @@ def find_exe(stdout):
 def build(cwd):
     command = ['./scripts/cargo', 'test', '--release', '--locked', '-p', 'tessel-editor-core', '--test', TEST,
                '--no-run', '--message-format=json']
-    done = harness.run_bounded(command, cwd=cwd, timeout=harness.BUILD_TIMEOUT_S)
+    # No target directory of the caller's: `main` refuses one before it builds, and the child never inherits one.
+    done = harness.run_bounded(command, cwd=cwd, env=harness.child_env(build=True), timeout=harness.BUILD_TIMEOUT_S)
     return command, done, find_exe(done.stdout)
+
+
+def run_env(out_path):
+    """What the runner sets for one measured run, apart from the caller's environment: the report path and
+    `CALIBRATE=1` (the A/B numbers are taken in the calibration mode: the executable asserts no budget, `judge` decides).
+    Everything else under `TESSEL_GIZMO_PERF_*` that the caller exported is dropped (`harness.child_env`)."""
+    return {'TESSEL_GIZMO_PERF_OUT': str(out_path), 'TESSEL_GIZMO_PERF_CALIBRATE': '1'}
 
 
 def run_once(exe, out_path):
     """One controlled run. The report is removed first, so a file of another run can never stand in for this one."""
     out_path = Path(out_path)
     out_path.unlink(missing_ok=True)
-    env = {**os.environ, 'TESSEL_GIZMO_PERF_OUT': str(out_path), 'TESSEL_GIZMO_PERF_CALIBRATE': '1'}
     return harness.run_bounded([str(exe), '--ignored', '--test-threads=1', '--nocapture', ONE_TEST], cwd=ROOT,
-                               env=env, timeout=harness.MEASURE_TIMEOUT_S)
+                               env=harness.child_env(run_env(out_path)), timeout=harness.MEASURE_TIMEOUT_S)
+
+
+def copy_executable(source, target):
+    """`None` when `source` was copied to `target`, else the sentence for the record: which path, what the OS said. The
+    path a build printed can be gone by the time it is read (the first real A/B lost the candidate's executable to a
+    pruned managed target while the baseline was building), and that is a recorded refusal, never a traceback."""
+    try:
+        shutil.copy(source, target)
+    except OSError as error:
+        return f'cannot copy {source} to {target}: {error}'
+    return None
 
 
 def run_is_clean(done, path):
@@ -253,6 +287,37 @@ def clear_previous(out):
     for pattern in ('round*.json', 'round*.stdout.txt', 'warmup-*.json', 'verdicts.json'):
         for stale in Path(out).glob(pattern):
             stale.unlink()
+
+
+ATTEMPT_FILES = ('manifest.json', 'round*.json', 'round*.stdout.txt', 'warmup-*.json', 'verdicts.json')
+
+
+def archive_previous_attempt(out):
+    """Moves what an earlier attempt in `out` left (its manifest, the kept reports and their stdout, the warmups and the
+    verdicts) into `out/attempts/<utc of that attempt>-<its status>/` and returns that directory, or None when there was
+    nothing. It runs BEFORE the new attempt writes anything, so a BLOCKED or INVALID attempt is never overwritten: the
+    first real A/B lost the numbers of its invalid first attempt to its own retry. The executables, the baseline source
+    and `manifest.build.json` are the INPUTS of an attempt and stay where they are. A directory name is never reused."""
+    out = Path(out)
+    files = sorted({path for pattern in ATTEMPT_FILES for path in out.glob(pattern) if path.is_file()})
+    if not files:
+        return None
+    try:
+        previous = json.loads((out / 'manifest.json').read_text())
+    except (OSError, ValueError):
+        previous = {}
+    started = previous.get('utc_start') or time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(
+        min(path.stat().st_mtime for path in files)))
+    status = previous.get('status') or 'UNKNOWN'
+    base = out / 'attempts' / (re.sub(r'[^0-9A-Za-z]+', '', str(started)) + '-' + re.sub(r'[^0-9A-Za-z_]+', '', str(status)))
+    target, count = base, 1
+    while target.exists():
+        count += 1
+        target = Path(f'{base}-{count}')
+    target.mkdir(parents=True)
+    for path in files:
+        shutil.move(str(path), str(target / path.name))
+    return target
 
 
 # --- judgement -------------------------------------------------------------------------------------------------
@@ -313,6 +378,15 @@ def judge(base, cand, unstable=None):
     unstable = unstable or {}
     verdicts = {}
     for key in sorted(base):
+        absent = [side for side, pool in (('baseline', base), ('candidate', cand)) if not pool.get(key, {}).get('samples')]
+        if absent:
+            # No sample is not "no regression": with nothing measured on a side there is nothing to compare, and the
+            # statistics below would either crash (`max([])`) or call an empty comparison a pass.
+            verdicts[f'{key[0]}/{key[1]}'] = {
+                'status': 'INCONCLUSIVE', 'reasons': [f'no sample on the {" and ".join(absent)} side: nothing to compare'],
+                'baseline': {'n': len(base.get(key, {}).get('samples', []))},
+                'candidate': {'n': len(cand.get(key, {}).get('samples', []))}}
+            continue
         b, c = summarize(base[key]), summarize(cand[key])
         medians = base[key]['medians']
         spread = (max(medians) - min(medians)) / statistics.median(medians)
@@ -353,6 +427,10 @@ def overall(verdicts, differs, outside=()):
     statuses = {v['status'] for v in verdicts.values()}
     if 'REGRESSED' in statuses:
         return 'REGRESSED', [k for k, v in verdicts.items() if v['status'] == 'REGRESSED'], 1
+    if not verdicts:
+        # Zero kinds judged (no round ran, or no report had a sample): the loop over "every kind" never executed, which
+        # is not "every kind passed".
+        return 'INCONCLUSIVE', 'no kind was judged: there is no sample to compare', harness.INCONCLUSIVE_EXIT
     if not differs and outside:
         return 'DIFFERENCE_OUTSIDE_THE_MEASUREMENT', (
             f'only files the measured executable is not built from differ ({sorted(outside)[:5]}): the two measured '
@@ -384,8 +462,24 @@ def main(argv=None):
     parser.add_argument('--allow-dirty', action='store_true',
                         help='measure a dirty tree (recorded; never counts for HEAD)')
     args = parser.parse_args(argv)
+    if args.rounds < 1:
+        # `range(0)` runs nothing, and "every kind was judged" is vacuously true of zero kinds: refused as an argument.
+        parser.error(f'--rounds must be at least 1 (got {args.rounds}): a run with no round has no sample to judge')
     out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
+    # Ownership first, before anything in the checkout or in `--out` is read, written or removed (a refusal's own
+    # manifest included), and kept until this returns: a build owns the CHECKOUT too (nothing else may build from it or
+    # put a mutant in its tree meanwhile), every phase owns `--out/.ab.lock`. Neither lock waits: a taken one is ONE
+    # `REFUSED` line, exit 1, and nothing written.
+    owns = ('manifest.json, manifest.build.json, the round, warmup and verdict files, exes/, baseline-src/ and '
+            'attempts/')
+    with harness.guarded(out, OUT_LOCK, 'ab.py', owns, builds=args.phase == 'build') as refusal:
+        if refusal:
+            return harness.die(1, refusal, None)
+        return run_phase(args, out)
+
+
+def run_phase(args, out):
+    """The phase `args.phase` over `out`, which the caller owns (`out/.ab.lock` is held). Returns the exit code."""
     manifest = {'suite': 'gizmo-perf-ab', 'phase': args.phase, 'utc_start': harness.utc(), 'cwd': str(ROOT),
                 'command': sys.argv, 'baseline': args.baseline, 'candidate': harness.git_identity(),
                 'toolchain': harness.toolchain(), 'rounds': args.rounds,
@@ -394,15 +488,32 @@ def main(argv=None):
                           'max_unstable_fraction': MAX_UNSTABLE_FRACTION},
                 'status': 'ABORTED'}
     manifest_path = out / 'manifest.json'
+    # What an earlier attempt left in `--out` is moved aside BEFORE this one writes anything (a refusal's manifest
+    # included): the previous manifest, its kept reports and its verdicts are evidence, not scratch.
+    archived = archive_previous_attempt(out)
+    manifest['previous_attempt_archived_at'] = str(archived) if archived else None
+    problem = harness.identity_problem(manifest['candidate'])
+    if problem:  # a checkout git cannot name is refused before anything else, `--allow-dirty` included
+        manifest.update(status='REFUSED', reason=problem)
+        return harness.die(1, manifest, manifest_path)
     if manifest['candidate']['dirty'] and not args.allow_dirty:
         manifest.update(status='REFUSED', reason='the working tree is dirty: numbers would not belong to HEAD')
         return harness.die(1, manifest, manifest_path)
     manifest['dirty_run'] = bool(manifest['candidate']['dirty'])
-    manifest['baseline_commit'] = harness.out(['git', 'rev-parse', args.baseline])
+    # The baseline is named by a STRICT git call: the empty text a failing `git rev-parse` printed used to be recorded as
+    # "the baseline commit" and, with `--allow-other-baseline`, accepted, and two empty names are equal.
+    resolved, commit = harness.git_strict(['rev-parse', '--verify', '--quiet', f'{args.baseline}^{{commit}}'])
+    if not resolved or not commit:
+        manifest.update(status='REFUSED', reason=f'the baseline `{args.baseline}` names no commit here ({commit or "no output"})')
+        return harness.die(1, manifest, manifest_path)
+    manifest['baseline_commit'] = commit
     if manifest['baseline_commit'] != BASELINE and not args.allow_other_baseline:
         manifest.update(status='REFUSED', reason=f'the baseline is pinned to {BASELINE}; got {manifest["baseline_commit"]}')
         return harness.die(1, manifest, manifest_path)
     manifest['baseline_is_pinned'] = manifest['baseline_commit'] == BASELINE
+    manifest['child_env'] = {'set_by_the_runner': {'TESSEL_GIZMO_PERF_OUT': '<the report of each run>',
+                                                   'TESSEL_GIZMO_PERF_CALIBRATE': '1'},
+                             'dropped_from_the_caller': harness.dropped_env()}
     exes_dir = out / 'exes'
     exes = {'baseline': exes_dir / 'baseline.exe', 'candidate': exes_dir / 'candidate.exe'}
     # The baseline's tests read the journey and the corpus from the checkout the executable was COMPILED in
@@ -411,9 +522,29 @@ def main(argv=None):
     kept_src = out / 'baseline-src'
     try:
         if args.phase == 'build':
-            # builds (no lock: a build is not a measurement), sequential, default target.
+            # builds (no performance lock: a build is not a measurement), sequential, default target.
+            chosen = [name for name in harness.BUILD_ENV if name in os.environ]
+            if chosen:
+                # With a target directory chosen from outside, both builds would share one artifact path: the second one
+                # overwrites, or the cache GC prunes, what the first printed (BL015.23). Nothing is touched.
+                manifest.update(status='REFUSED', env_set=chosen, reason=(
+                    f'{" and ".join(chosen)} set: the two builds would not each have their own default target, so the '
+                    'baseline build could replace or prune the candidate executable; unset it for this phase'))
+                return harness.die(1, manifest, manifest_path)
+
+            def fail(status, reason, **extra):
+                """A refused or failed build: the baseline source is not kept (nothing can be measured from it)."""
+                shutil.rmtree(kept_src, ignore_errors=True)
+                manifest.update(status=status, reason=reason, **extra)
+                return harness.die(1, manifest, manifest_path)
+
             exes_dir.mkdir(exist_ok=True)
             shutil.rmtree(kept_src, ignore_errors=True)
+            # The products of an earlier build go first: a build that fails must not leave the previous record or an old
+            # executable beside new ones, where `--phase measure` could believe the pair.
+            (out / 'manifest.build.json').unlink(missing_ok=True)
+            for stale in exes.values():
+                stale.unlink(missing_ok=True)
             try:
                 record = make_baseline(args.baseline, out)
             except (Refused, subprocess.CalledProcessError) as error:
@@ -423,16 +554,35 @@ def main(argv=None):
             manifest['prod_trees'] = record
             c_command, c_done, c_exe = build(ROOT)
             manifest['candidate_build'] = {'command': c_command, **c_done.record(), 'executable': c_exe}
+            if not (c_exe and c_done.returncode == 0):
+                return fail('BUILD_FAILED', 'the candidate release build failed or timed out')
+            # The candidate executable is copied out RIGHT NOW, before the baseline build starts: the cache GC of the
+            # repository's cargo wrapper pruned the candidate's managed target while the baseline was building, and the
+            # path cargo printed was gone when it was read (the first real A/B, `ab-build-037eda5`).
+            problem = copy_executable(c_exe, exes['candidate'])
+            manifest['candidate_copied_before_baseline_build'] = problem is None
+            if problem:
+                return fail('INFRA_EXECUTABLE_MISSING', problem, missing=str(c_exe))
             b_command, b_done, b_exe = build(src)
             manifest['baseline_build'] = {'command': b_command, **b_done.record(), 'executable': b_exe,
                                           'cwd': str(src), 'stderr_tail': b_done.stderr[-1500:]}
-            if not (c_exe and b_exe and c_done.returncode == 0 and b_done.returncode == 0):
-                shutil.rmtree(kept_src, ignore_errors=True)
-                manifest.update(status='BUILD_FAILED', reason='a release build failed or timed out')
-                return harness.die(1, manifest, manifest_path)
-            shutil.copy(b_exe, exes['baseline'])
-            shutil.copy(c_exe, exes['candidate'])
-            manifest['executables_sha256'] = {k: harness.sha256(v) for k, v in exes.items()}
+            if not (b_exe and b_done.returncode == 0):
+                return fail('BUILD_FAILED', 'the baseline release build failed or timed out')
+            problem = copy_executable(b_exe, exes['baseline'])
+            if problem:
+                return fail('INFRA_EXECUTABLE_MISSING', problem, missing=str(b_exe))
+            try:
+                same_file = os.path.samefile(c_exe, b_exe) if os.path.exists(c_exe) and os.path.exists(b_exe) \
+                    else str(c_exe) == str(b_exe)
+                manifest['executables_sha256'] = {k: harness.sha256(v) for k, v in exes.items()}
+            except OSError as error:
+                return fail('INFRA_EXECUTABLE_MISSING', f'cannot read the copied executables: {error}')
+            if same_file or len(set(manifest['executables_sha256'].values())) < 2:
+                # One artifact measured as both sides is the A/A that a "no regression" would be made of.
+                return fail('AB_EXECUTABLES_COLLIDE', (
+                    'the candidate and the baseline executables are the same file' if same_file else
+                    'the candidate and the baseline executables have the same sha256') +
+                    ': one artifact would be measured as both sides', same_file=same_file)
             manifest['baseline_src_kept_at'] = str(kept_src)
             too_big = harness.artifact_reason(exes_dir) or harness.artifact_reason(kept_src)
             if too_big:
@@ -452,9 +602,11 @@ def main(argv=None):
         built = json.loads(build_manifest_path.read_text())
         for key in ('candidate_build', 'baseline_build', 'executables_sha256', 'prod_trees'):
             manifest[key] = built[key]
-        if built['candidate']['head'] != manifest['candidate']['head'] or \
-                built['candidate']['tree'] != manifest['candidate']['tree']:
-            manifest.update(status='REFUSED', reason='the executables were built from another HEAD/tree')
+        # `same_head` also refuses a build record whose candidate names no usable head/tree: two empty answers are not
+        # "the same HEAD".
+        if not harness.same_head(built['candidate'], manifest['candidate']):
+            manifest.update(status='REFUSED', reason='the executables were built from another HEAD/tree (or the build '
+                                                     'record names none)')
             return harness.die(1, manifest, manifest_path)
         # The candidate executable of a `--phase build --allow-dirty` holds local changes; once they are stashed the
         # tree reads clean again, but that executable is still not HEAD's. An empty string is the only clean record.
@@ -473,6 +625,11 @@ def main(argv=None):
             return harness.die(1, manifest, manifest_path)
         if any(not exes[k].exists() or harness.sha256(exes[k]) != built['executables_sha256'][k] for k in exes):
             manifest.update(status='REFUSED', reason='an executable is missing or changed since the build phase')
+            return harness.die(1, manifest, manifest_path)
+        if len(set(built['executables_sha256'].values())) < len(exes):
+            # A build record whose two sides are one artifact (an older build phase did not look): no rounds are run.
+            manifest.update(status='AB_EXECUTABLES_COLLIDE', reason='the candidate and the baseline executables have the '
+                                                                     'same sha256: one artifact would be both sides')
             return harness.die(1, manifest, manifest_path)
         clear_previous(out)
         # guards + the lock, once.

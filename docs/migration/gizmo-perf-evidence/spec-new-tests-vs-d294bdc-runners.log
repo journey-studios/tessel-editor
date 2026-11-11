@@ -1,0 +1,293 @@
+# Negative control of the round-6 additions to the spec (BL015.21 / BL015.23 items 15, 18, 19, 21, 22 / PR #44, round 6).
+# The spec of this round (scripts/gizmo-perf/gizmo-perf.spec.py) run against the runners of d294bdc (d294bdc56a12476ffdf1bb9c781adfddc6894376,
+# the PR head the round started from): `git archive` of `scripts/gizmo-perf` into a temp directory, the new spec copied over its old
+# one, the rest of `scripts/`, `crates`, `docs`, `runtime`, `vendor`, `Cargo.toml`, `Cargo.lock` and `rust-toolchain.toml` linked from this
+# worktree (no checkout; nothing was written in it; `target/` is not linked, so no editor binary exists there).
+# Command, with that temp directory as cwd: PYTHONDONTWRITEBYTECODE=1 python3 scripts/gizmo-perf/gizmo-perf.spec.py -v
+# Python 3.14.3. Worktree HEAD when it ran: d294bdc56a12476ffdf1bb9c781adfddc6894376, the parent of the code commit, with the round-6
+# changes not yet committed. The files under test, by git blob id (the code commit holds these same blobs):
+#   scripts/gizmo-perf/gizmo-perf.spec.py     71752383f15c1c856c60da71272510d87151100d (d294bdc: 38aa5709b4dfa530e658c03e1a16bdccf6237c15)
+#   scripts/gizmo-perf/harness.py             0224c40fcceda8250cef30415d4e35813e233421 (d294bdc: 6da3f1a96c28cfc68559efe30ce6d39ecb4088cb)
+#   scripts/gizmo-perf/run.py                 a8eae98ce6647bd91480f0bfa3840c934ac66471 (d294bdc: f94808cff1390a82f61b6c34e873b8807cbb9422)
+#   scripts/gizmo-perf/ab.py                  01131a18f90059e68f88cff94200bde5f1490daa (d294bdc: 0ecfcbd55f136e0184a6f88aca12d68348da135f)
+#   scripts/gizmo-perf/mutate.py              be0fbb44a904957f5276eb406f14f8fd600d653d (d294bdc: 93dc101b18434b1e29121108ddabd0291e974293)
+#   scripts/gizmo-perf/native.py              e220cb75b76867e6455a3c2849fe990b956af79e (d294bdc: 464b58f4df1f6d0df21d556bf28736f246c8ea83)
+# audit.py, budgets.py and corpus.py are those of d294bdc, byte for byte.
+# THE MACHINE WAS LOADED BY OTHER WORK (load averages 1/5/15 min: 46.71 23.47 14.59 when the two runs began, 56.02 29.42 17.28 after the first, 47.49 30.86 18.43 after the second).
+# NOTHING WAS MEASURED: no time run, no A/B, no time mutant, no native window, no performance lock. This is a test of the runners'
+# bookkeeping on fakes. stderr of both runs holds the same two harmless messages of tests that run git where there is nothing to
+# find (`fatal: pathspec ...scene_gizmo_perf_budget.rs did not match any files`, `fatal: not a git repository`).
+# The control, on the same layout with the runners of this round:
+#   new spec + new runners : Ran 184 tests in 50.552s -> OK
+#   new spec + OLD runners : Ran 184 tests in 45.734s -> FAILED (failures=69, errors=20)
+# 69 tests are new in this round; the other 115 are the earlier ones. The counts of unittest above are per failing
+# assertion (a failing subTest counts once each); per test: 65 of the 69 new tests fail on the old runners, 4 are controls that
+# pass on both sides on purpose (listed at the end of the list below), and no earlier test fails (all 115 pass on both sides).
+# Where the behaviour can be seen through the runner's `main` the new test fails on its own assertion on the old runners (a
+# traceback instead of a recorded refusal shows as ERROR); the tests of helpers that did not exist (`git_strict`, `same_head`,
+# `dropped_env`, `scoped_environ`, `guarded`, `checkout_lock_path`, `ack_expectation`) can only fail there by not finding them.
+# Labels: F1 strict git; F2 ab build (copy order, collision, target dir, missing executable) and its same-class sites; F3 --rounds and
+# zero samples; F4/F5/F6 ownership locks (out, checkout); F7 clean tree for mutate prepare/time; F8 executables kept when a mutant
+# gave no answer; F9 --only; F10 trace of a failed render.status; F11 settle bounded; F12 authoring process stop; F13 overlay
+# acknowledgement of THIS step; F14 child environment; F15 memo_off messages; F16 attempts/; F17 tests_passed from `... ok`;
+# F18 guard text in a FAIL reason; sweep = same-class sites found by the sweep (backlog items 23 to 25 hold what was not fixed).
+
+FAIL  RunVerdict.test_a_test_whose_own_result_line_says_failed_does_not_count_as_passed   (F17)
+      FAIL: AssertionError: 'PASS' != 'FAIL'
+FAIL  RunVerdict.test_a_fail_carries_the_guard_that_failed_after_the_run_and_stays_a_fail   (F18 (run.py))
+      FAIL: AssertionError: 'load average (1 min) 5.88 over 5.5 (11 cpus)' not found in 'a budget was exceeded (see stdout.txt)' : budget
+FAIL  MeasurePhase.test_a_second_attempt_keeps_the_first_one_in_attempts   (F16)
+      FAIL: AssertionError: 0 != 1 : []
+FAIL  MeasurePhase.test_a_run_whose_reports_hold_no_sample_is_inconclusive_never_a_pass   (F3)
+      FAIL: AssertionError: Tuples differ: (0, 'NO_REGRESSION_IN_SCENARIO') != (4, 'INCONCLUSIVE')
+FAIL  AbBuild.test_the_candidate_executable_is_copied_before_the_baseline_build_starts   (F2)
+      ERROR: FileNotFoundError: [Errno 2] No such file or directory: '/var/folders/h2/6xxl56j97cnfzthk1mgmpz540000gn/T/tmpovmao4ti/target-candidate'
+FAIL  AbBuild.test_an_executable_the_build_named_but_that_is_gone_is_a_recorded_refusal_with_its_path   (F2)
+      ERROR: [{}] FileNotFoundError: [Errno 2] No such file or directory: '/var/folders/h2/6xxl56j97cnfzthk1mgmpz540000gn/T/tmpl1ijpj2f/target-candidate'
+FAIL  AbBuild.test_one_artifact_measured_as_both_sides_is_refused   (F2)
+      FAIL: [{}] AssertionError: Tuples differ: (0, 'BUILT') != (1, 'AB_EXECUTABLES_COLLIDE')
+FAIL  AbBuild.test_a_target_directory_in_the_environment_refuses_the_build_phase_before_any_build   (F2)
+      FAIL: [{}] AssertionError: Tuples differ: (0, 'BUILT') != (1, 'REFUSED')
+FAIL  AbBuild.test_a_build_that_fails_leaves_no_product_of_an_earlier_one   (F2)
+      ERROR: KeyError: 'status'
+FAIL  Verdicts.test_memo_off_is_killed_by_each_of_the_three_assertions_a_memo_that_never_hits_breaks   (F15)
+      FAIL: AssertionError: 'UNEXPECTED_FAILURE' != 'KILLED'
+FAIL  Provenance.test_two_identities_git_could_not_name_are_not_the_same_head   (F1)
+      FAIL: AssertionError: unexpectedly None
+FAIL  BuildPhase.test_the_build_gets_no_target_directory_and_no_perf_switch_from_the_caller   (F14)
+      FAIL: AssertionError: Lists differ: ['CARGO_TARGET_DIR', 'TESSEL_CARGO_LANE', [52 chars]ATE'] != []
+FAIL  BuildPhase.test_a_build_whose_executable_is_gone_is_a_recorded_refusal_not_a_traceback   (F2 (run.py))
+      ERROR: FileNotFoundError: [Errno 2] No such file or directory: '/nowhere/pruned/tessel-editor'
+FAIL  MainRun.test_a_failing_run_carries_the_guard_that_failed_after_it_and_stays_a_fail   (F18 (native.py))
+      FAIL: AssertionError: 'load average (1 min) 5.88 over 5.5 (11 cpus)' not found in 'small: a check that failed; small: a check that failed; small: a check that failed'
+FAIL  MutantExecutables.test_a_prepare_on_a_dirty_tree_is_refused_before_it_mutates_or_builds_anything   (F7)
+      FAIL: AssertionError: Tuples differ: (0, 'PREPARED') != (1, 'REFUSED')
+FAIL  MutantExecutables.test_a_time_run_refuses_a_prepare_that_ran_on_a_dirty_tree_or_does_not_say_it_did_not   (F7)
+      FAIL: [{}] AssertionError: Tuples differ: (0, 'ALL_AS_EXPECTED') != (1, 'REFUSED')
+FAIL  MutantExecutables.test_a_time_run_does_not_match_a_prepare_and_a_checkout_that_both_have_no_head   (F1)
+      FAIL: AssertionError: Tuples differ: (0, 'ALL_AS_EXPECTED') != (1, 'REFUSED')
+FAIL  MutantExecutables.test_a_git_that_cannot_answer_refuses_both_phases_and_changes_nothing   (F1)
+      FAIL: AssertionError: Tuples differ: (0, 'PREPARED') != (1, 'REFUSED')
+FAIL  MutantExecutables.test_the_executables_stay_whenever_an_evaluated_timed_mutant_gave_no_answer   (F8)
+      FAIL: [{'outcome': 'INVALID_GUARD_AFTER_RUN'}] AssertionError: False is not true : INVALID_GUARD_AFTER_RUN
+FAIL  MutantExecutables.test_an_only_that_evaluates_no_timed_mutant_deletes_no_executable   (F9)
+      FAIL: AssertionError: False is not true
+FAIL  MutantExecutables.test_a_run_removes_only_the_executables_of_the_mutants_it_evaluated_and_got_an_answer_for   (F9)
+      ERROR: FileNotFoundError: [Errno 2] No such file or directory: '/var/folders/h2/6xxl56j97cnfzthk1mgmpz540000gn/T/tmp__dlhhn6/out/exes'
+FAIL  MutantExecutables.test_a_build_whose_executable_is_gone_is_recorded_and_prepare_still_finishes   (F2 (mutate.py))
+      ERROR: FileNotFoundError: [Errno 2] No such file or directory: '/var/folders/h2/6xxl56j97cnfzthk1mgmpz540000gn/T/tmpj2s8uxx1/target-exe'
+FAIL  UnavailableGit.test_a_git_that_cannot_answer_is_an_unavailable_identity_never_a_clean_empty_one   (F1)
+      FAIL: AssertionError: None is not True
+FAIL  UnavailableGit.test_an_identity_git_did_name_is_not_marked_unavailable   (F1)
+      FAIL: AssertionError: None is not False
+FAIL  UnavailableGit.test_two_identities_that_failed_are_never_the_same_head   (F1)
+      ERROR: AttributeError: module 'harness' has no attribute 'same_head'
+FAIL  UnavailableGit.test_run_py_refuses_to_build_and_to_measure_even_with_allow_dirty   (F1)
+      FAIL: AssertionError: 0 != 1
+FAIL  UnavailableGit.test_ab_py_refuses_both_phases_even_with_allow_dirty_and_another_baseline   (F1)
+      ERROR: [{'phase': 'build'}] ValueError: not enough values to unpack (expected 3, got 0)
+FAIL  UnavailableGit.test_ab_py_does_not_take_what_a_failing_git_printed_as_the_baseline_commit   (F1)
+      ERROR: TypeError: Object of type MagicMock is not JSON serializable
+FAIL  UnavailableGit.test_native_py_refuses_both_phases_even_with_allow_dirty   (F1)
+      FAIL: [{'phase': 'build'}] AssertionError: 'PREREQUISITE_MISSING' != 'REFUSED'
+FAIL  UnavailableGit.test_a_file_git_cannot_compare_with_head_is_never_called_restored   (F1)
+      FAIL: AssertionError: SystemExit not raised
+FAIL  UnavailableGit.test_git_strict_says_whether_git_answered   (F1)
+      ERROR: AttributeError: module 'harness' has no attribute 'git_strict'
+FAIL  RuntimeStale.test_a_git_that_cannot_list_the_sources_is_a_reason_not_a_fresh_runtime   (sweep: runtime_stale_reason)
+      FAIL: AssertionError: 'git' not found in ''
+FAIL  RuntimeStale.test_a_listing_with_no_source_that_exists_is_a_reason_too   (sweep: runtime_stale_reason)
+      FAIL: AssertionError: unexpectedly None
+FAIL  RoundsAndSamples.test_zero_or_negative_rounds_is_an_argument_error_that_writes_nothing   (F3)
+      FAIL: [{'rounds': '0'}] AssertionError: SystemExit not raised
+FAIL  RoundsAndSamples.test_a_side_without_samples_is_inconclusive_never_a_pass   (F3)
+      ERROR: ValueError: max() iterable argument is empty
+FAIL  RoundsAndSamples.test_a_verdict_over_no_kind_is_never_a_pass   (F3)
+      FAIL: AssertionError: 'NO_REGRESSION_IN_SCENARIO' == 'NO_REGRESSION_IN_SCENARIO'
+FAIL  ChildEnvironment.test_helpers_drop_what_a_measuring_child_must_not_inherit_and_keep_the_rest   (F14)
+      ERROR: AttributeError: module 'harness' has no attribute 'dropped_env'
+FAIL  ChildEnvironment.test_scoped_environ_holds_exactly_the_given_environment_and_restores_the_caller_s   (F14)
+      ERROR: AttributeError: module 'harness' has no attribute 'scoped_environ'
+FAIL  ChildEnvironment.test_an_exported_calibrate_never_reaches_a_measured_run_nor_its_record   (F14)
+      FAIL: AssertionError: True is not false : TESSEL_GIZMO_PERF_CALIBRATE reached the child
+FAIL  ChildEnvironment.test_the_run_record_lists_only_the_tests_whose_own_line_says_ok   (F17)
+      FAIL: AssertionError: Lists differ: ['the_gizmo_handlers_stay_within_their_budget_c[166 chars]all'] != ['the_budget_detector_rejects_one_extra_plan_of[90 chars]all']
+FAIL  ChildEnvironment.test_calibrate_is_in_the_child_only_when_the_runner_was_asked_for_it   (F14)
+      FAIL: AssertionError: True is not false : TESSEL_GIZMO_PERF_BLESS reached the child
+FAIL  ChildEnvironment.test_the_builds_of_every_runner_get_no_target_directory_and_no_perf_switch   (F14)
+      FAIL: [{}] AssertionError: True is not false : TESSEL_GIZMO_PERF_CALIBRATE reached the child of run.py
+FAIL  ChildEnvironment.test_the_ab_child_gets_calibrate_explicitly_the_report_path_it_chose_and_nothing_else_inherited   (F14)
+      FAIL: AssertionError: True is not false : TESSEL_GIZMO_PERF_BLESS reached the child
+FAIL  ChildEnvironment.test_the_mutant_runs_get_no_inherited_perf_switch   (F14)
+      FAIL: AssertionError: True is not false : TESSEL_GIZMO_PERF_CALIBRATE reached the child
+FAIL  ChildEnvironment.test_the_native_editor_gets_no_inherited_perf_switch_and_os_environ_is_left_as_it_was   (F14)
+      FAIL: AssertionError: True is not false : TESSEL_GIZMO_PERF_BLESS reached the child
+FAIL  Guarded.test_it_yields_none_when_free_keeps_the_lock_file_and_releases_the_lock_at_the_end   (F4/F5/F6 (helper))
+      ERROR: AttributeError: module 'harness' has no attribute 'guarded'. Did you mean: 'guards'?
+FAIL  Guarded.test_it_refuses_a_directory_that_is_owned_and_says_which_lock   (F4/F5/F6 (helper))
+      ERROR: AttributeError: module 'harness' has no attribute 'guarded'. Did you mean: 'guards'?
+FAIL  Guarded.test_the_checkout_lock_is_one_file_per_checkout_outside_the_repository   (F4/F5/F6 (helper))
+      ERROR: AttributeError: module 'harness' has no attribute 'checkout_lock_path'
+FAIL  Guarded.test_a_held_checkout_lock_refuses_a_build_before_the_directory_exists   (F4/F5/F6 (helper))
+      ERROR: AttributeError: module 'harness' has no attribute 'guarded'. Did you mean: 'guards'?
+FAIL  OwnedDirectories.test_ab_run_and_native_refuse_an_owned_out_and_change_nothing   (F4/F5/F6)
+      FAIL: [{}] AssertionError: {'.ab[95 chars]': b'{\n "baseline": "cbe9e1b393861febf073633f[1007 chars]ory'} != {'.ab[95 chars]': b'written by the run that owns this directo[262 chars]ory'}
+FAIL  OwnedDirectories.test_the_build_phases_refuse_while_the_checkout_is_being_built_and_create_nothing   (F4/F5/F6)
+      FAIL: [{}] AssertionError: the runners take no per-checkout lock (`harness.checkout_lock_path` does not exist)
+FAIL  OwnedDirectories.test_a_build_phase_refuses_an_owned_out_too_and_builds_nothing   (F4/F5/F6)
+      FAIL: [{}] AssertionError: a build started although the run did not own what it builds
+FAIL  OwnedDirectories.test_the_checkout_lock_is_asked_for_first_and_neither_lock_waits   (F4/F5/F6)
+      FAIL: AssertionError: the runners take no per-checkout lock (`harness.checkout_lock_path` does not exist)
+FAIL  OwnedDirectories.test_a_measure_phase_builds_nothing_and_does_not_need_the_checkout_lock   (F4/F5/F6)
+      FAIL: AssertionError: the runners take no per-checkout lock (`harness.checkout_lock_path` does not exist)
+FAIL  OwnedDirectories.test_a_real_second_process_is_refused_with_one_line_and_exit_1   (F4/F5/F6)
+      FAIL: AssertionError: '.ab.lock' not found in 'the baseline is pinned to cbe9e1b393861febf073633fbbaa0da9857780b6; got '
+FAIL  OverlayAcknowledgement.test_the_acknowledgement_that_arrives_after_the_previous_one_is_the_one_recorded   (F13)
+      FAIL: AssertionError: 0 != 1 : ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'state.scale.local: scene.gizmo.state answered', 'the session reported no error',
+FAIL  OverlayAcknowledgement.test_a_previous_steps_acknowledgement_that_is_never_replaced_fails_and_shows_both_sides   (F13)
+      FAIL: AssertionError: 0 != 1 : ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'state.scale.local: scene.gizmo.state answered', 'the session reported no error',
+FAIL  OverlayAcknowledgement.test_a_step_the_page_never_acknowledged_fails   (F13)
+      FAIL: AssertionError: 0 != 1 : ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'state.scale.local: scene.gizmo.state answered', 'the session reported no error',
+FAIL  OverlayAcknowledgement.test_an_acknowledgement_of_another_selection_scene_revision_or_frame_fails   (F13)
+      FAIL: [{}] AssertionError: 0 != 1 : ['open.project: project.open of the saved project answered', 'open.project: it was the opening of a document (action project.open)', 'state.scale.local: scene.gizmo.state answered', 'the session reported no error',
+FAIL  OverlayAcknowledgement.test_ack_mismatch_is_empty_only_for_the_acknowledgement_of_the_step   (F13)
+      ERROR: AttributeError: module 'native' has no attribute 'ack_expectation'
+FAIL  NativeSession.test_a_render_status_that_failed_is_no_trace_and_fails_the_session_checks   (F10)
+      FAIL: AssertionError: {'code': 'unavailable', 'message': 'render.status is not available'} != {}
+FAIL  NativeSession.test_a_monitor_that_never_answers_cannot_hold_a_wait_past_its_seconds   (F11)
+      FAIL: AssertionError: 2005.5322079570033 is not None
+FAIL  NativeSession.test_a_reply_that_arrives_after_the_deadline_is_a_timeout_that_keeps_what_it_showed   (F11)
+      FAIL: AssertionError: 506.5804159967229 is not None
+FAIL  NativeSession.test_what_stopping_the_authoring_process_reported_fails_the_cleanup_check   (F12)
+      FAIL: AssertionError: Lists differ: [] != ['authoring process: the editor ignored SIGTERM and was killed']
+FAIL  NativeSession.test_a_dialog_that_left_the_native_page_on_screen_fails_its_own_check   (sweep: dialog check)
+      ERROR: KeyError: 'present.dialog.open: the dialog hid the native page'
+
+# Tests that pass on BOTH sides by design (what must stay true after the fix):
+PASS  RunVerdict.test_the_layout_nocapture_really_prints_still_counts_its_tests_as_passed
+      the layout `--nocapture` prints (marker, own lines, a line that is only `ok`) still counts its tests as passed (F17 must not break it)
+PASS  Verdicts.test_memo_off_stays_strict_about_what_else_may_have_failed_the_host_test
+      memo_off stays strict: other messages, a compile error and a timeout are still not a kill (F15 widened it by one message only)
+PASS  RuntimeStale.test_a_runtime_newer_than_its_sources_is_fresh_and_an_older_one_is_stale
+      a runtime newer than its sources is still fresh and an older one still stale (the strict git reader keeps the ordinary case)
+PASS  NativeSession.test_a_monitor_that_converges_in_time_gives_its_milliseconds
+      a monitor that converges in time still gives its milliseconds (F11 bounds the wait, it does not refuse a good answer)
+
+# Fails on the old runners, per label (tests): F1 12; F10 1; F11 2; F12 1; F13 5; F14 9; F15 1; F16 1; F17 2; F18 (native.py) 1; F18 (run.py) 1; F2 5; F2 (mutate.py) 1; F2 (run.py) 1; F3 4; F4/F5/F6 6; F4/F5/F6 (helper) 4; F7 2; F8 1; F9 2; sweep: dialog check 1; sweep: runtime_stale_reason 2
+
+# Additional controls (not asked for): the new spec against the NEW runners with ONE wrong version of one fix in a temporary copy
+# (the copy of scripts/gizmo-perf of this worktree, one exact text replaced; classes or tests that exercise that fix only).
+# A control is useful when at least one test fails; the tests that still pass in each class are the ones about other things
+# (or controls). Verbatim, from `wrong-fixes.py`:
+#
+# --- F13: native.py: the acknowledgement is the FIRST one that is not empty (what the loop did), mismatch ignored
+#     classes: OverlayAcknowledgement
+#     # 5 tests: 2 pass, 3 fail or error
+#     FAIL  OverlayAcknowledgement.test_a_previous_steps_acknowledgement_that_is_never_replaced_fails_and_shows_both_sides
+#           FAIL: AssertionError: True is not false
+#     FAIL  OverlayAcknowledgement.test_an_acknowledgement_of_another_selection_scene_revision_or_frame_fails
+#           FAIL: [{}] AssertionError: True is not false
+#     FAIL  OverlayAcknowledgement.test_the_acknowledgement_that_arrives_after_the_previous_one_is_the_one_recorded
+#           FAIL: AssertionError: 8 != 9
+# --- F13: native.py: it polls and records the last acknowledgement, but the check can no longer fail
+#     classes: OverlayAcknowledgement
+#     # 5 tests: 2 pass, 3 fail or error
+#     FAIL  OverlayAcknowledgement.test_a_previous_steps_acknowledgement_that_is_never_replaced_fails_and_shows_both_sides
+#           FAIL: AssertionError: True is not false
+#     FAIL  OverlayAcknowledgement.test_a_step_the_page_never_acknowledged_fails
+#           FAIL: AssertionError: True is not false
+#     FAIL  OverlayAcknowledgement.test_an_acknowledgement_of_another_selection_scene_revision_or_frame_fails
+#           FAIL: [{}] AssertionError: True is not false
+# --- F14: harness.py: only the CALIBRATE switch is dropped from a child environment (a BLESS is inherited)
+#     classes: ChildEnvironment, BuildPhase
+#     # 13 tests: 5 pass, 8 fail or error
+#     FAIL  BuildPhase.test_the_build_gets_no_target_directory_and_no_perf_switch_from_the_caller
+#           FAIL: AssertionError: Lists differ: ['TESSEL_GIZMO_PERF_BLESS'] != []
+#     FAIL  ChildEnvironment.test_an_exported_calibrate_never_reaches_a_measured_run_nor_its_record
+#           FAIL: AssertionError: True is not false : TESSEL_GIZMO_PERF_BLESS reached the child
+#     FAIL  ChildEnvironment.test_calibrate_is_in_the_child_only_when_the_runner_was_asked_for_it
+#           FAIL: AssertionError: True is not false : TESSEL_GIZMO_PERF_BLESS reached the child
+#     FAIL  ChildEnvironment.test_helpers_drop_what_a_measuring_child_must_not_inherit_and_keep_the_rest
+#           FAIL: AssertionError: Lists differ: ['TESSEL_GIZMO_PERF_CALIBRATE'] != ['TESSEL_GIZMO_PERF_BLESS', 'TESSEL_GIZMO_PERF_CALIBRATE', 'T[17 chars]OUT']
+#     FAIL  ChildEnvironment.test_the_ab_child_gets_calibrate_explicitly_the_report_path_it_chose_and_nothing_else_inherited
+#           FAIL: AssertionError: True is not false : TESSEL_GIZMO_PERF_BLESS reached the child
+#     FAIL  ChildEnvironment.test_the_builds_of_every_runner_get_no_target_directory_and_no_perf_switch
+#           FAIL: [{}] AssertionError: True is not false : TESSEL_GIZMO_PERF_BLESS reached the child of run.py
+#     FAIL  ChildEnvironment.test_the_mutant_runs_get_no_inherited_perf_switch
+#           FAIL: AssertionError: True is not false : TESSEL_GIZMO_PERF_BLESS reached the child
+#     FAIL  ChildEnvironment.test_the_native_editor_gets_no_inherited_perf_switch_and_os_environ_is_left_as_it_was
+#           FAIL: AssertionError: True is not false : TESSEL_GIZMO_PERF_BLESS reached the child
+# --- F16: ab.py: the previous attempt is not archived (it is deleted by `clear_previous` as before)
+#     classes: MeasurePhase (tests matching `second_attempt`)
+#     # 1 tests: 0 pass, 1 fail or error
+#     FAIL  MeasurePhase.test_a_second_attempt_keeps_the_first_one_in_attempts
+#           FAIL: AssertionError: 0 != 1 : []
+# --- F8: mutate.py: the executables are removed whenever a run finishes, answered or not
+#     classes: MutantExecutables (tests matching `stay_whenever`)
+#     # 1 tests: 0 pass, 1 fail or error
+#     FAIL  MutantExecutables.test_the_executables_stay_whenever_an_evaluated_timed_mutant_gave_no_answer
+#           FAIL: [{'outcome': 'INVALID_GUARD_AFTER_RUN'}] AssertionError: False is not true : INVALID_GUARD_AFTER_RUN
+# --- F2: ab.py: two executables that are the same file or the same bytes are accepted as the two sides
+#     classes: AbBuild
+#     # 5 tests: 4 pass, 1 fail or error
+#     FAIL  AbBuild.test_one_artifact_measured_as_both_sides_is_refused
+#           FAIL: [{}] AssertionError: Tuples differ: (0, 'BUILT') != (1, 'AB_EXECUTABLES_COLLIDE')
+# --- F11: native.py: `settle` asks the monitor with no timeout of its own (it gets the default 90 s)
+#     classes: NativeSession (tests matching `monitor_that_never`)
+#     # 1 tests: 0 pass, 1 fail or error
+#     FAIL  NativeSession.test_a_monitor_that_never_answers_cannot_hold_a_wait_past_its_seconds
+#           FAIL: AssertionError: False is not true : [90]
+# --- F10: native.py: the answer of a failed `render.status` is read as the report (what `trace` did)
+#     classes: NativeSession (tests matching `render_status_that_failed`)
+#     # 1 tests: 0 pass, 1 fail or error
+#     FAIL  NativeSession.test_a_render_status_that_failed_is_no_trace_and_fails_the_session_checks
+#           FAIL: AssertionError: {'code': 'unavailable', 'message': 'render.status is not available'} != {}
+# --- F4/F5: harness.py: the lock BLOCKS until the owner leaves (it waited instead of refusing)
+#     classes: Guarded (tests matching `refuses_a_directory_that_is_owned`)
+#     # 1 tests: 0 pass, 1 fail or error
+#     FAIL  Guarded.test_it_refuses_a_directory_that_is_owned_and_says_which_lock
+#           FAIL: AssertionError: still running after 20s: a run that must refuse or finish is waiting
+# --- F6: harness.py: a build phase takes the lock of `--out` only (no lock of the checkout)
+#     classes: Guarded, OwnedDirectories (tests matching `checkout`)
+#     # 5 tests: 2 pass, 3 fail or error
+#     FAIL  Guarded.test_a_held_checkout_lock_refuses_a_build_before_the_directory_exists
+#           ERROR: TypeError: 'NoneType' object is not subscriptable
+#     FAIL  OwnedDirectories.test_the_build_phases_refuse_while_the_checkout_is_being_built_and_create_nothing
+#           FAIL: [{}] AssertionError: True is not false
+#     FAIL  OwnedDirectories.test_the_checkout_lock_is_asked_for_first_and_neither_lock_waits
+#           FAIL: AssertionError: 'checkout lock' not found in 'another `ab.py` run holds /var/folders/h2/6xxl56j97cnfzthk1mgmpz540000gn/T/tmp2q11xdev/out/.ab.loc
+
+# A second REAL process on the same locks (the spec uses a second `open()` of the same file in one process, which `flock` also treats
+# as another owner). A holder process takes the lock files with `fcntl.flock(f, LOCK_EX | LOCK_NB)` and sleeps; then each runner is
+# started as a command from the worktree (it never gets past the lock: no git, no rustc, no cargo, no measurement is asked for;
+# the tree was dirty, so a build phase would have refused before building even if a lock had been free by accident); then the
+# holder is killed with SIGKILL. Output, verbatim (the same lines in the same order):
+# 1. the lock of --out, for every runner and phase (one holder process owns the four lock files of the same --out)
+while the holder lives, harness.exclusive(.ab.lock) says owned = False
+while the holder lives, harness.exclusive(.run.lock) says owned = False
+while the holder lives, harness.exclusive(.native.lock) says owned = False
+while the holder lives, harness.exclusive(.mutate.lock) says owned = False
+ab.py --phase measure: exit 1; stdout lines 1; status REFUSED; --out before ['.ab.lock', '.mutate.lock', '.native.lock', '.run.lock', 'manifest.json'] after ['.ab.lock', '.mutate.lock', '.native.lock', '.run.lock', 'manifest.json']; reason: another `ab.py` run holds /tmp/round6-gizmo-perf-demo/owned-out/.ab.lock: it owns manifest.json, manifest.build.json, the round, warmup and verdict files, exes/, baseline-src/ and attempts/ of this --out, so nothing here was read or written (not waited for)
+ab.py --phase build: exit 1; stdout lines 1; status REFUSED; --out before ['.ab.lock', '.mutate.lock', '.native.lock', '.run.lock', 'manifest.json'] after ['.ab.lock', '.mutate.lock', '.native.lock', '.run.lock', 'manifest.json']; reason: another `ab.py` run holds /tmp/round6-gizmo-perf-demo/owned-out/.ab.lock: it owns manifest.json, manifest.build.json, the round, warmup and verdict files, exes/, baseline-src/ and attempts/ of this --out, so nothing here was read or written (not waited for)
+run.py --phase measure: exit 1; stdout lines 1; status REFUSED; --out before ['.ab.lock', '.mutate.lock', '.native.lock', '.run.lock', 'manifest.json'] after ['.ab.lock', '.mutate.lock', '.native.lock', '.run.lock', 'manifest.json']; reason: another `run.py` run holds /tmp/round6-gizmo-perf-demo/owned-out/.run.lock: it owns manifest.json, manifest.build.json, build.json, report.json, stdout.txt, stderr.txt and exes/ of this --out, so nothing here was read or written (not waited for)
+run.py --phase build: exit 1; stdout lines 1; status REFUSED; --out before ['.ab.lock', '.mutate.lock', '.native.lock', '.run.lock', 'manifest.json'] after ['.ab.lock', '.mutate.lock', '.native.lock', '.run.lock', 'manifest.json']; reason: another `run.py` run holds /tmp/round6-gizmo-perf-demo/owned-out/.run.lock: it owns manifest.json, manifest.build.json, build.json, report.json, stdout.txt, stderr.txt and exes/ of this --out, so nothing here was read or written (not waited for)
+native.py --phase run: exit 1; stdout lines 1; status REFUSED; --out before ['.ab.lock', '.mutate.lock', '.native.lock', '.run.lock', 'manifest.json'] after ['.ab.lock', '.mutate.lock', '.native.lock', '.run.lock', 'manifest.json']; reason: another `native.py` run holds /tmp/round6-gizmo-perf-demo/owned-out/.native.lock: it owns manifest.json, manifest.build.json, build.json, report.json and exes/ of this --out, so nothing here was read or written (not waited for)
+native.py --phase build: exit 1; stdout lines 1; status REFUSED; --out before ['.ab.lock', '.mutate.lock', '.native.lock', '.run.lock', 'manifest.json'] after ['.ab.lock', '.mutate.lock', '.native.lock', '.run.lock', 'manifest.json']; reason: another `native.py` run holds /tmp/round6-gizmo-perf-demo/owned-out/.native.lock: it owns manifest.json, manifest.build.json, build.json, report.json and exes/ of this --out, so nothing here was read or written (not waited for)
+mutate.py --phase prepare: exit 1; stdout lines 1; status REFUSED; --out before ['.ab.lock', '.mutate.lock', '.native.lock', '.run.lock', 'manifest.json'] after ['.ab.lock', '.mutate.lock', '.native.lock', '.run.lock', 'manifest.json']; reason: another `mutate.py` run holds /tmp/round6-gizmo-perf-demo/owned-out/.mutate.lock: it owns manifest.json, manifest.final.json and exes/ of this --out, so nothing here was read or written (not waited for)
+mutate.py --phase time: exit 1; stdout lines 1; status REFUSED; --out before ['.ab.lock', '.mutate.lock', '.native.lock', '.run.lock', 'manifest.json'] after ['.ab.lock', '.mutate.lock', '.native.lock', '.run.lock', 'manifest.json']; reason: another `mutate.py` run holds /tmp/round6-gizmo-perf-demo/owned-out/.mutate.lock: it owns manifest.json, manifest.final.json and exes/ of this --out, so nothing here was read or written (not waited for)
+after the holder was killed with SIGKILL, harness.exclusive(.ab.lock) says owned = True
+after the holder was killed with SIGKILL, harness.exclusive(.run.lock) says owned = True
+after the holder was killed with SIGKILL, harness.exclusive(.native.lock) says owned = True
+after the holder was killed with SIGKILL, harness.exclusive(.mutate.lock) says owned = True
+manifest.json untouched: written by the run that owns this directory
+
+# 2. the lock of the CHECKOUT, for every build phase (a holder owns it; each --out below does not exist)
+checkout lock file: tessel-gizmo-perf-checkout-310a9a23b0c67eae.lock (under /tmp), one per resolved checkout path
+while the holder lives, harness.exclusive(checkout lock) says owned = False
+ab.py --phase build: exit 1; stdout lines 1; status REFUSED; --out created: False; reason: another run holds the checkout lock /tmp/tessel-gizmo-perf-checkout-310a9a23b0c67eae.lock: it builds from, or edits, this checkout (/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-7de8f7a1), and a build started now would build whatever that run has in the tree; nothing was read or written (not waited for)
+run.py --phase build: exit 1; stdout lines 1; status REFUSED; --out created: False; reason: another run holds the checkout lock /tmp/tessel-gizmo-perf-checkout-310a9a23b0c67eae.lock: it builds from, or edits, this checkout (/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-7de8f7a1), and a build started now would build whatever that run has in the tree; nothing was read or written (not waited for)
+native.py --phase build: exit 1; stdout lines 1; status REFUSED; --out created: False; reason: another run holds the checkout lock /tmp/tessel-gizmo-perf-checkout-310a9a23b0c67eae.lock: it builds from, or edits, this checkout (/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-7de8f7a1), and a build started now would build whatever that run has in the tree; nothing was read or written (not waited for)
+mutate.py --phase prepare: exit 1; stdout lines 1; status REFUSED; --out created: False; reason: another run holds the checkout lock /tmp/tessel-gizmo-perf-checkout-310a9a23b0c67eae.lock: it builds from, or edits, this checkout (/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-7de8f7a1), and a build started now would build whatever that run has in the tree; nothing was read or written (not waited for)
+control, run.py --phase measure (builds nothing): exit 1; status REFUSED; the reason does not name the checkout lock: True
+after the holder was killed with SIGKILL, harness.exclusive(checkout lock) says owned = True
+lock files still there: True

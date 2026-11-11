@@ -12,7 +12,8 @@ restores the file and checks its hash:
   extra_plan_per_handler  every gizmo plan is built twice          -> structural (core) AND time must fail
   delay_1ms_per_handler   `apply_gizmo` sleeps 1 ms               -> structural must PASS (no extra layout: the
                                                                       counter cannot see a delay), time must FAIL
-  memo_off                `overlay_memo_hit` never hits            -> host idle-window test must fail
+  memo_off                `overlay_memo_hit` never hits            -> host idle-window test must fail (its layout count
+                                                                      of the repeated syncs, or its memo-hit assertions)
   replan_per_tick         `workflow_tick` asks for the overlay     -> host idle-window test must fail
 
 WHAT "KILLED" MEANS. A mutant is killed by a detector only when the run (a) exited non-zero, (b) lists the NAMED test
@@ -21,7 +22,15 @@ budget lines...) and (d) for the time detector, the machine guards read AFTER th
 INCONCLUSIVE. Everything else is NOT a kill and is recorded with its own outcome: a compile error, a timeout, a
 missing executable or command (exit 127), a full disk, zero tests, no test result, a panic of some other test, a
 failure of the right test with another message, a busy lock, a failed guard. A detector that must NOT see a mutant
-(`delay_1ms_per_handler` structurally) must run its named tests and see them pass (`SURVIVED`).
+(`delay_1ms_per_handler` structurally) must run its named tests and see them pass (`SURVIVED`). The accepted messages
+stay strict: for `memo_off` they are the three assertions of the host test that a memo that never hits breaks, nothing
+looser (a compile error, a timeout and "the journey ran" are still not a kill).
+
+A clean tree is a precondition of BOTH phases, not a courtesy. `prepare` refuses a dirty working tree before it mutates
+anything (the executables of the mutants would be built from that tree, not from HEAD, and the verdict would be filed
+under HEAD); `time` refuses a `prepare` whose manifest records a non-empty `identity.dirty` or none at all (the tree
+reading clean now does not make the executables HEAD's). An identity git could not answer (`unavailable: ...`) and a file
+git cannot compare with HEAD are refusals as well, never two equal strings.
 
 Time runs use the controlled release run (`scene_gizmo_perf_budget`, judged against `budgets.json`) under the
 performance lock, taken once for all of them and never waited for (BLOCKED, exit 3). Every child has a finite timeout.
@@ -33,7 +42,10 @@ over `prepare`'s `manifest.json`. It also refuses a `prepare` that is not finish
 (it is never silently dropped), and a verdict over no mutant at all is never a pass. It measures an executable only
 when `prepare` recorded the hash of that very file (else `MISSING_EXECUTABLE`), and `prepare` begins by emptying
 `--out/exes`, so no executable of an earlier `prepare` can stand in for one this run did not build. A `time` run in which
-a mutant was BLOCKED or had no usable executable keeps `--out/exes`, so the same `prepare` can be measured again.
+ANY evaluated timed mutant ended with no answer (`NOT_AN_ANSWER`: blocked, no usable executable, a guard that failed after
+the run, an infrastructure error, inconclusive...) keeps every executable, so the same `prepare` can be measured again. A
+run that answered for everything it evaluated removes the executables of THOSE mutants only (an `--only` leaves the
+others for a later run), and a run that evaluated no timed mutant removes nothing.
 
 One run per `--out` at a time, for BOTH phases: right after creating `--out` (before anything in it is read, written or
 removed, a refusal's own manifest included) each takes an exclusive, non-blocking `flock` on `--out/.mutate.lock` and keeps
@@ -42,7 +54,10 @@ the holder owns `manifest.json`, `manifest.final.json` and `exes/`. Without it a
 performance lock) could replace or empty `exes/` after `time` hashed an executable and before it ran it, and the result
 would be filed under another `prepare`'s manifest; a second hash check cannot close that window. The lock is taken before
 the performance lock and neither is waited for, so two runs cannot wait on each other. It is a `flock`, so a run that dies
-(SIGKILL included) never leaves `--out` locked; the lock file itself stays, on purpose (see `harness.exclusive`).
+(SIGKILL included) never leaves `--out` locked; the lock file itself stays, on purpose (see `harness.exclusive`). `prepare`
+BUILDS (and edits the checkout's own source files), so before `--out/.mutate.lock` it also takes the per-CHECKOUT build
+lock of `harness.guarded` (one lock per checkout, in `/tmp`, shared with the builds of `run.py`, `ab.py` and `native.py`):
+two builds of one checkout, from different `--out`, would otherwise edit and compile the same tree at once.
 
 Exit 0 only when every mutant was detected by every detector that must detect it and passed every one that must not;
 1 when a mutant is not as expected; 3 when anything was BLOCKED or infrastructure failed (never a pass).
@@ -50,11 +65,9 @@ Exit 0 only when every mutant was detected by every detector that must detect it
 import argparse
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import shutil
-import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -123,9 +136,15 @@ EXPECT = {
         'tests': [TIME_TEST], 'messages': BUDGET_LINES, 'min_lines': 1},
     ('delay_1ms_per_handler', 'time'): {
         'tests': [TIME_TEST], 'messages': BUDGET_LINES, 'min_lines': 3},
+    # The three assertions of the host test that a memo that never hits breaks, in the order the test checks them: with the
+    # memo off the FIRST to fail is the layout count of the repeated syncs (a sync that is not a memo hit lays the scene
+    # out; `scene_gizmo_perf_tests.rs`, the `end.0 - start.0 <= SYNCS` assertion), which the first real run (M1 of
+    # `measure-12bc8da`) hit and the runner did not accept as a kill. "the journey ran" (the fixture itself failed), a
+    # compile error and a timeout are not in this list, so they are still not a kill.
     ('memo_off', 'host'): {
         'tests': ['an_idle_window_plans_nothing_per_tick_and_the_overlay_stays_memoised'],
-        'messages': [r'the overlay was asked for again', r'every sync of an unchanged state is a memo hit']},
+        'messages': [r'a sync of an unchanged state laid the scene out more than once',
+                     r'the overlay was asked for again', r'every sync of an unchanged state is a memo hit']},
     ('replan_per_tick', 'host'): {
         'tests': ['an_idle_window_plans_nothing_per_tick_and_the_overlay_stays_memoised'],
         'messages': [r'idle ticks laid the scene out']},
@@ -145,11 +164,23 @@ RESULT_LINE = re.compile(r'test result: (ok|FAILED)\. (\d+) passed; (\d+) failed
 
 
 def committed_hash(path):
-    return harness.out(['git', 'rev-parse', f'HEAD:{path}'])
+    """The blob id `HEAD` holds for `path`, or `None` when git cannot say. Never a failure text: two failed reads used to
+    be two equal strings (`harness.out` printed an empty line or `unavailable: ...` for each), and "the file is at HEAD"
+    was then decided by `'' == ''`."""
+    ok, text = harness.git_strict(['rev-parse', f'HEAD:{path}'])
+    return text if ok and text else None
 
 
 def file_hash(path):
-    return harness.out(['git', 'hash-object', path])
+    """The blob id of the file `path` as it is now, or `None` when git cannot say (see `committed_hash`)."""
+    ok, text = harness.git_strict(['hash-object', path])
+    return text if ok and text else None
+
+
+def at_head(path):
+    """True only when git answered BOTH questions and the file is byte for byte `HEAD`'s: no answer is never a match."""
+    now, committed = file_hash(path), committed_hash(path)
+    return now is not None and now == committed
 
 
 class AnchorNotUnique(SystemExit):
@@ -183,7 +214,10 @@ class Mutated:
     def __exit__(self, *exc):
         self.path.write_bytes(self.original)
         restored = file_hash(self.mutant['file'])
-        self.log.update(restored_blob=restored, restored=restored == committed_hash(self.mutant['file']),
+        committed = committed_hash(self.mutant['file'])
+        # A git that cannot answer proves nothing: the file was put back, but "restored" is only recorded as true when both
+        # hashes exist and agree (the run then stops loudly, below, instead of trusting two missing answers).
+        self.log.update(restored_blob=restored, restored=restored is not None and restored == committed,
                         interrupted_by=repr(exc[1]) if exc[1] is not None else None)
         if not self.log['restored']:
             raise SystemExit(f"{self.mutant['file']} was NOT restored to HEAD: stop and inspect")
@@ -244,7 +278,9 @@ def classify(done, expect=None, must_pass=(), guard_after=None):
 
 
 def detect(command, expect=None, must_pass=()):
-    done = harness.run_bounded(command, timeout=harness.TEST_TIMEOUT_S)
+    # `cargo test` builds the mutated tree: no `TESSEL_GIZMO_PERF_*` (an exported `..._BLESS=1` makes the structural test
+    # rewrite its golden file and pass without asserting) and no target directory of the caller's reach it.
+    done = harness.run_bounded(command, env=harness.child_env(build=True), timeout=harness.TEST_TIMEOUT_S)
     outcome, detail = classify(done, expect, must_pass)
     text = done.text
     return {'command': command, **done.record(), 'outcome': outcome, 'detail': detail,
@@ -285,7 +321,10 @@ def overall(manifest):
 def run_time(exe, report, out, name):
     """One controlled run of a mutant's executable. Returns the record (never raises for the child)."""
     Path(report).unlink(missing_ok=True)
-    env = {**os.environ, 'TESSEL_GIZMO_PERF_OUT': str(report)}
+    # What THIS runner sets, and only that: no inherited `TESSEL_GIZMO_PERF_*` (a `..._CALIBRATE=1` in the caller's
+    # environment would run the time detector without asserting a budget, and it could then never be killed).
+    set_here = {'TESSEL_GIZMO_PERF_OUT': str(report)}
+    env = harness.child_env(set_here)
     done = harness.run_bounded([str(exe), '--ignored', '--test-threads=1', '--nocapture', TIME_TEST], cwd=ROOT,
                                env=env, timeout=harness.MEASURE_TIMEOUT_S)
     (out / f'{name}.time.stdout.txt').write_text(done.stdout)
@@ -295,6 +334,7 @@ def run_time(exe, report, out, name):
     outcome, detail = classify(done, EXPECT[(name, 'time')], guard_after=after)
     failures = [l.strip() for l in done.text.splitlines() if any(re.search(m, l) for m in BUDGET_LINES)]
     return {'outcome': outcome, 'detail': detail, 'status': outcome, **done.record(),
+            'env': set_here, 'env_dropped': harness.dropped_env(),
             'failures_seen': failures[:24], 'failure_lines': len(failures), 'guard_after': scratch['guard_after'],
             'load_after': scratch['machine_after']['loadavg'],
             'stdout_sha256': harness.sha256(out / f'{name}.time.stdout.txt')}
@@ -312,14 +352,13 @@ def main(argv=None):
                              '(no build, no waiting)')
     args = parser.parse_args(argv)
     out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
-    # The directory is owned before anything in it is touched, and until this returns (the `with` is the `finally`: also
-    # on SIGTERM/SIGINT, which are `SystemExit`). Both locks never wait, this one first, so no run can wait on another.
-    with harness.exclusive(out / OUT_LOCK) as owned:
-        if not owned:
-            return harness.die(1, {'status': 'REFUSED', 'reason': (
-                f'another `mutate.py` run holds {out / OUT_LOCK}: it owns manifest.json, manifest.final.json and exes/ '
-                'of this --out, so nothing here was read or written (not waited for)')}, None)
+    # The checkout (`prepare` only: it builds from the checkout with a mutant IN its tree) and then the directory are
+    # owned before anything in either is touched, and until this returns (the `with` is the `finally`: also on
+    # SIGTERM/SIGINT, which are `SystemExit`). The locks never wait, the checkout's first, so no run can wait on another.
+    with harness.guarded(out, OUT_LOCK, 'mutate.py', 'manifest.json, manifest.final.json and exes/',
+                         builds=args.phase == 'prepare') as refusal:
+        if refusal:
+            return harness.die(1, refusal, None)
         return run_phase(args, out)
 
 
@@ -332,10 +371,22 @@ def run_phase(args, out):
     # `manifest.json` is the `prepare` phase's (what `time` reads); the `time` phase writes only `manifest.final.json`, so a
     # refusal of a later `time` run can never replace a finished `prepare` with a manifest that has no mutants.
     refusal_path = out / ('manifest.json' if args.phase == 'prepare' else 'manifest.final.json')
+    problem = harness.identity_problem(manifest['identity'])
+    if problem:  # a checkout git cannot name: nothing is mutated or measured for it (there is no `--allow-dirty` here)
+        manifest.update(status='REFUSED', reason=problem)
+        return harness.die(1, manifest, refusal_path)
+    if args.phase == 'prepare' and manifest['identity']['dirty']:
+        # Before any mutation. The mutant is built from the whole checkout, so a dirty tree elsewhere (a changed runner,
+        # a changed crate) would be built into the executables and the verdict filed under a HEAD it does not describe.
+        manifest.update(status='REFUSED', reason=(
+            'the working tree is dirty: the executables of the mutants would be built from it, not from HEAD, and their '
+            f"verdict would be filed under HEAD ({manifest['identity']['dirty'].splitlines()[0][:120]})"))
+        return harness.die(1, manifest, refusal_path)
     for name in names:
         path = MUTANTS[name]['file']
-        if file_hash(path) != committed_hash(path):
-            manifest.update(status='REFUSED', reason=f'{path} is not at HEAD: mutants start from a committed tree')
+        if not at_head(path):
+            manifest.update(status='REFUSED', reason=f'{path} is not at HEAD (or git cannot say): mutants start from a '
+                                                     'committed tree')
             return harness.die(1, manifest, refusal_path)
     exes_dir = out / 'exes'
     if args.phase == 'prepare' and exes_dir.exists():
@@ -362,10 +413,18 @@ def run_phase(args, out):
                         record['host'] = detect(HOST, EXPECT.get((name, 'host')), MUST_PASS.get((name, 'host'), ()))
                     if 'time' in mutant['detectors']:
                         command, done, exe = runner.build()
-                        record['time_build'] = {'command': command, **done.record(),
-                                                'executable_sha256': harness.sha256(exe) if exe else None}
-                        if exe and done.returncode == 0:
-                            shutil.copy(exe, exes_dir / f'{name}.exe')
+                        record['time_build'] = {'command': command, **done.record(), 'executable_sha256': None,
+                                                'env_dropped': harness.dropped_env(build=True)}
+                        try:
+                            if exe:  # the hash is of the file the build named; `time` measures only a copy with that hash
+                                record['time_build']['executable_sha256'] = harness.sha256(exe)
+                            if exe and done.returncode == 0:
+                                shutil.copy(exe, exes_dir / f'{name}.exe')
+                        except OSError as error:
+                            # The path cargo printed can be gone (a managed target was pruned): no hash, no copy, and
+                            # `time` then says MISSING_EXECUTABLE for this mutant, not a traceback here.
+                            record['time_build'].update(executable_sha256=None, copy_error=f'{exe}: {error}')
+                            (exes_dir / f'{name}.exe').unlink(missing_ok=True)
             too_big = harness.artifact_reason(exes_dir)
             if too_big:
                 manifest.update(status='REFUSED', reason=too_big)
@@ -383,11 +442,20 @@ def run_phase(args, out):
         manifest.update(status='REFUSED', reason='no `prepare` manifest in --out')
         return harness.die(1, manifest, out / 'manifest.final.json')
     previous = json.loads(previous_path.read_text())
-    if previous['identity']['head'] != manifest['identity']['head'] or \
-            previous['identity']['tree'] != manifest['identity']['tree']:
-        manifest.update(status='REFUSED', reason='`prepare` ran for another HEAD/tree: its executables are not these')
+    # `same_head` also refuses a `prepare` manifest whose identity names no usable head/tree (two empty answers are not
+    # "the same HEAD").
+    if not harness.same_head(previous['identity'], manifest['identity']):
+        manifest.update(status='REFUSED', reason='`prepare` ran for another HEAD/tree (or recorded none): its '
+                                                 'executables are not these')
         return harness.die(1, manifest, out / 'manifest.final.json')
     manifest['prepare_identity'] = previous['identity']
+    if previous['identity'].get('dirty', 'not recorded') != '':
+        # An empty string is the only clean record: a `prepare` that ran on a dirty tree, or whose manifest does not say it
+        # did not, built executables that are not HEAD's, and the tree reading clean now does not change what they are.
+        manifest.update(status='REFUSED', reason='`prepare` ran on a dirty working tree (or its manifest does not say '
+                                                 'it was clean): its executables are not HEAD\'s, so their time verdict '
+                                                 'cannot be filed under HEAD')
+        return harness.die(1, manifest, out / 'manifest.final.json')
     if previous.get('status') != 'PREPARED':
         manifest.update(status='REFUSED', reason=f"the manifest in --out is not a finished `prepare` "
                                                  f"(status {previous.get('status')!r})")
@@ -429,9 +497,18 @@ def run_phase(args, out):
                 manifest['mutants'][name]['time'] = run_time(exes_dir / f'{name}.exe', out / f'{name}.report.json',
                                                              out, name)
     manifest['machine_after'] = harness.machine()
-    if not any(r.get('time', {}).get('outcome') in ('BLOCKED', 'MISSING_EXECUTABLE')
-               for r in manifest['mutants'].values()):
-        shutil.rmtree(exes_dir, ignore_errors=True)  # discardable, 20 MB each; kept when nothing ran
+    # The executables are discardable (20 MB each) only once they have said what they had to say. A run in which ANY
+    # evaluated mutant ended with no answer (blocked, no executable, a guard that failed after the run, an infrastructure
+    # error, inconclusive...) keeps every executable, so the same `prepare` can be measured again. A run that answered for
+    # all it evaluated removes the executables of THOSE mutants only: the ones of mutants an `--only` left out are the
+    # business of a later run, and a run that evaluated no timed mutant removes nothing.
+    evaluated = {name: record.get('time', {}).get('outcome') for name, record in manifest['mutants'].items()
+                 if 'time' in MUTANTS[name]['detectors']}
+    if not any(outcome is None or outcome in NOT_AN_ANSWER for outcome in evaluated.values()):
+        for name in evaluated:
+            (exes_dir / f'{name}.exe').unlink(missing_ok=True)
+        if exes_dir.is_dir() and not any(exes_dir.iterdir()):
+            exes_dir.rmdir()
     status, code = overall(manifest)
     manifest.update(status=status, exit=code, utc_end=harness.utc())
     harness.write(out / 'manifest.final.json', manifest)
