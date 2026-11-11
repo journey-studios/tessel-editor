@@ -377,7 +377,6 @@ export const createRuntime = ({
   const renderFrame = async (request, arrival = null) => {
     const started = performance.now();
     framesQueued -= 1;
-    if (arrival) backlog.frames -= 1;
     const { id, revision, plan, output, probes = [] } = request;
     // Additive field of bridge v1: `preview` lets a frame sequence draw its attached proxy; absent
     // (every host that predates it, and every explicit/export request) means the original.
@@ -438,11 +437,12 @@ export const createRuntime = ({
         // proxy picture from an original one (and see a proxy that had to be dropped).
         source: { quality, ...sources },
       };
-      // Additive: the page's own background work since the last picture (see `noteSpan`); absent when there was none.
-      const spans = drainSpans();
-      if (spans.length > 0) message.runtime_spans = spans;
       // The host that owns the filesystem writes the file; the page only encodes it.
       if (output.png) message.png_data = canvas.toDataURL('image/png').split(',')[1];
+      // Additive: the page's own background work since the last picture (see `noteSpan`); absent when there was none. Drained after the
+      // encode: `ago_ms` counts back from this hand-over, and the PNG encode is time that has passed since a span ended.
+      const spans = drainSpans();
+      if (spans.length > 0) message.runtime_spans = spans;
       if (arrival && options.timing) {
         // Additive (`telemetry.timing`): the page's own account of this frame, durations on its clock. `queue_ms` is the
         // wait in the page's serial queue before the frame started (which `total_ms` leaves out), `held_ms` all the time
@@ -468,6 +468,8 @@ export const createRuntime = ({
       send({ type: 'frame.failed', id, revision, error: failureOf(error, lostDuringFrame()) });
     } finally {
       cancelled.delete(id);
+      // Counted as ahead of a later request until it is answered, not only until it starts: a frame waiting at an await is still in the way.
+      if (arrival) backlog.frames -= 1;
     }
   };
 
@@ -588,15 +590,16 @@ export const createRuntime = ({
       if (message.scenes !== false) {
         backlog.warms += 1;
         renderQueue = renderQueue.then(async () => {
-          backlog.warms -= 1;
-          if (disposed || contextLost) return;
           try {
+            if (disposed || contextLost) return;
             const warmStarted = performance.now();
             const started = await ensureCompositor().warmScenes({ plan: message.plan, assets, onWarmed: (item) => warmDraws.record(item) });
             noteSpan({ k: 'warm', queued_ms: warmStarted - queuedAt, ms: performance.now() - warmStarted, started });
             scheduleWarmDraws();
           } catch {
             // Best effort: a frame that needs the scene reports what is wrong with it.
+          } finally {
+            backlog.warms -= 1;
           }
         });
       }

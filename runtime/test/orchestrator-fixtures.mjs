@@ -62,8 +62,9 @@ export const fakeClock = () => {
 /**
  * What index.js needs of a Compositor and nothing more. It does not draw: `log` keeps the order in which the page asked it for things
  * (`draw`, `upload`, `warm_scenes`, `warm_draw`, `dispose`), and a few knobs make the world misbehave on purpose (`failUploads`,
- * `warmDrawOutcome`, `warmScenesError`, `lost`, `onUpload`). A still layer goes through the REAL store (`stillTexture`: reused or created,
- * pinned, counted), so what a frame finds is what the real compositor would find. The GPU is a set of textures (`onGpu`); one that a frame
+ * `warmDrawOutcome`, `warmScenesError`, `lost`, `onUpload`) or hold it still (`drawGate`, `warmGate`: a promise `draw` / `warmScenes`
+ * waits for). A still layer goes through the REAL store (`stillTexture`: reused or created, pinned, counted), so what a frame finds
+ * is what the real compositor would find. The GPU is a set of textures (`onGpu`); one that a frame
  * had to put there is a `frameUpload`: exactly the cost the pre-upload moves out of the frame.
  */
 export class FakeCompositor {
@@ -81,6 +82,8 @@ export class FakeCompositor {
     this.frameUploads = 0;
     this.failUploads = 0;
     this.onUpload = null;
+    this.drawGate = null;
+    this.warmGate = null;
     this.warming = new Map();
     this.sorts = [];
     this.warmDrawOutcome = 'drawn';
@@ -153,6 +156,7 @@ export class FakeCompositor {
     try {
       if (aborted()) throw new RuntimeError('cancelled', 'The frame was superseded');
       this.log.push('draw');
+      if (this.drawGate) await this.drawGate;
       for (const layer of framePlan.layers) {
         if (layer.kind !== 'image') continue;
         if (!this.retain) {
@@ -174,6 +178,7 @@ export class FakeCompositor {
   /** Starts a sort per scene layer; the test decides when it ends (`sorts[i].resolve()`). */
   async warmScenes({ plan: warmPlan, onWarmed }) {
     this.log.push('warm_scenes');
+    if (this.warmGate) await this.warmGate;
     if (this.warmScenesError) throw this.warmScenesError;
     if (!this.retain || this.lost) return 0;
     let started = 0;
