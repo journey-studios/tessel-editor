@@ -30,7 +30,10 @@ e do mesmo bundle), redimensionar e diálogo.
 | `deep` | `small` + cadeia de 24 pais girados + 12 anisotrópicos | 44 | pais transformados (matemática da direção local e da escala) |
 
 As contagens são as de `corpus.manifest.json` (a raiz entra). O gerador é `scripts/gizmo-perf/corpus.py`
-(`--check` falha se um arquivo versionado não é o que o gerador produz).
+(`--check` falha se um arquivo versionado não é o que o gerador produz). **O manifesto fixa o sha256 do próprio
+`corpus.py`:** qualquer edição do gerador, até de comentário, exige regenerar o manifesto
+(`python3 scripts/gizmo-perf/corpus.py`, sem `--check`); senão `--check` e o teste
+`the_corpus_the_journey_and_the_generator_match_their_manifest` falham.
 
 Limites declarados, que esta suíte **não** esconde:
 
@@ -216,7 +219,7 @@ lacunas e não deve ser confundida com os IDs BL015.24 a BL015.36**, que são d�
 9. [A] **Tetos do host com folga** (limite m7): um plano extra passa onde o medido é menor; o controle de "outra thread" só cobre o core. Aberto (BL015.30).
 10. [B] **`within()` do teste de orçamento** não exige que todo tipo orçado tenha sido medido. Compilado, executado uma vez. Aberto.
 11. [B] **Nits do teste de orçamento e dos runners:** a injeção exige `--test-threads=1` (falta comentário); o runner de mutantes não roda os testes sem mutar antes de afirmar um kill; `MAX_BLOCK_SPREAD` × `budgets.json`; a guarda pós-corrida pode se autodisparar (uma corrida de ~1 CPU soma ~1 à carga de 1 min; recusou em 5 das 8 execuções guardadas de `12bc8da`). Aberto.
-12. [A] **Cabeçalho de `corpus.py`** dizia 5 nós e 605/617. Corrigido nesta PR para 6/618/44, os números do manifesto. Conferir no head final.
+12. [A] **Cabeçalho de `corpus.py`** dizia 5 nós e 605/617. Corrigido nesta PR para 6/618/44, os números do manifesto (o manifesto foi regenerado junto: só o sha do gerador mudou).
 13. [B] **(a)** `--allow-dirty` muda status e exit de modos diferentes em cada runner; **(b)** o runner de mutantes apagava `exes/` depois de uma corrida inválida: runner corrigido, a validar; **(c)** a spec não cobre `--baseline` e `--allow-other-baseline` do A/B; **(d)** o aviso "Docstring Coverage" do bot não foi tratado. (a), (c), (d) abertos.
 14. [B] **Não existe comparação baseline × candidato para host, renderer nem WebView.** O A/B só roda o teste de orçamento do core; ele não mediria a mudança do monitor desta PR (BL015.22). Sem desenho. Aberto.
 15. [B] **Build do A/B** morreu uma vez quando o executável do candidato sumiu após o build da baseline (poda de cache; causa não isolada). Runner corrigido (cópia imediata, estados explícitos), a validar. Aberto: manifesto `BUILT` sem `exit` nem `utc_end`.
