@@ -290,6 +290,34 @@ test('Escape, a lost capture and a resize behave as for the node gizmo', async (
   assert.ok(Math.abs(up.point.u - 0.6) < 1e-6 && Math.abs(up.point.v - 0.5) < 1e-6, JSON.stringify(up.point));
 });
 
+test('Escape ends a drag of a handle the host holds (fx.active) and posts nothing when no drag is open', async (t) => {
+  const runtime = await open(t);
+  if (!runtime) return;
+  // No press on the page, no drag named by the overlay: Escape has nothing to end.
+  await enable(runtime);
+  await runtime.page.keyboard.press('Escape');
+  await settle(runtime);
+  assert.deepEqual(pointerMessages(runtime), [], 'no drag, no cancel');
+
+  // The host holds a drag of `radius` (begun by a script): the overlay names it in `fx.active`
+  // and Escape asks the host to end it, under the stamp of the clip.
+  await runtime.send({ type: 'overlay.set', overlay: overlayJson(fxBlock({ active: 'radius' })), ack: true });
+  await runtime.waitFor((m) => m.type === 'overlay.drawn' && m.fx?.active === 'radius', 'the active handle drawn');
+  await runtime.page.keyboard.press('Escape');
+  await settle(runtime);
+  const messages = pointerMessages(runtime);
+  assert.deepEqual(messages.map((m) => [m.phase, m.reason]), [['cancel', 'escape']]);
+  assert.deepEqual(messages[0].stamp, STAMP);
+
+  // The host answered by clearing the drag: the next Escape is silent again.
+  runtime.messages.length = 0;
+  await runtime.send({ type: 'overlay.set', overlay: overlayJson(), ack: true });
+  await runtime.waitFor((m) => m.type === 'overlay.drawn', 'the overlay at rest');
+  await runtime.page.keyboard.press('Escape');
+  await settle(runtime);
+  assert.deepEqual(pointerMessages(runtime), []);
+});
+
 test('a handle with keys is dimmed, does not light up, and the page still posts the press for the core to refuse', async (t) => {
   const runtime = await open(t);
   if (!runtime) return;

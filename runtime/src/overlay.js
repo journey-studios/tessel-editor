@@ -873,8 +873,9 @@ export const attachOverlay = ({ canvas, post, win = window, doc = document }) =>
     if (event.key !== 'Escape') return;
     if (session.pressed) {
       cancel('escape');
-    } else if (overlay?.active) {
-      // A drag the host holds without a press here (begun by a script): Escape still ends it.
+    } else if (overlay?.active || overlay?.fx?.active) {
+      // A drag the host holds without a press here (begun by a script): Escape still ends it. The
+      // drag of a vignette handle is named by `fx.active`; the node gizmo's, by `active`.
       session.emit('cancel', { reason: 'escape' });
     }
   });

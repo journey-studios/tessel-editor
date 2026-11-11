@@ -120,7 +120,9 @@ Regras:
   desenha e posta `overlay.pointer` com `{u,v}` e o carimbo; o core decide. O adapter `scene_gizmo.rs` compara o carimbo
   (acrescenta `epoch` e `selection`), conta mensagens obsoletas (`overlay.stale`) e traduz para `scene.pointer.*`.
 - Escape, perda de foco, diálogo (a WebView some), seleção de outro clipe, troca de cena, undo/redo e recarga da página
-  cancelam o arrasto sem commit. Um diálogo novo continua marcando `Workflow::has_dialog`.
+  cancelam o arrasto sem commit. O Escape vale também para o arrasto que o host mantém sem press na página (aberto por
+  `scene.pointer.down` de um script): a página o enxerga em `fx.active` do overlay e posta `cancel` (`reason: escape`);
+  sem arrasto aberto o Escape não posta nada. Um diálogo novo continua marcando `Workflow::has_dialog`.
 
 ## Evidências e status
 
@@ -129,7 +131,7 @@ Regras:
 | Biblioteca | `crates/core/tests/scene_fx_handles.rs` + `scene_fx_target.rs` (alvo, obsolescência e consulta = clique; ajudantes em `scene_fx_handles_support/`) + testes de unidade de `handles.rs`: posição dos handles contra `vignette_shade` (0 em `radius`, 1 em `radius+softness`) em 16:9, 1:1 e 9:16 com `roundness` 0/0,6/1; linhas de nível das elipses; ida e volta; arrasto ≡ `scene.fx.edit` bit a bit (radius, softness, centro); uma entrada, no-op, undo/redo, cancel; clamp; chaves; fora do quadro; clipe fora do intervalo; só vinheta; troca de alvo nos dois sentidos sem arrasto-fantasma; undo sob arrasto; clipe removido/cena desanexada; leitura/probe; overlay/carimbo/resumo; capacidades | passam (15 + 7 testes de integração, 9 unidades) |
 | Headless real | o mesmo arquivo (processo `tessel-headless` real) e `scripts/scene-fx-handles-proof.py --surfaces headless` | passam (18 verificações, oráculo escrito no script; `final_evidence: true` em árvore limpa) |
 | Janela | GPUI `crates/desktop/src/workstation/scene_fx_handles_tests.rs` (7); `scripts/scene-fx-handles-proof.py --surfaces native` (26 verificações): ação do painel = `scene.fx.select`, `monitor.gizmo target: fx`, página desenhou handles e elipses (pixels do canvas), handle ativo, imagem do monitor segue o candidato e volta com o undo, diálogo cancela o arrasto | passam |
-| Página/JS | `runtime/test/fx-handles-overlay.test.mjs` (8, Chrome real, mouse real): parse, desenho, hit, prioridade, arrasto, Escape, captura perdida, resize, handle apagado | passam |
+| Página/JS | `runtime/test/fx-handles-overlay.test.mjs` (9, Chrome real, mouse real): parse, desenho, hit, prioridade, arrasto, Escape (do press da página e do arrasto do host em `fx.active`), captura perdida, resize, handle apagado | passam |
 | Imagem/export | `crates/render/tests/scene_fx_handles.rs` (2, runtime e FFmpeg reais): perfil de escurecimento lido nos pontos dos handles que o core informa, contra `apply_pass_to_srgb`; export com o clipe alvo, o overlay descrito e um arrasto aberto = export do documento (hashes), só o release muda o export | passam |
 | Mutações | `docs/migration/g41-handles/mutate.py` (35 mutantes: 25 Rust, 10 JS), relatório `mutation-report.json` | todos mortos, arquivos restaurados com hash conferido |
 
