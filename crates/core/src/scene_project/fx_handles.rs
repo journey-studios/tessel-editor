@@ -35,7 +35,7 @@ use super::{HandleProbe, SceneCommand};
 /// The handle of the targeted vignette that a point lies on: what a press there holds, or what it
 /// refuses by name when the handle is drawn greyed. One reading for `scene.gizmo.hit` and
 /// `scene.pointer.down`, so the query that asks "what is under this point" is the click.
-pub(super) struct FxPick {
+struct FxPick {
     view: FxHandlesView,
     handle: VignetteHandle,
     /// The handle's parameter has keys: drawn, greyed, and refused (`animated_param`).
@@ -44,7 +44,7 @@ pub(super) struct FxPick {
 
 impl FxPick {
     /// The `hit` of the answer, the same for the query and the press.
-    pub(super) fn hit_json(&self) -> Value {
+    fn hit_json(&self) -> Value {
         json!({
             "kind": "fx_handle", "clip": self.view.clip, "handle": self.handle.as_str(),
             "param": self.handle.param(),
@@ -52,13 +52,41 @@ impl FxPick {
     }
 
     /// Why a press here writes nothing, if it does not.
-    pub(super) fn refusal(&self) -> Option<&'static str> {
+    fn refusal(&self) -> Option<&'static str> {
         self.animated
             .then_some(crate::scene_interaction::fx_handle_reason::ANIMATED_PARAM)
     }
 }
 
+/// What leaving the effect target said, carried from the `scene.select` a press ran.
+pub(super) fn carry_fx_target(answer: &mut Value, outcome: &Value) {
+    for key in ["fx_target_dropped", "cancelled_drag"] {
+        if let Some(value) = outcome.get(key) {
+            answer[key] = value.clone();
+        }
+    }
+}
+
 impl EditorState {
+    /// What `scene.gizmo.hit` adds to its answer when a handle of the targeted vignette is under
+    /// the point: the `hit` and, for a greyed handle, `refused`. False: no handle there.
+    pub(super) fn fx_hit_into(
+        &self,
+        answer: &mut Value,
+        scene: &str,
+        frame: i64,
+        point: Point,
+    ) -> bool {
+        let Some(pick) = self.fx_pick(scene, frame, point) else {
+            return false;
+        };
+        answer["hit"] = pick.hit_json();
+        if let Some(reason) = pick.refusal() {
+            answer["refused"] = json!(reason);
+        }
+        true
+    }
+
     /// `scene.fx.select`: which effect clip the monitor draws handles for (`clip` omitted or null
     /// clears it). Session state, never an edit. Selecting a clip empties the entity selection and
     /// cancels a live drag; only a vignette has handles (`fx_has_no_handles` for anything else).
@@ -205,7 +233,7 @@ impl EditorState {
     /// The handle of the vignette the session targets that `point` lies on, or `None` when nothing
     /// there is for it (no target in this scene, the clip does not cover the frame, nothing under
     /// the point). A read: the query and the press share it.
-    pub(super) fn fx_pick(&self, scene: &str, frame: i64, point: Point) -> Option<FxPick> {
+    fn fx_pick(&self, scene: &str, frame: i64, point: Point) -> Option<FxPick> {
         let target = self
             .scene_interaction
             .fx_target

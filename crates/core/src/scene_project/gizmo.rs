@@ -30,6 +30,7 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 
+use super::fx_handles::carry_fx_target;
 use crate::directed_scene::{
     ChannelProperty, DirectedScene, Entity, EntityKind, NodeAnimation, NodeKind, Quat, Vec3,
 };
@@ -57,15 +58,6 @@ fn plan_of(scene: &DirectedScene, frame: i64) -> Result<ScenePlan, CommandError>
             allow_partial: true,
         },
     )?)
-}
-
-/// What leaving the effect target said (F061), carried from the `scene.select` a press ran.
-fn carry_fx_target(answer: &mut Value, outcome: &Value) {
-    for key in ["fx_target_dropped", "cancelled_drag"] {
-        if let Some(value) = outcome.get(key) {
-            answer[key] = value.clone();
-        }
-    }
 }
 
 pub(super) fn frame_of(scene: &DirectedScene, at: &FrameAt) -> Result<i64, CommandError> {
@@ -702,13 +694,8 @@ impl EditorState {
             "action": "scene.gizmo.hit", "scene": scene, "frame": frame,
             "point": point.to_json(), "changed": false, "document_changed": false,
         });
-        // F061: the handles of the targeted vignette are under the point before anything else, as
-        // they are for a press; they need no camera.
-        if let Some(pick) = self.fx_pick(scene, frame, point) {
-            answer["hit"] = pick.hit_json();
-            if let Some(reason) = pick.refusal() {
-                answer["refused"] = json!(reason);
-            }
+        // F061: a handle of the targeted vignette comes first, as for a press (no camera needed).
+        if self.fx_hit_into(&mut answer, scene, frame, point) {
             return Ok(answer);
         }
         let world = Scene3d::new(&entry.scene, frame)?;
