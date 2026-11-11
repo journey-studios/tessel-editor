@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Spec of the gizmo performance runners, without a benchmark, a window or the real lock (F055 / BL015.21)."""
 import atexit
+import collections
 import contextlib
 import fcntl
+import gzip
 import hashlib
 import importlib.util
 import io
@@ -2874,6 +2876,601 @@ class NativeSession(unittest.TestCase):
         self.assertEqual({c['check']: c['ok'] for c in run_one_corpus(window(False), steps)['checks']}[label], True)
         shown = {c['check']: c['ok'] for c in run_one_corpus(window(True), steps)['checks']}
         self.assertFalse(shown[label])
+
+
+# --- the release of a gesture and the pixels a gesture has to change (BL015.23 items 16 and 17, round 7) -----------------
+
+
+class VirtualClock:
+    """`native.time` for a test: `sleep` moves the clock and nothing waits, so a bound of 30 s is read off the clock and not
+    waited for. `HostWindow` reads the same clock to decide what its monitor shows."""
+
+    def __init__(self):
+        self.now = 1000.0
+
+    def perf_counter(self):
+        return self.now
+
+    monotonic = time = perf_counter  # the runner reads its clock under three names
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+def release_overlay(step, revision):
+    """The overlay the core answers a release with, and that the page must then acknowledge: the state it left."""
+    return {'visible': True, 'tool': step['tool'], 'space': step['space'], 'entity': 'n',
+            'stamp': stamp(tool=step['tool'], space=step['space'], revision=revision)}
+
+
+class HostWindow(native.Window):
+    """A window whose monitor is a model of the HOST around ONE gesture. What happens is a function of the clock
+    (`VirtualClock`), not of the number of reads, so a read the runner makes for its own reasons moves nothing.
+
+    The moves ask for the candidate's picture (`candidate`, an `(request id, pixel hash)`; it completes `draw_lag` later;
+    `draws_candidate=False`: the host never draws it). What the host does with the RELEASE is the behaviour under test:
+      dedupe   asks for nothing: the plan equals the candidate's (what the first real run recorded, 12bc8da)
+      redraw   asks for `release_picture` at once; it completes `release_lag` later
+      late     asks for it `late` seconds after the reply (a host that decides asynchronously)
+      older    the monitor goes back to `release_picture`, an older request
+      rewrite  the monitor keeps the candidate's request id with the pixels of `release_picture`
+      hang     asks for a picture that never completes
+    The page acknowledges the committed state `ack_delay` after the reply (`ack` match), never (never) or with the previous
+    revision's overlay (stale); until then it holds the acknowledgement of the revision before. A cancel asks for
+    `cancel_picture`; `monitor.show_scene`, `seek` and `history.undo` each ask for the next request (the base's pixels,
+    `undo_hash` for the undo)."""
+
+    REVISION = 9  # the project revision before the release; the release leaves REVISION + 1
+
+    def __init__(self, clock, step, base, candidate, release='dedupe', release_picture=None, cancel_picture=None,
+                 ack='match', ack_delay=0.02, draw_lag=0.05, release_lag=0.04, late=0.1, draws_candidate=True,
+                 overlay_visible=True, adds_undo_entry=True, undo_hash=None, scene='proof'):
+        self.clock, self.step, self.scene = clock, step, scene
+        self.base, self.candidate = base, candidate
+        self.release, self.release_picture, self.cancel_picture = release, release_picture, cancel_picture
+        self.ack, self.ack_delay, self.late = ack, ack_delay, late
+        self.draw_lag, self.release_lag = draw_lag, release_lag
+        self.draws_candidate, self.overlay_visible, self.adds_undo_entry = draws_candidate, overlay_visible, adds_undo_entry
+        self.undo_hash = undo_hash
+        self.shown = base  # (request id, hash) of the picture on the monitor
+        self.inflight = None  # {'picture', 'at'}: a picture the host asked for and when it completes
+        self.pending = None  # a request the host will only make later
+        self.drawn = release_overlay(step, self.REVISION)  # what the page acknowledged last
+        self.ack_plan = None
+        self.committed = self.undone = False
+        self.log = []
+        self.native = FakeNative()
+        self.deadline = None
+        self.frames = {}
+        self.trace_failures = []
+
+    def ready(self):
+        return 1.0
+
+    def ask(self, picture, delay):
+        self.inflight = {'picture': picture, 'at': self.clock.now + delay}
+
+    def advance(self):
+        now = self.clock.now
+        if self.pending and now >= self.pending['at']:
+            self.ask(self.pending['picture'], self.release_lag)
+            self.pending = None
+        if self.inflight and now >= self.inflight['at']:
+            self.shown, self.inflight = self.inflight['picture'], None
+        if self.ack_plan and now >= self.ack_plan['at']:
+            self.drawn, self.ack_plan = self.ack_plan['ack'], None
+
+    def release_reply(self):
+        self.committed = True
+        overlay = release_overlay(self.step, self.REVISION + 1)
+        if self.release == 'redraw':
+            self.ask(self.release_picture, self.release_lag)
+        elif self.release == 'late':
+            self.pending = {'picture': self.release_picture, 'at': self.clock.now + self.late}
+        elif self.release == 'older':
+            self.shown = self.release_picture
+        elif self.release == 'rewrite':
+            self.shown = (self.shown[0], self.release_picture[1])
+        elif self.release == 'hang':
+            self.inflight = {'picture': self.release_picture, 'at': float('inf')}
+        if self.ack == 'match':
+            self.ack_plan = {'at': self.clock.now + self.ack_delay, 'ack': json.loads(json.dumps(overlay))}
+        elif self.ack == 'stale':
+            self.ack_plan = {'at': self.clock.now + self.ack_delay, 'ack': release_overlay(self.step, self.REVISION)}
+        overlay['visible'] = self.overlay_visible
+        return True, {'document_changed': True, 'overlay': overlay}
+
+    def op(self, request, timeout=90):
+        kind = request['op']
+        self.log.append(kind)
+        self.advance()
+        if kind == 'scene.get':
+            return True, {'value': 5 if self.committed else 0}
+        if kind == 'history.status':
+            return True, {'undo_depth': 1 if self.committed and self.adds_undo_entry else 0,
+                          'redo_depth': 1 if self.undone else 0}
+        if kind == 'scene.gizmo.state':
+            return True, {'overlay': {'handles': [{'id': self.step['handle'], 'to': {'u': 0.0, 'v': 0.0}}]}}
+        if kind == 'scene.pointer.down':
+            return True, {'dragging': True, 'hit': {'handle': self.step['handle']}}
+        if kind == 'scene.pointer.move':
+            if self.draws_candidate:
+                self.ask(self.candidate, self.draw_lag)
+            return True, {'applied': True, 'document_changed': False, 'would_change': True, 'position': 1.0}
+        if kind == 'scene.pointer.up':
+            return self.release_reply()
+        if kind == 'scene.pointer.cancel':
+            if self.cancel_picture:
+                self.ask(self.cancel_picture, self.release_lag)
+            return True, {}
+        if kind == 'project.open':
+            return True, {'action': 'project.open', 'project': 'x'}
+        if kind in ('monitor.show_scene', 'seek', 'history.undo'):
+            if kind == 'history.undo':
+                self.committed, self.undone = False, True
+            self.ask((max(self.shown[0], self.inflight['picture'][0] if self.inflight else 0) + 1,
+                      self.undo_hash if kind == 'history.undo' and self.undo_hash else self.base[1]), self.draw_lag)
+            return True, {}
+        if kind == 'render.status':
+            return True, {'report': {}}
+        return True, {}
+
+    def viewport(self, timeout=90):
+        self.advance()
+        return {'phase': 'ready', 'headline': '', 'overlay': {'supported': True, 'drawn': self.drawn},
+                'directed': {'scene': self.scene, 'queued': None, 'suspended': False,
+                             'active': {'id': self.inflight['picture'][0]} if self.inflight else None,
+                             'shown': {'request_id': self.shown[0], 'edit_frame': 24}},
+                'last_frame': {'request': self.shown[0], 'revision': self.shown[0], 'hash': self.shown[1]}}
+
+
+class GestureCase(unittest.TestCase):
+    """`native.drag` over a `HostWindow` under a virtual clock: what the checks say about what the host did."""
+
+    STEP = {'id': 'drag.translate.x', 'kind': 'drag', 'phase': 'hot', 'tool': 'translate', 'space': 'world',
+            'handle': 'x', 'delta': [0.03, 0.0], 'moves': 2, 'end': 'up'}
+    SCALE = {'id': 'drag.scale.local.uniform', 'kind': 'drag', 'phase': 'hot', 'tool': 'scale', 'space': 'local',
+             'handle': 'x', 'delta': [0.02, -0.02], 'moves': 2, 'end': 'up'}
+    SCALE_CANCEL = {'id': 'drag.scale.cancel', 'kind': 'drag', 'phase': 'hot', 'tool': 'scale', 'space': 'local',
+                    'handle': 'x', 'delta': [0.02, -0.02], 'moves': 2, 'end': 'cancel'}
+    TRANSLATE_CANCEL = dict(SCALE_CANCEL, id='drag.translate.cancel', tool='translate', space='world')
+    BASE, CANDIDATE, REDRAWN = (10, 'base'), (13, 'candidate'), (14, 'candidate')
+    LEGIT = 'the release left a legitimate picture'
+    SAME_PIXELS = 'the redrawn picture shows the same pixels as the candidate'
+    DIFFERS = 'the committed picture differs from the one before the gesture'
+    CANDIDATE_DIFFERS = 'the drawn candidate picture differs from the base picture'
+    CANCEL_IS_BASE = 'after the cancel the picture is the base picture'
+
+    def run_gesture(self, step=None, corpus=None, **model):
+        """`(checks, record)` of `native.drag` for `step` (default: the translate release) in `corpus` (None: not declared)."""
+        step = step or self.STEP
+        clock = VirtualClock()
+        window = HostWindow(clock, step, **{'base': self.BASE, 'candidate': self.CANDIDATE, **model})
+        checks, details, undoable = {}, {}, []
+        result = {'steps': {step['id']: {}}}
+        if corpus:
+            result['corpus'] = corpus
+
+        def check(label, condition, detail=''):
+            checks[label], details[label] = bool(condition), str(detail)
+            return bool(condition)
+
+        def timed(sid, request, timeout=120, phase=None):
+            return window.op(request, timeout)
+
+        started = clock.now
+        with patch.object(native, 'time', clock), bounded(10):
+            native.drag(window, timed, check, step, 'proof', {'frame': 24}, 'n', [], undoable, result, {})
+        self.elapsed, self.window, self.details, self.undoable = clock.now - started, window, details, undoable
+        return checks, result['steps'][step['id']]
+
+    def label(self, checks, fragment):
+        found = [label for label in checks if fragment in label]
+        self.assertEqual(len(found), 1, (fragment, list(checks)))
+        return found[0]
+
+    def verdict(self, checks, fragment):
+        return checks[self.label(checks, fragment)]
+
+    def failed(self, checks):
+        """The failed checks, in the order the runner asked them, without the step id."""
+        return [label.split(': ', 1)[1] for label, ok in checks.items() if not ok]
+
+
+class Release(GestureCase):
+    """What a release may leave on the monitor when the candidate had been drawn (item 16): the host draws nothing for a
+    release whose plan equals the candidate's, so a picture newer than the candidate's is one of two legitimate outcomes."""
+
+    def test_a_release_the_host_deduped_is_recorded_as_deduped_and_every_check_passes(self):
+        checks, record = self.run_gesture(release='dedupe')
+        self.assertEqual(self.failed(checks), [])
+        self.assertEqual(record['commit_picture'], 'deduped')
+        self.assertIsNotNone(record['client_ms_up_to_converged_picture'])  # the first converged read, not a render latency
+        seen = record['commit_observed']
+        self.assertEqual((seen['shown_request'], seen['shown_hash']), self.CANDIDATE)
+        self.assertEqual(seen['ack_problems'], [])
+        self.assertEqual(record['picture']['request'], self.CANDIDATE[0])
+        self.assertEqual(record['pixels']['committed_hash'], 'candidate')
+        self.assertLess(self.elapsed, 3)  # no wait for a newer picture that was never going to come
+        self.assertEqual([entry.base_hash for entry in self.undoable], ['base'])
+
+    def test_a_release_the_host_redrew_is_recorded_as_redrawn_and_every_check_passes(self):
+        checks, record = self.run_gesture(release='redraw', release_picture=self.REDRAWN)
+        self.assertEqual(self.failed(checks), [])
+        self.assertEqual(record['commit_picture'], 'redrawn')
+        self.assertEqual(record['picture']['request'], self.REDRAWN[0])
+        self.assertGreater(record['client_ms_up_to_converged_picture'], 30)  # it waited for the redraw (40 ms of the model)
+        self.assertTrue(self.verdict(checks, self.SAME_PIXELS))
+
+    def test_a_redraw_that_shows_other_pixels_than_the_candidate_fails(self):
+        # the preview and the commit disagree: the redraw is not what the candidate showed
+        checks, record = self.run_gesture(release='redraw', release_picture=(14, 'other'))
+        self.assertEqual(record['commit_picture'], 'redrawn')
+        self.assertEqual(self.failed(checks), [self.SAME_PIXELS + ' (same hash)'])
+
+    def test_a_picture_older_than_the_candidates_after_the_release_fails_at_once(self):
+        checks, record = self.run_gesture(release='older', release_picture=(12, 'candidate'))
+        self.assertFalse(self.verdict(checks, self.LEGIT))
+        self.assertIn('OLDER', self.details[self.label(checks, self.LEGIT)])
+        self.assertIsNone(record['commit_picture'])
+        self.assertFalse(self.verdict(checks, self.DIFFERS))  # nothing legitimate to compare with the base
+        self.assertLess(self.elapsed, 3)
+
+    def test_the_candidates_request_with_other_pixels_is_not_a_dedupe(self):
+        checks, record = self.run_gesture(release='rewrite', release_picture=(0, 'other'))
+        self.assertFalse(self.verdict(checks, self.LEGIT))
+        self.assertIsNone(record['commit_picture'])
+        self.assertIn('other pixels', self.details[self.label(checks, self.LEGIT)])
+
+    def test_a_redraw_of_the_base_picture_fails_where_pixels_are_required(self):
+        checks, record = self.run_gesture(release='redraw', release_picture=(14, 'base'))
+        self.assertEqual(record['commit_picture'], 'redrawn')
+        self.assertEqual(self.failed(checks), [self.SAME_PIXELS + ' (same hash)', self.DIFFERS])
+
+    def test_a_deduped_release_whose_candidate_already_was_the_base_picture_fails_where_pixels_are_required(self):
+        checks, record = self.run_gesture(release='dedupe', candidate=(13, 'base'))
+        self.assertEqual(record['commit_picture'], 'deduped')
+        self.assertEqual(self.failed(checks), [self.CANDIDATE_DIFFERS, self.DIFFERS])
+
+    def test_a_monitor_that_never_converges_after_the_release_fails_within_the_bound_and_is_not_deduped(self):
+        checks, record = self.run_gesture(release='hang', release_picture=(14, 'candidate'))
+        self.assertFalse(self.verdict(checks, self.LEGIT))
+        self.assertIn('a timeout, not a dedupe', self.details[self.label(checks, self.LEGIT)])
+        self.assertIsNone(record['commit_picture'])
+        self.assertIsNone(record['client_ms_up_to_converged_picture'])  # None only for a real timeout
+        # the hash the last state seen holds (the candidate's) must not be compared with the base: the commit never converged
+        self.assertFalse(self.verdict(checks, self.DIFFERS))
+        self.assertIsNone(record['pixels']['committed_hash'])
+        # read off the clock: the whole gesture takes the 30 s bound and not a second more than a few polls
+        self.assertGreaterEqual(self.elapsed, native.COMMIT_SECONDS)
+        self.assertLessEqual(self.elapsed, native.COMMIT_SECONDS + 1)
+
+    def test_a_state_the_page_never_acknowledged_is_not_deduped_and_is_given_up_after_the_ack_wait(self):
+        checks, record = self.run_gesture(release='dedupe', ack='never')
+        self.assertFalse(self.verdict(checks, self.LEGIT))
+        self.assertIn('unconfirmed', self.details[self.label(checks, self.LEGIT)])
+        self.assertIsNone(record['commit_picture'])
+        self.assertEqual(record['commit_observed']['shown_request'], self.CANDIDATE[0])  # it did see the picture
+        self.assertGreaterEqual(self.elapsed, native.ACK_SECONDS)  # it waited for the acknowledgement...
+        self.assertLess(self.elapsed, native.ACK_SECONDS + 1)  # ...and not for the 30 s of a timeout
+
+    def test_an_acknowledgement_of_the_previous_revision_is_not_the_one_of_the_commit(self):
+        checks, record = self.run_gesture(release='dedupe', ack='stale')
+        self.assertFalse(self.verdict(checks, self.LEGIT))
+        self.assertIn('stamp.revision: expected 10, got 9', self.details[self.label(checks, self.LEGIT)])
+        self.assertIsNone(record['commit_picture'])
+
+    def test_an_acknowledgement_that_arrives_late_still_confirms_a_dedupe(self):
+        checks, record = self.run_gesture(release='dedupe', ack_delay=1.5)
+        self.assertEqual(self.failed(checks), [])
+        self.assertEqual(record['commit_picture'], 'deduped')
+        self.assertGreaterEqual(self.elapsed, 1.5)
+        self.assertLess(record['client_ms_up_to_converged_picture'], 100)  # when the picture was first seen, not the ack
+
+    def test_a_redraw_that_arrives_after_the_first_converged_read_is_not_taken_for_a_dedupe(self):
+        # an asynchronous host: the candidate's picture is on the monitor and acknowledged, the redraw comes 100 ms later
+        checks, record = self.run_gesture(release='late', release_picture=self.REDRAWN, late=0.1)
+        self.assertEqual(self.failed(checks), [])
+        self.assertEqual(record['commit_picture'], 'redrawn')
+        self.assertEqual(record['picture']['request'], self.REDRAWN[0])
+
+    def test_a_release_that_answered_no_visible_overlay_cannot_be_confirmed(self):
+        checks, record = self.run_gesture(release='dedupe', overlay_visible=False)
+        self.assertFalse(self.verdict(checks, self.LEGIT))
+        self.assertIn('no visible overlay', self.details[self.label(checks, self.LEGIT)])
+        self.assertIsNone(record['commit_picture'])
+        self.assertLess(self.elapsed, 3)  # nothing to wait for: it is not a wait for the acknowledgement
+
+    def test_a_candidate_that_was_never_drawn_keeps_the_strict_rule(self):
+        # no picture of the candidate exists for a release to equal: only a picture newer than the press counts
+        checks, record = self.run_gesture(release='dedupe', draws_candidate=False)
+        self.assertFalse(self.verdict(checks, 'the candidate was drawn while the gesture was open'))
+        self.assertFalse(self.verdict(checks, 'the committed picture is a NEW picture (the candidate was never drawn'))
+        self.assertIsNone(record['commit_picture'])
+        self.assertNotIn('commit_observed', record)  # `settle_commit` is for a drawn candidate only
+        checks, record = self.run_gesture(release='redraw', release_picture=(14, 'x'), draws_candidate=False)
+        self.assertTrue(self.verdict(checks, 'the committed picture is a NEW picture (the candidate was never drawn'))
+        self.assertEqual(record['commit_picture'], 'redrawn')
+        self.assertFalse(self.verdict(checks, 'the candidate was drawn while the gesture was open'))  # still its own failure
+
+    def test_settle_commit_alone_is_bounded_by_its_seconds_and_a_late_reply_is_a_timeout(self):
+        clock = VirtualClock()
+        window = HostWindow(clock, self.STEP, base=self.BASE, candidate=self.CANDIDATE, release='hang',
+                            release_picture=(14, 'candidate'))
+        window.shown = self.CANDIDATE
+        window.op({'op': 'scene.pointer.up'})
+        info = native.picture(window.viewport())
+        started = clock.now
+        with patch.object(native, 'time', clock):
+            settled = window.settle_commit('proof', 24, info, None, None, seconds=3)
+        self.assertEqual((settled['outcome'], settled['ms']), (None, None))
+        self.assertAlmostEqual(clock.now - started, 3, delta=0.05)
+
+
+class PixelExpectations(GestureCase):
+    """What a gesture has to do to the picture, declared per corpus and per step class (item 17)."""
+
+    def test_the_table_declares_every_corpus_and_class_and_only_dense_scale_may_stay_equal(self):
+        for corpus in ('small', 'dense', 'deep'):
+            for tool in ('translate', 'rotate', 'scale'):
+                rule, why = native.pixel_rule(corpus, tool)
+                expected = native.MAY_STAY_EQUAL if (corpus, tool) == ('dense', 'scale') else native.MUST_CHANGE
+                self.assertEqual(rule, expected, (corpus, tool))
+                self.assertIn(tool, native.PIXEL_EXPECTATIONS[corpus])  # declared, not defaulted
+                self.assertGreater(len(why), 40)
+        self.assertIn('12bc8da', native.pixel_rule('dense', 'scale')[1])  # the evidence is in the justification
+        self.assertEqual(native.pixel_rule('other', 'scale')[0], native.MUST_CHANGE)  # nothing is inherited
+        self.assertEqual(native.pixel_rule(None, 'scale')[0], native.MUST_CHANGE)
+
+    def test_a_scale_that_leaves_pixels_equal_fails_in_small_and_in_deep(self):
+        for corpus in ('small', 'deep'):
+            with self.subTest(corpus):
+                checks, record = self.run_gesture(self.SCALE, corpus=corpus, release='dedupe', candidate=(13, 'base'))
+                self.assertEqual(self.failed(checks), [self.CANDIDATE_DIFFERS, self.DIFFERS])
+                self.assertEqual(record['pixel_expectation']['rule'], native.MUST_CHANGE)
+
+    def test_translate_and_rotate_that_leave_pixels_equal_still_fail_in_dense(self):
+        for tool, space in (('translate', 'world'), ('rotate', 'local')):
+            with self.subTest(tool):
+                step = dict(self.SCALE, id=f'drag.{tool}.x', tool=tool, space=space)
+                checks, record = self.run_gesture(step, corpus='dense', release='dedupe', candidate=(13, 'base'))
+                self.assertEqual(self.failed(checks), [self.CANDIDATE_DIFFERS, self.DIFFERS])
+
+    def test_an_undeclared_corpus_gets_no_leniency_for_scale(self):
+        checks, record = self.run_gesture(self.SCALE, corpus='huge', release='dedupe', candidate=(13, 'base'))
+        self.assertEqual(self.failed(checks), [self.CANDIDATE_DIFFERS, self.DIFFERS])
+        checks, record = self.run_gesture(self.SCALE, corpus=None, release='dedupe', candidate=(13, 'base'))
+        self.assertEqual(self.failed(checks), [self.CANDIDATE_DIFFERS, self.DIFFERS])
+
+    def test_a_dense_scale_that_leaves_pixels_equal_passes_and_records_the_three_hashes(self):
+        checks, record = self.run_gesture(self.SCALE, corpus='dense', release='dedupe', candidate=(13, 'base'))
+        self.assertEqual(self.failed(checks), [])
+        self.assertNotIn(self.CANDIDATE_DIFFERS, ' '.join(checks))  # the check is not asked: the step declares equality
+        pixels = record['pixels']
+        self.assertEqual((pixels['base_hash'], pixels['candidate_hash'], pixels['committed_hash']), ('base',) * 3)
+        self.assertEqual((pixels['candidate_changed'], pixels['committed_changed']), (False, False))
+        self.assertEqual(record['pixel_expectation']['rule'], native.MAY_STAY_EQUAL)
+        self.assertIn('H17', record['pixel_expectation']['why'])
+        self.assertEqual(record['commit_picture'], 'deduped')
+        self.assertEqual(self.undoable[0].changed, False)
+
+    def test_a_dense_scale_that_changes_pixels_does_not_fail(self):
+        checks, record = self.run_gesture(self.SCALE, corpus='dense', release='dedupe')
+        self.assertEqual(self.failed(checks), [])
+        self.assertEqual((record['pixels']['candidate_changed'], record['pixels']['committed_changed']), (True, True))
+        self.assertTrue(self.undoable[0].changed)
+
+    def test_a_redrawn_dense_scale_that_equals_the_base_records_the_same_pixels_check_as_vacuous(self):
+        checks, record = self.run_gesture(self.SCALE, corpus='dense', release='redraw', candidate=(13, 'base'),
+                                          release_picture=(14, 'base'))
+        self.assertEqual(self.failed(checks), [])
+        vacuous = [item['check'] for item in record['vacuous_checks']]
+        self.assertEqual(vacuous, [self.label(checks, self.SAME_PIXELS)])
+        self.assertTrue(self.details[vacuous[0]].startswith('vacuous ('))
+        # still asked: a redraw that is NOT the base does not pass because the step may stay equal
+        checks, record = self.run_gesture(self.SCALE, corpus='dense', release='redraw', candidate=(13, 'base'),
+                                          release_picture=(14, 'other'))
+        self.assertEqual(self.failed(checks), [self.SAME_PIXELS + ' (same hash)'])
+
+    def test_the_cancel_of_a_step_whose_candidate_was_the_base_records_its_restore_check_as_vacuous(self):
+        checks, record = self.run_gesture(self.SCALE_CANCEL, corpus='dense', candidate=(13, 'base'), cancel_picture=(14, 'base'))
+        self.assertEqual(self.failed(checks), [])
+        self.assertEqual([item['check'] for item in record['vacuous_checks']], [self.label(checks, self.CANCEL_IS_BASE)])
+        self.assertEqual(record['pixels']['after_cancel_hash'], 'base')
+        self.assertTrue(self.verdict(checks, 'the cancel drew a NEW picture'))  # that one is a real proof and stays asked
+
+    def test_the_cancel_of_a_step_whose_candidate_differs_is_a_real_check_not_a_vacuous_one(self):
+        checks, record = self.run_gesture(self.TRANSLATE_CANCEL, corpus='dense', cancel_picture=(14, 'base'))
+        self.assertEqual(self.failed(checks), [])
+        self.assertNotIn('vacuous_checks', record)
+        checks, record = self.run_gesture(self.TRANSLATE_CANCEL, corpus='dense', cancel_picture=(14, 'candidate'))
+        self.assertEqual(self.failed(checks), [self.CANCEL_IS_BASE])
+
+    def test_a_vacuous_check_is_still_asked_and_still_fails(self):
+        # the step may leave pixels equal: that does not excuse a cancel that left something else on the monitor
+        checks, record = self.run_gesture(self.SCALE_CANCEL, corpus='dense', candidate=(13, 'base'), cancel_picture=(14, 'odd'))
+        self.assertEqual(self.failed(checks), [self.CANCEL_IS_BASE])
+        self.assertEqual(len(record['vacuous_checks']), 1)
+
+    def test_a_step_that_may_stay_equal_is_still_judged_on_the_undo_entry(self):
+        checks, record = self.run_gesture(self.SCALE, corpus='dense', release='dedupe', candidate=(13, 'base'),
+                                          adds_undo_entry=False)
+        self.assertEqual(self.failed(checks), ['one undo entry per gesture'])
+
+
+class GestureInTheCorpus(unittest.TestCase):
+    """`native.run_corpus` over a journey with one gesture and its undo: the golden trace, the declared table in the report
+    and the undo's own pixel check."""
+
+    UNDO = 'history.undo.scale.uniform'
+    DRAG_GOLDEN = {'transform': [5, 5, 5], 'undo': 1, 'redo': 0}
+    UNDO_GOLDEN = {'transform': [0, 0, 0], 'undo': 0, 'redo': 1}
+    RESTORED = f'{UNDO}: the undo restored the exact picture of before the gesture'
+    GOLDEN = '{}: transform/undo/redo equal the core golden trace (undo offset 0)'
+
+    def run_journey(self, corpus, golden=None, **model):
+        step = GestureCase.SCALE
+        steps = [
+            {'id': 'open.project', 'phase': 'cold', 'op': {'op': 'project.create', 'name': 'x'}},
+            {'id': 'open.attach', 'phase': 'cold', 'op': {'op': 'scene.attach', 'id': '$scene', 'path': '$bundle'}},
+            {'id': 'open.show', 'phase': 'cold', 'op': {'op': 'monitor.show_scene', 'scene': '$scene'}},
+            {'id': 'open.seek', 'phase': 'cold', 'op': {'op': 'seek', 'frame': '$frame'}},
+            {'id': 'open.first_frame', 'phase': 'cold', 'wait': 'presented', 'frame': '$frame'},
+            step, {'id': self.UNDO, 'phase': 'hot', 'op': {'op': 'history.undo'}}]
+        journey = dict(NativeFlow.JOURNEY, corpora={corpus: NativeFlow.JOURNEY['corpora']['small']}, steps=steps)
+        clock = VirtualClock()
+        model = {'base': (10, 'base'), 'candidate': (13, 'candidate'), 'release': 'dedupe', **model}
+        golden = {step['id']: self.DRAG_GOLDEN, self.UNDO: self.UNDO_GOLDEN} if golden is None else golden
+        with contextlib.ExitStack() as stack, tempfile.TemporaryDirectory() as out:
+            stack.enter_context(bounded(20))
+            stack.enter_context(patch.object(native, 'time', clock))
+            stack.enter_context(patch.object(native, 'Window', lambda binary, home: HostWindow(clock, step, **model)))
+            stack.enter_context(patch.object(native, 'author_saved_project', return_value=(
+                Path('/tmp/saved.tessel.json'), {'path': '/tmp/saved.tessel.json'})))
+            return native.run_corpus('bin', journey, {corpus: golden}, corpus, out, {})
+
+    def test_a_dense_scale_that_left_the_picture_equal_passes_the_corpus_and_records_what_it_could_not_prove(self):
+        result = self.run_journey('dense', candidate=(13, 'base'))
+        self.assertEqual(failed_checks(result), [])
+        self.assertEqual(result['pixel_expectations']['scale']['rule'], native.MAY_STAY_EQUAL)  # the table is in the report
+        self.assertEqual(result['pixel_expectations']['translate']['rule'], native.MUST_CHANGE)
+        drag = result['steps']['drag.scale.local.uniform']
+        self.assertEqual(drag['commit_picture'], 'deduped')
+        self.assertEqual(drag['pixels']['committed_changed'], False)
+        undo = result['steps'][self.UNDO]
+        self.assertEqual([item['check'] for item in undo['vacuous_checks']], [self.RESTORED])  # nothing was there to restore
+        detail = [c['detail'] for c in result['checks'] if c['check'] == self.RESTORED][0]
+        self.assertTrue(detail.startswith('vacuous ('), detail)
+
+    def test_the_golden_transform_still_judges_a_step_that_may_stay_equal(self):
+        wrong = {'drag.scale.local.uniform': dict(self.DRAG_GOLDEN, transform=[7, 7, 7]), self.UNDO: self.UNDO_GOLDEN}
+        result = self.run_journey('dense', golden=wrong, candidate=(13, 'base'))
+        failing = failed_checks(result)
+        self.assertEqual(failing, [self.GOLDEN.format('drag.scale.local.uniform')])
+
+    def test_the_undo_of_a_gesture_that_changed_pixels_is_checked_for_real_and_fails_when_it_restored_something_else(self):
+        result = self.run_journey('small')
+        self.assertEqual(failed_checks(result), [])
+        self.assertNotIn('vacuous_checks', result['steps'][self.UNDO])
+        self.assertEqual(result['pixel_expectations']['scale']['rule'], native.MUST_CHANGE)
+        result = self.run_journey('small', undo_hash='odd')
+        self.assertEqual(failed_checks(result), [self.RESTORED])
+
+    def test_a_scale_that_changed_nothing_in_the_small_corpus_fails_the_corpus(self):
+        result = self.run_journey('small', candidate=(13, 'base'))
+        self.assertEqual(failed_checks(result), [
+            'drag.scale.local.uniform: the drawn candidate picture differs from the base picture',
+            'drag.scale.local.uniform: the committed picture differs from the one before the gesture'])
+
+
+RECORDED_RUN = native.ROOT / 'docs/migration/gizmo-perf-evidence/measure-12bc8da/native/report.json.gz'
+Recorded = collections.namedtuple('Recorded', 'corpus step base candidate picture record')
+
+
+def recorded_gestures():
+    """Every drag step of the first real window run (12bc8da: immutable evidence), with what the report kept of it: the
+    picture before the gesture (the last picture any earlier step of that corpus recorded), the candidate's and the picture
+    the monitor showed after the release or the cancel, each as `(request id, pixel hash)`."""
+    report = json.load(gzip.open(RECORDED_RUN))
+    journey = json.loads((native.FIXTURES / 'journey.json').read_text())
+    found = []
+    for result in report['results']:
+        last = None
+        for step in journey['steps']:
+            record = result['steps'].get(step['id']) or {}
+            if step.get('kind') == 'drag':
+                pick = lambda picture: (picture['request'], picture['hash'])  # noqa: E731
+                found.append(Recorded(result['corpus'], step, pick(last), pick(record['candidate_picture']),
+                                      pick(record['picture']), record))
+            if record.get('picture'):
+                last = record['picture']
+    return found
+
+
+class RecordedFirstRun(GestureCase):
+    """The first real window run (12bc8da, immutable evidence) replayed through `native.drag` with a monitor that shows the
+    request ids and hashes its report recorded: the 15 releases that failed `the committed picture is a NEW picture` and
+    the 5 dense checks that found the scale pictures equal to the base. The report does NOT hold what the page acknowledged
+    after a release (it kept `overlay_drawn` for the `scene.gizmo.state` steps only), nor when each picture appeared: the
+    replay's acknowledgement is assumed to match, and the timing is the model's. Those are the only values here that are
+    not the report's."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.gestures = recorded_gestures()
+
+    def pick(self, corpus, sid):
+        return next(g for g in self.gestures if g.corpus == corpus and g.step['id'] == sid)
+
+    def replay(self, gesture, candidate=None, **model):
+        model = ({'release': 'dedupe'} if gesture.step['end'] == 'up' else {'cancel_picture': gesture.picture}) | model
+        return self.run_gesture(gesture.step, corpus=gesture.corpus, base=gesture.base,
+                                candidate=candidate or gesture.candidate, **model)
+
+    def test_the_report_holds_the_observations_the_replay_is_built_from(self):
+        self.assertEqual(len(self.gestures), 21)  # 3 corpora x (5 releases + 2 cancels)
+        releases = [g for g in self.gestures if g.step['end'] == 'up']
+        self.assertEqual(len(releases), 15)
+        for g in releases:  # the observation behind H16: the monitor still showed the candidate's own picture
+            self.assertEqual(g.candidate, g.picture, (g.corpus, g.step['id']))
+            self.assertGreater(g.candidate[0], g.base[0], (g.corpus, g.step['id']))
+            self.assertIsNone(g.record['client_ms_up_to_converged_picture'])  # the 30 s wait that ran out
+        for g in self.gestures:  # the observation behind H17: the scale pictures of `dense` are the base picture
+            equal = g.candidate[1] == g.base[1]
+            self.assertEqual(equal, g.corpus == 'dense' and g.step['tool'] == 'scale', (g.corpus, g.step['id']))
+        for g in self.gestures:  # the cancels drew a newer picture, which is the base's
+            if g.step['end'] == 'cancel':
+                self.assertGreater(g.picture[0], g.candidate[0])
+                self.assertEqual(g.picture[1], g.base[1])
+        # what it does NOT hold: the acknowledgement of the committed state and the outcome of a release
+        for g in self.gestures:
+            self.assertNotIn('commit_observed', g.record)
+            self.assertNotIn('commit_picture', g.record)
+
+    def test_every_recorded_gesture_passes_the_new_rules(self):
+        for g in self.gestures:
+            with self.subTest(g.corpus, step=g.step['id']):
+                checks, record = self.replay(g)
+                self.assertEqual(self.failed(checks), [])
+                self.assertEqual(record.get('commit_picture'), 'deduped' if g.step['end'] == 'up' else None)
+                self.assertEqual(record['pixel_expectation']['rule'], native.pixel_rule(g.corpus, g.step['tool'])[0])
+
+    def test_the_replay_records_dense_scale_as_unchanged_and_everything_else_as_changed(self):
+        for g in self.gestures:
+            with self.subTest(g.corpus, step=g.step['id']):
+                checks, record = self.replay(g)
+                changed = record['pixels']['candidate_changed']
+                self.assertEqual(changed, not (g.corpus == 'dense' and g.step['tool'] == 'scale'))
+
+    def test_a_recorded_hash_flipped_to_the_base_hash_fails_where_pixels_are_required(self):
+        g = self.pick('small', 'drag.translate.x')
+        checks, _ = self.replay(g, candidate=(g.candidate[0], g.base[1]))  # the candidate would have been the base picture
+        self.assertEqual(self.failed(checks), [self.CANDIDATE_DIFFERS, self.DIFFERS])
+        checks, _ = self.replay(g, release='redraw', release_picture=(g.candidate[0] + 1, g.base[1]))  # a release that
+        self.assertIn(self.DIFFERS, self.failed(checks))  # redraws the base picture
+        self.assertIn(self.SAME_PIXELS + ' (same hash)', self.failed(checks))
+
+    def test_a_recorded_request_flipped_to_an_older_one_fails(self):
+        for corpus in ('small', 'dense', 'deep'):
+            g = self.pick(corpus, 'drag.rotate.local.y')
+            with self.subTest(corpus):
+                checks, record = self.replay(g, release='older', release_picture=(g.candidate[0] - 1, g.candidate[1]))
+                self.assertFalse(self.verdict(checks, self.LEGIT))
+                self.assertIsNone(record['commit_picture'])
+
+    def test_a_dense_scale_whose_recorded_hash_is_not_the_base_does_not_fail(self):
+        for sid in ('drag.scale.local.uniform', 'drag.scale.local.x'):
+            g = self.pick('dense', sid)
+            checks, record = self.replay(g, candidate=(g.candidate[0], 'ffff0000ffff0000'))
+            self.assertEqual(self.failed(checks), [], sid)
+            self.assertEqual(record['pixels']['committed_changed'], True)
+
+    def test_the_same_scale_hashes_in_small_or_deep_fail(self):
+        for corpus in ('small', 'deep'):
+            g = self.pick(corpus, 'drag.scale.local.uniform')
+            checks, _ = self.run_gesture(g.step, corpus=corpus, base=g.base, candidate=(g.candidate[0], g.base[1]),
+                                         release='dedupe')
+            self.assertEqual(self.failed(checks), [self.CANDIDATE_DIFFERS, self.DIFFERS], corpus)
 
 
 if __name__ == '__main__':

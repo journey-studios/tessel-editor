@@ -26,12 +26,32 @@ in flight, the directed scene is the requested one, the picture it shows (`direc
 it read back (`last_frame.request`), it is for the requested edit frame, and its request id is STRICTLY newer than the
 one observed right before the command. A reply on the socket, the page's `frame.done`, a cached value or the previous
 scene's picture can therefore never satisfy a wait. The checks are on the picture's pixel hash (read back by the runtime):
-a commit must change it, an undo must restore the exact earlier hash, a switch must show the new scene.
+a commit changes it (where the pixel expectation below says it must), an undo must restore the exact earlier hash, a
+switch must show the new scene. The one exception to "strictly newer" is the release of a gesture whose candidate was
+drawn (next paragraph).
+
+A RELEASE. The host draws nothing for a release whose plan equals the candidate's (`ViewportHost::render_scene` answers a
+non-explicit request with an equal key with no picture: BL015.23 item 16), so with the candidate DRAWN there are exactly
+two legitimate outcomes, recorded as `commit_picture`: `redrawn` (a picture with a request newer than the candidate's, whose
+hash is the candidate's) or `deduped` (the monitor still shows the candidate's own picture: the same request id and hash,
+nothing in flight, for `COMMIT_QUIET_SECONDS`, and the page acknowledged the committed state). An older picture, the
+candidate's request with other pixels, a state the page never acknowledged and a monitor that never converges within
+`COMMIT_SECONDS` all fail; a timeout is never turned into `deduped`. With the candidate never drawn the strict rule stays
+(a picture newer than the press). `Window.settle_commit` is the wait.
+
+PIXEL EXPECTATIONS. What a gesture has to do to the picture is declared per corpus and per step class in
+`PIXEL_EXPECTATIONS` (with its evidence), recorded in each report: `must_change` everywhere except the scale gestures of
+`dense`, whose node is 0.1 scene units wide and whose scaled picture was byte-identical to the base in the first real run
+(`may_stay_equal`: the hashes and whether anything changed are recorded, equality is not a failure). A check that holds
+whatever the product did because the pictures involved are the base picture (the cancel returning to a base that the
+candidate already was, an undo restoring a picture the commit never changed) is still asked and is recorded as
+`vacuous_checks` in the step, never as proof.
 
 CANCEL. Before the release the candidate is proven different from the base (the move reply's own candidate value and
 `would_change`) and must have been DRAWN (a picture newer than the press, within 2 s: a candidate that differs from the
-base and never got a picture fails its check, it is not just recorded) with a hash that differs from the base picture's;
-after the cancel the stored transform, the undo/redo depths and the picture hash are the base's, with a new picture.
+base and never got a picture fails its check, it is not just recorded) with a hash that differs from the base picture's
+(where the pixel expectation says so); after the cancel the stored transform, the undo/redo depths and the picture hash
+are the base's, with a new picture.
 
 WHAT IT MEASURES (all raw samples are kept, nothing is trimmed): `client_ms` per request (socket round trip: core + host +
 IPC, NOT the host alone); the editor's own report of each picture (`render_ms`, `total_ms`, ... and the hash); the host's
@@ -67,6 +87,7 @@ failing check that shows both sides, never a recorded value. A step whose overla
 not checked (BL015.23, item 23). A `render.status` that did not answer ok is no trace: it fails its own checks.
 """
 import argparse
+import collections
 import json
 from pathlib import Path
 import shutil
@@ -88,7 +109,8 @@ CORPUS_TIMEOUT_S = 1200
 OUT_LOCK = '.native.lock'  # in --out: held by whichever phase owns that directory
 LIMITS = [
     "the compositor / GPU scan-out is not observable; directed-scene pictures carry no presented-frame stamp (the session trace's frames_total is 0): `presented` is NOT OBSERVABLE here, so core->host->runtime is measured, the last hop is not",
-    "a socket reply and the page's frame.done are not proof of painting; the picture hash is the runtime read-back and a picture only counts when its request id is newer than the one before the command",
+    "a socket reply and the page's frame.done are not proof of painting; the picture hash is the runtime read-back and a picture only counts when its request id is newer than the one before the command (the one exception: a release whose plan equals its drawn candidate's is not drawn again by the host, so the monitor keeps showing the candidate's own picture and the step records `commit_picture: deduped`)",
+    "pixel equality after a gesture is judged by a declared per-corpus table (PIXEL_EXPECTATIONS): the dense corpus' scale gestures may leave the picture byte-identical (hypothesis H17, not confirmed in a window); a step like that records its hashes and its vacuous checks instead of proving anything about pixels",
     "the OS capture is observational (one window witness per corpus), never an assertion",
     "no physical pointer, keyboard or popover focus is used: BL015.2, BL043, BL044 remain pending",
     "client_ms includes the socket round trip and the client process: it is not the host cost",
@@ -168,6 +190,70 @@ def new_picture(state, scene, frame, after):
 
 
 ACK_SECONDS = 5  # how long a step waits for the page to acknowledge ITS overlay (the wait was always 5 s)
+COMMIT_SECONDS = 30  # how long a release may take to leave a legitimate picture on the monitor (the wait was always 30 s)
+COMMIT_QUIET_SECONDS = 0.25  # the candidate's own picture must stay the only one this long before a release is "deduped"
+
+MUST_CHANGE = 'must_change'
+MAY_STAY_EQUAL = 'may_stay_equal'
+# What a gesture has to do to the PICTURE (the runtime's read-back hash of the whole 320x180 picture), declared per corpus
+# and per step class (the step's tool: translate, rotate, scale). MUST_CHANGE: the drawn candidate and the committed picture
+# differ from the picture before the gesture, a failing check when they do not. MAY_STAY_EQUAL: the step may leave every
+# pixel as it was, so it records the base/candidate/committed hashes and whether anything changed and does not fail on
+# equality. A (corpus, class) that is not in the table is MUST_CHANGE: an equality has to be declared, with its evidence,
+# to be allowed, and no other corpus or class inherits it. Everything else a gesture is judged on (the document's transform
+# against the golden trace, one undo entry, undo and redo, the candidate not being in the document, the cancel leaving the
+# base) applies whatever the rule says. The text is recorded in every corpus' report (`pixel_expectations`).
+_MEASURED = 'measured at 12bc8da (docs/migration/gizmo-perf-evidence/measure-12bc8da)'
+PIXEL_EXPECTATIONS = {
+    'small': {tool: {'rule': MUST_CHANGE, 'why': (
+        f'`mid` is a 4-unit plane (forty times the width of the dense corpus\' node), so any {tool} gesture moves pixels; '
+        f'{_MEASURED}: every committed gesture of this corpus changed the picture hash')} for tool in ('translate', 'rotate', 'scale')},
+    'deep': {tool: {'rule': MUST_CHANGE, 'why': (
+        f'`leaf-rot` is a 1-unit plane (ten times the size of the dense corpus\' node), so any {tool} gesture moves pixels; '
+        f'{_MEASURED}: every committed gesture of this corpus changed the picture hash')}
+        for tool in ('translate', 'rotate', 'scale')},
+    'dense': {
+        'translate': {'rule': MUST_CHANGE, 'why': (
+            f'`bank-5-plane-17` is a 0.1-unit plane (about 2x3 pixels on the picture, computed from the core\'s camera, '
+            f'not measured); {_MEASURED}: translate.x changed the picture hash')},
+        'rotate': {'rule': MUST_CHANGE, 'why': (
+            f'same node; {_MEASURED}: rotate.local.y and rotate.world.z both changed the picture hash')},
+        'scale': {'rule': MAY_STAY_EQUAL, 'why': (
+            f'same node, a tiny one; {_MEASURED}: scale.local.uniform, scale.local.x and the cancelled scale candidate all '
+            'gave the base picture\'s hash (a5cee15db5c0b400) although each candidate WAS drawn (a new request). Hypothesis '
+            'H17, a simulation of the author with the core\'s camera and the runtime\'s raster rules, not a measurement: '
+            'the node\'s `mid` texture is a 32x32 opaque square in a transparent border, so the four pixels the node shows '
+            'keep their colours when it is scaled and the pixels a scale adds sample alpha 0 and change nothing')},
+    },
+}
+
+
+def pixel_rule(corpus, tool):
+    """`(rule, why)` for a gesture of `tool` in `corpus`: what the table declares, MUST_CHANGE for anything it does not."""
+    entry = (PIXEL_EXPECTATIONS.get(corpus) or {}).get(tool)
+    if entry is None:
+        return MUST_CHANGE, 'not declared: a gesture changes the picture unless the table says it may not'
+    return entry['rule'], entry['why']
+
+
+def commit_kind(candidate, info):
+    """How the picture the monitor converged on after a release (`info`) stands to the candidate's own picture
+    (`candidate`; both from `picture`): `redrawn` (a request newer than the candidate's), `candidate` (that very picture:
+    the same request id and the same pixel hash), `older` (an older request: the monitor went backwards) or `other` (the
+    candidate's request id with other pixels, or ids that cannot be compared: a request is one picture)."""
+    wanted, got = candidate.get('request'), info.get('request')
+    if any(isinstance(value, bool) or not isinstance(value, int) for value in (wanted, got)):
+        return 'other'
+    if got > wanted:
+        return 'redrawn'
+    if got < wanted:
+        return 'older'
+    return 'candidate' if info.get('hash') is not None and info.get('hash') == candidate.get('hash') else 'other'
+
+
+# One committed gesture, as the undo that follows has to know it: the picture hash before it, whether the commit changed
+# any pixel (an undo can only be proven to restore pixels a gesture changed), and the step.
+Undoable = collections.namedtuple('Undoable', 'base_hash changed step')
 
 
 def ack_expectation(request, overlay, tool=None):
@@ -481,6 +567,91 @@ class Window:
                 return (time.perf_counter() - started) * 1000, state, info
             time.sleep(0.01)
 
+    def settle_commit(self, scene, frame, candidate, overlay=None, tool=None, seconds=None, quiet=None):
+        """What a release left on the monitor when the candidate had been DRAWN: a dict with `outcome`, `ms`, `state`,
+        `info`, `problem` and `observed`.
+
+        A commit whose plan equals the candidate's is not drawn again: the host keeps the key of the last plan it sent
+        and `ViewportHost::render_scene` answers a non-explicit request with an equal key by dispatching what is queued
+        and returning no picture (BL015.23 item 16). Two outcomes are legitimate and everything else is a failed check:
+
+        * `redrawn`: the monitor converged on a picture with a request id newer than the candidate's;
+        * `deduped`: it converged on the candidate's OWN picture (same request id, same pixel hash), nothing in flight,
+          and that stayed so for `quiet` seconds while the page acknowledged the committed state (`overlay`: the overlay
+          of the release's own answer, `ack_expectation`).
+
+        Waiting for a newer picture that the host decided not to draw is what a 30 s wait did for every release, so the
+        wait ends by what is observed, never by a timeout turned into an outcome: a read that is not converged (a redraw
+        in flight, or none yet) restarts the quiet period; an older picture, or the candidate's request with other pixels,
+        fails at once; `seconds` bounds the whole wait (`outcome` None, `ms` None); a candidate picture that stays but whose
+        committed state the page never acknowledges within `ACK_SECONDS` is `unconfirmed`, not deduped. Each query gets the
+        time that is left, like `settle`. The release's own reply is only written after the host handled it (the automation
+        server answers in order on the main thread, after `Workstation::execute` ran the monitor sync), so the first read
+        after it already shows whether the host asked for a picture; the quiet period and the acknowledgement are what
+        stand in for that reading of the code, and they say so in `observed`.
+
+        `ms` is the time from the call to the first converged read that identified the picture: a redraw's latency when
+        `redrawn`; when `deduped` it is the cost of seeing that nothing new was drawn (no render happened), NOT a render
+        latency."""
+        seconds = COMMIT_SECONDS if seconds is None else seconds
+        quiet = COMMIT_QUIET_SECONDS if quiet is None else quiet
+        expected = ack_expectation({'scene': scene, 'frame': frame}, overlay, tool) \
+            if isinstance(overlay, dict) and overlay.get('visible') else None
+        started = time.perf_counter()
+        deadline = started + seconds
+        seen = {'state': None, 'info': None, 'reads': 0, 'ack': None, 'ack_problems': None}
+
+        def result(outcome, ms, problem=None):
+            observed = {'candidate_request': candidate.get('request'), 'candidate_hash': candidate.get('hash'),
+                        'shown_request': (seen['info'] or {}).get('request'),
+                        'shown_hash': (seen['info'] or {}).get('hash'), 'reads': seen['reads'],
+                        'quiet_seconds': quiet, 'ack_expected': expected, 'ack_seen': seen['ack'],
+                        'ack_problems': seen['ack_problems']}
+            return {'outcome': outcome, 'ms': ms, 'state': seen['state'], 'info': seen['info'], 'problem': problem,
+                    'observed': observed}
+
+        first_at = None  # when the candidate's own picture was first seen converged (and nothing newer since)
+        while True:
+            left = deadline - time.perf_counter()
+            if left <= 0:
+                return result(None, None, f'no legitimate picture {seconds:g} s after the release (a timeout, not a dedupe)')
+            self.check_deadline()
+            try:
+                seen['state'] = self.viewport(timeout=max(left, 0.05))
+            except (socket.timeout, TimeoutError):  # the monitor did not answer in the time that was left
+                return result(None, None, 'the monitor did not answer in the time that was left')
+            seen['reads'] += 1
+            now = time.perf_counter()
+            done, seen['info'] = new_picture(seen['state'], scene, frame, None)
+            if now > deadline:
+                return result(None, None, 'the monitor answered after the deadline: too late to count')
+            ms = (now - started) * 1000
+            kind = commit_kind(candidate, seen['info']) if done else None
+            if kind == 'redrawn':
+                return result('redrawn', ms)
+            if kind in ('older', 'other'):
+                what = ('an OLDER picture than the candidate\'s' if kind == 'older'
+                        else 'the candidate\'s request id with other pixels, or no comparable request id')
+                return result(None, ms, f'the monitor converged on {what}: candidate {candidate.get("request")}/'
+                                        f'{candidate.get("hash")}, now {seen["info"]["request"]}/{seen["info"]["hash"]}')
+            if kind != 'candidate':
+                first_at = None  # in flight, or nothing converged: a redraw may still be coming, the quiet period restarts
+                time.sleep(0.01)
+                continue
+            if first_at is None:
+                first_at, first_ms = now, ms
+            if expected is None:
+                return result(None, first_ms, 'unconfirmed: the release answered no visible overlay, so there is no '
+                                              'acknowledgement of the committed state to wait for')
+            seen['ack'] = (seen['state'].get('overlay') or {}).get('drawn')
+            seen['ack_problems'] = ack_mismatch(expected, seen['ack'])
+            if not seen['ack_problems'] and now - first_at >= quiet:
+                return result('deduped', first_ms)
+            if seen['ack_problems'] and now - first_at >= ACK_SECONDS:
+                return result(None, first_ms, 'unconfirmed: the candidate\'s picture stayed on the monitor but the page '
+                                              'never acknowledged the committed state: ' + '; '.join(seen['ack_problems']))
+            time.sleep(0.01)
+
     def stop(self):
         return self.native.stop()
 
@@ -549,7 +720,7 @@ def run_corpus(binary, journey, golden, name, out, notes):
     home = tempfile.mkdtemp(prefix='gp-', dir='/tmp')
     window = None
     result = {'corpus': name, 'checks': [], 'samples': [], 'steps': {}, 'pictures': [], 'overlay_drawn': [],
-              'captures': [], 'cleanup_errors': []}
+              'captures': [], 'cleanup_errors': [], 'pixel_expectations': PIXEL_EXPECTATIONS.get(name)}
 
     def check(label, condition, detail=''):
         result['checks'].append({'check': label, 'ok': bool(condition), 'detail': str(detail)[:300]})
@@ -565,8 +736,8 @@ def run_corpus(binary, journey, golden, name, out, notes):
         scene = journey['scene']
         node = corpus['node']
         shown = {'scene': None}
-        committed, undone = [], []
-        hashes = []  # picture hashes before each committed gesture, for the exact-undo pixel check
+        committed, redoable = [], []
+        undoable = []  # one `Undoable` per committed gesture still in the history, for the exact-undo pixel check
         offset = {'undo': 0}
         marks = {}
 
@@ -606,7 +777,7 @@ def run_corpus(binary, journey, golden, name, out, notes):
                 node = corpus['node_b']
             record = result['steps'].setdefault(sid, {'phase': phase})
             if step.get('kind') == 'drag':
-                drag(window, timed, check, step, scene, variables, node, committed, hashes, result, shown)
+                drag(window, timed, check, step, scene, variables, node, committed, undoable, result, shown)
             elif sid == 'open.project':
                 # The real opening of a SAVED project, in a process that has never drawn anything.
                 ok, data = timed(sid, {'op': 'project.open', 'path': str(project)}, phase=phase)
@@ -710,12 +881,22 @@ def run_corpus(binary, journey, golden, name, out, notes):
                     record['picture'] = info
                     check(f'{sid}: the {request["op"]} drew a NEW picture', ms is not None, json.dumps(info))
                     if request['op'] == 'history.undo' and committed:
-                        if before_hash is not None and hashes and ms is not None:
-                            check(f'{sid}: the undo restored the exact picture of before the gesture',
-                                  picture_hash(state) == hashes[-1], (picture_hash(state), hashes[-1]))
-                            undone.append(hashes.pop())
-                    elif request['op'] == 'history.redo' and undone:
-                        hashes.append(undone.pop())
+                        if before_hash is not None and undoable and ms is not None:
+                            gesture = undoable[-1]
+                            label = f'{sid}: the undo restored the exact picture of before the gesture'
+                            restored = picture_hash(state) == gesture.base_hash
+                            if gesture.changed:
+                                check(label, restored, (picture_hash(state), gesture.base_hash))
+                            else:
+                                # the commit left the picture as it was: the undo restoring it proves nothing about pixels
+                                because = (f'{gesture.step} left the picture as it was, so the base picture is what the '
+                                           'monitor showed before the undo too')
+                                record.setdefault('vacuous_checks', []).append({'check': label, 'because': because})
+                                check(label, restored, f'vacuous ({because}); '
+                                                       f'{(picture_hash(state), gesture.base_hash)}')
+                            redoable.append(undoable.pop())
+                    elif request['op'] == 'history.redo' and redoable:
+                        undoable.append(redoable.pop())
             if sid == 'open.attach' or sid == 'switch.attach':
                 result['attached'] = True
             if result.get('attached') and not step.get('ui') and step.get('wait') is None and sid != 'open.project':
@@ -759,11 +940,27 @@ def run_corpus(binary, journey, golden, name, out, notes):
     return result
 
 
-def drag(window, timed, check, step, scene, variables, node, committed, hashes, result, shown):
+def drag(window, timed, check, step, scene, variables, node, committed, undoable, result, shown):
+    """One gesture of the journey: press, moves, then a release or a cancel, judged on the document (the transform, the
+    history), on the monitor's pictures and on what the declared pixel expectation (`PIXEL_EXPECTATIONS`) allows. A commit
+    appends an `Undoable` to `undoable`, for the undo that follows. The step's record keeps what was observed: the
+    hashes (`pixels`), how the release left the monitor (`commit_picture`: `redrawn` or `deduped`) and the checks that
+    prove nothing for this step (`vacuous_checks`)."""
     sid = step['id']
     phase = step.get('phase')
     frame = variables['frame']
     record = result['steps'][sid]
+    rule, why = pixel_rule(result.get('corpus'), step['tool'])
+    record['pixel_expectation'] = {'class': step['tool'], 'rule': rule, 'why': why}
+    pixels = record['pixels'] = {'rule': rule, 'base_hash': None, 'candidate_hash': None, 'committed_hash': None,
+                                 'after_cancel_hash': None, 'candidate_changed': None, 'committed_changed': None}
+
+    def vacuous_check(label, condition, because, detail=''):
+        """A check that holds whatever the product did because both sides are the base picture: still asked (it can
+        fail), but the record says it proves nothing, so the report never claims a proof it did not make."""
+        record.setdefault('vacuous_checks', []).append({'check': label, 'because': because})
+        return check(label, condition, f'vacuous ({because}); {detail}')
+
     timed(sid, {'op': 'scene.gizmo.tool', 'tool': step['tool'], 'space': step['space']}, phase=phase)
     before = transform(window, scene, node)
     undo_before, redo_before = depths(window)
@@ -775,6 +972,7 @@ def drag(window, timed, check, step, scene, variables, node, committed, hashes, 
         return
     start_hash = picture_hash(state)
     start_mark = mark(state)
+    pixels['base_hash'] = start_hash
     ok, listed = timed(sid, {'op': 'scene.gizmo.state', 'scene': scene, 'frame': frame}, phase=phase)
     if not check(f'{sid}: gizmo state', ok, listed):
         return
@@ -819,9 +1017,14 @@ def drag(window, timed, check, step, scene, variables, node, committed, hashes, 
         # with itself, and the cancel branch would have nothing left to prove.
         check(f'{sid}: the candidate was drawn while the gesture was open (a picture newer than the press, within 2 s)',
               candidate_drawn, json.dumps(info_c)[:260])
+    candidate_hash = None
     if candidate_drawn:
-        check(f'{sid}: the drawn candidate picture differs from the base picture',
-              picture_hash(state_c) != start_hash, (start_hash, picture_hash(state_c)))
+        candidate_hash = picture_hash(state_c)
+        pixels['candidate_hash'] = candidate_hash
+        pixels['candidate_changed'] = candidate_hash != start_hash
+        if rule == MUST_CHANGE:  # a step that may stay equal records the three hashes instead (`pixels`)
+            check(f'{sid}: the drawn candidate picture differs from the base picture',
+                  candidate_hash != start_hash, (start_hash, candidate_hash))
         record['candidate_picture'] = info_c
     window.trace()
     check(f'{sid}: the candidate is not in the document before the release', near(transform(window, scene, node), before))
@@ -829,16 +1032,46 @@ def drag(window, timed, check, step, scene, variables, node, committed, hashes, 
     if step['end'] == 'up':
         ok, up = timed(sid, {'op': 'scene.pointer.up'}, phase=phase)
         check(f'{sid}: the release committed', ok and up.get('document_changed') is True, up)
-        ms, state, info = window.settle(scene, frame, after=gesture_mark if candidate_drawn else start_mark)
+        if candidate_drawn:
+            # The host draws nothing for a release whose plan equals the candidate's, so "a picture newer than the
+            # candidate's" is one of TWO legitimate outcomes, not the only one (see `Window.settle_commit`).
+            settled = window.settle_commit(scene, frame, info_c, up.get('overlay') if ok and isinstance(up, dict) else None,
+                                           {'tool': step['tool'], 'space': step['space']})
+            ms, state, info, outcome = settled['ms'], settled['state'], settled['info'], settled['outcome']
+            record['commit_observed'] = settled['observed']
+            check(f'{sid}: the release left a legitimate picture: redrawn (newer than the candidate\'s) or deduped (the '
+                  'candidate\'s own, nothing in flight, the committed state acknowledged)',
+                  outcome is not None, settled['problem'] or json.dumps(info)[:260])
+        else:
+            # The candidate was never drawn (its own check above failed): there is no picture of it for a release to
+            # equal, so the strict rule stands and the commit must draw one that is newer than the press.
+            ms, state, info = window.settle(scene, frame, after=start_mark)
+            outcome = 'redrawn' if ms is not None else None
+            check(f'{sid}: the committed picture is a NEW picture (the candidate was never drawn: newer than the press)',
+                  ms is not None, json.dumps(info))
+        record['commit_picture'] = outcome
         record['client_ms_up_to_converged_picture'] = ms
         record['picture'] = info
-        check(f'{sid}: the committed picture is a NEW picture', ms is not None, json.dumps(info))
-        after_hash = picture_hash(state) if state else None
-        check(f'{sid}: the committed picture differs from the one before the gesture',
-              after_hash is not None and after_hash != start_hash, (start_hash, after_hash))
+        # Only the picture of a legitimate outcome may be compared with the base: a timeout leaves the last state seen,
+        # which can hold a hash that is not what the commit left (the candidate's, or the base's).
+        after_hash = picture_hash(state) if outcome is not None and state else None
+        pixels['committed_hash'] = after_hash
+        pixels['committed_changed'] = None if after_hash is None else after_hash != start_hash
+        if outcome == 'redrawn' and candidate_drawn:
+            # (deduped is the candidate's own picture, equal by identity: the host's own comparison of the two plans)
+            label = f'{sid}: the redrawn picture shows the same pixels as the candidate (same hash)'
+            if candidate_hash == start_hash:
+                vacuous_check(label, after_hash == candidate_hash,
+                              'the drawn candidate is the base picture, so any picture equal to the base passes',
+                              (candidate_hash, after_hash))
+            else:
+                check(label, after_hash == candidate_hash, (candidate_hash, after_hash))
+        if rule == MUST_CHANGE:
+            check(f'{sid}: the committed picture differs from the one before the gesture',
+                  after_hash is not None and after_hash != start_hash, (start_hash, after_hash))
         check(f'{sid}: one undo entry per gesture', depths(window)[0] == undo_before + 1)
         committed.append((before, transform(window, scene, node)))
-        hashes.append(start_hash)
+        undoable.append(Undoable(start_hash, pixels['committed_changed'] is not False, sid))
     else:
         ok, cancel = timed(sid, {'op': 'scene.pointer.cancel', 'reason': 'api'}, phase=phase)
         check(f'{sid}: the cancel answered', ok, cancel)
@@ -851,9 +1084,15 @@ def drag(window, timed, check, step, scene, variables, node, committed, hashes, 
         record['picture'] = info
         # A timeout (`ms is None`) leaves the last state seen, which can still hold the base picture's hash: only a
         # picture the monitor converged on after the cancel may be compared with the base.
-        check(f'{sid}: after the cancel the picture is the base picture',
-              ms is not None and state is not None and picture_hash(state) == start_hash,
-              (ms, start_hash, picture_hash(state) if state else None))
+        pixels['after_cancel_hash'] = picture_hash(state) if ms is not None and state is not None else None
+        label = f'{sid}: after the cancel the picture is the base picture'
+        restored = ms is not None and state is not None and picture_hash(state) == start_hash
+        if candidate_drawn and candidate_hash == start_hash:
+            vacuous_check(label, restored, 'the drawn candidate already was the base picture, so the base picture was '
+                                           'on screen before the cancel too',
+                          (ms, start_hash, picture_hash(state) if state else None))
+        else:
+            check(label, restored, (ms, start_hash, picture_hash(state) if state else None))
         check(f'{sid}: the cancel left the base document (transform equals the one before the press)',
               near(transform(window, scene, node), before))
         check(f'{sid}: the cancel added no undo entry and no redo entry',
