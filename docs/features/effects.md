@@ -118,8 +118,10 @@ com o mesmo arquivo (nomes, tipo, ordem e faixas): uma faixa mudada só de um la
 
 ### Avaliação determinística por quadro
 
-`Fx::resolve(frame)` devolve um `FxPass` por clipe visível que cobre o quadro, na ordem das trilhas e dos
-clipes. O peso do envelope é amostrado no **meio** do quadro:
+`Fx::resolve(frame, shots)` (ou `Bundle::fx_passes(frame)`, que passa os planos do próprio bundle) devolve um
+`FxPass` por clipe visível que cobre o quadro, **por etapa e depois por trilha**: primeiro os clipes de escopo
+`shot` do plano do quadro (o *deck*), depois os de `output`, cada etapa na ordem das trilhas e dos clipes (ver
+[fx-shot-scope.md](fx-shot-scope.md)). O peso do envelope é amostrado no **meio** do quadro:
 `min((f + 0,5)/fadeIn, (dur − f − 0,5)/fadeOut)`; `amount = clamp(intensity × weight)`. `amount ≤ 0`
 é identidade exata (sem ida e volta sRGB, então intensidade 0 não move um pixel).
 
