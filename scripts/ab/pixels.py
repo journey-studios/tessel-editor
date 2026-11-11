@@ -10,25 +10,41 @@ import time
 
 from ab import warm_proof
 from ab.session import MIN_FREE_GIB_START, workdir
+from ab.validity import published_error
 
 CUTS, CUT_FRAMES, SPLATS = 5, 72, 200000
 
 
 def retrying_on_cancel(W, refused, label):
     """`retry_while_preparing`, and a frame request replaced by a newer one (the monitor's own refine) is asked again: the explicit render is idempotent.
-    Every refusal stays in `refused` (a race of the harness seen in every arm, not a pixel result)."""
+    Every refusal stays in `refused` as `{arm, error: {code, kind}}` (a race of the harness seen in every arm, not a pixel result; the text of an
+    answer can carry a path and `pixels.json` is a report)."""
     def retry(call, *rest, **named):
         answer = W.retry_while_preparing(call, *rest, **named)
         for _ in range(4):
             if not (isinstance(answer, dict) and not answer.get("ok")):
                 break
-            refused.append({"arm": label, "answer": str(answer)[:300]})
+            refused.append({"arm": label, "error": published_error(answer)})
             if ((answer.get("error") or {}).get("code")) != "cancelled":
                 break
             time.sleep(1.0)
             answer = W.retry_while_preparing(call, *rest, **named)
         return answer
     return retry
+
+
+def one_session(W, binary, document, label, env, order, frames, work, refused):
+    """One editor, one (arm, order). A session that raised (the editor never opened, the page never came) is a FAILED RESULT of the proof, not the end of
+    it: the sessions that ran stay on record. Its error, whether raised or answered, is published as `{code, kind}`, never as its text."""
+    try:
+        session = W.pixel_session(str(binary), document, "warm", {**W.env_for("warm", True), **env}, order, frames, CUT_FRAMES, work,
+                                  retry=retrying_on_cancel(W, refused, label))
+    except Exception as error:  # the lab's own failures are of any class
+        session = {"arm": "warm", "order": order, "hashes": {}, "monitor": {}, "error": repr(error)}
+    if session.get("error"):
+        session["error"] = published_error(session["error"])
+    session["label"] = label
+    return session
 
 
 def run_pixels(binary, out, arms, more_verdicts=None, extra=None):
@@ -47,10 +63,7 @@ def run_pixels(binary, out, arms, more_verdicts=None, extra=None):
         frames = sorted({CUT_FRAMES + 5, 2 * CUT_FRAMES + 5, (CUTS - 1) * CUT_FRAMES + 5, CUT_FRAMES + 40})
         for label, env in arms:
             for order in ("hot", "cold"):
-                session = W.pixel_session(str(binary), document, "warm", {**W.env_for("warm", True), **env}, order, frames, CUT_FRAMES,
-                                          os.path.join(work, f"px{len(results)}"), retry=retrying_on_cancel(W, refused, label))
-                session["label"] = label
-                results.append(session)
+                results.append(one_session(W, binary, document, label, env, order, frames, os.path.join(work, f"px{len(results)}"), refused))
     finally:
         shutil.rmtree(work, ignore_errors=True)
     verdicts = W.pixel_verdicts(results, frames) + (more_verdicts(results) if more_verdicts else [])
@@ -61,5 +74,8 @@ def run_pixels(binary, out, arms, more_verdicts=None, extra=None):
     (out / "pixels.json").write_text(json.dumps({**(extra or {}), "frames": frames, "sessions": results, "refused_requests": refused,
                                                   "verdicts": [{"check": name, "ok": ok} for name, ok, _ in verdicts]}, indent=2))
     for item in refused:
-        print("REFUSED", item["arm"], item["answer"])
+        print("REFUSED", item["arm"], item["error"]["code"])
+    for session in results:
+        if session.get("error"):
+            print("SESSION FAILED", session["label"], session["order"], session["error"]["kind"], session["error"]["code"])
     return 1 if any(not ok for _, ok, _ in verdicts) or any(s.get("error") for s in results) else 0
