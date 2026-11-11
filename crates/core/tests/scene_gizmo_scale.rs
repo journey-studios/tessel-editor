@@ -695,6 +695,35 @@ fn the_uniform_handle_applies_the_same_factor_to_the_three_components_and_keeps_
 }
 
 #[test]
+fn compensating_scales_of_a_parent_and_its_child_stay_scalable_in_every_space() {
+    // The world matrix is 1e-3 (legal); the node without its own scale would be 1e-5, whose
+    // volume (1e-15) must not make the node unscalable: scale it by 2 and it is 200 by the book.
+    for space in ["world", "local"] {
+        for axis in ["x", "y", "z", "uniform"] {
+            let mut state = street();
+            set_root(&mut state, None, Some([1e-5; 3]));
+            set_figure(&mut state, None, Some([100.0; 3]));
+            let answer = ok(&mut state, scale_request(FIGURE, axis, 2.0, space));
+            assert_eq!(answer["changed"], true, "{space} {axis}: {answer}");
+            let expected = match axis {
+                "x" => [200.0, 100.0, 100.0],
+                "y" => [100.0, 200.0, 100.0],
+                "z" => [100.0, 100.0, 200.0],
+                _ => [200.0; 3],
+            };
+            assert_eq!(figure_scale(&state), expected, "{space} {axis}");
+        }
+        let mut state = street();
+        set_root(&mut state, None, Some([1e-5; 3]));
+        set_figure(&mut state, None, Some([100.0; 3]));
+        select(&mut state, FIGURE);
+        tool(&mut state, "scale", space);
+        let shown = overlay(&mut state);
+        assert!(disabled(&shown).is_empty(), "{space}: {shown}");
+    }
+}
+
+#[test]
 fn factors_are_multiplicative_and_each_is_its_own_undo_entry() {
     let mut state = street();
     ok(&mut state, scale_request(FIGURE, "y", 2.0, "local"));
@@ -1326,6 +1355,9 @@ fn a_position_past_the_origin_or_past_a_limit_is_refused_and_the_last_legal_cand
         ("x", [1.0, 0.0, 0.0], 1.0, 2.0, 0.0),
         ("x", [1.0, 0.0, 0.0], 600.0, 1.5, 2.0),
         ("uniform", [0.0; 3], 1.0, 2.0, 0.0),
+        // The far side of the origin has a positive picture distance too: it is no ratio.
+        ("uniform", [0.0; 3], 1.0, 2.0, -0.5),
+        ("uniform", [0.0; 3], 1.0, 2.0, -3.0),
         ("uniform", [0.0; 3], 600.0, 1.5, 2.0),
     ] {
         let mut state = street();
@@ -1371,6 +1403,59 @@ fn a_position_past_the_origin_or_past_a_limit_is_refused_and_the_last_legal_cand
         assert_eq!(undo_depth(&state), depth + 1);
         assert!(state.scene_interaction.drag().is_none());
     }
+}
+
+#[test]
+fn a_uniform_drag_across_the_origin_is_refused_then_recovers_and_releases_the_last_legal() {
+    let mut state = street();
+    angled_camera(&mut state);
+    select(&mut state, FIGURE);
+    tool(&mut state, "scale", "local");
+    let camera = camera(&mut state, 0);
+    let (_, origin) = world(&mut state, "figure", 0);
+    let shown = overlay(&mut state);
+    let depth = undo_depth(&state);
+    press(&mut state, handle(&shown, "uniform")["to"].clone()).unwrap();
+    let at = |state: &mut EditorState, factor: f64| {
+        let (u, v) = pointer_for(&camera, origin, &shown, "uniform", [0.0; 3], factor);
+        ok(
+            state,
+            json!({"op":"scene.pointer.move","point":point(u, v)}),
+        )
+    };
+    let first = at(&mut state, 2.0);
+    assert_eq!(first["applied"], true, "{first}");
+    for opposite in [-1.0, -0.25, -4.0] {
+        let refused = at(&mut state, opposite);
+        assert_eq!(refused["applied"], false, "{opposite}: {refused}");
+        assert_eq!(refused["reason"], "factor_not_positive", "{opposite}");
+        assert_eq!(refused["document_changed"], false);
+        assert_eq!(
+            figure_scale(&state),
+            [1.0, 1.0, 1.0],
+            "the candidate is not the document"
+        );
+    }
+    // Back on the press side the ratio is the plain one again, from the press.
+    let back = at(&mut state, 1.5);
+    assert_eq!(back["applied"], true, "{back}");
+    assert!(near(back["factor"].as_f64().unwrap(), 1.5, 1e-9));
+    assert_eq!(
+        undo_depth(&state),
+        depth,
+        "nothing committed while dragging"
+    );
+    // The release at a refused position commits the last legal candidate, as one entry.
+    let (u, v) = pointer_for(&camera, origin, &shown, "uniform", [0.0; 3], -2.0);
+    let up = ok(
+        &mut state,
+        json!({"op":"scene.pointer.up","point":point(u, v)}),
+    );
+    assert!(near(up["factor"].as_f64().unwrap(), 1.5, 1e-9), "{up}");
+    assert_eq!(up["scale"], back["scale"]);
+    assert_eq!(undo_depth(&state), depth + 1);
+    assert!(near(figure_scale(&state)[0], 1.5, 1e-9));
+    assert!(state.scene_interaction.drag().is_none());
 }
 
 #[test]

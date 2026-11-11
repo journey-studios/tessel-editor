@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """One mutant at a time over the new production code; the file is restored (and its hash compared) after each."""
-import hashlib, json, subprocess, sys, time
+import hashlib, json, os, subprocess, sys, time
 from pathlib import Path
 
-ROOT = Path('/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-3902d1d1')
+ROOT = Path(__file__).resolve().parents[3]  # the checkout this script lives in, never another one
+EVIDENCE = Path(os.environ.get('TESSEL_MUTATION_OUT', '/tmp/g12-evidence'))
 SCALING = 'crates/core/src/scene_interaction/gizmo/scaling.rs'
 PROJECT = 'crates/core/src/scene_project/gizmo.rs'
 OVERLAY = 'runtime/src/overlay.js'
@@ -34,6 +35,9 @@ MUTANTS = [
     ('M23 animated scale looks at rotation', PROJECT, 'animates(document, plan, frame, &node.id, ChannelProperty::LocalScale)', 'animates(document, plan, frame, &node.id, ChannelProperty::LocalRotation)'),
     ('M24 scale writes to the wrong component (uniform)', SCALING, '                let result = *value * factor;', '                let result = *value * factor.sqrt();'),
     ('M25 limits judged on factor not result', SCALING, 'within_limits(*value, result)?;', 'within_limits(1.0, factor)?;'),
+    ('M26 uniform far side counts as the press side', SCALING, '                if dot <= 0.0 {', '                if false {'),
+    ('M27 uniform side judged without the aspect', SCALING, '* self.view.aspect.powi(2)', '* 1.0'),
+    ('M28 the basis is inverted at its own size', SCALING, '        let m = m.map(|row| row.map(|value| value / volume));\n', ''),
 ]
 
 JS_MUTANTS = [
@@ -49,7 +53,10 @@ def digest(path):
 
 
 def run(command, cwd):
-    result = subprocess.run(command, cwd=cwd, capture_output=True, text=True)
+    try:
+        result = subprocess.run(command, cwd=cwd, capture_output=True, text=True)
+    except OSError as error:  # the runner is missing: an execution error, never a verdict
+        return 127, f'{command[0]}: {error}'
     return result.returncode, result.stdout + result.stderr
 
 
@@ -76,16 +83,26 @@ def main():
                                  '--lib', '--test', 'scene_gizmo_scale', '--test', 'scene_gizmo_rotation', '--test', 'scene_gizmo'], ROOT)
         finally:
             file.write_text(original)
-        compile_error = 'error[' in out or 'could not compile' in out and 'test failed' not in out
         failed = sorted({line.split()[1] for line in out.splitlines() if line.startswith('test ') and line.endswith('FAILED')})
-        failed += sorted({line.split(' - ', 1)[1] for line in out.splitlines() if line.startswith('not ok')})
-        result = 'COMPILE-ERROR' if compile_error and not failed else ('KILLED' if code != 0 else 'SURVIVED')
+        failed += sorted({line.split(' - ', 1)[1] for line in out.splitlines() if line.startswith('not ok') and ' - ' in line})
+        # KILLED needs a test that ran and failed by name. A non-zero exit without one is the
+        # runner's own failure (no mbx, no node, a crash) and says nothing about the tests.
+        if code == 0:
+            result = 'SURVIVED'
+        elif failed:
+            result = 'KILLED'
+        elif 'error[' in out or 'could not compile' in out:
+            result = 'COMPILE-ERROR'
+        else:
+            result = 'EXECUTION-ERROR'
         report.append({'mutant': name, 'result': result, 'failed': failed[:6], 'seconds': round(time.time() - started)})
         print(name, result, failed[:3], flush=True)
     hashes_after = {path: digest(path) for path in (SCALING, PROJECT, OVERLAY)}
     out = {'restored': hashes_before == hashes_after, 'hashes': hashes_after, 'mutants': report}
-    Path('/tmp/g12-evidence/mutation-report.json').write_text(json.dumps(out, indent=2) + '\n')
+    EVIDENCE.mkdir(parents=True, exist_ok=True)
+    (EVIDENCE / 'mutation-report.json').write_text(json.dumps(out, indent=2) + '\n')
     print('restored:', out['restored'])
+    return 0 if out['restored'] and all(r['result'] in ('KILLED', 'SURVIVED') for r in report) else 2
 
 
-main()
+raise SystemExit(main())

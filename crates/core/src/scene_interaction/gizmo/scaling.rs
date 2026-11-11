@@ -202,6 +202,16 @@ impl ScaleFrame {
                 *value /= scale;
             }
         }
+        // `M` is only a basis: `T = M⁻¹·a·aᵀ·M` and the unit directions do not change when `M` is
+        // multiplied by a positive number. It is therefore inverted at unit volume, so the
+        // absolute determinant cut-off of `inverse3` judges its shape and not its size: compensating
+        // scales (a child of 100 below a parent of 1e-5) are as scalable as their world matrix is.
+        // The size of the world matrix itself is the business of `MIN_DETERMINANT`, on the result.
+        let volume = determinant(&m).abs().cbrt();
+        if !volume.is_finite() || volume <= 0.0 {
+            return Err(super::refusal::DEGENERATE_TRANSFORM);
+        }
+        let m = m.map(|row| row.map(|value| value / volume));
         let inverse = inverse3(&m).ok_or(super::refusal::DEGENERATE_TRANSFORM)?;
         let axes = [0, 1, 2].map(|h| {
             if splat {
@@ -801,6 +811,85 @@ mod tests {
             v: centre.v - 0.2,
         };
         assert!((anchor.factor(double).unwrap() - 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn compensating_scales_of_a_child_and_its_parent_do_not_hide_the_handles() {
+        // A child of (100,100,100) below a parent of (1e-5,1e-5,1e-5): the world matrix is 1e-3
+        // (determinant 1e-9, legal) and the node without its own scale is 1e-5 (determinant
+        // 1e-15, which an absolute cut-off on that basis would call degenerate).
+        let child = Vec3 {
+            x: 100.0,
+            y: 100.0,
+            z: 100.0,
+        };
+        let world = Mat4::compose(
+            Vec3::ZERO,
+            Quat::IDENTITY,
+            Vec3 {
+                x: 1e-3,
+                y: 1e-3,
+                z: 1e-3,
+            },
+        );
+        for space in [GizmoSpace::Local, GizmoSpace::World] {
+            let frame = ScaleFrame::of(&plan_node(world, child), child, space, false, false)
+                .unwrap_or_else(|why| panic!("{space:?}: {why}"));
+            for handle in [Handle::X, Handle::Y, Handle::Z] {
+                assert_eq!(frame.disabled(handle), None, "{space:?} {handle:?}");
+            }
+            let doubled = frame.scale(Handle::Uniform, 2.0).unwrap();
+            assert_eq!((doubled.x, doubled.y, doubled.z), (200.0, 200.0, 200.0));
+            assert_eq!(frame.scale(Handle::X, 2.0).unwrap().x, 200.0);
+        }
+        // A singular basis is still refused: the parent has no volume at all.
+        let flat = Mat4::compose(
+            Vec3::ZERO,
+            Quat::IDENTITY,
+            Vec3 {
+                x: 0.0,
+                y: 1.0,
+                z: 1.0,
+            },
+        );
+        assert_eq!(
+            ScaleFrame::of(
+                &plan_node(flat, Vec3::ONE),
+                Vec3::ONE,
+                GizmoSpace::World,
+                false,
+                false
+            )
+            .unwrap_err(),
+            crate::scene_interaction::gizmo::refusal::DEGENERATE_TRANSFORM
+        );
+    }
+
+    #[test]
+    fn the_uniform_side_is_judged_in_picture_space_not_in_normalised_coordinates() {
+        // Written in picture-height units: a pointer 0.2 left of and 0.12 above the origin, for a
+        // press 0.1 right of and 0.1 above it, is on the far side (dot = -0.02 + 0.012 < 0). In raw
+        // `u` units (width-normalised) the horizontal term shrinks by the aspect squared and the
+        // dot would read +0.0031: the opposite side would count as the press side.
+        let view = view();
+        let origin = [0.0; 3];
+        let centre = view.project(origin).unwrap();
+        let press = Point {
+            u: centre.u + 0.1 / view.aspect,
+            v: centre.v + 0.1,
+        };
+        let anchor = ScaleAnchor::begin(&view, origin, Handle::Uniform, None, press).unwrap();
+        let far_side = Point {
+            u: centre.u - 0.2 / view.aspect,
+            v: centre.v + 0.12,
+        };
+        assert_eq!(anchor.factor(far_side), Some(0.0));
+        let near_side = Point {
+            u: centre.u + 0.2 / view.aspect,
+            v: centre.v + 0.12,
+        };
+        let ratio = (0.2f64.hypot(0.12)) / (0.1f64.hypot(0.1));
+        assert!((anchor.factor(near_side).unwrap() - ratio).abs() < 1e-12);
     }
 
     #[test]

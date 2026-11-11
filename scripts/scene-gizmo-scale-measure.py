@@ -21,6 +21,7 @@ import fcntl
 import importlib.util
 import json
 from pathlib import Path
+import shutil
 import statistics
 import sys
 import tempfile
@@ -61,6 +62,7 @@ def main(argv=None):
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
+        lock.close()
         report['reason'] = 'lock_busy'
         return finish(3)
     s8 = None
@@ -98,11 +100,18 @@ def main(argv=None):
                                   'min_us': round(min(v), 1), 'n': len(v)} for name, v in samples.items()})
         report.update({'measured': True, 'rounds': rounds, 'unit': 'microseconds per scene.gizmo.state round trip'})
     finally:
-        s8.stop_surface(surface) if hasattr(s8, 'stop_surface') else None
-        import shutil
-        if work is not None:
-            shutil.rmtree(work, ignore_errors=True)
-        fcntl.flock(lock, fcntl.LOCK_UN)
+        # Whatever failed above (the load, the temp directory, the binary, a request), the work is
+        # removed and the lock is given back, even when stopping the surface itself fails.
+        try:
+            if s8 is not None:
+                s8.stop_surface(surface)
+        finally:
+            try:
+                if work is not None:
+                    shutil.rmtree(work, ignore_errors=True)
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
+                lock.close()
     return finish(0)
 
 

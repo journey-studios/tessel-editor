@@ -643,6 +643,10 @@ def run_surface(name, binary, report):
         if succeeded and not stop_error:
             shutil.rmtree(work, ignore_errors=True)
             entry['retained'] = False
+    # Outside the `finally`, so it never hides the failure of the run itself (S8 does the same):
+    # a surface that did not stop is a failed proof, never `ok`.
+    if stop_error:
+        raise RuntimeError(f'[{name}] the surface did not stop cleanly (work kept at {work}): {stop_error}')
 
 
 def main(argv=None):
