@@ -1,12 +1,13 @@
 //! The shared half of the gizmo performance suite (F055 / BL015.12 / BL015.18 / BL015.21): the
 //! journey (`docs/migration/fixtures/gizmo-perf/journey.json`) and a driver that runs it on any
 //! surface that can answer a JSON request, timing and recording EVERY request. The record keeps
-//! the nanoseconds of each request, but the suites that include this module judge the layout
-//! counts and the results, never the time (judging time is the timing stack, BL015.23).
+//! the nanoseconds of each request: `scene_gizmo_perf_structure.rs` and `scene_gizmo_perf_threads.rs`
+//! judge the layout counts and the results, never the time; only the timing stack
+//! (`scene_gizmo_perf_budget.rs`, BL015.23) judges the time recorded here.
 //!
-//! Included with `#[path]` by `scene_gizmo_perf_structure.rs` and `scene_gizmo_perf_threads.rs`
-//! (the core, through `headless::execute`) and by the desktop's `scene_gizmo_perf_tests.rs` (the
-//! GPUI host, through `Workstation::run_op`), so the runs are literally the same script:
+//! Included with `#[path]` by those three tests (the core, through `headless::execute`) and by the
+//! desktop's `scene_gizmo_perf_tests.rs` (the GPUI host, through `Workstation::run_op`), so the
+//! runs are literally the same script:
 //! the same requests, in the same order, with the same expectations. A step a surface cannot run
 //! (a window step on the core) is recorded as skipped with its reason, never as a pass.
 //!
@@ -659,4 +660,24 @@ pub fn run<S: Surface>(surface: &mut S, journey: &Journey, corpus: &Corpus) -> R
         steps,
         samples: driver.samples,
     }
+}
+
+// --- statistics (every sample is kept; these only summarise them) --------------------------------
+
+pub fn percentile(sorted: &[u128], q: f64) -> u128 {
+    let at = ((q * sorted.len() as f64).ceil() as usize).clamp(1, sorted.len()) - 1;
+    sorted[at]
+}
+
+pub fn summary(values: &[u128]) -> Value {
+    let mut sorted = values.to_vec();
+    sorted.sort_unstable();
+    json!({
+        "n": sorted.len(),
+        "min_ns": sorted[0],
+        "p50_ns": percentile(&sorted, 0.50),
+        "p95_ns": percentile(&sorted, 0.95),
+        "p99_ns": percentile(&sorted, 0.99),
+        "max_ns": sorted[sorted.len() - 1],
+    })
 }

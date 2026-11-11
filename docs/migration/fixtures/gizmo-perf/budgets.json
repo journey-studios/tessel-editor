@@ -1,0 +1,280 @@
+{
+ "calibrations": [
+  {
+   "dir": "gizmo-perf-calibC1",
+   "file": "report.json",
+   "sha256": "8e87df1c56dd17efb0d749357ecec60d7ce404a0caf52dfb3e4ac0bc99b906bb"
+  },
+  {
+   "dir": "gizmo-perf-calibC2",
+   "file": "report.json",
+   "sha256": "a427e8d098687155d4dd69fe9a40de5e76e5bc9b2715b1f1848ecbede04a152c"
+  },
+  {
+   "dir": "gizmo-perf-calibC3",
+   "file": "report.json",
+   "sha256": "eb11cf5a9bd70ce3e9ab89cca02b2e4c929d059e3d9ad0dff28a2847bd60e5b5"
+  }
+ ],
+ "derived_by": "scripts/gizmo-perf/budgets.py",
+ "long_tick_ms": 16.6,
+ "long_ticks_max": {
+  "deep": 0,
+  "dense": 0,
+  "small": 0
+ },
+ "ratios": {
+  "deep": {
+   "cold.attach": {
+    "p50_ratio": 6.4,
+    "p95_ratio": 11.85
+   },
+   "cold.state": {
+    "p50_ratio": 1.7,
+    "p95_ratio": 3.2
+   },
+   "down.rotate": {
+    "p50_ratio": 4.6,
+    "p95_ratio": 5.4
+   },
+   "down.scale": {
+    "p50_ratio": 3.9,
+    "p95_ratio": 9.45
+   },
+   "down.translate": {
+    "p50_ratio": 2.8,
+    "p95_ratio": 3.15
+   },
+   "move.rotate": {
+    "p50_ratio": 7.5,
+    "p95_ratio": 9.05
+   },
+   "move.scale": {
+    "p50_ratio": 6.95,
+    "p95_ratio": 19.75
+   },
+   "move.translate": {
+    "p50_ratio": 6.15,
+    "p95_ratio": 7.25
+   },
+   "read.hidden": {
+    "p50_ratio": 1.3,
+    "p95_ratio": 3.0
+   },
+   "read.refused": {
+    "p50_ratio": 1.65,
+    "p95_ratio": 3.65
+   },
+   "read.rotate": {
+    "p50_ratio": 3.35,
+    "p95_ratio": 4.15
+   },
+   "read.scale": {
+    "p50_ratio": 2.0,
+    "p95_ratio": 4.8
+   },
+   "read.translate": {
+    "p50_ratio": 1.5,
+    "p95_ratio": 1.9
+   },
+   "state.rotate": {
+    "p50_ratio": 3.35,
+    "p95_ratio": 3.95
+   },
+   "state.scale": {
+    "p50_ratio": 2.1,
+    "p95_ratio": 3.85
+   },
+   "state.translate": {
+    "p50_ratio": 1.55,
+    "p95_ratio": 1.9
+   },
+   "undo": {
+    "p50_ratio": 0.25,
+    "p95_ratio": 0.5
+   },
+   "up.rotate": {
+    "p50_ratio": 8.3,
+    "p95_ratio": 10.05
+   },
+   "up.scale": {
+    "p50_ratio": 8.0,
+    "p95_ratio": 22.1
+   },
+   "up.translate": {
+    "p50_ratio": 7.0,
+    "p95_ratio": 7.95
+   }
+  },
+  "dense": {
+   "cold.attach": {
+    "p50_ratio": 7.1,
+    "p95_ratio": 17.95
+   },
+   "cold.state": {
+    "p50_ratio": 1.4,
+    "p95_ratio": 5.6
+   },
+   "down.rotate": {
+    "p50_ratio": 3.35,
+    "p95_ratio": 3.9
+   },
+   "down.scale": {
+    "p50_ratio": 3.25,
+    "p95_ratio": 3.8
+   },
+   "down.translate": {
+    "p50_ratio": 2.5,
+    "p95_ratio": 3.8
+   },
+   "move.rotate": {
+    "p50_ratio": 7.35,
+    "p95_ratio": 9.0
+   },
+   "move.scale": {
+    "p50_ratio": 7.25,
+    "p95_ratio": 8.7
+   },
+   "move.translate": {
+    "p50_ratio": 6.9,
+    "p95_ratio": 10.7
+   },
+   "read.hidden": {
+    "p50_ratio": 1.25,
+    "p95_ratio": 1.45
+   },
+   "read.refused": {
+    "p50_ratio": 1.45,
+    "p95_ratio": 1.85
+   },
+   "read.rotate": {
+    "p50_ratio": 1.75,
+    "p95_ratio": 2.1
+   },
+   "read.scale": {
+    "p50_ratio": 1.65,
+    "p95_ratio": 2.75
+   },
+   "read.translate": {
+    "p50_ratio": 1.25,
+    "p95_ratio": 1.5
+   },
+   "state.rotate": {
+    "p50_ratio": 1.75,
+    "p95_ratio": 2.1
+   },
+   "state.scale": {
+    "p50_ratio": 1.65,
+    "p95_ratio": 1.9
+   },
+   "state.translate": {
+    "p50_ratio": 1.25,
+    "p95_ratio": 1.55
+   },
+   "undo": {
+    "p50_ratio": 0.25,
+    "p95_ratio": 0.5
+   },
+   "up.rotate": {
+    "p50_ratio": 8.3,
+    "p95_ratio": 9.95
+   },
+   "up.scale": {
+    "p50_ratio": 8.35,
+    "p95_ratio": 9.85
+   },
+   "up.translate": {
+    "p50_ratio": 8.05,
+    "p95_ratio": 11.2
+   }
+  },
+  "small": {
+   "cold.attach": {
+    "p50_ratio": 11.05,
+    "p95_ratio": 20.45
+   },
+   "cold.state": {
+    "p50_ratio": 3.15,
+    "p95_ratio": 6.05
+   },
+   "down.rotate": {
+    "p50_ratio": 10.45,
+    "p95_ratio": 12.2
+   },
+   "down.scale": {
+    "p50_ratio": 5.95,
+    "p95_ratio": 7.25
+   },
+   "down.translate": {
+    "p50_ratio": 4.3,
+    "p95_ratio": 5.65
+   },
+   "move.rotate": {
+    "p50_ratio": 15.2,
+    "p95_ratio": 17.85
+   },
+   "move.scale": {
+    "p50_ratio": 11.0,
+    "p95_ratio": 12.95
+   },
+   "move.translate": {
+    "p50_ratio": 10.1,
+    "p95_ratio": 12.25
+   },
+   "read.hidden": {
+    "p50_ratio": 1.7,
+    "p95_ratio": 4.65
+   },
+   "read.refused": {
+    "p50_ratio": 2.55,
+    "p95_ratio": 4.2
+   },
+   "read.rotate": {
+    "p50_ratio": 10.4,
+    "p95_ratio": 12.15
+   },
+   "read.scale": {
+    "p50_ratio": 3.75,
+    "p95_ratio": 9.5
+   },
+   "read.translate": {
+    "p50_ratio": 2.75,
+    "p95_ratio": 3.7
+   },
+   "state.rotate": {
+    "p50_ratio": 10.55,
+    "p95_ratio": 12.85
+   },
+   "state.scale": {
+    "p50_ratio": 3.8,
+    "p95_ratio": 4.6
+   },
+   "state.translate": {
+    "p50_ratio": 2.85,
+    "p95_ratio": 3.45
+   },
+   "undo": {
+    "p50_ratio": 0.25,
+    "p95_ratio": 0.5
+   },
+   "up.rotate": {
+    "p50_ratio": 16.3,
+    "p95_ratio": 20.55
+   },
+   "up.scale": {
+    "p50_ratio": 12.0,
+    "p95_ratio": 14.65
+   },
+   "up.translate": {
+    "p50_ratio": 11.05,
+    "p95_ratio": 13.8
+   }
+  }
+ },
+ "reference": {
+  "max_block_spread": 1.5,
+  "max_unstable_blocks": 0.25
+ },
+ "rule": "p50_ratio = ceil_to_0.05(max calibrated p50 ratio * 1.15), floor 0.25; p95_ratio = ceil_to_0.05(max calibrated p95 ratio * 1.25), floor 0.5; cold.* kinds: 1.25 and 2.0; ratio = request time / the scene's own ScenePlan::build_with p50 in the same process",
+ "version": 1
+}
