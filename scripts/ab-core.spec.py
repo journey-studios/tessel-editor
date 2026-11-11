@@ -392,6 +392,7 @@ DEFECTS = {
     "a stale read": lambda r: r["status"]["asset_io"]["pool"].update(stale=2),
     "lost trace events": lambda r: r.update(events_lost=3),
     "a play that did not run to its end": lambda r: r.update(plays_ok=False),
+    "a trace poll refused after the plays were judged": lambda r: r.update(errors=["render.trace: {'ok': False, 'error': {'code': 'unavailable'}}"]),
     "an HTTP error": lambda r: r["events"].append(event("asset_io", 9, status=503)),
     "an asset that failed to load": lambda r: r["events"].append(event("asset_state", 9, state="failed", timings=None)),
 }
@@ -418,6 +419,18 @@ class OneValidityTests(unittest.TestCase):
                     self.assertFalse(valid)
                     self.assertTrue(reasons)
 
+    def test_the_errors_a_session_recorded_are_reasons_as_codes_and_kinds_once_each_never_as_text(self):
+        record = window_record(plays_ok=True)
+        record["errors"] = ["render.trace: {'ok': False, 'error': {'code': 'unavailable', 'message': 'no socket at /Users/someone/private/s.sock'}}",
+                            "render.trace: {'ok': False, 'error': {'code': 'unavailable', 'message': 'again'}}", "something odd at /Users/someone"]
+        for judge in self.JUDGES.values():
+            valid, reasons = judge(record)
+            self.assertFalse(valid)
+            self.assertEqual([r for r in reasons if "recorded" in r], ["the session recorded error(s): host_refused:unavailable, other:other"])
+            self.assertNotIn("/Users", " ".join(reasons))
+        record["errors"] = []
+        self.assertEqual(V.window_validity(record), (True, []))
+
     def test_an_asset_the_page_could_not_load_is_a_reason_that_names_how_many(self):
         record = window_record()
         record["events"] += [event("asset_state", 9, state="failed"), event("asset_state", 10, state="failed"), event("asset_state", 11, state="ready")]
@@ -427,6 +440,29 @@ class OneValidityTests(unittest.TestCase):
         ready = window_record()
         ready["events"] += [event("asset_state", 9, state="loading"), event("asset_state", 10, state="ready")]
         self.assertTrue(V.session_validity(ready)[0])
+
+    def picture(self, id, done, interactive=True):
+        return {"id": id, "done_ms": done, "shown_frame": id, "interactive": interactive}
+
+    def played_window(self, accounted):
+        """A window of four pictures (the fifth is the refine after the stop): `accounted` are the ids whose page account arrived."""
+        record = window_record()
+        record["events"] = [event("play_command", 0), event("play_clock_started", 10)] + [event("frame_page", 20 + i, id=i) for i in accounted]
+        record["frames"] = [self.picture(i, 20 + i) for i in (1, 2, 3, 4)] + [self.picture(5, 900, interactive=False)]
+        return record
+
+    def test_every_picture_of_the_plays_must_carry_the_page_account_not_just_one_of_them(self):
+        self.assertEqual(V.window_validity(self.played_window([1, 2, 3, 4])), (True, []))
+        valid, reasons = V.window_validity(self.played_window([1]))
+        self.assertFalse(valid)
+        self.assertEqual(reasons, ["3 of 4 picture(s) of the plays carried no page account (a lost report)"])
+        self.assertFalse(V.window_validity(self.played_window([1, 2, 4]))[0], "one lost report among the others is enough")
+        self.assertEqual(V.window_validity(self.played_window([])), (False, ["no frame carried the page account (the page timing was not on)"]))
+
+    def test_the_refine_after_the_stop_is_not_a_picture_of_the_play_that_needs_an_account(self):
+        record = self.played_window([1, 2, 3, 4])
+        self.assertTrue(record["frames"][-1]["id"] == 5 and 5 not in {e["fields"]["id"] for e in record["events"] if e["kind"] == "frame_page"})
+        self.assertTrue(V.window_validity(record)[0])
 
     def test_what_is_the_experiments_own_stays_with_it(self):
         no_warm = window_record()

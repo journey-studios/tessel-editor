@@ -32,8 +32,10 @@ def record(arm, gap_at_196, *, enabled=None, sent=3, spans=("uploaded",), suppor
     for i, shown in enumerate(range(190, 201)):
         done += gap_at_196 if shown == 196 else 42.0
         frames.append(frame(i + 1, shown, done))
-    events = [event("play_command", 900), event("play_clock_started", 950),
-              event("frame_page", 1000, id=1, ipc_wait_ms=0.2, page={"queue_ms": 0.1, "held_ms": 1.0, "loop": {"max_ms": 1.0}, "ahead": {}})]
+    events = [event("play_command", 900), event("play_clock_started", 950)]
+    # the host asks the page for its account of every frame (telemetry.timing), so every picture carries one
+    events += [event("frame_page", f["done_ms"], id=f["id"], ipc_wait_ms=0.2, page={"queue_ms": 0.1, "held_ms": 1.0, "loop": {"max_ms": 1.0}, "ahead": {}})
+               for f in frames]
     events += [event("runtime_span", 1200 + n, k=ab.FACTORS[factor]["span"], outcome=outcome, ms=4.0) for n, outcome in enumerate(spans)]
     on = arm == "on" if enabled is None else enabled
     report = {"enabled": on, "supported": supported, "sent": sent}
