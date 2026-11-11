@@ -82,6 +82,17 @@ def core_validity(record, mode, unfinished):
     return reasons
 
 
+def failed_session(record, complete):
+    """Whether the session did not run as claimed, whatever its plays showed: it died (`error`), recorded errors (a play that timed out or was refused,
+    a trace that could not be read), its plays did not run to their end (`plays_ok`), the editor was gone before the harness stopped it, or the plays that
+    were asked for are not all there (`complete`, the runner's own reading). The ONE definition, for every runner that tells a failed run from a hung one.
+
+    A HANG is something else: what a play showed, a finding about the arm that `hung_play` judges. A session can be both, and a hang never excuses a
+    failure: the run is then reported as failed (exit 1) and its hang is still counted."""
+    gone = record.get("editor_exit") or {}
+    return bool(record.get("error") or record.get("errors") or not record.get("plays_ok", True) or (gone and not gone.get("alive", True)) or not complete)
+
+
 def session_validity(session):
     """(valid, [reasons]) of a whole-project session: the core, and the scene warm (on in both arms) has to have run."""
     reasons = core_validity(session, session["mode"], "a play did not finish normally")

@@ -30,7 +30,8 @@ A frozen page that outlives its editor is reported (pid, role and the sample fil
 DECISION RULES, fixed here before any measurement (diagnostic; nothing here decides the acceptance of BL157):
 
     hung play      the play shows fewer than 90% of the project's frames, or waits more than 2000 ms between two pictures (the rule of `first-use-ab.py`).
-    hung session   at least one of its plays is hung. A session that errors, or whose editor dies, without a hung play is `failed`, never counted as hung.
+    hung session   at least one of its plays is hung. Hung and `failed` are independent: a session that errors, records errors, loses a play or whose
+                   editor dies is `failed` (exit 1) whether or not a play of it also hung, and a failed session without a hung play is never counted as hung.
     NOT REPRODUCED the unpatched arm has fewer than 3 hung sessions: this run says nothing about the patch.
     CONFIRMED      the unpatched arm has at least 3 hung sessions and the patched arm none.
     REDUCED        the patched arm has some, fewer than the unpatched one: the hang has another cause too; the patch is not called a fix.
@@ -59,7 +60,7 @@ from ab.play import hung_play  # noqa: E402
 from ab.project import sha256_file  # noqa: E402
 from ab.session import CONTROL_ENV, PLAYS, collect as poll_trace, process_table, run_session, session_env, webkit_pids, whole_project_twice  # noqa: E402
 from ab.stats import stats  # noqa: E402
-from ab.validity import analyze_session, error_label, published_error  # noqa: E402
+from ab.validity import analyze_session, error_label, failed_session, published_error  # noqa: E402
 
 UNPATCHED, PATCHED = "unpatched", "patched"
 ARMS = (UNPATCHED, PATCHED)
@@ -187,7 +188,7 @@ def session_row(record, project):
     return {"arm": record["arm"], "pair": record.get("pair"), "order_index": record.get("order_index"), "valid": analysis["valid"],
             "invalid_reasons": analysis["invalid_reasons"], "plays": plays, "hung": hung,
             "served_runtime_bytes": served_runtime_bytes(record.get("events")),
-            "failed": not hung and (bool(record.get("error")) or any(name not in plays for name in PLAYS)),
+            "failed": failed_session(record, all(name in plays for name in PLAYS)),
             "error": published_error(record["error"]) if record.get("error") else None,
             "quiet_class": analysis["quiet_class"], "external_median_cores": analysis["external_median_cores"],
             "external_p95_cores": analysis["external_p95_cores"], "loadavg_start": analysis["loadavg_start"],
@@ -205,6 +206,12 @@ def build_report(records, project, manifest):
             "served_bundle": served, "play_gaps": gap_summary(rows),
             "chance_of_so_few": round(chance_of_so_few(c[UNPATCHED]["hung"], c[UNPATCHED]["sessions"], c[PATCHED]["hung"], c[PATCHED]["sessions"]), 4),
             "all_ran": not any(r["failed"] for r in rows) and not any(r["leftover_helpers"] for r in rows) and not served["findings"]}
+
+
+def status_of(row):
+    """The `hung` cell of a session: hung and failed are independent, so both are said."""
+    found = (["HUNG"] if row["hung"] else []) + ([f"FAILED: {error_label(row['error']) if row['error'] else 'incomplete'}"] if row["failed"] else [])
+    return ", ".join(found) or "no"
 
 
 def markdown(report):
@@ -241,7 +248,7 @@ def markdown(report):
         samples = ", ".join(f"{'DEADLOCK' if s['signature']['deadlock'] else 'other'} at {s['at_s']} s ({s['role']} {s['pid']}: {s['file']})" for s in r["samples"]) or "-"
         lines.append(f"| {r['order_index']} | {r['pair']} | {r['arm']} | {r.get('served_runtime_bytes') or '?'} | {r['quiet_class']} | "
                      f"{r['external_median_cores']}/{r['external_p95_cores']} | "
-                     f"{r['loadavg_start']} / {r['loadavg_peak_1m']} | {cell('first')} | {cell('repeat')} | {'HUNG' if r['hung'] else ('FAILED: ' + (error_label(r['error']) if r['error'] else 'incomplete')) if r['failed'] else 'no'} | "
+                     f"{r['loadavg_start']} / {r['loadavg_peak_1m']} | {cell('first')} | {cell('repeat')} | {status_of(r)} | "
                      f"{'yes' if r['valid'] else 'NO: ' + '; '.join(r['invalid_reasons'])} | {samples} |")
     lines += ["", f"Exact one-sided chance of so few hung sessions in the patched arm if both arms were alike (diagnostic only): {report['chance_of_so_few']}", "",
               f"Verdict (mechanical, pre-fixed rules): {report['verdict']}", ""]

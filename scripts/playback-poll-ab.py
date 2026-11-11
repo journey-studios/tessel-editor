@@ -62,7 +62,7 @@ from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, prereq
 from ab.play import hung_play  # noqa: E402
 from ab.project import sha256_file  # noqa: E402
 from ab.session import CONTROL_ENV, PLAYS, run_session, session_env, whole_project_twice  # noqa: E402
-from ab.validity import analyze_session, error_label, published_error  # noqa: E402
+from ab.validity import analyze_session, error_label, failed_session, published_error  # noqa: E402
 
 FIXED, DEADLINE = "fixed", "deadline"
 ARMS = (FIXED, DEADLINE)
@@ -129,9 +129,9 @@ def session_row(record, project):
     hung = any(play["hung"] for play in plays.values())
     findings = arm_findings(record)
     complete = len(read) == len(PLAYS) and all(name in analysis["plays"] for name in PLAYS)
-    # A hang is a result of the arm (the `hung` guard of the rule speaks to it), not a failure of the run: a hung session is never `failed`, but it
-    # is only counted with its two plays.
-    failed = not hung and (bool(record.get("error")) or not complete)
+    # A hang is a result of the arm (the `hung` guard of the rule speaks to it); a failure is the run not being what it claims. They are independent:
+    # a hung session that also died, recorded errors or lost a play is hung AND failed (and uncounted).
+    failed = failed_session(record, complete)
     return {"arm": record.get("arm"), "pair": record.get("pair"), "order_index": record.get("order_index"), "valid": analysis["valid"],
             "invalid_reasons": analysis["invalid_reasons"], "arm_findings": findings, "plays": plays, "hung": hung, "failed": failed,
             "counted": analysis["valid"] and complete and not failed and not findings,

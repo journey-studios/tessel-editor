@@ -223,20 +223,33 @@ class SessionRowTests(unittest.TestCase):
         slow = self.row_of(record("fixed"), analysis(repeat=(590, 2500.0)))
         self.assertTrue(slow["plays"]["repeat"]["hung"] and slow["hung"])
 
-    def test_a_hang_is_a_result_not_a_failure_even_when_the_second_play_never_came(self):
-        # The first play showed 300 of 600 pictures and the second never started: the editor hung, the run ran. The hung guard of the rule speaks to
-        # it; the session is not counted because it has not its two plays, with or without the harness calling it invalid.
+    def test_a_hang_is_a_finding_about_the_arm_and_never_excuses_a_failure_of_the_run(self):
+        # The first play showed 300 of 600 pictures: the editor hung. That is the arm's result (the hung guard of the rule speaks to it); it does not
+        # excuse the run: a hung session that has not its two plays, or died, is hung AND failed, so the batch does not exit 0.
         lost = self.row_of(record("deadline", plays=1), analysis(first=(300, 80.0), repeat=None))
         self.assertTrue(lost["hung"])
-        self.assertFalse(lost["failed"])
+        self.assertTrue(lost["failed"])
         self.assertFalse(lost["counted"])
         stopped = self.row_of(record("deadline", plays=1, error="the second play never started"),
                               analysis(valid=False, reasons=["a play did not finish normally"], first=(300, 80.0), repeat=None))
-        self.assertTrue(stopped["hung"])
-        self.assertFalse(stopped["failed"])
+        self.assertTrue(stopped["hung"] and stopped["failed"])
         self.assertFalse(stopped["counted"])
-        # The same session without the hang is a failure: that is what the hang is excused from.
-        self.assertTrue(self.row_of(record("deadline", plays=1), analysis(repeat=None))["failed"])
+        self.assertTrue(self.row_of(record("deadline", plays=1), analysis(repeat=None))["failed"], "without the hang it is a failure all the same")
+
+    def test_a_hung_session_with_both_plays_that_recorded_an_error_or_lost_its_editor_is_failed_too(self):
+        for name, defect in {"a play that timed out": {"errors": ["play(repeat) did not end within 50 s"], "plays_ok": False},
+                             "a trace poll that was refused": {"errors": ["render.trace: {'ok': False, 'error': {'code': 'unavailable'}}"]},
+                             "plays that did not end": {"plays_ok": False},
+                             "an editor that ended by itself": {"editor_exit": {"alive": False, "returncode_before_stop": -11}}}.items():
+            for hung, first in ((True, (300, 80.0)), (False, (590, 80.0))):
+                with self.subTest(defect=name, hung=hung):
+                    found = self.row_of({**record("fixed"), **defect}, analysis(first=first))
+                    self.assertEqual((found["hung"], found["failed"], found["counted"]), (hung, True, False))
+
+    def test_a_session_that_ran_as_claimed_is_not_failed_whether_or_not_it_hung(self):
+        for first in ((590, 80.0), (300, 80.0)):
+            found = self.row_of({**record("fixed"), "plays_ok": True, "errors": [], "editor_exit": {"alive": True}}, analysis(first=first))
+            self.assertFalse(found["failed"])
 
     def test_a_session_with_an_error_failed_and_its_report_names_a_code_and_a_kind_only(self):
         found = self.row_of(record("fixed", error="RuntimeError('could not open /Users/someone/private name.tessel.json: refused')"))

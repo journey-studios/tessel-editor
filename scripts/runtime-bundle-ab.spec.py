@@ -213,6 +213,24 @@ class SessionRowTests(unittest.TestCase):
         self.assertEqual((result["hung"], result["failed"]), (False, True))
         self.assertEqual(result["plays"], {})
 
+    def test_a_hang_never_excuses_a_failure_a_hung_session_that_errored_is_both(self):
+        result = ab.session_row(record(ab.UNPATCHED, first=pictures(1, 1000.0, 20), error="RuntimeError('the second play never started')"), PROJECT)
+        self.assertEqual((result["hung"], result["failed"]), (True, True))
+        self.assertEqual(ab.status_of(result), "HUNG, FAILED: exception:RuntimeError")
+
+    def test_a_session_whose_repeat_timed_out_or_whose_editor_died_after_both_plays_is_failed_though_no_play_hung(self):
+        # Both plays are there and healthy; the harness recorded the timeout in `errors` (and `plays_ok`), not in `error`.
+        for name, defect in {"a timeout": {"errors": ["play(repeat) did not end within 50 s"], "plays_ok": False},
+                             "an editor that died after the plays": {"editor_exit": {"alive": False, "returncode_before_stop": -11}}}.items():
+            with self.subTest(defect=name):
+                result = ab.session_row({**record(ab.PATCHED), **defect}, PROJECT)
+                self.assertEqual((result["hung"], result["failed"]), (False, True))
+                self.assertEqual(sorted(result["plays"]), ["first", "repeat"])
+                self.assertEqual(ab.status_of(result), "FAILED: incomplete")
+                manifest = {"git": {"sha": "0" * 40, "dirty_files": 0}, "binary_sha256": "b", "document_sha256": "d", "stress_cpu": 0, "order": [],
+                            "bundle_sha256": {"unpatched": "u", "patched": "p"}}
+                self.assertFalse(ab.build_report([{**record(ab.PATCHED), **defect}], PROJECT, manifest)["all_ran"], "exit 1, not 0")
+
     def test_the_error_of_a_failed_session_is_published_as_a_code_and_a_kind_without_its_path(self):
         broken = record(ab.PATCHED, error="RuntimeError('could not open /Users/someone/private/clip.ply')")
         broken["events"], broken["frames"] = [], []

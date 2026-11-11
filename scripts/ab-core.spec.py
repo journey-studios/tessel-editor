@@ -1,6 +1,7 @@
 """Tests of the shared core of the A/B runners (`scripts/ab/`): project reading, stats, plays and gaps, validity, charts and the batch loop.
 Pure logic; no editor, GPU, runtime page or private media is started."""
 import hashlib
+import inspect
 import itertools
 import json
 import os
@@ -430,6 +431,18 @@ class OneValidityTests(unittest.TestCase):
             self.assertNotIn("/Users", " ".join(reasons))
         record["errors"] = []
         self.assertEqual(V.window_validity(record), (True, []))
+
+    def test_a_session_failed_when_it_did_not_run_as_claimed_and_its_hang_is_not_part_of_the_question(self):
+        failures = {"it died": {"error": "RuntimeError('x')"}, "it recorded an error": {"errors": ["render.trace: {'ok': False}"]},
+                    "its plays did not end": {"plays_ok": False}, "the editor ended by itself": {"editor_exit": {"alive": False, "returncode_before_stop": -11}}}
+        for name, defect in failures.items():
+            with self.subTest(failure=name):
+                self.assertTrue(V.failed_session({**window_record(), **defect}, True))
+                self.assertTrue(V.failed_session({**window_record(), **defect}, False))
+        self.assertFalse(V.failed_session(window_record(editor_exit={"alive": True}), True))
+        self.assertTrue(V.failed_session(window_record(), False), "a play that was asked for is missing")
+        self.assertFalse(V.failed_session({"events": []}, True), "a record that names none of the signals did not fail")
+        self.assertEqual(list(inspect.signature(V.failed_session).parameters), ["record", "complete"], "it knows nothing of a hang: hung is judged apart")
 
     def test_an_asset_the_page_could_not_load_is_a_reason_that_names_how_many(self):
         record = window_record()
