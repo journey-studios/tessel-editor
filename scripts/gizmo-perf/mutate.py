@@ -35,6 +35,15 @@ when `prepare` recorded the hash of that very file (else `MISSING_EXECUTABLE`), 
 `--out/exes`, so no executable of an earlier `prepare` can stand in for one this run did not build. A `time` run in which
 a mutant was BLOCKED or had no usable executable keeps `--out/exes`, so the same `prepare` can be measured again.
 
+One run per `--out` at a time, for BOTH phases: right after creating `--out` (before anything in it is read, written or
+removed, a refusal's own manifest included) each takes an exclusive, non-blocking `flock` on `--out/.mutate.lock` and keeps
+it until `main` returns. A run that finds it taken prints one `REFUSED` JSON line, exits 1 and writes nothing into `--out`:
+the holder owns `manifest.json`, `manifest.final.json` and `exes/`. Without it a `prepare` (a build, which takes no
+performance lock) could replace or empty `exes/` after `time` hashed an executable and before it ran it, and the result
+would be filed under another `prepare`'s manifest; a second hash check cannot close that window. The lock is taken before
+the performance lock and neither is waited for, so two runs cannot wait on each other. It is a `flock`, so a run that dies
+(SIGKILL included) never leaves `--out` locked; the lock file itself stays, on purpose (see `harness.exclusive`).
+
 Exit 0 only when every mutant was detected by every detector that must detect it and passed every one that must not;
 1 when a mutant is not as expected; 3 when anything was BLOCKED or infrastructure failed (never a pass).
 """
@@ -53,6 +62,7 @@ import harness  # noqa: E402
 import run as runner  # noqa: E402
 
 ROOT = harness.ROOT
+OUT_LOCK = '.mutate.lock'  # in --out: held by whichever run (prepare or time) owns that directory
 GIZMO = 'crates/core/src/scene_project/gizmo.rs'
 OVERLAY = 'crates/desktop/src/workstation/viewport_overlay.rs'
 WORKFLOW = 'crates/desktop/src/workstation/workflow.rs'
@@ -303,6 +313,18 @@ def main(argv=None):
     args = parser.parse_args(argv)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    # The directory is owned before anything in it is touched, and until this returns (the `with` is the `finally`: also
+    # on SIGTERM/SIGINT, which are `SystemExit`). Both locks never wait, this one first, so no run can wait on another.
+    with harness.exclusive(out / OUT_LOCK) as owned:
+        if not owned:
+            return harness.die(1, {'status': 'REFUSED', 'reason': (
+                f'another `mutate.py` run holds {out / OUT_LOCK}: it owns manifest.json, manifest.final.json and exes/ '
+                'of this --out, so nothing here was read or written (not waited for)')}, None)
+        return run_phase(args, out)
+
+
+def run_phase(args, out):
+    """The phase `args.phase` over `out`, which the caller owns (`out/.mutate.lock` is held). Returns the exit code."""
     names = args.only or list(MUTANTS)
     manifest = {'suite': 'gizmo-perf-mutants', 'phase': args.phase, 'utc_start': harness.utc(), 'command': sys.argv,
                 'identity': harness.git_identity(), 'toolchain': harness.toolchain(), 'mutants': {},

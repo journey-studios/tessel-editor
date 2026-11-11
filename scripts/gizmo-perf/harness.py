@@ -10,6 +10,7 @@ group is terminated (then killed) and the partial output is kept. A runner that 
 held forever by a hung test. `install_termination_handlers` turns SIGTERM/SIGINT into `SystemExit`, so the `finally`
 blocks and `with` statements (lock release, restoring a mutated checkout) run when a runner is asked to stop.
 """
+import contextlib
 import fcntl
 import hashlib
 import json
@@ -262,6 +263,25 @@ class Lock:
 
     def __exit__(self, *exc):
         self.release()
+
+
+@contextlib.contextmanager
+def exclusive(path):
+    """Yields True while this process holds an exclusive, non-blocking `flock` on the file `path` (created when absent) and
+    False when somebody else has it: another process, or another `open()` of the same file in this one (an `flock` belongs
+    to the open file description). It never waits. Leaving the block closes the file, which releases the lock; the file
+    stays, because removing a lock file is how two runs end up each locking a different inode. Only a busy lock is
+    reported as one: any other error (no `flock` on this file system, a read-only directory) propagates.
+
+    It is what lets a runner own a directory (`mutate.py` takes `--out/.mutate.lock`); `Lock` above stays the performance
+    lock and is not this."""
+    with open(path, 'a') as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield False
+        else:
+            yield True
 
 
 def git_identity(root=ROOT):

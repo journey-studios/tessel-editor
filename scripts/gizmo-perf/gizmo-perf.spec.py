@@ -67,12 +67,12 @@ def done(text='', code=0, stderr='', timed_out=False, error=None):
     return harness.Done(['x'], code, text, stderr, timed_out, 1.0, error)
 
 
-def run_main(module, argv):
-    """A runner's `main` as the command line would call it: its stdout is kept off the test output and the SIGTERM/SIGINT
-    handlers it installs are put back."""
+def run_main(module, argv, output=None):
+    """A runner's `main` as the command line would call it: its stdout is kept off the test output (in `output`, a
+    `StringIO`, when the test wants to read it) and the SIGTERM/SIGINT handlers it installs are put back."""
     saved = {sig: signal.getsignal(sig) for sig in (signal.SIGTERM, signal.SIGINT)}
     try:
-        with contextlib.redirect_stdout(io.StringIO()):
+        with contextlib.redirect_stdout(output if output is not None else io.StringIO()):
             return module.main(argv)
     finally:
         for sig, handler in saved.items():
@@ -1378,26 +1378,33 @@ class TimePhase(unittest.TestCase):
 class MutantExecutables(unittest.TestCase):
     """The executables of the mutants the time detector judges travel from `prepare` to `time` through --out/exes, and
     the only thing that says a file there is the one `prepare` built is the hash `prepare` recorded for it. Everything
-    around that hand-over is faked: git, the machine, the lock, the release build (it names the bytes of an executable,
-    or none) and the controlled run, which only notes in `self.measured` the bytes it was asked to measure. The mutated
-    file is one in a temporary directory, never the repository's."""
+    around that hand-over is faked: git, the machine, the performance lock, the release build (it names the bytes of an
+    executable, or none) and the controlled run, which only notes in `self.measured` the bytes it was asked to measure.
+    The lock on --out itself (`--out/.mutate.lock`, which keeps a second run from touching the directory while one owns
+    it) is NOT faked: it is a real `flock` in a temporary directory, which the tests also take, through a second
+    `open()` of the file, the way another `mutate.py` process would (an `flock` conflicts across two open file
+    descriptions even inside one process). The mutated file is one in a temporary directory, never the repository's."""
 
     NAME = 'time_mutant'
     A = {'head': 'a' * 40, 'tree': '1' * 40, 'branch': 'b', 'dirty': ''}
     B = {'head': 'b' * 40, 'tree': '2' * 40, 'branch': 'b', 'dirty': ''}
     LOADED = 'load average (1 min) 9.00 over 5.5 (11 cpus)'
 
-    def phase(self, root, phase, identity=None, built=None, build_exit=0, blocked=None):
+    def phase(self, root, phase, identity=None, built=None, build_exit=0, blocked=None, edited=False):
         """`main --phase prepare|time --out ROOT/out` for the one mutant, at HEAD `identity`. `built`: the bytes of the
         executable its release build names, `None` for a build that named none (and failed); `build_exit` is that
-        build's exit; `blocked` the reason the machine guard refuses a measurement. Returns the exit code and the
-        manifest the phase wrote (`manifest.json` of `prepare`, `manifest.final.json` of `time`; `{}` if none)."""
+        build's exit; `blocked` the reason the machine guard refuses a measurement; `edited`: the mutated file is not
+        at HEAD. Returns the exit code and the manifest the phase wrote (`manifest.json` of `prepare`,
+        `manifest.final.json` of `time`; `{}` if none). What the runner printed is left in `self.printed` and the number
+        of times it asked for the performance lock in `self.performance_locks`."""
         root = Path(root)
         out = root / 'out'
         source = root / 'f.rs'
         source.write_text('fn a() {}\n')
         state = {'loadavg': (0.0, 0.0, 0.0)}
         self.measured = []
+        self.printed = io.StringIO()
+        self.performance_locks = 0
 
         def release_build():
             if built is None:
@@ -1410,10 +1417,14 @@ class MutantExecutables(unittest.TestCase):
             self.measured.append((name, Path(exe).read_bytes()))
             return {'outcome': 'KILLED', 'status': 'KILLED', 'detail': 'faked: nothing was executed'}
 
+        def performance_lock():
+            self.performance_locks += 1
+            return FakeLock()
+
         mutants = {self.NAME: {'file': str(source), 'old': 'fn a() {}', 'new': 'fn a() { loop {} }',
                                'detectors': {'time': True}}}
         fakes = [patch.object(mutate, 'MUTANTS', mutants), patch.object(mutate, 'ROOT', Path('/')),
-                 patch.object(mutate, 'file_hash', return_value='blob'),
+                 patch.object(mutate, 'file_hash', return_value='edited' if edited else 'blob'),
                  patch.object(mutate, 'committed_hash', return_value='blob'),
                  patch.object(mutate, 'run_time', side_effect=controlled_run),
                  patch.object(mutate.runner, 'build', side_effect=release_build),
@@ -1422,11 +1433,19 @@ class MutantExecutables(unittest.TestCase):
                  patch.object(mutate.harness, 'machine', return_value=state),
                  patch.object(mutate.harness, 'guards', return_value=(state, blocked)),
                  patch.object(mutate.harness, 'claims', return_value=[]),
-                 patch.object(mutate.harness, 'Lock', FakeLock)]
+                 patch.object(mutate.harness, 'Lock', side_effect=performance_lock)]
+        def waited(signum, frame):
+            raise AssertionError('the run waited instead of finishing or refusing: it must never wait for a lock')
+
         with contextlib.ExitStack() as stack:
             for fake in fakes:
                 stack.enter_context(fake)
-            code = run_main(mutate, ['--phase', phase, '--out', str(out)])
+            # Everything slow is faked, so a run still going after this long is waiting, and the only thing it could wait
+            # for is a lock it must not wait for: a hang becomes a failure.
+            stack.callback(signal.signal, signal.SIGALRM, signal.signal(signal.SIGALRM, waited))
+            stack.callback(signal.alarm, 0)
+            signal.alarm(20)
+            code = run_main(mutate, ['--phase', phase, '--out', str(out)], self.printed)
         written = out / ('manifest.json' if phase == 'prepare' else 'manifest.final.json')
         return code, json.loads(written.read_text()) if written.exists() else {}
 
@@ -1445,6 +1464,23 @@ class MutantExecutables(unittest.TestCase):
         exe.parent.mkdir(parents=True, exist_ok=True)
         exe.write_bytes(content)
         return exe
+
+    @contextlib.contextmanager
+    def another_run_owns(self, out):
+        """`out/.mutate.lock` held the way a second `mutate.py` process on the same --out would hold it: the runner's own
+        `open()` of that file conflicts with this one. Leaving the block releases it; `BlockingIOError` here means a run
+        that had finished still held the lock."""
+        Path(out).mkdir(parents=True, exist_ok=True)
+        with open(Path(out) / '.mutate.lock', 'a') as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            yield
+
+    @staticmethod
+    def contents(out):
+        """Every file and directory under `out`, with the bytes of the files (`None` for a directory): what a run that
+        was refused must leave exactly as it found it."""
+        return {p.relative_to(out).as_posix(): p.read_bytes() if p.is_file() else None
+                for p in sorted(Path(out).rglob('*'))}
 
     def test_a_stale_executable_with_no_hash_recorded_for_it_is_never_measured(self):
         with tempfile.TemporaryDirectory() as root:
@@ -1515,6 +1551,86 @@ class MutantExecutables(unittest.TestCase):
             self.assertEqual(final['mutants'][self.NAME]['time']['outcome'], 'MISSING_EXECUTABLE')
             self.assertEqual(self.measured, [])  # ...and must not measure the product of head A for it
             self.assertEqual(final['prepare_identity'], self.B)
+
+    # --- one run per --out: a `prepare` and a `time` on the same directory at the same time -------------------------
+
+    def test_a_prepare_that_finds_the_out_directory_owned_is_refused_and_changes_nothing(self):
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / 'out'
+            self.leave(out, b'what the owner is building')
+            (out / 'exes' / 'stale.exe').write_bytes(b'planted before')  # `prepare` empties exes/: not this one
+            with self.another_run_owns(out):
+                before = self.contents(out)
+                code, written = self.phase(root, 'prepare', self.A, built=b'product of A')
+                self.assertEqual((code, written), (1, {}))  # exit 1, and no manifest.json
+                self.assertEqual(self.contents(out), before)  # exes/ not emptied, nothing created or changed
+                self.assertEqual((out / 'exes' / 'stale.exe').read_bytes(), b'planted before')
+                refusal = json.loads(self.printed.getvalue())  # one JSON line
+                self.assertEqual(refusal['status'], 'REFUSED')
+                self.assertIn('.mutate.lock', refusal['reason'])
+            # the control: the same directory, once the owner is gone, is prepared as always (a refusal that stuck
+            # would pass the half above)
+            code, prepared = self.phase(root, 'prepare', self.A, built=b'product of A')
+            self.assertEqual((code, prepared['status']), (0, 'PREPARED'))
+            self.assertEqual(sorted(p.name for p in (out / 'exes').iterdir()), [f'{self.NAME}.exe'])
+
+    def test_a_time_run_that_finds_the_out_directory_owned_is_refused_measures_nothing_and_changes_nothing(self):
+        built = b'what prepare built'
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / 'out'
+            self.leave(out, built)
+            self.finished_prepare(out, hashlib.sha256(built).hexdigest())  # everything `time` needs is there
+            with self.another_run_owns(out):
+                before = self.contents(out)
+                code, final = self.phase(root, 'time', self.A)
+                self.assertEqual((code, final), (1, {}))  # exit 1, and no manifest.final.json
+                self.assertEqual(self.contents(out), before)  # manifest.json and the executable as the owner left them
+                self.assertEqual(self.measured, [])  # not measured...
+                self.assertEqual(self.performance_locks, 0)  # ...and refused before the performance lock was asked for
+                refusal = json.loads(self.printed.getvalue())
+                self.assertEqual(refusal['status'], 'REFUSED')
+                self.assertIn('.mutate.lock', refusal['reason'])
+            # the control: the same directory, free, is measured (the executable is the one `prepare` hashed)
+            code, final = self.phase(root, 'time', self.A)
+            self.assertEqual((code, final['status']), (0, 'ALL_AS_EXPECTED'))
+            self.assertEqual(self.measured, [(self.NAME, built)])
+            self.assertEqual(self.performance_locks, 1)
+
+    def test_the_out_lock_is_released_when_a_run_ends_and_its_file_stays(self):
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / 'out'
+            lock = out / '.mutate.lock'
+            self.assertEqual(self.phase(root, 'prepare', self.A, built=b'product of A')[0], 0)
+            # the lock is released by closing the file, not by removing it: with the file gone, two runs would each lock
+            # "the" lock file, on a different inode
+            self.assertTrue(lock.is_file())
+            with self.another_run_owns(out):  # the finished `prepare` no longer holds it...
+                pass
+            code, final = self.phase(root, 'time', self.A)  # ...so a second run proceeds
+            self.assertEqual((code, final['status']), (0, 'ALL_AS_EXPECTED'))
+            self.assertEqual(self.measured, [(self.NAME, b'product of A')])
+            self.assertTrue(lock.is_file())
+            with self.another_run_owns(out):  # nor does the `time` run keep it
+                pass
+
+    def test_a_run_refused_for_the_out_directory_does_not_even_write_its_other_refusals(self):
+        # The first thing either phase can refuse for is a mutated file that is not at HEAD, and that refusal writes
+        # `manifest.json` (prepare) or `manifest.final.json` (time): the lock has to come before it.
+        for phase, manifest in (('prepare', 'manifest.json'), ('time', 'manifest.final.json')):
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory() as root:
+                out = Path(root) / 'out'
+                self.leave(out, b'what the owner is building')
+                with self.another_run_owns(out):
+                    before = self.contents(out)
+                    code, written = self.phase(root, phase, self.A, built=b'product of A', edited=True)
+                    self.assertEqual((code, written), (1, {}))
+                    self.assertFalse((out / manifest).exists())
+                    self.assertEqual(self.contents(out), before)
+                    self.assertIn('.mutate.lock', json.loads(self.printed.getvalue())['reason'])
+                # the control: with the directory free the same run refuses for the file, and that refusal IS written
+                code, written = self.phase(root, phase, self.A, built=b'product of A', edited=True)
+                self.assertEqual((code, written.get('status')), (1, 'REFUSED'))
+                self.assertIn('not at HEAD', written['reason'])
 
 
 class Native(unittest.TestCase):

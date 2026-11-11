@@ -21,7 +21,9 @@ sides. A candidate that adds work in `scene_plan/build.rs` therefore stays DIFFE
 production file differs at all the run is an A/A and says so (exit 4), never a "no regression". "Differs" is judged over
 what the MEASURED executable is built from (`is_measured`: the core crate and the workspace build inputs); a candidate
 that differs only in other crates (the desktop's) is `DIFFERENCE_OUTSIDE_THE_MEASUREMENT` (exit 4, files listed apart):
-this A/B cannot see those files, so it never turns them into a "no regression".
+this A/B cannot see those files, so it never turns them into a "no regression". A candidate that differs in the core AND
+outside it gets the verdict of the core part only: the files outside stay in `product_files_outside_the_measurement` and
+never enter the verdict, so a `NO_REGRESSION_IN_SCENARIO` says nothing about them.
 
 How. One short `git archive` of the baseline into a temp directory, built SEQUENTIALLY through the repository's cargo
 wrapper with its DEFAULT target (no `CARGO_TARGET_DIR`, no lane); both test executables are copied out, the temp
