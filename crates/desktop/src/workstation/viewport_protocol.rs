@@ -62,6 +62,30 @@ pub fn trace_label(prefix: char, text: &str) -> String {
     format!("{prefix}{:08x}", fnv1a64(text.as_bytes()) as u32)
 }
 
+/// The label of where an asset reads from: the one a file's request (`/asset?p=…`) and the `asset.load` that named it both
+/// carry, so a trace correlates them without writing the path.
+fn location_label(location: &str) -> String {
+    trace_label('a', &format!("p={location}"))
+}
+
+/// What the trace records of an `asset.load` message the host sent: the asset and its kind, and where it reads from. `path`
+/// is the label its requests get too (the page asks for a file); `pattern` is a frame sequence's, which no request ever
+/// matches (a request names one frame, not the pattern: F063/BL157.3); a source without a file has neither.
+pub fn load_fields(message: &Value) -> Value {
+    let asset = &message["asset"];
+    let source = &asset["source"];
+    let mut fields = json!({
+        "asset": trace_label('k', asset["id"].as_str().unwrap_or_default()),
+        "kind": asset["kind"],
+    });
+    if let Some(path) = source["path"].as_str() {
+        fields["path"] = json!(location_label(path));
+    } else if let Some(pattern) = source["pattern"].as_str() {
+        fields["pattern"] = json!(location_label(pattern));
+    }
+    fields
+}
+
 /// The protocol handler's way of reading, fixed when the host is created.
 pub(super) struct AssetIo {
     pub(super) reader: Reader,
@@ -184,8 +208,7 @@ impl ProtocolHandle {
         if !self.trace.enabled() {
             String::new()
         } else if path == "/asset" {
-            let location = query_param(query, "p").unwrap_or_default();
-            trace_label('a', &format!("p={location}"))
+            location_label(&query_param(query, "p").unwrap_or_default())
         } else {
             path.to_owned()
         }

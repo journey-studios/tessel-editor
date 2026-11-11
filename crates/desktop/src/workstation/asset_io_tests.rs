@@ -54,27 +54,87 @@ fn register(access: &Rc<RefCell<AssetAccess>>, file: &Path) {
 
 #[test]
 fn a_request_and_the_load_message_of_the_same_file_share_one_label_and_no_path() {
-    let dist = page("io-label");
-    let dir = scratch("io-label-files");
-    let file = dir.join("my private clip.png");
-    std::fs::write(&file, b"0123").unwrap();
-    let access = Rc::new(RefCell::new(AssetAccess::default()));
-    register(&access, &file);
-    let trace = TraceHandle::default();
-    trace.set_enabled(true);
-    let sync = handle(Reader::Inline, &dist, &access, &trace);
-    assert_eq!(answer(&sync, &asset_request(&file, None)).status(), 200);
-    let wanted =
-        super::viewport_protocol::trace_label('a', &format!("p={}", file.to_string_lossy()));
-    let events = trace.events_since(0, 100);
-    let callback = events["events"]
-        .as_array()
-        .unwrap()
+    use super::viewport_host::{HostOptions, ViewportHost};
+    use super::viewport_host_tests::{from_page, ready_message, sent};
+    use tessel_editor_core::EditorState;
+
+    // The load comes from the host as it does in the app: the demo's files are named by real `asset.load` messages, and the
+    // label of each is whatever `WebTransport::send` wrote, not something this test computes.
+    let state = EditorState::demo();
+    let options = HostOptions {
+        trace: true,
+        ..HostOptions::default()
+    };
+    let mut host = ViewportHost::with_options(Ok(page("io-label")), options);
+    from_page(&mut host, &state, json!({"type":"page.ready"}));
+    sent(&mut host);
+    from_page(&mut host, &state, ready_message());
+    let loads: Vec<_> = sent(&mut host)
+        .into_iter()
+        .filter(|message| message["type"] == "asset.load")
+        .collect();
+    let at = loads
         .iter()
-        .find(|event| event["kind"] == "asset_cb")
-        .expect("the request left an event");
-    assert_eq!(callback["fields"]["asset"], wanted);
-    assert!(!events.to_string().contains("private clip"));
+        .position(|load| load["asset"]["source"]["path"].is_string())
+        .expect("the demo loads a file");
+    let file = loads[at]["asset"]["source"]["path"].as_str().unwrap();
+    let request = Request::builder()
+        .uri(format!(
+            "tessel://localhost/asset?p={}",
+            file.replace('/', "%2F").replace(' ', "%20")
+        ))
+        .body(Vec::new())
+        .unwrap();
+    assert_eq!(answer(&host.protocol_handle(), &request).status(), 200);
+
+    let events = host.trace().events_since(0, 1_000);
+    let of_kind = |kind: &str| -> Vec<serde_json::Value> {
+        events["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|event| event["kind"] == kind)
+            .map(|event| event["fields"].clone())
+            .collect()
+    };
+    let (load_events, callbacks) = (of_kind("asset_load_sent"), of_kind("asset_cb"));
+    assert_eq!(load_events.len(), loads.len(), "one event per load message");
+    assert_eq!(callbacks.len(), 1);
+    assert_eq!(
+        load_events[at]["path"], callbacks[0]["asset"],
+        "the load and the request of the same file name it the same way"
+    );
+    assert!(
+        !events.to_string().contains(file),
+        "the path itself is never written"
+    );
+}
+
+#[test]
+fn a_load_is_labelled_by_the_path_of_its_file_the_pattern_of_its_sequence_or_nothing() {
+    use super::viewport_protocol::load_fields;
+
+    let file = load_fields(&json!({"type":"asset.load","asset":{
+        "id":"a1","kind":"still","source":{"type":"file","path":"/p/one.png"}}}));
+    let sequence = load_fields(&json!({"type":"asset.load","asset":{
+        "id":"a2","kind":"video","source":{"type":"frame_sequence","pattern":"/p/f_%04d.png"}}}));
+    let generated = load_fields(&json!({"type":"asset.load","asset":{
+        "id":"a3","kind":"text","source":{"type":"text"}}}));
+    assert_eq!(file["kind"], "still");
+    assert!(file["path"].is_string() && file.get("pattern").is_none());
+    assert!(sequence["pattern"].is_string() && sequence.get("path").is_none());
+    assert!(generated.get("path").is_none() && generated.get("pattern").is_none());
+    for fields in [&file, &sequence, &generated] {
+        let text = fields.to_string();
+        assert!(
+            !text.contains("one.png") && !text.contains("f_%04d"),
+            "{text}"
+        );
+    }
+    assert_ne!(
+        file["asset"], sequence["asset"],
+        "assets are told apart by their id"
+    );
 }
 
 #[test]

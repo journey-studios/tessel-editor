@@ -42,7 +42,7 @@ use tessel_editor_render::host::{AssetAccess, write_png};
 
 use super::env_mode;
 use super::perf_meter::PerfClock;
-use super::viewport_protocol::{AssetIo, AssetIoMode, ProtocolHandle, trace_label};
+use super::viewport_protocol::{AssetIo, AssetIoMode, ProtocolHandle, load_fields, trace_label};
 
 /// Scheme and host the page is served from. A custom scheme keeps the page same-origin with
 /// its assets and unreachable from any web page.
@@ -278,18 +278,7 @@ impl Transport for WebTransport {
         if message["type"] == "asset.load" {
             // The page may only fetch what a load message named.
             self.access.borrow_mut().register(&message["asset"]);
-            self.trace.event("asset_load_sent", || {
-                let source = &message["asset"]["source"];
-                let location = source["path"]
-                    .as_str()
-                    .or_else(|| source["pattern"].as_str())
-                    .unwrap_or_default();
-                json!({
-                    "asset": trace_label('k', message["asset"]["id"].as_str().unwrap_or_default()),
-                    "kind": message["asset"]["kind"],
-                    "path": trace_label('a', &format!("p={}", location)),
-                })
-            });
+            self.trace.event("asset_load_sent", || load_fields(message));
         }
         if message["type"] == "frame.warm" {
             self.trace.event(
