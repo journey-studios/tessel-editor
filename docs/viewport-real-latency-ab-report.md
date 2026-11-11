@@ -379,3 +379,26 @@ Verificação atual das correções (árvore com integração `08cdfd4`): `cargo
 `first-use-ab` 19 e `scene-warm-proof` 24, nos modos normal e `-O`, e `py_compile` passaram.
 Logs locais em `/tmp/pr41-coordination-review/checks/`. Builds/check/clippy/workspace/Chrome/janela/A/B da árvore integrada
 não foram iniciados: 14 GiB livres, abaixo da reserva de 16 GiB. Nada foi limpo nem houve redução do piso para rodá-los.
+
+## 15. BL157.3: o que os testes unitários provam, sem janela (PR #41, após `b53775e`)
+
+A pergunta foi: "isso não dá para fazer com unit testing?". Dá para as **decisões**, não para as **medidas**. Matriz teste → garantia, cadeia de
+ativação, mutação e limites: [F060](features/viewport-asset-io.md#bl1573--o-que-os-testes-unitários-provam-e-o-que-não-podem-provar).
+Nenhum comportamento do produto mudou (o único toque em código de produto é o parâmetro `createCompositor` de `createRuntime`, com o `Compositor`
+real como padrão) e **nenhuma medida de latência foi produzida**.
+
+| Validação pendente | O que existe agora | Continua aberto |
+|---|---|---|
+| Gates Rust da árvore integrada | `b53775e` (sem esta entrega): fmt, check, clippy `-D warnings`, `test --workspace` (113 suítes, 2238 passaram, 0 falharam, 13 ignorados), build debug, `gpui`/`wry` fora do core. Depois: `fmt` limpo e os 19 specs Python do repositório verdes | `clippy --workspace --all-targets -D warnings` e `cargo test --workspace` da árvore final **não foram reexecutados**: o `disk-guard` do repositório recusou (5 GiB livres, piso de 6 GiB) e nada foi limpo nem teve o piso reduzido. O único código Rust novo é um teste do host, que compilou e passou antes da queda do disco; `rustfmt` limpo |
+| Chrome real: cancelamento, retenção, perda de contexto, corrida entre cargas | 60 testes de Node puro (store 8, página 15 + 13 + 4, contrato 19, fila 1), compositor e relógio falsos; mutação 37/37; suíte completa do runtime com Chrome real e `TESSEL_REQUIRE_RUNTIME=1`: **331/331, 0 ignorados** | — |
+| Janela nativa: a manipulação rodou e os pixels não mudaram | contrato único `activation-spans.json` (página → host → harness: 19 + 1 + 13 testes); a prova de pixels reprova sem `drawn` no braço ligado, com span do fator no controle ou com interruptor diferente do pedido | repetir a prova nativa com esse veredito: não executado nesta entrega (5 GiB livres, abaixo do piso duro de 12 GiB do runner) |
+| A/B no projeto real com pares comparáveis | N/A: teste unitário não tem GPU, disco, carga nem o relógio da janela | **Aberto.** Zero pares comparáveis por fator; latência **NÃO ACEITA**; BL157 segue aberto |
+
+**Correção de uma afirmação anterior (§14).** "O resultado de pixels nativos sem evento `drawn` comprova compatibilidade da execução e não
+ativação" vale para a **prova sintética de pixels**. Nas sessões ligadas do A/B nativo a ativação **está registrada** (tabela por run de cada
+`analysis.md`): pré-upload `uploaded` 14 por run em 8/8 runs completos, warm draw `drawn` 4–6 por run em 8/8, e nenhum span do fator em nenhum dos
+8 runs de controle de cada fator. O que faltava era a prova de pixels registrar o mesmo; agora registra.
+
+**O que isto não muda:** a leitura do A/B (§13: benefício local na entrada da imagem com o pré-upload, nenhum benefício demonstrado no warm draw,
+pausas grandes que persistem, `HANG` sem causa). Os testes unitários dizem que as decisões do runtime estão corretas, seguras e observáveis; não
+dizem que reduzem a latência.

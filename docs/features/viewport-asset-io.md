@@ -137,7 +137,7 @@ Regras (código em `runtime/src/preupload.js`, `assets.js` `preuploadStill`, `co
   ordem do sort ou o contexto foi perdido; reserva os donos de malha e libera o alvo e o rig em `finally`. O canvas visível e os alvos retidos não
   são tocados.
 
-**Provas (Chrome real, `./scripts/runtime test`, sem SKIP):** `preupload-browser.test.mjs` (11) e `warm-draw-browser.test.mjs` (10) mais 3 puros de
+**Provas (Chrome real, `./scripts/runtime test`, sem SKIP):** `preupload-browser.test.mjs` (11) e `warm-draw-browser.test.mjs` (10) mais 4 puros de
 `preupload.test.mjs`: desligado por padrão, anúncio por `hello`, hash **exato** igual com o fator ligado/desligado (quente, frio, exato, retenção
 desligada), alvo/texturas/geometrias iguais ao runtime sem o fator, alvo de rascunho liberado (`renderer.properties`), quadro em espera vai
 primeiro, perda de contexto e "perda recém-ocorrida com o estágio ainda conhecido", cena liberada, orçamento, idade. Core: 4 testes de sessão e 6 de
@@ -149,7 +149,7 @@ takeover e sem as de contexto, **sozinhas sobrevivem** porque as defesas se sobr
 juntas os mutantes morrem (`M3b`; `M5b` depois de o teste "contexto recém-perdido, estágio ainda conhecido" ser adicionado). O limite: cada camada
 isolada não tem teste próprio; a prova é a da combinação.
 
-### Runner e regras pré-fixadas (`scripts/first-use-ab.py`, 19 testes puros em `first-use-ab.spec.py`)
+### Runner e regras pré-fixadas (`scripts/first-use-ab.py`, 29 testes puros em `first-use-ab.spec.py`)
 
 `narrow` (janela 114–210) e `full` (projeto real completo; `RL.run_session`) com `--factor preupload|warm_draw`; `pixels` (janela real, sintético,
 só `warm_draw`: o projeto sintético não tem imagens; os pixels do pré-upload são os testes de Chrome); `analyze` regenera o relato. Cada braço
@@ -185,7 +185,7 @@ privado, ficam fora do Git). 4 pares × 2 sessões por fator; **todas as 16 sess
   ms; 165 de 600 imagens): marcado `HANG`, mantido nas tabelas, **causa não determinada** (a página para sob carga também em `ab1`–`ab3` sem o fator,
   5/28 runs); não é atribuível ao fator nem o exonera. Rejeitado como candidato; não é padrão.
 - **Pixels:** Chrome real prova hashes exatos iguais (quente/frio/exato/retenção desligada) para os dois fatores. Janela real, quadros sintéticos,
-  `warm_draw`, binário final `4e334135…`, HOME/socket próprios, só pedidos semânticos: **PASS**, 4 quadros × (controle/ligado) × (quente/frio) com `render.frame` idêntico byte a byte, quadros de cortes distintos diferentes, leitura de todos e o monitor mostrando o mesmo quadro depois da pausa ([saída](../viewport-real-latency-ab-results/first-use/pixels-warm-draw.txt)); uma resposta `cancelled` (pedido substituído pelo refino do monitor) foi repetida, como no `real-latency-ab.py pixels`. Limite: o relato não grava o desfecho `drawn` do warm draw nessas sessões (o interruptor estava ligado; o draw em si é provado em Chrome). Refinamento e export usam o mesmo caminho do quadro exato (retenção desligada e `exact` nos testes); não há prova
+  `warm_draw`, binário final `4e334135…`, HOME/socket próprios, só pedidos semânticos: **PASS**, 4 quadros × (controle/ligado) × (quente/frio) com `render.frame` idêntico byte a byte, quadros de cortes distintos diferentes, leitura de todos e o monitor mostrando o mesmo quadro depois da pausa ([saída](../viewport-real-latency-ab-results/first-use/pixels-warm-draw.txt)); uma resposta `cancelled` (pedido substituído pelo refino do monitor) foi repetida, como no `real-latency-ab.py pixels`. Limite: esta execução não gravava o desfecho `drawn` do warm draw nessas sessões (o interruptor estava ligado; o draw em si é provado em Chrome); a prova passou a gravá-lo e a reprovar sem ele (ver "BL157.3 — o que os testes unitários provam", abaixo). Refinamento e export usam o mesmo caminho do quadro exato (retenção desligada e `exact` nos testes); não há prova
   separada de export na janela.
 - **Limites:** "imagem aceita" não é latência de display; os relógios JS e Rust não são subtraídos; o `start_ms` antigo inclui o ocioso antes do Play;
   carga externa não controlada (a coordenação não deu máquina quieta); só 4 pares por fator; GPU pendente consistente, não provada.
@@ -204,7 +204,94 @@ privado, ficam fora do Git). 4 pares × 2 sessões por fator; **todas as 16 sess
   Nenhum resultado sobre sequências é afirmado. Ligar cada fetch expandido à carga de sequência continua pendente em BL157.3.
 - O A/B de `5adf5b9` tem **zero pares comparáveis** por fator. Os números locais são observações sob carga, não estimativa causal confiável
   da melhora total. O warm draw não demonstrou benefício; a amostra não refuta seu efeito em condições controladas.
-- A prova nativa `pixels-warm-draw.txt` não registrou `drawn`: comprova compatibilidade da execução, não que a manipulação aconteceu na janela.
-  O pré-upload não foi exercitado pelo fixture nativo sem imagens. Chrome funcional cobre os fatores; falta janela com ativação confirmada.
+- A prova nativa `pixels-warm-draw.txt` (histórica) não registrou `drawn`: comprovava compatibilidade da execução, não que a manipulação aconteceu
+  na janela. As sessões ligadas do **A/B** nativo registraram, sim, o desfecho que funcionou em todos os runs (tabela por run de cada `analysis.md`:
+  pré-upload `uploaded` 14 por run em 8/8 runs completos, warm draw `drawn` 4–6 por run em 8/8; nenhum span do fator em nenhum dos 8 runs de controle
+  de cada fator), então a ativação na janela **está evidenciada para o A/B**. A prova **de pixels** passou a registrar os spans e a reprovar se a sessão
+  ligada não relata `drawn` ou se o controle relata algo (`activation_verdicts`, com spec). Falta **repetir** a prova nativa com esse veredito (não executada nesta entrega: 5 GiB livres, abaixo do piso duro de 12 GiB do runner; o fio `render.trace` → spans foi conferido no código e testado com um `Lab` falso, não com a janela).
+  O pré-upload não é exercitado pelo fixture nativo sem imagens: Chrome real cobre seus pixels.
 - Integração de `main` e correções desta seção têm somente testes puros atuais. Gates Rust/Chrome/janela/release e A/B **não** são herdados de `5adf5b9`.
   O disco observado de 14 GiB está abaixo da reserva de 16 GiB. O caminho do experimento não vira padrão e a latência permanece **não aceita**.
+
+## BL157.3 — o que os testes unitários provam (e o que não podem provar)
+
+Esta seção nasceu de uma pergunta: "dá para implementar isso com unit testing?". Uma parte grande dá. Os quatro blocos de validação que
+estavam pendentes (gates de Rust, Chrome real, janela nativa, A/B no projeto real) misturavam **decisões**, que são determinísticas e
+testáveis sem GPU, com **medidas**, que só existem na janela real. As decisões agora têm testes; as medidas continuam abertas (última
+subseção). Nada aqui muda o produto: os dois fatores seguem opt-in e desligados, a latência segue **NÃO ACEITA** e BL157 segue aberto.
+
+### Camadas e o que cada uma garante
+
+| Camada | Arquivo | Testes | Garante |
+|---|---|---|---|
+| Store (Node puro, sem WebGL) | `runtime/test/preupload-store.test.mjs` | 8 | `AssetStore.preuploadStill`: `uploaded` (a textura é feita uma vez, antes do quadro, e o quadro a encontra), `resident` (nunca refeita), `budget` (nunca expulsa para caber), `stale`/`missing` (o pedido de uma carga antiga nunca dá textura à substituta, a um asset solto, nem a splat/vídeo), `failed` (sem textura nem bytes, libera o que criou, pode ser pedido de novo), recência intacta (`lastUsed`: uma textura que ninguém desenhou é a primeira que o orçamento devolve), perda de contexto (descarta a textura, mantém a imagem) |
+| Fila e tempos (Node puro) | `preupload.test.mjs` (4), `load-timings.test.mjs` (5) | 9 | fila limitada, idade, `upload_ms` só soma o upload que aconteceu; tempos presos ao resultado da carga admitida |
+| Página (`index.js`) com compositor falso | `orchestrator-preupload.test.mjs` | 15 | desligado por padrão (nada anunciado nem subido); ligado: sobe antes do quadro e relata; nada em dobro; **quadro primeiro** (já em espera e chegando no meio da fila: espera o passo em voo, não a fila); recarga ou liberação antes do passo; falha do upload; retenção desligada; descarte em perda de contexto, `hello` sem o fator e `dispose`; perda ainda não entregue como evento; fila limitada; orçamento; idade |
+| | `orchestrator-warm-draw.test.mjs` | 13 | desligado por padrão; o draw segue o **seu** sort e é um só; quadro em espera vai antes; contexto perdido durante o sort; descarte por `hello` sem o fator e `dispose`; idade; cada desfecho do compositor (`gone`, `taken`, `no_order`, `lost`, `failed`) relatado como ele é e **não** contado como draw; falha engolida sem travar a fila |
+| | `orchestrator-loads.test.mjs` | 4 | a carga pronta devolve o pedido que responde e os tempos da **própria** carga; carga ultrapassada por recarga é cancelada com o **seu** pedido, nas duas ordens de chegada; carga liberada em voo |
+| Contrato de ativação | `orchestrator-contract.test.mjs` + `runtime/test/fixtures/activation-spans.json` | 19 | para cada span do contrato (`preupload`: `uploaded`; `warm_draw`: `drawn`), cada desfecho é emitido pelo runtime como `{k, outcome, ms}` em `frame.done.runtime_spans`; varredura do código real: o que `warmDraw`, `runWarmDraw`, `preuploadStill` e `step` podem devolver é **exatamente** o vocabulário do contrato |
+| Host (Rust) | `crates/desktop/src/workstation/asset_io_tests.rs` | 1 | todo desfecho do contrato chega ao `render.trace` do host como `runtime_span` com `k`/`outcome`/`ms` intactos |
+| Harness (Python) | `first-use-ab.spec.py` (29), `scene-warm-proof.spec.py` (27) | 13 novos | só o braço que relata o desfecho que funcionou é "ativo"; controle contaminado, interruptor diferente do pedido ou ausência de relato **reprovam**; coleta de spans da prova de pixels |
+| Chrome real (já existia) | `preupload-browser.test.mjs` (11), `warm-draw-browser.test.mjs` (10) | 21 | hashes exatos iguais, alvos/texturas/geometrias, liberação do alvo, perda de contexto real |
+
+### Como a página é testada sem WebGL
+
+`createRuntime` ganhou um parâmetro `createCompositor` (padrão: o `Compositor` real; duas linhas, sem mudança de comportamento). Os testes
+injetam um `FakeCompositor` (`runtime/test/orchestrator-fixtures.mjs`) que usa o **`AssetStore` real** (contadores, fixação e séries
+reais) e modela só o que a GPU decidiria: se um upload acontece, falha ou encontra o contexto perdido, e o desfecho do warm draw. A
+ordem e as corridas são arranjadas sem `sleep`: `debug.holdQueue()` segura a fila da página, o gancho `onUpload` faz um quadro chegar no meio
+da fila, um relógio falso cobre as idades de 3000 ms (2000 ms ainda corre, 3500 ms expira) e `debug.idle()` assenta a página.
+
+### Cadeia de custódia da ativação
+
+Ligar o interruptor não prova que a manipulação aconteceu. Quem diz o que **aconteceu** é a página, em spans `{k, outcome, ms}` dentro de
+`frame.done.runtime_spans`; `render.status` só diz o que o host **enviou**. O contrato `activation-spans.json` (um arquivo, como
+`fx-catalog.json`) liga as três pontas:
+
+1. **Página:** `orchestrator-contract.test.mjs` provoca cada desfecho do contrato pelo `index.js` real e exige o span; a varredura do código
+   real impede que um desfecho novo ou renomeado fique fora do contrato (ou o contrato fique com um desfecho que o código não emite).
+2. **Host:** `every_outcome_the_page_can_report_for_the_two_experiments_reaches_the_trace_intact` envia todos os spans do contrato num
+   `frame.done` ao `ViewportHost` real e confere um `runtime_span` por span no `render.trace`.
+3. **Harness:** `first-use-ab.py` lê o mesmo contrato (`FACTORS[...]["worked"]`, spec `ActivationContractTests`): só `uploaded`/`drawn` é
+   evidência de que o fator rodou; qualquer desfecho do contrato num braço de controle o contamina. A prova de pixels
+   (`first-use-ab.py pixels`) agora também reprova (`activation_verdicts`) se a sessão ligada que tocou até o corte não relata o desfecho
+   que funcionou, se alguma sessão de controle relata um span do fator, ou se o `enabled` do host difere do braço.
+
+### Mutação (os testes novos não são vácuos)
+
+Cada regra foi quebrada, uma por vez, numa **cópia** de `runtime/` (a árvore e o `dist` não são tocados) e o conjunto novo precisa reprovar:
+37 mutantes, **37 mortos, 0 sobreviventes** no código final:
+
+| Onde | Mutantes | Regras quebradas (cada uma reprova pelo menos um teste novo) |
+|---|---|---|
+| Página (`index.js`) | 24 | passo que não cede a quadro em espera (pré-upload e warm draw); contexto não consultado; fila com retenção desligada, durante perda, sem esquecer em perda/`hello`/`dispose`; fator ligado "a menos que recusado"; recurso anunciado a todo host; nome e campos dos spans; draw que ignora perda de contexto, `hello` que desliga e idade; todo desfecho contado como draw; quadro em espera não contado; tempos lidos pelo ID reutilizável (a leitura anterior a `b53775e`); pedido da carga não devolvido; pré-upload que nunca avisa o host |
+| Store (`assets.js`) | 7 | entrada pedida não conferida; série repetida; orçamento ignorado; recência tocada; textura recusada não liberada; segunda textura sobre a residente; entrada que não é imagem parada aceita |
+| Fila (`preupload.js`) | 5 | limite +1; idade ignorada; pedido repetido; nome do desfecho `failed`; `upload_ms` somando o que não subiu |
+| Compositor (`compositor.js`) | 1 | desfecho do warm draw renomeado (a varredura do código real o pega) |
+
+A primeira rodada (35 de 37 mortos) deixou dois sobreviventes que viraram testes: splat/vídeo só eram barrados por `kind` (agora a entrada
+fabricada tem bitmap, então só `kind` a impede) e `upload_ms` contava uploads que não aconteceram; a limpeza síncrona da fila (equivalente no
+resultado final) passou a ser conferida no instante do evento. No host Rust, renomear o evento `runtime_span` ou
+descartar `outcome` do span encaminhado (dois mutantes) reprova o teste do host. No harness Python, 13 mutantes (veredito de ativação e coleta de
+spans) reprovam os specs.
+
+### O que um teste unitário não prova
+
+- **Latência.** Nenhum teste unitário tem a GPU, o disco, a carga ou o relógio da janela real. Se a antecipação do `texSubImage2D` ou o
+  draw de aquecimento reduzem a pausa no projeto real é pergunta do A/B, que foi **inconclusivo** (zero pares comparáveis por fator).
+- **O compositor real.** O compositor falso devolve o desfecho que o teste manda. Que o `Compositor` real devolve `drawn`/`lost`/`gone` num
+  contexto WebGL de verdade é o que os testes de Chrome (SwiftShader) provam; Chrome não é o WKWebView/Metal da janela. A varredura
+  do código real só garante que o vocabulário não diverge.
+- **Pixels no WKWebView.** Só a prova de pixels na janela real vê o monitor nativo. A prova de pixels da janela real (`first-use-ab.py pixels --factor warm_draw`) agora registra os spans e reprova sem `drawn` no braço ligado, mas **não foi repetida** nesta entrega (o runner exige 12 GiB livres e havia 5 GiB): o último resultado nativo continua sendo o histórico `pixels-warm-draw.txt`, sem registro de ativação. O pré-upload é N/A nessa prova (o projeto
+  sintético não tem imagens paradas); seus pixels são os testes de Chrome.
+- **Ainda sem causa e sem teste:** a parada de 60–160 ms da página depois do draw do corte, o `HANG` de 11,1 s sob carga, a correlação dos
+  fetches expandidos de `frame_sequence` e um A/B com pares comparáveis.
+
+### Reprodução
+
+```sh
+cd runtime && node --test test/preupload-store.test.mjs test/preupload.test.mjs test/load-timings.test.mjs test/orchestrator-*.test.mjs  # puros, segundos
+cd runtime && TESSEL_REQUIRE_RUNTIME=1 pnpm test                                                                                       # tudo, com Chrome real
+python3 scripts/first-use-ab.spec.py && python3 scripts/scene-warm-proof.spec.py
+./scripts/cargo test -p tessel-editor --locked asset_io
+```

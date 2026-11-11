@@ -249,3 +249,7 @@ F060/PR #41 após integração `08cdfd4`: testes puros das correções de teleme
 gates completos da árvore integrada ainda bloqueados por disco (14 GiB < reserva 16 GiB), sem herdar o verde de `5adf5b9`.
 A/B anterior sob carga: zero pares comparáveis por fator; não comprova solução causal da cauda. A latência continua não aceita.
 Limites de correlação de sequências e ativação da prova nativa: [F060](viewport-asset-io.md#residuais-da-coordenação-após-5adf5b9).
+Após `b53775e`: as decisões dos dois fatores (fila, ordem, retenção, perda de contexto, ativação) têm 60 testes Node puros, 1 de host e
+13 de harness, com um contrato único de spans; mutação 37/37; suíte do runtime com Chrome real 331/331. A ativação na janela já estava
+registrada nas sessões ligadas do A/B. Rust final e prova nativa de pixels com o veredito: pendentes por disco.
+Matriz teste → garantia e o que nenhum teste unitário prova: [F060](viewport-asset-io.md#bl1573--o-que-os-testes-unitários-provam-e-o-que-não-podem-provar).
