@@ -1220,3 +1220,17 @@ nova). Evidência: [gates.json](migration/g12-scale/head-3ed7f8b/gates.json).
 
 
 PR #43 — revisão 5852250099 no head8f8f405: zero achado de código acionável, threads antigas conferidas e resolvidas. Corrigidos os resíduos F1 (colunas BL015.19/.20), F2 (dot zero não exige press alinhado) e F3 (termo aproximadamente 1e-4, não ordem 1). Gates completos do código0ee2d14 continuam pendentes por disco; não promover autorrelato do core sem logs a aceite integrado.
+
+## BL162 — triagem dos docs do piloto e projetos locais
+
+Contrato e evidências: [migration/pilot-docs-triage-2026-11-11.md](migration/pilot-docs-triage-2026-11-11.md),
+[migration/origin-specs/README.md](migration/origin-specs/README.md) e [`projects/README.md`](../projects/README.md). Só
+documentação e `.gitignore`: nenhum código mudou e não há feature nova, então não há linha em `features/README.md`.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL162 | Triagem do piloto | O piloto tinha 52 docs num commit que não existia em nenhum remoto, e só o inventário MIG os cobria | Concluído (docs): 52 avaliados e classificados; 10 trazidos literalmente para `migration/origin-specs/`; `projects/` ignorado pelo Git | — | Cursor | Cada doc tem destino e motivo na triagem; os 10 copiados são idênticos ao commit de origem (`cmp`) e têm hash no índice; os links relativos resolvem, exceto cinco nas cópias literais que apontam para docs não trazidos (exceção registrada em `migration/origin-specs/README.md`) |
+| BL162.1 | MIG033 | As 15 operações de câmera da origem (movimento, velocidade e tempo) não existem aqui; o F054 entrega keyframes por clipe, que é outra coisa | Pendente | BL162 | — | Cada operação vira comando no core, com parser, CLI headless e UI, testes e erros tipados, usando `origin-specs/camera-commands.md` como contrato de comportamento |
+| BL162.2 | Skills do piloto | As skills `scene-cli`, `scene-effects` e `scene-element-recipes` ensinam a CLI antiga | Pendente | BL162 | — | Skills recriadas sobre `tessel-headless`, sem nenhum comando que o Rust não tenha |
+| BL162.3 | Triagem | Duas peças genéricas ficam dentro de pacotes privados: os 16 tipos de plano de câmera e a skill de animação de cenas em camadas | Decisão | BL162 | Dono do projeto | O dono revisa e autoriza a extração; só então vira doc público, sem conteúdo da campanha |
+| BL162.4 | `projects/` | A convenção `projects/<nome>/` só foi exercitada pela CLI headless (gerar, salvar, reabrir, `plan`); a janela não abriu o documento | A validar | BL162 | — | Abrir na janela um projeto local, com e sem a mídia: com ela o monitor mostra o quadro; sem ela os assets aparecem `missing` e `media.relink` os religa |
