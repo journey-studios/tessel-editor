@@ -28,7 +28,7 @@
 //! handler's p50 and p95 ratios are limited by `budgets.json`, which was NOT fixed before the
 //! candidate was measured: it comes from calibration runs of this same tree (see
 //! `scripts/gizmo-perf/budgets.py`), and its cold margins were widened after a judged run failed
-//! (the budget history in `docs/features/scene-gizmo-performance.md`), so a pass is no proof that
+//! (see `docs/features/scene-gizmo-performance-timing.md`), so a pass is no proof that
 //! nothing regressed; a handler that does a second plan's worth of work (the mutants of
 //! `scripts/gizmo-perf/mutate.py`) leaves the budget on a dense scene. A long-tick count (a sample
 //! over a 60 Hz frame) is kept as well. A run whose reference blocks are themselves unstable (a

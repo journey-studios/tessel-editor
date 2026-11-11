@@ -4147,7 +4147,7 @@ class LateAcknowledgement(GestureCase):
     The reset of `acked_at` together with `first_at` when the picture stops converging is NOT covered here, on purpose: it is
     defensive and no read sequence can tell it from `first_at = None` alone (the stale `acked_at` is older than the new
     `first_at`, so it is never late, and a read whose acknowledgement does not match zeroes it before a later match could use
-    it), so a test of it would pass on both versions (an equivalent mutant, docs/features/scene-gizmo-performance.md, round 9)."""
+    it), so a test of it would pass on both versions (an equivalent mutant, docs/features/scene-gizmo-performance-timing.md)."""
 
     def settle_script(self, script):
         """`settle_commit` for the translate release of `STEP` over `ScriptedReads(script)`: the candidate is `CANDIDATE`, the

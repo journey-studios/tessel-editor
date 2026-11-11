@@ -4,8 +4,9 @@
     python3 scripts/gizmo-perf/budgets.py REPORT.json [REPORT.json ...] --out budgets.json
 
 The budgets file records the hashes of the calibration reports it came from. The rule was NOT pre-registered:
-the cold margins below were widened after a judged run failed (see `docs/features/scene-gizmo-performance.md`). A budget is a multiple of the scene's own plan time (see
-`scene_gizmo_perf_budget.rs`), so it does not carry the speed of the machine it was calibrated on:
+the cold margins below were widened after a judged run failed (see `docs/features/scene-gizmo-performance-timing.md`).
+A budget is a multiple of the scene's own plan time (see `scene_gizmo_perf_budget.rs`), so it does not carry the speed
+of the machine it was calibrated on:
 
     p50_ratio = ceil_to_0.05(max over calibrations of the p50 ratio * 1.15)          (floor 0.25)
     p95_ratio = ceil_to_0.05(max over calibrations of the p95 ratio * 1.25)          (floor 0.50)
