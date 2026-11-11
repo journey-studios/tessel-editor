@@ -50,7 +50,7 @@
 | 21 | 10 | patched | 4281045 | loaded | 8.56/9.51 | [38.18, 26.36, 18.32] / 38.18 | 600 / 66.673 | 594 / 71.244 | no | yes | - |
 | 22 | 11 | patched | 4281045 | loaded | 8.27/9.23 | [23.89, 24.46, 18.2] / 30.73 | 600 / 83.23 | 588 / 85.949 | no | yes | - |
 | 23 | 11 | unpatched | 4281059 | loaded | 8.74/10.0 | [31.07, 26.54, 19.44] / 31.23 | 600 / 85.668 | 594 / 64.486 | no | yes | - |
-| 24 | 12 | unpatched | 4281059 | loaded | 8.76/9.5 | [23.53, 25.37, 19.53] / 22.04 | 1 / None HUNG | 1 / None HUNG | HUNG | NO: the scene warm never ran (it must be on in both arms) | DEADLOCK at 13.7 s, DEADLOCK at 24.5 s |
+| 24 | 12 | unpatched | 4281059 | loaded | 8.76/9.5 | [23.53, 25.37, 19.53] / 22.04 | 1 / — HUNG | 1 / — HUNG | HUNG | NO: the scene warm never ran (it must be on in both arms) | DEADLOCK at 13.7 s, DEADLOCK at 24.5 s |
 | 25 | 12 | patched | 4281045 | loaded | 9.09/9.91 | [15.75, 22.65, 18.93] / 16.84 | 600 / 64.41 | 594 / 82.201 | no | yes | - |
 | 26 | 13 | patched | 4281045 | loaded | 8.06/8.94 | [15.63, 21.27, 18.69] / 18.24 | 600 / 59.031 | 596 / 62.985 | no | yes | - |
 | 27 | 13 | unpatched | 4281059 | loaded | 9.3/10.03 | [14.3, 19.94, 18.38] / 17.56 | 600 / 103.767 | 594 / 65.457 | no | yes | - |

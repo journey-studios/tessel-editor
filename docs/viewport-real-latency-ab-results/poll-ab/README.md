@@ -9,9 +9,9 @@ Contrato e leitura: [F018](../../features/playback.md), [F063 §BL157.6](../../f
 |---|---|
 | `rule.txt` | A regra do veredito, escrita e commitada **antes** de qualquer sessão. `scripts/playback-poll-ab.py run` se recusa a começar (BLOCKED, saída 2) se ela não está commitada e inalterada, e grava o hash e o commit dela no `manifest.json` da rodada |
 
-**Estado: nenhuma sessão nativa foi rodada.** Quando uma rodada existir, esta pasta recebe só o que `--report-dir` copia: `analysis.md`, `analysis.json` (que já traz o manifesto da rodada: commit do código, SHA-256 do binário
-e do documento, ordem dos braços, hash e commit da regra) e `runs.sha256`; os registros brutos de sessão (centenas de MB) **não** são versionados (`runs.sha256` os lista). Nada aqui contém caminhos locais, nomes de arquivos
-de usuário ou as nuvens do projeto real.
+**Estado: nenhuma sessão nativa foi rodada.** Quando uma rodada existir, esta pasta recebe só `analysis.md` e `analysis.json` (que já traz o manifesto da rodada: commit do código, SHA-256 do binário
+e do documento, ordem dos braços, hash e commit da regra). `--report-dir` também copia `runs.sha256`, mas, como no resto destes resultados, a lista de SHA-256 e os registros brutos de sessão (centenas de MB)
+**não** são versionados ([proveniência](../README.md)). Nada aqui contém caminhos locais, nomes de arquivos de usuário ou as nuvens do projeto real.
 
 Como rodar (precisa de macOS com janela e áudio reais, ≥ 16 GiB livres e o projeto real, que é um caminho local seu):
 
