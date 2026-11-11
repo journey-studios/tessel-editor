@@ -662,6 +662,62 @@ fn a_runtime_without_the_feature_or_a_capability_is_refused_before_a_frame() {
     assert_eq!(types(&sent), ["hello"]);
 }
 
+/// F060: a runtime that lists every capability but `pointLights` is refused before any asset or
+/// frame is sent when a light is visible, and is served when the only light is hidden (the plan
+/// then does not require it) or there is none: negotiated like `outputFx`.
+#[test]
+fn a_runtime_without_point_lights_is_refused_only_for_a_visible_light() {
+    let lit = |hidden: bool| {
+        let mut bundle: Value =
+            serde_json::from_str(&std::fs::read_to_string(corpus().join("bundle.json")).unwrap())
+                .unwrap();
+        bundle["sceneDefinitions"][0]["lighting"] = json!({"ambient": 1, "lights": [{
+            "id": "lamp", "position": {"x": 0.0, "y": 1.0, "z": 2.5},
+            "color": {"r": 1.0, "g": 1.0, "b": 1.0}, "intensity": 2.0, "radius": 4.0,
+            "flicker": 0.0, "hidden": hidden,
+        }]});
+        tessel_editor_render::scene::import_gated(&bundle.to_string()).unwrap()
+    };
+    let without_point_lights = |message: &Value| match message["type"].as_str() {
+        Some("hello") => {
+            let mut ready = ready(&["directed_scene"]);
+            ready["capabilities"]["directed_scene"]["capabilities"] = json!(
+                Capability::ALL
+                    .iter()
+                    .filter(|capability| **capability != Capability::PointLights)
+                    .map(|capability| capability.as_str())
+                    .collect::<Vec<_>>()
+            );
+            vec![ready]
+        }
+        _ => well_behaved(message),
+    };
+
+    let visible = plan(&lit(false), 0);
+    assert!(visible.requires.contains(&Capability::PointLights));
+    let (mut runtime, sent) = renderer(without_point_lights);
+    let error = runtime
+        .render(&visible, &resources(1, &visible), &FrameOptions::default())
+        .unwrap_err();
+    assert_eq!(error.code, "unsupported");
+    let details = error.details.unwrap();
+    assert_eq!(details["unsupported"], "scene_plan_capabilities");
+    assert!(details.to_string().contains("pointLights"), "{details}");
+    assert_eq!(types(&sent), ["hello"], "nothing else was sent to it");
+
+    // Hidden: the plan does not ask for the capability, so the same runtime is not refused for it.
+    let hidden = plan(&lit(true), 0);
+    assert!(!hidden.requires.contains(&Capability::PointLights));
+    let (mut runtime, sent) = renderer(without_point_lights);
+    runtime
+        .render(&hidden, &resources(1, &hidden), &FrameOptions::default())
+        .expect("a hidden light does not get the plan refused");
+    assert_eq!(
+        types(&sent).last().map(String::as_str),
+        Some("frame.render")
+    );
+}
+
 #[test]
 fn a_picture_the_runtime_refuses_is_reported_and_loaded_again_next_time() {
     let scene = scene("bundle.json");
