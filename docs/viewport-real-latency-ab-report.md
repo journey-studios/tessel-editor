@@ -582,14 +582,14 @@ um artefato do laboratório. **O que não mostra:** que a correção o evita; 1 
   (`scripts/first-use-ab.py full --factor warm_draw --pairs N`, que existe; não foi repetido nesta entrega) e uma decisão deliberada.
 - A prova de **pixels** nativa do `warm_draw` com o veredito de ativação (`first-use-ab.py pixels --factor warm_draw`) e a correlação dos fetches de `frame_sequence` continuam pendentes (F060).
 - As três hipóteses de §16.3 **não foram testadas**; testá-las precisa de instrumentação do processo de GPU (captura de quadro Metal), que o laboratório não tem.
-- A cadência do relógio de reprodução (§16.7, BL157.6) é um achado lateral: **medida e explicada, nada alterado**.
+- A cadência do relógio de reprodução (§16.7, BL157.6): a consulta por prazo (`TESSEL_PLAYBACK_POLL=deadline`) foi entregue **opt-in**, com o padrão `fixed`; o efeito no editor real **não foi medido** (o A/B nativo pareado não rodou: falta disco) e a pausa de 60–160 ms não é o alvo dela.
 - **Gates do head final desta entrega.** Nada de Rust mudou nesta rodada; o único Rust novo desde `b53775e` é o teste do host do §15, e os gates abaixo rodaram nele (fecham a pendência do §15):
   `cargo fmt --all -- --check` 0; `./scripts/cargo check --workspace --locked` 0; `clippy --workspace --all-targets --locked -- -D warnings` 0; `test --workspace --locked` 0 (114 resultados:
   **2.239 passaram, 0 falharam, 13 ignorados**); `build -p tessel-editor --locked` 0; `cargo tree -p tessel-editor-core` sem `gpui` nem `wry`; `TESSEL_REQUIRE_RUNTIME=1 pnpm test` em `runtime/`
   **336 de 336** (bundle real e Chrome real); `pnpm build` reproduz o bundle byte a byte (`78a0c8f4…`); os 21 specs Python de `scripts/` passam (inclui os 51 e os 38 novos); mutação dos dois scripts novos:
   39 de 39 mortos cada. **`pnpm tsc`: N/A** — o repositório não tem TypeScript nem `tsc`.
 
-### 16.7 BL157.6: a cadência do relógio de reprodução (achado lateral; nada foi alterado)
+### 16.7 BL157.6: a cadência do relógio de reprodução e o agendamento da consulta
 
 Ao ler as esperas das 72 sessões do §16.5 apareceu um padrão que não é pausa: a mediana do intervalo entre imagens entregues ao monitor é **44,0 ms**, não 41,7 ms (24 fps), e 13% das entregas chegam
 com menos de 30 ms de intervalo. `scripts/playback-cadence.py` (só lê; BL157.6) lê o traço do host (`tick` e `play_clock_started`) dos registros salvos e explica o padrão. Não é aceite de nada:
@@ -607,9 +607,31 @@ descreve a cadência, não uma pausa.
 (logo, não é do bundle). O efeito é um **micro-tranco regular**: a cada ≈ 8 quadros, um sai a ≈ 22 ms em vez de ≈ 42 ms; a média continua certa (41,6 ms entregues em média, contra 41,67 de referência).
 O traço do host tem 28 quadros pulados em 86.098 trocas (consultas em que o relógio avançou mais de um quadro).
 
-**Proposta (não implementada; BL157.6 aberto).** Armar a próxima consulta para o instante em que o relógio cruza a próxima fronteira de quadro (menos uma folga para o atraso do timer, ≈ 1,4 ms, com limites
-inferior e superior), no lugar de um intervalo fixo depois da consulta anterior: as imagens passariam a sair a ≈ 41,7 ms cada. Custos e riscos, a medir antes de qualquer padrão:
-(1) muda `crates/desktop/src/workstation/playback.rs` (Rust), com a conta do próximo instante numa função pura testada; (2) hoje a segunda consulta absorve um quadro que atrasa: a folga precisa ser
-medida; (3) a defasagem áudio-imagem depende dessa cadência e muda em até meia consulta (≈ 11 ms); (4) o ganho é de **suavidade**: **não** reduz as pausas de 60–160 ms, que são o que não foi aceito.
-**Aceite proposto, a fixar antes de medir:** entregas < 30 ms em ≤ 5% (hoje 13%), sem aumento de quadros pulados nem de esperas > 62,5 ms contra o controle, em A/B pareado e opt-in primeiro.
-Resultados gerados: [`bundle-ab/cadence-all.md`](viewport-real-latency-ab-results/bundle-ab/cadence-all.md) e [`cadence-by-arm.md`](viewport-real-latency-ab-results/bundle-ab/cadence-by-arm.md).
+**A mudança (opt-in; padrão `fixed`).** `TESSEL_PLAYBACK_POLL=deadline` arma a próxima consulta para a próxima fronteira de quadro **mais 1 ms de folga**, descontado o tempo desde que o relógio foi lido e nunca mais que
+meio quadro (a consulta continua a acontecer ao menos 2 vezes por quadro, então um quadro que atrasa, um `seek` ou um relógio que se reestima ainda são vistos em meio quadro); sem leitura, com o relógio parado ou em pausa, ou com uma
+taxa inválida, espera meio quadro como `fixed`. A conta é a função pura `playback_poll::next_poll` e o laço de `playback.rs` a usa; contrato, testes e superfícies em
+[F060 §BL157.6](features/viewport-asset-io.md#bl1576--a-cadência-do-relógio-de-reprodução-e-o-agendamento-da-consulta) e [F018](features/playback.md). O **modelo** (que reproduz primeiro as medidas nativas do `fixed`) prevê para o `deadline`
+a 24 fps: 0% das imagens a menos de 30 ms da anterior, atraso médio de observação de 2,46 ms (guarda de 1 ms + atraso do timer, ≈ 1,46 ms) contra 11,15 ms, e 2,00 consultas por troca contra 1,87.
+**É um modelo**: ele assume um relógio perfeito e um timer com atraso constante, e não diz nada sobre o editor real.
+
+**A regra do veredito foi fixada antes de qualquer sessão** em [`poll-ab/rule.txt`](viewport-real-latency-ab-results/poll-ab/rule.txt), e `scripts/playback-poll-ab.py run` se recusa a começar (BLOCKED, saída 2) se o arquivo não está
+commitado e inalterado, gravando o hash e o commit dele no `manifest.json`. O A/B é pareado: 12 pares (24 sessões, cada uma um editor novo que toca o projeto duas vezes), o **mesmo binário** nos dois braços, que diferem só em
+`TESSEL_PLAYBACK_POLL`, na ordem fixed/deadline, deadline/fixed, …; cada play é conferido contra o `play_clock_started.poll` que o próprio host gravou. Resultados possíveis, todos mecânicos: INCONCLUSIVO (menos de 10 pares
+contados), CONTROLE NÃO REPRODUZIDO (menos de 8% das imagens do `fixed` a menos de 30 ms da anterior), REGRESSÃO (imagens > 62,5 ms 0,25 ponto percentual acima; imagens > 100 ms acima de 1,5× as do `fixed` + 3; quadros pulados por
+play 0,15 acima; mais sessões presas), SEM GANHO (mais de 3% das imagens < 30 ms; atraso médio acima de 4 ms ou menos de 5 ms abaixo do `fixed`; consultas por troca fora de 1,9–2,15; atraso menor em menos de 90% dos pares) e ADOTAR
+(nenhum dos anteriores: **permite** tornar `deadline` o padrão, **não é aceite do usuário nem de BL157**). As marcas são diagnósticas, tiradas do ruído das 72 sessões (imagens > 62,5 ms em 0,86–0,90%, erro padrão ≈ 0,11
+ponto percentual para 12 sessões por braço), e não são limites aprovados por ninguém. Carga e ocupação são registradas, nunca filtradas; nenhuma sessão é descartada.
+
+**Estado: o A/B nativo NÃO foi rodado.** O runner exige ≥ 16 GiB livres e a máquina de desenvolvimento estava abaixo disso durante todo o trabalho (5–12 GiB livres em `/tmp`, medidos entre as etapas), então nenhuma sessão nativa foi
+tocada: **não há medida do `deadline` no editor real, o padrão continua `fixed` e BL157.6 segue aberto**. O runner (104 testes, mutação 150/150), o leitor (74 testes, mutação 118/118), a função pura (34 testes, mutação 40/41, o
+sobrevivente é equivalente) e o laço (10 testes determinísticos, mutação 19/19) têm prova; o que **não** tem prova é o efeito na janela real: se `deadline` entrega mesmo as imagens a ≈ 42 ms, se o atraso de observação cai de ≈ 11 ms para
+≈ 2,5 ms e se isso não piora o resto. Para rodar: `./scripts/runtime setup && ./scripts/cargo build -p tessel-editor --locked --release`, depois
+`python3 scripts/playback-poll-ab.py run --binary target/release/tessel-editor --project <projeto.tessel.json> --out <dir> --pairs 12 --report-dir docs/viewport-real-latency-ab-results/poll-ab` (≈ 35 min; janela e áudio reais).
+
+**Fumaça informal no editor real (não é o A/B).** Quatro sessões (duas por braço) do binário **debug**, com o projeto real e a máquina com carga média de 9 a 22, tocaram o projeto até o fim nos dois modos, sem erro e com o braço confirmado pelo host: o laço funciona na janela real. Os números **não** são o efeito: o timer chegou ≈ 20 ms atrasado (no release, 1,46 ms), as consultas por troca foram 1,00–1,01 (`fixed`) e 1,20–1,36 (`deadline`) em vez de 1,87 e 2,00, e pela regra fixada esse regime daria CONTROLE NÃO REPRODUZIDO. Delas saiu um achado, **BL157.7** (aberto, custo não medido): cada consulta termina em `cx.notify()`, tenha o quadro trocado ou não. Detalhes em [F060 §BL157.6](features/viewport-asset-io.md#fumaça-no-editor-real-informal-não-é-o-ab).
+
+**Limites desta etapa.** Mesmo com um veredito ADOTAR, o ganho é de regularidade: **não** reduz as pausas de 60–160 ms do corte e do primeiro crossfade, que são o que o usuário não aceitou (BL157 segue aberto). A defasagem
+áudio-imagem muda em até meia consulta (≈ 11 ms) ao mudar o agendamento, e **ninguém ouviu** o resultado (`heard:false`, F018). Resultados gerados das 72 sessões:
+[`bundle-ab/cadence-all.md`](viewport-real-latency-ab-results/bundle-ab/cadence-all.md) e [`cadence-by-arm.md`](viewport-real-latency-ab-results/bundle-ab/cadence-by-arm.md).
+
+**Gates do head desta entrega (BL157.6).** `cargo fmt --all -- --check` 0; `./scripts/cargo check --workspace --locked` 0; `clippy --workspace --all-targets --locked -- -D warnings` 0; `test --workspace --locked` 0 (114 resultados: **2.283 passaram, 0 falharam, 13 ignorados**, entre eles os 34 testes de `playback_poll_tests` e os 10 de `playback_tests`); `build -p tessel-editor --locked` 0; `cargo tree -p tessel-editor-core` sem `gpui` nem `wry`; os 22 specs Python de `scripts/` passam (610 testes). `TESSEL_REQUIRE_RUNTIME=1 pnpm test` em `runtime/` (o runtime não foi tocado): **335 de 336 na primeira execução completa**; a falha é `video B2: a frame superseded while it seeks is cancelled and the next one is exact` (`runtime/test/video.test.mjs:189`, `frame.done` em vez de `frame.failed`), o **flaky pré-existente BL015.15** (mesmo teste, linha e mensagem; reproduz em `main`); rodando só esse arquivo (`node --test test/video.test.mjs`), **7 de 7**. `pnpm build` reproduz o bundle byte a byte (`78a0c8f4…`). **`pnpm tsc`: N/A** — o repositório não tem TypeScript nem `tsc`.

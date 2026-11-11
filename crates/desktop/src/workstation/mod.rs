@@ -20,6 +20,7 @@ mod ops;
 mod perf_history_view;
 mod perf_meter;
 mod playback;
+mod playback_poll;
 mod scene_fx;
 mod scene_fx_editors;
 mod scene_fx_keys;
@@ -342,7 +343,7 @@ impl Workstation {
             viewport_view,
             viewport_refine_armed: false,
             workflow: Workflow::new(),
-            playback: PlaybackState::default(),
+            playback: PlaybackState::from_env(),
             slider_gesture: SliderGesture::default(),
             scene_ui,
             perf,
@@ -853,6 +854,10 @@ mod input_tests;
 mod perf_history_tests;
 #[cfg(test)]
 mod perf_tests;
+#[cfg(test)]
+mod playback_poll_tests;
+#[cfg(test)]
+mod playback_tests;
 #[cfg(test)]
 mod scene_fx_editors_tests;
 #[cfg(test)]

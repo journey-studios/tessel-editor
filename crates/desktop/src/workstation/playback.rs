@@ -28,10 +28,8 @@ use tessel_editor_core::audio::{AudioBackend, OfflineMixer};
 use tessel_editor_core::state::Command;
 use tessel_editor_core::{CommandError, EditorState, Raw};
 
+use super::playback_poll::{self, POLL_ENV, PollMode, Reading, poll_mode_from_env};
 use super::{Activity, Source as Origin, Workstation};
-
-/// The clock is polled this many times per frame; a delayed tick only costs skipped frames.
-const TICKS_PER_FRAME: f64 = 2.0;
 
 /// The mix is held in memory while it plays (384 KB per second); longer sequences are refused
 /// with an explicit error and play silent instead of exhausting memory.
@@ -57,8 +55,39 @@ struct WallClock {
     held: Option<f64>,
 }
 
+#[cfg(test)]
+thread_local! {
+    /// What a test has scripted the silent clock to read next (one value per read, oldest first). Empty: the real clock.
+    static SCRIPTED_READINGS: std::cell::RefCell<std::collections::VecDeque<f64>> =
+        const { std::cell::RefCell::new(std::collections::VecDeque::new()) };
+}
+
+/// Clears the script of the thread when it goes out of scope, so a test never leaves readings for the next one that runs on it.
+#[cfg(test)]
+#[must_use = "the script is cleared when this is dropped"]
+pub(super) struct ScriptedClock;
+
+#[cfg(test)]
+impl Drop for ScriptedClock {
+    fn drop(&mut self) {
+        SCRIPTED_READINGS.with(|script| script.borrow_mut().clear());
+    }
+}
+
+/// Scripts the next readings of the silent clock of the calling thread. A real clock cannot be steadied across the redraws and
+/// executor work between two ticks of a test, and the poll schedule is a function of where the clock stands at each reading.
+#[cfg(test)]
+pub(super) fn script_wall_clock(readings: &[f64]) -> ScriptedClock {
+    SCRIPTED_READINGS.with(|script| *script.borrow_mut() = readings.iter().copied().collect());
+    ScriptedClock
+}
+
 impl WallClock {
     fn frame(&self, fps: f64) -> f64 {
+        #[cfg(test)]
+        if let Some(scripted) = SCRIPTED_READINGS.with(|script| script.borrow_mut().pop_front()) {
+            return scripted;
+        }
         self.held
             .unwrap_or_else(|| self.base + self.anchor.elapsed().as_secs_f64() * fps)
     }
@@ -85,6 +114,17 @@ impl WallClock {
     }
 }
 
+/// What the last tick read from the clock: the schedule of the next tick starts from it (BL157.6).
+#[derive(Clone, Copy)]
+struct ClockRead {
+    /// When the clock was read.
+    at: Instant,
+    /// Where it stood, in (fractional) timeline frames.
+    frame: f64,
+    /// Whether it had moved forward since the tick before; a paused or stalled clock never reaches its next frame.
+    advancing: bool,
+}
+
 pub struct Playback {
     anchor: Instant,
     from: i64,
@@ -94,6 +134,8 @@ pub struct Playback {
     paused: bool,
     /// What the clock asked for last, so a tick only seeks when the frame changed.
     frame: i64,
+    /// The last clock reading, `None` while the device is still opening.
+    read: Option<ClockRead>,
     ticks: u64,
     /// Frames the clock jumped over between two ticks (late ticks): skipped, not rendered.
     skipped: u64,
@@ -109,6 +151,8 @@ pub struct Preparing {
 pub struct PlaybackState {
     pub preparing: Option<Preparing>,
     pub active: Option<Playback>,
+    /// How the clock is polled (`TESSEL_PLAYBACK_POLL`, BL157.6); read once with the window.
+    pub poll: PollMode,
     last: Option<Value>,
 }
 
@@ -202,6 +246,16 @@ impl Playback {
         }
     }
 
+    /// How long to wait before asking the clock again, from what the last tick read (BL157.6; see [`playback_poll`]).
+    fn next_delay(&self, poll: PollMode) -> Duration {
+        let reading = self.read.map(|read| Reading {
+            frame: read.frame,
+            advancing: read.advancing,
+            age: read.at.elapsed(),
+        });
+        playback_poll::next_poll(poll, self.fps, reading)
+    }
+
     fn audio_report(&self) -> Value {
         match &self.audio {
             Audio::Opening(..) => json!({ "output": null, "status": "opening" }),
@@ -238,6 +292,46 @@ impl Playback {
 }
 
 impl PlaybackState {
+    /// The state of a new window: the poll schedule named by [`POLL_ENV`] (a typo is warned about on stderr), the default when
+    /// unset. Read once: the mode does not change while the window lives.
+    pub fn from_env() -> Self {
+        let poll = match poll_mode_from_env(std::env::var(POLL_ENV).ok().as_deref()) {
+            Ok(mode) => mode.unwrap_or_default(),
+            Err(warning) => {
+                eprintln!("tessel-editor: {warning}");
+                PollMode::default()
+            }
+        };
+        Self {
+            poll,
+            ..Self::default()
+        }
+    }
+
+    /// How long the tick loop waits before the next tick; `None` when nothing is playing.
+    pub fn next_delay(&self) -> Option<Duration> {
+        self.active
+            .as_ref()
+            .map(|active| active.next_delay(self.poll))
+    }
+
+    /// Puts a silent playback's clock at a fractional frame, so a test can aim at a point inside a frame.
+    #[cfg(test)]
+    pub(super) fn place_wall_clock(&mut self, frame: f64) {
+        if let Some(active) = &mut self.active {
+            active.wall.seek(frame);
+        }
+    }
+
+    /// Makes the last clock reading older by `by` (its age is real time, which a test cannot wait for without depending on the
+    /// scheduler).
+    #[cfg(test)]
+    pub(super) fn age_reading(&mut self, by: Duration) {
+        if let Some(read) = self.active.as_mut().and_then(|active| active.read.as_mut()) {
+            read.at = read.at.checked_sub(by).unwrap_or(read.at);
+        }
+    }
+
     /// The frame of a clock that is *running*: `None` while paused, stopped or preparing. The
     /// debug meter starts from this: a paused playback expects no frames.
     pub fn running_frame(&self) -> Option<i64> {
@@ -269,6 +363,8 @@ impl PlaybackState {
             "state": if active.paused { "paused" } else { "playing" },
             "from": active.from, "frame": active.frame, "fps": active.fps,
             "clock": active.clock_name(),
+            // How the clock is polled (`TESSEL_PLAYBACK_POLL`): `fixed` (half a frame after each answer) or `deadline`.
+            "poll": self.poll.as_str(),
             "elapsed_ms": elapsed.as_secs_f64() * 1000.0,
             // Frame the clock says we are at, minus the one the playhead shows: 0 or 1 when
             // keeping up.
@@ -356,28 +452,32 @@ impl Workstation {
             },
             paused: false,
             frame: from,
+            read: None,
             ticks: 0,
             skipped: 0,
             max_gap: 0,
         });
         self.perf_playback_started(from);
-        self.viewport
-            .trace()
-            .event("play_clock_started", || json!({ "from": from, "fps": fps }));
-        let interval = Duration::from_secs_f64(1.0 / (fps * TICKS_PER_FRAME));
+        let poll = self.playback.poll;
+        self.viewport.trace().event(
+            "play_clock_started",
+            || json!({ "from": from, "fps": fps, "poll": poll.as_str() }),
+        );
+        // The first wait is the fixed one (the device may still be opening); every tick says how long the next one waits.
+        let mut delay = playback_poll::interval(fps);
         cx.spawn(async move |this, cx| {
             loop {
                 // When the timer was set, to say how late the tick that answers it ran.
                 let armed = Instant::now();
-                cx.background_executor().timer(interval).await;
-                let keep_going = this
-                    .update(cx, |this, cx| {
-                        this.playback_tick_traced(cx, armed, interval)
-                    })
-                    .unwrap_or(false);
-                if !keep_going {
+                cx.background_executor().timer(delay).await;
+                let next = this
+                    .update(cx, |this, cx| this.playback_tick_traced(cx, armed, delay))
+                    .ok()
+                    .flatten();
+                let Some(next) = next else {
                     break;
-                }
+                };
+                delay = next;
             }
         })
         .detach();
@@ -395,20 +495,28 @@ impl Workstation {
     }
 
     /// [`playback_tick`](Self::playback_tick) plus its trace event: when the tick was due (the timer's arming plus its
-    /// interval), when it ran and how long its body took, all on the host clock.
-    fn playback_tick_traced(
+    /// delay), when it ran and how long its body took, all on the host clock. Returns how long the loop waits before the next
+    /// tick, `None` when it ends (BL157.6: from the clock this very tick read, see [`playback_poll`]).
+    pub(super) fn playback_tick_traced(
         &mut self,
         cx: &mut Context<Self>,
         armed: Instant,
-        interval: Duration,
-    ) -> bool {
+        delay: Duration,
+    ) -> Option<Duration> {
         let trace = self.viewport.trace();
         let began = trace.start();
         let before = self.playback.active.as_ref().map(|active| active.frame);
         let keep_going = self.playback_tick(cx);
         let after = self.playback.active.as_ref().map(|active| active.frame);
+        let next = keep_going.then(|| self.playback.next_delay()).flatten();
+        let clock = self
+            .playback
+            .active
+            .as_ref()
+            .and_then(|active| active.read)
+            .map(|read| read.frame);
         trace.event("tick", || {
-            let due = armed + interval;
+            let due = armed + delay;
             let ran = began.unwrap_or_else(Instant::now);
             json!({
                 "due_ms": trace.ms_at(due),
@@ -416,9 +524,11 @@ impl Workstation {
                 "late_ms": ran.saturating_duration_since(due).as_secs_f64() * 1000.0,
                 "body_ms": began.map(|at| at.elapsed().as_secs_f64() * 1000.0),
                 "frame_before": before, "frame_after": after, "continues": keep_going,
+                // What the clock said (fractional frames) and how long the loop will wait for the next tick.
+                "clock": clock, "next_ms": next.map(|next| next.as_secs_f64() * 1000.0),
             })
         });
-        keep_going
+        next
     }
 
     /// One clock tick: moves the playhead to the frame the clock says it is. Returns whether to
@@ -440,11 +550,20 @@ impl Workstation {
         let rate = active
             .shared()
             .map_or(48_000, |shared| shared.sample_rate());
+        let read_at = Instant::now();
         let Some(clock) = active.clock_frame(rate) else {
             // Waiting for the device to open: the playhead stays where playback was asked to start.
             cx.notify();
             return true;
         };
+        // The next wait starts from this reading: where the clock stood, when, and whether it was moving (BL157.6).
+        let advancing =
+            playback_poll::advancing(active.paused, active.read.map(|before| before.frame), clock);
+        active.read = Some(ClockRead {
+            at: read_at,
+            frame: clock,
+            advancing,
+        });
         let frame = (clock.floor() as i64).max(0);
         let ended = match &active.audio {
             Audio::Running { output, .. } => output.shared().finished(),
