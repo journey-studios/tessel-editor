@@ -3528,7 +3528,7 @@ class GestureInTheCorpus(unittest.TestCase):
             'drag.scale.local.uniform: the committed picture differs from the one before the gesture'])
 
 
-RECORDED_RUN = native.ROOT / 'docs/migration/gizmo-perf-evidence/measure-12bc8da/native/report.json.gz'
+RECORDED_RUN = HERE / 'fixtures/recorded-native-report.json.gz'  # swept of machine paths (`harness.redact`)
 Recorded = collections.namedtuple('Recorded', 'corpus step base candidate picture record')
 
 

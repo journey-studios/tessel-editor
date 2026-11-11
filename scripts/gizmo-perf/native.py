@@ -210,7 +210,7 @@ MAY_STAY_EQUAL = 'may_stay_equal'
 # to be allowed, and no other corpus or class inherits it. Everything else a gesture is judged on (the document's transform
 # against the golden trace, one undo entry, undo and redo, the candidate not being in the document, the cancel leaving the
 # base) applies whatever the rule says. The text is recorded in every corpus' report (`pixel_expectations`).
-_MEASURED = 'measured at 12bc8da (docs/migration/gizmo-perf-evidence/measure-12bc8da)'
+_MEASURED = 'measured at 12bc8da (scripts/gizmo-perf/fixtures/recorded-native-report.json.gz)'
 PIXEL_EXPECTATIONS = {
     'small': {tool: {'rule': MUST_CHANGE, 'why': (
         f'`mid` is a 4-unit plane (forty times the width of the dense corpus\' node), so any {tool} gesture moves pixels; '
