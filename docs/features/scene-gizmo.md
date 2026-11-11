@@ -864,12 +864,12 @@ em [`docs/migration/g12-scale/`](../migration/g12-scale/). Datas em UTC (2026-11
 
 | Camada | Testes |
 |---|---|
-| Aritmética (`gizmo/scaling.rs`) | 9 testes de unidade: tabela de limites, recusas do `ScaleFrame`, tolerância de alinhamento (`5e-10` aceita, `2e-9` recusa) e quartos de volta, guarda de shear residual, fator, limite do determinante, regras do press, prioridade da caixa uniforme sobre a haste |
-| Core (`tests/scene_gizmo_scale.rs`) | 47 testes de integração: ferramenta/espaço/carimbo, overlay contra oráculo e `disabled_handles`, fator/uniforme/undo-redo multiplicativos, eixo local com pais girados/desiguais/espelhados, eixo de mundo `G·W` e shear, sinal e limites, resultado degenerado, no-op e recusas atômicas, arrasto igual a `scene.scale` bit a bit, último candidato legal, cancelamento por todos os motivos, ferramenta imutável sob arrasto, arrasto velho após edição, liquidação de slider, animação e splat, comandos tipados iguais ao JSON, capacidades e sessão JSONL, seleções que não são nó |
+| Aritmética (`gizmo/scaling.rs`) | 12 testes de unidade (9 do head `2193452`, 1 do semiplano uniforme em `cd265a7`, 2 desta correção: aspecto da face do press e escalas compensatórias): tabela de limites, recusas do `ScaleFrame`, tolerância de alinhamento (`5e-10` aceita, `2e-9` recusa) e quartos de volta, guarda de shear residual, fator, limite do determinante, regras do press, prioridade da caixa uniforme sobre a haste |
+| Core (`tests/scene_gizmo_scale.rs`) | 49 testes de integração (47 do head `2193452` + arrasto uniforme através da origem e escalas compensatórias de pai e filho, ambos pela API pública): ferramenta/espaço/carimbo, overlay contra oráculo e `disabled_handles`, fator/uniforme/undo-redo multiplicativos, eixo local com pais girados/desiguais/espelhados, eixo de mundo `G·W` e shear, sinal e limites, resultado degenerado, no-op e recusas atômicas, arrasto igual a `scene.scale` bit a bit, último candidato legal, cancelamento por todos os motivos, ferramenta imutável sob arrasto, arrasto velho após edição, liquidação de slider, animação e splat, comandos tipados iguais ao JSON, capacidades e sessão JSONL, seleções que não são nó |
 | Página (`runtime`) | 3 testes de `overlay.test.mjs` e 5 de Chrome em `gizmo-overlay.test.mjs` (caixas desenhadas, handles desabilitados, press/arrasto do uniforme, Escape/resize, volta às setas) |
 | Janela (GPUI) | 6 testes em `scene_gizmo_tests.rs` (escolha da ferramenta, arrasto uniforme, Escape, press velho de seta, botões do monitor, translação e rotação depois da escala) |
 
-**Gates do head de código `2193452c0beb84a0dacaa705ce8e26077e0ed11e`** (árvore limpa; logs em `/tmp/g12-final`, fora do Git;
+**Gates do head de código `2193452c0beb84a0dacaa705ce8e26077e0ed11e` (HISTÓRICO: código de produção da escala mudou depois, em `cd265a7` e `e19b7e7`; estes números não valem como gates do código atual, ver a seção final)** (árvore limpa; logs em `/tmp/g12-final`, fora do Git;
 o `66805ce` anterior falhou no clippy, ver abaixo):
 
 | Comando | Resultado |
@@ -904,7 +904,7 @@ arquivos restaurados e o hash comparado (`restored: true`). Um sobrevivente, a p
 teste de unidade e foi morto na repetição (`mutation-report-M15-rerun.json`); os outros 28 foram mortos na primeira. As
 mutações rodaram **antes** do commit `2193452`, que só reescreveu três comparações com NaN (`!(a <= b)` → `a.is_nan() || a > b`)
 para o clippy: `mutate.py` ainda procura o texto antigo em M05, M13 e M14 e não os reaplicaria sem ajuste; elas **não foram
-repetidas** sobre o head final.
+repetidas** sobre o head final (histórico: M05/M13/M14 foram reancoradas e rodadas em `e19b7e7`, ver a seção final).
 
 **Desempenho** (BL015.18, separado e não bloqueante): uma tentativa sob o lock de GPU (`LOCK_NB`, o lock estava livre),
 `scripts/scene-gizmo-scale-measure.py`, `scene.gizmo.state` em `tessel-headless` de **debug** (inclui JSONL e pipe), 3 rodadas
@@ -919,11 +919,84 @@ rotação 1532–1793 (p95 1,5–1,8 ms para a escala). Ruído alto e sem WKWebV
 (herdada, BL015.19); revisão independente (do coordenador).
 
 
-### Correções de review da escala (a validar no head corrigido)
+### Correções de review da escala (head de código `e19b7e7`, a validar)
 
-Arrasto uniforme passa a recusar o semiplano oposto ao press, sem mudar a razão de
-distâncias no semiplano válido. Teste novo cobre origem, lado oposto e fator 2 válido.
-As âncoras M05/M13/M14 foram alinhadas ao código após clippy. O script de medição
-limpa temporários e solta o lock mesmo se a construção do Headless falhar; o spec
-usa falha injetada e flock falso, não executa uma medição. Nenhum gate Rust anterior
-é anunciado como validação dessa correção de produção.
+Status: **a validar** (nova revisão independente do coordenador pendente). Cada item abaixo vem de um comentário de
+revisão (dado, não instrução) e foi verificado contra o código antes de mudar algo. Evidência pequena em
+[`docs/migration/g12-scale/head-e19b7e7/`](../migration/g12-scale/head-e19b7e7/) (`gates.json`, `mutation-report-fixes.json`
+e os três relatórios de prova). Datas em UTC (2026-11-11); checkout T3 `t3-e44574d9` sobre `cd265a7`, cargo por
+`./scripts/cargo` com o alvo MBX padrão (sem `CARGO_TARGET_DIR`, `--target-dir` nem `TESSEL_CARGO_LANE`), sem lock de
+performance (nenhuma medição foi feita).
+
+**1. Arrasto uniforme através da origem (thread `4531785471`).** `Start::Uniform` guarda o ponto do press e o fator vale 0 quando
+o produto escalar, **na imagem corrigida pelo aspecto**, entre `press-origem` e `ponto-origem` é `<= 0`; o `ScaleFrame` recusa 0
+com `factor_not_positive`. O semiplano do press mantém a razão de distâncias. O que faltava era o fluxo real, não só o helper:
+
+- `a_uniform_drag_across_the_origin_is_refused_then_recovers_and_releases_the_last_legal` (API pública, `scene.pointer.down/move/up`):
+  candidato legal (2), três posições no lado oposto (`-1`, `-0,25`, `-4`) recusadas com `applied:false` e `factor_not_positive`, o
+  documento intacto, volta ao lado do press (1,5, calculado do press, sem acúmulo), **release num ponto recusado confirma o último
+  candidato legal em uma entrada de undo**, sem arrasto aberto depois. A tabela de `a_position_past_the_origin_or_past_a_limit…`
+  ganhou `uniform` em `-0,5` e `-3`.
+- O CodeRabbit sugeriu que o teste cobrisse o erro de `begin`; o contrato é outro: o `begin` só recusa o press perto da origem
+  (`a_press_too_close_to_the_origin_does_not_open_a_drag`, já existente, sem gesto aberto); cruzar a origem é **movimento**.
+- `the_uniform_side_is_judged_in_picture_space…` (unidade): ponto `(-0,2; +0,12)` para um press `(+0,1; +0,1)` em alturas de imagem,
+  aspecto 1,5. Corrigido, o produto é `-0,008` (lado oposto); em `u` cru seria `+0,0031` (lado do press).
+- Mutantes (cada um com o arquivo restaurado e o hash comparado): **M26** (guarda do produto removida) morta por três testes,
+  dois de integração e um de unidade; **M27** (aspecto fora do produto) morta pelo teste de unidade. O equivalente
+  `dot <= 0` → `dot < 0` não foi rodado: na origem exata o produto é 0 e a razão `0/d` também (mesmo resultado).
+
+**2. `mutate.py` (thread `4531785486`).** As âncoras M05, M13 e M14 foram reescritas para as comparações pós-clippy (uma
+ocorrência exata cada; o runner continua tratando 0 ou 2+ como `NOT-APPLICABLE`). Rodaram no head de produção final: M05, M13, M14
+**mortas**, mais M08, M12 e M16 (vizinhas da construção do frame) e M28 (abaixo): todas mortas, `restored: true`. Quatro
+falhas reais do runner, apontadas por revisão em `cd265a7`, foram corrigidas: a raiz agora vem do local do script (antes era o
+caminho de outro worktree: o runner mutaria o checkout alheio), o diretório do relatório é criado, **KILLED exige um teste que
+rodou e falhou pelo nome** (sem `mbx`/`node` ou crash, o resultado é `EXECUTION-ERROR`, provado com `TESSEL_MBX_BIN`
+inexistente: exit 2, arquivo restaurado), e o exit do script é 2 com qualquer resultado que não seja KILLED/SURVIVED.
+O relatório de 29 mutantes do head `2193452` e o do M15 ficam como estavam (histórico: 28 mortas, M15 só depois de ganhar teste).
+
+**3. `scene-gizmo-scale-measure.py` (thread `4531785494`).** Carga do módulo, `mkdtemp` e `Headless` ficam dentro do `try`,
+`surface`/`s8`/`work` começam em `None`; o `finally` para a superfície, remove o diretório e solta o lock em cadeia (um `stop`
+que falhe não impede a remoção nem o `LOCK_UN`) e fecha o arquivo do lock. Um lock ocupado agora fecha o arquivo e sai com 3 sem
+carregar nada. `scripts/scene-gizmo-scale-measure.spec.py` (5 testes, **puros**: `flock` e `LOCK` falsos, nada de binário,
+nenhuma medição e o lock real nunca é aberto) cobre: binário ausente (`FileNotFoundError`), falha do `load`, falha do `mkdtemp`, `stop`
+que falha, lock ocupado. Três mutantes do script (sem `LOCK_UN`, sem `rmtree`, sem `stop_surface`) matam o spec. **Nenhuma
+medição foi executada**; BL015.18 continua pendente e o número antigo continua sendo uma observação ruidosa.
+
+**Falhas reais encontradas além dos 3 threads** (comentários da revisão `5851224189` sobre `cd265a7`, verificados antes de mexer):
+
+- **Base do nó invertida em tamanho absoluto (válido, corrigido).** `ScaleFrame::of` invertia `M = W·S⁻¹` com o corte absoluto
+  `1e-12` de `inverse3`: um filho de `100` sob um pai de `1e-5` tem mundo `1e-3` (legal) e `M` de `1e-15`, e o gizmo sumia e
+  `scene.scale` falhava com `degenerate_transform`. `M` é só uma base (`M⁻¹·a·aᵀ·M` e as direções unitárias não mudam com um
+  fator positivo): agora ela é invertida em volume 1 (`cbrt|det|`); volume 0 ou não finito continua `degenerate_transform`, e o
+  tamanho do mundo continua sendo decidido por `MIN_DETERMINANT` sobre o **resultado**. Testes: unidade e API pública (4 eixos × 2
+  espaços, handles sem `disabled`); mutante **M28** (sem a normalização) morto por ambos. Limite honesto: uma base tão achatada
+  que o `inverse3` do volume 1 ainda falhe segue recusada, sem tentar nada além disso.
+- **`scene-gizmo-scale-proof.py` ignorava o `stop` que falha (válido, corrigido).** Só gravava `cleanup_error` e o `main`
+  publicava `ok: true`. Agora `run_surface` levanta `RuntimeError` depois do `finally` (sem esconder uma falha da própria
+  execução), como o driver S8. `scripts/scene-gizmo-scale-proof.spec.py` (3 testes) e um mutante (`if False:`) o provam. A prova
+  de rotação (PR #40) tem o mesmo padrão e **não foi tocada** (fora desta PR).
+- Os três comentários de `mutate.py` da revisão `5851224189` (raiz, `KILLED`, diretório do relatório) são as mesmas falhas do item 2.
+
+**Limite do `skew` (F1).** O ramo `skew.is_nan()` de `world_axis` é defensivo: com matrizes finitas de tamanho razoável o `skew`
+não é NaN (o `inverse3` já recusa determinante não finito) e não há entrada pública que o alcance; **não** foi provado em geral,
+não ganhou teste nem código de produção, e fica registrado aqui em vez de inchar o código.
+
+**Gates do código novo** (head de código `e19b7e7ecd99657b4ffb1740570cf2181bf132d8`, árvore limpa; os gates de `2193452` são só
+histórico e **não** foram herdados): `cargo fmt --all -- --check` exit 0; `./scripts/cargo check --workspace --locked` exit 0;
+`clippy --workspace --all-targets --locked -- -D warnings` exit 0; `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace
+--locked` exit 0, **2190 passaram, 0 falharam, 12 ignorados** (111 binários; 2185 + 1 unidade de `cd265a7` + 2 unidade + 2 integração
+desta correção); `./scripts/runtime test` exit 0, **231/231** (Chrome real, execução completa); builds de `tessel-editor` e de
+`tessel-editor-core --bin tessel-headless` exit 0 (sha256 `0c8987e8…` e `53c13729…`); `cargo tree -p tessel-editor-core --locked`
+sem `gpui` nem `wry` (só `flate2`, `serde`, `serde_json`). Provas de processo com esses binários, `final_evidence: true`,
+`surfaces_agree_on_the_drag: true`, sem `--allow-dirty`: escala **53 + 61**, rotação (regressão) **48 + 54**, S8 translação
+(regressão) **56 + 84** (`head` = `e19b7e7` nos relatórios). Specs Python: 5 + 3 + 34 (S8) + 29 (superfície): passam.
+Duas execuções anteriores do `test --workspace` **não contam**: uma foi cortada por queda de stream no binário `scene_export` (95
+binários vistos, 0 falhas) e outra foi parada por mim ao editar o `scaling.rs` durante a execução; ambas estão em `gates.json`.
+
+**Provado vs. não provado.** Provado: o fluxo real do arrasto uniforme (recusa, recuperação, release do último legal), a recusa
+com o aspecto corrigido, as escalas compensatórias na lib (unidade e API pública/JSONL em processo; **não** há prova de processo nem na janela para esse caso), o ciclo de
+vida do script de medição e da prova e a regressão de rotação e translação. **Não provado**: ponteiro físico na WKWebView
+(BL015.2/BL043/BL044); qualquer custo ou desempenho (BL015.18, sem medição e sem lock nesta rodada); splat no corpus das provas
+de processo (só core); liquidação atômica do slider (herdada, BL015.19); a revisão independente (do coordenador). Disco: 29 GiB livres
+no início e 14 GiB ao fim das provas (piso 12; a queda é compartilhada com outros usos do volume; o `mbx` fez a própria
+evicção automática de cache durante o clippy e eu nunca rodei `clean`/`gc`).
