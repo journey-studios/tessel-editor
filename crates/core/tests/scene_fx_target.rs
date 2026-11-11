@@ -287,6 +287,37 @@ fn the_hit_query_names_what_the_press_at_the_same_point_holds() {
     assert_eq!(pressed["refused"], asked["refused"]);
 }
 
+/// `active` of `scene.fx.handles` is the handle of the open drag of THAT clip: asking after another
+/// vignette of the same scene while `v1` is being dragged says nothing is active there.
+#[test]
+fn the_active_handle_of_a_query_is_the_one_dragged_in_that_clip() {
+    let mut state = session();
+    ok(
+        &mut state,
+        json!({"op":"scene.fx.edit","scene":"street","ops":[
+            {"op":"add_clip","effect":"vignette","start_frame":10,"duration_frames":30,"id":"v2"}]}),
+    );
+    selected(&mut state);
+    let start = handle_at(&handles(&mut state), "radius");
+    assert_eq!(down(&mut state, start)["dragging"], true);
+    let ask = |state: &mut EditorState, clip: &str| {
+        ok(
+            state,
+            json!({"op":"scene.fx.handles","scene":"street","clip":clip,"frame":FRAME}),
+        )
+    };
+    assert_eq!(
+        ask(&mut state, "v1")["active"],
+        "radius",
+        "the dragged clip"
+    );
+    let other = ask(&mut state, "v2");
+    assert_eq!(other["active"], Value::Null, "another clip: {other}");
+    assert_eq!(other["clip"], "v2");
+    ok(&mut state, json!({"op":"scene.pointer.cancel"}));
+    assert_eq!(ask(&mut state, "v1")["active"], Value::Null, "no drag left");
+}
+
 /// A press that a greyed handle refuses still means "the release of the open drag was lost": the
 /// open drag goes first, as it does for every other press, so no drag outlives it and the gesture
 /// is free for the next one. Nothing is written either way.

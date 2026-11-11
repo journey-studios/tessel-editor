@@ -167,7 +167,11 @@ impl EditorState {
             .scene_interaction
             .live_drag()
             .and_then(|drag| match &drag.action {
-                DragAction::Fx { handle, .. } if drag.scene == scene => Some(*handle),
+                DragAction::Fx {
+                    clip: dragged,
+                    handle,
+                    ..
+                } if drag.scene == scene && *dragged == clip => Some(*handle),
                 _ => None,
             });
         let mut answer = view.to_json(active);
