@@ -3,6 +3,7 @@ batch and publishing the analysis.
 
 An experiment hands in an `Experiment` (how its raw records are named, how they become a report, how the report reads as a text and whether it
 ended as it claims) and a function that plays one session; nothing else about a batch is the experiment's business."""
+import argparse
 import json
 import pathlib
 import time
@@ -37,6 +38,18 @@ class Experiment:
     def stored(self, out):
         """Names of the raw records of this experiment that `out` holds, whichever batch they belong to."""
         return sorted(path.name for path in out.glob(self.record.split("{")[0] + "*.json"))
+
+
+def positive_int(text):
+    """argparse `type=` of every count of sessions a runner takes (`--pairs`, `--iterations`): a whole number of at least 1. A batch of none runs no editor and
+    has nothing to be wrong about, so it must not come out as a success; a usage error (exit 2) before any prerequisite, lock or folder is touched."""
+    try:
+        value = int(text)
+    except ValueError:
+        value = 0
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a whole number of at least 1 (a batch of no session measures nothing)")
+    return value
 
 
 def arm_order(arms, pairs):
@@ -134,7 +147,7 @@ def load_batch(out, experiment, manifest):
 
 def finish(experiment, out, records, project, manifest, report_dir=None, charts=False):
     """Analysis of `records`: `<stem>.json`, `<stem>.md`, the sha256 of every raw record, copies in `report_dir` when asked (never the raw records),
-    the text on the screen. Returns the exit code: 0 when the batch ran as it claims."""
+    the text on the screen. Returns the exit code: 0 when the batch ran as it claims (and holds at least one session)."""
     report = experiment.build(records, project, manifest)
     text = experiment.markdown(report)
     files = {f"{experiment.stem}.json": json.dumps(report, indent=2), f"{experiment.stem}.md": text,
@@ -150,7 +163,7 @@ def finish(experiment, out, records, project, manifest, report_dir=None, charts=
         for name in drawn:
             (target / name).write_bytes((out / "charts" / name).read_bytes())
     print(text)
-    return 0 if experiment.ok(report) else 1
+    return 0 if records and experiment.ok(report) else 1  # `all([])` is true: a batch that holds no session ran as nothing claims
 
 
 def analyze(experiments, args):

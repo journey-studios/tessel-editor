@@ -40,7 +40,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from ab import ROOT, warm_proof  # noqa: E402
-from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, prerequisites, run_arms  # noqa: E402
+from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, positive_int, prerequisites, run_arms  # noqa: E402
 from ab.charts import write_charts  # noqa: E402
 from ab.pixels import run_pixels  # noqa: E402
 from ab.play import SLOW_DIAGNOSTIC_MS, SLOWER_DIAGNOSTIC_MS  # noqa: E402
@@ -251,7 +251,7 @@ def main():
     run.add_argument("--out", required=True)
     run.add_argument("--report-dir")
     run.add_argument("--charts", action="store_true")
-    run.add_argument("--pairs", type=int, default=4)
+    run.add_argument("--pairs", type=positive_int, default=4)
     run.add_argument("--lock-wait", type=float, default=600.0)
     run.add_argument("--stress-cpu", type=int, default=0, help="busy processes of this script, the same in both arms (adverse batch)")
     run.add_argument("--label", default="")

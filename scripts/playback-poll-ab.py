@@ -58,7 +58,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from ab import ROOT, cadence, warm_proof  # noqa: E402
-from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, prerequisites, run_arms  # noqa: E402
+from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, positive_int, prerequisites, run_arms  # noqa: E402
 from ab.play import hung_play  # noqa: E402
 from ab.project import sha256_file  # noqa: E402
 from ab.session import CONTROL_ENV, PLAYS, run_session, session_env, whole_project_twice  # noqa: E402
@@ -339,7 +339,7 @@ def main():
     run.add_argument("--binary", required=True)
     run.add_argument("--project", required=True)
     run.add_argument("--out", required=True)
-    run.add_argument("--pairs", type=int, default=12)
+    run.add_argument("--pairs", type=positive_int, default=12)
     run.add_argument("--stress-cpu", type=int, default=0, help="busy-loop processes kept alive during each session (both arms get the same)")
     run.add_argument("--lock-wait", type=float, default=600.0)
     run.add_argument("--report-dir")

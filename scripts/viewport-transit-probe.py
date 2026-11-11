@@ -33,7 +33,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from ab import ROOT, warm_proof  # noqa: E402
-from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, prerequisites, run_arms  # noqa: E402
+from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, positive_int, prerequisites, run_arms  # noqa: E402
 from ab.play import SLOW_DIAGNOSTIC_MS as SLOW_MS, play_pictures, play_segments  # noqa: E402
 from ab.session import one_window, run_session, session_env  # noqa: E402
 from ab.stats import quiet_class, stats  # noqa: E402
@@ -330,9 +330,9 @@ def main():
         p.add_argument("--label", default="")
         if name == "loop":
             p.add_argument("--report-dir")
-            p.add_argument("--iterations", type=int, default=3)
+            p.add_argument("--iterations", type=positive_int, default=3)
         else:
-            p.add_argument("--pairs", type=int, default=4)
+            p.add_argument("--pairs", type=positive_int, default=4)
     ana = sub.add_parser("analyze")
     ana.add_argument("--out", required=True)
     ana.add_argument("--report-dir")

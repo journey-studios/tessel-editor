@@ -40,7 +40,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from ab import ROOT, warm_proof  # noqa: E402
-from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, prerequisites, run_arms  # noqa: E402
+from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, positive_int, prerequisites, run_arms  # noqa: E402
 from ab.pixels import run_pixels  # noqa: E402
 from ab.play import ENTRY_WINDOW, VIDEO_ENTRY_WINDOW, hung_play, play_pictures, play_segments, summarize_play, window_report  # noqa: E402
 from ab.session import one_window, run_session, session_env, whole_project_twice  # noqa: E402
@@ -482,7 +482,7 @@ def main():
             p.add_argument("--from", dest="start", type=int, default=114)
             p.add_argument("--to", dest="end", type=int, default=210)
         else:
-            p.add_argument("--pairs", type=int, default=4)
+            p.add_argument("--pairs", type=positive_int, default=4)
     px = sub.add_parser("pixels")
     px.add_argument("--factor", choices=sorted(FACTORS), required=True)
     px.add_argument("--binary", default=str(ROOT / "target" / "release" / "tessel-editor"))

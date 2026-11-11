@@ -1,5 +1,6 @@
 """Tests of what every A/B runner does around its own science (`scripts/ab/batch.py`): the prerequisites of a run, the manifest, the run loop,
 saving and analysing a batch. No editor, GPU, runtime page or private media is started; the lab (`scene-warm-proof.py`) is a fake."""
+import argparse
 import contextlib
 import fcntl
 import io
@@ -92,6 +93,15 @@ class Folder(unittest.TestCase):
             except RuntimeError as error:
                 result = error
         return result, run.locks, asked, manifest, shown.getvalue()
+
+
+class CountTests(unittest.TestCase):
+    def test_a_count_of_sessions_is_a_whole_number_of_at_least_one(self):
+        self.assertEqual([B.positive_int(text) for text in ("1", "4", "30", " 12 ")], [1, 4, 30, 12])
+        for text in ("0", "-1", "-30", "x", "", "1.5", "1e2", "None"):
+            with self.subTest(text=text), self.assertRaises(argparse.ArgumentTypeError) as raised:
+                B.positive_int(text)
+            self.assertIn("at least 1", str(raised.exception))
 
 
 class PrerequisiteTests(Folder):
@@ -259,6 +269,12 @@ class AnalysisTests(Folder):
         code, files, _ = self.finish([{"failed": True}, {}])
         self.assertEqual(code, 1)
         self.assertIn("analysis.md", files)
+
+    def test_a_batch_that_holds_no_session_never_ran_as_claimed_even_though_nothing_in_it_failed(self):
+        code, files, _ = self.finish([], manifest={"order": [], "batch_id": "b" * 32})
+        self.assertEqual(EXPERIMENT.ok(json.loads(files["analysis.json"])), True, "`all([])` is true: the experiment's own check cannot tell")
+        self.assertEqual(code, 1)
+        self.assertIn("analysis.md", files, "the analysis of what is there is still written")
 
     def test_charts_are_written_only_when_asked_and_a_report_folder_never_needs_them(self):
         drawn = []

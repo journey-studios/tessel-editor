@@ -55,7 +55,7 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from ab import ROOT, warm_proof  # noqa: E402
-from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, prerequisites, run_arms  # noqa: E402
+from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, positive_int, prerequisites, run_arms  # noqa: E402
 from ab.play import hung_play  # noqa: E402
 from ab.project import sha256_file  # noqa: E402
 from ab.session import CONTROL_ENV, PLAYS, collect as poll_trace, process_table, run_session, session_env, webkit_pids, whole_project_twice  # noqa: E402
@@ -391,7 +391,7 @@ def main():
     run.add_argument("--project", required=True)
     run.add_argument("--unpatched-bundle", required=True, help="the runtime.js of a plain `./scripts/runtime build` (no patch variable), copied out of runtime/dist before the patched build")
     run.add_argument("--out", required=True)
-    run.add_argument("--pairs", type=int, default=30)
+    run.add_argument("--pairs", type=positive_int, default=30)
     run.add_argument("--stress-cpu", type=int, default=0,
                      help="busy-loop processes kept alive during each session (the hang needs a loaded machine to show often; both arms get the same)")
     run.add_argument("--lock-wait", type=float, default=600.0)
