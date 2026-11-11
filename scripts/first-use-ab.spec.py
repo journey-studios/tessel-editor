@@ -147,6 +147,40 @@ class AnalysisTests(unittest.TestCase):
         self.assertEqual([(g["to_frame"], g["gap_ms"], g["where"]) for g in slow], [(196, 130.0, "video:196")])
 
 
+class MissingStatisticsTests(unittest.TestCase):
+    """A valid play with fewer than two accepted pictures has no gap percentiles (None): the aggregation must still publish its report."""
+
+    def lone_picture_run(self):
+        lone = record("on", 50)
+        lone["frames"] = lone["frames"][:1]
+        return ab.analyze_run(lone, PROJECT, "preupload", (190, 200))
+
+    def test_a_play_with_one_picture_has_no_gap_statistics_and_still_counts_as_a_run(self):
+        run = self.lone_picture_run()
+        self.assertTrue(run["valid"], run["invalid_reasons"])
+        self.assertIsNone(run["plays"]["first"]["summary"]["interval_ms"]["p50"])
+
+    def test_the_arm_summary_skips_what_was_not_measured_instead_of_failing(self):
+        runs = [self.lone_picture_run(), ab.analyze_run(record("on", 50), PROJECT, "preupload", (190, 200))]
+        found = ab.arm_summary(runs)["on/first"]
+        self.assertEqual(found["runs"], 2)
+        self.assertEqual(found["p50_gap_median_ms"], 42.0, "the median of the run that has one")
+        self.assertIsNotNone(found["p95_gap_median_ms"])
+        alone = ab.arm_summary([self.lone_picture_run()])["on/first"]
+        self.assertEqual((alone["runs"], alone["p50_gap_median_ms"], alone["p95_gap_median_ms"]), (1, None, None))
+
+    def test_the_report_of_a_batch_with_such_a_play_is_published(self):
+        manifest = {"factor": "preupload", "mode": "narrow", "entry": 196, "window": [190, 200], "git": {"sha": "0" * 40, "dirty_files": 0}, "order": []}
+        report = ab.build_report([record("control", 50, spans=()) | {"frames": record("on", 50)["frames"][:1]}], PROJECT, manifest)
+        self.assertEqual(report["arms"]["control/first"]["p50_gap_median_ms"], None)
+
+    def test_the_median_skips_only_what_was_not_measured(self):
+        self.assertEqual(ab.median_of([1.0, None, 3.0]), 2.0)
+        self.assertEqual(ab.median_of([None, None]), None)
+        self.assertEqual(ab.median_of([]), None)
+        self.assertEqual(ab.median_of([40.0, 44.4]), 42.2)
+
+
 class ActivationContractTests(unittest.TestCase):
     """The harness judges an `on` arm by what the page says it did. The runtime suite makes the real page say every outcome of
     `runtime/test/fixtures/activation-spans.json` and the host suite sends each to the trace; these check the last link."""
