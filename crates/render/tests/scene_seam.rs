@@ -318,6 +318,7 @@ fn a_partial_plan_is_refused_before_any_resource_is_looked_at() {
         .push(tessel_editor_core::scene_plan::UnsupportedDomain {
             domain: tessel_editor_core::scene_plan::Domain::ALL[0],
             subject: None,
+            reason: None,
         });
     let mut slots = SceneSlots::default();
     // An empty map: if the resources were looked at first the error would be `resource_unresolved`.

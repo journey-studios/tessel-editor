@@ -117,6 +117,16 @@ fn catalog_describes_every_property_with_unit_default_range_and_applicability() 
             "start/target/x",
             "start/target/y",
             "start/target/z",
+            // Appended by F060: the point light's properties (`scene_light.rs`).
+            "position",
+            "intensity",
+            "radius",
+            "position/x",
+            "position/y",
+            "position/z",
+            "color/r",
+            "color/g",
+            "color/b",
         ]
     );
 

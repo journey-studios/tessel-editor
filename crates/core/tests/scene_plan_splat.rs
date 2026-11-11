@@ -313,7 +313,7 @@ fn light_weather_and_rigs_stay_refused_even_with_a_splat_in_the_scene() {
     let mut doc = with_splat(RECIPES, "scene-a", "root");
     let definition = definition_mut(&mut doc, "scene-a").as_object_mut().unwrap();
     definition.insert("weather".into(), json!("rain"));
-    definition.insert("lighting".into(), json!({ "ambient": 1, "lights": [] }));
+    definition.insert("lighting".into(), json!({ "ambient": 0.5, "lights": [] }));
     definition.insert("rigs".into(), json!([{ "id": "rig-1" }]));
     let scene = import(doc);
     let error = ScenePlan::build(&scene, 0).unwrap_err();

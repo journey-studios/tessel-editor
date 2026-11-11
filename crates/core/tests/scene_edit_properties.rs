@@ -139,7 +139,7 @@ fn components_are_catalogued_next_to_their_parent_with_unit_default_and_applicab
     // A whole vector is never a component.
     assert!(by_name("position").component.is_none());
     // The catalog order of S5 is kept: components and renderOrder are appended.
-    assert_eq!(catalog().len(), 21);
+    assert_eq!(catalog().len(), 21 + 9); // + the nine of a point light (F060)
     let names: Vec<&str> = catalog().iter().map(|spec| spec.name).collect();
     // The properties of S5 keep their relative order: the 8 of S5 come first in that order; the rest is appended.
     let s5 = [

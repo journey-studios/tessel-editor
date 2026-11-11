@@ -43,6 +43,9 @@ use crate::scene_interaction::{
 use crate::scene_plan::{PlanNode, PlanOptions, ScenePlan};
 use crate::state::{CommandError, EditorState};
 
+mod light;
+use light::{light_at_point, light_layout, light_markers};
+
 /// The plan the gizmo works on. Partial on purpose: picking and handles need only the camera and
 /// the nodes, so a scene with a domain the renderer cannot draw yet can still be selected and
 /// moved (the renderer refuses to draw it; that is its own, typed answer).
@@ -324,6 +327,12 @@ impl EditorState {
                 factor,
                 space,
             } => self.scene_scale(&scene, &entity, &at, axis, factor, space),
+            GizmoCommand::Range {
+                scene,
+                entity,
+                at,
+                delta,
+            } => self.scene_range(&scene, &entity, &at, delta),
             GizmoCommand::Tool { tool, space } => self.gizmo_tool(tool, space),
         }
     }
@@ -490,6 +499,7 @@ impl EditorState {
         }
 
         let (tool, space) = (self.scene_interaction.tool, self.scene_interaction.space);
+        let markers = light_markers(&world, view, &selected);
         let mut overlay = Overlay {
             tool,
             space,
@@ -497,15 +507,31 @@ impl EditorState {
             layout: None,
             hidden: None,
             outlines,
+            markers,
             active: dragging
                 .as_ref()
                 .map(|drag| (drag.handle(), drag.gesture.clone())),
             aspect: view.map_or(1.0, View::aspect),
             stamp: self.gizmo_stamp(scene_id, frame),
         };
+        // A point light (F060) has its own handles: the one dragged, else the single selected one.
+        let light = match (&dragging, selected.as_slice()) {
+            (Some(drag), _) => parse_entity(&drag.entity)
+                .ok()
+                .filter(|entity| entity.kind == EntityKind::Light),
+            (None, [entity]) if entity.kind == EntityKind::Light => Some((*entity).clone()),
+            _ => None,
+        };
+        if let Some(entity) = light {
+            if entity.scope.as_deref() != Some(definition) {
+                overlay.hidden = Some(Hidden::NotInFrame);
+                return Ok(overlay);
+            }
+            return Ok(self.light_overlay(overlay, &world, &shown, &entity));
+        }
         // The node the handles belong to: the one being dragged, else the single selected node.
         let node_id = match (&dragging, selected.as_slice()) {
-            (Some(drag), _) => Some(drag.node.id.clone()),
+            (Some(drag), _) => drag.node.as_ref().map(|node| node.id.clone()),
             (None, []) => {
                 overlay.hidden = Some(Hidden::NoSelection);
                 None
@@ -607,6 +633,28 @@ impl EditorState {
             }
             handles = Some((layout, entity));
         }
+        if let [one] = selected.as_slice()
+            && one.kind == EntityKind::Light
+            && one.scope.as_deref() == Some(definition)
+            && self.scene_interaction.tool == GizmoTool::Translate
+            && let Ok(layout) = light_layout(world, view, &document, one)
+        {
+            let entity = entity_path(one);
+            if let Some(handle) = layout.hit(view, point) {
+                return Ok((
+                    Hit::Handle {
+                        handle,
+                        entity: entity.clone(),
+                    },
+                    Some((layout, entity)),
+                ));
+            }
+            handles = Some((layout, entity));
+        }
+        // A light's marker is above the image planes it is drawn over.
+        if let Some(entity) = light_at_point(world, view, point) {
+            return Ok((Hit::Entity { entity }, handles));
+        }
         let hit = match pick_plane(&world.plan, view, point) {
             Some(node) => Hit::Entity {
                 entity: address_of(&world.plan, &node.id),
@@ -691,6 +739,16 @@ impl EditorState {
     ) -> Result<(), CommandError> {
         let view = world.view.as_ref().map_err(Clone::clone)?;
         let parsed = parse_entity(entity)?;
+        if parsed.kind == EntityKind::Light {
+            if self.scene_interaction.tool != GizmoTool::Translate {
+                return Err(CommandError::invalid_value(
+                    "A light has handles with the translate tool only",
+                    json!({ "options": [GizmoTool::Translate.as_str()] }),
+                )
+                .target("tool"));
+            }
+            return self.begin_light_drag(scene, world, handle, &parsed, point, answer);
+        }
         let node = world
             .plan
             .node(&parsed.id)
@@ -755,7 +813,7 @@ impl EditorState {
                             )
                         })?)
                     }
-                    Handle::Screen => {
+                    Handle::Screen | Handle::Range => {
                         return Err(CommandError::invalid_value(
                             "The scale tool has handles `x`, `y`, `z` and `uniform` only",
                             json!({ "options": ["x", "y", "z", "uniform"] }),
@@ -786,7 +844,7 @@ impl EditorState {
             scene: scene.to_string(),
             entity: entity.to_string(),
             frame,
-            node: node.clone(),
+            node: Some(node.clone()),
             action,
             last: None,
         });
@@ -835,6 +893,14 @@ impl EditorState {
             } => self.translate_update(drag, anchor, *base_position, point),
             DragAction::Rotate { ring, frame } => self.rotate_update(drag, ring, frame, point),
             DragAction::Scale { anchor, frame } => self.scale_update(drag, anchor, frame, point),
+            DragAction::LightTranslate {
+                anchor,
+                base_position,
+            } => self.light_translate_update(drag, anchor, *base_position, point),
+            DragAction::LightRange {
+                anchor,
+                base_radius,
+            } => self.light_range_update(drag, anchor, *base_radius, point),
         }
     }
 
@@ -850,7 +916,10 @@ impl EditorState {
             // candidate stays where the last good position put it.
             return Ok(json!({ "applied": false, "reason": "degenerate_pointer" }));
         };
-        let local = local_delta(&drag.node, world_delta).ok_or_else(|| {
+        let Some(node) = drag.node.as_ref() else {
+            return Ok(json!({ "applied": false, "reason": "no_node" }));
+        };
+        let local = local_delta(node, world_delta).ok_or_else(|| {
             CommandError::new(
                 "not_translatable",
                 "The node's transform cannot be inverted",
@@ -1046,6 +1115,17 @@ impl EditorState {
                     answer["space"] = json!(frame.space().as_str());
                 }
             }
+            Some(Applied::LightTranslate {
+                world_delta,
+                position,
+            }) => {
+                answer["world_delta"] = world_delta.to_json();
+                answer["position"] = position.to_json();
+            }
+            Some(Applied::LightRange { delta, radius }) => {
+                answer["delta"] = json!(delta);
+                answer["radius"] = json!(radius);
+            }
             None => {}
         }
         answer["overlay"] = self.gizmo_overlay(&drag.scene, drag.frame)?.to_json();
@@ -1230,8 +1310,11 @@ impl EditorState {
             .target(entity)
             .details(json!({ "reason": why }))
         };
+        if parsed.kind == EntityKind::Light {
+            return self.scene_translate_light(scene, &parsed, at, delta);
+        }
         if parsed.kind != EntityKind::Node {
-            return Err(not_translatable("only a node has a position"));
+            return Err(not_translatable("only a node or a light has a position"));
         }
         if !finite(delta) {
             return Err(CommandError::invalid_value(

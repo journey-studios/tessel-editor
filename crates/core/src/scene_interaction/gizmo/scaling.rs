@@ -135,7 +135,7 @@ fn handle_index(handle: Handle) -> Option<usize> {
         Handle::X => Some(0),
         Handle::Y => Some(1),
         Handle::Z => Some(2),
-        Handle::Screen | Handle::Uniform => None,
+        Handle::Screen | Handle::Uniform | Handle::Range => None,
     }
 }
 
@@ -404,6 +404,7 @@ impl Layout {
             origin,
             handles,
             disabled,
+            sphere: Vec::new(),
         })
     }
 
@@ -485,7 +486,7 @@ impl ScaleAnchor {
                     parameter,
                 }
             }
-            Handle::Screen => return None,
+            Handle::Screen | Handle::Range => return None,
         };
         Some(Self {
             handle,
@@ -943,6 +944,7 @@ mod tests {
             origin,
             handles: vec![handle(Handle::X, far), handle(Handle::Uniform, uniform)],
             disabled: Vec::new(),
+            sphere: Vec::new(),
         };
         // 0.01 picture heights along the shaft from the box: on the shaft (distance 0 from `x`)
         // and inside the box's radius, so the box is the answer; an axis would tie-win otherwise.

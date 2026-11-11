@@ -271,7 +271,10 @@ fn layers_are_back_to_front_with_the_composition_pass_first() {
         .filter(|capability| {
             !matches!(
                 capability,
-                Capability::Splats | Capability::OutputFx | Capability::FxNoise
+                Capability::Splats
+                    | Capability::OutputFx
+                    | Capability::FxNoise
+                    | Capability::PointLights
             )
         })
         .collect();
@@ -390,8 +393,12 @@ fn the_plan_never_carries_an_absolute_path() {
 
 #[test]
 fn undeclared_domains_are_refused_not_dropped() {
-    // The synthetic scene declares weather, lighting and a surface map on the hero.
-    let scene = import(parse(LAYERED));
+    // The synthetic scene declares weather, lighting and a surface map on the hero. Its lighting
+    // is the neutral one, which point lights make supported (F060): ambient 0.5 is what is still
+    // refused, and the domain stays listed for it.
+    let mut doc = parse(LAYERED);
+    doc["sceneDefinitions"][0]["lighting"]["ambient"] = json!(0.5);
+    let scene = import(doc);
     let before = scene.clone();
     let error = ScenePlan::build(&scene, 12).unwrap_err();
     assert_eq!(
@@ -453,7 +460,7 @@ fn scene_level_domains_are_the_evaluators_own_list() {
     // The importer keeps these raw; it only reads `lighting.lights[].parent`, hence the empty list.
     definition.insert("weather".into(), json!("rain"));
     definition.insert("weatherKeys".into(), json!([]));
-    definition.insert("lighting".into(), json!({ "ambient": 1, "lights": [] }));
+    definition.insert("lighting".into(), json!({ "ambient": 0.5, "lights": [] }));
     definition.insert("effects".into(), json!({}));
     definition.insert("weatherGround".into(), json!({ "nodeId": "backdrop" }));
     definition.insert("rigs".into(), json!([]));
@@ -497,7 +504,7 @@ fn a_partial_plan_differs_from_the_complete_one_only_by_what_it_lists() {
     let mut doc = complete_doc;
     let definition = doc["sceneDefinitions"][0].as_object_mut().unwrap();
     definition.insert("weather".into(), json!("rain"));
-    definition.insert("lighting".into(), json!({ "ambient": 1, "lights": [] }));
+    definition.insert("lighting".into(), json!({ "ambient": 0.5, "lights": [] }));
     let scene = import(doc);
     assert!(matches!(
         ScenePlan::build(&scene, 12),

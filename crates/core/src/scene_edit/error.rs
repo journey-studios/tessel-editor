@@ -20,6 +20,12 @@ pub const UNKNOWN_SCENE: &str = "UNKNOWN_SCENE";
 pub const UNKNOWN_NODE: &str = "UNKNOWN_NODE";
 /// `camera/<clipId>/...` names a camera clip the bundle does not have.
 pub const UNKNOWN_CLIP: &str = "UNKNOWN_CLIP";
+/// The scene has no point light with that ID (or declares it twice, so it names no one light).
+pub const UNKNOWN_LIGHT: &str = "UNKNOWN_LIGHT";
+/// The light's property is driven by key frames (`keys.position|intensity|color`): its static
+/// value is not what the picture shows, so writing it would change nothing visible. The edit is
+/// refused and no key is ever written for it (F060).
+pub const ANIMATED_PROPERTY: &str = "ANIMATED_PROPERTY";
 /// The property exists but not for this node (`width` on a group).
 pub const NOT_APPLICABLE: &str = "NOT_APPLICABLE";
 /// `reset` on a property whose catalog entry has no default.
@@ -131,6 +137,8 @@ impl EditError {
             UNKNOWN_SCENE => "unknown_scene",
             UNKNOWN_NODE => "unknown_node",
             UNKNOWN_CLIP => "unknown_clip",
+            UNKNOWN_LIGHT => "unknown_light",
+            ANIMATED_PROPERTY => "animated_property",
             NOT_APPLICABLE => "not_applicable",
             NO_DEFAULT => "no_default",
             INVALID_OP => "invalid_op",
