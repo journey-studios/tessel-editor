@@ -11,6 +11,8 @@ VIEW = 'crates/core/src/scene_interaction/fx_handles.rs'
 GLUE = 'crates/core/src/scene_project/fx_handles.rs'
 STATE = 'crates/core/src/state/mod.rs'
 STAMP = 'crates/core/src/scene_project/gizmo.rs'
+HISTORY = 'crates/core/src/state/history.rs'
+GIZMO_VIEW = 'crates/core/src/scene_interaction/gizmo.rs'
 OVERLAY = 'runtime/src/overlay.js'
 
 MUTANTS = [
@@ -21,9 +23,9 @@ MUTANTS = [
     ('M05 softness value forgets the radius', GEOMETRY, 'let raw = self.distance(params.center, at) - params.radius;', 'let raw = self.distance(params.center, at);'),
     ('M06 centre not put on its grid', GEOMETRY, 'x: quantize_control(at.0, min, max, CENTER_STEP, false),', 'x: at.0.clamp(min, max),'),
     ('M07 radius value not put on its grid', GEOMETRY, 'let raw = self.distance(params.center, at);\n                HandleValue::Number(quantize_control(raw, min, max, step, false))', 'let raw = self.distance(params.center, at);\n                HandleValue::Number(raw)'),
-    ('M08 a tie goes to the inner handle', GEOMETRY, 'const PRIORITY: [Self; 3] = [Self::Softness, Self::Radius, Self::Center];', 'const PRIORITY: [Self; 3] = [Self::Center, Self::Radius, Self::Softness];'),
+    ('M08 a tie goes to the inner handle', GEOMETRY, 'pub(crate) const PRIORITY: [Self; 3] = [Self::Softness, Self::Radius, Self::Center];', 'pub(crate) const PRIORITY: [Self; 3] = [Self::Center, Self::Radius, Self::Softness];'),
     ('M09 hit distance without the aspect', GEOMETRY, '((at.0 - point.0) * aspect).hypot(at.1 - point.1)', '(at.0 - point.0).hypot(at.1 - point.1)'),
-    ('M10 a huge hit radius', GEOMETRY, 'pub const HIT_RADIUS: f64 = 0.025;', 'pub const HIT_RADIUS: f64 = 0.5;'),
+    ('M10 a huge hit radius', GIZMO_VIEW, 'pub const HIT_RADIUS: f64 = 0.025;', 'pub const HIT_RADIUS: f64 = 0.5;'),
     ('M11 everything is on the picture', GEOMETRY, '(0.0..=1.0).contains(&at.0) && (0.0..=1.0).contains(&at.1)', 'true'),
     ('M12 keys never disable a handle', VIEW, '.is_some_and(|keys| !keys.is_empty());', '.is_some_and(|keys| keys.is_empty() && false);'),
     ('M13 the clip covers one frame too many', VIEW, 'frame < found.end_frame_exclusive()', 'frame <= found.end_frame_exclusive()'),
@@ -33,13 +35,16 @@ MUTANTS = [
     ('M17 moving the target keeps the drag', GLUE, 'let cancelled = if moved { self.cancel_live_drag() } else { None };', 'let cancelled: Option<String> = None;'),
     ('M18 selecting an entity keeps the drag of the clip', GLUE, 'let cancelled = self.cancel_live_drag();', 'let cancelled: Option<String> = None;'),
     ('M19 the drag writes another parameter', GLUE, 'clip: clip.clone(),\n            param: handle.param().to_string(),', 'clip: clip.clone(),\n            param: "intensity".to_string(),'),
-    ('M20 a gone clip keeps the target', GLUE, '.is_some_and(|entry| FxHandlesView::of(&entry.scene, &target.clip, 0).is_ok());', '.is_some_and(|_| true);'),
+    ('M20 a gone clip keeps the target', GLUE, '.is_some_and(|entry| fx_clip_is_vignette(&entry.scene, &target.clip));', '.is_some_and(|_| true);'),
     ('M21 the release is a scene edit in the history', STATE, '            "Edit effects"\n        } else {', '            "Edit scene"\n        } else {'),
     ('M22 the stamp does not name the clip', STAMP, 'stamp["fx_clip"] = json!(target.clip);', 'let _ = &target.clip;'),
+    ('M23 a command leaves a target the project no longer holds', STATE, '        let outcome = self.apply_command(command);\n        self.prune_fx_target();\n        outcome', '        let outcome = self.apply_command(command);\n        outcome'),
+    ('M24 undo and redo leave a target the project no longer holds', HISTORY, '        self.prune_fx_target();\n', ''),
+    ('M25 the hit query does not predict the effect handles', STAMP, 'if let Some(pick) = self.fx_pick(scene, frame, point) {\n            answer["hit"] = pick.hit_json();', 'if let Some(pick) = self.fx_pick(scene, frame, point).filter(|_| false) {\n            answer["hit"] = pick.hit_json();'),
 ]
 
 JS_MUTANTS = [
-    ('J01 a tie goes to the inner handle', OVERLAY, "export const FX_PRIORITY = ['softness', 'radius', 'center'];", "export const FX_PRIORITY = ['center', 'radius', 'softness'];"),
+    ('J01 a tie goes to the last handle of the core list', OVERLAY, "if (best === null || distance < best.distance - 1e-12) best = { distance, id: handle.id };", "if (best === null || distance <= best.distance + 1e-12) best = { distance, id: handle.id };"),
     ('J02 hover distance without the aspect', OVERLAY, "const distance = Math.hypot(here.x - handle.at.u * overlay.aspect, here.y - handle.at.v);\n    if (distance > fx.hitRadius) continue;", "const distance = Math.hypot(here.x - handle.at.u, here.y - handle.at.v);\n    if (distance > fx.hitRadius) continue;"),
     ('J03 dimmed handles drawn wherever they are', OVERLAY, "if (entry.reason !== 'animated_param' || !entry.at || !insidePicture(entry.at)) continue;", "if (!entry.at) continue;"),
     ('J04 the softness ellipse is not dashed', OVERLAY, "context.setLineDash(ellipse.id === 'softness' ? [6, 4] : []);", "context.setLineDash([]);"),
@@ -87,7 +92,7 @@ def main():
                                 ROOT / 'runtime')
             else:
                 code, out = run(['./scripts/cargo', 'test', '-p', 'tessel-editor-core', '--locked', '--no-fail-fast',
-                                 '--lib', '--test', 'scene_fx_handles'], ROOT)
+                                 '--lib', '--test', 'scene_fx_handles', '--test', 'scene_fx_target'], ROOT)
         finally:
             file.write_text(original)
         failed = sorted({line.split()[1] for line in out.splitlines() if line.startswith('test ') and line.endswith('FAILED')})
