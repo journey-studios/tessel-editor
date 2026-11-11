@@ -46,13 +46,18 @@ fica registrado como `ORIGIN_NOT_EXECUTED`, sem inventar golden). Arquivos: `pac
 
 ## Decisões fechadas
 
+> **Superado na revisão da PR #48:** `Fx::resolve(quadro)` **não** recebe os planos (o importador já garante que um clipe de plano está inteiro no seu
+> plano) e o runtime tem **um só laço** sobre os passes na ordem do plano (o parser recusa um passe de saída antes de um de plano). As linhas desta
+> tabela e das seções abaixo que ainda falam em intervalos dos planos ou em laços de deck e de saída separados são o desenho original e **não** devem ser
+> reimplementadas; o contrato vigente é [F062 §Composição em etapas](../features/fx-shot-scope.md).
+
 | Tema | Decisão |
 |---|---|
 | Modelo (core) | `FxClip` ganha o escopo (`Output` ou `Shot(id)`); o tipo é extensível para `Node` (recusado como hoje, `FX_SCOPE_NOT_YET`). Sem segundo modelo: a camada `fx` do bundle continua sendo o único dono |
-| Resolução | `Fx::resolve` fica pura e determinística, mas passa a conhecer os intervalos dos shots (parâmetro explícito, sem estado escondido). Saída: passes de deck na ordem das trilhas, depois os de saída. Seek = reprodução |
+| Resolução | `Fx::resolve(quadro)` fica pura e determinística e **não** recebe os planos (superado na revisão da PR #48: a contenção é do importador). Saída: passes de deck na ordem das trilhas, depois os de saída. Seek = reprodução |
 | Plano | cada passe leva `scope` (`{kind:"output"}` como hoje, ou `{kind:"shot", shotId}`); o validador do plano recusa passe de shot cujo `shotId` não é o do quadro, ordem fora de etapas (um `output` antes de um `shot`) e `amount` adulterado. Plano de uma cena sem clipe `shot` tem **os mesmos bytes e digests** de antes |
 | Capacidade | nova `Capability::FxShotScope` (`fxShotScope`, a 13ª), exigida só quando algum passe tem escopo `shot`; um runtime sem ela recusa o plano pelo nome, nunca desenha sem o efeito. `Capability::ALL`, os testes que contam capacidades (core, render, runtime JS) e `SCENE_CAPABILITIES` do runtime sobem juntos |
-| Runtime | desenha os passes na ordem do plano; separa o laço de passes de **deck** do de **saída** em funções próprias (a costura da P4b) e confere o escopo de cada passe (`shotId` ≠ do quadro ⇒ `unsupported` tipado). Sem pipeline novo nem alvos novos; o ping-pong de dois alvos continua |
+| Runtime | desenha os passes na ordem do plano; mantém **um só laço** (o parser já recusa um passe de saída antes de um de plano, então o ping-pong atravessa as duas etapas; superado na revisão da PR #48: a costura da P4b é a ordem dos passes, não duas funções) e confere o escopo de cada passe (`shotId` ≠ do quadro ⇒ `unsupported` tipado). Sem pipeline novo nem alvos novos; o ping-pong de dois alvos continua |
 | Edição | `scene.fx.edit` ganha `add_clip` com `scope` e o op novo **`set_scope`** (lote atômico, um undo; falha do candidato recusa o lote inteiro com os issues). Voltar a `output` remove a chave; ida e volta `output → shot → output` de um clipe sem `scope` devolve os mesmos bytes do documento; mesmo escopo = no-op |
 | Leitura | `scene.fx.list`, `scene.fx.frame`, `scene.fx.catalog` e `scene.fx.inspect` trazem o escopo em texto (`output`, `shot:<id>`; o id é tudo depois do primeiro `:`: **testar ids de shot com `:`**, que o importador de shots pode aceitar) e a lista de shots do documento (`id`, `start_frame`, `end_frame_exclusive`, `intent`) com o shot do quadro exibido. `scopes()` passa a dizer `shot` desenhado e `node` recusado |
 | Inspector | o escopo vira o **primeiro campo de escolha** do modelo neutro (F057 só tem escalares): `choice` com as opções do documento (`output` + um item por shot, rótulo pt-br/en/es + `intent`), `set_scope` como op de escrita, sem reset de tempo. Desenhado de forma genérica: a P4b vai reusá-lo (`alignment`, `easing`) |
@@ -64,7 +69,7 @@ fica registrado como `ORIGIN_NOT_EXECUTED`, sem inventar golden). Arquivos: `pac
 
 1. **Core:** modelo, leitura/escrita canônica, validação, resolução em etapas, plano (+ capacidade + validação + JSON), orçamento de passes por etapa,
    ops `add_clip`/`set_scope`, leituras, inspector `choice`, mensagens pt-br/en/es.
-2. **Runtime (`runtime/`):** aceitar o escopo `shot` com a capacidade, laço de deck separado do de saída, conferência do escopo; testes puros (`node --test`) e
+2. **Runtime (`runtime/`):** aceitar o escopo `shot` com a capacidade, um só laço sobre os passes na ordem do plano, conferência do escopo; testes puros (`node --test`) e
    de navegador real; pixels do monitor e do export.
 3. **Superfícies (regra do repositório):** biblioteca, CLI headless (JSONL, `./scripts/headless`) e janela (`./scripts/ui`, só comandos semânticos), com
    `Command` + nó em `state/tree.rs` + parser em `automation/commands.rs` + teste; handlers compartilhados, nunca estado paralelo na CLI. Nenhum diálogo novo
@@ -100,7 +105,7 @@ desempenho integrado (medição separada), Windows. Não modificar a origem nem 
    e uma entrada por `set_scope`; lote com um item inválido recusa tudo; seek ≡ reprodução; shot id com `:`; cena sem shot no quadro exibido.
 2. **Headless real:** processo JSONL sem desktop, mesmo documento final que a janela e a biblioteca (`add_clip` com `scope`, `set_scope`, `scene.fx.frame`, `scene.plan`).
 3. **UI/runtime:** testes GPUI (seletor, ação "no plano", recusa com aviso, troca de cena), testes JS puros do runtime (aceita `shot` com a capacidade, recusa sem ela, recusa
-   `shotId` errado, laço de deck antes do de saída) e janela própria por `./scripts/ui` só com comandos semânticos. **Não declarar prova física** da WKWebView.
+   `shotId` errado, passe de plano desenhado antes do de saída num só laço) e janela própria por `./scripts/ui` só com comandos semânticos. **Não declarar prova física** da WKWebView.
 4. **Imagem (referência independente, escrita no teste, não o código sob teste):** com o runtime real num corpus de dois shots (`valid-minimal-continuous`: shot-1 `[0,48)`,
    shot-2 `[48,96)`; `valid-cut-instance-offsets`: shot-a `[0,40)`, shot-b `[40,100)`), (a) um clipe `shot` só escurece os quadros do seu shot e os hashes fora do shot são os
    do baseline; (b) sem outros passes, `shot` ≡ `output` nos mesmos quadros (hash igual); (c) **não comutatividade**: `fade` (cor clara) `shot` + vinheta `output` difere de
@@ -126,7 +131,7 @@ desempenho integrado (medição separada), Windows. Não modificar a origem nem 
 2. Modelo + importador + escrita canônica + `UNKNOWN_SHOT`/`FX_SCOPE_MISMATCH`.
 3. Resolução em etapas, plano (`scope`, `Capability::FxShotScope`, validação, JSON) e orçamento.
 4. Ops `add_clip`/`set_scope`, leituras e inspector `choice`.
-5. Runtime (capacidade, laço de deck, conferência) e provas de imagem/export.
+5. Runtime (capacidade, ordem das etapas num só laço, conferência) e provas de imagem/export.
 6. Janela (seletor, ação, nós, parsers, recusas) e provas headless/janela.
 7. Mutações, gates, docs e backlog.
 
