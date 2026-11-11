@@ -1,7 +1,7 @@
 # Evidência da suíte de performance dos gizmos (BL015.21)
 
-Arquivos pequenos (sem binários, sem imagens) com o que foi **executado**, o head e o estado de cada um. Nenhum número
-aqui vale para o head final da PR: veja a coluna "vale para".
+Arquivos pequenos (sem binários, sem imagens) com o que foi **executado**, o head e o estado de cada um. Nenhuma **medição** daqui vale
+para o head final da PR (os gates funcionais do head e o que não pôde rodar estão listados depois da tabela): veja a coluna "vale para".
 
 | Arquivo | O que é | Head / árvore | Estado | Vale para |
 |---|---|---|---|---|

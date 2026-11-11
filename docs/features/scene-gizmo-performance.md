@@ -74,10 +74,14 @@ nem parser). Como rodar:
 ```
 ./scripts/cargo test -p tessel-editor-core --locked --test scene_gizmo_perf_structure     # estrutural, sempre
 ./scripts/cargo test -p tessel-editor --locked scene_gizmo_perf                          # host GPUI
-python3 scripts/gizmo-perf/run.py --out DIR            # tempo no core (release, lock, guardas, manifesto)
-python3 scripts/gizmo-perf/ab.py --phase build|measure # main (cbe9e1b) × candidato, mesma fonte de medição
-python3 scripts/gizmo-perf/mutate.py --phase prepare|time
-python3 scripts/gizmo-perf/native.py --binary target/release/tessel-editor   # janela real (precisa ./scripts/runtime setup)
+python3 scripts/gizmo-perf/run.py --phase build --out DIR        # release do teste de tempo (sem lock)
+python3 scripts/gizmo-perf/run.py --phase measure --out DIR      # tempo no core (lock, guardas, manifesto; não constrói)
+python3 scripts/gizmo-perf/ab.py --phase build --out DIR         # baseline cbe9e1b + candidato (sem lock)
+python3 scripts/gizmo-perf/ab.py --phase measure --out DIR       # A/B (lock, guardas)
+python3 scripts/gizmo-perf/mutate.py --phase prepare --out DIR   # mutantes de produto: estrutural e host
+python3 scripts/gizmo-perf/mutate.py --phase time --out DIR      # mutantes de tempo (lock, guardas)
+python3 scripts/gizmo-perf/native.py --phase build --out DIR     # editor release do HEAD, com proveniência
+python3 scripts/gizmo-perf/native.py --phase run --out DIR       # janela real (precisa ./scripts/runtime setup)
 ```
 
 ## UI e CLI da janela
@@ -153,7 +157,9 @@ Itens da review da PR #44 (head `ef62bda`), todos implementados **mas nenhum val
    a baseline é a `cbe9e1b` fixada, com **só** uma lista de permissões (testes, fixtures, `probe.rs` novo e uma linha
    `pub mod probe;`); registra manifestos da árvore de produção (ids de blob do git) antes/depois do overlay e do
    candidato, **recusa** contaminação (`REFUSED_CONTAMINATION`) e declara A/A quando nenhum arquivo de produção difere.
-   Um candidato com trabalho extra em `scene_plan` continua DIFERENTE da baseline (teste do runner com repositórios git
+   O código-fonte da baseline fica em `--out/baseline-src` entre as fases (o teste lê a jornada do caminho em que foi
+   compilado) e só é apagado depois de uma corrida julgada; sem ele, `--phase measure` recusa (comentário da revisão do
+   CodeRabbit; sem execução). Um candidato com trabalho extra em `scene_plan` continua DIFERENTE da baseline (teste do runner com repositórios git
    temporários). O contador que escapava para outra thread ganhou o detector do item "probe" acima; o contador morto
    do `PlanTimeline` foi removido.
 2. **Mutantes.** `MORTO` só pelo teste nomeado **e** a mensagem de orçamento esperada; Cargo 127, binário ausente, 0

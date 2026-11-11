@@ -53,7 +53,6 @@ import shutil
 import statistics
 import subprocess
 import sys
-import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import harness  # noqa: E402
@@ -370,13 +369,17 @@ def main(argv=None):
     manifest['baseline_is_pinned'] = manifest['baseline_commit'] == BASELINE
     exes_dir = out / 'exes'
     exes = {'baseline': exes_dir / 'baseline.exe', 'candidate': exes_dir / 'candidate.exe'}
-    work = tempfile.mkdtemp(prefix='gizmo-perf-ab-')
+    # The baseline's tests read the journey and the corpus from the checkout the executable was COMPILED in
+    # (`CARGO_MANIFEST_DIR` is a compile-time path), so that source tree must outlive the build phase: it lives in
+    # `--out/baseline-src` (source only, the target is the repository's default) until a judged run has finished.
+    kept_src = out / 'baseline-src'
     try:
         if args.phase == 'build':
             # builds (no lock: a build is not a measurement), sequential, default target.
             exes_dir.mkdir(exist_ok=True)
+            shutil.rmtree(kept_src, ignore_errors=True)
             try:
-                record = make_baseline(args.baseline, work)
+                record = make_baseline(args.baseline, out)
             except (Refused, subprocess.CalledProcessError) as error:
                 manifest.update(status='REFUSED_CONTAMINATION', reason=str(error))
                 return harness.die(1, manifest, manifest_path)
@@ -388,13 +391,14 @@ def main(argv=None):
             manifest['baseline_build'] = {'command': b_command, **b_done.record(), 'executable': b_exe,
                                           'cwd': str(src), 'stderr_tail': b_done.stderr[-1500:]}
             if not (c_exe and b_exe and c_done.returncode == 0 and b_done.returncode == 0):
+                shutil.rmtree(kept_src, ignore_errors=True)
                 manifest.update(status='BUILD_FAILED', reason='a release build failed or timed out')
                 return harness.die(1, manifest, manifest_path)
             shutil.copy(b_exe, exes['baseline'])
             shutil.copy(c_exe, exes['candidate'])
             manifest['executables_sha256'] = {k: harness.sha256(v) for k, v in exes.items()}
-            shutil.rmtree(src)  # the archive (and any target inside it) is discardable
-            too_big = harness.artifact_reason(exes_dir)
+            manifest['baseline_src_kept_at'] = str(kept_src)
+            too_big = harness.artifact_reason(exes_dir) or harness.artifact_reason(kept_src)
             if too_big:
                 manifest.update(status='REFUSED', reason=too_big)
                 return harness.die(1, manifest, manifest_path)
@@ -417,6 +421,10 @@ def main(argv=None):
             return harness.die(1, manifest, manifest_path)
         if built['baseline_commit'] != manifest['baseline_commit']:
             manifest.update(status='REFUSED', reason='the executables were built against another baseline')
+            return harness.die(1, manifest, manifest_path)
+        if not kept_src.is_dir():
+            manifest.update(status='REFUSED', reason='the baseline source the executable was compiled in is gone '
+                                                     '(its tests read the journey from there): run `--phase build` again')
             return harness.die(1, manifest, manifest_path)
         if any(not exes[k].exists() or harness.sha256(exes[k]) != built['executables_sha256'][k] for k in exes):
             manifest.update(status='REFUSED', reason='an executable is missing or changed since the build phase')
@@ -461,6 +469,7 @@ def main(argv=None):
                 reports[side].append(json.loads(path.read_text()))
             after_reason = harness.judge_after(manifest)
         shutil.rmtree(exes_dir, ignore_errors=True)
+        shutil.rmtree(kept_src, ignore_errors=True)  # a judged run is over; a BLOCKED one keeps both for a retry
         unstable = {**unstable_corpora(reports['baseline']), **unstable_corpora(reports['candidate'])}
         verdicts = judge(pooled(reports['baseline']), pooled(reports['candidate']), unstable)
         harness.write(out / 'verdicts.json', verdicts)
@@ -479,8 +488,10 @@ def main(argv=None):
         harness.write(manifest_path, manifest)
         print(json.dumps({k: manifest[k] for k in ('status', 'reason', 'verdict_counts', 'exit')}))
         return code
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
+    except BaseException:
+        if args.phase == 'build':
+            shutil.rmtree(kept_src, ignore_errors=True)
+        raise
 
 
 if __name__ == '__main__':
