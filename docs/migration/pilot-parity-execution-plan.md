@@ -117,3 +117,9 @@ o backlog é `docs/backlog.md` (BL004, BL014, BL029, BL040, BL082.1). Resumo do 
 - **Não é paridade integral**: 2 de 59 efeitos; 57 continuam pendentes e sem controle habilitado. Chaves/`amount`
   animado (P3, entregue depois: ver [F058](../features/fx-keys.md)), escopo `shot` e transições (P4) seguem fora. Windows, ponteiro físico (BL043), GPU real e áudio
   ouvido não foram provados.
+
+## P4 em duas entregas (2026-11-11)
+
+P4 foi dividida para manter a revisão pequena: **P4a** entrega o escopo de efeito `shot` (alvo no plano, composição em etapas e capacidade
+`fxShotScope`; BL082.3, plano em [p4a-shot-scope-fx-plan.md](p4a-shot-scope-fx-plan.md)) e **P4b** entrega `transitions[]`, os dois decks e o
+`crossDissolve` (BL082.4), reaproveitando a costura deixada pela P4a. Escopo `node` fica pendente em BL082.3 e não bloqueia a P4b.
