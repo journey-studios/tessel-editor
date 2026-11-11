@@ -176,6 +176,26 @@ class Judge(unittest.TestCase):
         out = ab.unstable_corpora([steady, moving, missing])
         self.assertEqual(sorted(out), ['deep', 'dense'])
 
+    def test_the_noise_limit_of_the_reference_is_the_one_budgets_json_declares(self):
+        declared = json.loads(ab.BUDGETS_FILE.read_text())['reference']['max_unstable_blocks']
+        self.assertEqual(ab.MAX_UNSTABLE_FRACTION, declared)
+        at_limit = {'corpora': [{'corpus': 'small', 'reference': {'unstable_fraction': declared}}]}
+        over = {'corpora': [{'corpus': 'dense', 'reference': {'unstable_fraction': declared + 0.01}}]}
+        self.assertEqual(sorted(ab.unstable_corpora([at_limit, over])), ['dense'])  # the limit itself is still steady
+
+    def test_the_noise_limit_follows_the_file_and_refuses_anything_that_is_not_a_fraction(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / 'budgets.json'
+            path.write_text(json.dumps({'reference': {'max_unstable_blocks': 0.4}}))
+            self.assertEqual(ab.max_unstable_fraction(path), 0.4)
+            for bad in (None, 'x', True, -0.1, 1.5):
+                path.write_text(json.dumps({'reference': {'max_unstable_blocks': bad}}))
+                with self.assertRaises(ValueError, msg=repr(bad)):
+                    ab.max_unstable_fraction(path)
+            path.write_text(json.dumps({'reference': {}}))
+            with self.assertRaises(KeyError):
+                ab.max_unstable_fraction(path)
+
     def test_lost_samples_and_new_long_ticks_regress(self):
         base = self.steady(1000)
         fewer = slot(base['samples'][:-1], base['medians'])

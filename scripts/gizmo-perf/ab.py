@@ -74,7 +74,20 @@ MEDIAN_TOLERANCE = 1.10
 P95_TOLERANCE = 1.25
 BASELINE_SPREAD_TOLERANCE = 0.15
 LONG_TICK_NS = 16_600_000
-MAX_UNSTABLE_FRACTION = 0.25
+BUDGETS_FILE = ROOT / 'docs/migration/fixtures/gizmo-perf/budgets.json'
+
+
+def max_unstable_fraction(path=BUDGETS_FILE):
+    """The share of plan-reference blocks that may disagree with themselves before a corpus is INCONCLUSIVE, read from
+    `budgets.json: reference.max_unstable_blocks`: the one place it is written, and the field the core's budget test
+    reads too, so the A/B and the in-process test cannot drift apart. Anything but a fraction is refused."""
+    value = json.loads(Path(path).read_text())['reference']['max_unstable_blocks']
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 1:
+        raise ValueError(f'{path}: reference.max_unstable_blocks must be a fraction in [0, 1], got {value!r}')
+    return value
+
+
+MAX_UNSTABLE_FRACTION = max_unstable_fraction()
 
 
 class Refused(Exception):
