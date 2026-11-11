@@ -19,7 +19,7 @@
   },
   "journey": {
     "file": "docs/migration/fixtures/gizmo-perf/journey.json",
-    "sha256": "c7e78718ebc204dfa453ce84526bfa609d20e6ca2272303b46599dd4ad25f134"
+    "sha256": "2218c395051e90127df0920354a6fdeed207fbf00bade8880a38af20ef609d9c"
   },
   "nodes": {
     "deep.bundle.json": 44,

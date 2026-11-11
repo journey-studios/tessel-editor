@@ -105,9 +105,15 @@ fn the_journey_leaves_the_transform_and_the_history_the_golden_trace_says() {
     for run in &runs {
         let want = &expected[&run.corpus];
         let got = &run.trace();
+        // `preserve_order` of serde_json is a workspace-wide feature some builds unify in: compare as sets.
+        let sorted = |value: &Value| {
+            let mut keys: Vec<String> = value.as_object().unwrap().keys().cloned().collect();
+            keys.sort();
+            keys
+        };
         assert_eq!(
-            got.as_object().unwrap().keys().collect::<Vec<_>>(),
-            want.as_object().unwrap().keys().collect::<Vec<_>>(),
+            sorted(got),
+            sorted(want),
             "{}: the steps that ran are not the golden trace's",
             run.corpus
         );

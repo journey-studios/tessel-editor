@@ -11,19 +11,25 @@
       "bundle": "scripts/directed-scene-proof/corpus/bundle.json",
       "node": "scene/scene-a/node/mid",
       "other": "scene/scene-a/node/hero",
-      "other_rotate": "refused:animated_rotation"
+      "other_rotate": "refused:animated_rotation",
+      "bundle_b": "docs/migration/fixtures/gizmo-perf/deep.bundle.json",
+      "node_b": "scene/scene-a/node/leaf-rot"
     },
     "dense": {
       "bundle": "docs/migration/fixtures/gizmo-perf/dense.bundle.json",
       "node": "scene/scene-a/node/bank-5-plane-17",
       "other": "scene/scene-a/node/hero",
-      "other_rotate": "refused:animated_rotation"
+      "other_rotate": "refused:animated_rotation",
+      "bundle_b": "scripts/directed-scene-proof/corpus/bundle.json",
+      "node_b": "scene/scene-a/node/mid"
     },
     "deep": {
       "bundle": "docs/migration/fixtures/gizmo-perf/deep.bundle.json",
       "node": "scene/scene-a/node/leaf-rot",
       "other": "scene/scene-a/node/leaf-aniso",
-      "other_rotate": "refused:non_uniform_parent_scale"
+      "other_rotate": "refused:non_uniform_parent_scale",
+      "bundle_b": "scripts/directed-scene-proof/corpus/bundle.json",
+      "node_b": "scene/scene-a/node/mid"
     }
   },
   "steps": [
@@ -62,10 +68,10 @@
     {"id": "select.none", "phase": "hot", "class": "document", "op": {"op": "scene.select", "scene": "$scene", "entities": []}},
     {"id": "state.hidden", "phase": "hot", "class": "document", "tool": {"tool": "translate", "space": "world"}, "op": {"op": "scene.gizmo.state", "scene": "$scene", "frame": "$frame"}, "expect": {"hidden": "no_selection"}},
 
-    {"id": "switch.attach", "phase": "switch", "class": "document", "op": {"op": "scene.attach", "id": "$scene_b", "path": "$bundle"}},
+    {"id": "switch.attach", "phase": "switch", "class": "document", "op": {"op": "scene.attach", "id": "$scene_b", "path": "$bundle_b"}},
     {"id": "switch.resources", "phase": "switch", "class": "presentation", "surfaces": ["host", "native"], "op": {"op": "scene.resources.resolve", "scene": "$scene_b", "base": "$base"}},
     {"id": "switch.show", "phase": "switch", "class": "presentation", "surfaces": ["host", "native"], "op": {"op": "monitor.show_scene", "scene": "$scene_b"}},
-    {"id": "switch.select", "phase": "switch", "class": "document", "op": {"op": "scene.select", "scene": "$scene_b", "entities": ["$node"]}},
+    {"id": "switch.select", "phase": "switch", "class": "document", "op": {"op": "scene.select", "scene": "$scene_b", "entities": ["$node_b"]}},
     {"id": "switch.state", "phase": "switch", "class": "document", "op": {"op": "scene.gizmo.state", "scene": "$scene_b", "frame": "$frame"}, "expect": {"handles": ["x", "y", "z", "screen"]}},
 
     {"id": "present.resize.small", "phase": "present", "class": "presentation_only", "surfaces": ["host", "native"], "ui": ["set", "window", "size", "960x640"]},

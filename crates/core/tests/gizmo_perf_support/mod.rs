@@ -229,7 +229,9 @@ pub struct Journey {
 pub struct Corpus {
     pub name: String,
     pub bundle: String,
+    pub bundle_b: String,
     pub node: String,
+    pub node_b: String,
     pub other: String,
     pub other_rotate: String,
 }
@@ -255,7 +257,9 @@ impl Journey {
         Corpus {
             name: name.to_string(),
             bundle: text("bundle"),
+            bundle_b: text("bundle_b"),
             node: text("node"),
+            node_b: text("node_b"),
             other: text("other"),
             other_rotate: text("other_rotate"),
         }
@@ -525,7 +529,9 @@ pub fn run<S: Surface>(surface: &mut S, journey: &Journey, corpus: &Corpus) -> R
     vars.insert("frame", json!(journey.frame()));
     vars.insert("bundle", json!(abs(&corpus.bundle)));
     vars.insert("base", json!(abs(journey.value["base"].as_str().unwrap())));
+    vars.insert("bundle_b", json!(abs(&corpus.bundle_b)));
     vars.insert("node", json!(corpus.node));
+    vars.insert("node_b", json!(corpus.node_b));
     vars.insert("other", json!(corpus.other));
     let mut driver = Driver {
         surface,
@@ -569,6 +575,7 @@ pub fn run<S: Surface>(surface: &mut S, journey: &Journey, corpus: &Corpus) -> R
         }
         if step["id"] == "switch.attach" {
             driver.scene = journey.value["scene_b"].as_str().unwrap().to_string();
+            driver.node = corpus.node_b.clone();
         }
         if step["kind"] == "drag" {
             driver.drag(&step, usize::MAX);
