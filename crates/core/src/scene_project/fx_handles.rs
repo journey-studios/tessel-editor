@@ -18,25 +18,44 @@
 //! `scene.select` (drops the clip). Swapping the target cancels a live drag, so no drag survives
 //! onto a target that is not the one that began it.
 
-use std::sync::Arc;
-
 use serde_json::{Value, json};
 
 use crate::directed_scene::DirectedScene;
 use crate::directed_scene::fx::VignetteHandle;
 use crate::scene_edit::{self, FxOp};
 use crate::scene_interaction::{
-    Applied, Drag, DragAction, FrameAt, FxHandlesView, FxOverlay, FxTarget, Hidden, Overlay, Point,
-    SelectMode,
+    Applied, Drag, DragAction, FrameAt, FxHandlesView, FxOverlay, FxTarget, GizmoCommand, Hidden,
+    Overlay, Point, PointerCommand, SelectMode, fx_clip_is_vignette,
 };
-use crate::state::{CommandError, EditorState};
+use crate::state::{Command, CommandError, EditorState};
 
-use super::HandleProbe;
 use super::fx::{changes_json, edit_frame_of};
+use super::{HandleProbe, SceneCommand};
 
-/// What a press on a handle answers in `hit`.
-fn hit_json(clip: &str, handle: VignetteHandle) -> Value {
-    json!({ "kind": "fx_handle", "clip": clip, "handle": handle.as_str(), "param": handle.param() })
+/// The handle of the targeted vignette that a point lies on: what a press there holds, or what it
+/// refuses by name when the handle is drawn greyed. One reading for `scene.gizmo.hit` and
+/// `scene.pointer.down`, so the query that asks "what is under this point" is the click.
+pub(super) struct FxPick {
+    view: FxHandlesView,
+    handle: VignetteHandle,
+    /// The handle's parameter has keys: drawn, greyed, and refused (`animated_param`).
+    animated: bool,
+}
+
+impl FxPick {
+    /// The `hit` of the answer, the same for the query and the press.
+    pub(super) fn hit_json(&self) -> Value {
+        json!({
+            "kind": "fx_handle", "clip": self.view.clip, "handle": self.handle.as_str(),
+            "param": self.handle.param(),
+        })
+    }
+
+    /// Why a press here writes nothing, if it does not.
+    pub(super) fn refusal(&self) -> Option<&'static str> {
+        self.animated
+            .then_some(crate::scene_interaction::fx_handle_reason::ANIMATED_PARAM)
+    }
 }
 
 impl EditorState {
@@ -137,16 +156,28 @@ impl EditorState {
 
     /// Drops the target when the project no longer holds it (the clip was removed, the scene
     /// detached, an undo took it away) or it is no longer a vignette. Reports what it dropped.
+    /// Run where the project changes (`EditorState::apply`, `restore`), never by a read.
     pub(crate) fn prune_fx_target(&mut self) -> Option<FxTarget> {
         let target = self.scene_interaction.fx_target.as_ref()?;
         let held = self
             .scenes
             .get(&target.scene)
-            .is_some_and(|entry| FxHandlesView::of(&entry.scene, &target.clip, 0).is_ok());
+            .is_some_and(|entry| fx_clip_is_vignette(&entry.scene, &target.clip));
         if held {
             return None;
         }
         self.scene_interaction.fx_target.take()
+    }
+
+    /// The release that commits the drag of a vignette handle: its undo entry is the one
+    /// `scene.fx.edit` makes. Decided before the command runs, while the drag is still open.
+    pub(crate) fn is_fx_handle_release(&self, command: &Command) -> bool {
+        matches!(
+            command,
+            Command::Scene(SceneCommand::Gizmo(GizmoCommand::Pointer(
+                PointerCommand::Up { .. }
+            )))
+        ) && self.scene_interaction.live_drag().is_some_and(Drag::is_fx)
     }
 
     /// `scene.select` (any mode) and a press that selects leave the effect target: one target at a
@@ -171,70 +202,87 @@ impl EditorState {
         Some(drag.gesture)
     }
 
+    /// The handle of the vignette the session targets that `point` lies on, or `None` when nothing
+    /// there is for it (no target in this scene, the clip does not cover the frame, nothing under
+    /// the point). A read: the query and the press share it.
+    pub(super) fn fx_pick(&self, scene: &str, frame: i64, point: Point) -> Option<FxPick> {
+        let target = self
+            .scene_interaction
+            .fx_target
+            .as_ref()
+            .filter(|target| target.scene == scene)?;
+        let view = FxHandlesView::of(&self.scenes.get(scene)?.scene, &target.clip, frame).ok()?;
+        if !view.visible {
+            return None;
+        }
+        let (handle, animated) = match view.hit(point) {
+            Some(handle) => (handle, false),
+            None => (view.hit_animated(point)?, true),
+        };
+        Some(FxPick {
+            view,
+            handle,
+            animated,
+        })
+    }
+
     /// The press on a handle of the vignette the session targets, or `None` when the press is not
-    /// for it (no target in this scene, the clip does not cover the frame, nothing under the
-    /// pointer): the caller then does what a press always did. A press on a handle whose parameter
-    /// has keys is answered here, as refused, and writes nothing.
+    /// for it ([`fx_pick`](Self::fx_pick) found nothing): the caller then does what a press always
+    /// did. A press on a handle whose parameter has keys is answered here, as refused, and writes
+    /// nothing.
     pub(super) fn fx_pointer_down(
         &mut self,
         scene: &str,
         frame: i64,
         point: Point,
     ) -> Result<Option<Value>, CommandError> {
-        let Some(target) = self
-            .scene_interaction
-            .fx_target
-            .clone()
-            .filter(|target| target.scene == scene)
-        else {
+        let Some(pick) = self.fx_pick(scene, frame, point) else {
             return Ok(None);
         };
-        let document = Arc::clone(&self.attached_scene(scene)?.scene);
-        let Ok(view) = FxHandlesView::of(&document, &target.clip, frame) else {
-            return Ok(None);
-        };
-        if !view.visible {
-            return Ok(None);
-        }
+        let clip = pick.view.clip.clone();
         let mut answer = json!({
             "action": "scene.pointer", "phase": "down", "scene": scene, "frame": frame,
-            "point": point.to_json(), "target": "fx", "clip": target.clip,
+            "point": point.to_json(), "target": "fx", "clip": clip, "hit": pick.hit_json(),
             "abandoned": null, "gesture": null, "dragging": false, "selection_changed": false,
             "changed": false, "document_changed": false,
         });
-        let Some(handle) = view.hit(point) else {
-            let Some(animated) = view.hit_animated(point) else {
-                return Ok(None);
-            };
+        if let Some(reason) = pick.refusal() {
             // Drawn and greyed: the press says why it does nothing instead of picking what is
             // behind the handle (which would also drop the target).
-            answer["hit"] = hit_json(&target.clip, animated);
-            answer["refused"] = json!(crate::scene_interaction::fx_handle_reason::ANIMATED_PARAM);
+            answer["refused"] = json!(reason);
             answer["overlay"] = self.gizmo_overlay(scene, frame)?.to_json();
             return Ok(Some(answer));
-        };
+        }
+        let FxPick { view, handle, .. } = pick;
         // A press while a drag is open means its release was lost: the open one goes first, so a
         // press never leaves two of them.
         if let Some(open) = self.live_drag() {
             answer["abandoned"] = json!({ "gesture": open.gesture, "reason": "replaced_by_press" });
             self.discard_drag();
         }
-        let begun = self.fx_gesture_begin(scene, &target.clip, None)?;
-        let gesture = begun["gesture"].as_str().unwrap_or_default().to_string();
+        let begun = self.fx_gesture_begin(scene, &clip, None)?;
+        let gesture = begun["gesture"]
+            .as_str()
+            .ok_or_else(|| {
+                CommandError::new(
+                    "internal",
+                    "`scene.fx.gesture.begin` answered no gesture id",
+                )
+            })?
+            .to_string();
         self.scene_interaction.drag = Some(Drag {
             gesture: gesture.clone(),
             scene: scene.to_string(),
-            entity: target.clip.clone(),
+            entity: clip.clone(),
             frame,
             node: None,
             action: DragAction::Fx {
-                clip: target.clip.clone(),
+                clip,
                 handle,
                 press: Box::new(view),
             },
             last: None,
         });
-        answer["hit"] = hit_json(&target.clip, handle);
         answer["gesture"] = json!(gesture);
         answer["dragging"] = json!(true);
         answer["handle"] = json!(handle.as_str());
@@ -246,8 +294,8 @@ impl EditorState {
 
     /// One pointer position of a handle drag: the position becomes the value of the handle's
     /// parameter (quantized to its control's grid, inside its range) and goes into the gesture as
-    /// ONE `set_param`. A proposal the layer refuses leaves the last legal candidate and answers
-    /// `applied: false` with its code, so a release there still commits what was last legal.
+    /// ONE `set_param`. The caller (`pointer_move`) has checked that the gesture is live; a
+    /// refusal of the layer here is an error answer and leaves the last candidate where it was.
     pub(super) fn fx_handle_update(
         &mut self,
         drag: &Drag,
@@ -272,53 +320,29 @@ impl EditorState {
             param: handle.param().to_string(),
             value: value.to_json(),
         };
-        match self.fx_gesture_update(&drag.gesture, vec![op]) {
-            Ok(update) => {
-                if let Some(open) = self.scene_interaction.drag.as_mut() {
-                    open.last = Some(Applied::Fx {
-                        handle: *handle,
-                        value,
-                    });
-                }
-                Ok(json!({
-                    "applied": true, "param": handle.param(), "value": value.to_json(),
-                    "would_change": update["would_change"], "changes": update["changes"],
-                }))
-            }
-            Err(error) => {
-                let live = self
-                    .scene_interaction
-                    .gesture
-                    .current()
-                    .is_some_and(|open| {
-                        open.id() == drag.gesture
-                            && open
-                                .invalidation(&self.scenes, self.project.revision)
-                                .is_none()
-                    });
-                if !live {
-                    return Err(error);
-                }
-                Ok(json!({
-                    "applied": false, "reason": error.code, "message": error.message,
-                    "candidate_kept": true, "param": handle.param(), "value": value.to_json(),
-                }))
-            }
+        let update = self.fx_gesture_update(&drag.gesture, vec![op])?;
+        if let Some(open) = self.scene_interaction.drag.as_mut() {
+            open.last = Some(Applied::Fx {
+                handle: *handle,
+                value,
+            });
         }
+        Ok(json!({
+            "applied": true, "param": handle.param(), "value": value.to_json(),
+            "would_change": update["would_change"], "changes": update["changes"],
+        }))
     }
 
     /// The overlay of the effect clip the session targets, or `None` when this scene is not the
     /// target's (the node overlay is then the one drawn). `shown` is what the handles are laid
     /// out on: the document, or the candidate of the drag in progress.
     pub(super) fn fx_overlay(
-        &mut self,
+        &self,
         scene: &str,
         frame: i64,
         shown: &DirectedScene,
         dragging: Option<&Drag>,
-        stamp: Value,
     ) -> Option<Overlay> {
-        self.prune_fx_target();
         let target = self
             .scene_interaction
             .fx_target
@@ -344,7 +368,7 @@ impl EditorState {
             active: None,
             fx: Some(FxOverlay { view, active }),
             aspect,
-            stamp,
+            stamp: self.gizmo_stamp(scene, frame),
         })
     }
 }

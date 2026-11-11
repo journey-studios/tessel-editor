@@ -29,13 +29,10 @@
 use super::{FxValue, quantize_control};
 use super::{ParamKind, VIGNETTE, VIGNETTE_CENTER, VIGNETTE_RADIUS, VIGNETTE_SOFTNESS};
 
-/// The grid of `center`'s two components: the step of the inspector's `center_x`/`center_y` fields
-/// (the catalog gives a point a range and no step; `scene_edit::fx_inspector` fixes it at 0.01, and
-/// a test of the core pins the two together).
+/// The grid of `center`'s two components. The catalog gives a point a range and no step, so this is
+/// the one place that says it: the handle quantizes with it and the inspector's `center_x` and
+/// `center_y` fields use the same constant, so a drag and a typed value land on the same grid.
 pub const CENTER_STEP: f64 = 0.01;
-
-/// How close (picture heights) a pointer must be to a handle to hold it: the one of the node gizmo.
-pub const HIT_RADIUS: f64 = 0.025;
 
 /// The three handles of a vignette.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -53,8 +50,9 @@ impl VignetteHandle {
     pub const ALL: [Self; 3] = [Self::Center, Self::Radius, Self::Softness];
 
     /// Who wins when a pointer is as near to two handles (they coincide when `radius` is 0): the
-    /// outer ones first, so the centre is never the one that hides the other two.
-    const PRIORITY: [Self; 3] = [Self::Softness, Self::Radius, Self::Center];
+    /// outer ones first, so the centre is never the one that hides the other two. The core lists
+    /// the handles of a view in this order, so a runtime needs no rule of its own for a tie.
+    pub(crate) const PRIORITY: [Self; 3] = [Self::Softness, Self::Radius, Self::Center];
 
     pub fn as_str(self) -> &'static str {
         match self {
@@ -193,20 +191,21 @@ impl VignetteShape {
     }
 }
 
-/// The range and step of a number parameter of the vignette, from the catalog.
+/// The range and step of a number parameter of the vignette, from the catalog. A catalog that
+/// stops saying so is a bug of the catalog, not a grid to guess: it stops here, by name.
 fn number_range(index: usize) -> (f64, f64, f64) {
-    match VIGNETTE.params.get(index).map(|param| param.kind) {
-        Some(ParamKind::Number { min, max, step, .. }) => (min, max, step),
-        _ => (0.0, 1.0, 0.01),
-    }
+    let ParamKind::Number { min, max, step, .. } = VIGNETTE.params[index].kind else {
+        unreachable!("vignette parameter {index} is a number in the catalog");
+    };
+    (min, max, step)
 }
 
-/// The range of both components of `center`, from the catalog.
+/// The range of both components of `center`, from the catalog (see [`number_range`]).
 fn center_range() -> (f64, f64) {
-    match VIGNETTE.params.get(VIGNETTE_CENTER).map(|param| param.kind) {
-        Some(ParamKind::Point { min, max, .. }) => (min, max),
-        _ => (0.0, 1.0),
-    }
+    let ParamKind::Point { min, max, .. } = VIGNETTE.params[VIGNETTE_CENTER].kind else {
+        unreachable!("the vignette's `center` is a point in the catalog");
+    };
+    (min, max)
 }
 
 /// `true` when `at` is on the picture (borders included): a handle off it is not drawn and cannot
@@ -216,12 +215,13 @@ pub fn on_picture(at: (f64, f64)) -> bool {
 }
 
 /// The handle under `at` among `handles`, by distance in picture heights (`u` scaled by the aspect
-/// of the picture) within [`HIT_RADIUS`]; the nearest wins, and a tie goes by
-/// [`VignetteHandle::PRIORITY`].
+/// of the picture) within `reach` (the caller's: the monitor's hit radius is the node gizmo's); the
+/// nearest wins, and a tie goes by the priority order of the handles.
 pub fn hit(
     handles: &[(VignetteHandle, (f64, f64))],
     at: (f64, f64),
     aspect: f64,
+    reach: f64,
 ) -> Option<VignetteHandle> {
     let mut best: Option<(f64, VignetteHandle)> = None;
     for handle in VignetteHandle::PRIORITY {
@@ -229,7 +229,7 @@ pub fn hit(
             continue;
         };
         let distance = ((at.0 - point.0) * aspect).hypot(at.1 - point.1);
-        if distance <= HIT_RADIUS && best.is_none_or(|(nearest, _)| distance < nearest) {
+        if distance <= reach && best.is_none_or(|(nearest, _)| distance < nearest) {
             best = Some((distance, handle));
         }
     }
@@ -462,6 +462,8 @@ mod tests {
 
     #[test]
     fn the_nearest_handle_in_picture_heights_wins_and_a_tie_goes_to_the_outer_one() {
+        // The reach the monitor passes (the node gizmo's hit radius), written here on purpose.
+        const REACH: f64 = 0.025;
         let aspect = 16.0 / 9.0;
         let handles = [
             (VignetteHandle::Center, (0.5, 0.5)),
@@ -469,31 +471,31 @@ mod tests {
             (VignetteHandle::Softness, (0.9, 0.5)),
         ];
         assert_eq!(
-            hit(&handles, (0.5, 0.5), aspect),
+            hit(&handles, (0.5, 0.5), aspect, REACH),
             Some(VignetteHandle::Center)
         );
         assert_eq!(
-            hit(&handles, (0.7, 0.51), aspect),
+            hit(&handles, (0.7, 0.51), aspect, REACH),
             Some(VignetteHandle::Radius)
         );
         assert_eq!(
-            hit(&handles, (0.9, 0.5), aspect),
+            hit(&handles, (0.9, 0.5), aspect, REACH),
             Some(VignetteHandle::Softness)
         );
         // The radius in `u` is scaled by the aspect: 0.02 of the width is 0.036 of the height.
-        assert_eq!(hit(&handles, (0.72, 0.5), aspect), None);
-        assert_eq!(hit(&handles, (0.1, 0.1), aspect), None);
+        assert_eq!(hit(&handles, (0.72, 0.5), aspect, REACH), None);
+        assert_eq!(hit(&handles, (0.1, 0.1), aspect, REACH), None);
         // Coincident handles (radius 0): the radius one, not the centre.
         let stacked = [
             (VignetteHandle::Center, (0.5, 0.5)),
             (VignetteHandle::Radius, (0.5, 0.5)),
         ];
         assert_eq!(
-            hit(&stacked, (0.5, 0.5), aspect),
+            hit(&stacked, (0.5, 0.5), aspect, REACH),
             Some(VignetteHandle::Radius)
         );
         // A handle that is not offered (off the picture, animated) is never hit.
-        assert_eq!(hit(&handles[..1], (0.7, 0.5), aspect), None);
+        assert_eq!(hit(&handles[..1], (0.7, 0.5), aspect, REACH), None);
     }
 
     #[test]

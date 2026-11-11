@@ -43,8 +43,8 @@ pub use catalog::{
 };
 pub use control::quantize_control;
 pub use handles::{
-    CENTER_STEP, HIT_RADIUS as HANDLE_HIT_RADIUS, HandleValue, VignetteHandle, VignetteParams,
-    VignetteShape, hit as hit_handle, on_picture, params_at as vignette_params_at,
+    CENTER_STEP, HandleValue, VignetteHandle, VignetteParams, VignetteShape, hit as hit_handle,
+    on_picture, params_at as vignette_params_at,
 };
 pub use hash::{
     Reseed, base_seed, colored_triangular, fnv1a32, hash_pixel, lowbias32, seed_for, triangular,

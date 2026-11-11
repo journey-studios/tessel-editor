@@ -588,20 +588,6 @@ impl EditorState {
     /// itself uses ([`SceneInteraction::live_drag`]): a drag whose gesture another command
     /// settled (`scene.gesture.cancel`) is stored but dead, `pointer_up` answers `noop` for it,
     /// so it must not settle the slider gesture either.
-    /// The release that commits the drag of a vignette handle (F061): its entry is the one
-    /// `scene.fx.edit` makes. Decided before the command runs, while the drag is still open.
-    fn is_fx_handle_release(&self, command: &Command) -> bool {
-        matches!(
-            command,
-            Command::Scene(SceneCommand::Gizmo(GizmoCommand::Pointer(
-                PointerCommand::Up { .. }
-            )))
-        ) && self
-            .scene_interaction
-            .live_drag()
-            .is_some_and(crate::scene_interaction::Drag::is_fx)
-    }
-
     fn is_idle_gizmo_release(&self, command: &Command) -> bool {
         matches!(
             command,
@@ -611,7 +597,16 @@ impl EditorState {
         ) && self.scene_interaction.live_drag().is_none()
     }
 
+    /// The funnel of every command: whatever it did to the scenes, an effect target the project no
+    /// longer holds is dropped before anything reads it (also after an error, which may have moved
+    /// the project halfway).
     fn apply(&mut self, command: Command) -> Result<Value, CommandError> {
+        let outcome = self.apply_command(command);
+        self.prune_fx_target();
+        outcome
+    }
+
+    fn apply_command(&mut self, command: Command) -> Result<Value, CommandError> {
         match command {
             Command::SetFolderExpanded { folder, expanded } => {
                 self.library.set_expanded(&folder, expanded)

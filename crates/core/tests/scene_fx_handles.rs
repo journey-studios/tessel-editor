@@ -13,137 +13,20 @@
 //! - **Keys.** A parameter with keys has its handle off (`animated_param`): the press is refused
 //!   by name, nothing is written, and the other handles keep working.
 //! - **Off picture / out of frame.** Not drawn, not pressable.
-//! - **One target.** Selecting an entity leaves the clip, selecting a clip empties the selection,
-//!   and either swap cancels a live drag (no phantom drag survives).
-//! - **Staleness.** An undo, a scene change or a detach under a live drag kills it.
-//! - **Not covered**: what a runtime draws (`runtime/test/`), the window and a physical pointer.
+//! - **Not here**: the target, its staleness and `scene.gizmo.hit` are in `scene_fx_target.rs`;
+//!   what a runtime draws is in `runtime/test/`; the window and a physical pointer are not covered.
 
 use std::io::Write;
 use std::process::{Command as Process, Stdio};
 
 use core::prelude::v1::test;
 use serde_json::{Value, json};
+use tessel_editor_core::EditorState;
 use tessel_editor_core::directed_scene::fx::{self, FxPass};
-use tessel_editor_core::state::ProjectSettings;
-use tessel_editor_core::{CommandError, EditorState, headless};
 
-const MINIMAL: &str =
-    include_str!("../../../docs/migration/fixtures/bundles/valid-minimal-continuous.bundle.json");
-const FIGURE: &str = "scene/scene-a/node/figure";
-/// The frame every test looks at: inside the clip (10..40).
-const FRAME: i64 = 20;
-
-fn bundle(width: u64, height: u64) -> Value {
-    let mut bundle: Value = serde_json::from_str(MINIMAL).unwrap();
-    bundle["renderProfile"]["width"] = json!(width);
-    bundle["renderProfile"]["height"] = json!(height);
-    bundle
-}
-
-fn run(state: &mut EditorState, request: Value) -> Result<Value, CommandError> {
-    headless::execute(state, &request)
-}
-
-fn ok(state: &mut EditorState, request: Value) -> Value {
-    run(state, request.clone()).unwrap_or_else(|error| panic!("{request}: {error:?}"))
-}
-
-fn err(state: &mut EditorState, request: Value) -> CommandError {
-    match run(state, request.clone()) {
-        Ok(answer) => panic!("{request} should have failed, got {answer}"),
-        Err(error) => error,
-    }
-}
-
-/// A scene `street` of `width`×`height` with one vignette `v1` over frames 10..40.
-fn session_with(width: u64, height: u64, roundness: f64) -> EditorState {
-    let mut state = EditorState::empty(&ProjectSettings::default()).unwrap();
-    ok(
-        &mut state,
-        json!({"op":"scene.attach","id":"street","bundle":bundle(width, height)}),
-    );
-    ok(
-        &mut state,
-        json!({"op":"scene.fx.edit","scene":"street","ops":[
-            {"op":"add_clip","effect":"vignette","start_frame":10,"duration_frames":30,"id":"v1",
-             "params":{"radius":0.4,"softness":0.2,"roundness":roundness,
-                       "center":{"x":0.2,"y":0.5}}}]}),
-    );
-    state
-}
-
-fn session() -> EditorState {
-    session_with(320, 180, 0.6)
-}
-
-fn selected(state: &mut EditorState) {
-    ok(
-        state,
-        json!({"op":"scene.fx.select","scene":"street","clip":"v1"}),
-    );
-}
-
-fn document(state: &EditorState) -> Value {
-    state.scenes.get("street").unwrap().scene.document().clone()
-}
-
-fn undo_depth(state: &EditorState) -> u64 {
-    state.history.to_json()["undo_depth"].as_u64().unwrap()
-}
-
-fn handles(state: &mut EditorState) -> Value {
-    ok(
-        state,
-        json!({"op":"scene.fx.handles","scene":"street","clip":"v1","frame":FRAME}),
-    )
-}
-
-fn handle_at(answer: &Value, id: &str) -> (f64, f64) {
-    let handle = answer["handles"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|handle| handle["id"] == id)
-        .unwrap_or_else(|| panic!("no handle `{id}` in {answer}"));
-    (
-        handle["at"]["u"].as_f64().unwrap(),
-        handle["at"]["v"].as_f64().unwrap(),
-    )
-}
-
-fn disabled(answer: &Value, id: &str) -> Option<String> {
-    answer["disabled_handles"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|handle| handle["id"] == id)
-        .map(|handle| handle["reason"].as_str().unwrap().to_string())
-}
-
-fn down(state: &mut EditorState, at: (f64, f64)) -> Value {
-    ok(
-        state,
-        json!({"op":"scene.pointer.down","scene":"street","frame":FRAME,
-               "point":{"u":at.0,"v":at.1}}),
-    )
-}
-
-fn mv(state: &mut EditorState, at: (f64, f64)) -> Value {
-    ok(
-        state,
-        json!({"op":"scene.pointer.move","point":{"u":at.0,"v":at.1}}),
-    )
-}
-
-fn up(state: &mut EditorState, at: Option<(f64, f64)>) -> Value {
-    match at {
-        Some(at) => ok(
-            state,
-            json!({"op":"scene.pointer.up","point":{"u":at.0,"v":at.1}}),
-        ),
-        None => ok(state, json!({"op":"scene.pointer.up"})),
-    }
-}
+#[path = "scene_fx_handles_support/mod.rs"]
+mod support;
+use support::*;
 
 fn pass_of(state: &EditorState, frame: i64) -> FxPass {
     let scene = &state.scenes.get("street").unwrap().scene;
@@ -430,19 +313,32 @@ fn a_parameter_with_keys_has_its_handle_off_and_a_press_on_it_is_refused() {
     let status = ok(&mut state, json!({"op":"scene.fx.gesture.status"}));
     assert_eq!(status["gesture"], Value::Null, "{status}");
 
-    // The softness handle still drags, and the keys are untouched by it.
+    // The softness handle still drags, and the keys are untouched by it: the document is the one
+    // `scene.fx.edit` leaves for the same value (a key written, or any other road, would differ).
+    let keys_of = |state: &mut EditorState| {
+        let list = ok(state, json!({"op":"scene.fx.list","scene":"street"}));
+        list["tracks"][0]["clips"][0]["keys"].clone()
+    };
+    let keys = keys_of(&mut state);
+    assert!(!keys.is_null(), "the clip lists its keys: {keys}");
     let start = handle_at(&answer, "softness");
     down(&mut state, start);
     mv(&mut state, (start.0 + 0.05, start.1));
     let released = up(&mut state, None);
     assert_eq!(released["changed"], true, "{released}");
-    let doc = document(&state).to_string();
-    assert!(!doc.contains("FX_STATIC_UNDER_KEYS"));
-    let list = ok(&mut state, json!({"op":"scene.fx.list","scene":"street"}));
-    let keys = list["tracks"][0]["clips"][0]["keys"].to_string();
-    assert!(
-        keys.contains("0.6") && keys.contains("0.4"),
-        "the keys are as they were: {keys}"
+    assert_eq!(keys_of(&mut state), keys, "the keys are as they were");
+    let mut edited = session();
+    ok(
+        &mut edited,
+        json!({"op":"scene.fx.edit","scene":"street","ops":[
+            {"op":"key_param","clip":"v1","param":"radius","frame":0,"value":0.4},
+            {"op":"key_param","clip":"v1","param":"radius","frame":20,"value":0.6},
+            {"op":"set_param","clip":"v1","param":"softness","value":released["value"]}]}),
+    );
+    assert_eq!(
+        document(&state),
+        document(&edited),
+        "same road as scene.fx.edit"
     );
 }
 
@@ -535,193 +431,41 @@ fn only_the_vignette_has_handles() {
     );
 }
 
+/// The page picks «the nearest, a tie to the first of the list», so the order of the lists IS the
+/// rule: the outer handles first, in the read, in the overlay, and among the disabled ones.
 #[test]
-fn one_target_at_a_time_and_a_swap_leaves_no_phantom_drag() {
+fn the_handles_are_listed_in_priority_order_the_outer_ones_first() {
+    let ids = |answer: &Value, key: &str| -> Vec<String> {
+        answer[key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| entry["id"].as_str().unwrap().to_string())
+            .collect()
+    };
     let mut state = session();
-    // An entity is selected: choosing a clip empties the selection and says so.
-    ok(
-        &mut state,
-        json!({"op":"scene.select","scene":"street","entities":[FIGURE],"mode":"replace"}),
-    );
-    let chosen = ok(
-        &mut state,
-        json!({"op":"scene.fx.select","scene":"street","clip":"v1"}),
-    );
-    assert_eq!(chosen["selection_cleared"], true);
-    let selection = ok(&mut state, json!({"op":"scene.selection"}));
-    assert_eq!(selection["count"], 0);
+    selected(&mut state);
+    let read = handles(&mut state);
+    assert_eq!(ids(&read, "handles"), ["softness", "radius", "center"]);
     let overlay = ok(
         &mut state,
         json!({"op":"scene.gizmo.state","scene":"street","frame":FRAME}),
     );
-    assert_eq!(overlay["overlay"]["target"], "fx", "{overlay}");
     assert_eq!(
-        overlay["overlay"]["reason"], "fx_target",
-        "the node gizmo gives way"
+        ids(&overlay["overlay"]["fx"], "handles"),
+        ["softness", "radius", "center"]
     );
-
-    // A live drag of a handle, then selecting the entity: the drag and its gesture are gone.
-    let start = handle_at(&handles(&mut state), "radius");
-    let pressed = down(&mut state, start);
-    assert_eq!(pressed["dragging"], true);
-    let swapped = ok(
-        &mut state,
-        json!({"op":"scene.select","scene":"street","entities":[FIGURE],"mode":"replace"}),
-    );
-    assert_eq!(swapped["fx_target_dropped"]["clip"], "v1", "{swapped}");
-    assert_eq!(swapped["cancelled_drag"], pressed["gesture"]);
-    let error = err(
-        &mut state,
-        json!({"op":"scene.pointer.move","point":{"u":0.5,"v":0.5}}),
-    );
-    assert_eq!(error.code, "no_drag", "no phantom drag moves anything");
-    let released = up(&mut state, None);
-    assert_eq!(released["noop"], true, "{released}");
-    assert_eq!(
-        undo_depth(&state),
-        2,
-        "attach + the clip; the drag wrote nothing"
-    );
-    let overlay = ok(
-        &mut state,
-        json!({"op":"scene.gizmo.state","scene":"street","frame":FRAME}),
-    );
-    assert!(
-        overlay["overlay"].get("target").is_none(),
-        "the node overlay is back: {overlay}"
-    );
-    assert!(overlay["overlay"].get("fx").is_none());
-
-    // And the other way: a live drag of a node handle, then choosing the clip.
-    ok(
-        &mut state,
-        json!({"op":"scene.select","scene":"street","entities":[FIGURE],"mode":"replace"}),
-    );
-    let layout = ok(
-        &mut state,
-        json!({"op":"scene.gizmo.state","scene":"street","frame":FRAME}),
-    );
-    let arrow = layout["overlay"]["handles"]
-        .as_array()
-        .and_then(|handles| handles.iter().find(|handle| handle["id"] == "x"))
-        .map(|handle| handle["to"].clone())
-        .unwrap_or_else(|| panic!("the figure has an x arrow: {layout}"));
-    let (u, v) = (arrow["u"].as_f64().unwrap(), arrow["v"].as_f64().unwrap());
-    let node = down(&mut state, (u, v));
-    assert_eq!(node["dragging"], true, "a node drag is open: {node}");
-    let chosen = ok(
-        &mut state,
-        json!({"op":"scene.fx.select","scene":"street","clip":"v1"}),
-    );
-    assert_eq!(chosen["cancelled_drag"], node["gesture"], "{chosen}");
-    let error = err(
-        &mut state,
-        json!({"op":"scene.pointer.move","point":{"u":0.5,"v":0.5}}),
-    );
-    assert_eq!(error.code, "no_drag", "no phantom drag of the node either");
-    // Clearing the target is an answer, not an error, and a second clear changes nothing.
-    let cleared = ok(&mut state, json!({"op":"scene.fx.select","scene":"street"}));
-    assert!(cleared["target"].is_null());
-    let again = ok(&mut state, json!({"op":"scene.fx.select","scene":"street"}));
-    assert_eq!(again["changed"], false);
-}
-
-#[test]
-fn choosing_another_clip_cancels_the_drag_of_the_first() {
-    let mut state = session();
     ok(
         &mut state,
         json!({"op":"scene.fx.edit","scene":"street","ops":[
-            {"op":"add_clip","effect":"vignette","start_frame":10,"duration_frames":30,"id":"v2"}]}),
+            {"op":"key_param","clip":"v1","param":"radius","frame":0,"value":0.4},
+            {"op":"key_param","clip":"v1","param":"radius","frame":20,"value":0.6},
+            {"op":"key_param","clip":"v1","param":"softness","frame":0,"value":0.2},
+            {"op":"key_param","clip":"v1","param":"softness","frame":20,"value":0.3}]}),
     );
-    selected(&mut state);
-    let start = handle_at(&handles(&mut state), "radius");
-    let pressed = down(&mut state, start);
-    mv(&mut state, (start.0 + 0.1, 0.5));
-    let chosen = ok(
-        &mut state,
-        json!({"op":"scene.fx.select","scene":"street","clip":"v2"}),
-    );
-    assert_eq!(chosen["cancelled_drag"], pressed["gesture"]);
-    let error = err(
-        &mut state,
-        json!({"op":"scene.pointer.move","point":{"u":0.5,"v":0.5}}),
-    );
-    assert_eq!(error.code, "no_drag");
-    let status = ok(&mut state, json!({"op":"scene.fx.gesture.status"}));
-    assert_eq!(
-        status["gesture"],
-        Value::Null,
-        "the gesture went with the drag: {status}"
-    );
-    // Choosing the same clip again while dragging is not a swap.
-    let mut state = session();
-    selected(&mut state);
-    let start = handle_at(&handles(&mut state), "radius");
-    down(&mut state, start);
-    let same = ok(
-        &mut state,
-        json!({"op":"scene.fx.select","scene":"street","clip":"v1"}),
-    );
-    assert_eq!(same["cancelled_drag"], Value::Null);
-    assert_eq!(same["changed"], false);
-    mv(&mut state, (start.0 + 0.05, 0.5));
-}
-
-#[test]
-fn a_press_that_picks_something_else_leaves_the_clip() {
-    let mut state = session();
-    selected(&mut state);
-    // A press on empty picture, away from every handle, deselects: the clip goes with it.
-    let pressed = down(&mut state, (0.95, 0.05));
-    assert_eq!(pressed["dragging"], false);
-    assert_eq!(pressed["fx_target_dropped"]["clip"], "v1", "{pressed}");
-    assert!(state.scene_interaction.fx_target().is_none());
-}
-
-#[test]
-fn an_undo_or_an_edit_under_a_live_drag_kills_it_and_it_never_confirms_late() {
-    let mut state = session();
-    selected(&mut state);
-    let start = handle_at(&handles(&mut state), "radius");
-    down(&mut state, start);
-    mv(&mut state, (start.0 + 0.1, 0.5));
-    assert!(!state.gizmo_drag_is_dead());
-    ok(&mut state, json!({"op":"history.undo"}));
-    assert!(state.gizmo_drag_is_dead(), "the scene moved under the drag");
-    let error = err(
-        &mut state,
-        json!({"op":"scene.pointer.move","point":{"u":0.6,"v":0.5}}),
-    );
-    assert_eq!(error.code, "gesture_invalidated");
-    let depth = undo_depth(&state);
-    let released = run(&mut state, json!({"op":"scene.pointer.up"}));
-    // A dead drag is dropped: nothing is confirmed, whatever the answer.
-    assert!(released.is_err() || released.unwrap()["noop"] == true);
-    assert_eq!(undo_depth(&state), depth);
-    let cancelled = ok(&mut state, json!({"op":"scene.pointer.cancel"}));
-    assert!(cancelled["dragging"] == false);
-}
-
-#[test]
-fn removing_the_clip_or_the_scene_drops_the_target() {
-    let mut state = session();
-    selected(&mut state);
-    ok(
-        &mut state,
-        json!({"op":"scene.fx.edit","scene":"street","ops":[{"op":"remove_clip","clip":"v1"}]}),
-    );
-    let overlay = ok(
-        &mut state,
-        json!({"op":"scene.gizmo.state","scene":"street","frame":FRAME}),
-    );
-    assert!(overlay["overlay"].get("fx").is_none(), "{overlay}");
-    assert!(state.scene_interaction.fx_target().is_none());
-
-    let mut state = session();
-    selected(&mut state);
-    let detached = ok(&mut state, json!({"op":"scene.detach","scene":"street"}));
-    assert_eq!(detached["fx_target_dropped"]["clip"], "v1", "{detached}");
+    let keyed = handles(&mut state);
+    assert_eq!(ids(&keyed, "handles"), ["center"]);
+    assert_eq!(ids(&keyed, "disabled_handles"), ["softness", "radius"]);
 }
 
 #[test]

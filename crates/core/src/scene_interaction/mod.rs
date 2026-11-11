@@ -45,7 +45,9 @@ pub use command::{
     SelectMode,
 };
 pub use frame::frame_json;
-pub use fx_handles::{FxHandlesView, FxOverlay, FxTarget, reason as fx_handle_reason};
+pub use fx_handles::{
+    FxHandlesView, FxOverlay, FxTarget, fx_clip_is_vignette, reason as fx_handle_reason,
+};
 pub use gesture::{Gesture, GestureKind, GestureSlot, Invalidation, Refusal};
 pub use gizmo::{
     Anchor, CENTER_RADIUS, GizmoSpace, GizmoTool, HANDLE_LENGTH, HIT_RADIUS, Handle, Hidden,
@@ -195,21 +197,16 @@ impl Drag {
         }
     }
 
-    /// The tool the drag was pressed with; `None` for the handle of an effect.
-    pub fn tool(&self) -> Option<GizmoTool> {
+    /// The name of the tool the drag was pressed with, or `fx` for the handle of an effect clip.
+    pub fn tool_id(&self) -> &'static str {
         match &self.action {
             DragAction::Translate { .. }
             | DragAction::LightTranslate { .. }
-            | DragAction::LightRange { .. } => Some(GizmoTool::Translate),
-            DragAction::Rotate { .. } => Some(GizmoTool::Rotate),
-            DragAction::Scale { .. } => Some(GizmoTool::Scale),
-            DragAction::Fx { .. } => None,
+            | DragAction::LightRange { .. } => GizmoTool::Translate.as_str(),
+            DragAction::Rotate { .. } => GizmoTool::Rotate.as_str(),
+            DragAction::Scale { .. } => GizmoTool::Scale.as_str(),
+            DragAction::Fx { .. } => "fx",
         }
-    }
-
-    /// The name of the tool, or `fx` for the handle of an effect clip.
-    pub fn tool_id(&self) -> &'static str {
-        self.tool().map_or("fx", GizmoTool::as_str)
     }
 
     /// Whether this is the drag of a vignette handle (an effect gesture rides under it).

@@ -503,8 +503,7 @@ impl EditorState {
         };
         // F061: the session targets an effect clip of this scene: its handles are the overlay and
         // the node gizmo gives way (`Hidden::FxTarget`). One target at a time.
-        let stamp = self.gizmo_stamp(scene_id, frame);
-        if let Some(overlay) = self.fx_overlay(scene_id, frame, &shown, dragging.as_ref(), stamp) {
+        if let Some(overlay) = self.fx_overlay(scene_id, frame, &shown, dragging.as_ref()) {
             return Ok(overlay);
         }
         let world = Scene3d::new(&shown, frame)?;
@@ -699,13 +698,23 @@ impl EditorState {
         let point = point.checked(false)?;
         let entry = self.attached_scene(scene)?;
         let frame = frame_of(&entry.scene, at)?;
+        let mut answer = json!({
+            "action": "scene.gizmo.hit", "scene": scene, "frame": frame,
+            "point": point.to_json(), "changed": false, "document_changed": false,
+        });
+        // F061: the handles of the targeted vignette are under the point before anything else, as
+        // they are for a press; they need no camera.
+        if let Some(pick) = self.fx_pick(scene, frame, point) {
+            answer["hit"] = pick.hit_json();
+            if let Some(reason) = pick.refusal() {
+                answer["refused"] = json!(reason);
+            }
+            return Ok(answer);
+        }
         let world = Scene3d::new(&entry.scene, frame)?;
         let (hit, _) = self.hit_at(scene, &world, point)?;
-        Ok(json!({
-            "action": "scene.gizmo.hit", "scene": scene, "frame": frame,
-            "point": point.to_json(), "hit": hit_json(&hit),
-            "changed": false, "document_changed": false,
-        }))
+        answer["hit"] = hit_json(&hit);
+        Ok(answer)
     }
 
     fn pointer_down(

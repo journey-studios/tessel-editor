@@ -218,7 +218,6 @@ impl EditorState {
     /// the undo that took an entity away still learns why it left.
     pub(super) fn scene_selection(&mut self) -> Value {
         let removed = self.scene_interaction.selection.prune(&self.scenes);
-        self.prune_fx_target();
         let selection = &self.scene_interaction.selection;
         json!({
             "action": "scene.selection",

@@ -11,12 +11,12 @@ use serde_json::{Value, json};
 
 use crate::directed_scene::DirectedScene;
 use crate::directed_scene::fx::{
-    HANDLE_HIT_RADIUS, HandleValue, VignetteHandle, VignetteParams, VignetteShape, hit_handle,
-    on_picture, vignette_params_at,
+    HandleValue, VignetteHandle, VignetteParams, VignetteShape, hit_handle, on_picture,
+    vignette_params_at,
 };
 use crate::state::CommandError;
 
-use super::gizmo::Point;
+use super::gizmo::{HIT_RADIUS, Point};
 
 /// The typed reasons a handle, or all of them, is not offered. Strings are part of the contract
 /// (`disabled_handles[].reason`, `fx.reason`, the node's `disabled_reason`).
@@ -47,6 +47,16 @@ impl FxTarget {
     }
 }
 
+/// Whether `clip` is a vignette of `scene`: the one question a held [`FxTarget`] has to keep
+/// answering after every change of the project. Cheap on purpose (no frame, no geometry).
+pub fn fx_clip_is_vignette(scene: &DirectedScene, clip: &str) -> bool {
+    scene
+        .bundle()
+        .fx
+        .clip(clip)
+        .is_some_and(|(_, found)| found.effect.id == crate::directed_scene::fx::VIGNETTE.id)
+}
+
 /// One vignette clip as the monitor shows it at one edit frame.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FxHandlesView {
@@ -62,9 +72,10 @@ pub struct FxHandlesView {
     /// The parameters at the frame (keys applied): the geometry the picture shows.
     pub params: Option<VignetteParams>,
     pub shape: Option<VignetteShape>,
-    /// The handles offered (enabled and on the picture), with their position.
+    /// The handles offered (enabled and on the picture), with their position, in priority order
+    /// (the outer ones first): the first of two equally near is the one a press holds.
     pub handles: Vec<(VignetteHandle, (f64, f64))>,
-    /// The handles that exist but are not offered, each with its typed reason.
+    /// The handles that exist but are not offered, each with its typed reason (same order).
     pub disabled: Vec<(VignetteHandle, &'static str)>,
 }
 
@@ -120,7 +131,7 @@ impl FxHandlesView {
         view.visible = true;
         view.params = Some(params);
         view.shape = Some(shape);
-        for handle in VignetteHandle::ALL {
+        for handle in VignetteHandle::PRIORITY {
             let animated = found
                 .curve_of(handle.param())
                 .is_some_and(|keys| !keys.is_empty());
@@ -139,7 +150,7 @@ impl FxHandlesView {
     /// The handle a press at `at` holds, among the offered ones.
     pub fn hit(&self, at: Point) -> Option<VignetteHandle> {
         let shape = self.shape?;
-        hit_handle(&self.handles, (at.u, at.v), shape.aspect())
+        hit_handle(&self.handles, (at.u, at.v), shape.aspect(), HIT_RADIUS)
     }
 
     /// The handle a press at `at` would hold if its parameter did not have keys: drawn, greyed,
@@ -154,7 +165,7 @@ impl FxHandlesView {
             .filter_map(|(handle, _)| Some((*handle, self.point_of(*handle)?)))
             .filter(|(_, point)| on_picture(*point))
             .collect();
-        hit_handle(&drawn, (at.u, at.v), shape.aspect())
+        hit_handle(&drawn, (at.u, at.v), shape.aspect(), HIT_RADIUS)
     }
 
     /// Why `handle` is not offered, if it is not.
@@ -203,7 +214,7 @@ impl FxHandlesView {
                 .collect::<Vec<_>>(),
             "ellipses": [],
             "active": active.map(VignetteHandle::as_str),
-            "metrics": { "hit_radius": HANDLE_HIT_RADIUS, "unit": "picture_height" },
+            "metrics": { "hit_radius": HIT_RADIUS, "unit": "picture_height" },
         });
         if let (Some(params), Some(shape)) = (self.params, self.shape) {
             let ellipse = |id: &str, r: f64| {
