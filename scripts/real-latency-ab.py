@@ -716,7 +716,8 @@ def run_session(W, binary, document, project, mode, out_dir, number, order_index
         if W.free_gib() < MIN_FREE_GIB_FLOOR:
             record["error"] = f"free disk {W.free_gib():.1f} GiB is below the {MIN_FREE_GIB_FLOOR} GiB floor"
             return record
-        env = dict(record["env"], TESSEL_RUNTIME_DIR=str(ROOT / "runtime"))
+        # The page is the repository's, unless the experiment hands the session another one (BL157.4: the same binary with two bundles).
+        env = dict(record["env"], TESSEL_RUNTIME_DIR=record["env"].get("TESSEL_RUNTIME_DIR", str(ROOT / "runtime")))
         lab = W.Lab(str(binary), work, env)
         lab.wait_ready()
         lab.invoke("window.activate")
