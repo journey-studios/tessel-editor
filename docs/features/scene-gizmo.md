@@ -1153,3 +1153,14 @@ sem histórico sem mudança, candidato inválido preserva o último legal e as g
 chaves recusa como `animated_position` (como `animated_scale`); rotação e escala dizem por quê (`light_has_no_rotation`,
 `light_has_no_scale`). Overlay v1 aditivo: `sphere`, `light_markers`, `metrics.marker_radius`. Contrato e provas em
 [scene-light.md](scene-light.md).
+
+## Alvo de efeito (G4.1, F061)
+
+O overlay v1 passou a servir um segundo alvo: o clipe de vinheta que a sessão marca com `scene.fx.select`. Um alvo por vez
+(o nó selecionado **ou** o clipe): com alvo de efeito o overlay do nó fica oculto (`hidden`, `reason: "fx_target"`,
+`visible: false`) e o bloco aditivo `target: "fx"` + `fx{clip, effect, frame, handles, disabled_handles, ellipses, active,
+metrics, values}` descreve as alças e as elipses; o carimbo ganha `fx_clip`, o resumo `fx_target` e `monitor.gizmo` os
+estados `target`/`fx_clip`. O ciclo do ponteiro (`scene.pointer.down|move|up|cancel`) é o mesmo, a página só posta `{u,v}`
+com o carimbo, e todas as guardas deste documento (revisão, quadro, época, seleção, diálogo, Escape, reprodução) valem
+para o arrasto de uma alça. O arrasto abre um gesto de efeito (`scene.fx.gesture.*`), não um gesto de propriedades.
+Contrato, geometria e provas em [fx-handles.md](fx-handles.md).

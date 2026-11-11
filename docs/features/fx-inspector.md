@@ -91,6 +91,9 @@ monitor. O que mudou:
 - Equivalente semântico: `./scripts/ui invoke scene.fx add:fade`, `ui set scene.fx.clip:fx-1 amount 0.4`,
   `ui invoke scene.fx.clip:fx-1 reset`, `ui op '{"op":"scene.fx.inspect","scene":"…"}'`.
 - A janela imprime em pt-br (`LOCALE`); os outros idiomas são do modelo e das consultas.
+- G4.1 ([F061](fx-handles.md)): o clipe de vinheta ganha a ação `handles` (botão `control:fx-handles:<clipe>`), que mostra ou
+  esconde as alças dele no monitor pelo mesmo `scene.fx.select` de um script; desabilitada com motivo (`Só a vinheta tem alças
+  no monitor`) para `fade` e `filmGrain`. O estado do nó do clipe ganha `handles`.
 
 ## O `fade` (look, escopo de saída)
 
