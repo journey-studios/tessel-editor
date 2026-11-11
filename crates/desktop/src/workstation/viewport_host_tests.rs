@@ -1120,6 +1120,31 @@ fn the_texture_preupload_is_reported_and_the_hello_carries_it_only_when_asked() 
     );
 }
 
+#[test]
+fn the_warm_draw_is_reported_and_its_hello_flag_is_independent_of_the_preupload() {
+    let state = empty_state();
+    let mut plain = ViewportHost::with_options(Ok(page("warm-draw-off")), HostOptions::default());
+    from_page(&mut plain, &state, json!({"type":"page.ready"}));
+    assert!(sent(&mut plain)[0].get("warm_draw").is_none());
+    assert_eq!(plain.report()["session"]["warm_draw"]["enabled"], false);
+
+    let options = HostOptions {
+        warm_draw: true,
+        ..HostOptions::default()
+    };
+    let mut host = ViewportHost::with_options(Ok(page("warm-draw-on")), options);
+    from_page(&mut host, &state, json!({"type":"page.ready"}));
+    assert_eq!(
+        sent(&mut host)[0],
+        json!({"v":1,"type":"hello","host":"tessel-editor","warm_draw":true}),
+        "the flag says only itself: the pre-upload is not turned on with it"
+    );
+    let report = host.report()["session"].clone();
+    assert_eq!(report["warm_draw"]["enabled"], true);
+    assert_eq!(report["warm_draw"]["supported"], false);
+    assert_eq!(report["preupload"]["enabled"], false);
+}
+
 fn frame_done_with_source(id: u64, revision: u64, source: Value) -> Value {
     let mut done = frame_done(id, revision);
     done["source"] = source;

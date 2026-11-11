@@ -61,6 +61,9 @@ pub struct HelloOptions {
     /// draws them when a `frame.warm` with `textures: true` asks (`FEATURE_TEXTURE_PREUPLOAD`). Sent only when on, so a
     /// default `hello` is byte for byte the one it always was.
     pub preupload_textures: bool,
+    /// DIAGNOSTIC (BL157.3, a separate experiment from `preupload_textures`), off by default: after the warm sort of a splat
+    /// scene the runtime draws it once into a scratch target (`FEATURE_SCENE_WARM_DRAW`). Sent only when on.
+    pub warm_draw: bool,
 }
 
 /// See [`HelloOptions::preview_sort`].
@@ -125,6 +128,9 @@ pub fn hello_with(host: &str, options: HelloOptions) -> Value {
     }
     if options.preupload_textures {
         message["preupload_textures"] = json!(true);
+    }
+    if options.warm_draw {
+        message["warm_draw"] = json!(true);
     }
     message
 }
@@ -749,9 +755,11 @@ mod tests {
                 preview_scene_samples: Some(0),
                 preview_sort: Some(PreviewSort::Exact),
                 preupload_textures: true,
+                warm_draw: true,
             },
         );
         assert_eq!(with["retain"], false);
+        assert_eq!(with["warm_draw"], true);
         assert_eq!(with["preupload_textures"], true);
         assert_eq!(with["preview_scene_samples"].as_u64(), Some(0));
         assert_eq!(with["preview_sort"], "exact");
@@ -800,6 +808,19 @@ mod tests {
         assert_eq!(
             preupload,
             json!({"v":1,"type":"hello","host":"tessel-editor","preupload_textures":true})
+        );
+        // The warm draw (BL157.3, the other experiment) is likewise absent unless asked for, and says only itself.
+        assert!(plain.get("warm_draw").is_none());
+        let draw = hello_with(
+            "tessel-editor",
+            HelloOptions {
+                warm_draw: true,
+                ..HelloOptions::default()
+            },
+        );
+        assert_eq!(
+            draw,
+            json!({"v":1,"type":"hello","host":"tessel-editor","warm_draw":true})
         );
     }
 

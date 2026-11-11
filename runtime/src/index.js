@@ -61,6 +61,11 @@ const OVERLAY_FEATURE = 'overlay.gizmo';
 // always was. A `frame.warm` that says `textures: true` then uploads the textures of the loaded still images of its plan
 // before a frame draws them (preupload.js).
 const PREUPLOAD_FEATURE = 'texture.preupload';
+// BL157.3 (second, separate experiment): announced only to a host whose `hello` asked for it (`warm_draw: true`). A warm of
+// splat scenes then also draws each scene it sorted once into a scratch target (`Compositor.warmDraw`).
+const WARM_DRAW_FEATURE = 'scene.warm_draw';
+// A warm draw older than this is dropped unrun: the cut it was for has come or gone.
+const WARM_DRAW_MAX_AGE_MS = 3000;
 
 export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
   const send = (message) => post({ v: BRIDGE_VERSION, ...message });
@@ -70,13 +75,14 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
   // quick rollback), `telemetry.presented: true` asks for a `frame.presented` message per frame.
   // A host that never sends them gets retention on and no extra messages.
   // `result_cache: false` makes every splat scene frame sort and draw again (A/B and rollback).
-  const options = { retain: true, presented: false, timing: false, gpuFinish: false, resultCache: true, preupload: false };
+  const options = { retain: true, presented: false, timing: false, gpuFinish: false, resultCache: true, preupload: false, warmDraw: false };
   let compositor = null;
   let latestRender = 0;
   // BL157.3: textures to upload before their clip starts (opt-in), and the frames waiting behind the one being drawn.
   const preupload = new TexturePreupload();
   let framesQueued = 0;
   let preuploadPumping = false;
+  const warmDrawStats = { requested: 0, drawn: 0, skipped: 0, expired: 0, draw_ms: 0, max_draw_ms: 0, outcomes: {} };
   const cancelled = new Set();
   let renderQueue = Promise.resolve();
   // Durations of the page's own background work (asset loads, warms), on the page's clock, handed to the host with the next
@@ -193,6 +199,7 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       if (options.sceneSamples !== undefined) compositor.setSceneSamples(options.sceneSamples);
       if (options.previewSceneSamples !== undefined) compositor.setPreviewSceneSamples(options.previewSceneSamples);
       if (options.previewSort !== undefined) compositor.setPreviewSort(options.previewSort);
+      compositor.setWarmDraw(options.warmDraw);
     } catch (error) {
       throw error instanceof RuntimeError
         ? error
@@ -230,6 +237,8 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
     // BL157.3 (additive): every hello says it whole; absent is off, and turning it off forgets what was queued.
     options.preupload = message.preupload_textures === true;
     if (!options.preupload) preupload.clear();
+    options.warmDraw = message.warm_draw === true;
+    compositor?.setWarmDraw(options.warmDraw);
     // DIAGNOSTIC arm (BL157.2): wait for the GPU after each draw and report it; never without `timing`.
     options.gpuFinish = options.timing && message.telemetry?.gpu_finish === true;
     if (options.timing) {
@@ -272,7 +281,7 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
         layers: LAYERS,
         formats: FORMATS,
         max_size: active.maxSize,
-        features: [...FEATURES, ...(overlay ? [OVERLAY_FEATURE] : []), ...(options.preupload ? [PREUPLOAD_FEATURE] : [])],
+        features: [...FEATURES, ...(overlay ? [OVERLAY_FEATURE] : []), ...(options.preupload ? [PREUPLOAD_FEATURE] : []), ...(options.warmDraw ? [WARM_DRAW_FEATURE] : [])],
         native_video: NATIVE_VIDEO,
         // Additive: what a `directed_scene` layer needs and how its resources are identified.
         directed_scene: DIRECTED_SCENE_CAPABILITIES,
@@ -472,6 +481,54 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
     });
   };
 
+  /**
+   * The warm draws of the scenes a warm just started (BL157.3, opt-in): each after ITS sort, as a task of the serial queue, behind
+   * any frame that is waiting (a frame that arrived has the page's GPU first; it also takes the lineage over, which turns the
+   * draw into a no-op). A dispose, a lost context or the switch off drops them.
+   */
+  const scheduleWarmDraws = () => {
+    for (const item of compositor?.takeWarmDraws() ?? []) {
+      warmDrawStats.requested += 1;
+      const run = () => {
+        renderQueue = renderQueue.then(async () => {
+          if (framesQueued > 0) {
+            run();
+            return;
+          }
+          const outcome = await runWarmDraw(item);
+          if (outcome) noteSpan({ k: 'warm_draw', outcome: outcome.outcome, ms: outcome.ms });
+        });
+      };
+      void item.sorted.then(run);
+    }
+  };
+
+  const runWarmDraw = async (item) => {
+    const note = (outcome, ms = 0) => {
+      warmDrawStats.outcomes[outcome] = (warmDrawStats.outcomes[outcome] ?? 0) + 1;
+      return { outcome, ms };
+    };
+    if (disposed || contextLost || !options.warmDraw || !compositor) {
+      warmDrawStats.skipped += 1;
+      return note('dropped');
+    }
+    if (performance.now() - item.at > WARM_DRAW_MAX_AGE_MS) {
+      warmDrawStats.expired += 1;
+      return note('expired');
+    }
+    const began = performance.now();
+    const outcome = await compositor.warmDraw(item, assets);
+    const ms = performance.now() - began;
+    if (outcome === 'drawn') {
+      warmDrawStats.drawn += 1;
+      warmDrawStats.draw_ms += ms;
+      warmDrawStats.max_draw_ms = Math.max(warmDrawStats.max_draw_ms, ms);
+    } else {
+      warmDrawStats.skipped += 1;
+    }
+    return note(outcome, ms);
+  };
+
   const handlers = {
     hello,
     'asset.load': (message) => {
@@ -511,6 +568,7 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
             const warmStarted = performance.now();
             const started = await ensureCompositor().warmScenes({ plan: message.plan, assets });
             noteSpan({ k: 'warm', queued_ms: warmStarted - queuedAt, ms: performance.now() - warmStarted, started });
+            scheduleWarmDraws();
           } catch {
             // Best effort: a frame that needs the scene reports what is wrong with it.
           }
@@ -629,6 +687,8 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
     },
     // The texture pre-upload queue and what it did (tests and measurements).
     preupload: () => ({ enabled: options.preupload, ...preupload.report() }),
+    // What the scene warm draw did (tests and measurements).
+    warmDraw: () => ({ enabled: options.warmDraw, ...warmDrawStats, outcomes: { ...warmDrawStats.outcomes } }),
     // Lineages whose warm sort is still running (tests).
     warming: () => compositor?.warming.size ?? 0,
     // Every SparkRenderer alive, to inject a failure into one or count them (tests and measurements).

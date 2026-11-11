@@ -80,6 +80,11 @@ impl std::error::Error for BackendError {}
 /// `textures: true` only to a runtime that lists it.
 pub const FEATURE_TEXTURE_PREUPLOAD: &str = "texture.preupload";
 
+/// `capabilities.features` entry of a runtime that, after the warm sort of a splat scene, draws that scene once into a scratch
+/// target so the GPU's first-use work is paid before the cut (BL157.3, a separate experiment). Announced only to a host whose
+/// `hello` set `warm_draw`; it changes no message the host sends, only what the runtime does at the end of a `frame.warm`.
+pub const FEATURE_SCENE_WARM_DRAW: &str = "scene.warm_draw";
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Capabilities {
     pub backend: String,
