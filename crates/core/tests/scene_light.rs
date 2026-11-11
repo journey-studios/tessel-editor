@@ -258,6 +258,14 @@ fn a_hidden_light_is_kept_and_flagged() {
     let mut state = attach(lit(vec![light])).unwrap();
     let plan = plan_at(&mut state, 0);
     assert_eq!(plan["lights"][0]["hidden"], json!(true));
+    // Not drawn, so a runtime without the capability is not refused for it.
+    assert!(
+        !plan["requires"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("pointLights")),
+        "{plan}"
+    );
     select(&mut state, LAMP);
     let overlay = overlay(&mut state);
     assert_eq!(overlay["light_markers"][0]["hidden"], json!(true));
