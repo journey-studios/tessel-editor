@@ -87,6 +87,57 @@ const summarizeBench = (runs) => {
   return rows;
 };
 
+/**
+ * Cases about one event (`series` in the record): what the frame of the event cost against the frames before it, per pass.
+ * `complete` is the frame plus the wait for the GPU (the drain). `before_excess_ms` is the cost the variant moved AHEAD of the
+ * event (what its frames before it spent above the steady state): a gain at the event that only shows up there is not a gain.
+ */
+const summarizeEvent = (runs) => {
+  const rows = [];
+  // A run that died has no `entry_at`: it still belongs to its case, and is counted as failed (not silently left out).
+  const eventCases = new Set(runs.filter((run) => run.entry_at !== undefined).map((run) => run.run.case));
+  for (const [caseName, byCase] of group(runs.filter((run) => eventCases.has(run.run.case)), (run) => run.run.case)) {
+    for (const [variant, list] of group(byCase, (run) => run.run.variant)) {
+      const ok = list.filter((run) => !run.fatal && run.series?.complete);
+      const perPass = ok.map((run) => {
+        const at = run.entry_at - run.first_index;
+        const complete = run.series.complete;
+        const steady = median(complete.slice(Math.max(1, at - 20), at));
+        // The state the frames settle into after the event (a second layer costs more than one: the event is measured against it too).
+        const settled = median(complete.slice(at + 14));
+        return {
+          steady,
+          settled,
+          event: complete[at],
+          after: Math.max(...complete.slice(at, at + 12)),
+          before_excess: complete.slice(1, at).reduce((sum, value) => sum + Math.max(0, value - steady - 2), 0),
+          max_raf_wait_after: Math.max(...run.series.raf_wait.slice(at - 1, at + 12)),
+          load_ms: run.late ? Math.max(...Object.values(run.late).map((entry) => entry.ms ?? 0)) : null,
+          load: run.loadavg?.[0],
+        };
+      });
+      rows.push({
+        case: caseName,
+        variant,
+        passes: ok.length,
+        failed: list.length - ok.length,
+        steady_ms: r(median(perPass.map((pass) => pass.steady)), 1),
+        settled_ms: r(median(perPass.map((pass) => pass.settled)), 1),
+        event_ms: perPass.map((pass) => r(pass.event, 0)),
+        event_median_ms: r(median(perPass.map((pass) => pass.event)), 1),
+        event_max_ms: r(Math.max(...perPass.map((pass) => pass.event)), 0),
+        extra_median_ms: r(median(perPass.map((pass) => pass.event - pass.settled)), 1),
+        worst_of_12_after_median_ms: r(median(perPass.map((pass) => pass.after)), 1),
+        before_excess_median_ms: r(median(perPass.map((pass) => pass.before_excess)), 1),
+        max_raf_wait_after_ms: r(Math.max(...perPass.map((pass) => pass.max_raf_wait_after)), 0),
+        load_ms: r(median(perPass.map((pass) => pass.load_ms).filter(Number.isFinite)), 0),
+        load_1m: perPass.map((pass) => r(pass.load, 1)),
+      });
+    }
+  }
+  return rows;
+};
+
 /** Every explicit-frame hash of a case must agree across variants, passes and shuffle orders. */
 const summarizeHash = (runs) => {
   const out = [];
@@ -170,13 +221,14 @@ const files = [...new Set(inputs.flatMap((dir) => readdirSync(dir).filter((name)
 for (const file of files) {
   const [engine, suite] = file.replace('.jsonl', '').split(/-(?=[^-]+$)/);
   const runs = mergeRuns(inputs.map((dir) => (existsSync(join(dir, file)) ? readRuns(join(dir, file)) : [])));
-  const summaries = { bench: summarizeBench, hash: summarizeHash, life: summarizeLife, bridge: summarizeBridge };
+  const summaries = { bench: summarizeBench, xfade: summarizeBench, entry: summarizeBench, real: summarizeBench, hash: summarizeHash, life: summarizeLife, bridge: summarizeBridge };
   if (!summaries[suite]) continue;
   const rows = summaries[suite](runs);
+  const events = ['entry', 'real'].includes(suite) ? summarizeEvent(runs) : [];
   const environment = { engine, suite, runs: runs.length, renderer: runs.find((run) => run.renderer)?.renderer ?? null, browser: runs.find((run) => run.browser)?.browser ?? null };
-  writeFileSync(join(opts.out, `${engine}-${suite}.json`), `${JSON.stringify({ environment, rows }, null, 1)}\n`);
+  writeFileSync(join(opts.out, `${engine}-${suite}.json`), `${JSON.stringify({ environment, rows, events }, null, 1)}\n`);
   markdown.push(`\n### ${engine} / ${suite}\n`);
-  if (suite === 'bench') {
+  if (['bench', 'xfade', 'entry', 'real'].includes(suite)) {
     const cell = (phase) => (row) => (row[phase] ? `${row[phase].mean} (p50 ${row[phase].p50}, p95 ${row[phase].p95}, p99 ${row[phase].p99})` : null);
     markdown.push(
       table(rows, [
@@ -191,6 +243,25 @@ for (const file of files) {
         ['raf stalls', (row) => row.raf_fallbacks],
       ]),
     );
+    if (events.length) {
+      markdown.push(
+        '\nOne event per run (ms; the frame of the event includes the wait for the GPU):\n',
+        table(events, [
+          ['case', (row) => row.case],
+          ['variant', (row) => row.variant],
+          ['passes (failed)', (row) => `${row.passes} (${row.failed})`],
+          ['before', (row) => row.steady_ms],
+          ['after (settled)', (row) => row.settled_ms],
+          ['event frame, per pass', (row) => row.event_ms.join(' ')],
+          ['median', (row) => row.event_median_ms],
+          ['max', (row) => row.event_max_ms],
+          ['extra over settled (median)', (row) => row.extra_median_ms],
+          ['moved ahead of the event', (row) => row.before_excess_median_ms],
+          ['load of the asset', (row) => row.load_ms],
+          ['max rAF wait after', (row) => row.max_raf_wait_after_ms],
+        ]),
+      );
+    }
   } else if (suite === 'hash') {
     markdown.push(table(rows, [['case', (row) => row.case], ['runs', (row) => row.runs], ['variants', (row) => row.variants.join(',')], ['frames cmp', (row) => row.frames_compared], ['identical', (row) => row.identical], ['failed', (row) => row.failed]]));
   } else if (suite === 'life') {

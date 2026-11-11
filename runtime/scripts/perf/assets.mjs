@@ -28,7 +28,7 @@ const lcg = (seed) => {
 const gaussian = (random) => Math.sqrt(-2 * Math.log(random() + 1e-9)) * Math.cos(2 * Math.PI * random());
 
 /** A photograph-like picture: smooth gradients, soft shapes and a little noise, so PNG size is realistic. */
-const photo = (width, height, seed) => {
+export const photo = (width, height, seed) => {
   const random = lcg(seed);
   return png(
     width,
@@ -72,10 +72,28 @@ const splatFile = (count, scale, seed) => {
 const sceneJson = (objects, background = [0, 0, 0, 1]) =>
   JSON.stringify({ format: 'tessel-scene', version: 1, background, objects });
 
-/** Splat counts and the scene that draws each (asset id `splat`). */
+/**
+ * The scene of a real-cloud run: the cloud plus the two small spinning effect clouds a project puts in each scene. Generic numbers
+ * (nothing of any project): the effects stand where the camera looks and turn at different speeds.
+ */
+export const realSceneJson = (cloud) =>
+  sceneJson(
+    [
+      { type: 'splat', asset: cloud, position: [0, 0, 0], scale: 1 },
+      { type: 'splat', asset: 'ring', position: [0, -0.04, -2.2], scale: 0.3, spin: [0, 28, 0] },
+      { type: 'splat', asset: 'sparks', position: [0, -0.04, -2.2], scale: 0.34, spin: [0, -55, 0] },
+    ],
+    [0.01, 0.01, 0.02, 1],
+  );
+
+/**
+ * Splat counts and the scene that draws each (asset id `splat`, or `asset`). `s1m-b` is a second, different cloud of the
+ * same size, so a crossfade has two clouds that share nothing (as the scenes of a real project do).
+ */
 export const SPLATS = [
   { name: 's100k', count: 100_000, scale: 0.02 },
   { name: 's1m', count: 1_000_000, scale: 0.008 },
+  { name: 's1m-b', count: 1_000_000, scale: 0.008, asset: 'splat-b', seed: 1 },
   { name: 's3m', count: 3_000_000, scale: 0.005, heavy: true },
 ];
 
@@ -110,9 +128,13 @@ const ensureProxies = (dir, log) => {
   writeFileSync(marker, `${wanted}\n`);
 };
 
-export const ensureAssets = ({ dir = DEFAULT_DIR, heavy = false, log = () => {} } = {}) => {
+/**
+ * `only: 'splats'` writes just the splat clouds and their scenes (the cases that need nothing else): a crossfade
+ * measurement then costs ~100 MB of temporary disk, not the ~0.5 GB of the whole matrix.
+ */
+export const ensureAssets = ({ dir = DEFAULT_DIR, heavy = false, log = () => {}, only = null } = {}) => {
   mkdirSync(join(dir, 'frames'), { recursive: true });
-  const marker = join(dir, 'VERSION');
+  const marker = join(dir, only ? `VERSION-${only}` : 'VERSION');
   const current = existsSync(marker) ? readFileSync(marker, 'utf8').trim() : '';
   const stale = current !== String(ASSETS_VERSION);
   const write = (name, make) => {
@@ -121,6 +143,16 @@ export const ensureAssets = ({ dir = DEFAULT_DIR, heavy = false, log = () => {} 
     log(`writing ${name}`);
     writeFileSync(path, make());
   };
+
+  if (only === 'splats') {
+    for (const { name, count, scale, heavy: isHeavy, asset = 'splat', seed = 0 } of SPLATS) {
+      if (isHeavy && !heavy) continue;
+      write(`${name}.splat`, () => splatFile(count, scale, 7 + count + seed));
+      write(`${name}.json`, () => sceneJson([{ type: 'splat', asset, position: [0, 0, 0], scale: 1 }]));
+    }
+    writeFileSync(marker, `${ASSETS_VERSION}\n`);
+    return dir;
+  }
 
   write('image.png', () => photo(1672, 941, 1));
   write('image-alt.png', () => photo(1672, 941, 2));
@@ -147,10 +179,10 @@ export const ensureAssets = ({ dir = DEFAULT_DIR, heavy = false, log = () => {} 
     'box-alt.json',
     () => sceneJson([{ type: 'box', size: [1.6, 0.6, 1], color: '#40c070', position: [0, 0, 0], spin: [10, 50, 0] }], [0.1, 0.05, 0.05, 1]),
   );
-  for (const { name, count, scale, heavy: isHeavy } of SPLATS) {
+  for (const { name, count, scale, heavy: isHeavy, asset = 'splat', seed = 0 } of SPLATS) {
     if (isHeavy && !heavy) continue;
-    write(`${name}.splat`, () => splatFile(count, scale, 7 + count));
-    write(`${name}.json`, () => sceneJson([{ type: 'splat', asset: 'splat', position: [0, 0, 0], scale: 1 }]));
+    write(`${name}.splat`, () => splatFile(count, scale, 7 + count + seed));
+    write(`${name}.json`, () => sceneJson([{ type: 'splat', asset, position: [0, 0, 0], scale: 1 }]));
   }
   writeFileSync(marker, `${ASSETS_VERSION}\n`);
   ensureProxies(dir, log);
