@@ -257,7 +257,7 @@ impl EditorState {
     /// The press on a handle of the vignette the session targets, or `None` when the press is not
     /// for it ([`fx_pick`](Self::fx_pick) found nothing): the caller then does what a press always
     /// did. A press on a handle whose parameter has keys is answered here, as refused, and writes
-    /// nothing.
+    /// nothing; like every press it abandons the drag that is still open.
     pub(super) fn fx_pointer_down(
         &mut self,
         scene: &str,
@@ -274,6 +274,12 @@ impl EditorState {
             "abandoned": null, "gesture": null, "dragging": false, "selection_changed": false,
             "changed": false, "document_changed": false,
         });
+        // A press while a drag is open means its release was lost: the open one goes first, so a
+        // press never leaves two of them (also the press that is refused below).
+        if let Some(open) = self.live_drag() {
+            answer["abandoned"] = json!({ "gesture": open.gesture, "reason": "replaced_by_press" });
+            self.discard_drag();
+        }
         if let Some(reason) = pick.refusal() {
             // Drawn and greyed: the press says why it does nothing instead of picking what is
             // behind the handle (which would also drop the target).
@@ -282,12 +288,6 @@ impl EditorState {
             return Ok(Some(answer));
         }
         let FxPick { view, handle, .. } = pick;
-        // A press while a drag is open means its release was lost: the open one goes first, so a
-        // press never leaves two of them.
-        if let Some(open) = self.live_drag() {
-            answer["abandoned"] = json!({ "gesture": open.gesture, "reason": "replaced_by_press" });
-            self.discard_drag();
-        }
         let begun = self.fx_gesture_begin(scene, &clip, None)?;
         let gesture = begun["gesture"]
             .as_str()

@@ -286,3 +286,58 @@ fn the_hit_query_names_what_the_press_at_the_same_point_holds() {
     assert_eq!(pressed["hit"], asked["hit"]);
     assert_eq!(pressed["refused"], asked["refused"]);
 }
+
+/// A press that a greyed handle refuses still means "the release of the open drag was lost": the
+/// open drag goes first, as it does for every other press, so no drag outlives it and the gesture
+/// is free for the next one. Nothing is written either way.
+#[test]
+fn a_press_refused_on_a_greyed_handle_still_abandons_the_open_drag() {
+    let mut state = session();
+    ok(
+        &mut state,
+        json!({"op":"scene.fx.edit","scene":"street","ops":[
+            {"op":"key_param","clip":"v1","param":"softness","frame":0,"value":0.2},
+            {"op":"key_param","clip":"v1","param":"softness","frame":20,"value":0.3}]}),
+    );
+    selected(&mut state);
+    let offered = handles(&mut state);
+    assert_eq!(
+        disabled(&offered, "softness").as_deref(),
+        Some("animated_param")
+    );
+    let greyed = &offered["disabled_handles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|handle| handle["id"] == "softness")
+        .unwrap()["at"];
+    let greyed = (greyed["u"].as_f64().unwrap(), greyed["v"].as_f64().unwrap());
+    let (before, depth) = (document(&state), undo_depth(&state));
+
+    // A drag of `radius` is open (its release was lost); the next press lands on the greyed handle.
+    let opened = down(&mut state, handle_at(&offered, "radius"));
+    assert_eq!(opened["dragging"], true, "{opened}");
+    let refused = down(&mut state, greyed);
+    assert_eq!(refused["refused"], "animated_param", "{refused}");
+    assert_eq!(refused["dragging"], false);
+    assert_eq!(
+        refused["abandoned"],
+        json!({"gesture": opened["gesture"], "reason": "replaced_by_press"}),
+        "the open drag is abandoned by name: {refused}"
+    );
+
+    // Nothing is left to move or release, and nothing was written.
+    let error = err(
+        &mut state,
+        json!({"op":"scene.pointer.move","point":{"u":0.5,"v":0.5}}),
+    );
+    assert_eq!(error.code, "no_drag", "no drag outlives the press");
+    assert_eq!(up(&mut state, None)["noop"], true);
+    assert_eq!((document(&state), undo_depth(&state)), (before, depth));
+
+    // The gesture is free: the next press on an offered handle opens a new drag, abandoning none.
+    let again = down(&mut state, handle_at(&offered, "radius"));
+    assert_eq!(again["dragging"], true, "{again}");
+    assert_eq!(again["abandoned"], Value::Null);
+    ok(&mut state, json!({"op":"scene.pointer.cancel"}));
+}

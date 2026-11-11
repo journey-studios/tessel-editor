@@ -41,6 +41,7 @@ MUTANTS = [
     ('M23 a command leaves a target the project no longer holds', STATE, '        let outcome = self.apply_command(command);\n        self.prune_fx_target();\n        outcome', '        let outcome = self.apply_command(command);\n        outcome'),
     ('M24 undo and redo leave a target the project no longer holds', HISTORY, '        self.prune_fx_target();\n', ''),
     ('M25 the hit query does not predict the effect handles', GLUE, 'let Some(pick) = self.fx_pick(scene, frame, point) else {\n            return false;', 'let Some(pick) = self.fx_pick(scene, frame, point).filter(|_| false) else {\n            return false;'),
+    ('M26 a press refused on a greyed handle leaves the open drag', GLUE, 'if let Some(open) = self.live_drag() {\n            answer["abandoned"]', 'if let Some(open) = self.live_drag().filter(|_| pick.refusal().is_none()) {\n            answer["abandoned"]'),
 ]
 
 JS_MUTANTS = [
