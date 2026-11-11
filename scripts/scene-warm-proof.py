@@ -35,7 +35,6 @@ the locks / the disk reserve could not be had.
 """
 import argparse
 import fcntl
-import importlib.util
 import json
 import math
 import os
@@ -51,7 +50,10 @@ import tempfile
 import threading
 import time
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from ab import ROOT, load_module  # noqa: E402
+from ab.batch import arm_order  # noqa: E402
+
 FPS = 24
 PERIOD_MS = 1000.0 / FPS
 # An interval above a frame and a half is a visible hitch at 24 fps; it is the threshold of the 60 ms acceptance.
@@ -90,14 +92,6 @@ def splat_bytes(count, seed):
                            rng.randrange(40, 255), rng.randrange(40, 255), rng.randrange(40, 255), rng.randrange(110, 230),
                            255, 128, 128, 128)
     return bytes(out)
-
-
-def arm_order(pairs):
-    """warm,cold / cold,warm / ...: the order alternates so a drift of the machine is spread over both arms."""
-    order = []
-    for index in range(pairs):
-        order += ["warm", "cold"] if index % 2 == 0 else ["cold", "warm"]
-    return order
 
 
 def merge_frames(seen, recent):
@@ -535,10 +529,11 @@ def timing_run(binary, document, arm, cuts, work, total_frames):
 
 
 # ------------------------------------------------------------------------------------------------- pixels
-def pixel_session(binary, document, arm, order, frames, cut_frames, work):
-    """One editor, one (arm, order): the explicit hashes of `frames`, and whether the arm really was what it says."""
+def pixel_session(binary, document, arm, env, order, frames, cut_frames, work, retry=retry_while_preparing):
+    """One editor with `env`, one (arm, order): the explicit hashes of `frames`, and whether the arm really was what it says.
+    `retry` asks again while the host answers a wait (the caller can widen what a wait is)."""
     seek_proof = load_module("seek_scrub_proof", ROOT / "scripts" / "seek-scrub-proof.py")
-    lab = Lab(binary, work, env_for(arm, True))
+    lab = Lab(binary, work, env)
     result = {"arm": arm, "order": order, "hashes": {}, "monitor": {}}
     spans, cursor = [], 0
     try:
@@ -548,7 +543,7 @@ def pixel_session(binary, document, arm, order, frames, cut_frames, work):
             if order == "hot":
                 # The scene before the cut plays into it: the prefetch loads, the warm sorts, the clock crosses the cut.
                 begin = max(0, frame - cut_frames)
-                started = retry_while_preparing(lambda: lab.op({"op": "playback.start", "from": begin}))
+                started = retry(lambda: lab.op({"op": "playback.start", "from": begin}))
                 if not started.get("ok"):
                     result["error"] = f"playback.start: {started}"
                     return result
@@ -565,8 +560,8 @@ def pixel_session(binary, document, arm, order, frames, cut_frames, work):
             result["monitor"][frame] = {"converged": seek_proof.converged(state, frame),
                                         "hash": (state.get("last_frame") or {}).get("hash")}
             size = state.get("output") or {}
-            explicit = retry_while_preparing(lambda: lab.op({"op": "render.frame", "frame": frame, "width": size.get("width"),
-                                                              "height": size.get("height"), "probes": []}, 120))
+            explicit = retry(lambda: lab.op({"op": "render.frame", "frame": frame, "width": size.get("width"),
+                                             "height": size.get("height"), "probes": []}, 120))
             data = ((explicit.get("data") or {}).get("frame")) or {}
             result["hashes"][frame] = {"hash": data.get("hash"), "inspected": data.get("inspected"), "mean": data.get("mean")}
             cursor = drain_spans(lab, cursor, spans)
@@ -615,14 +610,6 @@ def pixel_verdicts(sessions, frames):
                 all(s["monitor"].get(frame, {}).get("hash") == s["hashes"].get(frame, {}).get("hash") and s["monitor"].get(frame, {}).get("converged")
                     for s in sessions for frame in frames), [s["monitor"] for s in sessions]))
     return out
-
-
-def load_module(name, path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 def analysis(runs, cuts):
@@ -694,7 +681,7 @@ def main():
         if not document:
             return 1
         if not args.skip_timing:
-            for number, arm in enumerate(arm_order(args.pairs)):
+            for number, arm in enumerate(arm_order(("warm", "cold"), args.pairs)):
                 run = timing_run(str(binary), document, arm, cuts[1:], os.path.join(work, f"run{number}"), args.cuts * args.cut_frames)
                 run["number"] = number
                 report["runs"].append(run)
@@ -707,7 +694,7 @@ def main():
             frames = sorted({cuts[1] + 5, cuts[2] + 5, cuts[-1] + 5, cuts[1] + 40})
             sessions = []
             for number, (arm, order) in enumerate([("warm", "hot"), ("cold", "hot"), ("warm", "cold"), ("cold", "cold")]):
-                session = pixel_session(str(binary), document, arm, order, frames, args.cut_frames, os.path.join(work, f"px{number}"))
+                session = pixel_session(str(binary), document, arm, env_for(arm, True), order, frames, args.cut_frames, os.path.join(work, f"px{number}"))
                 sessions.append(session)
                 report["pixels"].append(session)
                 check(f"pixel session {arm}/{order} ran", not session.get("error"), session.get("error"))

@@ -50,35 +50,24 @@ Exit: 0 every session ran (the verdict is in the report); 1 a session failed or 
 guard refused (BLOCKED).
 """
 import argparse
-import importlib.util
-import json
 import math
 import pathlib
 import statistics
 import subprocess
 import sys
-import time
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
-
-
-def load_module(name, path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-FU = load_module("first_use_ab", ROOT / "scripts" / "first-use-ab.py")
-RL = FU.RL
-CAD = load_module("playback_cadence", ROOT / "scripts" / "playback-cadence.py")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from ab import ROOT, cadence, warm_proof  # noqa: E402
+from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, prerequisites, run_arms  # noqa: E402
+from ab.play import hung_play  # noqa: E402
+from ab.project import sha256_file  # noqa: E402
+from ab.session import CONTROL_ENV, PLAYS, run_session, session_env, whole_project_twice  # noqa: E402
+from ab.validity import analyze_session, redact  # noqa: E402
 
 FIXED, DEADLINE = "fixed", "deadline"
 ARMS = (FIXED, DEADLINE)
 POLL_ENV = "TESSEL_PLAYBACK_POLL"
 IO_MODE = "sync"  # the shipping default: the arms differ in the poll schedule only
-PLAYS = ("first", "repeat")
 
 # The rule above, as numbers. `playback-poll-ab.spec.py` pins each against the docstring and `rule.txt`.
 MIN_COUNTED_PAIRS = 10
@@ -113,28 +102,10 @@ def rule_state():
 def rule_identity():
     """The rule file the run was started under: its hash and the commit that last changed it (both go into the manifest)."""
     commit = subprocess.run(["git", "log", "-1", "--format=%H", "--", str(RULE_PATH)], cwd=ROOT, capture_output=True, text=True).stdout.strip()
-    return {"rule_sha256": RL.sha256_file(ROOT / RULE_PATH), "rule_commit": commit or None}
+    return {"rule_sha256": sha256_file(ROOT / RULE_PATH), "rule_commit": commit or None}
 
 
 # ------------------------------------------------------------------------------------------------ pure logic
-def arm_order(pairs):
-    """fixed/deadline, deadline/fixed, fixed/deadline, ...: which arm goes first alternates by pair."""
-    order = []
-    for pair in range(pairs):
-        order += [FIXED, DEADLINE] if pair % 2 == 0 else [DEADLINE, FIXED]
-    return order
-
-
-def arm_env(arm):
-    """The environment of an arm: the control environment of `first-use-ab.py` and the poll schedule."""
-    return {**FU.arm_env("warm_draw", "control"), POLL_ENV: arm}
-
-
-def hung_play(summary, length):
-    """The rule of `first-use-ab.py` (its constants are read from there so the two never differ)."""
-    return bool(summary["pictures"] < FU.HANG_PICTURES_SHARE * length or (summary["interval_ms"]["max"] or 0) > FU.HANG_GAP_MS)
-
-
 def arm_findings(record):
     """Why a session is not the arm it says it is (an empty list when it is): the host's own `play_clock_started` names the schedule of each play."""
     arm = record.get("arm")
@@ -148,23 +119,23 @@ def arm_findings(record):
 
 def session_row(record, project):
     """One session as a row: the harness's validity, the arm's own validity, and one entry per play."""
-    analysis = RL.analyze_session(record, project)
-    cadence = CAD.each_play([(record.get("arm"), record)])
+    analysis = analyze_session(record, project)
+    read = cadence().each_play([(record.get("arm"), record)])
     plays = {}
-    for name, found in zip(PLAYS, cadence):
+    for name, found in zip(PLAYS, read):
         summary = analysis["plays"].get(name)
         plays[name] = {**found, "pictures": summary["pictures"] if summary else None, "max_gap_ms": summary["interval_ms"]["max"] if summary else None,
                        "hung": hung_play(summary, project["length"]) if summary else False}
     hung = any(play["hung"] for play in plays.values())
     findings = arm_findings(record)
-    complete = len(cadence) == len(PLAYS) and all(name in analysis["plays"] for name in PLAYS)
+    complete = len(read) == len(PLAYS) and all(name in analysis["plays"] for name in PLAYS)
     # A hang is a result of the arm (the `hung` guard of the rule speaks to it), not a failure of the run: a hung session is never `failed`, but it
     # is only counted with its two plays.
     failed = not hung and (bool(record.get("error")) or not complete)
     return {"arm": record.get("arm"), "pair": record.get("pair"), "order_index": record.get("order_index"), "valid": analysis["valid"],
             "invalid_reasons": analysis["invalid_reasons"], "arm_findings": findings, "plays": plays, "hung": hung, "failed": failed,
             "counted": analysis["valid"] and complete and not failed and not findings,
-            "error": RL.redact(record["error"]) if record.get("error") else None,
+            "error": redact(record["error"]) if record.get("error") else None,
             "quiet_class": analysis["quiet_class"], "external_median_cores": analysis["external_median_cores"],
             "external_p95_cores": analysis["external_p95_cores"], "loadavg_start": analysis["loadavg_start"],
             "loadavg_peak_1m": analysis["loadavg_peak_1m"]}
@@ -279,6 +250,7 @@ def verdict(rows, requested_pairs=None):
 
 
 # ------------------------------------------------------------------------------------------------ analysis
+# ------------------------------------------------------------------------------------------------ analysis
 def build_report(records, project, manifest):
     rows = [session_row(record, project) for record in records]
     summaries = {arm: arm_summary([row for row in rows if row["arm"] == arm]) for arm in ARMS}
@@ -323,85 +295,39 @@ def markdown(report):
 
 
 # ------------------------------------------------------------------------------------------------ commands
-def prerequisites(args, W):
-    binary = pathlib.Path(args.binary).resolve()
-    document = pathlib.Path(args.project).resolve()
-    for needed in (binary, document, ROOT / "runtime" / "dist" / "index.html", ROOT / "runtime" / "dist" / "runtime.js"):
-        if not needed.exists():
-            print(f"BLOCKED: missing {needed.name}")
-            return None
+def arm_env(arm):
+    """The environment of an arm: the control environment of every experiment (the first-use factors and the probe's GPU wait explicitly 0) and the poll schedule."""
+    return {**CONTROL_ENV, POLL_ENV: arm}
+
+
+def rule_gate():
+    """Why the run may not start (the decision rule is not fixed before the numbers), or None."""
     committed, why = rule_state()
-    if not committed:
-        print(f"BLOCKED: the decision rule is not fixed before the run: {why}")
-        return None
-    project = RL.parse_project(json.loads(document.read_text()))
-    if [s for s in RL.check_sources(project["sources"]) if not s["present"]]:
-        print("BLOCKED: project source(s) missing")
-        return None
-    if W.free_gib() < RL.MIN_FREE_GIB_START:
-        print(f"BLOCKED: {W.free_gib():.1f} GiB free")
-        return None
-    locks = W.acquire_locks(args.lock_wait)
-    if locks is None:
-        print(f"BLOCKED: the GPU bench locks were not free within {args.lock_wait:.0f} s")
-        return None
-    return binary, document, project, locks
+    return None if committed else f"the decision rule is not fixed before the run: {why}"
+
+
+EXPERIMENT = Experiment(record="run-{index:02d}-{arm}.json", build=build_report, markdown=markdown, ok=lambda report: report["all_ran"])
 
 
 def cmd_run(args):
-    W = load_module("scene_warm_proof", ROOT / "scripts" / "scene-warm-proof.py")
-    got = prerequisites(args, W)
-    if got is None:
+    runtime = ROOT / "runtime" / "dist" / "runtime.js"
+    run = prerequisites(args, needed=(ROOT / "runtime" / "dist" / "index.html", runtime), gate=rule_gate)
+    if run is None:
         return 2
-    binary, document, project, locks = got
-    out = pathlib.Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
-    manifest = {"git": RL.git_state(), "binary_sha256": RL.sha256_file(binary), "document_sha256": RL.sha256_file(document), "pairs": args.pairs,
-                "order": arm_order(args.pairs), "io": IO_MODE, "started_unix": time.time(), "env": FU.arm_env("warm_draw", "control"),
-                "stress_cpu": args.stress_cpu, **rule_identity()}
-    (out / "manifest.json").write_text(json.dumps(manifest, indent=2))
-    print(f"build {manifest['git']['sha'][:9]} dirty={manifest['git']['dirty_files']} binary {manifest['binary_sha256'][:12]} order {manifest['order']}", flush=True)
-    records = []
-    try:
-        for index, arm in enumerate(manifest["order"]):
-            record = RL.run_session(W, binary, document, project, IO_MODE, out, index, index, args.stress_cpu, env_extra=arm_env(arm), arm=arm)
-            record["pair"], record["order_index"] = index // 2, index
-            (out / f"run-{index:02d}-{arm}.json").write_text(json.dumps(record))
-            records.append(record)
-            row = session_row(record, project)
-            lag = lag_of_session(row)
-            print(f"  run {index} {arm} counted={row['counted']} hung={row['hung']} failed={row['failed']} valid={row['valid']} class={row['quiet_class']} "
-                  f"lag={lag} findings={row['arm_findings']}", flush=True)
-    finally:
-        for handle in locks:
-            handle.close()
-    manifest["finished_unix"] = time.time()
-    (out / "manifest.json").write_text(json.dumps(manifest, indent=2))
-    return finish(out, records, project, manifest, args.report_dir)
+    W = warm_proof()
+    manifest = manifest_of(run, arm_order(ARMS, args.pairs), runtime_js=runtime, pairs=args.pairs, io=IO_MODE, env=CONTROL_ENV, stress_cpu=args.stress_cpu, **rule_identity())
 
+    def session(index, arm):
+        return run_session(W, run.binary, run.document, {"number": index, "mode": IO_MODE}, session_env(IO_MODE, arm_env(arm)),
+                           whole_project_twice(W, run.project), args.stress_cpu)
 
-def finish(out, records, project, manifest, report_dir):
-    report = build_report(records, project, manifest)
-    (out / "analysis.json").write_text(json.dumps(report, indent=2))
-    (out / "analysis.md").write_text(markdown(report))
-    shas = "".join(f"{RL.sha256_file(p)}  {p.name}\n" for p in sorted(out.glob("run-*.json")))
-    (out / "runs.sha256").write_text(shas)
-    if report_dir:
-        target = pathlib.Path(report_dir)
-        target.mkdir(parents=True, exist_ok=True)
-        (target / "analysis.json").write_text(json.dumps(report, indent=2))
-        (target / "analysis.md").write_text(markdown(report))
-        (target / "runs.sha256").write_text(shas)
-    print(markdown(report))
-    return 0 if report["all_ran"] else 1
+    def summary(record):
+        row = session_row(record, run.project)
+        return (f"  run {record['order_index']} {record['arm']} counted={row['counted']} hung={row['hung']} failed={row['failed']} valid={row['valid']} "
+                f"class={row['quiet_class']} lag={lag_of_session(row)} findings={row['arm_findings']}")
 
-
-def cmd_analyze(args):
-    out = pathlib.Path(args.out)
-    manifest = json.loads((out / "manifest.json").read_text())
-    project = RL.parse_project(json.loads(pathlib.Path(args.project).read_text()))
-    records = [json.loads(p.read_text()) for p in sorted(out.glob("run-*.json"))]
-    return finish(out, records, project, manifest, args.report_dir)
+    records = run_arms(run, pathlib.Path(args.out), manifest, EXPERIMENT, session, summary)
+    return finish(EXPERIMENT, pathlib.Path(args.out), records, run.project, manifest, args.report_dir)
 
 
 def main():
@@ -415,12 +341,12 @@ def main():
     run.add_argument("--stress-cpu", type=int, default=0, help="busy-loop processes kept alive during each session (both arms get the same)")
     run.add_argument("--lock-wait", type=float, default=600.0)
     run.add_argument("--report-dir")
-    analyze = sub.add_parser("analyze")
-    analyze.add_argument("--out", required=True)
-    analyze.add_argument("--project", required=True)
-    analyze.add_argument("--report-dir")
+    ana = sub.add_parser("analyze")
+    ana.add_argument("--out", required=True)
+    ana.add_argument("--project", required=True)
+    ana.add_argument("--report-dir")
     args = parser.parse_args()
-    return cmd_run(args) if args.command == "run" else cmd_analyze(args)
+    return cmd_run(args) if args.command == "run" else analyze(EXPERIMENT, args)
 
 
 if __name__ == "__main__":

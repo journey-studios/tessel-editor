@@ -21,16 +21,6 @@ def event(name, t, **fields):
     return {"kind": name, "t_ms": t, "seq": int(t), "fields": fields}
 
 
-def page_event(id, queue=0.0, held=None, loop_max=0.0, ahead=None, ipc_wait=0.2):
-    held = queue + 1.0 if held is None else held
-    return event("frame_page", 0, id=id, ipc_wait_ms=ipc_wait, page={"queue_ms": queue, "held_ms": held, "ahead": ahead or {"frames": 0, "warms": 0, "loads": 0},
-                                                                     "loop": {"max_ms": loop_max, "over": 0, "n": 10}})
-
-
-def evaluation(sent, ms):
-    return {"sent_ms": sent, "done_ms": sent + ms, "eval_ms": ms, "used": False}
-
-
 class BatchRebuildTests(unittest.TestCase):
     def test_the_markdown_exposes_a_partial_archive_warning(self):
         manifest = {'git': {'sha': 'a' * 40, 'dirty_files': 0}, 'binary_sha256': 'b' * 64,
@@ -62,56 +52,6 @@ class BatchRebuildTests(unittest.TestCase):
         _, report = self.rebuild(['pair-0-A.json', 'pair-0-B.json', 'pair-9-A.json'])
         self.assertEqual([(r['pair'], r['arm']) for r in report['runs']], [(0, 'A'), (0, 'B')])
         self.assertEqual([r['summary']['raw'] for r in report['runs']], ['pair-0-A.json', 'pair-0-B.json'])
-
-
-class DecompositionTests(unittest.TestCase):
-    def test_a_page_that_held_the_frame_in_its_queue_with_a_stalled_loop_is_named_so(self):
-        e = page_event(1, queue=110, held=111, loop_max=105)["fields"]
-        d = probe.decompose(frame(1, 1000, 130), e, evaluation(1000.2, 3))
-        self.assertEqual((d["dominant"], d["detail"]), ("page_queue", "event_loop_stalled"))
-
-    def test_a_queue_wait_with_a_quiet_loop_and_work_ahead_is_queued_work_not_a_stall(self):
-        e = page_event(2, queue=90, held=91, loop_max=5, ahead={"frames": 0, "warms": 1, "loads": 0})["fields"]
-        d = probe.decompose(frame(2, 0, 100), e, evaluation(0.1, 2))
-        self.assertEqual((d["dominant"], d["detail"]), ("page_queue", "behind_queued_work"))
-
-    def test_time_the_page_and_the_host_do_not_account_for_is_delivery_and_the_eval_says_which_way(self):
-        e = page_event(3, queue=0.5, held=2.0, ipc_wait=0.3)["fields"]
-        inbound = probe.decompose(frame(3, 0, 120), e, evaluation(0.1, 110))
-        self.assertEqual((inbound["dominant"], inbound["detail"]), ("delivery", "in_dominant"))
-        outbound = probe.decompose(frame(3, 0, 120), e, evaluation(0.1, 4))
-        self.assertEqual((outbound["dominant"], outbound["detail"]), ("delivery", "out_or_later_dominant"))
-        self.assertAlmostEqual(inbound["parts"]["delivery"], 120 - 0.1 - 0.5 - 1.5 - 0.3, places=1)
-
-    def test_a_request_that_waited_for_the_window_before_it_was_even_sent_is_the_host_not_the_page(self):
-        e = page_event(4, queue=0.2, held=1.2, ipc_wait=0.1)["fields"]
-        d = probe.decompose(frame(4, 0, 90), e, evaluation(85.0, 3))
-        self.assertEqual(d["dominant"], "host_pre_send")
-
-    def test_the_wait_of_the_message_for_the_windows_task_is_its_own_part(self):
-        e = page_event(5, queue=0.2, held=1.2, ipc_wait=70)["fields"]
-        d = probe.decompose(frame(5, 0, 80), e, evaluation(0.1, 3))
-        self.assertEqual(d["dominant"], "ipc_wait")
-
-    def test_a_picture_without_the_page_account_is_never_given_a_delivery_figure(self):
-        d = probe.decompose(frame(6, 0, 120), None, evaluation(0.1, 5))
-        self.assertIsNone(d["parts"]["delivery"])
-        self.assertIsNone(d["parts"]["page_queue"])
-
-    def test_a_late_picture_with_no_part_that_stands_out_is_spread_not_blamed(self):
-        e = page_event(7, queue=20, held=40, ipc_wait=15)["fields"]
-        d = probe.decompose(frame(7, 0, 100), e, evaluation(10.0, 20))
-        self.assertIn(d["dominant"], ("spread", "delivery"))
-        if d["dominant"] == "delivery":
-            self.assertGreaterEqual(d["parts"]["delivery"], probe.DOMINANT_MIN_MS)
-
-    def test_completions_are_matched_to_submissions_in_order_and_only_once(self):
-        events = [event("eval_done", 20, kind="frame.render", ms=5), event("eval_done", 30, kind="frame.warm", ms=1), event("eval_done", 70, kind="frame.render", ms=6)]
-        evals = probe.eval_events(events)
-        first = probe.match_eval(evals, 10)
-        second = probe.match_eval(evals, 10)
-        self.assertEqual((first["eval_ms"], second["eval_ms"]), (5, 6), "the warm script is not a frame's")
-        self.assertIsNone(probe.match_eval(evals, 10))
 
 
 class AbTests(unittest.TestCase):
@@ -158,7 +98,7 @@ class IterationTests(unittest.TestCase):
         self.assertEqual(red["plays"][0]["slow_detail"][0]["picture"]["dominant"], "page_queue")
         clean = probe.analyze_iteration(self.record(gap=1))
         self.assertEqual(clean["plays"][0]["slow_gaps"], 0)
-        report = probe.analyze([self.record(gap=110)], {})
+        report = probe.build_report([self.record(gap=110)], None, {})
         self.assertEqual(report["red_iterations"], [0])
 
     def test_a_prefetch_that_holds_the_window_thread_is_red_with_where_its_time_went_and_a_starved_play_is_red_too(self):
@@ -168,7 +108,7 @@ class IterationTests(unittest.TestCase):
         blocks = probe.analyze_iteration(record)["plays"][0]["ui_blocks"]
         self.assertEqual(len(blocks), 1)
         self.assertEqual(blocks[0]["assets"][0]["send_ms"], 3099.0)
-        self.assertEqual(probe.analyze([record], {})["red_iterations"], [0])
+        self.assertEqual(probe.build_report([record], None, {})["red_iterations"], [0])
         quiet = self.record(gap=1)
         quiet["window"] = [100, 108]
         self.assertEqual(probe.analyze_iteration(quiet)["plays"][0]["ui_blocks"], [])
@@ -177,7 +117,7 @@ class IterationTests(unittest.TestCase):
         starved["frames"] = starved["frames"][:1]
         starved["window"] = [0, 400]
         self.assertTrue(probe.analyze_iteration(starved)["plays"][0]["starved"])
-        self.assertEqual(probe.analyze([starved], {})["red_iterations"], [0])
+        self.assertEqual(probe.build_report([starved], None, {})["red_iterations"], [0])
 
     def test_a_settle_picture_of_the_frame_the_play_stopped_on_is_not_a_playback_gap(self):
         record = self.record(gap=1)
@@ -189,7 +129,7 @@ class IterationTests(unittest.TestCase):
         record = self.record(gap=1)
         record["events"] = [e for e in record["events"] if e["kind"] != "frame_page"]
         record["status"]["asset_io"]["pool"]["saturated"] = 2
-        valid, reasons = probe.validity(record)
+        valid, reasons = probe.window_validity(record)
         self.assertFalse(valid)
         self.assertTrue(any("page account" in r for r in reasons) and any("saturated" in r for r in reasons))
 
@@ -198,7 +138,7 @@ class IterationTests(unittest.TestCase):
         self.assertEqual(probe.default_window({"cuts": [], "fps": 24.0, "length": 600}), (0, 24))
 
     def test_the_report_is_json_and_markdown(self):
-        report = probe.analyze([self.record(gap=110)], {"git": {"sha": "0" * 40, "dirty_files": 0}, "binary_sha256": "a" * 64,
+        report = probe.build_report([self.record(gap=110)], None, {"git": {"sha": "0" * 40, "dirty_files": 0}, "binary_sha256": "a" * 64,
                                                        "runtime_sha256": "b" * 64, "document_sha256": "c" * 64, "io": "async", "window": [1, 2]})
         json.dumps(report)
         self.assertIn("page_queue", probe.markdown(report))

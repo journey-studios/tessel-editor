@@ -10,6 +10,7 @@ from unittest import mock
 spec = importlib.util.spec_from_file_location("runtime_bundle_ab", Path(__file__).with_name("runtime-bundle-ab.py"))
 ab = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ab)
+from ab import play as shared_play  # noqa: E402  (the runner put `scripts/` on the path)
 
 PROJECT = {"length": 100, "fps": 24.0, "cuts": [], "video_starts": [], "sources": []}
 
@@ -74,8 +75,8 @@ def rows(unpatched_hung, patched_hung, n=10):
 
 class ArmTests(unittest.TestCase):
     def test_the_order_alternates_which_arm_goes_first_by_pair(self):
-        self.assertEqual(ab.arm_order(3), ["unpatched", "patched", "patched", "unpatched", "unpatched", "patched"])
-        self.assertEqual(ab.arm_order(0), [])
+        self.assertEqual(ab.arm_order(ab.ARMS, 3), ["unpatched", "patched", "patched", "unpatched", "unpatched", "patched"])
+        self.assertEqual(ab.arm_order(ab.ARMS, 0), [])
 
     def test_an_unpatched_bundle_has_the_decoders_call_exactly_once(self):
         self.assertEqual(ab.bundle_findings(ab.UNPATCHED, f"a();{ab.DECODER_CALL}b();"), [])
@@ -105,8 +106,9 @@ class HangRuleTests(unittest.TestCase):
     def test_a_play_with_no_picture_at_all_is_hung(self):
         self.assertTrue(ab.hung_play(self.play(0, None), 100))
 
-    def test_it_reads_the_constants_of_the_first_use_experiment_so_the_two_never_differ(self):
-        self.assertEqual((ab.FU.HANG_PICTURES_SHARE, ab.FU.HANG_GAP_MS), (0.9, 2000.0))
+    def test_it_uses_the_one_hang_rule_of_every_experiment(self):
+        self.assertIs(ab.hung_play, shared_play.hung_play, "a copy of the rule in the runner could drift from the others")
+        self.assertEqual((shared_play.HANG_PICTURES_SHARE, shared_play.HANG_GAP_MS), (0.9, 2000.0))
 
 
 class SignatureTests(unittest.TestCase):
@@ -279,7 +281,7 @@ class NothingIsSignalledTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             dog = ab.Watchdog(folder, "00-unpatched", set(), now=lambda: 0.0)
             dog.count, dog.changed = 5, -100.0
-            with mock.patch.object(ab.RL, "webkit_pids", return_value={4242}), \
+            with mock.patch.object(ab, "webkit_pids", return_value={4242}), \
                     mock.patch.object(ab, "process_command", return_value="/x/com.apple.WebKit.WebContent.xpc"), \
                     mock.patch.object(ab.subprocess, "run", side_effect=fake_sample), \
                     mock.patch.object(os, "kill", side_effect=signalled.append), mock.patch.object(os, "killpg", side_effect=signalled.append):

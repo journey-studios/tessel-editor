@@ -22,8 +22,8 @@ class FixtureTests(unittest.TestCase):
         self.assertNotEqual(first, proof.splat_bytes(50, 8), "another cut has another cloud, or the pixel control is vacuous")
 
     def test_the_arms_alternate_and_stay_balanced(self):
-        self.assertEqual(proof.arm_order(1), ["warm", "cold"])
-        order = proof.arm_order(4)
+        self.assertEqual(proof.arm_order(("warm", "cold"), 1), ["warm", "cold"])
+        order = proof.arm_order(("warm", "cold"), 4)
         self.assertEqual(order, ["warm", "cold", "cold", "warm", "warm", "cold", "cold", "warm"])
         self.assertEqual(order.count("warm"), order.count("cold"))
 

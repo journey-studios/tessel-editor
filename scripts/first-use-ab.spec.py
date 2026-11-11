@@ -51,7 +51,7 @@ class ArmTests(unittest.TestCase):
             self.assertEqual(on["TESSEL_VIEWPORT_PROBE_GPU_FINISH"], "0")
 
     def test_the_order_alternates_which_arm_goes_first_by_pair(self):
-        self.assertEqual(ab.arm_order(4), ["control", "on", "on", "control", "control", "on", "on", "control"])
+        self.assertEqual(ab.arm_order(ab.ARMS, 4), ["control", "on", "on", "control", "control", "on", "on", "control"])
 
 
 class ValidityTests(unittest.TestCase):
@@ -171,7 +171,7 @@ def pixel_session(arm, order, *, spans=None, enabled=None, factor="warm_draw"):
     """One session of the pixel proof: `spans` as `scene-warm-proof.span_counts` gives them, and the host's report of the factor's switch."""
     report = ab.FACTORS[factor]["report"]
     on = arm == "on"
-    return {"factor_arm": arm, "order": order, "spans": spans if spans is not None else {}, "factors": {report: {"enabled": on if enabled is None else enabled}}}
+    return {"label": arm, "order": order, "spans": spans if spans is not None else {}, "factors": {report: {"enabled": on if enabled is None else enabled}}}
 
 
 class PixelActivationTests(unittest.TestCase):
@@ -188,7 +188,7 @@ class PixelActivationTests(unittest.TestCase):
 
     def test_an_inert_on_arm_fails_the_proof_however_identical_the_pixels_are(self):
         for spans in ({}, {"warm_draw": {"taken": 3, "gone": 1}}, {"warm": {"-": 2}}):
-            sessions = [s if s["factor_arm"] != "on" or s["order"] != "hot" else pixel_session("on", "hot", spans=spans) for s in self.GOOD]
+            sessions = [s if s["label"] != "on" or s["order"] != "hot" else pixel_session("on", "hot", spans=spans) for s in self.GOOD]
             verdicts = self.verdicts(sessions)
             self.assertFalse(verdicts["the `on` session that played into the cut reports `warm_draw`/`drawn` from the page"], spans)
 
