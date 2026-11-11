@@ -310,9 +310,17 @@ fn a_refused_scope_is_typed_on_the_panel_and_writes_nothing(cx: &mut TestAppCont
         ("banana", "invalid_value"),
         ("", "invalid_value"),
     ] {
+        // Where the refusal points: the core names the shot it does not have as the id of its error,
+        // as `unknown_clip` names the clip (`From<EditError>` turns an id into the target), so that is
+        // the target of `unknown_shot`; every other refusal has no id and carries the clip's node.
+        let target = if code == "unknown_shot" {
+            "nowhere"
+        } else {
+            FIRST
+        };
         let by_set = set(&view, cx, FIRST, "scope", Raw::Text(text.into())).unwrap_err();
         assert_eq!(by_set.code, code, "`{text}`: {by_set}");
-        assert_eq!(by_set.target.as_deref(), Some(FIRST), "`{text}`");
+        assert_eq!(by_set.target.as_deref(), Some(target), "`{text}`");
         assert_eq!(
             notice_code(&view, cx).as_deref(),
             Some(code),
@@ -323,7 +331,7 @@ fn a_refused_scope_is_typed_on_the_panel_and_writes_nothing(cx: &mut TestAppCont
         assert_eq!(by_action.code, code, "`{text}` by invoke");
         assert_eq!(
             by_action.target.as_deref(),
-            Some(FIRST),
+            Some(target),
             "`{text}` by invoke"
         );
 
