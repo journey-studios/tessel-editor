@@ -170,9 +170,9 @@ Os cinco runners de A/B (`real-latency-ab.py`, `first-use-ab.py`, `viewport-tran
 `scripts/ab/` (`project`, `stats`, `play`, `transit`, `session`, `validity`, `charts`, `batch`, `pixels`) e num descritor `Experiment` (como os registros se chamam, `build`, `markdown`, `ok`, `stem`, `charts`); cada runner guarda só a sua
 ciência (braços, regras, relatório). Regras comuns:
 
-- **Um juiz de validade** (`core_validity`): a sessão rodou até o fim, nenhum asset `failed`, nenhum erro HTTP, nada perdido, o modo pedido e o editor vivo; fator, aquecimento e contagem da página continuam de cada experimento.
-  `play` devolve `None` no prazo estourado, a janela exige o playhead no fim e o veredito do first-use só lê pares válidos nas duas pontas. A validade da janela ficou mais estrita (leitura em pânico ou velha invalida).
-  Os números publicados antes dele **não** foram reanalisados (BL157.13).
+- **Um juiz de validade** (`core_validity`): a sessão rodou até o fim, o editor seguiu vivo, o host rodou o modo pedido, a fila de leitura não saturou, nenhuma leitura entrou em pânico nem foi respondida como velha durante
+  um play, nenhum evento de trace se perdeu, nenhum pedido de asset teve outro status que 200/206 e nenhum asset falhou ao carregar na página; o que é do experimento (o fator, o aquecimento, a conta da página) continua dele.
+  `play` devolve `None` no prazo estourado, a janela exige o playhead no fim e o veredito do first-use só lê pares válidos nas duas pontas. Os números publicados antes dele **não** foram reanalisados (BL157.13).
 - **Erros publicados são `{code, kind}`**: `kind` ∈ `timeout`, `ended_early`, `host_refused`, `exception`, `other`; `code` é o código de erro do host (`[a-z_]{1,32}`) ou um nome de classe `…Error`/`…Exception` de até 40 letras, tirados por
   padrão, nunca um pedaço do texto. A mensagem crua e o fim do log do editor ficam só no `session-*.json` local. O `code` é um padrão, não uma lista: um nome de arquivo que casasse `<Nome>Error` apareceria (BL157.17).
 - **Cada sessão começa sem `TESSEL_*` herdado** (`lab_environment()`): o ambiente do braço é o único; o braço A do `ab` do transit diz `TESSEL_VIEWPORT_PROBE_GPU_FINISH=0`.
