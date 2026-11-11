@@ -26,11 +26,16 @@ failure of the right test with another message, a busy lock, a failed guard. A d
 stay strict: for `memo_off` they are the three assertions of the host test that a memo that never hits breaks, nothing
 looser (a compile error, a timeout and "the journey ran" are still not a kill).
 
-A clean tree is a precondition of BOTH phases, not a courtesy. `prepare` refuses a dirty working tree before it mutates
-anything (the executables of the mutants would be built from that tree, not from HEAD, and the verdict would be filed
-under HEAD); `time` refuses a `prepare` whose manifest records a non-empty `identity.dirty` or none at all (the tree
-reading clean now does not make the executables HEAD's). An identity git could not answer (`unavailable: ...`) and a file
-git cannot compare with HEAD are refusals as well, never two equal strings.
+A clean tree is a precondition of BOTH phases, not a courtesy, and it is read from the tree AS IT IS WHEN THE PHASE RUNS.
+`prepare` refuses a dirty working tree before it mutates anything (the executables of the mutants would be built from that
+tree, not from HEAD, and the verdict would be filed under HEAD). `time` refuses a dirty working tree too: the controlled run
+reads `budgets.json` (a path, not an `include_str!`) and the fixtures from the tree at RUN time, and the runners that judge
+it are the tree's, so a verdict taken after `budgets.json`, the journey or a runner was edited since `prepare` would not be
+HEAD's even though the executables are; `same_head` compares only the commit and the tree objects, and `at_head` only the
+files the mutants edit, so neither sees such an edit. And `time` refuses a `prepare` whose manifest records a non-empty
+`identity.dirty` or none at all (the tree reading clean now does not make the executables HEAD's). Both checks are made, the
+current tree first; neither can be skipped (there is no `--allow-dirty` here). An identity git could not answer
+(`unavailable: ...`) and a file git cannot compare with HEAD are refusals as well, never two equal strings.
 
 Time runs use the controlled release run (`scene_gizmo_perf_budget`, judged against `budgets.json`) under the
 performance lock, taken once for all of them and never waited for (BLOCKED, exit 3). Every child has a finite timeout.
@@ -47,17 +52,22 @@ the run, an infrastructure error, inconclusive...) keeps every executable, so th
 run that answered for everything it evaluated removes the executables of THOSE mutants only (an `--only` leaves the
 others for a later run), and a run that evaluated no timed mutant removes nothing.
 
-One run per `--out` at a time, for BOTH phases: right after creating `--out` (before anything in it is read, written or
-removed, a refusal's own manifest included) each takes an exclusive, non-blocking `flock` on `--out/.mutate.lock` and keeps
-it until `main` returns. A run that finds it taken prints one `REFUSED` JSON line, exits 1 and writes nothing into `--out`:
-the holder owns `manifest.json`, `manifest.final.json` and `exes/`. Without it a `prepare` (a build, which takes no
-performance lock) could replace or empty `exes/` after `time` hashed an executable and before it ran it, and the result
-would be filed under another `prepare`'s manifest; a second hash check cannot close that window. The lock is taken before
-the performance lock and neither is waited for, so two runs cannot wait on each other. It is a `flock`, so a run that dies
-(SIGKILL included) never leaves `--out` locked; the lock file itself stays, on purpose (see `harness.exclusive`). `prepare`
-BUILDS (and edits the checkout's own source files), so before `--out/.mutate.lock` it also takes the per-CHECKOUT build
-lock of `harness.guarded` (one lock per checkout, in `/tmp`, shared with the builds of `run.py`, `ab.py` and `native.py`):
-two builds of one checkout, from different `--out`, would otherwise edit and compile the same tree at once.
+One run per `--out` at a time, for BOTH phases AND for every runner: right after creating `--out` (before anything in it is
+read, written or removed, a refusal's own manifest included) each takes an exclusive, non-blocking `flock` on
+`--out/harness.OUT_LOCK` (`.gizmo-perf.lock`, the ONE name `run.py`, `ab.py`, `native.py` and this runner share) and keeps it
+until `main` returns. A run that finds it taken, by this runner or by any other, prints one `REFUSED` JSON line, exits 1 and
+writes nothing into `--out`: the holder owns `manifest.json`, `manifest.final.json` and `exes/` (and whatever else its runner
+keeps there). Without it a `prepare` (a build, which takes no performance lock) could replace or empty `exes/` after `time`
+hashed an executable and before it ran it, or while `run.py --phase measure` was running from that directory, and the result
+would be filed under another run's manifest; a second hash check cannot close that window. The lock is taken before the
+performance lock and neither is waited for, so two runs cannot wait on each other. It is a `flock`, so a run that dies
+(SIGKILL included) never leaves `--out` locked; the lock file itself stays, on purpose (see `harness.exclusive`). The lock
+excludes SIMULTANEOUS runs, not SEQUENTIAL ones: a different runner started after this one ended still overwrites its
+`manifest.json` and `exes/`, so one `--out` per runner stays the rule. `main` takes the lock once and `build()` of `run.py`,
+which `prepare` calls, is a plain function that takes none, so the shared name cannot conflict with itself. `prepare` BUILDS
+(and edits the checkout's own source files), so before the lock of `--out` it also takes the per-CHECKOUT build lock of
+`harness.guarded` (one lock per checkout, in `/tmp`, shared with the builds of `run.py`, `ab.py` and `native.py`): two builds
+of one checkout, from different `--out`, would otherwise edit and compile the same tree at once.
 
 Exit 0 only when every mutant was detected by every detector that must detect it and passed every one that must not;
 1 when a mutant is not as expected; 3 when anything was BLOCKED or infrastructure failed (never a pass).
@@ -75,7 +85,6 @@ import harness  # noqa: E402
 import run as runner  # noqa: E402
 
 ROOT = harness.ROOT
-OUT_LOCK = '.mutate.lock'  # in --out: held by whichever run (prepare or time) owns that directory
 GIZMO = 'crates/core/src/scene_project/gizmo.rs'
 OVERLAY = 'crates/desktop/src/workstation/viewport_overlay.rs'
 WORKFLOW = 'crates/desktop/src/workstation/workflow.rs'
@@ -355,15 +364,15 @@ def main(argv=None):
     # The checkout (`prepare` only: it builds from the checkout with a mutant IN its tree) and then the directory are
     # owned before anything in either is touched, and until this returns (the `with` is the `finally`: also on
     # SIGTERM/SIGINT, which are `SystemExit`). The locks never wait, the checkout's first, so no run can wait on another.
-    with harness.guarded(out, OUT_LOCK, 'mutate.py', 'manifest.json, manifest.final.json and exes/',
-                         builds=args.phase == 'prepare') as refusal:
+    # The lock of the directory is the one every runner shares (`harness.OUT_LOCK`).
+    with harness.guarded(out, 'mutate.py', builds=args.phase == 'prepare') as refusal:
         if refusal:
             return harness.die(1, refusal, None)
         return run_phase(args, out)
 
 
 def run_phase(args, out):
-    """The phase `args.phase` over `out`, which the caller owns (`out/.mutate.lock` is held). Returns the exit code."""
+    """The phase `args.phase` over `out`, which the caller owns (`out/harness.OUT_LOCK` is held). Returns the exit code."""
     names = args.only or list(MUTANTS)
     manifest = {'suite': 'gizmo-perf-mutants', 'phase': args.phase, 'utc_start': harness.utc(), 'command': sys.argv,
                 'identity': harness.git_identity(), 'toolchain': harness.toolchain(), 'mutants': {},
@@ -375,12 +384,24 @@ def run_phase(args, out):
     if problem:  # a checkout git cannot name: nothing is mutated or measured for it (there is no `--allow-dirty` here)
         manifest.update(status='REFUSED', reason=problem)
         return harness.die(1, manifest, refusal_path)
-    if args.phase == 'prepare' and manifest['identity']['dirty']:
-        # Before any mutation. The mutant is built from the whole checkout, so a dirty tree elsewhere (a changed runner,
-        # a changed crate) would be built into the executables and the verdict filed under a HEAD it does not describe.
-        manifest.update(status='REFUSED', reason=(
-            'the working tree is dirty: the executables of the mutants would be built from it, not from HEAD, and their '
-            f"verdict would be filed under HEAD ({manifest['identity']['dirty'].splitlines()[0][:120]})"))
+    if manifest['identity']['dirty']:
+        # BOTH phases read the tree as it is NOW (the manifest check of the `time` phase, further down, reads what `prepare`
+        # recorded: a different question). `dirty` is the first line of `git status --porcelain` over the build inputs and
+        # the files a verdict reads (`harness.DIRTY_PATHSPECS`).
+        first = manifest['identity']['dirty'].splitlines()[0][:120]
+        if args.phase == 'prepare':
+            # Before any mutation. The mutant is built from the whole checkout, so a dirty tree elsewhere (a changed runner,
+            # a changed crate) would be built into the executables and the verdict filed under a HEAD it does not describe.
+            reason = ('the working tree is dirty: the executables of the mutants would be built from it, not from HEAD, and '
+                      f'their verdict would be filed under HEAD ({first})')
+        else:
+            # Before anything is measured or removed. The executables may be HEAD's (the manifest of `prepare` says so),
+            # but the controlled run reads `budgets.json` and the fixtures from THIS tree when it runs, and the runners
+            # that judge it are this tree's: an edit made since `prepare` changes the verdict, and nothing else notices.
+            reason = ('the working tree is dirty: the time verdict reads `budgets.json` and the fixtures from the tree when '
+                      'it runs, and the runners are the tree\'s, so a verdict taken now would not be HEAD\'s even if the '
+                      f'executables are (clean the tree and run `time` again; {first})')
+        manifest.update(status='REFUSED', reason=reason)
         return harness.die(1, manifest, refusal_path)
     for name in names:
         path = MUTANTS[name]['file']

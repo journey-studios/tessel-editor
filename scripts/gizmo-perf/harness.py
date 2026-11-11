@@ -10,14 +10,17 @@ group is terminated (then killed) and the partial output is kept. A runner that 
 held forever by a hung test. `install_termination_handlers` turns SIGTERM/SIGINT into `SystemExit`, so the `finally`
 blocks and `with` statements (lock release, restoring a mutated checkout) run when a runner is asked to stop.
 
-Three more rules live here so that every runner has them (BL015.23 items 23 and following, review 5856147194):
+Four more rules live here so that every runner has them (BL015.23 items 23 and following, reviews 5856147194 and 5859397176):
   * a git answer that DECIDES something is `git_strict`/`git_identity` (success is explicit; a failing git is an
     `unavailable` identity every runner refuses, `--allow-dirty` included). `out` stays tolerant, on purpose, for telemetry
     (`pmset`, `sysctl`, the toolchain): there a missing answer is only recorded text;
+  * EVERY git a runner starts (here, in `ab.py`, in `native.py`) runs under `git_env`: the caller's environment without git's
+    own repository-local variables (`GIT_DIR`, `GIT_WORK_TREE`, ...). With one of them exported git ignores the directory it
+    was started in and answers for ANOTHER repository, and the identity of that one would be filed under this checkout;
   * a child that measures or builds gets `child_env`: no inherited `TESSEL_GIZMO_PERF_*` (and no `CARGO_TARGET_DIR` or
     `TESSEL_CARGO_LANE` for a build), exactly what the runner sets, and what was dropped is recorded;
   * `guarded` is the ownership of a run: the lock of the CHECKOUT for a phase that builds from it or edits it, then the
-    lock of `--out`. Neither waits; a refusal writes nothing.
+    ONE lock of `--out` that every runner shares (`OUT_LOCK`). Neither waits; a refusal writes nothing.
 """
 import contextlib
 import fcntl
@@ -173,15 +176,37 @@ def out(command, cwd=ROOT):
         return f'unavailable: {error}'
 
 
+# The variables git ITSELF lists as repository-local (`git rev-parse --local-env-vars`, git 2.50.1). Each one tells git which
+# repository, object store, index or configuration to use, and git then ignores the directory it was started in. Written out
+# on purpose so that the list does not depend on the git that happens to be installed; the spec checks it against what the
+# installed git prints. Not in it, and kept: HOME, PATH, the locale, GIT_AUTHOR_*/GIT_COMMITTER_* and the rest.
+GIT_LOCAL_ENV = (
+    'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_CONFIG', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT', 'GIT_OBJECT_DIRECTORY',
+    'GIT_DIR', 'GIT_WORK_TREE', 'GIT_IMPLICIT_WORK_TREE', 'GIT_GRAFT_FILE', 'GIT_INDEX_FILE', 'GIT_NO_REPLACE_OBJECTS',
+    'GIT_REPLACE_REF_BASE', 'GIT_PREFIX', 'GIT_SHALLOW_FILE', 'GIT_COMMON_DIR')
+
+
+def git_env(environ=None):
+    """A COPY of `environ` (default: this process's) without `GIT_LOCAL_ENV`: the environment of every git a runner starts.
+
+    A runner asks git about the checkout it was started in (`cwd=ROOT`). With `GIT_DIR` (or `GIT_WORK_TREE`, the index, the
+    object directory...) exported by whoever launched the runner, git answers for the repository THAT names, whatever `cwd`
+    says: `git_identity` then filed the clean HEAD of another repository while the build compiled this one, `git archive`
+    packed another repository's baseline, and `git status` judged another tree. `os.environ` itself is left as it was."""
+    environ = os.environ if environ is None else environ
+    return {name: value for name, value in environ.items() if name not in GIT_LOCAL_ENV}
+
+
 def git_strict(args, cwd=ROOT, timeout=30):
     """`(ok, text)` of `git ARGS`: `ok` is True only for a command that started, finished in time and exited 0, and then
     `text` is its stripped stdout (an empty one is a valid answer for `status`). Otherwise `ok` is False and `text` says
     why (the exit code and git's own words, a timeout, a command that cannot start): never an empty string that a caller
     could compare with another empty string. `out` above cannot tell the two apart, which is why a failing git used to
-    read as `head ''`, `tree ''` and a CLEAN tree."""
+    read as `head ''`, `tree ''` and a CLEAN tree. The command runs under `git_env`: it answers for `cwd`, never for a
+    repository the caller's environment names."""
     shown = 'git ' + ' '.join(args)
     try:
-        done = subprocess.run(['git', *args], cwd=cwd, capture_output=True, text=True, timeout=timeout)
+        done = subprocess.run(['git', *args], cwd=cwd, env=git_env(), capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return False, f'{shown}: no answer within {timeout}s'
     except OSError as error:
@@ -305,8 +330,8 @@ def exclusive(path):
     stays, because removing a lock file is how two runs end up each locking a different inode. Only a busy lock is
     reported as one: any other error (no `flock` on this file system, a read-only directory) propagates.
 
-    It is what lets a runner own a directory (`mutate.py` takes `--out/.mutate.lock`); `Lock` above stays the performance
-    lock and is not this."""
+    It is what lets a runner own a directory (every runner takes `--out/OUT_LOCK`, through `guarded`); `Lock` above stays the
+    performance lock and is not this."""
     with open(path, 'a') as handle:
         try:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -316,12 +341,25 @@ def exclusive(path):
             yield True
 
 
+# What the identity's `dirty` looks at: every path a build of this checkout, or a verdict of a runner, reads from the working
+# tree. Declared ONCE. `ab.is_prod`/`ab.is_measured` name the build inputs (the workspace manifest, the lockfile, the toolchain
+# pin, the cargo config, the vendored crates and `crates/*`): all of them are here, and the spec checks that every tracked file
+# `is_prod` accepts lies under one of these paths and that a change to each kind of build input makes `dirty` non-empty. The
+# rest: `scripts` (the runners and the proof corpus the journey reads), `docs/migration/fixtures/gizmo-perf` (`budgets.json`,
+# the journey, the corpus: a controlled run reads them from the tree at RUN time) and `runtime` (the page the native editor
+# serves; `ab.is_measured` leaves it out on purpose, its executable being the core test, but `native.py` runs it;
+# `runtime/dist` and `runtime/node_modules` are ignored by git, so building them leaves the tree clean). A pathspec that
+# matches nothing in a checkout (no `vendor`, no `.cargo`) is not an error for `git status`. NOT covered, and recorded as such
+# (BL015.23 item 29): the other compile-time inputs of the editor (`assets/demo/*.png` through `include_bytes!`, the unit
+# tests' `include_str!` of `docs/migration/fixtures/bundles/*`).
+DIRTY_PATHSPECS = ('crates', 'Cargo.toml', 'Cargo.lock', 'scripts', 'docs/migration/fixtures/gizmo-perf', '.cargo',
+                   'rust-toolchain.toml', 'vendor', 'runtime')
+
 IDENTITY_QUERIES = {
     'head': ['rev-parse', 'HEAD'],
     'tree': ['rev-parse', 'HEAD^{tree}'],
     'branch': ['rev-parse', '--abbrev-ref', 'HEAD'],
-    'dirty': ['status', '--porcelain', '--', 'crates', 'Cargo.toml', 'Cargo.lock', 'scripts',
-              'docs/migration/fixtures/gizmo-perf'],
+    'dirty': ['status', '--porcelain', '--', *DIRTY_PATHSPECS],
 }
 
 
@@ -422,20 +460,30 @@ def checkout_lock_path(root=ROOT):
     return Path(CHECKOUT_LOCK_DIR) / f'tessel-gizmo-perf-checkout-{key}.lock'
 
 
+# The lock of `--out`: ONE name for every runner (`run.py`, `ab.py`, `native.py`, `mutate.py`) and every phase. Rounds 4 to 7
+# gave each runner a lock file of its own name, so `mutate.py --phase prepare` (which empties `--out/exes`) and a
+# `run.py --phase measure` on the same directory did not exclude each other. One name is what makes "one run per `--out`" true.
+OUT_LOCK = '.gizmo-perf.lock'
+
+
 @contextlib.contextmanager
-def guarded(out, lock_name, who, owns, builds=False, root=ROOT):
+def guarded(out, who, builds=False, root=ROOT):
     """What a runner must own before it reads or writes anything. Yields `None` once it owns it and the REFUSED record
-    (print it, exit 1) when it does not: nothing here waits, and a refusal writes nothing but the lock file itself.
+    (print it, exit 1) when it does not: nothing here waits, and a refusal writes nothing but the lock file itself. `who` is
+    the runner that asks (the one that would be refused); the holder of a lock it cannot take can be ANY runner.
 
     1. `builds=True` (a phase that BUILDS from the checkout, or edits it: `mutate.py prepare`): the lock of the CHECKOUT
        (`checkout_lock_path`), taken before `out` exists. A build that runs while another run has a mutant in the tree
        builds the mutant, and two `prepare` runs with different `--out` would each put a mutant in the same files.
-    2. `out/lock_name`: one run per `--out`, for every phase. Two runs on one directory rebuild or delete what the other is
-       measuring, and a stale report would stand in for a new one.
+    2. `out/OUT_LOCK`: one run per `--out`, for every runner and every phase. Two runs on one directory rebuild or delete what
+       the other is measuring (`mutate.py prepare` empties `exes/` that `run.py measure` runs from), and a stale report would
+       stand in for a new one. The lock excludes SIMULTANEOUS runs, not SEQUENTIAL ones: a second runner that comes after the
+       first has finished still overwrites its `manifest.json` and `exes/`, so one `--out` per runner stays the rule.
 
     Both are `flock`s released when the block ends (also on SIGTERM/SIGINT, which are `SystemExit`) or the process dies;
     the files stay (see `exclusive`). The checkout lock is taken first, then the one of `out`, in every runner, and neither
-    waits, so no run can wait on another."""
+    waits, so no run can wait on another. A runner takes this lock ONCE, in its `main`, and calls the others' functions
+    (`mutate.py` calls `run.build()`) as plain functions, never through `main`: a shared name cannot conflict with itself."""
     out = Path(out)
     with contextlib.ExitStack() as stack:
         if builds:
@@ -447,11 +495,11 @@ def guarded(out, lock_name, who, owns, builds=False, root=ROOT):
                     '(not waited for)')}
                 return
         out.mkdir(parents=True, exist_ok=True)
-        path = out / lock_name
+        path = out / OUT_LOCK
         if not stack.enter_context(exclusive(path)):
             yield {'status': 'REFUSED', 'reason': (
-                f'another `{who}` run holds {path}: it owns {owns} of this --out, so nothing here was read or '
-                'written (not waited for)')}
+                f'another gizmo-perf run (any of run.py, ab.py, native.py or mutate.py, in any phase) holds {path}: it owns '
+                f'this --out, so `{who}` read and wrote nothing here (not waited for); use one --out per runner')}
             return
         yield None
 

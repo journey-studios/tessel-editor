@@ -1,0 +1,306 @@
+# Negative control of the round-8 additions to the spec (BL015.21 / BL015.23 / PR #44, round 8, review 5859397176).
+# The spec of this round (scripts/gizmo-perf/gizmo-perf.spec.py) run against the runners of ca66012 (ca66012a08e36fac92422c31caf60b9a879078b8, the PR head the round started from):
+# `git archive` of that commit (the whole tree) into a temp directory OUTSIDE the worktree, the new spec copied over its old one,
+# `git init` and ONE commit of it (the spec runs git against a real repository). Nothing was linked from the worktree, nothing was
+# written in it, no checkout or worktree was created (`target/` does not exist there: no editor binary, no build is possible).
+# Command, with that temp directory as cwd: PYTHONDONTWRITEBYTECODE=1 python3 scripts/gizmo-perf/gizmo-perf.spec.py -v
+# Python 3.14.3; git 2.50.1 (Apple Git-155); worktree HEAD when it ran: ca66012a08e36fac92422c31caf60b9a879078b8 (the parent of the code commit), with the round-8 changes not yet committed.
+# The files under test, by git blob id (the code commit holds these same blobs; ca66012 in parentheses):
+#   scripts/gizmo-perf/gizmo-perf.spec.py     6ba0825f183572c37ce5a0412f40fb04b77394b7 (704f132cbe52f9c227f989ef53b004bc1d1a6d19)
+#   scripts/gizmo-perf/harness.py             c45a428c37b03e15c462af1056eee3b1d45f43d5 (0224c40fcceda8250cef30415d4e35813e233421)
+#   scripts/gizmo-perf/run.py                 f44d3d08fb2c0153a61a761aac39be4423cbfb47 (a8eae98ce6647bd91480f0bfa3840c934ac66471)
+#   scripts/gizmo-perf/ab.py                  a236d09de957e62f83e025ecb5879886f8f93e56 (01131a18f90059e68f88cff94200bde5f1490daa)
+#   scripts/gizmo-perf/native.py              224c065896e9135c576f7d2d37ac8ccdb0844c38 (d5f26b1ff323bae19ca0e37fc5f0788f2812f4db)
+#   scripts/gizmo-perf/mutate.py              bb9206fea91190412226ea80b9971a8abd42fa44 (be0fbb44a904957f5276eb406f14f8fd600d653d)
+# audit.py, budgets.py and corpus.py are those of ca66012, byte for byte.
+# MACHINE LOAD (load averages 1/5/15 min): old spec + old runners 17.79 20.54 17.57 when it began, 25.72 22.24 18.34 after; new spec + OLD runners 25.72 22.24 18.34 when it began, 85.00 41.43 26.09 after; new spec + new runners 85.00 41.43 26.09 when it began, 64.41 48.08 30.48 after. Other work was running on the machine.
+# NOTHING WAS MEASURED: no time run, no A/B, no time mutant, no native window, no build, no performance lock, no benchmark.
+# This is a test of the runners' bookkeeping on fakes, on throwaway git repositories and on real processes that refuse.
+# The control, on the same layout:
+#   old spec + OLD runners : Ran 221 tests in 45.27s -> OK  (the layout works)
+#   new spec + OLD runners : Ran 252 tests in 103.437s -> FAILED (failures=56, errors=13)
+#   new spec + new runners : Ran 252 tests in 95.834s -> OK
+# 31 tests are new in this round (ids that the spec of ca66012 does not have); 0 earlier id(s) were removed; the other 221 are the earlier ones.
+# Per test: 26 of the 31 new tests fail on the old runners, 5 pass on both sides on purpose (listed after the list below), and 10 EARLIER tests fail on the old runners: those are the ones rewritten on purpose for the
+# shared lock name (they named `.mutate.lock`, `.ab.lock`, `.run.lock` or `.native.lock` or the old `guarded` signature; listed separately).
+# The counts of unittest are per failing assertion (a failing subTest counts once each).
+# Where the behaviour can be seen through a runner's `main` or a real process the new test fails on its own assertion on the old runners;
+# the tests of helpers that did not exist (`git_env`, `git_run`, `DIRTY_PATHSPECS`, `OUT_LOCK`, `page_hidden_by_dialog`) can only fail
+# there by not finding them. What proves that these tests also tell a right behaviour from a wrong one is the third part: deliberately
+# WRONG versions of the fixes, each caught by at least one test.
+# Labels: R1 = git runs with the caller's GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE; R2 = `dirty` misses .cargo, rust-toolchain.toml, vendor, runtime;
+# R3 = one lock file per runner; R4 = `mutate.py time` never looks at the current tree; R5 = `overlay_ack` default 90 s timeout and a late
+# matching acknowledgement accepted; sweep (c) = the same two defects in the dialog wait and the job wait of `run_corpus`;
+# sweep (d) = `settle_commit` accepts a MATCHING acknowledgement first seen after `ACK_SECONDS`.
+
+FAIL  Baseline.test_a_git_dir_exported_by_the_caller_cannot_make_the_baseline_another_repositorys   (R1)
+      ERROR: subprocess.CalledProcessError: Command '['git', 'archive', '8c436b17352d6fd0075a56146e3298143a097dfc']' returned non-zero exit status 128.
+FAIL  BoundedPolls.test_a_dialog_step_whose_monitor_does_not_answer_is_a_failed_check_not_a_traceback   (sweep (c))
+      FAIL: AssertionError: 0 != 1
+FAIL  BoundedPolls.test_a_dialog_wait_whose_monitor_never_answers_or_answers_late_is_a_problem_not_a_pass   (sweep (c))
+      ERROR: AttributeError: module 'native' has no attribute 'page_hidden_by_dialog'
+FAIL  BoundedPolls.test_a_job_get_that_never_answers_is_a_failed_check_bounded_by_the_60_seconds_not_a_traceback   (sweep (c))
+      FAIL: AssertionError: 0 != 1
+FAIL  BoundedPolls.test_a_matching_acknowledgement_that_arrives_after_the_budget_is_a_timeout_not_an_acknowledgement   (R5)
+      FAIL: AssertionError: 0 != 1
+FAIL  BoundedPolls.test_a_page_that_never_answers_ends_the_wait_at_its_seconds_with_a_recorded_problem   (R5)
+      ERROR: TimeoutError: timed out
+FAIL  BoundedPolls.test_a_poll_is_always_made_even_with_no_budget_and_it_is_given_a_little_time   (R5)
+      FAIL: AssertionError: False is not true : [90]
+FAIL  BoundedPolls.test_every_query_of_the_acknowledgement_wait_gets_the_time_that_is_left   (R5)
+      FAIL: AssertionError: False is not true : [90, 90, 90, 90]
+FAIL  BoundedPolls.test_the_dialog_wait_gives_every_query_the_time_that_is_left   (sweep (c))
+      ERROR: AttributeError: module 'native' has no attribute 'page_hidden_by_dialog'
+FAIL  DirtyIdentity.test_a_change_to_any_build_input_ab_names_makes_the_identity_dirty   (R2) [3 subTests]
+      FAIL: AssertionError: 'rust-toolchain.toml' not found in ''
+FAIL  DirtyIdentity.test_a_change_to_the_runtime_sources_makes_it_dirty_and_building_the_runtime_does_not   (R2)
+      FAIL: AssertionError: 'runtime/src/x.ts' not found in ''
+FAIL  DirtyIdentity.test_a_file_that_is_new_in_a_build_input_directory_makes_the_identity_dirty   (R2) [3 subTests]
+      FAIL: AssertionError: '' == ''
+FAIL  DirtyIdentity.test_the_pathspecs_are_declared_once_and_cover_every_tracked_file_ab_calls_a_build_input   (R2)
+      ERROR: AttributeError: module 'harness' has no attribute 'DIRTY_PATHSPECS'
+FAIL  GitEnvironment.test_a_repository_variable_exported_by_the_caller_cannot_make_the_identity_that_of_another_checkout   (R1) [4 subTests]
+      FAIL: AssertionError: {'head': '0e122040146c58ec22a2f07c1d3cfd036a613521'[140 chars]alse} != {'head': '53b06e9c3836ca19e10544460b16ccb1c12929c6'[101 chars]alse}
+FAIL  GitEnvironment.test_every_git_a_runner_starts_runs_without_the_repository_variables_of_the_caller   (R1) [4 subTests]
+      ERROR: AttributeError: module 'ab' has no attribute 'git_run'
+FAIL  GitEnvironment.test_git_env_is_a_copy_and_leaves_the_environment_of_the_process_alone   (R1)
+      ERROR: AttributeError: module 'harness' has no attribute 'git_env'
+FAIL  GitEnvironment.test_git_env_strips_every_name_the_installed_git_lists_as_repository_local   (R1)
+      ERROR: AttributeError: module 'harness' has no attribute 'git_env'
+FAIL  GitEnvironment.test_no_runner_starts_git_except_through_a_start_that_cleans_the_environment   (R1)
+      FAIL: AssertionError: 'git_env' not found in "        done = subprocess.run(['git', *args], cwd=cwd, capture_output=True, text=True, timeout=timeout)" : harness.py:184 starts git with the caller's environment: done = subprocess.run(['gi
+FAIL  LateAcknowledgement.test_a_matching_acknowledgement_first_seen_after_the_ack_budget_is_unconfirmed_and_names_the_budget   (sweep (d))
+      FAIL: AssertionError: 'deduped' is not None
+FAIL  MutantExecutables.test_a_time_run_on_a_dirty_tree_is_refused_before_it_measures_or_removes_anything   (R4) [4 subTests]
+      FAIL: AssertionError: Tuples differ: (0, 'ALL_AS_EXPECTED') != (1, 'REFUSED')
+FAIL  MutantExecutables.test_each_phase_refuses_a_dirty_tree_in_its_own_words_and_the_current_tree_is_judged_first   (R4)
+      FAIL: AssertionError: '`prepare` ran on a dirty' unexpectedly found in "`prepare` ran on a dirty working tree (or its manifest does not say it was clean): its executables are not HEAD's, so their time verdict cannot be filed under HEAD"
+FAIL  MutantExecutables.test_prepare_holds_the_shared_lock_while_it_builds_and_the_build_does_not_refuse_it   (R3)
+      FAIL: AssertionError: Lists differ: [False] != [True]
+FAIL  OneLockPerOut.test_a_runner_of_another_kind_on_an_owned_out_is_refused_for_every_ordered_pair   (R3) [12 subTests]
+      FAIL: AssertionError: ab.py started its phase on a --out that run.py owns
+FAIL  OneLockPerOut.test_the_refusal_does_not_name_only_the_refused_runner_as_the_holder   (R3)
+      ERROR: TypeError: guarded() missing 2 required positional arguments: 'who' and 'owns'
+FAIL  OneLockPerOut.test_there_is_one_lock_name_and_no_runner_keeps_one_of_its_own   (R3)
+      ERROR: AttributeError: module 'harness' has no attribute 'OUT_LOCK'
+FAIL  TwoRunnerProcesses.test_every_runner_started_while_another_process_owns_the_out_is_refused_with_one_line_and_exit_1   (R3) [4 subTests]
+      FAIL: AssertionError: '.gizmo-perf.lock' not found in 'no `build.json` in --out: run `--phase build` first (or give --exe)'
+
+# Tests that pass on BOTH sides by design (what must stay true after the fix, or a control against over-strictness):
+#   BoundedPolls.test_a_matching_acknowledgement_in_time_passes   (R5) -- control: an acknowledgement that matches in time still counts (a fix that rejected every answer would fail it)
+#   DirtyIdentity.test_the_verdict_inputs_keep_making_the_identity_dirty   (R2) -- the old pathspecs already covered `scripts/` and the corpus fixtures: it guards that they are not lost
+#   DirtyIdentity.test_what_no_build_or_verdict_reads_leaves_the_identity_clean   (R2) -- over-strictness control: a docs edit, a new top-level file and ignored files (`runtime/dist`, `target/`) stay clean
+#   LateAcknowledgement.test_a_matching_acknowledgement_first_seen_within_the_ack_budget_is_a_dedupe_however_slow_the_reads   (sweep (d)) -- over-strictness control: an acknowledgement seen in time stays in time, however slow the later reads
+#   LateAcknowledgement.test_an_acknowledgement_the_page_never_matches_is_still_given_up_after_the_budget   (sweep (d)) -- the earlier rule (never acknowledged: given up after `ACK_SECONDS`) is kept
+
+# EARLIER tests that fail on the old runners because they were REWRITTEN ON PURPOSE (shared lock name, `guarded` without a name):
+#   Guarded.test_a_held_checkout_lock_refuses_a_build_before_the_directory_exists  (1 failing assertion(s))
+#   Guarded.test_it_refuses_a_directory_that_is_owned_and_says_which_lock  (1 failing assertion(s))
+#   Guarded.test_it_yields_none_when_free_keeps_the_lock_file_and_releases_the_lock_at_the_end  (1 failing assertion(s))
+#   MutantExecutables.test_a_prepare_that_finds_the_out_directory_owned_is_refused_and_changes_nothing  (1 failing assertion(s))
+#   MutantExecutables.test_a_run_refused_for_the_out_directory_does_not_even_write_its_other_refusals  (2 failing assertion(s))
+#   MutantExecutables.test_a_time_run_that_finds_the_out_directory_owned_is_refused_measures_nothing_and_changes_nothing  (1 failing assertion(s))
+#   MutantExecutables.test_the_out_lock_is_released_when_a_run_ends_and_its_file_stays  (1 failing assertion(s))
+#   OwnedDirectories.test_a_build_phase_refuses_an_owned_out_too_and_builds_nothing  (4 failing assertion(s))
+#   OwnedDirectories.test_a_real_second_process_is_refused_with_one_line_and_exit_1  (1 failing assertion(s))
+#   OwnedDirectories.test_ab_run_and_native_refuse_an_owned_out_and_change_nothing  (3 failing assertion(s))
+
+# Baseline: 1 of 1 new tests fail on the old runners
+# BoundedPolls: 8 of 9 new tests fail on the old runners
+# DirtyIdentity: 4 of 6 new tests fail on the old runners
+# GitEnvironment: 5 of 5 new tests fail on the old runners
+# LateAcknowledgement: 1 of 3 new tests fail on the old runners
+# MutantExecutables: 3 of 3 new tests fail on the old runners
+# OneLockPerOut: 3 of 3 new tests fail on the old runners
+# TwoRunnerProcesses: 1 of 1 new tests fail on the old runners
+
+# Real two-process demonstration of R3 (two DIFFERENT runners started as real processes while another process owns --out)
+# --- NEW runners: every runner is refused (one REFUSED line, exit 1) and writes nothing at all
+#     helper process (pid 66649) holds out/.gizmo-perf.lock through harness.exclusive: it printed 'held'
+#     run.py --phase measure --out <out>  -> exit 1, 1 line(s) on stdout, 0.4s
+#       {"status": "REFUSED", "reason": "another gizmo-perf run (any of run.py, ab.py, native.py or mutate.py, in any phase) holds /tmp/gp-r8-control-4up39j9t/gp-r8-demo-95sdgjgk/out/.gizmo-perf.lock: it owns this --out, so `run.py` read and wrote nothing here (not waited for); use one --out per runner"}
+#     ab.py --phase measure --out <out>  -> exit 1, 1 line(s) on stdout, 0.3s
+#       {"status": "REFUSED", "reason": "another gizmo-perf run (any of run.py, ab.py, native.py or mutate.py, in any phase) holds /tmp/gp-r8-control-4up39j9t/gp-r8-demo-95sdgjgk/out/.gizmo-perf.lock: it owns this --out, so `ab.py` read and wrote nothing here (not waited for); use one --out per runner"}
+#     native.py --phase run --out <out>  -> exit 1, 1 line(s) on stdout, 0.2s
+#       {"status": "REFUSED", "reason": "another gizmo-perf run (any of run.py, ab.py, native.py or mutate.py, in any phase) holds /tmp/gp-r8-control-4up39j9t/gp-r8-demo-95sdgjgk/out/.gizmo-perf.lock: it owns this --out, so `native.py` read and wrote nothing here (not waited for); use one --out per runner"}
+#     mutate.py --phase time --out <out>  -> exit 1, 1 line(s) on stdout, 0.3s
+#       {"status": "REFUSED", "reason": "another gizmo-perf run (any of run.py, ab.py, native.py or mutate.py, in any phase) holds /tmp/gp-r8-control-4up39j9t/gp-r8-demo-95sdgjgk/out/.gizmo-perf.lock: it owns this --out, so `mutate.py` read and wrote nothing here (not waited for); use one --out per runner"}
+#     files in the directory afterwards: ['.gizmo-perf.lock']
+# --- OLD runners, the same helper and the same lock file: they never look at it (their locks have other names)
+#     helper process (pid 66689) holds out/.gizmo-perf.lock through harness.exclusive: it printed 'held'
+#     run.py --phase measure --out <out>  -> exit 1, 1 line(s) on stdout, 0.3s
+#       {"status": "REFUSED", "reason": "no `build.json` in --out: run `--phase build` first (or give --exe)"}
+#     native.py --phase run --out <out>  -> exit 1, 1 line(s) on stdout, 0.5s
+#       {"status": "PREREQUISITE_MISSING", "reason": "needs the release editor (`--phase build`) and `./scripts/runtime setup` (runtime/dist)"}
+#     files in the directory afterwards: ['.gizmo-perf.lock', '.native.lock', '.run.lock', 'manifest.json']
+# --- OLD runners, the helper holds `.run.lock` (what the old run.py holds while it runs): ab.py, a DIFFERENT runner, is not stopped by it
+#     helper process (pid 66774) holds out/.run.lock through harness.exclusive: it printed 'held'
+#     ab.py --phase measure --out <out>  -> exit 1, 1 line(s) on stdout, 0.6s
+#       {"status": "REFUSED", "reason": "the baseline `cbe9e1b393861febf073633fbbaa0da9857780b6` names no commit here (git rev-parse --verify --quiet cbe9e1b393861febf073633fbbaa0da9857780b6^{commit}: exit 1: )"}
+#     files in the directory afterwards: ['.ab.lock', '.run.lock', 'manifest.json']
+#     (the old ab.py was not stopped by the lock: it refused for another reason, the temporary repository has no baseline commit, and it
+#     wrote its own lock and its manifest.json into a directory that another process owned: the defect of R3. This is a run of a runner that
+#     stops before it builds or measures anything.)
+
+# Additional controls: deliberately WRONG versions of the fixes. Each is the NEW runners with ONE exact text replaced in a scratch copy
+# (the replacement had to match exactly once), run with the classes that test the fixes (GitEnvironment, DirtyIdentity, OneLockPerOut, TwoRunnerProcesses, BoundedPolls, LateAcknowledgement, MutantExecutables, Baseline, Guarded, OwnedDirectories).
+# Without any replacement: Ran 67 tests -> OK. A control is useful when at least one test fails.
+# --- W1: harness.py: R1: `git_env` strips only GIT_DIR
+#     classes: GitEnvironment, DirtyIdentity, OneLockPerOut, TwoRunnerProcesses, BoundedPolls, LateAcknowledgement, MutantExecutables, Baseline, Guarded, OwnedDirectories
+#     # 67 tests: 64 pass, 3 fail or error (FAILED (failures=8))
+#     FAIL  GitEnvironment.test_a_repository_variable_exported_by_the_caller_cannot_make_the_identity_that_of_another_checkout [GIT_DIR and GIT_WORK_TREE]
+#           FAIL: AssertionError: {'hea[123 chars]y': 'M Cargo.toml\n M crates/core/src/lib.rs',[17 chars]alse} != {'hea[123 chars]y': '', 'unavailable': False}
+#     FAIL  GitEnvironment.test_every_git_a_runner_starts_runs_without_the_repository_variables_of_the_caller [harness.git_strict]
+#           FAIL: AssertionError: Lists differ: ['GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_[253 chars]REE'] != []
+#     FAIL  GitEnvironment.test_git_env_strips_every_name_the_installed_git_lists_as_repository_local
+#           FAIL: AssertionError: Lists differ: ['GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_[253 chars]DIR'] != []
+# --- W2: ab.py: R1: the git calls of ab.py keep the environment of the caller
+#     classes: GitEnvironment, DirtyIdentity, OneLockPerOut, TwoRunnerProcesses, BoundedPolls, LateAcknowledgement, MutantExecutables, Baseline, Guarded, OwnedDirectories
+#     # 67 tests: 64 pass, 3 fail or error (FAILED (failures=2, errors=1))
+#     FAIL  Baseline.test_a_git_dir_exported_by_the_caller_cannot_make_the_baseline_another_repositorys
+#           ERROR: subprocess.CalledProcessError: Command '['git', 'archive', 'e9f83e55a694715c0095094a9ef181d56d81b30e']' returned non-zero exit status 128.
+#     FAIL  GitEnvironment.test_every_git_a_runner_starts_runs_without_the_repository_variables_of_the_caller [ab.git_run (ls-tree, archive, show, diff, apply)]
+#           FAIL: AssertionError: Lists differ: ['GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_[264 chars]REE'] != []
+#     FAIL  GitEnvironment.test_no_runner_starts_git_except_through_a_start_that_cleans_the_environment
+#           FAIL: AssertionError: 'git_env' not found in "    return subprocess.run(['git', *args], cwd=cwd, check=True, **kwargs)" : ab.py:152 starts git with the caller's environment: return subprocess.run(['git', *args], cwd=cwd, check=True, **k
+# --- W3: native.py: R1: `runtime_source_tree` asks git with the caller's GIT_DIR
+#     classes: GitEnvironment, DirtyIdentity, OneLockPerOut, TwoRunnerProcesses, BoundedPolls, LateAcknowledgement, MutantExecutables, Baseline, Guarded, OwnedDirectories
+#     # 67 tests: 65 pass, 2 fail or error (FAILED (failures=2))
+#     FAIL  GitEnvironment.test_every_git_a_runner_starts_runs_without_the_repository_variables_of_the_caller [native.runtime_source_tree]
+#           FAIL: AssertionError: Lists differ: ['GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_[264 chars]REE'] != []
+#     FAIL  GitEnvironment.test_no_runner_starts_git_except_through_a_start_that_cleans_the_environment
+#           FAIL: AssertionError: 'git_env' not found in "    done = harness.run_bounded(['git', 'rev-parse', 'HEAD:runtime'], env=harness.child_env(), timeout=30)" : native.py:361 starts git with the caller's environment: done = harness.run_bounde
+# --- W4: harness.py: R2: only `runtime` is added to the dirty pathspecs
+#     classes: GitEnvironment, DirtyIdentity, OneLockPerOut, TwoRunnerProcesses, BoundedPolls, LateAcknowledgement, MutantExecutables, Baseline, Guarded, OwnedDirectories
+#     # 67 tests: 64 pass, 3 fail or error (FAILED (failures=6))
+#     FAIL  DirtyIdentity.test_a_change_to_any_build_input_ab_names_makes_the_identity_dirty [rust-toolchain.toml]
+#           FAIL: AssertionError: 'rust-toolchain.toml' not found in ''
+#     FAIL  DirtyIdentity.test_a_file_that_is_new_in_a_build_input_directory_makes_the_identity_dirty [vendor/another/src/lib.rs]
+#           FAIL: AssertionError: '' == ''
+#     FAIL  DirtyIdentity.test_the_pathspecs_are_declared_once_and_cover_every_tracked_file_ab_calls_a_build_input
+#           FAIL: AssertionError: '.cargo' not found in ('crates', 'Cargo.toml', 'Cargo.lock', 'scripts', 'docs/migration/fixtures/gizmo-perf', 'runtime')
+# --- W5: harness.py: R2: `.cargo`, `rust-toolchain.toml` and `vendor` are added, `runtime` is not
+#     classes: GitEnvironment, DirtyIdentity, OneLockPerOut, TwoRunnerProcesses, BoundedPolls, LateAcknowledgement, MutantExecutables, Baseline, Guarded, OwnedDirectories
+#     # 67 tests: 64 pass, 3 fail or error (FAILED (failures=3))
+#     FAIL  DirtyIdentity.test_a_change_to_the_runtime_sources_makes_it_dirty_and_building_the_runtime_does_not
+#           FAIL: AssertionError: 'runtime/src/x.ts' not found in ''
+#     FAIL  DirtyIdentity.test_a_file_that_is_new_in_a_build_input_directory_makes_the_identity_dirty [runtime/src/new.ts]
+#           FAIL: AssertionError: '' == ''
+#     FAIL  DirtyIdentity.test_the_pathspecs_are_declared_once_and_cover_every_tracked_file_ab_calls_a_build_input
+#           FAIL: AssertionError: 'runtime' not found in ('crates', 'Cargo.toml', 'Cargo.lock', 'scripts', 'docs/migration/fixtures/gizmo-perf', '.cargo', 'rust-toolchain.toml', 'vendor')
+# --- W6: harness.py: R3: the lock file is named after the runner again (one per runner)
+#     classes: GitEnvironment, DirtyIdentity, OneLockPerOut, TwoRunnerProcesses, BoundedPolls, LateAcknowledgement, MutantExecutables, Baseline, Guarded, OwnedDirectories
+#     # 67 tests: 53 pass, 14 fail or error (FAILED (failures=35, errors=2))
+#     FAIL  Guarded.test_it_refuses_a_directory_that_is_owned_and_says_which_lock
+#           ERROR: TypeError: 'NoneType' object is not subscriptable
+#     FAIL  Guarded.test_it_yields_none_when_free_keeps_the_lock_file_and_releases_the_lock_at_the_end
+#           FAIL: AssertionError: BlockingIOError not raised
+#     FAIL  MutantExecutables.test_a_prepare_that_finds_the_out_directory_owned_is_refused_and_changes_nothing
+#           FAIL: AssertionError: Tuples differ: (0, {'command': ['scripts/gizmo-perf/gizmo[1068 chars]6Z'}) != (1, {})
+#     FAIL  MutantExecutables.test_a_run_refused_for_the_out_directory_does_not_even_write_its_other_refusals (phase='prepare')
+#           FAIL: AssertionError: Tuples differ: (1, {'command': ['scripts/gizmo-perf/gizmo-per[629 chars]6Z'}) != (1, {})
+#     FAIL  MutantExecutables.test_a_time_run_on_a_dirty_tree_is_refused_before_it_measures_or_removes_anything [a runner]
+#           FAIL: AssertionError: {'.mutate.py.lock': b'', 'exes': None, 'exe[464 chars]}}}'} != {'exes': None, 'exes/time_mutant.exe': b'wh[440 chars]}}}'}
+#     FAIL  MutantExecutables.test_a_time_run_that_finds_the_out_directory_owned_is_refused_measures_nothing_and_changes_nothing
+#           FAIL: AssertionError: Tuples differ: (0, {'command': ['scripts/gizmo-perf/gizmo[1161 chars]6Z'}) != (1, {})
+#     FAIL  MutantExecutables.test_prepare_holds_the_shared_lock_while_it_builds_and_the_build_does_not_refuse_it
+#           FAIL: AssertionError: Lists differ: [False] != [True]
+#     FAIL  MutantExecutables.test_the_out_lock_is_released_when_a_run_ends_and_its_file_stays
+#           FAIL: AssertionError: False is not true
+#     FAIL  OneLockPerOut.test_a_runner_of_another_kind_on_an_owned_out_is_refused_for_every_ordered_pair (first='run.py', second='ab.py')
+#           FAIL: AssertionError: ab.py started its phase on a --out that run.py owns
+#     FAIL  OneLockPerOut.test_the_refusal_does_not_name_only_the_refused_runner_as_the_holder
+#           ERROR: TypeError: 'NoneType' object is not subscriptable
+#     FAIL  OwnedDirectories.test_a_build_phase_refuses_an_owned_out_too_and_builds_nothing [run.py build]
+#           FAIL: AssertionError: {'.gi[17 chars]'', '.run.py.lock': b'', 'exes': None, 'exes/c[1356 chars]ory'} != {'.gi[17 chars]'', 'exes': None, 'exes/candidate.exe': b'what[348 chars]ory'}
+#     FAIL  OwnedDirectories.test_a_real_second_process_is_refused_with_one_line_and_exit_1
+#           FAIL: AssertionError: '.gizmo-perf.lock' not found in 'the working tree is dirty: numbers would not belong to HEAD'
+#     FAIL  OwnedDirectories.test_ab_run_and_native_refuse_an_owned_out_and_change_nothing [ab.py]
+#           FAIL: AssertionError: {'.ab.py.lock': b'', '.gizmo-perf.lock': b''[1835 chars]ory'} != {'.gizmo-perf.lock': b'', 'exes': None, 'exe[372 chars]ory'}
+#     FAIL  TwoRunnerProcesses.test_every_runner_started_while_another_process_owns_the_out_is_refused_with_one_line_and_exit_1 [run.py]
+#           FAIL: AssertionError: '.gizmo-perf.lock' not found in 'the working tree is dirty: numbers would not belong to HEAD'
+# --- W7: mutate.py: R3: the runner takes the shared lock a second time inside its own main (a conflict with itself)
+#     classes: GitEnvironment, DirtyIdentity, OneLockPerOut, TwoRunnerProcesses, BoundedPolls, LateAcknowledgement, MutantExecutables, Baseline, Guarded, OwnedDirectories
+#     # 67 tests: 47 pass, 20 fail or error (FAILED (failures=20, errors=19))
+#     FAIL  MutantExecutables.test_a_build_whose_executable_is_gone_is_recorded_and_prepare_still_finishes
+#           ERROR: KeyError: 'mutants'
+#     FAIL  MutantExecutables.test_a_git_that_cannot_answer_refuses_both_phases_and_changes_nothing
+#           FAIL: AssertionError: Tuples differ: (1, None) != (1, 'REFUSED')
+#     FAIL  MutantExecutables.test_a_prepare_on_a_dirty_tree_is_refused_before_it_mutates_or_builds_anything
+#           FAIL: AssertionError: Tuples differ: (1, None) != (1, 'REFUSED')
+#     FAIL  MutantExecutables.test_a_prepare_that_finds_the_out_directory_owned_is_refused_and_changes_nothing
+#           ERROR: KeyError: 'status'
+#     FAIL  MutantExecutables.test_a_prepare_whose_build_gave_no_executable_leaves_none_of_an_earlier_prepare
+#           FAIL: AssertionError: 1 != 0
+#     FAIL  MutantExecutables.test_a_run_refused_for_the_out_directory_does_not_even_write_its_other_refusals (phase='prepare')
+#           FAIL: AssertionError: Tuples differ: (1, None) != (1, 'REFUSED')
+#     FAIL  MutantExecutables.test_a_run_removes_only_the_executables_of_the_mutants_it_evaluated_and_got_an_answer_for
+#           FAIL: AssertionError: Lists differ: [] != [('time_mutant', b'what prepare built')]
+#     FAIL  MutantExecutables.test_a_stale_executable_with_no_hash_recorded_for_it_is_never_measured
+#           ERROR: KeyError: 'mutants'
+#     FAIL  MutantExecutables.test_a_time_run_does_not_match_a_prepare_and_a_checkout_that_both_have_no_head
+#           FAIL: AssertionError: Tuples differ: (1, None) != (1, 'REFUSED')
+#     FAIL  MutantExecutables.test_a_time_run_on_a_dirty_tree_is_refused_before_it_measures_or_removes_anything [a runner]
+#           FAIL: AssertionError: Tuples differ: (1, None) != (1, 'REFUSED')
+#     FAIL  MutantExecutables.test_a_time_run_refuses_a_prepare_that_ran_on_a_dirty_tree_or_does_not_say_it_did_not [dirty]
+#           FAIL: AssertionError: Tuples differ: (1, None) != (1, 'REFUSED')
+#     FAIL  MutantExecutables.test_a_time_run_that_finds_the_out_directory_owned_is_refused_measures_nothing_and_changes_nothing
+#           ERROR: KeyError: 'status'
+#     FAIL  MutantExecutables.test_an_only_that_evaluates_no_timed_mutant_deletes_no_executable
+#           ERROR: KeyError: 'status'
+#     FAIL  MutantExecutables.test_each_phase_refuses_a_dirty_tree_in_its_own_words_and_the_current_tree_is_judged_first
+#           ERROR: KeyError: 'status'
+#     FAIL  MutantExecutables.test_only_the_file_whose_hash_prepare_recorded_is_measured
+#           ERROR: KeyError: 'mutants'
+#     FAIL  MutantExecutables.test_prepare_holds_the_shared_lock_while_it_builds_and_the_build_does_not_refuse_it
+#           ERROR: KeyError: 'status'
+#     FAIL  MutantExecutables.test_the_executable_of_one_head_is_never_measured_as_the_product_of_the_next
+#           ERROR: KeyError: 'mutants'
+#     FAIL  MutantExecutables.test_the_executables_stay_whenever_an_evaluated_timed_mutant_gave_no_answer (outcome='INVALID_GUARD_AFTER_RUN')
+#           ERROR: KeyError: 'mutants'
+#     FAIL  MutantExecutables.test_the_out_lock_is_released_when_a_run_ends_and_its_file_stays
+#           FAIL: AssertionError: 1 != 0
+#     FAIL  OneLockPerOut.test_a_runner_of_another_kind_on_an_owned_out_is_refused_for_every_ordered_pair (first='run.py', second='mutate.py')
+#           FAIL: AssertionError: 1 != 0
+# --- W8: harness.py: R3: the refusal names only the runner that was refused as the holder
+#     classes: GitEnvironment, DirtyIdentity, OneLockPerOut, TwoRunnerProcesses, BoundedPolls, LateAcknowledgement, MutantExecutables, Baseline, Guarded, OwnedDirectories
+#     # 67 tests: 66 pass, 1 fail or error (FAILED (failures=1))
+#     FAIL  OneLockPerOut.test_the_refusal_does_not_name_only_the_refused_runner_as_the_holder
+#           FAIL: AssertionError: 'run.py' not found in 'another `ab.py` run holds /var/folders/h2/6xxl56j97cnfzthk1mgmpz540000gn/T/tmppv98bqou/out/.gizmo-perf.lock: it owns this --out, so `ab.py` read and wrote nothing here (not waited for); use o
+# --- W9: mutate.py: R4: `time` looks only at what `prepare` recorded (the old behaviour: the current tree is read in prepare only)
+#     classes: GitEnvironment, DirtyIdentity, OneLockPerOut, TwoRunnerProcesses, BoundedPolls, LateAcknowledgement, MutantExecutables, Baseline, Guarded, OwnedDirectories
+#     # 67 tests: 65 pass, 2 fail or error (FAILED (failures=5))
+#     FAIL  MutantExecutables.test_a_time_run_on_a_dirty_tree_is_refused_before_it_measures_or_removes_anything [a runner]
+#           FAIL: AssertionError: Tuples differ: (0, 'ALL_AS_EXPECTED') != (1, 'REFUSED')
+#     FAIL  MutantExecutables.test_each_phase_refuses_a_dirty_tree_in_its_own_words_and_the_current_tree_is_judged_first
+#           FAIL: AssertionError: '`prepare` ran on a dirty' unexpectedly found in "`prepare` ran on a dirty working tree (or its manifest does not say it was clean): its executables are not HEAD's, so their time verdict cannot be filed under HEAD"
+# --- W10: native.py: R5: the timeout is passed but the deadline is not judged again after the answer
+#     classes: GitEnvironment, DirtyIdentity, OneLockPerOut, TwoRunnerProcesses, BoundedPolls, LateAcknowledgement, MutantExecutables, Baseline, Guarded, OwnedDirectories
+#     # 67 tests: 66 pass, 1 fail or error (FAILED (failures=1))
+#     FAIL  BoundedPolls.test_a_matching_acknowledgement_that_arrives_after_the_budget_is_a_timeout_not_an_acknowledgement
+#           FAIL: AssertionError: 0 != 1
+# --- W11: native.py: R5: the deadline is judged again but every query keeps the 90 s default
+#     classes: GitEnvironment, DirtyIdentity, OneLockPerOut, TwoRunnerProcesses, BoundedPolls, LateAcknowledgement, MutantExecutables, Baseline, Guarded, OwnedDirectories
+#     # 67 tests: 64 pass, 3 fail or error (FAILED (failures=3))
+#     FAIL  BoundedPolls.test_a_page_that_never_answers_ends_the_wait_at_its_seconds_with_a_recorded_problem
+#           FAIL: AssertionError: Lists differ: [90] != [2.0]
+#     FAIL  BoundedPolls.test_a_poll_is_always_made_even_with_no_budget_and_it_is_given_a_little_time
+#           FAIL: AssertionError: False is not true : [90]
+#     FAIL  BoundedPolls.test_every_query_of_the_acknowledgement_wait_gets_the_time_that_is_left
+#           FAIL: AssertionError: False is not true : [90, 90, 90, 90]
+# --- W12: native.py: sweep (d): a matching acknowledgement first seen after ACK_SECONDS is accepted (the old `settle_commit`)
+#     classes: GitEnvironment, DirtyIdentity, OneLockPerOut, TwoRunnerProcesses, BoundedPolls, LateAcknowledgement, MutantExecutables, Baseline, Guarded, OwnedDirectories
+#     # 67 tests: 66 pass, 1 fail or error (FAILED (failures=1))
+#     FAIL  LateAcknowledgement.test_a_matching_acknowledgement_first_seen_after_the_ack_budget_is_unconfirmed_and_names_the_budget
+#           FAIL: AssertionError: 'deduped' is not None
+# --- W13: native.py: sweep (c): the dialog wait accepts a late `hidden`
+#     classes: GitEnvironment, DirtyIdentity, OneLockPerOut, TwoRunnerProcesses, BoundedPolls, LateAcknowledgement, MutantExecutables, Baseline, Guarded, OwnedDirectories
+#     # 67 tests: 66 pass, 1 fail or error (FAILED (failures=1))
+#     FAIL  BoundedPolls.test_a_dialog_wait_whose_monitor_never_answers_or_answers_late_is_a_problem_not_a_pass
+#           FAIL: AssertionError: True is not false
+# --- W14: native.py: sweep (c): every `job.get` keeps the 90 s default
+#     classes: GitEnvironment, DirtyIdentity, OneLockPerOut, TwoRunnerProcesses, BoundedPolls, LateAcknowledgement, MutantExecutables, Baseline, Guarded, OwnedDirectories
+#     # 67 tests: 66 pass, 1 fail or error (FAILED (failures=1))
+#     FAIL  BoundedPolls.test_a_job_get_that_never_answers_is_a_failed_check_bounded_by_the_60_seconds_not_a_traceback
+#           FAIL: AssertionError: False is not true : [90]
+# every wrong fix is caught by at least one test: True (14 of 14)

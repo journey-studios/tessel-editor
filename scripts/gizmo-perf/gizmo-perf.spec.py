@@ -7,16 +7,20 @@ import fcntl
 import gzip
 import hashlib
 import importlib.util
+import inspect
 import io
+import itertools
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import socket
 import subprocess
 import sys
 import tempfile
+import textwrap
 import time
 import types
 import unittest
@@ -43,6 +47,10 @@ CHECKOUT_LOCKS = tempfile.mkdtemp(prefix='gizmo-perf-spec-checkout-locks-')
 atexit.register(shutil.rmtree, CHECKOUT_LOCKS, ignore_errors=True)
 for module in (harness, native.harness):
     module.CHECKOUT_LOCK_DIR = CHECKOUT_LOCKS
+
+# The lock of `--out`: ONE file name for every runner and phase (round 8; rounds 4 to 7 gave each runner a name of its own).
+# Written out here, not read from `harness.OUT_LOCK`, so that a runner that renames it fails the spec.
+SHARED_LOCK = '.gizmo-perf.lock'
 
 
 def slot(samples, medians=None, long_ticks=0):
@@ -436,6 +444,37 @@ def write(root, relative, text):
     path.write_text(text)
 
 
+# What `git rev-parse --local-env-vars` prints for git 2.50.1, written out here on purpose (`harness.GIT_LOCAL_ENV` is the
+# runners' copy of it and a test compares both with what the installed git prints).
+GIT_NAMES = ('GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_CONFIG', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT',
+             'GIT_OBJECT_DIRECTORY', 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_IMPLICIT_WORK_TREE', 'GIT_GRAFT_FILE', 'GIT_INDEX_FILE',
+             'GIT_NO_REPLACE_OBJECTS', 'GIT_REPLACE_REF_BASE', 'GIT_PREFIX', 'GIT_SHALLOW_FILE', 'GIT_COMMON_DIR')
+
+
+@contextlib.contextmanager
+def without_git_env():
+    """This process without any variable git calls repository-local, so that a test that wants git's honest answer for a
+    directory gets it even if whoever started the spec had exported one (a git hook does)."""
+    saved = {name: os.environ.pop(name) for name in GIT_NAMES if name in os.environ}
+    try:
+        yield
+    finally:
+        os.environ.update(saved)
+
+
+def two_repositories(root):
+    """`(a, b)`: two throwaway repositories with different commits and the files the identity's `dirty` looks at."""
+    a, b = Path(root) / 'a', Path(root) / 'b'
+    for repo, body in ((a, 'a'), (b, 'b')):
+        repo.mkdir()
+        git(repo, 'init', '-q')
+        write(repo, 'Cargo.toml', f'[workspace] # {body}\n')
+        write(repo, 'crates/core/src/lib.rs', f'// {body}\n')
+        git(repo, 'add', '-A')
+        git(repo, 'commit', '-q', '-m', body)
+    return a, b
+
+
 class Baseline(unittest.TestCase):
     """The A/B baseline is the pinned product; only an allowlisted, instrumental overlay may touch it."""
 
@@ -482,6 +521,33 @@ class Baseline(unittest.TestCase):
             self.assertNotEqual(record['prod_tree_before_overlay'], record['prod_tree_after_overlay'])
             self.assertNotEqual(record['prod_tree_after_overlay'], record['prod_tree_candidate'])
             self.assertEqual(record['prod_tree_before_overlay'], record['pinned_ref_tree'])
+
+    def test_a_git_dir_exported_by_the_caller_cannot_make_the_baseline_another_repositorys(self):
+        # (R1, round 8) every git of `make_baseline` (ls-tree, archive, show, diff, apply) answers for `root`, never for the
+        # repository the caller's `GIT_DIR`/`GIT_WORK_TREE` name: here one that does not even have the pinned commit
+        def candidate(root):
+            self.instrument(root)
+            write(root, self.MOD, 'pub mod build;\npub mod probe;\n')
+            write(root, self.BUILD, 'pub fn build() { note(); work(); work(); }\n')
+        with tempfile.TemporaryDirectory() as repo, tempfile.TemporaryDirectory() as other, \
+                tempfile.TemporaryDirectory() as clean_work, tempfile.TemporaryDirectory() as hostile_work:
+            base = self.repo(repo, candidate)
+            git(other, 'init', '-q')
+            write(other, 'Cargo.toml', '[workspace] # another repository\n')
+            git(other, 'add', '-A')
+            git(other, 'commit', '-q', '-m', 'other')
+            hostile = {'GIT_DIR': str(Path(other) / '.git'), 'GIT_WORK_TREE': other}
+            with without_git_env():
+                expected = ab.make_baseline(base, clean_work, root=Path(repo))
+                manifest = ab.git_prod_manifest('HEAD', Path(repo))
+                with patch.dict(os.environ, hostile):
+                    got = ab.make_baseline(base, hostile_work, root=Path(repo))
+                    hostile_manifest = ab.git_prod_manifest('HEAD', Path(repo))
+            self.assertEqual(hostile_manifest, manifest)
+            self.assertIn(self.BUILD, hostile_manifest)  # the production files of `repo`, not the `other` one's Cargo.toml
+            for key in ('prod_tree_before_overlay', 'prod_tree_after_overlay', 'prod_tree_candidate', 'pinned_ref_tree',
+                        'overlay_changed', 'product_files_that_differ', 'contaminated'):
+                self.assertEqual(got[key], expected[key], key)
 
     def test_a_candidate_that_only_adds_work_without_the_probe_differs_in_exactly_that_file(self):
         def candidate(root):
@@ -1665,9 +1731,9 @@ class MutantExecutables(unittest.TestCase):
     the only thing that says a file there is the one `prepare` built is the hash `prepare` recorded for it. Everything
     around that hand-over is faked: git, the machine, the performance lock, the release build (it names the bytes of an
     executable, or none) and the controlled run, which only notes in `self.measured` the bytes it was asked to measure.
-    The lock on --out itself (`--out/.mutate.lock`, which keeps a second run from touching the directory while one owns
+    The lock on --out itself (`--out/.gizmo-perf.lock`, which keeps a second run from touching the directory while one owns
     it) is NOT faked: it is a real `flock` in a temporary directory, which the tests also take, through a second
-    `open()` of the file, the way another `mutate.py` process would (an `flock` conflicts across two open file
+    `open()` of the file, the way another process of any runner would (an `flock` conflicts across two open file
     descriptions even inside one process). The mutated file is one in a temporary directory, never the repository's."""
 
     NAME = 'time_mutant'
@@ -1676,7 +1742,7 @@ class MutantExecutables(unittest.TestCase):
     LOADED = 'load average (1 min) 9.00 over 5.5 (11 cpus)'
 
     def phase(self, root, phase, identity=None, built=None, build_exit=0, blocked=None, edited=False,
-              time_outcome='KILLED', only=(), extra=None, git_down=False, vanish=False):
+              time_outcome='KILLED', only=(), extra=None, git_down=False, vanish=False, on_build=None):
         """`main --phase prepare|time --out ROOT/out` for the one mutant, at HEAD `identity`. `built`: the bytes of the
         executable its release build names, `None` for a build that named none (and failed); `build_exit` is that
         build's exit; `blocked` the reason the machine guard refuses a measurement; `edited`: the mutated file is not
@@ -1687,7 +1753,8 @@ class MutantExecutables(unittest.TestCase):
         `time_outcome`: what the faked controlled run answers; `only`: the `--only` names; `extra`: more mutants for the
         runner to know (name -> mutant); `git_down`: git is NOT faked, the only `git` on PATH is one that fails (the
         identity and the file hashes are then the runner's own reading of a git that cannot answer); `vanish`: the
-        executable the release build names is gone when the runner reads it (a pruned managed target)."""
+        executable the release build names is gone when the runner reads it (a pruned managed target); `on_build`: called
+        (no argument) each time the release build runs, to look at what the runner holds while it builds."""
         root = Path(root)
         out = root / 'out'
         source = root / 'f.rs'
@@ -1700,6 +1767,8 @@ class MutantExecutables(unittest.TestCase):
 
         def release_build():
             self.builds += 1
+            if on_build:
+                on_build()
             if built is None:
                 return ['cargo', 'test', '--release'], done('error[E0425]: cannot find value', 101), None
             target = root / 'target-exe'
@@ -1772,11 +1841,11 @@ class MutantExecutables(unittest.TestCase):
 
     @contextlib.contextmanager
     def another_run_owns(self, out):
-        """`out/.mutate.lock` held the way a second `mutate.py` process on the same --out would hold it: the runner's own
-        `open()` of that file conflicts with this one. Leaving the block releases it; `BlockingIOError` here means a run
-        that had finished still held the lock."""
+        """`out/.gizmo-perf.lock` held the way a second process on the same --out would hold it (of `mutate.py` or of any
+        other runner: the name is shared): the runner's own `open()` of that file conflicts with this one. Leaving the
+        block releases it; `BlockingIOError` here means a run that had finished still held the lock."""
         Path(out).mkdir(parents=True, exist_ok=True)
-        with open(Path(out) / '.mutate.lock', 'a') as handle:
+        with open(Path(out) / SHARED_LOCK, 'a') as handle:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
             yield
 
@@ -1872,7 +1941,7 @@ class MutantExecutables(unittest.TestCase):
                 self.assertEqual((out / 'exes' / 'stale.exe').read_bytes(), b'planted before')
                 refusal = json.loads(self.printed.getvalue())  # one JSON line
                 self.assertEqual(refusal['status'], 'REFUSED')
-                self.assertIn('.mutate.lock', refusal['reason'])
+                self.assertIn(SHARED_LOCK, refusal['reason'])
             # the control: the same directory, once the owner is gone, is prepared as always (a refusal that stuck
             # would pass the half above)
             code, prepared = self.phase(root, 'prepare', self.A, built=b'product of A')
@@ -1894,7 +1963,7 @@ class MutantExecutables(unittest.TestCase):
                 self.assertEqual(self.performance_locks, 0)  # ...and refused before the performance lock was asked for
                 refusal = json.loads(self.printed.getvalue())
                 self.assertEqual(refusal['status'], 'REFUSED')
-                self.assertIn('.mutate.lock', refusal['reason'])
+                self.assertIn(SHARED_LOCK, refusal['reason'])
             # the control: the same directory, free, is measured (the executable is the one `prepare` hashed)
             code, final = self.phase(root, 'time', self.A)
             self.assertEqual((code, final['status']), (0, 'ALL_AS_EXPECTED'))
@@ -1904,7 +1973,7 @@ class MutantExecutables(unittest.TestCase):
     def test_the_out_lock_is_released_when_a_run_ends_and_its_file_stays(self):
         with tempfile.TemporaryDirectory() as root:
             out = Path(root) / 'out'
-            lock = out / '.mutate.lock'
+            lock = out / SHARED_LOCK
             self.assertEqual(self.phase(root, 'prepare', self.A, built=b'product of A')[0], 0)
             # the lock is released by closing the file, not by removing it: with the file gone, two runs would each lock
             # "the" lock file, on a different inode
@@ -1931,7 +2000,7 @@ class MutantExecutables(unittest.TestCase):
                     self.assertEqual((code, written), (1, {}))
                     self.assertFalse((out / manifest).exists())
                     self.assertEqual(self.contents(out), before)
-                    self.assertIn('.mutate.lock', json.loads(self.printed.getvalue())['reason'])
+                    self.assertIn(SHARED_LOCK, json.loads(self.printed.getvalue())['reason'])
                 # the control: with the directory free the same run refuses for the file, and that refusal IS written
                 code, written = self.phase(root, phase, self.A, built=b'product of A', edited=True)
                 self.assertEqual((code, written.get('status')), (1, 'REFUSED'))
@@ -1967,6 +2036,74 @@ class MutantExecutables(unittest.TestCase):
                 self.assertIn('dirty', final['reason'])
                 self.assertEqual(self.measured, [])
                 self.assertTrue(exe.exists())  # refused before anything was measured or removed
+
+    def test_a_time_run_on_a_dirty_tree_is_refused_before_it_measures_or_removes_anything(self):
+        # (R4, round 8) the controlled run reads `budgets.json`, the fixtures and the runners from the tree AT RUN TIME. A tree
+        # edited since a clean `prepare` gave a verdict that was not HEAD's, and only `prepare` ever looked at the tree
+        built = b'what prepare built'
+        for label, line in (('a runner', ' M scripts/gizmo-perf/run.py'),
+                            ('budgets.json', ' M docs/migration/fixtures/gizmo-perf/budgets.json'),
+                            ('the runtime', ' M runtime/src/host.ts'),
+                            ('an untracked build input', '?? crates/core/src/new.rs')):
+            with self.subTest(label), tempfile.TemporaryDirectory() as root:
+                out = Path(root) / 'out'
+                exe = self.leave(out, built)
+                self.finished_prepare(out, hashlib.sha256(built).hexdigest())  # a CLEAN prepare: its executables are HEAD's
+                before = self.contents(out)
+                code, final = self.phase(root, 'time', identity={**self.A, 'dirty': line})
+                self.assertEqual((code, final.get('status')), (1, 'REFUSED'))
+                self.assertIn('working tree is dirty', final['reason'])
+                self.assertIn(line.strip(), final['reason'])  # the first line git printed
+                self.assertIn('budgets.json', final['reason'])  # and why a time verdict depends on the tree
+                self.assertEqual(self.measured, [])
+                self.assertEqual(self.performance_locks, 0)  # refused before the machine was asked for anything
+                self.assertEqual({name: data for name, data in self.contents(out).items()
+                                  if name not in ('manifest.final.json', SHARED_LOCK)},
+                                 before)  # only the refusal record and the lock file are new; the executable and manifest stay
+                self.assertTrue(exe.exists())
+                # the control: the same `time` run on a clean tree measures (a refusal that stuck would pass the half above)
+                code, final = self.phase(root, 'time', self.A)
+                self.assertEqual((code, final['status']), (0, 'ALL_AS_EXPECTED'))
+                self.assertEqual(self.measured, [(self.NAME, built)])
+
+    def test_each_phase_refuses_a_dirty_tree_in_its_own_words_and_the_current_tree_is_judged_first(self):
+        dirty = {**self.A, 'dirty': ' M scripts/gizmo-perf/run.py'}
+        with tempfile.TemporaryDirectory() as root:
+            code, prepared = self.phase(root, 'prepare', identity=dirty, built=b'x')
+            self.assertEqual((code, prepared['status']), (1, 'REFUSED'))
+            self.assertIn('executables of the mutants would be built from it', prepared['reason'])
+            self.assertNotIn('time verdict', prepared['reason'])
+            built = b'what prepare built'
+            out = Path(root) / 'out'
+            self.leave(out, built)
+            self.finished_prepare(out, hashlib.sha256(built).hexdigest(), identity=dirty)  # a dirty prepare AND a dirty tree
+            code, final = self.phase(root, 'time', identity=dirty)
+            self.assertEqual((code, final['status']), (1, 'REFUSED'))
+            self.assertIn('time verdict', final['reason'])  # the tree as it is now comes first...
+            self.assertNotIn('`prepare` ran on a dirty', final['reason'])
+            code, final = self.phase(root, 'time', identity=self.A)  # ...and the prepare manifest is still checked after it
+            self.assertIn('`prepare` ran on a dirty', final['reason'])
+
+    def test_prepare_holds_the_shared_lock_while_it_builds_and_the_build_does_not_refuse_it(self):
+        # (R3, round 8) one name for every runner must not make a runner conflict with itself: `mutate.py` takes the lock once,
+        # in `main`, and `run.build()` (which it calls) is a plain function. Looked at from inside the build.
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / 'out'
+            held_while_building = []
+
+            def while_building():
+                with open(out / SHARED_LOCK, 'a') as other:  # somebody else's open() of the lock file
+                    try:
+                        fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        held_while_building.append(False)
+                    except BlockingIOError:
+                        held_while_building.append(True)
+
+            code, prepared = self.phase(root, 'prepare', self.A, built=b'product of A', on_build=while_building)
+            self.assertEqual((code, prepared['status']), (0, 'PREPARED'))
+            self.assertEqual(held_while_building, [True])  # `main` holds it during the build, once
+            self.assertEqual(self.builds, 1)
+            self.assertNotIn('guarded', inspect.getsource(runner.build))  # `build` itself asks for no lock
 
     def test_a_time_run_does_not_match_a_prepare_and_a_checkout_that_both_have_no_head(self):
         nameless = {'head': '', 'tree': '', 'branch': 'b', 'dirty': ''}  # what a failing git used to be read as
@@ -2492,22 +2629,22 @@ class Guarded(unittest.TestCase):
         guarded = native.harness.guarded
         with tempfile.TemporaryDirectory() as root:
             out = Path(root) / 'out'
-            with bounded(), guarded(out, '.x.lock', 'x.py', 'everything') as refusal:
+            with bounded(), guarded(out, 'x.py') as refusal:
                 self.assertIsNone(refusal)
-                with open(out / '.x.lock', 'a') as another:  # a second open() of the file is somebody else
+                with open(out / SHARED_LOCK, 'a') as another:  # a second open() of the file is somebody else
                     with self.assertRaises(BlockingIOError):
                         fcntl.flock(another, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            with held(out / '.x.lock'):  # released: it can be taken again
+            with held(out / SHARED_LOCK):  # released: it can be taken again
                 pass
-            self.assertTrue((out / '.x.lock').is_file())  # a lock file is never removed (two inodes, two owners)
+            self.assertTrue((out / SHARED_LOCK).is_file())  # a lock file is never removed (two inodes, two owners)
 
     def test_it_refuses_a_directory_that_is_owned_and_says_which_lock(self):
         guarded = native.harness.guarded
         with tempfile.TemporaryDirectory() as root:
             out = Path(root) / 'out'
-            with held(out / '.x.lock'), bounded(), guarded(out, '.x.lock', 'x.py', 'everything') as refusal:
+            with held(out / SHARED_LOCK), bounded(), guarded(out, 'x.py') as refusal:
                 self.assertEqual(refusal['status'], 'REFUSED')
-                self.assertIn(str(out / '.x.lock'), refusal['reason'])
+                self.assertIn(str(out / SHARED_LOCK), refusal['reason'])
                 self.assertIn('not waited for', refusal['reason'])
 
     def test_the_checkout_lock_is_one_file_per_checkout_outside_the_repository(self):
@@ -2524,11 +2661,11 @@ class Guarded(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             out = Path(root) / 'out'
             with held(checkout_lock()), bounded():
-                with guarded(out, '.x.lock', 'x.py', 'everything', builds=True) as refusal:
+                with guarded(out, 'x.py', builds=True) as refusal:
                     self.assertEqual(refusal['status'], 'REFUSED')
                     self.assertIn('checkout lock', refusal['reason'])
                 self.assertFalse(out.exists())
-                with guarded(out, '.x.lock', 'x.py', 'everything') as refusal:  # a phase that builds nothing is not held
+                with guarded(out, 'x.py') as refusal:  # a phase that builds nothing is not held
                     self.assertIsNone(refusal)
 
 
@@ -2550,53 +2687,52 @@ class OwnedDirectories(unittest.TestCase):
         return json.loads(printed.getvalue().strip().splitlines()[-1])
 
     def test_ab_run_and_native_refuse_an_owned_out_and_change_nothing(self):
-        cases = (('ab.py', ab, ['--phase', 'measure'], '.ab.lock'),
-                 ('run.py', runner, ['--phase', 'measure'], '.run.lock'),
-                 ('native.py', native, ['--phase', 'run'], '.native.lock'))
-        for label, module, argv, lock in cases:
+        cases = (('ab.py', ab, ['--phase', 'measure']), ('run.py', runner, ['--phase', 'measure']),
+                 ('native.py', native, ['--phase', 'run']))
+        for label, module, argv in cases:
             with self.subTest(label), tempfile.TemporaryDirectory() as root:
                 out = self.planted(root)
                 printed = io.StringIO()
-                with held(out / lock), bounded():
+                with held(out / SHARED_LOCK), bounded():
                     before = tree_of(out)
                     code = run_main(module, [*argv, '--out', str(out)], printed)
                     self.assertEqual(code, 1)
                     self.assertEqual(tree_of(out), before)  # nothing created, changed or removed
                 refusal = self.last_line(printed)
                 self.assertEqual(refusal['status'], 'REFUSED')
-                self.assertIn(lock, refusal['reason'])
+                self.assertIn(SHARED_LOCK, refusal['reason'])
                 # the control: with the owner gone the same call is not refused for the directory
                 free = io.StringIO()
                 with bounded():
                     run_main(module, [*argv, '--out', str(out)], free)
-                self.assertNotIn(lock, free.getvalue())
+                self.assertNotIn(SHARED_LOCK, free.getvalue())
 
     BUILD_CASES = ('run.py build', 'ab.py build', 'native.py build', 'mutate.py prepare')
 
     def build_case(self, label, stack):
-        """`(module, argv, lock name, build)`: the runner of `label` with whatever would really build (or edit the tree)
+        """`(module, argv, build)`: the runner of `label` with whatever would really build (or edit the tree)
         replaced by a mock that fails the test, so that a runner that does not refuse cannot start a cargo build."""
         build = MagicMock(side_effect=AssertionError('a build started although the run did not own what it builds'))
         if label == 'run.py build':
             stack.enter_context(patch.object(runner, 'build', build))
-            return runner, ['--phase', 'build'], '.run.lock', build
+            return runner, ['--phase', 'build'], build
         if label == 'ab.py build':
             stack.enter_context(patch.object(ab, 'build', build))
             stack.enter_context(patch.object(ab, 'make_baseline', build))
-            return ab, ['--phase', 'build'], '.ab.lock', build
+            return ab, ['--phase', 'build'], build
         if label == 'native.py build':
             stack.enter_context(patch.object(native.harness, 'run_bounded', build))
-            return native, ['--phase', 'build'], '.native.lock', build
+            return native, ['--phase', 'build'], build
         stack.enter_context(patch.object(mutate.runner, 'build', build))
         # no mutant: whatever runs here (the runners before the locks did) can touch no source file
         stack.enter_context(patch.object(mutate, 'MUTANTS', {}))
-        return mutate, ['--phase', 'prepare'], '.mutate.lock', build
+        return mutate, ['--phase', 'prepare'], build
 
     def test_the_build_phases_refuse_while_the_checkout_is_being_built_and_create_nothing(self):
         for label in self.BUILD_CASES:
             with self.subTest(label), tempfile.TemporaryDirectory() as root, contextlib.ExitStack() as stack:
                 out = Path(root) / 'out'
-                module, argv, lock, build = self.build_case(label, stack)
+                module, argv, build = self.build_case(label, stack)
                 printed = io.StringIO()
                 with held(checkout_lock()), bounded():
                     code = run_main(module, [*argv, '--out', str(out)], printed)
@@ -2611,30 +2747,30 @@ class OwnedDirectories(unittest.TestCase):
         for label in self.BUILD_CASES:
             with self.subTest(label), tempfile.TemporaryDirectory() as root, contextlib.ExitStack() as stack:
                 out = self.planted(root)
-                module, argv, lock, build = self.build_case(label, stack)
+                module, argv, build = self.build_case(label, stack)
                 printed = io.StringIO()
-                with held(out / lock), bounded():
+                with held(out / SHARED_LOCK), bounded():
                     before = tree_of(out)
                     code = run_main(module, [*argv, '--out', str(out)], printed)
                     self.assertEqual(code, 1)
                     self.assertEqual(tree_of(out), before)
                 refusal = self.last_line(printed)
                 self.assertEqual(refusal['status'], 'REFUSED')
-                self.assertIn(lock, refusal['reason'])
+                self.assertIn(SHARED_LOCK, refusal['reason'])
                 build.assert_not_called()
 
     def test_the_checkout_lock_is_asked_for_first_and_neither_lock_waits(self):
         with tempfile.TemporaryDirectory() as root:
             out = self.planted(root)
             printed = io.StringIO()
-            with held(checkout_lock()), held(out / '.ab.lock'), bounded():
+            with held(checkout_lock()), held(out / SHARED_LOCK), bounded():
                 before = tree_of(out)
                 code = run_main(ab, ['--phase', 'build', '--out', str(out)], printed)
                 self.assertEqual(code, 1)
                 self.assertEqual(tree_of(out), before)
             reason = self.last_line(printed)['reason']
             self.assertIn('checkout lock', reason)
-            self.assertNotIn('.ab.lock', reason)
+            self.assertNotIn(SHARED_LOCK, reason)
 
     def test_a_measure_phase_builds_nothing_and_does_not_need_the_checkout_lock(self):
         with tempfile.TemporaryDirectory() as root:
@@ -2647,7 +2783,7 @@ class OwnedDirectories(unittest.TestCase):
     def test_a_real_second_process_is_refused_with_one_line_and_exit_1(self):
         with tempfile.TemporaryDirectory() as root:
             out = self.planted(root)
-            with held(out / '.ab.lock'):
+            with held(out / SHARED_LOCK):
                 before = tree_of(out)
                 finished = subprocess.run([sys.executable, str(HERE / 'ab.py'), '--phase', 'measure', '--out', str(out)],
                                           capture_output=True, text=True, timeout=60, cwd=str(HERE))
@@ -2657,7 +2793,7 @@ class OwnedDirectories(unittest.TestCase):
             self.assertEqual(len(lines), 1, lines)
             refusal = json.loads(lines[0])
             self.assertEqual(refusal['status'], 'REFUSED')
-            self.assertIn('.ab.lock', refusal['reason'])
+            self.assertIn(SHARED_LOCK, refusal['reason'])
             self.assertEqual(after, before)
 
 
@@ -2918,14 +3054,15 @@ class HostWindow(native.Window):
     The page acknowledges the committed state `ack_delay` after the reply (`ack` match), never (never) or with the previous
     revision's overlay (stale); until then it holds the acknowledgement of the revision before. A cancel asks for
     `cancel_picture`; `monitor.show_scene`, `seek` and `history.undo` each ask for the next request (the base's pixels,
-    `undo_hash` for the undo)."""
+    `undo_hash` for the undo). `read_cost`: every `viewport` read takes that long (the monitor is slow to answer)."""
 
     REVISION = 9  # the project revision before the release; the release leaves REVISION + 1
 
     def __init__(self, clock, step, base, candidate, release='dedupe', release_picture=None, cancel_picture=None,
                  ack='match', ack_delay=0.02, draw_lag=0.05, release_lag=0.04, late=0.1, draws_candidate=True,
-                 overlay_visible=True, adds_undo_entry=True, undo_hash=None, scene='proof'):
+                 overlay_visible=True, adds_undo_entry=True, undo_hash=None, scene='proof', read_cost=0.0):
         self.clock, self.step, self.scene = clock, step, scene
+        self.read_cost = read_cost  # seconds of the clock one `viewport` read takes (a slow monitor); the state is then read
         self.base, self.candidate = base, candidate
         self.release, self.release_picture, self.cancel_picture = release, release_picture, cancel_picture
         self.ack, self.ack_delay, self.late = ack, ack_delay, late
@@ -3016,6 +3153,7 @@ class HostWindow(native.Window):
         return True, {}
 
     def viewport(self, timeout=90):
+        self.clock.sleep(self.read_cost)  # the answer reflects the state at the END of the read
         self.advance()
         return {'phase': 'ready', 'headline': '', 'overlay': {'supported': True, 'drawn': self.drawn},
                 'directed': {'scene': self.scene, 'queued': None, 'suspended': False,
@@ -3471,6 +3609,511 @@ class RecordedFirstRun(GestureCase):
             checks, _ = self.run_gesture(g.step, corpus=corpus, base=g.base, candidate=(g.candidate[0], g.base[1]),
                                          release='dedupe')
             self.assertEqual(self.failed(checks), [self.CANDIDATE_DIFFERS, self.DIFFERS], corpus)
+
+
+# --- round 8 (PR #44, review 5859397176): git environment, build inputs, one lock per --out, late answers --------------
+# New tests of this round are the ones of `GitEnvironment`, `DirtyIdentity`, `OneLockPerOut`, `TwoRunnerProcesses`,
+# `BoundedPolls` and `LateAcknowledgement`, the dirty-tree tests of `MutantExecutables` (`test_a_time_run_on_a_dirty_tree...`,
+# `test_each_phase_refuses...`, `test_prepare_holds_the_shared_lock...`) and the hostile `GIT_DIR` test of `Baseline`. They are
+# run against the runners of the previous head (ca66012) in `spec-new-tests-vs-ca66012-runners.log`. The tests of rounds 4 to 7
+# that named a per-runner lock (`.mutate.lock`, `.ab.lock`, `.run.lock`, `.native.lock`) were rewritten on purpose for the
+# shared one.
+
+RUNNERS = {'run.py': (runner, ['--phase', 'measure']), 'ab.py': (ab, ['--phase', 'measure']),
+           'native.py': (native, ['--phase', 'run']), 'mutate.py': (mutate, ['--phase', 'time'])}
+
+
+def planted_directory(root):
+    """`root/out` with what a run that owns it keeps there, so that a refusal that touches it shows."""
+    out = Path(root) / 'out'
+    out.mkdir()
+    for name in ('manifest.json', 'report.json', 'round00-baseline.json', 'verdicts.json', 'stdout.txt'):
+        (out / name).write_text('written by the run that owns this directory')
+    (out / 'exes').mkdir()
+    (out / 'exes' / 'candidate.exe').write_bytes(b'what the owner is measuring')
+    return out
+
+
+class GitEnvironment(unittest.TestCase):
+    """R1: every git a runner starts answers for the checkout it was started in, never for the repository that the caller's
+    environment names (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`...): git then ignores the directory it was started in."""
+
+    def test_git_env_strips_every_name_the_installed_git_lists_as_repository_local(self):
+        listed = subprocess.run(['git', 'rev-parse', '--local-env-vars'], capture_output=True, text=True)
+        names = listed.stdout.split()
+        if listed.returncode != 0 or not names:
+            self.skipTest('this git does not answer `rev-parse --local-env-vars`')
+        keep = {'HOME': '/home/someone', 'PATH': '/usr/bin', 'LC_ALL': 'C', 'GIT_AUTHOR_NAME': 'someone',
+                'GIT_COMMITTER_EMAIL': 'someone@example.com'}
+        cleaned = harness.git_env({**{name: 'hostile' for name in names}, **keep})
+        self.assertEqual([name for name in names if name in cleaned], [])
+        self.assertEqual(cleaned, keep)  # and nothing else is touched: home, path, locale, author and committer stay
+        self.assertLessEqual(set(GIT_NAMES), set(harness.GIT_LOCAL_ENV))  # the written-out list holds the 15 known names
+
+    def test_git_env_is_a_copy_and_leaves_the_environment_of_the_process_alone(self):
+        with patch.dict(os.environ, {'GIT_DIR': '/elsewhere', 'GIT_AUTHOR_NAME': 'someone'}):
+            cleaned = harness.git_env()
+            self.assertNotIn('GIT_DIR', cleaned)
+            self.assertEqual(cleaned['GIT_AUTHOR_NAME'], 'someone')
+            self.assertEqual(os.environ['GIT_DIR'], '/elsewhere')  # the process keeps what it was given
+            cleaned['ONLY_IN_THE_COPY'] = '1'
+            self.assertNotIn('ONLY_IN_THE_COPY', os.environ)
+
+    ENV_OF_GIT = 'env | grep "^GIT_" | sort'  # a `git` that prints the GIT_* entries of its own environment
+
+    def names_git_saw(self, start):
+        """The names of the `GIT_*` entries in the environment of the git that `start()` runs, with every repository-local
+        name exported by the caller (and one that is not: `GIT_AUTHOR_NAME`)."""
+        hostile = {name: 'hostile' for name in GIT_NAMES}
+        with tempfile.TemporaryDirectory() as stubs:
+            stub_git(stubs, self.ENV_OF_GIT)
+            path = f"{stubs}{os.pathsep}{os.environ['PATH']}"
+            with patch.dict(os.environ, {**hostile, 'GIT_AUTHOR_NAME': 'kept', 'PATH': path}):
+                text = start()
+        return sorted(line.split('=', 1)[0] for line in text.splitlines())
+
+    def test_every_git_a_runner_starts_runs_without_the_repository_variables_of_the_caller(self):
+        def identity_text():
+            identity = harness.git_identity()
+            return '\n'.join(str(identity[field]) for field in ('head', 'tree', 'branch', 'dirty'))
+
+        starts = {
+            'harness.git_strict': lambda: harness.git_strict(['status'])[1],
+            'harness.git_identity': identity_text,
+            'native.runtime_source_tree': native.runtime_source_tree,
+            'ab.git_run (ls-tree, archive, show, diff, apply)':
+                lambda: ab.git_run(['status'], '.', stdout=subprocess.PIPE, text=True).stdout,
+        }
+        for label, start in starts.items():
+            with self.subTest(label):
+                names = self.names_git_saw(start)
+                self.assertIn('GIT_AUTHOR_NAME', names)  # the git did run, and what is not repository-local is kept
+                self.assertEqual([name for name in names if name in GIT_NAMES], [])
+
+    def test_no_runner_starts_git_except_through_a_start_that_cleans_the_environment(self):
+        # a NEW `['git', ...]` that forgets `git_env` fails here, not in the next review
+        starts = 0
+        for name in ('harness', 'run', 'ab', 'native', 'mutate', 'audit', 'budgets', 'corpus'):
+            for number, line in enumerate((HERE / f'{name}.py').read_text().splitlines(), 1):
+                if re.search(r"\[\s*'git'", line):
+                    starts += 1
+                    self.assertIn('git_env', line,
+                                  f"{name}.py:{number} starts git with the caller's environment: {line.strip()}")
+        self.assertGreaterEqual(starts, 3)  # harness.git_strict, ab.git_run, native.runtime_source_tree
+
+    def test_a_repository_variable_exported_by_the_caller_cannot_make_the_identity_that_of_another_checkout(self):
+        with tempfile.TemporaryDirectory() as root, without_git_env():
+            a, b = two_repositories(root)
+            write(b, 'crates/core/src/lib.rs', '// b, edited after its commit\n')  # B is DIRTY and A is clean
+            expected = harness.git_identity(a)
+            self.assertEqual(expected['dirty'], '')
+            self.assertEqual(expected['head'], git(a, 'rev-parse', 'HEAD').strip())
+            self.assertNotEqual(expected['head'], git(b, 'rev-parse', 'HEAD').strip())
+            for label, hostile in (('GIT_DIR', {'GIT_DIR': str(b / '.git')}),
+                                   ('GIT_DIR and GIT_WORK_TREE', {'GIT_DIR': str(b / '.git'), 'GIT_WORK_TREE': str(b)}),
+                                   ('GIT_WORK_TREE', {'GIT_WORK_TREE': str(b)}),
+                                   ('GIT_INDEX_FILE', {'GIT_INDEX_FILE': str(b / '.git' / 'index')})):
+                with self.subTest(label), patch.dict(os.environ, hostile):
+                    self.assertEqual(harness.git_identity(a), expected)
+
+
+class DirtyIdentity(unittest.TestCase):
+    """R2: the identity's `dirty` is non-empty for every input a build of the checkout, or a verdict of a runner, reads from the
+    working tree, and stays empty for what none of them reads. A throwaway repository, real git."""
+
+    FILES = {'Cargo.toml': '[workspace]\n', 'Cargo.lock': '# lock\n', 'rust-toolchain.toml': '[toolchain]\n',
+             '.cargo/config.toml': '[build]\n', 'vendor/dep/src/lib.rs': '// vendored\n',
+             'crates/core/src/x.rs': '// core\n', 'crates/desktop/src/y.rs': '// desktop\n',
+             'crates/media/build.rs': 'fn main() {}\n', 'crates/core/Cargo.toml': '[package]\n',
+             'crates/core/tests/t.rs': '// test\n', 'runtime/src/x.ts': '// runtime\n', 'runtime/package.json': '{}\n',
+             'scripts/gizmo-perf/run.py': '# runner\n', 'docs/migration/fixtures/gizmo-perf/budgets.json': '{}\n',
+             'docs/notes.md': 'notes\n', '.gitignore': 'runtime/dist/\nruntime/node_modules/\ntarget/\n'}
+    # what `ab.is_prod` calls a product file: one of each kind it recognises
+    BUILD_INPUTS = ('Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo/config.toml', 'vendor/dep/src/lib.rs',
+                    'crates/core/src/x.rs', 'crates/desktop/src/y.rs', 'crates/media/build.rs', 'crates/core/Cargo.toml')
+
+    def repo(self, root):
+        git(root, 'init', '-q')
+        for path, text in self.FILES.items():
+            write(root, path, text)
+        git(root, 'add', '-A')
+        git(root, 'commit', '-q', '-m', 'inputs')
+        return Path(root)
+
+    def dirty(self, root):
+        with without_git_env():
+            return harness.git_identity(root)['dirty']
+
+    def test_a_change_to_any_build_input_ab_names_makes_the_identity_dirty(self):
+        with tempfile.TemporaryDirectory() as root:
+            repo = self.repo(root)
+            self.assertEqual(self.dirty(repo), '')
+            for path in self.BUILD_INPUTS:
+                with self.subTest(path):
+                    self.assertTrue(ab.is_prod(path))  # the list is of what the A/B calls a build input
+                    (repo / path).write_text((repo / path).read_text() + '// edited\n')
+                    self.assertIn(path, self.dirty(repo))
+                    git(repo, 'checkout', '--', path)
+                    self.assertEqual(self.dirty(repo), '')
+        self.assertEqual([path for path in self.BUILD_INPUTS if ab.is_measured(path)],
+                         ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo/config.toml', 'vendor/dep/src/lib.rs',
+                          'crates/core/src/x.rs', 'crates/core/Cargo.toml'])  # the measured subset is the core crate's
+
+    def test_a_file_that_is_new_in_a_build_input_directory_makes_the_identity_dirty(self):
+        with tempfile.TemporaryDirectory() as root:
+            repo = self.repo(root)
+            for path in ('vendor/another/src/lib.rs', 'crates/core/src/new.rs', '.cargo/extra.toml', 'runtime/src/new.ts',
+                         'crates/core/tests/new.rs'):
+                with self.subTest(path):
+                    write(repo, path, '// new\n')
+                    try:
+                        self.assertNotEqual(self.dirty(repo), '')  # git may print the new directory instead of the file
+                    finally:
+                        (repo / path).unlink()
+                    self.assertEqual(self.dirty(repo), '')
+
+    def test_a_change_to_the_runtime_sources_makes_it_dirty_and_building_the_runtime_does_not(self):
+        with tempfile.TemporaryDirectory() as root:
+            repo = self.repo(root)
+            write(repo, 'runtime/dist/runtime.js', '// built\n')  # what `./scripts/runtime setup` produces: ignored by git
+            write(repo, 'runtime/node_modules/dep/index.js', '// installed\n')
+            self.assertEqual(self.dirty(repo), '')
+            write(repo, 'runtime/src/x.ts', '// runtime, edited\n')
+            self.assertIn('runtime/src/x.ts', self.dirty(repo))
+            # the runtime page the native editor serves is not a product file for the A/B, on purpose: its executable is the
+            # core test. The identity's `dirty` is the one that covers it, because `native.py` runs the page.
+            self.assertFalse(ab.is_prod('runtime/src/x.ts'))
+            self.assertFalse(ab.is_measured('runtime/src/x.ts'))
+
+    def test_what_no_build_or_verdict_reads_leaves_the_identity_clean(self):
+        with tempfile.TemporaryDirectory() as root:
+            repo = self.repo(root)
+            write(repo, 'docs/notes.md', 'notes, edited\n')
+            write(repo, 'docs/new.md', 'a new page\n')
+            write(repo, 'README.md', 'untracked at the top\n')
+            write(repo, 'target/release/x', 'built\n')  # ignored
+            self.assertEqual(self.dirty(repo), '')
+
+    def test_the_verdict_inputs_keep_making_the_identity_dirty(self):
+        with tempfile.TemporaryDirectory() as root:
+            repo = self.repo(root)
+            for path in ('scripts/gizmo-perf/run.py', 'docs/migration/fixtures/gizmo-perf/budgets.json'):
+                with self.subTest(path):
+                    (repo / path).write_text('edited\n')
+                    self.assertIn(path, self.dirty(repo))
+                    git(repo, 'checkout', '--', path)
+
+    def test_the_pathspecs_are_declared_once_and_cover_every_tracked_file_ab_calls_a_build_input(self):
+        specs = harness.DIRTY_PATHSPECS
+        self.assertEqual(harness.IDENTITY_QUERIES['dirty'], ['status', '--porcelain', '--', *specs])
+        for name in ('crates', 'Cargo.toml', 'Cargo.lock', 'scripts', 'docs/migration/fixtures/gizmo-perf', '.cargo',
+                     'rust-toolchain.toml', 'vendor', 'runtime'):
+            self.assertIn(name, specs)
+        ok, listing = harness.git_strict(['ls-files'], harness.ROOT)
+        self.assertTrue(ok, listing)
+        tracked = listing.splitlines()
+        build_inputs = [path for path in tracked if ab.is_prod(path)]
+        self.assertGreater(len(build_inputs), 20)  # the real tree has product files: this is not vacuous
+        covered = [path for path in build_inputs if any(path == spec or path.startswith(spec + '/') for spec in specs)]
+        self.assertEqual(sorted(set(build_inputs) - set(covered)), [])
+        self.assertTrue(all(ab.is_prod(path) for path in tracked if ab.is_measured(path)))  # measured is a subset
+
+
+class OneLockPerOut(unittest.TestCase):
+    """R3: ONE lock file for `--out`, whatever the runner and the phase, so that a `mutate.py prepare` (which empties
+    `exes/`) cannot run over a `run.py measure` of the same directory."""
+
+    def test_there_is_one_lock_name_and_no_runner_keeps_one_of_its_own(self):
+        self.assertEqual(harness.OUT_LOCK, SHARED_LOCK)
+        self.assertEqual(native.harness.OUT_LOCK, SHARED_LOCK)
+        for name, (module, _) in RUNNERS.items():
+            self.assertFalse(hasattr(module, 'OUT_LOCK'), f'{name} still has a lock name of its own')
+        self.assertNotIn('lock_name', inspect.signature(harness.guarded).parameters)
+
+    def test_the_refusal_does_not_name_only_the_refused_runner_as_the_holder(self):
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / 'out'
+            with held(out / SHARED_LOCK), bounded(), harness.guarded(out, 'ab.py') as refusal:
+                self.assertEqual(refusal['status'], 'REFUSED')
+                reason = refusal['reason']
+            self.assertIn(str(out / SHARED_LOCK), reason)
+            self.assertIn('not waited for', reason)
+            for name in RUNNERS:  # any of them may be the holder
+                self.assertIn(name, reason)
+            self.assertIn('one --out per runner', reason)
+
+    def test_a_runner_of_another_kind_on_an_owned_out_is_refused_for_every_ordered_pair(self):
+        for first, second in itertools.permutations(RUNNERS, 2):
+            with self.subTest(first=first, second=second), tempfile.TemporaryDirectory() as root:
+                out = planted_directory(root)
+                (module_a, argv_a), (module_b, argv_b) = RUNNERS[first], RUNNERS[second]
+                seen = {}
+                tripwire = MagicMock(side_effect=AssertionError(f'{second} started its phase on a --out that {first} owns'))
+
+                def holder(args, directory):
+                    """The phase of the FIRST runner: while it owns `--out`, the second one is started."""
+                    seen['before'] = tree_of(directory)
+                    printed = io.StringIO()
+                    seen['code'] = run_main(module_b, [*argv_b, '--out', str(directory)], printed)
+                    seen['after'], seen['printed'] = tree_of(directory), printed.getvalue()
+                    return 0
+
+                with patch.object(module_a, 'run_phase', side_effect=holder), patch.object(module_b, 'run_phase', tripwire), \
+                        bounded():
+                    self.assertEqual(run_main(module_a, [*argv_a, '--out', str(out)]), 0)
+                tripwire.assert_not_called()
+                self.assertEqual(seen['code'], 1)
+                self.assertEqual(seen['after'], seen['before'])  # nothing created, changed or removed; the planted files stay
+                lines = seen['printed'].strip().splitlines()
+                self.assertEqual(len(lines), 1, lines)
+                refusal = json.loads(lines[0])
+                self.assertEqual(refusal['status'], 'REFUSED')
+                self.assertIn(SHARED_LOCK, refusal['reason'])
+                self.assertIn(second, refusal['reason'])
+                self.assertIn('not waited for', refusal['reason'])
+                # the control: once the first has finished the lock is free, and the second is not refused for the directory
+                after = MagicMock(return_value=0)
+                with patch.object(module_b, 'run_phase', after), bounded():
+                    self.assertEqual(run_main(module_b, [*argv_b, '--out', str(out)]), 0)
+                after.assert_called_once()
+
+
+HOLDER = textwrap.dedent("""
+    import sys
+    sys.path.insert(0, sys.argv[1])
+    import harness
+    with harness.exclusive(sys.argv[2]) as owned:
+        print('held' if owned else 'busy', flush=True)
+        sys.stdin.read()  # until the test closes the pipe
+""")
+
+
+class TwoRunnerProcesses(unittest.TestCase):
+    """R3, with real processes: a helper holds the lock of `--out` through `harness.exclusive`, and each runner is started as
+    its own process (no phase that builds, measures or opens a window: they refuse at the lock, or they refuse for something
+    else and the test says so)."""
+
+    def test_every_runner_started_while_another_process_owns_the_out_is_refused_with_one_line_and_exit_1(self):
+        with tempfile.TemporaryDirectory() as root:
+            out = planted_directory(root)
+            holder = subprocess.Popen([sys.executable, '-c', HOLDER, str(HERE), str(out / SHARED_LOCK)],
+                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+            try:
+                with bounded(30):
+                    self.assertEqual(holder.stdout.readline().strip(), 'held')
+                before = tree_of(out)
+                for name, (_, argv) in RUNNERS.items():
+                    with self.subTest(name):
+                        finished = subprocess.run([sys.executable, str(HERE / name), *argv, '--out', str(out)],
+                                                  capture_output=True, text=True, timeout=60, cwd=str(HERE))
+                        self.assertEqual(finished.returncode, 1, finished.stderr[-300:])
+                        lines = finished.stdout.strip().splitlines()
+                        self.assertEqual(len(lines), 1, lines)
+                        refusal = json.loads(lines[0])
+                        self.assertEqual(refusal['status'], 'REFUSED')
+                        self.assertIn(SHARED_LOCK, refusal['reason'])
+                        self.assertIn(name, refusal['reason'])
+                        self.assertEqual(tree_of(out), before)  # the planted files, and not a new one
+            finally:
+                holder.stdin.close()
+                try:
+                    holder.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    holder.kill()
+                    holder.wait()
+                holder.stdout.close()
+
+
+class TimedMonitor:
+    """What a bounded wait asks of a window: `viewport(timeout)`, on the virtual clock. The page answers `state` after `delay`
+    seconds; a query given less time fails the way a socket with that timeout does (`TimeoutError`, after the time it was
+    given), unless `honours_timeout` is False: a page that answers when it likes, however late."""
+
+    def __init__(self, clock, state, delay=0.0, honours_timeout=True):
+        self.clock, self.state, self.delay, self.honours = clock, state, delay, honours_timeout
+        self.asked = []
+
+    def viewport(self, timeout=90):
+        self.asked.append(timeout)
+        if self.honours and self.delay > timeout:
+            self.clock.sleep(timeout)
+            raise TimeoutError('timed out')
+        self.clock.sleep(self.delay)
+        return json.loads(json.dumps(self.state))
+
+
+class BoundedPolls(unittest.TestCase):
+    """R5 and the same class in `run_corpus`: a wait with a budget gives EVERY query the time that is left, judges the budget
+    again after the answer (a late answer is a timeout, never a pass), and records a timeout as a problem, not a traceback."""
+
+    REQUEST = {'scene': 'proof', 'frame': 24}
+    TOOL = {'tool': 'scale', 'space': 'local'}
+
+    def ack(self, monitor, clock, seconds=2):
+        started = clock.now
+        with patch.object(native, 'time', clock), bounded(10):
+            result = native.overlay_ack(monitor, self.REQUEST, STATE_ANSWER, self.TOOL, seconds=seconds)
+        self.spent = clock.now - started
+        return result
+
+    def test_every_query_of_the_acknowledgement_wait_gets_the_time_that_is_left(self):
+        clock = VirtualClock()
+        # a page that always shows a previous step's acknowledgement
+        monitor = TimedMonitor(clock, {'overlay': {'drawn': PREVIOUS_ACK}}, delay=0.5)
+        ack, problems, expected = self.ack(monitor, clock)
+        self.assertTrue(problems)
+        self.assertGreater(len(monitor.asked), 1)
+        self.assertTrue(all(0 < timeout <= 2 for timeout in monitor.asked), monitor.asked)  # never the 90 s default
+        self.assertEqual(monitor.asked, sorted(monitor.asked, reverse=True))  # what is left only shrinks
+        self.assertLessEqual(self.spent, 2 + 0.1)  # the wait ends at its seconds (no query past them)
+
+    def test_a_page_that_never_answers_ends_the_wait_at_its_seconds_with_a_recorded_problem(self):
+        clock = VirtualClock()
+        monitor = TimedMonitor(clock, {'overlay': {'drawn': THIS_ACK}}, delay=1000)
+        ack, problems, expected = self.ack(monitor, clock)  # no exception
+        self.assertIsNone(ack)
+        self.assertEqual(len(problems), 1)
+        self.assertIn('did not answer', problems[0])
+        self.assertIn('2 s', problems[0])  # the budget is in the text
+        self.assertEqual(monitor.asked, [2.0])
+        self.assertAlmostEqual(self.spent, 2, delta=0.05)
+
+    def test_a_matching_acknowledgement_that_arrives_after_the_budget_is_a_timeout_not_an_acknowledgement(self):
+        clock = VirtualClock()
+        monitor = TimedMonitor(clock, {'overlay': {'drawn': THIS_ACK}}, delay=7, honours_timeout=False)
+        ack, problems, expected = self.ack(monitor, clock, seconds=5)
+        self.assertEqual(ack, THIS_ACK)  # what it showed stays as the evidence...
+        self.assertEqual(len(problems), 1)  # ...but it does not count
+        self.assertIn('too late', problems[0])
+        self.assertIn('5 s', problems[0])
+
+    def test_a_matching_acknowledgement_in_time_passes(self):
+        clock = VirtualClock()
+        monitor = TimedMonitor(clock, {'overlay': {'drawn': THIS_ACK}}, delay=0.3)
+        ack, problems, expected = self.ack(monitor, clock, seconds=5)
+        self.assertEqual((ack, problems), (THIS_ACK, []))
+        self.assertEqual(len(monitor.asked), 1)
+
+    def test_a_poll_is_always_made_even_with_no_budget_and_it_is_given_a_little_time(self):
+        clock = VirtualClock()
+        monitor = TimedMonitor(clock, {'overlay': {'drawn': PREVIOUS_ACK}})
+        ack, problems, expected = self.ack(monitor, clock, seconds=0)
+        self.assertEqual(len(monitor.asked), 1)
+        self.assertTrue(0 < monitor.asked[0] <= 0.1, monitor.asked)
+        self.assertTrue(problems)  # a previous step's acknowledgement is still a mismatch, and not a traceback
+
+    def page_hidden(self, monitor, clock, seconds=3):
+        with patch.object(native, 'time', clock), bounded(10):
+            return native.page_hidden_by_dialog(monitor, seconds)
+
+    def test_the_dialog_wait_gives_every_query_the_time_that_is_left(self):
+        clock = VirtualClock()
+        shown = TimedMonitor(clock, {'on_screen': True})  # a page that stays on screen, and a monitor that answers at once
+        hidden, monitor, problem = self.page_hidden(shown, clock)
+        self.assertEqual((hidden, problem), (False, None))
+        self.assertGreater(len(shown.asked), 1)
+        self.assertTrue(all(0 < timeout <= 3 for timeout in shown.asked), shown.asked)
+        gone = TimedMonitor(clock, {'on_screen': False}, delay=0.1)  # the control: a page the dialog hid
+        self.assertEqual(self.page_hidden(gone, clock)[0::2], (True, None))
+        self.assertEqual(len(gone.asked), 1)
+
+    def test_a_dialog_wait_whose_monitor_never_answers_or_answers_late_is_a_problem_not_a_pass(self):
+        clock = VirtualClock()
+        silent = TimedMonitor(clock, {'on_screen': False}, delay=1000)
+        hidden, monitor, problem = self.page_hidden(silent, clock)
+        self.assertFalse(hidden)
+        self.assertIn('did not answer', problem)
+        self.assertEqual(silent.asked, [3.0])
+        late = TimedMonitor(clock, {'on_screen': False}, delay=5, honours_timeout=False)  # hidden, but after the 3 s
+        hidden, monitor, problem = self.page_hidden(late, clock)
+        self.assertFalse(hidden)
+        self.assertIn('too late', problem)
+        self.assertEqual(monitor['on_screen'], False)  # what it showed is kept for the record
+
+    def test_a_dialog_step_whose_monitor_does_not_answer_is_a_failed_check_not_a_traceback(self):
+        class Silent(SavingWindow):
+            asked = []
+
+            def send(self, request, timeout=90):
+                if request.get('target') == 'monitor.viewport' and getattr(self, 'invoked', False):
+                    self.invoked = False  # only the first read after the dialog opened: the rest of the run answers
+                    Silent.asked.append(timeout)
+                    raise TimeoutError('timed out')
+                if request.get('command') == 'invoke':
+                    self.invoked = True
+                return super().send(request, timeout)
+
+        Silent.asked = []
+        steps = [OPEN_PROJECT, {'id': 'present.dialog.open', 'phase': 'present', 'ui': ['invoke', 'flow.open']}]
+        result = run_one_corpus(Silent, steps)
+        label = 'present.dialog.open: the dialog hid the native page'
+        found = [c for c in result['checks'] if c['check'] == label]
+        self.assertEqual(len(found), 1)
+        self.assertFalse(found[0]['ok'])
+        self.assertIn('did not answer', found[0]['detail'])
+        self.assertTrue(Silent.asked and all(0 < timeout <= 3 for timeout in Silent.asked), Silent.asked)
+
+    def test_a_job_get_that_never_answers_is_a_failed_check_bounded_by_the_60_seconds_not_a_traceback(self):
+        class Queued(SavingWindow):
+            asked = []
+
+            def op(self, request, timeout=90):
+                if request['op'] == 'scene.resources.resolve':
+                    return True, {'state': 'queued', 'job': 'j1'}
+                if request['op'] == 'job.get':
+                    Queued.asked.append(timeout)
+                    raise TimeoutError('timed out')  # a monitor that never answers: at once here, so nothing waits
+                return super().op(request, timeout)
+
+        Queued.asked = []
+        steps = [OPEN_PROJECT, {'id': 'resolve', 'phase': 'hot', 'op': {'op': 'scene.resources.resolve', 'scene': '$scene'}}]
+        result = run_one_corpus(Queued, steps)
+        found = [c for c in result['checks'] if c['check'] == 'resolve: the job finished']
+        self.assertEqual(len(found), 1)
+        self.assertFalse(found[0]['ok'])
+        self.assertIn('did not answer', found[0]['detail'])
+        self.assertTrue(Queued.asked and all(0 < timeout <= 60 for timeout in Queued.asked), Queued.asked)
+
+
+class LateAcknowledgement(GestureCase):
+    """`settle_commit`: a MATCHING acknowledgement counts only when the read that first saw it came within `ACK_SECONDS` of the
+    first read of the candidate's picture. A slow read cannot say when the acknowledgement really arrived, and a runner that
+    cannot know turns that into `unconfirmed`, never into a dedupe."""
+
+    def settle(self, ack_delay, read_cost):
+        clock = VirtualClock()
+        window = HostWindow(clock, self.STEP, base=self.BASE, candidate=self.CANDIDATE, release='dedupe', ack_delay=ack_delay)
+        window.shown = self.CANDIDATE
+        ok, up = window.op({'op': 'scene.pointer.up'})  # the release, at T: the acknowledgement is planned at T + ack_delay
+        info = native.picture(window.viewport())
+        window.read_cost = read_cost  # from now on every read takes that long
+        started = clock.now
+        with patch.object(native, 'time', clock), bounded(10):
+            tool = {'tool': self.STEP['tool'], 'space': self.STEP['space']}
+            settled = window.settle_commit('proof', 24, info, up['overlay'], tool)
+        self.spent = clock.now - started
+        return settled
+
+    def test_a_matching_acknowledgement_first_seen_after_the_ack_budget_is_unconfirmed_and_names_the_budget(self):
+        # reads at T+2 (the picture is first seen), +4.01 and +6.02 still show the previous revision; the acknowledgement is
+        # there at T+7, and the read that sees it ends at T+8.03: 6 s after the picture, past the 5 s
+        settled = self.settle(ack_delay=7.0, read_cost=2.0)
+        self.assertIsNone(settled['outcome'])
+        self.assertIn('unconfirmed', settled['problem'])
+        self.assertIn(f'{native.ACK_SECONDS:g} s budget', settled['problem'])
+        self.assertEqual(settled['observed']['ack_problems'], [])  # the last read DID match: it came too late to count
+        self.assertEqual(settled['observed']['shown_request'], self.CANDIDATE[0])
+
+    def test_a_matching_acknowledgement_first_seen_within_the_ack_budget_is_a_dedupe_however_slow_the_reads(self):
+        settled = self.settle(ack_delay=3.0, read_cost=2.0)  # the read at T+4.01 sees it: 2 s after the picture
+        self.assertEqual(settled['outcome'], 'deduped')
+        self.assertIsNone(settled['problem'])
+
+    def test_an_acknowledgement_the_page_never_matches_is_still_given_up_after_the_budget(self):
+        settled = self.settle(ack_delay=10_000.0, read_cost=0.5)
+        self.assertIsNone(settled['outcome'])
+        self.assertIn('never acknowledged', settled['problem'])
+        self.assertLess(self.spent, native.ACK_SECONDS + 1.5)
 
 
 if __name__ == '__main__':

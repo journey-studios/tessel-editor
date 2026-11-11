@@ -54,9 +54,14 @@ new commit, recorded, and applies to the next run):
 Exit 0 = no kind regressed and none inconclusive, 1 = a kind regressed or a refusal, 3 = BLOCKED/INVALID,
 4 = INCONCLUSIVE (or A/A).
 
-Ownership (nothing waits; a taken lock is one REFUSED line, exit 1, nothing written): `--out/.ab.lock` makes one run per
-`--out` in both phases, and a build also takes the lock of the CHECKOUT (`harness.checkout_lock_path`). A checkout git
-cannot name (`harness.git_identity` unavailable) and a baseline that names no commit are REFUSED, `--allow-dirty` included.
+Ownership (nothing waits; a taken lock is one REFUSED line, exit 1, nothing written): `--out/harness.OUT_LOCK`
+(`.gizmo-perf.lock`, shared by every runner, so a `run.py`, `native.py` or `mutate.py` on the same `--out` is refused too)
+makes one run per `--out` in both phases, and a build also takes the lock of the CHECKOUT (`harness.checkout_lock_path`).
+The lock excludes simultaneous runs, not sequential ones: keep one `--out` per runner. A checkout git cannot name
+(`harness.git_identity` unavailable) and a baseline that names no commit are REFUSED, `--allow-dirty` included. Every git
+this runner starts (the identity, `ls-tree`, `archive`, `show`, `diff`, `apply`) runs under `harness.git_env`: a `GIT_DIR` or
+`GIT_WORK_TREE` exported by the caller would otherwise make git answer for another repository and the baseline archive, the
+production manifests and the identity would describe it.
 Every child gets `harness.child_env`: no inherited `TESSEL_GIZMO_PERF_*`; the runner sets the report path and
 `CALIBRATE=1` itself (`run_env`) and records what it dropped. Before a measure phase writes anything, what an earlier
 attempt left in `--out` (manifest, kept reports, verdicts) is moved to `--out/attempts/<utc>-<status>/`
@@ -78,7 +83,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import harness  # noqa: E402
 
 ROOT = harness.ROOT
-OUT_LOCK = '.ab.lock'  # in --out: held by whichever phase owns that directory
 BASELINE = 'cbe9e1b393861febf073633fbbaa0da9857780b6'
 TEST = 'scene_gizmo_perf_budget'
 ONE_TEST = 'the_gizmo_handlers_stay_within_their_budget_cold_and_hot_on_every_corpus'
@@ -141,10 +145,16 @@ def blob_id(data):
     return hashlib.sha1(b'blob %d\0' % len(data) + data).hexdigest()
 
 
+def git_run(args, cwd, **kwargs):
+    """`subprocess.run(['git', *args], cwd=cwd, check=True, **kwargs)` under `harness.git_env()`: the one way this runner
+    starts git. Without it a `GIT_DIR`/`GIT_WORK_TREE` of the caller makes git ignore `cwd` and answer for another repository
+    (a baseline archive of it, its production manifest). A failing git still raises `CalledProcessError`, as before."""
+    return subprocess.run(['git', *args], cwd=cwd, env=harness.git_env(), check=True, **kwargs)
+
+
 def git_prod_manifest(ref, root=ROOT):
     """{path: git blob id} of the production files of `ref`."""
-    listing = subprocess.run(['git', 'ls-tree', '-r', ref], cwd=root, stdout=subprocess.PIPE, text=True,
-                             check=True).stdout
+    listing = git_run(['ls-tree', '-r', ref], root, stdout=subprocess.PIPE, text=True).stdout
     out = {}
     for line in listing.splitlines():
         meta, path = line.split('\t', 1)
@@ -180,7 +190,7 @@ def make_baseline(ref, workdir, root=ROOT, candidate='HEAD'):
     """
     src = Path(workdir) / 'baseline-src'
     src.mkdir()
-    archive = subprocess.run(['git', 'archive', ref], cwd=root, stdout=subprocess.PIPE, check=True)
+    archive = git_run(['archive', ref], root, stdout=subprocess.PIPE)
     subprocess.run(['tar', '-x', '-C', str(src)], input=archive.stdout, check=True)
     pinned = git_prod_manifest(ref, root)
     before = dir_prod_manifest(src)
@@ -188,24 +198,21 @@ def make_baseline(ref, workdir, root=ROOT, candidate='HEAD'):
         raise Refused(f'the archive of {ref} is not its production tree: {changed_paths(before, pinned)[:5]}')
     # 1. test-only instrument, from the candidate.
     for path in INSTRUMENT_TESTS:
-        piece = subprocess.run(['git', 'archive', candidate, '--', path], cwd=root, stdout=subprocess.PIPE,
-                               check=True).stdout
+        piece = git_run(['archive', candidate, '--', path], root, stdout=subprocess.PIPE).stdout
         subprocess.run(['tar', '-x', '-C', str(src)], input=piece, check=True)
     # 2. the counter module and its declaration, only when the pinned ref does not have them.
     if PROBE_FILE not in pinned:
-        probe = subprocess.run(['git', 'show', f'{candidate}:{PROBE_FILE}'], cwd=root, stdout=subprocess.PIPE,
-                               check=True).stdout
+        probe = git_run(['show', f'{candidate}:{PROBE_FILE}'], root, stdout=subprocess.PIPE).stdout
         (src / PROBE_FILE).write_bytes(probe)
-        numstat = subprocess.run(['git', 'diff', '--numstat', ref, candidate, '--', PROBE_DECL_FILE], cwd=root,
-                                 stdout=subprocess.PIPE, text=True, check=True).stdout.split()
-        patch = subprocess.run(['git', 'diff', '--binary', ref, candidate, '--', PROBE_DECL_FILE], cwd=root,
-                               stdout=subprocess.PIPE, check=True).stdout
+        numstat = git_run(['diff', '--numstat', ref, candidate, '--', PROBE_DECL_FILE], root, stdout=subprocess.PIPE,
+                          text=True).stdout.split()
+        patch = git_run(['diff', '--binary', ref, candidate, '--', PROBE_DECL_FILE], root, stdout=subprocess.PIPE).stdout
         added = [l[1:] for l in patch.decode().splitlines() if l.startswith('+') and not l.startswith('+++')]
         removed = [l for l in patch.decode().splitlines() if l.startswith('-') and not l.startswith('---')]
         if numstat[:2] != ['1', '0'] or added != [PROBE_DECL_LINE] or removed:
             raise Refused(f'`{PROBE_DECL_FILE}` differs from {ref} by more than `{PROBE_DECL_LINE}`: a production '
                           'change cannot be overlaid onto the baseline')
-        subprocess.run(['git', 'apply', '--whitespace=nowarn', '-'], cwd=src, input=patch, check=True)
+        git_run(['apply', '--whitespace=nowarn', '-'], src, input=patch)
     after = dir_prod_manifest(src)
     contaminated = [p for p in changed_paths(before, after) if p not in ALLOWED_OVERLAY]
     if contaminated:
@@ -468,18 +475,17 @@ def main(argv=None):
     out = Path(args.out)
     # Ownership first, before anything in the checkout or in `--out` is read, written or removed (a refusal's own
     # manifest included), and kept until this returns: a build owns the CHECKOUT too (nothing else may build from it or
-    # put a mutant in its tree meanwhile), every phase owns `--out/.ab.lock`. Neither lock waits: a taken one is ONE
-    # `REFUSED` line, exit 1, and nothing written.
-    owns = ('manifest.json, manifest.build.json, the round, warmup and verdict files, exes/, baseline-src/ and '
-            'attempts/')
-    with harness.guarded(out, OUT_LOCK, 'ab.py', owns, builds=args.phase == 'build') as refusal:
+    # put a mutant in its tree meanwhile), every phase owns `--out/harness.OUT_LOCK`, the lock every runner shares. Neither
+    # lock waits: a taken one is ONE `REFUSED` line, exit 1, and nothing written. This runner keeps manifest.json,
+    # manifest.build.json, the round, warmup and verdict files, exes/, baseline-src/ and attempts/ in `--out`.
+    with harness.guarded(out, 'ab.py', builds=args.phase == 'build') as refusal:
         if refusal:
             return harness.die(1, refusal, None)
         return run_phase(args, out)
 
 
 def run_phase(args, out):
-    """The phase `args.phase` over `out`, which the caller owns (`out/.ab.lock` is held). Returns the exit code."""
+    """The phase `args.phase` over `out`, which the caller owns (`out/harness.OUT_LOCK` is held). Returns the exit code."""
     manifest = {'suite': 'gizmo-perf-ab', 'phase': args.phase, 'utc_start': harness.utc(), 'cwd': str(ROOT),
                 'command': sys.argv, 'baseline': args.baseline, 'candidate': harness.git_identity(),
                 'toolchain': harness.toolchain(), 'rounds': args.rounds,

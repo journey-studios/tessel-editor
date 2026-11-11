@@ -8,9 +8,11 @@ Two phases in two invocations, because a release build leaves the machine loaded
 refuses a loaded machine: a runner that built and then measured in one process would block itself. There is no
 cooldown, no sleep and no polling between them: run `measure` when the machine is quiet, or get BLOCKED.
 
-Ownership (both phases, nothing waits): `--out/.run.lock` makes one run per `--out`, and a `build` also takes the lock of
-the CHECKOUT (`harness.checkout_lock_path`, a file under /tmp), so no two builds, and no build and a mutant in the tree,
-overlap. A taken lock is one REFUSED line, exit 1, and nothing written. Before anything else a checkout git cannot name
+Ownership (both phases, nothing waits): `--out/harness.OUT_LOCK` (`.gizmo-perf.lock`, the one name every runner shares, so a
+`mutate.py`, `ab.py` or `native.py` on the same `--out` is refused too) makes one run per `--out`, and a `build` also takes
+the lock of the CHECKOUT (`harness.checkout_lock_path`, a file under /tmp), so no two builds, and no build and a mutant in
+the tree, overlap. A taken lock is one REFUSED line, exit 1, and nothing written. The lock excludes simultaneous runs, not
+sequential ones: keep one `--out` per runner. Before anything else a checkout git cannot name
 (`harness.git_identity` unavailable) is REFUSED, `--allow-dirty` included. The child runs under `harness.child_env`: no
 inherited `TESSEL_GIZMO_PERF_*` (so an exported `..._CALIBRATE=1` or `..._BLESS=1` never reaches it) and, for the build,
 no `CARGO_TARGET_DIR`/`TESSEL_CARGO_LANE`; `manifest.run.env` is exactly what the runner set, `env_dropped` what it took away.
@@ -59,9 +61,6 @@ EXPECTED_TESTS = [
     'the_budget_detector_rejects_one_extra_plan_of_work_per_handler_call',
     'the_budget_detector_rejects_a_millisecond_of_delay_per_handler_call',
 ]
-
-
-OUT_LOCK = '.run.lock'  # in --out: held by whichever run (build or measure) owns that directory
 
 
 def build():
@@ -184,16 +183,17 @@ def main(argv=None):
     out = Path(args.out)
     # The checkout (a build only) and then `--out` are owned before anything in either is read, written or removed,
     # a refusal's own manifest included, and until this returns (the `with` is the `finally`: also on SIGTERM/SIGINT).
-    # Neither lock waits: a run that finds one taken prints ONE `REFUSED` line, exits 1 and writes nothing.
-    owns = 'manifest.json, manifest.build.json, build.json, report.json, stdout.txt, stderr.txt and exes/'
-    with harness.guarded(out, OUT_LOCK, 'run.py', owns, builds=args.phase == 'build') as refusal:
+    # Neither lock waits: a run that finds one taken prints ONE `REFUSED` line, exits 1 and writes nothing. The lock of
+    # `--out` is the one every runner shares (`harness.OUT_LOCK`): this runner keeps manifest.json, manifest.build.json,
+    # build.json, report.json, stdout.txt, stderr.txt and exes/ there, and no other runner may run over them meanwhile.
+    with harness.guarded(out, 'run.py', builds=args.phase == 'build') as refusal:
         if refusal:
             return harness.die(1, refusal, None)
         return run_phase(args, out)
 
 
 def run_phase(args, out):
-    """The phase `args.phase` over `out`, which the caller owns (`out/.run.lock` is held). Returns the exit code."""
+    """The phase `args.phase` over `out`, which the caller owns (`out/harness.OUT_LOCK` is held). Returns the exit code."""
     manifest = {'suite': 'gizmo-perf-core', 'phase': args.phase, 'label': args.label, 'utc_start': harness.utc(),
                 'cwd': str(ROOT), 'command': sys.argv, 'calibrate': args.calibrate,
                 'identity': harness.git_identity(), 'toolchain': harness.toolchain(), 'status': 'ABORTED',

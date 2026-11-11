@@ -68,14 +68,18 @@ makes it INVALID (exit 3), and a run that FAILED anyway keeps the status FAIL an
 Every wait and the whole corpus are finite. Exit 0 only when every functional check passed; 1 on a failure or a refusal;
 3 BLOCKED/INVALID.
 
-OWNERSHIP. `--out/.native.lock` is held by whichever phase runs over that directory, and `build` also holds the lock of the
-CHECKOUT (`harness.checkout_lock_path`, one file under /tmp per checkout) before it reads or writes anything: no other
-run may build from the checkout, or put a mutant in its tree, meanwhile. Neither lock waits: a taken one is ONE `REFUSED`
-line (exit 1) and nothing is written, the refusal's own manifest included.
+OWNERSHIP. `--out/harness.OUT_LOCK` (`.gizmo-perf.lock`, the one name every runner shares) is held by whichever phase of
+whichever runner runs over that directory, and `build` also holds the lock of the CHECKOUT (`harness.checkout_lock_path`, one
+file under /tmp per checkout) before it reads or writes anything: no other run may build from the checkout, or put a mutant
+in its tree, meanwhile. Neither lock waits: a taken one is ONE `REFUSED` line (exit 1) and nothing is written, the refusal's
+own manifest included. The lock excludes simultaneous runs, not sequential ones: keep one `--out` per runner.
 
 GIT. A checkout git cannot name (no head, no tree, a failing or slow git) is REFUSED before anything is built or started,
 `--allow-dirty` included: it is not a dirty tree (`harness.git_identity` is strict for decisions; `harness.out` stays
-tolerant for the telemetry of a report). A runtime whose sources git cannot list is not "fresh" either.
+tolerant for the telemetry of a report). A runtime whose sources git cannot list is not "fresh" either. Every git this runner
+starts runs under `harness.git_env` (no `GIT_DIR`/`GIT_WORK_TREE` of the caller), and the identity's `dirty` covers the
+runtime sources (`runtime/`; `runtime/dist` is ignored by git), so a build made over local changes to them cannot be filed
+under HEAD while `runtime/dist` was rebuilt from them.
 
 THE ENVIRONMENT. The editor (and the build) never inherits a `TESSEL_GIZMO_PERF_*` switch from the caller, and the build
 no `CARGO_TARGET_DIR`/`TESSEL_CARGO_LANE` (`harness.child_env`); `os.environ` itself is left as it was.
@@ -106,7 +110,6 @@ ROOT = harness.ROOT
 FIXTURES = ROOT / 'docs/migration/fixtures/gizmo-perf'
 TOLERANCE = 1e-9
 CORPUS_TIMEOUT_S = 1200
-OUT_LOCK = '.native.lock'  # in --out: held by whichever phase owns that directory
 LIMITS = [
     "the compositor / GPU scan-out is not observable; directed-scene pictures carry no presented-frame stamp (the session trace's frames_total is 0): `presented` is NOT OBSERVABLE here, so core->host->runtime is measured, the last hop is not",
     "a socket reply and the page's frame.done are not proof of painting; the picture hash is the runtime read-back and a picture only counts when its request id is newer than the one before the command (the one exception: a release whose plan equals its drawn candidate's is not drawn again by the host, so the monitor keeps showing the candidate's own picture and the step records `commit_picture: deduped`)",
@@ -189,6 +192,7 @@ def new_picture(state, scene, frame, after):
     return done, info
 
 
+QUERY_FLOOR_SECONDS = 0.05  # what a poll is given when NO time is left for it (a wait always makes at least one poll)
 ACK_SECONDS = 5  # how long a step waits for the page to acknowledge ITS overlay (the wait was always 5 s)
 COMMIT_SECONDS = 30  # how long a release may take to leave a legitimate picture on the monitor (the wait was always 30 s)
 COMMIT_QUIET_SECONDS = 0.25  # the candidate's own picture must stay the only one this long before a release is "deduped"
@@ -292,14 +296,37 @@ def ack_mismatch(expected, ack):
 def overlay_ack(window, request, overlay, tool=None, seconds=None):
     """`(ack, problems, expected)`: polls the page's acknowledgement until it belongs to this step (`ack_mismatch` is
     empty) or `seconds` (`ACK_SECONDS`) pass. On expiry `ack` is the LAST one seen (or None) and `problems` says what
-    differs from `expected`, so a stale acknowledgement is a failing check that shows both sides, not a recorded value."""
+    differs from `expected`, so a stale acknowledgement is a failing check that shows both sides, not a recorded value.
+
+    `seconds` binds EVERY query, like `Window.settle`: each `viewport` is given the time that is left (a page that never
+    answers used to hold a 5 s wait for the 90 s default), and the deadline is judged again AFTER the answer: an
+    acknowledgement that matches but ARRIVES after `seconds` is a timeout, never an acknowledgement (`problems` says so, with
+    the budget; `ack` keeps what it showed), because the promise is "acknowledged within `ACK_SECONDS`". A query that times
+    out (`socket.timeout`, `TimeoutError`) is a recorded problem too, never a traceback. At least one poll is always made,
+    also with no budget left (it is then given `QUERY_FLOOR_SECONDS`); once a poll was made, a budget that ran out between two
+    polls ends the wait without another."""
     seconds = ACK_SECONDS if seconds is None else seconds
     expected = ack_expectation(request, overlay, tool)
-    deadline = time.monotonic() + seconds
+    started = time.monotonic()
+    deadline = started + seconds
+    ack, problems, polled = None, [], False
     while True:
-        ack = (window.viewport().get('overlay') or {}).get('drawn')
+        left = deadline - time.monotonic()
+        if polled and left <= 0:
+            return ack, problems, expected
+        try:
+            state = window.viewport(timeout=left if left > 0 else QUERY_FLOOR_SECONDS)
+        except (socket.timeout, TimeoutError):  # the page did not answer in the time that was left
+            return ack, [f'the page did not answer within the {seconds:g} s budget for the acknowledgement (a timeout, '
+                         'not an acknowledgement)', *problems], expected
+        polled = True
+        ack = (state.get('overlay') or {}).get('drawn')
         problems = ack_mismatch(expected, ack)
-        if not problems or time.monotonic() >= deadline:
+        now = time.monotonic()
+        if now > deadline and not problems:
+            problems = [f'the acknowledgement matched but arrived {now - started:.1f} s after the request, past the '
+                        f'{seconds:g} s budget: too late to count (a timeout, not an acknowledgement)']
+        if not problems or now >= deadline:
             return ack, problems, expected
         time.sleep(0.02)
 
@@ -328,8 +355,10 @@ def history_offset(want_undo, got_undo):
 def runtime_source_tree():
     """The tree id of `HEAD:runtime`, or `None` when git cannot say. `git rev-parse` prints what it was given even
     when it fails (and `harness.out` turns a failure into a text), so stdout alone is not an answer: a non-zero exit, a
-    timeout, a command that cannot start or an empty output is `None`, never a value two records could agree on."""
-    done = harness.run_bounded(['git', 'rev-parse', 'HEAD:runtime'], timeout=30)
+    timeout, a command that cannot start or an empty output is `None`, never a value two records could agree on. It runs
+    under `harness.git_env(harness.child_env())`: the environment every child already got (no `TESSEL_GIZMO_PERF_*`) and,
+    as `git_env` adds, no `GIT_DIR`/`GIT_WORK_TREE` of the caller, which would name the runtime tree of ANOTHER repository."""
+    done = harness.run_bounded(['git', 'rev-parse', 'HEAD:runtime'], env=harness.git_env(harness.child_env()), timeout=30)
     tree = done.stdout.strip()
     if done.timed_out or done.error or done.returncode != 0 or not tree:
         return None
@@ -584,8 +613,11 @@ class Window:
         wait ends by what is observed, never by a timeout turned into an outcome: a read that is not converged (a redraw
         in flight, or none yet) restarts the quiet period; an older picture, or the candidate's request with other pixels,
         fails at once; `seconds` bounds the whole wait (`outcome` None, `ms` None); a candidate picture that stays but whose
-        committed state the page never acknowledges within `ACK_SECONDS` is `unconfirmed`, not deduped. Each query gets the
-        time that is left, like `settle`. The release's own reply is only written after the host handled it (the automation
+        committed state the page never acknowledges within `ACK_SECONDS` of the first read that showed that picture is
+        `unconfirmed`, not deduped, and so is one whose MATCHING acknowledgement was first SEEN after that budget (a slow
+        query: when the acknowledgement arrived is unknown, and a runner that cannot know turns that into `unconfirmed`, not
+        into a pass); a matching acknowledgement seen in time stays in time whatever the later reads cost. Each query gets
+        the time that is left, like `settle`. The release's own reply is only written after the host handled it (the automation
         server answers in order on the main thread, after `Workstation::execute` ran the monitor sync), so the first read
         after it already shows whether the host asked for a picture; the quiet period and the acknowledgement are what
         stand in for that reading of the code, and they say so in `observed`.
@@ -611,6 +643,7 @@ class Window:
                     'observed': observed}
 
         first_at = None  # when the candidate's own picture was first seen converged (and nothing newer since)
+        acked_at = None  # when a read FIRST showed the page acknowledging the committed state (within the same `first_at`)
         while True:
             left = deadline - time.perf_counter()
             if left <= 0:
@@ -635,7 +668,7 @@ class Window:
                 return result(None, ms, f'the monitor converged on {what}: candidate {candidate.get("request")}/'
                                         f'{candidate.get("hash")}, now {seen["info"]["request"]}/{seen["info"]["hash"]}')
             if kind != 'candidate':
-                first_at = None  # in flight, or nothing converged: a redraw may still be coming, the quiet period restarts
+                first_at = acked_at = None  # in flight, or nothing converged: a redraw may still come; the quiet period restarts
                 time.sleep(0.01)
                 continue
             if first_at is None:
@@ -645,11 +678,21 @@ class Window:
                                               'acknowledgement of the committed state to wait for')
             seen['ack'] = (seen['state'].get('overlay') or {}).get('drawn')
             seen['ack_problems'] = ack_mismatch(expected, seen['ack'])
-            if not seen['ack_problems'] and now - first_at >= quiet:
-                return result('deduped', first_ms)
-            if seen['ack_problems'] and now - first_at >= ACK_SECONDS:
-                return result(None, first_ms, 'unconfirmed: the candidate\'s picture stayed on the monitor but the page '
-                                              'never acknowledged the committed state: ' + '; '.join(seen['ack_problems']))
+            if seen['ack_problems']:
+                acked_at = None
+                if now - first_at >= ACK_SECONDS:
+                    return result(None, first_ms, 'unconfirmed: the candidate\'s picture stayed on the monitor but the page '
+                                                  'never acknowledged the committed state: ' + '; '.join(seen['ack_problems']))
+            else:
+                if acked_at is None:
+                    acked_at = now  # the first read that saw it: a slow read cannot say when it really arrived
+                if acked_at - first_at > ACK_SECONDS:
+                    return result(None, first_ms, (
+                        f'unconfirmed: the page acknowledged the committed state only {acked_at - first_at:.1f} s after '
+                        f'the candidate\'s picture was first seen, past the {ACK_SECONDS:g} s budget (the read that saw it '
+                        'came after the budget, so when it arrived is unknown): too late to count, not deduped'))
+                if now - first_at >= quiet:
+                    return result('deduped', first_ms)
             time.sleep(0.01)
 
     def stop(self):
@@ -674,6 +717,33 @@ def depths(window):
 
 def picture_hash(state):
     return (state.get('last_frame') or {}).get('hash')
+
+
+def page_hidden_by_dialog(window, seconds=3):
+    """`(hidden, monitor, problem)`: polls the monitor for `seconds` until the native page is off screen or hidden, which
+    an open dialog must make it (AGENTS.md, `Workflow::has_dialog`). Bounded like `Window.settle`: each query gets the time
+    that is left (a monitor that never answers used to hold the 3 s for 90), an answer that arrives after the deadline is
+    too late to count (never `hidden`), and a query that times out is a `problem`, not a traceback. At least one poll is
+    always made. `monitor` is the last state seen and `problem` is None unless a timeout decided the answer."""
+    deadline = time.monotonic() + seconds
+    monitor, polled = {}, False
+    while True:
+        left = deadline - time.monotonic()
+        if polled and left <= 0:
+            return False, monitor, None
+        try:
+            monitor = window.viewport(timeout=left if left > 0 else QUERY_FLOOR_SECONDS)
+        except (socket.timeout, TimeoutError):  # the monitor did not answer in the time that was left
+            return False, monitor, f'the monitor did not answer within the {seconds:g} s budget (a timeout, not a verdict)'
+        polled = True
+        hidden = monitor.get('on_screen') is False or bool(monitor.get('hidden'))
+        if time.monotonic() > deadline:
+            return False, monitor, (f'the monitor answered after the {seconds:g} s budget, too late to count (a timeout, '
+                                    f'not a verdict; it then showed on_screen={monitor.get("on_screen")!r}, '
+                                    f'hidden={monitor.get("hidden")!r})')
+        if hidden or time.monotonic() >= deadline:
+            return hidden, monitor, None
+        time.sleep(0.05)
 
 
 def author_saved_project(binary, variables, corpus_name, scratch, cleanup_errors=None):
@@ -753,13 +823,23 @@ def run_corpus(binary, journey, golden, name, out, notes):
             if not isinstance(data, dict) or data.get('state') != 'queued':
                 return True
             deadline = time.time() + 60
+            status, finished, timed_out = None, False, False
             while time.time() < deadline:
-                ok, status = window.op({'op': 'job.get', 'job': data['job']})
+                try:
+                    # Each poll gets the time that is left, not the 90 s default: a `job.get` that never answers would
+                    # hold this 60 s wait for 90 s more, and a timeout is a failed check, not a traceback.
+                    ok, status = window.op({'op': 'job.get', 'job': data['job']},
+                                           max(deadline - time.time(), QUERY_FLOOR_SECONDS))
+                except (socket.timeout, TimeoutError):
+                    timed_out = True
+                    break
                 if ok and status['state'] in ('succeeded', 'failed', 'cancelled'):
+                    finished = True
                     break
                 time.sleep(0.03)
-            else:
-                return check(f'{step}: the job finished', False)
+            if not finished:
+                return check(f'{step}: the job finished', False,
+                             'a `job.get` did not answer in the time that was left' if timed_out else '')
             if status['state'] != 'succeeded':
                 return check(f'{step}: the job succeeded', False, status)
             ok, commit = window.op({'op': 'job.commit', 'job': data['job']})
@@ -812,15 +892,9 @@ def run_corpus(binary, journey, golden, name, out, notes):
                     # The native page paints above every GPUI element, so an open dialog must hide it (AGENTS.md,
                     # `Workflow::has_dialog`). Recorded AND judged: a page that stayed on screen is a failed check
                     # (it was recorded and never read before).
-                    deadline = time.monotonic() + 3
-                    while True:
-                        monitor = window.viewport()
-                        hidden = monitor.get('on_screen') is False or bool(monitor.get('hidden'))
-                        if hidden or time.monotonic() >= deadline:
-                            break
-                        time.sleep(0.05)
+                    hidden, monitor, problem = page_hidden_by_dialog(window)
                     record['page_hidden_by_dialog'] = hidden
-                    check(f'{sid}: the dialog hid the native page', hidden, json.dumps(
+                    check(f'{sid}: the dialog hid the native page', hidden, problem or json.dumps(
                         {key: monitor.get(key) for key in ('on_screen', 'hidden')}))
             elif step.get('wait') == 'presented':
                 ms, state, info = window.settle(shown['scene'], journey['frame'], after=marks.get('seek'))
@@ -1116,17 +1190,17 @@ def main(argv=None):
     out = Path(args.out)
     # Ownership first, before anything in the checkout or in `--out` is read, written or removed (a refusal's own
     # manifest included), and kept until this returns: a build owns the CHECKOUT too (nothing else may build from it
-    # or put a mutant in its tree meanwhile), every phase owns `--out/.native.lock`. Neither lock waits: a taken one is
-    # ONE `REFUSED` line, exit 1, and nothing written.
-    owns = 'manifest.json, manifest.build.json, build.json, report.json and exes/'
-    with harness.guarded(out, OUT_LOCK, 'native.py', owns, builds=args.phase == 'build') as refusal:
+    # or put a mutant in its tree meanwhile), every phase owns `--out/harness.OUT_LOCK`, the lock every runner shares.
+    # Neither lock waits: a taken one is ONE `REFUSED` line, exit 1, and nothing written. This runner keeps manifest.json,
+    # manifest.build.json, build.json, report.json and exes/ in `--out`.
+    with harness.guarded(out, 'native.py', builds=args.phase == 'build') as refusal:
         if refusal:
             return harness.die(1, refusal, None)
         return run_phase(args, out)
 
 
 def run_phase(args, out):
-    """The phase `args.phase` over `out`, which the caller owns (`out/.native.lock` is held). Returns the exit code."""
+    """The phase `args.phase` over `out`, which the caller owns (`out/harness.OUT_LOCK` is held). Returns the exit code."""
     manifest_path = out / ('manifest.build.json' if args.phase == 'build' else 'manifest.json')
     manifest = {'suite': 'gizmo-perf-native', 'phase': args.phase, 'utc_start': harness.utc(), 'cwd': str(ROOT),
                 'limits': list(LIMITS), 'identity': harness.git_identity(), 'toolchain': harness.toolchain(),
