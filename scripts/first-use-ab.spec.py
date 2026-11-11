@@ -248,6 +248,19 @@ class VerdictTests(unittest.TestCase):
         self.assertIn("not closed", self.verdict([120, 120, 120, 120], [100, 100, 100, 100]))
         self.assertIn("under 62.5 ms in every first play", self.verdict([120, 120, 120, 120], [50, 50, 50, 50]))
 
+    def test_a_pair_with_an_invalid_session_is_not_read_even_when_its_numbers_are_a_gain(self):
+        runs = pairs([90, 95, 88, 92], [60, 70, 80, 75])
+        self.assertIn("LOCAL BENEFIT", ab.verdict(ab.pair_rows(runs, "preupload", 196), "preupload", 196))
+        for index in (1, 3):  # the `on` session of the first two pairs did not run to its end: its numbers mean nothing
+            runs[index]["valid"] = False
+            runs[index]["invalid_reasons"] = ["the window did not play to its end"]
+        rows = ab.pair_rows(runs, "preupload", 196)
+        self.assertEqual([r["valid"] for r in rows if r["play"] == "first"], [False, False, True, True])
+        text = ab.verdict(rows, "preupload", 196)
+        self.assertTrue(text.startswith("INCONCLUSIVE"), text)
+        self.assertIn("valid sessions in only 2 of 4", text)
+        self.assertNotIn("LOCAL BENEFIT", text)
+
     def test_fewer_than_four_pairs_is_inconclusive(self):
         rows = ab.pair_rows(pairs([90, 95], [60, 60]), "preupload", 196)
         self.assertIn("INCONCLUSIVE", ab.verdict(rows, "preupload", 196))

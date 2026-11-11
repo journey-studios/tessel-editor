@@ -225,12 +225,13 @@ def pair_rows(runs, factor, entry):
         if set(sides) != set(ARMS):
             continue
         control, on = sides["control"], sides["on"]
-        comparable = control["valid"] and on["valid"] and control["quiet_class"] == "quiet" and on["quiet_class"] == "quiet" \
+        valid = control["valid"] and on["valid"]
+        comparable = valid and control["quiet_class"] == "quiet" and on["quiet_class"] == "quiet" \
             and abs((control["external_median_cores"] or 0) - (on["external_median_cores"] or 0)) <= PAIR_MAX_DELTA_CORES
         for play in sorted(set(control["plays"]) & set(on["plays"])):
             pc, po = control["plays"][play], on["plays"][play]
             rows.append({
-                "pair": pair, "play": play, "comparable": comparable, "order": [control["order_index"], on["order_index"]],
+                "pair": pair, "play": play, "valid": valid, "comparable": comparable, "order": [control["order_index"], on["order_index"]],
                 "entry_gap_ms": {"control": target_gap(pc, factor, entry), "on": target_gap(po, factor, entry)},
                 "png_entry_gap_median_ms": {arm: _median_gap(p["png_entries"]) for arm, p in (("control", pc), ("on", po))},
                 "cut_entry_gap_median_ms": {arm: _median_gap(p["cut_entries"]) for arm, p in (("control", pc), ("on", po))},
@@ -257,9 +258,11 @@ def verdict(rows, factor, entry):
     spec = FACTORS[factor]
     if len(first) < 4:
         return f"INCONCLUSIVE: {len(first)} first-play pair(s); the rule needs 4."
-    usable = [r for r in first if r["entry_gap_ms"]["control"] is not None and r["entry_gap_ms"]["on"] is not None]
+    # Only a pair whose two sessions are VALID is read: a session that did not run to its end, lost an asset or never did the factor's work has numbers
+    # that mean nothing, and they must not make a "LOCAL BENEFIT" or a "SHIFTED".
+    usable = [r for r in first if r["valid"] and r["entry_gap_ms"]["control"] is not None and r["entry_gap_ms"]["on"] is not None]
     if len(usable) < 4:
-        return f"INCONCLUSIVE: {spec['target']} was shown in both arms in only {len(usable)} of the first plays."
+        return f"INCONCLUSIVE: {spec['target']} was shown in both arms of valid sessions in only {len(usable)} of {len(first)} first plays."
     better = [r for r in usable if r["entry_gap_ms"]["control"] - r["entry_gap_ms"]["on"] >= BUDGET_DELTA_MS]
     grew = [r for r in usable if r["pre_cut_excess_ms"]["on"] - r["pre_cut_excess_ms"]["control"] > PRE_CUT_EXCESS_MS]
     comparable = sum(1 for r in usable if r["comparable"])

@@ -17,35 +17,50 @@ def redact(text, limit=240):
     return re.sub(r"/[^:'\"\n]+", "<path>", text)[:limit]
 
 
-def session_validity(session):
-    """(valid, [reasons]) of one session: functional validity, never a performance judgement."""
+def failed_assets(events):
+    """The `asset_state` events in which the page says an asset failed to load: a play that lost a picture's source is not the play that was asked for."""
+    return [e for e in events if e["kind"] == "asset_state" and (e.get("fields") or {}).get("state") == "failed"]
+
+
+def core_validity(record, mode, unfinished):
+    """The ONE functional validity of every experiment: the session ran to its end (`plays_ok`; `unfinished` says what that means for the experiment),
+    no asset failed to load, no request answered with an error status, nothing was lost, the host ran the mode that was asked and the editor was alive.
+    Returns the reasons it is not valid; an experiment adds only what is its own (the factor ran, the warm ran, the page account)."""
     reasons = []
-    mode = session["mode"]
-    status = session.get("status") or {}
+    status = record.get("status") or {}
     asset_io = status.get("asset_io") or {}
-    if session.get("error"):
-        reasons.append(f"error: {redact(session['error'])}")
-    gone = session.get("editor_exit") or {}
+    if record.get("error"):
+        reasons.append(f"error: {redact(record['error'])}")
+    gone = record.get("editor_exit") or {}
     if gone and not gone.get("alive", True):
         reasons.append(f"the editor process ended by itself (return code {gone.get('returncode_before_stop')})")
     if asset_io.get("mode") != mode:
         reasons.append(f"the host reports mode {asset_io.get('mode')!r}, the arm asked for {mode!r}")
     pool = asset_io.get("pool") or {}
-    if mode == "async":
-        if (pool.get("saturated") or 0) > 0:
-            reasons.append(f"the read queue saturated {pool['saturated']} time(s)")
-        if (pool.get("panicked") or 0) > 0:
-            reasons.append("a read panicked")
-        if (pool.get("stale") or 0) > 0:
-            reasons.append(f"{pool['stale']} read(s) were answered stale during a play")
-    if session.get("events_lost"):
-        reasons.append(f"{session['events_lost']} trace event(s) were lost")
-    if not session.get("plays_ok", False):
-        reasons.append("a play did not finish normally")
-    bad = [e for e in session.get("events", []) if e["kind"] == "asset_io" and e["fields"].get("status") not in ACCEPTABLE_STATUS]
+    if (pool.get("saturated") or 0) > 0:
+        reasons.append(f"the read queue saturated {pool['saturated']} time(s)")
+    if (pool.get("panicked") or 0) > 0:
+        reasons.append("a read panicked")
+    if (pool.get("stale") or 0) > 0:
+        reasons.append(f"{pool['stale']} read(s) were answered stale during a play")
+    if record.get("events_lost"):
+        reasons.append(f"{record['events_lost']} trace event(s) were lost")
+    if not record.get("plays_ok", False):
+        reasons.append(unfinished)
+    events = record.get("events", [])
+    bad = [e for e in events if e["kind"] == "asset_io" and e["fields"].get("status") not in ACCEPTABLE_STATUS]
     if bad:
         reasons.append(f"{len(bad)} asset request(s) answered with another status ({sorted({e['fields'].get('status') for e in bad})})")
-    warmed = (status.get("stats") or {}).get("warmed")
+    failed = failed_assets(events)
+    if failed:
+        reasons.append(f"{len(failed)} asset load(s) failed in the page")
+    return reasons
+
+
+def session_validity(session):
+    """(valid, [reasons]) of a whole-project session: the core, and the scene warm (on in both arms) has to have run."""
+    reasons = core_validity(session, session["mode"], "a play did not finish normally")
+    warmed = ((session.get("status") or {}).get("stats") or {}).get("warmed")
     if not isinstance(warmed, int) or warmed <= 0:
         reasons.append("the scene warm never ran (it must be on in both arms)")
     return (not reasons), reasons
@@ -79,25 +94,8 @@ def analyze_session(record, project):
 
 
 def window_validity(record):
-    reasons = []
-    if record.get("error"):
-        reasons.append("error: " + redact(record["error"]))
-    gone = record.get("editor_exit") or {}
-    if gone and not gone.get("alive", True):
-        reasons.append(f"the editor process ended by itself (return code {gone.get('returncode_before_stop')})")
-    if record.get("events_lost"):
-        reasons.append(f"{record['events_lost']} trace event(s) were lost")
-    asset_io = (record.get("status") or {}).get("asset_io") or {}
-    if asset_io.get("mode") != record["io"]:
-        reasons.append(f"the host reports mode {asset_io.get('mode')!r}, asked {record['io']!r}")
-    pool = asset_io.get("pool") or {}
-    if (pool.get("saturated") or 0) > 0:
-        reasons.append("the read queue saturated")
+    """(valid, [reasons]) of a window play: the core, and every frame has to carry the page's account (the page timing was on)."""
+    reasons = core_validity(record, record["io"], "the window did not play to its end")
     if not any(e["kind"] == "frame_page" for e in record.get("events", [])):
         reasons.append("no frame carried the page account (the page timing was not on)")
-    if not record.get("plays_ok", False):
-        reasons.append("the window did not play to its end")
-    bad = [e for e in record.get("events", []) if e["kind"] == "asset_io" and e["fields"].get("status") not in ACCEPTABLE_STATUS]
-    if bad:
-        reasons.append(f"{len(bad)} asset request(s) answered with another status")
     return (not reasons), reasons

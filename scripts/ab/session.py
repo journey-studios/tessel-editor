@@ -170,13 +170,22 @@ def whole_project_twice(W, project):
 
 
 def one_window(W, project, window):
-    """The body of a session of `viewport-transit-probe.py`: a window of the project once, stopped by polling when the playhead reaches its end."""
+    """The body of a session of `viewport-transit-probe.py`: a window of the project once, stopped by polling when the playhead reaches its end. The
+    window ran to its end only if the playhead was seen at or past it: a play that stopped on its own earlier (or never ended) is not that window."""
     start, end = window
 
     def body(lab, state, collect, record):
-        played = play(W, lab, state, collect, "window", start, (end - start) / project["fps"],
-                      lambda status: status.get("state") != "playing" or (status.get("frame") or 0) >= end, poll=0.5)
-        return played is not None
+        seen = {"frame": None}
+
+        def finished(status):
+            seen["frame"] = status.get("frame") or 0
+            return status.get("state") != "playing" or seen["frame"] >= end
+
+        played = play(W, lab, state, collect, "window", start, (end - start) / project["fps"], finished, poll=0.5)
+        record["window_last_frame"] = seen["frame"]
+        if played is not None and (seen["frame"] or 0) < end:
+            state["errors"].append(f"the window stopped at frame {seen['frame']}, before its end {end}")
+        return played is not None and (seen["frame"] or 0) >= end
     return body
 
 

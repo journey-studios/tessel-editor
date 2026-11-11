@@ -1,5 +1,6 @@
 """Tests of the shared core of the A/B runners (`scripts/ab/`): project reading, stats, plays and gaps, validity, charts and the batch loop.
 Pure logic; no editor, GPU, runtime page or private media is started."""
+import itertools
 import json
 import os
 import pathlib
@@ -8,6 +9,7 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ab import batch as B, charts as C, play as P, project as PR, session as S, stats as ST, transit as TR, validity as V  # noqa: E402
@@ -318,6 +320,146 @@ class TransitTests(unittest.TestCase):
         second = TR.match_eval(evals, 10)
         self.assertEqual((first["eval_ms"], second["eval_ms"]), (5, 6), "the warm script is not a frame's")
         self.assertIsNone(TR.match_eval(evals, 10))
+
+
+def window_record(**overrides):
+    """A window play as `window_validity` reads it (a session plus the mode under `io` and a frame that carries the page's account)."""
+    return session("async", io="async", events=[event("frame_page", 5, id=1)], **overrides)
+
+
+DEFECTS = {
+    "an error": lambda r: r.update(error="RuntimeError('boom')"),
+    "the editor ended by itself": lambda r: r.update(editor_exit={"alive": False, "returncode_before_stop": -11, "log_lines": []}),
+    "another mode than asked": lambda r: r["status"]["asset_io"].update(mode="sync"),
+    "a saturated read queue": lambda r: r["status"]["asset_io"]["pool"].update(saturated=1),
+    "a panicked read": lambda r: r["status"]["asset_io"]["pool"].update(panicked=1),
+    "a stale read": lambda r: r["status"]["asset_io"]["pool"].update(stale=2),
+    "lost trace events": lambda r: r.update(events_lost=3),
+    "a play that did not run to its end": lambda r: r.update(plays_ok=False),
+    "an HTTP error": lambda r: r["events"].append(event("asset_io", 9, status=503)),
+    "an asset that failed to load": lambda r: r["events"].append(event("asset_state", 9, state="failed", timings=None)),
+}
+
+
+class OneValidityTests(unittest.TestCase):
+    """`valid = ran to its end AND no failed asset AND no HTTP error AND ...`: the same core decides a whole-project session and a window."""
+
+    JUDGES = {"session": lambda r: V.session_validity(r), "window": lambda r: V.window_validity(r)}
+
+    def test_a_clean_record_is_valid_for_both_judges(self):
+        for name, judge in self.JUDGES.items():
+            record = window_record()
+            self.assertEqual(judge(record), (True, []), name)
+
+    def test_every_defect_invalidates_a_session_and_a_window_alike(self):
+        for defect, apply in DEFECTS.items():
+            for name, judge in self.JUDGES.items():
+                with self.subTest(defect=defect, judge=name):
+                    record = window_record()
+                    record["status"]["asset_io"]["pool"] = {"saturated": 0, "panicked": 0, "stale": 0}
+                    apply(record)
+                    valid, reasons = judge(record)
+                    self.assertFalse(valid)
+                    self.assertTrue(reasons)
+
+    def test_an_asset_the_page_could_not_load_is_a_reason_that_names_how_many(self):
+        record = window_record()
+        record["events"] += [event("asset_state", 9, state="failed"), event("asset_state", 10, state="failed"), event("asset_state", 11, state="ready")]
+        valid, reasons = V.session_validity(record)
+        self.assertFalse(valid)
+        self.assertEqual([r for r in reasons if "failed" in r], ["2 asset load(s) failed in the page"])
+        ready = window_record()
+        ready["events"] += [event("asset_state", 9, state="loading"), event("asset_state", 10, state="ready")]
+        self.assertTrue(V.session_validity(ready)[0])
+
+    def test_what_is_the_experiments_own_stays_with_it(self):
+        no_warm = window_record()
+        no_warm["status"]["stats"]["warmed"] = 0
+        self.assertFalse(V.session_validity(no_warm)[0], "a whole-project session needs the scene warm")
+        self.assertTrue(V.window_validity(no_warm)[0], "a window does not judge it (the first-use experiment does)")
+        no_page = session("async", io="async", events=[])
+        self.assertFalse(V.window_validity(no_page)[0], "a window needs the page's account")
+        self.assertTrue(V.session_validity(no_page)[0])
+
+
+class FakeLab:
+    """The editor as `play` asks it: `statuses` are what `playback.status` answers in turn (the last repeats)."""
+
+    def __init__(self, statuses, report=None):
+        self.statuses, self.report, self.stopped = list(statuses), report or {"ticks": 10, "skipped_frames": 0, "max_gap_frames": 1}, 0
+
+    def op(self, request):
+        if request["op"] == "playback.status":
+            return {"ok": True, "data": self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0]}
+        if request["op"] == "playback.stop":
+            self.stopped += 1
+            return {"ok": True, "data": {"report": self.report}}
+        return {"ok": True}
+
+
+class FakeWarm:
+    @staticmethod
+    def retry_while_preparing(call, *rest, **named):
+        return call()
+
+
+def clean_state():
+    return {"cursor": 0, "events": [], "frames": {}, "lost": 0, "errors": [], "loadavg": [], "status": {}}
+
+
+class PlayTests(unittest.TestCase):
+    def setUp(self):
+        for patch in (mock.patch.object(S.time, "sleep"), mock.patch.object(S.time, "time", side_effect=itertools.count(0.0, 1.0))):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def play(self, lab, finished, state=None, seconds=1.0):
+        state = state if state is not None else clean_state()
+        return S.play(FakeWarm, lab, state, lambda *a: True, "first", 0, seconds, finished, poll=0), state
+
+    def test_a_play_that_ends_by_itself_gives_the_counters_of_the_host_report(self):
+        lab = FakeLab([{"state": "playing"}, {"state": "stopped"}])
+        counters, state = self.play(lab, lambda status: status.get("state") != "playing")
+        self.assertEqual(counters, {"ticks": 10, "skipped_frames": 0, "max_gap_frames": 1})
+        self.assertEqual(state["errors"], [])
+
+    def test_a_play_that_runs_out_of_time_is_not_a_play_it_is_none_with_the_reason(self):
+        lab = FakeLab([{"state": "playing"}])
+        counters, state = self.play(lab, lambda status: False)
+        self.assertIsNone(counters)
+        self.assertEqual(lab.stopped, 1, "the editor is stopped all the same")
+        self.assertEqual(len(state["errors"]), 1)
+        self.assertIn("did not end within", state["errors"][0])
+
+    def test_the_whole_project_twice_stops_at_the_first_play_that_did_not_end_and_says_so(self):
+        project = {"length": 48, "fps": 24.0}
+        record = {}
+        lab = FakeLab([{"state": "playing"}])
+        state = clean_state()
+        ran = S.whole_project_twice(FakeWarm, project)(lab, state, lambda *a: True, record)
+        self.assertFalse(ran)
+        self.assertEqual(record["played"], {"first": None})
+        self.assertEqual(lab.stopped, 1, "no second play after a first that never ended")
+
+    def test_the_whole_project_twice_ran_when_both_plays_ended(self):
+        lab = FakeLab([{"state": "stopped"}])
+        record = {}
+        self.assertTrue(S.whole_project_twice(FakeWarm, {"length": 48, "fps": 24.0})(lab, clean_state(), lambda *a: True, record))
+        self.assertEqual(sorted(record["played"]), ["first", "repeat"])
+
+    def test_a_window_that_stopped_before_its_end_did_not_run_to_its_end(self):
+        lab = FakeLab([{"state": "playing", "frame": 120}, {"state": "stopped", "frame": 150}])
+        state, record = clean_state(), {}
+        self.assertFalse(S.one_window(FakeWarm, {"fps": 24.0}, (100, 200))(lab, state, lambda *a: True, record))
+        self.assertEqual(record["window_last_frame"], 150)
+        self.assertIn("before its end 200", state["errors"][0])
+        self.assertFalse(V.window_validity({**window_record(), "plays_ok": False})[0])
+
+    def test_a_window_whose_playhead_reached_its_end_ran_to_it(self):
+        lab = FakeLab([{"state": "playing", "frame": 150}, {"state": "playing", "frame": 200}])
+        state, record = clean_state(), {}
+        self.assertTrue(S.one_window(FakeWarm, {"fps": 24.0}, (100, 200))(lab, state, lambda *a: True, record))
+        self.assertEqual((record["window_last_frame"], state["errors"]), (200, []))
 
 
 if __name__ == "__main__":
