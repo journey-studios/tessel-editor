@@ -3,9 +3,14 @@ import contextlib
 import importlib.util
 import io
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import ab  # noqa: E402
+from ab import stats as shared  # noqa: E402
 
 spec = importlib.util.spec_from_file_location("playback_cadence", Path(__file__).with_name("playback-cadence.py"))
 pc = importlib.util.module_from_spec(spec)
@@ -163,6 +168,25 @@ class StatsTests(unittest.TestCase):
     def test_nearest_rank_without_interpolation(self):
         found = pc.stats([10.0, 20.0, 30.0, 40.0])
         self.assertEqual((found["n"], found["mean"], found["p50"], found["p95"], found["max"]), (4, 25.0, 20.0, 40.0, 40.0))
+
+    # Fixed samples and what this reader's own `stats` returned for them BEFORE it used the harness's (`ab.stats`): the output must not move by a digit or a key.
+    SMALL = [3.2, None, 10.0, 7.5, 7.5, 1.0, 22.25, 44.4444, 0.0005, 16.7]
+    LARGE = [round(((i * 37) % 101) * 0.731 + (i % 7) * 0.0123, 4) for i in range(1, 201)]
+
+    def test_the_summary_of_a_fixed_sample_is_the_one_this_reader_gave_before_it_shared_the_statistics(self):
+        small = {"n": 9, "mean": 12.511, "p50": 7.5, "p95": 44.444, "p99": 44.444, "max": 44.444}
+        large = {"n": 200, "mean": 36.718, "p50": 36.562, "p95": 69.507, "p99": 72.418, "max": 73.162}
+        nothing = {"n": 0, "mean": None, "p50": None, "p95": None, "p99": None, "max": None}
+        one = {"n": 1, "mean": 5.0, "p50": 5.0, "p95": 5.0, "p99": 5.0, "max": 5.0}
+        for values, expected in ((self.SMALL, small), (self.LARGE, large), ([], nothing), ([None], nothing), ([5.0], one)):
+            with self.subTest(n=len(values)):
+                self.assertEqual(pc.stats(values), expected)
+                self.assertEqual(json.dumps(pc.stats(values)), json.dumps(expected), "the published JSON keeps its key order too")
+                self.assertEqual(list(pc.stats(values)), ["n", "mean", "p50", "p95", "p99", "max"])
+
+    def test_the_statistics_are_the_harnesss_own_not_a_copy_and_load_the_same_way_from_ab(self):
+        self.assertIs(pc.stats.func, shared.stats)
+        self.assertIs(ab.cadence().stats.func, shared.stats, "`ab.cadence()` (the one `load_module`) gets the same function")
 
     def test_nothing_is_nothing(self):
         self.assertEqual(pc.stats([None, None])["n"], 0)

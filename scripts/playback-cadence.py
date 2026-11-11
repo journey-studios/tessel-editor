@@ -25,10 +25,17 @@ Exit: 0 read; 2 no session with a play was found.
 """
 import argparse
 import collections
+import functools
 import json
 import math
 import pathlib
 import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from ab.stats import stats as nearest_rank_stats  # noqa: E402  (the one nearest-rank statistics of the harness; `ab` imports only the standard library)
+
+# n / mean / p50 / p95 / p99 / max, nearest-rank percentiles (no interpolation invents a value): `ab.stats.stats` with its `detail` columns.
+stats = functools.partial(nearest_rank_stats, detail=True)
 
 NEARLY_WHOLE = 1e-9
 SHORT_DELIVERY_MS = 30.0  # a picture that followed the previous one by less than this came in the catch-up step of the pattern
@@ -137,18 +144,6 @@ def predicted_polls(frame_ms, poll_ms):
     if share < NEARLY_WHOLE:
         return {low: 1.0}
     return {low: round(1 - share, 4), low + 1: round(share, 4)}
-
-
-def stats(values):
-    """n / mean / p50 / p95 / p99 / max, nearest-rank percentiles (no interpolation invents a value)."""
-    values = sorted(value for value in values if value is not None)
-    if not values:
-        return {"n": 0, "mean": None, "p50": None, "p95": None, "p99": None, "max": None}
-
-    def at(share):
-        return round(values[min(len(values) - 1, max(0, math.ceil(share * len(values)) - 1))], 3)
-
-    return {"n": len(values), "mean": round(sum(values) / len(values), 3), "p50": at(0.5), "p95": at(0.95), "p99": at(0.99), "max": round(values[-1], 3)}
 
 
 def share_of(values, test):

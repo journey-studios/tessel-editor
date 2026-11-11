@@ -52,6 +52,15 @@ class SchedulingTests(unittest.TestCase):
         self.assertEqual(ST.stats([])["max"], None)
         self.assertEqual(ST.stats([None, 5.0])["n"], 1)
 
+    def test_stats_returns_what_it_always_did_unless_the_playback_reader_asks_for_the_mean_and_the_p99(self):
+        small, large = [3.2, None, 10.0, 7.5, 7.5, 1.0, 22.25, 44.4444, 0.0005, 16.7], [round(((i * 37) % 101) * 0.731 + (i % 7) * 0.0123, 4) for i in range(1, 201)]
+        self.assertEqual(ST.stats(small), {"n": 9, "p50": 7.5, "p95": 44.444, "max": 44.444})
+        self.assertEqual(ST.stats(large), {"n": 200, "p50": 36.562, "p95": 69.507, "max": 73.162})
+        self.assertEqual(ST.stats([]), {"n": 0, "p50": None, "p95": None, "max": None})
+        self.assertEqual(ST.stats(large, detail=True), {"n": 200, "mean": 36.718, "p50": 36.562, "p95": 69.507, "p99": 72.418, "max": 73.162})
+        self.assertEqual(list(ST.stats(small, detail=True)), ["n", "mean", "p50", "p95", "p99", "max"])
+        self.assertEqual(ST.stats([None], detail=True), {"n": 0, "mean": None, "p50": None, "p95": None, "p99": None, "max": None})
+
 
 class ProjectTests(unittest.TestCase):
     def document(self):
