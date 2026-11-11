@@ -931,8 +931,9 @@ export class Compositor {
     }
     frame.sources.directed_scene_layers = (frame.sources.directed_scene_layers ?? 0) + 1;
     if (splatScenes.length > 0) frame.sources.directed_scene_splats = (frame.sources.directed_scene_splats ?? 0) + spec.splats.length;
-    // The output-scope effects of the plan (F016): the core resolved them for this frame, they are
-    // drawn here over the finished picture in the plan's order. The pipeline and its materials are kept
+    // The effects of the plan (F016, and of a shot, F062): the core resolved them for this frame, they
+    // are drawn here over the finished picture, the shot's first and the output's after, each stage in
+    // the plan's order. The pipeline and its materials are kept
     // (no relink per frame, A1); the passes ping-pong between two plain targets (A5), so any number of
     // passes holds two. A target slot is looked up once per draw, so a target too big to retain is still
     // one object per slot, never one per pass.
@@ -957,6 +958,10 @@ export class Compositor {
       }
     }
     if (spec.fx.length > 0) frame.sources.directed_scene_fx = (frame.sources.directed_scene_fx ?? 0) + spec.fx.length;
+    // F062: how many of them were the passes of a shot (drawn first); absent without any, so the
+    // telemetry of a scene with output effects only is what it was.
+    const deckPasses = spec.fx.filter((pass) => pass.stage === 'deck').length;
+    if (deckPasses > 0) frame.sources.directed_scene_fx_shot = (frame.sources.directed_scene_fx_shot ?? 0) + deckPasses;
     return { texture, width: size.width, height: size.height, fit: false, flipV: true };
   }
 

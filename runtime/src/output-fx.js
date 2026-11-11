@@ -1,4 +1,5 @@
-// Output-scope effects of a directed-scene plan (capability `outputFx`, F016).
+// Effects of a directed-scene plan: of the output (capability `outputFx`, F016) and of a shot
+// (capability `fxShotScope`, F062).
 //
 // WHY this module only draws: the core resolved everything that depends on time. A pass of the plan
 // (`plan.fx[i]`) already carries its envelope (`weight`) and the `amount` that is `intensity x
@@ -6,6 +7,14 @@
 // the catalog it implements and draws it over the finished picture of the scene, one fullscreen
 // pass each; it knows no timeline, no clip and no parameter default. An effect it does not know is
 // refused (typed `unsupported`), never skipped: a picture without its effect is not the plan's.
+//
+// The composition has two STAGES (F062): the passes of a shot (`scope: { kind: 'shot' }`, the *deck*)
+// are drawn first, over the picture of the scene, and the passes of the output after them; within a
+// stage the order is the plan's. A scene has one deck per frame, so one picture is all there is to
+// draw over; the two stages are two functions (`drawDeck`, `drawOutput`) because the transitions of a
+// later delivery put the composition of a second deck BETWEEN them. A pass of a shot is only drawn in
+// the frame of that shot: the runtime has no other deck to put it on, so another frame's shot is
+// refused (typed `unsupported`) rather than drawn on the wrong picture.
 //
 // Color: like every target of this runtime, the pictures are raw sRGB-encoded bytes
 // (`NoColorSpace`, `ColorManagement` off). The vignette and the fade decode to linear light, mix
@@ -101,17 +110,59 @@ const parseParam = (spec, value, pointer) => {
   return ['x', 'y'].map((axis) => finiteIn(value[axis], `${pointer}/${axis}`, spec.min, spec.max));
 };
 
+/** The stages of the composition, in the order they are drawn. */
+export const FX_STAGES = ['deck', 'output'];
+
+/**
+ * The scope of a pass: where it is drawn. `output` is the finished picture; `shot` is the picture of
+ * one shot, which this runtime has only for the shot of the frame it is drawing. Shape first, then
+ * what the runtime can do: the capability, the frame's shot, and nothing else (`node` is refused).
+ */
+const parseScope = (raw, pointer, requires, frame) => {
+  if (isObject(raw) && raw.kind === 'output') {
+    if (Object.hasOwn(raw, 'shotId')) throw invalid(`${pointer}/shotId`, 'an output scope names no shot');
+    return { stage: 'output' };
+  }
+  if (isObject(raw) && raw.kind === 'shot') {
+    if (typeof raw.shotId !== 'string' || raw.shotId === '') throw invalid(`${pointer}/shotId`, 'expected a non-empty string');
+    if (!requires.includes('fxShotScope')) throw invalid('/requires', 'a plan with a pass of a shot must require `fxShotScope`');
+    const frameShot = isObject(frame) ? frame.shotId : undefined;
+    if (typeof frameShot !== 'string' || frameShot === '') {
+      throw invalid('/frame/shotId', 'a plan with a pass of a shot names the shot of its frame');
+    }
+    if (raw.shotId !== frameShot) {
+      throw new RuntimeError('unsupported', `This runtime draws the effects of a shot in the frames of that shot only (\`${raw.shotId}\` is not \`${frameShot}\`)`, {
+        unsupported: 'fx_scope',
+        reason: 'shot_not_in_frame',
+        shot: raw.shotId,
+        frame_shot: frameShot,
+        pointer: `${pointer}/shotId`,
+      });
+    }
+    return { stage: 'deck', shotId: raw.shotId };
+  }
+  throw new RuntimeError('unsupported', 'This runtime draws effects of the output and of a shot only', {
+    unsupported: 'fx_scope',
+    reason: 'scope_kind',
+    scope: isObject(raw) && typeof raw.kind === 'string' ? raw.kind : null,
+    pointer,
+  });
+};
+
 /**
  * Reads `plan.fx` (absent means no effects) into the passes to draw, in the plan's order, or
  * throws the typed refusal. `requires` is the plan's own list: a plan with effect passes must
- * ask for `outputFx` (and one whose passes carry a seed for `fxNoise`), and one that does not
- * draw them is refused before this runs.
+ * ask for `outputFx` (and one whose passes carry a seed for `fxNoise`, and one with a pass of a shot
+ * for `fxShotScope`), and one that does not draw them is refused before this runs. `frame` is the
+ * plan's `frame`: the shot a pass of a shot is compared with. Each pass comes back with its `stage`
+ * (`deck` or `output`); the stages must be listed in order, as the core lists them.
  */
-export const parseOutputFx = (raw, requires) => {
+export const parseOutputFx = (raw, requires, frame) => {
   if (raw === undefined) return [];
   if (!Array.isArray(raw)) throw invalid('/fx', 'expected an array');
   if (raw.length > 0 && !requires.includes('outputFx')) throw invalid('/requires', 'a plan with effects must require `outputFx`');
   const seen = new Set();
+  let stage = 0;
   return raw.map((entry, index) => {
     const at = `/fx/${index}`;
     if (!isObject(entry)) throw invalid(at, 'expected an object');
@@ -124,12 +175,10 @@ export const parseOutputFx = (raw, requires) => {
       });
     }
     const known = OUTPUT_FX_EFFECTS[entry.effect];
-    if (!isObject(entry.scope) || entry.scope.kind !== 'output') {
-      throw new RuntimeError('unsupported', 'This runtime draws effects of the output scope only', {
-        unsupported: 'fx_scope',
-        pointer: `${at}/scope`,
-      });
-    }
+    const scope = parseScope(entry.scope, `${at}/scope`, requires, frame);
+    const position = FX_STAGES.indexOf(scope.stage);
+    if (position < stage) throw invalid(`${at}/scope`, 'the passes of the shot are listed before the passes of the output');
+    stage = position;
     if (typeof entry.clipId !== 'string' || entry.clipId === '') throw invalid(`${at}/clipId`, 'expected a non-empty string');
     if (seen.has(entry.clipId)) throw invalid(`${at}/clipId`, `clip \`${entry.clipId}\` appears twice`);
     seen.add(entry.clipId);
@@ -143,7 +192,8 @@ export const parseOutputFx = (raw, requires) => {
     }
     const extra = Object.keys(entry.params).find((name) => !own(known.params, name));
     if (extra !== undefined) throw invalid(`${at}/params/${extra}`, 'not a parameter of the effect');
-    const pass = { effect: entry.effect, clipId: entry.clipId, weight, amount, params };
+    const pass = { effect: entry.effect, clipId: entry.clipId, weight, amount, params, stage: scope.stage };
+    if (scope.shotId !== undefined) pass.shotId = scope.shotId;
     if (known.noise === true) {
       if (!requires.includes('fxNoise')) throw invalid('/requires', 'a plan with noise effects must require `fxNoise`');
       const { seed } = entry;
@@ -407,32 +457,55 @@ export class OutputFxPipeline {
   /**
    * Draws `passes` over `source` (a render target holding the finished picture), each pass reading
    * the one before, and returns the texture of the last one (`source.texture` when there are none).
-   * Pass `i` draws into `targetOf(i % 2)`: two plain targets (no depth, no MSAA) of the picture's
-   * size, ping-pong, so any number of passes needs two and a pass never reads what it writes.
-   * `onMaterial(created)` reports each material lookup (the host's counters).
+   * The passes of the shot (the deck) are drawn first and those of the output after them
+   * ([`drawDeck`], [`drawOutput`]); the order within a stage is the plan's. Pass `i` of the frame,
+   * counted across the stages, draws into `targetOf(i % 2)`: two plain targets (no depth, no MSAA)
+   * of the picture's size, ping-pong, so any number of passes needs two and a pass never reads what
+   * it writes. `onMaterial(created)` reports each material lookup (the host's counters).
    */
   draw(renderer, source, passes, { targetOf, size, onMaterial = () => {} }) {
     if (this.disposed) throw new Error('The output-fx pipeline was disposed');
     if (passes.length === 0) return source.texture;
-    let texture = source.texture;
+    // What the stages share: the picture the next pass reads and how many passes have drawn, so the
+    // ping-pong goes on across the stages.
+    const frame = { renderer, targetOf, size, onMaterial, texture: source.texture, drawn: 0 };
     try {
-      passes.forEach((pass, index) => {
-        const target = targetOf(index % 2);
-        const { material, created } = this.materialOf(pass.effect);
-        onMaterial(created);
-        bindPass(material, pass, texture, size);
-        this.quad.material = material;
-        renderer.setRenderTarget(target);
-        // No clear: the quad covers every pixel with NoBlending and writes alpha too.
-        renderer.render(this.scene, this.camera);
-        texture = target.texture;
-      });
+      this.drawDeck(frame, passes.filter((pass) => pass.stage === 'deck'));
+      // A later delivery composes the second deck of a transition here, between the two stages.
+      this.drawOutput(frame, passes.filter((pass) => pass.stage !== 'deck'));
     } finally {
       renderer.setRenderTarget(null);
       // Do not keep a reference to a texture of a target the cache may free after this frame.
       for (const material of this.materials.values()) material.uniforms.tMap.value = null;
     }
-    return texture;
+    return frame.texture;
+  }
+
+  /** The first stage: the passes of the shot, over the picture of the scene. */
+  drawDeck(frame, passes) {
+    this.drawStage(frame, passes);
+  }
+
+  /** The last stage: the passes of the output, over what the deck left. */
+  drawOutput(frame, passes) {
+    this.drawStage(frame, passes);
+  }
+
+  /** One fullscreen draw per pass, each reading `frame.texture` and leaving its own there. */
+  drawStage(frame, passes) {
+    const { renderer, targetOf, size, onMaterial } = frame;
+    for (const pass of passes) {
+      const target = targetOf(frame.drawn % 2);
+      const { material, created } = this.materialOf(pass.effect);
+      onMaterial(created);
+      bindPass(material, pass, frame.texture, size);
+      this.quad.material = material;
+      renderer.setRenderTarget(target);
+      // No clear: the quad covers every pixel with NoBlending and writes alpha too.
+      renderer.render(this.scene, this.camera);
+      frame.texture = target.texture;
+      frame.drawn += 1;
+    }
   }
 
   dispose() {
