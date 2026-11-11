@@ -44,7 +44,9 @@ new commit, recorded, and applies to the next run):
     and max are RECORDED, not judged: one scheduler hiccup in a shared machine would decide a verdict;
   * a kind REGRESSES when the pooled candidate median is more than 10% over the baseline's AND the candidate is
     slower in a majority of the round pairs for that median; or when its pooled p95 is more than 25% over the
-    baseline's under the same majority rule; or when it lost samples or long ticks the baseline did not;
+    baseline's AND the candidate's p95 is higher in a majority of the round pairs for the p95 (each gate counts its OWN
+    statistic per round: the p95 gate never borrows the pairs of the medians, so a tail-only slowdown is judged);
+    or when it lost samples or long ticks the baseline did not;
   * noise: when the baseline's own median varies more than 15% between its rounds for a kind, or when more than
     `budgets.json: reference.max_unstable_blocks` of the plan-reference blocks of its corpus disagreed with themselves
     (read from every kept report), that kind is INCONCLUSIVE and says so (never a pass);
@@ -360,13 +362,15 @@ def pct(values, q):
 
 
 def pooled(reports):
-    """Per (corpus, kind): every raw sample of every kept run, with the per-run medians."""
+    """Per (corpus, kind): every raw sample of every kept run, with the per-run medians and the per-run p95s (each gate
+    of `judge` counts the rounds in which the candidate was slower by ITS OWN statistic)."""
     pool = {}
     for report in reports:
         for key, stats in kinds(report).items():
-            slot = pool.setdefault(key, {'samples': [], 'medians': [], 'ratios': [], 'long_ticks': 0, 'n': []})
+            slot = pool.setdefault(key, {'samples': [], 'medians': [], 'p95s': [], 'ratios': [], 'long_ticks': 0, 'n': []})
             slot['samples'] += stats['samples_ns']
             slot['medians'].append(stats['p50_ns'])
+            slot['p95s'].append(pct(stats['samples_ns'], 0.95))
             slot['ratios'].append(stats['ratio_p50'])
             slot['long_ticks'] += stats.get('long_ticks', 0)
             slot['n'].append(stats['n'])
@@ -377,11 +381,12 @@ def summarize(slot):
     s = slot['samples']
     return {'n': len(s), 'p50_ns': pct(s, 0.5), 'p95_ns': pct(s, 0.95), 'p99_ns': pct(s, 0.99), 'max_ns': max(s),
             'long_ticks': sum(1 for v in s if v > LONG_TICK_NS), 'run_medians_ns': slot['medians'],
+            'run_p95_ns': slot['p95s'],
             'run_ratio_p50': slot['ratios'], 'expected_n_per_run': slot['n']}
 
 
 def judge(base, cand, unstable=None):
-    """The pre-declared rule applied to pooled baseline/candidate samples and per-round medians."""
+    """The pre-declared rule applied to pooled baseline/candidate samples, per-round medians and per-round p95s."""
     unstable = unstable or {}
     verdicts = {}
     for key in sorted(base):
@@ -397,15 +402,20 @@ def judge(base, cand, unstable=None):
         b, c = summarize(base[key]), summarize(cand[key])
         medians = base[key]['medians']
         spread = (max(medians) - min(medians)) / statistics.median(medians)
-        pairs = list(zip(base[key]['medians'], cand[key]['medians']))
-        slower = sum(1 for x, y in pairs if y > x)
+        # Each gate has its OWN majority: the median gate counts the round pairs whose MEDIAN is slower, the p95 gate the pairs
+        # whose p95 is. A tail-only slowdown leaves the medians as they were, so a p95 gate that borrowed the median pairs
+        # would read a coin toss (R2).
+        pairs50 = list(zip(base[key]['medians'], cand[key]['medians']))
+        pairs95 = list(zip(base[key]['p95s'], cand[key]['p95s']))
+        slower = sum(1 for x, y in pairs50 if y > x)
+        slower95 = sum(1 for x, y in pairs95 if y > x)
         reasons = []
         p50_over = c['p50_ns'] > b['p50_ns'] * MEDIAN_TOLERANCE
         p95_over = c['p95_ns'] > b['p95_ns'] * P95_TOLERANCE
-        if p50_over and slower * 2 > len(pairs):
-            reasons.append(f"median {c['p50_ns']} > {b['p50_ns']} x {MEDIAN_TOLERANCE} (slower in {slower}/{len(pairs)} pairs)")
-        if p95_over and slower * 2 > len(pairs):
-            reasons.append(f"p95 {c['p95_ns']} > {b['p95_ns']} x {P95_TOLERANCE} (slower in {slower}/{len(pairs)} pairs)")
+        if p50_over and slower * 2 > len(pairs50):
+            reasons.append(f"median {c['p50_ns']} > {b['p50_ns']} x {MEDIAN_TOLERANCE} (slower in {slower}/{len(pairs50)} pairs)")
+        if p95_over and slower95 * 2 > len(pairs95):
+            reasons.append(f"p95 {c['p95_ns']} > {b['p95_ns']} x {P95_TOLERANCE} (p95 slower in {slower95}/{len(pairs95)} pairs)")
         if c['n'] < b['n']:
             reasons.append(f"lost samples: {c['n']} < {b['n']}")
         if c['long_ticks'] > b['long_ticks']:
@@ -422,7 +432,8 @@ def judge(base, cand, unstable=None):
             status = 'NO_REGRESSION_IN_SCENARIO'
         verdicts[f'{key[0]}/{key[1]}'] = {'status': status, 'reasons': reasons, 'baseline': b, 'candidate': c,
                                           'baseline_run_spread': round(spread, 4),
-                                          'candidate_slower_pairs': f'{slower}/{len(pairs)}',
+                                          'candidate_slower_pairs': f'{slower}/{len(pairs50)}',
+                                          'candidate_slower_p95_pairs': f'{slower95}/{len(pairs95)}',
                                           'median_ratio_candidate_over_baseline': round(c['p50_ns'] / b['p50_ns'], 4),
                                           'p95_ratio_candidate_over_baseline': round(c['p95_ns'] / b['p95_ns'], 4)}
     return verdicts

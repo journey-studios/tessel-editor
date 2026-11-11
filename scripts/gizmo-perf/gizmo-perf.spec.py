@@ -53,9 +53,10 @@ for module in (harness, native.harness):
 SHARED_LOCK = '.gizmo-perf.lock'
 
 
-def slot(samples, medians=None, long_ticks=0):
+def slot(samples, medians=None, long_ticks=0, p95s=None):
     ordered = sorted(samples)
-    return {'samples': list(samples), 'medians': medians or [ordered[len(ordered) // 2]],
+    medians = medians or [ordered[len(ordered) // 2]]  # the p95 of each round defaults to the pooled one (rounds alike)
+    return {'samples': list(samples), 'medians': medians, 'p95s': p95s or [ab.pct(samples, 0.95)] * len(medians),
             'ratios': [1.0], 'long_ticks': long_ticks, 'n': [len(samples)]}
 
 
