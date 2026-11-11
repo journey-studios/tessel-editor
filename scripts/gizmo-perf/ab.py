@@ -174,6 +174,10 @@ def main(argv=None):
     parser.add_argument('--baseline', default=BASELINE)
     parser.add_argument('--rounds', type=int, default=4)
     parser.add_argument('--out', default='/tmp/gizmo-perf-ab')
+    parser.add_argument('--phase', choices=['all', 'build', 'measure'], default='all',
+                        help='`build`: both release builds and the executables copied to --out/exes (a build leaves the '
+                             'machine loaded, which the guard refuses); `measure`: the guard, the lock and the rounds '
+                             'from those executables, in their own invocation')
     parser.add_argument('--allow-dirty', action='store_true',
                         help='measure a dirty tree (recorded; never counts for HEAD)')
     args = parser.parse_args(argv)
@@ -190,24 +194,43 @@ def main(argv=None):
         return harness.die(1, manifest, manifest_path)
     manifest['dirty_run'] = bool(manifest['candidate']['dirty'])
     manifest['baseline_commit'] = harness.out(['git', 'rev-parse', args.baseline])
+    exes_dir = out / 'exes'
+    exes = {'baseline': exes_dir / 'baseline.exe', 'candidate': exes_dir / 'candidate.exe'}
     work = tempfile.mkdtemp(prefix='gizmo-perf-ab-')
     try:
-        # 1. builds (no lock: a build is not a measurement), sequential, default target.
-        src, product_diff = make_baseline(args.baseline, work)
-        manifest['product_files_that_differ'] = product_diff
-        c_command, c_done, c_exe = build(ROOT)
-        manifest['candidate_build'] = {'command': c_command, 'exit': c_done.returncode, 'executable': c_exe}
-        b_command, b_done, b_exe = build(src)
-        manifest['baseline_build'] = {'command': b_command, 'exit': b_done.returncode, 'executable': b_exe,
-                                      'cwd': str(src), 'stderr_tail': b_done.stderr[-1500:]}
-        if not (c_exe and b_exe and c_done.returncode == 0 and b_done.returncode == 0):
-            manifest.update(status='BUILD_FAILED', reason='a release build failed')
-            return harness.die(1, manifest, manifest_path)
-        exes = {'baseline': Path(work) / 'baseline.exe', 'candidate': Path(work) / 'candidate.exe'}
-        shutil.copy(b_exe, exes['baseline'])
-        shutil.copy(c_exe, exes['candidate'])
-        manifest['executables_sha256'] = {k: harness.sha256(v) for k, v in exes.items()}
-        shutil.rmtree(src)  # the archive (and any target inside it) is discardable
+        if args.phase in ('all', 'build'):
+            # 1. builds (no lock: a build is not a measurement), sequential, default target.
+            exes_dir.mkdir(exist_ok=True)
+            src, product_diff = make_baseline(args.baseline, work)
+            manifest['product_files_that_differ'] = product_diff
+            c_command, c_done, c_exe = build(ROOT)
+            manifest['candidate_build'] = {'command': c_command, 'exit': c_done.returncode, 'executable': c_exe}
+            b_command, b_done, b_exe = build(src)
+            manifest['baseline_build'] = {'command': b_command, 'exit': b_done.returncode, 'executable': b_exe,
+                                          'cwd': str(src), 'stderr_tail': b_done.stderr[-1500:]}
+            if not (c_exe and b_exe and c_done.returncode == 0 and b_done.returncode == 0):
+                manifest.update(status='BUILD_FAILED', reason='a release build failed')
+                return harness.die(1, manifest, manifest_path)
+            shutil.copy(b_exe, exes['baseline'])
+            shutil.copy(c_exe, exes['candidate'])
+            manifest['executables_sha256'] = {k: harness.sha256(v) for k, v in exes.items()}
+            shutil.rmtree(src)  # the archive (and any target inside it) is discardable
+            if args.phase == 'build':
+                manifest.update(status='BUILT', reason='no measurement was taken')
+                harness.write(out / 'manifest.build.json', manifest)
+                print(json.dumps({'status': 'BUILT', 'executables_sha256': manifest['executables_sha256'],
+                                  'product_files_that_differ': product_diff}))
+                return 0
+        else:
+            built = json.loads((out / 'manifest.build.json').read_text())
+            for key in ('candidate_build', 'baseline_build', 'executables_sha256', 'product_files_that_differ'):
+                manifest[key] = built[key]
+            if built['candidate']['head'] != manifest['candidate']['head']:
+                manifest.update(status='REFUSED', reason='the executables were built from another HEAD')
+                return harness.die(1, manifest, manifest_path)
+            if any(harness.sha256(exes[k]) != built['executables_sha256'][k] for k in exes):
+                manifest.update(status='REFUSED', reason='an executable changed since the build phase')
+                return harness.die(1, manifest, manifest_path)
         # 2. guards + the lock, once.
         state, reason = harness.guards()
         manifest['machine_before'] = state
@@ -243,6 +266,7 @@ def main(argv=None):
                     runs[-1]['reference_inconclusive'] = True
                 reports[side].append(json.loads(path.read_text()))
             manifest['machine_after'] = harness.machine()
+        shutil.rmtree(exes_dir, ignore_errors=True)
         manifest['runs'] = runs
         verdicts = judge(pooled(reports['baseline']), pooled(reports['candidate']))
         harness.write(out / 'verdicts.json', verdicts)
