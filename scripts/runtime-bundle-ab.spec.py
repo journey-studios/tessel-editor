@@ -1,11 +1,14 @@
 """Pure-logic tests of the BL157.4 runtime bundle A/B; no editor, GPU, runtime page, WebKit process or private media is started."""
+import contextlib
 import importlib.util
 import inspect
+import io
 import json
 import os
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 spec = importlib.util.spec_from_file_location("runtime_bundle_ab", Path(__file__).with_name("runtime-bundle-ab.py"))
@@ -324,14 +327,70 @@ class NothingIsSignalledTests(unittest.TestCase):
 
 
 class ScratchRuntimeTests(unittest.TestCase):
-    def test_it_makes_a_folder_the_host_accepts_with_the_arms_bundle(self):
-        import tempfile
+    def test_it_makes_a_folder_the_host_accepts_with_the_arms_bundle_and_the_page_it_is_given(self):
         with tempfile.TemporaryDirectory() as parent:
-            bundle = Path(parent) / "a.js"
+            bundle, index = Path(parent) / "a.js", Path(parent) / "index.html"
             bundle.write_text("// the arm's bundle")
-            directory = ab.scratch_runtime(parent, ab.UNPATCHED, bundle)
+            index.write_text("<!-- a page -->")
+            directory = ab.scratch_runtime(parent, ab.UNPATCHED, bundle, index)
             self.assertEqual((directory / "dist" / "runtime.js").read_text(), "// the arm's bundle")
-            self.assertTrue((directory / "dist" / "index.html").is_file())
+            self.assertEqual((directory / "dist" / "index.html").read_text(), "<!-- a page -->")
+
+
+class BundleGateTests(unittest.TestCase):
+    """What the run says before it starts when the two bundles are not the arms they stand for. Nothing here reads the repository's own `runtime/dist`:
+    a folder of the test stands in for it, so these hold however that was built."""
+    PLAIN = f"a();{ab.DECODER_CALL}b();"
+    PATCHED_TEXT = "a();void 0;b();"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root / "runtime" / "dist").mkdir(parents=True)
+        patcher = mock.patch.object(ab, "ROOT", self.root)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def gate(self, dist, unpatched):
+        (self.root / "runtime" / "dist" / "runtime.js").write_text(dist)
+        given = self.root / "unpatched.js"
+        given.write_text(unpatched)
+        return ab.bundle_gate(SimpleNamespace(unpatched_bundle=str(given)))
+
+    def test_a_plain_build_in_dist_is_refused_as_the_patched_arm_and_the_message_says_how_to_build_it(self):
+        why = self.gate(self.PLAIN, self.PLAIN)
+        self.assertIn("still has", why)
+        self.assertIn("TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1 ./scripts/runtime build", why)
+        self.assertIn("opt-in", why)
+
+    def test_a_patched_dist_and_a_plain_unpatched_bundle_are_the_two_arms(self):
+        self.assertIsNone(self.gate(self.PATCHED_TEXT, self.PLAIN))
+
+    def test_the_arms_given_the_wrong_way_round_are_refused_whichever_side_is_wrong(self):
+        swapped = self.gate(self.PLAIN, self.PATCHED_TEXT)
+        self.assertIn("unpatched bundle has the decoder's", swapped)
+        self.assertIn("0 time(s)", swapped)
+        self.assertIn("plain `./scripts/runtime build`", swapped)
+        self.assertIn("unpatched bundle", self.gate(self.PATCHED_TEXT, self.PATCHED_TEXT))
+
+    def test_the_run_starts_only_when_the_gate_lets_it_and_says_blocked_with_the_reason(self):
+        (self.root / "runtime" / "dist" / "index.html").write_text("")
+        (self.root / "runtime" / "dist" / "runtime.js").write_text(self.PLAIN)
+        given = self.root / "unpatched.js"
+        given.write_text(self.PLAIN)
+        args = SimpleNamespace(unpatched_bundle=str(given), binary=str(given), project=str(given), out=str(self.root / "out"), lock_wait=0.0, pairs=1,
+                               stress_cpu=0, report_dir=None, label="")
+        shown = io.StringIO()
+        proof = mock.Mock()
+        proof.free_gib.return_value = 100.0
+        with mock.patch("ab.batch.warm_proof", return_value=proof), mock.patch("ab.batch.parse_project", return_value=PROJECT), \
+                mock.patch("ab.batch.check_sources", return_value=[]), contextlib.redirect_stdout(shown):
+            code = ab.cmd_run(args)
+        self.assertEqual(code, 2)
+        self.assertIn("BLOCKED: the patched bundle still has", shown.getvalue())
+        self.assertIn("TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1", shown.getvalue())
+        proof.acquire_locks.assert_not_called()
 
 
 def host_event(asset, status, size):

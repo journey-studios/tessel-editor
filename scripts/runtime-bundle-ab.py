@@ -11,8 +11,12 @@ page stopped answering. The patch is proven in the lab and by unit tests; this a
 WHAT. `run` plays the whole project twice (a first play of a cold editor and a repeat in the same process, as `real-latency-ab.py` does) in
 2 * --pairs sessions of the SAME binary, one fresh editor each, in the order unpatched/patched, patched/unpatched, ... The arms differ ONLY in the
 `runtime.js` the page loads: `TESSEL_RUNTIME_DIR` of a session is a scratch folder with that arm's bundle and the repository's `index.html`. Everything
-else is the control arm of `first-use-ab.py` (async asset I/O, trace on, scene warm on, both first-use factors explicitly 0). `--unpatched-bundle` is a
-`runtime.js` built from the same sources WITHOUT the patch (a path argument; it stays out of the repository); the patched one is `runtime/dist/runtime.js`.
+else is the control arm of `first-use-ab.py` (async asset I/O, trace on, scene warm on, both first-use factors explicitly 0).
+
+THE BUNDLES. The patch is OPT-IN in the build, so a plain `./scripts/runtime build` makes the UNPATCHED bundle. `--unpatched-bundle` is a `runtime.js` of such a
+plain build, copied out of `runtime/dist` (a path argument; it stays out of the repository) before the patched one is built; the PATCHED arm is the
+`runtime/dist/runtime.js` that `TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1 ./scripts/runtime build` leaves there. A `dist` left by a plain build is therefore
+refused as the patched arm (BLOCKED, with the command that builds it).
 Each bundle is read before the first session: the unpatched one must contain the decoder's call once, the patched one not at all. After the sessions, each
 one is checked against the host's own `asset_io` record of the `runtime.js` it served: within an arm every session got the same number of bytes (the size of the
 arm's file) and the unpatched bundle is exactly what the patch removes longer than the patched one; otherwise the run is INVALID ARMS and says nothing.
@@ -63,6 +67,8 @@ ARMS = (UNPATCHED, PATCHED)
 DECODER_CALL = "reader.releaseLock();"
 # What the build puts where the call was: the patched bundle is `len(DECODER_CALL) - len(PATCH_REPLACEMENT)` bytes shorter.
 PATCH_REPLACEMENT = "void 0;"
+# The patch is opt-in in the build: this is what leaves the PATCHED arm in `runtime/dist/runtime.js` (a plain build leaves the unpatched bundle there).
+PATCHED_BUILD = "TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1 ./scripts/runtime build"
 MIN_UNPATCHED_HANGS = 3
 STALL_SECONDS = 10.0
 MAX_SAMPLES_PER_SESSION = 2
@@ -73,9 +79,11 @@ def bundle_findings(arm, text):
     """Why a bundle is not what its arm says it is (an empty list when it is)."""
     count = text.count(DECODER_CALL)
     if arm == UNPATCHED and count != 1:
-        return [f"the unpatched bundle has the decoder's `{DECODER_CALL}` {count} time(s), expected exactly 1"]
+        return [f"the unpatched bundle has the decoder's `{DECODER_CALL}` {count} time(s), expected exactly 1 (--unpatched-bundle is the runtime.js of a plain "
+                "`./scripts/runtime build`, without the patch variable)"]
     if arm == PATCHED and count != 0:
-        return [f"the patched bundle still has the decoder's `{DECODER_CALL}` ({count} time(s))"]
+        return [f"the patched bundle still has the decoder's `{DECODER_CALL}` ({count} time(s)); runtime/dist/runtime.js is the PATCHED arm and the patch is "
+                f"opt-in, so build it with `{PATCHED_BUILD}` (a plain build leaves the unpatched bundle)"]
     return []
 
 
@@ -302,12 +310,11 @@ def leftover_helpers(baseline):
 
 
 # ------------------------------------------------------------------------------------------------ commands
-# ------------------------------------------------------------------------------------------------ commands
-def scratch_runtime(parent, arm, bundle):
-    """A folder the host accepts as `TESSEL_RUNTIME_DIR`: `dist/index.html` of the repository and this arm's `runtime.js`."""
+def scratch_runtime(parent, arm, bundle, index=None):
+    """A folder the host accepts as `TESSEL_RUNTIME_DIR`: `dist/index.html` (the repository's built page unless `index` names another) and this arm's `runtime.js`."""
     dist = pathlib.Path(parent) / arm / "dist"
     dist.mkdir(parents=True)
-    shutil.copyfile(ROOT / "runtime" / "dist" / "index.html", dist / "index.html")
+    shutil.copyfile(index or ROOT / "runtime" / "dist" / "index.html", dist / "index.html")
     shutil.copyfile(bundle, dist / "runtime.js")
     return dist.parent
 
@@ -368,7 +375,7 @@ def main():
     run = sub.add_parser("run")
     run.add_argument("--binary", required=True)
     run.add_argument("--project", required=True)
-    run.add_argument("--unpatched-bundle", required=True, help="a runtime.js built from the same sources without the patch")
+    run.add_argument("--unpatched-bundle", required=True, help="the runtime.js of a plain `./scripts/runtime build` (no patch variable), copied out of runtime/dist before the patched build")
     run.add_argument("--out", required=True)
     run.add_argument("--pairs", type=int, default=30)
     run.add_argument("--stress-cpu", type=int, default=0,
