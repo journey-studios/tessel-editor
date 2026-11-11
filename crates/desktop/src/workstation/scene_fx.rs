@@ -26,7 +26,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use gpui_kit::assets::IconName;
-use gpui_kit::component::Selectable;
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::{h_flex, v_flex};
@@ -43,6 +42,7 @@ use tessel_editor_core::scene_interaction::{FxGestureCommand, Gesture, GestureCo
 use tessel_editor_core::scene_project::SceneCommand;
 
 use super::controls::{disabled_tool_button, glyph, tool_button, value_after_key};
+use super::scene_fx_handles::{HANDLES_ACTION, handles_action};
 use super::scene_fx_keys::{animation_actions, animation_at, animation_fields};
 use super::scene_model::{PanelFit, format_number};
 use super::scene_panel::SliderRow;
@@ -219,12 +219,7 @@ fn reason_text(reason: &str) -> &'static str {
 /// The actions of a clip node: remove, hide, and the resets the inspector model says make sense
 /// (the whole look, then every field away from its default). A reset with nothing to restore is
 /// listed disabled with its reason, never as a callback that does nothing.
-fn clip_actions(
-    clip: &FxClip,
-    edit_frames: i64,
-    frame: Option<i64>,
-    handles_on: bool,
-) -> Vec<Value> {
+fn clip_actions(clip: &FxClip, edit_frames: i64, frame: Option<i64>) -> Vec<Value> {
     let controls = controls_of(clip, edit_frames);
     let looks_changed = has_reset(&controls);
     let mut actions = vec![
@@ -239,15 +234,7 @@ fn clip_actions(
             "disabled_reason": (!looks_changed).then_some(ALREADY_DEFAULT),
         }),
     ];
-    // F061: the vignette's handles on the monitor. Only a vignette has them; another effect lists
-    // the action disabled with its reason, never as a callback that does nothing.
-    let has_handles = clip.effect.id == fx::VIGNETTE.id;
-    actions.push(json!({
-        "action": HANDLES_ACTION,
-        "label": if handles_on { "Ocultar alças no monitor" } else { "Mostrar alças no monitor" },
-        "enabled": has_handles,
-        "disabled_reason": (!has_handles).then_some(NO_HANDLES),
-    }));
+    actions.push(handles_action(clip));
     for control in controls.iter().filter(|control| control.default.is_some()) {
         let away = !control.at_default();
         actions.push(json!({
@@ -261,10 +248,15 @@ fn clip_actions(
     actions
 }
 
+/// The names a clip node advertises: what the error of an unknown action lists.
+fn advertised_actions(view: &FxView, entry: &ClipView) -> Vec<String> {
+    clip_actions(&entry.clip, view.edit_frames, view.frame_here)
+        .iter()
+        .filter_map(|action| action["action"].as_str().map(str::to_string))
+        .collect()
+}
+
 const ALREADY_DEFAULT: &str = "Já está no padrão";
-/// F061: `handles` on a vignette clip node shows or hides its 2D handles on the monitor.
-const HANDLES_ACTION: &str = "handles";
-const NO_HANDLES: &str = "Só a vinheta tem alças no monitor";
 
 /// The words of the warning, one string for the screen and the node. It says what happens (the
 /// frames are slower) and what does not (no pass is dropped, nothing is refused or hidden).
@@ -427,37 +419,6 @@ impl Workstation {
         self.fx_run(&view.scene, op, source, cx)
     }
 
-    /// Whether the monitor draws the handles of `clip` now: the core's session target, not a flag
-    /// of the panel.
-    pub(super) fn fx_handles_on(&self, scene: &str, clip: &str) -> bool {
-        self.state
-            .scene_interaction
-            .fx_target()
-            .is_some_and(|target| target.scene == scene && target.clip == clip)
-    }
-
-    /// Shows the handles of `clip` on the monitor, or hides them when they are shown: ONE
-    /// `scene.fx.select`, the command a script sends. The core refuses a clip that has none
-    /// (`fx_has_no_handles`) and empties the entity selection (one target at a time).
-    pub(super) fn fx_handles_toggle(
-        &mut self,
-        clip: &str,
-        source: Source,
-        cx: &mut Context<Self>,
-    ) -> Result<Value, CommandError> {
-        let view = self.fx_view().ok_or_else(no_scene)?;
-        self.fx_known(&view, clip)?;
-        let next = (!self.fx_handles_on(&view.scene, clip)).then(|| clip.to_string());
-        self.scene_execute(
-            SceneCommand::FxSelect {
-                scene: view.scene,
-                clip: next,
-            },
-            source,
-            cx,
-        )
-    }
-
     /// Restores the look of a clip (every parameter away from its default) or one field to its
     /// default, as ONE `scene.fx.edit`: the ops are the core inspector's own. Nothing to restore
     /// is the core's no-op (no history entry), not an error.
@@ -481,15 +442,7 @@ impl Workstation {
                     return Err(unknown_action(
                         &clip_node_id(clip),
                         &format!("reset:{id}"),
-                        &clip_actions(
-                            &found.clip,
-                            view.edit_frames,
-                            view.frame_here,
-                            self.fx_handles_on(&view.scene, clip),
-                        )
-                        .iter()
-                        .filter_map(|action| action["action"].as_str().map(str::to_string))
-                        .collect::<Vec<_>>(),
+                        &advertised_actions(&view, found),
                     ));
                 }
                 control.reset_op(&found.clip).into_iter().collect()
@@ -534,7 +487,11 @@ impl Workstation {
         Ok(view)
     }
 
-    fn fx_known<'a>(&self, view: &'a FxView, clip: &str) -> Result<&'a ClipView, CommandError> {
+    pub(super) fn fx_known<'a>(
+        &self,
+        view: &'a FxView,
+        clip: &str,
+    ) -> Result<&'a ClipView, CommandError> {
         view.clip(clip)
             .ok_or_else(|| CommandError::unknown_element("effect clip", clip))
     }
@@ -944,12 +901,7 @@ impl Workstation {
                 "label": format!("{} {}", effect_label(clip.effect), clip.id),
                 "parent": SECTION_ID, "children": [], "enabled": true, "visible": true,
                 "fields": fields,
-                "actions": clip_actions(
-                    clip,
-                    view.edit_frames,
-                    view.frame_here,
-                    self.fx_handles_on(&view.scene, &clip.id),
-                ),
+                "actions": clip_actions(clip, view.edit_frames, view.frame_here),
                 "state": {
                     "clip": clip.id, "track": entry.track_id, "track_label": entry.track_label,
                     "effect": clip.effect.id, "start_frame": clip.start_frame,
@@ -1054,17 +1006,8 @@ impl Workstation {
                 &self
                     .fx_view()
                     .and_then(|view| {
-                        view.clip(clip).map(|entry| {
-                            clip_actions(
-                                &entry.clip,
-                                view.edit_frames,
-                                view.frame_here,
-                                self.fx_handles_on(&view.scene, clip),
-                            )
-                            .iter()
-                            .filter_map(|action| action["action"].as_str().map(str::to_string))
-                            .collect::<Vec<_>>()
-                        })
+                        view.clip(clip)
+                            .map(|entry| advertised_actions(&view, entry))
                     })
                     .unwrap_or_else(|| vec!["remove".to_string(), "toggle_hidden".to_string()]),
             )),
@@ -1274,38 +1217,6 @@ impl Workstation {
                 .child(self.geometry.probe(format!("control:fx-reset:{id}")))
                 .child(button)
         };
-        let handles = {
-            let on = self.fx_handles_on(&view.scene, &id);
-            let button_id = SharedString::from(format!("fx-handles:{id}"));
-            let button = if clip.effect.id == fx::VIGNETTE.id {
-                let label = if on {
-                    format!("Ocultar alças de {} no monitor", clip.id)
-                } else {
-                    format!("Mostrar alças de {} no monitor", clip.id)
-                };
-                let clip_id = id.clone();
-                let workstation = workstation.clone();
-                tool_button(button_id, IconName::Frame, &label)
-                    .selected(on)
-                    .on_click(move |_, _, cx| {
-                        let clip_id = clip_id.clone();
-                        let _ = workstation.update(cx, |this, cx| {
-                            let _ = this.fx_handles_toggle(&clip_id, Source::Gesture, cx);
-                        });
-                    })
-            } else {
-                disabled_tool_button(
-                    button_id,
-                    IconName::Frame,
-                    &format!("Alças de {} no monitor", clip.id),
-                    NO_HANDLES,
-                )
-            };
-            div()
-                .relative()
-                .child(self.geometry.probe(format!("control:fx-handles:{id}")))
-                .child(button)
-        };
         let title = h_flex()
             .items_center()
             .gap(px(6.))
@@ -1327,7 +1238,7 @@ impl Workstation {
                     )),
             )
             .child(toggle)
-            .child(handles)
+            .child(self.fx_handles_button(view, clip, workstation.clone()))
             .child(reset)
             .child(remove);
         let mut block = v_flex().w_full().child(title);
@@ -1509,7 +1420,7 @@ fn unknown_control(clip: &str, control: &str) -> CommandError {
     )
 }
 
-fn no_scene() -> CommandError {
+pub(super) fn no_scene() -> CommandError {
     CommandError::new("unknown_element", super::scene_ui::NO_SCENE_REASON)
 }
 

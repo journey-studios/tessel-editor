@@ -172,7 +172,18 @@ fn the_handles_action_is_the_shared_select_and_the_tree_says_what_is_targeted(
     // On: the same state `scene.fx.select` leaves, on the clip node and the gizmo node.
     let before = undo_depth(&view, cx);
     invoke(&view, cx, CLIP, "handles").unwrap();
-    assert_eq!(node(&view, cx, CLIP)["state"]["handles"], json!(true));
+    let lit = node(&view, cx, CLIP);
+    assert_eq!(lit["state"]["handles"], json!(true));
+    let lit_action = lit["actions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|action| action["action"] == "handles")
+        .unwrap();
+    assert_eq!(
+        lit_action["label"], action["label"],
+        "the label is static: whether it is on is the state, not a second wording"
+    );
     let on = gizmo(&view, cx);
     assert_eq!(on["state"]["target"], json!("fx"));
     assert_eq!(on["state"]["fx_clip"], json!("fx-1"));
