@@ -47,7 +47,7 @@
 use super::rotation::{M3, determinant};
 use super::{
     CENTER_RADIUS, EPS, HANDLE_LENGTH, HIT_RADIUS, Handle, HandleGeometry, Layout, Point, V3, View,
-    add, axis_parameter, inverse3, linear, normalize, scale as scale_by,
+    add, axis_parameter, dot, inverse3, linear, scale as scale_by,
 };
 use super::{GizmoSpace, GizmoTool};
 use crate::directed_scene::Vec3;
@@ -170,6 +170,24 @@ fn world_axis(m: &M3, inverse: &M3, h: usize) -> Result<AxisScale, &'static str>
     })
 }
 
+/// The unit direction of column `h` of `m`, from that column alone: no other axis and no absolute
+/// length decides it. The column is first divided by its largest component (so the length that
+/// follows is in `[1, √3]` whatever the column's size, down to the subnormals) and only a column
+/// that is zero or not finite has no direction.
+fn column_direction(m: &M3, h: usize) -> Option<V3> {
+    let column = [m[0][h], m[1][h], m[2][h]];
+    if column.iter().any(|component| !component.is_finite()) {
+        return None;
+    }
+    let largest = column.iter().fold(0.0_f64, |most, c| most.max(c.abs()));
+    if largest == 0.0 {
+        return None;
+    }
+    let relative = column.map(|component| component / largest);
+    let length = dot(relative, relative).sqrt();
+    Some(relative.map(|component| component / length))
+}
+
 impl ScaleFrame {
     /// The frame of `node` whose document holds `base` as `localScale`, in `space`. `animated` is
     /// whether a performance channel writes the node's scale at this frame and `splat` whether the
@@ -202,30 +220,37 @@ impl ScaleFrame {
                 *value /= scale;
             }
         }
-        // `M` is only a basis: `T = M⁻¹·a·aᵀ·M` and the unit directions do not change when `M` is
-        // multiplied by a positive number. It is therefore inverted at unit volume, so the
-        // absolute determinant cut-off of `inverse3` judges its shape and not its size: compensating
-        // scales (a child of 100 below a parent of 1e-5) are as scalable as their world matrix is.
-        // The size of the world matrix itself is the business of `MIN_DETERMINANT`, on the result.
+        // `M` is only a basis, and the two things made of it need different treatments:
+        //
+        // * `T = M⁻¹·a·aᵀ·M` does not change when `M` is multiplied by a positive number, so it is
+        //   inverted at unit volume: the absolute determinant cut-off of `inverse3` then judges the
+        //   shape of the basis and not its size, and compensating scales (a child of 100 below a
+        //   parent of 1e-5) are as scalable as their world matrix is. The size of the world matrix
+        //   itself is the business of `MIN_DETERMINANT`, on the result.
+        // * The LOCAL directions are the columns of `M` itself, each one normalised on its own and
+        //   without an absolute cut-off (`column_direction`). Dividing by the volume shrinks a
+        //   column that is short next to the others (parents of `(1e-8, 1e8, 1e8)` leave `2e-11`
+        //   for the first one) and would make an axis that is perfectly legal look degenerate; a
+        //   column's direction depends on that column alone.
         let volume = determinant(&m).abs().cbrt();
         if !volume.is_finite() || volume <= 0.0 {
             return Err(super::refusal::DEGENERATE_TRANSFORM);
         }
-        let m = m.map(|row| row.map(|value| value / volume));
-        let inverse = inverse3(&m).ok_or(super::refusal::DEGENERATE_TRANSFORM)?;
+        let unit_volume = m.map(|row| row.map(|value| value / volume));
+        let inverse = inverse3(&unit_volume).ok_or(super::refusal::DEGENERATE_TRANSFORM)?;
         let axes = [0, 1, 2].map(|h| {
             if splat {
                 return Err(why::SPLAT_NON_UNIFORM);
             }
             match space {
-                GizmoSpace::Local => normalize([m[0][h], m[1][h], m[2][h]])
+                GizmoSpace::Local => column_direction(&m, h)
                     .map(|direction| AxisScale {
                         direction,
                         component: h,
                         skew: 0.0,
                     })
                     .ok_or(super::refusal::DEGENERATE_TRANSFORM),
-                GizmoSpace::World => world_axis(&m, &inverse, h),
+                GizmoSpace::World => world_axis(&unit_volume, &inverse, h),
             }
         });
         Ok(Self {
@@ -936,5 +961,209 @@ mod tests {
         assert_eq!(layout.hit_scale(&view, beyond), Some(Handle::X));
         // Off every handle: nothing.
         assert_eq!(layout.hit_scale(&view, Point { u: 0.9, v: 0.9 }), None);
+    }
+
+    /// What four parents of `(0.01, 100, 100)` multiply to, as the scene would: `(1e-8, 1e8, 1e8)`.
+    /// No number a document holds is extreme; the product is.
+    fn four_parents() -> Vec3 {
+        let mut product = [1.0_f64; 3];
+        for _ in 0..4 {
+            for (total, step) in product.iter_mut().zip([0.01, 100.0, 100.0]) {
+                *total *= step;
+            }
+        }
+        Vec3 {
+            x: product[0],
+            y: product[1],
+            z: product[2],
+        }
+    }
+
+    /// The node of scale `base`, turned `radians` about Z, below a parent of scale `parent` with no
+    /// rotation: its world matrix is `P·R·S`, so without its own scale `M = P·R`.
+    fn under_parent(parent: Vec3, radians: f64, base: Vec3) -> PlanNode {
+        let world = Mat4::compose(Vec3::ZERO, Quat::IDENTITY, parent).mul(&about_z(radians, base));
+        plan_node(world, base)
+    }
+
+    #[test]
+    fn four_parents_of_anisotropic_scale_leave_every_local_axis_where_the_columns_point() {
+        let parent = four_parents();
+        assert!(parent.x < 1.0000001e-8 && parent.y > 0.9999999e8 && parent.z > 0.9999999e8);
+        let unevenly = Vec3 {
+            x: 2.0,
+            y: 3.0,
+            z: 5.0,
+        };
+        for base in [Vec3::ONE, unevenly] {
+            // No exact quarter turn: there `cos` is rounding noise, which the 1e16 spread of the
+            // parents turns into the whole direction of a column (and the two roundings differ).
+            for radians in [0.0, 0.3, 1.1, 2.9] {
+                let node = under_parent(parent, radians, base);
+                let frame = ScaleFrame::of(&node, base, GizmoSpace::Local, false, false)
+                    .unwrap_or_else(|why| panic!("{base:?} {radians}: {why}"));
+                // The oracle: `M = P·R`, so column `h` is `P` times the node's own axis `h`
+                // (`R = [[c, -s, 0], [s, c, 0], [0, 0, 1]]`), unit-ised with the plain formula.
+                let (s, c) = radians.sin_cos();
+                let own = [[c, s, 0.0], [-s, c, 0.0], [0.0, 0.0, 1.0]];
+                for (index, handle) in [Handle::X, Handle::Y, Handle::Z].into_iter().enumerate() {
+                    let raw = [
+                        parent.x * own[index][0],
+                        parent.y * own[index][1],
+                        parent.z * own[index][2],
+                    ];
+                    let length = (raw[0] * raw[0] + raw[1] * raw[1] + raw[2] * raw[2]).sqrt();
+                    let direction = frame.direction(handle).unwrap_or_else(|| {
+                        panic!("{handle:?} {radians}: {:?}", frame.disabled(handle))
+                    });
+                    for axis in 0..3 {
+                        assert!(
+                            (direction[axis] - raw[axis] / length).abs() < 1e-12,
+                            "{handle:?} {radians} {base:?}: {direction:?} vs {raw:?}/{length}"
+                        );
+                    }
+                    assert_eq!(frame.component(handle), Some(["x", "y", "z"][index]));
+                }
+                // And the scale it asks for is the plain product.
+                let doubled = frame.scale(Handle::X, 2.0).unwrap();
+                assert_eq!(
+                    (doubled.x, doubled.y, doubled.z),
+                    (2.0 * base.x, base.y, base.z)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn four_parents_of_anisotropic_scale_keep_the_world_axes_that_run_along_a_node_axis() {
+        let parent = four_parents();
+        // Quarter turns keep every scene axis on a node axis (a permutation), and the component the
+        // factor lands on is the one the permutation says; anything else would be a shear.
+        for (radians, components) in [
+            (0.0, ["x", "y", "z"]),
+            (std::f64::consts::FRAC_PI_2, ["y", "x", "z"]),
+        ] {
+            let node = under_parent(parent, radians, Vec3::ONE);
+            let frame = ScaleFrame::of(&node, Vec3::ONE, GizmoSpace::World, false, false).unwrap();
+            for (index, handle) in [Handle::X, Handle::Y, Handle::Z].into_iter().enumerate() {
+                assert_eq!(frame.disabled(handle), None, "{radians} {handle:?}");
+                assert_eq!(
+                    frame.component(handle),
+                    Some(components[index]),
+                    "{radians}"
+                );
+                let mut direction = [0.0; 3];
+                direction[index] = 1.0;
+                assert_eq!(frame.direction(handle), Some(direction));
+                let scaled = frame.scale(handle, 2.0).unwrap();
+                let landed = ["x", "y", "z"]
+                    .iter()
+                    .position(|name| *name == components[index])
+                    .unwrap();
+                let mut expected = [1.0; 3];
+                expected[landed] = 2.0;
+                assert_eq!([scaled.x, scaled.y, scaled.z], expected);
+            }
+        }
+        // A node turned 0.3 rad about Z is a shear for the scene's X and Y (and only for them), as
+        // it is without the parents: the extreme basis does not hide it.
+        let skewed = under_parent(parent, 0.3, Vec3::ONE);
+        let frame = ScaleFrame::of(&skewed, Vec3::ONE, GizmoSpace::World, false, false).unwrap();
+        assert_eq!(frame.disabled(Handle::X), Some(why::WORLD_AXIS_SHEAR));
+        assert_eq!(frame.disabled(Handle::Y), Some(why::WORLD_AXIS_SHEAR));
+        assert_eq!(frame.disabled(Handle::Z), None);
+    }
+
+    #[test]
+    fn four_parents_of_anisotropic_scale_keep_the_limits_and_the_uniform_handle() {
+        let parent = four_parents();
+        for space in GizmoSpace::ALL {
+            let node = under_parent(parent, 0.0, Vec3::ONE);
+            let frame = ScaleFrame::of(&node, Vec3::ONE, space, false, false).unwrap();
+            // The limits judge the authored component, whatever the basis looks like.
+            assert_eq!(frame.scale(Handle::X, 1e4), Err(why::ABOVE_MAXIMUM));
+            assert_eq!(frame.scale(Handle::Z, 1e-4), Err(why::BELOW_MINIMUM));
+            let uniform = frame.scale(Handle::Uniform, 4.0).unwrap();
+            assert_eq!((uniform.x, uniform.y, uniform.z), (4.0, 4.0, 4.0));
+        }
+        // Zero volume (a parent with a flat axis) is still no basis at all.
+        let flat = Vec3 { x: 0.0, ..parent };
+        let node = under_parent(flat, 0.0, Vec3::ONE);
+        for space in GizmoSpace::ALL {
+            assert_eq!(
+                ScaleFrame::of(&node, Vec3::ONE, space, false, false).unwrap_err(),
+                crate::scene_interaction::gizmo::refusal::DEGENERATE_TRANSFORM
+            );
+        }
+    }
+
+    #[test]
+    fn a_column_has_a_direction_from_its_own_length_alone() {
+        // No other column, no volume and no absolute length takes part.
+        let m = [[1e-30, 0.0, 0.0], [1e-30, 3.0, 0.0], [0.0, 0.0, 1e200]];
+        let first = column_direction(&m, 0).unwrap();
+        assert!((first[0] - std::f64::consts::FRAC_1_SQRT_2).abs() < 1e-15);
+        assert!((first[1] - std::f64::consts::FRAC_1_SQRT_2).abs() < 1e-15);
+        assert_eq!(column_direction(&m, 2), Some([0.0, 0.0, 1.0]));
+        // A subnormal column still points somewhere; zero and non-finite ones do not.
+        let tiny = [[5e-324, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+        assert_eq!(column_direction(&tiny, 0), Some([1.0, 0.0, 0.0]));
+        let zero = [[0.0, 1.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]];
+        assert_eq!(column_direction(&zero, 0), None);
+        let nan = [[f64::NAN, 1.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+        assert_eq!(column_direction(&nan, 0), None);
+        let infinite = [[f64::INFINITY, 1.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+        assert_eq!(column_direction(&infinite, 0), None);
+    }
+
+    #[test]
+    fn a_pointer_exactly_perpendicular_to_the_press_is_the_far_side_not_a_ratio() {
+        // The boundary of the uniform half-plane: `dot == 0` exactly. The picture is wider than
+        // tall (aspect 1.5), so the press distance and the pointer distance are in picture
+        // heights. The press is on the horizontal through the origin (its `v` is the origin's, bit
+        // for bit) and the pointer on the vertical (its `u` is the origin's): every term of the
+        // product is an exact zero, no rounding decides the side.
+        let view = view();
+        assert_ne!(view.aspect, 1.0);
+        let origin = [0.0; 3];
+        let centre = view.project(origin).unwrap();
+        let horizontal = Point {
+            u: centre.u + 0.1 / view.aspect,
+            v: centre.v,
+        };
+        let anchor = ScaleAnchor::begin(&view, origin, Handle::Uniform, None, horizontal).unwrap();
+        for above in [0.2, -0.2] {
+            let perpendicular = Point {
+                u: centre.u,
+                v: centre.v + above,
+            };
+            // The ratio of distances WOULD be a legal 2: the side is the only thing refusing it.
+            let ratio = view.distance(perpendicular, centre) / view.distance(horizontal, centre);
+            assert!((ratio - 2.0).abs() < 1e-12, "{ratio}");
+            assert_eq!(
+                (perpendicular.u - centre.u) * (horizontal.u - centre.u),
+                0.0
+            );
+            assert_eq!(anchor.factor(perpendicular), Some(0.0), "{above}");
+        }
+        // The same boundary with the roles swapped: the press on the vertical.
+        let vertical = Point {
+            u: centre.u,
+            v: centre.v + 0.1,
+        };
+        let anchor = ScaleAnchor::begin(&view, origin, Handle::Uniform, None, vertical).unwrap();
+        for side in [0.2, -0.2] {
+            let perpendicular = Point {
+                u: centre.u + side / view.aspect,
+                v: centre.v,
+            };
+            assert_eq!(anchor.factor(perpendicular), Some(0.0), "{side}");
+        }
+        // One step inside the press half-plane is the plain ratio again.
+        let inside = Point {
+            u: centre.u + 1e-6,
+            v: centre.v + 0.2,
+        };
+        assert!((anchor.factor(inside).unwrap() - 2.0).abs() < 1e-5);
     }
 }

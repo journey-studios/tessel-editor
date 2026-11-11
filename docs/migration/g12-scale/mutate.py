@@ -21,7 +21,7 @@ MUTANTS = [
     ('M09 splat axes allowed', SCALING, '            if splat {\n                return Err(why::SPLAT_NON_UNIFORM);', '            if false && splat {\n                return Err(why::SPLAT_NON_UNIFORM);'),
     ('M10 animated scale allowed', SCALING, '        if animated {\n            return Err(why::ANIMATED_SCALE);', '        if false && animated {\n            return Err(why::ANIMATED_SCALE);'),
     ('M11 uniform scales x only', SCALING, '            Handle::Uniform => {}\n', '            Handle::Uniform => {\n                changed = [true, false, false];\n            }\n'),
-    ('M12 local axes read as rows', SCALING, 'normalize([m[0][h], m[1][h], m[2][h]])', 'normalize([m[h][0], m[h][1], m[h][2]])'),
+    ('M12 local axes read as rows', SCALING, 'let column = [m[0][h], m[1][h], m[2][h]];', 'let column = [m[h][0], m[h][1], m[h][2]];'),
     ('M13 press at the origin allowed (axis)', SCALING, 'if parameter.is_nan() || parameter < MIN_PRESS_FRACTION * reference {', 'if parameter.is_nan() || parameter < 0.0 * reference {'),
     ('M14 press at the origin allowed (uniform)', SCALING, 'if distance.is_nan() || distance < MIN_UNIFORM_PRESS {', 'if false {'),
     ('M15 uniform box does not win', SCALING, '&& view.distance(point, uniform.to) <= CENTER_RADIUS', '&& view.distance(point, uniform.to) <= 0.0'),
@@ -37,7 +37,10 @@ MUTANTS = [
     ('M25 limits judged on factor not result', SCALING, 'within_limits(*value, result)?;', 'within_limits(1.0, factor)?;'),
     ('M26 uniform far side counts as the press side', SCALING, '                if dot <= 0.0 {', '                if false {'),
     ('M27 uniform side judged without the aspect', SCALING, '* self.view.aspect.powi(2)', '* 1.0'),
-    ('M28 the basis is inverted at its own size', SCALING, '        let m = m.map(|row| row.map(|value| value / volume));\n', ''),
+    ('M28 the basis is inverted at its own size', SCALING, '        let unit_volume = m.map(|row| row.map(|value| value / volume));\n', '        let unit_volume = m;\n'),
+    ('M29 local axes judged on the unit-volume basis (the 4532352759 defect)', SCALING, 'GizmoSpace::Local => column_direction(&m, h)', 'GizmoSpace::Local => super::normalize([unit_volume[0][h], unit_volume[1][h], unit_volume[2][h]])'),
+    ('M30 a column below an absolute length has no direction', SCALING, '    if largest == 0.0 {', '    if largest <= super::EPS {'),
+    ('M31 uniform pointer exactly perpendicular is the press side (dot < 0)', SCALING, 'if dot <= 0.0 {', 'if dot < 0.0 {'),
 ]
 
 JS_MUTANTS = [

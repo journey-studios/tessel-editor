@@ -723,6 +723,303 @@ fn compensating_scales_of_a_parent_and_its_child_stay_scalable_in_every_space() 
     }
 }
 
+// --- a chain of parents whose scales do not compensate each other axis by axis -----------------------
+
+/// One link of a parent chain: the authored rotation and scale of a group.
+type Link = (Option<[f64; 4]>, V3);
+
+/// The street with `links` chained below nothing (the first is the root), the figure last, at the
+/// last link's origin: no document number is extreme and the world matrix of the figure is the
+/// product of the links. The backdrop stays on the root, as in the fixture.
+fn chained(links: &[Link], figure_rotation: Option<[f64; 4]>) -> EditorState {
+    let mut bundle = bundle(MINIMAL);
+    let nodes = bundle["sceneDefinitions"][0]["nodes"]
+        .as_array_mut()
+        .unwrap();
+    let mut parent = "root".to_string();
+    for (index, (rotation, scale)) in links.iter().enumerate() {
+        let id = if index == 0 {
+            "root".to_string()
+        } else {
+            let id = format!("link-{index}");
+            nodes.push(json!({
+                "id": id, "parentId": parent, "type": "group",
+                "localPosition": {"x": 0, "y": 0, "z": 0},
+                "localRotation": {"x": 0, "y": 0, "z": 0, "w": 1},
+                "localScale": {"x": 1, "y": 1, "z": 1},
+            }));
+            id
+        };
+        let node = nodes.iter_mut().find(|n| n["id"] == id).unwrap();
+        node["localScale"] = vec_value(*scale);
+        if let Some(q) = rotation {
+            node["localRotation"] = quat_value(*q);
+        }
+        parent = id;
+    }
+    let figure = nodes.iter_mut().find(|n| n["id"] == "figure").unwrap();
+    figure["parentId"] = json!(parent);
+    figure["localPosition"] = vec_value([0.0; 3]);
+    if let Some(q) = figure_rotation {
+        figure["localRotation"] = quat_value(q);
+    }
+    street_of(bundle)
+}
+
+/// `M = Π (Rᵢ·Pᵢ) · R_figure`: the figure's world matrix without its own scale, from the authored
+/// parts (the parent chain, then the figure's rotation).
+fn chain_m(links: &[Link], figure_rotation: Option<[f64; 4]>) -> M3 {
+    let mut m = IDENTITY;
+    for (rotation, scale) in links {
+        let r = rotation.map_or(IDENTITY, matrix_of);
+        m = matmul(&m, &matmul(&r, &diag(*scale)));
+    }
+    matmul(&m, &figure_rotation.map_or(IDENTITY, matrix_of))
+}
+
+/// Every entry within a relative `1e-9` of its row (the rows of a world matrix under anisotropic
+/// parents differ by sixteen orders of magnitude: one absolute tolerance judges nothing).
+fn assert_matrix_by_rows(actual: &M3, expected: &M3, what: &str) {
+    for r in 0..3 {
+        let row = expected[r]
+            .iter()
+            .fold(0.0_f64, |most, v| most.max(v.abs()));
+        for c in 0..3 {
+            assert!(
+                near(actual[r][c], expected[r][c], 1e-9 * row),
+                "{what}: [{r}][{c}] {} vs {}\nactual {actual:?}\nexpected {expected:?}",
+                actual[r][c],
+                expected[r][c]
+            );
+        }
+    }
+}
+
+/// Four parents of `(0.01, 100, 100)`: nothing extreme is written, the world scale is
+/// `(1e-8, 1e8, 1e8)` and the figure's axes are as tiny and as huge as the product says.
+fn four_parents(rotations: [Option<[f64; 4]>; 4]) -> Vec<Link> {
+    rotations
+        .into_iter()
+        .map(|rotation| (rotation, [0.01, 100.0, 100.0]))
+        .collect()
+}
+
+#[test]
+fn four_parents_of_anisotropic_scale_keep_every_local_handle_and_edit_where_the_oracle_says() {
+    let links = four_parents([
+        Some(quat_about([1.0, 2.0, 0.5], 40.0)),
+        Some(quat_about([0.0, 1.0, 1.0], 25.0)),
+        None,
+        Some(quat_about([2.0, -1.0, 1.0], 70.0)),
+    ]);
+    let own = quat_about([0.3, 1.0, -0.4], 33.0);
+    let m = chain_m(&links, Some(own));
+    for (index, axis) in ["x", "y", "z"].into_iter().enumerate() {
+        let mut state = chained(&links, Some(own));
+        angled_camera(&mut state);
+        select(&mut state, FIGURE);
+        tool(&mut state, "scale", "local");
+        let (before, origin) = world(&mut state, "figure", 0);
+        assert_matrix_by_rows(&before, &m, "the plan agrees with the oracle chain");
+        let camera = camera(&mut state, 0);
+        let shown = overlay(&mut state);
+        assert_eq!(shown["visible"], true, "{shown}");
+        assert_eq!(handle_ids(&shown), ["x", "y", "z", "uniform"], "{shown}");
+        assert_eq!(disabled(&shown), []);
+        // Each axis handle ends where the column of `M` points, from the origin, by the book.
+        let length = camera.handle_length(origin);
+        let direction = unit(column(&m, index));
+        let (u, v) = camera.project(along(origin, direction, length));
+        let (tu, tv) = uv(&handle(&shown, axis)["to"]);
+        assert!(
+            near(u, tu, 1e-9) && near(v, tv, 1e-9),
+            "{axis}: ({u}, {v}) vs ({tu}, {tv})"
+        );
+        // The edit through the public command: `W·diag(d)`, the authored component only.
+        let answer = ok(&mut state, scale_request(FIGURE, axis, 2.0, "local"));
+        assert_eq!(answer["changed"], true, "{axis}: {answer}");
+        let mut d = [1.0; 3];
+        d[index] = 2.0;
+        let (after, after_origin) = world(&mut state, "figure", 0);
+        assert_matrix_by_rows(&after, &matmul(&before, &diag(d)), axis);
+        assert_vec(after_origin, origin, "the pivot does not move");
+        assert_eq!(figure_scale(&state), d);
+    }
+    // The uniform handle is `f·W` in this chain, in both spaces.
+    for space in ["local", "world"] {
+        let mut state = chained(&links, Some(own));
+        let (before, _) = world(&mut state, "figure", 0);
+        ok(&mut state, scale_request(FIGURE, "uniform", 1.5, space));
+        let (after, _) = world(&mut state, "figure", 0);
+        let mut expected = before;
+        for row in &mut expected {
+            for value in row {
+                *value *= 1.5;
+            }
+        }
+        assert_matrix_by_rows(&after, &expected, &format!("f·W ({space})"));
+        assert_eq!(figure_scale(&state), [1.5; 3]);
+    }
+}
+
+#[test]
+fn four_parents_of_anisotropic_scale_without_any_rotation_keep_the_three_axes_in_both_spaces() {
+    // `M = diag(1e-8, 1e8, 1e8)`: the world X axis of the node is 1e-8 long, 1e16 times shorter
+    // than the others and perfectly legal. Four parents multiply to it, and so does one parent
+    // that writes the extreme numbers itself.
+    for links in [four_parents([None; 4]), vec![(None, [1e-8, 1e8, 1e8])]] {
+        for space in ["local", "world"] {
+            let mut state = chained(&links, None);
+            angled_camera(&mut state);
+            select(&mut state, FIGURE);
+            tool(&mut state, "scale", space);
+            let shown = overlay(&mut state);
+            assert_eq!(
+                handle_ids(&shown),
+                ["x", "y", "z", "uniform"],
+                "{space}: {shown}"
+            );
+            assert_eq!(disabled(&shown), [], "{space}");
+            for (index, axis) in ["x", "y", "z"].into_iter().enumerate() {
+                let mut state = chained(&links, None);
+                let (before, _) = world(&mut state, "figure", 0);
+                let answer = ok(&mut state, scale_request(FIGURE, axis, 2.0, space));
+                assert_eq!(answer["component"], axis, "{space} {axis}");
+                let mut d = [1.0; 3];
+                d[index] = 2.0;
+                assert_eq!(figure_scale(&state), d, "{space} {axis}");
+                let (after, _) = world(&mut state, "figure", 0);
+                assert_matrix_by_rows(
+                    &after,
+                    &matmul(&before, &diag(d)),
+                    &format!("{space} {axis}"),
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn four_parents_of_anisotropic_scale_keep_the_world_axes_that_run_along_a_node_axis() {
+    // The node turned a quarter about Z or Y below the four parents: the product is a permutation
+    // times the scales, so the scene's axes are the node's up to order and sign, and the factor
+    // lands where the matrix (not the handle's letter) says. Every number comes from the oracle.
+    //
+    // The quarter turn is the figure's own (the last factor of `M`): a rotation BETWEEN the
+    // parents is not an exact permutation in f64 (`cos 90° ≈ 6e-17`) and next to 1e16 of
+    // anisotropy that noise is a real shear of the matrix, which the tool refuses (the next test
+    // pins that boundary instead of hiding it).
+    let links = four_parents([None; 4]);
+    for own in [
+        quat_about([0.0, 0.0, 1.0], 90.0),
+        quat_about([0.0, 1.0, 0.0], 90.0),
+    ] {
+        let m = chain_m(&links, Some(own));
+        for (index, axis) in ["x", "y", "z"].into_iter().enumerate() {
+            let landed = (0..3)
+                .max_by(|a, b| m[index][*a].abs().total_cmp(&m[index][*b].abs()))
+                .unwrap();
+            let mut state = chained(&links, Some(own));
+            select(&mut state, FIGURE);
+            tool(&mut state, "scale", "world");
+            let shown = overlay(&mut state);
+            assert_eq!(disabled(&shown), [], "{axis}: {shown}");
+            let (before, origin) = world(&mut state, "figure", 0);
+            let answer = ok(&mut state, scale_request(FIGURE, axis, 1.6, "world"));
+            assert_eq!(answer["component"], ["x", "y", "z"][landed], "{axis}");
+            let mut expected = [1.0; 3];
+            expected[landed] = 1.6;
+            let scale = figure_scale(&state);
+            for i in 0..3 {
+                assert!(near(scale[i], expected[i], 1e-12), "{axis}: {scale:?}");
+            }
+            // `G·W` with `G = I + (f-1)·a·aᵀ` for the scene's axis `a`, written here.
+            let mut g = IDENTITY;
+            g[index][index] += 0.6;
+            let (after, after_origin) = world(&mut state, "figure", 0);
+            assert_matrix_by_rows(&after, &matmul(&g, &before), &format!("world {axis}: G·W"));
+            assert_vec(after_origin, origin, "the pivot does not move");
+        }
+    }
+}
+
+#[test]
+fn four_parents_of_anisotropic_scale_with_a_rotation_between_them_refuse_the_world_shear() {
+    // The same quarter turn on the SECOND parent: in f64 it is a permutation plus ~1e-17 noise, and
+    // the parents' 1e16 spread turns that noise into an off-diagonal of order one in
+    // `T = M⁻¹·a·aᵀ·M` (a rotation between two anisotropic scales does not commute with them). The
+    // matrix really is sheared for the scene's axes: they are refused, typed, and the local axes,
+    // which never depend on that, stay.
+    let links = four_parents([None, Some(quat_about([0.0, 0.0, 1.0], 90.0)), None, None]);
+    let mut state = chained(&links, None);
+    select(&mut state, FIGURE);
+    tool(&mut state, "scale", "world");
+    let before = observable(&state);
+    for axis in ["x", "y"] {
+        let error = err(&mut state, scale_request(FIGURE, axis, 2.0, "world"));
+        assert_eq!(reason(&error), "world_axis_shear", "{axis}");
+    }
+    assert_eq!(observable(&state), before);
+    let m = chain_m(&links, None);
+    for (index, axis) in ["x", "y", "z"].into_iter().enumerate() {
+        let mut local = chained(&links, None);
+        let (w, origin) = world(&mut local, "figure", 0);
+        assert_matrix_by_rows(&w, &m, "the plan agrees with the oracle chain");
+        ok(&mut local, scale_request(FIGURE, axis, 2.0, "local"));
+        let mut d = [1.0; 3];
+        d[index] = 2.0;
+        let (after, after_origin) = world(&mut local, "figure", 0);
+        assert_matrix_by_rows(&after, &matmul(&w, &diag(d)), axis);
+        assert_vec(after_origin, origin, "the pivot does not move");
+    }
+}
+
+#[test]
+fn four_parents_of_anisotropic_scale_still_refuse_a_shear_a_limit_and_a_flat_basis() {
+    let links = four_parents([None; 4]);
+    // A node turned 30° about Z: the scene's X and Y are no node axes, the extreme basis or not.
+    let skew = quat_about([0.0, 0.0, 1.0], 30.0);
+    let mut state = chained(&links, Some(skew));
+    select(&mut state, FIGURE);
+    tool(&mut state, "scale", "world");
+    let shown = overlay(&mut state);
+    assert_eq!(
+        disabled(&shown),
+        [
+            ("x".to_string(), "world_axis_shear".to_string()),
+            ("y".to_string(), "world_axis_shear".to_string())
+        ],
+        "{shown}"
+    );
+    let before = observable(&state);
+    for axis in ["x", "y"] {
+        let error = err(&mut state, scale_request(FIGURE, axis, 2.0, "world"));
+        assert_eq!(reason(&error), "world_axis_shear", "{axis}");
+        assert_eq!(observable(&state), before, "{axis}");
+    }
+    // The limits are the authored component's, whatever the basis.
+    let mut state = chained(&links, None);
+    let before = observable(&state);
+    for (factor, expected) in [(1e4, "above_maximum_scale"), (1e-4, "below_minimum_scale")] {
+        for space in ["local", "world"] {
+            let error = err(&mut state, scale_request(FIGURE, "x", factor, space));
+            assert_eq!(reason(&error), expected, "{space} {factor}");
+            assert_eq!(observable(&state), before, "{space} {factor}");
+        }
+    }
+    // A parent with a flat axis has no basis: refused, nothing written.
+    let mut flat = four_parents([None; 4]);
+    flat[1].1 = [0.0, 100.0, 100.0];
+    let mut state = chained(&flat, None);
+    let before = observable(&state);
+    for space in ["local", "world"] {
+        let error = err(&mut state, scale_request(FIGURE, "x", 2.0, space));
+        assert_eq!(error.code, "not_scalable", "{space}");
+        assert_eq!(reason(&error), "degenerate_transform", "{space}");
+        assert_eq!(observable(&state), before, "{space}");
+    }
+}
+
 #[test]
 fn factors_are_multiplicative_and_each_is_its_own_undo_entry() {
     let mut state = street();
