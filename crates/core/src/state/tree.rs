@@ -599,7 +599,7 @@ fn build_monitor(state: &EditorState, nodes: &mut Vec<Node>) {
                 .state("tool", state.scene_interaction.tool().as_str())
                 .state("space", state.scene_interaction.space().as_str())
                 .state("dragging", drag.is_some())
-                .state("handle", drag.map_or("", |drag| drag.handle().as_str()))
+                .state("handle", drag.map_or("", |drag| drag.handle_id()))
                 .state("gesture", drag.map_or("", |drag| drag.gesture()))
                 .field("tool", "choice", json!({ "options": tools }))
                 .field("space", "choice", json!({ "options": spaces })),

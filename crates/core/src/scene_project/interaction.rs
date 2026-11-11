@@ -201,12 +201,16 @@ impl EditorState {
             .selection
             .apply(scene, parsed, mode)?;
         let selection = &self.scene_interaction.selection;
-        Ok(json!({
+        let mut answer = json!({
             "action": "scene.select", "mode": mode.as_str(),
             "changed": changed, "document_changed": false,
             "count": selection.entries().len(),
             "entities": selection.entries().iter().map(Selected::to_json).collect::<Vec<_>>(),
-        }))
+        });
+        // F061: one target at a time. Selecting entities leaves the effect clip (and cancels its
+        // drag), and says so; an answer that never had a target is what it always was.
+        self.leave_fx_target(&mut answer);
+        Ok(answer)
     }
 
     /// The selection, after dropping what the project no longer holds. `dropped` also lists what
@@ -214,6 +218,7 @@ impl EditorState {
     /// the undo that took an entity away still learns why it left.
     pub(super) fn scene_selection(&mut self) -> Value {
         let removed = self.scene_interaction.selection.prune(&self.scenes);
+        self.prune_fx_target();
         let selection = &self.scene_interaction.selection;
         json!({
             "action": "scene.selection",

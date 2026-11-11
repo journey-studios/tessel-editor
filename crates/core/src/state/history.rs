@@ -169,6 +169,7 @@ impl EditorState {
         self.inspector.restore_overrides(snapshot.overrides);
         self.scenes = snapshot.scenes;
         let dropped = self.scene_interaction.selection.prune(&self.scenes);
+        self.prune_fx_target();
         self.library.selected_folder = self
             .library
             .selected_folder

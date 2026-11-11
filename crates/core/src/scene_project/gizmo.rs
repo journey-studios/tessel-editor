@@ -59,7 +59,16 @@ fn plan_of(scene: &DirectedScene, frame: i64) -> Result<ScenePlan, CommandError>
     )?)
 }
 
-fn frame_of(scene: &DirectedScene, at: &FrameAt) -> Result<i64, CommandError> {
+/// What leaving the effect target said (F061), carried from the `scene.select` a press ran.
+fn carry_fx_target(answer: &mut Value, outcome: &Value) {
+    for key in ["fx_target_dropped", "cancelled_drag"] {
+        if let Some(value) = outcome.get(key) {
+            answer[key] = value.clone();
+        }
+    }
+}
+
+pub(super) fn frame_of(scene: &DirectedScene, at: &FrameAt) -> Result<i64, CommandError> {
     match at {
         FrameAt::Frame(frame) => Ok(*frame),
         FrameAt::Time(time) => Ok(scene.bundle().frame_at_time(*time)?),
@@ -354,7 +363,7 @@ impl EditorState {
                 "A gizmo drag is in progress; finish or cancel it before changing the tool",
             )
             .target(drag.gesture.clone())
-            .details(json!({ "gesture": drag.gesture, "tool": drag.tool().as_str() })));
+            .details(json!({ "gesture": drag.gesture, "tool": drag.tool_id() })));
         }
         self.scene_interaction.tool = tool;
         self.scene_interaction.space = space;
@@ -373,7 +382,7 @@ impl EditorState {
     /// was reloaded, from the project that was replaced, or from the frame before a seek is
     /// refused by the adapter by comparing this value and nothing else.
     pub fn gizmo_stamp(&self, scene: &str, frame: i64) -> Value {
-        json!({
+        let mut stamp = json!({
             "scene": scene,
             "session": self.scene_interaction.gesture.session(),
             "revision": self.project.revision,
@@ -382,7 +391,18 @@ impl EditorState {
             // round), nor on axes of the other space, so the tool is part of the identity.
             "tool": self.scene_interaction.tool.as_str(),
             "space": self.scene_interaction.space.as_str(),
-        })
+        });
+        // F061, additive: the effect clip the handles belong to. A message made against the
+        // handles of one clip is not taken for another's (nor for the node gizmo's).
+        if let Some(target) = self
+            .scene_interaction
+            .fx_target
+            .as_ref()
+            .filter(|target| target.scene == scene)
+        {
+            stamp["fx_clip"] = json!(target.clip);
+        }
+        stamp
     }
 
     /// The addresses of the selected entities of `scene`, in selection order: what the handles
@@ -438,7 +458,7 @@ impl EditorState {
 
     /// The drag in progress, or `None` after dropping one whose gesture is no longer the open
     /// one (another command settled it, the project was replaced): a dead drag never revives.
-    fn live_drag(&mut self) -> Option<Drag> {
+    pub(super) fn live_drag(&mut self) -> Option<Drag> {
         self.scene_interaction.drag.as_ref()?;
         if let Some(drag) = self.scene_interaction.live_drag() {
             return Some(drag.clone());
@@ -450,7 +470,11 @@ impl EditorState {
     /// What a runtime draws for `scene` at `frame`: the outline of each selected image plane and
     /// the handles of the one selected node (or of the node being dragged, whose candidate is
     /// what the plan is built from).
-    fn gizmo_overlay(&mut self, scene_id: &str, frame: i64) -> Result<Overlay, CommandError> {
+    pub(super) fn gizmo_overlay(
+        &mut self,
+        scene_id: &str,
+        frame: i64,
+    ) -> Result<Overlay, CommandError> {
         // A drag whose gesture went stale (an undo, an edit elsewhere) draws as no drag: its
         // candidate is the scene as it was, not what the document is.
         let dragging = self.live_drag().filter(|drag| {
@@ -477,6 +501,12 @@ impl EditorState {
                 }),
             None => document,
         };
+        // F061: the session targets an effect clip of this scene: its handles are the overlay and
+        // the node gizmo gives way (`Hidden::FxTarget`). One target at a time.
+        let stamp = self.gizmo_stamp(scene_id, frame);
+        if let Some(overlay) = self.fx_overlay(scene_id, frame, &shown, dragging.as_ref(), stamp) {
+            return Ok(overlay);
+        }
         let world = Scene3d::new(&shown, frame)?;
         let definition = world.plan.source.scene_definition_id.as_str();
         let selected: Vec<&Entity> = self
@@ -510,7 +540,8 @@ impl EditorState {
             markers,
             active: dragging
                 .as_ref()
-                .map(|drag| (drag.handle(), drag.gesture.clone())),
+                .and_then(|drag| Some((drag.handle()?, drag.gesture.clone()))),
+            fx: None,
             aspect: view.map_or(1.0, View::aspect),
             stamp: self.gizmo_stamp(scene_id, frame),
         };
@@ -688,6 +719,11 @@ impl EditorState {
         let entry = self.attached_scene(scene)?;
         let document = std::sync::Arc::clone(&entry.scene);
         let frame = frame_of(&document, at)?;
+        // F061: a press on a handle of the vignette the session targets; anything else goes on
+        // to what a press always did (and selecting something leaves the effect target).
+        if let Some(answer) = self.fx_pointer_down(scene, frame, point)? {
+            return Ok(answer);
+        }
         let world = Scene3d::new(&document, frame)?;
         // A press while a drag is open means its release was lost (a second pointer, a missed
         // event). The open drag is discarded first, so a press never leaves two of them.
@@ -716,11 +752,13 @@ impl EditorState {
                 let outcome = self.scene_select(Some(scene), std::slice::from_ref(entity), mode)?;
                 answer["selection_changed"] = outcome["changed"].clone();
                 answer["changed"] = outcome["changed"].clone();
+                carry_fx_target(&mut answer, &outcome);
             }
             Hit::Nothing if !additive => {
                 let outcome = self.scene_select(Some(scene), &[], SelectMode::Clear)?;
                 answer["selection_changed"] = outcome["changed"].clone();
                 answer["changed"] = outcome["changed"].clone();
+                carry_fx_target(&mut answer, &outcome);
             }
             Hit::Nothing => {}
         }
@@ -865,7 +903,7 @@ impl EditorState {
     }
 
     /// Drops the drag and the gesture under it (never touches the document).
-    fn discard_drag(&mut self) {
+    pub(super) fn discard_drag(&mut self) {
         if let Some(drag) = self.scene_interaction.drag.take()
             && self
                 .scene_interaction
@@ -887,6 +925,7 @@ impl EditorState {
     /// The update of one pointer position. Returns the answer fields of the position.
     fn drag_update(&mut self, drag: &Drag, point: Point) -> Result<Value, CommandError> {
         match &drag.action {
+            DragAction::Fx { .. } => self.fx_handle_update(drag, point),
             DragAction::Translate {
                 anchor,
                 base_position,
@@ -1040,8 +1079,8 @@ impl EditorState {
         answer["phase"] = json!("move");
         answer["gesture"] = json!(drag.gesture);
         answer["entity"] = json!(drag.entity);
-        answer["handle"] = json!(drag.handle().as_str());
-        answer["tool"] = json!(drag.tool().as_str());
+        answer["handle"] = json!(drag.handle_id());
+        answer["tool"] = json!(drag.tool_id());
         answer["point"] = json!(point.to_json());
         answer["changed"] = json!(true);
         answer["document_changed"] = json!(false);
@@ -1072,7 +1111,11 @@ impl EditorState {
             .drag
             .as_ref()
             .and_then(|open| open.last);
-        let committed = self.gesture_commit(&drag.gesture);
+        let committed = if drag.is_fx() {
+            self.fx_gesture_commit(&drag.gesture)
+        } else {
+            self.gesture_commit(&drag.gesture)
+        };
         let mut answer = match committed {
             Ok(answer) => answer,
             Err(error) => {
@@ -1089,8 +1132,8 @@ impl EditorState {
         answer["phase"] = json!("up");
         answer["dragging"] = json!(false);
         answer["entity"] = json!(drag.entity);
-        answer["handle"] = json!(drag.handle().as_str());
-        answer["tool"] = json!(drag.tool().as_str());
+        answer["handle"] = json!(drag.handle_id());
+        answer["tool"] = json!(drag.tool_id());
         match applied {
             Some(Applied::Translate {
                 world_delta,
@@ -1101,7 +1144,7 @@ impl EditorState {
             }
             Some(Applied::Rotate { degrees, rotation }) => {
                 answer["degrees"] = json!(degrees);
-                answer["axis"] = json!(drag.handle().as_str());
+                answer["axis"] = json!(drag.handle_id());
                 answer["rotation"] = quat_json(rotation);
                 if let DragAction::Rotate { frame, .. } = &drag.action {
                     answer["space"] = json!(frame.space().as_str());
@@ -1109,7 +1152,7 @@ impl EditorState {
             }
             Some(Applied::Scale { factor, scale }) => {
                 answer["factor"] = json!(factor);
-                answer["axis"] = json!(drag.handle().as_str());
+                answer["axis"] = json!(drag.handle_id());
                 answer["scale"] = scale.to_json();
                 if let DragAction::Scale { frame, .. } = &drag.action {
                     answer["space"] = json!(frame.space().as_str());
@@ -1125,6 +1168,12 @@ impl EditorState {
             Some(Applied::LightRange { delta, radius }) => {
                 answer["delta"] = json!(delta);
                 answer["radius"] = json!(radius);
+            }
+            Some(Applied::Fx { handle, value }) => {
+                answer["target"] = json!("fx");
+                answer["clip"] = json!(drag.entity);
+                answer["param"] = json!(handle.param());
+                answer["value"] = value.to_json();
             }
             None => {}
         }

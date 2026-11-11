@@ -567,6 +567,12 @@ impl EditorState {
         let Some(label) = command.history_label() else {
             return self.apply(command);
         };
+        // F061: the release of an effect handle's drag is an effect edit, not a scene edit.
+        let label = if self.is_fx_handle_release(&command) {
+            "Edit effects"
+        } else {
+            label
+        };
         let before = self.snapshot();
         let outcome = self.apply(command)?;
         if outcome["changed"] != false {
@@ -582,6 +588,20 @@ impl EditorState {
     /// itself uses ([`SceneInteraction::live_drag`]): a drag whose gesture another command
     /// settled (`scene.gesture.cancel`) is stored but dead, `pointer_up` answers `noop` for it,
     /// so it must not settle the slider gesture either.
+    /// The release that commits the drag of a vignette handle (F061): its entry is the one
+    /// `scene.fx.edit` makes. Decided before the command runs, while the drag is still open.
+    fn is_fx_handle_release(&self, command: &Command) -> bool {
+        matches!(
+            command,
+            Command::Scene(SceneCommand::Gizmo(GizmoCommand::Pointer(
+                PointerCommand::Up { .. }
+            )))
+        ) && self
+            .scene_interaction
+            .live_drag()
+            .is_some_and(crate::scene_interaction::Drag::is_fx)
+    }
+
     fn is_idle_gizmo_release(&self, command: &Command) -> bool {
         matches!(
             command,
