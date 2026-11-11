@@ -778,7 +778,7 @@ mod tests {
         );
         assert_eq!(pool.stats().saturated(), 1);
         let writer = release(&held);
-        let mut rest = vec![
+        let mut rest = [
             rx.recv_timeout(Duration::from_secs(20)).unwrap(),
             rx.recv_timeout(Duration::from_secs(20)).unwrap(),
         ];
