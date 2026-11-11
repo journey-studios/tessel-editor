@@ -36,13 +36,9 @@ pub struct HelloOptions {
     /// does not know the message rejects it (see [`decode_event`]).
     pub presented: bool,
     /// Ask the page to measure itself (BL157.2): how long each frame waited in the page's own queue, the lag of its event
-    /// loop and how long it spent handing the answer over, as durations on the page clock added to `frame.done`. Off by
-    /// default; the same cost on whichever arm of an experiment turns it on.
-    pub timing: bool,
-    /// DIAGNOSTIC arm (BL157.2), only with `timing`: the page calls `gl.finish()` after each draw and reports how long it
-    /// waited as `timings.gpu_finish_ms`. It changes the cost (the wait moves from the browser's presentation into the
-    /// frame), so it is never on in a product run; it exists to say whether a stall after a draw is the GPU still working.
-    pub gpu_finish: bool,
+    /// loop and how long it spent handing the answer over, as durations on the page clock added to `frame.done`. `None` (the
+    /// default) asks for nothing; the same cost on whichever arm of an experiment turns it on.
+    pub timing: Option<PageTiming>,
     /// `Some(false)` makes every splat scene frame sort and draw again (rollback of the result
     /// cache of still scenes). `None` leaves the runtime's default (on).
     pub result_cache: Option<bool>,
@@ -64,6 +60,16 @@ pub struct HelloOptions {
     /// DIAGNOSTIC (BL157.3, a separate experiment from `preupload_textures`), off by default: after the warm sort of a splat
     /// scene the runtime draws it once into a scratch target (`FEATURE_SCENE_WARM_DRAW`). Sent only when on.
     pub warm_draw: bool,
+}
+
+/// What the page is asked to measure when [`HelloOptions::timing`] is on.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PageTiming {
+    /// DIAGNOSTIC arm (BL157.2): the page calls `gl.finish()` after each draw and reports how long it waited as
+    /// `timings.gpu_finish_ms`. It changes the cost (the wait moves from the browser's presentation into the frame), so it is
+    /// never on in a product run; it exists to say whether a stall after a draw is the GPU still working. It only exists
+    /// inside the timing it reports through.
+    pub gpu_finish: bool,
 }
 
 /// See [`HelloOptions::preview_sort`].
@@ -101,14 +107,14 @@ pub fn hello_with(host: &str, options: HelloOptions) -> Value {
     if let Some(retain) = options.retain {
         message["retain"] = json!(retain);
     }
-    if options.presented || options.timing {
+    if options.presented || options.timing.is_some() {
         let mut telemetry = serde_json::Map::new();
         if options.presented {
             telemetry.insert("presented".to_owned(), json!(true));
         }
-        if options.timing {
+        if let Some(timing) = options.timing {
             telemetry.insert("timing".to_owned(), json!(true));
-            if options.gpu_finish {
+            if timing.gpu_finish {
                 telemetry.insert("gpu_finish".to_owned(), json!(true));
             }
         }

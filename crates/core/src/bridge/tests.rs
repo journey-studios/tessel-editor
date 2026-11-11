@@ -191,8 +191,7 @@ fn hello_defaults_stay_byte_identical_and_options_are_additive() {
         HelloOptions {
             retain: Some(false),
             presented: true,
-            timing: true,
-            gpu_finish: true,
+            timing: Some(PageTiming { gpu_finish: true }),
             result_cache: Some(false),
             scene_samples: Some(2),
             preview_scene_samples: Some(0),
@@ -209,20 +208,11 @@ fn hello_defaults_stay_byte_identical_and_options_are_additive() {
     assert_eq!(with["telemetry"]["presented"], true);
     assert_eq!(with["telemetry"]["timing"], true);
     assert_eq!(with["telemetry"]["gpu_finish"], true);
-    // The diagnostic arm is only ever asked for with the timing it reports through.
-    let finish_alone = hello_with(
-        "tessel-editor",
-        HelloOptions {
-            gpu_finish: true,
-            ..HelloOptions::default()
-        },
-    );
-    assert_eq!(finish_alone, hello("tessel-editor"));
-    // Each flag alone says only itself, and neither leaves the message as it always was.
+    // Each flag alone says only itself, and neither leaves the message as it always was: the timing without the GPU wait.
     let timing_only = hello_with(
         "tessel-editor",
         HelloOptions {
-            timing: true,
+            timing: Some(PageTiming::default()),
             ..HelloOptions::default()
         },
     );

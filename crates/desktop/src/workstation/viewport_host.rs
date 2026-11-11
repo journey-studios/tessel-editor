@@ -26,8 +26,10 @@ use std::time::{Duration, Instant};
 use async_channel::{Receiver, Sender};
 use serde_json::{Value, json};
 use tessel_editor_core::CommandError;
-use tessel_editor_core::backend::{BackendError, FrameDetail, FrameResult, Output};
-use tessel_editor_core::bridge::{BridgeBackend, HelloOptions, PreviewSort, Transport};
+use tessel_editor_core::backend::{
+    BackendError, FEATURE_SCENE_WARM_DRAW, FrameDetail, FrameResult, Output,
+};
+use tessel_editor_core::bridge::{BridgeBackend, HelloOptions, PageTiming, PreviewSort, Transport};
 use tessel_editor_core::headless::{backend_error, frame_geometry, frame_report, plan_summary};
 use tessel_editor_core::ops::RenderFrame;
 use tessel_editor_core::perf::{FrameContext, Meter};
@@ -331,6 +333,8 @@ pub struct ViewportHost {
     access: Rc<RefCell<AssetAccess>>,
     /// Who reads the page's files, and the pool that does when it is not the receiving thread (BL157.1).
     asset_io: AssetIo,
+    /// Whether the `hello` asked for the warm draw (BL157.3): the runtime does the work, this only makes the arm visible.
+    warm_draw: bool,
     phase: Phase,
     /// The last plan asked for, so a command that changes nothing the picture shows (selection,
     /// zoom, dock edits) does not render again.
@@ -394,8 +398,9 @@ impl ViewportHost {
             .with_options(HelloOptions {
                 retain: options.retain,
                 presented: options.trace,
-                timing: options.trace,
-                gpu_finish: options.trace && options.gpu_finish,
+                timing: options.trace.then_some(PageTiming {
+                    gpu_finish: options.gpu_finish,
+                }),
                 result_cache: options.result_cache,
                 scene_samples: options.scene_samples,
                 preview_scene_samples: options.preview_scene_samples,
@@ -410,7 +415,6 @@ impl ViewportHost {
         session.set_retained_bytes(options.retained_bytes.unwrap_or(RETAINED_ASSET_BYTES));
         session.set_warm(options.warm != Some(false));
         session.set_preupload(options.preupload);
-        session.set_warm_draw(options.warm_draw);
         session.trace().set_enabled(options.trace);
         let (dist, phase) = match page {
             Ok(dist) => (Some(dist), Phase::Booting(Instant::now())),
@@ -426,6 +430,7 @@ impl ViewportHost {
             inbox,
             access,
             asset_io: AssetIo::new(options.asset_io),
+            warm_draw: options.warm_draw,
             phase,
             last_key: None,
             dirty: true,
@@ -1401,6 +1406,10 @@ impl ViewportHost {
             .map(BackendError::to_json);
         let mut summary = self.session.summary();
         summary["error"] = error.unwrap_or(Value::Null);
+        summary["warm_draw"] = json!({
+            "enabled": self.warm_draw,
+            "supported": self.session.known_capabilities().is_some_and(|caps| caps.supports(FEATURE_SCENE_WARM_DRAW)),
+        });
         if self.session.trace().enabled() {
             summary["trace"] = self.session.trace().snapshot(frames);
         }

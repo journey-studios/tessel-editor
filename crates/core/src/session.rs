@@ -25,8 +25,8 @@ use std::time::{Duration, Instant};
 use crate::assets::{MediaKind, ProxyFrames};
 use crate::backend::{
     AssetDescriptor, AssetStatus, BackendError, BackendEvent, Capabilities,
-    FEATURE_SCENE_WARM_DRAW, FEATURE_TEXTURE_PREUPLOAD, FrameRequest, FrameResult, Output,
-    ProxyState, RenderBackend, RequestId,
+    FEATURE_TEXTURE_PREUPLOAD, FrameRequest, FrameResult, Output, ProxyState, RenderBackend,
+    RequestId,
 };
 use crate::id::Id;
 use crate::plan::{PlanRequest, PlanTime, PreviewIntent, RenderPlan};
@@ -181,8 +181,6 @@ pub struct ViewportSession<B: RenderBackend> {
     preuploaded: HashSet<Vec<Id>>,
     /// Whether a runtime that announces `texture.preupload` is sent the cuts' stills (off unless the host turns it on).
     preupload_enabled: bool,
-    /// Whether the host's `hello` asked for the warm draw (BL157.3): reported only, the runtime does the work.
-    warm_draw_enabled: bool,
     /// Whether a runtime that announces `scene.warm` is sent warms (on unless the host turns it off).
     warm_enabled: bool,
     /// Bytes of source files of every asset loaded or loading, and the request that last needed it.
@@ -232,7 +230,6 @@ impl<B: RenderBackend> ViewportSession<B> {
             warmed: HashSet::new(),
             preuploaded: HashSet::new(),
             preupload_enabled: false,
-            warm_draw_enabled: false,
             warm_enabled: true,
             asset_bytes: HashMap::new(),
             last_used: HashMap::new(),
@@ -654,12 +651,6 @@ impl<B: RenderBackend> ViewportSession<B> {
         if !enabled {
             self.preuploaded.clear();
         }
-    }
-
-    /// Records that the host's `hello` asked for the warm draw (BL157.3, a separate experiment): the runtime does it at the end of
-    /// each `frame.warm`, so nothing is sent differently; this only makes the arm visible in `render.status`.
-    pub fn set_warm_draw(&mut self, enabled: bool) {
-        self.warm_draw_enabled = enabled;
     }
 
     /// What the pre-upload asked and whether the runtime can do it, for `render.status`.
@@ -1228,7 +1219,6 @@ impl<B: RenderBackend> ViewportSession<B> {
                 "prefetched": self.stats.prefetched, "prefetch_skipped": self.stats.prefetch_skipped, "evicted": self.stats.evicted, "warmed": self.stats.warmed, "reloaded": self.stats.reloaded,
             },
             "preupload": self.preupload_report(),
-            "warm_draw": json!({"enabled": self.warm_draw_enabled, "supported": self.announces(FEATURE_SCENE_WARM_DRAW)}),
             "preview_policy": self.policy.to_json(), "refine_pending": self.refine.is_some(),
             "proxy_error": self.proxy_error.as_ref().map(|(id, error)| json!({ "asset": id, "error": error.to_json() })),
             "proxies": self.proxies.keys().collect::<Vec<_>>(),
