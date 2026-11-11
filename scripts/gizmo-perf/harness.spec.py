@@ -31,7 +31,7 @@ def load(name):
     return module
 
 
-runner, ab, mutate, native = (load(name) for name in ('run', 'ab', 'mutate', 'native'))
+runner, ab, mutate, native, audit = (load(name) for name in ('run', 'ab', 'mutate', 'native', 'audit'))
 
 # The per-checkout build lock lives under /tmp: a spec run must neither wait for a real build of this checkout nor hold it.
 CHECKOUT_LOCKS = tempfile.mkdtemp(prefix='gizmo-perf-harness-spec-locks-')
@@ -182,10 +182,10 @@ class Redact(unittest.TestCase):
 
 
 class Writers(unittest.TestCase):
-    """The four runners, through their own writers and the doubles of the big spec: what each leaves in `--out` names no path."""
+    """The runners and `audit.py`, through their own writers and doubles: what each leaves in `--out` names no path."""
 
     def test_no_runner_writes_a_file_around_the_one_redacting_writer(self):
-        for name in ('run', 'ab', 'mutate', 'native'):
+        for name in ('run', 'ab', 'mutate', 'native', 'audit'):
             around = re.compile(r"(?<!harness)\.write_text\(|json\.dump\(|'w'\)")  # `mutate.Mutated` edits the PRODUCT: not output
             lines = [line.strip() for line in (HERE / f'{name}.py').read_text().splitlines()
                      if around.search(line) and 'text.replace(' not in line]
@@ -303,6 +303,23 @@ class Writers(unittest.TestCase):
         self.assertEqual((ran, manifest['status']), (0, 'FUNCTIONAL_ONLY_NOT_A_MEASUREMENT'))
         self.assertTrue(manifest['binary'].startswith('<tmp>/') and manifest['binary'].endswith('/out/exes/tessel-editor'),
                         manifest['binary'])
+
+    def test_audit_py_writes_the_paths_it_was_given_redacted(self):
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            budgets, report, out = root / 'budgets.json', root / 'report.json', root / 'audit.json'
+            budgets.write_text(json.dumps({'ratios': {'small': {'read.rotate': {'p50_ratio': 2.0, 'p95_ratio': 4.0}}}}))
+            report.write_text(json.dumps({'corpora': [{'corpus': 'small', 'reference': {'p50_ns': 1000.0}, 'cold': {},
+                                                       'hot': {'read.rotate': {'ratio_p50': 1.0, 'ratio_p95': 2.0}}}]}))
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = audit.main(['--budgets', str(budgets), '--out', str(out), str(report)])
+            text = out.read_text()
+        self.assertEqual(code, 0)
+        self.assertEqual(leaks(text), [])
+        written = json.loads(text)
+        self.assertEqual(sorted(written['inputs']), ['budgets', 'reports'])
+        self.assertTrue(written['inputs']['budgets'].endswith('/budgets.json'), written['inputs'])
+        self.assertIn('small/read.rotate', written['kinds'])  # what the audit says is untouched
 
 
 if __name__ == '__main__':

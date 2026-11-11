@@ -26,6 +26,9 @@ import json
 from pathlib import Path
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import harness  # noqa: E402
+
 HEADROOM_WIDE = 2.0
 HEADROOM_VERY_WIDE = 3.0
 
@@ -92,7 +95,7 @@ def main(argv=None):
     result['inputs'] = {'budgets': args.budgets, 'reports': args.reports}
     text = json.dumps(result, indent=1, sort_keys=True) + '\n'
     if args.out:
-        Path(args.out).write_text(text)
+        harness.write_text(args.out, text)  # `inputs` holds the paths as typed: redacted like every runner file
     print(json.dumps(result['summary'], indent=1, sort_keys=True))
     return 0
 

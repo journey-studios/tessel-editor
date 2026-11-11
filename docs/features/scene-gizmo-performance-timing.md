@@ -186,11 +186,11 @@ ainda sobrescreve o `manifest.json` e o `exes/` do anterior.
 O repositório é público: **nenhum arquivo que um runner grava contém caminho absoluto da máquina, nome de usuário ou lista de
 processos.** `harness.machine()` registra só o modelo e a contagem de CPU, memória, carga, disco livre, estado térmico, energia e versão do SO.
 Os runners continuam gravando `cwd`, `argv`, o comando do build e o fim da saída do compilador, mas toda gravação passa por **um** ponto:
-`harness.write` (JSON), `harness.write_text` (o stdout e o stderr de um filho) e a linha que `harness.die` imprime chamam
+`harness.write` (JSON), `harness.write_text` (o stdout e o stderr de um filho e o `--out` do `audit.py`) e a linha que `harness.die` imprime chamam
 `harness.redact`, que troca o checkout por `<checkout>`, o home por `~`, os diretórios temporários por `<tmp>` e qualquer outro
 caminho absoluto por `<abs>/<nome-base>`. Um campo que uma fase **relê** como caminho não é deixado à redação: é gravado relativo a
 `--out` (`exe` do `run.py`, `binary` do `native.py`). `harness.spec.py` testa o `machine()`, o `redact` e, com dublês, o que
-`run.py`, `ab.py`, `mutate.py` e `native.py` gravam; um teste estático reprova um `write_text(` de arquivo fora do `harness`.
+`run.py`, `ab.py`, `mutate.py`, `native.py` e `audit.py` gravam; um teste estático reprova um `write_text(` de arquivo fora do `harness`.
 **Limite:** só se tira o que tem forma de caminho absoluto; um nome de usuário solto, fora de um caminho, não é reconhecido.
 
 ## Limitações conhecidas
@@ -223,7 +223,7 @@ mata (documentado no comentário da spec).
    `NO_REGRESSION_IN_SCENARIO` em ~69% das vezes (conta da revisão, **não medida**: o A/B nunca mediu). Agora o p95 de cada rodada
    é guardado (`p95s`) e cada gate julga com os seus próprios pares (`slower` das medianas, `slower95` dos p95 por rodada); a
    semântica do percentil não mudou (BL015.26).
-4. **Testes novos em arquivos novos:** `harness.spec.py` (13) e `ab.spec.py` (6); contra os runners anteriores a este ramo
-   falham os 13 e 4 dos 6 (os 2 restantes são controles que passam dos dois lados).
+4. **Testes novos em arquivos novos:** `harness.spec.py` (14) e `ab.spec.py` (6); contra os runners anteriores a este ramo
+   falham os 14 e 4 dos 6 (os 2 restantes são controles que passam dos dois lados).
 5. **Este documento** é o contrato da parte de tempo; os comentários que apontavam para o doc da feature por conta do histórico
    de orçamentos (`budgets.py`, `scene_gizmo_perf_budget.rs`, a spec) apontam para cá.
