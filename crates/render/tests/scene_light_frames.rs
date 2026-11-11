@@ -219,8 +219,8 @@ impl Camera {
         let ndc_x = (f64::from(x) + 0.5) / f64::from(width) * 2.0 - 1.0;
         let ndc_y = 1.0 - (f64::from(y) + 0.5) / f64::from(height) * 2.0;
         let mut direction = self.forward;
-        for axis in 0..3 {
-            direction[axis] += ndc_x * self.tan_half * self.aspect * self.right[axis]
+        for (axis, component) in direction.iter_mut().enumerate() {
+            *component += ndc_x * self.tan_half * self.aspect * self.right[axis]
                 + ndc_y * self.tan_half * self.up[axis];
         }
         direction
@@ -292,8 +292,8 @@ fn lit_pixel(base: [u8; 4], lamps: &[Lamp], point: V3, plane: &Plane, camera: &C
         let lambert = (dot(normal, to_lamp) / distance).max(0.0);
         let once = 1.0 / (1.0 + (distance / lamp.radius).powi(2));
         let strength = lambert * once * once * lamp.intensity;
-        for channel in 0..3 {
-            extra[channel] += lamp.colour[channel] * strength;
+        for (channel, sum) in extra.iter_mut().enumerate() {
+            *sum += lamp.colour[channel] * strength;
         }
     }
     [0, 1, 2].map(|channel| enc(lin(f64::from(base[channel])) * (1.0 + extra[channel])))
