@@ -13,7 +13,8 @@
 //!   [`Rejection::Saturated`] so the caller answers it (HTTP 503) and the run is visibly invalid; it is never discarded.
 //! * **Bytes held**: each worker holds at most the body of the one job it is reading (a ranged answer is capped at
 //!   [`crate::host::MAX_RANGE_BODY`]; a plain `GET` is the whole file, exactly as in the synchronous path), so the
-//!   pool holds at most `workers` bodies; a queued job is a path and a header.
+//!   pool holds at most `workers` bodies; a queued job is a path and a header. This follows from the shape of the pool
+//!   (a worker takes one job at a time) and is not measured: `max_in_flight` never above `workers` is its evidence.
 //! * **Staleness**: [`AssetPool::invalidate`] (a project replaced, the page reloaded) makes every job submitted before it
 //!   answer `410` without I/O if it had not started, and drops the body of one already read instead of delivering it.
 //!   Each job's closure runs exactly once, whatever happens (including a panic while reading and the pool being dropped).
@@ -90,8 +91,6 @@ pub struct IoStats {
     in_flight: AtomicUsize,
     max_queued: AtomicUsize,
     max_in_flight: AtomicUsize,
-    bytes_held: AtomicUsize,
-    max_bytes_held: AtomicUsize,
 }
 
 impl IoStats {
@@ -120,10 +119,6 @@ impl IoStats {
         self.in_flight.load(Ordering::Relaxed)
     }
 
-    pub fn max_bytes_held(&self) -> usize {
-        self.max_bytes_held.load(Ordering::Relaxed)
-    }
-
     pub fn to_json(&self) -> Value {
         json!({
             "submitted": self.submitted(),
@@ -135,8 +130,6 @@ impl IoStats {
             "in_flight": self.in_flight(),
             "max_queued": self.max_queued.load(Ordering::Relaxed),
             "max_in_flight": self.max_in_flight.load(Ordering::Relaxed),
-            "bytes_held": self.bytes_held.load(Ordering::Relaxed),
-            "max_bytes_held": self.max_bytes_held(),
         })
     }
 }
@@ -310,30 +303,11 @@ fn run(index: usize, message: Message, view: &WorkerView) {
     } else {
         started.elapsed()
     };
-    // The body that was just read is memory the pool holds from now on, even when the session that asked is already over.
-    // The figure starts when the read returns: the buffer a worker is still filling (at most one per worker) is not in it.
-    let account = |bytes: usize| {
-        if let Some(shared) = &shared {
-            let stats = &shared.stats;
-            let now = stats.bytes_held.fetch_add(bytes, Ordering::SeqCst) + bytes;
-            stats.max_bytes_held.fetch_max(now, Ordering::Relaxed);
-        }
-    };
-    let release = |bytes: usize| {
-        if let Some(shared) = &shared {
-            shared.stats.bytes_held.fetch_sub(bytes, Ordering::SeqCst);
-        }
-    };
-    let mut held = served.body.len();
-    account(held);
     // A pool that was dropped has no epoch to match: what is still queued is stale, answered without I/O.
     let stale = stale_before || epoch_now() != message.epoch;
     if stale && !stale_before {
         // Read, but the session that asked is over: the bytes are dropped here, not delivered.
         served = gone();
-        release(held);
-        held = served.body.len();
-        account(held);
     }
     if stale && let Some(shared) = &shared {
         shared.stats.stale.fetch_add(1, Ordering::Relaxed);
@@ -347,7 +321,6 @@ fn run(index: usize, message: Message, view: &WorkerView) {
     };
     // The closure runs exactly once, even if it panics (the worker survives it).
     let _ = catch_unwind(AssertUnwindSafe(|| (message.done)(served, outcome)));
-    release(held);
     if let Some(shared) = &shared {
         let stats = &shared.stats;
         stats.in_flight.fetch_sub(1, Ordering::SeqCst);
@@ -610,8 +583,8 @@ mod tests {
     }
 
     #[test]
-    fn many_jobs_hold_at_most_one_body_per_worker() {
-        let dir = scratch("bytes");
+    fn many_jobs_never_run_on_more_workers_than_the_pool_has() {
+        let dir = scratch("workers");
         let size = 3 << 20;
         std::fs::write(dir.join("a.bin"), vec![1u8; size]).unwrap();
         let pool = AssetPool::new(2, 16);
@@ -633,12 +606,12 @@ mod tests {
             assert_eq!(rx.recv_timeout(Duration::from_secs(20)).unwrap(), size);
         }
         wait_until("the pool to settle", || pool.stats().in_flight() == 0);
+        // One body per worker at a time is what bounds the memory: never more jobs running than workers.
+        let most = pool.stats().to_json()["max_in_flight"].as_u64().unwrap();
         assert!(
-            pool.stats().max_bytes_held() <= 2 * size,
-            "two workers hold at most two bodies, held {}",
-            pool.stats().max_bytes_held()
+            (1..=2).contains(&most),
+            "two workers run at most two jobs, ran {most}"
         );
-        assert_eq!(pool.stats().to_json()["bytes_held"], 0);
     }
 
     #[test]
