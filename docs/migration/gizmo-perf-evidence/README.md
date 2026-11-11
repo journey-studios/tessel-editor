@@ -1,7 +1,7 @@
 # Evidência da suíte de performance dos gizmos (BL015.21)
 
 Arquivos pequenos (sem binários, sem imagens) com o que foi **executado**, o head e o estado de cada um. Nenhuma **medição** daqui vale
-para o head final da PR (os gates funcionais do head e o que não pôde rodar estão listados depois da tabela): veja a coluna "vale para". O Rust e o produto do head final são os de `12bc8da`; os runners e a spec são os da rodada 6 (`9b5f9fd`), que **nenhuma medição usou ainda**. **Nenhum resultado de `12bc8da` é um PASS**: a única medição está em [`measure-12bc8da/`](measure-12bc8da/README.md) e na seção "Medição em `12bc8da` (rodada 5)", e foi feita com os runners de `12bc8da` (os mesmos de `d294bdc`, que só mudou `docs/**`).
+para o head final da PR (os gates funcionais do head e o que não pôde rodar estão listados depois da tabela): veja a coluna "vale para". O Rust e o produto do head final são os de `12bc8da`; os runners e a spec são os da rodada 7 (`3ee60de`: `native.py` e a spec; os outros runners seguem os da rodada 6, `9b5f9fd`), que **nenhuma medição usou ainda**. **Nenhum resultado de `12bc8da` é um PASS**: a única medição está em [`measure-12bc8da/`](measure-12bc8da/README.md) e na seção "Medição em `12bc8da` (rodada 5)", e foi feita com os runners de `12bc8da` (os mesmos de `d294bdc`, que só mudou `docs/**`).
 
 | Arquivo | O que é | Head / árvore | Estado | Vale para |
 |---|---|---|---|---|
@@ -34,6 +34,7 @@ para o head final da PR (os gates funcionais do head e o que não pôde rodar es
 | `measure-12bc8da/mutants/` (manifestos de `prepare`, de `time` e relatórios) | `mutate.py` prepare ×2 e time ×2 (tentativa 1 não invocada) | `12bc8da`, limpa (restaurada depois de cada mutante) | `extra_plan` KILLED (estrutural **e** tempo, no retry), `delay_1ms` estrutural SURVIVED (esperado) e tempo KILLED, `replan_per_tick` host KILLED, **`memo_off` UNEXPECTED_FAILURE**; status final `UNEXPECTED` | detecção de mutantes **sintéticos**; a classificação do `memo_off` estava errada no runner (BL015.23 (19)): **corrigida na rodada 6 (`9b5f9fd`), não reexecutada**; sem prova de ausência de regressão |
 | `measure-12bc8da/native/` (manifestos, `report.json.gz`; capturas fora do git) | `native.py` build + run (`small`, `dense`, `deep`, janela real) | `12bc8da`, limpa | **FAIL** (639 verificações, 20 falharam, todas `drag.*`); `same.*`/`switch.*` 15/15 por corpus | sem baseline para a janela (BL015.23 (14)): só funcional e tempos brutos com a carga; **sem controle negativo** na janela |
 | `spec-new-tests-vs-d294bdc-runners.log` | controle negativo da spec da rodada 6: os 69 testes novos (184 no total) contra os runners de `d294bdc` (`git archive` em diretório temporário, sem checkout) e, como controle, contra os runners novos; mais dez variantes erradas de uma correção e a verificação com **dois processos reais** (as travas de `--out` dos quatro runners e a do checkout das quatro fases que constroem ou editam) | runners de `d294bdc`; a spec e os runners de `9b5f9fd` (os blobs estão no cabeçalho do log; o commit de código tem os mesmos blobs) | spec nova + runners novos: **184 OK**; spec nova + runners antigos: **FALHOU** (`failures=69, errors=20`, contando cada subteste): **65 dos 69 testes novos falham**, 4 passam dos dois lados de propósito (descritos no log) e nenhum dos 115 anteriores falha; cada variante errada derruba o teste esperado; com dois processos reais: uma linha `REFUSED`, exit 1, `--out` intacta (ou nem criada, no lock do checkout), e o SIGKILL do dono libera as travas | que os testes novos discriminam as correções; **nenhuma medição, nenhuma janela, nenhum benchmark** (a carga da máquina enquanto a spec rodava está no cabeçalho, 46,7 a 56 de média de 1 min: a spec usa dublês e não mede tempo); nada sobre desempenho |
+| `spec-new-tests-vs-42229a3-runners.log` | controle negativo da spec da rodada 7: os 37 testes novos (221 no total) contra os runners de `42229a3` (`git archive` do commit inteiro em diretório temporário fora do worktree, `git init` e um commit, sem checkout) e, como controle, contra os runners novos; mais **dezesseis variantes erradas** das correções (uma troca exata de texto em uma cópia dos runners novos, cada uma rodada contra as quatro classes de testes novas) e o **replay** dos 21 gestos da primeira execução real (`measure-12bc8da/native/report.json.gz`, só lido) pelo `native.drag` novo | runners de `42229a3`; a spec e o `native.py` de `3ee60de` (os blobs estão no cabeçalho do log; o commit de código tem os mesmos blobs; os outros runners são byte a byte os de `42229a3`) | spec nova + runners novos: **221 OK**; spec nova + runners antigos: **FALHOU** (`failures=46, errors=33`, contando cada subteste): **35 dos 37 testes novos falham**, 2 passam dos dois lados de propósito (descritos no log) e nenhum dos 184 anteriores falha; cada variante errada derruba pelo menos um teste; o replay dá 0 reprovações contra as 20 que o runner da época registrou | que os testes novos discriminam as correções e que as regras novas aceitam o que foi gravado; **nenhuma medição, nenhuma janela, nenhum benchmark, nenhum build** (a carga da máquina enquanto a spec rodava está no cabeçalho, 3,8 a 5,8 de média de 1 min: a spec usa dublês e não mede tempo); o replay **não é medição** (supõe o reconhecimento da página, que o relatório não guarda); nada sobre desempenho |
 
 Gates do head `9cc2335` (um head ANTERIOR): `fmt --check`, `git diff --check`, `clippy --workspace --all-targets -D warnings`,
 testes estruturais do core 7/7 e do host 3/3.
@@ -112,7 +113,7 @@ A guarda **depois** da corrida recusou em 5 das 8 execuções guardadas (BL015.2
 - Achados novos, todos em BL015.23 do `docs/backlog.md`: (15) crash do build do A/B por executável podado, (16) 15/15 arrastos sem "quadro novo", (17) escala sem
   efeito em pixels no `dense`, (18) `overlay_drawn` nunca checado, (19) `EXPECT` do `memo_off`, (20) `FAIL` do `deep` sem decisão, (21) `verdicts.json` apagado pela tentativa
   seguinte, (22) `tests_passed` do `run.py` lista o teste que falhou. **Na rodada 6 os runners foram corrigidos para (15), (18), (19), (21) e (22)**
-  (seção "Revisão 5856147194 do CodeRabbit", abaixo): nenhum foi reexecutado contra uma medição.
+  (seção "Revisão 5856147194 do CodeRabbit", abaixo): nenhum foi reexecutado contra uma medição. **Na rodada 7 os runners foram corrigidos para (16) e (17)** (seção "Rodada 7: cada passo, o SHA e se a árvore estava limpa", abaixo): também **não** reexecutados.
 
 Cinco conferências pedidas pelo coordenador (detalhe no README de `measure-12bc8da/`):
 
@@ -202,6 +203,38 @@ esta linha)" quando o SHA não pode constar do próprio commit. **Só `scripts/g
 | commit de docs (este commit, o que contém esta linha; o SHA de um commit não pode constar dele mesmo) | pai `9b5f9fd` | | sem trailer |
 | conferências depois do commit de docs: `git diff --name-only d294bdc..HEAD` (só `scripts/gizmo-perf/**` e `docs/**`), a leitura de trailers e de afirmações de desempenho | este commit (o que contém esta linha) | **limpa** | no relatório de entrega |
 | push (um só, fast-forward, sem force) | | | no relatório de entrega |
+
+## Rodada 7: cada passo, o SHA e se a árvore estava limpa
+
+"Suja" quer dizer que o `git status --porcelain` listava arquivos. A coluna HEAD de cada linha da rodada 7 diz o commit, ou "este commit (o que contém
+esta linha)" quando o SHA não pode constar do próprio commit. **Só `scripts/gizmo-perf/**` e `docs/**` mudaram** (nenhum Rust, runtime, fixture,
+`budgets.json`, jornada, corpus, golden, margem nem limiar), **nada foi medido, nenhuma janela abriu, nenhum build foi feito** e `measure-12bc8da/` não foi editado.
+
+| Passo | HEAD | Árvore | Resultado |
+|---|---|---|---|
+| leitura do contrato, de `native.py`, da spec, dos docs e do relatório gravado de `12bc8da` (só leitura); `fetch` da branch da PR e `checkout -B t3/gizmo-perf-round7-native-expectations` a partir de `42229a3` | `42229a3` | limpa | cabeça remota conferida (`42229a3a760f3dd7ec5d1cbd8765d8094a6e6fbe`) |
+| leitura do código do host (`scene_monitor_host.rs`, `scene_gizmo.rs`, `viewport_overlay.rs`), do core (`scene_project/gizmo.rs`) e do runtime (`assets.js`, `compositor.js`); simulação do `dense` com a câmera do core e os `mid.png` e `hero.png` do corpus (rascunho em `/tmp`, **fora do repositório**, não reproduzível a partir dele) | `42229a3` | limpa | H16 lida no código e confirmada pelos registros; H17 explicada por simulação (inferida, não medida) |
+| `native.py` e a spec (37 testes novos) editados | `42229a3` | suja (2 arquivos Python) | `py_compile` dos runners; spec inteira 221 testes OK |
+| spec nova × runners de `42229a3`, × runners novos, × dezesseis variantes erradas e o replay ([`spec-new-tests-vs-42229a3-runners.log`](spec-new-tests-vs-42229a3-runners.log)) | runners de `42229a3` (`git archive`) e os da árvore de trabalho | suja (as mudanças ainda não commitadas) | novos: 221 OK; antigos: 35 dos 37 testes novos falham (`failures=46, errors=33`); cada variante errada: falha pelo menos um teste; replay: 0 reprovações contra 20 |
+| commit `3ee60de` (`fix(gizmo-perf)`: as duas expectativas do `native.py`, a spec e o log do controle) | pai `42229a3` | | sem trailer |
+| conferências na árvore **limpa** de `3ee60de`: a spec inteira (221 testes, OK, 42,4 s), `py_compile` dos runners, `corpus.py --check` e `git diff --check` | `3ee60de` | **limpa** (`git status --porcelain` vazio) | rodadas e **não retidas** aqui (sem Cargo: nenhum Rust mudou); o resultado está no relatório de entrega |
+| commit de docs (este commit, o que contém esta linha; o SHA de um commit não pode constar dele mesmo) | pai `3ee60de` | | sem trailer |
+| conferências depois do commit de docs: `git diff --name-only 42229a3..HEAD` (só `scripts/gizmo-perf/**` e `docs/**`), a leitura de trailers e de afirmações de desempenho | este commit (o que contém esta linha) | **limpa** | no relatório de entrega |
+| push (um só, fast-forward, sem force) | | | no relatório de entrega |
+
+**Os itens (16) e (17) de BL015.23 em `3ee60de`.** Detalhe das regras, das hipóteses H16 e H17 (o que foi lido, o que foi observado, o que foi simulado) e do que uma execução real da janela tem de mostrar, e do que a
+refutaria, em [`scene-gizmo-performance.md`, "Rodada 7 de correções"](../../features/scene-gizmo-performance.md).
+
+| Item | O que a primeira execução real mostrou | Estado agora | Prova |
+|---|---|---|---|
+| (16) | 15 de 15 soltas reprovadas em "the committed picture is a NEW picture": o monitor manteve o quadro do candidato (mesmo `request`, mesmo hash) | **runner corrigido, não reexecutado numa janela, a validar**: com o candidato desenhado a soltura tem dois desfechos (`redrawn`, `deduped`), gravados em `commit_picture`; o resto reprova e um timeout nunca é `deduped` | o log acima (classe `Release`, 15 de 15 falham nos runners de `42229a3`; variantes W1, W2, W5 a W8, W11 e W12) e o replay das 15 soltas |
+| (17) | 5 reprovações de imagem igual na escala do `dense`, 3 em "the drawn candidate picture differs from the base picture" (uniforme, eixo x e cancel) e 2 em "the committed picture differs from the one before the gesture" (`a5cee15db5c0b400` na base, no candidato e no commit) | **runner corrigido, não reexecutado numa janela, a validar**: tabela declarada por corpo e classe; só a escala do `dense` pode ficar igual, e grava os hashes; checks vazios gravados como vazios | o log acima (classes `PixelExpectations` e `GestureInTheCorpus`; variantes W3, W4, W9, W10, W13 a W16) e o replay dos 3 gestos do `dense/scale` (a escala uniforme, a do eixo x e o cancel) |
+| (26) a (28) | (varredura) o redo só confere um quadro mais novo; não há teste de host do dedupe; `trace.enabled` gravado e nunca julgado | **registrados, sem correção** | BL015.23 |
+
+Prova (só dublês e o relatório gravado; nenhum benchmark, nenhuma janela, nenhum build, nenhum lock de performance): [`spec-new-tests-vs-42229a3-runners.log`](spec-new-tests-vs-42229a3-runners.log) traz a spec nova contra os runners de `42229a3` (35 dos 37 testes novos falham e nenhum dos 184
+anteriores; 2 controles passam dos dois lados de propósito), o rótulo de cada falha, **dezesseis variantes erradas** (cada uma derruba pelo menos um teste) e o replay dos 21 gestos de `12bc8da`. O log foi gerado com a
+máquina carregada por outros projetos (o cabeçalho traz as médias): a spec não mede tempo e a carga não entra em nenhuma conclusão. **Implementado não é validado**: o efeito dessas correções sobre uma execução real
+da janela não foi visto, e nada aqui afirma desempenho.
 
 ## Revisão independente R (review 5854092614, em `a97a0a7`)
 
@@ -299,7 +332,7 @@ Itens de BL015.23 da primeira medição (rodada 5) que a mesma rodada tratou no 
 | (19) | `EXPECT[(memo_off, host)]` não cobria a primeira verificação que falha | **corrigido no runner** (aceita também a mensagem da contagem de layouts e segue estrito); o log bruto do host **continua não guardado**, então a mensagem do `12bc8da` segue **inferida** | `9b5f9fd` |
 | (21) | `ab.py --phase measure` apagava os dados da tentativa anterior | **corrigido no runner**: a tentativa anterior vai para `--out/attempts/<utc>-<estado>/` | `9b5f9fd` |
 | (22) | `tests_passed` do `run.py` listava o teste que falhou | **corrigido no runner**: só conta o teste cuja própria linha diz `ok`; o manifesto traz `tests_failed` | `9b5f9fd` |
-| (16), (17), (20) | `native.py`: "NEW picture" 15/15 e escala sem efeito no `dense`; `FAIL` do `deep` no `run.py` sem decisão ruído × regressão | **não tratados** (pedem decisão de produto, de corpus ou de máquina, não só de runner) | BL015.23 |
+| (16), (17), (20) | `native.py`: "NEW picture" 15/15 e escala sem efeito no `dense`; `FAIL` do `deep` no `run.py` sem decisão ruído × regressão | **não tratados** (pedem decisão de produto, de corpus ou de máquina, não só de runner) | BL015.23 (rodada 7, `3ee60de`: o runner foi corrigido para (16) e (17), sem reexecução; o (20) segue sem decisão) |
 
 Também sobre `9b5f9fd` (fora da lista da review): o `FAIL` de `run.py` e de `native.py` carrega no motivo o texto da guarda quando ela também falhou depois da corrida (o status
 continua `FAIL`; contexto do item (20)); `runtime_stale_reason` deixou de ler um `git ls-files` que falha como "runtime novo"; o `os.environ` do `native.py` deixou de ser
