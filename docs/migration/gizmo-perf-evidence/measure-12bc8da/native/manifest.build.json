@@ -1,0 +1,68 @@
+{
+ "build": {
+  "command": [
+   "./scripts/cargo",
+   "build",
+   "--release",
+   "--locked",
+   "-p",
+   "tessel-editor",
+   "--message-format=json"
+  ],
+  "error": null,
+  "executable": "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-4e3aaee2/target/release/tessel-editor",
+  "exit": 0,
+  "seconds": 148.75,
+  "stderr_tail": "9\n   Compiling notify v8.2.1\n   Compiling enum-iterator v2.3.0\n   Compiling time v0.3.55\n   Compiling digest v0.10.7\n   Compiling objc2-audio-toolbox v0.3.2\n   Compiling similar v2.7.0\n   Compiling gpui-component-macros v0.9.0\n   Compiling cpufeatures v0.2.17\n   Compiling lb-wry v0.53.3\n   Compiling cpal v0.17.3\n   Compiling coreaudio-rs v0.14.2\n   Compiling sha2 v0.10.9\n   Compiling tessel-editor-core v0.1.0 (/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-4e3aaee2/crates/core)\n   Compiling mach2 v0.5.0\n   Compiling dpi v0.1.2\n   Compiling dasp_sample v0.11.0\n   Compiling memory-stats v1.2.0\n   Compiling tessel-editor-audio v0.1.0 (/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-4e3aaee2/crates/audio)\n   Compiling gpui-pre-macos v0.3.11\n   Compiling gpui-base v0.9.0\n   Compiling objc2-web-kit v0.3.2\n   Compiling gpui-pre-platform v0.3.11\n   Compiling tessel-editor-media v0.1.0 (/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-4e3aaee2/crates/media)\n   Compiling tessel-editor-render v0.1.0 (/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-4e3aaee2/crates/render)\n   Compiling gpui-kit v0.9.0\n   Compiling gpui-webview v0.9.0\n   Compiling tessel-editor v0.1.0 (/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-4e3aaee2/crates/desktop)\n    Finished `release` profile [optimized] target(s) in 2m 27s\nmbx[cache]: 0 hits, 626 misses, 7 bypassed; 0 B downloaded, 0 B uploaded, 1.6 GiB stored locally\nmbx[savings]: 2.4 TiB logical of files removed by collection so far\n",
+  "timed_out": false
+ },
+ "command": [
+  "scripts/gizmo-perf/native.py",
+  "--phase",
+  "build",
+  "--out",
+  "/tmp/pr44-measure-12bc8da/native"
+ ],
+ "cwd": "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-4e3aaee2",
+ "exit": 0,
+ "identity": {
+  "branch": "t3/gizmo-perf-round5-measure",
+  "dirty": "",
+  "head": "12bc8da6fa564b3d740fa51da29dd203e63392ae",
+  "tree": "85cfb1038626dd68c2ef2252e14e5d276f0596ac"
+ },
+ "limits": [
+  "the compositor / GPU scan-out is not observable; directed-scene pictures carry no presented-frame stamp (the session trace's frames_total is 0): `presented` is NOT OBSERVABLE here, so core->host->runtime is measured, the last hop is not",
+  "a socket reply and the page's frame.done are not proof of painting; the picture hash is the runtime read-back and a picture only counts when its request id is newer than the one before the command",
+  "the OS capture is observational (one window witness per corpus), never an assertion",
+  "no physical pointer, keyboard or popover focus is used: BL015.2, BL043, BL044 remain pending",
+  "client_ms includes the socket round trip and the client process: it is not the host cost",
+  "no splat case: the synthetic corpus has no splat asset (BL015.23)",
+  "observations of one machine/backend; nothing is budgeted and no A/B against a baseline native binary exists yet"
+ ],
+ "phase": "build",
+ "reason": "no run was made",
+ "record": {
+  "binary": "/tmp/pr44-measure-12bc8da/native/exes/tessel-editor",
+  "binary_sha256": "fbc7a9c97ac892f105863f55f6c8c7f517a2c32a3f91015bcdeddb26910b5dbd",
+  "built_utc": "2026-11-11T08:36:37Z",
+  "corpus_manifest_sha256": "1e7ca4b975d0fbd82b375d598f504a488e2b0576f2b9990e13bfb1d640cb7ab1",
+  "dirty": false,
+  "head": "12bc8da6fa564b3d740fa51da29dd203e63392ae",
+  "journey_sha256": "7f69fa961e21f9efc78c12c393c6adeaa2566628fef3d7923ce85208e3de0964",
+  "runtime_sha256": "636c0d9fc3af852f299af3419f5a1f4d1f7f1b1c7d70c9b2afeb2cdc6d1c5d9e",
+  "runtime_source_tree": "cbb6e667e6beb763bb040caf1d911c82f21a6481",
+  "toolchain": {
+   "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+   "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+  },
+  "tree": "85cfb1038626dd68c2ef2252e14e5d276f0596ac"
+ },
+ "status": "BUILT",
+ "suite": "gizmo-perf-native",
+ "toolchain": {
+  "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+ },
+ "utc_start": "2026-11-11T08:34:08Z"
+}

@@ -1,7 +1,7 @@
 # Evidência da suíte de performance dos gizmos (BL015.21)
 
 Arquivos pequenos (sem binários, sem imagens) com o que foi **executado**, o head e o estado de cada um. Nenhuma **medição** daqui vale
-para o head final da PR (os gates funcionais do head e o que não pôde rodar estão listados depois da tabela): veja a coluna "vale para".
+para o head final da PR (os gates funcionais do head e o que não pôde rodar estão listados depois da tabela): veja a coluna "vale para". O código do head final é o de `12bc8da` (a rodada 5 só muda `docs/**`), mas **nenhum resultado de lá é um PASS**: a única medição desse head está em [`measure-12bc8da/`](measure-12bc8da/README.md) e na seção "Medição em `12bc8da` (rodada 5)".
 
 | Arquivo | O que é | Head / árvore | Estado | Vale para |
 |---|---|---|---|---|
@@ -28,6 +28,11 @@ para o head final da PR (os gates funcionais do head e o que não pôde rodar es
 | `gates-e37a76f.txt` | gates da rodada 3 sobre a árvore **limpa** de `e37a76f` (o commit de código), com comando, exit, contagens, disco, carga e tempo de cada passo | `e37a76f` (árvore limpa nos gates) | `fmt` exit 0; `clippy -p tessel-editor-core --all-targets -D warnings` exit 0; estrutural 7/0/0; threads 1/0/0; spec 111/111; `corpus.py --check` exit 0; `git diff --check` contra `f3b2c32` e contra `cbe9e1b` exit 0; `cargo tree -p tessel-editor-core` sem gpui/wry | só que o Rust do core compila e o que esses testes dizem; **nenhuma medição de tempo**, nenhum A/B, nenhum mutante de tempo, nenhuma janela nativa, nada de desempenho; **não** rodados: o host GPUI e o workspace inteiro com runtime (outra frente) |
 | `spec-new-tests-vs-1b92c9c-runners.log` | controle negativo da spec da rodada 4: os 4 testes novos (classe `MutantExecutables`: posse exclusiva de `--out` pelo `mutate.py`) contra os runners de `1b92c9c` (`git archive` em diretório temporário, sem checkout) e, como controle, contra os runners novos; mais sete variantes erradas da correção e a verificação com dois processos reais | runners de `1b92c9c`; a spec e os runners de `081353e` (os blobs estão no cabeçalho do log), com as mudanças ainda não commitadas | spec nova + runners novos: 115 OK; spec nova + runners antigos: **FALHOU** (5 falhas: o (d) falha nos dois subcasos; nenhum teste antigo falha); nenhum dos 4 testes novos passa dos dois lados; cada variante errada derruba o teste esperado; com dois processos reais: `REFUSED`, exit 1, `--out` intacta, e o SIGKILL do dono libera a trava | que os testes novos discriminam a correção; nada sobre desempenho |
 | `gates-081353e.txt` | gates da rodada 4 sobre a árvore **limpa** de `081353e` (o commit de código): `fmt`, `check --workspace`, `clippy --workspace --all-targets -D warnings`, `build -p tessel-editor`, `runtime setup`, `test --workspace --no-fail-fast` com `TESSEL_REQUIRE_RUNTIME=1` sob o lock de GPU, `cargo tree`, a spec, `corpus.py --check` e os dois `git diff --check`, cada um com comando, exit, carga, disco, árvore e tempo | `081353e` (árvore limpa nos gates) | todos exit 0; workspace **2299 passaram, 0 falharam, 16 ignorados** (117 linhas de resultado); estrutural 7/0/0, threads 1/0/0, host `scene_gizmo_perf` 5 dentro dos 418/0/0 do crate `tessel-editor`; spec 115/115; `cargo tree` sem gpui/wry | só que o workspace compila, que os testes funcionais passam e o que a spec diz; **nenhuma medição de tempo**, nenhum A/B, nenhum mutante de tempo, nenhuma janela nativa, nada de desempenho; os 3 testes de tempo de `scene_gizmo_perf_budget` ficam `ignored` |
+| `measure-12bc8da/README.md` e os arquivos ao lado | **primeira medição real** (rodada 5, 11/11/2026, 08:33Z–10:21Z) dos quatro runners no head `12bc8da`, sem nenhuma mudança de código, spec, fixture, orçamento ou limiar; o README tem a tabela de **cada passo** (comando, UTC, exit, carga 1/5/15 min e disco antes e depois, CPU alta), as sondagens da guarda e as 5 conferências do coordenador | `12bc8da6fa564b3d740fa51da29dd203e63392ae`, árvore `85cfb103…`, **limpa** (`dirty: ''`) em todos os manifestos | **`run.py` FAIL; `ab.py` INVALID_GUARD_AFTER_RUN ×2; `mutate.py` 3 de 4 mutantes mortos e `memo_off` UNEXPECTED_FAILURE; `native.py` FAIL** (detalhe nas linhas abaixo) | **só o que os números dizem, com quatro `Chrome Helper` de terceiros a ~100% de CPU (carga de base ~5,5, limite 5,5)**; nenhuma afirmação de "validado", "sem regressão" ou "desempenho OK" |
+| `measure-12bc8da/core/` (`manifest.build.json`, `manifest.json`, `report.json.gz`, `stdout.txt.gz`, `stderr.txt`) | `run.py` build + measure, `scene_gizmo_perf_budget` (3 testes) | `12bc8da`, limpa | **FAIL** (exit 1; 2 controles negativos passaram; **6 p95 do `deep` acima do orçamento**; `small` e `dense` dentro; 0 ticks longos) | só este head, esta carga; não separa ruído de regressão (BL015.23 (20)); o PASS do `5cded7e` é de outro head |
+| `measure-12bc8da/ab/` (manifestos de build e das duas tentativas, `verdicts.json`, rodadas da tentativa 2) | `ab.py` build (1 crash de infraestrutura + 1 retry) e measure ×2 | `12bc8da` × baseline `cbe9e1b`, limpa | build `BUILT` (executáveis distintos); measure **INVALID_GUARD_AFTER_RUN ×2: nada foi julgado** | nada sobre regressão; as linhas por tipo são observação; não vê host, renderer nem WebView (BL015.23 (14)); o `verdicts.json` e as rodadas da tentativa 1 foram apagados pelo próprio runner (BL015.23 (21)) |
+| `measure-12bc8da/mutants/` (manifestos de `prepare`, de `time` e relatórios) | `mutate.py` prepare ×2 e time ×2 (tentativa 1 não invocada) | `12bc8da`, limpa (restaurada depois de cada mutante) | `extra_plan` KILLED (estrutural **e** tempo, no retry), `delay_1ms` estrutural SURVIVED (esperado) e tempo KILLED, `replan_per_tick` host KILLED, **`memo_off` UNEXPECTED_FAILURE**; status final `UNEXPECTED` | detecção de mutantes **sintéticos**; a classificação do `memo_off` está errada no runner (BL015.23 (19)); sem prova de ausência de regressão |
+| `measure-12bc8da/native/` (manifestos, `report.json.gz`; capturas fora do git) | `native.py` build + run (`small`, `dense`, `deep`, janela real) | `12bc8da`, limpa | **FAIL** (639 verificações, 20 falharam, todas `drag.*`); `same.*`/`switch.*` 15/15 por corpus | sem baseline para a janela (BL015.23 (14)): só funcional e tempos brutos com a carga; **sem controle negativo** na janela |
 
 Gates do head `9cc2335` (um head ANTERIOR): `fmt --check`, `git diff --check`, `clippy --workspace --all-targets -D warnings`,
 testes estruturais do core 7/7 e do host 3/3.
@@ -58,6 +63,64 @@ entrega). **Não** rodados nesta rodada: o core inteiro (`--no-fail-fast`) e `sc
 Gates de `e37a76f` (a **árvore limpa** da rodada 3, o commit de código; detalhe, comandos, carga e saída em [`gates-e37a76f.txt`](gates-e37a76f.txt)): `cargo fmt --all -- --check` exit 0; `clippy -p tessel-editor-core --all-targets --locked -D warnings` exit 0; `--test scene_gizmo_perf_structure` **7 passaram, 0 falharam, 0 ignorados**; `--test scene_gizmo_perf_threads` **1 passou**; spec Python **111/111**; `corpus.py --check` exit 0 (`corpus up to date`); `git diff --check f3b2c32 HEAD` e `git diff --check cbe9e1b HEAD` exit 0; `cargo tree -p tessel-editor-core --locked` sem gpui/wry (`rg` sem ocorrências). **Não** rodados nesta rodada: `scene_gizmo_perf_budget` (mede tempo; só compilado pelo `clippy --all-targets`), o core inteiro, o host GPUI, `clippy --workspace`, o workspace inteiro com `TESSEL_REQUIRE_RUNTIME=1` (outra frente), builds release, `run.py`, `ab.py`, `mutate.py` (`prepare` e `time`: a correção só foi exercitada pela spec, com dublês de git, máquina, lock, build e corrida), `native.py` e qualquer medição de tempo. A máquina estava carregada por outros projetos (a carga de cada passo está no arquivo de gates): o que foi rodado não mede nada.
 
 Gates de `081353e` (a **árvore limpa** da rodada 4, o commit de código; detalhe, comandos, carga e saída em [`gates-081353e.txt`](gates-081353e.txt)): `cargo fmt --all -- --check` exit 0; `check --workspace --locked` exit 0; `clippy --workspace --all-targets --locked -D warnings` exit 0 (63 hits e 119 misses do cache do mbx, sem diagnósticos); `build -p tessel-editor --locked` exit 0; `./scripts/runtime setup` exit 0; `test --workspace --locked --no-fail-fast` com `TESSEL_REQUIRE_RUNTIME=1` sob o lock de GPU (ordem lock de GPU, cargo-serial, `./scripts/cargo`) exit 0 em 500 s: **2299 passaram, 0 falharam, 16 ignorados** em 117 linhas de resultado (113 binários e 4 doc-tests; `tessel-editor` 418/0/0, áudio 10/0/0, core 1267/0/7, mídia 497/0/6, render 107/0/3), com `scene_gizmo_perf_structure` **7/0/0**, `scene_gizmo_perf_threads` **1/0/0**, os 5 `scene_gizmo_perf_tests` do host dentro dos 418 do crate e os 3 testes de `scene_gizmo_perf_budget` `ignored` de propósito (rodam só por `run.py`); `cargo tree -p tessel-editor-core --locked` sem gpui/wry (`rg -i` sem ocorrências); spec Python **115/115**; `corpus.py --check` exit 0; `git diff --check 1b92c9c HEAD` e `git diff --check cbe9e1b HEAD` exit 0. **Não** rodados nesta rodada: nenhum teste de tempo (`scene_gizmo_perf_budget` ficou `ignored`), `run.py`, `ab.py`, `mutate.py` (`prepare` e `time`: a trava de `--out` só foi exercitada pela spec e por dois processos reais que nunca passam dela), `native.py`, builds release, a janela nativa e qualquer medição de tempo. A máquina estava carregada por outros projetos (a carga de cada passo está no arquivo de gates): o que foi rodado não mede nada.
+
+## Medição em `12bc8da` (rodada 5)
+
+Primeira execução **real** dos quatro runners, sem mudar código, spec, fixtures, orçamentos nem limiares.
+[`measure-12bc8da/README.md`](measure-12bc8da/README.md) tem a tabela completa (comandos, UTC, exit, carga 1/5/15 min e disco antes e depois,
+CPU alta, sondagens da guarda), as 5 conferências do coordenador, os achados e o sha256 de cada arquivo. Resumo, com os estados **como o runner
+os escreveu** (head `12bc8da6fa564b3d740fa51da29dd203e63392ae`, árvore `85cfb103…`, `dirty: ''` em todos os manifestos):
+
+| Passo | Comando | UTC (início–fim) | Exit | Estado (como o runner escreveu) | Carga 1 min antes → depois | Números-chave |
+|---|---|---|---|---|---|---|
+| S0 | `./scripts/runtime setup` | 08:33:57–08:33:59Z | 0 | — | 4,39 → 4,68 | exit 0 em ~2 s; `git status --porcelain` vazio depois |
+| N1 | `native.py --phase build` | 08:34:08–08:36:37Z | 0 | `BUILT` | 4,63 → 20,31 | binário sha256 `fbc7a9c9…`, `runtime/dist` `636c0d9f…`, jornada `7f69fa96…`, manifesto do corpus `1e7ca4b9…` |
+| N2 | `native.py --phase run` (tentativa 1 de 3) | 08:59:41–09:07:29Z | 1 | **FAIL** | 5,11 → 5,79 | 639 verificações, 20 falharam (`small` 5, `dense` 10, `deep` 5; todas `drag.*`); `same.*`/`switch.*` 15/15 por corpo; `guard_after` 5,79 > 5,5 (o FAIL vale mesmo assim) |
+| A1 | `ab.py --phase build` (tentativa 1) | 09:08:57–09:09:35Z | 1 | crash de infraestrutura (sem estado do runner) | 5,75 → 10,91 | `FileNotFoundError` em `ab.py:434`: o executável do candidato sumiu do `target/` depois do build da baseline; sem manifesto (BL015.23 (15)) |
+| R1 | `run.py --phase build` | 09:09:35–09:09:37Z | 0 | `BUILT` | 10,91 → 10,44 | executável sha256 `9f81ee1f…`, 1,63 s (cache do mbx: 25 hits, 0 misses) |
+| A1 retry | `ab.py --phase build` com `MBX_GC_MAX_TOTAL_SIZE=24GiB` (o único retry; só o ambiente mudou) | 09:11:18–09:11:20Z | 0 | `BUILT` | 5,89 → 5,89 | candidato `9f81ee1f…` × baseline `f8002313…` (diferentes); `product_files_that_differ` = só `scene_plan/build.rs`; 4 arquivos do desktop fora da medição |
+| A2 | `ab.py --phase measure` (tentativa 1 de 3) | 09:26:28–09:27:45Z | 3 | **INVALID_GUARD_AFTER_RUN** | 5,07 → 6,49 | nada julgado; linhas por tipo 56 `NO_REGRESSION_IN_SCENARIO` + 4 `REGRESSED` (observação); guarda depois 6,49 |
+| R2 | `run.py --phase measure` (tentativa 1 de 3) | 09:32:47–09:33:15Z | 1 | **FAIL** | 5,42 → 5,88 | 2 controles negativos passaram; 6 p95 do `deep` acima do orçamento (`down.rotate` 6,10× > 5,4, `down.translate` 3,26× > 3,15, `move.rotate` 10,96× > 9,05, `read.rotate` 5,98× > 4,15, `state.rotate` 5,30× > 3,95, `up.rotate` 17,41× > 10,05); `small`/`dense` dentro; 0 ticks longos |
+| M1 | `mutate.py --phase prepare` | 09:33:53–09:35:32Z | 0 | `PREPARED` | 5,45 → 9,27 | `extra_plan` estrutural KILLED, `delay_1ms` estrutural SURVIVED (esperado), `replan_per_tick` host KILLED, `memo_off` host **UNEXPECTED_FAILURE**; árvore restaurada |
+| M2 | `mutate.py --phase time` (tentativa 1 de 3) | — | — | **não invocada** | — | 25 min e 23 sondagens sem nenhuma janela limpa (09:36:26Z–10:01:36Z) |
+| A2b | `ab.py --phase measure` (tentativa 2 de 3, mesmo build) | 10:07:07–10:08:24Z | 3 | **INVALID_GUARD_AFTER_RUN** | 5,18 → 5,99 | nada julgado; 59 `NO_REGRESSION_IN_SCENARIO` + 1 `REGRESSED` (observação; nenhum tipo repete o da tentativa 1); guarda depois 5,99 |
+| M2b | `mutate.py --phase time` (tentativa 2 de 3) | 10:09:35–10:10:05Z | 3 | `BLOCKED_OR_INFRA` | 5,04 → 5,59 | `delay_1ms` tempo KILLED; `extra_plan` tempo **INVALID_GUARD_AFTER_RUN** (guarda depois 5,59); o runner apagou `exes/` |
+| M1b | `mutate.py --phase prepare` de novo (exigido pelo `exes/` apagado) | 10:10:42–10:11:31Z | 0 | `PREPARED` | 5,27 → 8,75 | mesmos resultados do `M1`; árvore restaurada |
+| M2c | `mutate.py --phase time` (retry, o último) | 10:21:13–10:21:42Z | 1 | **UNEXPECTED** | 5,26 → 5,39 | `delay_1ms` tempo KILLED (106 linhas), `extra_plan` tempo KILLED (68 linhas), guarda depois limpa nos dois; o `UNEXPECTED` vem só do `memo_off` |
+
+**Contexto**: quatro `Google Chrome Helper` do usuário a 83–103% de CPU cada em todas as leituras (nada meu, nada tocado); nas sondagens da guarda a
+mediana da média de 1 min foi 5,50 e a de 5 min 5,67, contra o limite 5,5, e só 18 de 93 sondagens passaram nas duas médias.
+A guarda **depois** da corrida recusou em 5 das 8 execuções guardadas (BL015.23 (11)). Térmico não verificado (`no_limit_reported`).
+
+**Como ler (e o que não se afirma):**
+
+- `run.py` **PASS** só significaria "dentro dos orçamentos de `budgets.json` (calibrados na mesma árvore; margens frias ampliadas depois de um FAIL,
+  BL015.7/BL015.12)", **não** prova de ausência de regressão. Aqui deu **FAIL** (6 p95 do `deep` acima do orçamento), que **não** separa ruído de máquina
+  carregada de regressão (BL015.23 (20)); o PASS do `5cded7e` é de outro head.
+- A/B **`NO_REGRESSION_IN_SCENARIO`** só significaria "nenhum p50 > 1,10× nem p95 > 1,25× com maioria estrita dos pares de rodadas contra a baseline fixada
+  `cbe9e1b`, sem amostra perdida nem tick longo a mais, sobre o TOTAL da requisição do teste de orçamento do core, neste cenário, nesta configuração e
+  nesta máquina, sob esta carga": **não vê host, renderer nem WebView** (BL015.23 (14)), um planejador mais lento que baixa a razão requisição/plano pode
+  ficar invisível (M2) e nunca prova ausência de regressão. A mudança de código da PR no core é **uma linha** (o gancho do `probe`). Aqui o A/B deu
+  **INVALID_GUARD_AFTER_RUN nas duas tentativas: nada foi julgado**; as linhas por tipo (56+4 e 59+1 `REGRESSED`, nenhum tipo se repete) são observação.
+- `mutate.py`: `extra_plan_per_handler` **KILLED** pelo estrutural (`small / open.first_overlay: scene.gizmo.state laid the scene out 2 times (budget 1)`) e pelo de tempo
+  (retry, 68 linhas fora do orçamento); `delay_1ms_per_handler` estrutural **SURVIVED** (esperado) e tempo **KILLED** (107 e 106 linhas); `replan_per_tick` **KILLED**
+  no host (`small: 100 idle ticks laid the scene out`); **`memo_off` UNEXPECTED_FAILURE**: o teste nomeado falhou em `scene_gizmo_perf_tests.rs:193:9`, uma verificação
+  anterior às mensagens que o runner espera (BL015.23 (19)), então **não** conta como morto. Detecção de mutantes **sintéticos**, não ausência de regressão.
+- `native.py`: sem baseline para a janela (BL015.23 (14)): valem as verificações funcionais e os tempos brutos com a carga ao lado, **sem comparação e sem "sem regressão"**.
+  `same.*`/`switch.*` passaram 15/15 nos três corpos (o head corrigido do BL015.22 mostra `proof-c` na janela), **sem controle com a chave antiga**.
+- Achados novos, todos em BL015.23 do `docs/backlog.md`: (15) crash do build do A/B por executável podado, (16) 15/15 arrastos sem "quadro novo", (17) escala sem
+  efeito em pixels no `dense`, (18) `overlay_drawn` nunca checado, (19) `EXPECT` do `memo_off`, (20) `FAIL` do `deep` sem decisão, (21) `verdicts.json` apagado pela tentativa
+  seguinte, (22) `tests_passed` do `run.py` lista o teste que falhou.
+
+Cinco conferências pedidas pelo coordenador (detalhe no README de `measure-12bc8da/`):
+
+| # | Verificação | Resultado |
+|---|---|---|
+| 1 | A/B: executáveis do candidato e da baseline diferem (`AB_EXECUTABLES_COLLIDE`); `CARGO_TARGET_DIR`/`TESSEL_CARGO_LANE` | diferentes (sha256 `9f81ee1f…` × `f8002313…`); as duas variáveis **não definidas** |
+| 2 | native: `overlay_drawn` (nulos), `cleanup_errors`, `session`, processos | 4 entradas por corpo, **nenhuma nula** (o runner não as checa, (18)); `cleanup_errors` `[]` ×3; `session_error` nulo ×3 e `trace.enabled: true`; nenhum editor meu restou (`ps`) |
+| 3 | `run.py`: `run.env` sem `TESSEL_GIZMO_PERF_CALIBRATE` | confirmado (`calibrate: false`) |
+| 4 | `mutate.py`: `exes/` apagado depois de `INVALID`/`BLOCKED_OR_INFRA` | confirmado; **um** `prepare` de novo (M1b) e um `time` de novo (M2c), sem `--only` |
+| 5 | manifestos com `head`/`tree` não vazios e `dirty` vazio | confirmado em todos |
 
 ## Rodada 2 de correções: cada passo, o SHA e se a árvore estava limpa
 
@@ -104,6 +167,21 @@ Gates de `081353e` (a **árvore limpa** da rodada 4, o commit de código; detalh
 | gates em `081353e` ([`gates-081353e.txt`](gates-081353e.txt)) | `081353e` | **limpa** (`git status --porcelain` vazio antes e depois de cada passo) | acima |
 | commit de docs (este commit, o que contém esta linha; o SHA de um commit não pode constar dele mesmo) | pai `081353e` | | sem trailer |
 | conferências depois do commit de docs: a spec (115 testes), `corpus.py --check`, `git diff --check` contra `1b92c9c` e contra `cbe9e1b` e `git diff --stat 081353e HEAD` (só `docs/**` e o README dos runners) | este commit (o que contém esta linha) | **limpa** | rodadas e **não retidas** aqui; o resultado e o SHA estão no relatório de entrega |
+| push (um só, fast-forward, sem force) | | | no relatório de entrega |
+
+## Rodada 5: cada passo, o SHA e se a árvore estava limpa
+
+"Suja" quer dizer que o `git status --porcelain` listava arquivos. A coluna HEAD de cada linha da rodada 5 diz o commit, ou "este commit (o que contém
+esta linha)" quando o SHA não pode constar do próprio commit. **Nenhum arquivo de código, spec, fixture, orçamento ou runner foi editado** nesta rodada;
+só `docs/**` (o `git diff --stat 12bc8da HEAD` do commit de docs está no relatório de entrega).
+
+| Passo | HEAD | Árvore | Resultado |
+|---|---|---|---|
+| leitura do contrato (`AGENTS.md`, skill de features, README e docstrings dos runners, o doc da feature, o backlog BL015.21/.22/.23, a skill de commit); `fetch` da branch da PR e `checkout -B` em `12bc8da`; `./scripts/runtime setup` | `12bc8da` | limpa | cabeça remota conferida (`12bc8da6fa564b3d740fa51da29dd203e63392ae`); `git status --porcelain` vazio depois do setup |
+| builds e medições `N1`, `N2`, `A1` (e o retry), `R1`, `A2` e `A2b`, `R2`, `M1` e `M1b`, `M2b` e `M2c` (tabela acima; a `M2` tentativa 1 não foi invocada) | `12bc8da` | `git status --porcelain` **registrado** vazio depois de cada `prepare` do `mutate.py` (que muta e restaura; `restore.restored: true` por mutante); nas demais fases só o `dirty: ''` dos manifestos (cobre `crates`, `Cargo.*`, `scripts` e as fixtures) | os estados da tabela acima; nada foi editado entre as fases |
+| coleta da evidência em `measure-12bc8da/` (cópia crua; só os JSONs e logs, os executáveis e as capturas ficam fora do git), varredura de segredos, tamanho e conferência de identidade dos manifestos | `12bc8da` | limpa até a coleta; depois só `docs/**` muda | todos os manifestos com `head` e `tree` não vazios e `dirty: ''` |
+| commit de docs (este commit, o que contém esta linha; o SHA de um commit não pode constar dele mesmo) | pai `12bc8da` | | sem trailer |
+| conferências depois do commit: `git diff --check`, `git diff --stat 12bc8da HEAD` (só `docs/**`) e a leitura das afirmações de desempenho | | | no relatório de entrega |
 | push (um só, fast-forward, sem force) | | | no relatório de entrega |
 
 ## Revisão independente R (review 5854092614, em `a97a0a7`)

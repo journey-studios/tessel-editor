@@ -1,0 +1,109 @@
+{
+ "baseline": "cbe9e1b393861febf073633fbbaa0da9857780b6",
+ "baseline_build": {
+  "command": [
+   "./scripts/cargo",
+   "test",
+   "--release",
+   "--locked",
+   "-p",
+   "tessel-editor-core",
+   "--test",
+   "scene_gizmo_perf_budget",
+   "--no-run",
+   "--message-format=json"
+  ],
+  "cwd": "/tmp/pr44-measure-12bc8da/ab/baseline-src",
+  "error": null,
+  "executable": "/private/tmp/pr44-measure-12bc8da/ab/baseline-src/target/release/deps/scene_gizmo_perf_budget-c6520d81ec54922a",
+  "exit": 0,
+  "seconds": 0.79,
+  "stderr_tail": "   Compiling tessel-editor-core v0.1.0 (/private/tmp/pr44-measure-12bc8da/ab/baseline-src/crates/core)\n    Finished `release` profile [optimized] target(s) in 0.22s\nmbx[cache]: 3 hits, 0 misses; 0 B downloaded, 0 B uploaded, 0 B stored locally\nmbx[savings]: 1d 19h of compiler time avoided across 4215 builds\n",
+  "timed_out": false
+ },
+ "baseline_commit": "cbe9e1b393861febf073633fbbaa0da9857780b6",
+ "baseline_is_pinned": true,
+ "baseline_src_kept_at": "/tmp/pr44-measure-12bc8da/ab/baseline-src",
+ "candidate": {
+  "branch": "t3/gizmo-perf-round5-measure",
+  "dirty": "",
+  "head": "12bc8da6fa564b3d740fa51da29dd203e63392ae",
+  "tree": "85cfb1038626dd68c2ef2252e14e5d276f0596ac"
+ },
+ "candidate_build": {
+  "command": [
+   "./scripts/cargo",
+   "test",
+   "--release",
+   "--locked",
+   "-p",
+   "tessel-editor-core",
+   "--test",
+   "scene_gizmo_perf_budget",
+   "--no-run",
+   "--message-format=json"
+  ],
+  "error": null,
+  "executable": "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-4e3aaee2/target/release/deps/scene_gizmo_perf_budget-c6520d81ec54922a",
+  "exit": 0,
+  "seconds": 0.16,
+  "timed_out": false
+ },
+ "command": [
+  "scripts/gizmo-perf/ab.py",
+  "--phase",
+  "build",
+  "--out",
+  "/tmp/pr44-measure-12bc8da/ab"
+ ],
+ "cwd": "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-4e3aaee2",
+ "dirty_run": false,
+ "executables_sha256": {
+  "baseline": "f8002313ed2601c77a125a7db79a05568359836ff78f390afcd1101cf3a0b3d6",
+  "candidate": "9f81ee1f4571d8fd5008ccb67b8501c1e9fac3de916e99c3d2f9f0d08fd05f38"
+ },
+ "phase": "build",
+ "prod_trees": {
+  "allowlist": {
+   "crates/core/src/scene_plan/mod.rs": "one added line: `pub mod probe;`",
+   "crates/core/src/scene_plan/probe.rs": "new file: the counter module (no call sites)"
+  },
+  "contaminated": [],
+  "overlay_changed": [
+   "crates/core/src/scene_plan/mod.rs",
+   "crates/core/src/scene_plan/probe.rs"
+  ],
+  "pinned_ref_tree": "54283977b0cc1d2cddc2a0ec1247faa3c9881c756cdac53eeab7fa4d45250c76",
+  "prod_tree_after_overlay": "0578616bd55c0ec3b21375a57ef0f115f2a4faba47f1884b9014a1b929024ca8",
+  "prod_tree_before_overlay": "54283977b0cc1d2cddc2a0ec1247faa3c9881c756cdac53eeab7fa4d45250c76",
+  "prod_tree_candidate": "6b4ee2800140196002eef4c238348e0468493cff06afbf837348c96b7ace2ede",
+  "product_files_outside_the_measurement": [
+   "crates/desktop/src/workstation/mod.rs",
+   "crates/desktop/src/workstation/scene_gizmo_perf_tests.rs",
+   "crates/desktop/src/workstation/scene_lifecycle_tests.rs",
+   "crates/desktop/src/workstation/scene_monitor_host.rs"
+  ],
+  "product_files_that_differ": {
+   "crates/core/src/scene_plan/build.rs": {
+    "baseline": "e49f4a42c97c77b731401ba8f38aa49be1052749",
+    "candidate": "be36fbe340aa13fb2054408296e7ebfa0e4dad1c"
+   }
+  }
+ },
+ "reason": "no measurement was taken",
+ "rounds": 4,
+ "rules": {
+  "baseline_spread_tolerance": 0.15,
+  "long_tick_ns": 16600000,
+  "max_unstable_fraction": 0.25,
+  "median_tolerance": 1.1,
+  "p95_tolerance": 1.25
+ },
+ "status": "BUILT",
+ "suite": "gizmo-perf-ab",
+ "toolchain": {
+  "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+ },
+ "utc_start": "2026-11-11T09:11:18Z"
+}

@@ -1,0 +1,250 @@
+{
+ "binary": "/tmp/pr44-measure-12bc8da/native/exes/tessel-editor",
+ "binary_sha256": "fbc7a9c97ac892f105863f55f6c8c7f517a2c32a3f91015bcdeddb26910b5dbd",
+ "build_record": {
+  "binary": "/tmp/pr44-measure-12bc8da/native/exes/tessel-editor",
+  "binary_sha256": "fbc7a9c97ac892f105863f55f6c8c7f517a2c32a3f91015bcdeddb26910b5dbd",
+  "built_utc": "2026-11-11T08:36:37Z",
+  "corpus_manifest_sha256": "1e7ca4b975d0fbd82b375d598f504a488e2b0576f2b9990e13bfb1d640cb7ab1",
+  "dirty": false,
+  "head": "12bc8da6fa564b3d740fa51da29dd203e63392ae",
+  "journey_sha256": "7f69fa961e21f9efc78c12c393c6adeaa2566628fef3d7923ce85208e3de0964",
+  "runtime_sha256": "636c0d9fc3af852f299af3419f5a1f4d1f7f1b1c7d70c9b2afeb2cdc6d1c5d9e",
+  "runtime_source_tree": "cbb6e667e6beb763bb040caf1d911c82f21a6481",
+  "toolchain": {
+   "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+   "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+  },
+  "tree": "85cfb1038626dd68c2ef2252e14e5d276f0596ac"
+ },
+ "checks": {
+  "failed": 20,
+  "total": 639
+ },
+ "command": [
+  "scripts/gizmo-perf/native.py",
+  "--phase",
+  "run",
+  "--out",
+  "/tmp/pr44-measure-12bc8da/native"
+ ],
+ "corpus": {
+  "corpusVersion": 1,
+  "files": {
+   "deep.bundle.json": {
+    "bytes": 27080,
+    "sha256": "28e21da6baefb887eff30a88189ed801194fbaa9b01285ab2bfd39aadc14e784"
+   },
+   "dense.bundle.json": {
+    "bytes": 491475,
+    "sha256": "26c257121d0937f073fbc4a3291be380a379d3bbfa80768fcd7948805d41511f"
+   }
+  },
+  "gaps": [
+   "no splat case: the corpus has no splat asset (core tests cover the refusals)"
+  ],
+  "generator": {
+   "file": "scripts/gizmo-perf/corpus.py",
+   "sha256": "178d2da3b26f5b6e1d890fcf4f1dde1f5a017083764fa7c3ac1c1d59122b5dfc"
+  },
+  "journey": {
+   "file": "docs/migration/fixtures/gizmo-perf/journey.json",
+   "sha256": "7f69fa961e21f9efc78c12c393c6adeaa2566628fef3d7923ce85208e3de0964"
+  },
+  "nodes": {
+   "deep.bundle.json": 44,
+   "dense.bundle.json": 618,
+   "small": 6
+  },
+  "private_media": false,
+  "source": {
+   "file": "scripts/directed-scene-proof/corpus/bundle.json",
+   "sha256": "6f2086eb2ffa919c93f74531145c2e3601ee91bd4c948b1965b67f5effc4c93b"
+  }
+ },
+ "cwd": "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-4e3aaee2",
+ "dirty_run": false,
+ "exit": 1,
+ "failed_checks": [
+  [
+   "small",
+   "drag.translate.x: the committed picture is a NEW picture"
+  ],
+  [
+   "small",
+   "drag.rotate.local.y: the committed picture is a NEW picture"
+  ],
+  [
+   "small",
+   "drag.rotate.world.z: the committed picture is a NEW picture"
+  ],
+  [
+   "small",
+   "drag.scale.local.uniform: the committed picture is a NEW picture"
+  ],
+  [
+   "small",
+   "drag.scale.local.x: the committed picture is a NEW picture"
+  ],
+  [
+   "dense",
+   "drag.translate.x: the committed picture is a NEW picture"
+  ],
+  [
+   "dense",
+   "drag.rotate.local.y: the committed picture is a NEW picture"
+  ],
+  [
+   "dense",
+   "drag.rotate.world.z: the committed picture is a NEW picture"
+  ],
+  [
+   "dense",
+   "drag.scale.local.uniform: the drawn candidate picture differs from the base picture"
+  ],
+  [
+   "dense",
+   "drag.scale.local.uniform: the committed picture is a NEW picture"
+  ],
+  [
+   "dense",
+   "drag.scale.local.uniform: the committed picture differs from the one before the gesture"
+  ],
+  [
+   "dense",
+   "drag.scale.local.x: the drawn candidate picture differs from the base picture"
+  ],
+  [
+   "dense",
+   "drag.scale.local.x: the committed picture is a NEW picture"
+  ],
+  [
+   "dense",
+   "drag.scale.local.x: the committed picture differs from the one before the gesture"
+  ],
+  [
+   "dense",
+   "drag.scale.cancel: the drawn candidate picture differs from the base picture"
+  ],
+  [
+   "deep",
+   "drag.translate.x: the committed picture is a NEW picture"
+  ],
+  [
+   "deep",
+   "drag.rotate.local.y: the committed picture is a NEW picture"
+  ],
+  [
+   "deep",
+   "drag.rotate.world.z: the committed picture is a NEW picture"
+  ],
+  [
+   "deep",
+   "drag.scale.local.uniform: the committed picture is a NEW picture"
+  ],
+  [
+   "deep",
+   "drag.scale.local.x: the committed picture is a NEW picture"
+  ]
+ ],
+ "guard_after": "load average (1 min) 5.79 over 5.5 (11 cpus)",
+ "identity": {
+  "branch": "t3/gizmo-perf-round5-measure",
+  "dirty": "",
+  "head": "12bc8da6fa564b3d740fa51da29dd203e63392ae",
+  "tree": "85cfb1038626dd68c2ef2252e14e5d276f0596ac"
+ },
+ "limits": [
+  "the compositor / GPU scan-out is not observable; directed-scene pictures carry no presented-frame stamp (the session trace's frames_total is 0): `presented` is NOT OBSERVABLE here, so core->host->runtime is measured, the last hop is not",
+  "a socket reply and the page's frame.done are not proof of painting; the picture hash is the runtime read-back and a picture only counts when its request id is newer than the one before the command",
+  "the OS capture is observational (one window witness per corpus), never an assertion",
+  "no physical pointer, keyboard or popover focus is used: BL015.2, BL043, BL044 remain pending",
+  "client_ms includes the socket round trip and the client process: it is not the host cost",
+  "no splat case: the synthetic corpus has no splat asset (BL015.23)",
+  "observations of one machine/backend; nothing is budgeted and no A/B against a baseline native binary exists yet",
+  "thermal throttling was NOT verified: pmset reports no CPU_Speed_Limit on this hardware: throttling is not excluded"
+ ],
+ "machine_after": {
+  "cpu": "Apple M3 Pro",
+  "cpus": 11,
+  "free_gib": 18.32,
+  "loadavg": [
+   5.79443359375,
+   5.787109375,
+   5.81640625
+  ],
+  "machine": "arm64",
+  "memory_bytes": "19327352832",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "power": [
+   "Now drawing from 'AC Power'",
+   " -InternalBattery-0 (id=21889123)\t100%; charged; 0:00 remaining present: true"
+  ],
+  "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded",
+  "thermal_state": {
+   "detail": "pmset reports no CPU_Speed_Limit on this hardware: throttling is not excluded",
+   "limits": {},
+   "status": "no_limit_reported",
+   "verified": false
+  },
+  "top_cpu_processes": [
+   "PID  %CPU COMM",
+   "34613 103.2 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif).app/Contents/MacOS/Google Chrome Helper (Aperitif)",
+   "49969 102.3 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)",
+   "34642 100.0 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)",
+   "34645  98.2 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)",
+   "  399  35.6 /System/Library/CoreServices/loginwindow.app/Contents/MacOS/loginwindow",
+   "  396  35.3 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer",
+   "  409  10.4 /usr/sbin/coreaudiod"
+  ],
+  "utc": "2026-11-11T09:07:29Z"
+ },
+ "machine_before": {
+  "cpu": "Apple M3 Pro",
+  "cpus": 11,
+  "free_gib": 18.31,
+  "loadavg": [
+   5.107421875,
+   5.46142578125,
+   5.83056640625
+  ],
+  "machine": "arm64",
+  "memory_bytes": "19327352832",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "power": [
+   "Now drawing from 'AC Power'",
+   " -InternalBattery-0 (id=21889123)\t100%; charged; 0:00 remaining present: true"
+  ],
+  "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded",
+  "thermal_state": {
+   "detail": "pmset reports no CPU_Speed_Limit on this hardware: throttling is not excluded",
+   "limits": {},
+   "status": "no_limit_reported",
+   "verified": false
+  },
+  "top_cpu_processes": [
+   "PID  %CPU COMM",
+   "34613 102.3 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif).app/Contents/MacOS/Google Chrome Helper (Aperitif)",
+   "49969 101.5 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)",
+   "34642 100.0 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)",
+   "34645  99.6 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)",
+   "20016  23.1 /opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python",
+   "  396  21.1 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer",
+   "19970   4.7 /bin/zsh"
+  ],
+  "utc": "2026-11-11T08:59:42Z"
+ },
+ "measurement": true,
+ "phase": "run",
+ "reason": "small: drag.translate.x: the committed picture is a NEW picture; small: drag.rotate.local.y: the committed picture is a NEW picture; small: drag.rotate.world.z: the committed picture is a NEW picture; small: drag.scale.local.uniform: the committed picture is a NEW picture; small: drag.scale.local.x: the committed picture is a NEW picture; dense: drag.translate.x: the committed picture is a NEW picture",
+ "report_sha256": "76e6a0b2a0ee7054802f13b06606537063d015627d3228710ea6826ba8374645",
+ "runtime_sha256": "636c0d9fc3af852f299af3419f5a1f4d1f7f1b1c7d70c9b2afeb2cdc6d1c5d9e",
+ "status": "FAIL",
+ "suite": "gizmo-perf-native",
+ "toolchain": {
+  "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+ },
+ "utc_end": "2026-11-11T09:07:29Z",
+ "utc_start": "2026-11-11T08:59:41Z"
+}

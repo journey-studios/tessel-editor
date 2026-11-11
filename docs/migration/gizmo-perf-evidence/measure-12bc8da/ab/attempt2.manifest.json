@@ -1,0 +1,356 @@
+{
+ "baseline": "cbe9e1b393861febf073633fbbaa0da9857780b6",
+ "baseline_build": {
+  "command": [
+   "./scripts/cargo",
+   "test",
+   "--release",
+   "--locked",
+   "-p",
+   "tessel-editor-core",
+   "--test",
+   "scene_gizmo_perf_budget",
+   "--no-run",
+   "--message-format=json"
+  ],
+  "cwd": "/tmp/pr44-measure-12bc8da/ab/baseline-src",
+  "error": null,
+  "executable": "/private/tmp/pr44-measure-12bc8da/ab/baseline-src/target/release/deps/scene_gizmo_perf_budget-c6520d81ec54922a",
+  "exit": 0,
+  "seconds": 0.79,
+  "stderr_tail": "   Compiling tessel-editor-core v0.1.0 (/private/tmp/pr44-measure-12bc8da/ab/baseline-src/crates/core)\n    Finished `release` profile [optimized] target(s) in 0.22s\nmbx[cache]: 3 hits, 0 misses; 0 B downloaded, 0 B uploaded, 0 B stored locally\nmbx[savings]: 1d 19h of compiler time avoided across 4215 builds\n",
+  "timed_out": false
+ },
+ "baseline_commit": "cbe9e1b393861febf073633fbbaa0da9857780b6",
+ "baseline_is_pinned": true,
+ "candidate": {
+  "branch": "t3/gizmo-perf-round5-measure",
+  "dirty": "",
+  "head": "12bc8da6fa564b3d740fa51da29dd203e63392ae",
+  "tree": "85cfb1038626dd68c2ef2252e14e5d276f0596ac"
+ },
+ "candidate_build": {
+  "command": [
+   "./scripts/cargo",
+   "test",
+   "--release",
+   "--locked",
+   "-p",
+   "tessel-editor-core",
+   "--test",
+   "scene_gizmo_perf_budget",
+   "--no-run",
+   "--message-format=json"
+  ],
+  "error": null,
+  "executable": "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-4e3aaee2/target/release/deps/scene_gizmo_perf_budget-c6520d81ec54922a",
+  "exit": 0,
+  "seconds": 0.16,
+  "timed_out": false
+ },
+ "command": [
+  "scripts/gizmo-perf/ab.py",
+  "--phase",
+  "measure",
+  "--out",
+  "/tmp/pr44-measure-12bc8da/ab"
+ ],
+ "cwd": "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-4e3aaee2",
+ "dirty_run": false,
+ "executables_sha256": {
+  "baseline": "f8002313ed2601c77a125a7db79a05568359836ff78f390afcd1101cf3a0b3d6",
+  "candidate": "9f81ee1f4571d8fd5008ccb67b8501c1e9fac3de916e99c3d2f9f0d08fd05f38"
+ },
+ "exit": 3,
+ "guard_after": "load average (1 min) 5.99 over 5.5 (11 cpus)",
+ "limits": [
+  "thermal throttling was NOT verified: pmset reports no CPU_Speed_Limit on this hardware: throttling is not excluded"
+ ],
+ "machine_after": {
+  "cpu": "Apple M3 Pro",
+  "cpus": 11,
+  "free_gib": 18.82,
+  "loadavg": [
+   5.9853515625,
+   5.65283203125,
+   5.67822265625
+  ],
+  "machine": "arm64",
+  "memory_bytes": "19327352832",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "power": [
+   "Now drawing from 'AC Power'",
+   " -InternalBattery-0 (id=21889123)\t100%; charged; 0:00 remaining present: true"
+  ],
+  "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded",
+  "thermal_state": {
+   "detail": "pmset reports no CPU_Speed_Limit on this hardware: throttling is not excluded",
+   "limits": {},
+   "status": "no_limit_reported",
+   "verified": false
+  },
+  "top_cpu_processes": [
+   "PID  %CPU COMM",
+   "34613 102.1 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif).app/Contents/MacOS/Google Chrome Helper (Aperitif)",
+   "49969 101.4 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)",
+   "34642 100.0 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)",
+   "34645  99.1 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)",
+   "  396  19.5 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer",
+   "  361   3.6 /usr/libexec/opendirectoryd",
+   "23664   3.3 /Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-3362aec7/node_modules/.pnpm/@esbuild+darwin-arm64@0.27.3/node_modules/@esbuild/darwin-arm64/bin/esbuild"
+  ],
+  "utc": "2026-11-11T10:08:24Z"
+ },
+ "machine_before": {
+  "cpu": "Apple M3 Pro",
+  "cpus": 11,
+  "free_gib": 18.82,
+  "loadavg": [
+   5.08251953125,
+   5.4599609375,
+   5.62158203125
+  ],
+  "machine": "arm64",
+  "memory_bytes": "19327352832",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "power": [
+   "Now drawing from 'AC Power'",
+   " -InternalBattery-0 (id=21889123)\t100%; charged; 0:00 remaining present: true"
+  ],
+  "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded",
+  "thermal_state": {
+   "detail": "pmset reports no CPU_Speed_Limit on this hardware: throttling is not excluded",
+   "limits": {},
+   "status": "no_limit_reported",
+   "verified": false
+  },
+  "top_cpu_processes": [
+   "PID  %CPU COMM",
+   "34613 100.8 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif).app/Contents/MacOS/Google Chrome Helper (Aperitif)",
+   "49969 100.5 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)",
+   "34645 100.0 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)",
+   "34642  99.3 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)",
+   "  396  22.7 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer",
+   "99467   4.2 /opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python",
+   "74510   3.1 /Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-local-threejs-plugins-integration/node_modules/.pnpm/@esbuild+darwin-arm64@0.27.3/node_modules/@esbuild/darwin-arm64/bin/esbuild"
+  ],
+  "utc": "2026-11-11T10:07:07Z"
+ },
+ "note": "the numbers are kept in verdicts.json as observations; nothing is judged",
+ "phase": "measure",
+ "prod_trees": {
+  "allowlist": {
+   "crates/core/src/scene_plan/mod.rs": "one added line: `pub mod probe;`",
+   "crates/core/src/scene_plan/probe.rs": "new file: the counter module (no call sites)"
+  },
+  "contaminated": [],
+  "overlay_changed": [
+   "crates/core/src/scene_plan/mod.rs",
+   "crates/core/src/scene_plan/probe.rs"
+  ],
+  "pinned_ref_tree": "54283977b0cc1d2cddc2a0ec1247faa3c9881c756cdac53eeab7fa4d45250c76",
+  "prod_tree_after_overlay": "0578616bd55c0ec3b21375a57ef0f115f2a4faba47f1884b9014a1b929024ca8",
+  "prod_tree_before_overlay": "54283977b0cc1d2cddc2a0ec1247faa3c9881c756cdac53eeab7fa4d45250c76",
+  "prod_tree_candidate": "6b4ee2800140196002eef4c238348e0468493cff06afbf837348c96b7ace2ede",
+  "product_files_outside_the_measurement": [
+   "crates/desktop/src/workstation/mod.rs",
+   "crates/desktop/src/workstation/scene_gizmo_perf_tests.rs",
+   "crates/desktop/src/workstation/scene_lifecycle_tests.rs",
+   "crates/desktop/src/workstation/scene_monitor_host.rs"
+  ],
+  "product_files_that_differ": {
+   "crates/core/src/scene_plan/build.rs": {
+    "baseline": "e49f4a42c97c77b731401ba8f38aa49be1052749",
+    "candidate": "be36fbe340aa13fb2054408296e7ebfa0e4dad1c"
+   }
+  }
+ },
+ "reason": "load average (1 min) 5.99 over 5.5 (11 cpus)",
+ "rounds": 4,
+ "rules": {
+  "baseline_spread_tolerance": 0.15,
+  "long_tick_ns": 16600000,
+  "max_unstable_fraction": 0.25,
+  "median_tolerance": 1.1,
+  "p95_tolerance": 1.25
+ },
+ "runs": [
+  {
+   "error": null,
+   "exit": 0,
+   "kept": false,
+   "load_after": [
+    5.15576171875,
+    5.46875,
+    5.62353515625
+   ],
+   "seconds": 7.45,
+   "side": "baseline",
+   "timed_out": false,
+   "warmup": true
+  },
+  {
+   "error": null,
+   "exit": 0,
+   "kept": false,
+   "load_after": [
+    5.205078125,
+    5.46923828125,
+    5.62158203125
+   ],
+   "seconds": 7.47,
+   "side": "candidate",
+   "timed_out": false,
+   "warmup": true
+  },
+  {
+   "error": null,
+   "exit": 0,
+   "index": 0,
+   "kept": true,
+   "load_after": [
+    5.3486328125,
+    5.49462890625,
+    5.62939453125
+   ],
+   "report": "round00-baseline.json",
+   "report_sha256": "e19848fed362fddc2477b9f2a3a9befbfee360a3cdc3f48e7e37c7c76222577b",
+   "seconds": 7.72,
+   "side": "baseline",
+   "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded",
+   "timed_out": false
+  },
+  {
+   "error": null,
+   "exit": 0,
+   "index": 1,
+   "kept": true,
+   "load_after": [
+    5.45458984375,
+    5.51123046875,
+    5.63330078125
+   ],
+   "report": "round01-candidate.json",
+   "report_sha256": "2d9608a8ba678ac79e365741e50c814446477b002c1163d852200d55011aa90e",
+   "seconds": 7.63,
+   "side": "candidate",
+   "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded",
+   "timed_out": false
+  },
+  {
+   "error": null,
+   "exit": 0,
+   "index": 2,
+   "kept": true,
+   "load_after": [
+    5.498046875,
+    5.51904296875,
+    5.63525390625
+   ],
+   "report": "round02-candidate.json",
+   "report_sha256": "4fcd86ed9e9c95424d190e08805634badbda1800e0082bd1ad7f0263f11cb961",
+   "seconds": 7.58,
+   "side": "candidate",
+   "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded",
+   "timed_out": false
+  },
+  {
+   "error": null,
+   "exit": 0,
+   "index": 3,
+   "kept": true,
+   "load_after": [
+    5.64208984375,
+    5.55029296875,
+    5.64501953125
+   ],
+   "report": "round03-baseline.json",
+   "report_sha256": "63b220efca49318aa806cf90550a0057eaae2f643fac8bbd44edd032fdf1b736",
+   "seconds": 7.56,
+   "side": "baseline",
+   "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded",
+   "timed_out": false
+  },
+  {
+   "error": null,
+   "exit": 0,
+   "index": 4,
+   "kept": true,
+   "load_after": [
+    5.83056640625,
+    5.5908203125,
+    5.65869140625
+   ],
+   "report": "round04-baseline.json",
+   "report_sha256": "3599787ace7c74efc07b25840d03e66444a4b7d0a38fdbd8271184be35fb02f0",
+   "seconds": 7.59,
+   "side": "baseline",
+   "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded",
+   "timed_out": false
+  },
+  {
+   "error": null,
+   "exit": 0,
+   "index": 5,
+   "kept": true,
+   "load_after": [
+    6.0771484375,
+    5.65283203125,
+    5.6796875
+   ],
+   "report": "round05-candidate.json",
+   "report_sha256": "ab93661d003c93892431560662d2a0048d81da7d6b32520c9b3989b745a2d511",
+   "seconds": 7.61,
+   "side": "candidate",
+   "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded",
+   "timed_out": false
+  },
+  {
+   "error": null,
+   "exit": 0,
+   "index": 6,
+   "kept": true,
+   "load_after": [
+    5.99072265625,
+    5.6416015625,
+    5.67529296875
+   ],
+   "report": "round06-candidate.json",
+   "report_sha256": "24e216a53ad455082065c6538a6fb2a00c3a3cfb782f27c428998a7f232c4760",
+   "seconds": 7.63,
+   "side": "candidate",
+   "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded",
+   "timed_out": false
+  },
+  {
+   "error": null,
+   "exit": 0,
+   "index": 7,
+   "kept": true,
+   "load_after": [
+    5.9853515625,
+    5.65283203125,
+    5.67822265625
+   ],
+   "report": "round07-baseline.json",
+   "report_sha256": "d13db05966f5fcfc9b2dd2772682beb898154785d06df7fdfdbd1c1b082939da",
+   "seconds": 7.59,
+   "side": "baseline",
+   "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded",
+   "timed_out": false
+  }
+ ],
+ "status": "INVALID_GUARD_AFTER_RUN",
+ "suite": "gizmo-perf-ab",
+ "toolchain": {
+  "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+ },
+ "utc_end": "2026-11-11T10:08:24Z",
+ "utc_start": "2026-11-11T10:07:07Z",
+ "verdict_counts": {
+  "NO_REGRESSION_IN_SCENARIO": 59,
+  "REGRESSED": 1
+ },
+ "verdicts_sha256": "6bae3e5134bd44244e8881bf1fef7d3c1c2da233ab3b2525b24d3acb5939bc8c"
+}

@@ -1,0 +1,507 @@
+{
+ "command": [
+  "scripts/gizmo-perf/mutate.py",
+  "--phase",
+  "time",
+  "--out",
+  "/tmp/pr44-measure-12bc8da/mutants"
+ ],
+ "exit": 3,
+ "identity": {
+  "branch": "t3/gizmo-perf-round5-measure",
+  "dirty": "",
+  "head": "12bc8da6fa564b3d740fa51da29dd203e63392ae",
+  "tree": "85cfb1038626dd68c2ef2252e14e5d276f0596ac"
+ },
+ "limits": [
+  "thermal throttling was NOT verified: pmset reports no CPU_Speed_Limit on this hardware: throttling is not excluded"
+ ],
+ "machine_after": {
+  "cpu": "Apple M3 Pro",
+  "cpus": 11,
+  "free_gib": 18.82,
+  "loadavg": [
+   5.5927734375,
+   5.51416015625,
+   5.611328125
+  ],
+  "machine": "arm64",
+  "memory_bytes": "19327352832",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "power": [
+   "Now drawing from 'AC Power'",
+   " -InternalBattery-0 (id=21889123)\t100%; charged; 0:00 remaining present: true"
+  ],
+  "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded",
+  "thermal_state": {
+   "detail": "pmset reports no CPU_Speed_Limit on this hardware: throttling is not excluded",
+   "limits": {},
+   "status": "no_limit_reported",
+   "verified": false
+  },
+  "top_cpu_processes": [
+   "PID  %CPU COMM",
+   "34613 101.5 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif).app/Contents/MacOS/Google Chrome Helper (Aperitif)",
+   "49969 101.1 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)",
+   "34642 100.0 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)",
+   "34645  99.2 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)",
+   "  396  17.7 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer",
+   "38161  10.9 /Applications/OrbStack.app/Contents/Frameworks/OrbStack Helper.app/Contents/MacOS/OrbStack Helper",
+   "23664   4.2 /Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-3362aec7/node_modules/.pnpm/@esbuild+darwin-arm64@0.27.3/node_modules/@esbuild/darwin-arm64/bin/esbuild"
+  ],
+  "utc": "2026-11-11T10:10:05Z"
+ },
+ "machine_before": {
+  "cpu": "Apple M3 Pro",
+  "cpus": 11,
+  "free_gib": 18.82,
+  "loadavg": [
+   5.04248046875,
+   5.4267578125,
+   5.58740234375
+  ],
+  "machine": "arm64",
+  "memory_bytes": "19327352832",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "power": [
+   "Now drawing from 'AC Power'",
+   " -InternalBattery-0 (id=21889123)\t100%; charged; 0:00 remaining present: true"
+  ],
+  "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded",
+  "thermal_state": {
+   "detail": "pmset reports no CPU_Speed_Limit on this hardware: throttling is not excluded",
+   "limits": {},
+   "status": "no_limit_reported",
+   "verified": false
+  },
+  "top_cpu_processes": [
+   "PID  %CPU COMM",
+   "49969 100.6 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)",
+   "34613 100.4 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif).app/Contents/MacOS/Google Chrome Helper (Aperitif)",
+   "34642 100.0 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)",
+   "34645  99.0 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)",
+   "38161   9.8 /Applications/OrbStack.app/Contents/Frameworks/OrbStack Helper.app/Contents/MacOS/OrbStack Helper",
+   "  396   8.8 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer",
+   "23783   7.1 /Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-3362aec7/node_modules/.pnpm/@esbuild+darwin-arm64@0.27.3/node_modules/@esbuild/darwin-arm64/bin/esbuild"
+  ],
+  "utc": "2026-11-11T10:09:36Z"
+ },
+ "mutants": {
+  "delay_1ms_per_handler": {
+   "expect": {
+    "structural": [
+     "every_request_plans_the_scene_at_most_as_often_as_its_contract_says_on_every_corpus",
+     "a_long_drag_costs_one_layout_per_move_and_nothing_else_grows"
+    ],
+    "time": {
+     "messages": [
+      "x the plan \\(budget",
+      "samples over a 60 Hz frame"
+     ],
+     "min_lines": 3,
+     "tests": [
+      "the_gizmo_handlers_stay_within_their_budget_cold_and_hot_on_every_corpus"
+     ]
+    }
+   },
+   "file": "crates/core/src/scene_project/gizmo.rs",
+   "must": {
+    "structural": false,
+    "time": true
+   },
+   "new": "pub(super) fn apply_gizmo(&mut self, command: GizmoCommand) -> Result<Value, CommandError> {\n        std::thread::sleep(std::time::Duration::from_millis(1));\n",
+   "old": "pub(super) fn apply_gizmo(&mut self, command: GizmoCommand) -> Result<Value, CommandError> {\n",
+   "restore": {
+    "committed_blob": "f8da57e97cf1debde5f397a2b616be947dd0bcdc",
+    "interrupted_by": null,
+    "mutated_blob": "8eff30ff5b29d2f37168e9b2882228081768b3c7",
+    "restored": true,
+    "restored_blob": "f8da57e97cf1debde5f397a2b616be947dd0bcdc"
+   },
+   "structural": {
+    "command": [
+     "./scripts/cargo",
+     "test",
+     "--locked",
+     "-p",
+     "tessel-editor-core",
+     "--test",
+     "scene_gizmo_perf_structure"
+    ],
+    "detail": "the named tests ran and passed",
+    "detected": false,
+    "error": null,
+    "exit": 0,
+    "failed_tests": [],
+    "log_sha256": "e18ee1210e7dc6d93541598dbb35d4951edb86e4c3e6fbf1bbe36b91906d1b9f",
+    "outcome": "SURVIVED",
+    "panic": [
+     "   Compiling tessel-editor-core v0.1.0 (/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-4e3aaee2/crates/core)",
+     "    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.47s",
+     "     Running tests/scene_gizmo_perf_structure.rs (target/debug/deps/scene_gizmo_perf_structure-81380171646ddceb)"
+    ],
+    "seconds": 9.64,
+    "timed_out": false
+   },
+   "time": {
+    "detail": "107 expected failure line(s): ['small/cold.state: p50 is 77.30x the plan (budget 3.15)', 'small/cold.state: p95 is 170.85x the plan (budget 6.05)', 'small/down.rotate: p50 is 166.82x the plan (budget 10.45)']",
+    "error": null,
+    "exit": 101,
+    "failure_lines": 107,
+    "failures_seen": [
+     "small/cold.state: p50 is 77.30x the plan (budget 3.15)",
+     "small/cold.state: p95 is 170.85x the plan (budget 6.05)",
+     "small/down.rotate: p50 is 166.82x the plan (budget 10.45)",
+     "small/down.rotate: p95 is 182.13x the plan (budget 12.2)",
+     "small/down.scale: p50 is 161.55x the plan (budget 5.95)",
+     "small/down.scale: p95 is 174.75x the plan (budget 7.25)",
+     "small/down.translate: p50 is 159.25x the plan (budget 4.3)",
+     "small/down.translate: p95 is 171.70x the plan (budget 5.65)",
+     "small/move.rotate: p50 is 170.16x the plan (budget 15.2)",
+     "small/move.rotate: p95 is 197.16x the plan (budget 17.85)",
+     "small/move.scale: p50 is 165.81x the plan (budget 11.0)",
+     "small/move.scale: p95 is 187.88x the plan (budget 12.95)",
+     "small/move.translate: p50 is 162.49x the plan (budget 10.1)",
+     "small/move.translate: p95 is 180.28x the plan (budget 12.25)",
+     "small/read.hidden: p50 is 75.47x the plan (budget 1.7)",
+     "small/read.hidden: p95 is 162.78x the plan (budget 4.65)",
+     "small/read.refused: p50 is 78.24x the plan (budget 2.55)",
+     "small/read.refused: p95 is 165.91x the plan (budget 4.2)",
+     "small/read.rotate: p50 is 167.14x the plan (budget 10.4)",
+     "small/read.rotate: p95 is 179.89x the plan (budget 12.15)",
+     "small/read.scale: p50 is 157.88x the plan (budget 3.75)",
+     "small/read.scale: p95 is 169.69x the plan (budget 9.5)",
+     "small/read.translate: p50 is 153.56x the plan (budget 2.75)",
+     "small/read.translate: p95 is 158.94x the plan (budget 3.7)"
+    ],
+    "guard_after": "clean",
+    "load_after": [
+     5.337890625,
+     5.4638671875,
+     5.595703125
+    ],
+    "outcome": "KILLED",
+    "seconds": 18.85,
+    "status": "KILLED",
+    "stdout_sha256": "b2c36c0637f5785301d86e4627635a39e0a020276f77f5ed05f6c2f460521e66",
+    "timed_out": false
+   },
+   "time_build": {
+    "command": [
+     "./scripts/cargo",
+     "test",
+     "--release",
+     "--locked",
+     "-p",
+     "tessel-editor-core",
+     "--test",
+     "scene_gizmo_perf_budget",
+     "--no-run",
+     "--message-format=json"
+    ],
+    "error": null,
+    "executable_sha256": "172f24113b30bf008bfc6fd4225e515bd99ca7846a0c1d5ad198419110b5b622",
+    "exit": 0,
+    "seconds": 15.22,
+    "timed_out": false
+   },
+   "verdict": {
+    "structural": {
+     "answer": true,
+     "as_expected": true,
+     "must_detect": false,
+     "outcome": "SURVIVED"
+    },
+    "time": {
+     "answer": true,
+     "as_expected": true,
+     "must_detect": true,
+     "outcome": "KILLED"
+    }
+   }
+  },
+  "extra_plan_per_handler": {
+   "expect": {
+    "structural": {
+     "messages": [
+      "laid the scene out \\d+ times \\(budget \\d+\\)"
+     ],
+     "tests": [
+      "every_request_plans_the_scene_at_most_as_often_as_its_contract_says_on_every_corpus"
+     ]
+    },
+    "time": {
+     "messages": [
+      "x the plan \\(budget",
+      "samples over a 60 Hz frame"
+     ],
+     "min_lines": 1,
+     "tests": [
+      "the_gizmo_handlers_stay_within_their_budget_cold_and_hot_on_every_corpus"
+     ]
+    }
+   },
+   "file": "crates/core/src/scene_project/gizmo.rs",
+   "must": {
+    "structural": true,
+    "time": true
+   },
+   "new": "fn plan_of(scene: &DirectedScene, frame: i64) -> Result<ScenePlan, CommandError> {\n    let _ = ScenePlan::build_with(scene, frame, PlanOptions { allow_partial: true });\n",
+   "old": "fn plan_of(scene: &DirectedScene, frame: i64) -> Result<ScenePlan, CommandError> {\n",
+   "restore": {
+    "committed_blob": "f8da57e97cf1debde5f397a2b616be947dd0bcdc",
+    "interrupted_by": null,
+    "mutated_blob": "a9343a00fdb5e95d74682f6a87549637bd018765",
+    "restored": true,
+    "restored_blob": "f8da57e97cf1debde5f397a2b616be947dd0bcdc"
+   },
+   "structural": {
+    "command": [
+     "./scripts/cargo",
+     "test",
+     "--locked",
+     "-p",
+     "tessel-editor-core",
+     "--test",
+     "scene_gizmo_perf_structure"
+    ],
+    "detail": "1 expected failure line(s): ['small / open.first_overlay: `scene.gizmo.state` laid the scene out 2 times (budget 1)']",
+    "detected": true,
+    "error": null,
+    "exit": 101,
+    "failed_tests": [
+     "a_long_drag_costs_one_layout_per_move_and_nothing_else_grows",
+     "every_request_plans_the_scene_at_most_as_often_as_its_contract_says_on_every_corpus"
+    ],
+    "log_sha256": "14c77b8617b10765527a63c1dd829cb666ddee0663d2e86f3523eb30925a48bd",
+    "outcome": "KILLED",
+    "panic": [
+     "thread 'a_long_drag_costs_one_layout_per_move_and_nothing_else_grows' (93697536) panicked at crates/core/tests/scene_gizmo_perf_structure.rs:238:5:",
+     "  left: 4",
+     "thread 'every_request_plans_the_scene_at_most_as_often_as_its_contract_says_on_every_corpus' (93697537) panicked at crates/core/tests/scene_gizmo_perf_structure.rs:172:13:",
+     "    a_long_drag_costs_one_layout_per_move_and_nothing_else_grows",
+     "    every_request_plans_the_scene_at_most_as_often_as_its_contract_says_on_every_corpus",
+     "   Compiling serde_core v1.0.229"
+    ],
+    "seconds": 10.75,
+    "timed_out": false
+   },
+   "time": {
+    "detail": "load average (1 min) 5.59 over 5.5 (11 cpus)",
+    "error": null,
+    "exit": 101,
+    "failure_lines": 64,
+    "failures_seen": [
+     "small/cold.state: p50 is 3.53x the plan (budget 3.15)",
+     "small/down.rotate: p50 is 11.14x the plan (budget 10.45)",
+     "small/down.scale: p50 is 7.21x the plan (budget 5.95)",
+     "small/down.scale: p95 is 7.33x the plan (budget 7.25)",
+     "small/down.translate: p50 is 5.77x the plan (budget 4.3)",
+     "small/down.translate: p95 is 6.07x the plan (budget 5.65)",
+     "small/read.hidden: p50 is 2.50x the plan (budget 1.7)",
+     "small/read.refused: p50 is 3.21x the plan (budget 2.55)",
+     "small/read.scale: p50 is 4.27x the plan (budget 3.75)",
+     "small/read.translate: p50 is 3.42x the plan (budget 2.75)",
+     "small/state.scale: p50 is 4.30x the plan (budget 3.8)",
+     "small/state.translate: p50 is 3.45x the plan (budget 2.85)",
+     "small/state.translate: p95 is 3.54x the plan (budget 3.45)",
+     "small/up.scale: p95 is 14.78x the plan (budget 14.65)",
+     "dense/cold.state: p50 is 2.14x the plan (budget 1.4)",
+     "dense/down.rotate: p50 is 5.08x the plan (budget 3.35)",
+     "dense/down.rotate: p95 is 5.30x the plan (budget 3.9)",
+     "dense/down.scale: p50 is 4.90x the plan (budget 3.25)",
+     "dense/down.scale: p95 is 5.77x the plan (budget 3.8)",
+     "dense/down.translate: p50 is 4.27x the plan (budget 2.5)",
+     "dense/down.translate: p95 is 4.63x the plan (budget 3.8)",
+     "dense/move.scale: p50 is 7.33x the plan (budget 7.25)",
+     "dense/move.scale: p95 is 9.29x the plan (budget 8.7)",
+     "dense/move.translate: p50 is 6.95x the plan (budget 6.9)"
+    ],
+    "guard_after": "load average (1 min) 5.59 over 5.5 (11 cpus)",
+    "load_after": [
+     5.5927734375,
+     5.51416015625,
+     5.611328125
+    ],
+    "outcome": "INVALID_GUARD_AFTER_RUN",
+    "seconds": 9.88,
+    "status": "INVALID_GUARD_AFTER_RUN",
+    "stdout_sha256": "6bc9cc196b6bf264701edcc8e55873b2149da90932102368a72afcbb42d84a48",
+    "timed_out": false
+   },
+   "time_build": {
+    "command": [
+     "./scripts/cargo",
+     "test",
+     "--release",
+     "--locked",
+     "-p",
+     "tessel-editor-core",
+     "--test",
+     "scene_gizmo_perf_budget",
+     "--no-run",
+     "--message-format=json"
+    ],
+    "error": null,
+    "executable_sha256": "9ef05714a86802e6fdee8b8701b47320166e8e7b504f9469c9542932ad853d46",
+    "exit": 0,
+    "seconds": 15.14,
+    "timed_out": false
+   },
+   "verdict": {
+    "structural": {
+     "answer": true,
+     "as_expected": true,
+     "must_detect": true,
+     "outcome": "KILLED"
+    },
+    "time": {
+     "answer": false,
+     "as_expected": false,
+     "must_detect": true,
+     "outcome": "INVALID_GUARD_AFTER_RUN"
+    }
+   }
+  },
+  "memo_off": {
+   "expect": {
+    "host": {
+     "messages": [
+      "the overlay was asked for again",
+      "every sync of an unchanged state is a memo hit"
+     ],
+     "tests": [
+      "an_idle_window_plans_nothing_per_tick_and_the_overlay_stays_memoised"
+     ]
+    }
+   },
+   "file": "crates/desktop/src/workstation/viewport_overlay.rs",
+   "host": {
+    "command": [
+     "./scripts/cargo",
+     "test",
+     "--locked",
+     "-p",
+     "tessel-editor",
+     "scene_gizmo_perf_tests::an_idle"
+    ],
+    "detail": "the named test failed without its own message (0 of 1 expected lines)",
+    "detected": false,
+    "error": null,
+    "exit": 101,
+    "failed_tests": [
+     "workstation::scene_gizmo_perf_tests::an_idle_window_plans_nothing_per_tick_and_the_overlay_stays_memoised"
+    ],
+    "log_sha256": "cf4264aaae3a48e8e12d8171871763ceda4adb4672f2f89f9ff07429a4d2ec2f",
+    "outcome": "UNEXPECTED_FAILURE",
+    "panic": [
+     "thread 'workstation::scene_gizmo_perf_tests::an_idle_window_plans_nothing_per_tick_and_the_overlay_stays_memoised' (93712605) panicked at crates/desktop/src/workstation/scene_gizmo_perf_tests.rs:193:9:",
+     "    workstation::scene_gizmo_perf_tests::an_idle_window_plans_nothing_per_tick_and_the_overlay_stays_memoised",
+     "   Compiling proc-macro2 v1.0.107",
+     "   Compiling quote v1.0.47",
+     "   Compiling unicode-ident v1.0.27",
+     "   Compiling libc v0.2.191"
+    ],
+    "seconds": 33.48,
+    "timed_out": false
+   },
+   "must": {
+    "host": true
+   },
+   "new": "let hit = false\n            && self.overlay.enabled\n",
+   "old": "let hit = self.overlay.enabled\n",
+   "restore": {
+    "committed_blob": "bd460a9328acf1916e52b7a75027ee7eecaeaec5",
+    "interrupted_by": null,
+    "mutated_blob": "47eb5b4ca3762eb7e662332879e54a6674dd8e6a",
+    "restored": true,
+    "restored_blob": "bd460a9328acf1916e52b7a75027ee7eecaeaec5"
+   },
+   "verdict": {
+    "host": {
+     "answer": true,
+     "as_expected": false,
+     "must_detect": true,
+     "outcome": "UNEXPECTED_FAILURE"
+    }
+   }
+  },
+  "replan_per_tick": {
+   "expect": {
+    "host": {
+     "messages": [
+      "idle ticks laid the scene out"
+     ],
+     "tests": [
+      "an_idle_window_plans_nothing_per_tick_and_the_overlay_stays_memoised"
+     ]
+    }
+   },
+   "file": "crates/desktop/src/workstation/workflow.rs",
+   "host": {
+    "command": [
+     "./scripts/cargo",
+     "test",
+     "--locked",
+     "-p",
+     "tessel-editor",
+     "scene_gizmo_perf_tests::an_idle"
+    ],
+    "detail": "1 expected failure line(s): ['assertion `left == right` failed: small: 100 idle ticks laid the scene out']",
+    "detected": true,
+    "error": null,
+    "exit": 101,
+    "failed_tests": [
+     "workstation::scene_gizmo_perf_tests::an_idle_window_plans_nothing_per_tick_and_the_overlay_stays_memoised"
+    ],
+    "log_sha256": "2d0259cfc87f1372ae8be52972e437a30edb7e648c748650e23a9455b2a091b4",
+    "outcome": "KILLED",
+    "panic": [
+     "thread 'workstation::scene_gizmo_perf_tests::an_idle_window_plans_nothing_per_tick_and_the_overlay_stays_memoised' (93715647) panicked at crates/desktop/src/workstation/scene_gizmo_perf_tests.rs:182:9:",
+     "  left: 474",
+     "    workstation::scene_gizmo_perf_tests::an_idle_window_plans_nothing_per_tick_and_the_overlay_stays_memoised",
+     "   Compiling tessel-editor v0.1.0 (/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-4e3aaee2/crates/desktop)",
+     "    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.80s",
+     "     Running unittests src/main.rs (target/debug/deps/tessel_editor-6ae54b6071498909)"
+    ],
+    "seconds": 13.96,
+    "timed_out": false
+   },
+   "must": {
+    "host": true
+   },
+   "new": "pub(super) fn workflow_tick(&mut self, cx: &mut Context<Self>) {\n        if let Some(scene) = self.viewport.directed_scene().map(str::to_owned) {\n            let frame = self.state.timeline.playhead;\n            let _ = self.state.execute(crate::state::Command::Scene(\n                tessel_editor_core::scene_project::SceneCommand::Gizmo(\n                    tessel_editor_core::scene_interaction::GizmoCommand::State {\n                        scene,\n                        at: tessel_editor_core::scene_interaction::FrameAt::Frame(frame),\n                    },\n                ),\n            ));\n        }",
+   "old": "pub(super) fn workflow_tick(&mut self, cx: &mut Context<Self>) {",
+   "restore": {
+    "committed_blob": "a04d56f182336aeff3fac98e2766dc3dcfc99050",
+    "interrupted_by": null,
+    "mutated_blob": "687aee8015b8cab0d2eb0ef34ae450d36bd9d450",
+    "restored": true,
+    "restored_blob": "a04d56f182336aeff3fac98e2766dc3dcfc99050"
+   },
+   "verdict": {
+    "host": {
+     "answer": true,
+     "as_expected": true,
+     "must_detect": true,
+     "outcome": "KILLED"
+    }
+   }
+  }
+ },
+ "phase": "time",
+ "prepare_identity": {
+  "branch": "t3/gizmo-perf-round5-measure",
+  "dirty": "",
+  "head": "12bc8da6fa564b3d740fa51da29dd203e63392ae",
+  "tree": "85cfb1038626dd68c2ef2252e14e5d276f0596ac"
+ },
+ "status": "BLOCKED_OR_INFRA",
+ "suite": "gizmo-perf-mutants",
+ "toolchain": {
+  "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+ },
+ "utc_end": "2026-11-11T10:10:05Z",
+ "utc_start": "2026-11-11T10:09:35Z"
+}
