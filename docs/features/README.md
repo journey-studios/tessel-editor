@@ -230,3 +230,12 @@ Integração P3 pelo coordenador: fmt e diff-check limpos; GPUI filtro `capture_
 check workspace locked e clippy workspace/all-targets locked com -D warnings passaram.
 Não foi repetida aqui a suíte workspace, o build desktop nem a prova nativa no head integrado;
 esses resultados permanecem pendentes da rechecagem independente.
+
+Rechecagem independente P3 no head limpo `74dc1b9`: workspace com runtime obrigatório
+2208/0/13 (113 resultados de suíte), fmt/check/clippy/build passaram, core sem gpui/wry;
+janela FX153/153, grão104/104 e histórico42/42, JSONs dirty_files=0. Probes independentes
+debug/release4/4, incluindo 21060 combinações de escala. Logs: /tmp/p3rev2/. A diferença
+de contagem para o relato2144/0/13 do implementador não foi explicada pelo revisor.
+A revisão aprova core/UI com nits baixos, corrigidos posteriormente em docs e no ramo morto
+de diagnóstico. Os gates completos continuam ancorados em74dc1b9; não foram repetidos
+após esses nits. Sem GPU real/Windows/ponteiro físico/motor original executado.

@@ -201,7 +201,7 @@ recusa com `invalid_bundle`/`ENVELOPE_TOO_LONG` e não altera nenhum valor que o
 são explícitos: encurtar os fades no mesmo lote ou antes. Códigos de erro do comando (`command_code`):
 `unknown_effect`, `unknown_param`, `param_type`, `param_out_of_range`, `unknown_fx_track`, `unknown_fx_clip`,
 `reserved_id`, `duplicate_id`, `fx_clip_overlap`, `fx_clip_empty`, `fx_clip_out_of_range`, `envelope_too_long`,
-`catalog_too_new`, `fx_scope_not_yet`, `fx_keys_not_yet`, `fx_transition_not_yet`; um candidato recusado pelo
+`catalog_too_new`, `fx_scope_not_yet`, `fx_transition_not_yet`; um candidato recusado pelo
 importador mantém `invalid_bundle` com os issues em `details.issues[]` (os limites chegam como `FX_LIMIT`).
 
 ### Janela

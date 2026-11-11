@@ -93,7 +93,16 @@ número de P2 é reaproveitado).
 | Renderer | `crates/render/tests/scene_fx.rs`: `fxNoise` anunciada, referência, reseed por quadro (12 ≠ 13, mesmo quadro igual, seek devolve o mesmo), seed explícita, amount 0 = baseline, curva por chave, recusa de runtime P2 |
 | Export | `crates/render/tests/scene_fx_export.rs`: pixels decodificados do MP4 contra a referência do core nos centros de célula (pior delta 6, mudança máxima 43 contra o baseline), hashes iguais ao `scene.render`, re-export e sub-faixa idênticos, salvar/reabrir, um undo |
 | JSONL | processo real `tessel-headless` (`scene_fx_keys.rs`), plano igual ao da lib |
-| Janela | `scripts/scene-fx-grain-ui-proof.py` (93 checagens: nó, seed, `colored`, chaves por ações, easing, mover, remover animação, gesto, salvar/reabrir, export contra o grain em Python); `scene-fx-ui-proof.py` e `fx-history-smoke-proof.py` sem regressão |
+| Janela | `scripts/scene-fx-grain-ui-proof.py` (104 checagens no head 74dc1b9 limpo: nó, seed, `colored`, chaves por ações, easing, mover, remover animação, gesto, salvar/reabrir, export contra o grain em Python); `scene-fx-ui-proof.py` e `fx-history-smoke-proof.py` sem regressão |
 
 Lacunas: GPU nativa e Windows; execução do motor original; ponteiro físico; os 56 efeitos restantes; escopos
 `shot`/`node` e transições (P4); timeline de chaves (P6).
+
+Rechecagem independente P3 no head limpo `74dc1b9`: workspace com runtime obrigatório
+2208/0/13 (113 resultados de suíte), fmt/check/clippy/build passaram, core sem gpui/wry;
+janela FX153/153, grão104/104 e histórico42/42, JSONs dirty_files=0. Probes independentes
+debug/release4/4, incluindo 21060 combinações de escala. Logs: /tmp/p3rev2/. A diferença
+de contagem para o relato2144/0/13 do implementador não foi explicada pelo revisor.
+A revisão aprova core/UI com nits baixos, corrigidos posteriormente em docs e no ramo morto
+de diagnóstico. Os gates completos continuam ancorados em74dc1b9; não foram repetidos
+após esses nits. Sem GPU real/Windows/ponteiro físico/motor original executado.

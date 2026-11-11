@@ -59,7 +59,6 @@ pub(super) fn reason_text(reason: &str) -> &'static str {
         "frame_outside_clip" => "O quadro atual está fora do clipe",
         "no_keys" => "O parâmetro não tem chaves",
         "needs_two_keys" => "Precisa de duas chaves",
-        "key_on_this_frame" => "Já existe uma chave neste quadro",
         "seed_is_automatic" => "A semente já é automática",
         "key_order" => "A chave não pode cruzar a vizinha nem sair do clipe",
         "no_previous_key" => "Não há chave antes do quadro atual",

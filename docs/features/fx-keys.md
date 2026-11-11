@@ -77,9 +77,10 @@ Só os efeitos que desenham ruído carregam `seed` no passe do plano (os bytes d
 | `set_seed {clip,seed}` | `uint32` explícita, ou `null` para voltar à derivação pelo ID; mesma seed é no-op |
 | `set_param` (existente) | Edita só a **base**. Sob chaves a resposta traz o aviso `FX_STATIC_UNDER_KEYS` e a curva é mantida |
 
-Custo (BL082.32): cada op localiza o clipe e copia no máximo uma curva (edição no lugar, contadores
-determinísticos `FxWork` — `ops`, `clips_located`, `curve_items_copied` — conferidos por teste em
-`crates/core/tests/scene_fx_key_bounds.rs`); o custo dominante de um lote é a revalidação do importador, **por lote**
+Custo (BL082.32): as ops de chave única localizam o clipe e copiam no máximo uma curva; `shift_keys`,
+`scale_keys` e `clear_keys` sem `param` podem copiar todas as curvas do clipe (até 1024 itens).
+Os contadores determinísticos `FxWork` — `ops_run`, `document_scans`, `curve_items_copied` — são conferidos em
+`crates/core/tests/scene_fx_key_bounds.rs`; o custo dominante de um lote é a revalidação do importador, **por lote**
 e proporcional ao documento, não por op. Medição pareada (teste ignorado por padrão, perfil release, macOS, uma
 amostra, só informativa): camada vazia 1 op 43 µs / 64 ops 164 µs; camada cheia (16 384 chaves) 1 op 13,4 ms /
 64 ops 13,2 ms. Por isso o orçamento é por lote.
@@ -218,3 +219,12 @@ Integração P3 pelo coordenador: fmt e diff-check limpos; GPUI filtro `capture_
 check workspace locked e clippy workspace/all-targets locked com -D warnings passaram.
 Não foi repetida aqui a suíte workspace, o build desktop nem a prova nativa no head integrado;
 esses resultados permanecem pendentes da rechecagem independente.
+
+Rechecagem independente P3 no head limpo `74dc1b9`: workspace com runtime obrigatório
+2208/0/13 (113 resultados de suíte), fmt/check/clippy/build passaram, core sem gpui/wry;
+janela FX153/153, grão104/104 e histórico42/42, JSONs dirty_files=0. Probes independentes
+debug/release4/4, incluindo 21060 combinações de escala. Logs: /tmp/p3rev2/. A diferença
+de contagem para o relato2144/0/13 do implementador não foi explicada pelo revisor.
+A revisão aprova core/UI com nits baixos, corrigidos posteriormente em docs e no ramo morto
+de diagnóstico. Os gates completos continuam ancorados em74dc1b9; não foram repetidos
+após esses nits. Sem GPU real/Windows/ponteiro físico/motor original executado.
