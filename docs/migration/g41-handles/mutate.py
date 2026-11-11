@@ -71,54 +71,70 @@ def run(command, cwd):
     return result.returncode, result.stdout + result.stderr
 
 
+def rebuild_dist():
+    """`runtime/dist` is what the browser tests run: after a JS mutant it is built from the restored source.
+    False (with the reason on stderr) when that build fails: `dist` would still hold the last mutant."""
+    code, out = run(['sh', '-c', 'pnpm run build >/dev/null'], ROOT / 'runtime')
+    if code != 0:
+        print(f'FAILED: the rebuild of runtime/dist exited {code}; it still holds the last mutant. '
+              f'Run `./scripts/runtime build` before trusting any runtime test.\n{out[-1500:]}', file=sys.stderr, flush=True)
+    return code == 0
+
+
 def main():
     only = set(sys.argv[1:])
     report = []
     hashes_before = {path: digest(path) for path in ALL_PATHS}
-    for name, path, old, new in MUTANTS + JS_MUTANTS:
-        if only and name.split()[0] not in only:
-            continue
-        file = ROOT / path
-        original = file.read_text()
-        if original.count(old) != 1:
-            report.append({'mutant': name, 'result': 'NOT-APPLICABLE', 'count': original.count(old)})
-            print(name, 'NOT APPLICABLE', original.count(old), flush=True)
-            continue
-        started = time.time()
-        try:
-            file.write_text(original.replace(old, new))
-            if path.endswith('.js'):
-                # The browser tests run the BUILT page (`runtime/dist`): the mutant has to be built into it.
-                code, out = run(['sh', '-c', 'pnpm run build >/dev/null && node --test test/fx-handles-overlay.test.mjs'],
-                                ROOT / 'runtime')
+    dist_dirty = False  # a JS mutant was (or may have been) built into `runtime/dist`
+    try:
+        for name, path, old, new in MUTANTS + JS_MUTANTS:
+            if only and name.split()[0] not in only:
+                continue
+            file = ROOT / path
+            original = file.read_text()
+            if original.count(old) != 1:
+                report.append({'mutant': name, 'result': 'NOT-APPLICABLE', 'count': original.count(old)})
+                print(name, 'NOT APPLICABLE', original.count(old), flush=True)
+                continue
+            started = time.time()
+            try:
+                file.write_text(original.replace(old, new))
+                if path.endswith('.js'):
+                    # The browser tests run the BUILT page (`runtime/dist`): the mutant has to be built into it.
+                    dist_dirty = True
+                    code, out = run(['sh', '-c', 'pnpm run build >/dev/null && node --test test/fx-handles-overlay.test.mjs'],
+                                    ROOT / 'runtime')
+                else:
+                    code, out = run(['./scripts/cargo', 'test', '-p', 'tessel-editor-core', '--locked', '--no-fail-fast',
+                                     '--lib', '--test', 'scene_fx_handles', '--test', 'scene_fx_target'], ROOT)
+            finally:
+                file.write_text(original)
+            failed = sorted({line.split()[1] for line in out.splitlines() if line.startswith('test ') and line.endswith('FAILED')})
+            failed += sorted({line.split(' - ', 1)[1] for line in out.splitlines() if line.startswith('not ok') and ' - ' in line})
+            # KILLED needs a test that ran and failed by name. A non-zero exit without one is the
+            # runner's own failure (no mbx, no node, a crash) and says nothing about the tests.
+            if code == 0:
+                result = 'SURVIVED'
+            elif failed:
+                result = 'KILLED'
+            elif 'error[' in out or 'could not compile' in out:
+                result = 'COMPILE-ERROR'
             else:
-                code, out = run(['./scripts/cargo', 'test', '-p', 'tessel-editor-core', '--locked', '--no-fail-fast',
-                                 '--lib', '--test', 'scene_fx_handles', '--test', 'scene_fx_target'], ROOT)
-        finally:
-            file.write_text(original)
-        failed = sorted({line.split()[1] for line in out.splitlines() if line.startswith('test ') and line.endswith('FAILED')})
-        failed += sorted({line.split(' - ', 1)[1] for line in out.splitlines() if line.startswith('not ok') and ' - ' in line})
-        # KILLED needs a test that ran and failed by name. A non-zero exit without one is the
-        # runner's own failure (no mbx, no node, a crash) and says nothing about the tests.
-        if code == 0:
-            result = 'SURVIVED'
-        elif failed:
-            result = 'KILLED'
-        elif 'error[' in out or 'could not compile' in out:
-            result = 'COMPILE-ERROR'
-        else:
-            result = 'EXECUTION-ERROR'
-        report.append({'mutant': name, 'result': result, 'failed': failed[:6], 'seconds': round(time.time() - started)})
-        print(name, result, failed[:3], flush=True)
-    if any(path.endswith('.js') for path in ALL_PATHS) and not only or any(n.startswith('J') for n in only):
-        run(['sh', '-c', 'pnpm run build >/dev/null'], ROOT / 'runtime')  # `dist` back to the restored source
+                result = 'EXECUTION-ERROR'
+            report.append({'mutant': name, 'result': result, 'failed': failed[:6], 'seconds': round(time.time() - started)})
+            print(name, result, failed[:3], flush=True)
+    finally:
+        # Also on an interruption: the source of the running mutant is already back (inner `finally`),
+        # `dist` goes back to that source here.
+        dist_rebuilt = rebuild_dist() if dist_dirty else None
     hashes_after = {path: digest(path) for path in ALL_PATHS}
-    out = {'restored': hashes_before == hashes_after, 'hashes': hashes_after, 'mutants': report}
+    restored = hashes_before == hashes_after and dist_rebuilt is not False
+    out = {'restored': restored, 'dist_rebuilt': dist_rebuilt, 'hashes': hashes_after, 'mutants': report}
     EVIDENCE.mkdir(parents=True, exist_ok=True)
     name = 'mutation-report.json' if not only else 'mutation-report-' + '-'.join(sorted(only)) + '.json'
     (EVIDENCE / name).write_text(json.dumps(out, indent=2) + '\n')
     print('restored:', out['restored'])
-    return 0 if out['restored'] and all(r['result'] in ('KILLED', 'SURVIVED') for r in report) else 2
+    return 0 if restored and all(r['result'] in ('KILLED', 'SURVIVED') for r in report) else 2
 
 
 raise SystemExit(main())
