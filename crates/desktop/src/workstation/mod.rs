@@ -854,6 +854,8 @@ mod perf_tests;
 #[cfg(test)]
 mod scene_fx_editors_tests;
 #[cfg(test)]
+mod scene_fx_handles_tests;
+#[cfg(test)]
 mod scene_fx_keys_tests;
 #[cfg(test)]
 mod scene_fx_tests;
