@@ -81,3 +81,30 @@ e testes que rodam) ≠ **validado** (números/provas com identidade); o que é 
 - `monitor.show_scene` entre duas cenas **com o mesmo `bundleId`** (duas cenas anexadas do mesmo arquivo) responde `ok`
   mas o monitor continua em `directed.scene` da primeira (nenhum quadro novo é pedido); com bundles diferentes troca.
   Observado uma vez na janela real (build release do head); a causa não foi investigada e nada foi alterado. A jornada usa bundles diferentes na troca; o caso fica em BL015.22.
+
+## Evidência desta entrega
+
+Arquivos e identidade de cada execução: [gizmo-perf-evidence/README.md](../migration/gizmo-perf-evidence/README.md).
+Resumo honesto (head final `9cc2335` + commits só de documentação):
+
+| Item | Estado |
+|---|---|
+| Estrutural do core (7), host GPUI (3), spec dos runners (15), `fmt`, `clippy -D warnings`, `cargo tree` do core sem gpui/wry | **executados no head final**, passam |
+| Mutantes `extra_plan_per_handler` (estrutural), `memo_off` e `replan_per_tick` (host) | **mortos** (`9186e2a`); `delay_1ms_per_handler` passa no estrutural (esperado: o contador não vê atraso) |
+| Tempo no core (release, lock, guardas) | **PASS no `5cded7e`** (árvore limpa, todas as amostras guardadas); **não repetido no head final**: tentativa única BLOCKED por disco (8,39 GiB < 12). Um PASS de outro head não vale para este |
+| Mutantes de tempo (plano extra, 1 ms) | **não provados**: BLOCKED por carga (5,68 e 8,95 > 5,5). A prova de que o detector de tempo mata custo extra existe só nos controles negativos internos do teste (que não contam como desempenho) |
+| A/B `cbe9e1b` × candidato | build executado, medição BLOCKED (carga 82): **sem comparação**; nada de "sem regressão" é afirmado |
+| Janela nativa | corrida funcional sem lock no corpus `small` (160 verificações, 0 falhas) com uma revisão anterior do runner; **a medição (lock + guardas) e `dense`/`deep` não rodaram** (BLOCKED por disco) |
+| Workspace inteiro com `TESSEL_REQUIRE_RUNTIME=1` | no `5cded7e`: 2294/1/16, a falha era um defeito deste teste (corrigido); **não repetido** depois (disco) |
+| Provas de processo e gates funcionais de `0ee2d14` | **pendentes** (não executados nesta entrega) |
+
+Histórico que precisa ficar à vista: os orçamentos vêm de calibrações sobre **esta** árvore (não de uma base anterior), a
+primeira tentativa julgada falhou (`try2`) e as margens frias foram ampliadas **depois** disso, antes de qualquer execução
+aceita; tudo está guardado. O candidato difere da `main` só pelo contador de planos (3 linhas) e por testes, então o A/B
+só diz alguma coisa útil como instrumento reutilizável para PRs que mexam no caminho quente.
+
+### O que falta para validar (BL015.21)
+
+1. Repetir `run.py` no head final com disco ≥ 12 GiB e carga ≤ 0,5 por CPU; 2. `ab.py --phase build` e `--phase measure`
+na mesma condição; 3. `mutate.py --phase time`; 4. `native.py` (medição) nos três casos; 5. o workspace inteiro e as provas de
+`0ee2d14`; 6. um caso com splat; 7. orçamentos nativos só depois de um A/B com um binário nativo da `main`.
