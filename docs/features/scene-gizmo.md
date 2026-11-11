@@ -942,8 +942,12 @@ com `factor_not_positive`. O semiplano do press mantém a razão de distâncias.
 - `the_uniform_side_is_judged_in_picture_space…` (unidade): ponto `(-0,2; +0,12)` para um press `(+0,1; +0,1)` em alturas de imagem,
   aspecto 1,5. Corrigido, o produto é `-0,008` (lado oposto); em `u` cru seria `+0,0031` (lado do press).
 - Mutantes (cada um com o arquivo restaurado e o hash comparado): **M26** (guarda do produto removida) morta por três testes,
-  dois de integração e um de unidade; **M27** (aspecto fora do produto) morta pelo teste de unidade. O equivalente
-  `dot <= 0` → `dot < 0` não foi rodado: na origem exata o produto é 0 e a razão `0/d` também (mesmo resultado).
+  dois de integração e um de unidade; **M27** (aspecto fora do produto) morta pelo teste de unidade. **Correção (achado
+  `4532376209` do CodeRabbit, válido):** `dot <= 0` → `dot < 0` **não é equivalente**. A frase anterior ("na origem exata o produto
+  é 0 e a razão `0/d` também") só olhava a origem; um ponteiro **perpendicular** ao press e fora da origem também dá `dot = 0` com
+  distância positiva: a base recusa (fator 0, `factor_not_positive`) e o mutante aceitaria a razão de distâncias. Agora é o
+  mutante **M31**, morto por `a_pointer_exactly_perpendicular_to_the_press_is_the_far_side_not_a_ratio` (ver a seção
+  "Achado matemático" no fim deste documento).
 
 **2. `mutate.py` (thread `4531785486`).** As âncoras M05, M13 e M14 foram reescritas para as comparações pós-clippy (uma
 ocorrência exata cada; o runner continua tratando 0 ou 2+ como `NOT-APPLICABLE`). Rodaram no head de produção final: M05, M13, M14
@@ -970,7 +974,9 @@ medição foi executada**; BL015.18 continua pendente e o número antigo continu
   fator positivo): agora ela é invertida em volume 1 (`cbrt|det|`); volume 0 ou não finito continua `degenerate_transform`, e o
   tamanho do mundo continua sendo decidido por `MIN_DETERMINANT` sobre o **resultado**. Testes: unidade e API pública (4 eixos × 2
   espaços, handles sem `disabled`); mutante **M28** (sem a normalização) morto por ambos. Limite honesto: uma base tão achatada
-  que o `inverse3` do volume 1 ainda falhe segue recusada, sem tentar nada além disso.
+  que o `inverse3` do volume 1 ainda falhe segue recusada, sem tentar nada além disso. **Atenção:** a primeira versão desta
+  correção também normalizava as direções LOCAIS na base dividida pelo volume, o que quebrou pais anisotrópicos (achado
+  `4532352759`, corrigido em `0ee2d14`: ver a seção "Achado matemático" no fim).
 - **`scene-gizmo-scale-proof.py` ignorava o `stop` que falha (válido, corrigido).** Só gravava `cleanup_error` e o `main`
   publicava `ok: true`. Agora `run_surface` levanta `RuntimeError` depois do `finally` (sem esconder uma falha da própria
   execução), como o driver S8. `scripts/scene-gizmo-scale-proof.spec.py` (3 testes) e um mutante (`if False:`) o provam. A prova
@@ -1051,3 +1057,88 @@ de cleanup que o review apontou na da escala; não alterada, só registrada).
 **Disco**: a primeira leitura de `df -g` do volume deu 12 GiB e `df -k` segundos depois 21,7 GiB (outros processos da máquina compartilhada); o pesado
 começou depois de uma medição nova de 21,6 GiB (reserva 16) e terminou com 13,8 GiB (piso 12 respeitado; o `test` cresceu o alvo MBX em
 ~6 GiB). O `mbx` imprimiu a própria evicção automática de alvos abandonados; nenhum `clean`/`gc` foi rodado por mim.
+
+### Achado matemático da base normalizada por volume (código `0ee2d14`, a validar)
+
+Status: **a validar** (revisão independente do coordenador pendente). Datas em UTC (2026-11-11), checkout T3
+`/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-02ba3f94` (ramo local `t3/scale-frame-math-fixes`, avançado por fast-forward para a
+cabeça da PR `78f8994` e publicado em `t3/gizmo-node-scaling` sem force). `origin/main` conferida viva: `bf4347d`. Os pushes de outro
+agente (`5906713`, `aae8747`) estão no histórico e não foram tocados. Evidência pequena em
+[`docs/migration/g12-scale/head-0ee2d14/`](../migration/g12-scale/head-0ee2d14/) (`gates.json`, `mutation-report-math.json`).
+
+**Achado `4532352759` (OpenCodeReview, válido, reproduzido pela API pública).** `ScaleFrame::of` inverte a base `M = W·S⁻¹` em volume
+1 (correção das escalas compensatórias), mas passou a normalizar também as direções **locais** nessa mesma base. Com pais de
+`(1e-8, 1e8, 1e8)` (ou quatro pais de `(0,01, 100, 100)`, nenhum número extremo no documento) e um nó de escala 1, o determinante do
+mundo é `1e8` (passa `movable`), a coluna `x` de `M` mede `1e-8` (normalizável) e, dividida pelo volume (`≈464`), ficava em
+`2,15e-11`, abaixo do corte absoluto `EPS = 1e-9` de `normalize`: o handle `x` sumia e `scene.scale` respondia `degenerate_transform`
+para um resultado legal. Falha de projeto: o corte absoluto de uma coluna dependia do tamanho das outras.
+
+**Correção.** A inversão em volume 1 continua (ela decide só os eixos de `world`, porque `T = M⁻¹·a·aᵀ·M` não muda com um fator
+positivo; o tamanho do mundo segue sendo `MIN_DETERMINANT` sobre o resultado). A direção `local` agora vem da base **original**,
+coluna a coluna (`column_direction`): divide-se a coluna pela sua maior componente (o comprimento resultante fica em `[1, √3]`, até
+nos subnormais) e só uma coluna zero ou não finita fica sem direção, sem nenhum corte que dependa dos outros eixos. Nada foi
+resolvido aumentando `EPS` nem mascarando a comparação.
+
+**Preservado, com teste.** Inversão em volume para filho `100` sob pai `1e-5` (testes de unidade e de API pública já existentes;
+**M28** morto); volume 0 (pai com eixo achatado): `degenerate_transform` em `local` e `world`, documento intacto; cisalhamento
+(`world_axis_shear`) e limites do resultado (`above_maximum_scale`, `below_minimum_scale`) intactos na cadeia extrema.
+
+**Testes (oráculos escritos nos próprios testes, nunca o código sob teste).**
+
+| Teste | O que prova |
+|---|---|
+| unidade `four_parents_of_anisotropic_scale_leave_every_local_axis_where_the_columns_point` | `M = P·R` com `P = (1e-8, 1e8, 1e8)` (produto de quatro pais) e escala própria 1 ou `(2,3,5)`: a direção de cada coluna bate com a fórmula direta `P·(coluna de R)`; o componente é o próprio e `scale(X, 2)` é o produto simples. Sem giro exato de um quarto de volta (ali o `cos` é ruído e o spread de `1e16` o transforma na direção inteira) |
+| unidade `…keep_the_world_axes_that_run_along_a_node_axis` | `world` com quarto de volta: componente `y`/`x`/`z` conforme a permutação, handles sem `disabled`; 0,3 rad: `x` e `y` recusados com `world_axis_shear`, `z` livre |
+| unidade `…keep_the_limits_and_the_uniform_handle` | limites no componente autoral, `uniform` ×4, pai achatado recusado |
+| unidade `a_column_has_a_direction_from_its_own_length_alone` | colunas de `1e-30`, `1e200`, subnormal; zero, NaN e infinito sem direção (mata **M30**) |
+| API `four_parents_…keep_every_local_handle_and_edit_where_the_oracle_says` | cadeia de quatro pais com rotações e escala `(0,01, 100, 100)`: handles do overlay onde a câmera do teste projeta `unit(coluna de M)`, `scene.scale` em `x/y/z` dá `W·diag(d)` (comparação relativa por linha), pivô e `localScale` autoral; `uniform` = `f·W` em `local` e `world` |
+| API `…without_any_rotation_keep_the_three_axes_in_both_spaces` | `M = diag(1e-8, 1e8, 1e8)`, por quatro pais **e** por um pai que escreve os números extremos, `local` e `world` |
+| API `…keep_the_world_axes_that_run_along_a_node_axis` | quarto de volta no nó (z e y): componente pelo oráculo, `G·W` |
+| API `…with_a_rotation_between_them_refuse_the_world_shear` | **limite honesto, não escondido**: o mesmo quarto de volta no segundo pai não é permutação exata em f64 (`cos 90° ≈ 6e-17`) e ao lado de `1e16` de anisotropia vira um termo de ordem 1 em `T`; o cisalhamento é real e `world` é recusado, tipado, atômico; `local` continua |
+| API `…still_refuse_a_shear_a_limit_and_a_flat_basis` | `world_axis_shear` com nó girado 30°, limites `1e4`/`1e-4`, pai com eixo zero (`degenerate_transform`), `observable` idêntico depois de cada recusa |
+
+**Mutantes (um por vez, arquivo restaurado e hash comparado).** O mutante pedido, que troca a base original pela normalizada por
+volume na direção local (**M29**: `super::normalize` sobre a base dividida pelo volume, o defeito exato), morre por testes
+de unidade e de API (nomes no relatório). **M30** (corte absoluto na coluna) morre pelo teste de colunas. **M31** (`dot < 0`) morre pelo caso exato
+abaixo. Reancorados ao código novo: **M12** (eixos lidos como linhas, agora em `column_direction`) e **M28** (sem a divisão por
+volume). Rodada direcional `M05 M08 M12 M13 M14 M16 M26 M27 M28 M29 M30 M31`: **12/12 mortos, `restored: true`**
+(`mutation-report-math.json`; o hash de `scaling.rs` antes e depois é `a923d2ab…`, o do commit). As outras mutações do conjunto de
+29 **não foram repetidas**: este commit só mudou, em código de produção, a construção dos eixos de `ScaleFrame::of`, o novo
+`column_direction` e a remoção do import de `normalize` (nenhuma linha dos outros mutantes mudou; `git diff e19b7e7 0ee2d14 -- scaling.rs`
+mostra só isso e os testes); o relatório de `e19b7e7` (M01–M25, M27) vale para as linhas não tocadas, e M26/M27/M05/M08/M13/M14/M16
+foram reexecutados acima de qualquer forma.
+
+**Achado `4532376209` (CodeRabbit, válido): `dot <= 0` → `dot < 0` não é equivalente.** O produto escalar do meio-plano do
+`uniform` também é 0 para um ponteiro **perpendicular** ao press e **fora** da origem (distância positiva); aí a base recusa
+(`factor = 0`, `factor_not_positive`) e o mutante aceitaria a razão. Caso exato (`a_pointer_exactly_perpendicular_to_the_press_is_the_far_side_not_a_ratio`,
+aspecto 1,5): o press fica na horizontal da origem (o `v` dele é o da origem, bit a bit) e o ponteiro na vertical (o `u` é o da
+origem): todo termo do produto é um zero exato, sem arredondamento decidindo o lado; a razão de distâncias seria um 2 legal
+(afirmado no teste), e a base devolve `Some(0.0)`; idem com os papéis trocados e nos dois sentidos. Um passo (`1e-6`) para dentro do
+meio-plano do press volta a ser a razão comum. O meio-plano válido, a razão e o último candidato legal / `opposite` / recusa
+no release (testes de API existentes) não mudaram. Limite: o `dot` exatamente zero só se alcança com um press alinhado a um eixo da
+imagem, que a API pública não produz (a caixa `uniform` está a 45°); por isso o caso exato é de unidade e o de API segue com os lados
+oposto e vizinho.
+
+**Achado `4532376203` (CodeRabbit, colunas do backlog).** As linhas BL015.16/.17/.18 já estavam corrigidas pelo coordenador em
+`78f8994` (a tabela tem `Depende de` e depois `Responsável`: `BL015.1…` e `Agente G1.2` nas posições certas); conferido, nenhuma
+outra linha editada.
+
+**Gates deste código — o que rodou e o que está BLOQUEADO.** Disco livre na entrada: **13,75 GiB (leitura estável), abaixo da reserva
+de 16 GiB** desta rodada (piso 12); ao fim, 12,13 GiB (volume compartilhado; o alvo do checkout tem 289 MB). Por isso **nenhuma etapa
+pesada foi iniciada** e ficam **BLOQUEADOS** para este head: `check --workspace`, `clippy --workspace`, `TESSEL_REQUIRE_RUNTIME=1 test
+--workspace`, `./scripts/runtime test`, os builds de `tessel-editor` e `tessel-headless` (portanto sem hash de binário novo), a prova de
+processo da escala (headless + janela nativa) e as regressões de rotação, S8 e FX. Executado (só o crate do core, alvo MBX padrão,
+sem lock de performance e sem benchmark, cada etapa depois de `scripts/disk-guard.sh` com piso 12): `cargo fmt --all -- --check` exit 0;
+`clippy -p tessel-editor-core --all-targets --locked -- -D warnings` exit 0; testes `--lib` + `scene_gizmo`, `scene_gizmo_fx`,
+`scene_gizmo_rotation`, `scene_gizmo_scale` no head `0ee2d14` com a árvore limpa, exit 0: **524 + 42 + 5 + 46 + 54 = 671 passaram,
+0 falharam** (a escala de integração tinha 49 e ganhou 5; a unidade ganhou 5); `cargo tree -p tessel-editor-core` sem `gpui` nem `wry`; specs Python
+puros da prova e da medição (3 + 5, normal e `-O`). Duas execuções intermediárias falharam e **são conservadas**: o oráculo de unidade num
+quarto de volta exato (ruído amplificado, erro do teste) e o caso de `world` com rotação entre pais anisotrópicos (a recusa é o
+comportamento correto; o teste foi reescrito e a recusa virou teste). As 2275/0/13 e a prova de processo 53 + 61 / 48 + 54 / 56 + 84 e 104 do grão de FX
+(`3ed7f8b`/`5906713`) e as 2190/0/12 e 231/231 (`e19b7e7`) **continuam como histórico do código anterior e não são atribuídas a `0ee2d14`**.
+A interação FX × gizmo continua exercitada em core por `scene_gizmo_fx` (5/5 acima), não pela janela.
+
+**Provado vs. não provado.** Provado (lib e JSONL em processo, sem GPUI): direção local por coluna sob pais anisotrópicos, `world` onde o
+eixo corre sobre um eixo do nó, recusas e limites preservados, a fronteira exata do semiplano `uniform`. **Não provado** neste head:
+nenhum gate de workspace, runtime, binário, janela nativa ou prova de processo (BLOQUEADOS por disco), o ponteiro físico (BL015.2/BL043/BL044),
+custo (BL015.18, sem medição, sem lock), splat no corpus de processo, liquidação atômica do slider (BL015.19) e a revisão independente.
